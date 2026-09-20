@@ -290,6 +290,10 @@ func (s *server) resolveValues(ctx context.Context, q *store.Queries, c *caller,
 	// billing figures at all.
 	v.Billable = p.Billable && project != nil && project.BillingType != billingNonBillable
 	if !v.Billable {
+		// A figure sent for a line that will bill nothing is refused rather
+		// than accepted and quietly dropped: the caller asked for a markup and
+		// would otherwise get a 200 with no markup and no explanation.
+		refuseFiguresNothingWillUse(p, add)
 		return v, nil
 	}
 
@@ -343,6 +347,23 @@ func (s *server) resolveValues(ctx context.Context, q *store.Queries, c *caller,
 		}
 	}
 	return v, nil
+}
+
+// projectBillsNothing is the message the two customer-facing figures carry when
+// they are named for a line the project will never bill.
+const projectBillsNothing = "This project bills nothing, so there is nothing to charge a customer for"
+
+// refuseFiguresNothingWillUse reports a markup or a customer rate per kilometre
+// named on a line that will not be billable — which here can only mean the
+// project bills nothing, because parseProjectFields has already refused both on
+// a line that did not ask to be billable at all.
+func refuseFiguresNothingWillUse(p parsedEntry, add func(field, msg string)) {
+	if p.MarkupPercent != nil {
+		add("markupPercent", projectBillsNothing)
+	}
+	if p.BillRatePerKm != nil {
+		add("billRatePerKm", projectBillsNothing)
+	}
 }
 
 // maxMoneyRat is the amount columns' ceiling as an exact decimal, for the

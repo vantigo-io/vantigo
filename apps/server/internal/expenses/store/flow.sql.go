@@ -22,7 +22,7 @@ UPDATE expenses.entries SET
     revision = revision + 1,
     updated_at = $1::timestamptz
 WHERE id = ANY($3::bigint[]) AND status = 'submitted'
-RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at
+RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at
 `
 
 type ApproveEntriesParams struct {
@@ -66,6 +66,7 @@ func (q *Queries) ApproveEntries(ctx context.Context, arg ApproveEntriesParams) 
 			&i.PassengerRate,
 			&i.RateOverriddenByUserID,
 			&i.RateTableValue,
+			&i.PassengerRateTableValue,
 			&i.ProjectID,
 			&i.BillingLineID,
 			&i.Billable,
@@ -122,7 +123,7 @@ func (q *Queries) CountApprovalGroups(ctx context.Context, arg CountApprovalGrou
 }
 
 const getEntries = `-- name: GetEntries :many
-SELECT id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at FROM expenses.entries WHERE id = ANY($1::bigint[])
+SELECT id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at FROM expenses.entries WHERE id = ANY($1::bigint[])
 `
 
 // GetEntries reads the expenses in ids without locking them: what a batch
@@ -160,6 +161,7 @@ func (q *Queries) GetEntries(ctx context.Context, ids []int64) ([]ExpensesEntry,
 			&i.PassengerRate,
 			&i.RateOverriddenByUserID,
 			&i.RateTableValue,
+			&i.PassengerRateTableValue,
 			&i.ProjectID,
 			&i.BillingLineID,
 			&i.Billable,
@@ -203,7 +205,7 @@ WITH groups AS (
     ORDER BY min(entry_date), user_id
     LIMIT $5 OFFSET $4
 )
-SELECT e.id, e.user_id, e.created_by_user_id, e.claim_id, e.kind, e.entry_date, e.description, e.category_id, e.supplier, e.paid_by, e.currency, e.gross_amount, e.vat_amount, e.distance_km, e.from_place, e.to_place, e.passengers, e.rate, e.passenger_rate, e.rate_overridden_by_user_id, e.rate_table_value, e.project_id, e.billing_line_id, e.billable, e.markup_percent, e.bill_rate_per_km, e.bill_amount, e.status, e.submitted_at, e.decided_at, e.decided_by_user_id, e.rejection_reason, e.reimbursed_at, e.reimbursed_by_user_id, e.reimbursement_reference, e.reimbursement_date, e.invoiced_at, e.invoiced_by_user_id, e.invoice_reference, e.revision, e.created_at, e.updated_at FROM expenses.entries e
+SELECT e.id, e.user_id, e.created_by_user_id, e.claim_id, e.kind, e.entry_date, e.description, e.category_id, e.supplier, e.paid_by, e.currency, e.gross_amount, e.vat_amount, e.distance_km, e.from_place, e.to_place, e.passengers, e.rate, e.passenger_rate, e.rate_overridden_by_user_id, e.rate_table_value, e.passenger_rate_table_value, e.project_id, e.billing_line_id, e.billable, e.markup_percent, e.bill_rate_per_km, e.bill_amount, e.status, e.submitted_at, e.decided_at, e.decided_by_user_id, e.rejection_reason, e.reimbursed_at, e.reimbursed_by_user_id, e.reimbursement_reference, e.reimbursement_date, e.invoiced_at, e.invoiced_by_user_id, e.invoice_reference, e.revision, e.created_at, e.updated_at FROM expenses.entries e
 JOIN groups ON groups.user_id = e.user_id
 WHERE e.status = 'submitted'
   AND ($1::boolean OR (e.project_id IS NOT NULL AND e.project_id = ANY($2::integer[])))
@@ -270,6 +272,7 @@ func (q *Queries) ListApprovalGroupEntries(ctx context.Context, arg ListApproval
 			&i.PassengerRate,
 			&i.RateOverriddenByUserID,
 			&i.RateTableValue,
+			&i.PassengerRateTableValue,
 			&i.ProjectID,
 			&i.BillingLineID,
 			&i.Billable,
@@ -303,7 +306,7 @@ func (q *Queries) ListApprovalGroupEntries(ctx context.Context, arg ListApproval
 }
 
 const lockEntries = `-- name: LockEntries :many
-SELECT id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at FROM expenses.entries
+SELECT id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at FROM expenses.entries
 WHERE id = ANY($1::bigint[])
 ORDER BY id
 FOR UPDATE
@@ -344,6 +347,7 @@ func (q *Queries) LockEntries(ctx context.Context, ids []int64) ([]ExpensesEntry
 			&i.PassengerRate,
 			&i.RateOverriddenByUserID,
 			&i.RateTableValue,
+			&i.PassengerRateTableValue,
 			&i.ProjectID,
 			&i.BillingLineID,
 			&i.Billable,
@@ -383,33 +387,42 @@ UPDATE expenses.entries SET
     gross_amount = $3,
     rate_overridden_by_user_id = $4::uuid,
     rate_table_value = COALESCE(rate_table_value, rate),
+    passenger_rate_table_value = CASE WHEN $5::boolean
+        THEN COALESCE(passenger_rate_table_value, passenger_rate)
+        ELSE passenger_rate_table_value END,
     revision = revision + 1,
-    updated_at = $5::timestamptz
-WHERE id = $6 AND revision = $7 AND status = 'submitted' AND kind = 'mileage'
-RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at
+    updated_at = $6::timestamptz
+WHERE id = $7 AND revision = $8 AND status = 'submitted' AND kind = 'mileage'
+RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at
 `
 
 type OverrideEntryRateParams struct {
-	Rate          pgtype.Numeric
-	PassengerRate pgtype.Numeric
-	GrossAmount   pgtype.Numeric
-	OverriddenBy  uuid.UUID
-	Now           time.Time
-	ID            int64
-	Revision      int32
+	Rate                pgtype.Numeric
+	PassengerRate       pgtype.Numeric
+	GrossAmount         pgtype.Numeric
+	OverriddenBy        uuid.UUID
+	PassengerOverridden bool
+	Now                 time.Time
+	ID                  int64
+	Revision            int32
 }
 
 // OverrideEntryRate replaces a submitted mileage line's rate and the amount it
-// was frozen at (decision X8), recording who did it. rate_table_value keeps
-// what the line was frozen at before the *first* override, so a second one
-// never loses the table's own figure. The revision is guarded here as well as
-// under the lock, so no caller writes over a revision it did not read.
+// was frozen at (decision X8), recording who did it and what the table had said
+// about *both* rates it can replace. Each of the two table values keeps what the
+// line was frozen at before the **first** override of that rate, so a second one
+// never loses the table's own figure; the passenger one is only recorded when
+// this request actually names a supplement, so its absence means "never
+// touched" rather than "the same as the one still on the line". The revision is
+// guarded here as well as under the lock, so no caller writes over a revision it
+// did not read.
 func (q *Queries) OverrideEntryRate(ctx context.Context, arg OverrideEntryRateParams) (ExpensesEntry, error) {
 	row := q.db.QueryRow(ctx, overrideEntryRate,
 		arg.Rate,
 		arg.PassengerRate,
 		arg.GrossAmount,
 		arg.OverriddenBy,
+		arg.PassengerOverridden,
 		arg.Now,
 		arg.ID,
 		arg.Revision,
@@ -437,6 +450,7 @@ func (q *Queries) OverrideEntryRate(ctx context.Context, arg OverrideEntryRatePa
 		&i.PassengerRate,
 		&i.RateOverriddenByUserID,
 		&i.RateTableValue,
+		&i.PassengerRateTableValue,
 		&i.ProjectID,
 		&i.BillingLineID,
 		&i.Billable,
@@ -471,7 +485,7 @@ UPDATE expenses.entries SET
     revision = revision + 1,
     updated_at = $1::timestamptz
 WHERE id = ANY($4::bigint[]) AND status = 'submitted'
-RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at
+RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at
 `
 
 type RejectEntriesParams struct {
@@ -520,6 +534,7 @@ func (q *Queries) RejectEntries(ctx context.Context, arg RejectEntriesParams) ([
 			&i.PassengerRate,
 			&i.RateOverriddenByUserID,
 			&i.RateTableValue,
+			&i.PassengerRateTableValue,
 			&i.ProjectID,
 			&i.BillingLineID,
 			&i.Billable,
@@ -559,6 +574,7 @@ UPDATE expenses.entries SET
     gross_amount = $3,
     rate_overridden_by_user_id = NULL,
     rate_table_value = NULL,
+    passenger_rate_table_value = NULL,
     billable = $4,
     markup_percent = $5,
     bill_rate_per_km = $6,
@@ -571,7 +587,7 @@ UPDATE expenses.entries SET
     revision = revision + 1,
     updated_at = $8::timestamptz
 WHERE id = $9 AND status IN ('draft', 'rejected')
-RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at
+RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at
 `
 
 type SubmitEntryParams struct {
@@ -633,6 +649,7 @@ func (q *Queries) SubmitEntry(ctx context.Context, arg SubmitEntryParams) (Expen
 		&i.PassengerRate,
 		&i.RateOverriddenByUserID,
 		&i.RateTableValue,
+		&i.PassengerRateTableValue,
 		&i.ProjectID,
 		&i.BillingLineID,
 		&i.Billable,
@@ -665,11 +682,14 @@ UPDATE expenses.entries SET
     decided_at = NULL,
     decided_by_user_id = NULL,
     rejection_reason = NULL,
+    rate_overridden_by_user_id = NULL,
+    rate_table_value = NULL,
+    passenger_rate_table_value = NULL,
     revision = revision + 1,
     updated_at = $1::timestamptz
 WHERE id = ANY($2::bigint[]) AND status = 'approved'
   AND reimbursed_at IS NULL AND invoiced_at IS NULL
-RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at
+RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at
 `
 
 type UnapproveEntriesParams struct {
@@ -678,11 +698,14 @@ type UnapproveEntriesParams struct {
 }
 
 // UnapproveEntries returns approved expenses to a fresh draft, clearing the
-// decision and the submission stamp alike, so the owner sees each as something
-// to change and send again. The frozen figures stay where they are until the
-// next save or submit recomputes them — including an overridden rate, which is
-// still what the line was priced at. Never an expense already reimbursed or
-// invoiced; the caller has refused those, and the guard here says so too.
+// decision, the submission stamp and the record of any rate an approver had
+// overridden: *fresh* means the draft carries nothing of the decision that was
+// undone, and an override is part of that decision. The frozen amounts stay
+// where they are — they are what the line was approved at — until the next save
+// or submit reprices them from the table, which is also where the audit would
+// have been cleared had the line gone forward instead. Never an expense already
+// reimbursed or invoiced; the caller has refused those, and the guard here says
+// so too.
 func (q *Queries) UnapproveEntries(ctx context.Context, arg UnapproveEntriesParams) ([]ExpensesEntry, error) {
 	rows, err := q.db.Query(ctx, unapproveEntries, arg.Now, arg.Ids)
 	if err != nil {
@@ -714,6 +737,7 @@ func (q *Queries) UnapproveEntries(ctx context.Context, arg UnapproveEntriesPara
 			&i.PassengerRate,
 			&i.RateOverriddenByUserID,
 			&i.RateTableValue,
+			&i.PassengerRateTableValue,
 			&i.ProjectID,
 			&i.BillingLineID,
 			&i.Billable,
@@ -756,7 +780,7 @@ UPDATE expenses.entries SET
     revision = revision + 1,
     updated_at = $6::timestamptz
 WHERE id = $7 AND revision = $8 AND invoiced_at IS NULL
-RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at
+RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at
 `
 
 type UpdateEntryBillingParams struct {
@@ -807,6 +831,7 @@ func (q *Queries) UpdateEntryBilling(ctx context.Context, arg UpdateEntryBilling
 		&i.PassengerRate,
 		&i.RateOverriddenByUserID,
 		&i.RateTableValue,
+		&i.PassengerRateTableValue,
 		&i.ProjectID,
 		&i.BillingLineID,
 		&i.Billable,

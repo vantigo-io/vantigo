@@ -940,8 +940,17 @@ type (
 	// entryRateOverrideJSON decodes ExpensesEntryRateOverride — who overrode a
 	// mileage line's rate and what the rate table had said.
 	entryRateOverrideJSON struct {
-		ByUser     entryOwnerJSON `json:"byUser"`
-		TableValue *float64       `json:"tableValue"`
+		ByUser              entryOwnerJSON `json:"byUser"`
+		TableValue          *float64       `json:"tableValue"`
+		PassengerTableValue *float64       `json:"passengerTableValue"`
+	}
+	// entryDecisionJSON decodes ExpensesEntryDecision — what was decided about
+	// the expense, when, by whom and why.
+	entryDecisionJSON struct {
+		Status string         `json:"status"`
+		At     string         `json:"at"`
+		By     entryOwnerJSON `json:"by"`
+		Reason *string        `json:"reason"`
 	}
 )
 
@@ -967,8 +976,7 @@ type entryJSON struct {
 	OwedToEmployee  float64                 `json:"owedToEmployee"`
 	Status          string                  `json:"status"`
 	SubmittedAt     *string                 `json:"submittedAt"`
-	DecidedAt       *string                 `json:"decidedAt"`
-	RejectionReason *string                 `json:"rejectionReason"`
+	Decision        *entryDecisionJSON      `json:"decision"`
 	RateOverride    *entryRateOverrideJSON  `json:"rateOverride"`
 	Project         *entryProjectJSON       `json:"project"`
 	BillingLine     *entryLineJSON          `json:"billingLine"`

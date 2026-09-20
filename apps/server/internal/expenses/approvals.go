@@ -238,6 +238,9 @@ func (s *server) PutExpensesEntriesByIdRate(ctx context.Context, req gen.PutExpe
 	if err != nil {
 		return nil, err
 	}
+	// Whether *this* request replaced the supplement, which is what decides
+	// whether the line records what the table had said about it.
+	passengerOverridden := body.PassengerRate != nil
 	if len(errs) > 0 {
 		return gen.PutExpensesEntriesByIdRate400ApplicationProblemPlusJSONResponse(invalidEntry(errs)), nil
 	}
@@ -288,7 +291,8 @@ func (s *server) PutExpensesEntriesByIdRate(ctx context.Context, req gen.PutExpe
 		}
 		updated, err = txq.OverrideEntryRate(ctx, store.OverrideEntryRateParams{
 			ID: req.Id, Revision: body.Revision, Rate: rateColumn, PassengerRate: passengerColumn,
-			GrossAmount: gross, OverriddenBy: c.UserID, Now: s.deps.Clock(),
+			GrossAmount: gross, OverriddenBy: c.UserID, PassengerOverridden: passengerOverridden,
+			Now: s.deps.Clock(),
 		})
 		if err != nil {
 			return fmt.Errorf("expenses: override an expense's rate: %w", err)
@@ -318,7 +322,8 @@ func (s *server) PutExpensesEntriesByIdRate(ctx context.Context, req gen.PutExpe
 // parseRateOverride runs the override's own rules over its body and answers the
 // two rates as exact decimals. A passenger supplement is only meaningful on a
 // line that carries passengers, and one left out keeps what the line was frozen
-// with, so an approver correcting the rate alone does not lose it.
+// with, so an approver correcting the rate alone does not lose it — and the
+// line then records nothing about a supplement nobody touched.
 func parseRateOverride(body gen.ExpensesRateOverrideRequest, row store.ExpensesEntry) (*big.Rat, *big.Rat, map[string][]string, error) {
 	var errs map[string][]string
 	add := func(field, msg string) { errs = withFieldError(errs, field, msg) }

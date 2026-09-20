@@ -58,6 +58,7 @@ UPDATE expenses.entries SET
     passenger_rate = @passenger_rate,
     rate_overridden_by_user_id = NULL,
     rate_table_value = NULL,
+    passenger_rate_table_value = NULL,
     project_id = @project_id,
     billing_line_id = @billing_line_id,
     billable = @billable,

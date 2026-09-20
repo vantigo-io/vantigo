@@ -53,10 +53,10 @@ components:
                 - sizeBytes
             type: object
         ExpensesBillingRequest:
-            description: 'What an expense bills its customer, set from the project''s side (decision X7). It is a full replace of the billing fields alone and touches nothing else about the expense: not its amount, not its status, not its receipts. Only a caller with financial rights on the entry''s project may send it — expenses:manage is not one of them — because the markup and the customer rate per kilometre are the project''s figures and an employee''s form never carries them. Allowed while the expense is a draft, rejected, submitted or approved; refused once it has been invoiced.'
+            description: 'What an expense bills its customer, set from the project''s side (decision X7). It is a full replace of the billing fields alone and touches nothing else about the expense: not its amount, not its status, not its receipts. Only a caller with financial rights on the entry''s project may send it — expenses:manage is not one of them — because the markup and the customer rate per kilometre are the project''s figures and an employee''s form never carries them. Allowed while the expense is a draft, rejected, submitted or approved; refused once it has been invoiced. The period lock does not reach it: the lock protects what the employee submitted and what was approved, while pricing is bookkeeping done after a period closes — an invoice for December goes out in January.'
             properties:
                 billRatePerKm:
-                    description: What the customer is charged per kilometre. Only on billable mileage. Left out, the line keeps whatever it carries, and a line that carries none takes the mileage_customer rate in force on the entry date.
+                    description: What the customer is charged per kilometre. Only on billable mileage. Left out, the line keeps whatever it carries, and a line that carries none takes the mileage_customer rate in force on the entry date. Refused on a project that bills nothing, rather than accepted and cleared.
                     format: double
                     type: number
                 billable:
@@ -67,7 +67,7 @@ components:
                     format: int32
                     type: integer
                 markupPercent:
-                    description: A billable outlay's markup on the net, 0 to 1000 with at most two decimals. Left out, the line keeps whatever it carries, and a line that carries none takes the settings' default.
+                    description: A billable outlay's markup on the net, 0 to 1000 with at most two decimals. Left out, the line keeps whatever it carries, and a line that carries none takes the settings' default. Refused on a project that bills nothing, rather than accepted and cleared.
                     format: double
                     type: number
                 revision:
@@ -217,7 +217,7 @@ components:
                     description: Whether the billing object is in this copy of the entry.
                     type: boolean
                 canSetBilling:
-                    description: Whether the caller may price it from the project's side (PUT /entries/{id}/billing) — financial rights on its project, while it has not been invoiced and is not before the period lock.
+                    description: Whether the caller may price it from the project's side (PUT /entries/{id}/billing) — financial rights on its project, while it has not been invoiced. The period lock does not reach it.
                     type: boolean
                 canSubmit:
                     description: Whether the caller may submit it — its owner or expenses:manage, while it is a draft or rejected, and not before the period lock.
@@ -274,6 +274,25 @@ components:
                 - at
                 - by
             type: object
+        ExpensesEntryDecision:
+            description: 'What was decided about the expense, by whom and when — shown to everyone who may see it, its owner first of all: being told who rejected you is the point of a rejection. Present only while a decision stands; a submit and an unapprove both clear it.'
+            properties:
+                at:
+                    format: date-time
+                    type: string
+                by:
+                    $ref: '#/components/schemas/ExpensesUserRef'
+                reason:
+                    description: Why it was rejected, as the approver wrote it. Absent on an approval.
+                    type: string
+                status:
+                    description: '''approved'' or ''rejected'' — what was decided, which is the status the expense has been left in.'
+                    type: string
+            required:
+                - status
+                - at
+                - by
+            type: object
         ExpensesEntryOwner:
             description: The person the expense concerns — who gets the money back — which is not always who recorded it.
             properties:
@@ -307,10 +326,14 @@ components:
                 - name
             type: object
         ExpensesEntryRateOverride:
-            description: The record an overridden mileage rate leaves on the line (decision X8) — who replaced the rate the table gave it, and what the table had said. Present only when somebody has, and then shown to everyone who may see the expense, its owner included.
+            description: 'The record an overridden mileage rate leaves on the line (decision X8) — who replaced the rates the table gave it, and what the table had said. Present only while an override stands: a submit reprices the line from the table and clears it, and an unapprove clears it with the rest of the decision it undoes. Shown to everyone who may see the expense, its owner included.'
             properties:
                 byUser:
                     $ref: '#/components/schemas/ExpensesUserRef'
+                passengerTableValue:
+                    description: The passenger supplement per kilometre the line was frozen at before the first override of it. Absent when the supplement was never overridden, so a client can tell a changed supplement from an untouched one.
+                    format: double
+                    type: number
                 tableValue:
                     description: The reimbursement rate per kilometre the line was frozen at before the first override. Absent when the line carried none.
                     format: double
@@ -344,7 +367,7 @@ components:
             description: 'One money line (design §3.1). The fields a kind does not carry are refused on their own field rather than ignored: an outlay carries a category, a payer, a currency and a gross amount with optional VAT; a mileage line carries a distance, optional places and passengers, and is priced by the server from the dated rate table. Travel claims and their per diem arrive in a later delivery, so kind per_diem and claimId are refused for now.'
             properties:
                 billRatePerKm:
-                    description: 'What the customer is charged per kilometre on billable mileage. Only a caller with financial rights on the project — the ones who are sent the billing object — may name it; anyone else is refused on this field. Left out, a save keeps whatever the line already carries, and a line that carries none takes the mileage_customer rate in force on the entry date. When there is no such rate and the caller could not have named one, the line is saved billable with no customer rate and nothing billed, for whoever can see the project''s money to fill in. Refused on anything but billable mileage.'
+                    description: 'What the customer is charged per kilometre on billable mileage. Only a caller with financial rights on the project — the ones who are sent the billing object — may name it; anyone else is refused on this field. Left out, a save keeps whatever the line already carries, and a line that carries none takes the mileage_customer rate in force on the entry date. When there is no such rate and the caller could not have named one, the line is saved billable with no customer rate and nothing billed, for whoever can see the project''s money to fill in. Refused on anything but billable mileage, and on a project that bills nothing.'
                     format: double
                     type: number
                 billable:
@@ -447,10 +470,8 @@ components:
                     type: string
                 currency:
                     type: string
-                decidedAt:
-                    description: When it was approved or rejected. Absent until then.
-                    format: date-time
-                    type: string
+                decision:
+                    $ref: '#/components/schemas/ExpensesEntryDecision'
                 description:
                     type: string
                 distanceKm:
@@ -502,8 +523,6 @@ components:
                     allOf:
                         - $ref: '#/components/schemas/ExpensesEntryReimbursement'
                     description: That the employee has been paid back for it. Absent until then.
-                rejectionReason:
-                    type: string
                 revision:
                     description: What an update must carry to be allowed to save.
                     format: int32
@@ -612,20 +631,19 @@ components:
                 - revision
             type: object
         ExpensesFlowRequest:
-            description: 'The expenses to move through the flow (decision X4). All or nothing: one expense that may not be moved refuses the whole request with a message per offending id on entryIds, and nothing changes. At most 500 ids at once; an id given twice is one expense.'
+            description: 'The expenses to move through the flow (decision X4). All or nothing: one expense that may not be moved refuses the whole request with a message per offending id on entryIds, and nothing changes. At most 500 distinct expenses at once; an id given twice is one expense, so the cap is counted after the duplicates are collapsed.'
             properties:
                 claimIds:
                     description: Reserved for the travel claims of a later delivery, which are approved as one unit. A request naming one is refused on this field; an empty array or none at all is accepted.
                     items:
                         format: int64
                         type: integer
-                    maxItems: 500
                     type: array
                 entryIds:
+                    description: At most 500 *distinct* expenses; an id given twice is one expense, here as everywhere else. A longer array naming no more than 500 expenses is accepted.
                     items:
                         format: int64
                         type: integer
-                    maxItems: 500
                     type: array
             required:
                 - entryIds
@@ -835,24 +853,23 @@ components:
                 - value
             type: object
         ExpensesReimbursedRequest:
-            description: 'The expenses one payroll run pays for (decision X5). All or nothing, exactly as the flow''s batches are: one expense that may not be paid refuses the whole request with a message per offending id on entryIds, and nothing is stamped. At most 500 ids at once; an id given twice is one expense.'
+            description: 'The expenses one payroll run pays for (decision X5). All or nothing, exactly as the flow''s batches are: one expense that may not be paid refuses the whole request with a message per offending id on entryIds, and nothing is stamped. At most 500 distinct expenses at once; an id given twice is one expense.'
             properties:
                 claimIds:
                     description: Reserved for the travel claims of a later delivery, which are reimbursed as one unit. A request naming one is refused on this field; an empty array or none at all is accepted.
                     items:
                         format: int64
                         type: integer
-                    maxItems: 500
                     type: array
                 date:
                     description: The day the payroll run was made. A calendar date, today or earlier — never a date somebody means to pay on.
                     format: date
                     type: string
                 entryIds:
+                    description: At most 500 *distinct* expenses; an id given twice is one expense.
                     items:
                         format: int64
                         type: integer
-                    maxItems: 500
                     type: array
                 reference:
                     description: The payroll run, for whoever has to find it again. Optional, at most 100 characters once trimmed.
@@ -890,13 +907,12 @@ components:
                     items:
                         format: int64
                         type: integer
-                    maxItems: 500
                     type: array
                 entryIds:
+                    description: At most 500 *distinct* expenses; an id given twice is one expense.
                     items:
                         format: int64
                         type: integer
-                    maxItems: 500
                     type: array
                 reason:
                     description: Why they are rejected. Required; 1 to 1000 characters once trimmed.
@@ -1735,7 +1751,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
-                    description: Bad Request — on projectId when the expense is on no project or this installation has no projects module, on status when it has been invoiced, on entryDate when it falls before the period lock, and on the figures' own fields otherwise.
+                    description: Bad Request — on projectId when the expense is on no project or this installation has no projects module, on status when it has been invoiced, and on the figures' own fields otherwise, including a markup or a customer rate named for a project that bills nothing.
                 "401":
                     content:
                         application/json:

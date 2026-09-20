@@ -240,6 +240,138 @@ func TestExpensesRateOverride_IsUndoneByAnEdit(t *testing.T) {
 	}
 }
 
+// The audit records what the table said about *both* rates an override can
+// replace — decision X8 asks the line to record what the table said, and the
+// passenger supplement is the half of it worth the most money on a full car.
+func TestExpensesRateOverride_RecordsTheTablesPassengerSupplementToo(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h)
+	approver, _ := signIn(t, h, "expenses:approve")
+
+	mileage := createEntry(t, owner, mileageBody(map[string]any{"passengers": 3}))
+	submitted := submitEntries(t, owner, mileage.Id)
+	// 120 × 5.30 + 120 × 1.00 × 3 = 636 + 360.
+	if submitted[0].GrossAmount != 996 {
+		t.Fatalf("submitted = %+v, want it frozen at 996", submitted[0])
+	}
+
+	// Taking the supplement away is worth 360 kroner; the line records what it
+	// took away.
+	overridden := overrideRate(t, approver, mileage.Id, map[string]any{
+		"rate": 5.30, "passengerRate": 0, "revision": submitted[0].Revision,
+	})
+	if overridden.GrossAmount != 636 {
+		t.Errorf("gross = %v, want the supplement gone", overridden.GrossAmount)
+	}
+	audit := overridden.RateOverride
+	if audit == nil || audit.TableValue == nil || *audit.TableValue != 5.30 {
+		t.Fatalf("rateOverride = %+v, want the table's 5.30 recorded", audit)
+	}
+	if audit.PassengerTableValue == nil || *audit.PassengerTableValue != 1.00 {
+		t.Errorf("passengerTableValue = %v, want the table's 1.00 recorded", audit.PassengerTableValue)
+	}
+}
+
+// A rate override that leaves the supplement alone records nothing about it:
+// absent, never a repeat of the value still on the line.
+func TestExpensesRateOverride_RecordsNoPassengerSupplementItDidNotTouch(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h)
+	approver, _ := signIn(t, h, "expenses:approve")
+
+	mileage := createEntry(t, owner, mileageBody(map[string]any{"passengers": 3}))
+	submitted := submitEntries(t, owner, mileage.Id)
+	overridden := overrideRate(t, approver, mileage.Id,
+		map[string]any{"rate": 8.00, "revision": submitted[0].Revision})
+
+	if overridden.RateOverride == nil || overridden.RateOverride.PassengerTableValue != nil {
+		t.Errorf("rateOverride = %+v, want no passenger audit — the supplement was not touched",
+			overridden.RateOverride)
+	}
+	// 120 × 8.00 + 120 × 1.00 × 3, the supplement kept as it was frozen.
+	if overridden.GrossAmount != 1320 {
+		t.Errorf("gross = %v, want the kept supplement still in it", overridden.GrossAmount)
+	}
+}
+
+// An unapprove makes a *fresh* draft: it carries nothing of the decision that
+// was undone, the overridden rate's audit included. The figures stay until the
+// next submit reprices them, and that submit clears the audit too — so an
+// override never outlives the submission it was made on.
+func TestExpensesRateOverride_IsForgottenByAnUnapprove(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h)
+	approver, _ := signIn(t, h, "expenses:approve")
+
+	mileage := createEntry(t, owner, mileageBody(map[string]any{"passengers": 3}))
+	submitted := submitEntries(t, owner, mileage.Id)
+	overridden := overrideRate(t, approver, mileage.Id, map[string]any{
+		"rate": 8.00, "passengerRate": 2.00, "revision": submitted[0].Revision,
+	})
+	// 120 × 8.00 + 120 × 2.00 × 3.
+	if overridden.GrossAmount != 1680 || overridden.RateOverride == nil {
+		t.Fatalf("overridden = %+v, want 1680 with the override recorded", overridden)
+	}
+	approveEntries(t, approver, mileage.Id)
+
+	back := unapproveEntries(t, approver, mileage.Id)
+	if back[0].Status != "draft" {
+		t.Fatalf("unapproved = %+v, want a draft", back[0])
+	}
+	if back[0].RateOverride != nil {
+		t.Errorf("rateOverride = %+v, want a fresh draft to carry nothing of the old decision",
+			back[0].RateOverride)
+	}
+	// The figures are still the ones it was approved at, until something
+	// recomputes them.
+	if back[0].GrossAmount != 1680 {
+		t.Errorf("gross = %v, want the frozen figures left where they were", back[0].GrossAmount)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM expenses.entries WHERE id = $1
+		AND rate_overridden_by_user_id IS NULL AND rate_table_value IS NULL
+		AND passenger_rate_table_value IS NULL`, mileage.Id); n != 1 {
+		t.Errorf("the audit columns were not cleared: %s", entryColumnsDump(t, h, mileage.Id))
+	}
+
+	again := submitEntries(t, owner, mileage.Id)
+	if again[0].RateOverride != nil {
+		t.Errorf("rateOverride = %+v, want nothing after the resubmit either", again[0].RateOverride)
+	}
+	if again[0].GrossAmount != 996 || again[0].Rate == nil || *again[0].Rate != 5.30 {
+		t.Errorf("resubmitted = %+v, want it repriced from the table (996 at 5.30)", again[0])
+	}
+}
+
+// The other half of the same rule: a rejected line's override is cleared by the
+// submit that reprices it, so the audit can never describe a rate the line no
+// longer carries.
+func TestExpensesRateOverride_IsForgottenByTheNextSubmit(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h)
+	approver, _ := signIn(t, h, "expenses:approve")
+
+	mileage := createEntry(t, owner, mileageBody(nil))
+	submitted := submitEntries(t, owner, mileage.Id)
+	overrideRate(t, approver, mileage.Id, map[string]any{"rate": 8.00, "revision": submitted[0].Revision})
+	rejectEntries(t, approver, "Feil rate", mileage.Id)
+
+	// A rejection decides nothing about the rate, so the audit is still there.
+	if got := getEntry(t, owner, mileage.Id); got.RateOverride == nil || got.GrossAmount != 960 {
+		t.Fatalf("rejected = %+v, want the override still on it", got)
+	}
+	again := submitEntries(t, owner, mileage.Id)
+	if again[0].RateOverride != nil {
+		t.Errorf("rateOverride = %+v, want the submit to have cleared it", again[0].RateOverride)
+	}
+	if again[0].GrossAmount != 636 {
+		t.Errorf("gross = %v, want it repriced from the table", again[0].GrossAmount)
+	}
+}
+
 // The queue counts the lines whose rate an approver has changed, so the next
 // one can see it at a glance.
 func TestExpensesRateOverride_IsCountedInTheQueue(t *testing.T) {

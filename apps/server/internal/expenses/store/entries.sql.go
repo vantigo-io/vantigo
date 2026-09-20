@@ -92,7 +92,7 @@ func (q *Queries) DeleteEntry(ctx context.Context, arg DeleteEntryParams) (int64
 }
 
 const getEntry = `-- name: GetEntry :one
-SELECT id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at FROM expenses.entries WHERE id = $1
+SELECT id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at FROM expenses.entries WHERE id = $1
 `
 
 // GetEntry fetches one expense by id. Who may see it is decided in Go
@@ -123,6 +123,7 @@ func (q *Queries) GetEntry(ctx context.Context, id int64) (ExpensesEntry, error)
 		&i.PassengerRate,
 		&i.RateOverriddenByUserID,
 		&i.RateTableValue,
+		&i.PassengerRateTableValue,
 		&i.ProjectID,
 		&i.BillingLineID,
 		&i.Billable,
@@ -162,7 +163,7 @@ INSERT INTO expenses.entries (
     $18, $19, $20, $21, $22, $23,
     $24::timestamptz, $24::timestamptz
 )
-RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at
+RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at
 `
 
 type InsertEntryParams struct {
@@ -248,6 +249,7 @@ func (q *Queries) InsertEntry(ctx context.Context, arg InsertEntryParams) (Expen
 		&i.PassengerRate,
 		&i.RateOverriddenByUserID,
 		&i.RateTableValue,
+		&i.PassengerRateTableValue,
 		&i.ProjectID,
 		&i.BillingLineID,
 		&i.Billable,
@@ -274,7 +276,7 @@ func (q *Queries) InsertEntry(ctx context.Context, arg InsertEntryParams) (Expen
 }
 
 const listEntries = `-- name: ListEntries :many
-SELECT id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at FROM expenses.entries
+SELECT id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at FROM expenses.entries
 WHERE ($1::boolean
        OR user_id = $2::uuid
        OR (project_id IS NOT NULL AND project_id = ANY($3::integer[])))
@@ -350,6 +352,7 @@ func (q *Queries) ListEntries(ctx context.Context, arg ListEntriesParams) ([]Exp
 			&i.PassengerRate,
 			&i.RateOverriddenByUserID,
 			&i.RateTableValue,
+			&i.PassengerRateTableValue,
 			&i.ProjectID,
 			&i.BillingLineID,
 			&i.Billable,
@@ -383,7 +386,7 @@ func (q *Queries) ListEntries(ctx context.Context, arg ListEntriesParams) ([]Exp
 }
 
 const lockEntry = `-- name: LockEntry :one
-SELECT id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at FROM expenses.entries WHERE id = $1 FOR UPDATE
+SELECT id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at FROM expenses.entries WHERE id = $1 FOR UPDATE
 `
 
 // LockEntry reads one expense and holds its row until the transaction ends.
@@ -415,6 +418,7 @@ func (q *Queries) LockEntry(ctx context.Context, id int64) (ExpensesEntry, error
 		&i.PassengerRate,
 		&i.RateOverriddenByUserID,
 		&i.RateTableValue,
+		&i.PassengerRateTableValue,
 		&i.ProjectID,
 		&i.BillingLineID,
 		&i.Billable,
@@ -459,6 +463,7 @@ UPDATE expenses.entries SET
     passenger_rate = $15,
     rate_overridden_by_user_id = NULL,
     rate_table_value = NULL,
+    passenger_rate_table_value = NULL,
     project_id = $16,
     billing_line_id = $17,
     billable = $18,
@@ -476,7 +481,7 @@ WHERE id = $23
   AND revision = $24
   AND status IN ('draft', 'rejected')
   AND ($25::boolean OR user_id = $26::uuid)
-RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at
+RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at
 `
 
 type UpdateEntryParams struct {
@@ -566,6 +571,7 @@ func (q *Queries) UpdateEntry(ctx context.Context, arg UpdateEntryParams) (Expen
 		&i.PassengerRate,
 		&i.RateOverriddenByUserID,
 		&i.RateTableValue,
+		&i.PassengerRateTableValue,
 		&i.ProjectID,
 		&i.BillingLineID,
 		&i.Billable,

@@ -52,9 +52,9 @@ type ExpensesAttachmentResponse struct {
 	SizeBytes int64 `json:"sizeBytes"`
 }
 
-// ExpensesBillingRequest What an expense bills its customer, set from the project's side (decision X7). It is a full replace of the billing fields alone and touches nothing else about the expense: not its amount, not its status, not its receipts. Only a caller with financial rights on the entry's project may send it — expenses:manage is not one of them — because the markup and the customer rate per kilometre are the project's figures and an employee's form never carries them. Allowed while the expense is a draft, rejected, submitted or approved; refused once it has been invoiced.
+// ExpensesBillingRequest What an expense bills its customer, set from the project's side (decision X7). It is a full replace of the billing fields alone and touches nothing else about the expense: not its amount, not its status, not its receipts. Only a caller with financial rights on the entry's project may send it — expenses:manage is not one of them — because the markup and the customer rate per kilometre are the project's figures and an employee's form never carries them. Allowed while the expense is a draft, rejected, submitted or approved; refused once it has been invoiced. The period lock does not reach it: the lock protects what the employee submitted and what was approved, while pricing is bookkeeping done after a period closes — an invoice for December goes out in January.
 type ExpensesBillingRequest struct {
-	// BillRatePerKm What the customer is charged per kilometre. Only on billable mileage. Left out, the line keeps whatever it carries, and a line that carries none takes the mileage_customer rate in force on the entry date.
+	// BillRatePerKm What the customer is charged per kilometre. Only on billable mileage. Left out, the line keeps whatever it carries, and a line that carries none takes the mileage_customer rate in force on the entry date. Refused on a project that bills nothing, rather than accepted and cleared.
 	BillRatePerKm *float64 `json:"billRatePerKm,omitempty"`
 
 	// Billable Whether the line is billed on to the customer. Forced false on a project that bills nothing. Turning it off clears the markup, the customer rate and the bill amount.
@@ -63,7 +63,7 @@ type ExpensesBillingRequest struct {
 	// BillingLineId An active billing line of the entry's own project, or absent to book it against none.
 	BillingLineId *int32 `json:"billingLineId,omitempty"`
 
-	// MarkupPercent A billable outlay's markup on the net, 0 to 1000 with at most two decimals. Left out, the line keeps whatever it carries, and a line that carries none takes the settings' default.
+	// MarkupPercent A billable outlay's markup on the net, 0 to 1000 with at most two decimals. Left out, the line keeps whatever it carries, and a line that carries none takes the settings' default. Refused on a project that bills nothing, rather than accepted and cleared.
 	MarkupPercent *float64 `json:"markupPercent,omitempty"`
 
 	// Revision The revision the expense was read at. A revision that has moved on is a 409.
@@ -158,7 +158,7 @@ type ExpensesEntryCapabilities struct {
 	// CanSeeBilling Whether the billing object is in this copy of the entry.
 	CanSeeBilling bool `json:"canSeeBilling"`
 
-	// CanSetBilling Whether the caller may price it from the project's side (PUT /entries/{id}/billing) — financial rights on its project, while it has not been invoiced and is not before the period lock.
+	// CanSetBilling Whether the caller may price it from the project's side (PUT /entries/{id}/billing) — financial rights on its project, while it has not been invoiced. The period lock does not reach it.
 	CanSetBilling bool `json:"canSetBilling"`
 
 	// CanSubmit Whether the caller may submit it — its owner or expenses:manage, while it is a draft or rejected, and not before the period lock.
@@ -178,6 +178,20 @@ type ExpensesEntryCapabilities struct {
 type ExpensesEntryCategory struct {
 	Id   int32  `json:"id"`
 	Name string `json:"name"`
+}
+
+// ExpensesEntryDecision What was decided about the expense, by whom and when — shown to everyone who may see it, its owner first of all: being told who rejected you is the point of a rejection. Present only while a decision stands; a submit and an unapprove both clear it.
+type ExpensesEntryDecision struct {
+	At time.Time `json:"at"`
+
+	// By One person, named through identity — the owner of an approval group, or whoever overrode a rate.
+	By ExpensesUserRef `json:"by"`
+
+	// Reason Why it was rejected, as the approver wrote it. Absent on an approval.
+	Reason *string `json:"reason,omitempty"`
+
+	// Status 'approved' or 'rejected' — what was decided, which is the status the expense has been left in.
+	Status string `json:"status"`
 }
 
 // ExpensesEntryInvoice That a billable line has been billed on to the customer, by whom and when, with the reference of the invoice it went out on.
@@ -209,10 +223,13 @@ type ExpensesEntryProject struct {
 	Name string `json:"name"`
 }
 
-// ExpensesEntryRateOverride The record an overridden mileage rate leaves on the line (decision X8) — who replaced the rate the table gave it, and what the table had said. Present only when somebody has, and then shown to everyone who may see the expense, its owner included.
+// ExpensesEntryRateOverride The record an overridden mileage rate leaves on the line (decision X8) — who replaced the rates the table gave it, and what the table had said. Present only while an override stands: a submit reprices the line from the table and clears it, and an unapprove clears it with the rest of the decision it undoes. Shown to everyone who may see the expense, its owner included.
 type ExpensesEntryRateOverride struct {
 	// ByUser One person, named through identity — the owner of an approval group, or whoever overrode a rate.
 	ByUser ExpensesUserRef `json:"byUser"`
+
+	// PassengerTableValue The passenger supplement per kilometre the line was frozen at before the first override of it. Absent when the supplement was never overridden, so a client can tell a changed supplement from an untouched one.
+	PassengerTableValue *float64 `json:"passengerTableValue,omitempty"`
 
 	// TableValue The reimbursement rate per kilometre the line was frozen at before the first override. Absent when the line carried none.
 	TableValue *float64 `json:"tableValue,omitempty"`
@@ -235,7 +252,7 @@ type ExpensesEntryReimbursement struct {
 
 // ExpensesEntryRequest One money line (design §3.1). The fields a kind does not carry are refused on their own field rather than ignored: an outlay carries a category, a payer, a currency and a gross amount with optional VAT; a mileage line carries a distance, optional places and passengers, and is priced by the server from the dated rate table. Travel claims and their per diem arrive in a later delivery, so kind per_diem and claimId are refused for now.
 type ExpensesEntryRequest struct {
-	// BillRatePerKm What the customer is charged per kilometre on billable mileage. Only a caller with financial rights on the project — the ones who are sent the billing object — may name it; anyone else is refused on this field. Left out, a save keeps whatever the line already carries, and a line that carries none takes the mileage_customer rate in force on the entry date. When there is no such rate and the caller could not have named one, the line is saved billable with no customer rate and nothing billed, for whoever can see the project's money to fill in. Refused on anything but billable mileage.
+	// BillRatePerKm What the customer is charged per kilometre on billable mileage. Only a caller with financial rights on the project — the ones who are sent the billing object — may name it; anyone else is refused on this field. Left out, a save keeps whatever the line already carries, and a line that carries none takes the mileage_customer rate in force on the entry date. When there is no such rate and the caller could not have named one, the line is saved billable with no customer rate and nothing billed, for whoever can see the project's money to fill in. Refused on anything but billable mileage, and on a project that bills nothing.
 	BillRatePerKm *float64 `json:"billRatePerKm,omitempty"`
 
 	// Billable Whether the line is billed on to the customer. Requires a project, and is forced false on a project that bills nothing.
@@ -319,9 +336,9 @@ type ExpensesEntryResponse struct {
 	CreatedAt time.Time              `json:"createdAt"`
 	Currency  string                 `json:"currency"`
 
-	// DecidedAt When it was approved or rejected. Absent until then.
-	DecidedAt   *time.Time `json:"decidedAt,omitempty"`
-	Description string     `json:"description"`
+	// Decision What was decided about the expense, by whom and when — shown to everyone who may see it, its owner first of all: being told who rejected you is the point of a rejection. Present only while a decision stands; a submit and an unapprove both clear it.
+	Decision    *ExpensesEntryDecision `json:"decision,omitempty"`
+	Description string                 `json:"description"`
 
 	// DistanceKm Mileage's distance. Absent on an outlay.
 	DistanceKm *float64           `json:"distanceKm,omitempty"`
@@ -353,12 +370,11 @@ type ExpensesEntryResponse struct {
 	// Rate The reimbursement rate per kilometre the line was priced with. Absent on an outlay.
 	Rate *float64 `json:"rate,omitempty"`
 
-	// RateOverride The record an overridden mileage rate leaves on the line (decision X8) — who replaced the rate the table gave it, and what the table had said. Present only when somebody has, and then shown to everyone who may see the expense, its owner included.
+	// RateOverride The record an overridden mileage rate leaves on the line (decision X8) — who replaced the rates the table gave it, and what the table had said. Present only while an override stands: a submit reprices the line from the table and clears it, and an unapprove clears it with the rest of the decision it undoes. Shown to everyone who may see the expense, its owner included.
 	RateOverride *ExpensesEntryRateOverride `json:"rateOverride,omitempty"`
 
 	// Reimbursement That the employee has been paid back for it. Absent until then.
-	Reimbursement   *ExpensesEntryReimbursement `json:"reimbursement,omitempty"`
-	RejectionReason *string                     `json:"rejectionReason,omitempty"`
+	Reimbursement *ExpensesEntryReimbursement `json:"reimbursement,omitempty"`
 
 	// Revision What an update must carry to be allowed to save.
 	Revision int32 `json:"revision"`
@@ -409,11 +425,13 @@ type ExpensesEntryUpdateRequest struct {
 	VatAmount *float64 `json:"vatAmount,omitempty"`
 }
 
-// ExpensesFlowRequest The expenses to move through the flow (decision X4). All or nothing: one expense that may not be moved refuses the whole request with a message per offending id on entryIds, and nothing changes. At most 500 ids at once; an id given twice is one expense.
+// ExpensesFlowRequest The expenses to move through the flow (decision X4). All or nothing: one expense that may not be moved refuses the whole request with a message per offending id on entryIds, and nothing changes. At most 500 distinct expenses at once; an id given twice is one expense, so the cap is counted after the duplicates are collapsed.
 type ExpensesFlowRequest struct {
 	// ClaimIds Reserved for the travel claims of a later delivery, which are approved as one unit. A request naming one is refused on this field; an empty array or none at all is accepted.
 	ClaimIds *[]int64 `json:"claimIds,omitempty"`
-	EntryIds []int64  `json:"entryIds"`
+
+	// EntryIds At most 500 *distinct* expenses; an id given twice is one expense, here as everywhere else. A longer array naming no more than 500 expenses is accepted.
+	EntryIds []int64 `json:"entryIds"`
 }
 
 // ExpensesInvoicedRequest Marks one approved, billable line as billed on to the customer (decision X5). The caller needs financial rights on the line's project; the period lock does not hold it back, because invoicing is bookkeeping done after the period closes.
@@ -537,14 +555,16 @@ type ExpensesRateUpdateRequest struct {
 	Value     float64            `json:"value"`
 }
 
-// ExpensesReimbursedRequest The expenses one payroll run pays for (decision X5). All or nothing, exactly as the flow's batches are: one expense that may not be paid refuses the whole request with a message per offending id on entryIds, and nothing is stamped. At most 500 ids at once; an id given twice is one expense.
+// ExpensesReimbursedRequest The expenses one payroll run pays for (decision X5). All or nothing, exactly as the flow's batches are: one expense that may not be paid refuses the whole request with a message per offending id on entryIds, and nothing is stamped. At most 500 distinct expenses at once; an id given twice is one expense.
 type ExpensesReimbursedRequest struct {
 	// ClaimIds Reserved for the travel claims of a later delivery, which are reimbursed as one unit. A request naming one is refused on this field; an empty array or none at all is accepted.
 	ClaimIds *[]int64 `json:"claimIds,omitempty"`
 
 	// Date The day the payroll run was made. A calendar date, today or earlier — never a date somebody means to pay on.
-	Date     openapi_types.Date `json:"date"`
-	EntryIds []int64            `json:"entryIds"`
+	Date openapi_types.Date `json:"date"`
+
+	// EntryIds At most 500 *distinct* expenses; an id given twice is one expense.
+	EntryIds []int64 `json:"entryIds"`
 
 	// Reference The payroll run, for whoever has to find it again. Optional, at most 100 characters once trimmed.
 	Reference *string `json:"reference,omitempty"`
@@ -566,7 +586,9 @@ type ExpensesReimbursementGroup struct {
 type ExpensesRejectRequest struct {
 	// ClaimIds Reserved for the travel claims of a later delivery; a request naming one is refused on this field.
 	ClaimIds *[]int64 `json:"claimIds,omitempty"`
-	EntryIds []int64  `json:"entryIds"`
+
+	// EntryIds At most 500 *distinct* expenses; an id given twice is one expense.
+	EntryIds []int64 `json:"entryIds"`
 
 	// Reason Why they are rejected. Required; 1 to 1000 characters once trimmed.
 	Reason string `json:"reason"`

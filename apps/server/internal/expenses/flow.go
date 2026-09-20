@@ -66,19 +66,26 @@ func uniqueIDs(ids []int64) []int64 {
 }
 
 // batchIDs is the ids of one flow request, judged against the rules every one
-// of the four shares: at least one, at most maxBatchIDs, and no claim — travel
-// claims are a later delivery's unit of approval and the field exists in the
-// contract only so a client naming one is told so rather than ignored.
+// of the batches shares: at least one, at most maxBatchIDs, and no claim —
+// travel claims are a later delivery's unit of approval and the field exists in
+// the contract only so a client naming one is told so rather than ignored.
+//
+// The cap is counted on the **expenses**, after the duplicates are collapsed,
+// because that is what it is for: it bounds the rows LockEntries locks and the
+// project roles warmRoles looks up, and an id given twice adds neither. It is
+// also the rule the rest of the module states — one id given twice is one
+// expense — so counting the array instead would make a body of 501 ids naming
+// three expenses a refusal nobody could explain.
 func batchIDs(entryIDs []int64, claimIDs *[]int64, errs map[string][]string) ([]int64, map[string][]string) {
 	if claimIDs != nil && len(*claimIDs) > 0 {
 		errs = withFieldError(errs, "claimIds",
 			"Travel claims arrive in a later delivery; they cannot be submitted or approved yet")
 	}
-	if len(entryIDs) > maxBatchIDs {
-		errs = withFieldError(errs, "entryIds",
-			fmt.Sprintf("At most %d expense ids may be given at once; %d were given", maxBatchIDs, len(entryIDs)))
-	}
 	ids := uniqueIDs(entryIDs)
+	if len(ids) > maxBatchIDs {
+		errs = withFieldError(errs, "entryIds",
+			fmt.Sprintf("At most %d expenses may be given at once; %d were given", maxBatchIDs, len(ids)))
+	}
 	if len(ids) == 0 {
 		errs = withFieldError(errs, "entryIds", "At least one expense id is required")
 	}
