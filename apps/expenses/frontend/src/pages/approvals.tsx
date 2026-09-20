@@ -514,7 +514,8 @@ const ClaimTable = ({
               </Table.Td>
               <Table.Td>
                 <Button
-                  size="compact-sm"
+                  size="sm"
+                  h={40}
                   variant="subtle"
                   aria-label={t("openTravelClaim", { purpose: claim.purpose })}
                   onClick={() => onOpen(claim)}

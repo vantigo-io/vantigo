@@ -107,7 +107,11 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
   );
   // A trip is a unit of its own and comes from its own paged endpoint, so the
   // kind filter — which is about what *one expense* is — does not reach it.
-  const { data: claimPageData, isError: claimsFailed } = useQuery(
+  const {
+    data: claimPageData,
+    isError: claimsFailed,
+    error: claimsError,
+  } = useQuery(
     expenseClaimsQueryOptions({
       userId,
       status: filters.status,
@@ -288,7 +292,7 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
           )}
           {claimsFailed && (
             <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadClaims")}>
-              {t("unitsPagedSeparately")}
+              {claimsError?.message}
             </Alert>
           )}
         </Stack>
@@ -361,7 +365,8 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
                       <Table.Td>
                         <Group gap={4} wrap="nowrap">
                           <Button
-                            size="compact-sm"
+                            size="sm"
+                            h={40}
                             variant="subtle"
                             aria-label={t("openTravelClaim", { purpose: claim.purpose })}
                             onClick={() => navigate(claimLinkOptions(claim.id))}
