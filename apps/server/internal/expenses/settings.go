@@ -141,15 +141,15 @@ func (s *server) PutExpensesSettings(ctx context.Context, req gen.PutExpensesSet
 	}
 	if len(errs) == 0 && parsed.TimeZone != current.TimeZone {
 		// And Postgres, which carries its own tzdata and runs the very same
-		// derivation in the claims list's filter. A name only one of the two
-		// knows would be stored here and then disagree with itself.
-		known, err := postgresKnowsZone(ctx, q, parsed.TimeZone)
+		// derivation in the claims list's filter. A name the two *read
+		// differently* would be stored here and then disagree with itself for
+		// half the year, so what is compared is what each of them means by it.
+		msg, err := zoneDisagreement(ctx, q, parsed.TimeZone, s.deps.Clock())
 		if err != nil {
 			return nil, err
 		}
-		if !known {
-			errs = fieldError("timeZone",
-				fmt.Sprintf("'%s' is not a time zone this installation's database knows", parsed.TimeZone))
+		if msg != "" {
+			errs = fieldError("timeZone", msg)
 		}
 	}
 	if len(errs) > 0 {
@@ -180,18 +180,56 @@ func (s *server) PutExpensesSettings(ctx context.Context, req gen.PutExpensesSet
 // does not know.
 const invalidParameterValue = "22023"
 
-// postgresKnowsZone asks the database whether it knows a zone name, by doing
-// the very thing the claims list's filter will do with it. A name it does not
-// know is a refusal the caller can act on, not a failure: the two tzdata
-// databases — Go's and Postgres' — must both hold a name before it is stored,
-// or a date derived in Go and the same date derived in SQL could disagree.
-func postgresKnowsZone(ctx context.Context, q *store.Queries, name string) (bool, error) {
-	if _, err := q.ResolveTimeZone(ctx, name); err != nil {
+// zoneDisagreement is why a zone name may not be stored, "" when it may. It is
+// the whole of the database half of the check, and it asks the question that
+// matters: not "does Postgres know this name" but "do Postgres and Go mean the
+// same thing by it".
+//
+// They can differ, and the difference is not exotic. Postgres resolves a name
+// through pg_timezone_abbrevs **before** pg_timezone_names, so 'CET' is a fixed
+// +01:00 to it and the IANA zone with summer time to Go; the same holds for
+// 'EET', 'MET' and 'WET'. Both halves "know" the name, and a trip departing at
+// 00:30 local on 1 July would then be dated 1 July by every rule written in Go
+// and 30 June by every filter, order and export written in SQL — the exact
+// month boundary this setting exists to get right.
+//
+// The comparison is of UTC offsets at a winter instant and a summer one of the
+// year the request is made in. Two instants are enough: the disagreements are
+// about summer time, and a name the two agree about in both January and July
+// they agree about all year. The message names a city zone, because that is
+// what the caller should write instead — the abbreviations are exactly the
+// names with no single answer.
+func zoneDisagreement(ctx context.Context, q *store.Queries, name string, now time.Time) (string, error) {
+	winter := time.Date(now.Year(), time.January, 15, 12, 0, 0, 0, time.UTC)
+	summer := time.Date(now.Year(), time.July, 15, 12, 0, 0, 0, time.UTC)
+	offsets, err := q.ResolveTimeZone(ctx, store.ResolveTimeZoneParams{Name: name, Winter: winter, Summer: summer})
+	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == invalidParameterValue {
-			return false, nil
+			return fmt.Sprintf("'%s' is not a time zone this installation's database knows", name), nil
 		}
-		return false, fmt.Errorf("expenses: check a time zone: %w", err)
+		return "", fmt.Errorf("expenses: check a time zone: %w", err)
 	}
-	return true, nil
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		// parseSettings already refused this; answered rather than asserted.
+		return fmt.Sprintf("'%s' is not a time zone this installation knows", name), nil
+	}
+	for _, probe := range []struct {
+		at       time.Time
+		inSQL    int64
+		season   string
+		otherEnd string
+	}{
+		{winter, offsets.WinterOffset, "January", "July"},
+		{summer, offsets.SummerOffset, "July", "January"},
+	} {
+		if _, inGo := probe.at.In(loc).Zone(); int64(inGo) != probe.inSQL {
+			return fmt.Sprintf(
+				"'%s' means one thing to this installation and another to its database in %s, "+
+					"so the two would not agree which day a trip departed on — use a city zone such as 'Europe/Oslo'",
+				name, probe.season), nil
+		}
+	}
+	return "", nil
 }

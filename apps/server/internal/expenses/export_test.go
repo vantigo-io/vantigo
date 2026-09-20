@@ -30,3 +30,8 @@ func SetExportMaxRows(n int) func() {
 	exportMaxRows = n
 	return func() { exportMaxRows = previous }
 }
+
+// BusinessDay exposes businessDay to the external tests: the property that Go
+// and Postgres name the same day from one instant is asserted against the very
+// function the handlers derive every claim-shaped date with.
+var BusinessDay = businessDay

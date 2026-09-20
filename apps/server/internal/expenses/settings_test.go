@@ -3,6 +3,10 @@ package expenses_test
 import (
 	"net/http"
 	"testing"
+	"time"
+
+	"github.com/vantigo-io/vantigo/server/internal/expenses"
+	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
 func TestExpensesSettings_RoundTripAndReadableByEveryAccessHolder(t *testing.T) {
@@ -201,5 +205,81 @@ func TestExpensesSettings_TheBusinessTimeZoneMustBeOneBothHalvesKnow(t *testing.
 	}
 	if zone := putSettings(t, admin, settingsBody(nil)).TimeZone; zone != "America/New_York" {
 		t.Errorf("time zone after a replace that left it out = %q, want it kept", zone)
+	}
+}
+
+// Knowing a name is not enough: the two halves must **mean the same thing** by
+// it. 'CET' is an IANA zone with summer time to Go and a fixed +01:00
+// abbreviation to Postgres, which resolves its abbreviation table first — so a
+// trip departing at 00:30 local on 1 July would be dated 1 July by Go and 30
+// June by every filter, order and export written in SQL. A name the two read
+// differently is refused, and the message says what to write instead.
+func TestExpensesSettings_RefusesAZoneGoAndPostgresReadDifferently(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	admin, _ := signIn(t, h, "expenses:manage")
+
+	for _, name := range []string{"CET", "EET", "MET", "WET"} {
+		errs := refused(t, admin, http.MethodPut, settingsPath,
+			settingsBody(map[string]any{"timeZone": name}), invalidSettingsTitle)
+		if len(errs["timeZone"]) == 0 {
+			t.Fatalf("%q was accepted, want a refusal on timeZone: %v", name, errs)
+		}
+		if !mentions(errs["timeZone"], "Europe/Oslo") {
+			t.Errorf("%q was refused with %v, want a message naming a city zone to use instead", name, errs["timeZone"])
+		}
+	}
+	// Postgres reads its abbreviation table case-insensitively; Go's tzdata is
+	// case-sensitive, so a lower-case one never reaches the comparison at all.
+	// It is refused either way, which is what matters.
+	if errs := refused(t, admin, http.MethodPut, settingsPath,
+		settingsBody(map[string]any{"timeZone": "cet"}), invalidSettingsTitle); len(errs["timeZone"]) == 0 {
+		t.Errorf("'cet' was accepted, want a refusal on timeZone: %v", errs)
+	}
+	// The setting is unchanged by every one of those refusals.
+	if zone := getSettings(t, admin).TimeZone; zone != "Europe/Oslo" {
+		t.Errorf("time zone = %q, want the default still", zone)
+	}
+	// City zones, and the two fixed ones that mean the same to both, are
+	// accepted — the check refuses disagreement, not abbreviation-shaped names.
+	for _, name := range []string{"Europe/Oslo", "UTC", "America/New_York", "Asia/Kolkata"} {
+		if zone := putSettings(t, admin, settingsBody(map[string]any{"timeZone": name})).TimeZone; zone != name {
+			t.Errorf("time zone = %q, want %q accepted", zone, name)
+		}
+	}
+}
+
+// The property the setting exists for, over the zones it accepts: the day Go
+// derives from an instant and the day Postgres derives from the same instant
+// are the same day. It is the sentence docs/expenses.md states as absolute, so
+// it is a test rather than an assertion — instants either side of local
+// midnight, in January and in July, so a zone the two disagree about only in
+// summer cannot slip through.
+func TestExpensesSettings_GoAndPostgresNameTheSameDay(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	admin, _ := signIn(t, h, "expenses:manage")
+
+	for _, name := range []string{"Europe/Oslo", "UTC", "America/New_York", "Asia/Kolkata", "Pacific/Chatham"} {
+		putSettings(t, admin, settingsBody(map[string]any{"timeZone": name}))
+		loc, err := time.LoadLocation(name)
+		if err != nil {
+			t.Fatalf("load %s: %v", name, err)
+		}
+		for _, month := range []time.Month{time.January, time.July} {
+			// Local midnight on the 15th, and the minutes either side of it:
+			// the boundary every derived date turns on.
+			midnight := time.Date(2026, month, 15, 0, 0, 0, 0, loc)
+			for _, offset := range []time.Duration{-time.Minute, 0, time.Minute, 12 * time.Hour} {
+				instant := midnight.Add(offset)
+				inGo := expenses.BusinessDay(instant, loc).Format(time.DateOnly)
+				inSQL := modtest.One[string](t, h.Harness,
+					`SELECT (($1::timestamptz AT TIME ZONE $2)::date)::text`, instant, name)
+				if inGo != inSQL {
+					t.Errorf("%s at %s: Go says %s and Postgres says %s — the two must name the same day",
+						name, instant.UTC().Format(time.RFC3339), inGo, inSQL)
+				}
+			}
+		}
 	}
 }
