@@ -54,7 +54,13 @@ func TestSeededRates_AreExactlyWhatTheMigrationInserted(t *testing.T) {
 		if got := value.FloatString(2); got != seed.Value {
 			t.Errorf("%s value = %s, want %s", seed.Kind, got, seed.Value)
 		}
-		if found.Currency == nil || *found.Currency != seed.Currency {
+		switch {
+		case seed.Currency == "" && found.Currency != nil:
+			// A percentage of a day's rate carries no currency of its own, and
+			// an empty string in the column would be a third answer beside
+			// "NOK" and "none".
+			t.Errorf("%s currency = %q, want none", seed.Kind, *found.Currency)
+		case seed.Currency != "" && (found.Currency == nil || *found.Currency != seed.Currency):
 			t.Errorf("%s currency = %v, want %q", seed.Kind, found.Currency, seed.Currency)
 		}
 		if found.Source == nil || *found.Source != seed.Source {

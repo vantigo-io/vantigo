@@ -233,6 +233,7 @@ func (s *server) PostExpensesReimbursed(ctx context.Context, req gen.PostExpense
 	by, now := callerID(ctx), s.deps.Clock()
 	out, err := s.decide(ctx, decision{
 		from: statusApproved, verb: "marked reimbursed", manageOnly: true,
+		claimImperative: "mark the claim reimbursed",
 		also: func(id int64, row store.ExpensesEntry) string {
 			switch {
 			case row.ReimbursedAt != nil:
@@ -276,6 +277,7 @@ func (s *server) PostExpensesReimbursedUndo(ctx context.Context, req gen.PostExp
 	now := s.deps.Clock()
 	out, err := s.decide(ctx, decision{
 		from: statusApproved, verb: "taken back off a payroll run", manageOnly: true,
+		claimImperative: "take the claim off the payroll run",
 		also: func(id int64, row store.ExpensesEntry) string {
 			if row.ReimbursedAt == nil {
 				return fmt.Sprintf("Expense %d has not been reimbursed", id)

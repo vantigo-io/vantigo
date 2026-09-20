@@ -11,13 +11,27 @@ func TestExpensesRates_TheSeededOnesAreThereAndLabelled(t *testing.T) {
 	admin, _ := signIn(t, h, "expenses:manage")
 
 	rates := listRates(t, admin)
-	if len(rates) != 2 {
-		t.Fatalf("a fresh installation has %d rates, want the two seeded ones: %+v", len(rates), rates)
+	if len(rates) != 8 {
+		t.Fatalf("a fresh installation has %d rates, want the eight seeded ones: %+v", len(rates), rates)
 	}
+	// The two mileage rates (00012) and, from the travel claims migration, the
+	// three domestic per diem day rates and the three meal percentages. A
+	// percentage carries no currency: it is a share of whatever day rate
+	// applies.
 	for _, want := range []struct {
-		kind  string
-		value float64
-	}{{"mileage", 5.30}, {"mileage_passenger", 1.00}} {
+		kind     string
+		value    float64
+		currency string
+	}{
+		{"mileage", 5.30, "NOK"},
+		{"mileage_passenger", 1.00, "NOK"},
+		{"per_diem_6_12", 397.00, "NOK"},
+		{"per_diem_over_12", 736.00, "NOK"},
+		{"per_diem_overnight_hotel", 1012.00, "NOK"},
+		{"meal_breakfast_percent", 20, ""},
+		{"meal_lunch_percent", 30, ""},
+		{"meal_dinner_percent", 50, ""},
+	} {
 		got := ratesOfKind(rates, want.kind)
 		if len(got) != 1 {
 			t.Fatalf("%s has %d rows, want one", want.kind, len(got))
@@ -29,8 +43,11 @@ func TestExpensesRates_TheSeededOnesAreThereAndLabelled(t *testing.T) {
 		if r.ValidFrom != "2026-01-01" {
 			t.Errorf("%s validFrom = %q, want 2026-01-01", want.kind, r.ValidFrom)
 		}
-		if r.Currency == nil || *r.Currency != "NOK" {
-			t.Errorf("%s currency = %v, want NOK", want.kind, r.Currency)
+		switch {
+		case want.currency == "" && r.Currency != nil:
+			t.Errorf("%s currency = %v, want none on a percentage", want.kind, *r.Currency)
+		case want.currency != "" && (r.Currency == nil || *r.Currency != want.currency):
+			t.Errorf("%s currency = %v, want %s", want.kind, r.Currency, want.currency)
 		}
 		if r.Source == nil || *r.Source != "State rate" {
 			t.Errorf("%s source = %v, want it labelled 'State rate'", want.kind, r.Source)
@@ -38,9 +55,12 @@ func TestExpensesRates_TheSeededOnesAreThereAndLabelled(t *testing.T) {
 	}
 
 	// The customer rate per kilometre is a company's own price, so nothing
-	// ships one.
-	if got := ratesOfKind(rates, "mileage_customer"); len(got) != 0 {
-		t.Errorf("mileage_customer = %+v, want no seeded row", got)
+	// ships one; neither is the overnight rate for somewhere that is not a
+	// hotel, which the state agreement does not set.
+	for _, kind := range []string{"mileage_customer", "per_diem_overnight_other"} {
+		if got := ratesOfKind(rates, kind); len(got) != 0 {
+			t.Errorf("%s = %+v, want no seeded row", kind, got)
+		}
 	}
 }
 
@@ -172,17 +192,19 @@ func TestExpensesRates_APercentageCarriesNoCurrency(t *testing.T) {
 	h := newHarness(t)
 	admin, _ := signIn(t, h, "expenses:manage")
 
+	// A day past the seeded 2026-01-01 row of each kind, which the travel
+	// claims migration writes.
 	created := createRate(t, admin, map[string]any{
-		"kind": "meal_breakfast_percent", "value": 20, "currency": nil,
+		"kind": "meal_breakfast_percent", "value": 20, "currency": nil, "validFrom": "2026-02-01",
 	})
 	if created.Currency != nil {
 		t.Errorf("currency = %v, want none on a percentage kind", created.Currency)
 	}
 	createRate(t, admin, map[string]any{
-		"kind": "meal_lunch_percent", "value": 0, "currency": nil, "validFrom": "2026-01-02",
+		"kind": "meal_lunch_percent", "value": 0, "currency": nil, "validFrom": "2026-02-02",
 	})
 	createRate(t, admin, map[string]any{
-		"kind": "meal_dinner_percent", "value": 100, "currency": nil, "validFrom": "2026-01-03",
+		"kind": "meal_dinner_percent", "value": 100, "currency": nil, "validFrom": "2026-02-03",
 	})
 }
 

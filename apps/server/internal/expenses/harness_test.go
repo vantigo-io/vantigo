@@ -557,6 +557,7 @@ const (
 	ratesResetPath     = ratesPath + "/reset"
 	categoriesPath     = "/api/v1/expenses/categories"
 	entriesPath        = "/api/v1/expenses/entries"
+	claimsPath         = "/api/v1/expenses/claims"
 	projectOptionsPath = "/api/v1/expenses/projects"
 	attachmentsPath    = "/api/v1/expenses/attachments"
 	submitPath         = "/api/v1/expenses/submit"
@@ -579,6 +580,7 @@ const (
 func ratePath(id int32) string     { return fmt.Sprintf("%s/%d", ratesPath, id) }
 func categoryPath(id int32) string { return fmt.Sprintf("%s/%d", categoriesPath, id) }
 func entryPath(id int64) string    { return fmt.Sprintf("%s/%d", entriesPath, id) }
+func claimPath(id int64) string    { return fmt.Sprintf("%s/%d", claimsPath, id) }
 func attachmentPath(id int64) string {
 	return fmt.Sprintf("%s/%d", attachmentsPath, id)
 }
@@ -609,6 +611,7 @@ func entryAttachmentsPath(entryID int64) string {
 // expects rather than repeating the string.
 const (
 	invalidEntryTitle      = "Invalid expense"
+	invalidClaimTitle      = "Invalid travel claim"
 	invalidQueryTitle      = "Invalid query parameters"
 	invalidReceiptTitle    = "Invalid receipt"
 	invalidSubmissionTitle = "Invalid submission"
@@ -967,6 +970,7 @@ type (
 // entryJSON decodes ExpensesEntryResponse.
 type entryJSON struct {
 	Id              int64                   `json:"id"`
+	ClaimId         *int64                  `json:"claimId"`
 	Kind            string                  `json:"kind"`
 	EntryDate       string                  `json:"entryDate"`
 	Description     string                  `json:"description"`
@@ -1150,6 +1154,199 @@ func listProjectOptions(t *testing.T, c *modtest.Client) []projectOptionJSON {
 func refusedEntry(t *testing.T, c *modtest.Client, method, path string, body any) map[string][]string {
 	t.Helper()
 	return refused(t, c, method, path, body, invalidEntryTitle)
+}
+
+// The pieces of ExpensesClaimResponse and ExpensesClaimListResponse a test
+// reads. Every optional one is a pointer, so "absent" and "zero" are told
+// apart.
+type (
+	claimCapabilitiesJSON struct {
+		CanEdit           bool `json:"canEdit"`
+		CanDelete         bool `json:"canDelete"`
+		CanSubmit         bool `json:"canSubmit"`
+		CanApprove        bool `json:"canApprove"`
+		CanUnapprove      bool `json:"canUnapprove"`
+		CanMarkReimbursed bool `json:"canMarkReimbursed"`
+		CanUndoReimbursed bool `json:"canUndoReimbursed"`
+	}
+	currencyTotalJSON struct {
+		Currency       string  `json:"currency"`
+		Gross          float64 `json:"gross"`
+		OwedToEmployee float64 `json:"owedToEmployee"`
+	}
+)
+
+// claimJSON decodes ExpensesClaimResponse.
+type claimJSON struct {
+	Id             int64                   `json:"id"`
+	Purpose        string                  `json:"purpose"`
+	Destination    *string                 `json:"destination"`
+	Abroad         bool                    `json:"abroad"`
+	AbroadDayRate  *float64                `json:"abroadDayRate"`
+	AbroadCurrency *string                 `json:"abroadCurrency"`
+	DepartureAt    string                  `json:"departureAt"`
+	ReturnAt       string                  `json:"returnAt"`
+	Project        *entryProjectJSON       `json:"project"`
+	Owner          entryOwnerJSON          `json:"owner"`
+	Status         string                  `json:"status"`
+	SubmittedAt    *string                 `json:"submittedAt"`
+	Decision       *entryDecisionJSON      `json:"decision"`
+	Reimbursement  *entryReimbursementJSON `json:"reimbursement"`
+	Lines          []entryJSON             `json:"lines"`
+	Totals         []currencyTotalJSON     `json:"totals"`
+	BillableTotals *[]currencyAmountJSON   `json:"billableTotals"`
+	Revision       int32                   `json:"revision"`
+	Capabilities   claimCapabilitiesJSON   `json:"capabilities"`
+}
+
+// claimListJSON decodes ExpensesClaimListResponse — the same header with a
+// count in place of the lines.
+type claimListJSON struct {
+	Id           int64                 `json:"id"`
+	Purpose      string                `json:"purpose"`
+	Status       string                `json:"status"`
+	DepartureAt  string                `json:"departureAt"`
+	Owner        entryOwnerJSON        `json:"owner"`
+	Project      *entryProjectJSON     `json:"project"`
+	LineCount    int32                 `json:"lineCount"`
+	Totals       []currencyTotalJSON   `json:"totals"`
+	Revision     int32                 `json:"revision"`
+	Capabilities claimCapabilitiesJSON `json:"capabilities"`
+}
+
+// claimPageJSON decodes PaginatedResponseOfExpensesClaimListResponse.
+type claimPageJSON struct {
+	Data       []claimListJSON `json:"data"`
+	Pagination struct {
+		Page       int32 `json:"page"`
+		PageSize   int32 `json:"pageSize"`
+		TotalCount int32 `json:"totalCount"`
+		TotalPages int32 `json:"totalPages"`
+	} `json:"pagination"`
+}
+
+// claimBody is a valid minimal travel claim — a domestic two-day trip — which
+// tests override one field of at a time. A nil override value removes that
+// field. The dates sit in the same month the entry bodies do, so a line's own
+// date falls inside the trip without every test saying so.
+func claimBody(overrides map[string]any) map[string]any {
+	return bodyWith(map[string]any{
+		"purpose":     "Montasje hos kunden",
+		"destination": "Bergen",
+		"departureAt": "2026-03-09T07:00:00Z",
+		"returnAt":    "2026-03-11T16:00:00Z",
+	}, overrides)
+}
+
+// createClaim records a travel claim and fails the test unless it was created.
+func createClaim(t *testing.T, c *modtest.Client, overrides map[string]any) claimJSON {
+	t.Helper()
+	body := claimBody(overrides)
+	r := c.Do(http.MethodPost, claimsPath, body)
+	if r.Status != http.StatusCreated {
+		t.Fatalf("create claim %v: status %d body %s, want 201", body, r.Status, r.Body)
+	}
+	var claim claimJSON
+	r.JSON(&claim)
+	return claim
+}
+
+// getClaim reads one claim with its lines and fails the test unless it
+// answered 200.
+func getClaim(t *testing.T, c *modtest.Client, id int64) claimJSON {
+	t.Helper()
+	r := c.Do(http.MethodGet, claimPath(id), nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("get claim %d: status %d body %s, want 200", id, r.Status, r.Body)
+	}
+	var claim claimJSON
+	r.JSON(&claim)
+	return claim
+}
+
+// rawClaim reads one claim as a bare JSON object, for a test whose subject is
+// whether a key is there at all.
+func rawClaim(t *testing.T, c *modtest.Client, id int64) map[string]any {
+	t.Helper()
+	r := c.Do(http.MethodGet, claimPath(id), nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("get claim %d: status %d body %s, want 200", id, r.Status, r.Body)
+	}
+	var raw map[string]any
+	r.JSON(&raw)
+	return raw
+}
+
+// updateClaim replaces a claim's header and fails the test unless it answered
+// 200. The body is a create body plus the revision it was read at.
+func updateClaim(t *testing.T, c *modtest.Client, id int64, overrides map[string]any) claimJSON {
+	t.Helper()
+	body := claimBody(overrides)
+	r := c.Do(http.MethodPut, claimPath(id), body)
+	if r.Status != http.StatusOK {
+		t.Fatalf("update claim %d with %v: status %d body %s, want 200", id, body, r.Status, r.Body)
+	}
+	var claim claimJSON
+	r.JSON(&claim)
+	return claim
+}
+
+// deleteClaim removes a claim and fails the test unless it answered 204.
+func deleteClaim(t *testing.T, c *modtest.Client, id int64) {
+	t.Helper()
+	if r := c.Do(http.MethodDelete, claimPath(id), nil); r.Status != http.StatusNoContent {
+		t.Fatalf("delete claim %d: status %d body %s, want 204", id, r.Status, r.Body)
+	}
+}
+
+// listClaims reads a page of claims and fails the test unless it answered 200.
+func listClaims(t *testing.T, c *modtest.Client, query string) claimPageJSON {
+	t.Helper()
+	r := c.Do(http.MethodGet, claimsPath+query, nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("list claims %q: status %d body %s, want 200", query, r.Status, r.Body)
+	}
+	var page claimPageJSON
+	r.JSON(&page)
+	return page
+}
+
+// claimIDsOf is the ids of a page's claims, in the order they were listed.
+func claimIDsOf(page claimPageJSON) []int64 {
+	ids := make([]int64, 0, len(page.Data))
+	for _, claim := range page.Data {
+		ids = append(ids, claim.Id)
+	}
+	return ids
+}
+
+// refusedClaim is refused for a claim body: the field errors of a create, a
+// replace or a delete that did not pass.
+func refusedClaim(t *testing.T, c *modtest.Client, method, path string, body any) map[string][]string {
+	t.Helper()
+	return refused(t, c, method, path, body, invalidClaimTitle)
+}
+
+// addLine records one expense inside a claim and fails the test unless it was
+// created.
+func addLine(t *testing.T, c *modtest.Client, claimID int64, body map[string]any) entryJSON {
+	t.Helper()
+	return createEntry(t, c, bodyWith(body, map[string]any{"claimId": claimID}))
+}
+
+// seedClaimStatus moves a claim straight to a status the flow does not reach
+// yet, in SQL. The claim flow is a later task's; every rule this one writes is
+// written against the status column, so this is how those rules are proved —
+// with the row in a state the API will only be able to produce later.
+func seedClaimStatus(t *testing.T, h *harness, claimID int64, status string) {
+	t.Helper()
+	h.Exec(t, `
+		UPDATE expenses.claims
+		SET status = $2::text,
+		    submitted_at = CASE WHEN $2::text = 'draft' THEN NULL ELSE now() END,
+		    decided_at = CASE WHEN $2::text IN ('approved', 'rejected') THEN now() ELSE NULL END,
+		    revision = revision + 1
+		WHERE id = $1`, claimID, status)
 }
 
 // attachmentJSON decodes ExpensesAttachmentResponse — the receipt itself, as

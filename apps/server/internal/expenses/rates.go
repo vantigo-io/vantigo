@@ -61,13 +61,25 @@ func isPercentKind(kind string) bool { return slices.Contains(percentKinds, kind
 const stateRateSource = "State rate"
 
 // seedRate is one row the product ships with. The value is exact decimal text,
-// never a float, so nothing rounds it on its way into the column.
+// never a float, so nothing rounds it on its way into the column. Currency is
+// empty for the percentage kinds, which carry none at all — a percentage of a
+// day's rate is a percentage of whatever currency that rate is in.
 type seedRate struct {
 	Kind      string
 	ValidFrom string
 	Value     string
 	Currency  string
 	Source    string
+}
+
+// currency is the row's currency column: absent for a percentage, never an
+// empty string, so a restored row is byte for byte the row the migration
+// wrote.
+func (s seedRate) currency() *string {
+	if s.Currency == "" {
+		return nil
+	}
+	return &s.Currency
 }
 
 // seededRates is the single place the shipped rates are written down. The
@@ -77,13 +89,24 @@ type seedRate struct {
 // the two against each other, so the table and the migration cannot drift.
 //
 // The two mileage rates were verified against Skatteetaten's published rates on
-// 2026-09-19. The customer rate per kilometre is deliberately absent — what a
-// customer is charged is the company's own price — and the per diem rates are a
-// later delivery's, to be verified against the official source at that time and
-// never written from memory.
+// 2026-09-19; the per diem rates and the meal percentages on 2026-09-20 against
+// the state's Særavtale om dekning av utgifter til reise og kost innenlands, in
+// force 2026-01-01 to 2027-12-31, §§ 6 and 9.
+//
+// Two kinds are deliberately absent. The customer rate per kilometre is the
+// company's own price, not a public rate. per_diem_overnight_other is the
+// company's own figure for a night somewhere that is not a hotel — the
+// agreement knows one overnight rate — so a day of that type cannot be priced
+// until an administrator enters one.
 var seededRates = []seedRate{
 	{Kind: rateKindMileage, ValidFrom: "2026-01-01", Value: "5.30", Currency: "NOK", Source: stateRateSource},
 	{Kind: rateKindMileagePassenger, ValidFrom: "2026-01-01", Value: "1.00", Currency: "NOK", Source: stateRateSource},
+	{Kind: rateKindPerDiem6To12, ValidFrom: "2026-01-01", Value: "397.00", Currency: "NOK", Source: stateRateSource},
+	{Kind: rateKindPerDiemOver12, ValidFrom: "2026-01-01", Value: "736.00", Currency: "NOK", Source: stateRateSource},
+	{Kind: rateKindPerDiemHotel, ValidFrom: "2026-01-01", Value: "1012.00", Currency: "NOK", Source: stateRateSource},
+	{Kind: rateKindMealBreakfastPercent, ValidFrom: "2026-01-01", Value: "20.00", Source: stateRateSource},
+	{Kind: rateKindMealLunchPercent, ValidFrom: "2026-01-01", Value: "30.00", Source: stateRateSource},
+	{Kind: rateKindMealDinnerPercent, ValidFrom: "2026-01-01", Value: "50.00", Source: stateRateSource},
 }
 
 // errNoRate is the typed "the table holds no rate of this kind in force on that
@@ -386,7 +409,7 @@ func (s *server) PostExpensesRatesReset(ctx context.Context, req gen.PostExpense
 				Kind:      seed.Kind,
 				ValidFrom: pgDate(validFrom),
 				Value:     value,
-				Currency:  ptrTo(seed.Currency),
+				Currency:  seed.currency(),
 				Source:    ptrTo(seed.Source),
 				Now:       now,
 			}); err != nil {

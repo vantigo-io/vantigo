@@ -1,16 +1,17 @@
 # Expenses module
 
-The Expenses module is outlays and mileage, with receipts, an approval flow, two
-independent tracks after approval — paying the employee back and invoicing the
-customer — dated rates, categories and admin settings. It is a vertical-slice module
+The Expenses module is outlays and mileage, standalone or gathered into a
+travel claim, with receipts, an approval flow, two independent tracks after
+approval — paying the employee back and invoicing the customer — dated rates,
+categories and admin settings. It is a vertical-slice module
 inside the single Vantigo binary (`apps/server/internal/expenses`), owns the
 `expenses` schema in the shared PostgreSQL database, and serves `openapi/expenses.yaml`
 under `/api/v1/expenses`.
 
 It depends on nobody but identity. [Projects](projects.md) is an **optional** read
 through `contracts.ProjectDirectory`: `MODULES=customers,expenses` is a valid
-installation, and so is `MODULES=expenses` alone. Travel claims and per diem are a
-later delivery's; this one refuses `kind: "per_diem"` with a message that says so
+installation, and so is `MODULES=expenses` alone. The per diem day is a later
+delivery's; this one refuses `kind: "per_diem"` with a message that says so
 rather than treating it as an unknown value.
 
 ## Domain model
@@ -28,6 +29,13 @@ rather than treating it as an unknown value.
     flag, and — only when billable and only on the project's side — a
     `markupPercent` (outlay) or `billRatePerKm` (mileage) and the resulting
     `billAmount`.
+- **Travel claim** (`expenses.claims`) — the container a trip's expenses sit in:
+  a `purpose`, an optional `destination`, `departureAt` and `returnAt` as the
+  instants they were entered as, `abroad` with the claim's own `abroadDayRate`
+  and `abroadCurrency`, an optional `projectId`, and the same status, decision
+  and reimbursement columns an entry carries — because a claim is a unit of
+  approval and of payroll in exactly the same way. A trip may be at most 366
+  days and hold at most 200 expenses.
 - **Attachment** (`expenses.attachments`) — one receipt: the object key the bytes
   live under, the file name, the sniffed content type and size, who uploaded it and
   when. Deleting the entry cascades its receipts.
@@ -47,11 +55,18 @@ rather than treating it as an unknown value.
   in force on a day is the row of that kind with the greatest `validFrom` on or
   before it. Ten kinds exist in the schema: `mileage`, `mileage_passenger`,
   `mileage_customer` (money per kilometre), four per-diem kinds and three meal
-  percentages — the last seven are a later delivery's and unseeded today. Seeded at
-  migration time: `mileage` 5.30 NOK and `mileage_passenger` 1.00 NOK, both
-  `validFrom: 2026-01-01`, `source: "State rate"` (verified against Skatteetaten's
-  published rates). `mileage_customer` — what a customer is charged per kilometre —
-  is deliberately unseeded: that is the company's own price, not a public rate. A
+  percentages. Seeded at migration time, all `validFrom: 2026-01-01` and
+  `source: "State rate"`: `mileage` 5.30 NOK and `mileage_passenger` 1.00 NOK
+  (verified against Skatteetaten's published rates), and `per_diem_6_12` 397
+  NOK, `per_diem_over_12` 736 NOK, `per_diem_overnight_hotel` 1012 NOK,
+  `meal_breakfast_percent` 20, `meal_lunch_percent` 30 and
+  `meal_dinner_percent` 50 (verified against the state's *Særavtale om dekning
+  av utgifter til reise og kost innenlands*, §§ 6 and 9). Two kinds are
+  deliberately unseeded: `mileage_customer` — what a customer is charged per
+  kilometre — because that is the company's own price, not a public rate, and
+  `per_diem_overnight_other`, because the agreement knows one overnight rate
+  and a night somewhere that is not a hotel is priced at a figure the company
+  sets. A
   row an administrator edits or removes can always be restored with
   `POST /rates/reset`, which puts a kind's shipped rows back exactly as the
   migration wrote them (value, currency, source) without touching a row on a day
@@ -127,6 +142,58 @@ expense's *owner*, not on whoever is recording it, because `expenses:manage` can
 record for a colleague. A project or a billing line the save is *keeping* is not
 judged again, so a project that has since been completed, or a billing line since
 deactivated, does not strand an existing link; a *changed* one is judged in full.
+
+## The unit an expense belongs to
+
+A travel claim's lines are ordinary rows of `expenses.entries` carrying its
+`claim_id`. What makes them lines rather than expenses of their own is that
+**everything status-shaped about them is the claim's**: the flow, the period
+lock (judged on the day the trip *departed*), the decision, the reimbursement,
+the capabilities, whether the receipts may still be touched, and the status a
+read of the line shows. The line keeps its own kind, date, description,
+amounts, receipts, `billable` and billing figures, and its own `invoiced`
+stamp.
+
+One function answers it — `unitOf` in `authorize.go`, which takes an entry and
+the claim it names and answers the *unit* the rest of the module judges it by —
+so a rule added later cannot forget. A line's own `status` column stays at its
+default `draft` and is never read. Everything that used to read an entry's
+status now takes a unit: `entryStateRefusal`, `accessFor`, `entryResponse`,
+`entryTakesReceipts`, `rateOverrideRefusal`, `invoicedRefusal`, and the two
+queries that repeat a status guard in SQL (`OverrideEntryRate` and
+`MarkEntryInvoiced`, which read it through the claim with a subquery).
+
+**A line is never a unit.** `POST /submit`, `/approve`, `/reject`,
+`/unapprove`, `/reimbursed` and `/reimbursed/undo` refuse a line by id with a
+per-id message pointing at the claim ("Expense 5 belongs to travel claim 7;
+submit the claim") — all-or-nothing, as every batch here is — and the line's
+five flow capabilities are false. Pricing, invoicing and a rate override stay
+the line's own doors, because those are about this one amount; each of them
+reads the *claim's* status for the state it is judged in.
+
+**A line moves neither in nor out.** A `claimId` on a replace must equal the
+one the line already carries; a standalone expense naming one, or a line naming
+another claim, is a 400 on `claimId`. The owner and the project are the
+claim's: a `userId` naming somebody else is refused, and a `projectId` must be
+absent (inherited) or exactly the claim's.
+
+## The lock order inside a claim
+
+Every write takes its locks in one order, and nothing may invent another:
+
+1. the claim's own row (`SELECT … FOR UPDATE`), then
+2. its lines, in id order — all of them for a project re-point, or the one line
+   the write is about.
+
+So a write on the claim and a write on one of its lines start at the same row
+and queue rather than deadlock. Changing a claim's project re-points every line
+in that same transaction: the new project's billing lines are read **before**
+the transaction opens (nothing inside one calls another module), a line's
+billing line is cleared when the new project does not have it, and clearing the
+project altogether makes every line non-billable with its billing figures. A
+line that has already been invoiced holds the project where it is. The cap of
+200 lines is decided under the claim's lock, so two lines racing for the last
+slot cannot both take it.
 
 ## The flow, and what freezes on submit
 
@@ -300,7 +367,9 @@ money settings and can move a payroll run.
 
 Who sees an expense at all: its owner, always; the manager of its project, whoever
 recorded it; and `expenses:view-all`, `expenses:approve` and `expenses:manage`, who
-see everyone's. Anyone else gets a **bare 404**, byte-identical to the answer an
+see everyone's. A travel claim follows exactly that rule, and a line is visible
+if and only if its claim is — a line carries its claim's owner and its claim's
+project, so the same predicate decides both, in SQL as in Go. Anyone else gets a **bare 404**, byte-identical to the answer an
 unknown id gets — the list applies the same predicate in SQL, so it never holds a
 row a single read of it would 404 for.
 
@@ -447,9 +516,13 @@ says.
 | Endpoint | Access |
 | --- | --- |
 | `GET /meta` | What this installation can do, the settings a new expense starts from, the categories, and the caller's own capabilities |
-| `GET /entries` (`userId`, `projectId`, `status`, `kind`, `from`, `to`, `reimbursed`, paging) | The caller's own; a project manager also sees their projects'; view-all/approve/manage see everyone's |
+| `GET /entries` (`userId`, `projectId`, `claimId`, `standalone`, `status`, `kind`, `from`, `to`, `reimbursed`, paging) | The caller's own; a project manager also sees their projects'; view-all/approve/manage see everyone's |
 | `GET /entries/{id}` | The owner, the project's manager, or view-all/approve/manage; a bare 404 otherwise |
-| `POST /entries` | Record one — your own, or (`userId`) a colleague's, with `expenses:manage` |
+| `POST /entries` | Record one — your own, or (`userId`) a colleague's, with `expenses:manage`; `claimId` records it as a line of a travel claim |
+| `GET /claims` (`userId`, `status`, `from`, `to`, `reimbursed`, paging) | The same visibility rule the entries' list applies, one level up |
+| `POST /claims` | Record a trip — your own, or (`userId`) a colleague's, with `expenses:manage` |
+| `GET /claims/{id}` | The claim with its lines, its totals per currency and its capabilities |
+| `PUT /claims/{id}`, `DELETE /claims/{id}` | Owner or `expenses:manage`, while draft or rejected, not past the lock |
 | `PUT /entries/{id}`, `DELETE /entries/{id}` | Owner or `expenses:manage`, while draft or rejected, not past the lock |
 | `POST /entries/{id}/attachments`, `DELETE /attachments/{id}` | Same as edit, an outlay only |
 | `GET /attachments/{id}` | Whoever may see the expense |
@@ -471,15 +544,18 @@ says.
 | `PUT /settings` | `expenses:manage` |
 | `GET /stats`, `/stats/summary`, `/stats/timeseries`, `/stats/attention` | The caller's own figures, plus their approval queue's size |
 
-That is all 38 operations the contract declares, each exercised by the module's own
+That is all 43 operations the contract declares, each exercised by the module's own
 coverage gate (below) with no allow-list.
 
 ## What comes next
 
-The next deliveries add **travel claims and per diem** — the `expenses.claims`
-table and the four per-diem rate kinds this delivery already reserves but does not
-seed — and then **the project page's own Economy tab, on the cost side**: what a
-project's expenses cost and bill, beside the hours Time already reports there.
+The travel claim's own flow — submitting, approving, unapproving and paying
+back a whole trip, and the claim units in the approval queue, the reimbursement
+list, the payroll CSV and the dashboard reads — and the **per diem day**: the
+`per_diem` kind, its meal deductions against the rates this delivery seeds, and
+the suggestion that proposes a trip's days from its departure and return. Then
+**the project page's own Economy tab, on the cost side**: what a project's
+expenses cost and bill, beside the hours Time already reports there.
 
 ## Development
 

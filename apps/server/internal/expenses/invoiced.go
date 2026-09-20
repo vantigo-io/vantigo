@@ -2,10 +2,7 @@ package expenses
 
 import (
 	"context"
-	"errors"
 	"fmt"
-
-	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/expenses/gen"
 	"github.com/vantigo-io/vantigo/server/internal/expenses/store"
@@ -36,7 +33,7 @@ type invoicedMark struct {
 // The order is the order that is most use to the caller: what the line is
 // comes before what it carries, because a draft is a thing they can wait for
 // and an unpriced line is a thing they can fix.
-func invoicedRefusal(row store.ExpensesEntry, m invoicedMark) (string, string) {
+func invoicedRefusal(row store.ExpensesEntry, unit entryUnit, m invoicedMark) (string, string) {
 	if m.undo {
 		if row.InvoicedAt == nil {
 			return "status", "This expense has not been marked invoiced"
@@ -44,9 +41,9 @@ func invoicedRefusal(row store.ExpensesEntry, m invoicedMark) (string, string) {
 		return "", ""
 	}
 	switch {
-	case row.Status != statusApproved:
+	case unit.Status != statusApproved:
 		return "status", fmt.Sprintf(
-			"Only an approved expense can be marked invoiced; this one is %s", row.Status)
+			"Only an approved expense can be marked invoiced; this one is %s", unit.Status)
 	case row.InvoicedAt != nil:
 		return "status", "This expense has already been marked invoiced"
 	case !row.Billable:
@@ -133,7 +130,7 @@ func (s *server) markInvoiced(ctx context.Context, id int64, revision int32, ref
 	if err != nil {
 		return invoicedOutcome{}, err
 	}
-	row, a, found, err := s.visibleEntry(ctx, q, c, id)
+	row, unit, a, found, err := s.visibleEntry(ctx, q, c, id)
 	if err != nil {
 		return invoicedOutcome{}, err
 	}
@@ -148,7 +145,7 @@ func (s *server) markInvoiced(ctx context.Context, id int64, revision int32, ref
 	case !a.CanSeeBilling:
 		return invoicedOutcome{forbidden: true}, nil
 	}
-	if field, msg := invoicedRefusal(row, m); msg != "" {
+	if field, msg := invoicedRefusal(row, unit, m); msg != "" {
 		return invoicedOutcome{errs: fieldError(field, msg)}, nil
 	}
 	var trimmed *string
@@ -165,18 +162,18 @@ func (s *server) markInvoiced(ctx context.Context, id int64, revision int32, ref
 		out     invoicedOutcome
 	)
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
-		locked, err := txq.LockEntry(ctx, id)
-		if errors.Is(err, pgx.ErrNoRows) {
+		locked, lockedUnit, found, err := lockEntryUnit(ctx, txq, id, row.ClaimID)
+		if err != nil {
+			return err
+		}
+		if !found {
 			out = invoicedOutcome{notFound: true}
 			return nil
-		}
-		if err != nil {
-			return fmt.Errorf("expenses: lock an expense: %w", err)
 		}
 		// Judged again on the row as it stands under the lock: an unapproval
 		// or another invoicing that committed since is the state refusal
 		// above, arrived a moment later.
-		if field, msg := invoicedRefusal(locked, m); msg != "" {
+		if field, msg := invoicedRefusal(locked, lockedUnit, m); msg != "" {
 			out = invoicedOutcome{errs: fieldError(field, msg)}
 			return nil
 		}

@@ -124,12 +124,19 @@ UPDATE expenses.entries SET
     invoice_reference = @reference,
     revision = revision + 1,
     updated_at = @now::timestamptz
-WHERE id = @id
-  AND revision = @revision
-  AND status = 'approved'
-  AND billable
-  AND bill_amount IS NOT NULL
-  AND invoiced_at IS NULL
+--
+-- The status guarded is the **unit's** (unitOf in authorize.go): a line inside
+-- a travel claim is approved exactly when its claim is, and its own column
+-- stays at its default. The handler holds the claim's row lock before this
+-- runs, so the subquery reads the very row it judged.
+WHERE expenses.entries.id = @id
+  AND expenses.entries.revision = @revision
+  AND COALESCE(
+        (SELECT c.status FROM expenses.claims c WHERE c.id = expenses.entries.claim_id),
+        expenses.entries.status) = 'approved'
+  AND expenses.entries.billable
+  AND expenses.entries.bill_amount IS NOT NULL
+  AND expenses.entries.invoiced_at IS NULL
 RETURNING *;
 
 -- name: UnmarkEntryInvoiced :one

@@ -14,17 +14,21 @@ import (
 )
 
 const countEntries = `-- name: CountEntries :one
-SELECT count(*) FROM expenses.entries
+SELECT count(*) FROM expenses.entries e
+LEFT JOIN expenses.claims c ON c.id = e.claim_id
 WHERE ($1::boolean
-       OR user_id = $2::uuid
-       OR (project_id IS NOT NULL AND project_id = ANY($3::integer[])))
-  AND ($4::uuid IS NULL OR user_id = $4::uuid)
-  AND ($5::integer IS NULL OR project_id = $5::integer)
-  AND ($6::text IS NULL OR status = $6::text)
-  AND ($7::text IS NULL OR kind = $7::text)
-  AND ($8::date IS NULL OR entry_date >= $8::date)
-  AND ($9::date IS NULL OR entry_date <= $9::date)
-  AND ($10::boolean IS NULL OR (reimbursed_at IS NOT NULL) = $10::boolean)
+       OR e.user_id = $2::uuid
+       OR (e.project_id IS NOT NULL AND e.project_id = ANY($3::integer[])))
+  AND ($4::uuid IS NULL OR e.user_id = $4::uuid)
+  AND ($5::integer IS NULL OR e.project_id = $5::integer)
+  AND ($6::bigint IS NULL OR e.claim_id = $6::bigint)
+  AND ($7::boolean IS NULL OR (e.claim_id IS NULL) = $7::boolean)
+  AND ($8::text IS NULL OR COALESCE(c.status, e.status) = $8::text)
+  AND ($9::text IS NULL OR e.kind = $9::text)
+  AND ($10::date IS NULL OR e.entry_date >= $10::date)
+  AND ($11::date IS NULL OR e.entry_date <= $11::date)
+  AND ($12::boolean IS NULL
+       OR (COALESCE(c.reimbursed_at, e.reimbursed_at) IS NOT NULL) = $12::boolean)
 `
 
 type CountEntriesParams struct {
@@ -33,6 +37,8 @@ type CountEntriesParams struct {
 	ManagedProjectIds []int32
 	UserID            *uuid.UUID
 	ProjectID         *int32
+	ClaimID           *int64
+	Standalone        *bool
 	Status            *string
 	Kind              *string
 	FromDate          pgtype.Date
@@ -46,7 +52,16 @@ type CountEntriesParams struct {
 // authorize.go applies to one entry: everything for see_all (expenses:view-all,
 // expenses:approve, expenses:manage), the caller's own, and everything on the
 // projects the caller manages, whose ids are resolved through the project
-// directory before the query rather than filtered after it.
+// directory before the query rather than filtered after it. A claim's line
+// carries its claim's owner and its claim's project, so the same predicate
+// makes a line visible exactly when its claim is.
+//
+// The status and the reimbursed filters read the **unit** the entry belongs
+// to, which for a line is its claim (unitOf in authorize.go) — the status the
+// line is rendered with, so the filter and the rendering can never disagree.
+// standalone and claim_id narrow the list to one side of that distinction; an
+// absent standalone leaves both in, so the list a client that knows nothing of
+// claims asks for is exactly the list it always got.
 func (q *Queries) CountEntries(ctx context.Context, arg CountEntriesParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countEntries,
 		arg.SeeAll,
@@ -54,6 +69,8 @@ func (q *Queries) CountEntries(ctx context.Context, arg CountEntriesParams) (int
 		arg.ManagedProjectIds,
 		arg.UserID,
 		arg.ProjectID,
+		arg.ClaimID,
+		arg.Standalone,
 		arg.Status,
 		arg.Kind,
 		arg.FromDate,
@@ -92,7 +109,7 @@ func (q *Queries) DeleteEntry(ctx context.Context, arg DeleteEntryParams) (int64
 }
 
 const getEntry = `-- name: GetEntry :one
-SELECT id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at FROM expenses.entries WHERE id = $1
+SELECT id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent FROM expenses.entries WHERE id = $1
 `
 
 // GetEntry fetches one expense by id. Who may see it is decided in Go
@@ -145,30 +162,38 @@ func (q *Queries) GetEntry(ctx context.Context, id int64) (ExpensesEntry, error)
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PerDiemType,
+		&i.BreakfastCovered,
+		&i.LunchCovered,
+		&i.DinnerCovered,
+		&i.MealBreakfastPercent,
+		&i.MealLunchPercent,
+		&i.MealDinnerPercent,
 	)
 	return i, err
 }
 
 const insertEntry = `-- name: InsertEntry :one
 INSERT INTO expenses.entries (
-    user_id, created_by_user_id, kind, entry_date, description,
+    user_id, created_by_user_id, claim_id, kind, entry_date, description,
     category_id, supplier, paid_by, currency, gross_amount, vat_amount,
     distance_km, from_place, to_place, passengers, rate, passenger_rate,
     project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount,
     created_at, updated_at
 ) VALUES (
-    $1, $2, $3, $4, $5,
-    $6, $7, $8, $9, $10, $11,
-    $12, $13, $14, $15, $16, $17,
-    $18, $19, $20, $21, $22, $23,
-    $24::timestamptz, $24::timestamptz
+    $1, $2, $3, $4, $5, $6,
+    $7, $8, $9, $10, $11, $12,
+    $13, $14, $15, $16, $17, $18,
+    $19, $20, $21, $22, $23, $24,
+    $25::timestamptz, $25::timestamptz
 )
-RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at
+RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent
 `
 
 type InsertEntryParams struct {
 	UserID          uuid.UUID
 	CreatedByUserID uuid.UUID
+	ClaimID         *int64
 	Kind            string
 	EntryDate       pgtype.Date
 	Description     string
@@ -199,10 +224,15 @@ type InsertEntryParams struct {
 // instant, supplied by the caller from Deps.Clock(); status and revision take
 // the column defaults ('draft', 1). created_by_user_id is whoever made the
 // request, which is not always user_id, the person the expense concerns.
+// claim_id is the travel claim the expense is a line of, NULL for a standalone
+// one; a line's own status column stays 'draft' and is never read, because
+// everything status-shaped about it is the claim's (see unitOf in
+// authorize.go).
 func (q *Queries) InsertEntry(ctx context.Context, arg InsertEntryParams) (ExpensesEntry, error) {
 	row := q.db.QueryRow(ctx, insertEntry,
 		arg.UserID,
 		arg.CreatedByUserID,
+		arg.ClaimID,
 		arg.Kind,
 		arg.EntryDate,
 		arg.Description,
@@ -271,24 +301,35 @@ func (q *Queries) InsertEntry(ctx context.Context, arg InsertEntryParams) (Expen
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PerDiemType,
+		&i.BreakfastCovered,
+		&i.LunchCovered,
+		&i.DinnerCovered,
+		&i.MealBreakfastPercent,
+		&i.MealLunchPercent,
+		&i.MealDinnerPercent,
 	)
 	return i, err
 }
 
 const listEntries = `-- name: ListEntries :many
-SELECT id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at FROM expenses.entries
+SELECT e.id, e.user_id, e.created_by_user_id, e.claim_id, e.kind, e.entry_date, e.description, e.category_id, e.supplier, e.paid_by, e.currency, e.gross_amount, e.vat_amount, e.distance_km, e.from_place, e.to_place, e.passengers, e.rate, e.passenger_rate, e.rate_overridden_by_user_id, e.rate_table_value, e.passenger_rate_table_value, e.project_id, e.billing_line_id, e.billable, e.markup_percent, e.bill_rate_per_km, e.bill_amount, e.status, e.submitted_at, e.decided_at, e.decided_by_user_id, e.rejection_reason, e.reimbursed_at, e.reimbursed_by_user_id, e.reimbursement_reference, e.reimbursement_date, e.invoiced_at, e.invoiced_by_user_id, e.invoice_reference, e.revision, e.created_at, e.updated_at, e.per_diem_type, e.breakfast_covered, e.lunch_covered, e.dinner_covered, e.meal_breakfast_percent, e.meal_lunch_percent, e.meal_dinner_percent FROM expenses.entries e
+LEFT JOIN expenses.claims c ON c.id = e.claim_id
 WHERE ($1::boolean
-       OR user_id = $2::uuid
-       OR (project_id IS NOT NULL AND project_id = ANY($3::integer[])))
-  AND ($4::uuid IS NULL OR user_id = $4::uuid)
-  AND ($5::integer IS NULL OR project_id = $5::integer)
-  AND ($6::text IS NULL OR status = $6::text)
-  AND ($7::text IS NULL OR kind = $7::text)
-  AND ($8::date IS NULL OR entry_date >= $8::date)
-  AND ($9::date IS NULL OR entry_date <= $9::date)
-  AND ($10::boolean IS NULL OR (reimbursed_at IS NOT NULL) = $10::boolean)
-ORDER BY entry_date DESC, id DESC
-LIMIT $12 OFFSET $11
+       OR e.user_id = $2::uuid
+       OR (e.project_id IS NOT NULL AND e.project_id = ANY($3::integer[])))
+  AND ($4::uuid IS NULL OR e.user_id = $4::uuid)
+  AND ($5::integer IS NULL OR e.project_id = $5::integer)
+  AND ($6::bigint IS NULL OR e.claim_id = $6::bigint)
+  AND ($7::boolean IS NULL OR (e.claim_id IS NULL) = $7::boolean)
+  AND ($8::text IS NULL OR COALESCE(c.status, e.status) = $8::text)
+  AND ($9::text IS NULL OR e.kind = $9::text)
+  AND ($10::date IS NULL OR e.entry_date >= $10::date)
+  AND ($11::date IS NULL OR e.entry_date <= $11::date)
+  AND ($12::boolean IS NULL
+       OR (COALESCE(c.reimbursed_at, e.reimbursed_at) IS NOT NULL) = $12::boolean)
+ORDER BY e.entry_date DESC, e.id DESC
+LIMIT $14 OFFSET $13
 `
 
 type ListEntriesParams struct {
@@ -297,6 +338,8 @@ type ListEntriesParams struct {
 	ManagedProjectIds []int32
 	UserID            *uuid.UUID
 	ProjectID         *int32
+	ClaimID           *int64
+	Standalone        *bool
 	Status            *string
 	Kind              *string
 	FromDate          pgtype.Date
@@ -315,6 +358,8 @@ func (q *Queries) ListEntries(ctx context.Context, arg ListEntriesParams) ([]Exp
 		arg.ManagedProjectIds,
 		arg.UserID,
 		arg.ProjectID,
+		arg.ClaimID,
+		arg.Standalone,
 		arg.Status,
 		arg.Kind,
 		arg.FromDate,
@@ -374,6 +419,13 @@ func (q *Queries) ListEntries(ctx context.Context, arg ListEntriesParams) ([]Exp
 			&i.Revision,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.PerDiemType,
+			&i.BreakfastCovered,
+			&i.LunchCovered,
+			&i.DinnerCovered,
+			&i.MealBreakfastPercent,
+			&i.MealLunchPercent,
+			&i.MealDinnerPercent,
 		); err != nil {
 			return nil, err
 		}
@@ -386,7 +438,7 @@ func (q *Queries) ListEntries(ctx context.Context, arg ListEntriesParams) ([]Exp
 }
 
 const lockEntry = `-- name: LockEntry :one
-SELECT id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at FROM expenses.entries WHERE id = $1 FOR UPDATE
+SELECT id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent FROM expenses.entries WHERE id = $1 FOR UPDATE
 `
 
 // LockEntry reads one expense and holds its row until the transaction ends.
@@ -440,6 +492,13 @@ func (q *Queries) LockEntry(ctx context.Context, id int64) (ExpensesEntry, error
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PerDiemType,
+		&i.BreakfastCovered,
+		&i.LunchCovered,
+		&i.DinnerCovered,
+		&i.MealBreakfastPercent,
+		&i.MealLunchPercent,
+		&i.MealDinnerPercent,
 	)
 	return i, err
 }
@@ -481,7 +540,7 @@ WHERE id = $23
   AND revision = $24
   AND status IN ('draft', 'rejected')
   AND ($25::boolean OR user_id = $26::uuid)
-RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at
+RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent
 `
 
 type UpdateEntryParams struct {
@@ -593,6 +652,13 @@ func (q *Queries) UpdateEntry(ctx context.Context, arg UpdateEntryParams) (Expen
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PerDiemType,
+		&i.BreakfastCovered,
+		&i.LunchCovered,
+		&i.DinnerCovered,
+		&i.MealBreakfastPercent,
+		&i.MealLunchPercent,
+		&i.MealDinnerPercent,
 	)
 	return i, err
 }

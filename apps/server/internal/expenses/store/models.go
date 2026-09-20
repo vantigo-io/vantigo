@@ -31,6 +31,32 @@ type ExpensesCategory struct {
 	UpdatedAt time.Time
 }
 
+type ExpensesClaim struct {
+	ID                     int64
+	UserID                 uuid.UUID
+	CreatedByUserID        uuid.UUID
+	Purpose                string
+	Destination            *string
+	Abroad                 bool
+	AbroadDayRate          pgtype.Numeric
+	AbroadCurrency         *string
+	DepartureAt            time.Time
+	ReturnAt               time.Time
+	ProjectID              *int32
+	Status                 string
+	SubmittedAt            *time.Time
+	DecidedAt              *time.Time
+	DecidedByUserID        *uuid.UUID
+	RejectionReason        *string
+	ReimbursedAt           *time.Time
+	ReimbursedByUserID     *uuid.UUID
+	ReimbursementReference *string
+	ReimbursementDate      pgtype.Date
+	Revision               int32
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+}
+
 type ExpensesEntry struct {
 	ID                      int64
 	UserID                  uuid.UUID
@@ -75,6 +101,13 @@ type ExpensesEntry struct {
 	Revision                int32
 	CreatedAt               time.Time
 	UpdatedAt               time.Time
+	PerDiemType             *string
+	BreakfastCovered        bool
+	LunchCovered            bool
+	DinnerCovered           bool
+	MealBreakfastPercent    pgtype.Numeric
+	MealLunchPercent        pgtype.Numeric
+	MealDinnerPercent       pgtype.Numeric
 }
 
 type ExpensesRate struct {

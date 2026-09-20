@@ -124,6 +124,7 @@ func bodyOfUpdate(b gen.ExpensesEntryUpdateRequest) entryBody {
 // afterwards, in entries.go, because it needs the rate table and the project.
 type parsedEntry struct {
 	Kind          string
+	ClaimID       *int64
 	Date          time.Time
 	Description   string
 	CategoryID    *int32
@@ -147,8 +148,12 @@ type parsedEntry struct {
 // installation's, which a mileage line takes and may not depart from;
 // projectsOn says whether this installation has the projects module at all
 // (decision X2), and when it does not, every project-shaped field is refused
-// on its own field.
-func parseEntry(body entryBody, defaultCurrency string, projectsOn bool) (parsedEntry, map[string][]string) {
+// on its own field. inClaim says the expense is a line of a travel claim, which
+// only relaxes what may be left out here: the claim's project is the line's, so
+// a billing line or a billable flag need not repeat it. Whether the caller may
+// put a line in that claim at all is asked afterwards, outside any transaction
+// (resolveClaimLine).
+func parseEntry(body entryBody, defaultCurrency string, projectsOn, inClaim bool) (parsedEntry, map[string][]string) {
 	var errs map[string][]string
 	add := func(field, msg string) {
 		if msg != "" {
@@ -156,15 +161,15 @@ func parseEntry(body entryBody, defaultCurrency string, projectsOn bool) (parsed
 		}
 	}
 
-	p := parsedEntry{Kind: strings.TrimSpace(body.Kind), Currency: defaultCurrency}
+	p := parsedEntry{Kind: strings.TrimSpace(body.Kind), Currency: defaultCurrency, ClaimID: body.ClaimID}
 	switch {
 	case p.Kind == kindPerDiem:
+		// The per diem day is the one kind that only ever exists inside a
+		// claim, and it arrives with its own arithmetic; until then it is
+		// refused with a message that says so rather than as "not a kind".
 		add("kind", "Per diem belongs to a travel claim, which arrives in a later delivery")
 	case !slices.Contains(entryKinds, p.Kind):
 		add("kind", fmt.Sprintf("'%s' is not an expense kind; must be one of %s", body.Kind, strings.Join(entryKinds, ", ")))
-	}
-	if body.ClaimID != nil {
-		add("claimId", "Travel claims arrive in a later delivery; an expense cannot belong to one yet")
 	}
 
 	if body.EntryDate.IsZero() {
@@ -206,7 +211,7 @@ func parseEntry(body entryBody, defaultCurrency string, projectsOn bool) (parsed
 	case kindMileage:
 		parseMileage(&p, body, defaultCurrency, add)
 	}
-	parseProjectFields(&p, body, add)
+	parseProjectFields(&p, body, inClaim, add)
 
 	if len(errs) > 0 {
 		return parsedEntry{}, errs
@@ -338,16 +343,19 @@ func refuseMileageFields(body entryBody, kind string, add func(field, msg string
 // a markup belongs to a billable outlay and a customer rate per kilometre to
 // billable mileage. Whether the person may actually book on the project is
 // asked of the project directory afterwards, outside any transaction.
-func parseProjectFields(p *parsedEntry, body entryBody, add func(field, msg string)) {
+func parseProjectFields(p *parsedEntry, body entryBody, inClaim bool, add func(field, msg string)) {
 	p.ProjectID = body.ProjectID
 	p.LineID = body.BillingLineID
 	requested := body.Billable != nil && *body.Billable
 	p.Billable = requested
 
-	if body.BillingLineID != nil && body.ProjectID == nil {
+	// A line inside a claim inherits the claim's project, so it need not name
+	// one; claimLineRules reports the same two refusals once the claim has
+	// answered whether it is on a project at all.
+	if body.BillingLineID != nil && body.ProjectID == nil && !inClaim {
 		add("billingLineId", "A billing line needs the project it belongs to")
 	}
-	if requested && body.ProjectID == nil {
+	if requested && body.ProjectID == nil && !inClaim {
 		add("billable", "Only an expense on a project can be billed on to a customer")
 	}
 

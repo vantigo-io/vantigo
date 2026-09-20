@@ -27,6 +27,7 @@ const (
 	invalidRateTitle     = "Invalid rate"
 	invalidCategoryTitle = "Invalid category"
 	invalidEntryTitle    = "Invalid expense"
+	invalidClaimTitle    = "Invalid travel claim"
 	invalidQueryTitle    = "Invalid query parameters"
 	invalidReceiptTitle  = "Invalid receipt"
 
@@ -88,6 +89,15 @@ func tooManyExportRows(limit int) apicommon.HttpValidationProblemDetails {
 // design §3.1 and §4.
 func invalidEntry(errs map[string][]string) apicommon.HttpValidationProblemDetails {
 	return apicommon.ValidationProblem(invalidEntryTitle, errs)
+}
+
+// invalidClaim is the 400 body for a travel claim whose fields did not pass
+// design §3.6. It is a title of its own rather than invalidEntry's: a claim is
+// a different thing from an expense, made at another moment, and a client
+// showing "this trip could not be saved" beside "this expense could not be
+// saved" should not have to read the field errors to know which it is.
+func invalidClaim(errs map[string][]string) apicommon.HttpValidationProblemDetails {
+	return apicommon.ValidationProblem(invalidClaimTitle, errs)
 }
 
 // invalidReceipt is the 400 body for a receipt upload that did not pass design
