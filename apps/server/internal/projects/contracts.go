@@ -46,9 +46,10 @@ func noteContractCall(ctx context.Context, method string) {
 }
 
 // productsVariant, productsVariants and productsListPrice are the product
-// catalog. deps.Products is the one optional contract here (D10): every caller
-// has already answered 409 for an installation without it, so none of these is
-// reached with a nil catalog.
+// catalog. deps.Products is one of the three optional contracts here — beside
+// deps.Actuals and deps.Expenses — and the only one whose absence is a refusal
+// rather than a shaped answer (D10): every caller has already answered 409 for
+// an installation without it, so none of these is reached with a nil catalog.
 func (s *server) productsVariant(ctx context.Context, id int32) (*contracts.VariantEntry, error) {
 	noteContractCall(ctx, "Products.Variant")
 	return s.deps.Products.Variant(ctx, id)

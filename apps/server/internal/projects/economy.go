@@ -17,8 +17,8 @@ import (
 )
 
 // This file is a project's economy (design §5, delivery B): what it budgeted
-// beside what has actually been logged against it. Four things run through
-// it.
+// beside what has actually been logged and spent against it. Five things run
+// through it.
 //
 // **Projects owns the view, its neighbours own the figures.** Nothing here
 // reads a time entry or an expense — depguard would not allow it and no SQL

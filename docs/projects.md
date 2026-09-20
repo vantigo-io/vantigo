@@ -584,12 +584,17 @@ three buckets of logged work do. `cost` is the **net**, the gross less the VAT,
 whoever paid; `amount` is what the *billable* lines will charge.
 
 - **`unpricedCount`** — billable lines, in any bucket, carrying no bill amount:
-  billable mileage with no customer rate, an outlay nobody has priced yet. They are
+  billable mileage with no customer rate, an outlay nobody has priced yet. Per diem
+  days are out of it — they are never billable, so they are not a price somebody
+  forgot to enter. They are
   counted and are in **no amount**, because a missing price is not a price of
   nothing — a surface showing what the project will bill has to say how many lines
   the figure is short by, exactly as `uncostedHours` does for the margin.
-- **`readyCount` / `readyAmount`** — what can go on an invoice today: the unit
-  approved, the line billable, a bill amount present, and not yet invoiced.
+- **`readyCount` / `readyAmount`** — what can go on an invoice today, on **five**
+  clauses: the unit approved, the line billable, a bill amount present,
+  `invoiced_at` not set, and **never a per diem day** — a subsistence allowance is
+  the company's to pay and never the customer's to be charged, so it is not ready
+  and never will be.
 - **`invoicedCount` / `invoicedAmount`** — how much of it has already left the
   building.
 - **`lastEntryDate`** — the most recently dated line **across every currency**, so
@@ -626,15 +631,19 @@ draft together, the basis the labour half has always used — never the approved
 bucket alone and never two different bases mixed; what is approved and what is not
 is shown by the buckets themselves (`actuals.approved/submitted/draft` and
 `expenses.approved/submitted/draft`). All four terms are in the project's own
-currency, added **exactly** and **rounded once** at the end.
+currency: **four across-bucket totals, each rounded once by the module that owns
+it**, added **exactly** in decimal, and **published once**. The addition itself
+never rounds — which is the claim worth making, and the only one that is literally
+true. (With today's providers the four totals already arrive at two decimals, so
+nothing is lost either way; the arithmetic is exact because a provider whose totals
+carry more places must not have them silently dropped.)
 
-That last point is why `cost.expenseCost` exists beside `cost.total`: the two halves
-of the cost are each rounded on their own for display, so a surface that subtracted
-them from the bill would be a cent or two out whenever either lands on a boundary.
-`expenseCost` is published so the UI can show both halves without doing the
-arithmetic, and `margin` is computed from the unrounded values. With
-`expenseTracking: false` there is no `expenseCost` and the margin is exactly the one
-it has always been.
+That is why `cost.expenseCost` exists beside `cost.total`: it lets a surface show
+the two halves of the cost without subtracting them from the bill itself, which
+would go a cent out whenever a provider's own total was rounded on the way. The
+published `margin` is not those figures recombined — it adds the same four totals
+exactly and publishes the result once. With `expenseTracking: false` there is no
+`expenseCost` and the margin is exactly the one it has always been.
 
 ### Per-line rows
 
@@ -656,6 +665,14 @@ somebody logged must appear somewhere.
 | Anyone who sees the project | ✓ | – | – | – |
 | Financial rights on the project (manager, `manage-all`, or `view-financials` on a project they can see) | ✓ | ✓ | ✓ | – |
 | The above **and** `projects:view-costs` | ✓ | ✓ | ✓ | ✓ |
+
+**No `expenses:access` is needed, and none is checked.** Whoever has financial
+rights on a project sees its expense aggregates here and on the portfolio without
+holding a single Expenses permission — exactly as they have always seen Time's
+hours and amounts without `time:access`. The aggregate is *the project's money*,
+which is what financial rights on the project are rights to; `expenses:access` is
+the right to use the Expenses app, where the same caller is answered 403 for the
+module's own endpoints. `internal/projects` names neither permission anywhere.
 
 **Expense cost is not labour cost.** The whole `expenses` block, `cost` figures
 included, needs financial rights and *not* `projects:view-costs`: what a receipt
@@ -796,6 +813,17 @@ exactly the milestones `milestoneReady` below lists. It is a count, not an amoun
 (the milestones may be in several currencies), a state now rather than a figure over
 the period like `activeProjects`, and it has no delta for the same reason a
 currency-mixed amount has no meaning.
+
+**The dashboard and the portfolio mean different things by "ready", deliberately.**
+`readyMilestones` and the `milestoneReady` attention items count ready
+**milestones** and nothing else, while the portfolio's `readyTotalAmount` and its
+KPI count **both halves**. The reason is the rule right above: the stats endpoints
+never call the expenses contract at all — nothing in them may, since a budget alert
+that counted receipts would be X12 broken — and a count that asked a provider would
+also have to answer for that provider being down, which an attention list merged
+from six modules must never do. So the dashboard says "there are milestones to
+invoice" and the portfolio says "here is everything there is to invoice"; whoever
+invoices works from the portfolio.
 
 `GET /stats/attention` gains four types, alongside the existing `projectOverdue`:
 
