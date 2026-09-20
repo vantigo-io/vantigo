@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+
+	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
 // This file is the travel claim as the **unit** that moves: submitted,
@@ -363,6 +365,14 @@ func TestExpensesClaimFlow_UnapproveRefusesAPaidOrInvoicedTrip(t *testing.T) {
 	if !mentions(errs["claimIds"], fmt.Sprintf("Travel claim %d holds expense %d, which has been invoiced", billed.Id, line.Id)) {
 		t.Errorf("errors %v do not name the invoiced line", errs)
 	}
+	// And the capability agrees with the refusal, on both doors: a queue that
+	// offered the button would be offering one the server answers 400 to.
+	if got := getClaim(t, admin, billed.Id); got.Capabilities.CanUnapprove {
+		t.Errorf("canUnapprove is true on a trip with an invoiced line, want the capability to say what the server does")
+	}
+	if got := getClaim(t, admin, paid.Id); got.Capabilities.CanUnapprove {
+		t.Errorf("canUnapprove is true on a trip that has been paid, want false")
+	}
 	if n := h.Count(t, `SELECT count(*) FROM expenses.claims WHERE id = $1 AND status = 'approved'`, billed.Id); n != 1 {
 		t.Errorf("the claim moved, want a refused unapprove to change nothing")
 	}
@@ -404,7 +414,18 @@ func TestExpensesClaimFlow_AMixedBatchIsAllOrNothing(t *testing.T) {
 	entry := createEntry(t, owner, outlayBody(nil))
 	claim := createClaim(t, owner, nil)
 	line := addLine(t, owner, claim.Id, outlayBody(nil))
+	addLine(t, owner, claim.Id, mileageBody(nil))
 	empty := createClaim(t, owner, map[string]any{"purpose": "Tom tur"})
+
+	// The trip's lines as the database holds them, which is what a refused batch
+	// must leave exactly as it found: the freeze writes a gross and moves a
+	// revision, so either moving is a half-frozen trip.
+	lineState := func() string {
+		return modtest.One[string](t, h.Harness,
+			`SELECT string_agg(id || ':' || revision || ':' || gross_amount || ':' || status, ',' ORDER BY id)
+			 FROM expenses.entries WHERE claim_id = $1`, claim.Id)
+	}
+	before := lineState()
 
 	// One bad id in either list stops the whole request.
 	errs := refused(t, owner, http.MethodPost, submitPath, map[string]any{
@@ -429,6 +450,17 @@ func TestExpensesClaimFlow_AMixedBatchIsAllOrNothing(t *testing.T) {
 	}, invalidSubmissionTitle)
 	if !mentions(errs["entryIds"], fmt.Sprintf("Expense %d belongs to travel claim %d; submit the claim", line.Id, claim.Id)) {
 		t.Errorf("errors %v do not point the line at its claim", errs)
+	}
+	// And that refusal left the trip alone in the database — the claim's own
+	// status and each line's revision and frozen gross. The claim was named in
+	// the very same request, so nothing about it may have been written before
+	// the refusal on the other list was reached.
+	if n := h.Count(t, `SELECT count(*) FROM expenses.claims
+		WHERE id = $1 AND status = 'draft' AND submitted_at IS NULL`, claim.Id); n != 1 {
+		t.Errorf("the trip moved, want a refused batch to leave it a draft")
+	}
+	if after := lineState(); after != before {
+		t.Errorf("the trip's lines are %s, want %s — a refused batch freezes nothing", after, before)
 	}
 
 	// And a batch every id of which may move, moves all of it and answers both
@@ -609,5 +641,69 @@ func TestExpensesClaimFlow_WithoutProjects_StillMovesTheWholeWay(t *testing.T) {
 	}
 	if got.BillableTotals != nil {
 		t.Errorf("billableTotals = %+v, want nothing at all without projects", got.BillableTotals)
+	}
+}
+
+// A project manager sees the trips on their own projects and nothing else — a
+// colleague's **project-less** trip is not theirs to approve and reads as the
+// unknown id, byte for byte, on every door. It is the 404-shaped leak an
+// authorization regression would open first, because a project-less claim is the
+// one case where the managed-projects predicate has nothing to match on.
+func TestExpensesClaimFlow_AProjectlessTripIsNotAProjectManagersToSee(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h)
+	manager, _ := signInAs(t, h, projectKraftVerket, roleManager)
+
+	claim := createClaim(t, owner, map[string]any{"purpose": "Uten prosjekt"})
+	addLine(t, owner, claim.Id, outlayBody(nil))
+	submitClaims(t, owner, claim.Id)
+
+	// The manager manages a project, so they pass the whole-request gate and are
+	// answered per id — with the message an id that does not exist gets.
+	for _, tc := range []struct {
+		path, title string
+	}{
+		{approvePath, invalidApprovalTitle},
+		{unapprovePath, invalidApprovalTitle},
+	} {
+		errs := refused(t, manager, http.MethodPost, tc.path, claimFlowBody([]int64{claim.Id}, nil), tc.title)
+		want := fmt.Sprintf("Travel claim %d was not found", claim.Id)
+		if !mentions(errs["claimIds"], want) {
+			t.Errorf("%s answered %v, want %q — a project-less trip is nobody's project manager's", tc.path, errs, want)
+		}
+	}
+	if r := manager.Do(http.MethodGet, claimPath(claim.Id), nil); r.Status != http.StatusNotFound {
+		t.Errorf("GET the trip: status %d body %s, want 404", r.Status, r.Body)
+	}
+	if page := listClaims(t, manager, ""); len(page.Data) != 0 {
+		t.Errorf("the manager's list holds %+v, want no project-less trip of somebody else's", page.Data)
+	}
+}
+
+// Self-approval is allowed, here as on a standalone expense: an owner who holds
+// expenses:approve approves their own trip, and nothing special-cases them out.
+// It is a deliberate decision of this module rather than an oversight, so it is
+// pinned.
+func TestExpensesClaimFlow_AnOwnerWhoApprovesApprovesTheirOwnTrip(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, ownerID := signIn(t, h, "expenses:approve")
+
+	claim := createClaim(t, owner, nil)
+	addLine(t, owner, claim.Id, outlayBody(nil))
+	submitClaims(t, owner, claim.Id)
+
+	submitted := getClaim(t, owner, claim.Id)
+	if !submitted.Capabilities.CanApprove {
+		t.Errorf("capabilities = %+v, want the owner's own canApprove", submitted.Capabilities)
+	}
+	approveClaims(t, owner, claim.Id)
+	got := getClaim(t, owner, claim.Id)
+	switch {
+	case got.Status != "approved":
+		t.Errorf("the claim is %s, want its owner's own approval to have taken", got.Status)
+	case got.Decision == nil || got.Decision.By.UserId != ownerID:
+		t.Errorf("decision = %+v, want it stamped by the owner who approved it", got.Decision)
 	}
 }

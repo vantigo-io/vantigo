@@ -59,9 +59,14 @@ const (
 // claimEntityID is one travel claim's entity id among the attention items.
 func claimEntityID(id int64) string { return claimEntityPrefix + strconv.FormatInt(id, 10) }
 
-// rejectedAttentionLimit is how many of the caller's own rejected expenses the
-// dashboard is told about. It is a dashboard rather than a list: somebody with
-// a hundred rejections has a page to open.
+// rejectedAttentionLimit is how many of the caller's own sent-back **units** —
+// standalone expenses and travel claims together — the dashboard is told about.
+// It is a dashboard rather than a list: somebody with a hundred rejections has a
+// page to open.
+//
+// It bounds each of the two queries as well as their merge, which is why both
+// read it: neither can hold more than the cap on its own, so the merge sorts at
+// most twice the cap and cuts it to the cap.
 const rejectedAttentionLimit = 20
 
 // GetExpensesStats Get the caller's expense key figures
@@ -338,6 +343,12 @@ func (s *server) GetExpensesStatsAttention(ctx context.Context, _ gen.GetExpense
 
 	items := make(gen.GetExpensesStatsAttention200JSONResponse,
 		0, len(rejected)+len(rejectedClaims)+len(groups)+1)
+	// What was sent back is one list to the person reading it, whichever unit
+	// each item is, so the cap is taken across both: they are gathered here,
+	// merged newest decision first and cut to the cap before anything else is
+	// added. A person with twenty rejected expenses and twenty rejected trips is
+	// told about twenty things, not forty.
+	sentBack := make([]gen.ExpensesStatsAttentionItem, 0, len(rejected)+len(rejectedClaims))
 	for _, r := range rejected {
 		if r.DecidedAt == nil {
 			// StatsMyRejected's own predicate excludes these, so this cannot
@@ -346,7 +357,7 @@ func (s *server) GetExpensesStatsAttention(ctx context.Context, _ gen.GetExpense
 			continue
 		}
 		id := strconv.FormatInt(r.ID, 10)
-		items = append(items, gen.ExpensesStatsAttentionItem{
+		sentBack = append(sentBack, gen.ExpensesStatsAttentionItem{
 			Id:         id,
 			Type:       attentionExpenseRejected,
 			Title:      r.Description,
@@ -364,7 +375,7 @@ func (s *server) GetExpensesStatsAttention(ctx context.Context, _ gen.GetExpense
 			continue
 		}
 		id := claimEntityID(r.ID)
-		items = append(items, gen.ExpensesStatsAttentionItem{
+		sentBack = append(sentBack, gen.ExpensesStatsAttentionItem{
 			Id:         id,
 			Type:       attentionExpenseRejected,
 			Title:      r.Purpose,
@@ -372,6 +383,16 @@ func (s *server) GetExpensesStatsAttention(ctx context.Context, _ gen.GetExpense
 			EntityId:   id,
 		})
 	}
+	// Stable, so two units decided in the same instant — which a batch rejection
+	// makes of everything in it — keep the order their own query read them in:
+	// the newer id first.
+	slices.SortStableFunc(sentBack, func(a, b gen.ExpensesStatsAttentionItem) int {
+		return b.OccurredAt.Compare(a.OccurredAt)
+	})
+	if len(sentBack) > rejectedAttentionLimit {
+		sentBack = sentBack[:rejectedAttentionLimit]
+	}
+	items = append(items, sentBack...)
 	slices.SortFunc(groups, func(a, b store.StatsApprovalWaitingGroupsRow) int {
 		return cmp.Or(
 			a.OldestSubmittedAt.Compare(b.OldestSubmittedAt),
@@ -394,8 +415,10 @@ func (s *server) GetExpensesStatsAttention(ctx context.Context, _ gen.GetExpense
 			Type: attentionReimbursementWaiting,
 			// The host writes this sentence from the type and the count; what
 			// is here is the fallback for a client that does not know the
-			// type, and it is deliberately not translated.
-			Title:      fmt.Sprintf("%d expenses are waiting to be reimbursed", p.Waiting),
+			// type, and it is deliberately not translated. It counts units —
+			// standalone expenses and whole travel claims — so it says so:
+			// "expenses" alone would be a lie about a figure that holds trips.
+			Title:      fmt.Sprintf("%d expenses and travel claims are waiting to be reimbursed", p.Waiting),
 			OccurredAt: p.OldestDecidedAt.UTC(),
 			EntityId:   reimbursementsEntity,
 			Count:      apicommon.Ptr(int32(p.Waiting)),

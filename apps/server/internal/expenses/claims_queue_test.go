@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 // This file is the three reads a travel claim had to become a unit of: the
@@ -217,14 +218,19 @@ func TestExpensesClaimExport_WritesOneRowPerLineUnderItsUnit(t *testing.T) {
 	day := addLine(t, anna, claim.Id, perDiemBody(map[string]any{"entryDate": "2026-03-11"}))
 	approvedClaimBy(t, anna, admin, claim.Id)
 
+	// The trip's two lines stand together under it, in their own date order,
+	// and the loose expense follows: the file is ordered by the person, then by
+	// the **unit's** own day — the trip's departure, an expense's own date — and
+	// only then by the line. A trip's lines are never split by a loose expense
+	// dated between them, which is what the Unit cell is there to group.
 	want := csvBOM + strings.Join([]string{
 		"Unit;Purpose;Employee;User id;Date;Kind;Description;Category;Currency;Gross;VAT;Owed;Project code",
 		fmt.Sprintf("claim %d;\"Montasje; \"\"Bergen\"\"\";Anna Ås;%s;2026-03-09;mileage;Til anlegget;;NOK;636,00;;636,00;",
 			claim.Id, annaID),
-		fmt.Sprintf("expense %d;;Anna Ås;%s;2026-03-10;outlay;Løst utlegg;Materials;NOK;1250,00;;1250,00;",
-			loose.Id, annaID),
 		fmt.Sprintf("claim %d;\"Montasje; \"\"Bergen\"\"\";Anna Ås;%s;2026-03-11;per_diem;day_6_12;;NOK;397,00;;397,00;",
 			claim.Id, annaID),
+		fmt.Sprintf("expense %d;;Anna Ås;%s;2026-03-10;outlay;Løst utlegg;Materials;NOK;1250,00;;1250,00;",
+			loose.Id, annaID),
 		"",
 	}, "\r\n")
 	if got := string(exportCSV(t, admin, "").Body); got != want {
@@ -252,6 +258,41 @@ func TestExpensesClaimExport_WritesOneRowPerLineUnderItsUnit(t *testing.T) {
 		if !mentions(errs["claimIds"], wanted) {
 			t.Errorf("errors %v do not say %q", errs["claimIds"], wanted)
 		}
+	}
+}
+
+// A line of a trip named on entryIds is refused the way every other standalone
+// operation refuses one, pointing at the claim. The unit a payroll run pays is
+// the whole trip, so half of one must never reach the file: a payroll system
+// reading `claim 7;…;1250,00` has no way to know the trip's other line was left
+// out.
+func TestExpensesClaimExport_RefusesALineNamedOnEntryIds(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	admin, _ := signIn(t, h, "expenses:manage", "expenses:approve")
+	anna, _ := signIn(t, h)
+
+	claim := createClaim(t, anna, map[string]any{"purpose": "Montasje"})
+	line := addLine(t, anna, claim.Id, outlayBody(nil))
+	addLine(t, anna, claim.Id, mileageBody(map[string]any{"description": "Til anlegget"}))
+	approvedClaimBy(t, anna, admin, claim.Id)
+
+	query := fmt.Sprintf("?entryIds=%d", line.Id)
+	errs := refusedExport(t, admin, query)
+	want := fmt.Sprintf("Expense %d belongs to travel claim %d; export the claim", line.Id, claim.Id)
+	if !mentions(errs["entryIds"], want) {
+		t.Errorf("errors %v do not point the line at its claim", errs)
+	}
+	// Nothing was written: the answer is the refusal, not a file holding one
+	// line of the trip under the trip's own unit cell.
+	r := admin.Do(http.MethodGet, reimbursementsExportPath+query, nil)
+	if strings.Contains(r.Header("Content-Type"), "text/csv") || strings.Contains(string(r.Body), "Kabel") {
+		t.Errorf("the refused export answered %s %q, want no file at all", r.Header("Content-Type"), r.Body)
+	}
+	// Asked for as the trip it is, it exports whole — both lines.
+	whole := string(exportCSV(t, admin, fmt.Sprintf("?claimIds=%d", claim.Id)).Body)
+	if !strings.Contains(whole, "Kabel") || !strings.Contains(whole, "Til anlegget") {
+		t.Errorf("the trip's own export = %q, want both of its lines", whole)
 	}
 }
 
@@ -353,6 +394,54 @@ func TestExpensesClaimStats_ARejectedTripIsOneAttentionItem(t *testing.T) {
 	payroll := attentionOfType(getAttention(t, boss), "reimbursementWaiting")
 	if len(payroll) != 1 || payroll[0].Count == nil || *payroll[0].Count != 2 {
 		t.Errorf("the payroll item is %+v, want two units waiting", payroll)
+	}
+}
+
+// The dashboard's cap on what was sent back is **per person**, not per unit
+// kind: somebody with a dozen rejected expenses and a dozen rejected trips is
+// told about the twenty newest of the two together, not about forty things.
+func TestExpensesClaimStats_TheRejectedCapCountsBothUnitsTogether(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	boss, _ := signIn(t, h, "expenses:approve")
+	owner, _ := signIn(t, h)
+
+	const looseCount, tripCount = 12, 9
+	entries := make([]int64, 0, looseCount)
+	for i := range looseCount {
+		entries = append(entries, createEntry(t, owner, outlayBody(map[string]any{
+			"description": fmt.Sprintf("Utlegg %d", i),
+		})).Id)
+	}
+	claims := make([]int64, 0, tripCount)
+	for i := range tripCount {
+		claim := createClaim(t, owner, map[string]any{"purpose": fmt.Sprintf("Tur %d", i)})
+		addLine(t, owner, claim.Id, outlayBody(nil))
+		claims = append(claims, claim.Id)
+	}
+	submitEntries(t, owner, entries...)
+	rejectEntries(t, boss, "Mangler bilag", entries...)
+	// The trips are sent back after the expenses, so the newest twenty are all
+	// nine trips and the eleven newest expenses.
+	h.Advance(time.Hour)
+	submitClaims(t, owner, claims...)
+	rejectClaims(t, boss, "Mangler bilag", claims...)
+
+	items := attentionOfType(getAttention(t, owner), "expenseRejected")
+	if len(items) != 20 {
+		t.Fatalf("%d rejected items, want the 20 the cap allows across both lists", len(items))
+	}
+	seen := map[string]bool{}
+	for _, item := range items {
+		seen[item.EntityId] = true
+	}
+	for _, id := range claims {
+		if !seen[fmt.Sprintf("claim/%d", id)] {
+			t.Errorf("trip %d is not among the newest twenty, want every one of them — they were sent back last", id)
+		}
+	}
+	if seen[fmt.Sprint(entries[0])] {
+		t.Errorf("expense %d is in the list, want the oldest one cut to make room for the trips", entries[0])
 	}
 }
 

@@ -522,11 +522,17 @@ func entriesOfExport(rows []store.ListReimbursementRowsRow) []store.ExpensesEntr
 }
 
 // missingExportIDs is the per-id refusals of an export that named ids: an id
-// that names nothing reads as the unknown id's "was not found", and one that
-// names a unit a payroll run does not pay for says so. Nothing is left out of a
-// payroll file silently — a file missing a line nobody was told about is worse
-// than no file. The messages are keyed by the list that named the id, as every
-// batch here keys them.
+// that names nothing reads as the unknown id's "was not found", one that names
+// one of a travel claim's lines is pointed at the claim, and one that names a
+// unit a payroll run does not pay for says so. Nothing is left out of a payroll
+// file silently — a file missing a line nobody was told about is worse than no
+// file — and nothing goes into one by halves either, which is what the claim's
+// line is refused for. The messages are keyed by the list that named the id, as
+// every batch here keys them.
+//
+// The claim's line is judged before the row set is consulted, exactly as the
+// six batches judge it: naming the claim as well does not make its line's own id
+// acceptable, and a client that sent both is told which half to drop.
 func missingExportIDs(ids, claimIDs []int64, rows []store.ListReimbursementRowsRow,
 	existing []store.ExpensesEntry, existingClaims []store.ExpensesClaim,
 ) map[string][]string {
@@ -538,9 +544,9 @@ func missingExportIDs(ids, claimIDs []int64, rows []store.ListReimbursementRowsR
 			exportableClaims[*row.ExpensesEntry.ClaimID] = true
 		}
 	}
-	known := make(map[int64]bool, len(existing))
+	known := make(map[int64]store.ExpensesEntry, len(existing))
 	for _, row := range existing {
-		known[row.ID] = true
+		known[row.ID] = row
 	}
 	knownClaims := make(map[int64]bool, len(existingClaims))
 	for _, claim := range existingClaims {
@@ -548,10 +554,13 @@ func missingExportIDs(ids, claimIDs []int64, rows []store.ListReimbursementRowsR
 	}
 	var refusals, claimRefusals []string
 	for _, id := range ids {
+		row, found := known[id]
 		switch {
-		case exportable[id]:
-		case !known[id]:
+		case !found:
 			refusals = append(refusals, notFoundRefusal(id))
+		case row.ClaimID != nil:
+			refusals = append(refusals, claimLineRefusal(id, *row.ClaimID, "export the claim"))
+		case exportable[id]:
 		default:
 			refusals = append(refusals, fmt.Sprintf(
 				"Expense %d cannot be exported: only an approved expense that owes somebody something can be", id))
@@ -604,15 +613,47 @@ const (
 	csvUnitClaim   = "claim"
 )
 
+// csvUnit is what one row of the file belongs to, and what the file groups by:
+// the day the unit is read at — a standalone expense's own date, a trip's
+// departure day in the installation's own zone — and which unit it is.
+//
+// The day comes first because a payroll file is read chronologically; the unit
+// then keeps a trip's lines together under it, whatever dates they carry. A trip
+// sorts before a loose expense that starts the same day, because the trip is the
+// thing that spans the days after it.
+type csvUnit struct {
+	day  time.Time
+	kind int
+	id   int64
+}
+
+// csvUnitOf is one row's unit.
+func csvUnitOf(row store.ListReimbursementRowsRow) csvUnit {
+	if row.ExpensesEntry.ClaimID != nil {
+		return csvUnit{day: row.ClaimDepartureDay.Time, kind: 0, id: *row.ExpensesEntry.ClaimID}
+	}
+	return csvUnit{day: row.ExpensesEntry.EntryDate.Time, kind: 1, id: row.ExpensesEntry.ID}
+}
+
 // reimbursementCSV is rows as the payroll file, with every name already
-// resolved (namesFor). Rows come out by the person's display name, then by
-// date and id: a payroll file is read by a person, and the database's own
-// order is by a uuid nobody can read.
+// resolved (namesFor). Rows come out by the person's display name, then by the
+// **unit** — its own day, and then the unit itself — and inside a unit by the
+// line's date and id.
+//
+// The unit is part of the key rather than only a column because the file has a
+// Unit cell to group by and it should not be the reader's job to do the
+// grouping: a trip's forty lines stand together, in date order, under the trip
+// they were on, and the next unit begins after them. Nothing here reads the
+// database's own order, which is by a uuid nobody can read.
 func reimbursementCSV(rows []store.ListReimbursementRowsRow, names entryNames) ([]byte, error) {
 	ordered := slices.Clone(rows)
 	slices.SortFunc(ordered, func(a, b store.ListReimbursementRowsRow) int {
+		ua, ub := csvUnitOf(a), csvUnitOf(b)
 		return cmp.Or(
 			strings.Compare(displayNameOf(a.ExpensesEntry.UserID, names), displayNameOf(b.ExpensesEntry.UserID, names)),
+			ua.day.Compare(ub.day),
+			cmp.Compare(ua.kind, ub.kind),
+			cmp.Compare(ua.id, ub.id),
 			a.ExpensesEntry.EntryDate.Time.Compare(b.ExpensesEntry.EntryDate.Time),
 			cmp.Compare(a.ExpensesEntry.ID, b.ExpensesEntry.ID),
 		)

@@ -533,7 +533,7 @@ export interface paths {
          * Export what is owed back as CSV
          * @description The same expenses the reimbursement list holds, as the file a payroll system reads: UTF-8 with a byte order mark, semicolon-separated, decimal comma, ISO dates, CRLF line ends and a header row — the form a Norwegian Excel opens correctly without an import dialog. Quoting is RFC 4180's with the semicolon as the separator: a value holding a semicolon, a quote or a line break is quoted and its quotes doubled. A text cell beginning with '=', '+', '-', '@', a tab or a carriage return is prefixed with an apostrophe, so a description nobody vetted cannot become a formula in somebody's spreadsheet.
          *
-         *     The columns, in order: unit, purpose, employee display name, user id, date, kind, description, category, currency, gross, VAT, owed, project code. One row per *line*: a standalone expense is its own line, and a travel claim writes one row per expense it holds. The unit cell says which — 'expense 2001' or 'claim 1012' — and purpose carries the trip's own, empty for a standalone expense. A per diem day has no description of its own, so its description cell carries the per diem type and its category cell is empty. Rows are ordered by the person's display name, then by date and id. The VAT and project code cells are empty when there is none — including in an installation with no projects module, which keeps the column so a payroll system need not know which modules an installation runs.
+         *     The columns, in order: unit, purpose, employee display name, user id, date, kind, description, category, currency, gross, VAT, owed, project code. One row per *line*: a standalone expense is its own line, and a travel claim writes one row per expense it holds. The unit cell says which — 'expense 2001' or 'claim 1012' — and purpose carries the trip's own, empty for a standalone expense. A per diem day has no description of its own, so its description cell carries the per diem type and its category cell is empty. Rows are ordered by the person's display name, then by the unit's own day — a standalone expense's date, a travel claim's departure day in the installation's time zone — then by the unit itself, and inside a unit by the line's date and id: a trip's lines stand together under it rather than being split by a loose expense dated between them. The VAT and project code cells are empty when there is none — including in an installation with no projects module, which keeps the column so a payroll system need not know which modules an installation runs.
          *
          *     It takes the list's own filters, or explicit entryIds and claimIds instead of them, and it is deliberately not paged: half a payroll file is worse than none, so an export of more than 5000 rows is refused and asks for a narrower filter. The cap counts rows, so a trip of forty lines costs forty of them.
          */
@@ -823,7 +823,7 @@ export interface components {
             canMarkReimbursed: boolean;
             /** @description Whether the caller may submit it — its owner or expenses:manage, while it is a draft or rejected, and not before the period lock. */
             canSubmit: boolean;
-            /** @description Whether the caller may return it to a draft — an approver of it or expenses:manage, while it is approved and has not been reimbursed. */
+            /** @description Whether the caller may return it to a draft — an approver of it or expenses:manage, while it is approved and has been neither reimbursed nor left holding a line that has been invoiced. */
             canUnapprove: boolean;
             /** @description Whether the caller may take the reimbursement back — expenses:manage, while it stands reimbursed. */
             canUndoReimbursed: boolean;
@@ -3709,7 +3709,7 @@ export interface operations {
                 from?: string;
                 /** @description The latest entry date to include. Ignored when entryIds is given. */
                 to?: string;
-                /** @description Exactly these standalone expenses instead of the filters, together with claimIds. An id that is not one the export could hold refuses the whole file rather than being left out of it silently, and a selection that is present but names nothing at all is refused rather than read as "everything" — a button with nothing ticked should leave both out and send the filters. */
+                /** @description Exactly these standalone expenses instead of the filters, together with claimIds. An id that is not one the export could hold refuses the whole file rather than being left out of it silently, and a selection that is present but names nothing at all is refused rather than read as "everything" — a button with nothing ticked should leave both out and send the filters. One of a travel claim's lines is refused here and pointed at its claim, even when claimIds names that claim too — a payroll file holds a trip whole or not at all. */
                 entryIds?: number[];
                 /** @description Exactly these travel claims instead of the filters, together with entryIds. Each writes one row per line of the trip, under its own unit cell. */
                 claimIds?: number[];

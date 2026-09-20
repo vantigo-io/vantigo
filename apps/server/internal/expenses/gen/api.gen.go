@@ -127,7 +127,7 @@ type ExpensesClaimCapabilities struct {
 	// CanSubmit Whether the caller may submit it — its owner or expenses:manage, while it is a draft or rejected, and not before the period lock.
 	CanSubmit bool `json:"canSubmit"`
 
-	// CanUnapprove Whether the caller may return it to a draft — an approver of it or expenses:manage, while it is approved and has not been reimbursed.
+	// CanUnapprove Whether the caller may return it to a draft — an approver of it or expenses:manage, while it is approved and has been neither reimbursed nor left holding a line that has been invoiced.
 	CanUnapprove bool `json:"canUnapprove"`
 
 	// CanUndoReimbursed Whether the caller may take the reimbursement back — expenses:manage, while it stands reimbursed.
@@ -1112,7 +1112,7 @@ type GetExpensesReimbursementsExportCsvParams struct {
 	// To The latest entry date to include. Ignored when entryIds is given.
 	To *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
 
-	// EntryIds Exactly these standalone expenses instead of the filters, together with claimIds. An id that is not one the export could hold refuses the whole file rather than being left out of it silently, and a selection that is present but names nothing at all is refused rather than read as "everything" — a button with nothing ticked should leave both out and send the filters.
+	// EntryIds Exactly these standalone expenses instead of the filters, together with claimIds. An id that is not one the export could hold refuses the whole file rather than being left out of it silently, and a selection that is present but names nothing at all is refused rather than read as "everything" — a button with nothing ticked should leave both out and send the filters. One of a travel claim's lines is refused here and pointed at its claim, even when claimIds names that claim too — a payroll file holds a trip whole or not at all.
 	EntryIds *[]int64 `form:"entryIds,omitempty" json:"entryIds,omitempty"`
 
 	// ClaimIds Exactly these travel claims instead of the filters, together with entryIds. Each writes one row per line of the trip, under its own unit cell.

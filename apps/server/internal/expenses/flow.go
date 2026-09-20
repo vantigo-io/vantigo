@@ -49,11 +49,16 @@ import (
 // two batches naming each other's claims unable to cross. See LockBatchEntries'
 // own comment for the cycle that one statement closes.
 
-// maxBatchIDs bounds every batch's ids, matching the contract's maxItems. No
-// request-validation middleware sits in front of these handlers, so the handler
-// enforces its own contract: without a cap, LockEntries would row-lock and
-// warmRoles would look up a project role for as many ids as the body's 1 MiB
-// cap allows.
+// maxBatchIDs bounds every batch's ids. It is deliberately not a maxItems on
+// either array in the contract: the cap is on the **distinct units across both
+// lists**, so a longer array that names 500 units or fewer is accepted and a
+// schema bound would refuse it. The schema's description states that rule, and
+// batchUnits is what enforces it.
+//
+// No request-validation middleware sits in front of these handlers anyway, so
+// the handler enforces its own contract: without a cap, LockEntries would
+// row-lock and warmRoles would look up a project role for as many ids as the
+// body's 1 MiB cap allows.
 const maxBatchIDs = 500
 
 // rejectionReasonMaxLength is the rejection_reason column's width.

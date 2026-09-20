@@ -130,11 +130,24 @@ ORDER BY c.user_id, c.departure_at, c.id;
 -- on.
 --
 -- The same predicate again, narrowed either by the list's filters or by explicit
--- ids (all_ids false — an expense named by entry_ids, or every line of a claim
--- named by claim_ids). It reads one row more than the cap so the caller can tell
--- "this is the whole file" from "there is more than a file may hold" without a
--- second count.
-SELECT sqlc.embed(e), c.purpose AS claim_purpose FROM expenses.entries e
+-- ids (all_ids false — a **standalone** expense named by entry_ids, or every
+-- line of a claim named by claim_ids). It reads one row more than the cap so the
+-- caller can tell "this is the whole file" from "there is more than a file may
+-- hold" without a second count.
+--
+-- claim_id IS NULL on the entry_ids branch is the module's rule that a claim's
+-- line is never named on its own: the unit a payroll run pays is the whole trip,
+-- so a file must never hold one line of one. Go refuses such an id by id before
+-- this runs (missingExportIDs), so the guard is the last line rather than the
+-- rule — but here the two together are what keeps half a trip out of payroll.
+--
+-- The claim's departure day comes with each of its lines as well as its
+-- purpose: it is the day the *unit* is read at, which is what the file groups a
+-- trip's lines by, and it is a day in the installation's own zone rather than an
+-- instant (reimbursementCSV).
+SELECT sqlc.embed(e), c.purpose AS claim_purpose,
+       (c.departure_at AT TIME ZONE @time_zone::text)::date AS claim_departure_day
+FROM expenses.entries e
 LEFT JOIN expenses.claims c ON c.id = e.claim_id
 WHERE e.gross_amount > 0
   AND NOT (e.kind = 'outlay' AND (e.paid_by IS NULL OR e.paid_by <> 'employee'))
@@ -144,7 +157,9 @@ WHERE e.gross_amount > 0
       OR (c.id IS NOT NULL AND c.status = 'approved'
        AND (@by_ids::boolean OR @reimbursed::boolean = (c.reimbursed_at IS NOT NULL)))
   )
-  AND (@all_ids::boolean OR e.id = ANY(@entry_ids::bigint[]) OR e.claim_id = ANY(@claim_ids::bigint[]))
+  AND (@all_ids::boolean
+       OR (e.claim_id IS NULL AND e.id = ANY(@entry_ids::bigint[]))
+       OR e.claim_id = ANY(@claim_ids::bigint[]))
   AND (@by_ids::boolean OR sqlc.narg(user_id)::uuid IS NULL OR e.user_id = sqlc.narg(user_id)::uuid)
   AND (@by_ids::boolean OR sqlc.narg(from_date)::date IS NULL
        OR COALESCE((c.departure_at AT TIME ZONE @time_zone::text)::date, e.entry_date) >= sqlc.narg(from_date)::date)

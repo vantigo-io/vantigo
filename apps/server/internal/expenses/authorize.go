@@ -643,16 +643,17 @@ type claimAccess struct {
 // claimAccessFor is claimAccess given c's role on the claim's project.
 //
 // f is what the claim's lines come to, which only a caller that has read them
-// can answer: how many there are, and whether they owe the owner anything. The
-// zero value is the safe answer for a reading that has not — it makes canSubmit
-// and canMarkReimbursed false, which is exactly what an unread claim should
-// promise.
+// can answer: how many there are, whether they owe the owner anything, and
+// whether any of them has been invoiced. The zero value is the safe answer for a
+// reading that has not — it makes canSubmit, canUnapprove and canMarkReimbursed
+// false, which is exactly what an unread claim should promise.
 //
-// Two capabilities lean on it. A trip with **no lines at all** cannot be
+// Three capabilities lean on it. A trip with **no lines at all** cannot be
 // submitted: there is nothing to freeze and nothing to approve, and the submit
 // refuses it by id, so the capability says so rather than offering a button
 // that answers 400. A trip that owes its owner nothing cannot be marked
-// reimbursed, for the reason a company-paid outlay cannot.
+// reimbursed, for the reason a company-paid outlay cannot. And a trip with an
+// invoiced line cannot be unapproved, exactly as an invoiced expense cannot.
 func (c *caller) claimAccessFor(claim store.ExpensesClaim, role string, f claimFigures) claimAccess {
 	unit := claimUnit(claim, c.zone())
 	a := claimAccess{IsOwner: claim.UserID == c.UserID, IsManager: role == roleManager}
@@ -668,8 +669,14 @@ func (c *caller) claimAccessFor(claim store.ExpensesClaim, role string, f claimF
 	a.CanDelete = a.CanEdit
 	a.CanSubmit = a.CanEdit && f.Lines > 0
 	a.CanApprove = a.IsApprover && open && claim.Status == statusSubmitted
+	// An unapprove is refused once the trip's money has moved in either
+	// direction: the reimbursement is the claim's own, the invoicing is a
+	// line's, and the capability answers on both so a queue never offers a
+	// button the server refuses. Lines > 0 is what makes the unread zero value
+	// safe here: a caller that has not read the lines cannot know that none of
+	// them is invoiced, and says nothing rather than promising it.
 	a.CanUnapprove = (a.IsApprover || c.Manage) && open && claim.Status == statusApproved &&
-		claim.ReimbursedAt == nil
+		claim.ReimbursedAt == nil && f.Lines > 0 && !f.Invoiced
 	// The payroll track does not consult the period lock, for the reason it
 	// does not on a standalone expense: payroll runs after the books close.
 	a.CanMarkReimbursed = c.Manage && claim.Status == statusApproved &&
