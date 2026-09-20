@@ -107,6 +107,170 @@ type ExpensesCategoryUpdateRequest struct {
 	Position int32 `json:"position"`
 }
 
+// ExpensesClaimCapabilities What the calling user may do with this travel claim, so a client never re-derives the rules of design §5. A claim is the unit that moves through the flow and through a payroll run, so these are the claim's own — its lines carry no submit, approve or reimburse of their own.
+type ExpensesClaimCapabilities struct {
+	// CanApprove Whether the caller may approve or reject it — an approver of it, while it is submitted.
+	CanApprove bool `json:"canApprove"`
+
+	// CanDelete Whether the caller may delete it, which takes its lines and their receipts with it.
+	CanDelete bool `json:"canDelete"`
+
+	// CanEdit Whether the caller may change it — its owner or expenses:manage, while it is a draft or rejected, and not before the period lock. It is the same answer for adding, changing or deleting one of its lines.
+	CanEdit bool `json:"canEdit"`
+
+	// CanMarkReimbursed Whether the caller may mark it reimbursed — expenses:manage, while it is approved, owes the employee something and has not been paid yet. The period lock does not hold it back: payroll runs after the books close.
+	CanMarkReimbursed bool `json:"canMarkReimbursed"`
+
+	// CanSubmit Whether the caller may submit it — its owner or expenses:manage, while it is a draft or rejected, and not before the period lock.
+	CanSubmit bool `json:"canSubmit"`
+
+	// CanUnapprove Whether the caller may return it to a draft — an approver of it or expenses:manage, while it is approved and has not been reimbursed.
+	CanUnapprove bool `json:"canUnapprove"`
+
+	// CanUndoReimbursed Whether the caller may take the reimbursement back — expenses:manage, while it stands reimbursed.
+	CanUndoReimbursed bool `json:"canUndoReimbursed"`
+}
+
+// ExpensesClaimListResponse One travel claim in a list — everything a single read answers except its lines, which a list of trips has no use for, plus how many there are.
+type ExpensesClaimListResponse struct {
+	Abroad bool `json:"abroad"`
+
+	// AbroadCurrency The currency the claim's own day rate is in. Present only on a claim abroad.
+	AbroadCurrency *string `json:"abroadCurrency,omitempty"`
+
+	// AbroadDayRate The day rate a trip abroad is paid at, in place of the dated table's. Present only on a claim abroad.
+	AbroadDayRate *float64 `json:"abroadDayRate,omitempty"`
+
+	// Capabilities What the calling user may do with this travel claim, so a client never re-derives the rules of design §5. A claim is the unit that moves through the flow and through a payroll run, so these are the claim's own — its lines carry no submit, approve or reimburse of their own.
+	Capabilities ExpensesClaimCapabilities `json:"capabilities"`
+	CreatedAt    time.Time                 `json:"createdAt"`
+
+	// Decision What was decided about the expense, by whom and when — shown to everyone who may see it, its owner first of all: being told who rejected you is the point of a rejection. Present only while a decision stands; a submit and an unapprove both clear it.
+	Decision    *ExpensesEntryDecision `json:"decision,omitempty"`
+	DepartureAt time.Time              `json:"departureAt"`
+	Destination *string                `json:"destination,omitempty"`
+	Id          int64                  `json:"id"`
+
+	// LineCount How many expenses the claim holds.
+	LineCount int32 `json:"lineCount"`
+
+	// Owner One person, named through identity — an expense's owner, the owner of an approval or reimbursement group, whoever overrode a rate, whoever decided the expense, whoever paid it back, or whoever invoiced it.
+	Owner ExpensesUserRef `json:"owner"`
+
+	// Project The project an expense is booked on, resolved through the project directory. Absent when the entry is on none, when this installation has no projects module (decision X2), or when the directory no longer knows the project — the stored id stays either way.
+	Project *ExpensesEntryProject `json:"project,omitempty"`
+	Purpose string                `json:"purpose"`
+
+	// Reimbursement That the employee has been paid back for the trip. Absent until then.
+	Reimbursement *ExpensesEntryReimbursement `json:"reimbursement,omitempty"`
+	ReturnAt      time.Time                   `json:"returnAt"`
+	Revision      int32                       `json:"revision"`
+
+	// Status 'draft', 'submitted', 'approved' or 'rejected'.
+	Status      string     `json:"status"`
+	SubmittedAt *time.Time `json:"submittedAt,omitempty"`
+
+	// Totals The claim's figures, one line per currency, by currency code. Nothing is ever converted.
+	Totals    []ExpensesCurrencyTotal `json:"totals"`
+	UpdatedAt time.Time               `json:"updatedAt"`
+}
+
+// ExpensesClaimRequest A travel claim (design §3.6): the container a trip's expenses sit in. Its lines are ordinary expenses carrying its id — they take their owner, their project, their status and their decision from it, and keep their own kind, date, amounts and receipts. A claim is created as a draft with no lines.
+type ExpensesClaimRequest struct {
+	// Abroad Whether the trip was abroad. A trip abroad is paid at the claim's own day rate rather than the dated per diem table, so abroadDayRate and abroadCurrency are required with it and refused without it.
+	Abroad *bool `json:"abroad,omitempty"`
+
+	// AbroadCurrency A three-letter ISO 4217 code. Required when abroad, refused otherwise.
+	AbroadCurrency *string `json:"abroadCurrency,omitempty"`
+
+	// AbroadDayRate The day rate the trip is paid at, greater than zero with at most two decimals. Required when abroad, refused otherwise.
+	AbroadDayRate *float64 `json:"abroadDayRate,omitempty"`
+
+	// DepartureAt When the traveller left, as entered. It is stored and compared as the instant it names; the per diem day boundaries are 24-hour periods from it, not calendar midnights.
+	DepartureAt time.Time `json:"departureAt"`
+
+	// Destination At most 200 characters.
+	Destination *string `json:"destination,omitempty"`
+
+	// ProjectId The project the whole trip is booked on, and so every one of its lines. The person it concerns must be allowed to book on it — what logging time needs. Refused when this installation has no projects module.
+	ProjectId *int32 `json:"projectId,omitempty"`
+
+	// Purpose What the trip was for. 1 to 200 characters.
+	Purpose string `json:"purpose"`
+
+	// ReturnAt When the traveller came back. It must be after the departure, and the trip may be at most 366 days.
+	ReturnAt time.Time `json:"returnAt"`
+
+	// UserId The person the claim concerns. Absent means the caller; naming somebody else needs expenses:manage, and they must be a user identity still has as active.
+	UserId *openapi_types.UUID `json:"userId,omitempty"`
+}
+
+// ExpensesClaimResponse One travel claim as the caller may see it, with its lines. A line is shaped exactly as a single read of it would be — the same renderer, the same capabilities — and the claim is visible to its owner, a manager of its project, and expenses:view-all, expenses:approve and expenses:manage; anyone else gets the bare 404 an unknown id gets.
+type ExpensesClaimResponse struct {
+	Abroad bool `json:"abroad"`
+
+	// AbroadCurrency The currency the claim's own day rate is in. Present only on a claim abroad.
+	AbroadCurrency *string `json:"abroadCurrency,omitempty"`
+
+	// AbroadDayRate The day rate a trip abroad is paid at, in place of the dated table's. Present only on a claim abroad.
+	AbroadDayRate *float64 `json:"abroadDayRate,omitempty"`
+
+	// BillableTotals What the claim's lines bill their customer, one line per currency. Present only for a caller with financial rights on the claim's project, exactly as the billing object on a line is.
+	BillableTotals *[]ExpensesCurrencyAmount `json:"billableTotals,omitempty"`
+
+	// Capabilities What the calling user may do with this travel claim, so a client never re-derives the rules of design §5. A claim is the unit that moves through the flow and through a payroll run, so these are the claim's own — its lines carry no submit, approve or reimburse of their own.
+	Capabilities ExpensesClaimCapabilities `json:"capabilities"`
+	CreatedAt    time.Time                 `json:"createdAt"`
+
+	// Decision What was decided about the expense, by whom and when — shown to everyone who may see it, its owner first of all: being told who rejected you is the point of a rejection. Present only while a decision stands; a submit and an unapprove both clear it.
+	Decision    *ExpensesEntryDecision `json:"decision,omitempty"`
+	DepartureAt time.Time              `json:"departureAt"`
+	Destination *string                `json:"destination,omitempty"`
+	Id          int64                  `json:"id"`
+
+	// Lines The claim's expenses, oldest day first and then as recorded. Always present, empty when it holds none.
+	Lines []ExpensesEntryResponse `json:"lines"`
+
+	// Owner One person, named through identity — an expense's owner, the owner of an approval or reimbursement group, whoever overrode a rate, whoever decided the expense, whoever paid it back, or whoever invoiced it.
+	Owner ExpensesUserRef `json:"owner"`
+
+	// Project The project an expense is booked on, resolved through the project directory. Absent when the entry is on none, when this installation has no projects module (decision X2), or when the directory no longer knows the project — the stored id stays either way.
+	Project *ExpensesEntryProject `json:"project,omitempty"`
+	Purpose string                `json:"purpose"`
+
+	// Reimbursement That the employee has been paid back for the trip. Absent until then.
+	Reimbursement *ExpensesEntryReimbursement `json:"reimbursement,omitempty"`
+	ReturnAt      time.Time                   `json:"returnAt"`
+
+	// Revision What an update must carry to be allowed to save.
+	Revision int32 `json:"revision"`
+
+	// Status 'draft', 'submitted', 'approved' or 'rejected'.
+	Status      string     `json:"status"`
+	SubmittedAt *time.Time `json:"submittedAt,omitempty"`
+
+	// Totals The claim's figures, one line per currency, by currency code. Nothing is ever converted.
+	Totals    []ExpensesCurrencyTotal `json:"totals"`
+	UpdatedAt time.Time               `json:"updatedAt"`
+}
+
+// ExpensesClaimUpdateRequest A full replace of a travel claim's header, guarded by the revision it was read at. What is left out is cleared. Changing the project re-points every line onto it in the same transaction and clears a line's billing line when it does not belong to the new project; clearing the project makes every line non-billable. A line that has already been invoiced holds the project where it is. The owner stays whoever the claim already concerns.
+type ExpensesClaimUpdateRequest struct {
+	Abroad         *bool     `json:"abroad,omitempty"`
+	AbroadCurrency *string   `json:"abroadCurrency,omitempty"`
+	AbroadDayRate  *float64  `json:"abroadDayRate,omitempty"`
+	DepartureAt    time.Time `json:"departureAt"`
+	Destination    *string   `json:"destination,omitempty"`
+
+	// ProjectId A project the claim already carries is kept even once it stops accepting new bookings; a different one is judged in full.
+	ProjectId *int32    `json:"projectId,omitempty"`
+	Purpose   string    `json:"purpose"`
+	ReturnAt  time.Time `json:"returnAt"`
+
+	// Revision The revision the claim was read at. A revision that has moved on is a 409.
+	Revision int32 `json:"revision"`
+}
+
 // ExpensesCurrencyAmount One currency's amount in a dashboard reading. Nothing is ever converted (design §4), so a caller owed money in two currencies gets two lines and never a sum that is in neither.
 type ExpensesCurrencyAmount struct {
 	Amount   float64 `json:"amount"`
@@ -260,7 +424,7 @@ type ExpensesEntryReimbursement struct {
 	Reference *string `json:"reference,omitempty"`
 }
 
-// ExpensesEntryRequest One money line (design §3.1). The fields a kind does not carry are refused on their own field rather than ignored: an outlay carries a category, a payer, a currency and a gross amount with optional VAT; a mileage line carries a distance, optional places and passengers, and is priced by the server from the dated rate table. Travel claims and their per diem arrive in a later delivery, so kind per_diem and claimId are refused for now.
+// ExpensesEntryRequest One money line (design §3.1). The fields a kind does not carry are refused on their own field rather than ignored: an outlay carries a category, a payer, a currency and a gross amount with optional VAT; a mileage line carries a distance, optional places and passengers, and is priced by the server from the dated rate table. claimId records it as a line of a travel claim instead of a standalone expense; the per diem kind arrives in a later delivery and is refused for now.
 type ExpensesEntryRequest struct {
 	// BillRatePerKm What the customer is charged per kilometre on billable mileage. Only a caller with financial rights on the project — the ones who are sent the billing object — may name it; anyone else is refused on this field. Left out, a save keeps whatever the line already carries, and a line that carries none takes the mileage_customer rate in force on the entry date. When there is no such rate and the caller could not have named one, the line is saved billable with no customer rate and nothing billed, for whoever can see the project's money to fill in. Refused on anything but billable mileage, and on a project that bills nothing.
 	BillRatePerKm *float64 `json:"billRatePerKm,omitempty"`
@@ -274,7 +438,7 @@ type ExpensesEntryRequest struct {
 	// CategoryId Required on an outlay, and must be an active category. Refused on a mileage line.
 	CategoryId *int32 `json:"categoryId,omitempty"`
 
-	// ClaimId Reserved for the travel claims of a later delivery; a request carrying one is refused on this field.
+	// ClaimId The travel claim this expense is a line of. The caller must be allowed to change that claim, and it must still be a draft or rejected; the line takes the claim's owner and its project, so userId naming somebody else and projectId naming another project are both refused. Only an outlay or a mileage line may be added this way: a per diem day arrives in a later delivery.
 	ClaimId *int64 `json:"claimId,omitempty"`
 
 	// Currency A three-letter ISO 4217 code. Required on an outlay. A mileage line takes the installation's default currency and refuses any other.
@@ -342,9 +506,12 @@ type ExpensesEntryResponse struct {
 	Capabilities ExpensesEntryCapabilities `json:"capabilities"`
 
 	// Category The category an outlay is booked under, with the name as it stands now. Absent on a mileage line, which carries none.
-	Category  *ExpensesEntryCategory `json:"category,omitempty"`
-	CreatedAt time.Time              `json:"createdAt"`
-	Currency  string                 `json:"currency"`
+	Category *ExpensesEntryCategory `json:"category,omitempty"`
+
+	// ClaimId The travel claim this expense is a line of. Absent on a standalone expense. A line's status, its decision and its reimbursement are the claim's, not its own: they are rendered here from the claim, and the flow operations refuse a line by id and point at the claim.
+	ClaimId   *int64    `json:"claimId,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	Currency  string    `json:"currency"`
 
 	// Decision What was decided about the expense, by whom and when — shown to everyone who may see it, its owner first of all: being told who rejected you is the point of a rejection. Present only while a decision stands; a submit and an unapprove both clear it.
 	Decision    *ExpensesEntryDecision `json:"decision,omitempty"`
@@ -408,7 +575,7 @@ type ExpensesEntryUpdateRequest struct {
 	BillingLineId *int32   `json:"billingLineId,omitempty"`
 	CategoryId    *int32   `json:"categoryId,omitempty"`
 
-	// ClaimId Reserved for the travel claims of a later delivery; a request carrying one is refused on this field.
+	// ClaimId The travel claim the expense is already a line of. It must be exactly the one it carries, or absent: a standalone expense cannot be moved into a claim, and a claim's line cannot be moved out of one or into another.
 	ClaimId     *int64   `json:"claimId,omitempty"`
 	Currency    *string  `json:"currency,omitempty"`
 	Description string   `json:"description"`
@@ -701,6 +868,12 @@ type PaginatedResponseOfExpensesApprovalGroup struct {
 	Pagination externalRef0.PaginationMetadata `json:"pagination"`
 }
 
+// PaginatedResponseOfExpensesClaimListResponse defines model for PaginatedResponseOfExpensesClaimListResponse.
+type PaginatedResponseOfExpensesClaimListResponse struct {
+	Data       []ExpensesClaimListResponse     `json:"data"`
+	Pagination externalRef0.PaginationMetadata `json:"pagination"`
+}
+
 // PaginatedResponseOfExpensesEntryResponse defines model for PaginatedResponseOfExpensesEntryResponse.
 type PaginatedResponseOfExpensesEntryResponse struct {
 	Data       []ExpensesEntryResponse         `json:"data"`
@@ -719,6 +892,26 @@ type GetExpensesApprovalsParams struct {
 	PageSize *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
 
+// GetExpensesClaimsParams defines parameters for GetExpensesClaims.
+type GetExpensesClaimsParams struct {
+	// UserId Narrows the list to one person's claims. It never widens it: a caller sees only what they may see anyway.
+	UserId *openapi_types.UUID `form:"userId,omitempty" json:"userId,omitempty"`
+
+	// Status 'draft', 'submitted', 'approved' or 'rejected'.
+	Status *string `form:"status,omitempty" json:"status,omitempty"`
+
+	// From The earliest departure day to include, judged in UTC.
+	From *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
+
+	// To The latest departure day to include, judged in UTC.
+	To *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
+
+	// Reimbursed Narrows the list to what has been reimbursed, or to what has not. Left out, both are in it.
+	Reimbursed *bool  `form:"reimbursed,omitempty" json:"reimbursed,omitempty"`
+	Page       *int32 `form:"page,omitempty" json:"page,omitempty"`
+	PageSize   *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
 // GetExpensesEntriesParams defines parameters for GetExpensesEntries.
 type GetExpensesEntriesParams struct {
 	// UserId Narrows the list to one person's expenses. It never widens it: a caller sees only what they may see anyway.
@@ -727,7 +920,13 @@ type GetExpensesEntriesParams struct {
 	// ProjectId Narrows the list to one project.
 	ProjectId *int32 `form:"projectId,omitempty" json:"projectId,omitempty"`
 
-	// Status 'draft', 'submitted', 'approved' or 'rejected'.
+	// ClaimId Narrows the list to one travel claim's lines. A claim the caller may not see holds nothing they can see either, so this is an empty page rather than a refusal.
+	ClaimId *int64 `form:"claimId,omitempty" json:"claimId,omitempty"`
+
+	// Standalone true lists only standalone expenses, false only the lines of travel claims. Left out, the list holds both — the default is unchanged, so a client that knows nothing of claims sees exactly what it always saw.
+	Standalone *bool `form:"standalone,omitempty" json:"standalone,omitempty"`
+
+	// Status 'draft', 'submitted', 'approved' or 'rejected'. On a claim's line it is the claim's own status that is matched, because that is the status the line is rendered with.
 	Status *string `form:"status,omitempty" json:"status,omitempty"`
 
 	// Kind 'outlay' or 'mileage'.
@@ -813,6 +1012,12 @@ type PostExpensesCategoriesJSONRequestBody = ExpensesCategoryRequest
 // PutExpensesCategoriesByIdJSONRequestBody defines body for PutExpensesCategoriesById for application/json ContentType.
 type PutExpensesCategoriesByIdJSONRequestBody = ExpensesCategoryUpdateRequest
 
+// PostExpensesClaimsJSONRequestBody defines body for PostExpensesClaims for application/json ContentType.
+type PostExpensesClaimsJSONRequestBody = ExpensesClaimRequest
+
+// PutExpensesClaimsByIdJSONRequestBody defines body for PutExpensesClaimsById for application/json ContentType.
+type PutExpensesClaimsByIdJSONRequestBody = ExpensesClaimUpdateRequest
+
 // PostExpensesEntriesJSONRequestBody defines body for PostExpensesEntries for application/json ContentType.
 type PostExpensesEntriesJSONRequestBody = ExpensesEntryRequest
 
@@ -884,6 +1089,21 @@ type ServerInterface interface {
 	// PutExpensesCategoriesById Change an expense category
 	// (PUT /api/v1/expenses/categories/{id})
 	PutExpensesCategoriesById(w http.ResponseWriter, r *http.Request, id int32)
+	// GetExpensesClaims List travel claims
+	// (GET /api/v1/expenses/claims)
+	GetExpensesClaims(w http.ResponseWriter, r *http.Request, params GetExpensesClaimsParams)
+	// PostExpensesClaims Record a travel claim
+	// (POST /api/v1/expenses/claims)
+	PostExpensesClaims(w http.ResponseWriter, r *http.Request)
+	// DeleteExpensesClaimsById Delete a travel claim
+	// (DELETE /api/v1/expenses/claims/{id})
+	DeleteExpensesClaimsById(w http.ResponseWriter, r *http.Request, id int64)
+	// GetExpensesClaimsById Get a travel claim by id
+	// (GET /api/v1/expenses/claims/{id})
+	GetExpensesClaimsById(w http.ResponseWriter, r *http.Request, id int64)
+	// PutExpensesClaimsById Change a travel claim
+	// (PUT /api/v1/expenses/claims/{id})
+	PutExpensesClaimsById(w http.ResponseWriter, r *http.Request, id int64)
 	// GetExpensesEntries List expenses
 	// (GET /api/v1/expenses/entries)
 	GetExpensesEntries(w http.ResponseWriter, r *http.Request, params GetExpensesEntriesParams)
@@ -1154,6 +1374,209 @@ func (siw *ServerInterfaceWrapper) PutExpensesCategoriesById(w http.ResponseWrit
 	handler.ServeHTTP(w, r)
 }
 
+// GetExpensesClaims operation middleware
+func (siw *ServerInterfaceWrapper) GetExpensesClaims(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetExpensesClaimsParams
+
+	// ------------- Optional query parameter "userId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "userId", r.URL.Query(), &params.UserId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "userId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "reimbursed" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "reimbursed", r.URL.Query(), &params.Reimbursed, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "reimbursed"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reimbursed", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetExpensesClaims(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostExpensesClaims operation middleware
+func (siw *ServerInterfaceWrapper) PostExpensesClaims(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostExpensesClaims(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteExpensesClaimsById operation middleware
+func (siw *ServerInterfaceWrapper) DeleteExpensesClaimsById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteExpensesClaimsById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetExpensesClaimsById operation middleware
+func (siw *ServerInterfaceWrapper) GetExpensesClaimsById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetExpensesClaimsById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutExpensesClaimsById operation middleware
+func (siw *ServerInterfaceWrapper) PutExpensesClaimsById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutExpensesClaimsById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetExpensesEntries operation middleware
 func (siw *ServerInterfaceWrapper) GetExpensesEntries(w http.ResponseWriter, r *http.Request) {
 
@@ -1185,6 +1608,32 @@ func (siw *ServerInterfaceWrapper) GetExpensesEntries(w http.ResponseWriter, r *
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "projectId"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "claimId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "claimId", r.URL.Query(), &params.ClaimId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "claimId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "claimId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "standalone" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "standalone", r.URL.Query(), &params.Standalone, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "standalone"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "standalone", Err: err})
 		}
 		return
 	}
@@ -2221,6 +2670,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/categories", wrapper.GetExpensesCategories)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/categories", wrapper.PostExpensesCategories)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/expenses/categories/{id}", wrapper.PutExpensesCategoriesById)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/claims", wrapper.GetExpensesClaims)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/claims", wrapper.PostExpensesClaims)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/expenses/claims/{id}", wrapper.DeleteExpensesClaimsById)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/claims/{id}", wrapper.GetExpensesClaimsById)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/expenses/claims/{id}", wrapper.PutExpensesClaimsById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/entries", wrapper.GetExpensesEntries)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/entries", wrapper.PostExpensesEntries)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/expenses/entries/{id}", wrapper.DeleteExpensesEntriesById)
@@ -2713,6 +3167,345 @@ type PutExpensesCategoriesById404Response struct {
 func (response PutExpensesCategoriesById404Response) VisitPutExpensesCategoriesByIdResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type GetExpensesClaimsRequestObject struct {
+	Params GetExpensesClaimsParams
+}
+
+type GetExpensesClaimsResponseObject interface {
+	VisitGetExpensesClaimsResponse(w http.ResponseWriter) error
+}
+
+type GetExpensesClaims200JSONResponse PaginatedResponseOfExpensesClaimListResponse
+
+func (response GetExpensesClaims200JSONResponse) VisitGetExpensesClaimsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesClaims400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetExpensesClaims400ApplicationProblemPlusJSONResponse) VisitGetExpensesClaimsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesClaims401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesClaims401JSONResponse) VisitGetExpensesClaimsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesClaims403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesClaims403JSONResponse) VisitGetExpensesClaimsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesClaimsRequestObject struct {
+	Body *PostExpensesClaimsJSONRequestBody
+}
+
+type PostExpensesClaimsResponseObject interface {
+	VisitPostExpensesClaimsResponse(w http.ResponseWriter) error
+}
+
+type PostExpensesClaims201JSONResponse ExpensesClaimResponse
+
+func (response PostExpensesClaims201JSONResponse) VisitPostExpensesClaimsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesClaims400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostExpensesClaims400ApplicationProblemPlusJSONResponse) VisitPostExpensesClaimsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesClaims401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostExpensesClaims401JSONResponse) VisitPostExpensesClaimsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesClaims403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostExpensesClaims403JSONResponse) VisitPostExpensesClaimsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteExpensesClaimsByIdRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type DeleteExpensesClaimsByIdResponseObject interface {
+	VisitDeleteExpensesClaimsByIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteExpensesClaimsById204Response struct {
+}
+
+func (response DeleteExpensesClaimsById204Response) VisitDeleteExpensesClaimsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteExpensesClaimsById400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response DeleteExpensesClaimsById400ApplicationProblemPlusJSONResponse) VisitDeleteExpensesClaimsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteExpensesClaimsById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteExpensesClaimsById401JSONResponse) VisitDeleteExpensesClaimsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteExpensesClaimsById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteExpensesClaimsById403JSONResponse) VisitDeleteExpensesClaimsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteExpensesClaimsById404Response struct {
+}
+
+func (response DeleteExpensesClaimsById404Response) VisitDeleteExpensesClaimsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetExpensesClaimsByIdRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetExpensesClaimsByIdResponseObject interface {
+	VisitGetExpensesClaimsByIdResponse(w http.ResponseWriter) error
+}
+
+type GetExpensesClaimsById200JSONResponse ExpensesClaimResponse
+
+func (response GetExpensesClaimsById200JSONResponse) VisitGetExpensesClaimsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesClaimsById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesClaimsById401JSONResponse) VisitGetExpensesClaimsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesClaimsById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesClaimsById403JSONResponse) VisitGetExpensesClaimsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesClaimsById404Response struct {
+}
+
+func (response GetExpensesClaimsById404Response) VisitGetExpensesClaimsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutExpensesClaimsByIdRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PutExpensesClaimsByIdJSONRequestBody
+}
+
+type PutExpensesClaimsByIdResponseObject interface {
+	VisitPutExpensesClaimsByIdResponse(w http.ResponseWriter) error
+}
+
+type PutExpensesClaimsById200JSONResponse ExpensesClaimResponse
+
+func (response PutExpensesClaimsById200JSONResponse) VisitPutExpensesClaimsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutExpensesClaimsById400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutExpensesClaimsById400ApplicationProblemPlusJSONResponse) VisitPutExpensesClaimsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutExpensesClaimsById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutExpensesClaimsById401JSONResponse) VisitPutExpensesClaimsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutExpensesClaimsById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutExpensesClaimsById403JSONResponse) VisitPutExpensesClaimsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutExpensesClaimsById404Response struct {
+}
+
+func (response PutExpensesClaimsById404Response) VisitPutExpensesClaimsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutExpensesClaimsById409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PutExpensesClaimsById409ApplicationProblemPlusJSONResponse) VisitPutExpensesClaimsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetExpensesEntriesRequestObject struct {
@@ -4836,6 +5629,21 @@ type StrictServerInterface interface {
 	// PutExpensesCategoriesById Change an expense category
 	// (PUT /api/v1/expenses/categories/{id})
 	PutExpensesCategoriesById(ctx context.Context, request PutExpensesCategoriesByIdRequestObject) (PutExpensesCategoriesByIdResponseObject, error)
+	// GetExpensesClaims List travel claims
+	// (GET /api/v1/expenses/claims)
+	GetExpensesClaims(ctx context.Context, request GetExpensesClaimsRequestObject) (GetExpensesClaimsResponseObject, error)
+	// PostExpensesClaims Record a travel claim
+	// (POST /api/v1/expenses/claims)
+	PostExpensesClaims(ctx context.Context, request PostExpensesClaimsRequestObject) (PostExpensesClaimsResponseObject, error)
+	// DeleteExpensesClaimsById Delete a travel claim
+	// (DELETE /api/v1/expenses/claims/{id})
+	DeleteExpensesClaimsById(ctx context.Context, request DeleteExpensesClaimsByIdRequestObject) (DeleteExpensesClaimsByIdResponseObject, error)
+	// GetExpensesClaimsById Get a travel claim by id
+	// (GET /api/v1/expenses/claims/{id})
+	GetExpensesClaimsById(ctx context.Context, request GetExpensesClaimsByIdRequestObject) (GetExpensesClaimsByIdResponseObject, error)
+	// PutExpensesClaimsById Change a travel claim
+	// (PUT /api/v1/expenses/claims/{id})
+	PutExpensesClaimsById(ctx context.Context, request PutExpensesClaimsByIdRequestObject) (PutExpensesClaimsByIdResponseObject, error)
 	// GetExpensesEntries List expenses
 	// (GET /api/v1/expenses/entries)
 	GetExpensesEntries(ctx context.Context, request GetExpensesEntriesRequestObject) (GetExpensesEntriesResponseObject, error)
@@ -5160,6 +5968,148 @@ func (sh *strictHandler) PutExpensesCategoriesById(w http.ResponseWriter, r *htt
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutExpensesCategoriesByIdResponseObject); ok {
 		if err := validResponse.VisitPutExpensesCategoriesByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetExpensesClaims operation middleware
+func (sh *strictHandler) GetExpensesClaims(w http.ResponseWriter, r *http.Request, params GetExpensesClaimsParams) {
+	var request GetExpensesClaimsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetExpensesClaims(ctx, request.(GetExpensesClaimsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetExpensesClaims")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetExpensesClaimsResponseObject); ok {
+		if err := validResponse.VisitGetExpensesClaimsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostExpensesClaims operation middleware
+func (sh *strictHandler) PostExpensesClaims(w http.ResponseWriter, r *http.Request) {
+	var request PostExpensesClaimsRequestObject
+
+	var body PostExpensesClaimsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostExpensesClaims(ctx, request.(PostExpensesClaimsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostExpensesClaims")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostExpensesClaimsResponseObject); ok {
+		if err := validResponse.VisitPostExpensesClaimsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteExpensesClaimsById operation middleware
+func (sh *strictHandler) DeleteExpensesClaimsById(w http.ResponseWriter, r *http.Request, id int64) {
+	var request DeleteExpensesClaimsByIdRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteExpensesClaimsById(ctx, request.(DeleteExpensesClaimsByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteExpensesClaimsById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteExpensesClaimsByIdResponseObject); ok {
+		if err := validResponse.VisitDeleteExpensesClaimsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetExpensesClaimsById operation middleware
+func (sh *strictHandler) GetExpensesClaimsById(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetExpensesClaimsByIdRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetExpensesClaimsById(ctx, request.(GetExpensesClaimsByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetExpensesClaimsById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetExpensesClaimsByIdResponseObject); ok {
+		if err := validResponse.VisitGetExpensesClaimsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutExpensesClaimsById operation middleware
+func (sh *strictHandler) PutExpensesClaimsById(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PutExpensesClaimsByIdRequestObject
+
+	request.Id = id
+
+	var body PutExpensesClaimsByIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutExpensesClaimsById(ctx, request.(PutExpensesClaimsByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutExpensesClaimsById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutExpensesClaimsByIdResponseObject); ok {
+		if err := validResponse.VisitPutExpensesClaimsByIdResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

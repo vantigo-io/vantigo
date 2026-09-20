@@ -3,7 +3,6 @@ package expenses
 import (
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"math/big"
 	"slices"
@@ -11,7 +10,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/expenses/gen"
@@ -186,15 +184,17 @@ func currencyTotals(totals map[string]*currencyTotal) []gen.ExpensesCurrencyTota
 }
 
 // rateOverrideRefusal is why an expense's rate cannot be overridden right now —
-// because of what it is, not who is asking.
-func rateOverrideRefusal(c *caller, row store.ExpensesEntry) (string, string) {
+// because of what it is, not who is asking. The status and the lock are the
+// *unit's* (authorize.go), so a line inside a travel claim is open to an
+// approver's correction exactly while its claim is submitted.
+func rateOverrideRefusal(c *caller, row store.ExpensesEntry, unit entryUnit) (string, string) {
 	switch {
-	case !c.mayWritePast(row.EntryDate.Time):
+	case !c.mayWritePast(unit.Date):
 		return "entryDate", lockedBeforeMessage(*lockedBefore(c.Settings))
 	case row.Kind != kindMileage:
 		return "kind", "Only a mileage line carries a rate to override"
-	case row.Status != statusSubmitted:
-		return "status", fmt.Sprintf("Only a submitted expense's rate can be overridden; this one is %s", row.Status)
+	case unit.Status != statusSubmitted:
+		return "status", fmt.Sprintf("Only a submitted expense's rate can be overridden; this one is %s", unit.Status)
 	}
 	return "", ""
 }
@@ -219,7 +219,7 @@ func (s *server) PutExpensesEntriesByIdRate(ctx context.Context, req gen.PutExpe
 	if err != nil {
 		return nil, err
 	}
-	row, a, found, err := s.visibleEntry(ctx, q, c, req.Id)
+	row, unit, a, found, err := s.visibleEntry(ctx, q, c, req.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +229,7 @@ func (s *server) PutExpensesEntriesByIdRate(ctx context.Context, req gen.PutExpe
 	if !a.IsApprover && !c.Manage {
 		return gen.PutExpensesEntriesByIdRate403JSONResponse(forbidden()), nil
 	}
-	if field, msg := rateOverrideRefusal(c, row); msg != "" {
+	if field, msg := rateOverrideRefusal(c, row, unit); msg != "" {
 		return gen.PutExpensesEntriesByIdRate400ApplicationProblemPlusJSONResponse(
 			invalidEntry(fieldError(field, msg))), nil
 	}
@@ -252,17 +252,17 @@ func (s *server) PutExpensesEntriesByIdRate(ctx context.Context, req gen.PutExpe
 		stale    [2]string
 	)
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
-		locked, err := txq.LockEntry(ctx, req.Id)
-		if errors.Is(err, pgx.ErrNoRows) {
+		locked, lockedUnit, found, err := lockEntryUnit(ctx, txq, req.Id, row.ClaimID)
+		if err != nil {
+			return err
+		}
+		if !found {
 			gone = true
 			return nil
 		}
-		if err != nil {
-			return fmt.Errorf("expenses: lock an expense: %w", err)
-		}
 		// Judged again on the row as it stands under the lock: a decision that
 		// committed since is the state refusal above, arrived a moment later.
-		if field, msg := rateOverrideRefusal(c, locked); msg != "" {
+		if field, msg := rateOverrideRefusal(c, locked, lockedUnit); msg != "" {
 			stale = [2]string{field, msg}
 			return nil
 		}

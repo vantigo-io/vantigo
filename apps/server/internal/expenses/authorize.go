@@ -252,9 +252,115 @@ func (c *caller) seesProjectFinancials(role string) bool {
 	return role == roleManager || c.ProjectsManageAll || (c.ProjectsFinancials && c.seesProject(role))
 }
 
+// entryUnit is **the unit an expense belongs to**: the row whose status, whose
+// date and whose decision the expense is judged and rendered by. A standalone
+// expense is its own unit; a line inside a travel claim has the *claim* as its
+// unit (Global Constraints — "a claim's line is an entry with claim_id").
+//
+// It exists so that no rule anywhere can forget. A line's own status column
+// stays at its default and is never read: the flow, the period lock, the
+// capabilities, whether its receipts may still be changed and what a read of
+// it shows are all answered from here, and unitOf below is the single place
+// that decides which row that is.
+type entryUnit struct {
+	// ClaimID is the claim this unit is, nil when the unit is the expense
+	// itself. Every refusal that is about the claim reports on it.
+	ClaimID *int64
+
+	UserID    uuid.UUID
+	ProjectID *int32
+	Status    string
+
+	// Date is the day the period lock is judged on: the expense's own entry
+	// date, or the day its claim departed.
+	Date time.Time
+
+	SubmittedAt     *time.Time
+	DecidedAt       *time.Time
+	DecidedByUserID *uuid.UUID
+	RejectionReason *string
+
+	ReimbursedAt           *time.Time
+	ReimbursedByUserID     *uuid.UUID
+	ReimbursementReference *string
+	ReimbursementDate      pgtype.Date
+}
+
+// unitOf is that single place. claim is the row entry.ClaimID names, which the
+// foreign key guarantees exists — every loader in this module reads it before
+// asking.
+//
+// A line whose claim was not loaded is given a unit with no status at all,
+// which is in none of the sets the rules test (editable, submitted, approved):
+// it fails closed, so a missing read can only ever refuse, never admit.
+func unitOf(entry store.ExpensesEntry, claim *store.ExpensesClaim) entryUnit {
+	if entry.ClaimID == nil {
+		return entryUnit{
+			UserID:                 entry.UserID,
+			ProjectID:              entry.ProjectID,
+			Status:                 entry.Status,
+			Date:                   entry.EntryDate.Time,
+			SubmittedAt:            entry.SubmittedAt,
+			DecidedAt:              entry.DecidedAt,
+			DecidedByUserID:        entry.DecidedByUserID,
+			RejectionReason:        entry.RejectionReason,
+			ReimbursedAt:           entry.ReimbursedAt,
+			ReimbursedByUserID:     entry.ReimbursedByUserID,
+			ReimbursementReference: entry.ReimbursementReference,
+			ReimbursementDate:      entry.ReimbursementDate,
+		}
+	}
+	if claim == nil {
+		return entryUnit{ClaimID: entry.ClaimID, UserID: entry.UserID, ProjectID: entry.ProjectID}
+	}
+	return claimUnit(*claim)
+}
+
+// claimUnit is a travel claim as the unit of its own lines — and of itself,
+// which is how one set of rules serves both.
+func claimUnit(claim store.ExpensesClaim) entryUnit {
+	return entryUnit{
+		ClaimID:                &claim.ID,
+		UserID:                 claim.UserID,
+		ProjectID:              claim.ProjectID,
+		Status:                 claim.Status,
+		Date:                   utcDay(claim.DepartureAt),
+		SubmittedAt:            claim.SubmittedAt,
+		DecidedAt:              claim.DecidedAt,
+		DecidedByUserID:        claim.DecidedByUserID,
+		RejectionReason:        claim.RejectionReason,
+		ReimbursedAt:           claim.ReimbursedAt,
+		ReimbursedByUserID:     claim.ReimbursedByUserID,
+		ReimbursementReference: claim.ReimbursementReference,
+		ReimbursementDate:      claim.ReimbursementDate,
+	}
+}
+
+// isClaimLine reports whether the unit is a travel claim rather than the
+// expense itself.
+func (u entryUnit) isClaimLine() bool { return u.ClaimID != nil }
+
+// editable reports whether the unit is still its owner's to change.
+func (u entryUnit) editable() bool { return slices.Contains(editableStatuses, u.Status) }
+
+// unitFor loads one expense's unit: itself, or the travel claim it is a line
+// of. It reads this module's own table only, so it is safe anywhere — but it
+// is a second query, and a page of expenses resolves its claims in bulk
+// instead (entryNames).
+func (s *server) unitFor(ctx context.Context, q *store.Queries, entry store.ExpensesEntry) (entryUnit, error) {
+	if entry.ClaimID == nil {
+		return unitOf(entry, nil), nil
+	}
+	claim, err := q.GetClaim(ctx, *entry.ClaimID)
+	if err != nil {
+		return entryUnit{}, fmt.Errorf("expenses: read an expense's travel claim: %w", err)
+	}
+	return unitOf(entry, &claim), nil
+}
+
 // entryStateRefusal is why an expense cannot be changed right now — because of
-// what it *is*, not who is asking: it is dated inside a closed period, or it
-// has moved past the point where it is still editable. It answers the field
+// what its *unit* is, not who is asking: it is dated inside a closed period, or
+// it has moved past the point where it is still editable. It answers the field
 // the reason belongs to and the message, or "" and "" when nothing refuses.
 //
 // This is the module's one rule for the two codes (and attachments.go's
@@ -264,12 +370,42 @@ func (c *caller) seesProjectFinancials(role string) bool {
 // be allowed, and is stopped by the expense's own state, is told what state —
 // a 400 naming the lock date or the status — because that is a fact about the
 // expense they can act on, and a bare 403 would leave them guessing.
-func entryStateRefusal(c *caller, entry store.ExpensesEntry) (string, string) {
+//
+// For a line inside a travel claim it is the *claim* that refuses, and the
+// refusal says so and reports on claimId: its status and the day it departed
+// are what the caller can act on, and a message about the line's own date
+// would send them looking at a field that decides nothing.
+func entryStateRefusal(c *caller, unit entryUnit) (string, string) {
+	locked := !c.mayWritePast(unit.Date)
+	if unit.isClaimLine() {
+		switch {
+		case locked:
+			return "claimId", fmt.Sprintf("Travel claim %d departed before %s, the lock date",
+				*unit.ClaimID, lockedBefore(c.Settings).Format(time.DateOnly))
+		case !unit.editable():
+			return "claimId", fmt.Sprintf("Travel claim %d has been %s, so its expenses can no longer be changed",
+				*unit.ClaimID, unit.Status)
+		}
+		return "", ""
+	}
 	switch {
-	case !c.mayWritePast(entry.EntryDate.Time):
+	case locked:
 		return "entryDate", lockedBeforeMessage(*lockedBefore(c.Settings))
-	case !slices.Contains(editableStatuses, entry.Status):
-		return "status", fmt.Sprintf("An expense that has been %s can no longer be changed", entry.Status)
+	case !unit.editable():
+		return "status", fmt.Sprintf("An expense that has been %s can no longer be changed", unit.Status)
+	}
+	return "", ""
+}
+
+// claimStateRefusal is entryStateRefusal for the claim itself, which reports
+// on its own fields rather than on the line's.
+func claimStateRefusal(c *caller, claim store.ExpensesClaim) (string, string) {
+	switch unit := claimUnit(claim); {
+	case !c.mayWritePast(unit.Date):
+		return "departureAt", fmt.Sprintf("Travel claims departing before %s are locked",
+			lockedBefore(c.Settings).Format(time.DateOnly))
+	case !unit.editable():
+		return "status", fmt.Sprintf("A travel claim that has been %s can no longer be changed", unit.Status)
 	}
 	return "", ""
 }
@@ -338,29 +474,38 @@ type entryAccess struct {
 	CanUndoReimbursed bool
 }
 
-// entryAccess resolves c's access to entry, asking the project directory for
-// c's role on the expense's project unless it is cached. It must not run
-// inside a locked transaction (withLockedTx); there, read the role first and
-// use accessFor.
-func (s *server) entryAccess(ctx context.Context, c *caller, entry store.ExpensesEntry) (entryAccess, error) {
+// entryAccess resolves c's access to entry within its unit, asking the project
+// directory for c's role on the expense's project unless it is cached. It must
+// not run inside a locked transaction (withLockedTx); there, read the role
+// first and use accessFor.
+func (s *server) entryAccess(ctx context.Context, c *caller, entry store.ExpensesEntry, unit entryUnit) (entryAccess, error) {
 	role, err := c.roleOf(ctx, s, entry.ProjectID)
 	if err != nil {
 		return entryAccess{}, err
 	}
-	return c.accessFor(entry, role), nil
+	return c.accessFor(entry, unit, role), nil
 }
 
 // editableStatuses are the statuses an expense is still its owner's to change
 // in (decision X4): a fresh draft, and one a manager sent back.
 var editableStatuses = []string{statusDraft, statusRejected}
 
-// accessFor is entryAccess given c's role on the expense's project: the whole
-// decision, with nothing left to look up.
-func (c *caller) accessFor(entry store.ExpensesEntry, role string) entryAccess {
+// accessFor is entryAccess given the expense's unit and c's role on its
+// project: the whole decision, with nothing left to look up.
+//
+// Every status-shaped answer here reads the **unit** rather than the row, so a
+// line inside a travel claim follows its claim. The five flow capabilities are
+// additionally false on such a line: submitting, approving, unapproving and
+// paying back are the claim's, all at once, and the standalone operations
+// refuse a line by id and point at the claim rather than moving it alone.
+// Pricing, invoicing and a rate override stay the line's own — those are about
+// this one amount — and read the unit for the status they are judged in.
+func (c *caller) accessFor(entry store.ExpensesEntry, unit entryUnit, role string) entryAccess {
 	a := entryAccess{
-		IsOwner:   entry.UserID == c.UserID,
+		IsOwner:   unit.UserID == c.UserID,
 		IsManager: role == roleManager,
 	}
+	standalone := !unit.isClaimLine()
 	a.IsApprover = a.IsManager || c.Approve
 	a.CanSee = a.IsOwner || a.IsManager || c.seesEveryone()
 	// Every billing answer is the projects module's, so none of them is true
@@ -372,20 +517,20 @@ func (c *caller) accessFor(entry store.ExpensesEntry, role string) entryAccess {
 	a.CanSeeBilling = c.ProjectsOn && entry.ProjectID != nil && c.seesProjectFinancials(role)
 	a.SeesPayrollReference = a.IsOwner || c.seesEveryone()
 
-	open := c.mayWritePast(entry.EntryDate.Time)
+	open := c.mayWritePast(unit.Date)
 	a.IsWriter = a.IsOwner || c.Manage
 	writer := a.IsWriter
-	editable := slices.Contains(editableStatuses, entry.Status)
+	editable := unit.editable()
 	a.CanEdit = writer && open && editable
 	a.CanDelete = a.CanEdit
 	// Submit takes a rejected expense as well as a fresh draft: a line sent
 	// back over its rate or its date needs no edit before it goes again, and
 	// the submit reprices it either way.
-	a.CanSubmit = writer && open && editable
-	a.CanApprove = a.IsApprover && open && entry.Status == statusSubmitted
-	a.CanUnapprove = (a.IsApprover || c.Manage) && open && entry.Status == statusApproved &&
-		entry.ReimbursedAt == nil && entry.InvoicedAt == nil
-	a.CanOverrideRate = (a.IsApprover || c.Manage) && open && entry.Status == statusSubmitted && entry.Kind == kindMileage
+	a.CanSubmit = standalone && writer && open && editable
+	a.CanApprove = standalone && a.IsApprover && open && unit.Status == statusSubmitted
+	a.CanUnapprove = standalone && (a.IsApprover || c.Manage) && open && unit.Status == statusApproved &&
+		unit.ReimbursedAt == nil && entry.InvoicedAt == nil
+	a.CanOverrideRate = (a.IsApprover || c.Manage) && open && unit.Status == statusSubmitted && entry.Kind == kindMileage
 	// Pricing an expense from the project's side is open in every status the
 	// line can still be priced in — its owner's progress through the flow is
 	// not the project manager's business — and closed once it has been
@@ -404,12 +549,82 @@ func (c *caller) accessFor(entry store.ExpensesEntry, role string) entryAccess {
 	// A line with no amount to bill cannot be invoiced, so the capability does
 	// not say it can: a billable mileage line saved while no customer rate was
 	// in force carries nothing to put on an invoice until somebody prices it.
-	a.CanMarkInvoiced = financial && entry.Billable && entry.Status == statusApproved &&
+	a.CanMarkInvoiced = financial && entry.Billable && unit.Status == statusApproved &&
 		entry.InvoicedAt == nil && entry.BillAmount.Valid
 	a.CanUndoInvoiced = financial && entry.InvoicedAt != nil
-	a.CanMarkReimbursed = c.Manage && entry.Status == statusApproved &&
-		entry.ReimbursedAt == nil && owesEmployee(entry)
-	a.CanUndoReimbursed = c.Manage && entry.ReimbursedAt != nil
+	a.CanMarkReimbursed = standalone && c.Manage && unit.Status == statusApproved &&
+		unit.ReimbursedAt == nil && owesEmployee(entry)
+	a.CanUndoReimbursed = standalone && c.Manage && unit.ReimbursedAt != nil
+	return a
+}
+
+// claimAccess is what one caller may do with one travel claim. It is the same
+// decision accessFor makes, over the claim as its own unit: the claim is
+// visible to its owner, a manager of its project and the three permissions
+// that see everyone's, and it is the claim — not its lines — that is
+// submitted, approved, unapproved and paid back.
+type claimAccess struct {
+	IsOwner    bool
+	IsManager  bool
+	IsApprover bool
+
+	CanSee bool
+	// CanSeeFinancials is whether the caller may see what the claim's lines
+	// bill their customer, on exactly the rule a line's own billing object
+	// follows: financial rights on the claim's project, and nothing without
+	// the projects module.
+	CanSeeFinancials bool
+
+	// SeesPayrollReference is the shaping of the payroll reference on the
+	// claim's reimbursement stamp — entryAccess's own rule, one level up: the
+	// person it paid and the three permissions that read everybody's expenses,
+	// and not a project manager.
+	SeesPayrollReference bool
+
+	// IsWriter is whether the claim is the caller's to change at all — its
+	// owner, or expenses:manage. claimStateRefusal is the other half.
+	IsWriter bool
+
+	CanEdit           bool
+	CanDelete         bool
+	CanSubmit         bool
+	CanApprove        bool
+	CanUnapprove      bool
+	CanMarkReimbursed bool
+	CanUndoReimbursed bool
+}
+
+// claimAccessFor is claimAccess given c's role on the claim's project.
+//
+// The three flow capabilities and the two payroll ones are computed truthfully
+// although the operations that act on them arrive with the claim flow: a
+// capability that lied about a door that does not exist yet would be worse
+// than one that is simply always false, and this way the door needs no second
+// rule when it opens. owesAnything is what the claim's lines come to for its
+// owner, which only a caller that has read them can answer; false is the safe
+// answer for a reading that has not.
+func (c *caller) claimAccessFor(claim store.ExpensesClaim, role string, owesAnything bool) claimAccess {
+	unit := claimUnit(claim)
+	a := claimAccess{IsOwner: claim.UserID == c.UserID, IsManager: role == roleManager}
+	a.IsApprover = a.IsManager || c.Approve
+	a.CanSee = a.IsOwner || a.IsManager || c.seesEveryone()
+	a.CanSeeFinancials = c.ProjectsOn && claim.ProjectID != nil && c.seesProjectFinancials(role)
+	a.SeesPayrollReference = a.IsOwner || c.seesEveryone()
+
+	open := c.mayWritePast(unit.Date)
+	a.IsWriter = a.IsOwner || c.Manage
+	editable := unit.editable()
+	a.CanEdit = a.IsWriter && open && editable
+	a.CanDelete = a.CanEdit
+	a.CanSubmit = a.CanEdit
+	a.CanApprove = a.IsApprover && open && claim.Status == statusSubmitted
+	a.CanUnapprove = (a.IsApprover || c.Manage) && open && claim.Status == statusApproved &&
+		claim.ReimbursedAt == nil
+	// The payroll track does not consult the period lock, for the reason it
+	// does not on a standalone expense: payroll runs after the books close.
+	a.CanMarkReimbursed = c.Manage && claim.Status == statusApproved &&
+		claim.ReimbursedAt == nil && owesAnything
+	a.CanUndoReimbursed = c.Manage && claim.ReimbursedAt != nil
 	return a
 }
 

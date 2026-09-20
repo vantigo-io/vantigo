@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -172,7 +171,7 @@ func (s *server) PutExpensesEntriesByIdBilling(ctx context.Context, req gen.PutE
 	if err != nil {
 		return nil, err
 	}
-	row, a, found, err := s.visibleEntry(ctx, q, c, req.Id)
+	row, _, a, found, err := s.visibleEntry(ctx, q, c, req.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -214,13 +213,17 @@ func (s *server) PutExpensesEntriesByIdBilling(ctx context.Context, req gen.PutE
 		stale    [2]string
 	)
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
-		locked, err := txq.LockEntry(ctx, req.Id)
-		if errors.Is(err, pgx.ErrNoRows) {
+		// The claim's lock first, then the line's — the module's one order
+		// (lockEntryUnit). Pricing reads no status of the claim's, but it
+		// writes a row a claim-wide write may be holding, so it queues behind
+		// the same lock everything else does.
+		locked, _, found, err := lockEntryUnit(ctx, txq, req.Id, row.ClaimID)
+		if err != nil {
+			return err
+		}
+		if !found {
 			gone = true
 			return nil
-		}
-		if err != nil {
-			return fmt.Errorf("expenses: lock an expense: %w", err)
 		}
 		// Judged again on the row as it stands under the lock: an invoicing
 		// that committed since is the state refusal above, arrived a moment
@@ -417,7 +420,7 @@ func (s *server) GetExpensesEntriesByIdBillingLines(ctx context.Context, req gen
 	if err != nil {
 		return nil, err
 	}
-	row, a, found, err := s.visibleEntry(ctx, q, c, req.Id)
+	row, _, a, found, err := s.visibleEntry(ctx, q, c, req.Id)
 	if err != nil {
 		return nil, err
 	}

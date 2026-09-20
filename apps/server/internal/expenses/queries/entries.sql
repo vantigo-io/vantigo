@@ -5,14 +5,18 @@
 -- instant, supplied by the caller from Deps.Clock(); status and revision take
 -- the column defaults ('draft', 1). created_by_user_id is whoever made the
 -- request, which is not always user_id, the person the expense concerns.
+-- claim_id is the travel claim the expense is a line of, NULL for a standalone
+-- one; a line's own status column stays 'draft' and is never read, because
+-- everything status-shaped about it is the claim's (see unitOf in
+-- authorize.go).
 INSERT INTO expenses.entries (
-    user_id, created_by_user_id, kind, entry_date, description,
+    user_id, created_by_user_id, claim_id, kind, entry_date, description,
     category_id, supplier, paid_by, currency, gross_amount, vat_amount,
     distance_km, from_place, to_place, passengers, rate, passenger_rate,
     project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount,
     created_at, updated_at
 ) VALUES (
-    @user_id, @created_by_user_id, @kind, @entry_date, @description,
+    @user_id, @created_by_user_id, @claim_id, @kind, @entry_date, @description,
     @category_id, @supplier, @paid_by, @currency, @gross_amount, @vat_amount,
     @distance_km, @from_place, @to_place, @passengers, @rate, @passenger_rate,
     @project_id, @billing_line_id, @billable, @markup_percent, @bill_rate_per_km, @bill_amount,
@@ -96,32 +100,49 @@ WHERE id = @id
 -- authorize.go applies to one entry: everything for see_all (expenses:view-all,
 -- expenses:approve, expenses:manage), the caller's own, and everything on the
 -- projects the caller manages, whose ids are resolved through the project
--- directory before the query rather than filtered after it.
-SELECT count(*) FROM expenses.entries
+-- directory before the query rather than filtered after it. A claim's line
+-- carries its claim's owner and its claim's project, so the same predicate
+-- makes a line visible exactly when its claim is.
+--
+-- The status and the reimbursed filters read the **unit** the entry belongs
+-- to, which for a line is its claim (unitOf in authorize.go) — the status the
+-- line is rendered with, so the filter and the rendering can never disagree.
+-- standalone and claim_id narrow the list to one side of that distinction; an
+-- absent standalone leaves both in, so the list a client that knows nothing of
+-- claims asks for is exactly the list it always got.
+SELECT count(*) FROM expenses.entries e
+LEFT JOIN expenses.claims c ON c.id = e.claim_id
 WHERE (@see_all::boolean
-       OR user_id = @caller_id::uuid
-       OR (project_id IS NOT NULL AND project_id = ANY(@managed_project_ids::integer[])))
-  AND (sqlc.narg(user_id)::uuid IS NULL OR user_id = sqlc.narg(user_id)::uuid)
-  AND (sqlc.narg(project_id)::integer IS NULL OR project_id = sqlc.narg(project_id)::integer)
-  AND (sqlc.narg(status)::text IS NULL OR status = sqlc.narg(status)::text)
-  AND (sqlc.narg(kind)::text IS NULL OR kind = sqlc.narg(kind)::text)
-  AND (sqlc.narg(from_date)::date IS NULL OR entry_date >= sqlc.narg(from_date)::date)
-  AND (sqlc.narg(to_date)::date IS NULL OR entry_date <= sqlc.narg(to_date)::date)
-  AND (sqlc.narg(reimbursed)::boolean IS NULL OR (reimbursed_at IS NOT NULL) = sqlc.narg(reimbursed)::boolean);
+       OR e.user_id = @caller_id::uuid
+       OR (e.project_id IS NOT NULL AND e.project_id = ANY(@managed_project_ids::integer[])))
+  AND (sqlc.narg(user_id)::uuid IS NULL OR e.user_id = sqlc.narg(user_id)::uuid)
+  AND (sqlc.narg(project_id)::integer IS NULL OR e.project_id = sqlc.narg(project_id)::integer)
+  AND (sqlc.narg(claim_id)::bigint IS NULL OR e.claim_id = sqlc.narg(claim_id)::bigint)
+  AND (sqlc.narg(standalone)::boolean IS NULL OR (e.claim_id IS NULL) = sqlc.narg(standalone)::boolean)
+  AND (sqlc.narg(status)::text IS NULL OR COALESCE(c.status, e.status) = sqlc.narg(status)::text)
+  AND (sqlc.narg(kind)::text IS NULL OR e.kind = sqlc.narg(kind)::text)
+  AND (sqlc.narg(from_date)::date IS NULL OR e.entry_date >= sqlc.narg(from_date)::date)
+  AND (sqlc.narg(to_date)::date IS NULL OR e.entry_date <= sqlc.narg(to_date)::date)
+  AND (sqlc.narg(reimbursed)::boolean IS NULL
+       OR (COALESCE(c.reimbursed_at, e.reimbursed_at) IS NOT NULL) = sqlc.narg(reimbursed)::boolean);
 
 -- name: ListEntries :many
 -- ListEntries is one page of CountEntries' expenses, the latest day first and,
 -- within a day, the latest recorded first.
-SELECT * FROM expenses.entries
+SELECT e.* FROM expenses.entries e
+LEFT JOIN expenses.claims c ON c.id = e.claim_id
 WHERE (@see_all::boolean
-       OR user_id = @caller_id::uuid
-       OR (project_id IS NOT NULL AND project_id = ANY(@managed_project_ids::integer[])))
-  AND (sqlc.narg(user_id)::uuid IS NULL OR user_id = sqlc.narg(user_id)::uuid)
-  AND (sqlc.narg(project_id)::integer IS NULL OR project_id = sqlc.narg(project_id)::integer)
-  AND (sqlc.narg(status)::text IS NULL OR status = sqlc.narg(status)::text)
-  AND (sqlc.narg(kind)::text IS NULL OR kind = sqlc.narg(kind)::text)
-  AND (sqlc.narg(from_date)::date IS NULL OR entry_date >= sqlc.narg(from_date)::date)
-  AND (sqlc.narg(to_date)::date IS NULL OR entry_date <= sqlc.narg(to_date)::date)
-  AND (sqlc.narg(reimbursed)::boolean IS NULL OR (reimbursed_at IS NOT NULL) = sqlc.narg(reimbursed)::boolean)
-ORDER BY entry_date DESC, id DESC
+       OR e.user_id = @caller_id::uuid
+       OR (e.project_id IS NOT NULL AND e.project_id = ANY(@managed_project_ids::integer[])))
+  AND (sqlc.narg(user_id)::uuid IS NULL OR e.user_id = sqlc.narg(user_id)::uuid)
+  AND (sqlc.narg(project_id)::integer IS NULL OR e.project_id = sqlc.narg(project_id)::integer)
+  AND (sqlc.narg(claim_id)::bigint IS NULL OR e.claim_id = sqlc.narg(claim_id)::bigint)
+  AND (sqlc.narg(standalone)::boolean IS NULL OR (e.claim_id IS NULL) = sqlc.narg(standalone)::boolean)
+  AND (sqlc.narg(status)::text IS NULL OR COALESCE(c.status, e.status) = sqlc.narg(status)::text)
+  AND (sqlc.narg(kind)::text IS NULL OR e.kind = sqlc.narg(kind)::text)
+  AND (sqlc.narg(from_date)::date IS NULL OR e.entry_date >= sqlc.narg(from_date)::date)
+  AND (sqlc.narg(to_date)::date IS NULL OR e.entry_date <= sqlc.narg(to_date)::date)
+  AND (sqlc.narg(reimbursed)::boolean IS NULL
+       OR (COALESCE(c.reimbursed_at, e.reimbursed_at) IS NOT NULL) = sqlc.narg(reimbursed)::boolean)
+ORDER BY e.entry_date DESC, e.id DESC
 LIMIT @page_size OFFSET @page_offset;

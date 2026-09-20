@@ -124,7 +124,17 @@ UPDATE expenses.entries SET
         ELSE passenger_rate_table_value END,
     revision = revision + 1,
     updated_at = @now::timestamptz
-WHERE id = @id AND revision = @revision AND status = 'submitted' AND kind = 'mileage'
+--
+-- The status guarded is the **unit's** (unitOf in authorize.go): a line inside
+-- a travel claim is submitted exactly when its claim is, and its own column
+-- stays at its default. The handler holds the claim's row lock before this
+-- runs, so the subquery reads the very row it judged.
+WHERE expenses.entries.id = @id
+  AND expenses.entries.revision = @revision
+  AND expenses.entries.kind = 'mileage'
+  AND COALESCE(
+        (SELECT c.status FROM expenses.claims c WHERE c.id = expenses.entries.claim_id),
+        expenses.entries.status) = 'submitted'
 RETURNING *;
 
 -- name: UpdateEntryBilling :one

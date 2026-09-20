@@ -97,9 +97,17 @@ func columnsOf(p parsedEntry, v entryValues) (entryColumns, error) {
 // unless userId names somebody else, which needs expenses:manage and a person
 // identity still has as active. It is asked of the user directory before any
 // transaction.
+//
+// A line inside a travel claim has no owner of its own: it is whoever the claim
+// concerns, whatever the body said. Naming somebody else is refused rather than
+// silently overridden, and nothing is asked of the directory — the claim has
+// already answered.
 func (s *server) resolveOwner(ctx context.Context, c *caller, userID *openapi_types.UUID,
-	add func(field, msg string),
+	claim *store.ExpensesClaim, add func(field, msg string),
 ) (uuid.UUID, error) {
+	if claim != nil {
+		return claim.UserID, nil
+	}
 	if userID == nil || *userID == c.UserID {
 		return c.UserID, nil
 	}
@@ -138,13 +146,18 @@ func (s *server) resolveOwner(ctx context.Context, c *caller, userID *openapi_ty
 // resolve at all. That is not a refusal either — the stored id stays (decision
 // X2) — but nothing can be priced against a project that cannot be read, so
 // the save carries the project columns through untouched instead.
+// inherited is the same grandfathering for a line that took its project from
+// its travel claim rather than from its own body: the claim has already
+// answered that its owner may book on it, so a project completed since must not
+// stop them adding an expense to a trip they have already recorded.
 func (s *server) checkProject(ctx context.Context, ownerID uuid.UUID, p parsedEntry,
-	current *store.ExpensesEntry, add func(field, msg string),
+	current *store.ExpensesEntry, inherited bool, add func(field, msg string),
 ) (*contracts.ProjectEntry, bool, error) {
 	if p.ProjectID == nil || !s.projectsAvailable() {
 		return nil, false, nil
 	}
-	keptProject := current != nil && current.ProjectID != nil && *current.ProjectID == *p.ProjectID
+	keptProject := inherited ||
+		(current != nil && current.ProjectID != nil && *current.ProjectID == *p.ProjectID)
 	if !keptProject {
 		allowed, err := s.projectsCanLogTime(ctx, *p.ProjectID, ownerID)
 		if err != nil {
@@ -167,7 +180,7 @@ func (s *server) checkProject(ctx context.Context, ownerID uuid.UUID, p parsedEn
 		return nil, false, nil
 	}
 
-	keptLine := keptProject && p.LineID != nil &&
+	keptLine := keptProject && p.LineID != nil && current != nil &&
 		current.BillingLineID != nil && *current.BillingLineID == *p.LineID
 	if p.LineID != nil && !keptLine {
 		line, err := s.projectsBillingLine(ctx, *p.ProjectID, *p.LineID)
@@ -452,6 +465,11 @@ type prepared struct {
 	// stay), and when the project the line keeps is one the directory can no
 	// longer resolve.
 	CarryProject bool
+
+	// Claim is the travel claim this expense is a line of, nil for a
+	// standalone one. It is the unit the save is judged by, and the row whose
+	// lock the write takes first (claims.go).
+	Claim *store.ExpensesClaim
 }
 
 // onlyFinancialRights is the message the two customer-facing figures carry
@@ -473,19 +491,31 @@ func (s *server) prepare(ctx context.Context, q *store.Queries, c *caller, body 
 		}
 	}
 
-	parsed, parseErrs := parseEntry(body, c.Settings.DefaultCurrency, s.projectsAvailable())
+	inClaim := body.ClaimID != nil || (current != nil && current.ClaimID != nil)
+	parsed, parseErrs := parseEntry(body, c.Settings.DefaultCurrency, s.projectsAvailable(), inClaim)
 	for field, messages := range parseErrs {
 		for _, msg := range messages {
 			add(field, msg)
 		}
 	}
 
-	owner, err := s.resolveOwner(ctx, c, userID, add)
+	// Which claim this is a line of, and whether the caller may put one in it
+	// right now. It comes before everything else the save asks of anybody: the
+	// claim decides the owner and the project, so a body judged without it
+	// would be judged against fields the claim is about to replace.
+	claim, err := s.resolveClaimLine(ctx, q, c, body, current, add)
+	if err != nil {
+		return prepared{}, err
+	}
+	owner, err := s.resolveOwner(ctx, c, userID, claim, add)
 	if err != nil {
 		return prepared{}, err
 	}
 	if current != nil {
 		owner = current.UserID
+	}
+	if claim != nil && len(errs) == 0 {
+		claimLineRules(&parsed, userID, *claim, add)
 	}
 
 	if len(errs) > 0 {
@@ -519,7 +549,8 @@ func (s *server) prepare(ctx context.Context, q *store.Queries, c *caller, body 
 		}
 	}
 
-	project, projectLost, err := s.checkProject(ctx, owner, parsed, current, add)
+	inheritedProject := claim != nil && sameProject(parsed.ProjectID, claim.ProjectID)
+	project, projectLost, err := s.checkProject(ctx, owner, parsed, current, inheritedProject, add)
 	if err != nil {
 		return prepared{}, err
 	}
@@ -535,7 +566,11 @@ func (s *server) prepare(ctx context.Context, q *store.Queries, c *caller, body 
 			add("kind", receiptsStranded)
 		}
 	}
-	if !c.mayWritePast(parsed.Date) {
+	// The period lock, on the day the expense is being given. A line inside a
+	// travel claim is judged on the claim's departure day instead — the unit's
+	// date, judged once by resolveClaimLine — because that is the day the whole
+	// trip belongs to and its lines are the days of it.
+	if claim == nil && !c.mayWritePast(parsed.Date) {
 		add("entryDate", lockedBeforeMessage(*lockedBefore(c.Settings)))
 	}
 	carry := current != nil && (!s.projectsAvailable() || projectLost)
@@ -554,7 +589,7 @@ func (s *server) prepare(ctx context.Context, q *store.Queries, c *caller, body 
 		return prepared{}, err
 	}
 	return prepared{
-		Owner: owner, Parsed: parsed, Values: values, Columns: columns, CarryProject: carry,
+		Owner: owner, Parsed: parsed, Values: values, Columns: columns, CarryProject: carry, Claim: claim,
 	}, nil
 }
 
@@ -562,8 +597,14 @@ func (s *server) prepare(ctx context.Context, q *store.Queries, c *caller, body 
 // (POST /api/v1/expenses/entries)
 //
 // The expense is a draft owned by the caller, or by the person userId names.
-// Nothing about it contends with another row — there is no cap and no sequence
-// to hold — so it is one insert rather than a locked transaction.
+// A standalone one contends with nothing — there is no cap and no sequence to
+// hold — so it is one insert rather than a locked transaction.
+//
+// A line of a travel claim is the other case: the claim's row is locked first
+// (the module's one lock order, claims.go), its state judged again under that
+// lock so a submit racing this request wins, and the cap on how many expenses
+// one claim holds decided there — two lines racing for the last slot cannot
+// both take it.
 func (s *server) PostExpensesEntries(ctx context.Context, req gen.PostExpensesEntriesRequestObject) (gen.PostExpensesEntriesResponseObject, error) {
 	body := gen.ExpensesEntryRequest{}
 	if req.Body != nil {
@@ -582,9 +623,10 @@ func (s *server) PostExpensesEntries(ctx context.Context, req gen.PostExpensesEn
 		return gen.PostExpensesEntries400ApplicationProblemPlusJSONResponse(invalidEntry(p.Errors)), nil
 	}
 
-	created, err := q.InsertEntry(ctx, store.InsertEntryParams{
+	params := store.InsertEntryParams{
 		UserID:          p.Owner,
 		CreatedByUserID: c.UserID,
+		ClaimID:         p.Parsed.ClaimID,
 		Kind:            p.Parsed.Kind,
 		EntryDate:       pgDate(p.Parsed.Date),
 		Description:     p.Parsed.Description,
@@ -607,9 +649,60 @@ func (s *server) PostExpensesEntries(ctx context.Context, req gen.PostExpensesEn
 		BillRatePerKm:   p.Columns.BillRatePerKm,
 		BillAmount:      p.Columns.BillAmount,
 		Now:             s.deps.Clock(),
+	}
+
+	var created store.ExpensesEntry
+	if p.Claim == nil {
+		if created, err = q.InsertEntry(ctx, params); err != nil {
+			return nil, fmt.Errorf("expenses: record an expense: %w", err)
+		}
+		resp, err := s.entryResponseFor(ctx, c, created)
+		if err != nil {
+			return nil, err
+		}
+		return gen.PostExpensesEntries201JSONResponse(resp), nil
+	}
+
+	var gone bool
+	var refusal string
+	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+		claim, err := txq.LockClaim(ctx, p.Claim.ID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			gone = true
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("expenses: lock a travel claim: %w", err)
+		}
+		// Judged again on the claim as it stands under the lock: a submit that
+		// committed since is the refusal resolveClaimLine would have given,
+		// arrived a moment later.
+		if _, msg := entryStateRefusal(c, claimUnit(claim)); msg != "" {
+			refusal = msg
+			return nil
+		}
+		count, err := txq.CountClaimLines(ctx, &claim.ID)
+		if err != nil {
+			return fmt.Errorf("expenses: count a travel claim's expenses: %w", err)
+		}
+		if refusal = claimLineCapRefusal(count); refusal != "" {
+			return nil
+		}
+		created, err = txq.InsertEntry(ctx, params)
+		if err != nil {
+			return fmt.Errorf("expenses: record an expense: %w", err)
+		}
+		return nil
 	})
-	if err != nil {
-		return nil, fmt.Errorf("expenses: record an expense: %w", err)
+	switch {
+	case err != nil:
+		return nil, err
+	case gone:
+		return gen.PostExpensesEntries400ApplicationProblemPlusJSONResponse(
+			invalidEntry(fieldError("claimId", noSuchClaim(p.Claim.ID)))), nil
+	case refusal != "":
+		return gen.PostExpensesEntries400ApplicationProblemPlusJSONResponse(
+			invalidEntry(fieldError("claimId", refusal))), nil
 	}
 
 	resp, err := s.entryResponseFor(ctx, c, created)
@@ -631,7 +724,7 @@ func (s *server) GetExpensesEntriesById(ctx context.Context, req gen.GetExpenses
 	if err != nil {
 		return nil, err
 	}
-	row, _, found, err := s.visibleEntry(ctx, q, c, req.Id)
+	row, _, _, found, err := s.visibleEntry(ctx, q, c, req.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -645,25 +738,33 @@ func (s *server) GetExpensesEntriesById(ctx context.Context, req gen.GetExpenses
 	return gen.GetExpensesEntriesById200JSONResponse(resp), nil
 }
 
-// visibleEntry loads one expense and the caller's access to it, answering
-// found=false both for an unknown id and for an expense the caller may not
-// see, so the two can never be told apart.
-func (s *server) visibleEntry(ctx context.Context, q *store.Queries, c *caller, id int64) (store.ExpensesEntry, entryAccess, bool, error) {
+// visibleEntry loads one expense, the unit it belongs to and the caller's
+// access to it, answering found=false both for an unknown id and for an
+// expense the caller may not see, so the two can never be told apart.
+//
+// A line's unit is its travel claim, and a claim is visible to exactly the
+// people its lines are — the line carries the claim's owner and the claim's
+// project — so one rule decides both.
+func (s *server) visibleEntry(ctx context.Context, q *store.Queries, c *caller, id int64) (store.ExpensesEntry, entryUnit, entryAccess, bool, error) {
 	row, err := q.GetEntry(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return store.ExpensesEntry{}, entryAccess{}, false, nil
+		return store.ExpensesEntry{}, entryUnit{}, entryAccess{}, false, nil
 	}
 	if err != nil {
-		return store.ExpensesEntry{}, entryAccess{}, false, fmt.Errorf("expenses: get an expense: %w", err)
+		return store.ExpensesEntry{}, entryUnit{}, entryAccess{}, false, fmt.Errorf("expenses: get an expense: %w", err)
 	}
-	a, err := s.entryAccess(ctx, c, row)
+	unit, err := s.unitFor(ctx, q, row)
 	if err != nil {
-		return store.ExpensesEntry{}, entryAccess{}, false, err
+		return store.ExpensesEntry{}, entryUnit{}, entryAccess{}, false, err
+	}
+	a, err := s.entryAccess(ctx, c, row, unit)
+	if err != nil {
+		return store.ExpensesEntry{}, entryUnit{}, entryAccess{}, false, err
 	}
 	if !a.CanSee {
-		return store.ExpensesEntry{}, entryAccess{}, false, nil
+		return store.ExpensesEntry{}, entryUnit{}, entryAccess{}, false, nil
 	}
-	return row, a, true, nil
+	return row, unit, a, true, nil
 }
 
 // PutExpensesEntriesById Change an expense
@@ -690,7 +791,7 @@ func (s *server) PutExpensesEntriesById(ctx context.Context, req gen.PutExpenses
 	if err != nil {
 		return nil, err
 	}
-	current, a, found, err := s.visibleEntry(ctx, q, c, req.Id)
+	current, unit, a, found, err := s.visibleEntry(ctx, q, c, req.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -702,10 +803,11 @@ func (s *server) PutExpensesEntriesById(ctx context.Context, req gen.PutExpenses
 	}
 	// What the expense is right now — settled, or dated inside a closed period
 	// — is a fact about the expense rather than about the caller, so it is a
-	// 400 naming the reason. The lock is judged here on the day the expense
-	// *has*, and again in prepare on the day it is being given, so a locked
-	// line can be edited neither into nor out of the lock.
-	if field, msg := entryStateRefusal(c, current); msg != "" {
+	// 400 naming the reason. It is judged on the *unit*: a line inside a travel
+	// claim is open exactly while its claim is. The lock is judged here on the
+	// day the expense *has*, and again in prepare on the day it is being given,
+	// so a locked line can be edited neither into nor out of the lock.
+	if field, msg := entryStateRefusal(c, unit); msg != "" {
 		return gen.PutExpensesEntriesById400ApplicationProblemPlusJSONResponse(
 			invalidEntry(fieldError(field, msg))), nil
 	}
@@ -732,15 +834,15 @@ func (s *server) PutExpensesEntriesById(ctx context.Context, req gen.PutExpenses
 		conflict   *int32
 	)
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
-		row, err := txq.LockEntry(ctx, req.Id)
-		if errors.Is(err, pgx.ErrNoRows) {
+		row, lockedUnit, found, err := lockEntryUnit(ctx, txq, req.Id, current.ClaimID)
+		if err != nil {
+			return err
+		}
+		if !found {
 			gone = true
 			return nil
 		}
-		if err != nil {
-			return fmt.Errorf("expenses: lock an expense: %w", err)
-		}
-		if staleField, staleMsg = entryStateRefusal(c, row); staleMsg != "" {
+		if staleField, staleMsg = entryStateRefusal(c, lockedUnit); staleMsg != "" {
 			return nil
 		}
 		// And judged again on the receipts as they stand under the lock: an
@@ -862,7 +964,7 @@ func (s *server) DeleteExpensesEntriesById(ctx context.Context, req gen.DeleteEx
 	if err != nil {
 		return nil, err
 	}
-	current, a, found, err := s.visibleEntry(ctx, q, c, req.Id)
+	current, unit, a, found, err := s.visibleEntry(ctx, q, c, req.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -872,7 +974,7 @@ func (s *server) DeleteExpensesEntriesById(ctx context.Context, req gen.DeleteEx
 	if !a.IsWriter {
 		return gen.DeleteExpensesEntriesById403JSONResponse(forbidden()), nil
 	}
-	if field, msg := entryStateRefusal(c, current); msg != "" {
+	if field, msg := entryStateRefusal(c, unit); msg != "" {
 		return gen.DeleteExpensesEntriesById400ApplicationProblemPlusJSONResponse(
 			invalidEntry(fieldError(field, msg))), nil
 	}
@@ -885,18 +987,18 @@ func (s *server) DeleteExpensesEntriesById(ctx context.Context, req gen.DeleteEx
 		staleMsg   string
 	)
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
-		locked, err := txq.LockEntry(ctx, req.Id)
-		if errors.Is(err, pgx.ErrNoRows) {
+		_, lockedUnit, found, err := lockEntryUnit(ctx, txq, req.Id, current.ClaimID)
+		if err != nil {
+			return err
+		}
+		if !found {
 			// A concurrent delete won; it is gone, which is the unknown id.
 			gone = true
 			return nil
 		}
-		if err != nil {
-			return fmt.Errorf("expenses: lock an expense: %w", err)
-		}
 		// Judged again on the row as it is under the lock: a submit that
 		// committed since is the state refusal above, arrived a moment later.
-		if staleField, staleMsg = entryStateRefusal(c, locked); staleMsg != "" {
+		if staleField, staleMsg = entryStateRefusal(c, lockedUnit); staleMsg != "" {
 			return nil
 		}
 		if keys, err = txq.ListAttachmentKeysForEntry(ctx, req.Id); err != nil {
@@ -996,6 +1098,8 @@ func (s *server) GetExpensesEntries(ctx context.Context, req gen.GetExpensesEntr
 		ManagedProjectIds: managed,
 		UserID:            p.UserId,
 		ProjectID:         p.ProjectId,
+		ClaimID:           p.ClaimId,
+		Standalone:        p.Standalone,
 		Status:            filterValue(p.Status),
 		Kind:              filterValue(p.Kind),
 		FromDate:          optionalDate(p.From),
@@ -1012,6 +1116,8 @@ func (s *server) GetExpensesEntries(ctx context.Context, req gen.GetExpensesEntr
 		ManagedProjectIds: filter.ManagedProjectIds,
 		UserID:            filter.UserID,
 		ProjectID:         filter.ProjectID,
+		ClaimID:           filter.ClaimID,
+		Standalone:        filter.Standalone,
 		Status:            filter.Status,
 		Kind:              filter.Kind,
 		FromDate:          filter.FromDate,

@@ -145,6 +145,272 @@ components:
                 - active
                 - position
             type: object
+        ExpensesClaimCapabilities:
+            description: What the calling user may do with this travel claim, so a client never re-derives the rules of design §5. A claim is the unit that moves through the flow and through a payroll run, so these are the claim's own — its lines carry no submit, approve or reimburse of their own.
+            properties:
+                canApprove:
+                    description: Whether the caller may approve or reject it — an approver of it, while it is submitted.
+                    type: boolean
+                canDelete:
+                    description: Whether the caller may delete it, which takes its lines and their receipts with it.
+                    type: boolean
+                canEdit:
+                    description: Whether the caller may change it — its owner or expenses:manage, while it is a draft or rejected, and not before the period lock. It is the same answer for adding, changing or deleting one of its lines.
+                    type: boolean
+                canMarkReimbursed:
+                    description: 'Whether the caller may mark it reimbursed — expenses:manage, while it is approved, owes the employee something and has not been paid yet. The period lock does not hold it back: payroll runs after the books close.'
+                    type: boolean
+                canSubmit:
+                    description: Whether the caller may submit it — its owner or expenses:manage, while it is a draft or rejected, and not before the period lock.
+                    type: boolean
+                canUnapprove:
+                    description: Whether the caller may return it to a draft — an approver of it or expenses:manage, while it is approved and has not been reimbursed.
+                    type: boolean
+                canUndoReimbursed:
+                    description: Whether the caller may take the reimbursement back — expenses:manage, while it stands reimbursed.
+                    type: boolean
+            required:
+                - canEdit
+                - canDelete
+                - canSubmit
+                - canApprove
+                - canUnapprove
+                - canMarkReimbursed
+                - canUndoReimbursed
+            type: object
+        ExpensesClaimListResponse:
+            description: One travel claim in a list — everything a single read answers except its lines, which a list of trips has no use for, plus how many there are.
+            properties:
+                abroad:
+                    type: boolean
+                abroadCurrency:
+                    description: The currency the claim's own day rate is in. Present only on a claim abroad.
+                    type: string
+                abroadDayRate:
+                    description: The day rate a trip abroad is paid at, in place of the dated table's. Present only on a claim abroad.
+                    format: double
+                    type: number
+                capabilities:
+                    $ref: '#/components/schemas/ExpensesClaimCapabilities'
+                createdAt:
+                    format: date-time
+                    type: string
+                decision:
+                    $ref: '#/components/schemas/ExpensesEntryDecision'
+                departureAt:
+                    format: date-time
+                    type: string
+                destination:
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                lineCount:
+                    description: How many expenses the claim holds.
+                    format: int32
+                    type: integer
+                owner:
+                    $ref: '#/components/schemas/ExpensesUserRef'
+                project:
+                    $ref: '#/components/schemas/ExpensesEntryProject'
+                purpose:
+                    type: string
+                reimbursement:
+                    allOf:
+                        - $ref: '#/components/schemas/ExpensesEntryReimbursement'
+                    description: That the employee has been paid back for the trip. Absent until then.
+                returnAt:
+                    format: date-time
+                    type: string
+                revision:
+                    format: int32
+                    type: integer
+                status:
+                    description: '''draft'', ''submitted'', ''approved'' or ''rejected''.'
+                    type: string
+                submittedAt:
+                    format: date-time
+                    type: string
+                totals:
+                    description: The claim's figures, one line per currency, by currency code. Nothing is ever converted.
+                    items:
+                        $ref: '#/components/schemas/ExpensesCurrencyTotal'
+                    type: array
+                updatedAt:
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - purpose
+                - abroad
+                - departureAt
+                - returnAt
+                - status
+                - owner
+                - lineCount
+                - totals
+                - revision
+                - createdAt
+                - updatedAt
+                - capabilities
+            type: object
+        ExpensesClaimRequest:
+            description: 'A travel claim (design §3.6): the container a trip''s expenses sit in. Its lines are ordinary expenses carrying its id — they take their owner, their project, their status and their decision from it, and keep their own kind, date, amounts and receipts. A claim is created as a draft with no lines.'
+            properties:
+                abroad:
+                    description: Whether the trip was abroad. A trip abroad is paid at the claim's own day rate rather than the dated per diem table, so abroadDayRate and abroadCurrency are required with it and refused without it.
+                    type: boolean
+                abroadCurrency:
+                    description: A three-letter ISO 4217 code. Required when abroad, refused otherwise.
+                    type: string
+                abroadDayRate:
+                    description: The day rate the trip is paid at, greater than zero with at most two decimals. Required when abroad, refused otherwise.
+                    format: double
+                    type: number
+                departureAt:
+                    description: When the traveller left, as entered. It is stored and compared as the instant it names; the per diem day boundaries are 24-hour periods from it, not calendar midnights.
+                    format: date-time
+                    type: string
+                destination:
+                    description: At most 200 characters.
+                    type: string
+                projectId:
+                    description: The project the whole trip is booked on, and so every one of its lines. The person it concerns must be allowed to book on it — what logging time needs. Refused when this installation has no projects module.
+                    format: int32
+                    type: integer
+                purpose:
+                    description: What the trip was for. 1 to 200 characters.
+                    type: string
+                returnAt:
+                    description: When the traveller came back. It must be after the departure, and the trip may be at most 366 days.
+                    format: date-time
+                    type: string
+                userId:
+                    description: The person the claim concerns. Absent means the caller; naming somebody else needs expenses:manage, and they must be a user identity still has as active.
+                    format: uuid
+                    type: string
+            required:
+                - purpose
+                - departureAt
+                - returnAt
+            type: object
+        ExpensesClaimResponse:
+            description: One travel claim as the caller may see it, with its lines. A line is shaped exactly as a single read of it would be — the same renderer, the same capabilities — and the claim is visible to its owner, a manager of its project, and expenses:view-all, expenses:approve and expenses:manage; anyone else gets the bare 404 an unknown id gets.
+            properties:
+                abroad:
+                    type: boolean
+                abroadCurrency:
+                    description: The currency the claim's own day rate is in. Present only on a claim abroad.
+                    type: string
+                abroadDayRate:
+                    description: The day rate a trip abroad is paid at, in place of the dated table's. Present only on a claim abroad.
+                    format: double
+                    type: number
+                billableTotals:
+                    description: What the claim's lines bill their customer, one line per currency. Present only for a caller with financial rights on the claim's project, exactly as the billing object on a line is.
+                    items:
+                        $ref: '#/components/schemas/ExpensesCurrencyAmount'
+                    type: array
+                capabilities:
+                    $ref: '#/components/schemas/ExpensesClaimCapabilities'
+                createdAt:
+                    format: date-time
+                    type: string
+                decision:
+                    $ref: '#/components/schemas/ExpensesEntryDecision'
+                departureAt:
+                    format: date-time
+                    type: string
+                destination:
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                lines:
+                    description: The claim's expenses, oldest day first and then as recorded. Always present, empty when it holds none.
+                    items:
+                        $ref: '#/components/schemas/ExpensesEntryResponse'
+                    type: array
+                owner:
+                    $ref: '#/components/schemas/ExpensesUserRef'
+                project:
+                    $ref: '#/components/schemas/ExpensesEntryProject'
+                purpose:
+                    type: string
+                reimbursement:
+                    allOf:
+                        - $ref: '#/components/schemas/ExpensesEntryReimbursement'
+                    description: That the employee has been paid back for the trip. Absent until then.
+                returnAt:
+                    format: date-time
+                    type: string
+                revision:
+                    description: What an update must carry to be allowed to save.
+                    format: int32
+                    type: integer
+                status:
+                    description: '''draft'', ''submitted'', ''approved'' or ''rejected''.'
+                    type: string
+                submittedAt:
+                    format: date-time
+                    type: string
+                totals:
+                    description: The claim's figures, one line per currency, by currency code. Nothing is ever converted.
+                    items:
+                        $ref: '#/components/schemas/ExpensesCurrencyTotal'
+                    type: array
+                updatedAt:
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - purpose
+                - abroad
+                - departureAt
+                - returnAt
+                - status
+                - owner
+                - lines
+                - totals
+                - revision
+                - createdAt
+                - updatedAt
+                - capabilities
+            type: object
+        ExpensesClaimUpdateRequest:
+            description: 'A full replace of a travel claim''s header, guarded by the revision it was read at. What is left out is cleared. Changing the project re-points every line onto it in the same transaction and clears a line''s billing line when it does not belong to the new project; clearing the project makes every line non-billable. A line that has already been invoiced holds the project where it is. The owner stays whoever the claim already concerns.'
+            properties:
+                abroad:
+                    type: boolean
+                abroadCurrency:
+                    type: string
+                abroadDayRate:
+                    format: double
+                    type: number
+                departureAt:
+                    format: date-time
+                    type: string
+                destination:
+                    type: string
+                projectId:
+                    description: A project the claim already carries is kept even once it stops accepting new bookings; a different one is judged in full.
+                    format: int32
+                    type: integer
+                purpose:
+                    type: string
+                returnAt:
+                    format: date-time
+                    type: string
+                revision:
+                    description: The revision the claim was read at. A revision that has moved on is a 409.
+                    format: int32
+                    type: integer
+            required:
+                - purpose
+                - departureAt
+                - returnAt
+                - revision
+            type: object
         ExpensesCurrencyAmount:
             description: One currency's amount in a dashboard reading. Nothing is ever converted (design §4), so a caller owed money in two currencies gets two lines and never a sum that is in neither.
             properties:
@@ -382,7 +648,7 @@ components:
                 - date
             type: object
         ExpensesEntryRequest:
-            description: 'One money line (design §3.1). The fields a kind does not carry are refused on their own field rather than ignored: an outlay carries a category, a payer, a currency and a gross amount with optional VAT; a mileage line carries a distance, optional places and passengers, and is priced by the server from the dated rate table. Travel claims and their per diem arrive in a later delivery, so kind per_diem and claimId are refused for now.'
+            description: 'One money line (design §3.1). The fields a kind does not carry are refused on their own field rather than ignored: an outlay carries a category, a payer, a currency and a gross amount with optional VAT; a mileage line carries a distance, optional places and passengers, and is priced by the server from the dated rate table. claimId records it as a line of a travel claim instead of a standalone expense; the per diem kind arrives in a later delivery and is refused for now.'
             properties:
                 billRatePerKm:
                     description: 'What the customer is charged per kilometre on billable mileage. Only a caller with financial rights on the project — the ones who are sent the billing object — may name it; anyone else is refused on this field. Left out, a save keeps whatever the line already carries, and a line that carries none takes the mileage_customer rate in force on the entry date. When there is no such rate and the caller could not have named one, the line is saved billable with no customer rate and nothing billed, for whoever can see the project''s money to fill in. Refused on anything but billable mileage, and on a project that bills nothing.'
@@ -400,7 +666,7 @@ components:
                     format: int32
                     type: integer
                 claimId:
-                    description: Reserved for the travel claims of a later delivery; a request carrying one is refused on this field.
+                    description: 'The travel claim this expense is a line of. The caller must be allowed to change that claim, and it must still be a draft or rejected; the line takes the claim''s owner and its project, so userId naming somebody else and projectId naming another project are both refused. Only an outlay or a mileage line may be added this way: a per diem day arrives in a later delivery.'
                     format: int64
                     type: integer
                 currency:
@@ -483,6 +749,10 @@ components:
                     $ref: '#/components/schemas/ExpensesEntryCapabilities'
                 category:
                     $ref: '#/components/schemas/ExpensesEntryCategory'
+                claimId:
+                    description: 'The travel claim this expense is a line of. Absent on a standalone expense. A line''s status, its decision and its reimbursement are the claim''s, not its own: they are rendered here from the claim, and the flow operations refuse a line by id and point at the claim.'
+                    format: int64
+                    type: integer
                 createdAt:
                     format: date-time
                     type: string
@@ -597,7 +867,7 @@ components:
                     format: int32
                     type: integer
                 claimId:
-                    description: Reserved for the travel claims of a later delivery; a request carrying one is refused on this field.
+                    description: 'The travel claim the expense is already a line of. It must be exactly the one it carries, or absent: a standalone expense cannot be moved into a claim, and a claim''s line cannot be moved out of one or into another.'
                     format: int64
                     type: integer
                 currency:
@@ -1115,6 +1385,18 @@ components:
                 - data
                 - pagination
             type: object
+        PaginatedResponseOfExpensesClaimListResponse:
+            properties:
+                data:
+                    items:
+                        $ref: '#/components/schemas/ExpensesClaimListResponse'
+                    type: array
+                pagination:
+                    $ref: common.yaml#/components/schemas/PaginationMetadata
+            required:
+                - data
+                - pagination
+            type: object
         PaginatedResponseOfExpensesEntryResponse:
             properties:
                 data:
@@ -1424,6 +1706,242 @@ paths:
             tags:
                 - Expenses
             x-vantigo-access: permission:expenses:access+expenses:manage
+    /api/v1/expenses/claims:
+        get:
+            description: Travel claims, the most recent trip first, and only where the caller may see them — their own, everything on a project they manage, and everyone's for expenses:view-all, expenses:approve and expenses:manage. The same rule a single read applies, so the list never holds a claim its own read would answer 404 for.
+            operationId: getExpensesClaims
+            parameters:
+                - description: 'Narrows the list to one person''s claims. It never widens it: a caller sees only what they may see anyway.'
+                  in: query
+                  name: userId
+                  schema:
+                    format: uuid
+                    type: string
+                - description: '''draft'', ''submitted'', ''approved'' or ''rejected''.'
+                  in: query
+                  name: status
+                  schema:
+                    type: string
+                - description: The earliest departure day to include, judged in UTC.
+                  in: query
+                  name: from
+                  schema:
+                    format: date
+                    type: string
+                - description: The latest departure day to include, judged in UTC.
+                  in: query
+                  name: to
+                  schema:
+                    format: date
+                    type: string
+                - description: Narrows the list to what has been reimbursed, or to what has not. Left out, both are in it.
+                  in: query
+                  name: reimbursed
+                  schema:
+                    type: boolean
+                - in: query
+                  name: page
+                  schema:
+                    format: int32
+                    type: integer
+                - in: query
+                  name: pageSize
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PaginatedResponseOfExpensesClaimListResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request — paging out of range, or an unknown status.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: List travel claims
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access
+        post:
+            description: Records one travel claim as a draft with no lines. Expenses are added to it afterwards, with POST /entries carrying its claimId.
+            operationId: postExpensesClaims
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ExpensesClaimRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ExpensesClaimResponse'
+                    description: Created — a draft owned by the caller, or by the person userId names.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Record a travel claim
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access
+    /api/v1/expenses/claims/{id}:
+        delete:
+            description: 'Deletes a travel claim while it is still its owner''s to change — a draft or a rejected one, by its owner or by expenses:manage, and not before the period lock. Its lines go with it, and their receipts with them. The two refusals are told apart on purpose: who is asking is a 403, what the claim is right now is a 400 naming the reason.'
+            operationId: deleteExpensesClaimsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — the claim has moved past being editable (on status) or departed before the period lock (on departureAt).
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the claim is not the caller's to change; they are neither its owner nor a holder of expenses:manage.
+                "404":
+                    description: Not Found — no claim has that id, or the caller may not see it.
+            summary: Delete a travel claim
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access
+        get:
+            description: One travel claim with its lines, shaped for the caller. A claim the caller may not see answers the same bare 404 an unknown id does.
+            operationId: getExpensesClaimsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ExpensesClaimResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no claim has that id, or the caller may not see it.
+            summary: Get a travel claim by id
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access
+        put:
+            description: Replaces a travel claim's header, guarded by the revision it was read at. Changing its project re-points every line in the same transaction.
+            operationId: putExpensesClaimsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ExpensesClaimUpdateRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ExpensesClaimResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — a field did not pass, or the claim has moved past being editable (on status) or departed before the period lock (on departureAt).
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the claim is not the caller's to change; they are neither its owner nor a holder of expenses:manage.
+                "404":
+                    description: Not Found — no claim has that id, or the caller may not see it.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict — the claim has moved on from the revision supplied.
+            summary: Change a travel claim
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access
     /api/v1/expenses/entries:
         get:
             description: Expenses, the latest day first, and only where the caller may see them — their own, everything on a project they manage, and everyone's for expenses:view-all, expenses:approve and expenses:manage. The same rule a single read applies, so the list never holds an entry its own read would answer 404 for and its total counts only what the caller may see.
@@ -1441,7 +1959,18 @@ paths:
                   schema:
                     format: int32
                     type: integer
-                - description: '''draft'', ''submitted'', ''approved'' or ''rejected''.'
+                - description: Narrows the list to one travel claim's lines. A claim the caller may not see holds nothing they can see either, so this is an empty page rather than a refusal.
+                  in: query
+                  name: claimId
+                  schema:
+                    format: int64
+                    type: integer
+                - description: 'true lists only standalone expenses, false only the lines of travel claims. Left out, the list holds both — the default is unchanged, so a client that knows nothing of claims sees exactly what it always saw.'
+                  in: query
+                  name: standalone
+                  schema:
+                    type: boolean
+                - description: '''draft'', ''submitted'', ''approved'' or ''rejected''. On a claim''s line it is the claim''s own status that is matched, because that is the status the line is rendered with.'
                   in: query
                   name: status
                   schema:

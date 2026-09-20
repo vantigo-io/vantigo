@@ -96,6 +96,19 @@ func batchIDs(entryIDs []int64, claimIDs *[]int64, errs map[string][]string) ([]
 // id that does not exist reads as, so a refusal tells a stranger nothing.
 func notFoundRefusal(id int64) string { return fmt.Sprintf("Expense %d was not found", id) }
 
+// claimLineRefusal is the per-id message every standalone flow operation
+// answers for a line that belongs to a travel claim (decision X4): the unit
+// that moves is the whole claim, so the operation is asked of the claim and
+// never of one of its lines. imperative is what the caller should do instead,
+// in the words of the operation they asked for.
+//
+// It comes after the visibility check and before every other refusal, so a
+// stranger still learns nothing, and whoever may see the line is pointed
+// straight at the thing they can actually act on.
+func claimLineRefusal(id, claimID int64, imperative string) string {
+	return fmt.Sprintf("Expense %d belongs to travel claim %d; %s", id, claimID, imperative)
+}
+
 // lockedRefusal is the per-id message for an expense inside a closed period.
 func (c *caller) lockedRefusal(id int64) string {
 	return fmt.Sprintf("Expense %d is dated before %s, the lock date",
@@ -273,10 +286,13 @@ func (s *server) PostExpensesSubmit(ctx context.Context, req gen.PostExpensesSub
 // not see is the unknown id's "was not found", one they see but do not own says
 // only that, and only then are its status and its date judged.
 func (c *caller) submitRefusal(id int64, row store.ExpensesEntry) string {
-	a := c.accessFor(row, c.cachedRole(row.ProjectID))
+	unit := unitOf(row, nil)
+	a := c.accessFor(row, unit, c.cachedRole(row.ProjectID))
 	switch {
 	case !a.CanSee:
 		return notFoundRefusal(id)
+	case row.ClaimID != nil:
+		return claimLineRefusal(id, *row.ClaimID, "submit the claim")
 	case !a.IsWriter:
 		return fmt.Sprintf("Expense %d is not yours", id)
 	case !slices.Contains(editableStatuses, row.Status):
@@ -467,6 +483,12 @@ type decision struct {
 	from string
 	verb string
 
+	// claimImperative is what a caller who named one of a travel claim's lines
+	// should do instead — "approve the claim", "mark the claim reimbursed" —
+	// in the words of this move. Every batch has one, because every batch is
+	// about a unit and a line is never one.
+	claimImperative string
+
 	// orManage is whether expenses:manage may make this move as well as an
 	// approver; manageOnly is whether expenses:manage is the *only* one who
 	// may, which is what the payroll track is — approving an expense is not
@@ -494,7 +516,8 @@ func article(status string) string {
 // may. It runs inside the locked transaction on the row as it stands there and
 // reads c's roles only from the cache warmBatch filled.
 func (c *caller) decisionRefusal(d decision, id int64, row store.ExpensesEntry) string {
-	a := c.accessFor(row, c.cachedRole(row.ProjectID))
+	unit := unitOf(row, nil)
+	a := c.accessFor(row, unit, c.cachedRole(row.ProjectID))
 	mayMove := a.IsApprover || (d.orManage && c.Manage)
 	if d.manageOnly {
 		mayMove = c.Manage
@@ -502,6 +525,8 @@ func (c *caller) decisionRefusal(d decision, id int64, row store.ExpensesEntry) 
 	switch {
 	case !a.CanSee:
 		return notFoundRefusal(id)
+	case row.ClaimID != nil:
+		return claimLineRefusal(id, *row.ClaimID, d.claimImperative)
 	case !mayMove:
 		// Deliberately no more than a 404 would tell them: that it exists and
 		// is not theirs, and nothing about whose it is or what it is on.
@@ -635,7 +660,7 @@ func (s *server) PostExpensesApprove(ctx context.Context, req gen.PostExpensesAp
 	}
 	decider, now := callerID(ctx), s.deps.Clock()
 	out, err := s.decide(ctx, decision{
-		from: statusSubmitted, verb: "approved",
+		from: statusSubmitted, verb: "approved", claimImperative: "approve the claim",
 		apply: func(ctx context.Context, txq *store.Queries, ids []int64) ([]store.ExpensesEntry, error) {
 			rows, err := txq.ApproveEntries(ctx, store.ApproveEntriesParams{Ids: ids, DecidedBy: decider, Now: now})
 			if err != nil {
@@ -688,7 +713,7 @@ func (s *server) PostExpensesReject(ctx context.Context, req gen.PostExpensesRej
 	}
 	decider, now := callerID(ctx), s.deps.Clock()
 	out, err := s.decide(ctx, decision{
-		from: statusSubmitted, verb: "rejected",
+		from: statusSubmitted, verb: "rejected", claimImperative: "reject the claim",
 		apply: func(ctx context.Context, txq *store.Queries, ids []int64) ([]store.ExpensesEntry, error) {
 			rows, err := txq.RejectEntries(ctx, store.RejectEntriesParams{
 				Ids: ids, DecidedBy: decider, Reason: reason, Now: now,
@@ -726,6 +751,7 @@ func (s *server) PostExpensesUnapprove(ctx context.Context, req gen.PostExpenses
 	now := s.deps.Clock()
 	out, err := s.decide(ctx, decision{
 		from: statusApproved, verb: "unapproved", orManage: true, also: paidOutRefusal,
+		claimImperative: "unapprove the claim",
 		apply: func(ctx context.Context, txq *store.Queries, ids []int64) ([]store.ExpensesEntry, error) {
 			rows, err := txq.UnapproveEntries(ctx, store.UnapproveEntriesParams{Ids: ids, Now: now})
 			if err != nil {

@@ -114,29 +114,54 @@ type entryNames struct {
 	// is rendered with is the length of its list rather than a second query, so
 	// attachmentCount and attachments can never disagree.
 	attachments map[int64][]gen.ExpensesAttachmentResponse
+	// claims is the travel claim of every line among the rows, read once for
+	// the whole set. It is what unitFor answers from, so a page of a claim's
+	// lines resolves the claim once rather than once per line.
+	claims map[int64]store.ExpensesClaim
+}
+
+// unitFor is the unit one of the rendered rows belongs to (authorize.go): the
+// expense itself, or the claim resolved for the whole set.
+func (n entryNames) unitFor(row store.ExpensesEntry) entryUnit {
+	if row.ClaimID == nil {
+		return unitOf(row, nil)
+	}
+	claim, ok := n.claims[*row.ClaimID]
+	if !ok {
+		return unitOf(row, nil)
+	}
+	return unitOf(row, &claim)
 }
 
 // namesFor resolves rows' names: one user-directory call for every owner, one
 // project-directory call for every project, one billing-lines call per project
 // that any row has a line on, one category read and one receipt read for the
 // whole set.
-func (s *server) namesFor(ctx context.Context, rows []store.ExpensesEntry) (entryNames, error) {
+//
+// claims are the travel claims to name as well as the rows' own — the claim a
+// read or a list is *about*, whose owner, project and deciders have to be named
+// even when it holds no lines at all. Passing it here rather than resolving it
+// separately is what keeps a claim and its lines to one directory call each.
+func (s *server) namesFor(ctx context.Context, rows []store.ExpensesEntry, claims ...store.ExpensesClaim) (entryNames, error) {
 	names := entryNames{
 		users:       map[uuid.UUID]contracts.UserEntry{},
 		projects:    map[int32]contracts.ProjectEntry{},
 		lines:       map[int32]contracts.BillingLineEntry{},
 		categories:  map[int32]store.ExpensesCategory{},
 		attachments: map[int64][]gen.ExpensesAttachmentResponse{},
+		claims:      map[int64]store.ExpensesClaim{},
 	}
-	if len(rows) == 0 {
+	if len(rows) == 0 && len(claims) == 0 {
 		return names, nil
 	}
 
 	var userIDs []uuid.UUID
 	var projectIDs []int32
+	var claimIDs []int64
 	entryIDs := make([]int64, 0, len(rows))
 	seenUsers := map[uuid.UUID]bool{}
 	seenProjects := map[int32]bool{}
+	seenClaims := map[int64]bool{}
 	lineProjects := map[int32]bool{}
 	addUser := func(id uuid.UUID) {
 		if !seenUsers[id] {
@@ -168,6 +193,30 @@ func (s *server) namesFor(ctx context.Context, rows []store.ExpensesEntry) (entr
 		}
 		if row.ProjectID != nil && row.BillingLineID != nil {
 			lineProjects[*row.ProjectID] = true
+		}
+		// The claim a line belongs to is what its status, its decision and its
+		// reimbursement are read off, so it is resolved with the names rather
+		// than one query per line.
+		if row.ClaimID != nil && !seenClaims[*row.ClaimID] {
+			seenClaims[*row.ClaimID] = true
+			claimIDs = append(claimIDs, *row.ClaimID)
+		}
+	}
+	// A claim named here is one the caller already has in hand, so it is not
+	// read again; its own people and its project join the same two calls the
+	// lines' do.
+	for _, claim := range claims {
+		seenClaims[claim.ID] = true
+		names.claims[claim.ID] = claim
+		addUser(claim.UserID)
+		for _, id := range []*uuid.UUID{claim.DecidedByUserID, claim.ReimbursedByUserID} {
+			if id != nil {
+				addUser(*id)
+			}
+		}
+		if claim.ProjectID != nil && !seenProjects[*claim.ProjectID] {
+			seenProjects[*claim.ProjectID] = true
+			projectIDs = append(projectIDs, *claim.ProjectID)
 		}
 	}
 
@@ -204,6 +253,15 @@ func (s *server) namesFor(ctx context.Context, rows []store.ExpensesEntry) (entr
 	}
 
 	q := store.New(s.deps.Pool)
+	if len(claimIDs) > 0 {
+		claims, err := q.GetClaims(ctx, claimIDs)
+		if err != nil {
+			return entryNames{}, fmt.Errorf("expenses: resolve the expenses' travel claims: %w", err)
+		}
+		for _, claim := range claims {
+			names.claims[claim.ID] = claim
+		}
+	}
 	categories, err := listCategoryRows(ctx, q)
 	if err != nil {
 		return entryNames{}, err
@@ -226,7 +284,12 @@ func (s *server) namesFor(ctx context.Context, rows []store.ExpensesEntry) (entr
 // exactly when the caller may see the project's money on it, and then always
 // set, even with nothing in it, so a client can tell "may see, nothing billed"
 // from "may not see".
-func entryResponse(row store.ExpensesEntry, a entryAccess, names entryNames) (gen.ExpensesEntryResponse, error) {
+//
+// The status, the submission stamp, the decision and the reimbursement are the
+// **unit's** (authorize.go): a line inside a travel claim shows its claim's,
+// because that is what the line actually is — its own columns stay at their
+// defaults and would say "draft" about a trip that has been approved and paid.
+func entryResponse(row store.ExpensesEntry, unit entryUnit, a entryAccess, names entryNames) (gen.ExpensesEntryResponse, error) {
 	gross, err := ratFromNumeric(row.GrossAmount)
 	if err != nil {
 		return gen.ExpensesEntryResponse{}, err
@@ -239,6 +302,7 @@ func entryResponse(row store.ExpensesEntry, a entryAccess, names entryNames) (ge
 
 	resp := gen.ExpensesEntryResponse{
 		Id:              row.ID,
+		ClaimId:         row.ClaimID,
 		Kind:            row.Kind,
 		EntryDate:       openapi_types.Date{Time: row.EntryDate.Time},
 		Description:     row.Description,
@@ -251,9 +315,9 @@ func entryResponse(row store.ExpensesEntry, a entryAccess, names entryNames) (ge
 		FromPlace:       row.FromPlace,
 		ToPlace:         row.ToPlace,
 		Billable:        row.Billable,
-		Status:          row.Status,
-		SubmittedAt:     row.SubmittedAt,
-		Decision:        decisionResponse(row, names),
+		Status:          unit.Status,
+		SubmittedAt:     unit.SubmittedAt,
+		Decision:        decisionResponse(unit, names),
 		AttachmentCount: int32(len(names.attachments[row.ID])),
 		Attachments:     attachmentsOf(names, row.ID),
 		Owner:           ownerResponse(row.UserID, names),
@@ -332,19 +396,8 @@ func entryResponse(row store.ExpensesEntry, a entryAccess, names entryNames) (ge
 	// may see the expense, its owner first of all. It is not a privilege to be
 	// told that the money has gone out — and the figure it names is the one
 	// the owner could already see.
-	if row.ReimbursedAt != nil {
-		resp.Reimbursement = &gen.ExpensesEntryReimbursement{
-			At:   *row.ReimbursedAt,
-			By:   userRef(reimbursedBy(row), names),
-			Date: openapi_types.Date{Time: row.ReimbursementDate.Time},
-		}
-		// The batch it went with is narrower than the fact that it went: the
-		// reference is the payroll clerk's record of their own run, so it goes
-		// to the person it paid and to whoever reads everybody's expenses, and
-		// not to a project manager (accessFor's SeesPayrollReference).
-		if a.SeesPayrollReference {
-			resp.Reimbursement.Reference = row.ReimbursementReference
-		}
+	if reimbursement := reimbursementResponse(unit, a.SeesPayrollReference, names); reimbursement != nil {
+		resp.Reimbursement = reimbursement
 	}
 	if a.CanSeeBilling {
 		billing, err := billingResponse(row)
@@ -366,14 +419,41 @@ func entryResponse(row store.ExpensesEntry, a entryAccess, names entryNames) (ge
 	return resp, nil
 }
 
+// reimbursementResponse is the payroll stamp of one unit — a standalone
+// expense's own, or the travel claim's, which every one of its lines is paid
+// through. Decision X5: that somebody has been paid back is shown to everyone
+// who may see the expense, its owner first of all. It is not a privilege to be
+// told that the money has gone out — and the figure it names is the one the
+// owner could already see.
+//
+// The batch it went with is narrower than the fact that it went: the reference
+// is the payroll clerk's record of their own run, so it goes to the person it
+// paid and to whoever reads everybody's expenses, and not to a project
+// manager. seesReference is accessFor's SeesPayrollReference, or the claim
+// reader's own copy of the same rule.
+func reimbursementResponse(unit entryUnit, seesReference bool, names entryNames) *gen.ExpensesEntryReimbursement {
+	if unit.ReimbursedAt == nil {
+		return nil
+	}
+	stamp := &gen.ExpensesEntryReimbursement{
+		At:   *unit.ReimbursedAt,
+		By:   userRef(reimbursedBy(unit), names),
+		Date: openapi_types.Date{Time: unit.ReimbursementDate.Time},
+	}
+	if seesReference {
+		stamp.Reference = unit.ReimbursementReference
+	}
+	return stamp
+}
+
 // reimbursedBy and invoicedBy are who made the mark, falling back to the nil
 // uuid — which userRef renders as the unknown user — rather than failing a
 // read over a row whose stamp somehow lost its person.
-func reimbursedBy(row store.ExpensesEntry) uuid.UUID {
-	if row.ReimbursedByUserID == nil {
+func reimbursedBy(unit entryUnit) uuid.UUID {
+	if unit.ReimbursedByUserID == nil {
 		return uuid.Nil
 	}
-	return *row.ReimbursedByUserID
+	return *unit.ReimbursedByUserID
 }
 
 func invoicedBy(row store.ExpensesEntry) uuid.UUID {
@@ -399,17 +479,17 @@ func invoicedBy(row store.ExpensesEntry) uuid.UUID {
 // decider. The three columns are only ever written together, so nothing here
 // can produce that; a restore or a support script could, and a person made of
 // a nil uuid and an empty name would be worse than none at all.
-func decisionResponse(row store.ExpensesEntry, names entryNames) *gen.ExpensesEntryDecision {
-	if row.DecidedAt == nil {
+func decisionResponse(unit entryUnit, names entryNames) *gen.ExpensesEntryDecision {
+	if unit.DecidedAt == nil {
 		return nil
 	}
 	decision := &gen.ExpensesEntryDecision{
-		Status: row.Status,
-		At:     *row.DecidedAt,
-		Reason: row.RejectionReason,
+		Status: unit.Status,
+		At:     *unit.DecidedAt,
+		Reason: unit.RejectionReason,
 	}
-	if row.DecidedByUserID != nil {
-		decision.By = ptrTo(userRef(*row.DecidedByUserID, names))
+	if unit.DecidedByUserID != nil {
+		decision.By = ptrTo(userRef(*unit.DecidedByUserID, names))
 	}
 	return decision
 }
@@ -475,11 +555,12 @@ func (s *server) entryResponseFor(ctx context.Context, c *caller, row store.Expe
 	if err != nil {
 		return gen.ExpensesEntryResponse{}, err
 	}
-	a, err := s.entryAccess(ctx, c, row)
+	unit := names.unitFor(row)
+	a, err := s.entryAccess(ctx, c, row, unit)
 	if err != nil {
 		return gen.ExpensesEntryResponse{}, err
 	}
-	return entryResponse(row, a, names)
+	return entryResponse(row, unit, a, names)
 }
 
 // entryResponses renders a set of rows for one caller: the names resolved once
@@ -491,13 +572,23 @@ func (s *server) entryResponses(ctx context.Context, c *caller, rows []store.Exp
 	if err != nil {
 		return nil, err
 	}
+	return s.entryResponsesWith(ctx, c, rows, names)
+}
+
+// entryResponsesWith is entryResponses over names already resolved — what a
+// travel claim renders its lines through, so the claim and a list of expenses
+// share one renderer and cannot drift apart.
+func (s *server) entryResponsesWith(ctx context.Context, c *caller, rows []store.ExpensesEntry,
+	names entryNames,
+) ([]gen.ExpensesEntryResponse, error) {
 	out := make([]gen.ExpensesEntryResponse, 0, len(rows))
 	for _, row := range rows {
-		a, err := s.entryAccess(ctx, c, row)
+		unit := names.unitFor(row)
+		a, err := s.entryAccess(ctx, c, row, unit)
 		if err != nil {
 			return nil, err
 		}
-		resp, err := entryResponse(row, a, names)
+		resp, err := entryResponse(row, unit, a, names)
 		if err != nil {
 			return nil, err
 		}

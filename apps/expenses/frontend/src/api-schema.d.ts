@@ -110,6 +110,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/expenses/claims": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List travel claims
+         * @description Travel claims, the most recent trip first, and only where the caller may see them — their own, everything on a project they manage, and everyone's for expenses:view-all, expenses:approve and expenses:manage. The same rule a single read applies, so the list never holds a claim its own read would answer 404 for.
+         */
+        get: operations["getExpensesClaims"];
+        put?: never;
+        /**
+         * Record a travel claim
+         * @description Records one travel claim as a draft with no lines. Expenses are added to it afterwards, with POST /entries carrying its claimId.
+         */
+        post: operations["postExpensesClaims"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/expenses/claims/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a travel claim by id
+         * @description One travel claim with its lines, shaped for the caller. A claim the caller may not see answers the same bare 404 an unknown id does.
+         */
+        get: operations["getExpensesClaimsById"];
+        /**
+         * Change a travel claim
+         * @description Replaces a travel claim's header, guarded by the revision it was read at. Changing its project re-points every line in the same transaction.
+         */
+        put: operations["putExpensesClaimsById"];
+        post?: never;
+        /**
+         * Delete a travel claim
+         * @description Deletes a travel claim while it is still its owner's to change — a draft or a rejected one, by its owner or by expenses:manage, and not before the period lock. Its lines go with it, and their receipts with them. The two refusals are told apart on purpose: who is asking is a 403, what the claim is right now is a 400 naming the reason.
+         */
+        delete: operations["deleteExpensesClaimsById"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/expenses/entries": {
         parameters: {
             query?: never;
@@ -737,6 +789,168 @@ export interface components {
              */
             position: number;
         };
+        /** @description What the calling user may do with this travel claim, so a client never re-derives the rules of design §5. A claim is the unit that moves through the flow and through a payroll run, so these are the claim's own — its lines carry no submit, approve or reimburse of their own. */
+        ExpensesClaimCapabilities: {
+            /** @description Whether the caller may approve or reject it — an approver of it, while it is submitted. */
+            canApprove: boolean;
+            /** @description Whether the caller may delete it, which takes its lines and their receipts with it. */
+            canDelete: boolean;
+            /** @description Whether the caller may change it — its owner or expenses:manage, while it is a draft or rejected, and not before the period lock. It is the same answer for adding, changing or deleting one of its lines. */
+            canEdit: boolean;
+            /** @description Whether the caller may mark it reimbursed — expenses:manage, while it is approved, owes the employee something and has not been paid yet. The period lock does not hold it back: payroll runs after the books close. */
+            canMarkReimbursed: boolean;
+            /** @description Whether the caller may submit it — its owner or expenses:manage, while it is a draft or rejected, and not before the period lock. */
+            canSubmit: boolean;
+            /** @description Whether the caller may return it to a draft — an approver of it or expenses:manage, while it is approved and has not been reimbursed. */
+            canUnapprove: boolean;
+            /** @description Whether the caller may take the reimbursement back — expenses:manage, while it stands reimbursed. */
+            canUndoReimbursed: boolean;
+        };
+        /** @description One travel claim in a list — everything a single read answers except its lines, which a list of trips has no use for, plus how many there are. */
+        ExpensesClaimListResponse: {
+            abroad: boolean;
+            /** @description The currency the claim's own day rate is in. Present only on a claim abroad. */
+            abroadCurrency?: string;
+            /**
+             * Format: double
+             * @description The day rate a trip abroad is paid at, in place of the dated table's. Present only on a claim abroad.
+             */
+            abroadDayRate?: number;
+            capabilities: components["schemas"]["ExpensesClaimCapabilities"];
+            /** Format: date-time */
+            createdAt: string;
+            decision?: components["schemas"]["ExpensesEntryDecision"];
+            /** Format: date-time */
+            departureAt: string;
+            destination?: string;
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: int32
+             * @description How many expenses the claim holds.
+             */
+            lineCount: number;
+            owner: components["schemas"]["ExpensesUserRef"];
+            project?: components["schemas"]["ExpensesEntryProject"];
+            purpose: string;
+            /** @description That the employee has been paid back for the trip. Absent until then. */
+            reimbursement?: components["schemas"]["ExpensesEntryReimbursement"];
+            /** Format: date-time */
+            returnAt: string;
+            /** Format: int32 */
+            revision: number;
+            /** @description 'draft', 'submitted', 'approved' or 'rejected'. */
+            status: string;
+            /** Format: date-time */
+            submittedAt?: string;
+            /** @description The claim's figures, one line per currency, by currency code. Nothing is ever converted. */
+            totals: components["schemas"]["ExpensesCurrencyTotal"][];
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description A travel claim (design §3.6): the container a trip's expenses sit in. Its lines are ordinary expenses carrying its id — they take their owner, their project, their status and their decision from it, and keep their own kind, date, amounts and receipts. A claim is created as a draft with no lines. */
+        ExpensesClaimRequest: {
+            /** @description Whether the trip was abroad. A trip abroad is paid at the claim's own day rate rather than the dated per diem table, so abroadDayRate and abroadCurrency are required with it and refused without it. */
+            abroad?: boolean;
+            /** @description A three-letter ISO 4217 code. Required when abroad, refused otherwise. */
+            abroadCurrency?: string;
+            /**
+             * Format: double
+             * @description The day rate the trip is paid at, greater than zero with at most two decimals. Required when abroad, refused otherwise.
+             */
+            abroadDayRate?: number;
+            /**
+             * Format: date-time
+             * @description When the traveller left, as entered. It is stored and compared as the instant it names; the per diem day boundaries are 24-hour periods from it, not calendar midnights.
+             */
+            departureAt: string;
+            /** @description At most 200 characters. */
+            destination?: string;
+            /**
+             * Format: int32
+             * @description The project the whole trip is booked on, and so every one of its lines. The person it concerns must be allowed to book on it — what logging time needs. Refused when this installation has no projects module.
+             */
+            projectId?: number;
+            /** @description What the trip was for. 1 to 200 characters. */
+            purpose: string;
+            /**
+             * Format: date-time
+             * @description When the traveller came back. It must be after the departure, and the trip may be at most 366 days.
+             */
+            returnAt: string;
+            /**
+             * Format: uuid
+             * @description The person the claim concerns. Absent means the caller; naming somebody else needs expenses:manage, and they must be a user identity still has as active.
+             */
+            userId?: string;
+        };
+        /** @description One travel claim as the caller may see it, with its lines. A line is shaped exactly as a single read of it would be — the same renderer, the same capabilities — and the claim is visible to its owner, a manager of its project, and expenses:view-all, expenses:approve and expenses:manage; anyone else gets the bare 404 an unknown id gets. */
+        ExpensesClaimResponse: {
+            abroad: boolean;
+            /** @description The currency the claim's own day rate is in. Present only on a claim abroad. */
+            abroadCurrency?: string;
+            /**
+             * Format: double
+             * @description The day rate a trip abroad is paid at, in place of the dated table's. Present only on a claim abroad.
+             */
+            abroadDayRate?: number;
+            /** @description What the claim's lines bill their customer, one line per currency. Present only for a caller with financial rights on the claim's project, exactly as the billing object on a line is. */
+            billableTotals?: components["schemas"]["ExpensesCurrencyAmount"][];
+            capabilities: components["schemas"]["ExpensesClaimCapabilities"];
+            /** Format: date-time */
+            createdAt: string;
+            decision?: components["schemas"]["ExpensesEntryDecision"];
+            /** Format: date-time */
+            departureAt: string;
+            destination?: string;
+            /** Format: int64 */
+            id: number;
+            /** @description The claim's expenses, oldest day first and then as recorded. Always present, empty when it holds none. */
+            lines: components["schemas"]["ExpensesEntryResponse"][];
+            owner: components["schemas"]["ExpensesUserRef"];
+            project?: components["schemas"]["ExpensesEntryProject"];
+            purpose: string;
+            /** @description That the employee has been paid back for the trip. Absent until then. */
+            reimbursement?: components["schemas"]["ExpensesEntryReimbursement"];
+            /** Format: date-time */
+            returnAt: string;
+            /**
+             * Format: int32
+             * @description What an update must carry to be allowed to save.
+             */
+            revision: number;
+            /** @description 'draft', 'submitted', 'approved' or 'rejected'. */
+            status: string;
+            /** Format: date-time */
+            submittedAt?: string;
+            /** @description The claim's figures, one line per currency, by currency code. Nothing is ever converted. */
+            totals: components["schemas"]["ExpensesCurrencyTotal"][];
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description A full replace of a travel claim's header, guarded by the revision it was read at. What is left out is cleared. Changing the project re-points every line onto it in the same transaction and clears a line's billing line when it does not belong to the new project; clearing the project makes every line non-billable. A line that has already been invoiced holds the project where it is. The owner stays whoever the claim already concerns. */
+        ExpensesClaimUpdateRequest: {
+            abroad?: boolean;
+            abroadCurrency?: string;
+            /** Format: double */
+            abroadDayRate?: number;
+            /** Format: date-time */
+            departureAt: string;
+            destination?: string;
+            /**
+             * Format: int32
+             * @description A project the claim already carries is kept even once it stops accepting new bookings; a different one is judged in full.
+             */
+            projectId?: number;
+            purpose: string;
+            /** Format: date-time */
+            returnAt: string;
+            /**
+             * Format: int32
+             * @description The revision the claim was read at. A revision that has moved on is a 409.
+             */
+            revision: number;
+        };
         /** @description One currency's amount in a dashboard reading. Nothing is ever converted (design §4), so a caller owed money in two currencies gets two lines and never a sum that is in neither. */
         ExpensesCurrencyAmount: {
             /** Format: double */
@@ -884,7 +1098,7 @@ export interface components {
             /** @description The payroll run it went with, as whoever marked it typed it. Absent when none was given, and absent for a reader who is neither the expense's owner nor a holder of expenses:view-all, expenses:approve or expenses:manage: that the money went is everyone's business, which batch it went in is the payroll clerk's. A project manager therefore reads the stamp without this field. */
             reference?: string;
         };
-        /** @description One money line (design §3.1). The fields a kind does not carry are refused on their own field rather than ignored: an outlay carries a category, a payer, a currency and a gross amount with optional VAT; a mileage line carries a distance, optional places and passengers, and is priced by the server from the dated rate table. Travel claims and their per diem arrive in a later delivery, so kind per_diem and claimId are refused for now. */
+        /** @description One money line (design §3.1). The fields a kind does not carry are refused on their own field rather than ignored: an outlay carries a category, a payer, a currency and a gross amount with optional VAT; a mileage line carries a distance, optional places and passengers, and is priced by the server from the dated rate table. claimId records it as a line of a travel claim instead of a standalone expense; the per diem kind arrives in a later delivery and is refused for now. */
         ExpensesEntryRequest: {
             /**
              * Format: double
@@ -905,7 +1119,7 @@ export interface components {
             categoryId?: number;
             /**
              * Format: int64
-             * @description Reserved for the travel claims of a later delivery; a request carrying one is refused on this field.
+             * @description The travel claim this expense is a line of. The caller must be allowed to change that claim, and it must still be a draft or rejected; the line takes the claim's owner and its project, so userId naming somebody else and projectId naming another project are both refused. Only an outlay or a mileage line may be added this way: a per diem day arrives in a later delivery.
              */
             claimId?: number;
             /** @description A three-letter ISO 4217 code. Required on an outlay. A mileage line takes the installation's default currency and refuses any other. */
@@ -977,6 +1191,11 @@ export interface components {
             billingLine?: components["schemas"]["ExpensesEntryBillingLine"];
             capabilities: components["schemas"]["ExpensesEntryCapabilities"];
             category?: components["schemas"]["ExpensesEntryCategory"];
+            /**
+             * Format: int64
+             * @description The travel claim this expense is a line of. Absent on a standalone expense. A line's status, its decision and its reimbursement are the claim's, not its own: they are rendered here from the claim, and the flow operations refuse a line by id and point at the claim.
+             */
+            claimId?: number;
             /** Format: date-time */
             createdAt: string;
             currency: string;
@@ -1059,7 +1278,7 @@ export interface components {
             categoryId?: number;
             /**
              * Format: int64
-             * @description Reserved for the travel claims of a later delivery; a request carrying one is refused on this field.
+             * @description The travel claim the expense is already a line of. It must be exactly the one it carries, or absent: a standalone expense cannot be moved into a claim, and a claim's line cannot be moved out of one or into another.
              */
             claimId?: number;
             currency?: string;
@@ -1381,6 +1600,10 @@ export interface components {
         };
         PaginatedResponseOfExpensesApprovalGroup: {
             data: components["schemas"]["ExpensesApprovalGroup"][];
+            pagination: components["schemas"]["PaginationMetadata"];
+        };
+        PaginatedResponseOfExpensesClaimListResponse: {
+            data: components["schemas"]["ExpensesClaimListResponse"][];
             pagination: components["schemas"]["PaginationMetadata"];
         };
         PaginatedResponseOfExpensesEntryResponse: {
@@ -1800,6 +2023,287 @@ export interface operations {
             };
         };
     };
+    getExpensesClaims: {
+        parameters: {
+            query?: {
+                /** @description Narrows the list to one person's claims. It never widens it: a caller sees only what they may see anyway. */
+                userId?: string;
+                /** @description 'draft', 'submitted', 'approved' or 'rejected'. */
+                status?: string;
+                /** @description The earliest departure day to include, judged in UTC. */
+                from?: string;
+                /** @description The latest departure day to include, judged in UTC. */
+                to?: string;
+                /** @description Narrows the list to what has been reimbursed, or to what has not. Left out, both are in it. */
+                reimbursed?: boolean;
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponseOfExpensesClaimListResponse"];
+                };
+            };
+            /** @description Bad Request — paging out of range, or an unknown status. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postExpensesClaims: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExpensesClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description Created — a draft owned by the caller, or by the person userId names. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpensesClaimResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getExpensesClaimsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpensesClaimResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no claim has that id, or the caller may not see it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putExpensesClaimsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExpensesClaimUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpensesClaimResponse"];
+                };
+            };
+            /** @description Bad Request — a field did not pass, or the claim has moved past being editable (on status) or departed before the period lock (on departureAt). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the claim is not the caller's to change; they are neither its owner nor a holder of expenses:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no claim has that id, or the caller may not see it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — the claim has moved on from the revision supplied. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    deleteExpensesClaimsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request — the claim has moved past being editable (on status) or departed before the period lock (on departureAt). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the claim is not the caller's to change; they are neither its owner nor a holder of expenses:manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no claim has that id, or the caller may not see it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     getExpensesEntries: {
         parameters: {
             query?: {
@@ -1807,7 +2311,11 @@ export interface operations {
                 userId?: string;
                 /** @description Narrows the list to one project. */
                 projectId?: number;
-                /** @description 'draft', 'submitted', 'approved' or 'rejected'. */
+                /** @description Narrows the list to one travel claim's lines. A claim the caller may not see holds nothing they can see either, so this is an empty page rather than a refusal. */
+                claimId?: number;
+                /** @description true lists only standalone expenses, false only the lines of travel claims. Left out, the list holds both — the default is unchanged, so a client that knows nothing of claims sees exactly what it always saw. */
+                standalone?: boolean;
+                /** @description 'draft', 'submitted', 'approved' or 'rejected'. On a claim's line it is the claim's own status that is matched, because that is the status the line is rendered with. */
                 status?: string;
                 /** @description 'outlay' or 'mileage'. */
                 kind?: string;

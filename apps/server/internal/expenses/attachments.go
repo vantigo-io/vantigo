@@ -298,11 +298,11 @@ func receiptPart(mr *multipart.Reader) (data []byte, fileName, declared string, 
 // see), what the expense is right now is a 400 naming the reason. Both the
 // upload and the delete report it on entryId, because the expense is the thing
 // that refuses and the thing the caller can do something about.
-func entryTakesReceipts(c *caller, entry store.ExpensesEntry) string {
+func entryTakesReceipts(c *caller, entry store.ExpensesEntry, unit entryUnit) string {
 	if entry.Kind != kindOutlay {
 		return "Only an outlay carries a receipt; a mileage line has none"
 	}
-	_, msg := entryStateRefusal(c, entry)
+	_, msg := entryStateRefusal(c, unit)
 	return msg
 }
 
@@ -352,21 +352,21 @@ func attachmentResponse(row store.ExpensesAttachment) gen.ExpensesAttachmentResp
 // for one on an expense the caller may not see alike — the two are the same
 // bare 404, and so is an unknown expense id.
 func (s *server) visibleAttachment(ctx context.Context, q *store.Queries, c *caller, id int64) (
-	store.ExpensesAttachment, store.ExpensesEntry, entryAccess, bool, error,
+	store.ExpensesAttachment, store.ExpensesEntry, entryUnit, entryAccess, bool, error,
 ) {
 	attachment, err := q.GetAttachment(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return store.ExpensesAttachment{}, store.ExpensesEntry{}, entryAccess{}, false, nil
+		return store.ExpensesAttachment{}, store.ExpensesEntry{}, entryUnit{}, entryAccess{}, false, nil
 	}
 	if err != nil {
-		return store.ExpensesAttachment{}, store.ExpensesEntry{}, entryAccess{}, false,
+		return store.ExpensesAttachment{}, store.ExpensesEntry{}, entryUnit{}, entryAccess{}, false,
 			fmt.Errorf("expenses: get a receipt: %w", err)
 	}
-	entry, a, found, err := s.visibleEntry(ctx, q, c, attachment.EntryID)
+	entry, unit, a, found, err := s.visibleEntry(ctx, q, c, attachment.EntryID)
 	if err != nil || !found {
-		return store.ExpensesAttachment{}, store.ExpensesEntry{}, entryAccess{}, false, err
+		return store.ExpensesAttachment{}, store.ExpensesEntry{}, entryUnit{}, entryAccess{}, false, err
 	}
-	return attachment, entry, a, true, nil
+	return attachment, entry, unit, a, true, nil
 }
 
 // removeReceiptObject removes an object the database no longer points at (or
@@ -406,7 +406,7 @@ func (s *server) PostExpensesEntriesByIdAttachments(ctx context.Context, req gen
 	if err != nil {
 		return nil, err
 	}
-	entry, a, found, err := s.visibleEntry(ctx, q, c, req.Id)
+	entry, unit, a, found, err := s.visibleEntry(ctx, q, c, req.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -416,7 +416,7 @@ func (s *server) PostExpensesEntriesByIdAttachments(ctx context.Context, req gen
 	if !a.IsWriter {
 		return gen.PostExpensesEntriesByIdAttachments403JSONResponse(forbidden()), nil
 	}
-	if msg := entryTakesReceipts(c, entry); msg != "" {
+	if msg := entryTakesReceipts(c, entry, unit); msg != "" {
 		return gen.PostExpensesEntriesByIdAttachments400ApplicationProblemPlusJSONResponse(
 			invalidReceipt(fieldError("entryId", msg))), nil
 	}
@@ -445,17 +445,17 @@ func (s *server) PostExpensesEntriesByIdAttachments(ctx context.Context, req gen
 		gone    bool
 	)
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
-		locked, err := txq.LockEntry(ctx, req.Id)
-		if errors.Is(err, pgx.ErrNoRows) {
+		locked, lockedUnit, found, err := lockEntryUnit(ctx, txq, req.Id, entry.ClaimID)
+		if err != nil {
+			return err
+		}
+		if !found {
 			gone = true
 			return nil
 		}
-		if err != nil {
-			return fmt.Errorf("expenses: lock an expense: %w", err)
-		}
 		// Judged again on the row as it is under the lock: a submit that
 		// committed since must win over the read this request began with.
-		if refusal = entryTakesReceipts(c, locked); refusal != "" {
+		if refusal = entryTakesReceipts(c, locked, lockedUnit); refusal != "" {
 			return nil
 		}
 		count, err := txq.CountAttachmentsForEntry(ctx, req.Id)
@@ -565,7 +565,7 @@ func (s *server) GetExpensesAttachmentsById(ctx context.Context, req gen.GetExpe
 	if err != nil {
 		return nil, err
 	}
-	attachment, _, _, found, err := s.visibleAttachment(ctx, q, c, req.Id)
+	attachment, _, _, _, found, err := s.visibleAttachment(ctx, q, c, req.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -617,7 +617,7 @@ func (s *server) DeleteExpensesAttachmentsById(ctx context.Context, req gen.Dele
 	if err != nil {
 		return nil, err
 	}
-	attachment, entry, a, found, err := s.visibleAttachment(ctx, q, c, req.Id)
+	attachment, entry, unit, a, found, err := s.visibleAttachment(ctx, q, c, req.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -627,28 +627,28 @@ func (s *server) DeleteExpensesAttachmentsById(ctx context.Context, req gen.Dele
 	if !a.IsWriter {
 		return gen.DeleteExpensesAttachmentsById403JSONResponse(forbidden()), nil
 	}
-	if msg := entryTakesReceipts(c, entry); msg != "" {
+	if msg := entryTakesReceipts(c, entry, unit); msg != "" {
 		return gen.DeleteExpensesAttachmentsById400ApplicationProblemPlusJSONResponse(
 			invalidReceipt(fieldError("entryId", msg))), nil
 	}
 
 	var refusal string
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
-		locked, err := txq.LockEntry(ctx, entry.ID)
-		switch {
-		case errors.Is(err, pgx.ErrNoRows):
+		locked, lockedUnit, found, err := lockEntryUnit(ctx, txq, entry.ID, entry.ClaimID)
+		if err != nil {
+			return err
+		}
+		if !found {
 			// The expense itself went in the meantime, and the row with it
 			// (the foreign key cascades). The receipt is gone, which is what
 			// was asked; its object is removed below all the same.
 			return nil
-		case err != nil:
-			return fmt.Errorf("expenses: lock an expense: %w", err)
 		}
 		// Judged again on the row as it is under the lock, by the very rule
 		// that judged it before the transaction rather than by a copy of half
 		// of it: a submit that committed since is the refusal above, arrived a
 		// moment later.
-		if refusal = entryTakesReceipts(c, locked); refusal != "" {
+		if refusal = entryTakesReceipts(c, locked, lockedUnit); refusal != "" {
 			return nil
 		}
 		if _, err := txq.DeleteAttachment(ctx, req.Id); err != nil {

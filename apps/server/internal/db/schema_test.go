@@ -1456,7 +1456,9 @@ func TestExpensesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("collect tables: %v", err)
 	}
-	if want := []string{"attachments", "categories", "entries", "rates", "settings"}; !equalStrings(gotTables, want) {
+	// claims is 00013's, and applyUpDownUp ends with every migration applied,
+	// so it stands here beside the five this one creates.
+	if want := []string{"attachments", "categories", "claims", "entries", "rates", "settings"}; !equalStrings(gotTables, want) {
 		t.Errorf("tables = %v, want %v", gotTables, want)
 	}
 
@@ -1530,7 +1532,11 @@ func TestExpensesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	}
 
 	var rateCount, settingsCount int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM expenses.rates WHERE source = 'State rate'`).Scan(&rateCount); err != nil {
+	// This migration's own seeds are the two mileage rates; 00013 adds the per
+	// diem ones, which the test of that migration pins.
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*) FROM expenses.rates
+		WHERE source = 'State rate' AND kind IN ('mileage', 'mileage_passenger')`).Scan(&rateCount); err != nil {
 		t.Fatalf("count seeded rates: %v", err)
 	}
 	if rateCount != 2 {
@@ -1551,12 +1557,127 @@ func TestExpensesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	}
 }
 
-// expensesColumns is design §3.1 and §3.2 written out: the entries and
-// attachments columns with their types and nullability. No later task of this
-// delivery changes 00012 — later deliveries bring migrations of their own,
-// travel claims an expenses.claims among them — so this is where the shape
-// they build on is pinned: a widened column or a dropped one fails here rather
-// than in whichever query first misses it.
+// TestExpensesClaims_AppliesAndIsIdempotent proves 00013_expenses_claims.sql
+// applies, rolls back and re-applies cleanly, with the travel claim table of
+// design §3.6, the four indexes it reads through, the cascade that takes a
+// claim's lines with it, and the six per diem rates the state agreement sets.
+func TestExpensesClaims_AppliesAndIsIdempotent(t *testing.T) {
+	url := testdb.URL(t)
+	applyUpDownUp(t, url, 13) // 00013_expenses_claims.sql
+
+	ctx := context.Background()
+	pool, err := db.Open(ctx, url)
+	if err != nil {
+		t.Fatalf("open pool: %v", err)
+	}
+	defer pool.Close()
+
+	rows, err := pool.Query(ctx, `SELECT table_name FROM information_schema.tables WHERE table_schema = 'expenses' ORDER BY table_name`)
+	if err != nil {
+		t.Fatalf("query tables: %v", err)
+	}
+	gotTables, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatalf("collect tables: %v", err)
+	}
+	if want := []string{"attachments", "categories", "claims", "entries", "rates", "settings"}; !equalStrings(gotTables, want) {
+		t.Errorf("tables = %v, want %v", gotTables, want)
+	}
+
+	// The claim indexes, predicates included, mirroring 00012's for the
+	// entries: a claim is a unit of approval and of payroll exactly as a
+	// standalone line is, and the queries that page each of those tracks read
+	// through these.
+	for _, want := range []struct {
+		name      string
+		columns   []string
+		predicate string
+	}{
+		{"ix_claims_user_id_departure_at", []string{"user_id", "departure_at"}, ""},
+		{"ix_claims_project_id_departure_at", []string{"project_id", "departure_at"}, ""},
+		{"ix_claims_submitted", []string{"status"}, "WHERE ((status)::text = 'submitted'::text)"},
+		{
+			"ix_claims_reimbursement_waiting", []string{"user_id", "departure_at"},
+			"WHERE (((status)::text = 'approved'::text) AND (reimbursed_at IS NULL))",
+		},
+	} {
+		if cols := indexColumns(t, ctx, pool, "expenses", want.name); !equalStrings(cols, want.columns) {
+			t.Errorf("%s columns = %v, want %v", want.name, cols, want.columns)
+		}
+		var def string
+		if err := pool.QueryRow(ctx, `
+			SELECT pg_get_indexdef(i.indexrelid)
+			FROM pg_index i
+			JOIN pg_class ic ON ic.oid = i.indexrelid
+			JOIN pg_namespace n ON n.oid = ic.relnamespace
+			WHERE n.nspname = 'expenses' AND ic.relname = $1`, want.name).Scan(&def); err != nil {
+			t.Fatalf("query %s: %v", want.name, err)
+		}
+		if want.predicate != "" && !strings.HasSuffix(def, want.predicate) {
+			t.Errorf("%s = %q, want it to end in %q", want.name, def, want.predicate)
+		}
+		if want.predicate == "" && strings.Contains(def, " WHERE ") {
+			t.Errorf("%s = %q, want no predicate", want.name, def)
+		}
+	}
+
+	// A claim's lines are the claim's: deleting it takes them, and their
+	// receipts follow through the cascade 00012 already gave attachments.
+	var deleteRule string
+	if err := pool.QueryRow(ctx, `
+		SELECT confdeltype FROM pg_constraint c
+		JOIN pg_class t ON t.oid = c.conrelid
+		JOIN pg_namespace n ON n.oid = t.relnamespace
+		WHERE n.nspname = 'expenses' AND t.relname = 'entries' AND c.contype = 'f'
+		  AND c.conname = 'fk_entries_claim_id'`).Scan(&deleteRule); err != nil {
+		t.Fatalf("query the claim foreign key: %v", err)
+	}
+	if deleteRule != "c" {
+		t.Errorf("entries.claim_id delete rule = %q, want %q (ON DELETE CASCADE)", deleteRule, "c")
+	}
+
+	// The seeds of design §3.4 (delivery B), verified against the state's
+	// agreement. per_diem_overnight_other is deliberately not among them.
+	seeded, err := pool.Query(ctx, `
+		SELECT kind, value::text, coalesce(currency, ''), valid_from::text
+		FROM expenses.rates WHERE source = 'State rate' AND kind <> 'mileage' AND kind <> 'mileage_passenger'
+		ORDER BY kind`)
+	if err != nil {
+		t.Fatalf("query the per diem seeds: %v", err)
+	}
+	type seededRate struct {
+		Kind      string
+		Value     string
+		Currency  string
+		ValidFrom string
+	}
+	got, err := pgx.CollectRows(seeded, pgx.RowToStructByPos[seededRate])
+	if err != nil {
+		t.Fatalf("collect the per diem seeds: %v", err)
+	}
+	want := []seededRate{
+		{"meal_breakfast_percent", "20.00", "", "2026-01-01"},
+		{"meal_dinner_percent", "50.00", "", "2026-01-01"},
+		{"meal_lunch_percent", "30.00", "", "2026-01-01"},
+		{"per_diem_6_12", "397.00", "NOK", "2026-01-01"},
+		{"per_diem_over_12", "736.00", "NOK", "2026-01-01"},
+		{"per_diem_overnight_hotel", "1012.00", "NOK", "2026-01-01"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("seeded per diem rates = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("seeded rate %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+// expensesColumns is design §3.1, §3.2 and §3.6 written out: the entries,
+// attachments and claims columns with their types and nullability. No later
+// task of a delivery changes a migration already shipped, so this is where the
+// shape the module builds on is pinned: a widened column or a dropped one
+// fails here rather than in whichever query first misses it.
 var expensesColumns = map[string][]expensesColumn{
 	"entries": {
 		{"id", "bigint", "NO"},
@@ -1599,6 +1720,42 @@ var expensesColumns = map[string][]expensesColumn{
 		{"invoiced_at", "timestamp with time zone", "YES"},
 		{"invoiced_by_user_id", "uuid", "YES"},
 		{"invoice_reference", "character varying", "YES"},
+		{"revision", "integer", "NO"},
+		{"created_at", "timestamp with time zone", "NO"},
+		{"updated_at", "timestamp with time zone", "NO"},
+		// The per diem columns 00013 adds, at the end of the table because
+		// that is where ALTER TABLE ... ADD COLUMN puts them. The three
+		// percentages are the ones the line was priced with, frozen beside the
+		// day rate they were taken off.
+		{"per_diem_type", "character varying", "YES"},
+		{"breakfast_covered", "boolean", "NO"},
+		{"lunch_covered", "boolean", "NO"},
+		{"dinner_covered", "boolean", "NO"},
+		{"meal_breakfast_percent", "numeric", "YES"},
+		{"meal_lunch_percent", "numeric", "YES"},
+		{"meal_dinner_percent", "numeric", "YES"},
+	},
+	"claims": {
+		{"id", "bigint", "NO"},
+		{"user_id", "uuid", "NO"},
+		{"created_by_user_id", "uuid", "NO"},
+		{"purpose", "character varying", "NO"},
+		{"destination", "character varying", "YES"},
+		{"abroad", "boolean", "NO"},
+		{"abroad_day_rate", "numeric", "YES"},
+		{"abroad_currency", "character", "YES"},
+		{"departure_at", "timestamp with time zone", "NO"},
+		{"return_at", "timestamp with time zone", "NO"},
+		{"project_id", "integer", "YES"},
+		{"status", "character varying", "NO"},
+		{"submitted_at", "timestamp with time zone", "YES"},
+		{"decided_at", "timestamp with time zone", "YES"},
+		{"decided_by_user_id", "uuid", "YES"},
+		{"rejection_reason", "character varying", "YES"},
+		{"reimbursed_at", "timestamp with time zone", "YES"},
+		{"reimbursed_by_user_id", "uuid", "YES"},
+		{"reimbursement_reference", "character varying", "YES"},
+		{"reimbursement_date", "date", "YES"},
 		{"revision", "integer", "NO"},
 		{"created_at", "timestamp with time zone", "NO"},
 		{"updated_at", "timestamp with time zone", "NO"},
