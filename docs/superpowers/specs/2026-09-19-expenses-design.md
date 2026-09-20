@@ -103,6 +103,23 @@ status, or the period lock).
 visibility, removable only while the expense is editable. The pattern (owner
 row → attachment rows → object keys) is the one later modules reuse.
 
+**X13 — Projects reads expenses through a contract (delivery C, as built).**
+`contracts.ProjectExpenses` — provided by Expenses, consumed by Projects, resolved
+by `module.Compose`, nil when `expenses` is disabled — reports per project **and per
+currency** what the expenses cost (net, whoever paid) and bill, in approved /
+submitted / draft buckets (rejected counts as draft; a claim's line is judged
+through its claim) with a `Total` rounded once, plus ready / invoiced / unpriced.
+It authorizes nothing and calls nobody. Projects picks the project's own currency;
+every other currency is reported as "in another currency". The project's economy
+answers `expenseTracking` (the twin of `timeTracking`), an `expenses` block for
+callers with financial rights (no `expenses:access` needed — the aggregate is the
+project's money, as Time's hours are), `cost.expenseCost`, and a margin that spans
+work and expenses on the same all-buckets basis. The portfolio keeps `readyAmount`
+for milestones and adds `readyExpenseCount` / `readyExpenseAmount` /
+`readyTotalAmount` (the `ready` sort and `hasReady` use the total) and a flag when
+more is ready in another currency. The dashboard's cards still count milestones
+only.
+
 **X12 — Expenses never eat the budget.** On the Economy tab "budget used" stays
 about the work; expenses appear as a Costs section and in the margin.
 
@@ -296,7 +313,7 @@ project.
 | Settings | `GET|PUT /settings` · `GET|POST /rates` · `PUT|DELETE /rates/{id}` · `POST /rates/reset` · `GET|POST /categories` · `PUT /categories/{id}` |
 | Dashboard | `GET /stats` · `/stats/summary` · `/stats/timeseries` · `/stats/attention` (`approvalWaiting`, `expenseRejected`, `reimbursementWaiting`) |
 | Claims (B) | `GET|POST /claims` · `GET|PUT|DELETE /claims/{id}` · `POST /claims/{id}/per-diem-suggestion` |
-| Per project (C) | `GET /projects/{projectId}/summary` |
+| Per project (C, as built) | `GET /projects/{projectId}/summary` — a project's expenses in sum, **per currency, never converted**, with `projectCurrency`, `lastEntryDate` and `capabilities.canRecord`; for whoever has financial rights on the project (one bare 404 otherwise — `expenses:view-all` / `approve` / `manage` do not grant it, as they do not grant the row-level billing figures) · `GET /entries?projectId=…&toInvoice=true` — the lines behind "ready to invoice" (unit approved, billable, priced, not invoiced, never a per diem day), for the same people (a bare 403 otherwise); the visibility of single expenses does not widen |
 
 ## 7. Frontend
 
@@ -321,7 +338,10 @@ actions together), **Reimbursements** and **Settings**
   edit / remove / reset; categories.
 - **Travel claim page** (B): header, per diem days with "Suggest days" and meal
   ticks, mileage legs, outlays with receipts, totals per currency, one submit.
-- **Project page** (C, both modules on): an Expenses tab and "Record a cost"; the
+- **Project page** (C, both modules on — as built: the tab is `ProjectExpensesPanel`
+  from `@vantigo/expenses-ui`, mounted by the host behind the module and
+  `expenses:access`; the Economy tab links to it only for those who may open it):
+  an Expenses tab and "Record a cost"; the
   Economy tab's Costs section, margin including expenses, "ready to invoice"
   including billable lines; the portfolio's ready column.
 - Dashboard card and attention items; spotlight "New expense" (and "New travel
