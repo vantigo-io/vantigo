@@ -27,6 +27,7 @@ installation, and so is `MODULES=expenses` alone.
   [the period lock](#the-period-lock)
 - Who sees what: [permissions](#permissions) ·
   [visibility and shaping](#visibility-and-shaping) · [receipts](#receipts)
+- [What a project's expenses come to](#what-a-projects-expenses-come-to) (the Expenses tab, and the lines waiting to be invoiced)
 - [The payroll CSV](#the-payroll-csv) · [stats and attention](#stats-and-attention) ·
   [refusal codes](#refusal-codes) · [the locking rule](#the-locking-rule) ·
   [API](#api) · [development](#development)
@@ -687,6 +688,58 @@ financial rights for invoicing — are exactly the two the lock has never held b
 A December expense is reimbursed and invoiced in January without anyone needing to
 touch the lock date.
 
+## What a project's expenses come to
+
+`GET /projects/{projectId}/summary` is the Expenses tab on the project page: what
+one project's expenses cost it and bill its customer, **per currency**.
+
+It is not a second set of figures. The summation is `projectExpenseTotals`, the
+very function `contracts.ProjectExpenses` answers the projects module with, so
+this tab and the project's own Economy tab read one implementation and cannot show
+a project two different numbers.
+
+**Who may read it:** whoever has financial rights on the project — its manager,
+`projects:manage-all`, or `projects:view-financials` on a project they can see.
+`expenses:manage`, `expenses:approve` and `expenses:view-all` are **not** in it:
+they open other people's *expenses*, and what a project charges its customer is
+not that. It is the same line [pricing](#pricing-by-the-project-side) and
+invoicing draw. Everybody else, an unknown project and an installation with no
+projects module are **one bare 404** with an empty body, so nothing here says
+which projects exist or who manages them.
+
+**What it answers**, per currency and never converted (a line carries its own
+currency, which may be neither its travel claim's nor its project's):
+
+| Figure | What it is |
+| --- | --- |
+| `approved` / `submitted` / `draft` | the **unit's** status — a trip's line is judged by its trip — each with a count, a cost (the net, whoever paid) and what it bills. A **rejected** expense counts as draft: it is back with its owner. There is no invoiced bucket — invoicing is a stamp, not a status |
+| `total` | the three buckets as one figure, rounded once from the unrounded sum. **Read this rather than adding the three up**: each of them was rounded on its own first |
+| `readyCount` / `readyAmount` | ready to invoice: the unit approved, the line billable, a bill amount present, not invoiced, never a per diem day |
+| `invoicedCount` / `invoicedAmount` | what has already gone on an invoice |
+| `unpricedCount` | billable lines with no bill amount — billable mileage with no customer rate. Counted, never billed as zero: a missing price is not a price of nothing, and this is the work still to do before the project can invoice them |
+| `lastEntryDate` | the latest entry date over every currency and status; absent when nothing has been recorded |
+| `capabilities.canRecord` | whether *this caller* may book a cost on the project (projects' own `CanLogTime`), so a "Record a cost" button never offers what the save would refuse |
+
+A project with nothing recorded answers `200` with an empty `currencies` list — not
+a 404, which is the authorization answer, and not a zeroed currency this module has
+no business naming.
+
+**The list behind the figure.** `GET /entries?projectId=…&toInvoice=true` lists
+exactly the lines `readyCount` counts, under the same predicate in the same words,
+so the header and the rows under it can never disagree. It needs a `projectId`
+(invoicing is done a project at a time) and is refused without one; with `true` a
+`status` other than `approved` contradicts it and is refused too; `toInvoice=false`
+is everything else the caller may see.
+
+**The aggregate and the rows are gated differently, on purpose.** The summary is
+totals and follows the financial-rights rule above; the list is individual
+expenses and keeps [the visibility rule it has always had](#visibility-and-shaping)
+— your own, your projects' if you *manage* them, and everyone's for
+`expenses:view-all`/`approve`/`manage`. So somebody holding
+`projects:view-financials` without managing the project reads every figure on the
+tab and is shown **no expenses at all** underneath. That is deliberate: the tab
+says so rather than widening who may read a colleague's receipts.
+
 ## The period lock
 
 `expenses:manage` sets one date, `lockedBefore`; every day strictly before it is
@@ -912,7 +965,7 @@ says.
 | Endpoint | Access |
 | --- | --- |
 | `GET /meta` | What this installation can do, the settings a new expense starts from (the business time zone included), the categories, and the caller's own capabilities |
-| `GET /entries` (`userId`, `projectId`, `claimId`, `standalone`, `status`, `kind`, `from`, `to`, `reimbursed`, paging) | The caller's own; a project manager also sees their projects'; view-all/approve/manage see everyone's |
+| `GET /entries` (`userId`, `projectId`, `claimId`, `standalone`, `status`, `kind`, `from`, `to`, `reimbursed`, `toInvoice`, paging) | The caller's own; a project manager also sees their projects'; view-all/approve/manage see everyone's |
 | `GET /entries/{id}` | The owner, the project's manager, or view-all/approve/manage; a bare 404 otherwise |
 | `POST /entries` | Record one — your own, or (`userId`) a colleague's, with `expenses:manage`; `claimId` records it as a line of a travel claim |
 | `GET /claims` (`userId`, `status`, `from`, `to`, `reimbursed`, paging) | The same visibility rule the entries' list applies, one level up |
@@ -933,6 +986,7 @@ says.
 | `POST /entries/{id}/invoiced`, `.../invoiced/undo` | Financial rights on the entry's project; never a per diem day |
 | `GET /reimbursements`, `/reimbursements/export.csv`, `POST /reimbursed`, `/reimbursed/undo` | `expenses:manage`; the unit is an expense or a whole trip |
 | `GET /projects` | The caller's own bookable projects (or, `userId`, a colleague's, with `expenses:manage`) |
+| `GET /projects/{projectId}/summary` | Financial rights on the project — what its expenses cost and bill, per currency; one bare 404 for everybody else, for an unknown project and for an installation with no projects module |
 | `GET /categories` | Anyone in the app |
 | `POST /categories`, `PUT /categories/{id}` | `expenses:manage` |
 | `GET /rates` | Anyone in the app (the customer rate hidden without `expenses:manage`) |
@@ -941,13 +995,14 @@ says.
 | `PUT /settings` | `expenses:manage` |
 | `GET /stats`, `/stats/summary`, `/stats/timeseries`, `/stats/attention` | The caller's own figures, plus their approval queue's size |
 
-That is all 44 operations the contract declares, each exercised by the module's own
+That is all 45 operations the contract declares, each exercised by the module's own
 coverage gate (below) with no allow-list.
 
 ## What comes next
 
-**The project page's own Economy tab, on the cost side**: what a project's
-expenses cost and bill, beside the hours Time already reports there.
+**The project page itself**: the Expenses tab the summary above serves, and the
+Economy tab's cost side — what a project's expenses cost and bill, beside the hours
+Time already reports there.
 
 Travel claims and per diem are done, front to back: the trip's own page at
 `/expenses/claims/$claimId`, where the days are suggested and ticked off and

@@ -394,6 +394,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/expenses/projects/{projectId}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sum up a project's expenses
+         * @description What one project's expenses cost and bill, in sum — the Expenses tab on the project page. It is for whoever has **financial rights on the project**: its manager, projects:manage-all, or projects:view-financials on a project they can see. expenses:manage, expenses:approve and expenses:view-all do not grant it — they open other people's expenses, not a project's money, which is the same rule pricing a line is held to. Everybody else, an unknown project and an installation with no projects module are one and the same **bare 404**, so nothing here says whether a project exists. The figures are aggregates only: they do not widen who may see an individual expense, so a reader who is not the project's manager may well see these totals over a list (GET /entries?projectId=) that answers them nothing. Everything is per currency and **nothing is converted**; a rejected expense counts as draft.
+         */
+        get: operations["getExpensesProjectSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/expenses/rates": {
         parameters: {
             query?: never;
@@ -1530,6 +1550,74 @@ export interface components {
             /** Format: int32 */
             id: number;
         };
+        /** @description One bucket of a project's expenses in one currency — what they cost the project and what they bill its customer. A figure is rounded once from the unrounded sum, so the three buckets must never be added together to make the total; read 'total' instead. */
+        ExpensesProjectSummaryBucket: {
+            /**
+             * Format: double
+             * @description What the billable lines in this bucket bill the customer. A billable line carrying no price adds nothing here and is counted in 'unpricedCount' instead — a missing price is not a price of nothing.
+             */
+            billAmount: number;
+            /**
+             * Format: double
+             * @description What the lines cost the project — the net, the gross less the VAT, whoever paid. An outlay the company paid costs exactly what one the employee is reimbursed for does.
+             */
+            cost: number;
+            /**
+             * Format: int32
+             * @description How many expense lines are in this bucket.
+             */
+            count: number;
+        };
+        /** @description What the caller may do about this project's expenses, so the tab needs no permission logic of its own. */
+        ExpensesProjectSummaryCapabilities: {
+            /** @description Whether the caller may book an expense on this project — projects' own CanLogTime, the rule a create is judged by (decision X9), so a "Record a cost" button can never offer what the save would refuse. It is false for somebody who may read these figures without being on the project's team. */
+            canRecord: boolean;
+        };
+        /** @description One currency's figures for the project. A line carries its own currency, which may be neither its travel claim's nor its project's, so the figures are reported per currency and **nothing is ever converted**: a caller comparing them with a project's budget has to decide for itself which currency is the project's. The three status buckets are the **unit's** status — a travel claim's line is judged by its claim — and a **rejected** expense counts as draft, because it is back with its owner to fix and resubmit, exactly as Time buckets a rejected entry. There is no invoiced bucket: invoicing is a stamp, not a status, so an invoiced line is still an approved one. */
+        ExpensesProjectSummaryCurrency: {
+            approved: components["schemas"]["ExpensesProjectSummaryBucket"];
+            /** @description The ISO 4217 code the lines were recorded in. */
+            currency: string;
+            draft: components["schemas"]["ExpensesProjectSummaryBucket"];
+            /**
+             * Format: double
+             * @description What the invoiced lines billed. Per currency, never added across currencies.
+             */
+            invoicedAmount: number;
+            /**
+             * Format: int32
+             * @description How many lines have been marked invoiced.
+             */
+            invoicedCount: number;
+            /**
+             * Format: double
+             * @description What the lines waiting to be invoiced bill together. Per currency, never added across currencies.
+             */
+            readyAmount: number;
+            /**
+             * Format: int32
+             * @description How many lines are **ready to invoice**: the unit is approved, the line is billable, it carries a bill amount, and it has not been invoiced yet. It is exactly what GET /entries?toInvoice=true lists, so the figure and the list can never disagree.
+             */
+            readyCount: number;
+            submitted: components["schemas"]["ExpensesProjectSummaryBucket"];
+            total: components["schemas"]["ExpensesProjectSummaryBucket"];
+            /**
+             * Format: int32
+             * @description How many billable lines carry no bill amount — billable mileage with no customer rate, say. They are counted rather than billed as zero, so the figure is the work still to do before the project can invoice them.
+             */
+            unpricedCount: number;
+        };
+        /** @description What one project's expenses cost and bill, in sum. It is computed by the very code contracts.ProjectExpenses answers the projects module with, so the Expenses tab's figures and the Economy tab's can never drift apart. */
+        ExpensesProjectSummaryResponse: {
+            capabilities: components["schemas"]["ExpensesProjectSummaryCapabilities"];
+            /** @description One entry per currency anything was recorded in, by code ascending. Empty when the project has no expenses at all — which is a project with nothing recorded, never a project the caller may not see. */
+            currencies: components["schemas"]["ExpensesProjectSummaryCurrency"][];
+            /**
+             * Format: date
+             * @description The entry date of the project's most recent expense, over every currency and every status. Absent when nothing has been recorded.
+             */
+            lastEntryDate?: string;
+        };
         /** @description A replacement rate for one submitted mileage line or per diem day (decision X8). It reprices the line's amount and nothing else — the customer's own rate per kilometre is untouched — and records who set it and what the rate table had said. */
         ExpensesRateOverrideRequest: {
             /**
@@ -2527,6 +2615,8 @@ export interface operations {
                 to?: string;
                 /** @description Narrows the list to what has been reimbursed, or to what has not. Left out, both are in it. */
                 reimbursed?: boolean;
+                /** @description true lists only the lines **ready to invoice** — the unit is approved, the line is billable, it carries a bill amount and it has not been invoiced yet — which is exactly the rule behind readyCount on GET /api/v1/expenses/projects/{projectId}/summary, so the list and the figure can never disagree; false lists everything else. It needs a projectId, because invoicing is done a project at a time, and is refused without one. With true, a status other than 'approved' contradicts it and is refused rather than quietly answering an empty page. It widens nothing: a caller who may not see a project's expenses still gets none of them here, however many the summary counts. */
+                toInvoice?: boolean;
                 page?: number;
                 pageSize?: number;
             };
@@ -2545,7 +2635,7 @@ export interface operations {
                     "application/json": components["schemas"]["PaginatedResponseOfExpensesEntryResponse"];
                 };
             };
-            /** @description Bad Request — paging out of range, or an unknown status or kind. */
+            /** @description Bad Request — paging out of range, an unknown status or kind, or toInvoice without a projectId or against a contradictory status. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -3305,6 +3395,54 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
+            };
+        };
+    };
+    getExpensesProjectSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The project to sum up, as the projects module numbers it. */
+                projectId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — a project with nothing recorded answers an empty currencies list, not a 404. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpensesProjectSummaryResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — this installation has no projects module, no project has that id, or the caller has no financial rights on it. The three are one answer with an empty body, so none of them can be told from the others. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
