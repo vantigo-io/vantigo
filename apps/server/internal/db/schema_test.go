@@ -1673,6 +1673,95 @@ func TestExpensesClaims_AppliesAndIsIdempotent(t *testing.T) {
 	}
 }
 
+// TestExpensesClaims_TheDownMigrationKeepsACompanysOwnRates pins what the down
+// migration's seed identity actually means. It deletes the rows it wrote by
+// (kind, valid_from, source), so:
+//
+//   - a rate the company entered on a day of its own survives, whatever kind it
+//     is — that is the case the identity exists for;
+//   - a shipped row the company **edited in place but left labelled "State
+//     rate"** goes with the rest, because ux_rates_kind_valid_from admits only
+//     one row per kind and day and nothing else distinguishes it. Relabelling it
+//     as their own is what spares it, which is the same signal
+//     POST /rates/reset reads.
+//
+// The second half is a documented consequence rather than a wish, so it is
+// pinned here: a later change to either the delete or the label would fail with
+// the reason written down beside it.
+func TestExpensesClaims_TheDownMigrationKeepsACompanysOwnRates(t *testing.T) {
+	url := testdb.URL(t)
+	ctx := context.Background()
+
+	migrateTo(t, url, 13)
+	pool, err := db.Open(ctx, url)
+	if err != nil {
+		t.Fatalf("open pool: %v", err)
+	}
+	defer pool.Close()
+
+	// A company's own rate, on a day the product does not ship, and a shipped
+	// row they have overwritten without relabelling.
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO expenses.rates (kind, valid_from, value, currency, source, created_at, updated_at)
+		VALUES ('per_diem_6_12', DATE '2026-02-01', 410.00, 'NOK', 'Vår egen sats', now(), now())`); err != nil {
+		t.Fatalf("insert the company's own rate: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		UPDATE expenses.rates SET value = 500.00
+		WHERE kind = 'per_diem_6_12' AND valid_from = DATE '2026-01-01'`); err != nil {
+		t.Fatalf("edit the shipped rate: %v", err)
+	}
+
+	migrateTo(t, url, 12)
+
+	var own string
+	if err := pool.QueryRow(ctx, `
+		SELECT value::text FROM expenses.rates
+		WHERE kind = 'per_diem_6_12' AND valid_from = DATE '2026-02-01'`).Scan(&own); err != nil {
+		t.Fatalf("the company's own rate did not survive the rollback: %v", err)
+	}
+	if own != "410.00" {
+		t.Errorf("the company's own rate = %s, want 410.00 untouched", own)
+	}
+	var shipped int
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*) FROM expenses.rates
+		WHERE kind = 'per_diem_6_12' AND valid_from = DATE '2026-01-01'`).Scan(&shipped); err != nil {
+		t.Fatalf("count the shipped row: %v", err)
+	}
+	if shipped != 0 {
+		t.Errorf("the edited shipped row is still there, want the rollback to take it with the rest of its seeds")
+	}
+}
+
+// migrateTo moves the database to exactly version, up or down.
+func migrateTo(t *testing.T, databaseURL string, version int64) {
+	t.Helper()
+	ctx := context.Background()
+
+	cfg, err := pgx.ParseConfig(databaseURL)
+	if err != nil {
+		t.Fatalf("parse connection string: %v", err)
+	}
+	sqlDB := sql.OpenDB(stdlib.GetConnector(*cfg))
+	defer func() { _ = sqlDB.Close() }()
+
+	dir, err := fs.Sub(db.MigrationsFS, "migrations")
+	if err != nil {
+		t.Fatalf("embedded migrations: %v", err)
+	}
+	provider, err := goose.NewProvider(goose.DialectPostgres, sqlDB, dir)
+	if err != nil {
+		t.Fatalf("goose provider: %v", err)
+	}
+	if _, err := provider.UpTo(ctx, version); err != nil {
+		t.Fatalf("up to version %d: %v", version, err)
+	}
+	if _, err := provider.DownTo(ctx, version); err != nil {
+		t.Fatalf("down to version %d: %v", version, err)
+	}
+}
+
 // expensesColumns is design §3.1, §3.2 and §3.6 written out: the entries,
 // attachments and claims columns with their types and nullability. No later
 // task of a delivery changes a migration already shipped, so this is where the

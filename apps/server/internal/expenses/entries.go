@@ -718,6 +718,16 @@ func (s *server) PostExpensesEntries(ctx context.Context, req gen.PostExpensesEn
 			refusalField, refusal = "claimId", msg
 			return nil
 		}
+		// And compared with the claim this save was judged against, because
+		// every project-shaped and per-diem-shaped column of the line was
+		// derived from it before the lock was taken. A re-point that committed
+		// in between would otherwise leave this line on the claim's previous
+		// project (claimChangedUnderSave says why that is the invariant that
+		// matters).
+		if claimChangedUnderSave(*p.Claim, claim) {
+			refusalField, refusal = "claimId", claimChangedMessage
+			return nil
+		}
 		count, err := txq.CountClaimLines(ctx, &claim.ID)
 		if err != nil {
 			return fmt.Errorf("expenses: count a travel claim's expenses: %w", err)
@@ -1094,7 +1104,7 @@ func (s *server) DeleteExpensesEntriesById(ctx context.Context, req gen.DeleteEx
 		return gen.DeleteExpensesEntriesById403JSONResponse(forbidden()), nil
 	}
 	for _, key := range keys {
-		s.removeReceiptObject(ctx, req.Id, key)
+		s.removeReceiptObject(ctx, logKeyEntryID, req.Id, key)
 	}
 	return gen.DeleteExpensesEntriesById204Response{}, nil
 }

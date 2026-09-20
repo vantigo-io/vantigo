@@ -1,7 +1,10 @@
 package expenses_test
 
 import (
+	"context"
+	"fmt"
 	"net/http"
+	"sync"
 	"testing"
 )
 
@@ -194,12 +197,145 @@ func TestExpensesClaimProjects_AnInvoicedLineHoldsTheProjectWhereItIs(t *testing
 	// approval leaves behind.
 	seedClaimStatus(t, h, claim.Id, "draft")
 	claim = getClaim(t, owner, claim.Id)
-	errs := refusedClaim(t, owner, http.MethodPut, claimPath(claim.Id),
-		claimBody(map[string]any{"projectId": nil, "revision": claim.Revision}))
-	if !mentions(errs["projectId"], "has been invoiced") {
-		t.Errorf("errors = %v, want projectId to refuse taking the project off an invoiced line", errs)
+
+	// Both directions are refused, because both would move the line: taking
+	// the project off, and moving it to another one. What went out on an
+	// invoice keeps the project it went out under.
+	h.projects.addRole(projectEuro, ownerID, roleMember)
+	for _, tc := range []struct {
+		name    string
+		project any
+	}{
+		{"clearing the project", nil},
+		{"changing the project", projectEuro},
+	} {
+		errs := refusedClaim(t, owner, http.MethodPut, claimPath(claim.Id),
+			claimBody(map[string]any{"projectId": tc.project, "revision": claim.Revision}))
+		if !mentions(errs["projectId"], fmt.Sprintf("Expense %d has been invoiced", line.Id)) {
+			t.Errorf("%s: errors = %v, want projectId to name the invoiced line", tc.name, errs)
+		}
+	}
+	// And the claim and its line are exactly where they were.
+	if after := getClaim(t, owner, claim.Id); after.Project == nil || after.Project.Id != projectKraftVerket {
+		t.Errorf("project = %+v, want it held at %d", after.Project, projectKraftVerket)
+	}
+	if n := h.Count(t, `
+		SELECT count(*) FROM expenses.entries
+		WHERE id = $1 AND project_id = $2 AND invoiced_at IS NOT NULL`,
+		line.Id, projectKraftVerket); n != 1 {
+		t.Errorf("the invoiced line moved, want it and its invoice stamp untouched")
 	}
 }
+
+// **The invariant the rest of the design leans on**: a claim's line always
+// carries the claim's own project and the claim's own owner.
+//
+// The list's visibility predicate reads a line's denormalised `user_id` and
+// `project_id` *because* they always equal the claim's, and `accessFor`
+// resolves the caller's role on the project from the line's copy. A line left
+// on the claim's previous project would be visible to that project's managers
+// and invisible to the new one's, while the claim's own read showed it to
+// neither.
+//
+// The race is real: a create is judged against the claim read *before* the
+// transaction (judging a project means asking the project directory, which
+// nothing inside a locked transaction may do), so a re-point committing in
+// between has to be caught under the lock.
+func TestExpensesClaimProjects_ALinesProjectIsAlwaysItsClaims(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, ownerID := signIn(t, h)
+	h.projects.addRole(projectKraftVerket, ownerID, roleMember)
+	h.projects.addRole(projectEuro, ownerID, roleMember)
+	claim := createClaim(t, owner, map[string]any{"projectId": projectKraftVerket})
+
+	// The invariant has to hold at *every* instant, not merely once the dust
+	// settles: a line that is on the wrong project for a moment is already
+	// visible to the wrong project's managers and invisible to the right
+	// one's, and a later re-point would sweep the evidence away. So a watcher
+	// polls it throughout, and the highest reading it ever saw is what the
+	// test asserts on.
+	strayed := make(chan int64, 1)
+	stop := make(chan struct{})
+	go func() {
+		var worst int64
+		defer func() { strayed <- worst }()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			var n int64
+			if err := h.Pool().QueryRow(context.Background(), claimLineInvariant).Scan(&n); err == nil && n > worst {
+				worst = n
+			}
+		}
+	}()
+
+	// Creators and re-pointers all in flight at once. The window a stale
+	// project could slip through is the one between the claim being read (for
+	// the project directory, which may not be asked inside a locked
+	// transaction) and its row being locked, so the test widens it by keeping
+	// many writers overlapping rather than by sleeping.
+	projects := []any{projectEuro, projectKraftVerket}
+	var wg sync.WaitGroup
+	for range 6 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 5 {
+				owner.Do(http.MethodPost, entriesPath,
+					bodyWith(outlayBody(nil), map[string]any{"claimId": claim.Id}))
+			}
+		}()
+	}
+	for mover := range 3 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for round := range 5 {
+				// Read the claim's revision inside the loop: a re-point that
+				// loses a 409 to another mover simply tries the next round.
+				r := owner.Do(http.MethodGet, claimPath(claim.Id), nil)
+				if r.Status != http.StatusOK {
+					continue
+				}
+				var current claimJSON
+				r.JSON(&current)
+				owner.Do(http.MethodPut, claimPath(claim.Id), claimBody(map[string]any{
+					"projectId": projects[(mover+round)%len(projects)], "revision": current.Revision,
+				}))
+			}
+		}()
+	}
+	wg.Wait()
+	close(stop)
+
+	if worst := <-strayed; worst != 0 {
+		t.Errorf("%d of the claim's lines carried a project or an owner that was not the claim's, want none ever",
+			worst)
+	}
+	// And once more when everything has settled, in case the watcher never
+	// sampled the moment it went wrong.
+	if stray := h.Count(t, claimLineInvariant); stray != 0 {
+		t.Errorf("%d of the claim's lines carry a project or an owner that is not the claim's, want none", stray)
+	}
+	// The rounds really did both things, or the invariant held vacuously.
+	if lines := h.Count(t, `SELECT count(*) FROM expenses.entries WHERE claim_id = $1`, claim.Id); lines == 0 {
+		t.Errorf("no line was ever recorded, so the race never happened")
+	}
+}
+
+// claimLineInvariant counts the claim lines that have drifted from their
+// claim. It is the one statement that says what "a line belongs to its claim"
+// means to the rest of the module: the list's visibility predicate reads these
+// two denormalised columns rather than joining, so anything this counts is
+// something a reader would see wrongly.
+const claimLineInvariant = `
+	SELECT count(*) FROM expenses.entries e
+	JOIN expenses.claims c ON c.id = e.claim_id
+	WHERE e.project_id IS DISTINCT FROM c.project_id OR e.user_id <> c.user_id`
 
 // Without the projects module a project id is refused on its own field, and a
 // stored one is carried through untouched rather than cleared by a save.

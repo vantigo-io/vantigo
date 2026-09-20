@@ -358,9 +358,10 @@ type suggestedDay struct {
 	Type string
 }
 
-// perDiemPartPeriodHours is how long a part-period has to run to earn a day of
-// its own: strictly longer than six hours, the same six hours a trip has to
-// last before it earns anything at all.
+// perDiemPartPeriodHours is the six hours two different rules are written in
+// terms of: the least a trip has to last before it earns anything at all, and —
+// for the *remainder* after at least one full 24-hour period — how long what is
+// left has to run to earn a day of its own, which is strictly longer.
 const perDiemPartPeriodHours = 6 * time.Hour
 
 // suggestPerDiem is design §4's day counting, and nothing else: two instants
@@ -368,8 +369,9 @@ const perDiemPartPeriodHours = 6 * time.Hour
 // nothing, asks nothing and knows no rates — pricing the days it proposes is
 // the handler's job, and recording them is the traveller's.
 //
-// The rule, in one sentence: **a period earns a day when it is a full 24 hours
-// or a part longer than six.**
+// The rule, in one sentence: **a trip of at least six hours earns a day, and an
+// overnight trip earns one more for every full 24 hours plus a remainder longer
+// than six.**
 //
 //   - Under six hours the trip earns nothing at all.
 //   - Without an overnight it is one day, dated on the departure: day_6_12 up
@@ -377,10 +379,17 @@ const perDiemPartPeriodHours = 6 * time.Hour
 //     that nobody slept away on is still one day: the traveller who did not
 //     stay the night gets one day's rate, whatever the clock says.
 //   - With an overnight it is one day per full 24-hour period from the
-//     departure, plus one more when what is left over runs longer than six
-//     hours. The periods are 24 hours from the departure instant, never
-//     calendar midnights, and each day is dated on the UTC day its own period
-//     starts.
+//     departure, plus one more when what is left over runs *strictly* longer
+//     than six hours — and never fewer than one, so any overnight trip at all,
+//     from six hours up, is a day. The periods are 24 hours from the departure
+//     instant, never calendar midnights, and each day is dated on the UTC day
+//     its own period starts.
+//
+// The six hours therefore reads two ways on purpose: it is inclusive as the
+// threshold a whole trip has to clear (six hours exactly earns a day, with an
+// overnight or without), and exclusive for the remainder after a full period
+// (30 h 00 is one day, 30 h 01 is two). A trip that is short but slept away on
+// is still a trip; six hours of leftover at the end of one is not another day.
 //
 // Every overnight day is proposed as overnight_hotel, the type the agreement
 // prices; a traveller who stayed somewhere else changes it on the line.
@@ -399,7 +408,14 @@ func suggestPerDiem(departure, returns time.Time, overnight bool) []suggestedDay
 
 	const period = 24 * time.Hour
 	days := int(duration / period)
-	if duration%period > perDiemPartPeriodHours {
+	switch {
+	case days == 0:
+		// Shorter than a full period. The trip has already cleared six hours
+		// (above) and somebody slept away on it, so it is one day — the
+		// remainder rule does not apply, because there is no period for it to
+		// be the remainder of.
+		days = 1
+	case duration%period > perDiemPartPeriodHours:
 		days++
 	}
 	out := make([]suggestedDay, 0, days)

@@ -9,15 +9,22 @@
 -- expense is a dashboard nobody keeps open.
 
 -- name: StatsMyStatusCounts :one
--- StatsMyStatusCounts is how many of the caller's own expenses stand in each
--- status, every status present whether or not anything is in it.
+-- StatsMyStatusCounts is how many of the caller's own **standalone** expenses
+-- stand in each status, every status present whether or not anything is in it.
+--
+-- A travel claim's lines are left out. Their own status column stays at its
+-- default 'draft' and is never read (unitOf in authorize.go), so counting them
+-- here would report five drafts for a trip its owner can do nothing with one
+-- at a time — they cannot be submitted, and the one thing that *is* actionable,
+-- the claim, would not be in the figure at all. The claims' own per-status
+-- counts arrive with the claim flow and are added on top of these.
 SELECT
     count(*) FILTER (WHERE status = 'draft')     AS drafts,
     count(*) FILTER (WHERE status = 'submitted') AS submitted,
     count(*) FILTER (WHERE status = 'approved')  AS approved,
     count(*) FILTER (WHERE status = 'rejected')  AS rejected
 FROM expenses.entries
-WHERE user_id = @user_id;
+WHERE user_id = @user_id AND claim_id IS NULL;
 
 -- name: StatsMyUnreimbursed :many
 -- StatsMyUnreimbursed is what the caller is still owed, per currency: their

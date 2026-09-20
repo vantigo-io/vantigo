@@ -154,8 +154,12 @@ func TestSuggestPerDiem_CountsTheDaysOfATrip(t *testing.T) {
 		"under six hours with an overnight earns nothing too": {
 			departure, "2026-03-09T12:59:00Z", true, nil,
 		},
-		"six hours exactly with an overnight earns nothing": {
-			departure, "2026-03-09T13:00:00Z", true, nil,
+		// The six hours reads two ways on purpose: inclusive as the threshold a
+		// whole trip has to clear, exclusive for the remainder after a full
+		// 24-hour period. So six hours exactly with an overnight is a day, while
+		// six hours left over at the end of a longer trip is not another one.
+		"six hours exactly with an overnight is one day": {
+			departure, "2026-03-09T13:00:00Z", true, []string{"2026-03-09 overnight_hotel"},
 		},
 		"a night away shorter than a day is one day": {
 			departure, "2026-03-10T03:00:00Z", true, []string{"2026-03-09 overnight_hotel"},

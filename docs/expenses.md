@@ -199,9 +199,23 @@ in that same transaction: the new project's billing lines are read **before**
 the transaction opens (nothing inside one calls another module), a line's
 billing line is cleared when the new project does not have it, and clearing the
 project altogether makes every line non-billable with its billing figures. A
-line that has already been invoiced holds the project where it is. The cap of
-200 lines is decided under the claim's lock, so two lines racing for the last
-slot cannot both take it.
+claim holding a line that has **already been invoiced** cannot be re-pointed at
+all — neither onto another project nor off one — because the line would then
+say it belongs somewhere the invoice that went out does not (400 on `projectId`,
+naming the line). The cap of 200 lines is decided under the claim's lock, so two
+lines racing for the last slot cannot both take it.
+
+**A line's project and owner are always its claim's**, and that is an invariant
+the rest of the module reads rather than derives: the list's visibility
+predicate matches on a line's own denormalised `user_id` and `project_id`
+instead of joining, and a line's `canSeeBilling` is answered against the project
+those columns name. Because a save is judged against the claim as it was read
+*before* the transaction — judging a project means asking the project directory,
+and nothing inside a locked transaction may — the claim is compared again once
+its row is held, and a save whose claim moved underneath it is refused on
+`claimId` ("read it again and retry") rather than written against a claim that
+has changed. A replace of a line needs no such comparison: a re-point bumps
+every line's revision, so a racing edit already gets a 409.
 
 ## The per diem day
 
@@ -247,25 +261,35 @@ derivation of "the day": the **UTC calendar day**, `utcDay(t)`. It is what the
 period lock is judged on, what `GET /claims`' `from`/`to` filter applies in SQL,
 what the within-the-trip rule compares against and what the suggestion dates a day
 by — one rule, so a day the server proposes can never fall outside the trip the
-save then judges it against.
+save then judges it against. A departure typed as `2026-03-01T00:30+02:00` is
+therefore a trip that departed on **2026-02-28**: that is the day the lock
+closes on, the day the list filters it under, and the first day one of its per
+diem lines may be dated.
 
 **The suggestion.** `POST /claims/{id}/per-diem-suggestion {overnight}` answers
 the days a trip's own times imply, each priced with the table as it stands (or the
 claim's own rate abroad) and marked `exists` when the claim already holds a day
 for that date. **It writes nothing**, and it filters nothing out: what to do about
 a day already recorded is the client's decision. Whoever may *see* the claim may
-ask for it. The counting, in one sentence — **a period earns a day when it is a
-full 24 hours or a part longer than six**:
+ask for it. The counting, in one sentence — **a trip of at least six hours earns
+a day, and an overnight one earns another for every full 24 hours plus a
+remainder longer than six**:
 
 - under six hours the trip earns nothing at all;
 - `overnight: false` — one day on the departure: `day_6_12` up to and including
   twelve hours, `day_over_12` beyond. A trip of several days that nobody slept
   away on is still one day;
 - `overnight: true` — one `overnight_hotel` per full 24-hour period from the
-  departure, plus one more when what is left over runs longer than six hours. The
-  periods are 24 hours from the departure *instant*, never calendar midnights, and
-  each day is dated on the UTC day its own period starts. So 24 h 00 and 30 h 00
-  are one day, 30 h 01 and 31 h are two, 48 h 00 is two and 54 h 01 is three.
+  departure, plus one more when what is left over runs *strictly* longer than
+  six hours, and never fewer than one. The periods are 24 hours from the
+  departure *instant*, never calendar midnights, and each day is dated on the UTC
+  day its own period starts. So 6 h 00 and 24 h 00 and 30 h 00 are one day,
+  30 h 01 and 31 h are two, 48 h 00 is two and 54 h 01 is three.
+
+The six hours reads two ways on purpose: **inclusive** as the threshold a whole
+trip has to clear, and **exclusive** for the remainder after a full period. A
+short trip somebody slept away on is still a trip; six hours left over at the end
+of a longer one is not another day.
 
 `overnight: true` proposes `overnight_hotel` throughout, the type the agreement
 prices; a traveller who stayed somewhere else changes it on the line. The client
@@ -543,6 +567,13 @@ The timeseries' one metric is `netAmount` — the caller's own approved expenses
 in the installation's default currency only, for the reason Time's hours are scoped
 to the caller: a figure that changed meaning with the reader's permissions would
 mean a different thing to every reader of the same card.
+
+**The per-status counts are of standalone expenses only.** A travel claim's
+lines keep their own `status` column at its default and it is never read, so
+counting them would report five drafts for a trip whose owner can do nothing
+with one of them on its own — while the one thing that *is* actionable, the
+claim, would be missing from the figure. The claims' own counts arrive with the
+claim flow and are added on top.
 
 Three attention types, in `GET /stats/attention`:
 
