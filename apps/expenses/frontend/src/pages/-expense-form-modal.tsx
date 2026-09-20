@@ -373,7 +373,11 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
         {readOnly && <Alert color="gray">{t("readOnlyNotice")}</Alert>}
         {saved?.decision?.status === "rejected" && saved.decision.reason && (
           <Alert color="red" title={t("rejectedBecause", { reason: saved.decision.reason })}>
-            {t("rejectedBy", { person: saved.decision.by.displayName, date: format.dateTime(saved.decision.at) })}
+            {/* `by` is optional in the contract, for a stored decision with no
+                decider that no operation can produce; the reason stands on its
+                own when there is nobody to name. */}
+            {saved.decision.by &&
+              t("rejectedBy", { person: saved.decision.by.displayName, date: format.dateTime(saved.decision.at) })}
           </Alert>
         )}
         <RefusalList messages={refusals} />
