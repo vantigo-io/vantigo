@@ -3,6 +3,7 @@ import {
   IconCoin,
   IconLayoutDashboard,
   IconListCheck,
+  IconReceipt,
   IconReportMoney,
   IconUsers,
 } from "@tabler/icons-react";
@@ -27,7 +28,7 @@ interface ProjectDetailGate {
   capability?: keyof ProjectCapabilities;
 }
 
-type ProjectDetailView = "overview" | "tasks" | "people" | "billing" | "economy" | "time";
+type ProjectDetailView = "overview" | "tasks" | "people" | "billing" | "economy" | "time" | "expenses";
 
 interface ProjectDetailTab extends ProjectDetailGate {
   value: ProjectDetailView;
@@ -37,7 +38,8 @@ interface ProjectDetailTab extends ProjectDetailGate {
     | "project.peopleTab"
     | "project.billingTab"
     | "project.economyTab"
-    | "project.timeTab";
+    | "project.timeTab"
+    | "project.expensesTab";
   icon: typeof IconLayoutDashboard;
   to:
     | "/projects/$projectId"
@@ -45,7 +47,8 @@ interface ProjectDetailTab extends ProjectDetailGate {
     | "/projects/$projectId/people"
     | "/projects/$projectId/billing"
     | "/projects/$projectId/economy"
-    | "/projects/$projectId/time";
+    | "/projects/$projectId/time"
+    | "/projects/$projectId/expenses";
 }
 
 /**
@@ -110,6 +113,20 @@ export const projectDetailTabs: ProjectDetailTab[] = [
     to: "/projects/$projectId/time",
     module: "time",
     requiredPermissions: ["time:access"],
+  },
+  {
+    // The second tab from another module: what has been spent on this
+    // project. It carries **no** project capability — a plain member sees
+    // their own expenses on it — because the expenses API decides both halves
+    // on its own: the totals need financial rights on the project and answer
+    // a bare 404 without them, while the list underneath keeps the visibility
+    // rule every expense read has always had.
+    value: "expenses",
+    labelKey: "project.expensesTab",
+    icon: IconReceipt,
+    to: "/projects/$projectId/expenses",
+    module: "expenses",
+    requiredPermissions: ["expenses:access"],
   },
 ];
 
