@@ -549,6 +549,11 @@ const (
 	entriesPath        = "/api/v1/expenses/entries"
 	projectOptionsPath = "/api/v1/expenses/projects"
 	attachmentsPath    = "/api/v1/expenses/attachments"
+	submitPath         = "/api/v1/expenses/submit"
+	approvePath        = "/api/v1/expenses/approve"
+	rejectPath         = "/api/v1/expenses/reject"
+	unapprovePath      = "/api/v1/expenses/unapprove"
+	approvalsPath      = "/api/v1/expenses/approvals"
 )
 
 func ratePath(id int32) string     { return fmt.Sprintf("%s/%d", ratesPath, id) }
@@ -557,6 +562,11 @@ func entryPath(id int64) string    { return fmt.Sprintf("%s/%d", entriesPath, id
 func attachmentPath(id int64) string {
 	return fmt.Sprintf("%s/%d", attachmentsPath, id)
 }
+
+// entryRatePath and entryBillingPath are the two single-expense writes the flow
+// adds: an approver's rate override and the project side's pricing.
+func entryRatePath(id int64) string    { return fmt.Sprintf("%s/%d/rate", entriesPath, id) }
+func entryBillingPath(id int64) string { return fmt.Sprintf("%s/%d/billing", entriesPath, id) }
 
 // entryAttachmentsPath is where a receipt is uploaded: the entry's own
 // sub-collection, unlike the read and the delete, which are by attachment id
@@ -568,9 +578,11 @@ func entryAttachmentsPath(entryID int64) string {
 // The titles this module's refusals carry, so a test says which refusal it
 // expects rather than repeating the string.
 const (
-	invalidEntryTitle   = "Invalid expense"
-	invalidQueryTitle   = "Invalid query parameters"
-	invalidReceiptTitle = "Invalid receipt"
+	invalidEntryTitle      = "Invalid expense"
+	invalidQueryTitle      = "Invalid query parameters"
+	invalidReceiptTitle    = "Invalid receipt"
+	invalidSubmissionTitle = "Invalid submission"
+	invalidApprovalTitle   = "Invalid approval"
 )
 
 // materialsCategory is the first seeded category's id. The migration gives
@@ -874,45 +886,54 @@ type (
 		CanDelete       bool `json:"canDelete"`
 		CanSubmit       bool `json:"canSubmit"`
 		CanApprove      bool `json:"canApprove"`
+		CanUnapprove    bool `json:"canUnapprove"`
 		CanOverrideRate bool `json:"canOverrideRate"`
 		CanMarkInvoiced bool `json:"canMarkInvoiced"`
 		CanSeeBilling   bool `json:"canSeeBilling"`
+		CanSetBilling   bool `json:"canSetBilling"`
+	}
+	// entryRateOverrideJSON decodes ExpensesEntryRateOverride — who overrode a
+	// mileage line's rate and what the rate table had said.
+	entryRateOverrideJSON struct {
+		ByUser     entryOwnerJSON `json:"byUser"`
+		TableValue *float64       `json:"tableValue"`
 	}
 )
 
 // entryJSON decodes ExpensesEntryResponse.
 type entryJSON struct {
-	Id              int64                 `json:"id"`
-	Kind            string                `json:"kind"`
-	EntryDate       string                `json:"entryDate"`
-	Description     string                `json:"description"`
-	Category        *entryCategoryJSON    `json:"category"`
-	Supplier        *string               `json:"supplier"`
-	PaidBy          *string               `json:"paidBy"`
-	Currency        string                `json:"currency"`
-	GrossAmount     float64               `json:"grossAmount"`
-	VatAmount       *float64              `json:"vatAmount"`
-	NetAmount       float64               `json:"netAmount"`
-	DistanceKm      *float64              `json:"distanceKm"`
-	FromPlace       *string               `json:"fromPlace"`
-	ToPlace         *string               `json:"toPlace"`
-	Passengers      *int32                `json:"passengers"`
-	Rate            *float64              `json:"rate"`
-	PassengerRate   *float64              `json:"passengerRate"`
-	OwedToEmployee  float64               `json:"owedToEmployee"`
-	Status          string                `json:"status"`
-	SubmittedAt     *string               `json:"submittedAt"`
-	DecidedAt       *string               `json:"decidedAt"`
-	RejectionReason *string               `json:"rejectionReason"`
-	Project         *entryProjectJSON     `json:"project"`
-	BillingLine     *entryLineJSON        `json:"billingLine"`
-	Billable        bool                  `json:"billable"`
-	Billing         *entryBillingJSON     `json:"billing"`
-	AttachmentCount int32                 `json:"attachmentCount"`
-	Attachments     []attachmentJSON      `json:"attachments"`
-	Owner           entryOwnerJSON        `json:"owner"`
-	Revision        int32                 `json:"revision"`
-	Capabilities    entryCapabilitiesJSON `json:"capabilities"`
+	Id              int64                  `json:"id"`
+	Kind            string                 `json:"kind"`
+	EntryDate       string                 `json:"entryDate"`
+	Description     string                 `json:"description"`
+	Category        *entryCategoryJSON     `json:"category"`
+	Supplier        *string                `json:"supplier"`
+	PaidBy          *string                `json:"paidBy"`
+	Currency        string                 `json:"currency"`
+	GrossAmount     float64                `json:"grossAmount"`
+	VatAmount       *float64               `json:"vatAmount"`
+	NetAmount       float64                `json:"netAmount"`
+	DistanceKm      *float64               `json:"distanceKm"`
+	FromPlace       *string                `json:"fromPlace"`
+	ToPlace         *string                `json:"toPlace"`
+	Passengers      *int32                 `json:"passengers"`
+	Rate            *float64               `json:"rate"`
+	PassengerRate   *float64               `json:"passengerRate"`
+	OwedToEmployee  float64                `json:"owedToEmployee"`
+	Status          string                 `json:"status"`
+	SubmittedAt     *string                `json:"submittedAt"`
+	DecidedAt       *string                `json:"decidedAt"`
+	RejectionReason *string                `json:"rejectionReason"`
+	RateOverride    *entryRateOverrideJSON `json:"rateOverride"`
+	Project         *entryProjectJSON      `json:"project"`
+	BillingLine     *entryLineJSON         `json:"billingLine"`
+	Billable        bool                   `json:"billable"`
+	Billing         *entryBillingJSON      `json:"billing"`
+	AttachmentCount int32                  `json:"attachmentCount"`
+	Attachments     []attachmentJSON       `json:"attachments"`
+	Owner           entryOwnerJSON         `json:"owner"`
+	Revision        int32                  `json:"revision"`
+	Capabilities    entryCapabilitiesJSON  `json:"capabilities"`
 }
 
 // entryPageJSON decodes PaginatedResponseOfExpensesEntryResponse.
@@ -1181,6 +1202,145 @@ func refusedReceipt(t *testing.T, c *modtest.Client, entryID int64, fileName, co
 		t.Errorf("problem title = %q, want %q", problem.Title, invalidReceiptTitle)
 	}
 	return problem.Errors
+}
+
+// approvalTotalJSON decodes ExpensesApprovalTotal — one currency's figures in
+// one person's group of the approval queue.
+type approvalTotalJSON struct {
+	Currency       string  `json:"currency"`
+	Gross          float64 `json:"gross"`
+	OwedToEmployee float64 `json:"owedToEmployee"`
+}
+
+// approvalGroupJSON decodes ExpensesApprovalGroup.
+type approvalGroupJSON struct {
+	User            entryOwnerJSON      `json:"user"`
+	Entries         []entryJSON         `json:"entries"`
+	Totals          []approvalTotalJSON `json:"totals"`
+	ReceiptsMissing int32               `json:"receiptsMissing"`
+	OverriddenRates int32               `json:"overriddenRates"`
+}
+
+// approvalPageJSON decodes PaginatedResponseOfExpensesApprovalGroup.
+type approvalPageJSON struct {
+	Data       []approvalGroupJSON `json:"data"`
+	Pagination struct {
+		Page       int32 `json:"page"`
+		PageSize   int32 `json:"pageSize"`
+		TotalCount int32 `json:"totalCount"`
+		TotalPages int32 `json:"totalPages"`
+	} `json:"pagination"`
+}
+
+// flowBody is the body the four batch operations take. A nil override removes
+// the field, so a test can say "with no entryIds at all" as well as "with
+// these".
+func flowBody(entryIDs []int64, overrides map[string]any) map[string]any {
+	return bodyWith(map[string]any{"entryIds": entryIDs}, overrides)
+}
+
+// moveEntries posts one of the four batch operations and fails the test unless
+// it answered 200, returning the moved expenses in the order the ids were
+// given.
+func moveEntries(t *testing.T, c *modtest.Client, path string, body map[string]any) []entryJSON {
+	t.Helper()
+	r := c.Do(http.MethodPost, path, body)
+	if r.Status != http.StatusOK {
+		t.Fatalf("post %s %v: status %d body %s, want 200", path, body, r.Status, r.Body)
+	}
+	var moved []entryJSON
+	r.JSON(&moved)
+	return moved
+}
+
+func submitEntries(t *testing.T, c *modtest.Client, ids ...int64) []entryJSON {
+	t.Helper()
+	return moveEntries(t, c, submitPath, flowBody(ids, nil))
+}
+
+func approveEntries(t *testing.T, c *modtest.Client, ids ...int64) []entryJSON {
+	t.Helper()
+	return moveEntries(t, c, approvePath, flowBody(ids, nil))
+}
+
+func rejectEntries(t *testing.T, c *modtest.Client, reason string, ids ...int64) []entryJSON {
+	t.Helper()
+	return moveEntries(t, c, rejectPath, flowBody(ids, map[string]any{"reason": reason}))
+}
+
+func unapproveEntries(t *testing.T, c *modtest.Client, ids ...int64) []entryJSON {
+	t.Helper()
+	return moveEntries(t, c, unapprovePath, flowBody(ids, nil))
+}
+
+// refusedFlow is a batch operation that did not pass: the field errors of the
+// validation problem it was refused with, under the title that operation
+// carries.
+func refusedFlow(t *testing.T, c *modtest.Client, path string, body map[string]any) map[string][]string {
+	t.Helper()
+	title := invalidApprovalTitle
+	if path == submitPath {
+		title = invalidSubmissionTitle
+	}
+	return refused(t, c, http.MethodPost, path, body, title)
+}
+
+// approvedBy submits as the owner and then approves as the approver, the
+// shortest road to an approved expense.
+func approvedBy(t *testing.T, owner, approver *modtest.Client, ids ...int64) {
+	t.Helper()
+	submitEntries(t, owner, ids...)
+	approveEntries(t, approver, ids...)
+}
+
+// getApprovals reads a page of the approval queue and fails the test unless it
+// answered 200. query is appended as it stands ("?page=2"), "" for none.
+func getApprovals(t *testing.T, c *modtest.Client, query string) approvalPageJSON {
+	t.Helper()
+	r := c.Do(http.MethodGet, approvalsPath+query, nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("get approvals %q: status %d body %s, want 200", query, r.Status, r.Body)
+	}
+	var page approvalPageJSON
+	r.JSON(&page)
+	return page
+}
+
+// overrideRate replaces a submitted mileage line's rate and fails the test
+// unless it answered 200.
+func overrideRate(t *testing.T, c *modtest.Client, id int64, body map[string]any) entryJSON {
+	t.Helper()
+	r := c.Do(http.MethodPut, entryRatePath(id), body)
+	if r.Status != http.StatusOK {
+		t.Fatalf("override the rate on %d with %v: status %d body %s, want 200", id, body, r.Status, r.Body)
+	}
+	var entry entryJSON
+	r.JSON(&entry)
+	return entry
+}
+
+// setBilling prices one expense from the project side and fails the test
+// unless it answered 200.
+func setBilling(t *testing.T, c *modtest.Client, id int64, body map[string]any) entryJSON {
+	t.Helper()
+	r := c.Do(http.MethodPut, entryBillingPath(id), body)
+	if r.Status != http.StatusOK {
+		t.Fatalf("price %d with %v: status %d body %s, want 200", id, body, r.Status, r.Body)
+	}
+	var entry entryJSON
+	r.JSON(&entry)
+	return entry
+}
+
+// mentions reports whether any of the messages holds the given text, so a test
+// can say which refusal it expects without repeating the whole sentence.
+func mentions(messages []string, text string) bool {
+	for _, msg := range messages {
+		if strings.Contains(msg, text) {
+			return true
+		}
+	}
+	return false
 }
 
 // downloadReceipt reads one receipt's bytes and fails the test unless it

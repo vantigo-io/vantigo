@@ -138,11 +138,19 @@ func (s *server) namesFor(ctx context.Context, rows []store.ExpensesEntry) (entr
 	seenUsers := map[uuid.UUID]bool{}
 	seenProjects := map[int32]bool{}
 	lineProjects := map[int32]bool{}
+	addUser := func(id uuid.UUID) {
+		if !seenUsers[id] {
+			seenUsers[id] = true
+			userIDs = append(userIDs, id)
+		}
+	}
 	for _, row := range rows {
 		entryIDs = append(entryIDs, row.ID)
-		if !seenUsers[row.UserID] {
-			seenUsers[row.UserID] = true
-			userIDs = append(userIDs, row.UserID)
+		addUser(row.UserID)
+		// Whoever overrode a rate is named on the expense too, in the same
+		// directory call as its owner.
+		if row.RateOverriddenByUserID != nil {
+			addUser(*row.RateOverriddenByUserID)
 		}
 		if row.ProjectID != nil && !seenProjects[*row.ProjectID] {
 			seenProjects[*row.ProjectID] = true
@@ -248,9 +256,11 @@ func entryResponse(row store.ExpensesEntry, a entryAccess, names entryNames) (ge
 			CanDelete:       a.CanDelete,
 			CanSubmit:       a.CanSubmit,
 			CanApprove:      a.CanApprove,
+			CanUnapprove:    a.CanUnapprove,
 			CanOverrideRate: a.CanOverrideRate,
 			CanMarkInvoiced: a.CanMarkInvoiced,
 			CanSeeBilling:   a.CanSeeBilling,
+			CanSetBilling:   a.CanSetBilling,
 		},
 	}
 	if vat != nil {
@@ -267,6 +277,19 @@ func entryResponse(row store.ExpensesEntry, a entryAccess, names entryNames) (ge
 			return gen.ExpensesEntryResponse{}, err
 		}
 		resp.Passengers = ptrTo(int32(row.Passengers))
+	}
+	// Decision X8: a rate somebody replaced is shown to everyone who may see
+	// the expense, its owner included — what they are paid was decided by a
+	// person rather than by the table, and they are entitled to know.
+	if row.RateOverriddenByUserID != nil {
+		tableValue, err := floatPtrFromNumeric(row.RateTableValue)
+		if err != nil {
+			return gen.ExpensesEntryResponse{}, err
+		}
+		resp.RateOverride = &gen.ExpensesEntryRateOverride{
+			ByUser:     userRef(*row.RateOverriddenByUserID, names),
+			TableValue: tableValue,
+		}
 	}
 	if row.CategoryID != nil {
 		if category, ok := names.categories[*row.CategoryID]; ok {
@@ -335,11 +358,18 @@ func billingResponse(row store.ExpensesEntry) (*gen.ExpensesEntryBilling, error)
 
 // ownerResponse is the person an expense concerns, named through identity.
 func ownerResponse(userID uuid.UUID, names entryNames) gen.ExpensesEntryOwner {
+	return gen.ExpensesEntryOwner(userRef(userID, names))
+}
+
+// userRef names one person the response points at — an approval group's owner,
+// or whoever overrode a rate — falling back to a name rather than failing the
+// read when the directory no longer knows them.
+func userRef(userID uuid.UUID, names entryNames) gen.ExpensesUserRef {
 	user, ok := names.users[userID]
 	if !ok {
-		return gen.ExpensesEntryOwner{UserId: userID, DisplayName: unknownUser, Active: false}
+		return gen.ExpensesUserRef{UserId: userID, DisplayName: unknownUser, Active: false}
 	}
-	return gen.ExpensesEntryOwner{UserId: userID, DisplayName: user.DisplayName, Active: user.Active}
+	return gen.ExpensesUserRef{UserId: userID, DisplayName: user.DisplayName, Active: user.Active}
 }
 
 // entryResponseFor renders the single expense a create, a read or a replace

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/expenses/store"
 )
@@ -33,6 +34,12 @@ type caller struct {
 	ProjectsViewAll    bool // projects:view-all — sees every project
 	ProjectsManageAll  bool // projects:manage-all — sees and manages every project, money included
 	ProjectsFinancials bool // projects:view-financials — money on the projects they see
+
+	// ProjectsOn is whether this installation has the projects module at all
+	// (decision X2). It is read once here rather than asked of the server by
+	// every rule, so accessFor — which has no server — can answer for the
+	// operations that only exist when projects do.
+	ProjectsOn bool
 
 	Settings store.ExpensesSetting
 
@@ -62,6 +69,7 @@ func (s *server) callerFor(ctx context.Context, q *store.Queries) (*caller, erro
 		ProjectsViewAll:    s.has(ctx, "projects:view-all"),
 		ProjectsManageAll:  s.has(ctx, "projects:manage-all"),
 		ProjectsFinancials: s.has(ctx, "projects:view-financials"),
+		ProjectsOn:         s.projectsAvailable(),
 		Settings:           row,
 		roles:              map[int32]string{},
 	}, nil
@@ -154,6 +162,79 @@ func (c *caller) managedProjects(ctx context.Context, s *server) ([]int32, error
 	return managed, nil
 }
 
+// warmRoles reads c's role on every one of projectIDs into the cache, so a
+// decision made later inside a locked transaction needs no directory call. nil
+// ids — expenses on no project at all — are skipped.
+func (c *caller) warmRoles(ctx context.Context, s *server, projectIDs []*int32) error {
+	for _, id := range projectIDs {
+		if _, err := c.roleOf(ctx, s, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// cachedRole is c's role on an expense's project as already read, "" when it
+// was not. It is what a decision inside a locked transaction reads instead of
+// asking the directory: a project the cache has no role for — only possible
+// for an expense moved to another project between the read and the lock, which
+// only a draft can be — counts as none, which can only refuse, never admit.
+func (c *caller) cachedRole(projectID *int32) string {
+	if projectID == nil {
+		return ""
+	}
+	return c.roles[*projectID]
+}
+
+// approvesAnything reports whether the caller approves anything at all:
+// expenses:approve, or the manager role on at least one project (read through
+// managedProjects, which also warms the role cache for those projects). With
+// orManage, expenses:manage counts too — it unapproves anywhere. A caller who
+// approves nothing is refused a decision outright, as the access layer would,
+// rather than told about each id (decision X10).
+func (c *caller) approvesAnything(ctx context.Context, s *server, orManage bool) (bool, error) {
+	if c.Approve || (orManage && c.Manage) {
+		return true, nil
+	}
+	managed, err := c.managedProjects(ctx, s)
+	if err != nil {
+		return false, err
+	}
+	return len(managed) > 0, nil
+}
+
+// approvalScope is which submitted expenses a caller may approve, in the terms
+// the queue's queries filter on: every one of them (seeAll, expenses:approve)
+// or the ones on the projects they manage, and not those dated before lock
+// (invalid for no lock, or for expenses:manage, whom the lock does not hold
+// back).
+type approvalScope struct {
+	seeAll  bool
+	managed []int32
+	lock    pgtype.Date
+}
+
+// approvesAny reports whether the scope holds anything at all.
+func (a approvalScope) approvesAny() bool { return a.seeAll || len(a.managed) > 0 }
+
+// approvalScopeFor reads c's approval scope; for a caller without
+// expenses:approve that is a directory call per project they hold a role on
+// (managedProjects), so it must not run inside a locked transaction.
+func (s *server) approvalScopeFor(ctx context.Context, c *caller) (approvalScope, error) {
+	scope := approvalScope{seeAll: c.Approve, managed: []int32{}}
+	if !c.Approve {
+		managed, err := c.managedProjects(ctx, s)
+		if err != nil {
+			return approvalScope{}, err
+		}
+		scope.managed = managed
+	}
+	if lock := lockedBefore(c.Settings); lock != nil && !c.Manage {
+		scope.lock = pgDate(*lock)
+	}
+	return scope, nil
+}
+
 // seesProject reports whether c, holding role on a project ("" for none), sees
 // the project itself: any role on it, projects:view-all or
 // projects:manage-all — the rule projects applies. The expenses permissions
@@ -231,8 +312,10 @@ type entryAccess struct {
 	CanDelete       bool
 	CanSubmit       bool
 	CanApprove      bool
+	CanUnapprove    bool
 	CanOverrideRate bool
 	CanMarkInvoiced bool
+	CanSetBilling   bool
 }
 
 // entryAccess resolves c's access to entry, asking the project directory for
@@ -265,12 +348,23 @@ func (c *caller) accessFor(entry store.ExpensesEntry, role string) entryAccess {
 	open := c.mayWritePast(entry.EntryDate.Time)
 	a.IsWriter = a.IsOwner || c.Manage
 	writer := a.IsWriter
-	a.CanEdit = writer && open && slices.Contains(editableStatuses, entry.Status)
+	editable := slices.Contains(editableStatuses, entry.Status)
+	a.CanEdit = writer && open && editable
 	a.CanDelete = a.CanEdit
-	a.CanSubmit = writer && open && entry.Status == statusDraft
+	// Submit takes a rejected expense as well as a fresh draft: a line sent
+	// back over its rate or its date needs no edit before it goes again, and
+	// the submit reprices it either way.
+	a.CanSubmit = writer && open && editable
 	a.CanApprove = a.IsApprover && open && entry.Status == statusSubmitted
+	a.CanUnapprove = (a.IsApprover || c.Manage) && open && entry.Status == statusApproved &&
+		entry.ReimbursedAt == nil && entry.InvoicedAt == nil
 	a.CanOverrideRate = (a.IsApprover || c.Manage) && open && entry.Status == statusSubmitted && entry.Kind == kindMileage
 	a.CanMarkInvoiced = entry.Billable && entry.Status == statusApproved && entry.InvoicedAt == nil &&
 		c.seesProjectFinancials(role)
+	// Pricing an expense from the project's side is open in every status the
+	// line can still be priced in — its owner's progress through the flow is
+	// not the project manager's business — and closed once it has been
+	// invoiced, which is what it was priced for.
+	a.CanSetBilling = c.ProjectsOn && a.CanSeeBilling && open && entry.InvoicedAt == nil
 	return a
 }
