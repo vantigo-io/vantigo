@@ -74,6 +74,11 @@ type billingFigures struct {
 // resolveBilling is the whole of decision X7's rule, in one place, for both the
 // freeze a submit does and the pricing the project's side does:
 //
+//   - a per diem day bills nobody anything, whatever was asked and whoever
+//     asked: it is a day of somebody's trip paid back out of the company's own
+//     pocket, and design §4 says so in four field-level refusals on the entry
+//     doors. This is the fifth, so the *project's* door cannot make one billable
+//     behind the entry door's back;
 //   - a project that bills nothing bills nothing here either, whatever was
 //     asked, and a line nobody bills stores no billing figures at all;
 //   - a figure this request named is the one used;
@@ -83,7 +88,8 @@ type billingFigures struct {
 //     settings' default markup, the mileage_customer rate in force that day.
 func resolveBilling(ctx context.Context, q *store.Queries, in billingInput) (billingFigures, error) {
 	f := billingFigures{
-		Billable: in.Billable && in.Project != nil && in.Project.BillingType != billingNonBillable,
+		Billable: in.Kind != kindPerDiem &&
+			in.Billable && in.Project != nil && in.Project.BillingType != billingNonBillable,
 	}
 	if !f.Billable {
 		return f, nil
@@ -144,8 +150,17 @@ func billingColumns(f billingFigures) (markup, billRate, amount pgtype.Numeric, 
 // CanSetBilling): pricing is bookkeeping done after a period closes, and the
 // people who do it hold financial rights on a project rather than
 // expenses:manage, whom the lock exempts.
+//
+// A per diem day is refused outright, before anything else: it is never billed
+// on to a customer (design §4), so there is nothing here for this door to set.
+// The refusal names `kind`, as the entry doors' four refusals of the same rule
+// name the field that was wrong — what the line *is* is the fact the caller can
+// act on, and it is not going to change.
 func billingRefusal(_ *caller, row store.ExpensesEntry) (string, string) {
-	if row.InvoicedAt != nil {
+	switch {
+	case row.Kind == kindPerDiem:
+		return "kind", perDiemNotBillable
+	case row.InvoicedAt != nil:
 		return "status", "An expense that has been invoiced can no longer be priced"
 	}
 	return "", ""
@@ -217,7 +232,7 @@ func (s *server) PutExpensesEntriesByIdBilling(ctx context.Context, req gen.PutE
 		// (lockEntryUnit). Pricing reads no status of the claim's, but it
 		// writes a row a claim-wide write may be holding, so it queues behind
 		// the same lock everything else does.
-		locked, _, found, err := lockEntryUnit(ctx, txq, req.Id, row.ClaimID)
+		locked, _, _, found, err := lockEntryUnit(ctx, txq, req.Id, row.ClaimID)
 		if err != nil {
 			return err
 		}
@@ -431,6 +446,11 @@ func (s *server) GetExpensesEntriesByIdBillingLines(ctx context.Context, req gen
 		return gen.GetExpensesEntriesByIdBillingLines400ApplicationProblemPlusJSONResponse(
 			invalidEntry(fieldError("projectId",
 				"This expense is not booked on a project, so there is nothing to bill a customer for"))), nil
+	case row.Kind == kindPerDiem:
+		// The save refuses it, so the dialog must too — the property this
+		// operation's own comment promises.
+		return gen.GetExpensesEntriesByIdBillingLines400ApplicationProblemPlusJSONResponse(
+			invalidEntry(fieldError("kind", perDiemNotBillable))), nil
 	case !a.CanSeeBilling:
 		return gen.GetExpensesEntriesByIdBillingLines403JSONResponse(forbidden()), nil
 	}

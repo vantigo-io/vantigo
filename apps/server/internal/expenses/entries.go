@@ -293,7 +293,10 @@ func (s *server) resolveValues(ctx context.Context, q *store.Queries, c *caller,
 		if err := s.pricePerDiem(ctx, q, c, &v, p, claim, add); err != nil {
 			return entryValues{}, err
 		}
-		refuseFiguresNothingWillUse(p, add)
+		// No refuseFiguresNothingWillUse here: parseProjectFields lets a markup
+		// onto nothing but a billable outlay and a customer rate per kilometre
+		// onto nothing but billable mileage, so a per diem day can never reach
+		// this point carrying either.
 		return v, nil
 	}
 
@@ -891,7 +894,7 @@ func (s *server) PutExpensesEntriesById(ctx context.Context, req gen.PutExpenses
 		conflict   *int32
 	)
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
-		row, lockedUnit, found, err := lockEntryUnit(ctx, txq, req.Id, current.ClaimID)
+		row, lockedUnit, lockedClaim, found, err := lockEntryUnit(ctx, txq, req.Id, current.ClaimID)
 		if err != nil {
 			return err
 		}
@@ -923,6 +926,21 @@ func (s *server) PutExpensesEntriesById(ctx context.Context, req gen.PutExpenses
 		if taken != "" {
 			staleField, staleMsg = "entryDate", taken
 			return nil
+		}
+		// A per diem day is priced from its *claim* — the abroad day rate, the
+		// currency — and dated against the claim's window, all of which prepare
+		// read before any lock was taken. A claim edit that committed in between
+		// changes neither the line's revision nor its columns, so the day is
+		// judged and priced once more against the claim this transaction holds.
+		if p.Parsed.Kind == kindPerDiem && lockedClaim != nil {
+			field, msg, err := s.repriceUnderLock(ctx, txq, c, &p, *lockedClaim)
+			if err != nil {
+				return err
+			}
+			if msg != "" {
+				staleField, staleMsg = field, msg
+				return nil
+			}
 		}
 		if row.Revision != body.Revision {
 			conflict = &row.Revision
@@ -1064,7 +1082,7 @@ func (s *server) DeleteExpensesEntriesById(ctx context.Context, req gen.DeleteEx
 		staleMsg   string
 	)
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
-		_, lockedUnit, found, err := lockEntryUnit(ctx, txq, req.Id, current.ClaimID)
+		_, lockedUnit, _, found, err := lockEntryUnit(ctx, txq, req.Id, current.ClaimID)
 		if err != nil {
 			return err
 		}

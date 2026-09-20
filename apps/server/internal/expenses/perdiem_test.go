@@ -2,7 +2,10 @@ package expenses_test
 
 import (
 	"net/http"
+	"slices"
 	"testing"
+
+	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
 // This file is the per diem day through the API (design §4): the kind that
@@ -331,18 +334,19 @@ func TestExpensesPerDiem_AbroadTakesTheClaimsOwnRateAndCurrency(t *testing.T) {
 	}
 }
 
-// The column is NOT NULL and a blank line in a trip's list would tell its
-// reader nothing, so a day with no description of its own is named after what
-// it is — and one the traveller wrote keeps their words.
-func TestExpensesPerDiem_IsNamedAfterTheKindOfDayItIs(t *testing.T) {
+// A per diem day keeps the description its owner gave it and gets none of the
+// server's own: what the day *is* is its perDiemType, which every reader has,
+// and a name the server invented would sit in the column in one language for
+// ever. A day saved without one carries the empty string.
+func TestExpensesPerDiem_CarriesOnlyTheDescriptionItWasGiven(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	owner, _ := signIn(t, h)
 	claim := createClaim(t, owner, nil)
 
 	unnamed := addLine(t, owner, claim.Id, perDiemBody(nil))
-	if unnamed.Description != "Kostgodtgjørelse 6–12 timer" {
-		t.Errorf("description = %q, want the kind of day it is", unnamed.Description)
+	if unnamed.Description != "" {
+		t.Errorf("description = %q, want the empty string and no invented name", unnamed.Description)
 	}
 	named := addLine(t, owner, claim.Id, perDiemBody(map[string]any{
 		"entryDate": "2026-03-09", "description": "Dag to på anlegget",
@@ -677,5 +681,238 @@ func TestExpensesPerDiemRates_AreVisibleAndResettable(t *testing.T) {
 	// not a failure.
 	if after := ratesOfKind(resetRates(t, admin, "per_diem_overnight_other"), "per_diem_overnight_other"); len(after) != 0 {
 		t.Errorf("per_diem_overnight_other after a reset = %+v, want nothing to restore", after)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// A per diem day is never priced: the project's own door refuses it too
+// ---------------------------------------------------------------------------
+
+// The entry doors refuse `billable` and `billingLineId` on their own fields.
+// This is the same rule on the *project's* door, which is the one a project
+// manager reaches for — without it a per diem day could be made billable, and
+// then invoiced, by exactly the role the design put on the other side of the
+// line.
+func TestExpensesPerDiem_IsNeverPricedFromTheProjectsSide(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, ownerID := signIn(t, h)
+	manager, managerID := signIn(t, h)
+	h.projects.addRole(projectKraftVerket, ownerID, roleMember)
+	h.projects.addRole(projectKraftVerket, managerID, roleManager)
+
+	claim := createClaim(t, owner, map[string]any{"projectId": projectKraftVerket})
+	day := addLine(t, owner, claim.Id, perDiemBody(nil))
+
+	// The manager sees the project's money on it and is told, truthfully, that
+	// there is nothing here for them to set.
+	read := getEntry(t, manager, day.Id)
+	if !read.Capabilities.CanSeeBilling {
+		t.Fatalf("capabilities = %+v, want the project's manager to see its billing", read.Capabilities)
+	}
+	if read.Capabilities.CanSetBilling || read.Capabilities.CanMarkInvoiced {
+		t.Errorf("capabilities = %+v, want neither canSetBilling nor canMarkInvoiced on a per diem day",
+			read.Capabilities)
+	}
+
+	errs := refusedEntry(t, manager, http.MethodPut, entryBillingPath(day.Id), map[string]any{
+		"billable": true, "billingLineId": lineFixed, "revision": read.Revision,
+	})
+	if !mentions(errs["kind"], "never billed on to a customer") {
+		t.Errorf("errors = %v, want one on kind", errs)
+	}
+
+	// The dialog's own picker refuses it in the same words, so the two doors
+	// cannot drift — the property that operation's comment promises.
+	if errs := refusedEntry(t, manager, http.MethodGet, billingLinesPath(day.Id), nil); len(errs["kind"]) == 0 {
+		t.Errorf("errors = %v, want the picker refused on kind too", errs)
+	}
+
+	// And nothing moved: the day is still nobody's to bill.
+	if n := h.Count(t, `SELECT count(*) FROM expenses.entries
+		WHERE id = $1 AND billable = false AND billing_line_id IS NULL`, day.Id); n != 1 {
+		t.Errorf("the day was made billable after all")
+	}
+
+	// A mileage line of the same claim is priced exactly as it always was.
+	mileage := addLine(t, owner, claim.Id, mileageBody(nil))
+	priced := setBilling(t, manager, mileage.Id, map[string]any{
+		"billable": true, "billRatePerKm": 9.0, "revision": mileage.Revision,
+	})
+	if !priced.Billable {
+		t.Errorf("the mileage line = %+v, want it still priceable", priced)
+	}
+}
+
+// A day that somehow went billable before that door was closed still cannot be
+// put on an invoice: the second door says so for itself rather than trusting
+// the first.
+func TestExpensesPerDiem_IsNeverInvoiced(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, ownerID := signIn(t, h)
+	manager, managerID := signIn(t, h)
+	h.projects.addRole(projectKraftVerket, ownerID, roleMember)
+	h.projects.addRole(projectKraftVerket, managerID, roleManager)
+
+	claim := createClaim(t, owner, map[string]any{"projectId": projectKraftVerket})
+	day := addLine(t, owner, claim.Id, perDiemBody(nil))
+	// The state the closed door can no longer produce, written the only way it
+	// now can be, so the guard below is the thing under test.
+	h.Exec(t, `UPDATE expenses.entries SET billable = true, bill_amount = 100.00 WHERE id = $1`, day.Id)
+	seedClaimStatus(t, h, claim.Id, "approved")
+
+	read := getEntry(t, manager, day.Id)
+	if read.Capabilities.CanMarkInvoiced {
+		t.Errorf("capabilities = %+v, want canMarkInvoiced false on a per diem day", read.Capabilities)
+	}
+	errs := refusedEntry(t, manager, http.MethodPost, entryInvoicedPath(day.Id), map[string]any{
+		"revision": read.Revision,
+	})
+	if !mentions(errs["kind"], "never billed on to a customer") {
+		t.Errorf("errors = %v, want one on kind", errs)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// A claim's own edits keep its days honest
+// ---------------------------------------------------------------------------
+
+// The trip's window is what says which dates a per diem day may fall on, so
+// narrowing it past a day already recorded is refused — naming every stranded
+// date, because removing them is the caller's decision and not the server's.
+func TestExpensesPerDiem_ANarrowedTripRefusesRatherThanStrandItsDays(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h)
+	claim := createClaim(t, owner, nil) // 2026-03-09 → 2026-03-11
+	for _, date := range []string{"2026-03-09", "2026-03-10", "2026-03-11"} {
+		addLine(t, owner, claim.Id, perDiemBody(map[string]any{"entryDate": date}))
+	}
+	read := getClaim(t, owner, claim.Id)
+
+	errs := refusedClaim(t, owner, http.MethodPut, claimPath(claim.Id), claimBody(map[string]any{
+		"departureAt": "2026-03-10T07:00:00Z", "returnAt": "2026-03-10T20:00:00Z",
+		"revision": read.Revision,
+	}))
+	if !mentions(errs["departureAt"], "2026-03-09") || !mentions(errs["departureAt"], "remove it first") {
+		t.Errorf("errors = %v, want departureAt to name the day left before the trip", errs)
+	}
+	if !mentions(errs["returnAt"], "2026-03-11") {
+		t.Errorf("errors = %v, want returnAt to name the day left after the trip", errs)
+	}
+	// Nothing moved: not the claim, and not its days.
+	if after := getClaim(t, owner, claim.Id); after.Revision != read.Revision || len(after.Lines) != 3 {
+		t.Errorf("claim = %+v, want it untouched", after)
+	}
+
+	// Widening is fine, and so is a window that still covers every day.
+	updateClaim(t, owner, claim.Id, map[string]any{
+		"departureAt": "2026-03-08T07:00:00Z", "returnAt": "2026-03-12T20:00:00Z",
+		"revision": read.Revision,
+	})
+}
+
+// A trip's own money is what a per diem day is paid at, so an edit to it
+// reprices every day the claim holds — in the same transaction, under the same
+// lock, so no day is ever left at yesterday's figure.
+func TestExpensesPerDiem_AClaimsMoneyChangingRepricesItsDays(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h)
+	claim := createClaim(t, owner, nil)
+	day := addLine(t, owner, claim.Id, perDiemBody(map[string]any{"breakfastCovered": true}))
+	if day.GrossAmount != 317.60 {
+		t.Fatalf("gross = %v, want 397.00 less a fifth", day.GrossAmount)
+	}
+
+	// Domestic → abroad: the claim's own rate and currency, the deduction still
+	// the table's.
+	abroad := updateClaim(t, owner, claim.Id, map[string]any{
+		"abroad": true, "abroadDayRate": 90.00, "abroadCurrency": "EUR", "revision": claim.Revision,
+	})
+	assertPerDiemRow(t, h, day.Id, "90.00", "72.00", "EUR")
+	if abroad.Lines[0].Revision == day.Revision {
+		t.Errorf("revision = %d, want the repriced day to have moved on", abroad.Lines[0].Revision)
+	}
+
+	// A correction to the rate alone reprices too.
+	corrected := updateClaim(t, owner, claim.Id, map[string]any{
+		"abroad": true, "abroadDayRate": 100.00, "abroadCurrency": "EUR", "revision": abroad.Revision,
+	})
+	assertPerDiemRow(t, h, day.Id, "100.00", "80.00", "EUR")
+
+	// And back to domestic: the table prices the day again.
+	updateClaim(t, owner, claim.Id, map[string]any{"revision": corrected.Revision})
+	assertPerDiemRow(t, h, day.Id, "397.00", "317.60", "NOK")
+}
+
+// A change that would leave a day with nothing to price it refuses the whole
+// edit: half a claim repriced is worse than an edit the caller can simply undo.
+func TestExpensesPerDiem_AClaimEditThatCannotPriceADayIsRefused(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h)
+	// A day of the one type the table prices nothing for is only recordable
+	// abroad, where the claim pays it.
+	claim := createClaim(t, owner, map[string]any{
+		"abroad": true, "abroadDayRate": 90.00, "abroadCurrency": "EUR",
+	})
+	day := addLine(t, owner, claim.Id, perDiemBody(map[string]any{"perDiemType": "overnight_other"}))
+
+	errs := refusedClaim(t, owner, http.MethodPut, claimPath(claim.Id),
+		claimBody(map[string]any{"revision": claim.Revision}))
+	if !mentions(errs["abroad"], "2026-03-10") || !mentions(errs["abroad"], "per_diem_overnight_other") {
+		t.Errorf("errors = %v, want abroad to name the date and the rate that is missing", errs)
+	}
+	// The claim is still abroad and the day is still paid.
+	assertPerDiemRow(t, h, day.Id, "90.00", "90.00", "EUR")
+	if after := getClaim(t, owner, claim.Id); !after.Abroad {
+		t.Errorf("claim = %+v, want the refused edit to have changed nothing", after)
+	}
+}
+
+// assertPerDiemRow reads one per diem line's stored figures straight out of the
+// table: what the response renders is one thing, what the column holds is the
+// thing a later freeze will carry.
+func assertPerDiemRow(t *testing.T, h *harness, id int64, rate, gross, currency string) {
+	t.Helper()
+	got := modtest.One[string](t, h.Harness, `SELECT concat_ws(' ', rate, gross_amount, currency)
+		FROM expenses.entries WHERE id = $1`, id)
+	if want := rate + " " + gross + " " + currency; got != want {
+		t.Errorf("the stored day = %q, want %q", got, want)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// One day per date, proved under contention
+// ---------------------------------------------------------------------------
+
+// The one-per-date rule is decided under the claim's own row lock. Two requests
+// for the same day arriving at once is the only thing that proves the lock is
+// really held: without it both reads see no day and both inserts succeed.
+func TestExpensesPerDiem_TwoDaysRacingForOneDate(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h)
+	other, _ := signIn(t, h, "expenses:manage")
+
+	for round := range raceRounds {
+		claim := createClaim(t, owner, nil)
+		body := perDiemBody(map[string]any{"claimId": claim.Id})
+		var a, b int
+		race(
+			func() { a = owner.Do(http.MethodPost, entriesPath, body).Status },
+			func() { b = other.Do(http.MethodPost, entriesPath, body).Status },
+		)
+		answers := []int{a, b}
+		slices.Sort(answers)
+		if !slices.Equal(answers, []int{http.StatusCreated, http.StatusBadRequest}) {
+			t.Fatalf("round %d: %d and %d, want one 201 and one refusal", round, a, b)
+		}
+		if n := h.Count(t, `SELECT count(*) FROM expenses.entries
+			WHERE claim_id = $1 AND kind = 'per_diem' AND entry_date = DATE '2026-03-10'`, claim.Id); n != 1 {
+			t.Fatalf("round %d: %d per diem days for one date, want exactly one", round, n)
+		}
 	}
 }

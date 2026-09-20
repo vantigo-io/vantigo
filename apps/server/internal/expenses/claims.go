@@ -49,29 +49,34 @@ import (
 // claimID comes from the row the handler already read, outside the transaction.
 // It can never go stale: an expense moves neither into a claim nor out of one,
 // which is exactly why the contract refuses a claimId that does not match.
+// It answers the claim itself as well as the unit, because a per diem day's
+// rate, its currency and the dates it may fall on are all the *claim's* and a
+// write that derived them before the lock may have been overtaken. A caller
+// that re-derives anything from the claim must use this copy and not the one it
+// read outside the transaction.
 func lockEntryUnit(ctx context.Context, txq *store.Queries, id int64, claimID *int64) (
-	store.ExpensesEntry, entryUnit, bool, error,
+	store.ExpensesEntry, entryUnit, *store.ExpensesClaim, bool, error,
 ) {
 	var claim *store.ExpensesClaim
 	if claimID != nil {
 		locked, err := txq.LockClaim(ctx, *claimID)
 		if errors.Is(err, pgx.ErrNoRows) {
-			return store.ExpensesEntry{}, entryUnit{}, false, nil
+			return store.ExpensesEntry{}, entryUnit{}, nil, false, nil
 		}
 		if err != nil {
-			return store.ExpensesEntry{}, entryUnit{}, false,
+			return store.ExpensesEntry{}, entryUnit{}, nil, false,
 				fmt.Errorf("expenses: lock a travel claim: %w", err)
 		}
 		claim = &locked
 	}
 	row, err := txq.LockEntry(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return store.ExpensesEntry{}, entryUnit{}, false, nil
+		return store.ExpensesEntry{}, entryUnit{}, nil, false, nil
 	}
 	if err != nil {
-		return store.ExpensesEntry{}, entryUnit{}, false, fmt.Errorf("expenses: lock an expense: %w", err)
+		return store.ExpensesEntry{}, entryUnit{}, nil, false, fmt.Errorf("expenses: lock an expense: %w", err)
 	}
-	return row, unitOf(row, claim), true, nil
+	return row, unitOf(row, claim), claim, true, nil
 }
 
 // The messages a claimId carries. An id the caller may not see reads exactly as
@@ -637,11 +642,10 @@ func (s *server) PutExpensesClaimsById(ctx context.Context, req gen.PutExpensesC
 		return nil, err
 	}
 	var (
-		updated    store.ExpensesClaim
-		gone       bool
-		staleField string
-		staleMsg   string
-		conflict   *int32
+		updated   store.ExpensesClaim
+		gone      bool
+		staleErrs map[string][]string
+		conflict  *int32
 	)
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
 		locked, err := txq.LockClaim(ctx, req.Id)
@@ -654,7 +658,8 @@ func (s *server) PutExpensesClaimsById(ctx context.Context, req gen.PutExpensesC
 		}
 		// Judged again on the row as it stands under the lock: a submit that
 		// committed since is the state refusal above, arrived a moment later.
-		if staleField, staleMsg = claimStateRefusal(c, locked); staleMsg != "" {
+		if field, msg := claimStateRefusal(c, locked); msg != "" {
+			staleErrs = fieldError(field, msg)
 			return nil
 		}
 		if locked.Revision != body.Revision {
@@ -669,22 +674,51 @@ func (s *server) PutExpensesClaimsById(ctx context.Context, req gen.PutExpensesC
 			// transaction holds rather than the one the handler read.
 			projectID = locked.ProjectID
 		}
-		if plan.repoint {
+		// What this edit does to the claim's own lines. The trip's window says
+		// which dates a per diem day may fall on and the abroad triple says what
+		// one is worth, so an edit to either has to answer for the days already
+		// recorded — and the claim's row is held, so they cannot move underneath.
+		after := claimAfterEdit(locked, p, dayRate)
+		repriced, err := claimPricingChanged(locked, after)
+		if err != nil {
+			return err
+		}
+		if plan.repoint || claimWindowMoved(locked, after) || repriced {
 			lines, err := txq.LockClaimLines(ctx, &locked.ID)
 			if err != nil {
 				return fmt.Errorf("expenses: lock a travel claim's expenses: %w", err)
 			}
-			if msg := invoicedLineRefusal(lines); msg != "" {
-				staleField, staleMsg = "projectId", msg
+			if plan.repoint {
+				if msg := invoicedLineRefusal(lines); msg != "" {
+					staleErrs = fieldError("projectId", msg)
+					return nil
+				}
+			}
+			// The window first: a day outside the new trip is refused rather
+			// than repriced, so a narrowing edit never silently reprices a day
+			// it is about to strand.
+			if staleErrs = perDiemStrandedByWindow(lines, after); staleErrs != nil {
 				return nil
 			}
-			for _, line := range lines {
-				params, err := repointParams(line, projectID, plan, s.deps.Clock())
+			if repriced {
+				staleErrs, err = repriceClaimPerDiem(ctx, txq, lines, locked, after,
+					c.Settings.DefaultCurrency, s.deps.Clock())
 				if err != nil {
 					return err
 				}
-				if err := txq.SetClaimLineProject(ctx, params); err != nil {
-					return fmt.Errorf("expenses: re-point a travel claim's expense: %w", err)
+				if staleErrs != nil {
+					return nil
+				}
+			}
+			if plan.repoint {
+				for _, line := range lines {
+					params, err := repointParams(line, projectID, plan, s.deps.Clock())
+					if err != nil {
+						return err
+					}
+					if err := txq.SetClaimLineProject(ctx, params); err != nil {
+						return fmt.Errorf("expenses: re-point a travel claim's expense: %w", err)
+					}
 				}
 			}
 		}
@@ -710,9 +744,9 @@ func (s *server) PutExpensesClaimsById(ctx context.Context, req gen.PutExpensesC
 		return nil, fmt.Errorf("expenses: change a travel claim: %w", err)
 	case gone:
 		return gen.PutExpensesClaimsById404Response{}, nil
-	case staleMsg != "":
+	case staleErrs != nil:
 		return gen.PutExpensesClaimsById400ApplicationProblemPlusJSONResponse(
-			invalidClaim(fieldError(staleField, staleMsg))), nil
+			invalidClaim(staleErrs)), nil
 	case conflict != nil:
 		return gen.PutExpensesClaimsById409ApplicationProblemPlusJSONResponse(
 			revisionConflict(*conflict, body.Revision)), nil

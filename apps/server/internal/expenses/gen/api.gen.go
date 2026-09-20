@@ -60,7 +60,7 @@ type ExpensesBillingLineOption struct {
 	Id     int32  `json:"id"`
 }
 
-// ExpensesBillingRequest What an expense bills its customer, set from the project's side (decision X7). It is a full replace of the billing fields alone and touches nothing else about the expense: not its amount, not its status, not its receipts. Only a caller with financial rights on the entry's project may send it — expenses:manage is not one of them — because the markup and the customer rate per kilometre are the project's figures and an employee's form never carries them. Allowed while the expense is a draft, rejected, submitted or approved; refused once it has been invoiced. The period lock does not reach it: the lock protects what the employee submitted and what was approved, while pricing is bookkeeping done after a period closes — an invoice for December goes out in January.
+// ExpensesBillingRequest What an expense bills its customer, set from the project's side (decision X7). It is a full replace of the billing fields alone and touches nothing else about the expense: not its amount, not its status, not its receipts. Only a caller with financial rights on the entry's project may send it — expenses:manage is not one of them — because the markup and the customer rate per kilometre are the project's figures and an employee's form never carries them. Allowed while the expense is a draft, rejected, submitted or approved; refused once it has been invoiced, and refused outright on a per diem day, which is never billed on to a customer. The period lock does not reach it: the lock protects what the employee submitted and what was approved, while pricing is bookkeeping done after a period closes — an invoice for December goes out in January.
 type ExpensesBillingRequest struct {
 	// BillRatePerKm What the customer is charged per kilometre. Only on billable mileage. Left out, the line keeps whatever it carries, and a line that carries none takes the mileage_customer rate in force on the entry date. Refused on a project that bills nothing, rather than accepted and cleared.
 	BillRatePerKm *float64 `json:"billRatePerKm,omitempty"`
@@ -68,7 +68,7 @@ type ExpensesBillingRequest struct {
 	// Billable Whether the line is billed on to the customer. Forced false on a project that bills nothing. Turning it off clears the markup, the customer rate and the bill amount.
 	Billable bool `json:"billable"`
 
-	// BillingLineId An active billing line of the entry's own project, or absent to book it against none.
+	// BillingLineId An active billing line of the entry's own project, or absent to book it against none. Refused on a per diem day, which bills nobody anything.
 	BillingLineId *int32 `json:"billingLineId,omitempty"`
 
 	// MarkupPercent A billable outlay's markup on the net, 0 to 1000 with at most two decimals. Left out, the line keeps whatever it carries, and a line that carries none takes the settings' default. Refused on a project that bills nothing, rather than accepted and cleared.
@@ -420,7 +420,7 @@ type ExpensesEntryProject struct {
 	Name string `json:"name"`
 }
 
-// ExpensesEntryRateOverride The record an overridden mileage rate leaves on the line (decision X8) — who replaced the rates the table gave it, and what the table had said. Present only while an override stands: a submit reprices the line from the table and clears it, and an unapprove clears it with the rest of the decision it undoes. Shown to everyone who may see the expense, its owner included.
+// ExpensesEntryRateOverride The record an overridden rate leaves on a mileage line or a per diem day (decision X8) — who replaced it, and what the line was priced at before they did. Present only while an override stands: a submit reprices the line and clears it, and an unapprove clears it with the rest of the decision it undoes. Shown to everyone who may see the expense, its owner included.
 type ExpensesEntryRateOverride struct {
 	// ByUser One person, named through identity — an expense's owner, the owner of an approval or reimbursement group, whoever overrode a rate, whoever decided the expense, whoever paid it back, or whoever invoiced it.
 	ByUser ExpensesUserRef `json:"byUser"`
@@ -428,7 +428,7 @@ type ExpensesEntryRateOverride struct {
 	// PassengerTableValue The passenger supplement per kilometre the line was frozen at before the first override of it. Absent when the supplement was never overridden, so a client can tell a changed supplement from an untouched one.
 	PassengerTableValue *float64 `json:"passengerTableValue,omitempty"`
 
-	// TableValue The reimbursement rate per kilometre the line was frozen at before the first override. Absent when the line carried none.
+	// TableValue The rate the line was priced at before the first override — a mileage line's rate per kilometre, or a per diem day's day rate. It usually came from the dated rate table, but on a per diem day of a claim abroad it is the claim's own abroadDayRate, so this says "what it was priced at" rather than "what the table said". Absent when the line carried none.
 	TableValue *float64 `json:"tableValue,omitempty"`
 }
 
@@ -470,7 +470,7 @@ type ExpensesEntryRequest struct {
 	// Currency A three-letter ISO 4217 code. Required on an outlay. A mileage line takes the installation's default currency and refuses any other; a per diem day refuses it outright and takes the installation's currency, or the claim's own abroadCurrency on a trip abroad.
 	Currency *string `json:"currency,omitempty"`
 
-	// Description 1 to 500 characters. Required on an outlay and on a mileage line; on a per diem day it may be left out, and the server names the line after the kind of day it is.
+	// Description 1 to 500 characters. Required on an outlay and on a mileage line. A per diem day may be left without one and then carries the empty string — what the day *is* is its perDiemType, and a name the server invented would sit in the column in one language for ever, so the client renders the label instead.
 	Description *string `json:"description,omitempty"`
 
 	// DinnerCovered Whether somebody else paid for that day's dinner, which deducts the meal_dinner_percent rate in force on the entry date. Per diem only; absent means false.
@@ -585,7 +585,7 @@ type ExpensesEntryResponse struct {
 	// Rate The reimbursement rate per kilometre the line was priced with, or a per diem day's own day rate. Absent on an outlay.
 	Rate *float64 `json:"rate,omitempty"`
 
-	// RateOverride The record an overridden mileage rate leaves on the line (decision X8) — who replaced the rates the table gave it, and what the table had said. Present only while an override stands: a submit reprices the line from the table and clears it, and an unapprove clears it with the rest of the decision it undoes. Shown to everyone who may see the expense, its owner included.
+	// RateOverride The record an overridden rate leaves on a mileage line or a per diem day (decision X8) — who replaced it, and what the line was priced at before they did. Present only while an override stands: a submit reprices the line and clears it, and an unapprove clears it with the rest of the decision it undoes. Shown to everyone who may see the expense, its owner included.
 	RateOverride *ExpensesEntryRateOverride `json:"rateOverride,omitempty"`
 
 	// Reimbursement That the employee has been paid back for it. Absent until then.
@@ -620,7 +620,7 @@ type ExpensesEntryUpdateRequest struct {
 	ClaimId  *int64  `json:"claimId,omitempty"`
 	Currency *string `json:"currency,omitempty"`
 
-	// Description See the create request: required on an outlay and on a mileage line, and named after the kind of day on a per diem line that leaves it out.
+	// Description See the create request: required on an outlay and on a mileage line, and the empty string on a per diem day that leaves it out.
 	Description *string `json:"description,omitempty"`
 
 	// DinnerCovered See the create request: per diem only, absent means false.
@@ -716,7 +716,7 @@ type ExpensesMetaResponse struct {
 	ReceiptRequiredOver *float64 `json:"receiptRequiredOver,omitempty"`
 }
 
-// ExpensesPerDiemSuggestedDay One day the server proposes for a trip. It is a suggestion and nothing more: nothing is written, and the client records whichever of them the traveller agrees with as ordinary per diem lines.
+// ExpensesPerDiemSuggestedDay One day the server proposes for a trip. It is a suggestion and nothing more: nothing is written, and the client records whichever of them the traveller agrees with as ordinary per diem lines. A trip may run 366 days while a claim holds at most 200 expenses, so a client offering "record them all" has to reckon with the cap itself — the 201st create is refused on claimId and says nothing about the suggestion.
 type ExpensesPerDiemSuggestedDay struct {
 	// Amount What that day would come to with no meal covered — the day rate, rounded once. Absent with the rate, for the same reason.
 	Amount *float64 `json:"amount,omitempty"`

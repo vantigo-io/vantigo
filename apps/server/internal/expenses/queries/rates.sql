@@ -13,6 +13,15 @@ WHERE kind = @kind AND valid_from <= @on_date
 ORDER BY valid_from DESC
 LIMIT 1;
 
+-- name: RatesOfKind :many
+-- RatesOfKind is every row of one kind, oldest first — what a reader that has
+-- to price *many* days of the same kind takes instead of a query a day. The
+-- per diem suggestion is that reader: a trip may run 366 days, and picking the
+-- row in force on each of them in Go is the same rule EffectiveRate applies in
+-- SQL (the greatest valid_from on or before the day) over rows already in
+-- hand.
+SELECT * FROM expenses.rates WHERE kind = @kind ORDER BY valid_from;
+
 -- name: GetRate :one
 SELECT * FROM expenses.rates WHERE id = @id;
 

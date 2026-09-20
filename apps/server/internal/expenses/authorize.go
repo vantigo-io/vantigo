@@ -544,14 +544,20 @@ func (c *caller) accessFor(entry store.ExpensesEntry, unit entryUnit, role strin
 	// the line for it holds financial rights on a project rather than
 	// expenses:manage, so a locked line would otherwise be unpriceable by
 	// anybody the design meant to price it.
-	a.CanSetBilling = a.CanSeeBilling && entry.InvoicedAt == nil
+	//
+	// A per diem day is never one of them: it bills nobody anything (design §4),
+	// so the capability does not advertise a door that refuses.
+	a.CanSetBilling = a.CanSeeBilling && entry.InvoicedAt == nil && entry.Kind != kindPerDiem
 
 	financial := c.ProjectsOn && c.seesProjectFinancials(role)
 	// A line with no amount to bill cannot be invoiced, so the capability does
 	// not say it can: a billable mileage line saved while no customer rate was
 	// in force carries nothing to put on an invoice until somebody prices it.
-	a.CanMarkInvoiced = financial && entry.Billable && unit.Status == statusApproved &&
-		entry.InvoicedAt == nil && entry.BillAmount.Valid
+	// A per diem day is named here as well as in CanSetBilling, although it can
+	// no longer become billable: a row that went billable before that door was
+	// closed must not be invoiceable either.
+	a.CanMarkInvoiced = financial && entry.Billable && entry.Kind != kindPerDiem &&
+		unit.Status == statusApproved && entry.InvoicedAt == nil && entry.BillAmount.Valid
 	a.CanUndoInvoiced = financial && entry.InvoicedAt != nil
 	a.CanMarkReimbursed = standalone && c.Manage && unit.Status == statusApproved &&
 		unit.ReimbursedAt == nil && owesEmployee(entry)

@@ -41,6 +41,11 @@ func invoicedRefusal(row store.ExpensesEntry, unit entryUnit, m invoicedMark) (s
 		return "", ""
 	}
 	switch {
+	case row.Kind == kindPerDiem:
+		// It bills nobody anything (design §4), so there is nothing to put on an
+		// invoice. Named here as well as on the pricing door, so a row that went
+		// billable before that door was closed cannot slip out this way.
+		return "kind", perDiemNotBillable
 	case unit.Status != statusApproved:
 		return "status", fmt.Sprintf(
 			"Only an approved expense can be marked invoiced; this one is %s", unit.Status)
@@ -162,7 +167,7 @@ func (s *server) markInvoiced(ctx context.Context, id int64, revision int32, ref
 		out     invoicedOutcome
 	)
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
-		locked, lockedUnit, found, err := lockEntryUnit(ctx, txq, id, row.ClaimID)
+		locked, lockedUnit, _, found, err := lockEntryUnit(ctx, txq, id, row.ClaimID)
 		if err != nil {
 			return err
 		}
