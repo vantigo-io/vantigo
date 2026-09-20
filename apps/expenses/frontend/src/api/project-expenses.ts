@@ -10,21 +10,7 @@ type Schemas = components["schemas"];
  * module with, so the Expenses tab and the project's own Economy tab can
  * never show two different numbers.
  */
-export type ProjectExpensesSummary = Schemas["ExpensesProjectSummaryResponse"] & {
-  /**
-   * The project's own currency, when it has one: the one currency whose
-   * figures are the project's economy. Every other currency on the list is
-   * reported beside it and **never converted into it**, so the tab can say
-   * which card is the project's and which is money in another currency.
-   *
-   * Absent for a project with no currency at all, which is why it is optional
-   * here as well as in the contract. Declared as an intersection because the
-   * field is newer than the generated types in this working tree; it is
-   * type-identical to what `gen:client` produces, so the intersection
-   * disappears the moment the regenerated schema lands.
-   */
-  projectCurrency?: string;
-};
+export type ProjectExpensesSummary = Schemas["ExpensesProjectSummaryResponse"];
 
 /**
  * One currency's figures. A line carries **its own** currency, which may be
