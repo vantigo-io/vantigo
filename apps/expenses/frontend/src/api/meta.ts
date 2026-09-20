@@ -15,7 +15,9 @@ type Schemas = components["schemas"];
  */
 export type ExpensesMeta = Schemas["ExpensesMetaResponse"];
 export type ExpensesMetaCapabilities = Schemas["ExpensesMetaCapabilities"];
-export type ExpenseCategory = Schemas["ExpensesCategoryResponse"];
+
+/** A category as `/meta` carries it — the same shape `api/categories.ts` reads and writes. */
+export type { ExpenseCategory } from "./categories";
 
 export const expensesMetaQueryOptions = () =>
   queryOptions({

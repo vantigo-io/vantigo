@@ -1,7 +1,9 @@
+import type { ExpenseUserRef } from "../api/approvals";
 import type { Expense, ExpenseAttachment, ExpenseCapabilities } from "../api/entries";
 import type { ExpensesMeta } from "../api/meta";
 import type { ExpenseProjectOption } from "../api/projects";
 import type { ExpenseRate } from "../api/rates";
+import type { ExpenseSettings } from "../api/settings";
 import type { ExpenseStats } from "../api/stats";
 
 /** The caller every page test is signed in as. */
@@ -9,6 +11,13 @@ export const ME = "11111111-1111-1111-1111-111111111111";
 
 /** Somebody else, whose expenses the caller may approve but never owns. */
 export const OTHER = "22222222-2222-2222-2222-222222222222";
+
+/** Whoever the fake records as having decided, overridden or paid something. */
+export const APPROVER: ExpenseUserRef = {
+  userId: "33333333-3333-3333-3333-333333333333",
+  displayName: "Grace Hopper",
+  active: true,
+};
 
 /** The day every fixture is dated on. */
 export const DAY = "2026-09-18";
@@ -147,6 +156,24 @@ export const rates: ExpenseRate[] = [
   { id: 1, kind: "mileage", validFrom: "2026-01-01", value: 5.3, currency: "NOK", source: "State rate" },
   { id: 2, kind: "mileage_passenger", validFrom: "2026-01-01", value: 1, currency: "NOK", source: "State rate" },
 ];
+
+export const settings = (overrides: Partial<ExpenseSettings> = {}): ExpenseSettings => ({
+  defaultCurrency: "NOK",
+  defaultMarkupPercent: 10,
+  receiptRequiredOver: 1250,
+  ...overrides,
+});
+
+/** A submitted expense of somebody else's that the caller may approve. */
+export const submitted = (overrides: Partial<Expense> = {}): Expense =>
+  outlay({
+    id: 701,
+    status: "submitted",
+    submittedAt: "2026-09-19T10:00:00Z",
+    owner: { userId: OTHER, displayName: "Grace Hopper", active: true },
+    capabilities: capabilities({ canApprove: true }),
+    ...overrides,
+  });
 
 export const stats = (overrides: Partial<ExpenseStats> = {}): ExpenseStats => ({
   draft: 0,

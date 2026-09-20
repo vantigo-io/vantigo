@@ -11,8 +11,11 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import { render } from "@testing-library/react";
-import { validateMyExpensesSearch } from "../lib/search";
+import { validateApprovalsSearch, validateMyExpensesSearch, validateReimbursementsSearch } from "../lib/search";
+import { ApprovalsPage } from "../pages/approvals";
 import { MyExpensesPage } from "../pages/my-expenses";
+import { ReimbursementsPage } from "../pages/reimbursements";
+import { SettingsPage } from "../pages/settings";
 import "../i18n";
 import { ME } from "./fixtures";
 
@@ -34,6 +37,19 @@ export const makeRouteTree = (userId: string) => {
       component: () => <MyExpensesPage userId={userId} />,
       validateSearch: validateMyExpensesSearch,
     }),
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path: "/expenses/approvals",
+      component: ApprovalsPage,
+      validateSearch: validateApprovalsSearch,
+    }),
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path: "/expenses/reimbursements",
+      component: ReimbursementsPage,
+      validateSearch: validateReimbursementsSearch,
+    }),
+    createRoute({ getParentRoute: () => rootRoute, path: "/expenses/settings", component: SettingsPage }),
   ]);
 };
 

@@ -36,3 +36,37 @@ export const validateMyExpensesSearch = (search: Record<string, unknown>): MyExp
   to: isIsoDate(search.to) ? search.to : undefined,
   page: Math.max(1, Number(search.page) || 1),
 });
+
+/**
+ * Approvals' URL state. `waiting` is the queue itself — the submitted
+ * expenses the caller may approve — and `approved` is where an approval is
+ * taken back, because an approved expense has left the queue and the control
+ * has to live somewhere.
+ */
+export interface ApprovalsSearch {
+  state: "waiting" | "approved";
+  page: number;
+}
+
+export const validateApprovalsSearch = (search: Record<string, unknown>): ApprovalsSearch => ({
+  state: search.state === "approved" ? "approved" : "waiting",
+  page: Math.max(1, Number(search.page) || 1),
+});
+
+/**
+ * The payroll list's URL state. `waiting` is what a run is made from and
+ * `reimbursed` is what has already been paid, where an undo is reachable.
+ */
+export interface ReimbursementsSearch {
+  state: "waiting" | "reimbursed";
+  from?: string;
+  to?: string;
+  page: number;
+}
+
+export const validateReimbursementsSearch = (search: Record<string, unknown>): ReimbursementsSearch => ({
+  state: search.state === "reimbursed" ? "reimbursed" : "waiting",
+  from: isIsoDate(search.from) ? search.from : undefined,
+  to: isIsoDate(search.to) ? search.to : undefined,
+  page: Math.max(1, Number(search.page) || 1),
+});
