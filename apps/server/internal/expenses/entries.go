@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"slices"
 	"strings"
@@ -369,6 +370,45 @@ func refuseFiguresNothingWillUse(p parsedEntry, add func(field, msg string)) {
 // maxMoneyRat is the amount columns' ceiling as an exact decimal, for the
 // products validation cannot bound on their own.
 var maxMoneyRat = ratFromFloat(maxMoney)
+
+// drivingField is the field a caller can have driven an amount with on this
+// kind: what they paid for an outlay, how far they drove on a mileage line.
+func drivingField(kind string) string {
+	if kind == kindMileage {
+		return "distanceKm"
+	}
+	return "grossAmount"
+}
+
+// carriedBillAmount is what a save whose project columns are carried through
+// bills the customer: the markup or the customer rate per kilometre already on
+// the row — neither of which this save may judge or change — applied to the
+// net or the distance it is writing. nil when the line bills nothing, or when
+// it carries no figure to bill with, which is the same nothing the columns
+// already hold.
+//
+// It is arithmetic over this module's own row and asks nobody anything, so it
+// is safe under the lock, where the row it reads is the one being written.
+func carriedBillAmount(p prepared, row store.ExpensesEntry) (*big.Rat, error) {
+	if !row.Billable {
+		return nil, nil
+	}
+	switch p.Parsed.Kind {
+	case kindOutlay:
+		markup, err := ratPtrFromNumeric(row.MarkupPercent)
+		if err != nil || markup == nil || p.Values.Gross == nil {
+			return nil, err
+		}
+		return outlayBillAmount(netOf(p.Values.Gross, p.Values.Vat), markup), nil
+	case kindMileage:
+		rate, err := ratPtrFromNumeric(row.BillRatePerKm)
+		if err != nil || rate == nil || p.Parsed.DistanceKm == nil {
+			return nil, err
+		}
+		return mileageBillAmount(p.Parsed.DistanceKm, rate), nil
+	}
+	return nil, nil
+}
 
 // checkAmountsFit is the bound on what the arithmetic produced. Every field a
 // caller sends passes its own rule and only their product can overrun
@@ -758,7 +798,22 @@ func (s *server) PutExpensesEntriesById(ctx context.Context, req gen.PutExpenses
 			params.Billable = row.Billable
 			params.MarkupPercent = row.MarkupPercent
 			params.BillRatePerKm = row.BillRatePerKm
-			params.BillAmount = row.BillAmount
+			// What it bills is not carried, though: it is worked out again
+			// from those same carried figures and the net or the distance this
+			// save is writing. Copying the stored amount would leave the
+			// customer figure standing against a gross that has been
+			// rewritten, which is a number that follows nothing.
+			amount, err := carriedBillAmount(p, row)
+			if err != nil {
+				return err
+			}
+			if overflowsMoney(amount) {
+				staleField, staleMsg = drivingField(p.Parsed.Kind), amountTooBig
+				return nil
+			}
+			if params.BillAmount, err = numericFromRatPtr(amount, moneyPlaces); err != nil {
+				return err
+			}
 		}
 		updated, err = txq.UpdateEntry(ctx, params)
 		return err
@@ -989,18 +1044,28 @@ func optionalDate(d *openapi_types.Date) pgtype.Date {
 }
 
 // listDefaultPageSize and listMaxPageSize are the list paging bounds every
-// other module's list uses.
+// other module's list uses. listMaxPage is this module's own: the offset is
+// computed and sent as an int32, so page x pageSize has to fit one. Without
+// the bound ?page=21474838&pageSize=100 overflows into a negative offset,
+// which the database refuses — a failure for a request that broke no
+// documented rule — or, where the query pages a subselect, quietly answers an
+// empty page for a number that means nothing.
 const (
 	listDefaultPageSize = 25
 	listMaxPageSize     = 100
+	listMaxPage         = math.MaxInt32 / listMaxPageSize
 )
 
 // validatePageParams is the paging rule, in customers' and projects' own
 // words: every failure is collected rather than the first one reported.
 func validatePageParams(page, pageSize *int32) []string {
 	var errs []string
-	if page != nil && *page < 1 {
+	switch {
+	case page == nil:
+	case *page < 1:
 		errs = append(errs, fmt.Sprintf("'page' must be 1 or greater, but was %d.", *page))
+	case *page > listMaxPage:
+		errs = append(errs, fmt.Sprintf("'page' must be at most %d, but was %d.", listMaxPage, *page))
 	}
 	if pageSize != nil && (*pageSize < 1 || *pageSize > listMaxPageSize) {
 		errs = append(errs, fmt.Sprintf("'pageSize' must be between 1 and %d, but was %d.", listMaxPageSize, *pageSize))

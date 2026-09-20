@@ -334,10 +334,16 @@ func entryResponse(row store.ExpensesEntry, a entryAccess, names entryNames) (ge
 	// the owner could already see.
 	if row.ReimbursedAt != nil {
 		resp.Reimbursement = &gen.ExpensesEntryReimbursement{
-			At:        *row.ReimbursedAt,
-			By:        userRef(reimbursedBy(row), names),
-			Date:      openapi_types.Date{Time: row.ReimbursementDate.Time},
-			Reference: row.ReimbursementReference,
+			At:   *row.ReimbursedAt,
+			By:   userRef(reimbursedBy(row), names),
+			Date: openapi_types.Date{Time: row.ReimbursementDate.Time},
+		}
+		// The batch it went with is narrower than the fact that it went: the
+		// reference is the payroll clerk's record of their own run, so it goes
+		// to the person it paid and to whoever reads everybody's expenses, and
+		// not to a project manager (accessFor's SeesPayrollReference).
+		if a.SeesPayrollReference {
+			resp.Reimbursement.Reference = row.ReimbursementReference
 		}
 	}
 	if a.CanSeeBilling {
@@ -388,6 +394,11 @@ func invoicedBy(row store.ExpensesEntry) uuid.UUID {
 // (reimbursement, invoice), so a client reads all three the same way. The
 // status is the decision's own word rather than a second reading of the row's,
 // because the columns are only ever written together.
+//
+// by is absent rather than empty when the row carries a decision and no
+// decider. The three columns are only ever written together, so nothing here
+// can produce that; a restore or a support script could, and a person made of
+// a nil uuid and an empty name would be worse than none at all.
 func decisionResponse(row store.ExpensesEntry, names entryNames) *gen.ExpensesEntryDecision {
 	if row.DecidedAt == nil {
 		return nil
@@ -398,7 +409,7 @@ func decisionResponse(row store.ExpensesEntry, names entryNames) *gen.ExpensesEn
 		Reason: row.RejectionReason,
 	}
 	if row.DecidedByUserID != nil {
-		decision.By = userRef(*row.DecidedByUserID, names)
+		decision.By = ptrTo(userRef(*row.DecidedByUserID, names))
 	}
 	return decision
 }

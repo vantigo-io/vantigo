@@ -286,6 +286,12 @@ func (s *server) GetExpensesStatsAttention(ctx context.Context, _ gen.GetExpense
 
 	items := make(gen.GetExpensesStatsAttention200JSONResponse, 0, len(rejected)+len(groups)+1)
 	for _, r := range rejected {
+		if r.DecidedAt == nil {
+			// StatsMyRejected's own predicate excludes these, so this cannot
+			// fire; it is here so that removing that predicate one day is a
+			// missing item rather than a 500 on everybody's dashboard.
+			continue
+		}
 		id := strconv.FormatInt(r.ID, 10)
 		items = append(items, gen.ExpensesStatsAttentionItem{
 			Id:         id,

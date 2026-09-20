@@ -181,6 +181,12 @@ func parseRate(kind string, validFrom openapi_types.Date, value float64, rawCurr
 			currency = &code
 		}
 	}
+	// The source label has the same rule every other optional text here has —
+	// trimmed, absent rather than empty, and no longer than the column holds.
+	// Unbounded, a label past varchar(100) reached the column and came back as
+	// a failure for a body that broke no documented rule.
+	var source *string
+	add("source", optionalText(rawSource, "A source", rateSourceMaxLength, &source))
 	if len(errs) > 0 {
 		return parsedRate{}, errs, nil
 	}
@@ -188,12 +194,6 @@ func parseRate(kind string, validFrom openapi_types.Date, value float64, rawCurr
 	stored, err := numericFromFloat(value)
 	if err != nil {
 		return parsedRate{}, nil, err
-	}
-	var source *string
-	if rawSource != nil {
-		if trimmed := strings.TrimSpace(*rawSource); trimmed != "" {
-			source = &trimmed
-		}
 	}
 	return parsedRate{Kind: kind, ValidFrom: validFrom.Time, Value: stored, Currency: currency, Source: source}, nil, nil
 }

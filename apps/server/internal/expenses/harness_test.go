@@ -153,6 +153,7 @@ const (
 	projectInternal    = 1002
 	projectCompleted   = 1003
 	projectEuro        = 1004
+	projectFormula     = 1005
 	projectUnknown     = 9999
 
 	projectKraftVerketCode = "KVEM1000"
@@ -283,6 +284,15 @@ func (f *fakeProjects) setLineActive(lineID int32, active bool) {
 	}
 	line.Active = active
 	f.lines[lineID] = line
+}
+
+// addProject puts one more project in the directory, for a test that needs a
+// project this fixture set does not hold — a code a spreadsheet would read as
+// a formula, say.
+func (f *fakeProjects) addProject(p contracts.ProjectEntry) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.projects[p.ID] = p
 }
 
 // removeProject takes a project away, the way projects losing it looks from

@@ -3,6 +3,8 @@ package expenses_test
 import (
 	"net/http"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 // This file is the optional project link (decisions X1, X2 and X7): what an
@@ -405,5 +407,142 @@ func TestExpensesProjects_WithoutProjects_IsNotThere(t *testing.T) {
 	r.JSON(&problem)
 	if problem.Title == "" {
 		t.Errorf("body = %s, want a problem saying the module is not installed", r.Body)
+	}
+}
+
+// Decision X2 again, on the capabilities rather than the columns: a stale
+// projects:* grant in an installation that no longer has the projects module
+// must not make the expense answer that its billing can be seen, set,
+// invoiced or un-invoiced. Every one of those doors answers 400 "this
+// installation has no projects module", and a capability that says otherwise
+// is the one thing the capabilities exist to prevent.
+func TestExpensesCapabilities_WithoutProjects_TheBillingOnesAreAllFalse(t *testing.T) {
+	t.Parallel()
+	h := newHarnessWithoutProjects(t)
+	// projects:manage-all sees every project's money — in an installation that
+	// has projects. Here it is a grant nobody took away.
+	owner, ownerID := signIn(t, h, "projects:manage-all", "expenses:manage")
+
+	waiting := seedProjectedEntry(t, h, ownerID)
+	h.Exec(t, `UPDATE expenses.entries SET status = 'approved', decided_at = now(), decided_by_user_id = $2
+	           WHERE id = $1`, waiting, ownerID)
+	invoiced := seedProjectedEntry(t, h, ownerID)
+	h.Exec(t, `UPDATE expenses.entries SET status = 'approved', decided_at = now(), decided_by_user_id = $2,
+	           invoiced_at = now(), invoiced_by_user_id = $2 WHERE id = $1`, invoiced, ownerID)
+
+	for name, id := range map[string]int64{"approved": waiting, "invoiced": invoiced} {
+		got := getEntry(t, owner, id)
+		caps := got.Capabilities
+		if caps.CanSeeBilling || caps.CanSetBilling || caps.CanMarkInvoiced || caps.CanUndoInvoiced {
+			t.Errorf("%s: capabilities = %+v, want every billing one false without the projects module", name, caps)
+		}
+		if got.Billing != nil {
+			t.Errorf("%s: billing = %+v, want it absent", name, got.Billing)
+		}
+	}
+	// And the door itself agrees, which is what the capability now says.
+	current := getEntry(t, owner, waiting)
+	r := owner.Do(http.MethodPost, entryInvoicedPath(waiting), map[string]any{"revision": current.Revision})
+	if r.Status != http.StatusBadRequest {
+		t.Errorf("marking it invoiced: status %d body %s, want 400", r.Status, r.Body)
+	}
+}
+
+// What a carried-through line bills follows the line. The markup is the row's
+// own and stays untouched — nothing here may judge it — but the amount it
+// produces is arithmetic over the net this save is writing, so a rewritten
+// gross does not leave the customer figure standing against the old one.
+func TestExpensesEntries_WithoutProjects_TheCarriedBillAmountFollowsTheNewNet(t *testing.T) {
+	t.Parallel()
+	h := newHarnessWithoutProjects(t)
+	owner, ownerID := signIn(t, h)
+	id := seedProjectedEntry(t, h, ownerID)
+
+	before := getEntry(t, owner, id)
+	updateEntry(t, owner, id, outlayBody(map[string]any{
+		"revision": before.Revision, "grossAmount": 2500.00, "vatAmount": 500.00,
+	}))
+
+	// 15 % on a net of 2000 is 2300, and the markup itself is still the row's.
+	if n := h.Count(t, `SELECT count(*) FROM expenses.entries
+		WHERE id = $1 AND markup_percent = 15.00 AND bill_amount = 2300.00`, id); n != 1 {
+		t.Errorf("the carried bill amount did not follow the new net: %s", entryColumnsDump(t, h, id))
+	}
+}
+
+// The same rule on the path a caller without financial rights takes: the
+// markup they were never shown is kept, and what it bills is worked out again
+// from the amount they did change.
+func TestExpensesEntries_AKeptMarkupStillBillsTheNewNet(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	manager, _ := signInAs(t, h, projectKraftVerket, roleManager, "expenses:manage")
+	member, memberID := signInAs(t, h, projectKraftVerket, roleMember)
+
+	created := createEntry(t, manager, outlayBody(map[string]any{
+		"userId": memberID, "projectId": projectKraftVerket, "billable": true,
+		"vatAmount": 250.00, "markupPercent": 15,
+	}))
+	if created.Billing == nil || created.Billing.BillAmount != 1150 {
+		t.Fatalf("billing = %+v, want 15 %% on a net of 1000", created.Billing)
+	}
+
+	// The member's form never carried a markup; their save must neither reset
+	// it nor leave what it bills behind.
+	updateEntry(t, member, created.Id, outlayBody(map[string]any{
+		"revision": created.Revision, "projectId": projectKraftVerket, "billable": true,
+		"grossAmount": 2500.00, "vatAmount": 500.00,
+	}))
+	priced := getEntry(t, manager, created.Id)
+	if priced.Billing == nil || priced.Billing.BillAmount != 2300 ||
+		priced.Billing.MarkupPercent == nil || *priced.Billing.MarkupPercent != 15 {
+		t.Errorf("billing = %+v, want the kept 15 %% billing the new net of 2000", priced.Billing)
+	}
+}
+
+// Recording for a colleague means offering the colleague's projects: the save
+// is judged on what the *owner* may book on, so a picker showing the caller's
+// own would offer projects the save then refuses. Only expenses:manage may
+// ask, which is exactly who may record for somebody else.
+func TestExpensesProjects_AreTheNamedPersonsWhenManageAsks(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	admin, _ := signIn(t, h, "expenses:manage")
+	colleague, colleagueID := signInAs(t, h, projectKraftVerket, roleMember)
+	plain, _ := signIn(t, h)
+
+	// The administrator holds no role anywhere, so their own picker is empty.
+	if own := listProjectOptions(t, admin); len(own) != 0 {
+		t.Errorf("the administrator's own options = %+v, want none", own)
+	}
+	r := admin.Do(http.MethodGet, projectOptionsPath+"?userId="+colleagueID.String(), nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("the colleague's options: status %d body %s, want 200", r.Status, r.Body)
+	}
+	var theirs []projectOptionJSON
+	r.JSON(&theirs)
+	if len(theirs) != 1 || theirs[0].Id != projectKraftVerket {
+		t.Errorf("the colleague's options = %+v, want the project they may book on", theirs)
+	}
+	// And the project the picker offered is one the save accepts for them.
+	createEntry(t, admin, outlayBody(map[string]any{
+		"userId": colleagueID, "projectId": projectKraftVerket,
+	}))
+
+	// Asking for somebody else's is the Manage permission's, on the same field
+	// the create refuses it on.
+	errs := refused(t, plain, http.MethodGet, projectOptionsPath+"?userId="+colleagueID.String(),
+		nil, invalidQueryTitle)
+	if len(errs["userId"]) == 0 {
+		t.Errorf("a plain employee asking for a colleague's: errors = %v, want one on userId", errs)
+	}
+	// Their own id is not somebody else's, so it needs nothing.
+	if r := colleague.Do(http.MethodGet, projectOptionsPath+"?userId="+colleagueID.String(), nil); r.Status != http.StatusOK {
+		t.Errorf("asking for their own id: status %d body %s, want 200", r.Status, r.Body)
+	}
+	unknown := refused(t, admin, http.MethodGet, projectOptionsPath+"?userId="+uuid.New().String(),
+		nil, invalidQueryTitle)
+	if len(unknown["userId"]) == 0 {
+		t.Errorf("an id nobody has: errors = %v, want one on userId", unknown)
 	}
 }

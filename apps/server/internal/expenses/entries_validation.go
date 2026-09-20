@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
@@ -56,7 +57,9 @@ const (
 
 var entryStatuses = []string{statusDraft, statusSubmitted, statusApproved, statusRejected}
 
-// The lengths and ranges of design §3.1 and Global Constraints.
+// The lengths and ranges of design §3.1 and Global Constraints. Every length
+// is a count of characters, which is what the varchar(n) columns hold and what
+// the refusals say.
 const (
 	descriptionMaxLength = 500
 	supplierMaxLength    = 200
@@ -173,7 +176,7 @@ func parseEntry(body entryBody, defaultCurrency string, projectsOn bool) (parsed
 	switch {
 	case p.Description == "":
 		add("description", "A description is required")
-	case len(p.Description) > descriptionMaxLength:
+	case utf8.RuneCountInString(p.Description) > descriptionMaxLength:
 		add("description", fmt.Sprintf("A description can be at most %d characters", descriptionMaxLength))
 	}
 
@@ -371,6 +374,11 @@ func parseProjectFields(p *parsedEntry, body entryBody, add func(field, msg stri
 // optionalText trims an optional string, refuses it when it is too long, and
 // stores it as nil when it was left out or is blank — absent, never an empty
 // string.
+//
+// The length is counted in characters, not bytes: that is what the message
+// says, and what the varchar(n) column behind every caller of this holds. A
+// byte count would refuse a Norwegian supplier name a third shorter than the
+// limit with a message naming a number it is nowhere near.
 func optionalText(raw *string, label string, maxLength int, into **string) string {
 	if raw == nil {
 		return ""
@@ -379,7 +387,7 @@ func optionalText(raw *string, label string, maxLength int, into **string) strin
 	if trimmed == "" {
 		return ""
 	}
-	if len(trimmed) > maxLength {
+	if utf8.RuneCountInString(trimmed) > maxLength {
 		return fmt.Sprintf("%s can be at most %d characters", label, maxLength)
 	}
 	*into = &trimmed
