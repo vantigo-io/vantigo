@@ -3,9 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { problemResponse, sent } from "../test/api";
 import {
+  APPROVER,
   capabilities,
   claim,
   claimCapabilities,
+  ME,
   mileage,
   OTHER,
   outlay,
@@ -94,6 +96,33 @@ describe("ApprovalsPage", () => {
     expect(card).toHaveTextContent("3,036.00");
     expect(within(card).getByRole("table", { name: "Grace Hopper's expenses" })).toBeInTheDocument();
     expect(within(await row("Hotel")).getByText("Missing")).toBeInTheDocument();
+  });
+
+  it("puts the person who has been waiting longest first, trips counted", async () => {
+    // Paged by person, so the order is the queue's whole promise. A person
+    // whose only unit is a trip takes their place in it like anybody else.
+    const { trip, lines } = tripWithLines({ owner: GRACE });
+    stubExpensesApi({
+      entries: [
+        submitted({
+          id: 701,
+          description: "Taxi",
+          entryDate: "2026-05-02",
+          owner: { userId: ME, displayName: "Ada Lovelace", active: true },
+        }),
+        ...lines,
+      ],
+      claims: [trip],
+      rates: [...rates, ...perDiemRates],
+    });
+    renderRoute("/expenses/approvals");
+
+    await screen.findByText("Grace Hopper");
+    const people = [...document.querySelectorAll("[data-approval-group]")].map(
+      (card) => card.querySelector("h5")?.textContent,
+    );
+    // Grace's trip departed on 9 March; Ada's taxi is from May.
+    expect(people).toEqual(["Grace Hopper", "Ada Lovelace"]);
   });
 
   it("offers a checkbox only on the expenses the caller may approve", async () => {
@@ -611,6 +640,74 @@ describe("ApprovalsPage", () => {
     });
   });
 
+  it("takes the invoicing back off a trip's line, once it has been asked out loud", async () => {
+    const { trip } = tripWithLines({ status: "approved", capabilities: claimCapabilities() });
+    const invoiced = outlay({
+      id: 801,
+      claimId: 1012,
+      description: "Hotel Bergen",
+      status: "approved",
+      entryDate: "2026-03-09",
+      revision: 7,
+      billable: true,
+      owner: GRACE,
+      project: { id: 1001, code: "KVEM1000", name: "Kverneland web" },
+      capabilities: capabilities({ canSeeBilling: true, canUndoInvoiced: true }),
+      // 01:00 UTC is the 2nd in Oslo and still the 1st in the browser's zone,
+      // which this suite pins to America/New_York.
+      billing: { billAmount: 2880, markupPercent: 20, invoice: { at: "2026-04-02T01:00:00Z", by: APPROVER } },
+    });
+    const fetchMock = stubExpensesApi({ entries: [invoiced], claims: [trip], rates: [...rates, ...perDiemRates] });
+    renderRoute("/expenses/approvals?state=approved");
+
+    const drawer = await openClaimDrawer("Montasje hos kunden");
+    // Every instant on this screen is the installation's calendar, not the
+    // reader's — the invoice stamp no less than the trip's own two ends.
+    const line801 = drawer.querySelector('[data-expense="801"]') as HTMLElement;
+    expect(line801).toHaveTextContent("Invoiced Apr 2, 2026");
+    await userEvent.click(within(drawer).getByRole("button", { name: "Undo the invoicing of Hotel Bergen" }));
+
+    // A stamp that says an invoice went out is not taken back on one click.
+    const confirm = await screen.findByRole("dialog", { name: "Undo the invoicing?" });
+    expect(confirm).toHaveTextContent(/Hotel Bergen goes back to waiting to be billed/);
+    await userEvent.click(within(confirm).getByRole("button", { name: "Undo invoicing" }));
+
+    await waitFor(() => expect(sent(fetchMock, "POST").url).toBe("/api/v1/expenses/entries/801/invoiced/undo"));
+    expect(sent(fetchMock, "POST").body).toEqual({ revision: 7 });
+  });
+
+  it("marks a standalone expense invoiced from its own drawer, and takes it back again", async () => {
+    const line = outlay({
+      id: 501,
+      description: "Hotel",
+      status: "approved",
+      revision: 4,
+      billable: true,
+      project: { id: 1001, code: "KVEM1000", name: "Kverneland web" },
+      capabilities: capabilities({ canUnapprove: true, canSeeBilling: true, canMarkInvoiced: true }),
+      billing: { billAmount: 750 },
+    });
+    const fetchMock = stubExpensesApi({ entries: [line] });
+    renderRoute("/expenses/approvals?state=approved");
+
+    const drawer = await openDrawer("Hotel");
+    await userEvent.click(within(drawer).getByRole("button", { name: "Mark invoiced" }));
+    const invoice = await screen.findByRole("dialog", { name: "Mark the line invoiced" });
+    await userEvent.click(within(invoice).getByRole("button", { name: "Mark invoiced" }));
+    await waitFor(() => expect(sent(fetchMock, "POST").url).toBe("/api/v1/expenses/entries/501/invoiced"));
+
+    // The answer turned the capability round, and the undo carries the
+    // revision that answer gave — 5, not the 4 the drawer opened at.
+    await userEvent.click(await within(drawer).findByRole("button", { name: "Undo invoicing" }));
+    const confirm = await screen.findByRole("dialog", { name: "Undo the invoicing?" });
+    await userEvent.click(within(confirm).getByRole("button", { name: "Undo invoicing" }));
+
+    await waitFor(() => {
+      const [, init] = fetchMock.actualCalls.find(([url]) => String(url).endsWith("/entries/501/invoiced/undo")) ?? [];
+      expect(JSON.parse(String(init?.body))).toEqual({ revision: 5 });
+    });
+  });
+
   it("approves the whole trip from its drawer and closes it", async () => {
     const { trip, lines } = tripWithLines();
     const fetchMock = stubExpensesApi({ entries: lines, claims: [trip], rates: [...rates, ...perDiemRates] });
@@ -648,7 +745,123 @@ describe("ApprovalsPage", () => {
     const drawer = await openClaimDrawer("Montasje hos kunden");
     await userEvent.click(within(drawer).getByRole("button", { name: "Take the approval back" }));
 
-    expect(await within(drawer).findByText(/has been invoiced/)).toBeInTheDocument();
+    // Twice: at the top, because it is a refusal about the trip, and against
+    // the line it names.
+    expect(await within(drawer).findAllByText(/has been invoiced/)).toHaveLength(2);
+    // …and against line 801, because the sentence names it. The server writes
+    // "holds expense 801" in lower case, which is the whole reason this is a
+    // real assertion rather than one the top alert already satisfies.
+    const line = drawer.querySelector('[data-expense="801"]') as HTMLElement;
+    expect(await within(line).findByText(/has been invoiced/)).toBeInTheDocument();
+    // The per diem day is named by nobody and carries nothing.
+    const day = drawer.querySelector('[data-expense="802"]') as HTMLElement;
+    expect(within(day).queryByText(/has been invoiced/)).not.toBeInTheDocument();
+  });
+
+  it("keeps an expense and a travel claim with the same id apart, refusal and all", async () => {
+    // The two units number independently, so a queue can genuinely hold an
+    // expense 1012 and a trip 1012 at once. Two arrays, two maps, two tables —
+    // and a refusal on each has to reach its own row.
+    const { trip, lines } = tripWithLines();
+    stubExpensesApi({
+      entries: [submitted({ id: 1012, description: "Taxi" }), ...lines],
+      claims: [trip],
+      rates: [...rates, ...perDiemRates],
+      write: (method, path) =>
+        method === "POST" && path === "/api/v1/expenses/approve"
+          ? problemResponse(400, "Invalid approval", {
+              entryIds: ["Expense 1012 is dated before 2026-04-01, the lock date"],
+              claimIds: ["Travel claim 1012 departed before 2026-04-01, the lock date"],
+            })
+          : undefined,
+    });
+    renderRoute("/expenses/approvals");
+
+    await userEvent.click(within(await row("Taxi")).getByRole("checkbox"));
+    await userEvent.click(within(await claimRow("Montasje hos kunden")).getByRole("checkbox"));
+    await userEvent.click(await screen.findByRole("button", { name: "Approve 2 selected" }));
+
+    expect(await within(await row("Taxi")).findByText(/is dated before/)).toBeInTheDocument();
+    expect(within(await row("Taxi")).queryByText(/departed before/)).not.toBeInTheDocument();
+    expect(await within(await claimRow("Montasje hos kunden")).findByText(/departed before/)).toBeInTheDocument();
+    expect(within(await claimRow("Montasje hos kunden")).queryByText(/is dated before/)).not.toBeInTheDocument();
+  });
+
+  it("never says nothing is approved above a table of approved trips", async () => {
+    const { trip, lines } = tripWithLines({
+      status: "approved",
+      capabilities: claimCapabilities({ canUnapprove: true }),
+    });
+    stubExpensesApi({
+      entries: lines.map((line) => ({ ...line, status: "approved" as const })),
+      claims: [trip],
+      rates: [...rates, ...perDiemRates],
+    });
+    renderRoute("/expenses/approvals?state=approved");
+
+    // Every approved unit here is a trip, which is the common case for this
+    // delivery. The empty state is about both halves or it is a lie.
+    expect(await screen.findByRole("table", { name: "Travel claims" })).toBeInTheDocument();
+    expect(screen.queryByText("Nothing approved yet")).not.toBeInTheDocument();
+  });
+
+  it("says so when the approved trips could not be read, rather than showing half the units", async () => {
+    stubExpensesApi({
+      entries: [
+        outlay({
+          id: 501,
+          status: "approved",
+          description: "Hotel",
+          capabilities: capabilities({ canUnapprove: true }),
+        }),
+      ],
+      write: () => undefined,
+      claims: [],
+      claimList: problemResponse(500, "The travel claims are unavailable"),
+    });
+    renderRoute("/expenses/approvals?state=approved");
+
+    expect(await screen.findByText("Could not load the travel claims")).toBeInTheDocument();
+    // …and the expenses that did load are still there.
+    expect(await screen.findByText("Hotel")).toBeInTheDocument();
+  });
+
+  it("keeps one section's selection when the other section is paged", async () => {
+    const { trip, lines } = tripWithLines({
+      status: "approved",
+      capabilities: claimCapabilities({ canUnapprove: true }),
+    });
+    const second = {
+      ...trip,
+      id: 1013,
+      purpose: "Kurs i Trondheim",
+      departureAt: "2026-02-01T06:00:00Z",
+      returnAt: "2026-02-02T15:00:00Z",
+    };
+    stubExpensesApi({
+      entries: [
+        outlay({
+          id: 501,
+          status: "approved",
+          description: "Hotel",
+          capabilities: capabilities({ canUnapprove: true }),
+        }),
+        ...lines.map((line) => ({ ...line, status: "approved" as const })),
+      ],
+      claims: [trip, second],
+      rates: [...rates, ...perDiemRates],
+      pageSize: 1,
+    });
+    const { router } = renderRoute("/expenses/approvals?state=approved");
+
+    await userEvent.click(within(await row("Hotel")).getByRole("checkbox"));
+    expect(await screen.findByRole("button", { name: "Take 1 approvals back" })).toBeInTheDocument();
+
+    // Paging the trips is not a reason to throw away an expense somebody has
+    // just ticked: the two sections page independently.
+    await userEvent.click(screen.getByRole("button", { name: "2" }));
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ claimPage: 2 }));
+    expect(await screen.findByRole("button", { name: "Take 1 approvals back" })).toBeInTheDocument();
   });
 
   it("says when an approval was decided even when nobody is named", async () => {

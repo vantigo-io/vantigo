@@ -12,8 +12,6 @@ export type ExpenseReimbursementGroup = Omit<Schemas["ExpensesReimbursementGroup
   entries: Expense[];
 };
 
-export type ReimbursedInput = Schemas["ExpensesReimbursedRequest"];
-
 /** What the payroll list may be narrowed by. `waiting` is the server's own default. */
 export interface ReimbursementFilters {
   state?: "waiting" | "reimbursed";
@@ -104,7 +102,12 @@ export const downloadReimbursementsCsv = async (
   filters: ReimbursementFilters,
   selection?: FlowUnits,
 ): Promise<CsvDownload> => {
-  const picked = selection === undefined ? undefined : unitsBody(selection);
+  // A selection that names nothing at all is **no selection**, not an empty
+  // one: `unitsBody` drops both empty lists, and a URL with neither would
+  // reach the server as "export everything, unfiltered" — the opposite of what
+  // a button with nothing ticked means. The filters go instead.
+  const named = selection === undefined ? undefined : unitsBody(selection);
+  const picked = named?.entryIds || named?.claimIds ? named : undefined;
   const query = picked === undefined ? filterQuery(filters) : new URLSearchParams();
   query.delete("page");
   for (const id of picked?.entryIds ?? []) query.append("entryIds", String(id));

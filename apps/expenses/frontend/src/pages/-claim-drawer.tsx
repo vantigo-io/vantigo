@@ -18,6 +18,7 @@ import { BillingModal } from "./-billing-modal";
 import { MarkInvoicedModal } from "./-mark-invoiced-modal";
 import { RateOverrideModal } from "./-rate-override-modal";
 import { RejectModal } from "./-reject-modal";
+import { useUndoInvoiced } from "./-undo-invoiced";
 
 export interface ClaimDrawerProps {
   /**
@@ -84,6 +85,8 @@ const ClaimActions = ({ claimId, onClose }: { claimId: number; onClose: () => vo
     setPricing(null);
     setInvoicing(null);
   };
+
+  const undoInvoiced = useUndoInvoiced(saved);
 
   /** Approve and unapprove differ only in the call and the words; the handling is one shape. */
   const decided = (title: string, failure: string) => ({
@@ -176,12 +179,24 @@ const ClaimActions = ({ claimId, onClose }: { claimId: number; onClose: () => vo
             {t("markInvoiced")}
           </Button>
         )}
+        {current.capabilities.canUndoInvoiced && (
+          <Button
+            size="xs"
+            h={40}
+            variant="default"
+            color="red"
+            loading={undoInvoiced.isPending}
+            aria-label={t("undoInvoicedFor", { description: lineName(current) })}
+            onClick={() => undoInvoiced.confirm(current)}
+          >
+            {t("undoInvoiced")}
+          </Button>
+        )}
       </Group>
     );
   };
 
   const decidable: Claim["capabilities"] = claim.capabilities;
-  const revisionOf = (line: Expense | null) => (line ? shown(line).revision : undefined);
 
   return (
     <Stack>
@@ -227,14 +242,14 @@ const ClaimActions = ({ claimId, onClose }: { claimId: number; onClose: () => vo
       />
       <RateOverrideModal
         expense={overriding}
-        revision={revisionOf(overriding)}
+        revision={overriding?.revision}
         onClose={() => setOverriding(null)}
         onSaved={saved}
       />
-      <BillingModal expense={pricing} revision={revisionOf(pricing)} onClose={() => setPricing(null)} onSaved={saved} />
+      <BillingModal expense={pricing} revision={pricing?.revision} onClose={() => setPricing(null)} onSaved={saved} />
       <MarkInvoicedModal
         expense={invoicing}
-        revision={revisionOf(invoicing)}
+        revision={invoicing?.revision}
         onClose={() => setInvoicing(null)}
         onSaved={saved}
       />

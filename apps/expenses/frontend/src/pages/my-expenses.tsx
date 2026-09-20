@@ -208,7 +208,10 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
         state={claimModal}
         onClose={() => {
           setClaimModal(null);
-          if (create) navigate({ search: { ...search, create: undefined } });
+          // A **replace**: the intent is consumed, so Back must not put
+          // `?create=claim` in the URL again and reopen the form somebody has
+          // just closed. The same thing the customers list does with its own.
+          if (create) navigate({ search: { ...search, create: undefined }, replace: true });
         }}
         onSaved={(saved) => navigate(claimLinkOptions(saved.id))}
       />

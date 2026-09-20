@@ -110,8 +110,16 @@ export const refusalsByEntry = (
  * (`Travel claim 7 cannot be submitted: Expense 12 cannot be priced: …`), and
  * the claim page can put that sentence against the line itself. A sentence
  * about the trip alone names nobody.
+ *
+ * **The capital is not guaranteed.** The module writes the word at the start
+ * of a sentence in some refusals and mid-sentence in others — the unapprove's
+ * `Travel claim 7 holds expense 12, which has been invoiced` is the one the
+ * drawer exists to place — so the match takes either case. The claim's own
+ * key is still decided by `refusalsByUnit`'s **anchored** `^Travel claim`,
+ * which no sentence like this can satisfy, so a message never moves off the
+ * trip: it is shown in both places.
  */
 export const lineNamedIn = (message: string): number | undefined => {
-  const named = /\bExpense (\d+)\b/.exec(message);
+  const named = /\b[Ee]xpense (\d+)\b/.exec(message);
   return named ? Number(named[1]) : undefined;
 };

@@ -45,6 +45,12 @@ export interface ExpensesServer {
    * stores in step.
    */
   claims?: Claim[];
+  /**
+   * A refusal for `GET /claims` alone, leaving the store answering every other
+   * claim read. A page that lists trips beside expenses has to say when only
+   * half of it could be read.
+   */
+  claimList?: Response;
   /** What the per diem suggestion answers. Left out, the fake works the days out itself. */
   suggestion?: Read<PerDiemSuggestedDay[]>;
   /**
@@ -181,10 +187,26 @@ interface UnitGroup {
 }
 
 /**
- * The two kinds of unit grouped per person, the way both queues page them. A
- * person with nothing but trips is a group of their own — the server counts
- * units, not expenses, and a queue that dropped them would hide the very thing
- * this delivery adds.
+ * How long a group has been waiting: the earliest day any of its units is
+ * about — an expense's own date, a trip's departure. The real queue orders by
+ * the oldest submission; this is the same approximation the fake made before
+ * travel claims existed, widened so that a person whose only unit is a trip
+ * takes their place in the order rather than falling to the end.
+ */
+const waitingSince = (group: UnitGroup): string => {
+  const days = [
+    ...group.entries.map((entry) => entry.entryDate),
+    ...group.claims.map((claim) => claim.departureAt.slice(0, 10)),
+  ].sort();
+  return days[0] ?? "9999-12-31";
+};
+
+/**
+ * The two kinds of unit grouped per person, **the one who has been waiting
+ * longest first** — a documented property of `GET /approvals`, and one a queue
+ * paged by person would be wrong without. A person with nothing but trips is a
+ * group of their own: the server counts units, not expenses, and a queue that
+ * dropped them would hide the very thing this delivery adds.
  */
 const groupedUnits = (entries: Expense[], claims: Claim[]): UnitGroup[] => {
   const byUser = new Map<string, UnitGroup>();
@@ -197,15 +219,17 @@ const groupedUnits = (entries: Expense[], claims: Claim[]): UnitGroup[] => {
   };
   for (const entry of entries) groupFor(entry.owner).entries.push(entry);
   for (const claim of claims) groupFor(claim.owner).claims.push(claim);
-  return [...byUser.values()].map((group) => ({
-    ...group,
-    entries: [...group.entries].sort((a, b) =>
-      a.entryDate === b.entryDate ? a.id - b.id : a.entryDate < b.entryDate ? -1 : 1,
-    ),
-    claims: [...group.claims].sort((a, b) =>
-      a.departureAt === b.departureAt ? a.id - b.id : a.departureAt < b.departureAt ? -1 : 1,
-    ),
-  }));
+  return [...byUser.values()]
+    .map((group) => ({
+      ...group,
+      entries: [...group.entries].sort((a, b) =>
+        a.entryDate === b.entryDate ? a.id - b.id : a.entryDate < b.entryDate ? -1 : 1,
+      ),
+      claims: [...group.claims].sort((a, b) =>
+        a.departureAt === b.departureAt ? a.id - b.id : a.departureAt < b.departureAt ? -1 : 1,
+      ),
+    }))
+    .sort((a, b) => waitingSince(a).localeCompare(waitingSince(b)));
 };
 
 /**
@@ -691,6 +715,19 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
       return Promise.resolve(jsonResponse(200, entry));
     }
 
+    const invoicedUndo = /^\/api\/v1\/expenses\/entries\/(\d+)\/invoiced\/undo$/.exec(path);
+    if (invoicedUndo && method === "POST") {
+      const entry = find(Number(invoicedUndo[1]));
+      if (!entry) return Promise.resolve(new Response(null, { status: 404 }));
+      if (body.revision !== entry.revision) {
+        return Promise.resolve(jsonResponse(409, { title: "The expense has moved on", status: 409 }));
+      }
+      entry.billing = entry.billing ? { ...entry.billing, invoice: undefined } : undefined;
+      entry.capabilities = { ...entry.capabilities, canMarkInvoiced: true, canUndoInvoiced: false };
+      entry.revision += 1;
+      return Promise.resolve(jsonResponse(200, entry));
+    }
+
     const billing = /^\/api\/v1\/expenses\/entries\/(\d+)\/billing$/.exec(path);
     if (billing && method === "PUT") {
       const entry = find(Number(billing[1]));
@@ -961,6 +998,7 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
     }
 
     if (path === "/api/v1/expenses/claims" && method === "GET") {
+      if (server.claimList) return Promise.resolve(server.claimList.clone());
       const query = url.searchParams;
       const userId = query.get("userId");
       const from = query.get("from");

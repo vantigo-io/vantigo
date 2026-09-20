@@ -7,6 +7,12 @@ import type { ExpenseRate } from "../api/rates";
  * not — a kind nobody can find is a kind nobody can price, and the one the
  * product deliberately leaves unseeded (`per_diem_overnight_other`) is exactly
  * the one an administrator has to be able to reach.
+ *
+ * **The source of truth is `ExpensesRateRequest.kind`'s description in
+ * `openapi/expenses.yaml`** — OpenAPI 3.0 declares it as a plain string with
+ * the names written out in prose, so there is no enum to generate from and
+ * this list is hand-kept. `rate-kinds.test.ts` reads that sentence back out
+ * of the generated `api-schema.d.ts` and fails if the two ever disagree.
  */
 export const rateKinds = [
   "mileage",

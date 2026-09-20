@@ -11,8 +11,10 @@ import { RefusalList } from "../components/refusal-list";
 import "../i18n";
 import { refusalMessages } from "../lib/errors";
 import { BillingModal } from "./-billing-modal";
+import { MarkInvoicedModal } from "./-mark-invoiced-modal";
 import { RateOverrideModal } from "./-rate-override-modal";
 import { RejectModal } from "./-reject-modal";
+import { useUndoInvoiced } from "./-undo-invoiced";
 
 export interface EntryDrawerProps {
   /** The expense being looked at, or null when the drawer is closed. */
@@ -49,13 +51,19 @@ const EntryActions = ({ expense, onClose }: { expense: Expense; onClose: () => v
   const [rejecting, setRejecting] = useState(false);
   const [overriding, setOverriding] = useState<Expense | null>(null);
   const [pricing, setPricing] = useState<Expense | null>(null);
+  const [invoicing, setInvoicing] = useState<Expense | null>(null);
 
   const saved = (next: Expense) => {
     setCurrent(next);
     setRevision(next.revision);
     setOverriding(null);
     setPricing(null);
+    setInvoicing(null);
   };
+
+  // The other end of the invoicing track, behind a confirm — the same hook the
+  // approver's claim drawer uses, so the sentence and the guard are one.
+  const undoInvoiced = useUndoInvoiced(saved);
 
   /** Approve and unapprove differ only in the call and the words; the handling is one shape. */
   const decided = (title: string, failure: string) => ({
@@ -112,6 +120,21 @@ const EntryActions = ({ expense, onClose }: { expense: Expense; onClose: () => v
             {t("setBilling")}
           </Button>
         )}
+        {current.capabilities.canMarkInvoiced && (
+          <Button variant="default" onClick={() => setInvoicing(current)}>
+            {t("markInvoiced")}
+          </Button>
+        )}
+        {current.capabilities.canUndoInvoiced && (
+          <Button
+            variant="default"
+            color="red"
+            loading={undoInvoiced.isPending}
+            onClick={() => undoInvoiced.confirm(current)}
+          >
+            {t("undoInvoiced")}
+          </Button>
+        )}
       </Group>
 
       <RejectModal
@@ -124,6 +147,7 @@ const EntryActions = ({ expense, onClose }: { expense: Expense; onClose: () => v
       />
       <RateOverrideModal expense={overriding} revision={revision} onClose={() => setOverriding(null)} onSaved={saved} />
       <BillingModal expense={pricing} revision={revision} onClose={() => setPricing(null)} onSaved={saved} />
+      <MarkInvoicedModal expense={invoicing} revision={revision} onClose={() => setInvoicing(null)} onSaved={saved} />
     </Stack>
   );
 };

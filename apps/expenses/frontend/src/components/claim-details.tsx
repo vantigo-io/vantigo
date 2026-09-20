@@ -52,6 +52,11 @@ export interface ClaimDetailsProps {
  * Everything shown is what the server sent: the billable totals are there
  * because the caller's financial rights on the project put them there, the
  * decision is there while one stands, and nothing is re-derived.
+ *
+ * **Every instant on this screen is written in the installation's own zone**,
+ * not the reader's — the decision, the invoice stamp and the trip's two ends
+ * alike, so no one date on the page disagrees with the calendar the company
+ * keeps. (`reimbursement.date` is a calendar date already and needs none.)
  */
 export const ClaimDetails = ({
   claim,
@@ -77,15 +82,21 @@ export const ClaimDetails = ({
               decider that no operation can produce; the reason stands on its
               own when there is nobody to name. */}
           {claim.decision.by
-            ? t("rejectedBy", { person: claim.decision.by.displayName, date: format.dateTime(claim.decision.at) })
-            : t("rejectedOn", { date: format.dateTime(claim.decision.at) })}
+            ? t("rejectedBy", {
+                person: claim.decision.by.displayName,
+                date: format.zonedDate(claim.decision.at, timeZone),
+              })
+            : t("rejectedOn", { date: format.zonedDate(claim.decision.at, timeZone) })}
         </Alert>
       )}
       {claim.decision?.status === "approved" && (
         <Text size="sm" c="dimmed">
           {claim.decision.by
-            ? t("approvedBy", { person: claim.decision.by.displayName, date: format.dateTime(claim.decision.at) })
-            : t("approvedOn", { date: format.dateTime(claim.decision.at) })}
+            ? t("approvedBy", {
+                person: claim.decision.by.displayName,
+                date: format.zonedDate(claim.decision.at, timeZone),
+              })
+            : t("approvedOn", { date: format.zonedDate(claim.decision.at, timeZone) })}
         </Text>
       )}
 
@@ -171,7 +182,7 @@ export const ClaimDetails = ({
                       ))}
                     {withLineDetails && line.billing?.invoice && (
                       <Text size="xs" c="dimmed">
-                        {t("invoicedOn", { date: format.dateTime(line.billing.invoice.at) })}
+                        {t("invoicedOn", { date: format.zonedDate(line.billing.invoice.at, timeZone) })}
                       </Text>
                     )}
                     <RefusalList messages={lineRefusals?.get(line.id) ?? []} />
