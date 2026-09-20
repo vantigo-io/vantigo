@@ -16,17 +16,23 @@ import { DateInput, TimeInput } from "@mantine/dates";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
-import { type Claim, type ClaimInput, type ClaimUpdateInput, createClaim, updateClaim } from "../api/claims";
-import { expensesMetaQueryOptions } from "../api/meta";
-import { expenseProjectsQueryOptions } from "../api/projects";
+import {
+  type Claim,
+  type ClaimInput,
+  type ClaimUpdateInput,
+  createClaim,
+  expenseClaimQueryOptions,
+  updateClaim,
+} from "../api/claims";
+import { type ExpensesMeta, expensesMetaQueryOptions } from "../api/meta";
 import { type ApiError, ApiValidationError, EXPENSES_QUERY_KEY } from "../api/request";
 import { RefusalList } from "../components/refusal-list";
 import "../i18n";
 import { refusalMessage, refusalMessages } from "../lib/errors";
 import { useDecimalSeparator } from "../lib/format";
-import { suggestedDayCount } from "../lib/per-diem";
+import { useProjectOptions } from "../lib/project-options";
 import { instantInZone, isWallClockTime, wallClockInZone } from "../lib/time-zone";
 
 /** What the contract allows on a travel claim's header. */
@@ -108,6 +114,14 @@ export const ClaimFormModal = ({ state, onClose, onSaved }: ClaimFormModalProps)
   );
 };
 
+/**
+ * Nothing in the form is derived until the installation's own time zone is
+ * known. `useForm`'s initial values are captured **once**, at mount, while
+ * `payload()` converts with whatever zone is current by the time somebody
+ * saves — so a form mounted against a placeholder zone captures one wall
+ * clock and sends another, and the trip silently moves by the offset with no
+ * refusal anywhere. Waiting one round trip is the whole fix.
+ */
 const ClaimForm = ({
   state,
   onClose,
@@ -117,6 +131,22 @@ const ClaimForm = ({
   onClose: () => void;
   onSaved?: (claim: Claim) => void;
 }) => {
+  const { data: meta } = useQuery(expensesMetaQueryOptions());
+  if (!meta) return <ContentSkeleton rows={5} rowHeight={48} />;
+  return <ClaimFormFields state={state} onClose={onClose} onSaved={onSaved} meta={meta} />;
+};
+
+const ClaimFormFields = ({
+  state,
+  onClose,
+  onSaved,
+  meta,
+}: {
+  state: ClaimModalState;
+  onClose: () => void;
+  onSaved?: (claim: Claim) => void;
+  meta: ExpensesMeta;
+}) => {
   const { t } = useI18n("expenses");
   const decimalSeparator = useDecimalSeparator();
   const queryClient = useQueryClient();
@@ -124,19 +154,16 @@ const ClaimForm = ({
   const opened = state.mode === "edit" ? state.claim : undefined;
   const [refusals, setRefusals] = useState<string[]>([]);
   /**
-   * The revision the form was opened at — never a refetched one. A save
-   * answers with the claim as it now stands, and that answer is the only
-   * thing that moves it on.
+   * The revision the form is guarded by: the one it opened at, and after a
+   * conflict the one the claim was **read again** at. A form that could only
+   * ever 409 again is a trap; the typed values stay and the next save is
+   * judged against the trip as it now stands.
    */
-  const [revision] = useState<number | undefined>(opened?.revision);
+  const [revision, setRevision] = useState<number | undefined>(opened?.revision);
 
-  const { data: meta } = useQuery(expensesMetaQueryOptions());
-  const { data: projects } = useQuery({
-    ...expenseProjectsQueryOptions(),
-    enabled: meta?.projectsAvailable === true,
-  });
+  const { options: projectOptions } = useProjectOptions(opened?.project, meta.projectsAvailable === true);
 
-  const zone = meta?.timeZone ?? "UTC";
+  const zone = meta.timeZone;
   const departure = opened ? wallClockInZone(opened.departureAt, zone) : undefined;
   const returns = opened ? wallClockInZone(opened.returnAt, zone) : undefined;
 
@@ -185,27 +212,6 @@ const ClaimForm = ({
   const values = form.values;
   const abroad = values.abroad === "abroad";
 
-  /**
-   * `GET /projects` lists only what the owner may book on *now*, while a save
-   * grandfathers a link the claim already carries. Without the claim's own
-   * project in the list the picker would render blank over "No project".
-   */
-  const keptProject =
-    opened?.project && projects !== undefined && !projects.some((project) => project.id === opened.project?.id)
-      ? opened.project
-      : undefined;
-  const projectOptions = [
-    ...(projects ?? []).map((project) => ({ value: String(project.id), label: `${project.code} · ${project.name}` })),
-    ...(keptProject
-      ? [
-          {
-            value: String(keptProject.id),
-            label: t("projectNoLongerBookable", { project: `${keptProject.code} · ${keptProject.name}` }),
-          },
-        ]
-      : []),
-  ];
-
   const departureAt =
     values.departureDate && isWallClockTime(values.departureTime)
       ? instantInZone(values.departureDate, values.departureTime, zone)
@@ -214,7 +220,6 @@ const ClaimForm = ({
     values.returnDate && isWallClockTime(values.returnTime)
       ? instantInZone(values.returnDate, values.returnTime, zone)
       : undefined;
-  const dayCount = departureAt && returnAt ? suggestedDayCount(departureAt, returnAt, true) : 0;
 
   const payload = (): ClaimInput => ({
     purpose: values.purpose.trim(),
@@ -228,7 +233,7 @@ const ClaimForm = ({
       : {}),
     departureAt: departureAt ?? "",
     returnAt: returnAt ?? "",
-    ...(meta?.projectsAvailable && values.projectId ? { projectId: Number(values.projectId) } : {}),
+    ...(meta.projectsAvailable && values.projectId ? { projectId: Number(values.projectId) } : {}),
   });
 
   const save = useMutation({
@@ -245,7 +250,7 @@ const ClaimForm = ({
       onSaved?.(saved);
       onClose();
     },
-    onError: (error: Error) => {
+    onError: async (error: Error) => {
       if (error instanceof ApiValidationError) {
         const fields = Object.fromEntries(
           Object.entries(error.fieldErrors)
@@ -265,12 +270,16 @@ const ClaimForm = ({
         setRefusals(refusalMessages(error));
         return;
       }
-      const conflict = (error as ApiError).status === 409;
-      notifications.show({
-        color: "red",
-        title: t("couldNotSaveClaim"),
-        message: conflict ? t("claimChangedElsewhere") : refusalMessage(error),
-      });
+      if ((error as ApiError).status === 409 && opened) {
+        // Read it again *here*, so the next "Save" carries the revision the
+        // trip now stands at and what the traveller typed is still on screen.
+        await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
+        const fresh = await queryClient.fetchQuery(expenseClaimQueryOptions(opened.id)).catch(() => undefined);
+        if (fresh) setRevision(fresh.revision);
+        setRefusals([t("claimChangedElsewhere")]);
+        return;
+      }
+      notifications.show({ color: "red", title: t("couldNotSaveClaim"), message: refusalMessage(error) });
     },
   });
 
@@ -352,13 +361,8 @@ const ClaimForm = ({
         <Text size="xs" c="dimmed">
           {t("timesAreIn", { zone })}
         </Text>
-        {dayCount > 0 && (
-          <Text size="xs" c="dimmed">
-            {t("claimTripDays", { count: dayCount })}
-          </Text>
-        )}
 
-        {meta?.projectsAvailable && (
+        {meta.projectsAvailable && (
           <>
             <Divider />
             {projectOptions.length === 0 && !values.projectId ? (

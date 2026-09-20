@@ -34,7 +34,6 @@ import {
   updateExpense,
 } from "../api/entries";
 import { expensesMetaQueryOptions } from "../api/meta";
-import { expenseProjectsQueryOptions } from "../api/projects";
 import { expenseRatesQueryOptions } from "../api/rates";
 import { type ApiError, EXPENSES_QUERY_KEY } from "../api/request";
 import { EntryDetails } from "../components/entry-details";
@@ -56,6 +55,7 @@ import {
   type VatChoice,
   vatFromGross,
 } from "../lib/money";
+import { useProjectOptions } from "../lib/project-options";
 import { mileagePreview } from "../lib/rates";
 import type { ExpenseKind, PaidBy } from "../lib/status";
 
@@ -176,10 +176,7 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
   const [vatChoice, setVatChoice] = useState<VatChoice>("none");
 
   const { data: meta } = useQuery(expensesMetaQueryOptions());
-  const { data: projects } = useQuery({
-    ...expenseProjectsQueryOptions(),
-    enabled: meta?.projectsAvailable === true,
-  });
+  const { projects, options: projectOptions } = useProjectOptions(opened?.project, meta?.projectsAvailable === true);
   const { data: rates } = useQuery(expenseRatesQueryOptions());
 
   const readOnly = saved !== undefined && !saved.capabilities.canEdit;
@@ -251,34 +248,6 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
       : undefined;
   const missingRate = values.kind === "mileage" && distance > 0 && rates !== undefined && preview === undefined;
 
-  /**
-   * `GET /projects` lists only what the owner may book on *now*, while a save
-   * grandfathers a link the expense already carries — a completed project, or
-   * one the owner has been taken off. Without the entry's own project in the
-   * list the picker would render blank over "No project" and the form would
-   * tell somebody their booked cost is unbooked.
-   */
-  // `projects === undefined` is "still loading", not "does not offer it": a
-  // perfectly bookable project must not flash "(no longer bookable)" between
-  // the mount and the answer.
-  const keptProject =
-    opened?.project && projects !== undefined && !projects.some((project) => project.id === opened.project?.id)
-      ? opened.project
-      : undefined;
-  const projectOptions = [
-    ...(projects ?? []).map((project) => ({
-      value: String(project.id),
-      label: `${project.code} · ${project.name}`,
-    })),
-    ...(keptProject
-      ? [
-          {
-            value: String(keptProject.id),
-            label: t("projectNoLongerBookable", { project: `${keptProject.code} · ${keptProject.name}` }),
-          },
-        ]
-      : []),
-  ];
   const chosenProject = projects?.find((project) => String(project.id) === values.projectId);
   const keptLine =
     opened?.billingLine &&
@@ -354,6 +323,12 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
       if (Object.keys(fields).length > 0) {
         form.setErrors(fields);
         return;
+      }
+      // A refusal on `claimId` is a fact about the trip, not about this line:
+      // it changed underneath, so the page behind the modal is reading a copy
+      // that no longer holds — including which doors it still offers.
+      if (error.fieldErrors.claimId !== undefined) {
+        void queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
       }
       setRefusals(refusalMessages(error));
       return;

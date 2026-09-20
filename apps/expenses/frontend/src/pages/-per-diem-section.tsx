@@ -18,10 +18,10 @@ import { notifications } from "@mantine/notifications";
 import { IconTrash, IconWand } from "@tabler/icons-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { type Claim, type PerDiemSuggestedDay, perDiemSuggestion } from "../api/claims";
 import { createExpense, deleteExpense, type Expense, updateExpense } from "../api/entries";
-import { EXPENSES_QUERY_KEY } from "../api/request";
+import { type ApiError, ApiValidationError, EXPENSES_QUERY_KEY } from "../api/request";
 import { RefusalList } from "../components/refusal-list";
 import "../i18n";
 import { refusalMessage } from "../lib/errors";
@@ -83,7 +83,7 @@ export const PerDiemSection = ({ claim, days, lineCount, refusals, currency }: P
 
         {room <= 0 && (
           <Text size="sm" c="orange">
-            {t("perDiemCapReached")}
+            {t("claimLineCapReached")}
           </Text>
         )}
 
@@ -159,8 +159,15 @@ const PerDiemDayRow = ({
    * open row is guarded by exactly what the first save produced.
    */
   const [line, setLine] = useState(day);
-  const [error, setError] = useState<string | undefined>(undefined);
+  /**
+   * Where a refusal lands. The server names the field it is about, so a
+   * covered meal the table prices nothing for belongs under *that* checkbox,
+   * a kind of day nothing prices under the select that chose it, and
+   * everything else — a conflict above all — in the row's own message.
+   */
+  const [rowError, setRowError] = useState<string | undefined>(undefined);
   const [typeError, setTypeError] = useState<string | undefined>(undefined);
+  const [mealErrors, setMealErrors] = useState<Partial<Record<Meal, string>>>({});
 
   // A refetch that brings a genuinely different line (the header save
   // repriced it) replaces what the row holds; a stale render does not.
@@ -186,19 +193,39 @@ const PerDiemDayRow = ({
         revision: line.revision,
       }),
     onSuccess: async (saved) => {
-      setError(undefined);
+      setRowError(undefined);
       setTypeError(undefined);
+      setMealErrors({});
       setLine(saved);
       setSeen(saved);
       await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
     },
-    onError: (failure: Error) => {
-      // A refusal about the kind of day belongs on the select that chose it —
-      // `overnight_other` is unpriced until an administrator enters a rate,
-      // and that is the sentence to show.
-      const onType = refusalMessage(failure, "perDiemType");
-      setTypeError(onType);
-      setError(undefined);
+    onError: async (failure: Error) => {
+      setRowError(undefined);
+      setTypeError(undefined);
+      setMealErrors({});
+      if (failure instanceof ApiValidationError) {
+        const fields = failure.fieldErrors;
+        const onMeals: Partial<Record<Meal, string>> = {};
+        for (const meal of meals) {
+          const message = fields[`${meal}Covered`];
+          if (message) onMeals[meal] = message;
+        }
+        const elsewhere = Object.entries(fields)
+          .filter(([field]) => field !== "perDiemType" && !meals.some((meal) => `${meal}Covered` === field))
+          .map(([, message]) => message);
+        setMealErrors(onMeals);
+        setTypeError(fields.perDiemType);
+        setRowError(
+          elsewhere[0] ?? (fields.perDiemType || Object.keys(onMeals).length > 0 ? undefined : failure.message),
+        );
+        return;
+      }
+      // A conflict is not about a field at all: somebody moved the trip while
+      // the tick was in flight, so the row says so and the page reads it again.
+      const conflict = (failure as ApiError).status === 409;
+      setRowError(conflict ? t("claimChangedElsewhere") : failure.message);
+      if (conflict) await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
     },
   });
 
@@ -243,6 +270,7 @@ const PerDiemDayRow = ({
               key={meal}
               size="sm"
               aria-label={t("mealCoveredOn", { meal: t(mealLabelKey(meal)), date: label })}
+              error={mealErrors[meal]}
               label={
                 perDiem.mealPercents[meal] === undefined
                   ? t("mealNotPriced", { meal: t(mealLabelKey(meal)) })
@@ -260,7 +288,7 @@ const PerDiemDayRow = ({
       <Table.Td>
         <Stack gap={2}>
           <Text size="sm">{format.money(line.grossAmount, line.currency)}</Text>
-          <RefusalList messages={[...refusals, ...(error ? [error] : [])]} />
+          <RefusalList messages={[...refusals, ...(rowError ? [rowError] : [])]} />
         </Stack>
       </Table.Td>
       <Table.Td>
@@ -321,6 +349,8 @@ const SuggestDaysModal = ({
   const [suggested, setSuggested] = useState<PerDiemSuggestedDay[] | undefined>(undefined);
   const [picked, setPicked] = useState<string[]>([]);
   const [refusals, setRefusals] = useState<string[]>([]);
+  /** The day an add was on when it was refused, so the client can name it. */
+  const failedOn = useRef<string | undefined>(undefined);
 
   const close = () => {
     setSuggested(undefined);
@@ -329,16 +359,22 @@ const SuggestDaysModal = ({
     onClose();
   };
 
+  /**
+   * Asks again and re-picks. A day the trip already holds comes back
+   * `exists: true` and is left unticked — what to do about it is the
+   * traveller's decision, not the server's — and a day with no rate cannot be
+   * added at all. Running it after a partial add is what stops a second press
+   * re-posting a day that already landed.
+   */
+  const loadSuggestion = async () => {
+    const days = await perDiemSuggestion(claim.id, overnight === "yes");
+    setSuggested(days);
+    setPicked(days.filter((day) => !day.exists && day.dayRate !== undefined).map((day) => day.entryDate));
+  };
+
   const ask = useMutation({
-    mutationFn: () => perDiemSuggestion(claim.id, overnight === "yes"),
-    onSuccess: (days) => {
-      setRefusals([]);
-      setSuggested(days);
-      // A day the trip already holds is shown and left unticked: what to do
-      // about it is the traveller's decision, not the server's. A day with no
-      // rate cannot be added at all.
-      setPicked(days.filter((day) => !day.exists && day.dayRate !== undefined).map((day) => day.entryDate));
-    },
+    mutationFn: loadSuggestion,
+    onSuccess: () => setRefusals([]),
     onError: (error: Error) => setRefusals([refusalMessage(error)]),
   });
 
@@ -349,12 +385,14 @@ const SuggestDaysModal = ({
     mutationFn: async () => {
       let added = 0;
       for (const day of capped) {
+        failedOn.current = day.entryDate;
         await createExpense({
           kind: "per_diem",
           claimId: claim.id,
           entryDate: day.entryDate,
           perDiemType: day.perDiemType,
         });
+        failedOn.current = undefined;
         added += 1;
       }
       return added;
@@ -370,10 +408,18 @@ const SuggestDaysModal = ({
       close();
     },
     onError: async (error: Error) => {
-      // Whatever landed before the refusal is recorded, so the trip is read
-      // again and the sentence that stopped it is shown here.
+      // Whatever landed before the refusal is recorded, so the trip and the
+      // suggestion are both read again: the days that got in come back marked
+      // and unticked, and pressing "Add" again retries only what is left.
+      const stoppedOn = failedOn.current;
       await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
-      setRefusals([refusalMessage(error, "claimId")]);
+      await loadSuggestion().catch(() => undefined);
+      // The server's sentence does not always name a day — the cap and the
+      // "read it again" refusal name none at all — so the client says which.
+      setRefusals([
+        ...(stoppedOn ? [t("perDiemDayFailed", { date: format.date(stoppedOn) })] : []),
+        refusalMessage(error, "claimId"),
+      ]);
     },
   });
 
@@ -458,7 +504,7 @@ const SuggestDaysModal = ({
 
         {addable.length > capped.length && (
           <Text size="sm" c="orange">
-            {t("perDiemCapLimits", { count: capped.length })}
+            {capped.length === 1 ? t("perDiemCapLimitsOne") : t("perDiemCapLimits", { count: capped.length })}
           </Text>
         )}
 

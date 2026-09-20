@@ -21,7 +21,7 @@ import { useExpenseFormat } from "../lib/format";
 import { useLineName } from "../lib/line-name";
 import { ClaimFormModal, type ClaimModalState } from "./-claim-form-modal";
 import { ExpenseFormModal, type ExpenseModalState } from "./-expense-form-modal";
-import { PerDiemSection } from "./-per-diem-section";
+import { CLAIM_LINE_CAP, PerDiemSection } from "./-per-diem-section";
 
 export interface ClaimPageProps {
   /**
@@ -54,7 +54,7 @@ export const ClaimPage = ({ claimId }: ClaimPageProps) => {
   const [refusals, setRefusals] = useState<string[]>([]);
   const [lineRefusals, setLineRefusals] = useState<Map<number, string[]>>(new Map());
 
-  const { data: meta } = useQuery(expensesMetaQueryOptions());
+  const { data: meta, isPending: metaPending } = useQuery(expensesMetaQueryOptions());
   const { data: claim, isPending, isError, error } = useQuery(expenseClaimQueryOptions(claimId));
 
   const submit = useMutation({
@@ -102,7 +102,12 @@ export const ClaimPage = ({ claimId }: ClaimPageProps) => {
       notifications.show({ color: "red", title: t("couldNotDeleteExpense"), message: refusalMessage(failure) }),
   });
 
-  if (isPending) return <ContentSkeleton rows={6} rowHeight={52} />;
+  // A trip's days are days in the installation's own zone, and every wall
+  // clock on this page — the two instants it writes, and the two the edit form
+  // captures the moment it opens — is derived from it. Rendering before
+  // `/meta` has answered would label a trip in a guessed zone and, worse, let
+  // the form capture one wall clock and send another.
+  if (isPending || metaPending) return <ContentSkeleton rows={6} rowHeight={52} />;
 
   if (isError) {
     const status = (error as ApiError).status;
@@ -117,6 +122,7 @@ export const ClaimPage = ({ claimId }: ClaimPageProps) => {
   }
 
   const zone = meta?.timeZone ?? "UTC";
+  const atCap = claim.lines.length >= CLAIM_LINE_CAP;
   const currency = claim.abroad && claim.abroadCurrency ? claim.abroadCurrency : (meta?.defaultCurrency ?? "");
   const editable = claim.capabilities.canEdit;
   const perDiemDays = claim.lines.filter((line) => line.kind === "per_diem");
@@ -265,6 +271,7 @@ export const ClaimPage = ({ claimId }: ClaimPageProps) => {
         description={t("mileageLinesDescription")}
         addLabel={t("addMileageLine")}
         emptyLabel={t("noMileageLines")}
+        atCap={atCap}
         refusals={lineRefusals}
         onAdd={() => setLineModal({ mode: "create", kind: "mileage", claim })}
         onEdit={(line) => setLineModal({ mode: "edit", expense: line, claim })}
@@ -280,6 +287,7 @@ export const ClaimPage = ({ claimId }: ClaimPageProps) => {
         description={t("outlayLinesDescription")}
         addLabel={t("addOutlayLine")}
         emptyLabel={t("noOutlayLines")}
+        atCap={atCap}
         refusals={lineRefusals}
         onAdd={() => setLineModal({ mode: "create", kind: "outlay", claim })}
         onEdit={(line) => setLineModal({ mode: "edit", expense: line, claim })}
@@ -305,6 +313,7 @@ const LineSection = ({
   addLabel,
   emptyLabel,
   refusals,
+  atCap,
   onAdd,
   onEdit,
   onRemove,
@@ -318,6 +327,8 @@ const LineSection = ({
   addLabel: string;
   emptyLabel: string;
   refusals: Map<number, string[]>;
+  /** Whether the trip already holds the 200 expenses a travel claim may hold. */
+  atCap: boolean;
   onAdd: () => void;
   onEdit: (line: Expense) => void;
   onRemove: (line: Expense) => void;
@@ -338,11 +349,17 @@ const LineSection = ({
             </Text>
           </Stack>
           {editable && (
-            <Button variant="light" leftSection={<IconPlus size={16} />} onClick={onAdd}>
+            <Button variant="light" leftSection={<IconPlus size={16} />} disabled={atCap} onClick={onAdd}>
               {addLabel}
             </Button>
           )}
         </Group>
+
+        {editable && atCap && (
+          <Text size="sm" c="orange">
+            {t("claimLineCapReached")}
+          </Text>
+        )}
 
         {lines.length === 0 ? (
           <Text size="sm" c="dimmed">

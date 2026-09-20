@@ -75,7 +75,7 @@ const ClaimActions = ({ claimId, onClose }: { claimId: number; onClose: () => vo
    */
   const [written, setWritten] = useState<Map<number, Expense>>(new Map());
 
-  const { data: meta } = useQuery(expensesMetaQueryOptions());
+  const { data: meta, isPending: metaPending } = useQuery(expensesMetaQueryOptions());
   const { data: claim, isPending, isError, error } = useQuery(expenseClaimQueryOptions(claimId));
 
   const saved = (line: Expense) => {
@@ -122,7 +122,9 @@ const ClaimActions = ({ claimId, onClose }: { claimId: number; onClose: () => vo
     ...decided(t("expensesUnapproved"), t("couldNotUnapprove")),
   });
 
-  if (isPending) return <ContentSkeleton rows={5} rowHeight={48} />;
+  // The trip's two instants are written in the installation's own zone, so
+  // the drawer waits for it rather than labelling them in a guessed one.
+  if (isPending || metaPending) return <ContentSkeleton rows={5} rowHeight={48} />;
   if (isError) {
     return (
       <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadClaim")}>
@@ -143,7 +145,8 @@ const ClaimActions = ({ claimId, onClose }: { claimId: number; onClose: () => vo
       <Group gap={4} wrap="nowrap">
         {current.capabilities.canOverrideRate && (
           <Button
-            size="compact-xs"
+            size="xs"
+            h={40}
             variant="default"
             aria-label={t("overrideRateFor", { description: lineName(current) })}
             onClick={() => setOverriding(current)}
@@ -153,7 +156,8 @@ const ClaimActions = ({ claimId, onClose }: { claimId: number; onClose: () => vo
         )}
         {current.capabilities.canSetBilling && (
           <Button
-            size="compact-xs"
+            size="xs"
+            h={40}
             variant="default"
             aria-label={t("setBillingFor", { description: lineName(current) })}
             onClick={() => setPricing(current)}
@@ -163,7 +167,8 @@ const ClaimActions = ({ claimId, onClose }: { claimId: number; onClose: () => vo
         )}
         {current.capabilities.canMarkInvoiced && (
           <Button
-            size="compact-xs"
+            size="xs"
+            h={40}
             variant="default"
             aria-label={t("markInvoicedFor", { description: lineName(current) })}
             onClick={() => setInvoicing(current)}

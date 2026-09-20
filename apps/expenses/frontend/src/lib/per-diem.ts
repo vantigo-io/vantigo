@@ -16,9 +16,6 @@ export const perDiemTypes = ["day_6_12", "day_over_12", "overnight_hotel", "over
 
 export type PerDiemType = (typeof perDiemTypes)[number];
 
-export const isPerDiemType = (value: unknown): value is PerDiemType =>
-  typeof value === "string" && (perDiemTypes as readonly string[]).includes(value);
-
 /**
  * The `expenses` catalog key naming a kind of day. A per diem line carries no
  * description of its own — the server stores the empty string and says so in
@@ -32,8 +29,6 @@ export const meals = ["breakfast", "lunch", "dinner"] as const;
 export type Meal = (typeof meals)[number];
 
 export const mealLabelKey = (meal: Meal): string => `meal_${meal}`;
-
-export const mealCoveredLabelKey = (meal: Meal): string => `mealCovered_${meal}`;
 
 export interface MealDeduction {
   meal: Meal;

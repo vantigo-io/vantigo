@@ -35,6 +35,7 @@ export * from "./lib/format";
 export * from "./lib/line-name";
 export * from "./lib/money";
 export * from "./lib/per-diem";
+export * from "./lib/project-options";
 export * from "./lib/rate-kinds";
 export * from "./lib/rates";
 export * from "./lib/receipts";

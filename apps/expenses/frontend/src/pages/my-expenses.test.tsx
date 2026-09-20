@@ -235,7 +235,9 @@ describe("MyExpensesPage", () => {
     const { router } = renderRoute("/expenses?create=claim");
 
     const dialog = await screen.findByRole("dialog", { name: "New travel claim" });
-    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    // The form itself waits for `/meta`: a trip's wall clock is only ever
+    // captured once the installation's own zone is known.
+    await userEvent.click(await within(dialog).findByRole("button", { name: "Cancel" }));
 
     // Consumed once: a refresh must not reopen a form nobody asked for again.
     await waitFor(() => expect(router.state.location.searchStr).not.toContain("create"));

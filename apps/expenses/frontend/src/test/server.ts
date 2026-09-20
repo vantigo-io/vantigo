@@ -13,7 +13,7 @@ import { meals, type PerDiem, type PerDiemType } from "../lib/per-diem";
 import { mileagePreview } from "../lib/rates";
 import { zoneCalendarDate } from "../lib/time-zone";
 import { jsonResponse } from "./api";
-import { stubFetch } from "./fetch";
+import { type StubbedFetch, stubFetch } from "./fetch";
 import {
   APPROVER,
   categories as defaultCategories,
@@ -83,7 +83,18 @@ export interface ExpensesServer {
   write?: (method: string, path: string, body: unknown) => Response | undefined;
   /** Answers a receipt upload instead of the fake's 201; undefined falls through. */
   upload?: (entryId: number, file: File) => Response | undefined;
+  /**
+   * Paths whose answer is held back until the stub's `release()` is called —
+   * a read that is still in flight while another one has already landed. It
+   * is what lets a test put `/meta` *after* the claim it is about, which is
+   * the order a cold deep link produces and the order a page that derives a
+   * wall clock from the installation's zone has to survive.
+   */
+  hold?: string[];
 }
+
+/** The stubbed fetch, plus the release for whatever `hold` is keeping back. */
+export type ExpensesStub = StubbedFetch & { release: () => void };
 
 /** The fixture, or the refusal the test put in its place; a Response is cloned so a refetch reads it again. */
 const answer = <T>(read: Read<T> | undefined, fallback: T): Response =>
@@ -211,8 +222,15 @@ const groupedUnits = (entries: Expense[], claims: Claim[]): UnitGroup[] => {
  * writes move, so approving in one step changes what the next read answers,
  * the way the server does.
  */
-export const stubExpensesApi = (server: ExpensesServer = {}) => {
+export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
   const entries = server.entries ?? [];
+  let releaseHeld = () => {};
+  const held = new Promise<void>((resolve) => {
+    releaseHeld = resolve;
+  });
+  /** A held path answers only once the test says so; everything else answers at once. */
+  const maybeHold = (path: string, answer: Promise<Response>): Promise<Response> =>
+    server.hold?.includes(path) ? held.then(() => answer) : answer;
   const claims = server.claims ?? [];
   const metaOf = (): ExpensesMeta =>
     server.meta instanceof Response ? defaultMeta() : (server.meta ?? defaultMeta({ categories: defaultCategories }));
@@ -227,6 +245,9 @@ export const stubExpensesApi = (server: ExpensesServer = {}) => {
     nextAttachmentId += 1;
     return nextAttachmentId;
   };
+
+  /** The projects the caller may book on, as `GET /projects` answers them. */
+  const projectsOf = (): ExpenseProjectOption[] => (server.projects instanceof Response ? [] : (server.projects ?? []));
 
   const rateStore = server.rates instanceof Response ? [...defaultRates] : (server.rates ?? [...defaultRates]);
   const ratesOf = (): ExpenseRate[] => rateStore;
@@ -440,7 +461,7 @@ export const stubExpensesApi = (server: ExpensesServer = {}) => {
     return jsonResponse(200, { entries: movedEntries, claims: movedClaims });
   };
 
-  return stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
+  const stub = stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), "http://localhost");
     const path = url.pathname;
     const method = init?.method ?? "GET";
@@ -450,7 +471,7 @@ export const stubExpensesApi = (server: ExpensesServer = {}) => {
     if (answered) return Promise.resolve(answered);
 
     if (path === "/api/v1/expenses/meta")
-      return Promise.resolve(answer(server.meta, defaultMeta({ categories: categoryStore })));
+      return maybeHold(path, Promise.resolve(answer(server.meta, defaultMeta({ categories: categoryStore }))));
     if (path === "/api/v1/expenses/projects") return Promise.resolve(answer(server.projects, []));
     if (path === "/api/v1/expenses/stats") return Promise.resolve(answer(server.stats, stats()));
 
@@ -860,6 +881,15 @@ export const stubExpensesApi = (server: ExpensesServer = {}) => {
         if (Object.keys(stranded).length > 0) {
           return Promise.resolve(problem(400, "Invalid travel claim", stranded));
         }
+        // The claim's project is every line's: a change re-points them in the
+        // same transaction, and clearing it makes every line non-billable.
+        // (The real server reprices per diem days on a project change too; the
+        // fake only reprices on the money, which is what the pages read.)
+        const projectAfter =
+          body.projectId === undefined
+            ? undefined
+            : (projectsOf().find((one) => one.id === body.projectId) ??
+              claim.project ?? { id: body.projectId, code: "KVEM1000", name: "Kverneland web" });
         const repriced =
           claim.abroad !== after.abroad ||
           claim.abroadDayRate !== after.abroadDayRate ||
@@ -872,11 +902,16 @@ export const stubExpensesApi = (server: ExpensesServer = {}) => {
           abroadCurrency: after.abroadCurrency,
           departureAt: after.departureAt,
           returnAt: after.returnAt,
-          project: body.projectId
-            ? (claim.project ?? { id: body.projectId, code: "KVEM1000", name: "Kverneland web" })
-            : undefined,
+          project: projectAfter,
           revision: claim.revision + 1,
         });
+        for (const line of linesOf(claim.id)) {
+          Object.assign(line, {
+            project: projectAfter,
+            ...(projectAfter === undefined ? { billable: false, billingLine: undefined, billing: undefined } : {}),
+            revision: line.revision + 1,
+          });
+        }
         if (repriced) {
           // The claim's own money changing reprices every day it holds, in the
           // same transaction — which is why the page reads the claim again.
@@ -1099,5 +1134,7 @@ export const stubExpensesApi = (server: ExpensesServer = {}) => {
     }
 
     return Promise.resolve(new Response(null, { status: 404 }));
-  });
+  }) as ExpensesStub;
+  stub.release = releaseHeld;
+  return stub;
 };
