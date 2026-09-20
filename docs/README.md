@@ -19,6 +19,8 @@ Operator and contributor documentation for Vantigo:
   optional Products dependency and the contracts later modules build on.
 - [Time module](time.md) — time entries, the rate chain and its snapshots, the
   approval state machine, weekly submission, the period lock and permissions.
+- [Expenses module](expenses.md) — outlays and mileage, receipts, approval, the
+  reimbursed and invoiced tracks, dated rates, the payroll CSV and permissions.
 - [Module boundaries](module-boundaries.md) — implementation ownership and module
   conventions.
 - [Object storage](storage.md) — the filesystem-only provider, module scopes, key

@@ -300,3 +300,41 @@ assignments and actuals; availability and utilisation.
   from the user directory, and a colleague without the permission would be assigned
   a role they cannot use. Whether to filter the picker, warn, or grant on
   assignment is a product decision, not a technical one.
+
+## Expenses
+
+### Phase 1 — Foundation: entries, approval, receipts, reimbursement and invoicing (done)
+
+The `expenses` module and `@vantigo/expenses-ui`: outlays and mileage with receipts
+(JPEG/PNG/HEIC/PDF, sniffed rather than trusted, served only through the API), a
+`draft → submitted → approved`/`rejected` flow with an admin-configurable receipt
+rule and a rate override an approver can make on a submitted mileage line, then two
+independent tracks after approval — reimbursed per expense by `expenses:manage`,
+with a payroll CSV, and invoiced per billable line by whoever holds financial
+rights on its project — either, both or neither, in any order. Dated rates
+(mileage, its passenger supplement, and a customer rate per kilometre) and
+categories are admin-managed and effective-dated the same way Time's person rates
+are. Unlike every other module here, Expenses **depends on nobody but identity**:
+Projects is read only optionally, through `contracts.ProjectDirectory`, for the
+project a line is booked on and the billing figures its side prices — with
+`projects` disabled every project-shaped field is refused on its own field rather
+than accepted and dropped. The period lock protects what was submitted and
+approved; it deliberately does not reach reimbursing, pricing or invoicing, which
+are bookkeeping done once a period has closed. See [`docs/expenses.md`](docs/expenses.md).
+
+*Unblocks:* a company's non-hours costs recorded and paid back, and a customer's
+project a step closer to fully costed with Time's hours already in.
+
+### Next — Travel claims and per diem
+
+A travel claim as the unit several outlays and per-diem days are grouped and
+submitted under, and the per-diem rate kinds this delivery's schema already
+reserves — seeded and priced once the official per-diem rates are verified against
+their source, never from memory.
+
+### Later
+
+- **The project page's Economy tab, cost side.** Expenses joins Time's hours on the
+  Economy tab (`/projects/$projectId/economy`) as the other half of a project's
+  actual cost, following the same optional-contract shape
+  (`contracts.ProjectActuals`) Time already provides it through.

@@ -25,10 +25,10 @@ Communications' outbox is the working example.
    future extracted service can implement or consume them.
 4. **One schema per module.** Each module maps tables only into its own PostgreSQL
    schema (`identity`, `customers`, `products`, `energy`, `communications`,
-   `projects`, `time`), and no module's migrations or queries reference another's. **No
-   cross-schema foreign keys or joins** — reference other modules' data by opaque ID
-   only. That is what keeps a future "move this schema to its own server" a
-   connection-string change instead of a data migration.
+   `projects`, `time`, `expenses`), and no module's migrations or queries reference
+   another's. **No cross-schema foreign keys or joins** — reference other modules'
+   data by opaque ID only. That is what keeps a future "move this schema to its own
+   server" a connection-string change instead of a data migration.
 5. **One module, one mount.** A module exposes one `Module()` returning a
    `module.Module`: its name, its `Mount`, the permissions it contributes, the
    background workers it contributes, and the cross-module contracts it *provides*.
@@ -77,7 +77,7 @@ MODULES=customers,products
 ```
 
 Unset enables every module this binary can mount
-(`customers,products,energy,communications,projects,time`). Identity is always mounted and
+(`customers,products,energy,communications,projects,time,expenses`). Identity is always mounted and
 is never listed. Entries are trimmed and lower-cased, empty entries are ignored, and a
 name the binary does not know fails startup naming both the value and the known set.
 
@@ -144,6 +144,21 @@ arrives in the request, because Projects is the module that owns that fact. It a
 keeps a rule worth copying: **no contract call inside a transaction that holds a
 lock**, enforced by fakes that record any call made under one — the economy reads on
 both sides take no lock at all.
+
+**Expenses depends on nobody but identity.** Unlike every other business module,
+it needs no config-checked dependency and no default provider slot:
+`MODULES=expenses` alone is a valid installation, and so is
+`MODULES=customers,expenses`. `contracts.ProjectDirectory` is read, but purely
+*optionally* — `Deps.Projects` is nil when `projects` is not enabled, `GET /meta`
+answers `projectsAvailable: false`, and every project-shaped request field (a
+project id, a billing line, `billable`, a markup, a customer rate per kilometre) is
+refused on its own field rather than silently accepted. A stored project id an
+expense already carries is not cleared when the module is switched off — the
+column is data, not a fact this module owns the right to delete — but nothing can
+be judged against a project nobody can ask about any more, so a save on such a row
+carries those six columns through untouched instead of refusing the edit. See
+[Expenses](expenses.md) for the model, and for what changes with and without
+Projects.
 
 ## Adding a module
 

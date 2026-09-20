@@ -255,9 +255,14 @@ configured through the Communications API, where the host, port and a protected
 password are stored as mailbox credentials — there is no environment variable
 for them. Those channels are **SMTP-only**: the API refuses to create or update
 a channel naming any other provider, and rejects a Mailgun credential outright.
-See [communications](../../docs/communications.md). The Projects, Time and
-Expenses modules need no environment variable of their own; see
-[projects](../../docs/projects.md) and [time](../../docs/time.md).
+See [communications](../../docs/communications.md). The Projects and Time
+modules need no environment variable of their own; see
+[projects](../../docs/projects.md) and [time](../../docs/time.md). **Expenses
+needs the object store configured** (`STORAGE_PROVIDER` in `vantigo.env.example`,
+the same setting Communications attachments use) the moment anybody tries to
+attach a receipt, whether or not the receipt rule requires one: unconfigured, a
+receipt upload or download answers 503 rather than the process failing to start.
+See [expenses](../../docs/expenses.md).
 
 Telemetry is off by default. Standard OTLP variables can be set in
 `vantigo.env`:
