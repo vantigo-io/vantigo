@@ -225,6 +225,29 @@ func (s *server) namesFor(ctx context.Context, rows []store.ExpensesEntry, claim
 		}
 	}
 
+	// The lines' claims are read **before** the directory call, because a line's
+	// decision and reimbursement are its claim's: the people behind them are on
+	// the claim row and never on the line's own columns, so a claim read after
+	// the names were resolved would leave a line naming "Unknown user" for the
+	// approver its claim page shows by name. The caller that hands claims in
+	// (claimResponseFor) has already put them in seenClaims, so this reads only
+	// what nobody has.
+	q := store.New(s.deps.Pool)
+	if len(claimIDs) > 0 {
+		rows, err := q.GetClaims(ctx, claimIDs)
+		if err != nil {
+			return entryNames{}, fmt.Errorf("expenses: resolve the expenses' travel claims: %w", err)
+		}
+		for _, claim := range rows {
+			names.claims[claim.ID] = claim
+			for _, id := range []*uuid.UUID{claim.DecidedByUserID, claim.ReimbursedByUserID} {
+				if id != nil {
+					addUser(*id)
+				}
+			}
+		}
+	}
+
 	users, err := s.usersUsers(ctx, userIDs)
 	if err != nil {
 		return entryNames{}, fmt.Errorf("expenses: resolve the expenses' owners: %w", err)
@@ -257,16 +280,6 @@ func (s *server) namesFor(ctx context.Context, rows []store.ExpensesEntry, claim
 		}
 	}
 
-	q := store.New(s.deps.Pool)
-	if len(claimIDs) > 0 {
-		claims, err := q.GetClaims(ctx, claimIDs)
-		if err != nil {
-			return entryNames{}, fmt.Errorf("expenses: resolve the expenses' travel claims: %w", err)
-		}
-		for _, claim := range claims {
-			names.claims[claim.ID] = claim
-		}
-	}
 	categories, err := listCategoryRows(ctx, q)
 	if err != nil {
 		return entryNames{}, err

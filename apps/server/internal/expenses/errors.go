@@ -28,8 +28,11 @@ const (
 	invalidCategoryTitle = "Invalid category"
 	invalidEntryTitle    = "Invalid expense"
 	invalidClaimTitle    = "Invalid travel claim"
-	invalidQueryTitle    = "Invalid query parameters"
-	invalidReceiptTitle  = "Invalid receipt"
+	// A suggestion is asked of a claim but is not a claim: the claim is fine,
+	// and what could not be answered is the question about it.
+	invalidSuggestionTitle = "Invalid per diem suggestion"
+	invalidQueryTitle      = "Invalid query parameters"
+	invalidReceiptTitle    = "Invalid receipt"
 
 	// The two batch titles. A submission and a decision are told apart because
 	// they are made by different people at different moments, and a client
@@ -89,6 +92,13 @@ func tooManyExportRows(limit int) apicommon.HttpValidationProblemDetails {
 // design §3.1 and §4.
 func invalidEntry(errs map[string][]string) apicommon.HttpValidationProblemDetails {
 	return apicommon.ValidationProblem(invalidEntryTitle, errs)
+}
+
+// invalidSuggestion is the 400 body for a per diem suggestion that could not be
+// answered: the trip is whatever it is, and the request did not say the one
+// thing its times cannot.
+func invalidSuggestion(errs map[string][]string) apicommon.HttpValidationProblemDetails {
+	return apicommon.ValidationProblem(invalidSuggestionTitle, errs)
 }
 
 // invalidClaim is the 400 body for a travel claim whose fields did not pass

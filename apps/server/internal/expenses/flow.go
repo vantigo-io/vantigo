@@ -731,8 +731,15 @@ func (s *server) freeze(ctx context.Context, txq *store.Queries, c *caller, row 
 			}
 		}
 		// A per diem day is never billed on to a customer, so nothing below
-		// applies to it and the billing columns stay as they are — false and
-		// empty, by every door that can write them.
+		// applies to it — and the billing columns are *written* false and empty
+		// rather than carried off the row. Every door that can write them
+		// leaves them that way on a per diem, so this changes nothing today;
+		// it is here so that a row which somehow holds a flag cannot be frozen
+		// with it, which is the one state the freeze must never make permanent.
+		f.Billable = false
+		f.Markup = pgtype.Numeric{}
+		f.BillRate = pgtype.Numeric{}
+		f.BillAmount = pgtype.Numeric{}
 		return f, "", nil
 	}
 

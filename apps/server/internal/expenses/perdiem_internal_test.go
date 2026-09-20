@@ -354,3 +354,91 @@ func TestSuggestPerDiem_CountsElapsedHoursAcrossADaylightSavingChange(t *testing
 		t.Errorf("30 h 01 across the change = %v, want two days", daysOf(full))
 	}
 }
+
+// The two trips a calendar-day-dating rule has to get right, both in Oslo and
+// both departing in the first or last hour of a local day — the only shape
+// where 24 elapsed hours and one calendar day part company.
+//
+// The counting stays elapsed time, because that is what the agreement pays for.
+// The *dating* cannot: dating day i at the instant its period starts puts two
+// days on one date when the clocks go back (24 real hours later is 23:30 the
+// same evening) and skips a date when they go forward. Either way the traveller
+// has to re-date a day by hand — and the one-per-date rule refuses the second
+// of the two outright. Day i is therefore the departure's own day plus i days
+// on the calendar, which is what a traveller filling in a form means by "the
+// second day of the trip".
+func TestSuggestPerDiem_DatesConsecutiveCalendarDaysAcrossADaylightSavingChange(t *testing.T) {
+	t.Parallel()
+	oslo, err := time.LoadLocation("Europe/Oslo")
+	if err != nil {
+		t.Fatalf("load Europe/Oslo: %v", err)
+	}
+	for _, tc := range []struct {
+		name               string
+		departure, returns time.Time
+		want               []string
+	}{
+		{
+			// The clocks go back on 2026-10-25: 24 hours after 00:30 on the
+			// 24th is 23:30 on the 24th, so dating by the period's instant
+			// proposed the 25th twice and never the 26th.
+			name:      "the clocks go back",
+			departure: time.Date(2026, time.October, 24, 0, 30, 0, 0, oslo),
+			returns:   time.Date(2026, time.October, 27, 12, 0, 0, 0, oslo),
+			want: []string{
+				"2026-10-24 overnight_hotel", "2026-10-25 overnight_hotel",
+				"2026-10-26 overnight_hotel", "2026-10-27 overnight_hotel",
+			},
+		},
+		{
+			// The clocks go forward on 2026-03-29: 24 hours after 23:30 on the
+			// 27th is 00:30 on the 29th, so the 28th was skipped.
+			name:      "the clocks go forward",
+			departure: time.Date(2026, time.March, 27, 23, 30, 0, 0, oslo),
+			returns:   time.Date(2026, time.March, 31, 12, 0, 0, 0, oslo),
+			want: []string{
+				"2026-03-27 overnight_hotel", "2026-03-28 overnight_hotel",
+				"2026-03-29 overnight_hotel", "2026-03-30 overnight_hotel",
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := suggestPerDiem(tc.departure, tc.returns, true, oslo)
+			if !equalDays(daysOf(got), tc.want) {
+				t.Errorf("suggestPerDiem = %v, want %v", daysOf(got), tc.want)
+			}
+			// And every date it proposes is a date the claim would accept: the
+			// suggestion must never hand back a day the save then refuses.
+			from, to := businessDay(tc.departure, oslo), businessDay(tc.returns, oslo)
+			for _, day := range got {
+				if day.Date.Before(from) || day.Date.After(to) {
+					t.Errorf("suggested %s, outside the trip's %s … %s",
+						day.Date.Format(time.DateOnly), from.Format(time.DateOnly), to.Format(time.DateOnly))
+				}
+			}
+			// No date twice: the one-per-date rule would refuse the second.
+			seen := map[string]bool{}
+			for _, day := range got {
+				date := day.Date.Format(time.DateOnly)
+				if seen[date] {
+					t.Errorf("suggested %s twice, which the claim refuses", date)
+				}
+				seen[date] = true
+			}
+		})
+	}
+}
+
+// equalDays compares two rendered day lists.
+func equalDays(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}

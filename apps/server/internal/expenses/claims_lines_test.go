@@ -428,3 +428,51 @@ func TestExpensesClaimLines_ThePeriodLockIsTheClaimsOwn(t *testing.T) {
 	// And expenses:manage works past it, as everywhere else.
 	addLine(t, admin, claim.Id, outlayBody(map[string]any{"entryDate": "2026-03-11"}))
 }
+
+// A line read on its own carries its claim's people. Its decision and its
+// reimbursement are the claim's — the line's own columns are never written —
+// so the names behind them have to be resolved from the claim, whichever door
+// the line came through. The claim page has always shown them because it hands
+// the claim to the renderer; a line read through the entry renderer must too,
+// or every project-side row of an approved trip names an unknown, inactive
+// approver.
+func TestExpensesClaimLines_ALineNamesItsClaimsApproverAndPayer(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	boss, bossID := signIn(t, h, "expenses:approve")
+	clerk, clerkID := signIn(t, h, "expenses:manage")
+	owner, _ := signIn(t, h)
+	nameUser(t, h, bossID, "Berit Boss")
+	nameUser(t, h, clerkID, "Kari Kasserer")
+
+	claim := createClaim(t, owner, nil)
+	line := addLine(t, owner, claim.Id, outlayBody(nil))
+	submitClaims(t, owner, claim.Id)
+	approveClaims(t, boss, claim.Id)
+	markClaimsReimbursed(t, clerk, reimbursedClaimBody([]int64{claim.Id}, nil))
+
+	// Through the claim, which has always worked, and on its own.
+	fromClaim := lineByID(t, getClaim(t, owner, claim.Id).Lines, line.Id)
+	alone := getEntry(t, owner, line.Id)
+	listed := listEntries(t, owner, fmt.Sprintf("?claimId=%d", claim.Id))
+	if len(listed.Data) != 1 {
+		t.Fatalf("the claim's lines list is %+v, want the one line", listed.Data)
+	}
+	for name, got := range map[string]entryJSON{
+		"through its claim": fromClaim,
+		"read on its own":   alone,
+		"listed by claimId": listed.Data[0],
+	} {
+		switch {
+		case got.Decision == nil || got.Reimbursement == nil:
+			t.Errorf("%s: decision = %+v and reimbursement = %+v, want the claim's own",
+				name, got.Decision, got.Reimbursement)
+			continue
+		case got.Decision.By.DisplayName != "Berit Boss" || !got.Decision.By.Active:
+			t.Errorf("%s: decided by %+v, want Berit Boss as an active user", name, got.Decision.By)
+		}
+		if got.Reimbursement.By.DisplayName != "Kari Kasserer" || !got.Reimbursement.By.Active {
+			t.Errorf("%s: paid back by %+v, want Kari Kasserer as an active user", name, got.Reimbursement.By)
+		}
+	}
+}

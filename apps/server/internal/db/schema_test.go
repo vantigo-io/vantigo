@@ -1620,6 +1620,13 @@ func TestExpensesClaims_AppliesAndIsIdempotent(t *testing.T) {
 			"ix_claims_reimbursement_waiting", []string{"user_id", "departure_at"},
 			"WHERE (((status)::text = 'approved'::text) AND (reimbursed_at IS NULL))",
 		},
+		// One per diem day per claim per date, guarded in Go under the claim's
+		// row lock and here as the backstop. Partial: a trip may hold any
+		// number of outlays and mileage lines on one date.
+		{
+			"ux_entries_claim_per_diem_day", []string{"claim_id", "entry_date"},
+			"WHERE ((kind)::text = 'per_diem'::text)",
+		},
 	} {
 		if cols := indexColumns(t, ctx, pool, "expenses", want.name); !equalStrings(cols, want.columns) {
 			t.Errorf("%s columns = %v, want %v", want.name, cols, want.columns)

@@ -276,8 +276,14 @@ type ExpensesClaimSummary struct {
 	Purpose string                `json:"purpose"`
 
 	// ReceiptsMissing How many of its lines are outlays with no receipt at all. Mileage and a per diem day never take one and are never counted.
-	ReceiptsMissing int32     `json:"receiptsMissing"`
-	ReturnAt        time.Time `json:"returnAt"`
+	ReceiptsMissing int32 `json:"receiptsMissing"`
+
+	// Reimbursement The payroll run that paid the trip back, absent until one has. Same shape and same shaping as on the claim itself — the reference is the clerk's record of their own run, so it reaches the person it paid and whoever reads everybody's expenses, and never a project manager as such.
+	Reimbursement *ExpensesEntryReimbursement `json:"reimbursement,omitempty"`
+	ReturnAt      time.Time                   `json:"returnAt"`
+
+	// Status The trip's own status — 'draft', 'submitted', 'approved' or 'rejected'. It is the status of every line it holds, which carries none of its own, and a queue row shows it rather than inferring it from the list it arrived in.
+	Status string `json:"status"`
 
 	// Totals The trip's figures, one line per currency, by currency code. Nothing is ever converted.
 	Totals []ExpensesCurrencyTotal `json:"totals"`
@@ -762,10 +768,13 @@ type ExpensesPerDiemSuggestedDay struct {
 	// Amount What that day would come to with no meal covered — the day rate, rounded once. Absent with the rate, for the same reason.
 	Amount *float64 `json:"amount,omitempty"`
 
+	// Currency The currency dayRate and amount are in — the claim's own abroadCurrency on a trip abroad, the installation's default otherwise. Present exactly when they are, and absent with them, so a client never has to infer it from the claim.
+	Currency *string `json:"currency,omitempty"`
+
 	// DayRate The per_diem_* rate in force on that date for that type, or the claim's own abroadDayRate on a trip abroad. Absent when the table prices no such day — which is what a day of type overnight_other gets until an administrator enters the company's own rate for it.
 	DayRate *float64 `json:"dayRate,omitempty"`
 
-	// EntryDate The day the period starts, as a calendar day in UTC.
+	// EntryDate The day the period starts, as a calendar day in the installation's business time zone — the day the claim itself is judged in, so a suggested day never falls outside the trip the save judges it against.
 	EntryDate openapi_types.Date `json:"entryDate"`
 
 	// Exists Whether the claim already holds a per diem line on that date. The suggestion is answered either way — what to do about a day already recorded is the client's decision, not the server's — and this is what lets it say so without a second read.
@@ -777,8 +786,8 @@ type ExpensesPerDiemSuggestedDay struct {
 
 // ExpensesPerDiemSuggestionRequest What the trip's times cannot say. Whether the traveller slept away is a fact only they know, and it decides whether the trip is counted in 24-hour periods from the departure or as a single day.
 type ExpensesPerDiemSuggestionRequest struct {
-	// Overnight Whether the traveller stayed the night away from home.
-	Overnight bool `json:"overnight"`
+	// Overnight Whether the traveller stayed the night away from home. It has no default: the two instants cannot tell, and a suggestion that guessed would answer a confident day count from nothing. A body that leaves it out is refused with a 400 naming it, which is why the schema does not require it — the server's own refusal says so, rather than a client's validator.
+	Overnight *bool `json:"overnight,omitempty"`
 }
 
 // ExpensesProjectOption One project the caller may book an expense on, with the billing lines they may book it against — so the expense form needs no code of the projects module's own.
@@ -1026,10 +1035,10 @@ type GetExpensesClaimsParams struct {
 	// Status 'draft', 'submitted', 'approved' or 'rejected'.
 	Status *string `form:"status,omitempty" json:"status,omitempty"`
 
-	// From The earliest departure day to include, judged in UTC.
+	// From The earliest departure day to include, judged in the installation's business time zone.
 	From *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
 
-	// To The latest departure day to include, judged in UTC.
+	// To The latest departure day to include, judged in the installation's business time zone.
 	To *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
 
 	// Reimbursed Narrows the list to what has been reimbursed, or to what has not. Left out, both are in it.
@@ -3702,6 +3711,20 @@ func (response PostExpensesClaimsByIdPerDiemSuggestion200JSONResponse) VisitPost
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesClaimsByIdPerDiemSuggestion400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostExpensesClaimsByIdPerDiemSuggestion400ApplicationProblemPlusJSONResponse) VisitPostExpensesClaimsByIdPerDiemSuggestionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }

@@ -184,6 +184,16 @@ another claim, is a 400 on `claimId`. The owner and the project are the
 claim's: a `userId` naming somebody else is refused, and a `projectId` must be
 absent (inherited) or exactly the claim's.
 
+**Editing a line of a rejected trip leaves the trip rejected.** A standalone
+expense that is put right after a rejection becomes a draft again by being
+saved; a claim does not, because the status that was rejected is the claim's and
+nothing a line's save touches. The trip stays `rejected` — with its reason, and
+with its attention item on the owner's dashboard — until they submit it again,
+which is the one act that says "this is ready to look at". Editing is allowed
+the whole time (`rejected` is editable exactly as `draft` is), so the only
+difference is what the trip *says* about itself in between, and it says the
+truthful thing: nobody has been asked to look at it again yet.
+
 ## The lock order inside a claim
 
 Every write takes its locks in one order, and nothing may invent another:
@@ -316,8 +326,13 @@ the month boundaries a period lock and a payroll month are about.
 Every `expenses:access` holder reads the zone, because a client showing a trip's
 days has to label them in it rather than in the browser's; `expenses:manage`
 alone writes it, and a name is checked against **both** Go's tzdata and
-Postgres' before it is stored, so one that only half the system knows is a 400
-rather than a disagreement discovered later. **Changing it moves every trip's
+Postgres' before it is stored — not only that each side knows it, but that the
+two **mean the same thing** by it: the UTC offset Postgres puts the name at in
+January and in July is compared with Go's, and any difference is a 400 naming a
+city zone to use instead. Knowing the name is not enough, because Postgres
+resolves its abbreviation table first: `CET` is a fixed +01:00 to it and the
+zone with summer time to Go, so `CET`, `EET`, `MET` and `WET` are refused while
+`Europe/Oslo`, `UTC` and every other city zone are not. **Changing it moves every trip's
 days**, which is why it is a setup decision rather than a preference: an
 installation that switches zones after recording per diem days may find some of
 them outside their own trip, and only a save of that claim or that line will say
@@ -339,11 +354,19 @@ remainder longer than six**:
 - `overnight: true` — one `overnight_hotel` per full 24-hour period from the
   departure, plus one more when what is left over runs *strictly* longer than
   six hours, and never fewer than one. The periods are 24 hours from the
-  departure *instant*, never calendar midnights, and each day is dated on the
-  day its own period starts **in the installation's business time zone** — the
-  same rule as everywhere else, so a day the server proposes can never fall
-  outside the trip the save then judges it against. So 6 h 00 and 24 h 00 and 30 h 00 are one day,
-  30 h 01 and 31 h are two, 48 h 00 is two and 54 h 01 is three.
+  departure *instant*, never calendar midnights. So 6 h 00 and 24 h 00 and
+  30 h 00 are one day, 30 h 01 and 31 h are two, 48 h 00 is two and 54 h 01 is
+  three.
+  The **dates** are consecutive calendar days from the departure's own day
+  **in the installation's business time zone**: day *i* is that day plus *i*
+  days. That is the same date the period's own start falls on except on the two
+  nights a year the clocks move — when the clocks go back, 24 elapsed hours
+  after 00:30 is 23:30 the same evening, and dating by the instant would put two
+  days on one date, which the one-per-date rule then refuses; when they go
+  forward it would skip a date. A calendar day is also what whoever fills the
+  form in means by "the second day of the trip". Every date is inside the trip,
+  so a day the server proposes can never fall outside the trip the save then
+  judges it against.
 
 The six hours reads two ways on purpose: **inclusive** as the threshold a whole
 trip has to clear, and **exclusive** for the remainder after a full period. A

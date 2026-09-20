@@ -124,6 +124,12 @@ type claimFigures struct {
 	// Owes is whether the claim owes its owner anything at all, which is what
 	// decides whether a payroll run can cover it.
 	Owes bool
+	// Sums is the same per-currency figures as exact decimals, which is what a
+	// group's running total adds. Totals carries them as the floats the
+	// response is written in; a queue that folded those back into a rat would
+	// be doing money arithmetic on a float in a module whose one rule about
+	// money is that it never does.
+	Sums []currencySum
 	// Invoiced is whether any of its lines has been billed on to the customer,
 	// which is what stops an unapprove. It is read here rather than by a query
 	// of its own because the capability needs it for a whole page of trips at
@@ -176,6 +182,15 @@ func (s *server) claimFiguresOf(ctx context.Context, q *store.Queries, ids []int
 		})
 		f.Owes = f.Owes || owed > 0
 		f.Invoiced = f.Invoiced || row.AnyInvoiced
+		grossRat, err := ratFromNumeric(row.Gross)
+		if err != nil {
+			return nil, err
+		}
+		owedRat, err := ratFromNumeric(row.OwedToEmployee)
+		if err != nil {
+			return nil, err
+		}
+		f.Sums = append(f.Sums, currencySum{Currency: row.Currency, Gross: grossRat, Owed: owedRat})
 		out[*row.ClaimID] = f
 	}
 	return out, nil
@@ -198,11 +213,11 @@ func (f claimFigures) billableOf() []gen.ExpensesCurrencyAmount {
 	return f.Billable
 }
 
-// claimCapabilities renders one claim's capabilities. The three flow ones and
-// the two payroll ones are answered truthfully although the operations they
-// describe arrive with the claim flow: a capability that lied would be worse
-// than one that is simply false, and the doors need no second rule when they
-// open.
+// claimCapabilities renders one claim's capabilities. Every one of them is
+// answered by claimAccessFor, which is the very function each door asks before
+// it acts, so a button a client offers and the answer the server gives cannot
+// drift: the flow's three, and the payroll track's two, are one rule read
+// twice.
 func claimCapabilities(a claimAccess) gen.ExpensesClaimCapabilities {
 	return gen.ExpensesClaimCapabilities{
 		CanEdit:           a.CanEdit,
@@ -244,7 +259,7 @@ func claimHeaderOf(claim store.ExpensesClaim, c *caller, a claimAccess, names en
 		// The payroll reference is the clerk's record of their own run, so it
 		// goes to the person it paid and to whoever reads everybody's expenses
 		// — and not to a project manager, exactly as on a single expense.
-		Reimbursement: reimbursementResponse(unit, a.IsOwner || claimHeaderSeesEveryone(a), names),
+		Reimbursement: reimbursementResponse(unit, a.SeesPayrollReference, names),
 	}
 	// A project the directory no longer lists — or an installation with no
 	// projects module at all — leaves the stored id where it is and simply
@@ -256,11 +271,6 @@ func claimHeaderOf(claim store.ExpensesClaim, c *caller, a claimAccess, names en
 	}
 	return h, nil
 }
-
-// claimHeaderSeesEveryone is the half of the payroll-reference rule that is
-// about permissions rather than ownership. It is carried on the access rather
-// than recomputed, so the claim and its lines answer the same thing.
-func claimHeaderSeesEveryone(a claimAccess) bool { return a.SeesPayrollReference }
 
 // claimResponse is one claim with its lines, through exactly the renderer a
 // single expense goes through — there is one entry renderer in this module and
@@ -370,20 +380,27 @@ func (s *server) claimCountsOf(ctx context.Context, q *store.Queries, ids []int6
 // approval queue's and the reimbursement list's. It is deliberately not the
 // claim's own response: a queue of a hundred trips carrying every line of each
 // would be a page nobody could load, and the trip's own read is one click away.
-func claimSummaryResponse(claim store.ExpensesClaim, names entryNames, a claimAccess,
+func claimSummaryResponse(claim store.ExpensesClaim, c *caller, names entryNames, a claimAccess,
 	f claimFigures, n claimCounts,
 ) gen.ExpensesClaimSummary {
+	unit := claimUnit(claim, c.zone())
 	out := gen.ExpensesClaimSummary{
 		Id:              claim.ID,
 		Purpose:         claim.Purpose,
 		Destination:     claim.Destination,
 		DepartureAt:     claim.DepartureAt,
 		ReturnAt:        claim.ReturnAt,
+		Status:          claim.Status,
 		LineCount:       f.Lines,
 		Totals:          f.totalsOf(),
 		ReceiptsMissing: n.ReceiptsMissing,
 		OverriddenRates: n.OverriddenRates,
 		Capabilities:    claimCapabilities(a),
+		// The payroll stamp, through the very renderer and the very shaping the
+		// claim's own read uses: a queue row of a paid trip says when it was
+		// paid, and the clerk's reference reaches the person it paid and
+		// whoever reads everybody's expenses — never a project manager as such.
+		Reimbursement: reimbursementResponse(unit, a.SeesPayrollReference, names),
 	}
 	// A project the directory no longer lists — or an installation with no
 	// projects module at all — leaves the stored id where it is and shows
@@ -396,11 +413,14 @@ func claimSummaryResponse(claim store.ExpensesClaim, names entryNames, a claimAc
 	return out
 }
 
-// claimUnitResponse is one claim as a queue holds it: the summary, and the
-// person whose group it belongs in.
+// claimUnitResponse is one claim as a queue holds it: the summary, the person
+// whose group it belongs in, and the trip's figures as exact decimals — which
+// the group's running total adds rather than reading them back off the
+// summary's floats.
 type claimUnitResponse struct {
 	owner   gen.ExpensesUserRef
 	summary gen.ExpensesClaimSummary
+	figures claimFigures
 }
 
 // claimUnitsOf renders a page's claims as queue units: their figures, their
@@ -438,7 +458,8 @@ func (s *server) claimUnitsOf(ctx context.Context, q *store.Queries, c *caller,
 		a := c.claimAccessFor(claim, role, figures[claim.ID])
 		out = append(out, claimUnitResponse{
 			owner:   userRef(claim.UserID, names),
-			summary: claimSummaryResponse(claim, names, a, figures[claim.ID], counts[claim.ID]),
+			summary: claimSummaryResponse(claim, c, names, a, figures[claim.ID], counts[claim.ID]),
+			figures: figures[claim.ID],
 		})
 	}
 	return out, nil
@@ -875,10 +896,7 @@ func (s *server) PutExpensesClaimsById(ctx context.Context, req gen.PutExpensesC
 			}
 			if plan.repoint {
 				for _, line := range lines {
-					params, err := repointParams(line, projectID, plan, s.deps.Clock())
-					if err != nil {
-						return err
-					}
+					params := repointParams(line, projectID, plan, s.deps.Clock())
 					if err := txq.SetClaimLineProject(ctx, params); err != nil {
 						return fmt.Errorf("expenses: re-point a travel claim's expense: %w", err)
 					}
@@ -1110,9 +1128,10 @@ func claimLineRules(p *parsedEntry, userID *openapi_types.UUID, claim store.Expe
 		}
 	}
 	// A per diem day is a day *of the trip*, so its date has to be one: the
-	// departure day and the return day included, both taken as the UTC calendar
-	// days of the claim's two instants — the one derivation of a claim's dates
-	// this module makes (see perdiem.go's header). That a claim holds at most
+	// departure day and the return day included, both taken as the calendar
+	// days of the claim's two instants **in the installation's business time
+	// zone** — the one derivation of a claim's dates this module makes (see
+	// perdiem.go's header). That a claim holds at most
 	// one day per date is decided under the claim's own row lock instead, where
 	// two saves racing for the same day can be told apart.
 	if p.Kind == kindPerDiem {
@@ -1341,20 +1360,18 @@ func sameProject(a, b *int32) bool {
 // it, and keeps being billable only when there is a project that bills at all —
 // otherwise every billing figure goes with the flag, because a figure that
 // bills nobody is a number that follows nothing.
-func repointParams(line store.ExpensesEntry, projectID *int32, plan repointPlan, now time.Time) (
-	store.SetClaimLineProjectParams, error,
-) {
+func repointParams(line store.ExpensesEntry, projectID *int32, plan repointPlan, now time.Time) store.SetClaimLineProjectParams {
 	params := store.SetClaimLineProjectParams{ID: line.ID, ProjectID: projectID, Now: now}
 	billable := line.Billable && projectID != nil && !plan.billsNothing
 	if line.BillingLineID != nil && projectID != nil && plan.lines[*line.BillingLineID] {
 		params.BillingLineID = line.BillingLineID
 	}
 	if !billable {
-		return params, nil
+		return params
 	}
 	params.Billable = true
 	params.MarkupPercent = line.MarkupPercent
 	params.BillRatePerKm = line.BillRatePerKm
 	params.BillAmount = line.BillAmount
-	return params, nil
+	return params
 }

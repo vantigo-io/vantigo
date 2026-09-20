@@ -318,6 +318,12 @@ RETURNING *;
 -- UpdateEntryBilling is the project side's pricing: the billing columns and
 -- nothing else. The expense's own amount, status and stamps are untouched, and
 -- an invoiced line is refused here as well as by the caller.
+--
+-- kind <> 'per_diem' is the other half of that: a per diem day is never billed
+-- on to a customer, and the capability and the handler both exclude it, so this
+-- guard is unreachable today — which is exactly why it is here, beside the
+-- module's other SQL twins. A Go regression should write nothing rather than
+-- quietly make a day of somebody's subsistence billable.
 UPDATE expenses.entries SET
     billing_line_id = @billing_line_id,
     billable = @billable,
@@ -326,7 +332,7 @@ UPDATE expenses.entries SET
     bill_amount = @bill_amount,
     revision = revision + 1,
     updated_at = @now::timestamptz
-WHERE id = @id AND revision = @revision AND invoiced_at IS NULL
+WHERE id = @id AND revision = @revision AND invoiced_at IS NULL AND kind <> 'per_diem'
 RETURNING *;
 
 -- name: CountApprovalGroups :one

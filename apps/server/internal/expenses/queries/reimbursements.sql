@@ -272,6 +272,10 @@ WHERE expenses.entries.id = @id
   AND COALESCE(
         (SELECT c.status FROM expenses.claims c WHERE c.id = expenses.entries.claim_id),
         expenses.entries.status) = 'approved'
+  -- A per diem day is never billed on to a customer and so is never invoiced.
+  -- The capability and the handler both exclude it, so this is unreachable
+  -- today; it is here for the reason every other SQL twin in this module is.
+  AND expenses.entries.kind <> 'per_diem'
   AND expenses.entries.billable
   AND expenses.entries.bill_amount IS NOT NULL
   AND expenses.entries.invoiced_at IS NULL

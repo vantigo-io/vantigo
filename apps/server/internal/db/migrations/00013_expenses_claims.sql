@@ -76,6 +76,15 @@ ALTER TABLE expenses.entries
     ADD COLUMN meal_lunch_percent     numeric(5,2),
     ADD COLUMN meal_dinner_percent    numeric(5,2);
 
+-- One per diem day per claim per date (design §4). Every door that records or
+-- moves one already decides this under the claim's own row lock, so the index
+-- is the backstop rather than the rule — the same way this module's other three
+-- invariants are guarded in Go and again in SQL. It is partial because it is
+-- only about per diem days: a trip may hold any number of outlays and mileage
+-- lines on one date, and a standalone expense has no claim at all.
+CREATE UNIQUE INDEX ux_entries_claim_per_diem_day ON expenses.entries (claim_id, entry_date)
+    WHERE kind = 'per_diem';
+
 -- The installation's own business time zone. A travel claim stores two
 -- instants, and every date derived from them — the day the period lock judges,
 -- the day GET /claims' from/to filter matches, the first and last day a per
@@ -87,9 +96,13 @@ ALTER TABLE expenses.entries
 --
 -- An IANA name (varchar(64) holds every one of them, the longest being 32
 -- characters), defaulted to Europe/Oslo because that is whose per diem
--- agreement this module implements. PUT /settings checks a new one against both
--- Go's tzdata and Postgres' pg_timezone_names, so a name only one of the two
--- knows is refused rather than stored and later surprising one of them.
+-- agreement this module implements. PUT /settings checks a new one against Go's
+-- tzdata and then asks this database what it means by the same name — the UTC
+-- offset at a winter instant and a summer one, compared with Go's — so a name
+-- the two read differently is refused rather than stored and later disagreeing
+-- with itself. Knowing the name is not enough: Postgres resolves
+-- pg_timezone_abbrevs first, which makes 'CET' a fixed +01:00 to it and the
+-- zone with summer time to Go.
 ALTER TABLE expenses.settings
     ADD COLUMN time_zone varchar(64) NOT NULL DEFAULT 'Europe/Oslo';
 
@@ -130,6 +143,11 @@ ON CONFLICT (kind, valid_from) DO NOTHING;
 -- name are the operator's to sweep, as they are for any migration that removes
 -- rows the API would have removed through its own door.
 DELETE FROM expenses.entries WHERE claim_id IS NOT NULL;
+
+-- The one-per-day index goes by hand: every column it is on (claim_id,
+-- entry_date, kind) belongs to 00012, so dropping this migration's own columns
+-- would leave it behind.
+DROP INDEX expenses.ux_entries_claim_per_diem_day;
 
 ALTER TABLE expenses.entries
     DROP COLUMN meal_dinner_percent,

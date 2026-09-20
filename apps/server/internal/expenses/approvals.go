@@ -152,7 +152,7 @@ func approvalGroups(userIDs []uuid.UUID, rows []store.ExpensesEntry,
 		}
 		g.user = unit.owner
 		g.claims = append(g.claims, unit.summary)
-		addSummaryToTotals(g.totals, unit.summary)
+		addClaimToTotals(g.totals, unit.figures, false)
 		// A trip's own two counts roll up into its owner's: the card above the
 		// group says how much of this person's work an approver has to look at,
 		// whether it is loose or gathered into a trip.
@@ -183,20 +183,42 @@ type currencyTotal struct {
 	owed  *big.Rat
 }
 
-// addSummaryToTotals folds one travel claim's own per-currency figures into a
+// currencySum is one currency's figures for one travel claim, as exact
+// decimals: what its lines come to, and what of that its owner is owed back.
+type currencySum struct {
+	Currency    string
+	Gross, Owed *big.Rat
+}
+
+// addClaimToTotals folds one travel claim's own per-currency figures into a
 // group's, so a person's total is their loose expenses and their trips
 // together. The claim's figures are already the database's sum of exact
 // numerics (ClaimTotals), so this adds the two sums rather than re-adding the
-// lines — one rounding, as everywhere else here.
-func addSummaryToTotals(totals map[string]*currencyTotal, summary gen.ExpensesClaimSummary) {
-	for _, line := range summary.Totals {
+// lines — one rounding, as everywhere else here — and it adds the *decimals*
+// rather than the floats the response is written in.
+//
+// owedOnly is what keeps the two halves of a group meaning the same thing. The
+// reimbursement list holds only what owes its owner something: its standalone
+// half never carries a company-paid outlay at all, so a group's gross there is
+// "the gross of what is owed". A trip's own gross counts every line it holds,
+// company-paid outlays included, so folding that in would make one figure mean
+// two things in one object. What owes is what the trip contributes there, and
+// owed_to_employee is exactly the sum of the gross of the lines that owe. The
+// approval queue holds whole units whatever they owe, so it adds the whole
+// gross.
+func addClaimToTotals(totals map[string]*currencyTotal, f claimFigures, owedOnly bool) {
+	for _, line := range f.Sums {
 		t, ok := totals[line.Currency]
 		if !ok {
 			t = &currencyTotal{gross: new(big.Rat), owed: new(big.Rat)}
 			totals[line.Currency] = t
 		}
-		t.gross.Add(t.gross, ratFromFloat(line.Gross))
-		t.owed.Add(t.owed, ratFromFloat(line.OwedToEmployee))
+		gross := line.Gross
+		if owedOnly {
+			gross = line.Owed
+		}
+		t.gross.Add(t.gross, gross)
+		t.owed.Add(t.owed, line.Owed)
 	}
 }
 

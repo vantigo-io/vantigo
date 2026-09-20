@@ -16,6 +16,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/expenses/gen"
 	"github.com/vantigo-io/vantigo/server/internal/expenses/store"
 )
@@ -755,6 +756,13 @@ func (s *server) PostExpensesEntries(ctx context.Context, req gen.PostExpensesEn
 		return nil
 	})
 	switch {
+	// The database's own backstop for one per diem day per claim per date: two
+	// days of one date recorded in transactions that never meet take no lock
+	// from each other, and the index is what stops the second. It answers the
+	// very message the Go check would have.
+	case db.IsUniqueViolation(err, perDiemDayIndex):
+		return gen.PostExpensesEntries400ApplicationProblemPlusJSONResponse(
+			invalidEntry(fieldError("entryDate", perDiemDayTaken(p.Parsed.Date)))), nil
 	case err != nil:
 		return nil, err
 	case gone:
@@ -995,6 +1003,21 @@ func (s *server) PutExpensesEntriesById(ctx context.Context, req gen.PutExpenses
 			params.Billable = row.Billable
 			params.MarkupPercent = row.MarkupPercent
 			params.BillRatePerKm = row.BillRatePerKm
+			// The project is carried; what it bills is not, when the save is
+			// writing a per diem day. A per diem is never billed on to a
+			// customer — no door can make one billable — so carrying an
+			// outlay's flag and markup through a kind change would leave a day
+			// answering billable: true, which nothing downstream should ever
+			// have to read past.
+			if p.Parsed.Kind == kindPerDiem {
+				params.BillingLineID = nil
+				params.Billable = false
+				params.MarkupPercent = pgtype.Numeric{}
+				params.BillRatePerKm = pgtype.Numeric{}
+				params.BillAmount = pgtype.Numeric{}
+				updated, err = txq.UpdateEntry(ctx, params)
+				return err
+			}
 			// What it bills is not carried, though: it is worked out again
 			// from those same carried figures and the net or the distance this
 			// save is writing. Copying the stored amount would leave the
@@ -1016,6 +1039,12 @@ func (s *server) PutExpensesEntriesById(ctx context.Context, req gen.PutExpenses
 		return err
 	})
 	switch {
+	// The same backstop on the replace: a save that moves a day onto a date
+	// another transaction has just taken meets the index rather than writing a
+	// second day of it.
+	case db.IsUniqueViolation(err, perDiemDayIndex):
+		return gen.PutExpensesEntriesById400ApplicationProblemPlusJSONResponse(
+			invalidEntry(fieldError("entryDate", perDiemDayTaken(p.Parsed.Date)))), nil
 	case err != nil:
 		return nil, fmt.Errorf("expenses: change an expense: %w", err)
 	case gone:

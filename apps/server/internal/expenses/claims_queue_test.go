@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
 // This file is the three reads a travel claim had to become a unit of: the
@@ -137,6 +139,16 @@ func TestExpensesClaimReimbursement_PaysATripAsOneUnit(t *testing.T) {
 	}
 	if !summary.Capabilities.CanMarkReimbursed {
 		t.Errorf("capabilities = %+v, want canMarkReimbursed", summary.Capabilities)
+	}
+	// The group's own figures mean one thing on both halves. This list holds
+	// only what owes its owner something — a company-paid outlay is never in it
+	// as a loose expense — so a trip contributes what it owes and not what its
+	// lines come to: gross and owed are the same figure here, and the company's
+	// own 500 is in neither.
+	if len(group.Totals) != 1 || group.Totals[0].Gross != 2283.00 ||
+		group.Totals[0].OwedToEmployee != 2283.00 {
+		t.Errorf("group totals = %+v, want 2283,00 both ways — the company's own outlay is owed to nobody",
+			group.Totals)
 	}
 
 	markClaimsReimbursed(t, admin, reimbursedClaimBody([]int64{claim.Id},
@@ -500,5 +512,60 @@ func TestExpensesMeta_CarriesTheBusinessTimeZone(t *testing.T) {
 	}
 	if settings, meta := getSettings(t, employee).TimeZone, getMeta(t, employee).TimeZone; settings != meta {
 		t.Errorf("settings says %q and meta says %q, want one reading", settings, meta)
+	}
+}
+
+// A queue row says what the trip *is*, and — in the half that has been paid —
+// when it was paid back. Both were missing: a claim row could not show a status
+// badge beside the loose expenses' own, and the "already paid" list showed a
+// payment stamp for an expense and none for a trip. The payroll reference is
+// shaped exactly as it is on the claim's own read: the person it paid and
+// whoever reads everybody's expenses, never a project manager as such.
+func TestExpensesClaimQueue_ASummarySaysItsStatusAndItsPayrollRun(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	admin, _ := signIn(t, h, "expenses:manage", "expenses:approve")
+	owner, ownerID := signInAs(t, h, projectKraftVerket, roleMember)
+	manager, _ := signInAs(t, h, projectKraftVerket, roleManager)
+	h.projects.addRole(projectKraftVerket, ownerID, roleMember)
+
+	claim := createClaim(t, owner, map[string]any{"projectId": projectKraftVerket})
+	addLine(t, owner, claim.Id, outlayBody(map[string]any{"projectId": projectKraftVerket}))
+	submitClaims(t, owner, claim.Id)
+
+	// Waiting for a decision: submitted, and no payroll run yet. A project
+	// manager's queue row is the same row, and carries no payroll reference —
+	// there is no stamp on it at all, which is the shaping's own answer for a
+	// trip nobody has paid.
+	for name, c := range map[string]*modtest.Client{"the approver": admin, "the project manager": manager} {
+		queued := claimSummaryByID(t, getApprovals(t, c, "").Data[0].Claims, claim.Id)
+		switch {
+		case queued.Status != "submitted":
+			t.Errorf("%s reads status %q, want the trip's own", name, queued.Status)
+		case queued.Reimbursement != nil:
+			t.Errorf("%s reads reimbursement %+v, want none before a payroll run", name, queued.Reimbursement)
+		}
+	}
+
+	approveClaims(t, admin, claim.Id)
+	markClaimsReimbursed(t, admin, reimbursedClaimBody([]int64{claim.Id},
+		map[string]any{"reference": "LØNN-2026-04"}))
+
+	paid := claimSummaryByID(t, getReimbursements(t, admin, "?state=reimbursed").Data[0].Claims, claim.Id)
+	switch {
+	case paid.Status != "approved":
+		t.Errorf("status = %q, want approved — being paid is not a status of its own", paid.Status)
+	case paid.Reimbursement == nil:
+		t.Fatalf("the paid list's row carries no reimbursement, want the payroll stamp")
+	case paid.Reimbursement.Date != "2026-04-02":
+		t.Errorf("reimbursement = %+v, want the day the run was made", paid.Reimbursement)
+	case paid.Reimbursement.Reference == nil || *paid.Reimbursement.Reference != "LØNN-2026-04":
+		t.Errorf("reference = %v, want the clerk's own for expenses:manage", paid.Reimbursement.Reference)
+	}
+	// The stamp a summary shows is the claim's own, through the same renderer:
+	// what the trip's own read says, a queue row says.
+	if own := getClaim(t, owner, claim.Id); own.Reimbursement == nil ||
+		own.Reimbursement.Date != paid.Reimbursement.Date {
+		t.Errorf("the trip reads %+v, want the summary's own stamp %+v", own.Reimbursement, paid.Reimbursement)
 	}
 }

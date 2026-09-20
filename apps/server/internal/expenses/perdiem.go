@@ -27,13 +27,15 @@ import (
 // thin shell over the second — it writes nothing at all.
 //
 // **How a claim's days are derived.** A claim stores two instants; Postgres'
-// timestamptz keeps the instant and not the offset it was typed in, so there is
-// exactly one derivation of "the day" available and this module uses it
-// everywhere: the UTC calendar day, utcDay(t) (entries_validation.go). It is
-// what claimUnit judges the period lock on, what ListClaims' from/to filter
-// applies in SQL, and what both the within-the-trip rule and the suggestion
-// date a day by. One derivation, so a day a suggestion proposes can never fall
-// outside the trip the save then judges it against.
+// timestamptz keeps the instant and not the offset it was typed in, so which
+// calendar day a trip departed on is a question only the installation can
+// answer. It answers it once, with its business time zone, and this module uses
+// that one derivation everywhere: businessDay(t, zone)
+// (entries_validation.go). It is what claimUnit judges the period lock on, what
+// ListClaims' from/to filter applies in SQL as (departure_at AT TIME ZONE …),
+// and what both the within-the-trip rule and the suggestion date a day by. One
+// derivation, so a day a suggestion proposes can never fall outside the trip
+// the save then judges it against.
 
 // The kinds of per diem day (design §4). Each one names the rate kind it is
 // priced at, except on a claim abroad, where the claim carries its own day rate
@@ -304,6 +306,13 @@ func perDiemNoDayRate(claim store.ExpensesClaim, perDiemType string, date time.T
 	}
 	return fmt.Sprintf("No %s rate applies on %s", perDiemRateKinds[perDiemType], date.Format(time.DateOnly))
 }
+
+// perDiemDayIndex is the partial unique index that holds "one per diem day per
+// claim per date" in the database. Every door decides the rule in Go under the
+// claim's own row lock, so the index is the backstop: what reaches it is a race
+// two locks apart — two days of one date added in transactions that never meet
+// — and what comes back is the very message the Go check would have answered.
+const perDiemDayIndex = "ux_entries_claim_per_diem_day"
 
 // perDiemDayTaken is the entryDate message when the claim already holds a per
 // diem day for that date. One day of a trip is one line, whatever else it
@@ -593,8 +602,10 @@ const perDiemPartPeriodHours = 6 * time.Hour
 //     departure, plus one more when what is left over runs *strictly* longer
 //     than six hours — and never fewer than one, so any overnight trip at all,
 //     from six hours up, is a day. The periods are 24 hours from the departure
-//     instant, never calendar midnights, and each day is dated on the UTC day
-//     its own period starts.
+//     instant, never calendar midnights; the **dates** are consecutive calendar
+//     days from the departure's own day in the installation's business time
+//     zone, which is the same thing as the period's own day except on the two
+//     nights a year the clocks move, when it is the one a traveller means.
 //
 // The six hours therefore reads two ways on purpose: it is inclusive as the
 // threshold a whole trip has to clear (six hours exactly earns a day, with an
@@ -629,12 +640,31 @@ func suggestPerDiem(departure, returns time.Time, overnight bool, loc *time.Loca
 	case duration%period > perDiemPartPeriodHours:
 		days++
 	}
+	// The periods are elapsed time; the **dates** are consecutive calendar days
+	// from the departure's own. Dating day i at the instant its period starts
+	// is the same thing for all but two nights of the year, and wrong on those
+	// two: when the clocks go back, 24 elapsed hours after 00:30 is 23:30 the
+	// same evening, so two days land on one date — which the one-per-date rule
+	// then refuses — and when they go forward, 24 hours after 23:30 is 00:30
+	// the day after next, so a date is skipped. Either way the traveller has to
+	// re-date a day by hand, on the very trips the suggestion is worth most on.
+	// "The second day of the trip" is a calendar day to whoever fills the form
+	// in, and now to this too.
+	first := businessDay(departure, loc)
+	last := businessDay(returns, loc)
 	out := make([]suggestedDay, 0, days)
 	for i := range days {
-		out = append(out, suggestedDay{
-			Date: businessDay(departure.Add(time.Duration(i)*period), loc),
-			Type: perDiemOvernightHtl,
-		})
+		date := first.AddDate(0, 0, i)
+		// The suggestion never proposes a day the save would refuse as outside
+		// the trip. It cannot happen: day i needs more than i × 24 hours of
+		// trip behind it, and a single daylight-saving shift is an hour, so the
+		// return's own day is always at least the last date. Answered rather
+		// than asserted, because a change to the counting above should lose a
+		// day here rather than hand back one the claim refuses.
+		if date.After(last) {
+			break
+		}
+		out = append(out, suggestedDay{Date: date, Type: perDiemOvernightHtl})
 	}
 	return out
 }
@@ -672,6 +702,17 @@ func (s *server) PostExpensesClaimsByIdPerDiemSuggestion(ctx context.Context,
 	if !found {
 		return gen.PostExpensesClaimsByIdPerDiemSuggestion404Response{}, nil
 	}
+	// After the 404, so a body that says nothing tells a stranger nothing about
+	// which claims exist. There is no default for it: whether the traveller
+	// slept away decides whether the trip is counted in 24-hour periods or as a
+	// single day, the two instants cannot tell, and a suggestion worked out from
+	// a guess is worse than a refusal — it is confident, and a traveller has no
+	// way to see that it guessed.
+	if body.Overnight == nil {
+		return gen.PostExpensesClaimsByIdPerDiemSuggestion400ApplicationProblemPlusJSONResponse(
+			invalidSuggestion(fieldError("overnight",
+				"Say whether the traveller stayed the night away from home; the trip's times cannot"))), nil
+	}
 
 	lines, err := q.ListClaimLines(ctx, &claim.ID)
 	if err != nil {
@@ -684,7 +725,7 @@ func (s *server) PostExpensesClaimsByIdPerDiemSuggestion(ctx context.Context,
 		}
 	}
 
-	days := suggestPerDiem(claim.DepartureAt, claim.ReturnAt, body.Overnight, c.zone())
+	days := suggestPerDiem(claim.DepartureAt, claim.ReturnAt, *body.Overnight, c.zone())
 	pricer, err := s.suggestionPricer(ctx, q, claim, days)
 	if err != nil {
 		return nil, err
@@ -706,6 +747,11 @@ func (s *server) PostExpensesClaimsByIdPerDiemSuggestion(ctx context.Context,
 			}
 			suggested.DayRate = ptrTo(floatOfRat(rate))
 			suggested.Amount = ptrTo(floatOfRat(amount))
+			// The currency those two are in, so a client shows a figure with
+			// its unit rather than inferring one from the claim. It is present
+			// exactly when they are: a day the table prices nothing for has no
+			// amount to put a currency on.
+			suggested.Currency = ptrTo(perDiemCurrency(claim, c.Settings.DefaultCurrency))
 		} else if !errors.Is(err, errNoRate) {
 			return nil, err
 		}
