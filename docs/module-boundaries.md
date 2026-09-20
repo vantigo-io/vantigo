@@ -32,15 +32,16 @@ Communications' outbox is the working example.
 5. **One module, one mount.** A module exposes one `Module()` returning a
    `module.Module`: its name, its `Mount`, the permissions it contributes, the
    background workers it contributes, and the cross-module contracts it *provides*.
-   There are five provider slots, each filled by at most one enabled module:
+   There are six provider slots, each filled by at most one enabled module:
    `Directory` (`contracts.CustomerDirectory`, customers), `Users`
    (`contracts.UserDirectory`, identity), `Products` (`contracts.ProductCatalog`,
-   products), `Projects` (`contracts.ProjectDirectory`, projects) and `Actuals`
-   (`contracts.ProjectActuals`, time). `module.Compose` mounts each module at
+   products), `Projects` (`contracts.ProjectDirectory`, projects), `Actuals`
+   (`contracts.ProjectActuals`, time) and `Expenses`
+   (`contracts.ProjectExpenses`, expenses). `module.Compose` mounts each module at
    `/api/v1/<name>/` and builds every provider before any `Mount` runs, so a
-   module's `Deps` already carries what it consumes; `Actuals` is resolved last,
-   after `Projects`, so an actuals provider's *constructor* is allowed to read
-   the project directory (time's does not, but a future provider could).
+   module's `Deps` already carries what it consumes; `Actuals` and `Expenses` are
+   resolved last, after `Projects`, so those providers' *constructors* are allowed
+   to read the project directory (neither does, but a future provider could).
 6. **Never reach around the boundary.** Do not call another module's HTTP endpoints
    from inside the process, and do not reach into another module's schema.
 7. **Frontend packages are isolated too.** A module frontend package (for instance
@@ -63,7 +64,8 @@ Communications' outbox is the working example.
   invalid or duplicate permission key, a `Mount` error, a path two modules both
   declare, a component two modules declare differently under the same name, or two
   modules both declaring the same provider — a customer directory, a user directory,
-  a product catalog, a project directory or project actuals — naming both.
+  a product catalog, a project directory, project actuals or project expenses —
+  naming both.
 - **Rule 7**: `no-restricted-imports` in each module frontend's `eslint.config.js`,
   run by `bun run frontend:lint` locally and in CI.
 
@@ -116,6 +118,20 @@ directions are resolved by `Compose` before any module mounts, so there is no ru
 call in either direction that could cycle — `internal/projects` still imports no
 other module (depguard) and no SQL of either module crosses into the other's schema.
 
+`contracts.ProjectExpenses` is the third optional contract and the mirror of the
+second: **Expenses provides it, Projects optionally consumes it** — what a
+project's expenses cost and bill, beside the hours Time already reports. It is the
+first contract whose provider requires *nothing* in return: Expenses depends on
+nobody but identity, so a `MODULES=expenses` installation provides a contract
+nothing consumes, and a `MODULES=projects,time` one consumes nothing of it. Where
+`ProjectActuals` takes the project's currency in on the request, this one reports
+**per currency** and never converts: an expense carries its own currency per line,
+and a provider that folded them into the project's would have had to ask the
+project directory while serving — the module cycle at request time both contracts
+are shaped to avoid. A consumer with `Deps.Expenses` nil must say "expense
+tracking is off" the way it says `timeTracking: false` today — never zeroes
+standing in for "not enabled".
+
 A consumed contract can also narrow **who** may reach the data it exposes, not only
 which module can. Projects' economy reads (`GET /{id}/economy`, the portfolio, the
 dashboard's budget alerts) sit behind Projects' own `projects:access` and, for
@@ -146,9 +162,14 @@ lock**, enforced by fakes that record any call made under one — the economy re
 both sides take no lock at all.
 
 **Expenses depends on nobody but identity.** Unlike every other business module,
-it needs no config-checked dependency and no default provider slot:
-`MODULES=expenses` alone is a valid installation, and so is
-`MODULES=customers,expenses`. `contracts.ProjectDirectory` is read, but purely
+it needs no config-checked dependency at all: `MODULES=expenses` alone is a valid
+installation, and so is `MODULES=customers,expenses`. It fills one provider slot —
+`Expenses` (`contracts.ProjectExpenses`, above), served from its own tables by
+`internal/expenses/projectexpenses.go`, which takes the pool and nothing else and
+asks the project directory nothing while it serves — and that is not a dependency
+either way: an installation with no `projects` provides it to nobody, and one
+without `expenses` leaves the consumer's slot nil.
+`contracts.ProjectDirectory` is read, but purely
 *optionally* — `Deps.Projects` is nil when `projects` is not enabled, `GET /meta`
 answers `projectsAvailable: false`, and every project-shaped request field (a
 project id, a billing line, `billable`, a markup, a customer rate per kilometre) is

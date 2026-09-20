@@ -123,6 +123,7 @@ type setup struct {
 	products    contracts.ProductCatalog
 	projects    contracts.ProjectDirectory
 	actuals     contracts.ProjectActuals
+	expenses    contracts.ProjectExpenses
 	smtpVerify  func(ctx context.Context, cfg config.MailConfig) error
 	smtpSend    func(ctx context.Context, cfg config.MailConfig, msg mail.Outbound) error
 	objectStore storage.ObjectStore
@@ -215,6 +216,24 @@ func WithProjects(p contracts.ProjectDirectory) Option {
 // would provide it.
 func WithActuals(p contracts.ProjectActuals) Option {
 	return func(s *setup) { s.actuals = p }
+}
+
+// WithExpenses sets Deps.Expenses directly to p, for a module under test that
+// reads what a project's expenses cost and bill (contracts.ProjectExpenses)
+// without composing the module that owns the expenses beside it — depguard
+// forbids the module's own test package from importing expenses, the same
+// reason WithProducts, WithProjects and WithActuals give. The fake decides
+// what the module under test sees recorded, which is the only way a test can
+// ask for figures it chose. module.Compose only ever overwrites
+// Deps.Expenses when one of the composed modules declares Module.Expenses, so
+// a value set here survives Compose unchanged, exactly as WithActuals'
+// provider does.
+//
+// Leaving it out is the installation without expenses: Deps.Expenses stays
+// nil, which is the case a consumer must handle as "expense tracking is off"
+// rather than as zeroes.
+func WithExpenses(p contracts.ProjectExpenses) Option {
+	return func(s *setup) { s.expenses = p }
 }
 
 // WithSMTPVerify sets the function Deps.SMTPVerify carries, for a module
@@ -367,6 +386,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		Products:      s.products,
 		Projects:      s.projects,
 		Actuals:       s.actuals,
+		Expenses:      s.expenses,
 		SMTPVerify:    s.smtpVerify,
 		SMTPSend:      s.smtpSend,
 		ObjectStore:   s.objectStore,

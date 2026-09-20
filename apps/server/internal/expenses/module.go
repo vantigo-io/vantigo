@@ -92,15 +92,22 @@ var limits = map[string]ratelimit.Policy{
 }
 
 // Module is expenses as a platform module: its contract mounted under
-// /api/v1/expenses/ and its four permissions in the composed catalog. It
-// provides no contract of its own and requires none — a nil Deps.Projects is a
-// real installation, not a composition bug, which is why mount does not refuse
-// one the way time's does.
+// /api/v1/expenses/, its four permissions in the composed catalog, and the one
+// contract it provides. It requires none — a nil Deps.Projects is a real
+// installation, not a composition bug, which is why mount does not refuse one
+// the way time's does.
+//
+// Expenses is contracts.ProjectExpenses (projectexpenses.go): what a project's
+// expenses cost and bill, for a module that owns budgets to read. Providing it
+// is not a dependency in either direction — an installation may run this module
+// with no projects at all, and one running projects without this module simply
+// finds Deps.Expenses nil.
 func Module() module.Module {
 	return module.Module{
 		Name:        "expenses",
 		Permissions: permissions,
 		Mount:       mount,
+		Expenses:    newProjectExpenses,
 	}
 }
 

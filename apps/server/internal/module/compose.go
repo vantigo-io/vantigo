@@ -24,8 +24,8 @@ import (
 // duplicate name, an invalid or duplicate permission, a Mount error, a path
 // two modules both declare, a component two modules declare differently
 // under the same name, two modules both declaring a customer directory, a
-// user directory, a product catalog, a project directory or project actuals
-// (naming both), or a nil Deps.Config: enablement (which modules MODULES
+// user directory, a product catalog, a project directory, project actuals or
+// project expenses (naming both), or a nil Deps.Config: enablement (which modules MODULES
 // turns on) is meaningless without one, and every real caller already loads
 // one before composing.
 func Compose(deps Deps, mods ...Module) (http.Handler, error) {
@@ -153,10 +153,10 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	}
 
 	// The customer directory, the user directory, the product catalog, the
-	// project directory and project actuals are the sanctioned cross-module
-	// reads (contracts.CustomerDirectory, UserDirectory, ProductCatalog,
-	// ProjectDirectory, ProjectActuals): at most one enabled module may
-	// declare each. Each is resolved here, in this order, before any Mount
+	// project directory, project actuals and project expenses are the
+	// sanctioned cross-module reads (contracts.CustomerDirectory,
+	// UserDirectory, ProductCatalog, ProjectDirectory, ProjectActuals,
+	// ProjectExpenses): at most one enabled module may declare each. Each is resolved here, in this order, before any Mount
 	// runs, so its result can be copied onto every module's Deps below —
 	// including its own provider's, which may need it too — and so a later
 	// slot's provider func may use an earlier one already set on deps
@@ -209,6 +209,19 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	}
 	if actualsProvider != nil {
 		deps.Actuals = actualsProvider.Actuals(deps)
+	}
+
+	// Project expenses resolves beside actuals, and for the same reason: the
+	// module that owns expenses may read the one that owns projects while its
+	// provider is built, never while it serves (contracts.ProjectExpenses).
+	// The two are independent — an installation may have either, both or
+	// neither.
+	expensesProvider, err := soleProvider(mods, "project expenses", func(m Module) bool { return m.Expenses != nil })
+	if err != nil {
+		return nil, err
+	}
+	if expensesProvider != nil {
+		deps.Expenses = expensesProvider.Expenses(deps)
 	}
 
 	outer := http.NewServeMux()
