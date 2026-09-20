@@ -74,7 +74,7 @@ describe("ProjectExpensesPanel", () => {
     // The two that are not approved say so in words: for somebody who may
     // read the figures without opening the expenses, this is the only place
     // that can tell them apart.
-    expect(nok).toHaveTextContent("Awaiting approval — not approved yet");
+    expect(nok).toHaveTextContent("Submitted — awaiting approval");
     expect(nok).toHaveTextContent("700.00");
     expect(nok).toHaveTextContent("Draft — not submitted yet, or rejected");
     expect(nok).toHaveTextContent("Passed on to the customer");
@@ -411,7 +411,7 @@ describe("ProjectExpensesPanel", () => {
     panel();
 
     const line = await row("Drive to the site");
-    expect(within(line).getByRole("link", { name: "Open the travel claim" })).toHaveAttribute(
+    expect(within(line).getByRole("link", { name: "Open the travel claim of Drive to the site" })).toHaveAttribute(
       "href",
       "/expenses/claims/1012",
     );
@@ -614,27 +614,109 @@ describe("ProjectExpensesPanel", () => {
     expect(await screen.findByText("Nothing is ready to invoice")).toBeInTheDocument();
   });
 
-  it("says what the server said when the ready list is refused, and leaves All one click away", async () => {
-    // What a line bills is the project's money, so `toInvoice=true` is for the
-    // same people the summary is. The chip is only offered when the summary
-    // was readable, so this needs the rights to have gone between the two
-    // reads — and when it happens the refusal is shown, not an empty table.
+  it("shows the server's own refusal when the ready filter is the one thing refused", async () => {
+    // Refused on **that request only**: the rows under "All" are answered, so
+    // the alert can only be about the chip. (`entryList`, which replaces every
+    // list answer, made the earlier version of this test pass before the chip
+    // was ever clicked.) The chip is offered only when the summary was
+    // readable, so this is rights going between the two reads.
     stubExpensesApi({
-      entries: [],
-      entryList: problemResponse(403, "Forbidden", {
-        toInvoice: ["'toInvoice=true' is for whoever may see what this project's lines bill."],
-      }),
+      entries: [outlay({ description: "Taxi to the airport", project: BOOKED })],
+      refuseToInvoice: true,
       projectSummary: projectSummary({
-        currencies: [summaryCurrency({ total: summaryBucket({ count: 2, cost: 100 }), readyCount: 1 })],
+        currencies: [summaryCurrency({ total: summaryBucket({ count: 1, cost: 500 }), readyCount: 1 })],
       }),
     });
     panel();
 
-    await userEvent.click(await screen.findByRole("radio", { name: "Ready to invoice" }));
+    await row("Taxi to the airport");
 
-    expect(await screen.findByText("Could not load the project's expenses")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("radio", { name: "Ready to invoice" }));
+    const alert = await screen.findByText("Could not load the project's expenses");
+    // What the server actually said, not merely that something failed.
+    expect(alert.closest("[role='alert']")).toHaveTextContent("You do not have permission to access this resource.");
     expect(screen.queryByText("Nothing is ready to invoice")).not.toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "All" })).toBeEnabled();
+
+    // And "All" still answers, so the tab is not a dead end.
+    await userEvent.click(screen.getByRole("radio", { name: "All" }));
+    expect(await screen.findByText("Taxi to the airport")).toBeInTheDocument();
+  });
+
+  it("re-reads the totals when the ready filter is refused, because the rights just changed", async () => {
+    // The figures above the alert are ones this caller may no longer be able
+    // to read; leaving them on screen from cache would be showing money the
+    // server has just said no to.
+    const fetchMock = stubExpensesApi({
+      entries: [outlay({ project: BOOKED })],
+      refuseToInvoice: true,
+      projectSummary: projectSummary({
+        currencies: [summaryCurrency({ total: summaryBucket({ count: 1, cost: 500 }), readyCount: 1 })],
+      }),
+    });
+    panel();
+
+    await row("Taxi to the airport");
+    const before = fetchMock.actualCalls.filter(([url]) => String(url).includes("/summary")).length;
+    await userEvent.click(screen.getByRole("radio", { name: "Ready to invoice" }));
+    await screen.findByText("Could not load the project's expenses");
+
+    await waitFor(() =>
+      expect(fetchMock.actualCalls.filter(([url]) => String(url).includes("/summary")).length).toBeGreaterThan(before),
+    );
+  });
+
+  it("does not present the previous filter's rows as the answer to the new one", async () => {
+    // `keepPreviousData` keeps the old page on screen while the new one is in
+    // flight, which is what stops the table flashing — but undimmed it reads
+    // as "these are the ready lines", and a count taken from it would flash
+    // the "totals cover more" sentence at the wrong moment.
+    const stub = stubExpensesApi({
+      entries: [
+        outlay({ id: 511, description: "Not ready at all", entryDate: "2026-09-20", project: BOOKED }),
+        outlay({
+          id: 512,
+          description: "Ready and priced",
+          project: BOOKED,
+          status: "approved",
+          billable: true,
+          billAmount: 800,
+        }),
+      ],
+      hold: [`/api/v1/expenses/entries?projectId=${PROJECT}&toInvoice=true&page=1`],
+      projectSummary: projectSummary({
+        currencies: [summaryCurrency({ total: summaryBucket({ count: 9, cost: 500 }), readyCount: 1 })],
+      }),
+    });
+    panel();
+
+    await screen.findByText("Not ready at all");
+    await userEvent.click(screen.getByRole("radio", { name: "Ready to invoice" }));
+
+    await waitFor(() => expect(screen.getByTestId("project-expenses-rows")).toHaveAttribute("aria-busy", "true"));
+    // Still the previous filter's rows — and no sentence measured against
+    // them: under "Ready" the count to compare with is Σ readyCount (1), and
+    // a page of not-ready rows would make it look short.
+    expect(screen.getByText("Not ready at all")).toBeInTheDocument();
+    expect(screen.queryByTestId("project-expenses-partial")).not.toBeInTheDocument();
+
+    stub.release();
+    await screen.findByText("Ready and priced");
+    await waitFor(() => expect(screen.getByTestId("project-expenses-rows")).toHaveAttribute("aria-busy", "false"));
+    expect(screen.queryByText("Not ready at all")).not.toBeInTheDocument();
+  });
+
+  it("names the claim link after the row it is on", async () => {
+    stubExpensesApi({
+      claims: [claim({ id: 1012, project: BOOKED })],
+      entries: [mileage({ id: 605, claimId: 1012, description: "Drive to the site", project: BOOKED })],
+      projectSummary: projectSummary({
+        currencies: [summaryCurrency({ total: summaryBucket({ count: 1, cost: 636 }) })],
+      }),
+    });
+    panel();
+
+    const line = await row("Drive to the site");
+    expect(within(line).getByRole("link", { name: "Open the travel claim of Drive to the site" })).toBeInTheDocument();
   });
 
   it("renders the not-available state rather than crashing without the projects module", async () => {

@@ -19,7 +19,7 @@ import { DateInput } from "@mantine/dates";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { deleteReceipt } from "../api/attachments";
 import type { Claim } from "../api/claims";
@@ -342,7 +342,12 @@ const ExpenseForm = ({
       // only where the trip is booked on something at all.
       ...(claim
         ? { claimId: claim.id, ...(meta?.projectsAvailable && claim.project ? { billable: values.billable } : {}) }
-        : meta?.projectsAvailable && values.projectId
+        : // `fixedProject` existing is already proof that projects exist —
+          // it came from `GET /projects`. Without this, a `/meta` that failed
+          // while the project list and the summary succeeded would open the
+          // form from a project's own page and save the line on **no
+          // project**, which is not something this form may do.
+          (fixedProject || meta?.projectsAvailable) && values.projectId
           ? {
               projectId: Number(values.projectId),
               ...(values.billingLineId ? { billingLineId: Number(values.billingLineId) } : {}),
@@ -460,6 +465,13 @@ const ExpenseForm = ({
     });
 
   const billing = saved?.capabilities.canSeeBilling ? saved.billing : undefined;
+
+  // Nothing here can be filled in honestly before `/meta` has answered: the
+  // currency, the categories, the receipt rule and whether there are projects
+  // at all come from it, and a form opened without them would quietly save a
+  // different expense from the one on screen. The travel claim's form waits
+  // the same way.
+  if (!meta) return <ContentSkeleton rows={5} rowHeight={48} />;
 
   // An expense the caller may see but not change is written out in full
   // rather than shown as a form nothing in it can be typed into — the same
@@ -622,7 +634,7 @@ const ExpenseForm = ({
           </Stack>
         )}
 
-        {claim !== undefined && meta?.projectsAvailable && claim.project && (
+        {claim !== undefined && meta.projectsAvailable && claim.project && (
           <>
             <Divider />
             <Stack gap="xs">
@@ -647,7 +659,7 @@ const ExpenseForm = ({
             a picker, exactly as a trip's line states the trip's project. The
             billing line and the billable flag are still the caller's to set —
             they are about this cost, not about which project it is on. */}
-        {claim === undefined && fixedProject !== undefined && meta?.projectsAvailable && (
+        {claim === undefined && fixedProject !== undefined && meta.projectsAvailable && (
           <>
             <Divider />
             <Stack gap="xs">
@@ -679,11 +691,20 @@ const ExpenseForm = ({
                   {t("pricingIsTheProjects")}
                 </Text>
               )}
+              {/* The same tail as the picker mode: once a draft is saved the
+                  form stays open, and what the customer is billed belongs
+                  under the switch that decided it. */}
+              {billing && (
+                <Stack gap={2} data-testid="expense-billing">
+                  <Title order={6}>{t("billingHeading")}</Title>
+                  <Text size="sm">{`${t("billAmount")}: ${format.money(billing.billAmount, currency)}`}</Text>
+                </Stack>
+              )}
             </Stack>
           </>
         )}
 
-        {claim === undefined && fixedProject === undefined && meta?.projectsAvailable && (
+        {claim === undefined && fixedProject === undefined && meta.projectsAvailable && (
           <>
             <Divider />
             {projectOptions.length === 0 && !values.projectId ? (

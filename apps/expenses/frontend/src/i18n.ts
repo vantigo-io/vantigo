@@ -512,7 +512,7 @@ export const expensesCatalog = {
     anotherCurrency:
       "In another currency ({{currency}}) — not converted, and not part of the project's economy figures",
     bucketApproved: "Approved",
-    bucketSubmitted: "Awaiting approval — not approved yet",
+    bucketSubmitted: "Submitted — awaiting approval",
     bucketDraft: "Draft — not submitted yet, or rejected",
     bucketTotal: "Total",
     toTheCustomer: "Passed on to the customer",
@@ -535,6 +535,7 @@ export const expensesCatalog = {
     totalsButNotTheExpenses: "You can see this project's totals, but not the individual expenses behind them.",
     recordACost: "Record a cost",
     openTheTravelClaim: "Open the travel claim",
+    openTheTravelClaimOf: "Open the travel claim of {{description}}",
     partOfTravelClaim: "Part of a travel claim",
 
     categories: "Categories",
@@ -1066,15 +1067,15 @@ export const expensesCatalog = {
     projectOwnCurrency: "{{currency}} — prosjektets egen valuta",
     anotherCurrency: "I en annen valuta ({{currency}}) — ikke regnet om, og ikke med i prosjektets økonomitall",
     bucketApproved: "Godkjent",
-    bucketSubmitted: "Venter på godkjenning — ikke godkjent ennå",
-    bucketDraft: "Kladd — ikke sendt inn ennå, eller avvist",
+    bucketSubmitted: "Sendt inn — venter på godkjenning",
+    bucketDraft: "Utkast — ikke sendt inn ennå, eller avvist",
     bucketTotal: "Totalt",
     toTheCustomer: "Til kunden",
-    readyToInvoice: "Klar til fakturering",
+    readyToInvoice: "Klart til fakturering",
     invoicedAlready: "Fakturert",
     countAndAmount: "{{count}} · {{amount}}",
-    oneUnpricedExpense: "1 utlegg som skal viderefaktureres mangler pris",
-    unpricedExpenses: "{{count}} utlegg som skal viderefaktureres mangler pris",
+    oneUnpricedExpense: "1 fakturerbart utlegg mangler pris",
+    unpricedExpenses: "{{count}} fakturerbare utlegg mangler pris",
     lastExpenseOn: "Siste utlegg: {{date}}",
     noProjectExpenses: "Ingen utlegg på dette prosjektet ennå",
     noProjectExpensesDescription:
@@ -1083,12 +1084,13 @@ export const expensesCatalog = {
     filterAllExpenses: "Alle",
     nothingReadyToInvoice: "Ingenting er klart til fakturering",
     nothingReadyToInvoiceDescription:
-      "En linje er klar når utlegget er godkjent, merket for viderefakturering og priset — og den forsvinner herfra idet den merkes som fakturert.",
+      "En linje er klar når utlegget er godkjent, merket som fakturerbart og priset — og den forsvinner herfra idet den merkes som fakturert.",
     totalsCoverMoreThanTheList:
       "Summene dekker alle utleggene på prosjektet. Listen viser dem du kan åpne: dine egne — og alle sammen hvis du leder prosjektet eller kan se alle utlegg.",
     totalsButNotTheExpenses: "Du kan se summene for prosjektet, men ikke de enkelte utleggene bak dem.",
     recordACost: "Før en kostnad",
     openTheTravelClaim: "Åpne reisen",
+    openTheTravelClaimOf: "Åpne reisen til {{description}}",
     partOfTravelClaim: "Del av en reise",
 
     categories: "Kategorier",

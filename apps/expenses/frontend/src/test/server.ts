@@ -136,6 +136,9 @@ export interface ExpensesServer {
   upload?: (entryId: number, file: File) => Response | undefined;
   /**
    * Paths whose answer is held back until the stub's `release()` is called —
+   * matched against the path, or against the path **with its query** for the
+   * entries list, so a test can hold one filter's read while another's
+   * answers and see what the page does with the previous one meanwhile —
    * a read that is still in flight while another one has already landed. It
    * is what lets a test put `/meta` *after* the claim it is about, which is
    * the order a cold deep link produces and the order a page that derives a
@@ -1549,10 +1552,13 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
         .filter((entry) => !to || entry.entryDate <= to)
         .filter((entry) => reimbursed === null || (entry.reimbursement !== undefined) === (reimbursed === "true"))
         .sort((a, b) => (a.entryDate === b.entryDate ? b.id - a.id : a.entryDate < b.entryDate ? 1 : -1));
-      return Promise.resolve(
-        jsonResponse(
-          200,
-          page(renderEntries(matching), Number(query.get("page") ?? 1), server.pageSize ?? LIST_DEFAULT_PAGE_SIZE),
+      return maybeHold(
+        `${path}${url.search}`,
+        Promise.resolve(
+          jsonResponse(
+            200,
+            page(renderEntries(matching), Number(query.get("page") ?? 1), server.pageSize ?? LIST_DEFAULT_PAGE_SIZE),
+          ),
         ),
       );
     }

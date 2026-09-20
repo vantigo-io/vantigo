@@ -67,10 +67,18 @@ export interface ExpenseFilters {
    * `true` lists exactly the lines a project's `readyCount` counts — the unit
    * approved through its claim, billable, priced, not invoiced, never a per
    * diem day — under the very predicate that figure is summed with, so the
-   * header and the rows under it can never disagree. It **needs** a
-   * `projectId` (invoicing is done one project at a time) and cannot be
-   * combined with a `status` other than `approved`; both are refused with a
-   * 400 rather than quietly answered with an empty page.
+   * header and the rows under it can never disagree.
+   *
+   * It **needs** a `projectId` (invoicing is done one project at a time) and
+   * cannot be combined with a `status` other than `approved` or with
+   * `kind=per_diem`; each is refused with a **400** rather than quietly
+   * answered with an empty page. The query is validated first, and only then
+   * does the server ask who is asking: what a line bills is the project's
+   * money, so this filter is for whoever has financial rights on the project —
+   * the same callers the summary is for — and everyone else is refused with
+   * the access layer's uniform **403**.
+   *
+   * `false` is the parameter left out: no filter, and none of those rules.
    */
   toInvoice?: boolean;
   page?: number;
