@@ -20,6 +20,14 @@ export interface EntryDrawerProps {
   /** The expense being looked at, or null when the drawer is closed. */
   expense: Expense | null;
   onClose: () => void;
+  /**
+   * Called after any write here that changes what a project's expenses come
+   * to — approving, taking an approval back, rejecting, replacing a rate,
+   * pricing, and marking a line invoiced or not. This package's own caches are
+   * refreshed by the writes themselves; this is for a host that mounts the
+   * drawer beside another module's figures and has to refresh those too.
+   */
+  onChanged?: () => void;
 }
 
 /**
@@ -32,15 +40,23 @@ export interface EntryDrawerProps {
  * refreshing underneath never changes it, so two people editing the same
  * expense still get the 409 that is the point of the guard.
  */
-export const EntryDrawer = ({ expense, onClose }: EntryDrawerProps) => {
+export const EntryDrawer = ({ expense, onClose, onChanged }: EntryDrawerProps) => {
   return (
     <Drawer opened={expense !== null} onClose={onClose} position="right" size="lg" title={expense?.description ?? ""}>
-      {expense && <EntryActions key={expense.id} expense={expense} onClose={onClose} />}
+      {expense && <EntryActions key={expense.id} expense={expense} onClose={onClose} onChanged={onChanged} />}
     </Drawer>
   );
 };
 
-const EntryActions = ({ expense, onClose }: { expense: Expense; onClose: () => void }) => {
+const EntryActions = ({
+  expense,
+  onClose,
+  onChanged,
+}: {
+  expense: Expense;
+  onClose: () => void;
+  onChanged?: () => void;
+}) => {
   const { t } = useI18n("expenses");
   const queryClient = useQueryClient();
   // The expense as this drawer knows it: the one it opened on, then whatever
@@ -59,6 +75,7 @@ const EntryActions = ({ expense, onClose }: { expense: Expense; onClose: () => v
     setOverriding(null);
     setPricing(null);
     setInvoicing(null);
+    onChanged?.();
   };
 
   // The other end of the invoicing track, behind a confirm — the same hook the
@@ -72,6 +89,7 @@ const EntryActions = ({ expense, onClose }: { expense: Expense; onClose: () => v
       await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
       notifications.show({ color: "teal", title, message: current.description });
       if (moved) saved(moved);
+      else onChanged?.();
       onClose();
     },
     onError: (error: Error) => {
@@ -142,6 +160,7 @@ const EntryActions = ({ expense, onClose }: { expense: Expense; onClose: () => v
         onClose={() => setRejecting(false)}
         onRejected={() => {
           setRejecting(false);
+          onChanged?.();
           onClose();
         }}
       />

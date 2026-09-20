@@ -3,6 +3,7 @@ import type { ExpenseCategory } from "../api/categories";
 import type { Claim, ClaimListItem, ClaimSummary, PerDiemSuggestedDay } from "../api/claims";
 import type { Expense, ExpenseAttachment, ExpenseInput, ExpenseUpdateInput } from "../api/entries";
 import type { ExpensesMeta } from "../api/meta";
+import type { ProjectExpensesBucket, ProjectExpensesCurrency, ProjectExpensesSummary } from "../api/project-expenses";
 import type { ExpenseProjectOption } from "../api/projects";
 import type { ExpenseRate } from "../api/rates";
 import type { ExpenseReimbursementGroup } from "../api/reimbursements";
@@ -63,6 +64,33 @@ export interface ExpensesServer {
    */
   frozenReads?: boolean;
   projects?: Read<ExpenseProjectOption[]>;
+  /**
+   * What `GET /projects/{projectId}/summary` answers.
+   *
+   * Left out, it is **derived from the entries store** under the server's own
+   * rules — bucketed by the *unit's* status (a claim's line by its claim, a
+   * rejected expense as a draft), per currency and never converted, with
+   * ready / invoiced / unpriced pinned per currency and never a per diem day
+   * — so a cost recorded or a line marked invoiced in one step moves the
+   * figures in the next read exactly as the server would.
+   *
+   * A `Response` puts a refusal in its place: the module answers **one bare
+   * 404** for an installation with no projects, an unknown project and a
+   * caller without financial rights alike, which is what the tab must read as
+   * "not yours" rather than as a failure.
+   *
+   * An explicit summary object is how a test models the seam the store cannot:
+   * the aggregate and the rows are gated differently, so the totals may cover
+   * expenses the list is not allowed to show.
+   */
+  projectSummary?: Read<ProjectExpensesSummary>;
+  /** What the derived summary reports as `capabilities.canRecord`; false by default. */
+  canRecord?: boolean;
+  /**
+   * The project's own currency, as the derived summary reports it. Absent
+   * models a project with no currency, where no card is the project's own.
+   */
+  projectCurrency?: string;
   rates?: Read<ExpenseRate[]>;
   stats?: Read<ExpenseStats>;
   /** The caller, whose expenses `userId=` narrows the list to. */
@@ -356,6 +384,87 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
   };
 
   /**
+   * The status the line is judged by: its **claim's** when it is a trip's
+   * line, its own otherwise. `COALESCE(claim.status, entry.status)`, in the
+   * same words as the SQL every read of this module uses.
+   */
+  const unitStatusOf = (entry: Expense): Expense["status"] =>
+    entry.claimId === undefined ? entry.status : (findClaim(entry.claimId)?.status ?? entry.status);
+
+  /** Which bucket a line falls in. A **rejected** expense counts as a draft: it is back with its owner. */
+  const bucketOf = (entry: Expense): "approved" | "submitted" | "draft" =>
+    unitStatusOf(entry) === "approved" ? "approved" : unitStatusOf(entry) === "submitted" ? "submitted" : "draft";
+
+  /**
+   * Ready to invoice, in the words the provider sums it and
+   * `GET /entries?toInvoice=true` lists it: the **unit** approved, the line
+   * billable, a bill amount present, not invoiced yet, and never a per diem
+   * day — which the invoicing door refuses outright.
+   */
+  const isReady = (entry: Expense): boolean =>
+    bucketOf(entry) === "approved" &&
+    entry.billable &&
+    entry.billing !== undefined &&
+    entry.billing.invoice === undefined &&
+    entry.kind !== "per_diem";
+
+  /**
+   * One project's expenses in sum, per currency, by currency code ascending.
+   * `total` is carried beside the three buckets because the server rounds each
+   * of them once on its own — a client that adds them up is reading a figure
+   * nobody published.
+   */
+  const projectSummaryOf = (projectId: number): ProjectExpensesSummary => {
+    const mine = entries.filter((entry) => entry.project?.id === projectId);
+    const byCurrency = new Map<string, ProjectExpensesCurrency>();
+    const empty = (): ProjectExpensesBucket => ({ count: 0, cost: 0, billAmount: 0 });
+    for (const entry of mine) {
+      const figures =
+        byCurrency.get(entry.currency) ??
+        ({
+          currency: entry.currency,
+          approved: empty(),
+          submitted: empty(),
+          draft: empty(),
+          total: empty(),
+          readyCount: 0,
+          readyAmount: 0,
+          invoicedCount: 0,
+          invoicedAmount: 0,
+          unpricedCount: 0,
+        } satisfies ProjectExpensesCurrency);
+      const bills = entry.billable ? (entry.billing?.billAmount ?? 0) : 0;
+      for (const bucket of [figures[bucketOf(entry)], figures.total]) {
+        bucket.count += 1;
+        bucket.cost = round2(bucket.cost + entry.netAmount);
+        bucket.billAmount = round2(bucket.billAmount + bills);
+      }
+      if (isReady(entry)) {
+        figures.readyCount += 1;
+        figures.readyAmount = round2(figures.readyAmount + bills);
+      }
+      if (entry.billing?.invoice !== undefined) {
+        figures.invoicedCount += 1;
+        figures.invoicedAmount = round2(figures.invoicedAmount + bills);
+      }
+      // A billable line with no bill amount at all: counted, never billed as
+      // zero. A per diem day is never billable, so it is never in this figure.
+      if (entry.billable && entry.billing === undefined && entry.kind !== "per_diem") figures.unpricedCount += 1;
+      byCurrency.set(entry.currency, figures);
+    }
+    const last = mine
+      .map((entry) => entry.entryDate)
+      .sort()
+      .at(-1);
+    return {
+      currencies: [...byCurrency.values()].sort((a, b) => a.currency.localeCompare(b.currency)),
+      ...(server.projectCurrency ? { projectCurrency: server.projectCurrency } : {}),
+      ...(last ? { lastEntryDate: last } : {}),
+      capabilities: { canRecord: server.canRecord ?? false },
+    };
+  };
+
+  /**
    * The period lock, **judged per unit** — the one rule the fake did not model
    * and the one that hid a real bug. A standalone expense is judged on its own
    * `entryDate`; a line of a travel claim is judged on the claim's **departure
@@ -526,6 +635,15 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
     if (path === "/api/v1/expenses/meta")
       return maybeHold(path, Promise.resolve(answer(server.meta, defaultMeta({ categories: categoryStore }))));
     if (path === "/api/v1/expenses/projects") return Promise.resolve(answer(server.projects, []));
+
+    const projectSummary = /^\/api\/v1\/expenses\/projects\/(\d+)\/summary$/.exec(path);
+    if (projectSummary && method === "GET") {
+      // One bare 404 with an empty body, exactly as the module answers it: no
+      // projects module, no such project and no financial rights are
+      // deliberately indistinguishable.
+      if (server.projectSummary instanceof Response) return Promise.resolve(server.projectSummary.clone());
+      return Promise.resolve(jsonResponse(200, server.projectSummary ?? projectSummaryOf(Number(projectSummary[1]))));
+    }
     if (path === "/api/v1/expenses/stats") return Promise.resolve(answer(server.stats, stats()));
 
     if (path === "/api/v1/expenses/rates") {
@@ -1240,8 +1358,31 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
       const reimbursed = query.get("reimbursed");
       const standalone = query.get("standalone");
       const claimId = query.get("claimId");
+      const projectId = query.get("projectId");
+      const toInvoice = query.get("toInvoice");
+      // `toInvoice` is read one project at a time, and `true` is only ever
+      // about approved expenses: both are refused rather than quietly
+      // answered with an empty page, which would not say which was wrong.
+      if (toInvoice !== null && projectId === null) {
+        return Promise.resolve(
+          problem(400, "Invalid query parameters", {
+            toInvoice: ["'toInvoice' needs a 'projectId': what is ready to invoice is read one project at a time"],
+          }),
+        );
+      }
+      if (toInvoice === "true" && query.get("status") && query.get("status") !== "approved") {
+        return Promise.resolve(
+          problem(400, "Invalid query parameters", {
+            toInvoice: [
+              `'toInvoice=true' is only ever about approved expenses, so it cannot be combined with 'status=${query.get("status")}'`,
+            ],
+          }),
+        );
+      }
       const matching = entries
         .filter((entry) => !userId || entry.owner.userId === userId)
+        .filter((entry) => projectId === null || entry.project?.id === Number(projectId))
+        .filter((entry) => toInvoice === null || isReady(entry) === (toInvoice === "true"))
         // A claim's lines are the trip's, so "My expenses" asks for the units
         // of their own and the trip is listed beside them rather than twice.
         .filter((entry) => standalone === null || (entry.claimId === undefined) === (standalone === "true"))
