@@ -44,6 +44,7 @@ export const MarkReimbursedModal = ({ units, onClose, onDone }: MarkReimbursedMo
   const queryClient = useQueryClient();
   const [refusals, setRefusals] = useState<string[]>([]);
   const { data: meta } = useQuery(expensesMetaQueryOptions());
+  const count = (units?.entryIds?.length ?? 0) + (units?.claimIds?.length ?? 0);
   const now = zoneCalendarDate(new Date().toISOString(), meta?.timeZone ?? "UTC");
 
   const form = useForm({
@@ -99,9 +100,7 @@ export const MarkReimbursedModal = ({ units, onClose, onDone }: MarkReimbursedMo
       <form onSubmit={form.onSubmit((values) => mark.mutate(values))}>
         <Stack>
           <Text size="sm" c="dimmed">
-            {t("markReimbursedDescription", {
-              count: (units?.entryIds?.length ?? 0) + (units?.claimIds?.length ?? 0),
-            })}
+            {count === 1 ? t("markReimbursedDescriptionOne") : t("markReimbursedDescription", { count })}
           </Text>
           <RefusalList messages={refusals} />
           <DateInput

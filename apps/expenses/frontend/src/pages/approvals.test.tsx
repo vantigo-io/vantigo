@@ -864,13 +864,13 @@ describe("ApprovalsPage", () => {
     const { router } = renderRoute("/expenses/approvals?state=approved");
 
     await userEvent.click(within(await row("Hotel")).getByRole("checkbox"));
-    expect(await screen.findByRole("button", { name: "Take 1 approvals back" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Take 1 approval back" })).toBeInTheDocument();
 
     // Paging the trips is not a reason to throw away an expense somebody has
     // just ticked: the two sections page independently.
     await userEvent.click(screen.getByRole("button", { name: "2" }));
     await waitFor(() => expect(router.state.location.search).toMatchObject({ claimPage: 2 }));
-    expect(await screen.findByRole("button", { name: "Take 1 approvals back" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Take 1 approval back" })).toBeInTheDocument();
   });
 
   it("says when an approval was decided even when nobody is named", async () => {
