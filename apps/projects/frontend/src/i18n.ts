@@ -365,6 +365,9 @@ export const projectsCatalog = {
     readyExpenseLineCount_other: "{{count}} expense lines",
     readyCountSplitShort: "{{milestones}} · {{expenses}}",
     readyAmountSplit: "Of that:",
+    readyInAnotherCurrency: "+ ready in another currency",
+    readyInAnotherCurrencyCount_one: "{{count}} project has something ready in another currency",
+    readyInAnotherCurrencyCount_other: "{{count}} projects have something ready in another currency",
     portfolioOtherCurrencyNote:
       "Expenses recorded in a currency other than the project's are not in these figures; the project's own Economy tab reports them.",
 
@@ -814,6 +817,9 @@ export const projectsCatalog = {
     readyExpenseLineCount_other: "{{count}} utleggslinjer",
     readyCountSplitShort: "{{milestones}} · {{expenses}}",
     readyAmountSplit: "Av dette:",
+    readyInAnotherCurrency: "+ klart i en annen valuta",
+    readyInAnotherCurrencyCount_one: "{{count}} prosjekt har noe klart i en annen valuta",
+    readyInAnotherCurrencyCount_other: "{{count}} prosjekter har noe klart i en annen valuta",
     portfolioOtherCurrencyNote:
       "Utlegg ført i en annen valuta enn prosjektets er ikke med i disse tallene; prosjektets egen Økonomi-fane viser dem.",
 
