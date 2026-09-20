@@ -1162,7 +1162,7 @@ describe("ProjectEconomy — the budget half", () => {
     expect(approved).toHaveTextContent(money(4200));
     expect(approved).toHaveTextContent(money(5000));
 
-    const submitted = within(section).getByText("Awaiting approval").closest("tr") as HTMLElement;
+    const submitted = within(section).getByText("Submitted — awaiting approval").closest("tr") as HTMLElement;
     expect(submitted).toHaveTextContent(money(800));
     expect(submitted).toHaveTextContent(money(1000));
 
@@ -1376,7 +1376,7 @@ describe("ProjectEconomy — the budget half", () => {
     expect(within(headline).getByText("Margin").parentElement).toHaveTextContent(money(180500));
     expect(
       screen.getByText(
-        "The margin counts the expenses too: what they will bill, less what they cost. Both halves count all three buckets — what is approved, what is waiting and what is still a draft.",
+        "The margin counts the expenses too: what they will bill, less what they cost. Both halves count all three statuses — approved, awaiting approval and still a draft.",
       ),
     ).toBeInTheDocument();
     expect(screen.getByText(`Labour cost ${money(180000)} · Expense cost ${money(5500)}`)).toBeInTheDocument();
