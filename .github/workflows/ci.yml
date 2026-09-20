@@ -413,7 +413,7 @@ jobs:
 
       - name: 🧱 Set up buildx
         if: steps.gate.outputs.push == 'true'
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: 🔐 Log in to GHCR
         if: steps.gate.outputs.push == 'true'
@@ -510,7 +510,7 @@ jobs:
         run: trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --format table vantigo:ci
 
       - name: 🧱 Set up buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: 🔐 Log in to GHCR
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -698,7 +698,7 @@ jobs:
 
       # Multi-platform builds with SBOM attestations need the docker-container driver.
       - name: 🧱 Set up buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: 📦 GoReleaser (snapshot)
         run: |
