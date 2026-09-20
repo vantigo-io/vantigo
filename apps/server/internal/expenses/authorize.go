@@ -314,8 +314,19 @@ type entryAccess struct {
 	CanApprove      bool
 	CanUnapprove    bool
 	CanOverrideRate bool
-	CanMarkInvoiced bool
 	CanSetBilling   bool
+
+	// The two tracks after approval (decision X5). Neither consults the period
+	// lock: the lock protects what the employee submitted and what was
+	// approved — its date, its amounts, its status — while reimbursing and
+	// invoicing are bookkeeping done *after* a period closes. Payroll runs
+	// after the books are shut, and an invoice for December goes out in
+	// January; refusing either would close the books on the two people whose
+	// job starts when they close.
+	CanMarkInvoiced   bool
+	CanUndoInvoiced   bool
+	CanMarkReimbursed bool
+	CanUndoReimbursed bool
 }
 
 // entryAccess resolves c's access to entry, asking the project directory for
@@ -359,12 +370,34 @@ func (c *caller) accessFor(entry store.ExpensesEntry, role string) entryAccess {
 	a.CanUnapprove = (a.IsApprover || c.Manage) && open && entry.Status == statusApproved &&
 		entry.ReimbursedAt == nil && entry.InvoicedAt == nil
 	a.CanOverrideRate = (a.IsApprover || c.Manage) && open && entry.Status == statusSubmitted && entry.Kind == kindMileage
-	a.CanMarkInvoiced = entry.Billable && entry.Status == statusApproved && entry.InvoicedAt == nil &&
-		c.seesProjectFinancials(role)
 	// Pricing an expense from the project's side is open in every status the
 	// line can still be priced in — its owner's progress through the flow is
 	// not the project manager's business — and closed once it has been
 	// invoiced, which is what it was priced for.
 	a.CanSetBilling = c.ProjectsOn && a.CanSeeBilling && open && entry.InvoicedAt == nil
+
+	financial := c.seesProjectFinancials(role)
+	// A line with no amount to bill cannot be invoiced, so the capability does
+	// not say it can: a billable mileage line saved while no customer rate was
+	// in force carries nothing to put on an invoice until somebody prices it.
+	a.CanMarkInvoiced = financial && entry.Billable && entry.Status == statusApproved &&
+		entry.InvoicedAt == nil && entry.BillAmount.Valid
+	a.CanUndoInvoiced = financial && entry.InvoicedAt != nil
+	a.CanMarkReimbursed = c.Manage && entry.Status == statusApproved &&
+		entry.ReimbursedAt == nil && owesEmployee(entry)
+	a.CanUndoReimbursed = c.Manage && entry.ReimbursedAt != nil
 	return a
+}
+
+// owesEmployee reports whether the expense owes its owner anything at all —
+// owedToEmployee above zero, decided without doing the arithmetic. It is the
+// Go half of the predicate queries/reimbursements.sql applies in SQL, and the
+// two must stay one rule: an outlay the company paid for itself owes nothing,
+// and neither does a line whose gross rounds to nothing.
+func owesEmployee(entry store.ExpensesEntry) bool {
+	if entry.Kind == kindOutlay && (entry.PaidBy == nil || *entry.PaidBy != paidByEmployee) {
+		return false
+	}
+	return entry.GrossAmount.Valid && !entry.GrossAmount.NaN &&
+		entry.GrossAmount.Int != nil && entry.GrossAmount.Int.Sign() > 0
 }

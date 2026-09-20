@@ -447,14 +447,40 @@ func receiptRefusal(ctx context.Context, txq *store.Queries, c *caller, row stor
 		row.ID, decimalText(threshold, moneyPlaces)), nil
 }
 
-// decision is one of the three moves an approver makes: the status it moves an
-// expense from, what a refusal calls the move, whether expenses:manage alone
-// may make it, and the update that makes it on rows already locked and judged.
+// decision is one move a batch makes over expenses that are already approved
+// or on their way there: the status it moves them from, what a refusal calls
+// the move, who may make it, the refusals only this move has, and the update
+// that makes it on rows already locked and judged.
+//
+// Every batch in this module is one of these — the three an approver makes,
+// and the two a payroll run makes (reimbursements.go) — so the mechanics
+// (locking in id order, judging under the lock, all or nothing, rendering
+// after the commit) exist once.
 type decision struct {
-	from     string
-	verb     string
-	orManage bool
-	apply    func(ctx context.Context, txq *store.Queries, ids []int64) ([]store.ExpensesEntry, error)
+	from string
+	verb string
+
+	// orManage is whether expenses:manage may make this move as well as an
+	// approver; manageOnly is whether expenses:manage is the *only* one who
+	// may, which is what the payroll track is — approving an expense is not
+	// paying for it.
+	orManage   bool
+	manageOnly bool
+
+	// also is the refusals only this move has, judged after the status and
+	// before the period lock, on the row as it stands under the lock.
+	also func(id int64, row store.ExpensesEntry) string
+
+	apply func(ctx context.Context, txq *store.Queries, ids []int64) ([]store.ExpensesEntry, error)
+}
+
+// article is "an" before a status that begins with a vowel and "a" before the
+// rest, so a refusal reads as a sentence.
+func article(status string) string {
+	if strings.ContainsRune("aeiou", rune(status[0])) {
+		return "an"
+	}
+	return "a"
 }
 
 // decisionRefusal is why c may not move the expense id through d, "" when they
@@ -462,21 +488,45 @@ type decision struct {
 // reads c's roles only from the cache warmBatch filled.
 func (c *caller) decisionRefusal(d decision, id int64, row store.ExpensesEntry) string {
 	a := c.accessFor(row, c.cachedRole(row.ProjectID))
+	mayMove := a.IsApprover || (d.orManage && c.Manage)
+	if d.manageOnly {
+		mayMove = c.Manage
+	}
 	switch {
 	case !a.CanSee:
 		return notFoundRefusal(id)
-	case !a.IsApprover && (!d.orManage || !c.Manage):
+	case !mayMove:
 		// Deliberately no more than a 404 would tell them: that it exists and
 		// is not theirs, and nothing about whose it is or what it is on.
 		return fmt.Sprintf("Expense %d is not yours to approve", id)
 	case row.Status != d.from:
-		return fmt.Sprintf("Expense %d is %s, and only a %s expense can be %s", id, row.Status, d.from, d.verb)
+		return fmt.Sprintf("Expense %d is %s, and only %s %s expense can be %s",
+			id, row.Status, article(d.from), d.from, d.verb)
+	}
+	if d.also != nil {
+		if msg := d.also(id, row); msg != "" {
+			return msg
+		}
+	}
+	// The period lock holds back what the employee submitted and what was
+	// approved. It does not hold back the payroll track, which runs after a
+	// period closes — and could not, because only expenses:manage marks a
+	// reimbursement and the lock never held expenses:manage back anyway.
+	if !c.mayWritePast(row.EntryDate.Time) {
+		return c.lockedRefusal(id)
+	}
+	return ""
+}
+
+// paidOutRefusal is unapprove's own pair of refusals: an expense whose money
+// has already moved, in either direction, is not something to send back to its
+// owner as a draft. Undoing those is each track's own operation.
+func paidOutRefusal(id int64, row store.ExpensesEntry) string {
+	switch {
 	case row.ReimbursedAt != nil:
 		return fmt.Sprintf("Expense %d has been reimbursed", id)
 	case row.InvoicedAt != nil:
 		return fmt.Sprintf("Expense %d has been invoiced", id)
-	case !c.mayWritePast(row.EntryDate.Time):
-		return c.lockedRefusal(id)
 	}
 	return ""
 }
@@ -493,13 +543,17 @@ func (s *server) decide(ctx context.Context, d decision, body gen.ExpensesFlowRe
 		return flowOutcome{}, err
 	}
 	// A caller who could approve nothing at all is refused the whole request,
-	// as the access layer would, rather than told about each id (decision X10).
-	approves, err := c.approvesAnything(ctx, s, d.orManage)
-	if err != nil {
-		return flowOutcome{}, err
-	}
-	if !approves {
-		return flowOutcome{forbidden: true}, nil
+	// as the access layer would, rather than told about each id (decision
+	// X10). A manage-only move has no such gate to apply: the router has
+	// already required expenses:manage of it.
+	if !d.manageOnly {
+		approves, err := c.approvesAnything(ctx, s, d.orManage)
+		if err != nil {
+			return flowOutcome{}, err
+		}
+		if !approves {
+			return flowOutcome{forbidden: true}, nil
+		}
 	}
 
 	ids, errs := batchIDs(body.EntryIds, body.ClaimIds, errs)
@@ -663,7 +717,7 @@ func (s *server) PostExpensesUnapprove(ctx context.Context, req gen.PostExpenses
 	}
 	now := s.deps.Clock()
 	out, err := s.decide(ctx, decision{
-		from: statusApproved, verb: "unapproved", orManage: true,
+		from: statusApproved, verb: "unapproved", orManage: true, also: paidOutRefusal,
 		apply: func(ctx context.Context, txq *store.Queries, ids []int64) ([]store.ExpensesEntry, error) {
 			rows, err := txq.UnapproveEntries(ctx, store.UnapproveEntriesParams{Ids: ids, Now: now})
 			if err != nil {

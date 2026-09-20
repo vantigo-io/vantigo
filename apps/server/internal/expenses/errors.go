@@ -39,6 +39,13 @@ const (
 	// exactly as a replace does.
 	invalidSubmissionTitle = "Invalid submission"
 	invalidApprovalTitle   = "Invalid approval"
+
+	// The two titles of the payroll track. A payroll run and the file that
+	// goes with it are their own moment, made by somebody else at another
+	// time, and neither is an approval.
+	invalidReimbursementTitle = "Invalid reimbursement"
+	invalidExportTitle        = "Invalid export"
+	tooManyExportRowsTitle    = "Too many rows to export"
 )
 
 // invalidSubmission is the 400 body for a submit that moved nothing: its ids,
@@ -51,6 +58,30 @@ func invalidSubmission(errs map[string][]string) apicommon.HttpValidationProblem
 // unapproval that moved nothing.
 func invalidApproval(errs map[string][]string) apicommon.HttpValidationProblemDetails {
 	return apicommon.ValidationProblem(invalidApprovalTitle, errs)
+}
+
+// invalidReimbursement is the 400 body for a payroll run that paid nothing:
+// its ids, its date or its reference.
+func invalidReimbursement(errs map[string][]string) apicommon.HttpValidationProblemDetails {
+	return apicommon.ValidationProblem(invalidReimbursementTitle, errs)
+}
+
+// invalidExport is the 400 body for an export whose filters or ids the module
+// cannot turn into a file.
+func invalidExport(errs map[string][]string) apicommon.HttpValidationProblemDetails {
+	return apicommon.ValidationProblem(invalidExportTitle, errs)
+}
+
+// tooManyExportRows is the export's one refusal that belongs to no field: the
+// filters are each fine and the file they would make is not. It carries no
+// errors object at all rather than inventing a field to hang the message on —
+// the schema allows that, and a made-up field name would be worse than none.
+func tooManyExportRows(limit int) apicommon.HttpValidationProblemDetails {
+	title, status := tooManyExportRowsTitle, int32(http.StatusBadRequest)
+	detail := fmt.Sprintf(
+		"This export would hold more than %d rows, which is more than one file should. Narrow it to one person or a shorter period, or name the expenses to export.",
+		limit)
+	return apicommon.HttpValidationProblemDetails{Title: &title, Status: &status, Detail: &detail}
 }
 
 // invalidEntry is the 400 body for an expense whose fields did not pass

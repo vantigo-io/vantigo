@@ -144,9 +144,10 @@ func approvalGroups(rows []store.ExpensesEntry, entries []gen.ExpensesEntryRespo
 	return data, nil
 }
 
-// currencyTotal is one currency's running sum inside a group, kept as exact
-// decimals so a group of a hundred expenses adds up the way a person would add
-// them (design §4: nothing is ever converted, and nothing rounds twice).
+// currencyTotal is one currency's running sum inside a group — the approval
+// queue's, and the reimbursement list's — kept as exact decimals so a group of
+// a hundred expenses adds up the way a person would add them (design §4:
+// nothing is ever converted, and nothing rounds twice).
 type currencyTotal struct {
 	gross *big.Rat
 	owed  *big.Rat
@@ -171,14 +172,14 @@ func addToTotals(totals map[string]*currencyTotal, row store.ExpensesEntry) erro
 
 // currencyTotals renders a group's totals, by currency code, so two reads of
 // one queue never disagree about the order.
-func currencyTotals(totals map[string]*currencyTotal) []gen.ExpensesApprovalTotal {
-	out := make([]gen.ExpensesApprovalTotal, 0, len(totals))
+func currencyTotals(totals map[string]*currencyTotal) []gen.ExpensesCurrencyTotal {
+	out := make([]gen.ExpensesCurrencyTotal, 0, len(totals))
 	for currency, t := range totals {
-		out = append(out, gen.ExpensesApprovalTotal{
+		out = append(out, gen.ExpensesCurrencyTotal{
 			Currency: currency, Gross: floatOfRat(t.gross), OwedToEmployee: floatOfRat(t.owed),
 		})
 	}
-	slices.SortFunc(out, func(a, b gen.ExpensesApprovalTotal) int {
+	slices.SortFunc(out, func(a, b gen.ExpensesCurrencyTotal) int {
 		return strings.Compare(a.Currency, b.Currency)
 	})
 	return out

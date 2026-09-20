@@ -147,10 +147,16 @@ func (s *server) namesFor(ctx context.Context, rows []store.ExpensesEntry) (entr
 	for _, row := range rows {
 		entryIDs = append(entryIDs, row.ID)
 		addUser(row.UserID)
-		// Whoever overrode a rate is named on the expense too, in the same
-		// directory call as its owner.
+		// Whoever overrode a rate, paid the expense back or invoiced it is
+		// named on it too, in the same directory call as its owner.
 		if row.RateOverriddenByUserID != nil {
 			addUser(*row.RateOverriddenByUserID)
+		}
+		if row.ReimbursedByUserID != nil {
+			addUser(*row.ReimbursedByUserID)
+		}
+		if row.InvoicedByUserID != nil {
+			addUser(*row.InvoicedByUserID)
 		}
 		if row.ProjectID != nil && !seenProjects[*row.ProjectID] {
 			seenProjects[*row.ProjectID] = true
@@ -252,15 +258,18 @@ func entryResponse(row store.ExpensesEntry, a entryAccess, names entryNames) (ge
 		CreatedAt:       row.CreatedAt,
 		UpdatedAt:       row.UpdatedAt,
 		Capabilities: gen.ExpensesEntryCapabilities{
-			CanEdit:         a.CanEdit,
-			CanDelete:       a.CanDelete,
-			CanSubmit:       a.CanSubmit,
-			CanApprove:      a.CanApprove,
-			CanUnapprove:    a.CanUnapprove,
-			CanOverrideRate: a.CanOverrideRate,
-			CanMarkInvoiced: a.CanMarkInvoiced,
-			CanSeeBilling:   a.CanSeeBilling,
-			CanSetBilling:   a.CanSetBilling,
+			CanEdit:           a.CanEdit,
+			CanDelete:         a.CanDelete,
+			CanSubmit:         a.CanSubmit,
+			CanApprove:        a.CanApprove,
+			CanUnapprove:      a.CanUnapprove,
+			CanOverrideRate:   a.CanOverrideRate,
+			CanMarkInvoiced:   a.CanMarkInvoiced,
+			CanUndoInvoiced:   a.CanUndoInvoiced,
+			CanMarkReimbursed: a.CanMarkReimbursed,
+			CanUndoReimbursed: a.CanUndoReimbursed,
+			CanSeeBilling:     a.CanSeeBilling,
+			CanSetBilling:     a.CanSetBilling,
 		},
 	}
 	if vat != nil {
@@ -309,14 +318,53 @@ func entryResponse(row store.ExpensesEntry, a entryAccess, names entryNames) (ge
 			resp.BillingLine = &gen.ExpensesEntryBillingLine{Id: l.ID, Code: l.Code}
 		}
 	}
+	// Decision X5: that somebody has been paid back is shown to everyone who
+	// may see the expense, its owner first of all. It is not a privilege to be
+	// told that the money has gone out — and the figure it names is the one
+	// the owner could already see.
+	if row.ReimbursedAt != nil {
+		resp.Reimbursement = &gen.ExpensesEntryReimbursement{
+			At:        *row.ReimbursedAt,
+			By:        userRef(reimbursedBy(row), names),
+			Date:      openapi_types.Date{Time: row.ReimbursementDate.Time},
+			Reference: row.ReimbursementReference,
+		}
+	}
 	if a.CanSeeBilling {
 		billing, err := billingResponse(row)
 		if err != nil {
 			return gen.ExpensesEntryResponse{}, err
 		}
+		// The invoice sits inside billing rather than beside the
+		// reimbursement: what the customer was charged, and on which invoice,
+		// is the project's business and not the employee's.
+		if row.InvoicedAt != nil {
+			billing.Invoice = &gen.ExpensesEntryInvoice{
+				At:        *row.InvoicedAt,
+				By:        userRef(invoicedBy(row), names),
+				Reference: row.InvoiceReference,
+			}
+		}
 		resp.Billing = billing
 	}
 	return resp, nil
+}
+
+// reimbursedBy and invoicedBy are who made the mark, falling back to the nil
+// uuid — which userRef renders as the unknown user — rather than failing a
+// read over a row whose stamp somehow lost its person.
+func reimbursedBy(row store.ExpensesEntry) uuid.UUID {
+	if row.ReimbursedByUserID == nil {
+		return uuid.Nil
+	}
+	return *row.ReimbursedByUserID
+}
+
+func invoicedBy(row store.ExpensesEntry) uuid.UUID {
+	if row.InvoicedByUserID == nil {
+		return uuid.Nil
+	}
+	return *row.InvoicedByUserID
 }
 
 // attachmentsOf is an entry's receipts, always a list and never null: an
@@ -331,9 +379,10 @@ func attachmentsOf(names entryNames, entryID int64) []gen.ExpensesAttachmentResp
 
 // owedToEmployee is what the owner gets back (design §3.1): the gross of an
 // outlay they paid themselves, a mileage line's whole amount, and nothing at
-// all for an outlay the company paid.
+// all for an outlay the company paid. owesEmployee (authorize.go) is the same
+// rule as a yes or no, and the reimbursement queries are that rule in SQL.
 func owedToEmployee(row store.ExpensesEntry, gross *big.Rat) *big.Rat {
-	if row.Kind == kindOutlay && (row.PaidBy == nil || *row.PaidBy != paidByEmployee) {
+	if !owesEmployee(row) {
 		return new(big.Rat)
 	}
 	return gross

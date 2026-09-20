@@ -105,7 +105,8 @@ WHERE (@see_all::boolean
   AND (sqlc.narg(status)::text IS NULL OR status = sqlc.narg(status)::text)
   AND (sqlc.narg(kind)::text IS NULL OR kind = sqlc.narg(kind)::text)
   AND (sqlc.narg(from_date)::date IS NULL OR entry_date >= sqlc.narg(from_date)::date)
-  AND (sqlc.narg(to_date)::date IS NULL OR entry_date <= sqlc.narg(to_date)::date);
+  AND (sqlc.narg(to_date)::date IS NULL OR entry_date <= sqlc.narg(to_date)::date)
+  AND (sqlc.narg(reimbursed)::boolean IS NULL OR (reimbursed_at IS NOT NULL) = sqlc.narg(reimbursed)::boolean);
 
 -- name: ListEntries :many
 -- ListEntries is one page of CountEntries' expenses, the latest day first and,
@@ -120,5 +121,6 @@ WHERE (@see_all::boolean
   AND (sqlc.narg(kind)::text IS NULL OR kind = sqlc.narg(kind)::text)
   AND (sqlc.narg(from_date)::date IS NULL OR entry_date >= sqlc.narg(from_date)::date)
   AND (sqlc.narg(to_date)::date IS NULL OR entry_date <= sqlc.narg(to_date)::date)
+  AND (sqlc.narg(reimbursed)::boolean IS NULL OR (reimbursed_at IS NOT NULL) = sqlc.narg(reimbursed)::boolean)
 ORDER BY entry_date DESC, id DESC
 LIMIT @page_size OFFSET @page_offset;
