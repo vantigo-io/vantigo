@@ -375,8 +375,14 @@ func (s *server) DeleteExpensesRatesById(ctx context.Context, req gen.DeleteExpe
 // screen calls this, and this is what it now does. Only the days the product
 // ships are touched — a row the company added on a day of its own is not in
 // the conflict target and is never changed — and nothing is ever removed. A
-// kind that ships with nothing (the customer rate per kilometre, and the per
-// diem rates until a later delivery seeds them) restores nothing.
+// kind that ships with nothing — the customer rate per kilometre, and
+// per_diem_overnight_other, which the state agreement has no figure for —
+// restores nothing.
+//
+// It is also the way back from the migration's ON CONFLICT DO NOTHING: an
+// installation that had already entered its own per diem rate on the day the
+// agreement took effect keeps that figure through the migration, and this is
+// the door that asks for the shipped one instead.
 //
 // The writes go through one transaction so a reset either puts every missing
 // row back or none; the list it answers with is read afterwards, outside it.

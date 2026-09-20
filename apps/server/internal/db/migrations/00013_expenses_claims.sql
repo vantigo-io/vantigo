@@ -104,13 +104,25 @@ ALTER TABLE expenses.settings
 -- barracks), and a day of that type cannot be priced until one exists. The
 -- three meal percentages carry no currency — they are percentages of whatever
 -- day rate applies.
+--
+-- ON CONFLICT DO NOTHING because this migration meets databases the product has
+-- already been used on. Delivery A shipped POST /rates accepting every one of
+-- these kinds, so an administrator preparing for travel claims may already have
+-- entered one of them — on 2026-01-01, which is when the agreement took effect
+-- and therefore the obvious day to enter. ux_rates_kind_valid_from admits one
+-- row per kind and day, so a plain INSERT would abort the migration and leave
+-- that tenant's server refusing to start, fixable only by hand in the database.
+-- The company's own figure wins, which is the right way round: it was entered
+-- on purpose, and POST /rates/reset is the door that puts the shipped one back
+-- on request.
 INSERT INTO expenses.rates (kind, valid_from, value, currency, source, created_at, updated_at) VALUES
     ('per_diem_6_12',            DATE '2026-01-01',  397.00, 'NOK', 'State rate', now(), now()),
     ('per_diem_over_12',         DATE '2026-01-01',  736.00, 'NOK', 'State rate', now(), now()),
     ('per_diem_overnight_hotel', DATE '2026-01-01', 1012.00, 'NOK', 'State rate', now(), now()),
     ('meal_breakfast_percent',   DATE '2026-01-01',   20.00, NULL,  'State rate', now(), now()),
     ('meal_lunch_percent',       DATE '2026-01-01',   30.00, NULL,  'State rate', now(), now()),
-    ('meal_dinner_percent',      DATE '2026-01-01',   50.00, NULL,  'State rate', now(), now());
+    ('meal_dinner_percent',      DATE '2026-01-01',   50.00, NULL,  'State rate', now(), now())
+ON CONFLICT (kind, valid_from) DO NOTHING;
 
 -- +goose Down
 -- A claim's lines are the claim's, so they go where the foreign key would have
