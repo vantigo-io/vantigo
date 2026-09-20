@@ -220,7 +220,7 @@ export const ApprovalsPage = () => {
             </>
           ) : (
             <Button variant="default" loading={unapproveAll.isPending} onClick={() => unapproveAll.mutate(pickedUnits)}>
-              {t("unapproveSelected", { count: pickedCount })}
+              {pickedCount === 1 ? t("unapproveSelectedOne") : t("unapproveSelected", { count: pickedCount })}
             </Button>
           )}
           <Button
