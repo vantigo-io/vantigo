@@ -736,6 +736,15 @@ contradict it and are refused rather than answering an empty page.
 **`toInvoice=false` means the parameter left out** — no filter and none of those
 rules — which is what an unticked checkbox asks for.
 
+**Asking it needs financial rights on the project**, the same rule the summary is
+gated on, and anyone else gets a 403 whose body is the same whatever the cause.
+That is not about which rows come back — nothing about those changes — but about
+the question itself: a caller who may not see what a line bills has `billAmount`
+and the invoice stamp stripped from every row, and diffing `?projectId=X` against
+`?projectId=X&toInvoice=true` would tell them, per approved billable line, that it
+is priced and not yet invoiced. The filter carries the right its own figure
+carries, so it cannot be used to read around the shaping.
+
 **The aggregate and the rows are gated differently, on purpose.** The summary is
 totals and follows the financial-rights rule above; the list is individual
 expenses and keeps [the visibility rule it has always had](#visibility-and-shaping)
@@ -1044,7 +1053,7 @@ says.
 | Endpoint | Access |
 | --- | --- |
 | `GET /meta` | What this installation can do, the settings a new expense starts from (the business time zone included), the categories, and the caller's own capabilities |
-| `GET /entries` (`userId`, `projectId`, `claimId`, `standalone`, `status`, `kind`, `from`, `to`, `reimbursed`, `toInvoice`, paging) | The caller's own; a project manager also sees their projects'; view-all/approve/manage see everyone's |
+| `GET /entries` (`userId`, `projectId`, `claimId`, `standalone`, `status`, `kind`, `from`, `to`, `reimbursed`, `toInvoice`, paging) | The caller's own; a project manager also sees their projects'; view-all/approve/manage see everyone's. `toInvoice=true` additionally needs financial rights on the `projectId` named — 403 otherwise |
 | `GET /entries/{id}` | The owner, the project's manager, or view-all/approve/manage; a bare 404 otherwise |
 | `POST /entries` | Record one — your own, or (`userId`) a colleague's, with `expenses:manage`; `claimId` records it as a line of a travel claim |
 | `GET /claims` (`userId`, `status`, `from`, `to`, `reimbursed`, paging) | The same visibility rule the entries' list applies, one level up |

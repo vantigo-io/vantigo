@@ -405,7 +405,7 @@ export interface paths {
          * Sum up a project's expenses
          * @description What one project's expenses cost and bill, in sum — the Expenses tab on the project page. It is for whoever has **financial rights on the project**: its manager, projects:manage-all, or projects:view-financials on a project they can see. expenses:manage, expenses:approve and expenses:view-all do not grant it — they open other people's expenses, not a project's money, which is the same rule pricing a line is held to. Everybody else, an unknown project and an installation with no projects module are one and the same **bare 404**, so nothing here says whether a project exists. The figures are aggregates only: they do not widen who may see an individual expense, so a reader who is not the project's manager may well see these totals over a list (GET /entries?projectId=) that answers them nothing. Everything is per currency and **nothing is converted**; a rejected expense counts as draft.
          */
-        get: operations["getExpensesProjectSummary"];
+        get: operations["getExpensesProjectsByProjectIdSummary"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1573,7 +1573,7 @@ export interface components {
             /** @description Whether the caller may book an expense on this project — projects' own CanLogTime, the rule a create is judged by (decision X9), so a "Record a cost" button can never offer what the save would refuse. It is false for somebody who may read these figures without being on the project's team. */
             canRecord: boolean;
         };
-        /** @description One currency's figures for the project. A line carries its own currency, which may be neither its travel claim's nor its project's, so the figures are reported per currency and **nothing is ever converted**: a caller comparing them with a project's budget has to decide for itself which currency is the project's. The three status buckets are the **unit's** status — a travel claim's line is judged by its claim — and a **rejected** expense counts as draft, because it is back with its owner to fix and resubmit, exactly as Time buckets a rejected entry. There is no invoiced bucket: invoicing is a stamp, not a status, so an invoiced line is still an approved one. */
+        /** @description One currency's figures for the project. A line carries its own currency, which may be neither its travel claim's nor its project's, so the figures are reported per currency and **nothing is ever converted**: the entry whose code is projectCurrency is the project's own, and every other entry is money spent in a currency the project is not in. The three status buckets are the **unit's** status — a travel claim's line is judged by its claim — and a **rejected** expense counts as draft, because it is back with its owner to fix and resubmit, exactly as Time buckets a rejected entry. There is no invoiced bucket: invoicing is a stamp, not a status, so an invoiced line is still an approved one. */
         ExpensesProjectSummaryCurrency: {
             approved: components["schemas"]["ExpensesProjectSummaryBucket"];
             /** @description The ISO 4217 code the lines were recorded in. */
@@ -2617,7 +2617,7 @@ export interface operations {
                 to?: string;
                 /** @description Narrows the list to what has been reimbursed, or to what has not. Left out, both are in it. */
                 reimbursed?: boolean;
-                /** @description true lists only the lines **ready to invoice** — the unit is approved, the line is billable, it carries a bill amount, it has not been invoiced yet, and it is never a per diem day, which bills nobody anything — which is exactly the rule behind readyCount on GET /api/v1/expenses/projects/{projectId}/summary, so the list and the figure can never disagree. false means the same as leaving it out: no filter. true needs a projectId, because invoicing is done a project at a time, and is refused without one; a status other than 'approved' and kind=per_diem each contradict it and are refused rather than quietly answering an empty page. It widens nothing: a caller who may not see a project's expenses still gets none of them here, however many the summary counts. */
+                /** @description true lists only the lines **ready to invoice** — the unit is approved, the line is billable, it carries a bill amount, it has not been invoiced yet, and it is never a per diem day, which bills nobody anything — which is exactly the rule behind readyCount on GET /api/v1/expenses/projects/{projectId}/summary, so the list and the figure can never disagree. false means the same as leaving it out: no filter. true needs a projectId, because invoicing is done a project at a time, and is refused without one; a status other than 'approved' and kind=per_diem each contradict it and are refused rather than quietly answering an empty page. **true also needs financial rights on that project** — its manager, projects:manage-all, or projects:view-financials on a project they can see, the very rule the summary is gated on — because asking the question is itself a question about what a line bills: the answer tells the asker, per approved billable line, that it is priced and not yet invoiced, which is what a caller without those rights has stripped from every row. Anyone else is refused with a 403 whose body is the same whatever the cause (no projects module, no such project, no rights). It does not widen which rows come back: with or without it, a caller sees the expenses they could already see, shaped exactly as they were already shaped. */
                 toInvoice?: boolean;
                 page?: number;
                 pageSize?: number;
@@ -2655,7 +2655,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Forbidden */
+            /** @description Forbidden — also toInvoice=true without financial rights on the project named, with one body whatever the cause. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -3400,7 +3400,7 @@ export interface operations {
             };
         };
     };
-    getExpensesProjectSummary: {
+    getExpensesProjectsByProjectIdSummary: {
         parameters: {
             query?: never;
             header?: never;

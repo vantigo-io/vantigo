@@ -1238,6 +1238,21 @@ func filterValue(raw *string) *string {
 // fetch would page through rows the caller never sees. A userId filter narrows
 // that set and never widens it: naming somebody the caller may see nothing of
 // is an empty page, not a wider one.
+//
+// toInvoice is the one filter that is not free to ask for. It does not widen
+// which rows come back — nothing here does — but it is a question *about* what
+// a line bills: diffing ?projectId=X against ?projectId=X&toInvoice=true tells
+// the asker, per approved billable line, "priced and not yet invoiced", and
+// that is exactly the pair of facts entryAccess strips from a caller without
+// CanSeeBilling (responses.go: what the customer was charged, and on which
+// invoice, is the project's business and not the employee's). So the filter
+// carries the same right the figure it is the list behind carries —
+// seesProjectFinancials on the project named — asked of the directory before
+// the query. A caller without it gets the access layer's 403, as GET
+// /approvals answers a caller who approves nothing: there is no such view for
+// them to be shown an empty page of. One bare body for all three causes (no
+// projects module, no such project, no rights), so it never says which of them
+// it was.
 func (s *server) GetExpensesEntries(ctx context.Context, req gen.GetExpensesEntriesRequestObject) (gen.GetExpensesEntriesResponseObject, error) {
 	p := req.Params
 	if msgs := validateListParams(p); len(msgs) > 0 {
@@ -1249,6 +1264,17 @@ func (s *server) GetExpensesEntries(ctx context.Context, req gen.GetExpensesEntr
 	c, err := s.callerFor(ctx, q)
 	if err != nil {
 		return nil, err
+	}
+	// validateToInvoice has already refused toInvoice=true without a
+	// projectId, so the pointer is there whenever the gate runs.
+	if p.ToInvoice != nil && *p.ToInvoice {
+		_, allowed, err := s.projectFinancials(ctx, c, *p.ProjectId)
+		if err != nil {
+			return nil, err
+		}
+		if !allowed {
+			return gen.GetExpensesEntries403JSONResponse(forbidden()), nil
+		}
 	}
 	managed := []int32{}
 	if !c.seesEveryone() {

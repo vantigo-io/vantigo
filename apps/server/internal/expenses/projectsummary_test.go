@@ -451,6 +451,9 @@ func TestExpensesEntries_ToInvoiceWidensNobodysSight(t *testing.T) {
 	if nok := summaryCurrency(t, getProjectSummary(t, finance, projectKraftVerket), "NOK"); nok.ReadyCount != 2 {
 		t.Errorf("the finance reader's readyCount = %d, want 2: the aggregate is theirs to see", nok.ReadyCount)
 	}
+	// They may ask the question — the financial right is what the filter is
+	// gated on — and are answered none of the expenses the figure counts,
+	// because none of them is theirs and they do not manage the project.
 	page := listEntries(t, finance, fmt.Sprintf("?projectId=%d&toInvoice=true", projectKraftVerket))
 	if len(page.Data) != 0 || page.Pagination.TotalCount != 0 {
 		t.Errorf("the finance reader listed %d of somebody else's expenses, want none: the summary widens nothing",
@@ -464,25 +467,108 @@ func TestExpensesEntries_ToInvoiceWidensNobodysSight(t *testing.T) {
 	}
 }
 
-// The filter never reaches past what the caller may see in the first place:
-// an owner asking for another project's ready lines gets their own and nothing
-// more.
+// TestExpensesEntries_ToInvoiceIsForWhoeverMaySeeWhatALineBills: asking the
+// question is itself a question about the project's money, so the filter
+// carries the right the figure it is the list behind carries.
+//
+// The disclosure it closes is real and small: a caller without CanSeeBilling
+// has billAmount and the invoice stamp stripped from every row, but by diffing
+// ?projectId=X against ?projectId=X&toInvoice=true they would learn, per
+// approved billable line, "priced and not yet invoiced" — the two facts the
+// shaping exists to withhold. The rows a caller gets are unchanged either way;
+// it is the *question* that is now theirs to ask or not.
+func TestExpensesEntries_ToInvoiceIsForWhoeverMaySeeWhatALineBills(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, ownerID := signInAs(t, h, projectKraftVerket, roleMember)
+	seedProjectFixture(t, h, ownerID)
+	ready := fmt.Sprintf("?projectId=%d&toInvoice=true", projectKraftVerket)
+
+	// Refused, each with the access layer's bare 403 — one body whatever the
+	// cause, so it never says which project ids exist or who manages them.
+	for _, who := range []struct {
+		name        string
+		project     int32
+		permissions []string
+		role        string
+	}{
+		{name: "a member of the project", project: projectKraftVerket, role: roleMember},
+		{name: "a viewer of the project", project: projectKraftVerket, role: roleViewer},
+		{name: "expenses:view-all", permissions: []string{"expenses:view-all"}},
+		{name: "expenses:manage and approve", permissions: []string{"expenses:manage", "expenses:approve"}},
+		{name: "a stranger"},
+		{
+			name:        "projects:view-financials on a project they cannot see",
+			permissions: []string{"projects:view-financials"},
+		},
+	} {
+		c, id := signIn(t, h, who.permissions...)
+		if who.role != "" {
+			h.projects.addRole(who.project, id, who.role)
+		}
+		r := c.Do(http.MethodGet, entriesPath+ready, nil)
+		if r.Status != http.StatusForbidden {
+			t.Errorf("%s asking for the ready lines: status %d body %s, want 403", who.name, r.Status, r.Body)
+		}
+		// The ordinary list is untouched for exactly the same caller: nothing
+		// about which rows they may see has changed.
+		listEntries(t, c, fmt.Sprintf("?projectId=%d", projectKraftVerket))
+	}
+
+	// An unknown project and an installation with no projects module answer
+	// the same 403, byte for byte, as a caller without the right does.
+	manager, _ := signInAs(t, h, projectKraftVerket, roleManager)
+	refused := manager.Do(http.MethodGet, entriesPath+fmt.Sprintf("?projectId=%d&toInvoice=true", projectUnknown), nil)
+	allowed := manager.Do(http.MethodGet, entriesPath+ready, nil)
+	stranger, _ := signIn(t, h)
+	bare := stranger.Do(http.MethodGet, entriesPath+ready, nil)
+	switch {
+	case allowed.Status != http.StatusOK:
+		t.Errorf("the manager: status %d body %s, want 200", allowed.Status, allowed.Body)
+	case refused.Status != http.StatusForbidden:
+		t.Errorf("the manager on an unknown project: status %d body %s, want 403", refused.Status, refused.Body)
+	case string(refused.Body) != string(bare.Body):
+		t.Errorf("an unknown project answers %s and no rights answers %s, want one body",
+			refused.Body, bare.Body)
+	}
+
+	without := newHarnessWithoutProjects(t)
+	everything, _ := signIn(t, without, "expenses:manage", "projects:manage-all", "projects:view-financials")
+	if r := everything.Do(http.MethodGet, entriesPath+ready, nil); r.Status != http.StatusForbidden {
+		t.Errorf("an installation with no projects module: status %d body %s, want 403", r.Status, r.Body)
+	}
+}
+
+// And for a caller who may ask, the rows are still only theirs to see: the
+// filter narrows what the list already admits and never reaches past it. A
+// finance reader who does not manage the project may ask the question and is
+// answered none of their colleagues' expenses — totals over an empty list,
+// which is the seam the tab has to say out loud.
 func TestExpensesEntries_ToInvoiceKeepsTheListsOwnVisibility(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	_, ownerID := signInAs(t, h, projectKraftVerket, roleMember)
 	seedProjectFixture(t, h, ownerID)
 
-	stranger, strangerID := signInAs(t, h, projectKraftVerket, roleMember)
-	recordExpense(t, h, strangerID, recordedExpense{project: projectKraftVerket, gross: "50.00",
+	// A finance reader with a ready line of their own sees that one and no
+	// other: the right to ask is not the right to read a colleague's receipt.
+	finance, financeID := signIn(t, h, "projects:view-financials", "projects:view-all")
+	recordExpense(t, h, financeID, recordedExpense{project: projectKraftVerket, gross: "50.00",
 		paidBy: "employee", billable: true, billAmount: "60.00", status: "approved"})
 
-	page := listEntries(t, stranger, fmt.Sprintf("?projectId=%d&toInvoice=true", projectKraftVerket))
-	if len(page.Data) != 1 {
-		t.Fatalf("a member listed %d ready lines, want only their own", len(page.Data))
+	page := listEntries(t, finance, fmt.Sprintf("?projectId=%d&toInvoice=true", projectKraftVerket))
+	if len(page.Data) != 1 || page.Pagination.TotalCount != 1 {
+		t.Fatalf("the finance reader listed %d ready lines (total %d), want only their own",
+			len(page.Data), page.Pagination.TotalCount)
 	}
-	if page.Data[0].Owner.UserId != strangerID {
+	if page.Data[0].Owner.UserId != financeID {
 		t.Errorf("the listed line belongs to %v, want the caller", page.Data[0].Owner.UserId)
+	}
+	// While the summary counts every one of them, which is the whole point of
+	// the seam.
+	if nok := summaryCurrency(t, getProjectSummary(t, finance, projectKraftVerket), "NOK"); nok.ReadyCount != 3 {
+		t.Errorf("the finance reader's readyCount = %d, want 3 — two of somebody else's and their own",
+			nok.ReadyCount)
 	}
 }
 
