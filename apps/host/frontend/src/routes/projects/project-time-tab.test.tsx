@@ -3,6 +3,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sessionQueryKey } from "../../api/auth";
+import { getAuthorizationMe } from "../../api/authorization";
+
+vi.mock("../../api/authorization", () => ({ getAuthorizationMe: vi.fn() }));
+const getAuthorizationMeMock = vi.mocked(getAuthorizationMe);
+
 import { ProjectTimeTab } from "./-project-time-tab";
 import "../../i18n";
 
@@ -24,13 +29,17 @@ vi.mock("@vantigo/time-ui/components/project-time-panel", () => ({
   ProjectTimePanel: ({ projectId }: { projectId: number }) => <div>hours for project {projectId}</div>,
 }));
 
-const renderTab = (modules?: string[], permissions: string[] = ["time:access"]) => {
+const renderTab = (
+  modules?: string[],
+  permissions: string[] = ["time:access"],
+  seed: "both" | "session-only" | "none" = "both",
+) => {
   if (modules) window.__VANTIGO_APP__ = { basePath: "/", title: "Vantigo", support: {}, modules };
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   // Seeded, as a click from the tab row leaves them: the gate reads the
   // layout's own session and authorization queries rather than asking again.
-  queryClient.setQueryData(sessionQueryKey, { user: { id: "user-1", roles: [] } });
-  queryClient.setQueryData(["authorization", "me", "none"], { permissions });
+  if (seed !== "none") queryClient.setQueryData(sessionQueryKey, { user: { id: "user-1", roles: [] } });
+  if (seed === "both") queryClient.setQueryData(["authorization", "me", "none"], { permissions });
   render(
     <MantineProvider env="test">
       <QueryClientProvider client={queryClient}>
@@ -44,12 +53,29 @@ describe("the project page's time tab", () => {
   afterEach(() => {
     cleanup();
     delete window.__VANTIGO_APP__;
+    getAuthorizationMeMock.mockReset();
   });
 
   it("hands the panel the project the page is on", () => {
     renderTab(["projects", "time"]);
 
     expect(screen.getByText("hours for project 31")).toBeInTheDocument();
+  });
+
+  // A cold deep link: neither query is in the cache yet.
+  it("waits rather than guessing while the caller's permissions are unknown", () => {
+    renderTab(["projects", "time"], [], "none");
+
+    expect(screen.queryByText(/hours for project/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Access denied" })).not.toBeInTheDocument();
+  });
+
+  it("offers a retry when the caller's permissions could not be read at all", async () => {
+    getAuthorizationMeMock.mockRejectedValue(new Error("the network is away"));
+    renderTab(["projects", "time"], [], "session-only");
+
+    expect(await screen.findByRole("heading", { name: "Something went wrong" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Access denied" })).not.toBeInTheDocument();
   });
 
   // The same hole the Expenses tab had: a pasted URL reaching an API that
