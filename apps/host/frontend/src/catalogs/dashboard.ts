@@ -49,7 +49,7 @@ const en = {
   "dashboard.expenseRejected": "Your expense '{{name}}' was rejected",
   "dashboard.expenseApprovalWaiting": "{{name}} has expenses waiting for your approval",
   "dashboard.expenseApprovalWaitingCount": "{{name}} has {{count}} expenses waiting for your approval",
-  "dashboard.expenseReimbursementWaiting": "{{count}} expenses are waiting to be reimbursed",
+  "dashboard.expenseReimbursementWaiting": "{{count}} expenses and travel claims are waiting to be reimbursed",
   "dashboard.readyMilestonesHint": "{{count}} milestones ready to invoice",
   "dashboard.projectBudgetWarning": "{{name}} has used most of its budget",
   "dashboard.projectBudgetExceeded": "{{name}} is over budget",
@@ -90,6 +90,7 @@ const en = {
   "dashboard.createTask": "Create task",
   "dashboard.logTime": "Log time",
   "dashboard.newExpense": "New expense",
+  "dashboard.newTravelClaim": "New travel claim",
 };
 
 const nb: { [Key in keyof typeof en]: string } = {
@@ -141,7 +142,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.expenseRejected": "Utlegget ditt «{{name}}» ble avvist",
   "dashboard.expenseApprovalWaiting": "{{name}} har utlegg som venter på din godkjenning",
   "dashboard.expenseApprovalWaitingCount": "{{name}} har {{count}} utlegg som venter på din godkjenning",
-  "dashboard.expenseReimbursementWaiting": "{{count}} utlegg venter på å bli refundert",
+  "dashboard.expenseReimbursementWaiting": "{{count}} utlegg og reiseregninger venter på å bli refundert",
   "dashboard.readyMilestonesHint": "{{count}} milepæler klare til fakturering",
   "dashboard.projectBudgetWarning": "{{name}} har brukt opp mesteparten av budsjettet",
   "dashboard.projectBudgetExceeded": "{{name}} har gått over budsjett",
@@ -182,6 +183,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.createTask": "Opprett oppgave",
   "dashboard.logTime": "Før timer",
   "dashboard.newExpense": "Nytt utlegg",
+  "dashboard.newTravelClaim": "Ny reiseregning",
 };
 
 export const dashboardCatalog = { en, nb } as const satisfies CatalogResources;

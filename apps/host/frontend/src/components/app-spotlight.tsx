@@ -11,6 +11,7 @@ import {
   IconPackage,
   IconPlus,
   IconReceipt2,
+  IconRoute,
   IconSearch,
   IconUser,
 } from "@tabler/icons-react";
@@ -113,10 +114,16 @@ export const AppSpotlight = ({
     ...(enabledModules?.includes("time") && hasPermissions(permissions, ["time:access"])
       ? [{ label: t("dashboard.logTime"), icon: IconClock, path: "/time", search: undefined }]
       : []),
-    // My expenses has no way to open the form from a search param yet, so the
-    // action lands on the list, exactly as Log time lands on My week.
+    // My expenses has no way to open the expense form from a search param, so
+    // the action lands on the list, exactly as Log time lands on My week.
     ...(enabledModules?.includes("expenses") && hasPermissions(permissions, ["expenses:access"])
       ? [{ label: t("dashboard.newExpense"), icon: IconReceipt2, path: "/expenses", search: undefined }]
+      : []),
+    // A travel claim does have one: the list opens the trip form on arrival,
+    // the way the other apps' create actions land on their list with the form
+    // already open.
+    ...(enabledModules?.includes("expenses") && hasPermissions(permissions, ["expenses:access"])
+      ? [{ label: t("dashboard.newTravelClaim"), icon: IconRoute, path: "/expenses", search: { create: "claim" } }]
       : []),
   ];
 
