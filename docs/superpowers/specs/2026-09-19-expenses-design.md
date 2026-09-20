@@ -191,15 +191,26 @@ distance (over 15 km) are not modelled: an approver judges them.
 
 `locked_before` date, `default_currency` char(3) default `NOK`,
 `default_markup_percent` numeric(6,2) default 0, `receipt_required_over`
-numeric(12,2) null.
+numeric(12,2) null, and — from delivery B — `time_zone` text default
+`Europe/Oslo`: the installation's **business time zone**, which decides which
+calendar day an instant belongs to (a trip's days, the day a claim is locked by,
+the list filters, the payroll month, "today"). A name is accepted only when Go
+and Postgres read it the same way (their offsets agree in January and in July),
+so abbreviations such as `CET` are refused.
 
 ### 3.6 `expenses.claims` (delivery B)
 
 `id`, `user_id`, `created_by_user_id`, `purpose` (200), `destination` (200),
-`abroad` boolean, `abroad_day_rate` numeric(10,2), `departure_at`, `return_at`
+`abroad` boolean, `abroad_day_rate` numeric(10,2), `abroad_currency` char(3)
+(both required abroad, both absent at home), `departure_at`, `return_at`
 timestamptz, `project_id` null, the status / decision / reimbursement columns of
-§3.1, `revision`, timestamps. A claim's lines carry its project unless a line
-says otherwise for `billable` only.
+§3.1, `revision`, timestamps. A line is an entry with `claim_id` (cascade on
+delete); at most 200 per claim. **Status, owner, project and the period lock come
+from the claim** — a line's own status column stays `draft` and every read judges
+it through its claim; a line's project is always its claim's, and a line decides
+only whether it is `billable`. A per diem line additionally stores its type, the
+three "meal covered" flags and the three percentages it was priced with; at most
+one per diem line per claim per date (unique index).
 
 ## 4. Rules
 
@@ -207,12 +218,30 @@ says otherwise for `billable` only.
 half-up to two places. Billable: bill amount = km × customer rate per km
 (defaults from the table, editable on the line).
 
-**Per diem (delivery B).** No overnight: one day line when the trip lasts ≥ 6 h —
-`6_12` up to 12 h, `over_12` beyond. With overnight: one line per started 24-hour
-period from departure; a final part-period counts when it exceeds 6 h. The
-employee picks the overnight type per day and ticks covered meals; each tick
-deducts its percent of that day's rate; never below zero. Abroad: the claim's
-entered day rate, same percentages. Suggestions are computed by the server.
+**Per diem (delivery B, as built).** Amount = day rate × (1 − Σ covered meal
+percentages / 100), never below zero, rounded half-up once. A covered meal whose
+percentage has no rate row refuses rather than deducting nothing. One per diem
+day per date, within the trip's days (in the business time zone). Abroad: the
+claim's own day rate and currency, same percentages; changing them reprices the
+claim's days, and narrowing the trip past a recorded day is refused. **A per diem
+day is never billable, priced or invoiced.** The server suggests the days
+(`POST /claims/{id}/per-diem-suggestion {overnight}`): under 6 h nothing; no
+overnight — one day, `6_12` up to and including 12 h, `over_12` beyond; with an
+overnight — one day per full 24 hours elapsed plus one for a remainder strictly
+over 6 h, and never fewer than one (an overnight trip of 6 h to under 24 h is one
+day); day *i* is dated the departure's business day + *i*; suggested overnight
+days are `overnight_hotel`. The suggestion writes nothing.
+
+**Claims as units (delivery B, as built).** Submit / approve / reject / unapprove
+/ reimburse take `{entryIds?, claimIds?}` (at most 500 distinct units,
+all-or-nothing, refusals keyed by list) and answer `{entries, claims}`. Submitting
+a claim needs at least one line and freezes every line; the receipt rule is judged
+per employee-paid outlay line. A claim is approved by `expenses:approve` or a
+manager of the claim's project; unapprove is refused once it is reimbursed or any
+line is invoiced. A claim is owed Σ employee-paid outlays + mileage + per diem,
+per currency. The payroll CSV writes one row per line under two leading columns,
+`Unit` and `Purpose`, grouped by person and unit. A line named on its own in a
+batch or an export is refused: a trip moves, and is paid, whole.
 
 **Outlays.** Bill amount = net × (1 + markup/100). Markup defaults from settings.
 
@@ -224,7 +253,8 @@ submit. Unapprove → draft.
 whose gross exceeds it cannot be submitted without an attachment (400 naming the
 entry).
 
-**Period lock.** Nothing dated before `locked_before` is created, edited,
+**Period lock.** (A travel claim, and every line in it, is judged by the business
+day it departed — not by the lines' own dates.) Nothing dated before `locked_before` is created, edited,
 deleted, given or stripped of a receipt, submitted, approved, rejected,
 unapproved or rate-overridden — except by `expenses:manage`. It protects what the
 employee submitted and what was approved. It deliberately does not reach
