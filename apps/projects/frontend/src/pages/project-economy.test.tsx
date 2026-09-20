@@ -1,7 +1,14 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import type { Economy, EconomyActuals, EconomyLine } from "../api/economy";
+import type {
+  Economy,
+  EconomyActuals,
+  EconomyExpenseBucket,
+  EconomyExpenseCurrency,
+  EconomyExpenses,
+  EconomyLine,
+} from "../api/economy";
 import type { BillingMilestone, BillingMilestonePlan, BillingMilestoneTotals } from "../api/milestones";
 import type { Project } from "../api/projects";
 import { stubFetch } from "../test/fetch";
@@ -52,6 +59,85 @@ const economy = (overrides: Partial<Economy> = {}): Economy => ({
   }),
   budgetUsed: { basis: "amount", percent: 75, approvedPercent: 50 },
   milestones: totals(),
+  ...overrides,
+});
+
+const bucket = (count: number, cost: number, amount: number): EconomyExpenseBucket => ({ count, cost, amount });
+
+/**
+ * The expenses block for a project that carries a currency: the three buckets
+ * and the figures beside them, which the server publishes as one group.
+ */
+const expenses = (overrides: Partial<EconomyExpenses> = {}): EconomyExpenses => ({
+  approved: bucket(3, 4200, 5000),
+  submitted: bucket(1, 800, 1000),
+  draft: bucket(2, 500, 0),
+  totalCost: 5500,
+  totalAmount: 6000,
+  readyCount: 2,
+  readyAmount: 3000,
+  invoicedCount: 1,
+  invoicedAmount: 2000,
+  unpricedCount: 0,
+  lastEntryDate: "2026-03-14",
+  ...overrides,
+});
+
+/** An answer from an installation that tracks expenses. `undefined` is a caller with no financial rights. */
+const tracked = (block: EconomyExpenses | undefined, overrides: Partial<Economy> = {}): Economy =>
+  economy({ expenseTracking: true, expenses: block, ...overrides });
+
+const ownCurrencyFigures = [
+  "approved",
+  "submitted",
+  "draft",
+  "totalCost",
+  "totalAmount",
+  "readyCount",
+  "readyAmount",
+  "invoicedCount",
+  "invoicedAmount",
+  "unpricedCount",
+] as const;
+
+/**
+ * The rules the server keeps about the expenses half of this answer, checked on
+ * the way out — so no test can make the page render a body the API would never
+ * send: nothing about expenses without `expenseTracking`, `cost.expenseCost`
+ * present exactly when the cost block is, the project's own-currency figures
+ * present or absent together and only on a project that carries a currency,
+ * and `otherCurrencies` absent rather than empty and never the project's own.
+ */
+const asTheServerWouldSend = (body: Economy): Economy => {
+  const block = body.expenses;
+  if (!body.expenseTracking && (block !== undefined || body.cost?.expenseCost != null)) {
+    throw new Error("Without expenseTracking there is no expenses block and no cost.expenseCost");
+  }
+  if (body.expenseTracking && body.cost && body.cost.expenseCost == null) {
+    throw new Error("With expenseTracking the cost block always carries expenseCost");
+  }
+  if (block) {
+    const present = ownCurrencyFigures.filter((key) => block[key] !== undefined);
+    if (present.length !== 0 && present.length !== ownCurrencyFigures.length) {
+      throw new Error(`The project's own-currency figures are one group: ${present.join(", ")}`);
+    }
+    if (present.length > 0 && !body.currency) {
+      throw new Error("A project with no currency has no own-currency figures");
+    }
+    if (block.otherCurrencies?.length === 0) throw new Error("otherCurrencies is absent when it is empty");
+    if (block.otherCurrencies?.some((entry) => entry.currency === body.currency)) {
+      throw new Error("The project's own currency is never in otherCurrencies");
+    }
+  }
+  return body;
+};
+
+const otherCurrency = (overrides: Partial<EconomyExpenseCurrency> = {}): EconomyExpenseCurrency => ({
+  currency: "EUR",
+  count: 2,
+  cost: 180,
+  amount: 200,
+  readyAmount: 200,
   ...overrides,
 });
 
@@ -156,7 +242,7 @@ const stubEconomy = (
     if (url.pathname === "/api/v1/projects/7/economy") {
       return Promise.resolve(
         economyStatus === 200
-          ? jsonResponse(200, economyBody)
+          ? jsonResponse(200, asTheServerWouldSend(economyBody))
           : jsonResponse(economyStatus, { title: "The budget is unavailable" }),
       );
     }
@@ -173,6 +259,33 @@ const stubEconomy = (
   });
 
 const rowFor = async (name: string) => (await screen.findByText(name)).closest("tr") as HTMLElement;
+
+/** Everything the tab puts on screen, without Mantine's injected stylesheets. */
+const visibleText = (container: HTMLElement): string => {
+  const copy = container.cloneNode(true) as HTMLElement;
+  for (const style of copy.querySelectorAll("style")) style.remove();
+  return (copy.textContent ?? "").replaceAll(" ", " ").trim();
+};
+
+/**
+ * The whole Economy tab, word for word, for an installation without Expenses —
+ * captured from the page as it stood before expenses reached it. Nothing about
+ * expenses may change what such an installation reads.
+ */
+const TAB_WITHOUT_EXPENSES = [
+  "Budget and logged work",
+  "What was budgeted for this project, and what has been logged against it.",
+  "Budget used75 % of the budget (NOK 480,000.00)",
+  "Value of workNOK 360,000.00",
+  "Fixed price amountNOK 1,000,000.00",
+  "MarginNOK 180,000.00",
+  "Approved210 hNOK 240,000.00Submitted62 hNOK 120,000.00Draft40 hNOK 0.00",
+  "PlannedNOK 300,000.00Ready to invoiceNOK 0.00InvoicedNOK 0.00",
+  "Invoice planWhat this project is invoiced in, in the order the milestones are billed.Add milestone",
+  "MilestonePlanned dateAmountStatusActions",
+  "Kick-off—NOK 300,000.00Planned",
+  "Fixed price amountNOK 1,000,000.00",
+].join("");
 
 describe("ProjectEconomy", () => {
   it("tells someone who may not see the amounts why there is no plan, and asks for none", async () => {
@@ -998,5 +1111,276 @@ describe("ProjectEconomy — the budget half", () => {
 
     expect(await screen.findByText("Could not load the budget")).toBeInTheDocument();
     expect(await screen.findByText("Kick-off")).toBeInTheDocument();
+  });
+
+  // A project in an installation without Expenses reads exactly as it did
+  // before the module existed, so the whole tab is pinned word for word: no
+  // section, no sentence, and the margin in today's wording.
+  it("says nothing whatsoever about expenses when the installation does not track them", async () => {
+    stubEconomy(
+      project({
+        capabilities: {
+          canManage: true,
+          canContribute: true,
+          canSeeFinancials: true,
+          canManageMilestones: true,
+          canSeeCosts: true,
+        },
+      }),
+      plan([milestone()]),
+      200,
+      {
+        economy: economy({
+          cost: { approved: 120000, submitted: 60000, draft: 0, total: 180000, margin: 180000, uncostedHours: 0 },
+        }),
+      },
+    );
+    const { container } = renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    await screen.findByTestId("budget-headline");
+    await screen.findByText("Kick-off");
+    expect(screen.queryByTestId("project-expenses")).not.toBeInTheDocument();
+    expect(visibleText(container)).toBe(TAB_WITHOUT_EXPENSES);
+  });
+
+  it("shows what the expenses cost and what of them the customer is charged, bucket by bucket", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, { economy: tracked(expenses()) });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const section = await screen.findByTestId("project-expenses");
+    expect(within(section).getByRole("table", { name: "Costs" })).toBeInTheDocument();
+
+    const approved = within(section).getByText("Approved").closest("tr") as HTMLElement;
+    expect(approved).toHaveTextContent("3");
+    expect(approved).toHaveTextContent(money(4200));
+    expect(approved).toHaveTextContent(money(5000));
+
+    const submitted = within(section).getByText("Awaiting approval").closest("tr") as HTMLElement;
+    expect(submitted).toHaveTextContent(money(800));
+    expect(submitted).toHaveTextContent(money(1000));
+
+    // Rejected expenses are back with their owner, which is where a draft is:
+    // the row says so rather than leaving a reader to wonder where they went.
+    const draft = within(section).getByText("Draft").closest("tr") as HTMLElement;
+    expect(draft).toHaveTextContent("Rejected expenses are here too.");
+    expect(draft).toHaveTextContent(money(500));
+
+    expect(within(section).getByText("Last expense: Mar 14, 2026")).toBeInTheDocument();
+  });
+
+  // Each bucket is rounded on its own, so the three need not add up to the
+  // total the server publishes — which is why the total is read, never summed.
+  it("takes the totals from the server rather than adding the buckets up", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: tracked(
+        expenses({
+          approved: bucket(1, 3333.33, 1000.01),
+          submitted: bucket(1, 3333.33, 1000.01),
+          draft: bucket(1, 3333.33, 1000.01),
+          totalCost: 10000.01,
+          totalAmount: 3000.02,
+        }),
+      ),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const total = within(await screen.findByTestId("project-expenses"))
+      .getByText("Total")
+      .closest("tr") as HTMLElement;
+    expect(total).toHaveTextContent(money(10000.01));
+    expect(total).toHaveTextContent(money(3000.02));
+    expect(total).not.toHaveTextContent(money(9999.99));
+    expect(total).not.toHaveTextContent(money(3000.03));
+  });
+
+  it("says out loud that the expenses are not measured against the budget", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, { economy: tracked(expenses()) });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    expect(
+      await screen.findByText("Expenses are not measured against the budget, so none of this is in Budget used."),
+    ).toBeInTheDocument();
+  });
+
+  it("counts the lines waiting to be invoiced and the ones already invoiced, one line at a time", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: tracked(expenses({ readyCount: 1, readyAmount: 1500, invoicedCount: 1, invoicedAmount: 2000 })),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const section = await screen.findByTestId("project-expenses");
+    expect(within(section).getByText(`Ready to invoice: 1 line, ${money(1500)}`)).toBeInTheDocument();
+    expect(within(section).getByText(`Invoiced: 1 line, ${money(2000)}`)).toBeInTheDocument();
+  });
+
+  // A billable line nobody has priced is in no amount, so the figures say how
+  // many lines they are short by — exactly as the unpriced hours do.
+  it("says how many billable expenses carry no price yet", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, { economy: tracked(expenses({ unpricedCount: 2 })) });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    expect(
+      await screen.findByText("2 billable expenses have no price yet and are not in these amounts."),
+    ).toBeInTheDocument();
+  });
+
+  // Nothing is ever converted: a euro receipt is reported in euro, beside the
+  // project's own figures rather than inside them.
+  it("reports another currency in that currency, outside the project's figures", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: tracked(expenses({ otherCurrencies: [otherCurrency()] })),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const section = await screen.findByTestId("project-expenses");
+    expect(
+      within(section).getByText(
+        `2 expenses in EUR — cost ${money(180, "EUR")}, to the customer ${money(200, "EUR")}, ready to invoice ${money(200, "EUR")} — are not included in the figures above.`,
+      ),
+    ).toBeInTheDocument();
+    expect(section).not.toHaveTextContent(money(180));
+    expect(section).not.toHaveTextContent(money(200));
+  });
+
+  // The block can be empty — a project with no currency and nothing recorded,
+  // read by somebody who may see the money — and an empty table of dashes says
+  // less than one sentence does.
+  it("says plainly when the expenses are tracked and nothing has been recorded", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: tracked({}, { currency: undefined, budget: { hours: 400 }, budgetUsed: undefined }),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const section = await screen.findByTestId("project-expenses");
+    expect(within(section).getByText("No expenses recorded on this project yet.")).toBeInTheDocument();
+    expect(within(section).queryByRole("table")).not.toBeInTheDocument();
+  });
+
+  // Every figure in the block is money, so a caller without financial rights is
+  // answered without it — and is told nothing at all rather than zeroes.
+  it("shows no costs section to a caller the server sent no expenses block", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, { economy: tracked(undefined) });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    await screen.findByTestId("budget-headline");
+    expect(screen.queryByTestId("project-expenses")).not.toBeInTheDocument();
+  });
+
+  it("says the margin counts the expenses, and shows the two halves of what it cost", async () => {
+    stubEconomy(
+      project({
+        capabilities: {
+          canManage: true,
+          canContribute: true,
+          canSeeFinancials: true,
+          canManageMilestones: true,
+          canSeeCosts: true,
+        },
+      }),
+      plan([milestone()]),
+      200,
+      {
+        economy: tracked(expenses(), {
+          cost: {
+            approved: 120000,
+            submitted: 60000,
+            draft: 0,
+            total: 180000,
+            expenseCost: 5500,
+            margin: 180500,
+            uncostedHours: 0,
+          },
+        }),
+      },
+    );
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const headline = await screen.findByTestId("budget-headline");
+    expect(within(headline).getByText("Margin").parentElement).toHaveTextContent(money(180500));
+    expect(
+      screen.getByText("The margin counts the expenses too: what they will bill, less what they cost."),
+    ).toBeInTheDocument();
+    expect(screen.getByText(`Labour cost ${money(180000)} · Expense cost ${money(5500)}`)).toBeInTheDocument();
+  });
+
+  // The margin is short by the same two things the figures above it are: a
+  // billable line nobody priced, and anything recorded in another currency.
+  it("says what else the margin leaves out once expenses count towards it", async () => {
+    stubEconomy(
+      project({
+        capabilities: {
+          canManage: true,
+          canContribute: true,
+          canSeeFinancials: true,
+          canManageMilestones: true,
+          canSeeCosts: true,
+        },
+      }),
+      plan([milestone()]),
+      200,
+      {
+        economy: tracked(expenses({ unpricedCount: 1, otherCurrencies: [otherCurrency()] }), {
+          cost: {
+            approved: 120000,
+            submitted: 60000,
+            draft: 0,
+            total: 180000,
+            expenseCost: 5500,
+            margin: 180500,
+            uncostedHours: 0,
+          },
+        }),
+      },
+    );
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    expect(await screen.findByText("The margin leaves out 1 billable expense with no price.")).toBeInTheDocument();
+    expect(screen.getByText("The margin leaves out the expenses recorded in EUR.")).toBeInTheDocument();
+  });
+
+  // The cost block is the *labour* cost block and still needs Time tracking, so
+  // an installation with Expenses and no Time has no margin at all — and what
+  // its expenses cost is in the costs section all the same.
+  it("shows what the expenses cost on an installation that does not track time", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: tracked(expenses(), { timeTracking: false, actuals: undefined, budgetUsed: undefined, cost: undefined }),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const section = await screen.findByTestId("project-expenses");
+    expect(within(section).getByText("Total").closest("tr")).toHaveTextContent(money(5500));
+    expect(screen.queryByText("Margin")).not.toBeInTheDocument();
+    expect(screen.getByText("Hours appear here when Time tracking is enabled.")).toBeInTheDocument();
+  });
+
+  it("offers the billable expenses waiting for an invoice beside the milestone plan", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: tracked(expenses({ readyCount: 2, readyAmount: 3000 })),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const ready = await screen.findByTestId("expenses-ready-to-invoice");
+    expect(ready).toHaveTextContent(`Billable expenses ready to invoice — 2 lines, ${money(3000)}`);
+    // Without the host's link it is a plain sentence; the package knows no
+    // route of the Expenses app.
+    expect(within(ready).queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("links the ready expenses where the host says they live", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, { economy: tracked(expenses()) });
+    renderWithProviders(<ProjectEconomy projectId={7} expensesHref="/projects/7/expenses" />);
+
+    const link = await screen.findByRole("link", { name: "View the expenses" });
+    expect(link).toHaveAttribute("href", "/projects/7/expenses");
+  });
+
+  it("offers no ready-expenses row when nothing is ready", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: tracked(expenses({ readyCount: 0, readyAmount: 0 })),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} expensesHref="/projects/7/expenses" />);
+
+    await screen.findByTestId("project-expenses");
+    expect(screen.queryByTestId("expenses-ready-to-invoice")).not.toBeInTheDocument();
   });
 });

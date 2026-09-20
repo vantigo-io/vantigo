@@ -49,27 +49,82 @@ const row = (overrides: Partial<EconomyRow> = {}): EconomyRow => ({
   ...overrides,
 });
 
-const portfolio = (rows: EconomyRow[], overrides: Partial<EconomyPortfolioPage> = {}): EconomyPortfolioPage => ({
-  data: rows,
-  pagination: {
-    page: 1,
-    pageSize: 25,
-    totalCount: rows.length,
-    totalPages: 1,
-    hasNextPage: false,
-    hasPreviousPage: false,
-  },
-  totals: {
-    projectCount: rows.length,
-    overBudgetCount: 0,
-    readyCount: rows.length,
-    readyAmounts: [{ currency: "NOK", amount: 200000 }],
-  },
-  timeTracking: true,
-  // This installation has no expenses module; the expenses half of the table is Task 4's.
-  expenseTracking: false,
-  ...overrides,
-});
+/** A row from an installation that tracks expenses, with nothing of its own ready. */
+const trackedRow = (overrides: Partial<EconomyRow> = {}): EconomyRow =>
+  row({ readyExpenseCount: 0, readyTotalAmount: 200000, ...overrides });
+
+/** A page from an installation that tracks expenses; the totals carry the expense halves. */
+const trackedPortfolio = (rows: EconomyRow[], overrides: Partial<EconomyPortfolioPage> = {}): EconomyPortfolioPage =>
+  portfolio(rows, {
+    expenseTracking: true,
+    totals: {
+      projectCount: rows.length,
+      overBudgetCount: 0,
+      readyCount: rows.length,
+      readyExpenseCount: 0,
+      readyAmounts: [{ currency: "NOK", amount: 200000, expenseAmount: 0, totalAmount: 200000 }],
+    },
+    ...overrides,
+  });
+
+/**
+ * The rules the server keeps about the expense figures, checked on the way out,
+ * so no test can make the page render a page the API would never send: the
+ * three row figures and the two totals figures are there exactly when the
+ * installation tracks expenses, a row's expense amount only when it has lines
+ * ready in its own currency, and the row total only when one of its halves is
+ * there.
+ */
+const asTheServerWouldSend = (body: EconomyPortfolioPage): EconomyPortfolioPage => {
+  for (const project of body.data) {
+    const expenseCount = project.readyExpenseCount;
+    if (body.expenseTracking !== (expenseCount != null)) {
+      throw new Error("A row carries readyExpenseCount exactly when the installation tracks expenses");
+    }
+    const hasExpenseAmount = project.readyExpenseAmount != null;
+    if (hasExpenseAmount && (!project.currency || !expenseCount)) {
+      throw new Error("readyExpenseAmount needs a currency and lines ready in it");
+    }
+    const halves = project.readyAmount != null || hasExpenseAmount;
+    if ((project.readyTotalAmount != null) !== (body.expenseTracking && halves)) {
+      throw new Error("readyTotalAmount is there exactly when expenses are tracked and a half has an amount");
+    }
+  }
+  if (body.expenseTracking !== (body.totals.readyExpenseCount != null)) {
+    throw new Error("The totals carry readyExpenseCount exactly when the installation tracks expenses");
+  }
+  for (const ready of body.totals.readyAmounts) {
+    if (
+      body.expenseTracking !== (ready.expenseAmount != null) ||
+      body.expenseTracking !== (ready.totalAmount != null)
+    ) {
+      throw new Error("A currency's expenseAmount and totalAmount are there exactly when expenses are tracked");
+    }
+  }
+  return body;
+};
+
+const portfolio = (rows: EconomyRow[], overrides: Partial<EconomyPortfolioPage> = {}): EconomyPortfolioPage =>
+  asTheServerWouldSend({
+    data: rows,
+    pagination: {
+      page: 1,
+      pageSize: 25,
+      totalCount: rows.length,
+      totalPages: 1,
+      hasNextPage: false,
+      hasPreviousPage: false,
+    },
+    totals: {
+      projectCount: rows.length,
+      overBudgetCount: 0,
+      readyCount: rows.length,
+      readyAmounts: [{ currency: "NOK", amount: 200000 }],
+    },
+    timeTracking: true,
+    expenseTracking: false,
+    ...overrides,
+  });
 
 const stubPortfolio = (answer: Response) =>
   stubFetch((input: RequestInfo | URL) => {
@@ -311,5 +366,98 @@ describe("EconomyPortfolio", () => {
         "More than 2000 projects match, which is more than one answer can carry. Narrow the portfolio with 'status', 'customerId' or 'search'.",
       ),
     ).toBeInTheDocument();
+  });
+
+  // The column is what is ready to invoice on the project altogether, and the
+  // two halves are named under it — the server has already added them up.
+  it("shows the whole of what is ready and says how much of it is expenses", async () => {
+    stubPortfolio(
+      jsonResponse(
+        200,
+        trackedPortfolio([
+          trackedRow({
+            readyCount: 1,
+            readyAmount: 200000,
+            readyExpenseCount: 3,
+            readyExpenseAmount: 5000,
+            readyTotalAmount: 205000,
+          }),
+        ]),
+      ),
+    );
+    renderPage();
+
+    const projectRow = (await screen.findByRole("link", { name: "KVEWEBS" })).closest("tr") as HTMLElement;
+    expect(projectRow).toHaveTextContent(money(205000));
+    expect(projectRow).toHaveTextContent(`milestones ${money(200000)} · expenses ${money(5000)}`);
+  });
+
+  it("splits nothing on a project with no expense lines ready", async () => {
+    stubPortfolio(jsonResponse(200, trackedPortfolio([trackedRow()])));
+    renderPage();
+
+    const projectRow = (await screen.findByRole("link", { name: "KVEWEBS" })).closest("tr") as HTMLElement;
+    expect(projectRow).toHaveTextContent(money(200000));
+    expect(projectRow).toHaveTextContent("1 milestone · 0 expense lines");
+    expect(within(projectRow).queryByTestId("ready-split")).not.toBeInTheDocument();
+  });
+
+  it("keeps the ready column exactly as it was where expenses are not tracked", async () => {
+    stubPortfolio(jsonResponse(200, portfolio([row()])));
+    renderPage();
+
+    const projectRow = (await screen.findByRole("link", { name: "KVEWEBS" })).closest("tr") as HTMLElement;
+    expect(projectRow).toHaveTextContent(money(200000));
+    expect(projectRow).not.toHaveTextContent("milestone");
+    expect(projectRow).not.toHaveTextContent("expense");
+    expect(within(projectRow).queryByTestId("ready-split")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-other-currency-note")).not.toBeInTheDocument();
+  });
+
+  // A currency can be in the list for its expenses alone, where the milestone
+  // half is a sum over nothing rather than a figure that went missing.
+  it("counts the expense lines in the ready card, per currency and in words", async () => {
+    stubPortfolio(
+      jsonResponse(
+        200,
+        trackedPortfolio([trackedRow({ readyExpenseCount: 3, readyExpenseAmount: 5000, readyTotalAmount: 205000 })], {
+          totals: {
+            projectCount: 12,
+            overBudgetCount: 3,
+            readyCount: 5,
+            readyExpenseCount: 4,
+            readyAmounts: [
+              { currency: "NOK", amount: 200000, expenseAmount: 5000, totalAmount: 205000 },
+              { currency: "EUR", amount: 0, expenseAmount: 400, totalAmount: 400 },
+            ],
+          },
+        }),
+      ),
+    );
+    renderPage();
+
+    const totals = await screen.findByTestId("economy-portfolio-totals");
+    expect(totals).toHaveTextContent(money(205000));
+    expect(totals).toHaveTextContent(money(400, "EUR"));
+    expect(totals).toHaveTextContent("5 milestones · 4 expense lines");
+    expect(totals).toHaveTextContent(`milestones ${money(200000)} · expenses ${money(5000)}`);
+    expect(totals).toHaveTextContent(`milestones ${money(0, "EUR")} · expenses ${money(400, "EUR")}`);
+    // A row folds in no other currency, by design — the note says where those
+    // expenses are reported instead.
+    expect(
+      screen.getByText(
+        "Expenses recorded in a currency other than the project's are not in these figures; the project's own Economy tab reports them.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  // Where expenses count too, a project can be waiting for an invoice with no
+  // milestone at all, so the filter is no longer about milestones alone.
+  it("names the ready filter after everything that can be ready", async () => {
+    stubPortfolio(jsonResponse(200, trackedPortfolio([trackedRow()])));
+    renderPage();
+
+    expect(await screen.findByLabelText("Only with something ready to invoice")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Only with milestones ready to invoice")).not.toBeInTheDocument();
   });
 });
