@@ -242,6 +242,14 @@ describe("the dashboard's attention links", () => {
   // approval-waiting title also takes a count when the server sent one.
   it("names expenses' items from a catalog, using the count when the server sent one", () => {
     expect(attentionTitleKey({ module: "expenses", type: "expenseRejected" })).toBe("dashboard.expenseRejected");
+    // A rejected *trip* is called a travel claim, not "your expense". The
+    // title keys on the same `claim/` prefix the link does.
+    expect(attentionTitleKey({ module: "expenses", type: "expenseRejected", entityId: "claim/12" })).toBe(
+      "dashboard.claimRejected",
+    );
+    expect(attentionTitleKey({ module: "expenses", type: "expenseRejected", entityId: "42" })).toBe(
+      "dashboard.expenseRejected",
+    );
     expect(attentionTitleKey({ module: "expenses", type: "approvalWaiting" })).toBe("dashboard.expenseApprovalWaiting");
     expect(attentionTitleKey({ module: "expenses", type: "approvalWaiting", count: 3 })).toBe(
       "dashboard.expenseApprovalWaitingCount",
@@ -290,6 +298,7 @@ describe("the dashboard's attention links", () => {
   it("has every expenses attention title in English and Norwegian", () => {
     for (const key of [
       "dashboard.expenseRejected",
+      "dashboard.claimRejected",
       "dashboard.expenseApprovalWaiting",
       "dashboard.expenseApprovalWaitingCount",
       "dashboard.expenseReimbursementWaiting",

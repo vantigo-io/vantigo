@@ -348,7 +348,7 @@ const projectAttentionTitleKeys: Record<string, string> = {
  * treatment, this time with the name filled into the sentence rather than a
  * date.
  */
-export const attentionTitleKey = (item: { module: ModuleKey; type: string; count?: number }) => {
+export const attentionTitleKey = (item: { module: ModuleKey; type: string; count?: number; entityId?: string }) => {
   if (item.module === "time") {
     if (item.type === "weekUnsubmitted") return "dashboard.timeWeekUnsubmitted";
     if (item.type === "approvalWaiting") return "dashboard.timeApprovalWaiting";
@@ -356,7 +356,12 @@ export const attentionTitleKey = (item: { module: ModuleKey; type: string; count
   }
   if (item.module === "projects") return projectAttentionTitleKeys[item.type];
   if (item.module === "expenses") {
-    if (item.type === "expenseRejected") return "dashboard.expenseRejected";
+    // A rejected unit is an expense or a whole trip, and the two are called
+    // different things. The link already keys on the `claim/` prefix; so does
+    // the sentence, rather than calling a trip "your expense".
+    if (item.type === "expenseRejected") {
+      return item.entityId?.startsWith("claim/") ? "dashboard.claimRejected" : "dashboard.expenseRejected";
+    }
     // The count is the server's, sent because a title it builds cannot be
     // localised with a number baked in; when it is present the sentence
     // names it, and when it is not (a caller with exactly one waiting) the
