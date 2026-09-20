@@ -301,8 +301,11 @@ are there so the state machine is complete rather than retrofitted.
 
 ## What Time reports to other modules
 
-Time is the first module to *provide* a cross-module contract rather than only
-consume one: it implements `contracts.ProjectActuals` (`internal/time/actuals.go`),
+Time was the first module to *provide* a cross-module contract rather than only
+consume one, and is no longer the only one: Expenses provides
+`contracts.ProjectExpenses` the same way, and a project's Economy tab reads both
+(see [docs/projects.md](projects.md#the-optional-expenses-dependency)). Time
+implements `contracts.ProjectActuals` (`internal/time/actuals.go`),
 which is what has been logged against a project, for whoever compares it with what
 was planned — Projects' economy view today, an invoice later. It performs no
 authorization of its own: the caller has already decided who may see the project and

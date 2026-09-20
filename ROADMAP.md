@@ -253,8 +253,9 @@ contract Time implements.
 
 *Unblocks:* profitability and budget alerts, a project portfolio view.
 
-**Next: expenses and supplier costs, overtime and work-type multipliers.**
-Both were out of scope for this delivery and stay the two concrete next
+**Next: supplier costs, overtime and work-type multipliers.** Expenses landed
+separately — see [Expenses phase 3](#phase-3--expenses-on-the-project-page-done)
+— and the rest were out of scope for this delivery and stay the concrete next
 steps for project economics. Forecast / estimate-to-complete and
 original-vs-revised budgets (tracking a budget's own history rather than
 only its current value) are candidates worth deciding on once those land,
@@ -347,9 +348,34 @@ request, across both kinds), and the rate kinds and time zone in settings. See
 *Unblocks:* a whole trip recorded, approved and paid as one, and per diem
 priced by the agreement instead of by hand in a spreadsheet.
 
-### Next — The project page's Economy tab, cost side
+### Phase 3 — Expenses on the project page (done)
 
 Expenses joins Time's hours on the Economy tab (`/projects/$projectId/economy`)
-as the other half of a project's actual cost, following the same
-optional-contract shape (`contracts.ProjectActuals`) Time already provides it
-through, with the project page's own Expenses tab beside it.
+as the other half of a project's actual cost, through an optional contract of
+its own — `contracts.ProjectExpenses`, the same shape Time already provides
+`contracts.ProjectActuals` through, so Projects never reads the `expenses`
+schema and either module can be left out of an installation. It answers **per
+currency and converts nothing**: a line carries its own currency, which may be
+neither its travel claim's nor its project's. On the Economy tab that is a
+costs section (the three buckets with counts, what they cost, what they pass on
+to the customer), expenses inside the margin, and billable lines in "ready to
+invoice"; expenses stay out of `budgetUsed` and the per-line budgets, which
+remain about work. Beside it, the project page's own **Expenses** tab
+(`/projects/$projectId/expenses`) shows the same money from the other side —
+the totals per currency, the expenses behind them that the caller may open, a
+"ready to invoice" filter that is exactly the figure above it, and **Record a
+cost** with the project fixed. The totals and the list are gated differently on
+purpose — the aggregate is the project's money, the rows are a colleague's
+receipts — and the tab says so rather than showing an empty table. See
+[`docs/expenses.md`](docs/expenses.md#on-the-project-page) and
+[`docs/projects.md`](docs/projects.md#the-optional-expenses-dependency).
+
+*Unblocks:* a project fully costed — hours and money side by side — and one
+list of everything waiting to go on an invoice.
+
+**Next: invoicing.** `invoiced_at` is still set by hand, per line, by whoever
+holds financial rights on the project; "ready to invoice" is the list an
+Invoices module would build from, and that module owns the stamp when it
+arrives — the same thing [`docs/time.md`](docs/time.md#what-invoicing-will-read)
+has said of an hour since phase 2. Supplier costs are the other gap already
+named, under [Projects](#projects).
