@@ -15,24 +15,40 @@ const BOOKED = { id: PROJECT, code: "KVEM1000", name: "Kverneland web" };
  * answer is the one the server gives.
  */
 describe("a project's expense reads", () => {
-  it("refuses the ready-to-invoice list to whoever the totals are refused to", async () => {
+  it("refuses the ready-to-invoice list with the access layer's own 403", async () => {
     // What a line bills is the project's money, so `toInvoice=true` is for the
-    // same callers the summary is: whoever has financial rights on the
-    // project. Everyone else is refused outright rather than answered with an
-    // empty page, which would read as "nothing is ready".
+    // same callers the summary is. The refusal is the access layer's one
+    // uniform answer — `apicommon.ForbiddenBody()`, the `AuthErrorResponse` of
+    // openapi/common.yaml — not a ProblemDetails, and it names no field.
     stubExpensesApi({
       entries: [outlay({ project: BOOKED, status: "approved", billable: true, billAmount: 800 })],
       projectSummary: new Response(null, { status: 404 }),
     });
 
     await expect(runQuery(projectExpensesSummaryQueryOptions(PROJECT))).rejects.toThrow();
-    const refused = await runQuery(expensesQueryOptions({ projectId: PROJECT, toInvoice: true })).catch(
+    const refused = (await runQuery(expensesQueryOptions({ projectId: PROJECT, toInvoice: true })).catch(
       (error: ApiError) => error,
-    );
-    expect((refused as ApiError).status).toBe(403);
+    )) as ApiError;
+    expect(refused.status).toBe(403);
+    expect(refused.code).toBe("forbidden");
+    expect(refused.message).toBe("You do not have permission to access this resource.");
+    expect(refused.fields).toBeUndefined();
+
     // The same list without the filter is nobody's business but the ordinary
     // visibility rule's, and is answered.
     await expect(runQuery(expensesQueryOptions({ projectId: PROJECT }))).resolves.toBeDefined();
+  });
+
+  it("validates the query before it asks who is asking", async () => {
+    // The server runs `validateListParams` first and only then consults the
+    // directory, so a contradictory query from a caller who would be refused
+    // is a **400** about the query — not a 403 about the caller.
+    stubExpensesApi({ entries: [], projectSummary: new Response(null, { status: 404 }) });
+
+    const refused = (await runQuery(expensesQueryOptions({ toInvoice: true })).catch(
+      (error: ApiError) => error,
+    )) as ApiError;
+    expect(refused.status).toBe(400);
   });
 
   it("pages an empty list the way the server does: no pages, and page 0 refused", async () => {

@@ -14,17 +14,18 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import { IconAlertCircle, IconPlus, IconReceipt } from "@tabler/icons-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, EmptyState, useI18n, useShellLink } from "@vantigo/frontend-shell";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { type Expense, expensesQueryOptions } from "../api/entries";
 import { expensesMetaQueryOptions } from "../api/meta";
 import {
+  notAfterARefusal,
   type ProjectExpensesBucket,
   type ProjectExpensesCurrency,
   projectExpensesSummaryQueryOptions,
 } from "../api/project-expenses";
-import { NotFoundError } from "../api/request";
+import { type ApiError, NotFoundError } from "../api/request";
 import { EntryDrawer } from "../pages/-entry-drawer";
 import { ExpenseFormModal, type ExpenseModalState } from "../pages/-expense-form-modal";
 import { ExpenseStatusBadge } from "./expense-status-badge";
@@ -73,9 +74,11 @@ export const ProjectExpensesPanel = ({ projectId, onChanged }: ProjectExpensesPa
   const { t } = useI18n("expenses");
   const format = useExpenseFormat();
   const Link = useShellLink();
+  const queryClient = useQueryClient();
   const [filter, setFilter] = useState<ProjectExpenseFilter>("all");
   const [page, setPage] = useState(1);
   const [opened, setOpened] = useState<Expense | null>(null);
+  const filtersRef = useRef<HTMLDivElement>(null);
   const [recording, setRecording] = useState<ExpenseModalState | null>(null);
 
   const { data: meta } = useQuery(expensesMetaQueryOptions());
@@ -90,7 +93,24 @@ export const ProjectExpensesPanel = ({ projectId, onChanged }: ProjectExpensesPa
   const list = useQuery({
     ...expensesQueryOptions({ projectId, page, ...(filter === "ready" ? { toInvoice: true } : {}) }),
     enabled: !projectsOff,
+    // A refusal is an answer, not a hiccup: asking three more times over seven
+    // seconds of backoff only delays the sentence the server already gave.
+    retry: notAfterARefusal,
   });
+
+  /**
+   * The ready filter's refusal means this caller's rights on the project have
+   * changed since the summary was read — the two are the same question. The
+   * figures above the alert are money the server has just said no to, and they
+   * would otherwise sit there from cache, so they are read again.
+   */
+  const refusedReady = filter === "ready" && (list.error as ApiError | null)?.status === 403;
+  const [refusalSeen, setRefusalSeen] = useState(false);
+  if (refusedReady !== refusalSeen) {
+    setRefusalSeen(refusedReady);
+    if (refusedReady)
+      void queryClient.invalidateQueries({ queryKey: projectExpensesSummaryQueryOptions(projectId).queryKey });
+  }
 
   // The projects this caller may book on. It is **not** where the project's
   // own currency comes from — that is on the summary, because this list is
@@ -116,7 +136,14 @@ export const ProjectExpensesPanel = ({ projectId, onChanged }: ProjectExpensesPa
     : currencies;
 
   const rows = list.data?.data ?? [];
-  const listed = list.data?.pagination.totalCount;
+  /**
+   * The previous filter's page, kept on screen by `keepPreviousData` while the
+   * new one is in flight. It stops the table flashing, but it is not an answer
+   * to the question now being asked: it is dimmed and marked busy, and no
+   * figure is derived from it.
+   */
+  const settling = list.isPlaceholderData;
+  const listed = settling ? undefined : list.data?.pagination.totalCount;
   /**
    * What the totals say there are, under the same filter the list is asking
    * with — so the two figures compared are always about the same set.
@@ -236,7 +263,7 @@ export const ProjectExpensesPanel = ({ projectId, onChanged }: ProjectExpensesPa
               {/* Mantine renders the chips as radios, so the labelled wrapper
                   is the radio *group* — otherwise the label names nothing a
                   screen reader associates with them. */}
-              <Group gap="xs" role="radiogroup" aria-label={t("projectExpenseFilters")}>
+              <Group gap="xs" role="radiogroup" aria-label={t("projectExpenseFilters")} ref={filtersRef}>
                 <Chip value="all" size="lg" styles={{ label: { height: 40 } }}>
                   {t("filterAllExpenses")}
                 </Chip>
@@ -257,80 +284,84 @@ export const ProjectExpensesPanel = ({ projectId, onChanged }: ProjectExpensesPa
           {list.data && (
             <>
               {rows.length > 0 && (
-                <Table.ScrollContainer minWidth={900}>
-                  <Table striped highlightOnHover aria-label={t("projectExpenses")}>
-                    <Table.Thead>
-                      <Table.Tr>
-                        <Table.Th>{t("date")}</Table.Th>
-                        <Table.Th>{t("description")}</Table.Th>
-                        <Table.Th>{t("kind")}</Table.Th>
-                        <Table.Th>{t("owner")}</Table.Th>
-                        <Table.Th>{t("amount")}</Table.Th>
-                        <Table.Th>{t("status")}</Table.Th>
-                        <Table.Th>{t("receipts")}</Table.Th>
-                        <Table.Th>{t("rowActions")}</Table.Th>
-                      </Table.Tr>
-                    </Table.Thead>
-                    <Table.Tbody>
-                      {rows.map((expense) => (
-                        <Table.Tr key={expense.id} data-expense={expense.id}>
-                          <Table.Td>{format.date(expense.entryDate)}</Table.Td>
-                          <Table.Td>
-                            <UnstyledButton
-                              aria-label={t("openExpense", { description: expense.description })}
-                              onClick={() => setOpened(expense)}
-                            >
-                              <Text size="sm" td="underline">
-                                {expense.description}
-                              </Text>
-                            </UnstyledButton>
-                          </Table.Td>
-                          <Table.Td>
-                            <Stack gap={0}>
-                              <Text size="sm">{t(expenseKindLabelKey(expense.kind))}</Text>
-                              {expense.claimId !== undefined && (
+                <Box data-testid="project-expenses-rows" aria-busy={settling} opacity={settling ? 0.55 : 1}>
+                  <Table.ScrollContainer minWidth={900}>
+                    <Table striped highlightOnHover aria-label={t("projectExpenses")}>
+                      <Table.Thead>
+                        <Table.Tr>
+                          <Table.Th>{t("date")}</Table.Th>
+                          <Table.Th>{t("description")}</Table.Th>
+                          <Table.Th>{t("kind")}</Table.Th>
+                          <Table.Th>{t("owner")}</Table.Th>
+                          <Table.Th>{t("amount")}</Table.Th>
+                          <Table.Th>{t("status")}</Table.Th>
+                          <Table.Th>{t("receipts")}</Table.Th>
+                          <Table.Th>{t("rowActions")}</Table.Th>
+                        </Table.Tr>
+                      </Table.Thead>
+                      <Table.Tbody>
+                        {rows.map((expense) => (
+                          <Table.Tr key={expense.id} data-expense={expense.id}>
+                            <Table.Td>{format.date(expense.entryDate)}</Table.Td>
+                            <Table.Td>
+                              <UnstyledButton
+                                aria-label={t("openExpense", { description: expense.description })}
+                                onClick={() => setOpened(expense)}
+                              >
+                                <Text size="sm" td="underline">
+                                  {expense.description}
+                                </Text>
+                              </UnstyledButton>
+                            </Table.Td>
+                            <Table.Td>
+                              <Stack gap={0}>
+                                <Text size="sm">{t(expenseKindLabelKey(expense.kind))}</Text>
+                                {expense.claimId !== undefined && (
+                                  <Text size="xs" c="dimmed">
+                                    {t("partOfTravelClaim")}
+                                  </Text>
+                                )}
+                              </Stack>
+                            </Table.Td>
+                            <Table.Td>
+                              <Text size="sm">{expense.owner.displayName}</Text>
+                            </Table.Td>
+                            <Table.Td>{format.money(expense.grossAmount, expense.currency)}</Table.Td>
+                            <Table.Td>
+                              <ExpenseStatusBadge status={expense.status} size="sm" />
+                            </Table.Td>
+                            <Table.Td>
+                              {expense.kind === "mileage" ? (
                                 <Text size="xs" c="dimmed">
-                                  {t("partOfTravelClaim")}
+                                  {t("notAvailable")}
+                                </Text>
+                              ) : expense.attachmentCount === 0 ? (
+                                <Text size="xs" c="orange">
+                                  {t("receiptMissing")}
+                                </Text>
+                              ) : (
+                                <Text size="xs">
+                                  {expense.attachmentCount === 1
+                                    ? t("oneReceipt")
+                                    : t("receiptCount", { count: expense.attachmentCount })}
                                 </Text>
                               )}
-                            </Stack>
-                          </Table.Td>
-                          <Table.Td>
-                            <Text size="sm">{expense.owner.displayName}</Text>
-                          </Table.Td>
-                          <Table.Td>{format.money(expense.grossAmount, expense.currency)}</Table.Td>
-                          <Table.Td>
-                            <ExpenseStatusBadge status={expense.status} size="sm" />
-                          </Table.Td>
-                          <Table.Td>
-                            {expense.kind === "mileage" ? (
-                              <Text size="xs" c="dimmed">
-                                {t("notAvailable")}
-                              </Text>
-                            ) : expense.attachmentCount === 0 ? (
-                              <Text size="xs" c="orange">
-                                {t("receiptMissing")}
-                              </Text>
-                            ) : (
-                              <Text size="xs">
-                                {expense.attachmentCount === 1
-                                  ? t("oneReceipt")
-                                  : t("receiptCount", { count: expense.attachmentCount })}
-                              </Text>
-                            )}
-                          </Table.Td>
-                          <Table.Td>
-                            {/* A trip's line is the trip's: it is decided,
+                            </Table.Td>
+                            <Table.Td>
+                              {/* A trip's line is the trip's: it is decided,
                                 submitted and paid there, so the row points at
                                 the trip rather than pretending it stands
                                 alone. */}
-                            {expense.claimId !== undefined && <ClaimLink claimId={expense.claimId} Link={Link} />}
-                          </Table.Td>
-                        </Table.Tr>
-                      ))}
-                    </Table.Tbody>
-                  </Table>
-                </Table.ScrollContainer>
+                              {expense.claimId !== undefined && (
+                                <ClaimLink claimId={expense.claimId} description={expense.description} Link={Link} />
+                              )}
+                            </Table.Td>
+                          </Table.Tr>
+                        ))}
+                      </Table.Tbody>
+                    </Table>
+                  </Table.ScrollContainer>
+                </Box>
               )}
 
               {rows.length > 0 && hidden && (
@@ -373,21 +404,43 @@ export const ProjectExpensesPanel = ({ projectId, onChanged }: ProjectExpensesPa
         </Stack>
       </Card>
 
-      <EntryDrawer expense={opened} onClose={() => setOpened(null)} onChanged={onChanged} />
+      <EntryDrawer
+        expense={opened}
+        onClose={() => {
+          // Marking a line invoiced under the ready chip takes its row out of
+          // the list, so the control the drawer was opened from is gone and
+          // focus would fall to the document. Send it to the filters, which
+          // are the nearest thing that is still there.
+          const gone = opened !== null && !rows.some((one) => one.id === opened.id);
+          setOpened(null);
+          if (gone) filtersRef.current?.querySelector("input")?.focus();
+        }}
+        onChanged={onChanged}
+      />
       <ExpenseFormModal state={recording} onClose={() => setRecording(null)} onSaved={() => onChanged?.()} />
     </Stack>
   );
 };
 
-const ClaimLink = ({ claimId, Link }: { claimId: number; Link: ReturnType<typeof useShellLink> }) => {
+/** A row control is named after its row, so a list of them is not a list of one name. */
+const ClaimLink = ({
+  claimId,
+  description,
+  Link,
+}: {
+  claimId: number;
+  description: string;
+  Link: ReturnType<typeof useShellLink>;
+}) => {
   const { t } = useI18n("expenses");
   const href = claimHref(claimId);
+  const label = t("openTheTravelClaimOf", { description });
   return Link ? (
-    <Anchor size="sm" renderRoot={(props) => <Link to={href} {...props} />}>
+    <Anchor size="sm" aria-label={label} renderRoot={(props) => <Link to={href} {...props} />}>
       {t("openTheTravelClaim")}
     </Anchor>
   ) : (
-    <Anchor size="sm" href={href}>
+    <Anchor size="sm" aria-label={label} href={href}>
       {t("openTheTravelClaim")}
     </Anchor>
   );

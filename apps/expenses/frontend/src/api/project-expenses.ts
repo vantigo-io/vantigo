@@ -1,6 +1,6 @@
 import { queryOptions } from "@tanstack/react-query";
 import type { components } from "../api-schema";
-import { EXPENSES_QUERY_KEY, NotFoundError, request } from "./request";
+import { type ApiError, EXPENSES_QUERY_KEY, NotFoundError, request } from "./request";
 
 type Schemas = components["schemas"];
 
@@ -30,6 +30,22 @@ export type ProjectExpensesBucket = Schemas["ExpensesProjectSummaryBucket"];
 export type ProjectExpensesCapabilities = Schemas["ExpensesProjectSummaryCapabilities"];
 
 /**
+ * Whether a failed read is worth asking again.
+ *
+ * A 4xx is the server's **answer** — this is not yours, that query
+ * contradicts itself — and asking three more times over seven seconds of
+ * backoff only delays the sentence it already gave, with the page showing a
+ * stale or empty state in the meantime. A 5xx or a dropped connection is a
+ * different thing, and keeps the default two retries.
+ */
+export const notAfterARefusal = (count: number, error: Error): boolean => {
+  if (error instanceof NotFoundError) return false;
+  const status = (error as ApiError).status;
+  if (typeof status === "number" && status >= 400 && status < 500) return false;
+  return count < 2;
+};
+
+/**
  * One project's expense totals.
  *
  * A **bare 404** is the answer for three deliberately indistinguishable
@@ -38,13 +54,13 @@ export type ProjectExpensesCapabilities = Schemas["ExpensesProjectSummaryCapabil
  * it as "these figures are not yours", not as a failure, and shows the list
  * underneath either way.
  *
- * It is not retried: a 404 is an ordinary answer here, and three attempts
- * before the tab can draw would only delay it.
+ * It is not retried past a refusal: a 404 is an ordinary answer here, and
+ * three attempts before the tab can draw would only delay it.
  */
 export const projectExpensesSummaryQueryOptions = (projectId: number) =>
   queryOptions({
     queryKey: [EXPENSES_QUERY_KEY, "projects", "summary", projectId],
     queryFn: ({ signal }) =>
       request<ProjectExpensesSummary>(`/api/v1/expenses/projects/${projectId}/summary`, { signal }),
-    retry: (count: number, error: Error) => !(error instanceof NotFoundError) && count < 2,
+    retry: notAfterARefusal,
   });
