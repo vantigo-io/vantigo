@@ -92,6 +92,24 @@ describe("ApprovalsPage", () => {
     expect(within(await row("Hotel")).queryByText(/the lock date/)).not.toBeInTheDocument();
   });
 
+  it("approves from the drawer and closes it", async () => {
+    // The drawer's success handler reads the answer — `{ entries, claims }` —
+    // and only then saves what moved and closes. Asserting the request alone
+    // would pass against a fake that answers the shape the operations had
+    // before travel claims existed, while nothing after the notification ever
+    // ran.
+    const fetchMock = stubExpensesApi({ entries: [submitted({ id: 701, description: "Hotel" })] });
+    renderRoute("/expenses/approvals");
+
+    const drawer = await openDrawer("Hotel");
+    await userEvent.click(within(drawer).getByRole("button", { name: "Approve" }));
+
+    await waitFor(() =>
+      expect(sent(fetchMock, "POST")).toEqual({ url: "/api/v1/expenses/approve", body: { entryIds: [701] } }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Hotel" })).not.toBeInTheDocument());
+  });
+
   it("rejects from the drawer with a reason the server is given", async () => {
     const fetchMock = stubExpensesApi({ entries: [submitted({ id: 701, description: "Hotel" })] });
     renderRoute("/expenses/approvals");

@@ -10,6 +10,8 @@ describe("the expenses routes' search params", () => {
   it("My expenses falls back to the first page and no filters, and drops what it does not know", () => {
     const validate = ExpensesIndexRoute.options.validateSearch as (search: Record<string, unknown>) => unknown;
 
+    // Two kinds of unit come from two paged endpoints, so the travel claims
+    // carry a page of their own beside the expenses'.
     expect(validate({})).toEqual({
       status: undefined,
       kind: undefined,
@@ -17,6 +19,7 @@ describe("the expenses routes' search params", () => {
       from: undefined,
       to: undefined,
       page: 1,
+      claimPage: 1,
     });
     expect(validate({ status: "rejected", page: "3" })).toEqual({
       status: "rejected",
@@ -25,6 +28,7 @@ describe("the expenses routes' search params", () => {
       from: undefined,
       to: undefined,
       page: 3,
+      claimPage: 1,
     });
     expect(validate({ status: "bogus" })).toMatchObject({ status: undefined });
   });

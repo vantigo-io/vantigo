@@ -10,6 +10,7 @@ describe("validateMyExpensesSearch", () => {
       from: undefined,
       to: undefined,
       page: 1,
+      claimPage: 1,
     });
   });
 
@@ -30,10 +31,14 @@ describe("validateMyExpensesSearch", () => {
       from: "2026-01-01",
       to: "2026-03-31",
       page: 3,
+      claimPage: 1,
     });
   });
 
   it("drops what a hand-edited link invented rather than sending the API a 400", () => {
+    // `per_diem` is among the kinds an expense can be, but never among the
+    // kinds "My expenses" filters by: a per diem day exists only inside a
+    // travel claim, which is listed as a unit of its own.
     const search = validateMyExpensesSearch({
       status: "paid",
       kind: "per_diem",
@@ -41,6 +46,7 @@ describe("validateMyExpensesSearch", () => {
       from: "2026-02-30",
       to: "yesterday",
       page: "-4",
+      claimPage: "0",
     });
     expect(search).toEqual({
       status: undefined,
@@ -49,6 +55,7 @@ describe("validateMyExpensesSearch", () => {
       from: undefined,
       to: undefined,
       page: 1,
+      claimPage: 1,
     });
   });
 });

@@ -4,8 +4,10 @@ import type { ReactNode } from "react";
 import type { Expense } from "../api/entries";
 import "../i18n";
 import { useExpenseFormat } from "../lib/format";
+import { perDiemTypeLabelKey } from "../lib/per-diem";
 import { expenseKindLabelKey } from "../lib/status";
 import { ExpenseStatusBadge } from "./expense-status-badge";
+import { PerDiemDetails } from "./per-diem-details";
 import { ReceiptThumbnails } from "./receipt-thumbnails";
 
 export interface EntryDetailsProps {
@@ -37,6 +39,7 @@ export const EntryDetails = ({ expense, withReceipts = true }: EntryDetailsProps
   const { t } = useI18n("expenses");
   const format = useExpenseFormat();
   const mileage = expense.kind === "mileage";
+  const perDiem = expense.kind === "per_diem" ? expense.perDiem : undefined;
 
   return (
     <Stack gap="md">
@@ -65,10 +68,12 @@ export const EntryDetails = ({ expense, withReceipts = true }: EntryDetailsProps
 
       <SimpleGrid cols={{ base: 2, sm: 3 }} spacing="sm">
         <Field label={t("date")}>{format.date(expense.entryDate)}</Field>
-        <Field label={t("description")}>{expense.description}</Field>
+        {/* A per diem day carries no description of its own — what the day
+         *is* names it, in the reader's own language. */}
+        <Field label={t("description")}>{perDiem ? t(perDiemTypeLabelKey(perDiem.type)) : expense.description}</Field>
         <Field label={t("owner")}>{expense.owner.displayName}</Field>
 
-        {mileage ? (
+        {perDiem ? null : mileage ? (
           <>
             <Field label={t("fromPlace")}>{expense.fromPlace ?? t("notAvailable")}</Field>
             <Field label={t("toPlace")}>{expense.toPlace ?? t("notAvailable")}</Field>
@@ -102,6 +107,13 @@ export const EntryDetails = ({ expense, withReceipts = true }: EntryDetailsProps
         {expense.billingLine && <Field label={t("billingLine")}>{expense.billingLine.code}</Field>}
         {expense.project && <Field label={t("billable")}>{expense.billable ? t("yes") : t("no")}</Field>}
       </SimpleGrid>
+
+      {perDiem && (
+        <Stack gap={4} data-testid="per-diem-details">
+          <Title order={6}>{t("perDiemDay")}</Title>
+          <PerDiemDetails perDiem={perDiem} currency={expense.currency} />
+        </Stack>
+      )}
 
       {expense.rateOverride && (
         <Text size="sm" c="dimmed">

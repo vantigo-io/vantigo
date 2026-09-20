@@ -1,5 +1,5 @@
 import { isIsoDate } from "./dates";
-import { type ExpenseKind, type ExpenseStatus, isExpenseKind, isExpenseStatus } from "./status";
+import { type ExpenseKind, type ExpenseStatus, isExpenseStatus, isStandaloneExpenseKind } from "./status";
 
 /**
  * My expenses' URL search params. Every filter lives in the URL so the list
@@ -14,6 +14,12 @@ export interface MyExpensesSearch {
   from?: string;
   to?: string;
   page: number;
+  /**
+   * The travel claims' own page. "My expenses" lists two kinds of unit from
+   * two paged endpoints, so each section pages itself — see the page's own
+   * note on why a single merged page would be a lie.
+   */
+  claimPage: number;
 }
 
 const optionalFlag = (value: unknown): boolean | undefined => {
@@ -30,11 +36,12 @@ const optionalFlag = (value: unknown): boolean | undefined => {
  */
 export const validateMyExpensesSearch = (search: Record<string, unknown>): MyExpensesSearch => ({
   status: isExpenseStatus(search.status) ? search.status : undefined,
-  kind: isExpenseKind(search.kind) ? search.kind : undefined,
+  kind: isStandaloneExpenseKind(search.kind) ? search.kind : undefined,
   reimbursed: optionalFlag(search.reimbursed),
   from: isIsoDate(search.from) ? search.from : undefined,
   to: isIsoDate(search.to) ? search.to : undefined,
   page: Math.max(1, Number(search.page) || 1),
+  claimPage: Math.max(1, Number(search.claimPage) || 1),
 });
 
 /**

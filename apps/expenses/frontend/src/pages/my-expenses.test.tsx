@@ -2,12 +2,25 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { problemResponse, sent } from "../test/api";
-import { attachment, capabilities, ME, meta, mileage, outlay, stats, withReceipts } from "../test/fixtures";
+import {
+  attachment,
+  capabilities,
+  claim,
+  ME,
+  meta,
+  mileage,
+  outlay,
+  perDiemLine,
+  stats,
+  withReceipts,
+} from "../test/fixtures";
 import { renderRoute } from "../test/route-tree";
 import { stubExpensesApi } from "../test/server";
 
 const row = async (description: string) =>
   (await screen.findByText(description)).closest("[data-expense]") as HTMLElement;
+
+const claimRow = async (purpose: string) => (await screen.findByText(purpose)).closest("[data-claim]") as HTMLElement;
 
 /** Picks an option from a Mantine select inside a dialog. */
 const choose = async (dialog: HTMLElement, label: string, option: RegExp | string) => {
@@ -126,6 +139,92 @@ describe("MyExpensesPage", () => {
 
     expect(await within(await row("Hotel")).findByText(/needs a receipt/)).toBeInTheDocument();
     expect(within(await row("Taxi to the airport")).queryByText(/needs a receipt/)).not.toBeInTheDocument();
+  });
+
+  it("lists the travel claims beside the single expenses, and asks for the expenses that are units of their own", async () => {
+    const fetchMock = stubExpensesApi({
+      claims: [claim()],
+      entries: [outlay(), perDiemLine()],
+    });
+    renderRoute("/expenses");
+
+    const trip = await claimRow("Montasje hos kunden");
+    expect(trip).toHaveTextContent("Bergen");
+    expect(trip).toHaveTextContent("1 expense");
+    expect(trip).toHaveTextContent("1,012.00");
+    expect(trip).toHaveTextContent("Draft");
+
+    // The trip's own line is the trip's, and is never listed a second time as
+    // a loose expense.
+    const [url] = fetchMock.actualCalls.find(([candidate]) => String(candidate).includes("/entries?")) ?? [];
+    expect(String(url)).toContain("standalone=true");
+    expect(await screen.findByRole("table", { name: "My expenses" })).not.toHaveTextContent("Overnight, hotel");
+  });
+
+  it("submits a trip and a single expense in one request, and puts each refusal on its own unit", async () => {
+    stubExpensesApi({
+      claims: [claim()],
+      entries: [outlay(), perDiemLine()],
+      write: (method, path) =>
+        method === "POST" && path === "/api/v1/expenses/submit"
+          ? problemResponse(400, "Invalid submission", {
+              entryIds: ["Expense 501 needs a receipt"],
+              claimIds: ["Travel claim 1012 holds no expenses, so there is nothing to submit"],
+            })
+          : undefined,
+    });
+    renderRoute("/expenses");
+
+    await userEvent.click(within(await claimRow("Montasje hos kunden")).getByRole("checkbox"));
+    await userEvent.click(within(await row("Taxi to the airport")).getByRole("checkbox"));
+    await userEvent.click(await screen.findByRole("button", { name: "Submit 2 selected" }));
+
+    // Both lists are read: a trip's refusal used to be fetched and dropped.
+    expect(await within(await claimRow("Montasje hos kunden")).findByText(/holds no expenses/)).toBeInTheDocument();
+    expect(await within(await row("Taxi to the airport")).findByText(/needs a receipt/)).toBeInTheDocument();
+  });
+
+  it("sends one request for both kinds of unit", async () => {
+    const fetchMock = stubExpensesApi({ claims: [claim()], entries: [outlay()] });
+    renderRoute("/expenses");
+
+    await userEvent.click(within(await claimRow("Montasje hos kunden")).getByRole("checkbox"));
+    await userEvent.click(within(await row("Taxi to the airport")).getByRole("checkbox"));
+    await userEvent.click(await screen.findByRole("button", { name: "Submit 2 selected" }));
+
+    await waitFor(() =>
+      expect(sent(fetchMock, "POST")).toEqual({
+        url: "/api/v1/expenses/submit",
+        body: { entryIds: [501], claimIds: [1012] },
+      }),
+    );
+  });
+
+  it("records a travel claim and opens it", async () => {
+    const fetchMock = stubExpensesApi({ entries: [] });
+    const { router } = renderRoute("/expenses");
+
+    await screen.findByRole("table", { name: "My expenses" });
+    await userEvent.click(screen.getByRole("button", { name: "New travel claim" }));
+    const dialog = await screen.findByRole("dialog", { name: "New travel claim" });
+
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "What the trip was for" }), "Montasje");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Where it went" }), "Bergen");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Day of departure" }), "Mar 9, 2026");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Day of return" }), "Mar 11, 2026");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(sent(fetchMock, "POST").url).toBe("/api/v1/expenses/claims"));
+    expect(sent(fetchMock, "POST").body).toMatchObject({
+      purpose: "Montasje",
+      destination: "Bergen",
+      abroad: false,
+      departureAt: "2026-03-09T08:00:00+01:00",
+      returnAt: "2026-03-11T16:00:00+01:00",
+    });
+    // The trip exists, so the traveller is taken to it rather than left on a
+    // list with an empty row on it.
+    await waitFor(() => expect(router.state.location.pathname).toBe("/expenses/claims/9001"));
   });
 
   it("records a new outlay from the form and shows it in the list", async () => {

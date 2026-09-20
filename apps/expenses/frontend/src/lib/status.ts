@@ -3,10 +3,17 @@ export const expenseStatuses = ["draft", "submitted", "approved", "rejected"] as
 
 export type ExpenseStatus = (typeof expenseStatuses)[number];
 
-/** The two kinds of money line this delivery records; `per_diem` arrives with travel claims. */
-export const expenseKinds = ["outlay", "mileage"] as const;
+/** Every kind of money line the module records. */
+export const expenseKinds = ["outlay", "mileage", "per_diem"] as const;
 
 export type ExpenseKind = (typeof expenseKinds)[number];
+
+/**
+ * The kinds an expense of its own can be. A per diem day exists only inside a
+ * travel claim, so it is never among "My expenses"' standalone list and is not
+ * offered as a filter there — the trip it belongs to is the unit instead.
+ */
+export const standaloneExpenseKinds = ["outlay", "mileage"] as const;
 
 /** Who is out of pocket for an outlay. Mileage carries none — it is always the employee's. */
 export const paidByValues = ["employee", "company"] as const;
@@ -33,8 +40,17 @@ export const isExpenseStatus = (value: unknown): value is ExpenseStatus =>
 export const isExpenseKind = (value: unknown): value is ExpenseKind =>
   typeof value === "string" && (expenseKinds as readonly string[]).includes(value);
 
+/**
+ * Whether the value names a kind an expense of its own can be. `per_diem` is
+ * not one: a per diem day exists only inside a travel claim, so it is never a
+ * filter on a list of standalone expenses.
+ */
+export const isStandaloneExpenseKind = (value: unknown): value is (typeof standaloneExpenseKinds)[number] =>
+  typeof value === "string" && (standaloneExpenseKinds as readonly string[]).includes(value);
+
 export const isPaidBy = (value: unknown): value is PaidBy =>
   typeof value === "string" && (paidByValues as readonly string[]).includes(value);
 
 /** The `expenses` catalog key naming a kind. */
-export const expenseKindLabelKey = (kind: ExpenseKind): string => (kind === "mileage" ? "kindMileage" : "kindOutlay");
+export const expenseKindLabelKey = (kind: ExpenseKind): string =>
+  kind === "mileage" ? "kindMileage" : kind === "per_diem" ? "kindPerDiem" : "kindOutlay";

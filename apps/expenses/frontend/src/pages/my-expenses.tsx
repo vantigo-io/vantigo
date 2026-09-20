@@ -10,28 +10,34 @@ import {
   Stack,
   Table,
   Text,
+  Title,
   VisuallyHidden,
 } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
-import { IconAlertCircle, IconPencil, IconPlus, IconSend, IconTrash } from "@tabler/icons-react";
+import { IconAlertCircle, IconPencil, IconPlus, IconRoute, IconSend, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
-import { deleteExpense, type Expense, expensesQueryOptions, submitExpenses } from "../api/entries";
+import { expenseClaimsQueryOptions } from "../api/claims";
+import { deleteExpense, type Expense, expensesQueryOptions, submitUnits } from "../api/entries";
+import { expensesMetaQueryOptions } from "../api/meta";
 import { EXPENSES_QUERY_KEY } from "../api/request";
 import { expenseStatsQueryOptions } from "../api/stats";
+import { ClaimSummaryLine } from "../components/claim-summary";
 import { ExpenseStatusBadge } from "../components/expense-status-badge";
 import { ReceiptThumbnails } from "../components/receipt-thumbnails";
 import { RefusalList } from "../components/refusal-list";
 import { StatusStrip } from "../components/status-strip";
 import "../i18n";
-import { refusalMessage, refusalsByEntry } from "../lib/errors";
+import { refusalMessage, refusalsByUnit } from "../lib/errors";
 import { useExpenseFormat } from "../lib/format";
+import { claimLinkOptions } from "../lib/routes";
 import type { MyExpensesSearch } from "../lib/search";
-import { expenseKindLabelKey, expenseKinds, expenseStatuses, expenseStatusLabelKey } from "../lib/status";
+import { expenseKindLabelKey, expenseStatuses, expenseStatusLabelKey, standaloneExpenseKinds } from "../lib/status";
+import { ClaimFormModal, type ClaimModalState } from "./-claim-form-modal";
 import { ExpenseFormModal, type ExpenseModalState } from "./-expense-form-modal";
 
 export type { MyExpensesSearch } from "../lib/search";
@@ -58,11 +64,14 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
   const queryClient = useQueryClient();
   const search = useSearch({ strict: false }) as MyExpensesSearch;
   const navigate = useNavigate() as (options: unknown) => void;
-  const { page = 1, ...filters } = search;
+  const { page = 1, claimPage = 1, ...filters } = search;
 
   const [modalState, setModalState] = useState<ExpenseModalState | null>(null);
+  const [claimModal, setClaimModal] = useState<ClaimModalState | null>(null);
   const [selected, setSelected] = useState<number[]>([]);
+  const [selectedClaims, setSelectedClaims] = useState<number[]>([]);
   const [refusals, setRefusals] = useState<Map<number, string[]>>(new Map());
+  const [claimRefusals, setClaimRefusals] = useState<Map<number, string[]>>(new Map());
 
   // A selection belongs to the page *and the filters* it was picked on:
   // changing either starts a new one, so nothing stays checked behind a
@@ -74,34 +83,63 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
   if (shown !== shownKey) {
     setShown(shownKey);
     setSelected([]);
+    setSelectedClaims([]);
     setRefusals(new Map());
+    setClaimRefusals(new Map());
   }
 
-  const filterBy = (next: Partial<MyExpensesSearch>) => navigate({ search: { ...search, ...next, page: 1 } });
+  const filterBy = (next: Partial<MyExpensesSearch>) =>
+    navigate({ search: { ...search, ...next, page: 1, claimPage: 1 } });
 
-  const { data, isPending, isError, error } = useQuery(expensesQueryOptions({ ...filters, userId, page }));
+  const { data: meta } = useQuery(expensesMetaQueryOptions());
+  const { data, isPending, isError, error } = useQuery(
+    expensesQueryOptions({ ...filters, userId, standalone: true, page }),
+  );
+  // A trip is a unit of its own and comes from its own paged endpoint, so the
+  // kind filter — which is about what *one expense* is — does not reach it.
+  const { data: claimPageData, isError: claimsFailed } = useQuery(
+    expenseClaimsQueryOptions({
+      userId,
+      status: filters.status,
+      from: filters.from,
+      to: filters.to,
+      reimbursed: filters.reimbursed,
+      page: claimPage,
+    }),
+  );
   const { data: stats, isPending: statsPending } = useQuery(expenseStatsQueryOptions());
 
   const expenses = data?.data ?? [];
+  const claims = filters.kind ? [] : (claimPageData?.data ?? []);
   const submittable = new Set(expenses.filter((one) => one.capabilities.canSubmit).map((one) => one.id));
   const picked = selected.filter((id) => submittable.has(id));
+  const submittableClaims = new Set(claims.filter((one) => one.capabilities.canSubmit).map((one) => one.id));
+  const pickedClaims = selectedClaims.filter((id) => submittableClaims.has(id));
 
   const submit = useMutation({
-    mutationFn: (entryIds: number[]) => submitExpenses(entryIds),
+    mutationFn: ({ entryIds, claimIds }: { entryIds: number[]; claimIds: number[] }) =>
+      submitUnits({ entryIds, claimIds }),
     onSuccess: async (moved) => {
       setRefusals(new Map());
+      setClaimRefusals(new Map());
       setSelected([]);
+      setSelectedClaims([]);
       await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
+      const count = moved.entries.length + moved.claims.length;
       notifications.show({
         color: "teal",
         title: t("expensesSubmitted"),
-        message: moved.entries.length === 1 ? t("oneExpense") : t("countOfExpenses", { count: moved.entries.length }),
+        message: count === 1 ? t("oneExpense") : t("countOfExpenses", { count }),
       });
     },
     onError: (error) => {
-      const { byEntry, rest } = refusalsByEntry(error);
+      // Both lists are read and each sentence goes against the unit it names.
+      // A trip's refusal arrives on `claimIds`, which is a different list and
+      // a different numbering from the expenses'.
+      const { byEntry, byClaim, rest } = refusalsByUnit(error);
       setRefusals(byEntry);
-      if (rest.length > 0 || byEntry.size === 0) {
+      setClaimRefusals(byClaim);
+      if (rest.length > 0 || (byEntry.size === 0 && byClaim.size === 0)) {
         notifications.show({ color: "red", title: t("couldNotSubmit"), message: rest[0] ?? error.message });
       }
     },
@@ -134,15 +172,29 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
         title={t("myExpenses")}
         description={t("myExpensesDescription")}
         actions={
-          <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
-            {t("newExpense")}
-          </Button>
+          <Group gap="xs" wrap="wrap">
+            <Button
+              variant="default"
+              leftSection={<IconRoute size={16} />}
+              onClick={() => setClaimModal({ mode: "create" })}
+            >
+              {t("newTravelClaim")}
+            </Button>
+            <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
+              {t("newExpense")}
+            </Button>
+          </Group>
         }
       />
 
       <StatusStrip stats={stats} loading={statsPending} />
 
       <ExpenseFormModal state={modalState} onClose={() => setModalState(null)} />
+      <ClaimFormModal
+        state={claimModal}
+        onClose={() => setClaimModal(null)}
+        onSaved={(saved) => navigate(claimLinkOptions(saved.id))}
+      />
 
       <Card withBorder padding="lg" radius="md">
         <Stack gap="md">
@@ -161,7 +213,7 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
               placeholder={t("allKinds")}
               clearable
               w={170}
-              data={expenseKinds.map((kind) => ({ value: kind, label: t(expenseKindLabelKey(kind)) }))}
+              data={standaloneExpenseKinds.map((kind) => ({ value: kind, label: t(expenseKindLabelKey(kind)) }))}
               value={filters.kind ?? null}
               onChange={(value) => filterBy({ kind: (value ?? undefined) as MyExpensesSearch["kind"] })}
             />
@@ -195,16 +247,22 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
             />
           </Group>
 
-          {picked.length > 0 && (
+          {picked.length + pickedClaims.length > 0 && (
             <Group>
               <Button
                 leftSection={<IconSend size={16} />}
                 loading={submit.isPending}
-                onClick={() => submit.mutate(picked)}
+                onClick={() => submit.mutate({ entryIds: picked, claimIds: pickedClaims })}
               >
-                {t("submitSelected", { count: picked.length })}
+                {t("submitSelectedUnits", { count: picked.length + pickedClaims.length })}
               </Button>
-              <Button variant="default" onClick={() => setSelected([])}>
+              <Button
+                variant="default"
+                onClick={() => {
+                  setSelected([]);
+                  setSelectedClaims([]);
+                }}
+              >
                 {t("clearSelection")}
               </Button>
             </Group>
@@ -215,6 +273,126 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
               {error.message}
             </Alert>
           )}
+          {claimsFailed && (
+            <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadClaims")}>
+              {t("unitsPagedSeparately")}
+            </Alert>
+          )}
+        </Stack>
+      </Card>
+
+      {/* Two kinds of unit, from two paged endpoints. They are listed one
+          section under the other rather than shuffled into a single page: a
+          merged page built from two pagers would either repeat rows or skip
+          them, and a list that quietly loses an expense is worse than two
+          honest ones. */}
+      <Card withBorder padding="lg" radius="md" data-testid="my-travel-claims">
+        <Stack gap="md">
+          <Group justify="space-between" align="start" wrap="wrap">
+            <Stack gap={0}>
+              <Title order={4}>{t("travelClaims")}</Title>
+              <Text size="sm" c="dimmed">
+                {t("travelClaimsDescription")}
+              </Text>
+            </Stack>
+          </Group>
+
+          {filters.kind ? (
+            <Text size="sm" c="dimmed">
+              {t("claimsIgnoreKindFilter")}
+            </Text>
+          ) : claims.length === 0 ? (
+            <Text size="sm" c="dimmed">
+              {filtered ? t("noTravelClaimsForFilter") : t("noTravelClaimsDescription")}
+            </Text>
+          ) : (
+            <Table.ScrollContainer minWidth={760}>
+              <Table striped highlightOnHover aria-label={t("travelClaims")}>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>
+                      <VisuallyHidden>{t("select")}</VisuallyHidden>
+                    </Table.Th>
+                    <Table.Th>{t("claimTrip")}</Table.Th>
+                    <Table.Th>{t("status")}</Table.Th>
+                    <Table.Th>{t("rowActions")}</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {claims.map((claim) => (
+                    <Table.Tr key={claim.id} data-claim={claim.id}>
+                      <Table.Td>
+                        {claim.capabilities.canSubmit && (
+                          <Checkbox
+                            aria-label={t("selectTravelClaim", { purpose: claim.purpose })}
+                            checked={selectedClaims.includes(claim.id)}
+                            onChange={(event) =>
+                              setSelectedClaims((current) =>
+                                event.currentTarget.checked
+                                  ? [...current, claim.id]
+                                  : current.filter((id) => id !== claim.id),
+                              )
+                            }
+                          />
+                        )}
+                      </Table.Td>
+                      <Table.Td>
+                        <Stack gap={2}>
+                          <ClaimSummaryLine claim={claim} timeZone={meta?.timeZone ?? "UTC"} />
+                          <RefusalList messages={claimRefusals.get(claim.id) ?? []} />
+                        </Stack>
+                      </Table.Td>
+                      <Table.Td>
+                        <ExpenseStatusBadge status={claim.status} />
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap={4} wrap="nowrap">
+                          <Button
+                            size="compact-sm"
+                            variant="subtle"
+                            aria-label={t("openTravelClaim", { purpose: claim.purpose })}
+                            onClick={() => navigate(claimLinkOptions(claim.id))}
+                          >
+                            {t("open")}
+                          </Button>
+                          {claim.capabilities.canSubmit && (
+                            <ActionIcon
+                              variant="subtle"
+                              aria-label={t("submitTravelClaim", { purpose: claim.purpose })}
+                              onClick={() => submit.mutate({ entryIds: [], claimIds: [claim.id] })}
+                            >
+                              <IconSend size={16} />
+                            </ActionIcon>
+                          )}
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          )}
+
+          {claimPageData && claimPageData.pagination.totalPages > 1 && !filters.kind && (
+            <Group justify="center">
+              <Pagination
+                total={claimPageData.pagination.totalPages}
+                value={claimPage}
+                onChange={(next) => navigate({ search: { ...search, claimPage: next } })}
+              />
+            </Group>
+          )}
+        </Stack>
+      </Card>
+
+      <Card withBorder padding="lg" radius="md">
+        <Stack gap="md">
+          <Stack gap={0}>
+            <Title order={4}>{t("expensesSection")}</Title>
+            <Text size="sm" c="dimmed">
+              {t("unitsPagedSeparately")}
+            </Text>
+          </Stack>
 
           {isPending && <ContentSkeleton rows={6} rowHeight={52} />}
 
@@ -332,7 +510,7 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
                               <ActionIcon
                                 variant="subtle"
                                 aria-label={t("submitExpense", { description: expense.description })}
-                                onClick={() => submit.mutate([expense.id])}
+                                onClick={() => submit.mutate({ entryIds: [expense.id], claimIds: [] })}
                               >
                                 <IconSend size={16} />
                               </ActionIcon>

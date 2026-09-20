@@ -1,5 +1,6 @@
 import type { ExpenseApprovalGroup, ExpenseBillingLineOption, ExpenseCurrencyTotal } from "../api/approvals";
 import type { ExpenseCategory } from "../api/categories";
+import type { Claim, ClaimListItem, PerDiemSuggestedDay } from "../api/claims";
 import type { Expense, ExpenseAttachment, ExpenseInput, ExpenseUpdateInput } from "../api/entries";
 import type { ExpensesMeta } from "../api/meta";
 import type { ExpenseProjectOption } from "../api/projects";
@@ -8,7 +9,9 @@ import type { ExpenseReimbursementGroup } from "../api/reimbursements";
 import type { ExpenseSettings } from "../api/settings";
 import type { ExpenseStats } from "../api/stats";
 import { round2 } from "../lib/money";
+import { meals, type PerDiem, type PerDiemType } from "../lib/per-diem";
 import { mileagePreview } from "../lib/rates";
+import { zoneCalendarDate } from "../lib/time-zone";
 import { jsonResponse } from "./api";
 import { stubFetch } from "./fetch";
 import {
@@ -18,6 +21,7 @@ import {
   rates as defaultRates,
   settings as defaultSettings,
   ME,
+  ownClaimCapabilities,
   ownDraftCapabilities,
   stats,
 } from "./fixtures";
@@ -33,6 +37,23 @@ export interface ExpensesServer {
    * the next list read exactly as it would from the server.
    */
   entries?: Expense[];
+  /**
+   * The travel claims the fake keeps, as the array the test passes. A claim's
+   * `lines`, `lineCount` and `totals` are **derived from the entries store on
+   * every read**, so a line recorded against a claim shows up on the trip
+   * exactly as it would from the server, and a test never has to keep two
+   * stores in step.
+   */
+  claims?: Claim[];
+  /** What the per diem suggestion answers. Left out, the fake works the days out itself. */
+  suggestion?: Read<PerDiemSuggestedDay[]>;
+  /**
+   * Answers every read of one travel claim with the snapshot the first read
+   * produced, however much the store moves afterwards — a page whose refetch
+   * has gone stale underneath it, which is what a write's own answer has to
+   * survive.
+   */
+  frozenReads?: boolean;
   projects?: Read<ExpenseProjectOption[]>;
   rates?: Read<ExpenseRate[]>;
   stats?: Read<ExpenseStats>;
@@ -171,6 +192,7 @@ const groupedByOwner = (entries: Expense[]): { user: Expense["owner"]; entries: 
  */
 export const stubExpensesApi = (server: ExpensesServer = {}) => {
   const entries = server.entries ?? [];
+  const claims = server.claims ?? [];
   const metaOf = (): ExpensesMeta =>
     server.meta instanceof Response ? defaultMeta() : (server.meta ?? defaultMeta({ categories: defaultCategories }));
   const me = server.me ?? ME;
@@ -191,23 +213,187 @@ export const stubExpensesApi = (server: ExpensesServer = {}) => {
   let settingsStore = server.settings instanceof Response ? defaultSettings() : (server.settings ?? defaultSettings());
 
   const find = (id: number) => entries.find((entry) => entry.id === id);
+  const findClaim = (id: number) => claims.find((one) => one.id === id);
+  /** The snapshots `frozenReads` answers with, one per claim. */
+  const frozenClaims = new Map<number, Claim>();
 
-  /** Every batch refuses as one, with a message per offending id on `entryIds`. */
-  const missing = (title: string, ids: number[]): Response | undefined => {
-    const unknown = ids.filter((id) => !find(id));
-    return unknown.length === 0
-      ? undefined
-      : problem(400, title, { entryIds: unknown.map((id) => `Expense ${id} was not found`) });
+  /** A claim's lines, oldest day first and then as recorded — the order the server answers. */
+  const linesOf = (claimId: number): Expense[] =>
+    entries
+      .filter((entry) => entry.claimId === claimId)
+      .sort((a, b) => (a.entryDate === b.entryDate ? a.id - b.id : a.entryDate < b.entryDate ? -1 : 1));
+
+  /** One claim as `GET /claims/{id}` answers it: the header plus the lines the store holds. */
+  const claimResponse = (claim: Claim): Claim => {
+    const lines = linesOf(claim.id);
+    return { ...claim, lines, totals: totalsOf(lines) };
   };
 
-  const moveAll = (ids: number[], move: (entry: Expense) => void): Response => {
-    const moved = ids.map((id) => {
+  /**
+   * One claim as a list row: the header, a count instead of the lines, and no
+   * billable totals — the fields `ExpensesClaimListResponse` carries, written
+   * out so the fake cannot accidentally answer more than the contract does.
+   */
+  const claimListResponse = (claim: Claim): ClaimListItem => {
+    const held = linesOf(claim.id);
+    return {
+      id: claim.id,
+      purpose: claim.purpose,
+      ...(claim.destination ? { destination: claim.destination } : {}),
+      abroad: claim.abroad,
+      ...(claim.abroadDayRate !== undefined ? { abroadDayRate: claim.abroadDayRate } : {}),
+      ...(claim.abroadCurrency ? { abroadCurrency: claim.abroadCurrency } : {}),
+      departureAt: claim.departureAt,
+      returnAt: claim.returnAt,
+      ...(claim.project ? { project: claim.project } : {}),
+      status: claim.status,
+      owner: claim.owner,
+      ...(claim.submittedAt ? { submittedAt: claim.submittedAt } : {}),
+      ...(claim.decision ? { decision: claim.decision } : {}),
+      ...(claim.reimbursement ? { reimbursement: claim.reimbursement } : {}),
+      lineCount: held.length,
+      totals: totalsOf(held),
+      revision: claim.revision,
+      createdAt: claim.createdAt,
+      updatedAt: claim.updatedAt,
+      capabilities: claim.capabilities,
+    };
+  };
+
+  /** The rate row in force on a date for a kind — the rule `EffectiveRate` applies in SQL. */
+  const rateOn = (kind: string, date: string): ExpenseRate | undefined =>
+    ratesOf()
+      .filter((rate) => rate.kind === kind && rate.validFrom <= date)
+      .sort((a, b) => (a.validFrom < b.validFrom ? -1 : 1))
+      .at(-1);
+
+  const perDiemRateKind = (type: PerDiemType): string => `per_diem_${type.replace(/^day_/, "")}`;
+
+  /**
+   * What the server prices a per diem day at: the day rate in force on its
+   * own date for its own type — or the claim's own rate abroad — less each
+   * covered meal's percentage, rounded once and never below zero. A rate that
+   * is not there refuses, on the field that named it, exactly as the module
+   * does.
+   */
+  const pricePerDiem = (
+    input: ExpenseInput | ExpenseUpdateInput,
+    claim: Claim,
+    defaultCurrency: string,
+  ): { line: Partial<Expense> & { perDiem: PerDiem }; refusal?: Record<string, string[]> } => {
+    const type = (input.perDiemType ?? "") as PerDiemType;
+    const date = input.entryDate;
+    const kind = perDiemRateKind(type);
+    const dayRate = claim.abroad ? claim.abroadDayRate : rateOn(kind, date)?.value;
+    const covered = {
+      breakfast: input.breakfastCovered ?? false,
+      lunch: input.lunchCovered ?? false,
+      dinner: input.dinnerCovered ?? false,
+    };
+    const errors: Record<string, string[]> = {};
+    if (dayRate === undefined) errors.perDiemType = [`No ${kind} rate applies on ${date}`];
+    const percents: PerDiem["mealPercents"] = {};
+    for (const meal of meals) {
+      const percent = rateOn(`meal_${meal}_percent`, date)?.value;
+      if (percent !== undefined) percents[meal] = percent;
+      else if (covered[meal]) errors[`${meal}Covered`] = [`No meal_${meal}_percent rate applies on ${date}`];
+    }
+    const deducted = meals.reduce((sum, meal) => sum + (covered[meal] ? (percents[meal] ?? 0) : 0), 0);
+    const amount = Math.max(0, round2((dayRate ?? 0) * (1 - deducted / 100)));
+    return {
+      line: {
+        currency: claim.abroad ? (claim.abroadCurrency ?? defaultCurrency) : defaultCurrency,
+        rate: dayRate,
+        grossAmount: amount,
+        netAmount: amount,
+        owedToEmployee: amount,
+        perDiem: {
+          type,
+          breakfastCovered: covered.breakfast,
+          lunchCovered: covered.lunch,
+          dinnerCovered: covered.dinner,
+          dayRate: dayRate ?? 0,
+          mealPercents: percents,
+        },
+      },
+      ...(Object.keys(errors).length > 0 ? { refusal: errors } : {}),
+    };
+  };
+
+  /** The days the server would propose, priced from the table and marked where one exists. */
+  const suggestDays = (claim: Claim, overnight: boolean): PerDiemSuggestedDay[] => {
+    const zone = metaOf().timeZone;
+    const departure = new Date(claim.departureAt).getTime();
+    const duration = new Date(claim.returnAt).getTime() - departure;
+    const period = 24 * 3_600_000;
+    const part = 6 * 3_600_000;
+    if (duration < part) return [];
+    const starts: { at: number; type: PerDiemType }[] = [];
+    if (!overnight) {
+      starts.push({ at: departure, type: duration <= 12 * 3_600_000 ? "day_6_12" : "day_over_12" });
+    } else {
+      const whole = Math.floor(duration / period);
+      const count = whole === 0 ? 1 : duration % period > part ? whole + 1 : whole;
+      for (let index = 0; index < count; index += 1) {
+        starts.push({ at: departure + index * period, type: "overnight_hotel" });
+      }
+    }
+    const taken = new Set(
+      linesOf(claim.id)
+        .filter((line) => line.kind === "per_diem")
+        .map((line) => line.entryDate),
+    );
+    return starts.map(({ at, type }) => {
+      const entryDate = zoneCalendarDate(new Date(at).toISOString(), zone);
+      const dayRate = claim.abroad ? claim.abroadDayRate : rateOn(perDiemRateKind(type), entryDate)?.value;
+      return {
+        entryDate,
+        perDiemType: type,
+        exists: taken.has(entryDate),
+        ...(dayRate === undefined ? {} : { dayRate, amount: dayRate }),
+      };
+    });
+  };
+
+  /** Every batch refuses as one, with a message per offending id on the list that named it. */
+  const missing = (title: string, ids: number[], claimIds: number[]): Response | undefined => {
+    const unknownEntries = ids.filter((id) => !find(id));
+    const unknownClaims = claimIds.filter((id) => !findClaim(id));
+    if (unknownEntries.length === 0 && unknownClaims.length === 0) return undefined;
+    return problem(400, title, {
+      ...(unknownEntries.length > 0 ? { entryIds: unknownEntries.map((id) => `Expense ${id} was not found`) } : {}),
+      ...(unknownClaims.length > 0 ? { claimIds: unknownClaims.map((id) => `Travel claim ${id} was not found`) } : {}),
+    });
+  };
+
+  /**
+   * What a batch answers: `{ entries, claims }`, each in the order its own ids
+   * were given. A trip moves as one unit — its lines take the claim's status
+   * without being named — which is why the two lists are separate and why a
+   * caller reads `moved.entries` rather than the array the operations used to
+   * answer before travel claims existed.
+   */
+  const moveAll = (
+    ids: number[],
+    claimIds: number[],
+    move: (entry: Expense) => void,
+    moveClaim?: (claim: Claim) => void,
+  ): Response => {
+    const movedEntries = ids.map((id) => {
       const entry = find(id) as Expense;
       move(entry);
       entry.revision += 1;
       return entry;
     });
-    return jsonResponse(200, moved);
+    const movedClaims = claimIds.map((id) => {
+      const claim = findClaim(id) as Claim;
+      moveClaim?.(claim);
+      claim.revision += 1;
+      // A line's rendered status is its claim's, so the trip's lines follow it.
+      for (const line of linesOf(claim.id)) line.status = claim.status;
+      return claimListResponse(claim);
+    });
+    return jsonResponse(200, { entries: movedEntries, claims: movedClaims });
   };
 
   return stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
@@ -311,40 +497,49 @@ export const stubExpensesApi = (server: ExpensesServer = {}) => {
 
     if (path === "/api/v1/expenses/approve" && method === "POST") {
       const ids: number[] = body?.entryIds ?? [];
-      const refusal = missing("Invalid approval", ids);
+      const claimIds: number[] = body?.claimIds ?? [];
+      const refusal = missing("Invalid approval", ids, claimIds);
       if (refusal) return Promise.resolve(refusal);
-      return Promise.resolve(
-        moveAll(ids, (entry) => {
-          entry.status = "approved";
-          entry.decision = { status: "approved", at: "2026-09-20T09:00:00Z", by: APPROVER };
-          entry.capabilities = { ...entry.capabilities, canApprove: false, canUnapprove: true };
-        }),
-      );
+      const decide = (unit: Expense | Claim) => {
+        unit.status = "approved";
+        unit.decision = { status: "approved", at: "2026-09-20T09:00:00Z", by: APPROVER };
+        unit.capabilities = { ...unit.capabilities, canApprove: false, canUnapprove: true };
+      };
+      return Promise.resolve(moveAll(ids, claimIds, decide, decide));
     }
     if (path === "/api/v1/expenses/reject" && method === "POST") {
       const ids: number[] = body?.entryIds ?? [];
-      const refusal = missing("Invalid approval", ids);
+      const claimIds: number[] = body?.claimIds ?? [];
+      const refusal = missing("Invalid approval", ids, claimIds);
       if (refusal) return Promise.resolve(refusal);
-      return Promise.resolve(
-        moveAll(ids, (entry) => {
-          entry.status = "rejected";
-          entry.decision = { status: "rejected", at: "2026-09-20T09:00:00Z", by: APPROVER, reason: body.reason };
-          entry.capabilities = { ...entry.capabilities, canApprove: false, canEdit: true, canSubmit: true };
-        }),
-      );
+      const decide = (unit: Expense | Claim) => {
+        unit.status = "rejected";
+        unit.decision = { status: "rejected", at: "2026-09-20T09:00:00Z", by: APPROVER, reason: body.reason };
+        unit.capabilities = { ...unit.capabilities, canApprove: false, canEdit: true, canSubmit: true };
+      };
+      return Promise.resolve(moveAll(ids, claimIds, decide, decide));
     }
     if (path === "/api/v1/expenses/unapprove" && method === "POST") {
       const ids: number[] = body?.entryIds ?? [];
-      const refusal = missing("Invalid approval", ids);
+      const claimIds: number[] = body?.claimIds ?? [];
+      const refusal = missing("Invalid approval", ids, claimIds);
       if (refusal) return Promise.resolve(refusal);
+      const undo = (unit: Expense | Claim) => {
+        unit.status = "draft";
+        unit.decision = undefined;
+        unit.submittedAt = undefined;
+        unit.capabilities = { ...unit.capabilities, canUnapprove: false, canEdit: true, canSubmit: true };
+      };
       return Promise.resolve(
-        moveAll(ids, (entry) => {
-          entry.status = "draft";
-          entry.decision = undefined;
-          entry.submittedAt = undefined;
-          entry.rateOverride = undefined;
-          entry.capabilities = { ...entry.capabilities, canUnapprove: false, canEdit: true, canSubmit: true };
-        }),
+        moveAll(
+          ids,
+          claimIds,
+          (entry) => {
+            undo(entry);
+            entry.rateOverride = undefined;
+          },
+          undo,
+        ),
       );
     }
 
@@ -454,30 +649,30 @@ export const stubExpensesApi = (server: ExpensesServer = {}) => {
 
     if (path === "/api/v1/expenses/reimbursed" && method === "POST") {
       const ids: number[] = body?.entryIds ?? [];
-      const refusal = missing("Invalid reimbursement", ids);
+      const claimIds: number[] = body?.claimIds ?? [];
+      const refusal = missing("Invalid reimbursement", ids, claimIds);
       if (refusal) return Promise.resolve(refusal);
-      return Promise.resolve(
-        moveAll(ids, (entry) => {
-          entry.reimbursement = {
-            at: "2026-09-20T10:00:00Z",
-            by: APPROVER,
-            date: body.date,
-            ...(body.reference ? { reference: body.reference } : {}),
-          };
-          entry.capabilities = { ...entry.capabilities, canMarkReimbursed: false, canUndoReimbursed: true };
-        }),
-      );
+      const pay = (unit: Expense | Claim) => {
+        unit.reimbursement = {
+          at: "2026-09-20T10:00:00Z",
+          by: APPROVER,
+          date: body.date,
+          ...(body.reference ? { reference: body.reference } : {}),
+        };
+        unit.capabilities = { ...unit.capabilities, canMarkReimbursed: false, canUndoReimbursed: true };
+      };
+      return Promise.resolve(moveAll(ids, claimIds, pay, pay));
     }
     if (path === "/api/v1/expenses/reimbursed/undo" && method === "POST") {
       const ids: number[] = body?.entryIds ?? [];
-      const refusal = missing("Invalid reimbursement", ids);
+      const claimIds: number[] = body?.claimIds ?? [];
+      const refusal = missing("Invalid reimbursement", ids, claimIds);
       if (refusal) return Promise.resolve(refusal);
-      return Promise.resolve(
-        moveAll(ids, (entry) => {
-          entry.reimbursement = undefined;
-          entry.capabilities = { ...entry.capabilities, canMarkReimbursed: true, canUndoReimbursed: false };
-        }),
-      );
+      const undo = (unit: Expense | Claim) => {
+        unit.reimbursement = undefined;
+        unit.capabilities = { ...unit.capabilities, canMarkReimbursed: true, canUndoReimbursed: false };
+      };
+      return Promise.resolve(moveAll(ids, claimIds, undo, undo));
     }
 
     const upload = /^\/api\/v1\/expenses\/entries\/(\d+)\/attachments$/.exec(path);
@@ -512,22 +707,149 @@ export const stubExpensesApi = (server: ExpensesServer = {}) => {
 
     if (path === "/api/v1/expenses/submit" && method === "POST") {
       const ids: number[] = body?.entryIds ?? [];
-      const missing = ids.filter((id) => !find(id));
-      if (missing.length > 0) {
-        return Promise.resolve(
-          problem(400, "Invalid submission", { entryIds: missing.map((id) => `Expense ${id} was not found`) }),
-        );
+      const claimIds: number[] = body?.claimIds ?? [];
+      const refusal = missing("Invalid submission", ids, claimIds);
+      if (refusal) return Promise.resolve(refusal);
+      const send = (unit: Expense | Claim) => {
+        unit.status = "submitted";
+        unit.submittedAt = "2026-09-19T10:00:00Z";
+        unit.decision = undefined;
+        unit.capabilities = { ...unit.capabilities, canEdit: false, canDelete: false, canSubmit: false };
+      };
+      return Promise.resolve(moveAll(ids, claimIds, send, send));
+    }
+
+    const suggestion = /^\/api\/v1\/expenses\/claims\/(\d+)\/per-diem-suggestion$/.exec(path);
+    if (suggestion && method === "POST") {
+      if (server.suggestion instanceof Response) return Promise.resolve(server.suggestion.clone());
+      const claim = findClaim(Number(suggestion[1]));
+      if (!claim) return Promise.resolve(new Response(null, { status: 404 }));
+      return Promise.resolve(jsonResponse(200, server.suggestion ?? suggestDays(claim, Boolean(body?.overnight))));
+    }
+
+    const claimRow = /^\/api\/v1\/expenses\/claims\/(\d+)$/.exec(path);
+    if (claimRow) {
+      const claim = findClaim(Number(claimRow[1]));
+      if (!claim) return Promise.resolve(new Response(null, { status: 404 }));
+      if (method === "GET") {
+        if (!server.frozenReads) return Promise.resolve(jsonResponse(200, claimResponse(claim)));
+        // A deep copy: the store's own line objects are mutated in place by
+        // the writes, so a shallow snapshot would move with them.
+        const frozen = frozenClaims.get(claim.id) ?? (JSON.parse(JSON.stringify(claimResponse(claim))) as Claim);
+        frozenClaims.set(claim.id, frozen);
+        return Promise.resolve(jsonResponse(200, frozen));
       }
-      const moved = ids.map((id) => {
-        const entry = find(id) as Expense;
-        entry.status = "submitted";
-        entry.submittedAt = "2026-09-19T10:00:00Z";
-        entry.decision = undefined;
-        entry.revision += 1;
-        entry.capabilities = { ...entry.capabilities, canEdit: false, canDelete: false, canSubmit: false };
-        return entry;
-      });
-      return Promise.resolve(jsonResponse(200, moved));
+      if (method === "DELETE") {
+        for (const line of linesOf(claim.id)) entries.splice(entries.indexOf(line), 1);
+        claims.splice(claims.indexOf(claim), 1);
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+      if (method === "PUT") {
+        if (body.revision !== claim.revision) {
+          return Promise.resolve(jsonResponse(409, { title: "The travel claim has moved on", status: 409 }));
+        }
+        const zone = metaOf().timeZone;
+        const after = { ...claim, ...body } as Claim;
+        // A narrowed trip refuses rather than strand a day somebody recorded.
+        const stranded: Record<string, string[]> = {};
+        const from = zoneCalendarDate(after.departureAt, zone);
+        const to = zoneCalendarDate(after.returnAt, zone);
+        for (const line of linesOf(claim.id).filter((one) => one.kind === "per_diem")) {
+          if (line.entryDate < from) {
+            stranded.departureAt = [
+              `Travel claim ${claim.id} holds a per diem day on ${line.entryDate}, which the trip would no longer cover; remove it first`,
+            ];
+          }
+          if (line.entryDate > to) {
+            stranded.returnAt = [
+              `Travel claim ${claim.id} holds a per diem day on ${line.entryDate}, which the trip would no longer cover; remove it first`,
+            ];
+          }
+        }
+        if (Object.keys(stranded).length > 0) {
+          return Promise.resolve(problem(400, "Invalid travel claim", stranded));
+        }
+        const repriced =
+          claim.abroad !== after.abroad ||
+          claim.abroadDayRate !== after.abroadDayRate ||
+          claim.abroadCurrency !== after.abroadCurrency;
+        Object.assign(claim, {
+          purpose: after.purpose,
+          destination: after.destination,
+          abroad: after.abroad ?? false,
+          abroadDayRate: after.abroadDayRate,
+          abroadCurrency: after.abroadCurrency,
+          departureAt: after.departureAt,
+          returnAt: after.returnAt,
+          project: body.projectId
+            ? (claim.project ?? { id: body.projectId, code: "KVEM1000", name: "Kverneland web" })
+            : undefined,
+          revision: claim.revision + 1,
+        });
+        if (repriced) {
+          // The claim's own money changing reprices every day it holds, in the
+          // same transaction — which is why the page reads the claim again.
+          for (const line of linesOf(claim.id).filter((one) => one.kind === "per_diem" && one.perDiem)) {
+            const perDiem = line.perDiem as PerDiem;
+            const { line: priced } = pricePerDiem(
+              {
+                kind: "per_diem",
+                entryDate: line.entryDate,
+                perDiemType: perDiem.type,
+                breakfastCovered: perDiem.breakfastCovered,
+                lunchCovered: perDiem.lunchCovered,
+                dinnerCovered: perDiem.dinnerCovered,
+              },
+              claim,
+              metaOf().defaultCurrency,
+            );
+            Object.assign(line, priced, { revision: line.revision + 1 });
+          }
+        }
+        return Promise.resolve(jsonResponse(200, claimResponse(claim)));
+      }
+    }
+
+    if (path === "/api/v1/expenses/claims" && method === "POST") {
+      const saved: Claim = {
+        id: takeId(),
+        purpose: body.purpose,
+        ...(body.destination ? { destination: body.destination } : {}),
+        abroad: body.abroad ?? false,
+        ...(body.abroadDayRate !== undefined ? { abroadDayRate: body.abroadDayRate } : {}),
+        ...(body.abroadCurrency ? { abroadCurrency: body.abroadCurrency } : {}),
+        departureAt: body.departureAt,
+        returnAt: body.returnAt,
+        ...(body.projectId ? { project: { id: body.projectId, code: "KVEM1000", name: "Kverneland web" } } : {}),
+        status: "draft",
+        owner: { userId: me, displayName: "Ada Lovelace", active: true },
+        lines: [],
+        totals: [],
+        revision: 1,
+        createdAt: "2026-03-08T09:00:00Z",
+        updatedAt: "2026-03-08T09:00:00Z",
+        capabilities: ownClaimCapabilities,
+      };
+      claims.push(saved);
+      return Promise.resolve(jsonResponse(201, saved));
+    }
+
+    if (path === "/api/v1/expenses/claims" && method === "GET") {
+      const query = url.searchParams;
+      const userId = query.get("userId");
+      const from = query.get("from");
+      const to = query.get("to");
+      const reimbursed = query.get("reimbursed");
+      const zone = metaOf().timeZone;
+      const matching = claims
+        .filter((claim) => !userId || claim.owner.userId === userId)
+        .filter((claim) => !query.get("status") || claim.status === query.get("status"))
+        .filter((claim) => !from || zoneCalendarDate(claim.departureAt, zone) >= from)
+        .filter((claim) => !to || zoneCalendarDate(claim.departureAt, zone) <= to)
+        .filter((claim) => reimbursed === null || (claim.reimbursement !== undefined) === (reimbursed === "true"))
+        .sort((a, b) => (a.departureAt === b.departureAt ? b.id - a.id : a.departureAt < b.departureAt ? 1 : -1))
+        .map(claimListResponse);
+      return Promise.resolve(jsonResponse(200, page(matching, Number(query.get("page") ?? 1), server.pageSize ?? 25)));
     }
 
     const one = /^\/api\/v1\/expenses\/entries\/(\d+)$/.exec(path);
@@ -544,6 +866,32 @@ export const stubExpensesApi = (server: ExpensesServer = {}) => {
         const update = body as ExpenseUpdateInput;
         if (update.revision !== entry.revision) {
           return Promise.resolve(jsonResponse(409, { title: "The expense has moved on", status: 409 }));
+        }
+        const claim = entry.claimId === undefined ? undefined : findClaim(entry.claimId);
+        if (update.kind === "per_diem") {
+          if (!claim)
+            return Promise.resolve(
+              problem(400, "Invalid expense", { claimId: ["A per diem belongs to a travel claim"] }),
+            );
+          const clash = linesOf(claim.id).find(
+            (line) => line.kind === "per_diem" && line.id !== entry.id && line.entryDate === update.entryDate,
+          );
+          if (clash) {
+            return Promise.resolve(
+              problem(400, "Invalid expense", {
+                entryDate: [`Travel claim ${claim.id} already holds a per diem day on ${update.entryDate}`],
+              }),
+            );
+          }
+          const { line, refusal } = pricePerDiem(update, claim, metaOf().defaultCurrency);
+          if (refusal) return Promise.resolve(problem(400, "Invalid expense", refusal));
+          Object.assign(entry, {
+            entryDate: update.entryDate,
+            description: "",
+            revision: entry.revision + 1,
+            ...line,
+          });
+          return Promise.resolve(jsonResponse(200, entry));
         }
         Object.assign(entry, {
           kind: update.kind,
@@ -568,26 +916,70 @@ export const stubExpensesApi = (server: ExpensesServer = {}) => {
 
     if (path === "/api/v1/expenses/entries" && method === "POST") {
       const input = body as ExpenseInput;
+      const claim = input.claimId === undefined ? undefined : findClaim(input.claimId);
+      if (input.claimId !== undefined && !claim) {
+        return Promise.resolve(
+          problem(400, "Invalid expense", { claimId: [`Travel claim ${input.claimId} was not found`] }),
+        );
+      }
+      if (claim && linesOf(claim.id).length >= 200) {
+        return Promise.resolve(
+          problem(400, "Invalid expense", { claimId: ["A travel claim holds at most 200 expenses"] }),
+        );
+      }
+      let perDiem: Partial<Expense> | undefined;
+      if (input.kind === "per_diem") {
+        if (!claim) {
+          return Promise.resolve(problem(400, "Invalid expense", { kind: ["A per diem belongs to a travel claim"] }));
+        }
+        const zone = metaOf().timeZone;
+        const from = zoneCalendarDate(claim.departureAt, zone);
+        const to = zoneCalendarDate(claim.returnAt, zone);
+        if (input.entryDate < from || input.entryDate > to) {
+          return Promise.resolve(
+            problem(400, "Invalid expense", {
+              entryDate: [`A per diem day falls between ${from} and ${to}`],
+            }),
+          );
+        }
+        if (linesOf(claim.id).some((line) => line.kind === "per_diem" && line.entryDate === input.entryDate)) {
+          return Promise.resolve(
+            problem(400, "Invalid expense", {
+              entryDate: [`Travel claim ${claim.id} already holds a per diem day on ${input.entryDate}`],
+            }),
+          );
+        }
+        const { line, refusal } = pricePerDiem(input, claim, metaOf().defaultCurrency);
+        if (refusal) return Promise.resolve(problem(400, "Invalid expense", refusal));
+        perDiem = line;
+      }
       const saved: Expense = {
         id: takeId(),
         kind: input.kind as Expense["kind"],
         entryDate: input.entryDate,
-        // The contract lets a per diem day arrive with no description — the
-        // real server names it after the kind of day it is. Nothing here
-        // records one yet, so an absent description is simply empty.
+        // The contract lets a per diem day arrive with no description — what
+        // the day *is* names it, and the client renders `perDiem.type`.
         description: input.description ?? "",
         category: input.categoryId ? categoryStore.find((one) => one.id === input.categoryId) : undefined,
         billable: input.billable ?? false,
-        status: "draft",
+        // A line takes its claim's owner, project and status; only a
+        // standalone expense carries a flow of its own.
+        ...(claim
+          ? {
+              claimId: claim.id,
+              status: claim.status,
+              owner: claim.owner,
+              ...(claim.project ? { project: claim.project } : {}),
+            }
+          : { status: "draft" as const, owner: { userId: me, displayName: "Ada Lovelace", active: true } }),
         attachmentCount: 0,
         attachments: [],
-        owner: { userId: me, displayName: "Ada Lovelace", active: true },
         revision: 1,
         createdAt: "2026-09-19T09:00:00Z",
         updatedAt: "2026-09-19T09:00:00Z",
         capabilities: ownDraftCapabilities,
-        ...priced(input, ratesOf(), metaOf().defaultCurrency),
-      };
+        ...(perDiem ?? priced(input, ratesOf(), metaOf().defaultCurrency)),
+      } as Expense;
       entries.push(saved);
       return Promise.resolve(jsonResponse(201, saved));
     }
@@ -598,8 +990,14 @@ export const stubExpensesApi = (server: ExpensesServer = {}) => {
       const from = query.get("from");
       const to = query.get("to");
       const reimbursed = query.get("reimbursed");
+      const standalone = query.get("standalone");
+      const claimId = query.get("claimId");
       const matching = entries
         .filter((entry) => !userId || entry.owner.userId === userId)
+        // A claim's lines are the trip's, so "My expenses" asks for the units
+        // of their own and the trip is listed beside them rather than twice.
+        .filter((entry) => standalone === null || (entry.claimId === undefined) === (standalone === "true"))
+        .filter((entry) => claimId === null || entry.claimId === Number(claimId))
         .filter((entry) => !query.get("status") || entry.status === query.get("status"))
         .filter((entry) => !query.get("kind") || entry.kind === query.get("kind"))
         .filter((entry) => !from || entry.entryDate >= from)
