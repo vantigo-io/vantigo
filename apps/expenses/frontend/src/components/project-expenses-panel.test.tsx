@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { jsonResponse, sent } from "../test/api";
+import { jsonResponse, problemResponse, sent } from "../test/api";
 import {
   capabilities,
   claim,
@@ -315,6 +315,64 @@ describe("ProjectExpensesPanel", () => {
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
 
+  it("says so when the save is refused on the project the form cannot change", async () => {
+    // The one refusal this mode can provoke and the picker mode cannot: a
+    // create is never grandfathered, so a project completed — or a person
+    // taken off its team — while the form was open is a 400 on `projectId`.
+    // There is no input bound to it here, so it has to be said out loud.
+    stubExpensesApi({
+      entries: [],
+      projects: projectOptions,
+      projectSummary: projectSummary({ capabilities: { canRecord: true } }),
+      write: (method, path) =>
+        method === "POST" && path === "/api/v1/expenses/entries"
+          ? problemResponse(400, "Invalid expense", {
+              projectId: ["Expenses can no longer be booked on project KVEM1000"],
+            })
+          : undefined,
+    });
+    panel();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Record a cost" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Description/ }), "Server rack");
+    await userEvent.click(within(dialog).getByRole("combobox", { name: /Category/ }));
+    await userEvent.click(await screen.findByRole("option", { name: "Travel" }));
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Amount including VAT/ }), "1000");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save draft" }));
+
+    expect(await within(dialog).findByText("Expenses can no longer be booked on project KVEM1000")).toBeInTheDocument();
+    // And the form stays open, with what was typed still in it.
+    expect(within(dialog).getByRole("textbox", { name: /Description/ })).toHaveValue("Server rack");
+  });
+
+  it("tells the host about a cost that was saved even when sending it for approval was refused", async () => {
+    // The draft exists — it is in the project's draft bucket and in the
+    // Economy tab's cost figures — so the figures moved whatever the
+    // submission did.
+    const onChanged = vi.fn();
+    stubExpensesApi({
+      entries: [],
+      projects: projectOptions,
+      projectSummary: projectSummary({ capabilities: { canRecord: true } }),
+      write: (method, path) =>
+        method === "POST" && path === "/api/v1/expenses/submit"
+          ? problemResponse(400, "Invalid submission", { entryIds: ["A receipt is required over NOK 1,250.00"] })
+          : undefined,
+    });
+    panel(onChanged);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Record a cost" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Description/ }), "Server rack");
+    await userEvent.click(within(dialog).getByRole("combobox", { name: /Category/ }));
+    await userEvent.click(await screen.findByRole("option", { name: "Travel" }));
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Amount including VAT/ }), "2000");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save and submit" }));
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+  });
+
   it("opens one expense in the drawer and tells the host when marking it invoiced changed the figures", async () => {
     const onChanged = vi.fn();
     stubExpensesApi({
@@ -357,6 +415,189 @@ describe("ProjectExpensesPanel", () => {
       "href",
       "/expenses/claims/1012",
     );
+  });
+
+  it("leaves All unfiltered, starts the list again, and measures the sentence against what is ready", async () => {
+    // Three things in one, because they are one behaviour: the chip decides
+    // both what is asked for and what the sentence is compared against.
+    // `toInvoice=false` now *means* the parameter left out, so a chip bound to
+    // a boolean would send it and be answered under rules nobody asked for.
+    const fetchMock = stubExpensesApi({
+      entries: [
+        // Distinct days, because the list is newest first: which row lands on
+        // which page has to be a fact about the fixture, not about ids.
+        outlay({
+          id: 511,
+          description: "Ready one",
+          entryDate: "2026-09-20",
+          project: BOOKED,
+          status: "approved",
+          billable: true,
+          billAmount: 800,
+        }),
+        outlay({
+          id: 512,
+          description: "Ready two",
+          entryDate: "2026-09-19",
+          project: BOOKED,
+          status: "approved",
+          billable: true,
+          billAmount: 900,
+        }),
+        outlay({ id: 513, description: "Not ready", project: BOOKED }),
+      ],
+      pageSize: 1,
+      projectSummary: projectSummary({
+        currencies: [summaryCurrency({ total: summaryBucket({ count: 9, cost: 5000 }), readyCount: 2 })],
+      }),
+    });
+    panel();
+
+    await userEvent.click(await screen.findByRole("radio", { name: "Ready to invoice" }));
+    await screen.findByText("Ready one");
+    await userEvent.click(screen.getByRole("button", { name: "2" }));
+    await screen.findByText("Ready two");
+
+    await userEvent.click(screen.getByRole("radio", { name: "All" }));
+    await waitFor(() => expect(screen.getByRole("radio", { name: "All" })).toBeChecked());
+
+    // Changing the chip starts the list again: page 2 of "ready" is not page 2
+    // of everything, and a stale page number would show an empty table.
+    await screen.findByText("Ready one");
+    const asked = fetchMock.actualCalls.map(([url]) => String(url)).filter((url) => url.includes("/entries?"));
+    const last = asked.at(-1) ?? "";
+    expect(last).not.toContain("toInvoice");
+    expect(last).toContain("page=1");
+
+    // Under "All" the sentence is measured against Σ total.count (9 vs 3), so
+    // it is there; under "Ready" it was Σ readyCount (2 vs 2), so it was not.
+    expect(screen.getByTestId("project-expenses-partial")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("radio", { name: "Ready to invoice" }));
+    await screen.findByText("Ready one");
+    expect(screen.queryByTestId("project-expenses-partial")).not.toBeInTheDocument();
+  });
+
+  it("never claims nothing is ready while rows are waiting on an earlier page", async () => {
+    // Mark the last line on page 2 invoiced and the list drops to one page. A
+    // page number left behind asks for a page that no longer exists, gets no
+    // rows, and would read as a project with nothing ready at all.
+    const entries = [
+      outlay({
+        id: 511,
+        description: "Ready one",
+        entryDate: "2026-09-20",
+        project: BOOKED,
+        status: "approved",
+        billable: true,
+        billAmount: 800,
+        capabilities: capabilities({ canSeeBilling: true }),
+      }),
+      outlay({
+        id: 512,
+        description: "Ready two",
+        entryDate: "2026-09-18",
+        project: BOOKED,
+        status: "approved",
+        billable: true,
+        billAmount: 900,
+        capabilities: capabilities({ canSeeBilling: true, canMarkInvoiced: true }),
+      }),
+    ];
+    stubExpensesApi({ entries, pageSize: 1 });
+    panel();
+
+    await userEvent.click(await screen.findByRole("radio", { name: "Ready to invoice" }));
+    await screen.findByText("Ready one");
+    await userEvent.click(screen.getByRole("button", { name: "2" }));
+
+    await userEvent.click(await screen.findByRole("button", { name: "Open Ready two" }));
+    const drawer = await screen.findByRole("dialog", { name: "Ready two" });
+    await userEvent.click(within(drawer).getByRole("button", { name: "Mark invoiced" }));
+    const invoice = await screen.findByRole("dialog", { name: "Mark the line invoiced" });
+    await userEvent.click(within(invoice).getByRole("button", { name: "Mark invoiced" }));
+
+    expect(await screen.findByText("Ready one")).toBeInTheDocument();
+    expect(screen.queryByText("Nothing is ready to invoice")).not.toBeInTheDocument();
+  });
+
+  it("offers no filter at all on a project with nothing recorded", async () => {
+    stubExpensesApi({ entries: [], projectSummary: projectSummary() });
+    panel();
+
+    await screen.findByText("No expenses on this project yet");
+    expect(screen.queryByRole("radio", { name: "Ready to invoice" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "All" })).not.toBeInTheDocument();
+  });
+
+  it("names the filter set as a radio group", async () => {
+    stubExpensesApi({
+      entries: [],
+      projectSummary: projectSummary({
+        currencies: [summaryCurrency({ total: summaryBucket({ count: 1, cost: 10 }) })],
+      }),
+    });
+    panel();
+
+    expect(await screen.findByRole("radiogroup", { name: "Which expenses to show" })).toBeInTheDocument();
+  });
+
+  it("holds the totals' place while they are being read", () => {
+    stubExpensesApi({ entries: [], projectSummary: projectSummary() });
+    panel();
+
+    expect(screen.getByTestId("project-expense-totals-loading")).toBeInTheDocument();
+  });
+
+  it("counts a billable line with no price as unpriced rather than ready", async () => {
+    // `bill_amount IS NULL` is not something a response can say — the server
+    // renders `billAmount: 0` for it — so the fixture says it outright, and
+    // the figures follow the column rather than the rendering.
+    stubExpensesApi({
+      entries: [
+        outlay({
+          id: 521,
+          description: "Mileage with no customer rate",
+          project: BOOKED,
+          status: "approved",
+          billable: true,
+          billAmount: null,
+          netAmount: 400,
+          capabilities: capabilities({ canSeeBilling: true }),
+        }),
+      ],
+      projectCurrency: "NOK",
+    });
+    panel();
+
+    const nok = await screen.findByTestId("project-expense-currency-NOK");
+    expect(nok).toHaveTextContent("1 billable expense has no price yet");
+    expect(within(nok).getByText("Ready to invoice").parentElement).toHaveTextContent("0");
+
+    await userEvent.click(screen.getByRole("radio", { name: "Ready to invoice" }));
+    expect(await screen.findByText("Nothing is ready to invoice")).toBeInTheDocument();
+  });
+
+  it("says what the server said when the ready list is refused, and leaves All one click away", async () => {
+    // What a line bills is the project's money, so `toInvoice=true` is for the
+    // same people the summary is. The chip is only offered when the summary
+    // was readable, so this needs the rights to have gone between the two
+    // reads — and when it happens the refusal is shown, not an empty table.
+    stubExpensesApi({
+      entries: [],
+      entryList: problemResponse(403, "Forbidden", {
+        toInvoice: ["'toInvoice=true' is for whoever may see what this project's lines bill."],
+      }),
+      projectSummary: projectSummary({
+        currencies: [summaryCurrency({ total: summaryBucket({ count: 2, cost: 100 }), readyCount: 1 })],
+      }),
+    });
+    panel();
+
+    await userEvent.click(await screen.findByRole("radio", { name: "Ready to invoice" }));
+
+    expect(await screen.findByText("Could not load the project's expenses")).toBeInTheDocument();
+    expect(screen.queryByText("Nothing is ready to invoice")).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "All" })).toBeEnabled();
   });
 
   it("renders the not-available state rather than crashing without the projects module", async () => {

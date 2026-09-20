@@ -126,8 +126,20 @@ export const ProjectExpensesPanel = ({ projectId, onChanged }: ProjectExpensesPa
     : undefined;
   const hidden = counted !== undefined && listed !== undefined && listed < counted;
 
+  /**
+   * A page the list no longer has. Marking the last line on page 2 invoiced
+   * takes the list down to one page while `page` stays at 2, and an empty page
+   * 2 would be drawn as a project with nothing ready at all — over rows that
+   * are still there on page 1. Adjusted during render from the previous
+   * render's value, the way React documents, rather than in an effect that
+   * would paint the wrong empty state first.
+   */
+  const totalPages = list.data?.pagination.totalPages;
+  if (totalPages !== undefined && page > totalPages) setPage(totalPages);
+
   const onFilter = (next: string) => {
     setFilter(next === "ready" ? "ready" : "all");
+    // A page of "ready to invoice" is not the same page of everything.
     setPage(1);
   };
 
@@ -149,6 +161,15 @@ export const ProjectExpensesPanel = ({ projectId, onChanged }: ProjectExpensesPa
         <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadProjectTotals")}>
           {summary.error.message}
         </Alert>
+      )}
+
+      {/* The totals are a block of their own above the list, so their place is
+          held while they are read: without it the list is drawn at the top of
+          the tab and then pushed down on every mount. */}
+      {summary.isPending && !projectsOff && (
+        <Card withBorder padding="lg" radius="md" data-testid="project-expense-totals-loading">
+          <ContentSkeleton rows={3} rowHeight={48} />
+        </Card>
       )}
 
       {totals && currencies.length > 0 && (
@@ -198,15 +219,19 @@ export const ProjectExpensesPanel = ({ projectId, onChanged }: ProjectExpensesPa
             )}
           </Group>
 
-          {/* Offered only when the totals were readable: "ready to invoice" is
-              a figure from the summary, and a filter nothing on screen can be
-              checked against is a filter nobody can trust. It never travels
-              with a status or a kind — the API refuses those combinations
-              rather than answering an empty page — and "All" sends no filter
-              at all. */}
-          {totals && (
+          {/* Offered only when the totals were readable **and say there is
+              something** — "ready to invoice" is a figure from the summary,
+              and a filter with nothing on screen to check it against is a
+              filter nobody can trust. It never travels with a status or a
+              kind — the API refuses those combinations rather than answering
+              an empty page — and "All" sends no parameter at all, which is
+              what the contract says `toInvoice=false` means. */}
+          {totals && currencies.length > 0 && (
             <Chip.Group value={filter} onChange={(value) => onFilter(String(value))}>
-              <Group gap="xs" role="group" aria-label={t("projectExpenseFilters")}>
+              {/* Mantine renders the chips as radios, so the labelled wrapper
+                  is the radio *group* — otherwise the label names nothing a
+                  screen reader associates with them. */}
+              <Group gap="xs" role="radiogroup" aria-label={t("projectExpenseFilters")}>
                 <Chip value="all" size="lg" styles={{ label: { height: 40 } }}>
                   {t("filterAllExpenses")}
                 </Chip>
@@ -400,22 +425,24 @@ const CurrencyCard = ({
         <Text fw={600} component="h4" size="sm">
           {title}
         </Text>
-        <Table verticalSpacing="xs" aria-label={`${t("projectExpenseTotals")} — ${currency}`}>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("status")}</Table.Th>
-              <Table.Th ta="right">{t("expenses")}</Table.Th>
-              <Table.Th ta="right">{t("expenseCost")}</Table.Th>
-              <Table.Th ta="right">{t("toTheCustomer")}</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {bucket(t("bucketApproved"), figures.approved)}
-            {bucket(t("bucketSubmitted"), figures.submitted)}
-            {bucket(t("bucketDraft"), figures.draft)}
-          </Table.Tbody>
-          <Table.Tfoot>{bucket(t("bucketTotal"), figures.total)}</Table.Tfoot>
-        </Table>
+        <Table.ScrollContainer minWidth={360}>
+          <Table verticalSpacing="xs" aria-label={`${t("projectExpenseTotals")} — ${currency}`}>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>{t("status")}</Table.Th>
+                <Table.Th ta="right">{t("expenses")}</Table.Th>
+                <Table.Th ta="right">{t("expenseCost")}</Table.Th>
+                <Table.Th ta="right">{t("toTheCustomer")}</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {bucket(t("bucketApproved"), figures.approved)}
+              {bucket(t("bucketSubmitted"), figures.submitted)}
+              {bucket(t("bucketDraft"), figures.draft)}
+            </Table.Tbody>
+            <Table.Tfoot>{bucket(t("bucketTotal"), figures.total)}</Table.Tfoot>
+          </Table>
+        </Table.ScrollContainer>
 
         <Group gap="xl" wrap="wrap">
           <Stack gap={0}>

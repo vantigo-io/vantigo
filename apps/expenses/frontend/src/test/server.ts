@@ -26,6 +26,7 @@ import {
   noCapabilities,
   ownClaimCapabilities,
   ownDraftCapabilities,
+  type StoredExpense,
   stats,
 } from "./fixtures";
 
@@ -39,7 +40,7 @@ export interface ExpensesServer {
    * a test can read back what a write left behind, and a create shows up in
    * the next list read exactly as it would from the server.
    */
-  entries?: Expense[];
+  entries?: StoredExpense[];
   /**
    * The travel claims the fake keeps, as the array the test passes. A claim's
    * `lines`, `lineCount` and `totals` are **derived from the entries store on
@@ -54,6 +55,11 @@ export interface ExpensesServer {
    * half of it could be read.
    */
   claimList?: Response;
+  /**
+   * A refusal for `GET /entries` alone, leaving every other read answering
+   * from the store — the one half of a page failing while the other does not.
+   */
+  entryList?: Response;
   /** What the per diem suggestion answers. Left out, the fake works the days out itself. */
   suggestion?: Read<PerDiemSuggestedDay[]>;
   /**
@@ -275,6 +281,20 @@ const groupedUnits = (entries: Expense[], claims: Claim[]): UnitGroup[] => {
  * The queue and the payroll list are **derived from the same store** the
  * writes move, so approving in one step changes what the next read answers,
  * the way the server does.
+ *
+ * **What it deliberately does not model**, so that nobody reads a green test
+ * here as a statement about the server:
+ *
+ * - **Row-level visibility.** Every caller is answered every entry in the
+ *   store; the server's predicate is `see_all ∨ own ∨ a project you manage`.
+ *   The gap between a project's *totals* and the *rows* underneath them —
+ *   which the project page exists to explain — therefore has to be staged with
+ *   an explicit `projectSummary`, never by changing who is asking.
+ * - **The derived summary sums the store**, which is the same set the list
+ *   answers, for the same reason.
+ * - **An invoiced line that is not billable** is counted but adds nothing to
+ *   `invoicedAmount`; the server sums every row carrying `invoiced_at`. No
+ *   write door can produce one, so the two agree in practice.
  */
 export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
   const entries = server.entries ?? [];
@@ -322,7 +342,7 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
   /** One claim as `GET /claims/{id}` answers it: the header plus the lines the store holds. */
   const claimResponse = (claim: Claim): Claim => {
     const lines = linesOf(claim.id);
-    return { ...claim, lines, totals: totalsOf(lines) };
+    return { ...claim, lines: renderEntries(lines), totals: totalsOf(lines) };
   };
 
   /**
@@ -396,17 +416,41 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
     unitStatusOf(entry) === "approved" ? "approved" : unitStatusOf(entry) === "submitted" ? "submitted" : "draft";
 
   /**
+   * The `bill_amount` **column**, which is what every figure below turns on —
+   * never `billing`, which is a rendering and is absent from a caller who may
+   * not see it. A fixture states it with `billAmount: null` (SQL NULL) or a
+   * number; left out, it is the `billing` block's own amount, and NULL when
+   * there is no block.
+   */
+  const billAmountOf = (entry: StoredExpense): number | undefined =>
+    entry.billAmount === undefined ? entry.billing?.billAmount : (entry.billAmount ?? undefined);
+
+  /**
    * Ready to invoice, in the words the provider sums it and
    * `GET /entries?toInvoice=true` lists it: the **unit** approved, the line
    * billable, a bill amount present, not invoiced yet, and never a per diem
    * day — which the invoicing door refuses outright.
    */
-  const isReady = (entry: Expense): boolean =>
+  const isReady = (entry: StoredExpense): boolean =>
     bucketOf(entry) === "approved" &&
     entry.billable &&
-    entry.billing !== undefined &&
-    entry.billing.invoice === undefined &&
+    billAmountOf(entry) !== undefined &&
+    entry.billing?.invoice === undefined &&
     entry.kind !== "per_diem";
+
+  /**
+   * One entry as it goes on the wire. `billing` is a **rendering**, exactly as
+   * `responses.go` makes it: present for a caller who may see it — with
+   * `billAmount: 0` where the column is NULL, which is what `floatFromNumeric`
+   * does — and absent for one who may not. The column itself never travels.
+   */
+  const renderEntry = (entry: StoredExpense): Expense => {
+    const { billAmount: _column, ...wire } = entry;
+    if (!entry.capabilities.canSeeBilling) return { ...wire, billing: undefined };
+    return { ...wire, billing: { ...entry.billing, billAmount: billAmountOf(entry) ?? 0 } };
+  };
+
+  const renderEntries = (rows: StoredExpense[]): Expense[] => rows.map(renderEntry);
 
   /**
    * One project's expenses in sum, per currency, by currency code ascending.
@@ -414,7 +458,18 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
    * of them once on its own — a client that adds them up is reading a figure
    * nobody published.
    */
+  /**
+   * Whether this caller is refused the project's figures — the summary's bare
+   * 404, and the very same answer `toInvoice=true` is refused under, because
+   * what a line bills is the project's money either way. The fake has one
+   * caller, so it is expressed as a fixture: an explicit refusal in
+   * `projectSummary`, or no projects module at all.
+   */
+  const summaryRefused = (): boolean => server.projectSummary instanceof Response || !metaOf().projectsAvailable;
+
   const projectSummaryOf = (projectId: number): ProjectExpensesSummary => {
+    // The projects module is what makes this endpoint exist at all: without it
+    // the summary is one bare 404, the same one an unknown project gets.
     const mine = entries.filter((entry) => entry.project?.id === projectId);
     const byCurrency = new Map<string, ProjectExpensesCurrency>();
     const empty = (): ProjectExpensesBucket => ({ count: 0, cost: 0, billAmount: 0 });
@@ -433,7 +488,8 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
           invoicedAmount: 0,
           unpricedCount: 0,
         } satisfies ProjectExpensesCurrency);
-      const bills = entry.billable ? (entry.billing?.billAmount ?? 0) : 0;
+      const priced = billAmountOf(entry);
+      const bills = entry.billable ? (priced ?? 0) : 0;
       for (const bucket of [figures[bucketOf(entry)], figures.total]) {
         bucket.count += 1;
         bucket.cost = round2(bucket.cost + entry.netAmount);
@@ -449,7 +505,7 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
       }
       // A billable line with no bill amount at all: counted, never billed as
       // zero. A per diem day is never billable, so it is never in this figure.
-      if (entry.billable && entry.billing === undefined && entry.kind !== "per_diem") figures.unpricedCount += 1;
+      if (entry.billable && priced === undefined && entry.kind !== "per_diem") figures.unpricedCount += 1;
       byCurrency.set(entry.currency, figures);
     }
     const last = mine
@@ -607,10 +663,10 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
     moveClaim?: (claim: Claim) => void,
   ): Response => {
     const movedEntries = ids.map((id) => {
-      const entry = find(id) as Expense;
+      const entry = find(id) as StoredExpense;
       move(entry);
       entry.revision += 1;
-      return entry;
+      return renderEntry(entry);
     });
     const movedClaims = claimIds.map((id) => {
       const claim = findClaim(id) as Claim;
@@ -642,6 +698,11 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
       // projects module, no such project and no financial rights are
       // deliberately indistinguishable.
       if (server.projectSummary instanceof Response) return Promise.resolve(server.projectSummary.clone());
+      // Without the projects module the endpoint is one of the three things
+      // that bare 404 means, and the derived answer must say so too — a test
+      // that passes because the panel short-circuits first is a test about the
+      // panel, not about the server.
+      if (summaryRefused()) return Promise.resolve(new Response(null, { status: 404 }));
       return Promise.resolve(jsonResponse(200, server.projectSummary ?? projectSummaryOf(Number(projectSummary[1]))));
     }
     if (path === "/api/v1/expenses/stats") return Promise.resolve(answer(server.stats, stats()));
@@ -728,7 +789,7 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
           const lines = [...group.entries, ...group.claims.flatMap((claim) => linesOf(claim.id))];
           return {
             user: group.user,
-            entries: group.entries,
+            entries: renderEntries(group.entries),
             claims: group.claims.map(claimSummary),
             totals: totalsOf(lines),
             receiptsMissing: lines.filter((one) => one.kind === "outlay" && one.attachmentCount === 0).length,
@@ -736,7 +797,7 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
           };
         });
       return Promise.resolve(
-        jsonResponse(200, page(groups, Number(url.searchParams.get("page") ?? 1), server.pageSize ?? 25)),
+        jsonResponse(200, page(groups, Number(url.searchParams.get("page") ?? 1), server.pageSize ?? 20)),
       );
     }
 
@@ -831,7 +892,7 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
       entry.netAmount = amount;
       entry.owedToEmployee = amount;
       entry.revision += 1;
-      return Promise.resolve(jsonResponse(200, entry));
+      return Promise.resolve(jsonResponse(200, renderEntry(entry)));
     }
 
     const billingLines = /^\/api\/v1\/expenses\/entries\/(\d+)\/billing-lines$/.exec(path);
@@ -859,7 +920,7 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
       };
       entry.capabilities = { ...entry.capabilities, canMarkInvoiced: false, canUndoInvoiced: true };
       entry.revision += 1;
-      return Promise.resolve(jsonResponse(200, entry));
+      return Promise.resolve(jsonResponse(200, renderEntry(entry)));
     }
 
     const invoicedUndo = /^\/api\/v1\/expenses\/entries\/(\d+)\/invoiced\/undo$/.exec(path);
@@ -872,7 +933,7 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
       entry.billing = entry.billing ? { ...entry.billing, invoice: undefined } : undefined;
       entry.capabilities = { ...entry.capabilities, canMarkInvoiced: true, canUndoInvoiced: false };
       entry.revision += 1;
-      return Promise.resolve(jsonResponse(200, entry));
+      return Promise.resolve(jsonResponse(200, renderEntry(entry)));
     }
 
     const billing = /^\/api\/v1\/expenses\/entries\/(\d+)\/billing$/.exec(path);
@@ -900,7 +961,7 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
           }
         : { billAmount: 0 };
       entry.revision += 1;
-      return Promise.resolve(jsonResponse(200, entry));
+      return Promise.resolve(jsonResponse(200, renderEntry(entry)));
     }
 
     if (path === "/api/v1/expenses/reimbursements" && method === "GET") {
@@ -921,12 +982,12 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
         server.reimbursements ??
         groupedUnits(owedEntries, owedClaims).map((group) => ({
           user: group.user,
-          entries: group.entries,
+          entries: renderEntries(group.entries),
           claims: group.claims.map(claimSummary),
           totals: totalsOf([...group.entries, ...group.claims.flatMap((claim) => linesOf(claim.id))]),
         }));
       return Promise.resolve(
-        jsonResponse(200, page(groups, Number(url.searchParams.get("page") ?? 1), server.pageSize ?? 25)),
+        jsonResponse(200, page(groups, Number(url.searchParams.get("page") ?? 1), server.pageSize ?? 20)),
       );
     }
 
@@ -1189,7 +1250,7 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
         .filter((claim) => reimbursed === null || (claim.reimbursement !== undefined) === (reimbursed === "true"))
         .sort((a, b) => (a.departureAt === b.departureAt ? b.id - a.id : a.departureAt < b.departureAt ? 1 : -1))
         .map(claimListResponse);
-      return Promise.resolve(jsonResponse(200, page(matching, Number(query.get("page") ?? 1), server.pageSize ?? 25)));
+      return Promise.resolve(jsonResponse(200, page(matching, Number(query.get("page") ?? 1), server.pageSize ?? 20)));
     }
 
     const one = /^\/api\/v1\/expenses\/entries\/(\d+)$/.exec(path);
@@ -1197,7 +1258,7 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
       const id = Number(one[1]);
       const entry = find(id);
       if (!entry) return Promise.resolve(new Response(null, { status: 404 }));
-      if (method === "GET") return Promise.resolve(jsonResponse(200, entry));
+      if (method === "GET") return Promise.resolve(jsonResponse(200, renderEntry(entry)));
       if (method === "DELETE") {
         entries.splice(entries.indexOf(entry), 1);
         return Promise.resolve(new Response(null, { status: 204 }));
@@ -1244,7 +1305,7 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
             revision: entry.revision + 1,
             ...line,
           });
-          return Promise.resolve(jsonResponse(200, entry));
+          return Promise.resolve(jsonResponse(200, renderEntry(entry)));
         }
         Object.assign(entry, {
           kind: update.kind,
@@ -1263,7 +1324,7 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
           toPlace: undefined,
           ...priced(update, ratesOf(), metaOf().defaultCurrency),
         });
-        return Promise.resolve(jsonResponse(200, entry));
+        return Promise.resolve(jsonResponse(200, renderEntry(entry)));
       }
     }
 
@@ -1345,9 +1406,9 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
             })
           : ownDraftCapabilities,
         ...(perDiem ?? priced(input, ratesOf(), metaOf().defaultCurrency)),
-      } as Expense;
+      } as StoredExpense;
       entries.push(saved);
-      return Promise.resolve(jsonResponse(201, saved));
+      return Promise.resolve(jsonResponse(201, renderEntry(saved)));
     }
 
     if (path === "/api/v1/expenses/entries" && method === "GET") {
@@ -1359,6 +1420,7 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
       const standalone = query.get("standalone");
       const claimId = query.get("claimId");
       const projectId = query.get("projectId");
+      if (server.entryList) return Promise.resolve(server.entryList.clone());
       // `toInvoice=false` is the parameter **left out** — no filter, and none
       // of the rules below — which is what an unticked box asks for. `true`
       // is read one project at a time, is only ever about approved expenses
@@ -1366,6 +1428,17 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
       // than answered with an empty page that would not say which was wrong.
       const toInvoice = query.get("toInvoice") === "true";
       if (toInvoice) {
+        // What a line *bills* is the project's money, so the filter is for the
+        // same people the summary is: whoever has financial rights on the
+        // project. Everyone else is refused — one uniform refusal, not an
+        // empty page, which would read as "nothing is ready".
+        if (summaryRefused()) {
+          return Promise.resolve(
+            problem(403, "Forbidden", {
+              toInvoice: ["'toInvoice=true' is for whoever may see what this project's lines bill."],
+            }),
+          );
+        }
         const errors: string[] = [];
         if (projectId === null) {
           errors.push("'toInvoice=true' needs a 'projectId': what is ready to invoice is read one project at a time.");
@@ -1391,13 +1464,18 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
         // of their own and the trip is listed beside them rather than twice.
         .filter((entry) => standalone === null || (entry.claimId === undefined) === (standalone === "true"))
         .filter((entry) => claimId === null || entry.claimId === Number(claimId))
-        .filter((entry) => !query.get("status") || entry.status === query.get("status"))
+        // The **unit's** status, `COALESCE(claim.status, entry.status)`: a
+        // trip's line is filtered by its trip, exactly as every other read of
+        // this module judges it.
+        .filter((entry) => !query.get("status") || unitStatusOf(entry) === query.get("status"))
         .filter((entry) => !query.get("kind") || entry.kind === query.get("kind"))
         .filter((entry) => !from || entry.entryDate >= from)
         .filter((entry) => !to || entry.entryDate <= to)
         .filter((entry) => reimbursed === null || (entry.reimbursement !== undefined) === (reimbursed === "true"))
         .sort((a, b) => (a.entryDate === b.entryDate ? b.id - a.id : a.entryDate < b.entryDate ? 1 : -1));
-      return Promise.resolve(jsonResponse(200, page(matching, Number(query.get("page") ?? 1), server.pageSize ?? 25)));
+      return Promise.resolve(
+        jsonResponse(200, page(renderEntries(matching), Number(query.get("page") ?? 1), server.pageSize ?? 20)),
+      );
     }
 
     return Promise.resolve(new Response(null, { status: 404 }));
