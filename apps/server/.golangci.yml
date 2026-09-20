@@ -295,6 +295,13 @@ linters:
           # through: nothing below cmd/vantigo may know a business module
           # exists. internal/modtest is the deliberate exception — it composes
           # identity beside the module under test — and so is not listed.
+          #
+          # internal/integration is the second deliberate exception, and is
+          # likewise absent from every rule here: it is test-only (no
+          # production code, nothing imports it) and exists to compose several
+          # real modules together, which is the one thing the island rule
+          # makes impossible anywhere else. See its doc.go — if anything
+          # non-test is ever added there, it needs a rule of its own.
           files:
             - "**/internal/module/**"
             - "**/internal/contracts/**"
