@@ -546,7 +546,7 @@ func (s *server) prepare(ctx context.Context, q *store.Queries, c *caller, body 
 		owner = current.UserID
 	}
 	if claim != nil && len(errs) == 0 {
-		claimLineRules(&parsed, userID, *claim, add)
+		claimLineRules(&parsed, userID, *claim, c.zone(), add)
 	}
 
 	if len(errs) > 0 {
@@ -717,7 +717,7 @@ func (s *server) PostExpensesEntries(ctx context.Context, req gen.PostExpensesEn
 		// Judged again on the claim as it stands under the lock: a submit that
 		// committed since is the refusal resolveClaimLine would have given,
 		// arrived a moment later.
-		if _, msg := entryStateRefusal(c, claimUnit(claim)); msg != "" {
+		if _, msg := entryStateRefusal(c, claimUnit(claim, c.zone())); msg != "" {
 			refusalField, refusal = "claimId", msg
 			return nil
 		}
@@ -813,7 +813,7 @@ func (s *server) visibleEntry(ctx context.Context, q *store.Queries, c *caller, 
 	if err != nil {
 		return store.ExpensesEntry{}, entryUnit{}, entryAccess{}, false, fmt.Errorf("expenses: get an expense: %w", err)
 	}
-	unit, err := s.unitFor(ctx, q, row)
+	unit, err := s.unitFor(ctx, q, c, row)
 	if err != nil {
 		return store.ExpensesEntry{}, entryUnit{}, entryAccess{}, false, err
 	}
@@ -894,7 +894,7 @@ func (s *server) PutExpensesEntriesById(ctx context.Context, req gen.PutExpenses
 		conflict   *int32
 	)
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
-		row, lockedUnit, lockedClaim, found, err := lockEntryUnit(ctx, txq, req.Id, current.ClaimID)
+		row, lockedUnit, lockedClaim, found, err := lockEntryUnit(ctx, txq, c, req.Id, current.ClaimID)
 		if err != nil {
 			return err
 		}
@@ -1082,7 +1082,7 @@ func (s *server) DeleteExpensesEntriesById(ctx context.Context, req gen.DeleteEx
 		staleMsg   string
 	)
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
-		_, lockedUnit, _, found, err := lockEntryUnit(ctx, txq, req.Id, current.ClaimID)
+		_, lockedUnit, _, found, err := lockEntryUnit(ctx, txq, c, req.Id, current.ClaimID)
 		if err != nil {
 			return err
 		}

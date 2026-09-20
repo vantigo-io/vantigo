@@ -288,7 +288,7 @@ func TestSuggestPerDiem_CountsTheDaysOfATrip(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			got := daysOf(suggestPerDiem(instant(t, tc.departure), instant(t, tc.returns), tc.overnight))
+			got := daysOf(suggestPerDiem(instant(t, tc.departure), instant(t, tc.returns), tc.overnight, time.UTC))
 			if len(got) != len(tc.want) {
 				t.Fatalf("suggestPerDiem = %v, want %v", got, tc.want)
 			}
@@ -302,18 +302,55 @@ func TestSuggestPerDiem_CountsTheDaysOfATrip(t *testing.T) {
 }
 
 // The suggestion reads the instants as they were entered and dates each day in
-// UTC — exactly the derivation claimUnit makes for the period lock, so a
-// suggested day can never fall on a different day from the one the claim is
-// judged on.
-func TestSuggestPerDiem_DatesADayInUTC(t *testing.T) {
+// the **installation's own zone** — exactly the derivation claimUnit makes for
+// the period lock, so a suggested day can never fall on a different day from
+// the one the claim is judged on. The 24-hour periods stay elapsed time, so a
+// trip that crosses a daylight-saving change still counts hours and not
+// wall-clock days.
+func TestSuggestPerDiem_DatesADayInTheBusinessZone(t *testing.T) {
 	t.Parallel()
-	// 01:00 on the 10th in Oslo is 23:00 on the 9th in UTC.
+	oslo, err := time.LoadLocation("Europe/Oslo")
+	if err != nil {
+		t.Fatalf("load Europe/Oslo: %v", err)
+	}
+	// 01:00 on the 10th in Oslo is 23:00 on the 9th in UTC. The company's own
+	// calendar says the 10th, and so does the module.
 	departure := instant(t, "2026-03-10T01:00:00+02:00")
-	days := suggestPerDiem(departure, departure.Add(8*time.Hour), false)
-	if len(days) != 1 || days[0].Date.Format(time.DateOnly) != "2026-03-09" {
-		t.Errorf("suggestPerDiem = %v, want one day on 2026-03-09", daysOf(days))
+	days := suggestPerDiem(departure, departure.Add(8*time.Hour), false, oslo)
+	if len(days) != 1 || days[0].Date.Format(time.DateOnly) != "2026-03-10" {
+		t.Errorf("suggestPerDiem in Oslo = %v, want one day on 2026-03-10", daysOf(days))
 	}
 	if days[0].Date.Location() != time.UTC {
-		t.Errorf("the day is in %v, want UTC", days[0].Date.Location())
+		t.Errorf("the day is rendered in %v, want UTC midnight", days[0].Date.Location())
+	}
+	// An installation that keeps its calendar in UTC gets the UTC day, which is
+	// the day before — the whole point of the setting.
+	if utc := suggestPerDiem(departure, departure.Add(8*time.Hour), false, time.UTC); utc[0].Date.Format(time.DateOnly) != "2026-03-09" {
+		t.Errorf("suggestPerDiem in UTC = %v, want one day on 2026-03-09", daysOf(utc))
+	}
+}
+
+// A spring-forward night is 23 wall-clock hours and 24 elapsed ones. The
+// agreement counts a day away, not a day on the calendar, so the periods stay
+// elapsed time and the dates are the only thing the zone touches.
+func TestSuggestPerDiem_CountsElapsedHoursAcrossADaylightSavingChange(t *testing.T) {
+	t.Parallel()
+	oslo, err := time.LoadLocation("Europe/Oslo")
+	if err != nil {
+		t.Fatalf("load Europe/Oslo: %v", err)
+	}
+	// 2026-03-29 02:00 becomes 03:00 in Oslo. Leaving at 12:00 on the 28th and
+	// returning at 12:00 on the 29th is 23 hours on the clock and 23 elapsed.
+	departure := time.Date(2026, time.March, 28, 12, 0, 0, 0, oslo)
+	shortDay := suggestPerDiem(departure, time.Date(2026, time.March, 29, 12, 0, 0, 0, oslo), true, oslo)
+	if len(shortDay) != 1 || dayOf(shortDay[0]) != "2026-03-28 overnight_hotel" {
+		t.Errorf("a 23-hour night = %v, want one day on 2026-03-28", daysOf(shortDay))
+	}
+	// A full 24 elapsed hours from the same departure is still one day, and its
+	// second period would start at 13:00 on the 29th — an hour later on the
+	// clock than it left, which is exactly what "24 hours away" means.
+	full := suggestPerDiem(departure, departure.Add(30*time.Hour+time.Minute), true, oslo)
+	if len(full) != 2 || dayOf(full[1]) != "2026-03-29 overnight_hotel" {
+		t.Errorf("30 h 01 across the change = %v, want two days", daysOf(full))
 	}
 }

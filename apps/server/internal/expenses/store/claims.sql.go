@@ -116,9 +116,9 @@ WHERE ($1::boolean
        OR (project_id IS NOT NULL AND project_id = ANY($3::integer[])))
   AND ($4::uuid IS NULL OR user_id = $4::uuid)
   AND ($5::text IS NULL OR status = $5::text)
-  AND ($6::date IS NULL OR (departure_at AT TIME ZONE 'UTC')::date >= $6::date)
-  AND ($7::date IS NULL OR (departure_at AT TIME ZONE 'UTC')::date <= $7::date)
-  AND ($8::boolean IS NULL OR (reimbursed_at IS NOT NULL) = $8::boolean)
+  AND ($6::date IS NULL OR (departure_at AT TIME ZONE $7::text)::date >= $6::date)
+  AND ($8::date IS NULL OR (departure_at AT TIME ZONE $7::text)::date <= $8::date)
+  AND ($9::boolean IS NULL OR (reimbursed_at IS NOT NULL) = $9::boolean)
 `
 
 type CountClaimsParams struct {
@@ -128,14 +128,18 @@ type CountClaimsParams struct {
 	UserID            *uuid.UUID
 	Status            *string
 	FromDate          pgtype.Date
+	TimeZone          string
 	ToDate            pgtype.Date
 	Reimbursed        *bool
 }
 
 // CountClaims counts what ListClaims pages through, under exactly the same
 // predicate, so the total is the number of claims the caller may see and the
-// last page is never empty. from and to are judged on the departure day in
-// UTC, the same day the period lock is judged on.
+// last page is never empty. from and to are judged on the departure day in the
+// installation's own business time zone — the same derivation businessDay makes
+// in Go, from the same stored name, so a filter and a period lock can never
+// disagree about which day a trip departed on. The zone arrives as a parameter
+// rather than a literal for exactly that reason.
 func (q *Queries) CountClaims(ctx context.Context, arg CountClaimsParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countClaims,
 		arg.SeeAll,
@@ -144,6 +148,7 @@ func (q *Queries) CountClaims(ctx context.Context, arg CountClaimsParams) (int64
 		arg.UserID,
 		arg.Status,
 		arg.FromDate,
+		arg.TimeZone,
 		arg.ToDate,
 		arg.Reimbursed,
 	)
@@ -466,11 +471,11 @@ WHERE ($1::boolean
        OR (project_id IS NOT NULL AND project_id = ANY($3::integer[])))
   AND ($4::uuid IS NULL OR user_id = $4::uuid)
   AND ($5::text IS NULL OR status = $5::text)
-  AND ($6::date IS NULL OR (departure_at AT TIME ZONE 'UTC')::date >= $6::date)
-  AND ($7::date IS NULL OR (departure_at AT TIME ZONE 'UTC')::date <= $7::date)
-  AND ($8::boolean IS NULL OR (reimbursed_at IS NOT NULL) = $8::boolean)
+  AND ($6::date IS NULL OR (departure_at AT TIME ZONE $7::text)::date >= $6::date)
+  AND ($8::date IS NULL OR (departure_at AT TIME ZONE $7::text)::date <= $8::date)
+  AND ($9::boolean IS NULL OR (reimbursed_at IS NOT NULL) = $9::boolean)
 ORDER BY departure_at DESC, id DESC
-LIMIT $10 OFFSET $9
+LIMIT $11 OFFSET $10
 `
 
 type ListClaimsParams struct {
@@ -480,6 +485,7 @@ type ListClaimsParams struct {
 	UserID            *uuid.UUID
 	Status            *string
 	FromDate          pgtype.Date
+	TimeZone          string
 	ToDate            pgtype.Date
 	Reimbursed        *bool
 	PageOffset        int32
@@ -495,6 +501,7 @@ func (q *Queries) ListClaims(ctx context.Context, arg ListClaimsParams) ([]Expen
 		arg.UserID,
 		arg.Status,
 		arg.FromDate,
+		arg.TimeZone,
 		arg.ToDate,
 		arg.Reimbursed,
 		arg.PageOffset,

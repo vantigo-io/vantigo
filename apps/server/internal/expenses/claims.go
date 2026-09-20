@@ -54,7 +54,7 @@ import (
 // write that derived them before the lock may have been overtaken. A caller
 // that re-derives anything from the claim must use this copy and not the one it
 // read outside the transaction.
-func lockEntryUnit(ctx context.Context, txq *store.Queries, id int64, claimID *int64) (
+func lockEntryUnit(ctx context.Context, txq *store.Queries, c *caller, id int64, claimID *int64) (
 	store.ExpensesEntry, entryUnit, *store.ExpensesClaim, bool, error,
 ) {
 	var claim *store.ExpensesClaim
@@ -76,7 +76,7 @@ func lockEntryUnit(ctx context.Context, txq *store.Queries, id int64, claimID *i
 	if err != nil {
 		return store.ExpensesEntry{}, entryUnit{}, nil, false, fmt.Errorf("expenses: lock an expense: %w", err)
 	}
-	return row, unitOf(row, claim), claim, true, nil
+	return row, unitOf(row, claim, c.zone()), claim, true, nil
 }
 
 // The messages a claimId carries. An id the caller may not see reads exactly as
@@ -217,12 +217,12 @@ type claimHeader struct {
 	Reimbursement  *gen.ExpensesEntryReimbursement
 }
 
-func claimHeaderOf(claim store.ExpensesClaim, a claimAccess, names entryNames) (claimHeader, error) {
+func claimHeaderOf(claim store.ExpensesClaim, c *caller, a claimAccess, names entryNames) (claimHeader, error) {
 	rate, err := floatPtrFromNumeric(claim.AbroadDayRate)
 	if err != nil {
 		return claimHeader{}, err
 	}
-	unit := claimUnit(claim)
+	unit := claimUnit(claim, c.zone())
 	h := claimHeader{
 		Abroad:         claim.Abroad,
 		AbroadCurrency: claim.AbroadCurrency,
@@ -254,10 +254,10 @@ func claimHeaderSeesEveryone(a claimAccess) bool { return a.SeesPayrollReference
 // claimResponse is one claim with its lines, through exactly the renderer a
 // single expense goes through — there is one entry renderer in this module and
 // a claim does not get a second.
-func claimResponse(claim store.ExpensesClaim, a claimAccess, names entryNames, f claimFigures,
+func claimResponse(claim store.ExpensesClaim, c *caller, a claimAccess, names entryNames, f claimFigures,
 	lines []gen.ExpensesEntryResponse,
 ) (gen.ExpensesClaimResponse, error) {
-	h, err := claimHeaderOf(claim, a, names)
+	h, err := claimHeaderOf(claim, c, a, names)
 	if err != nil {
 		return gen.ExpensesClaimResponse{}, err
 	}
@@ -293,10 +293,10 @@ func claimResponse(claim store.ExpensesClaim, a claimAccess, names entryNames, f
 
 // claimListResponse is one claim in a list: the same header, with how many
 // lines it holds in place of the lines themselves.
-func claimListResponse(claim store.ExpensesClaim, a claimAccess, names entryNames, f claimFigures) (
+func claimListResponse(claim store.ExpensesClaim, c *caller, a claimAccess, names entryNames, f claimFigures) (
 	gen.ExpensesClaimListResponse, error,
 ) {
-	h, err := claimHeaderOf(claim, a, names)
+	h, err := claimHeaderOf(claim, c, a, names)
 	if err != nil {
 		return gen.ExpensesClaimListResponse{}, err
 	}
@@ -351,7 +351,7 @@ func (s *server) claimResponseFor(ctx context.Context, q *store.Queries, c *call
 	if err != nil {
 		return gen.ExpensesClaimResponse{}, err
 	}
-	return claimResponse(claim, c.claimAccessFor(claim, role, figures[claim.ID].Owes), names, figures[claim.ID], lines)
+	return claimResponse(claim, c, c.claimAccessFor(claim, role, figures[claim.ID].Owes), names, figures[claim.ID], lines)
 }
 
 // GetExpensesClaims List travel claims
@@ -396,6 +396,11 @@ func (s *server) GetExpensesClaims(ctx context.Context, req gen.GetExpensesClaim
 		FromDate:          optionalDate(p.From),
 		ToDate:            optionalDate(p.To),
 		Reimbursed:        p.Reimbursed,
+		// The from/to filter takes a trip's departure day in the installation's
+		// own zone — the same derivation businessDay makes in Go, from the same
+		// stored name, so the list and the period lock agree about which day a
+		// claim departed on.
+		TimeZone: c.Settings.TimeZone,
 	}
 	total, err := q.CountClaims(ctx, filter)
 	if err != nil {
@@ -410,6 +415,7 @@ func (s *server) GetExpensesClaims(ctx context.Context, req gen.GetExpensesClaim
 		FromDate:          filter.FromDate,
 		ToDate:            filter.ToDate,
 		Reimbursed:        filter.Reimbursed,
+		TimeZone:          filter.TimeZone,
 		PageSize:          pageSize,
 		PageOffset:        (page - 1) * pageSize,
 	})
@@ -435,7 +441,7 @@ func (s *server) GetExpensesClaims(ctx context.Context, req gen.GetExpensesClaim
 		if err != nil {
 			return nil, err
 		}
-		resp, err := claimListResponse(claim, c.claimAccessFor(claim, role, figures[claim.ID].Owes), names, figures[claim.ID])
+		resp, err := claimListResponse(claim, c, c.claimAccessFor(claim, role, figures[claim.ID].Owes), names, figures[claim.ID])
 		if err != nil {
 			return nil, err
 		}
@@ -552,7 +558,7 @@ func (s *server) PostExpensesClaims(ctx context.Context, req gen.PostExpensesCla
 	// The period lock is judged on the day the trip departed — the day every
 	// one of its lines will be judged on too, so a claim can never be recorded
 	// into a period its expenses could not be.
-	if !c.mayWritePast(utcDay(parsed.DepartureAt)) {
+	if !c.mayWritePast(businessDay(parsed.DepartureAt, c.zone())) {
 		add("departureAt", claimLockedMessage(*lockedBefore(c.Settings)))
 	}
 	if len(errs) > 0 {
@@ -697,7 +703,7 @@ func (s *server) PutExpensesClaimsById(ctx context.Context, req gen.PutExpensesC
 			// The window first: a day outside the new trip is refused rather
 			// than repriced, so a narrowing edit never silently reprices a day
 			// it is about to strand.
-			if staleErrs = perDiemStrandedByWindow(lines, after); staleErrs != nil {
+			if staleErrs = perDiemStrandedByWindow(lines, after, c.zone()); staleErrs != nil {
 				return nil
 			}
 			if repriced {
@@ -900,7 +906,7 @@ func (s *server) resolveClaimLine(ctx context.Context, q *store.Queries, c *call
 		add("claimId", claimNotYours(*id))
 		return nil, nil
 	}
-	if _, msg := entryStateRefusal(c, claimUnit(claim)); msg != "" {
+	if _, msg := entryStateRefusal(c, claimUnit(claim, c.zone())); msg != "" {
 		add("claimId", msg)
 		return nil, nil
 	}
@@ -911,7 +917,7 @@ func (s *server) resolveClaimLine(ctx context.Context, q *store.Queries, c *call
 // (Global Constraints): its owner and its project are the claim's, and naming
 // another of either is a mistake worth reporting rather than something to
 // override in silence.
-func claimLineRules(p *parsedEntry, userID *openapi_types.UUID, claim store.ExpensesClaim,
+func claimLineRules(p *parsedEntry, userID *openapi_types.UUID, claim store.ExpensesClaim, loc *time.Location,
 	add func(field, msg string),
 ) {
 	if userID != nil && *userID != claim.UserID {
@@ -943,7 +949,7 @@ func claimLineRules(p *parsedEntry, userID *openapi_types.UUID, claim store.Expe
 	// one day per date is decided under the claim's own row lock instead, where
 	// two saves racing for the same day can be told apart.
 	if p.Kind == kindPerDiem {
-		from, to := claimDays(claim)
+		from, to := claimDays(claim, loc)
 		if p.Date.Before(from) || p.Date.After(to) {
 			add("entryDate", perDiemOutsideTrip(from, to))
 		}
@@ -1115,7 +1121,7 @@ func (s *server) prepareClaimUpdate(ctx context.Context, q *store.Queries, c *ca
 	}
 	// The lock is judged on the day the trip *has* and on the day it is being
 	// given, so a locked claim can be moved neither into nor out of the lock.
-	if !c.mayWritePast(utcDay(parsed.DepartureAt)) {
+	if !c.mayWritePast(businessDay(parsed.DepartureAt, c.zone())) {
 		add("departureAt", claimLockedMessage(*lockedBefore(c.Settings)))
 	}
 	if len(errs) > 0 {

@@ -232,7 +232,7 @@ func (s *server) PutExpensesEntriesByIdBilling(ctx context.Context, req gen.PutE
 		// (lockEntryUnit). Pricing reads no status of the claim's, but it
 		// writes a row a claim-wide write may be holding, so it queues behind
 		// the same lock everything else does.
-		locked, _, _, found, err := lockEntryUnit(ctx, txq, req.Id, row.ClaimID)
+		locked, _, _, found, err := lockEntryUnit(ctx, txq, c, req.Id, row.ClaimID)
 		if err != nil {
 			return err
 		}

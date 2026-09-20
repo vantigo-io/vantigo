@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -32,6 +33,10 @@ func settingsResponse(row store.ExpensesSetting, canManage bool) (gen.ExpensesSe
 	resp := gen.ExpensesSettingsResponse{
 		DefaultCurrency:     row.DefaultCurrency,
 		ReceiptRequiredOver: threshold,
+		// Read by everyone: a client that labels a trip's days has to label
+		// them in the installation's zone, or it will disagree with the server
+		// about which day a save lands on.
+		TimeZone: row.TimeZone,
 	}
 	if canManage {
 		markup, err := floatFromNumeric(row.DefaultMarkupPercent)
@@ -122,15 +127,15 @@ type entryNames struct {
 
 // unitFor is the unit one of the rendered rows belongs to (authorize.go): the
 // expense itself, or the claim resolved for the whole set.
-func (n entryNames) unitFor(row store.ExpensesEntry) entryUnit {
+func (n entryNames) unitFor(row store.ExpensesEntry, loc *time.Location) entryUnit {
 	if row.ClaimID == nil {
-		return unitOf(row, nil)
+		return unitOf(row, nil, loc)
 	}
 	claim, ok := n.claims[*row.ClaimID]
 	if !ok {
-		return unitOf(row, nil)
+		return unitOf(row, nil, loc)
 	}
-	return unitOf(row, &claim)
+	return unitOf(row, &claim, loc)
 }
 
 // namesFor resolves rows' names: one user-directory call for every owner, one
@@ -563,7 +568,7 @@ func (s *server) entryResponseFor(ctx context.Context, c *caller, row store.Expe
 	if err != nil {
 		return gen.ExpensesEntryResponse{}, err
 	}
-	unit := names.unitFor(row)
+	unit := names.unitFor(row, c.zone())
 	a, err := s.entryAccess(ctx, c, row, unit)
 	if err != nil {
 		return gen.ExpensesEntryResponse{}, err
@@ -591,7 +596,7 @@ func (s *server) entryResponsesWith(ctx context.Context, c *caller, rows []store
 ) ([]gen.ExpensesEntryResponse, error) {
 	out := make([]gen.ExpensesEntryResponse, 0, len(rows))
 	for _, row := range rows {
-		unit := names.unitFor(row)
+		unit := names.unitFor(row, c.zone())
 		a, err := s.entryAccess(ctx, c, row, unit)
 		if err != nil {
 			return nil, err

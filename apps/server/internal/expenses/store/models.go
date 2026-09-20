@@ -128,4 +128,5 @@ type ExpensesSetting struct {
 	DefaultMarkupPercent pgtype.Numeric
 	ReceiptRequiredOver  pgtype.Numeric
 	UpdatedAt            time.Time
+	TimeZone             string
 }

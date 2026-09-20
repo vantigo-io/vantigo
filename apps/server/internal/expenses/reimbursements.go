@@ -199,12 +199,12 @@ func reimbursementGroups(rows []store.ExpensesEntry, entries []gen.ExpensesEntry
 // parseReimbursedBody runs the payroll run's own rules over its body: the day
 // it was made, which is a calendar day and never in the future, and the
 // reference whoever made it will look it up by.
-func (s *server) parseReimbursedBody(body gen.ExpensesReimbursedRequest) (pgtype.Date, *string, map[string][]string) {
+func (s *server) parseReimbursedBody(body gen.ExpensesReimbursedRequest, today time.Time) (pgtype.Date, *string, map[string][]string) {
 	var errs map[string][]string
 	date := utcDay(body.Date.Time)
 	if date.IsZero() {
 		errs = withFieldError(errs, "date", "The day the payroll run was made is required")
-	} else if date.After(utcDay(s.deps.Clock())) {
+	} else if date.After(today) {
 		errs = withFieldError(errs, "date",
 			"A payroll run is recorded on the day it was made, which cannot be in the future")
 	}
@@ -229,7 +229,13 @@ func (s *server) PostExpensesReimbursed(ctx context.Context, req gen.PostExpense
 	if req.Body != nil {
 		body = *req.Body
 	}
-	date, reference, errs := s.parseReimbursedBody(body)
+	// "Today" is today in the installation's own zone: a clerk in Oslo making
+	// a run at 00:30 on the 1st is making it on the 1st, not on the 31st.
+	zone, err := s.businessZone(ctx, store.New(s.deps.Pool))
+	if err != nil {
+		return nil, err
+	}
+	date, reference, errs := s.parseReimbursedBody(body, businessDay(s.deps.Clock(), zone))
 	by, now := callerID(ctx), s.deps.Clock()
 	out, err := s.decide(ctx, decision{
 		from: statusApproved, verb: "marked reimbursed", manageOnly: true,
@@ -392,9 +398,16 @@ func (s *server) GetExpensesReimbursementsExportCsv(ctx context.Context, req gen
 	if err != nil {
 		return nil, err
 	}
+	zone, err := s.businessZone(ctx, q)
+	if err != nil {
+		return nil, err
+	}
 	return csvDownload{
-		body:     body,
-		fileName: fmt.Sprintf("expenses-reimbursements-%s.csv", utcDay(s.deps.Clock()).Format(time.DateOnly)),
+		body: body,
+		// Today in the installation's own zone, which is the day the clerk
+		// downloading it would write on the folder.
+		fileName: fmt.Sprintf("expenses-reimbursements-%s.csv",
+			businessDay(s.deps.Clock(), zone).Format(time.DateOnly)),
 	}, nil
 }
 

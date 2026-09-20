@@ -43,6 +43,9 @@ type caller struct {
 
 	Settings store.ExpensesSetting
 
+	// loc is Settings.TimeZone parsed once (see zone).
+	loc *time.Location
+
 	roles map[int32]string
 }
 
@@ -73,6 +76,42 @@ func (s *server) callerFor(ctx context.Context, q *store.Queries) (*caller, erro
 		Settings:           row,
 		roles:              map[int32]string{},
 	}, nil
+}
+
+// zone is the installation's business time zone — the one every date derived
+// from a travel claim's two instants is taken in (businessDay). It is parsed
+// from the settings row the caller was built with, so one request parses it
+// once and every rule in that request agrees.
+func (c *caller) zone() *time.Location {
+	if c.loc == nil {
+		c.loc = zoneOf(c.Settings)
+	}
+	return c.loc
+}
+
+// zoneOf parses a settings row's business time zone.
+//
+// A name Go cannot load falls back to UTC rather than failing the request: the
+// settings door refuses a name neither Go nor Postgres knows, so a row that
+// holds one has been written past this module, and answering "a day, in UTC" is
+// better than answering nothing at all.
+func zoneOf(row store.ExpensesSetting) *time.Location {
+	loc, err := time.LoadLocation(row.TimeZone)
+	if err != nil {
+		return time.UTC
+	}
+	return loc
+}
+
+// businessZone is the installation's own time zone for a path that needs
+// "today" — the payroll run's not-in-the-future rule, the export's file name —
+// without having built a whole caller for it.
+func (s *server) businessZone(ctx context.Context, q *store.Queries) (*time.Location, error) {
+	row, err := settings(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	return zoneOf(row), nil
 }
 
 // lockedBefore is the period lock (design §4), nil when none is set.
@@ -293,7 +332,7 @@ type entryUnit struct {
 // A line whose claim was not loaded is given a unit with no status at all,
 // which is in none of the sets the rules test (editable, submitted, approved):
 // it fails closed, so a missing read can only ever refuse, never admit.
-func unitOf(entry store.ExpensesEntry, claim *store.ExpensesClaim) entryUnit {
+func unitOf(entry store.ExpensesEntry, claim *store.ExpensesClaim, loc *time.Location) entryUnit {
 	if entry.ClaimID == nil {
 		return entryUnit{
 			UserID:                 entry.UserID,
@@ -313,18 +352,18 @@ func unitOf(entry store.ExpensesEntry, claim *store.ExpensesClaim) entryUnit {
 	if claim == nil {
 		return entryUnit{ClaimID: entry.ClaimID, UserID: entry.UserID, ProjectID: entry.ProjectID}
 	}
-	return claimUnit(*claim)
+	return claimUnit(*claim, loc)
 }
 
 // claimUnit is a travel claim as the unit of its own lines — and of itself,
 // which is how one set of rules serves both.
-func claimUnit(claim store.ExpensesClaim) entryUnit {
+func claimUnit(claim store.ExpensesClaim, loc *time.Location) entryUnit {
 	return entryUnit{
 		ClaimID:                &claim.ID,
 		UserID:                 claim.UserID,
 		ProjectID:              claim.ProjectID,
 		Status:                 claim.Status,
-		Date:                   utcDay(claim.DepartureAt),
+		Date:                   businessDay(claim.DepartureAt, loc),
 		SubmittedAt:            claim.SubmittedAt,
 		DecidedAt:              claim.DecidedAt,
 		DecidedByUserID:        claim.DecidedByUserID,
@@ -347,15 +386,15 @@ func (u entryUnit) editable() bool { return slices.Contains(editableStatuses, u.
 // of. It reads this module's own table only, so it is safe anywhere — but it
 // is a second query, and a page of expenses resolves its claims in bulk
 // instead (entryNames).
-func (s *server) unitFor(ctx context.Context, q *store.Queries, entry store.ExpensesEntry) (entryUnit, error) {
+func (s *server) unitFor(ctx context.Context, q *store.Queries, c *caller, entry store.ExpensesEntry) (entryUnit, error) {
 	if entry.ClaimID == nil {
-		return unitOf(entry, nil), nil
+		return unitOf(entry, nil, c.zone()), nil
 	}
 	claim, err := q.GetClaim(ctx, *entry.ClaimID)
 	if err != nil {
 		return entryUnit{}, fmt.Errorf("expenses: read an expense's travel claim: %w", err)
 	}
-	return unitOf(entry, &claim), nil
+	return unitOf(entry, &claim, c.zone()), nil
 }
 
 // entryStateRefusal is why an expense cannot be changed right now — because of
@@ -400,7 +439,7 @@ func entryStateRefusal(c *caller, unit entryUnit) (string, string) {
 // claimStateRefusal is entryStateRefusal for the claim itself, which reports
 // on its own fields rather than on the line's.
 func claimStateRefusal(c *caller, claim store.ExpensesClaim) (string, string) {
-	switch unit := claimUnit(claim); {
+	switch unit := claimUnit(claim, c.zone()); {
 	case !c.mayWritePast(unit.Date):
 		return "departureAt", fmt.Sprintf("Travel claims departing before %s are locked",
 			lockedBefore(c.Settings).Format(time.DateOnly))
@@ -611,7 +650,7 @@ type claimAccess struct {
 // owner, which only a caller that has read them can answer; false is the safe
 // answer for a reading that has not.
 func (c *caller) claimAccessFor(claim store.ExpensesClaim, role string, owesAnything bool) claimAccess {
-	unit := claimUnit(claim)
+	unit := claimUnit(claim, c.zone())
 	a := claimAccess{IsOwner: claim.UserID == c.UserID, IsManager: role == roleManager}
 	a.IsApprover = a.IsManager || c.Approve
 	a.CanSee = a.IsOwner || a.IsManager || c.seesEveryone()

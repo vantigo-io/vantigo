@@ -157,3 +157,49 @@ func TestExpensesSettings_ChangingThemNeedsManage(t *testing.T) {
 		t.Errorf("an employee changing the settings: status %d body %s, want 403", r.Status, r.Body)
 	}
 }
+
+// The installation's business time zone is what every date derived from a
+// travel claim's two instants is taken in, so it has to be a name **both**
+// halves of the system know: Go derives those dates in the handlers and
+// Postgres derives the same ones in the claims list's filter, and the two carry
+// their own copies of the world's time zones.
+func TestExpensesSettings_TheBusinessTimeZoneMustBeOneBothHalvesKnow(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	admin, _ := signIn(t, h, "expenses:manage")
+	employee, _ := signIn(t, h)
+
+	// Everyone reads it: a client that labels a trip's days has to label them
+	// in this zone and not in the browser's.
+	if zone := getSettings(t, employee).TimeZone; zone != "Europe/Oslo" {
+		t.Errorf("time zone = %q, want the shipped default", zone)
+	}
+
+	for name, value := range map[string]any{
+		"a name nobody has heard of":   "Europe/Osloo",
+		"an offset rather than a zone": "+02:00",
+		// "Local" is whatever zone the server process happens to run in, which
+		// is not a statement about the company's calendar.
+		"the process's own zone": "Local",
+		"nothing at all":         "  ",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			errs := refused(t, admin, http.MethodPut, settingsPath,
+				settingsBody(map[string]any{"timeZone": value}), invalidSettingsTitle)
+			if len(errs["timeZone"]) == 0 {
+				t.Errorf("errors = %v, want one on timeZone", errs)
+			}
+		})
+	}
+
+	// A name both of them know is stored, and a replace that leaves the field
+	// out keeps it — every trip in the installation is dated by it, so an
+	// omission must not move them all.
+	if zone := putSettings(t, admin, settingsBody(map[string]any{"timeZone": "America/New_York"})).TimeZone; zone != "America/New_York" {
+		t.Errorf("time zone = %q, want the one set", zone)
+	}
+	if zone := putSettings(t, admin, settingsBody(nil)).TimeZone; zone != "America/New_York" {
+		t.Errorf("time zone after a replace that left it out = %q, want it kept", zone)
+	}
+}
