@@ -60,6 +60,27 @@ describe("downloadReimbursementsCsv", () => {
     expect(unauthorized).not.toHaveBeenCalled();
   });
 
+  // A selection that names nothing is *no selection*: sending neither list and
+  // no filters either would reach the server as "export everything,
+  // unfiltered" — a whole payroll file where a button with nothing ticked was
+  // pressed. The page's disabled button is a guard, not the rule.
+  it("falls back to the filters when a selection is present but names nothing", async () => {
+    const url = vi.fn();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        url(String(input));
+        return new Response("a;b", { status: 200 });
+      }),
+    );
+
+    await downloadReimbursementsCsv({ state: "reimbursed" }, { entryIds: [], claimIds: [] });
+
+    expect(url.mock.calls[0][0]).toContain("state=reimbursed");
+    expect(url.mock.calls[0][0]).not.toContain("entryIds");
+    expect(url.mock.calls[0][0]).not.toContain("claimIds");
+  });
+
   it("takes the file name off Content-Disposition, RFC 5987 first", async () => {
     answer(
       new Response("a;b", {

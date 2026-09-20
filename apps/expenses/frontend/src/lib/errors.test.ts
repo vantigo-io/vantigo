@@ -73,6 +73,13 @@ describe("lineNamedIn", () => {
   it("names nothing when the sentence is about the trip alone", () => {
     expect(lineNamedIn("Travel claim 7 holds no expenses, so there is nothing to submit")).toBeUndefined();
   });
+
+  // The module writes the word mid-sentence here, in lower case. This is the
+  // one refusal the approver's drawer exists to put against a line, so the
+  // match cannot be case-sensitive.
+  it("finds the line an unapprove refusal names in lower case", () => {
+    expect(lineNamedIn("Travel claim 7 holds expense 12, which has been invoiced")).toBe(12);
+  });
 });
 
 describe("refusalMessage", () => {

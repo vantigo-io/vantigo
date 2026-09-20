@@ -242,6 +242,12 @@ describe("MyExpensesPage", () => {
     // Consumed once: a refresh must not reopen a form nobody asked for again.
     await waitFor(() => expect(router.state.location.searchStr).not.toContain("create"));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "New travel claim" })).not.toBeInTheDocument());
+
+    // And **replaced**, not pushed: going back must not land on `?create=claim`
+    // and reopen the form, which a person could then never get out of.
+    await router.history.back();
+    await waitFor(() => expect(router.state.location.searchStr).not.toContain("create"));
+    expect(screen.queryByRole("dialog", { name: "New travel claim" })).not.toBeInTheDocument();
   });
 
   it("records a new outlay from the form and shows it in the list", async () => {

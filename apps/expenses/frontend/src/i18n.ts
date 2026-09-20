@@ -179,7 +179,8 @@ export const expensesCatalog = {
     nothingToApprove: "Nothing waiting for approval",
     nothingToApproveDescription: "Expenses other people submit show up here as soon as they are yours to approve.",
     nothingApproved: "Nothing approved yet",
-    nothingApprovedDescription: "An expense you approve shows up here, where the approval can be taken back.",
+    nothingApprovedDescription:
+      "An expense or a travel claim you approve shows up here, where the approval can be taken back.",
     approve: "Approve",
     reject: "Reject",
     unapprove: "Take the approval back",
@@ -234,6 +235,13 @@ export const expensesCatalog = {
     invoiceReferenceDescription: "Optional, so whoever has to find the invoice again can.",
     markedInvoiced: "Marked as invoiced",
     couldNotMarkInvoiced: "Could not mark the line invoiced",
+    undoInvoiced: "Undo invoicing",
+    undoInvoicedFor: "Undo the invoicing of {{description}}",
+    undoInvoicedTitle: "Undo the invoicing?",
+    undoInvoicedConfirm:
+      "{{description}} goes back to waiting to be billed, and the invoice it was recorded against is forgotten. What the customer is billed is kept.",
+    invoicingUndone: "The invoicing is undone",
+    couldNotUndoInvoiced: "Could not undo the invoicing",
 
     reimbursements: "Reimbursements",
     reimbursementsDescription: "What people are owed back, per person, and what a payroll run has already paid.",
@@ -685,7 +693,8 @@ export const expensesCatalog = {
     nothingToApprove: "Ingenting venter på godkjenning",
     nothingToApproveDescription: "Utlegg andre sender inn dukker opp her så snart det er du som skal godkjenne dem.",
     nothingApproved: "Ingenting er godkjent ennå",
-    nothingApprovedDescription: "Et utlegg du godkjenner dukker opp her, der godkjenningen kan trekkes tilbake.",
+    nothingApprovedDescription:
+      "Et utlegg eller en reiseregning du godkjenner dukker opp her, der godkjenningen kan trekkes tilbake.",
     approve: "Godkjenn",
     reject: "Avvis",
     unapprove: "Trekk tilbake godkjenningen",
@@ -740,6 +749,13 @@ export const expensesCatalog = {
     invoiceReferenceDescription: "Valgfritt, så den som må finne fakturaen igjen kan det.",
     markedInvoiced: "Merket som fakturert",
     couldNotMarkInvoiced: "Kunne ikke merke linjen som fakturert",
+    undoInvoiced: "Angre faktureringen",
+    undoInvoicedFor: "Angre faktureringen av {{description}}",
+    undoInvoicedTitle: "Angre faktureringen?",
+    undoInvoicedConfirm:
+      "{{description}} venter på å bli fakturert igjen, og fakturaen den ble ført mot glemmes. Det kunden faktureres beholdes.",
+    invoicingUndone: "Faktureringen er angret",
+    couldNotUndoInvoiced: "Kunne ikke angre faktureringen",
 
     reimbursements: "Utbetaling",
     reimbursementsDescription: "Hva folk har til gode, per person, og hva en lønnskjøring allerede har betalt.",

@@ -82,10 +82,12 @@ export const rejectUnits = (units: FlowUnits, reason: string): Promise<FlowResul
 export const unapproveUnits = (units: FlowUnits): Promise<FlowResult> =>
   request<FlowResult>("/api/v1/expenses/unapprove", json("POST", unitsBody(units)));
 
-/** The same three, for a caller that only ever moves standalone expenses. */
+/**
+ * The two, for a caller that only ever moves standalone expenses — the entry
+ * drawer, which decides one at a time. Rejecting goes through `RejectModal`,
+ * which takes units, so it needs no wrapper of its own.
+ */
 export const approveExpenses = (entryIds: number[]): Promise<FlowResult> => approveUnits({ entryIds });
-export const rejectExpenses = (entryIds: number[], reason: string): Promise<FlowResult> =>
-  rejectUnits({ entryIds }, reason);
 export const unapproveExpenses = (entryIds: number[]): Promise<FlowResult> => unapproveUnits({ entryIds });
 
 /**
@@ -116,3 +118,13 @@ export type InvoicedInput = Schemas["ExpensesInvoicedRequest"];
  */
 export const markExpenseInvoiced = (id: number, input: InvoicedInput): Promise<Expense> =>
   request<Expense>(`/api/v1/expenses/entries/${id}/invoiced`, json("POST", input));
+
+export type InvoicedUndoInput = Schemas["ExpensesInvoicedUndoRequest"];
+
+/**
+ * Takes the invoicing back off one line, under exactly the rights that set it
+ * and with the same revision guard. The reference goes with it: what is
+ * recorded is that the line went out on an invoice, and it did not.
+ */
+export const undoExpenseInvoiced = (id: number, input: InvoicedUndoInput): Promise<Expense> =>
+  request<Expense>(`/api/v1/expenses/entries/${id}/invoiced/undo`, json("POST", input));
