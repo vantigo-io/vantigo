@@ -567,7 +567,7 @@ type ProjectEconomyExpenseCurrency struct {
 	ReadyAmount float64 `json:"readyAmount"`
 }
 
-// ProjectEconomyExpenses What the project's expenses cost, what they will bill, and what of them is ready to invoice. Present when this installation has a module that reports expenses (expenseTracking) *and* the caller has financial rights on the project — every figure in it is money — and absent otherwise, never zeroed. **None of it reaches the budget**: expenses are not work measured against a budget, so nothing here is in budgetUsed, overBudget, a line's usedPercent or the logged work those are computed from. The nine figures of the project's own currency (the three buckets and the six beside them) are present or absent *together*, on the project carrying a currency; a project that carries none has only otherCurrencies. A project whose expenses are tracked and has none recorded is here with zeroes, which is a different answer from the block being absent.
+// ProjectEconomyExpenses What the project's expenses cost, what they will bill, and what of them is ready to invoice. Present when this installation has a module that reports expenses (expenseTracking) *and* the caller has financial rights on the project — every figure in it is money — and absent otherwise, never zeroed. **None of it reaches the budget**: expenses are not work measured against a budget, so nothing here is in budgetUsed, overBudget, a line's usedPercent or the logged work those are computed from. The ten figures of the project's own currency (the three buckets and the seven beside them) are present or absent *together*, on the project carrying a currency; a project that carries none has only otherCurrencies. A project whose expenses are tracked and has none recorded is here with zeroes, which is a different answer from the block being absent.
 type ProjectEconomyExpenses struct {
 	// Approved What has been approved, in the project's own currency, invoiced lines included. Absent when the project carries no currency.
 	Approved *ProjectEconomyExpenseBucket `json:"approved,omitempty"`
@@ -752,7 +752,7 @@ type ProjectEconomyRow struct {
 	// ReadyExpenseAmount What the project's ready expense lines will charge, in its own currency. Absent when it has none ready, when the project carries no currency, and absent exactly when expenseTracking is false.
 	ReadyExpenseAmount *float64 `json:"readyExpenseAmount,omitempty"`
 
-	// ReadyExpenseCount How many of the project's expense lines are ready to invoice — approved, billable, priced, not yet invoiced — **in the project's own currency only**. A line in another currency is not counted and not converted here; the per-project economy is where a project's other currencies are reported, because a portfolio row is one line of a table. Absent exactly when expenseTracking is false, which is how "this installation cannot say" is told from "there are none".
+	// ReadyExpenseCount How many of the project's expense lines are ready to invoice — approved, billable, priced, not yet invoiced — **in the project's own currency only**. A line in another currency is not counted and not converted here; the per-project economy is where a project's other currencies are reported, because a portfolio row is one line of a table — and 0 on a project that carries no currency at all, whose lines are reported under the per-project economy's `otherCurrencies`. Absent exactly when expenseTracking is false, which is how "this installation cannot say" is told from "there are none".
 	ReadyExpenseCount *int32 `json:"readyExpenseCount,omitempty"`
 
 	// ReadyTotalAmount readyAmount and readyExpenseAmount together — what is ready to invoice on this project altogether, in its own currency, which is what the readyAmount sort orders by. Absent when neither half has an amount, and absent exactly when expenseTracking is false.
@@ -802,7 +802,7 @@ type ProjectEconomyTotals struct {
 	// ReadyCount How many milestones across those projects are ready to invoice.
 	ReadyCount int32 `json:"readyCount"`
 
-	// ReadyExpenseCount How many expense lines across those projects are ready to invoice, each counted only in its own project's currency. Absent exactly when expenseTracking is false.
+	// ReadyExpenseCount How many expense lines across those projects are ready to invoice, each counted only in its own project's currency — a line in another currency, and every line of a project that carries no currency at all, is counted in no row and so in no total either. Absent exactly when expenseTracking is false.
 	ReadyExpenseCount *int32 `json:"readyExpenseCount,omitempty"`
 }
 
