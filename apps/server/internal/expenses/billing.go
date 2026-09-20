@@ -1,10 +1,14 @@
 package expenses
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"math/big"
+	"net/http"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -382,4 +386,86 @@ func billingInputFor(row store.ExpensesEntry, project *contracts.ProjectEntry) (
 		return billingInput{}, err
 	}
 	return in, nil
+}
+
+// GetExpensesEntriesByIdBillingLines List the billing lines an expense may be priced against
+// (GET /api/v1/expenses/entries/{id}/billing-lines)
+//
+// The pricing dialog's own read, and the reason it is not GET /projects: that
+// list answers the projects the *caller* may book an expense on, which is
+// projects' CanLogTime — a member or a manager of a project still open for
+// work. Pricing is a different right (accessFor's CanSeeBilling: the project's
+// manager, projects:manage-all, or projects:view-financials on a project they
+// can see), so a finance person on no project team is offered nothing there,
+// and neither is anybody pricing a line on a project that has been completed.
+// This read is keyed on the expense and judged by exactly the rule PUT
+// /entries/{id}/billing is judged by, in the same order, so the dialog can
+// never offer a line the save then refuses and the two doors cannot drift.
+//
+// It is a read: the period lock does not reach it, as it does not reach the
+// pricing it serves. One directory call, outside any transaction.
+func (s *server) GetExpensesEntriesByIdBillingLines(ctx context.Context, req gen.GetExpensesEntriesByIdBillingLinesRequestObject) (gen.GetExpensesEntriesByIdBillingLinesResponseObject, error) {
+	// Without the projects module the operation is not there at all — the
+	// answer GET /projects gives for the same reason (decision X2), rather than
+	// the pricing door's 400 on a field a read has no body to carry.
+	if !s.projectsAvailable() {
+		return gen.GetExpensesEntriesByIdBillingLines404ApplicationProblemPlusJSONResponse(
+			projectsNotInstalled()), nil
+	}
+	q := store.New(s.deps.Pool)
+	c, err := s.callerFor(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	row, a, found, err := s.visibleEntry(ctx, q, c, req.Id)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case !found:
+		return billingLinesNotFound{}, nil
+	case row.ProjectID == nil:
+		return gen.GetExpensesEntriesByIdBillingLines400ApplicationProblemPlusJSONResponse(
+			invalidEntry(fieldError("projectId",
+				"This expense is not booked on a project, so there is nothing to bill a customer for"))), nil
+	case !a.CanSeeBilling:
+		return gen.GetExpensesEntriesByIdBillingLines403JSONResponse(forbidden()), nil
+	}
+
+	lines, err := s.projectsBillingLines(ctx, *row.ProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("expenses: list a project's billing lines: %w", err)
+	}
+	out := make([]gen.ExpensesBillingLineOption, 0, len(lines))
+	for _, line := range lines {
+		// Only the lines still in use — an inactive one is refused on a save,
+		// so offering it would be offering a mistake — and, whatever its state,
+		// the one this expense already carries. A save keeps a line it is not
+		// changing (design §8's "existing lines stay"), so the dialog has to be
+		// able to show it; active:false is what keeps it out of the choices.
+		kept := row.BillingLineID != nil && line.ID == *row.BillingLineID
+		if !line.Active && !kept {
+			continue
+		}
+		out = append(out, gen.ExpensesBillingLineOption{Id: line.ID, Code: line.Code, Active: line.Active})
+	}
+	// By code, which is what the dialog shows: the directory's own order is its
+	// business and not a contract.
+	slices.SortFunc(out, func(a, b gen.ExpensesBillingLineOption) int {
+		return cmp.Or(strings.Compare(a.Code, b.Code), cmp.Compare(a.Id, b.Id))
+	})
+	return gen.GetExpensesEntriesByIdBillingLines200JSONResponse(out), nil
+}
+
+// billingLinesNotFound is the bare 404 an expense the caller may not see
+// answers with — byte for byte an unknown id's, so the two cannot be told
+// apart (decision X10). The generated response type for this operation's 404
+// carries a problem body, which is the *other* thing that status means here
+// (this installation has no projects module), so the empty one is written by
+// hand rather than by declaring a second 404 the contract has no way to hold.
+type billingLinesNotFound struct{}
+
+func (billingLinesNotFound) VisitGetExpensesEntriesByIdBillingLinesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(http.StatusNotFound)
+	return nil
 }

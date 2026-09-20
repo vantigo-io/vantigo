@@ -182,6 +182,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/expenses/entries/{id}/billing-lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the billing lines an expense may be priced against
+         * @description The billing lines of the expense's own project, for the caller who prices it. GET /api/v1/expenses/projects cannot serve the pricing dialog: it answers the projects the *caller* may book an expense on, which is the member-or-manager right on a project still open for work, while pricing belongs to whoever may see the project's money — its manager, projects:manage-all, or projects:view-financials on a project they can see. A finance person on no project team, and anybody pricing a line on a project that has been completed, would be offered nothing at all by that list. This one is keyed on the expense instead and judged by exactly the rule PUT /entries/{id}/billing is judged by, so the dialog can never offer a line the save then refuses. Active lines, ordered by code, plus the expense's own current line even if the project has since stopped using it.
+         */
+        get: operations["getExpensesEntriesByIdBillingLines"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/expenses/entries/{id}/billing": {
         parameters: {
             query?: never;
@@ -650,6 +670,14 @@ export interface components {
              * @description The receipt's size in bytes, at most 10 MB.
              */
             sizeBytes: number;
+        };
+        /** @description One billing line a pricer may book an expense against. It carries active because the list holds the expense's own current line even after the project has stopped using it: the dialog has to be able to show what is stored without offering it again. */
+        ExpensesBillingLineOption: {
+            /** @description Whether the project still offers the line. False only for the line this expense already carries — every other line in the list is active. */
+            active: boolean;
+            code: string;
+            /** Format: int32 */
+            id: number;
         };
         /** @description What an expense bills its customer, set from the project's side (decision X7). It is a full replace of the billing fields alone and touches nothing else about the expense: not its amount, not its status, not its receipts. Only a caller with financial rights on the entry's project may send it — expenses:manage is not one of them — because the markup and the customer rate per kilometre are the project's figures and an employee's form never carries them. Allowed while the expense is a draft, rejected, submitted or approved; refused once it has been invoiced. The period lock does not reach it: the lock protects what the employee submitted and what was approved, while pricing is bookkeeping done after a period closes — an invoice for December goes out in January. */
         ExpensesBillingRequest: {
@@ -2130,6 +2158,64 @@ export interface operations {
             };
             /** @description Service Unavailable — the receipt store could not be written to; nothing was recorded. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getExpensesEntriesByIdBillingLines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpensesBillingLineOption"][];
+                };
+            };
+            /** @description Bad Request — on projectId, because the expense is booked on no project and so has nothing to bill a customer for. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller may see the expense but not the money its project makes on it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no expense has that id, or the caller may not see it, in which case the body is empty and identical to an unknown id's; with a problem body, this installation has no projects module, the same answer GET /api/v1/expenses/projects gives. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
