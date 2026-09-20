@@ -1,4 +1,5 @@
 import {
+  Alert,
   Button,
   Divider,
   Group,
@@ -15,6 +16,7 @@ import {
 import { DateInput, TimeInput } from "@mantine/dates";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
+import { IconAlertTriangle } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
@@ -33,7 +35,7 @@ import "../i18n";
 import { refusalMessage, refusalMessages } from "../lib/errors";
 import { useDecimalSeparator } from "../lib/format";
 import { useProjectOptions } from "../lib/project-options";
-import { instantInZone, isWallClockTime, wallClockInZone } from "../lib/time-zone";
+import { instantInZone, isKnownZone, isWallClockTime, wallClockInZone } from "../lib/time-zone";
 
 /** What the contract allows on a travel claim's header. */
 export const PURPOSE_MAX_LENGTH = 200;
@@ -131,8 +133,23 @@ const ClaimForm = ({
   onClose: () => void;
   onSaved?: (claim: Claim) => void;
 }) => {
+  const { t } = useI18n("expenses");
   const { data: meta } = useQuery(expensesMetaQueryOptions());
   if (!meta) return <ContentSkeleton rows={5} rowHeight={48} />;
+  /**
+   * A zone this browser cannot do arithmetic in is a refusal, not a fallback.
+   * Reading a trip in the reader's own zone is cosmetic; **writing** one would
+   * capture this device's offset under the installation's label and save the
+   * trip hours off with no refusal at all, which is the one outcome nobody
+   * would notice.
+   */
+  if (!isKnownZone(meta.timeZone)) {
+    return (
+      <Alert color="orange" icon={<IconAlertTriangle size={16} />} title={t("zoneUnknownHere")}>
+        {t("zoneUnknownHereDescription", { zone: meta.timeZone })}
+      </Alert>
+    );
+  }
   return <ClaimFormFields state={state} onClose={onClose} onSaved={onSaved} meta={meta} />;
 };
 

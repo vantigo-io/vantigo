@@ -58,6 +58,7 @@ import {
 import { useProjectOptions } from "../lib/project-options";
 import { mileagePreview } from "../lib/rates";
 import type { ExpenseKind, PaidBy } from "../lib/status";
+import { zoneCalendarDate } from "../lib/time-zone";
 
 /**
  * Recording a new expense, or changing one the caller read off their list.
@@ -181,12 +182,26 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
 
   const readOnly = saved !== undefined && !saved.capabilities.canEdit;
   const currency = saved?.currency ?? meta?.defaultCurrency ?? "";
-  const lockedBefore = meta?.capabilities.canManage ? undefined : meta?.lockedBefore;
+  /**
+   * The lock, as the **unit** is judged by it. A standalone expense is judged
+   * on its own date; a line of a travel claim is judged on the claim's
+   * departure day, so a trip that left after the lock may hold a ticket
+   * bought before it and the form must neither refuse the day nor claim it is
+   * closed. `expenses:manage` is never held back either.
+   */
+  const lockedBefore = claim || meta?.capabilities.canManage ? undefined : meta?.lockedBefore;
+
+  /**
+   * What a new line starts on. Inside a trip that is the **departure day in
+   * the installation's zone** — a March trip recorded in September has no use
+   * for today, and the day has to be the one the server judges the trip by.
+   */
+  const startsOn = claim ? zoneCalendarDate(claim.departureAt, meta?.timeZone ?? "UTC") : today();
 
   const form = useForm<ExpenseFormValues>({
     initialValues: {
       kind: opened?.kind ?? (state.mode === "create" ? (state.kind ?? "outlay") : "outlay"),
-      entryDate: opened?.entryDate ?? today(),
+      entryDate: opened?.entryDate ?? startsOn,
       description: opened?.description ?? "",
       categoryId: opened?.category ? String(opened.category.id) : null,
       supplier: opened?.supplier ?? "",

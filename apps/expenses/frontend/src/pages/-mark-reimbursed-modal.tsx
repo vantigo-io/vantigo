@@ -2,16 +2,17 @@ import { Button, Group, Modal, Stack, Text, TextInput } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import type { FlowUnits } from "../api/entries";
+import { expensesMetaQueryOptions } from "../api/meta";
 import { markUnitsReimbursed } from "../api/reimbursements";
 import { ApiValidationError, EXPENSES_QUERY_KEY } from "../api/request";
 import { RefusalList } from "../components/refusal-list";
 import "../i18n";
-import { today } from "../lib/dates";
 import { refusalMessages } from "../lib/errors";
+import { zoneCalendarDate } from "../lib/time-zone";
 
 /** What the contract allows in a payroll reference, once trimmed. */
 export const REFERENCE_MAX_LENGTH = 100;
@@ -34,13 +35,16 @@ export interface MarkReimbursedModalProps {
  * trip is paid as one unit, for the sum of what its lines owe.
  *
  * The date is today by default and can never be in the future — this records
- * a payment that happened, not one somebody means to make.
+ * a payment that happened, not one somebody means to make. **Today is today
+ * in the installation's zone**, which is the day the server judges "not in the
+ * future" by: a clerk west of it would otherwise be refused their own morning.
  */
 export const MarkReimbursedModal = ({ units, onClose, onDone }: MarkReimbursedModalProps) => {
   const { t } = useI18n("expenses");
   const queryClient = useQueryClient();
   const [refusals, setRefusals] = useState<string[]>([]);
-  const now = today();
+  const { data: meta } = useQuery(expensesMetaQueryOptions());
+  const now = zoneCalendarDate(new Date().toISOString(), meta?.timeZone ?? "UTC");
 
   const form = useForm({
     initialValues: { date: now as string | null, reference: "" },
