@@ -63,13 +63,17 @@ var permissions = []contracts.Permission{
 // make. Ten receipts per expense bounds an expense, and nothing bounds how
 // many expenses a person may record — so without this, any holder of
 // expenses:access is one loop away from filling the installation's disk with
-// ten-megabyte files. A hundred and twenty an hour is far past what recording
-// a day's expenses takes and far below what filling a volume takes.
+// ten-megabyte files.
 //
 // It is keyed by client address, because that is what the platform's limiter
-// keys on (module.Router passes httpx.ClientIP); the same shape identity's own
-// policies have.
-const receiptUploadsPerHour = 120
+// keys on (module.Router passes httpx.ClientIP) and what identity's own
+// policies are keyed on — which is why the number is six hundred rather than
+// the hundred and twenty one person would ever need. An office behind one NAT
+// is one client address: everybody in it shares the allowance, and a team
+// catching up on a month of receipts after a trip must not run one another out
+// of it. Six hundred ten-megabyte files an hour is still far below what filling
+// a volume takes.
+const receiptUploadsPerHour = 600
 
 // policyReceiptUpload is that bound as the platform states one.
 var policyReceiptUpload = ratelimit.Policy{

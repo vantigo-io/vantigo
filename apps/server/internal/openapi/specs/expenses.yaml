@@ -1426,7 +1426,7 @@ paths:
                         application/json:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: Too Many Requests — at most 120 receipt uploads an hour from one client address.
+                    description: Too Many Requests — at most 600 receipt uploads an hour from one client address, which a whole office behind one address shares.
                     headers:
                         Retry-After:
                             schema:
