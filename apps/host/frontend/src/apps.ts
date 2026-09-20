@@ -3,6 +3,7 @@ import {
   IconAdjustments,
   IconBolt,
   IconBriefcase,
+  IconCashBanknote,
   IconCategory,
   IconChecklist,
   IconClock,
@@ -12,6 +13,7 @@ import {
   IconMailbox,
   IconMailOff,
   IconPackage,
+  IconReceipt2,
   IconReceiptTax,
   IconReportMoney,
   IconShieldCheck,
@@ -174,6 +176,41 @@ export const apps: readonly AppDefinition[] = [
       to: "/time/settings",
       icon: IconAdjustments,
       requiredPermissions: ["time:manage"],
+    },
+  ]),
+  moduleApp("expenses", "navigation.expenses", IconReceipt2, "/expenses", [
+    {
+      label: "navigation.myExpenses",
+      to: "/expenses",
+      icon: IconReceipt2,
+      requiredPermissions: ["expenses:access"],
+    },
+    {
+      // Offered in the sidebar to the dedicated approvers, but a project
+      // manager approves their own project's expenses through their role
+      // alone and reaches the same queue from the dashboard's attention list
+      // or by pasting the URL — the same seam as Time's approval queue. Named
+      // "Expense approvals" rather than the bare "Approvals" Time uses: within
+      // Time's own sidebar section the word is unambiguous, but Spotlight
+      // flattens every app's destinations into one list, where two identical
+      // labels would be indistinguishable.
+      label: "navigation.expenseApprovals",
+      to: "/expenses/approvals",
+      icon: IconChecklist,
+      requiredPermissions: ["expenses:approve"],
+      guardPermissions: ["expenses:access"],
+    },
+    {
+      label: "navigation.reimbursements",
+      to: "/expenses/reimbursements",
+      icon: IconCashBanknote,
+      requiredPermissions: ["expenses:manage"],
+    },
+    {
+      label: "navigation.expensesSettings",
+      to: "/expenses/settings",
+      icon: IconAdjustments,
+      requiredPermissions: ["expenses:manage"],
     },
   ]),
   moduleApp("communications", "navigation.communications", IconInbox, "/communications", [

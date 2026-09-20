@@ -10,6 +10,7 @@ import {
   IconMail,
   IconPackage,
   IconPlus,
+  IconReceipt2,
   IconSearch,
   IconUser,
 } from "@tabler/icons-react";
@@ -111,6 +112,11 @@ export const AppSpotlight = ({
     // No week in the search, so the action always lands on the current one.
     ...(enabledModules?.includes("time") && hasPermissions(permissions, ["time:access"])
       ? [{ label: t("dashboard.logTime"), icon: IconClock, path: "/time", search: undefined }]
+      : []),
+    // My expenses has no way to open the form from a search param yet, so the
+    // action lands on the list, exactly as Log time lands on My week.
+    ...(enabledModules?.includes("expenses") && hasPermissions(permissions, ["expenses:access"])
+      ? [{ label: t("dashboard.newExpense"), icon: IconReceipt2, path: "/expenses", search: undefined }]
       : []),
   ];
 

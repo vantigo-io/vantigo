@@ -14,6 +14,8 @@ const en = {
   "dashboard.manageProjects": "Manage projects, people and billing.",
   "dashboard.time": "Time",
   "dashboard.manageTime": "Log hours, submit weeks and approve them.",
+  "dashboard.expenses": "Expenses",
+  "dashboard.manageExpenses": "Record expenses, approve them and pay them back.",
   "dashboard.manageEnergy": "Manage metering points and meters.",
   "dashboard.open": "Open",
   "dashboard.greeting": "Welcome back, {{name}}",
@@ -40,6 +42,14 @@ const en = {
   "dashboard.awaitingApprovalHint": "{{count}} waiting for your approval",
   "dashboard.timeWeekUnsubmitted": "Your week of {{date}} is not submitted",
   "dashboard.timeApprovalWaiting": "Hours from the week of {{date}} are waiting for your approval",
+  "dashboard.unreimbursed": "Unreimbursed",
+  "dashboard.nothingOwed": "Nothing owed",
+  "dashboard.moreCurrencies": "+{{count}} more",
+  "dashboard.netExpenses": "Net expenses",
+  "dashboard.expenseRejected": "Your expense '{{name}}' was rejected",
+  "dashboard.expenseApprovalWaiting": "{{name}} has expenses waiting for your approval",
+  "dashboard.expenseApprovalWaitingCount": "{{name}} has {{count}} expenses waiting for your approval",
+  "dashboard.expenseReimbursementWaiting": "{{count}} expenses are waiting to be reimbursed",
   "dashboard.readyMilestonesHint": "{{count}} milestones ready to invoice",
   "dashboard.projectBudgetWarning": "{{name}} has used most of its budget",
   "dashboard.projectBudgetExceeded": "{{name}} is over budget",
@@ -79,6 +89,7 @@ const en = {
   "dashboard.createProject": "Create project",
   "dashboard.createTask": "Create task",
   "dashboard.logTime": "Log time",
+  "dashboard.newExpense": "New expense",
 };
 
 const nb: { [Key in keyof typeof en]: string } = {
@@ -95,6 +106,8 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.manageProjects": "Administrer prosjekter, personer og fakturering.",
   "dashboard.time": "Timer",
   "dashboard.manageTime": "Før timer, lever uker og godkjenn dem.",
+  "dashboard.expenses": "Utlegg",
+  "dashboard.manageExpenses": "Før utlegg, godkjenn dem og betal dem tilbake.",
   "dashboard.manageEnergy": "Administrer målepunkter og målere.",
   "dashboard.open": "Åpne",
   "dashboard.greeting": "Velkommen tilbake, {{name}}",
@@ -121,6 +134,14 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.awaitingApprovalHint": "{{count}} venter på din godkjenning",
   "dashboard.timeWeekUnsubmitted": "Uken din fra {{date}} er ikke levert",
   "dashboard.timeApprovalWaiting": "Timer fra uken som starter {{date}} venter på din godkjenning",
+  "dashboard.unreimbursed": "Ikke refundert",
+  "dashboard.nothingOwed": "Ingenting skyldes",
+  "dashboard.moreCurrencies": "+{{count}} til",
+  "dashboard.netExpenses": "Nettoutlegg",
+  "dashboard.expenseRejected": "Utlegget ditt «{{name}}» ble avvist",
+  "dashboard.expenseApprovalWaiting": "{{name}} har utlegg som venter på din godkjenning",
+  "dashboard.expenseApprovalWaitingCount": "{{name}} har {{count}} utlegg som venter på din godkjenning",
+  "dashboard.expenseReimbursementWaiting": "{{count}} utlegg venter på å bli refundert",
   "dashboard.readyMilestonesHint": "{{count}} milepæler klare til fakturering",
   "dashboard.projectBudgetWarning": "{{name}} har brukt opp mesteparten av budsjettet",
   "dashboard.projectBudgetExceeded": "{{name}} har gått over budsjett",
@@ -160,6 +181,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.createProject": "Opprett prosjekt",
   "dashboard.createTask": "Opprett oppgave",
   "dashboard.logTime": "Før timer",
+  "dashboard.newExpense": "Nytt utlegg",
 };
 
 export const dashboardCatalog = { en, nb } as const satisfies CatalogResources;

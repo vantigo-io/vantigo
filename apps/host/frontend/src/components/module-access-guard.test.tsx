@@ -139,6 +139,39 @@ describe("ModuleAccessGuard", () => {
     expect(screen.getByRole("heading", { name: "Access denied" })).toBeInTheDocument();
   });
 
+  // Expenses' pages sit behind three different permissions, the same shape as
+  // Time's.
+  it.each([
+    ["/expenses", ["expenses:access"]],
+    ["/expenses/reimbursements", ["expenses:manage"]],
+    ["/expenses/settings", ["expenses:manage"]],
+  ])("guards %s behind %s", (pathname, permissions) => {
+    renderGuardFor(pathname, []);
+    expect(screen.getByRole("heading", { name: "Access denied" })).toBeInTheDocument();
+
+    cleanup();
+    renderGuardFor(pathname, permissions);
+    expect(screen.getByText("Allowed content")).toBeInTheDocument();
+  });
+
+  // Expenses' approval queue is Time's own seam again: the sidebar entry is
+  // for expenses:approve holders, but a project manager approves their own
+  // project's expenses through their role alone and reaches the queue from the
+  // dashboard's attention list or by pasting the URL. The backend answers 403
+  // to a caller who approves nothing, so the guard only asks for the app.
+  it("lets an expenses:access holder open the approval queue, which their role may fill", () => {
+    renderGuardFor("/expenses/approvals", ["expenses:access"]);
+
+    expect(screen.getByText("Allowed content")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Access denied" })).not.toBeInTheDocument();
+  });
+
+  it("still refuses the expenses approval queue to a caller outside the Expenses app", () => {
+    renderGuardFor("/expenses/approvals", ["projects:access"]);
+
+    expect(screen.getByRole("heading", { name: "Access denied" })).toBeInTheDocument();
+  });
+
   // The `!rule` fall-through is what keeps the guard's now-global root mount
   // (task 4 of the frontend de-tenanting plan) off destinations that carry no
   // `module` in the navigation catalog. Losing this silently would gate

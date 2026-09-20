@@ -16,6 +16,7 @@ import { Route as CommunicationsRouteImport } from './routes/communications'
 import { Route as CustomersRouteImport } from './routes/customers'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as EnergyRouteImport } from './routes/energy'
+import { Route as ExpensesRouteImport } from './routes/expenses'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as PasswordResetRouteImport } from './routes/password-reset'
 import { Route as ProductsRouteImport } from './routes/products'
@@ -35,6 +36,10 @@ import { Route as CommunicationsSuppressionsRouteImport } from './routes/communi
 import { Route as CustomersIndexRouteImport } from './routes/customers/index'
 import { Route as CustomersCustomerIdRouteImport } from './routes/customers/$customerId'
 import { Route as EnergyIndexRouteImport } from './routes/energy/index'
+import { Route as ExpensesIndexRouteImport } from './routes/expenses/index'
+import { Route as ExpensesApprovalsRouteImport } from './routes/expenses/approvals'
+import { Route as ExpensesReimbursementsRouteImport } from './routes/expenses/reimbursements'
+import { Route as ExpensesSettingsRouteImport } from './routes/expenses/settings'
 import { Route as InvitationsAcceptRouteImport } from './routes/invitations/accept'
 import { Route as ProductsIndexRouteImport } from './routes/products/index'
 import { Route as ProductsProductIdRouteImport } from './routes/products/$productId'
@@ -104,6 +109,11 @@ const DashboardRoute = DashboardRouteImport.update({
 const EnergyRoute = EnergyRouteImport.update({
   id: '/energy',
   path: '/energy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExpensesRoute = ExpensesRouteImport.update({
+  id: '/expenses',
+  path: '/expenses',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
@@ -201,6 +211,26 @@ const EnergyIndexRoute = EnergyIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => EnergyRoute,
+} as any)
+const ExpensesIndexRoute = ExpensesIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ExpensesRoute,
+} as any)
+const ExpensesApprovalsRoute = ExpensesApprovalsRouteImport.update({
+  id: '/approvals',
+  path: '/approvals',
+  getParentRoute: () => ExpensesRoute,
+} as any)
+const ExpensesReimbursementsRoute = ExpensesReimbursementsRouteImport.update({
+  id: '/reimbursements',
+  path: '/reimbursements',
+  getParentRoute: () => ExpensesRoute,
+} as any)
+const ExpensesSettingsRoute = ExpensesSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => ExpensesRoute,
 } as any)
 const InvitationsAcceptRoute = InvitationsAcceptRouteImport.update({
   id: '/invitations/accept',
@@ -394,6 +424,7 @@ export interface FileRoutesByFullPath {
   '/customers': typeof CustomersRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/energy': typeof EnergyRouteWithChildren
+  '/expenses': typeof ExpensesRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
   '/password-reset': typeof PasswordResetRoute
   '/products': typeof ProductsRouteWithChildren
@@ -409,6 +440,9 @@ export interface FileRoutesByFullPath {
   '/communications/inbox': typeof CommunicationsInboxRoute
   '/communications/suppressions': typeof CommunicationsSuppressionsRoute
   '/customers/$customerId': typeof CustomersCustomerIdRouteWithChildren
+  '/expenses/approvals': typeof ExpensesApprovalsRoute
+  '/expenses/reimbursements': typeof ExpensesReimbursementsRoute
+  '/expenses/settings': typeof ExpensesSettingsRoute
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
@@ -430,6 +464,7 @@ export interface FileRoutesByFullPath {
   '/communications/': typeof CommunicationsIndexRoute
   '/customers/': typeof CustomersIndexRoute
   '/energy/': typeof EnergyIndexRoute
+  '/expenses/': typeof ExpensesIndexRoute
   '/products/': typeof ProductsIndexRoute
   '/projects/': typeof ProjectsIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -462,6 +497,9 @@ export interface FileRoutesByTo {
   '/communications/channels': typeof CommunicationsChannelsRoute
   '/communications/inbox': typeof CommunicationsInboxRoute
   '/communications/suppressions': typeof CommunicationsSuppressionsRoute
+  '/expenses/approvals': typeof ExpensesApprovalsRoute
+  '/expenses/reimbursements': typeof ExpensesReimbursementsRoute
+  '/expenses/settings': typeof ExpensesSettingsRoute
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
@@ -482,6 +520,7 @@ export interface FileRoutesByTo {
   '/communications': typeof CommunicationsIndexRoute
   '/customers': typeof CustomersIndexRoute
   '/energy': typeof EnergyIndexRoute
+  '/expenses': typeof ExpensesIndexRoute
   '/products': typeof ProductsIndexRoute
   '/projects': typeof ProjectsIndexRoute
   '/settings': typeof SettingsIndexRoute
@@ -510,6 +549,7 @@ export interface FileRoutesById {
   '/customers': typeof CustomersRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/energy': typeof EnergyRouteWithChildren
+  '/expenses': typeof ExpensesRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
   '/password-reset': typeof PasswordResetRoute
   '/products': typeof ProductsRouteWithChildren
@@ -525,6 +565,9 @@ export interface FileRoutesById {
   '/communications/inbox': typeof CommunicationsInboxRoute
   '/communications/suppressions': typeof CommunicationsSuppressionsRoute
   '/customers/$customerId': typeof CustomersCustomerIdRouteWithChildren
+  '/expenses/approvals': typeof ExpensesApprovalsRoute
+  '/expenses/reimbursements': typeof ExpensesReimbursementsRoute
+  '/expenses/settings': typeof ExpensesSettingsRoute
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
@@ -546,6 +589,7 @@ export interface FileRoutesById {
   '/communications/': typeof CommunicationsIndexRoute
   '/customers/': typeof CustomersIndexRoute
   '/energy/': typeof EnergyIndexRoute
+  '/expenses/': typeof ExpensesIndexRoute
   '/products/': typeof ProductsIndexRoute
   '/projects/': typeof ProjectsIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -575,6 +619,7 @@ export interface FileRouteTypes {
     | '/customers'
     | '/dashboard'
     | '/energy'
+    | '/expenses'
     | '/forgot-password'
     | '/password-reset'
     | '/products'
@@ -590,6 +635,9 @@ export interface FileRouteTypes {
     | '/communications/inbox'
     | '/communications/suppressions'
     | '/customers/$customerId'
+    | '/expenses/approvals'
+    | '/expenses/reimbursements'
+    | '/expenses/settings'
     | '/invitations/accept'
     | '/products/$productId'
     | '/products/categories'
@@ -611,6 +659,7 @@ export interface FileRouteTypes {
     | '/communications/'
     | '/customers/'
     | '/energy/'
+    | '/expenses/'
     | '/products/'
     | '/projects/'
     | '/settings/'
@@ -643,6 +692,9 @@ export interface FileRouteTypes {
     | '/communications/channels'
     | '/communications/inbox'
     | '/communications/suppressions'
+    | '/expenses/approvals'
+    | '/expenses/reimbursements'
+    | '/expenses/settings'
     | '/invitations/accept'
     | '/products/$productId'
     | '/products/categories'
@@ -663,6 +715,7 @@ export interface FileRouteTypes {
     | '/communications'
     | '/customers'
     | '/energy'
+    | '/expenses'
     | '/products'
     | '/projects'
     | '/settings'
@@ -690,6 +743,7 @@ export interface FileRouteTypes {
     | '/customers'
     | '/dashboard'
     | '/energy'
+    | '/expenses'
     | '/forgot-password'
     | '/password-reset'
     | '/products'
@@ -705,6 +759,9 @@ export interface FileRouteTypes {
     | '/communications/inbox'
     | '/communications/suppressions'
     | '/customers/$customerId'
+    | '/expenses/approvals'
+    | '/expenses/reimbursements'
+    | '/expenses/settings'
     | '/invitations/accept'
     | '/products/$productId'
     | '/products/categories'
@@ -726,6 +783,7 @@ export interface FileRouteTypes {
     | '/communications/'
     | '/customers/'
     | '/energy/'
+    | '/expenses/'
     | '/products/'
     | '/projects/'
     | '/settings/'
@@ -754,6 +812,7 @@ export interface RootRouteChildren {
   CustomersRoute: typeof CustomersRouteWithChildren
   DashboardRoute: typeof DashboardRoute
   EnergyRoute: typeof EnergyRouteWithChildren
+  ExpensesRoute: typeof ExpensesRouteWithChildren
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   PasswordResetRoute: typeof PasswordResetRoute
   ProductsRoute: typeof ProductsRouteWithChildren
@@ -817,6 +876,13 @@ declare module '@tanstack/react-router' {
       path: '/energy'
       fullPath: '/energy'
       preLoaderRoute: typeof EnergyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/expenses': {
+      id: '/expenses'
+      path: '/expenses'
+      fullPath: '/expenses'
+      preLoaderRoute: typeof ExpensesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/forgot-password': {
@@ -951,6 +1017,34 @@ declare module '@tanstack/react-router' {
       fullPath: '/energy/'
       preLoaderRoute: typeof EnergyIndexRouteImport
       parentRoute: typeof EnergyRoute
+    }
+    '/expenses/': {
+      id: '/expenses/'
+      path: '/'
+      fullPath: '/expenses/'
+      preLoaderRoute: typeof ExpensesIndexRouteImport
+      parentRoute: typeof ExpensesRoute
+    }
+    '/expenses/approvals': {
+      id: '/expenses/approvals'
+      path: '/approvals'
+      fullPath: '/expenses/approvals'
+      preLoaderRoute: typeof ExpensesApprovalsRouteImport
+      parentRoute: typeof ExpensesRoute
+    }
+    '/expenses/reimbursements': {
+      id: '/expenses/reimbursements'
+      path: '/reimbursements'
+      fullPath: '/expenses/reimbursements'
+      preLoaderRoute: typeof ExpensesReimbursementsRouteImport
+      parentRoute: typeof ExpensesRoute
+    }
+    '/expenses/settings': {
+      id: '/expenses/settings'
+      path: '/settings'
+      fullPath: '/expenses/settings'
+      preLoaderRoute: typeof ExpensesSettingsRouteImport
+      parentRoute: typeof ExpensesRoute
     }
     '/invitations/accept': {
       id: '/invitations/accept'
@@ -1277,6 +1371,24 @@ const EnergyRouteChildren: EnergyRouteChildren = {
 const EnergyRouteWithChildren =
   EnergyRoute._addFileChildren(EnergyRouteChildren)
 
+interface ExpensesRouteChildren {
+  ExpensesApprovalsRoute: typeof ExpensesApprovalsRoute
+  ExpensesReimbursementsRoute: typeof ExpensesReimbursementsRoute
+  ExpensesSettingsRoute: typeof ExpensesSettingsRoute
+  ExpensesIndexRoute: typeof ExpensesIndexRoute
+}
+
+const ExpensesRouteChildren: ExpensesRouteChildren = {
+  ExpensesApprovalsRoute: ExpensesApprovalsRoute,
+  ExpensesReimbursementsRoute: ExpensesReimbursementsRoute,
+  ExpensesSettingsRoute: ExpensesSettingsRoute,
+  ExpensesIndexRoute: ExpensesIndexRoute,
+}
+
+const ExpensesRouteWithChildren = ExpensesRoute._addFileChildren(
+  ExpensesRouteChildren,
+)
+
 interface ProductsRouteChildren {
   ProductsProductIdRoute: typeof ProductsProductIdRoute
   ProductsCategoriesRoute: typeof ProductsCategoriesRoute
@@ -1396,6 +1508,7 @@ const rootRouteChildren: RootRouteChildren = {
   CustomersRoute: CustomersRouteWithChildren,
   DashboardRoute: DashboardRoute,
   EnergyRoute: EnergyRouteWithChildren,
+  ExpensesRoute: ExpensesRouteWithChildren,
   ForgotPasswordRoute: ForgotPasswordRoute,
   PasswordResetRoute: PasswordResetRoute,
   ProductsRoute: ProductsRouteWithChildren,
