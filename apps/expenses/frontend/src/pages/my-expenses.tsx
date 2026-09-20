@@ -64,10 +64,20 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
   const queryClient = useQueryClient();
   const search = useSearch({ strict: false }) as MyExpensesSearch;
   const navigate = useNavigate() as (options: unknown) => void;
-  const { page = 1, claimPage = 1, ...filters } = search;
+  const { page = 1, claimPage = 1, create, ...filters } = search;
 
   const [modalState, setModalState] = useState<ExpenseModalState | null>(null);
-  const [claimModal, setClaimModal] = useState<ClaimModalState | null>(null);
+  // `?create=claim` opens the trip form on arrival — the host's Spotlight has
+  // a "New travel claim" action and no button of this page to press, the same
+  // seam every other app's create action uses. It is consumed once: closing
+  // the form takes the parameter out of the URL, so a refresh does not reopen
+  // it. State adjusted during render from the previous render's value.
+  const [claimModal, setClaimModal] = useState<ClaimModalState | null>(create === "claim" ? { mode: "create" } : null);
+  const [askedFor, setAskedFor] = useState(create);
+  if (askedFor !== create) {
+    setAskedFor(create);
+    if (create === "claim") setClaimModal({ mode: "create" });
+  }
   const [selected, setSelected] = useState<number[]>([]);
   const [selectedClaims, setSelectedClaims] = useState<number[]>([]);
   const [refusals, setRefusals] = useState<Map<number, string[]>>(new Map());
@@ -192,7 +202,10 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
       <ExpenseFormModal state={modalState} onClose={() => setModalState(null)} />
       <ClaimFormModal
         state={claimModal}
-        onClose={() => setClaimModal(null)}
+        onClose={() => {
+          setClaimModal(null);
+          if (create) navigate({ search: { ...search, create: undefined } });
+        }}
         onSaved={(saved) => navigate(claimLinkOptions(saved.id))}
       />
 

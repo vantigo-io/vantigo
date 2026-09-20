@@ -11,7 +11,7 @@ import { refusalMessage } from "../lib/errors";
 import { useDecimalSeparator, useExpenseFormat } from "../lib/format";
 
 export interface RateOverrideModalProps {
-  /** The submitted mileage line being repriced, or null when the modal is closed. */
+  /** The submitted mileage line or per diem day being repriced, or null when the modal is closed. */
   expense: Expense | null;
   /** The revision the drawer was opened at; a revision that has moved on is a 409. */
   revision: number | undefined;
@@ -28,18 +28,30 @@ const numeric = (value: number | string): number | undefined => {
 };
 
 /**
- * Replacing the rate the table gave a submitted mileage line (decision X8).
+ * Replacing the rate the table gave a submitted mileage line **or per diem
+ * day** (decision X8).
  *
  * The dialog says what the table had said and what it will become, because
  * that is the whole decision: `rateOverride.tableValue` once somebody has
  * already replaced it, and the line's own frozen rate before that — the
  * server records the table's figure the first time and no later, so the
  * original is never lost behind a second override.
+ *
+ * On a per diem day the figure is the **day rate**, and the server works the
+ * amount out again from the meal percentages the line was saved with — so
+ * correcting a rate neither drops a breakfast somebody else paid for nor
+ * picks up a percentage that has changed since. A per diem day carries no
+ * passenger supplement, and the field for one is never shown.
  */
 export const RateOverrideModal = ({ expense, revision, onClose, onSaved }: RateOverrideModalProps) => {
   const { t } = useI18n("expenses");
   return (
-    <Modal opened={expense !== null} onClose={onClose} title={t("overrideRateTitle")} centered>
+    <Modal
+      opened={expense !== null}
+      onClose={onClose}
+      title={expense?.kind === "per_diem" ? t("overrideDayRateTitle") : t("overrideRateTitle")}
+      centered
+    >
       {expense && (
         <RateOverrideForm key={expense.id} expense={expense} revision={revision} onClose={onClose} onSaved={onSaved} />
       )}
@@ -53,7 +65,9 @@ const RateOverrideForm = ({ expense, revision, onClose, onSaved }: RateOverrideM
   const decimalSeparator = useDecimalSeparator();
   const queryClient = useQueryClient();
 
-  const passengers = expense.passengers ?? 0;
+  // A per diem day has no passengers and takes no supplement; the server
+  // refuses one on that kind, so the field is never offered.
+  const passengers = expense.kind === "per_diem" ? 0 : (expense.passengers ?? 0);
   const tableRate = expense.rateOverride?.tableValue ?? expense.rate;
   const tablePassengerRate = expense.rateOverride?.passengerTableValue ?? expense.passengerRate;
 
@@ -126,7 +140,7 @@ const RateOverrideForm = ({ expense, revision, onClose, onSaved }: RateOverrideM
           })}
         </Text>
         <NumberInput
-          label={t("ratePerKm")}
+          label={expense.kind === "per_diem" ? t("perDiemDayRate") : t("ratePerKm")}
           withAsterisk
           min={0}
           decimalScale={2}

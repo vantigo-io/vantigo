@@ -8,6 +8,7 @@ import {
   Input,
   NumberInput,
   SegmentedControl,
+  Select,
   Stack,
   Table,
   Text,
@@ -18,7 +19,15 @@ import { DateInput } from "@mantine/dates";
 import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
-import { IconAlertCircle, IconArrowDown, IconArrowUp, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
+import {
+  IconAlertCircle,
+  IconAlertTriangle,
+  IconArrowDown,
+  IconArrowUp,
+  IconPencil,
+  IconPlus,
+  IconTrash,
+} from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
@@ -29,7 +38,7 @@ import { type ExpenseSettings, expenseSettingsQueryOptions, updateExpenseSetting
 import "../i18n";
 import { refusalMessage } from "../lib/errors";
 import { useDecimalSeparator, useExpenseFormat } from "../lib/format";
-import { groupRatesByKind, isClaimRateKind, isPercentageRateKind, rateKindLabelKey } from "../lib/rate-kinds";
+import { groupRatesByKind, isPercentageRateKind, rateKindHintKey, rateKindLabelKey } from "../lib/rate-kinds";
 import { CategoryFormModal, type CategoryModalState } from "./-category-form-modal";
 import { RateFormModal, type RateModalState } from "./-rate-form-modal";
 
@@ -77,6 +86,7 @@ interface GeneralFormValues {
   receiptRule: ReceiptRule;
   receiptRequiredOver: number | string;
   lockedBefore: string | null;
+  timeZone: string;
 }
 
 /**
@@ -90,7 +100,19 @@ const formValuesOf = (settings: ExpenseSettings): GeneralFormValues => ({
     settings.receiptRequiredOver === undefined ? "off" : settings.receiptRequiredOver === 0 ? "always" : "over",
   receiptRequiredOver: settings.receiptRequiredOver ?? "",
   lockedBefore: settings.lockedBefore ?? null,
+  timeZone: settings.timeZone,
 });
+
+/**
+ * Every IANA name this browser knows, so the zone is picked rather than
+ * typed. A runtime that has never heard of `supportedValuesOf` — and a
+ * jsdom that answers nothing — still has to offer the zone the installation
+ * already runs on, or a save would silently clear it.
+ */
+const timeZoneOptions = (current: string): string[] => {
+  const known = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
+  return known.includes(current) ? [...known] : [current, ...known];
+};
 
 const GeneralForm = ({ settings }: { settings: ExpenseSettings }) => {
   const { t } = useI18n("expenses");
@@ -111,6 +133,7 @@ const GeneralForm = ({ settings }: { settings: ExpenseSettings }) => {
         const amount = numeric(value);
         return amount === undefined || amount <= 0 ? t("receiptThresholdRequired") : null;
       },
+      timeZone: (value) => (value.trim() ? null : t("timeZoneRequired")),
     },
   });
 
@@ -142,6 +165,7 @@ const GeneralForm = ({ settings }: { settings: ExpenseSettings }) => {
       updateExpenseSettings({
         defaultCurrency: values.defaultCurrency.trim().toUpperCase(),
         defaultMarkupPercent: numeric(values.defaultMarkupPercent) ?? 0,
+        timeZone: values.timeZone,
         ...(values.receiptRule === "always"
           ? { receiptRequiredOver: 0 }
           : values.receiptRule === "over"
@@ -161,6 +185,9 @@ const GeneralForm = ({ settings }: { settings: ExpenseSettings }) => {
           defaultMarkupPercent: fields.defaultMarkupPercent,
           receiptRequiredOver: fields.receiptRequiredOver,
           lockedBefore: fields.lockedBefore,
+          // A name neither Go nor Postgres knows is refused on this very
+          // field, so it lands on the select the choice was made in.
+          timeZone: fields.timeZone,
         });
         return;
       }
@@ -237,6 +264,23 @@ const GeneralForm = ({ settings }: { settings: ExpenseSettings }) => {
             clearable
             {...form.getInputProps("lockedBefore")}
           />
+
+          <Stack gap={4}>
+            <Select
+              label={t("businessTimeZone")}
+              description={t("businessTimeZoneDescription")}
+              withAsterisk
+              searchable
+              allowDeselect={false}
+              data={timeZoneOptions(settings.timeZone)}
+              {...form.getInputProps("timeZone")}
+            />
+            {/* Not a colour and not an icon alone: the sentence says what
+                changing it does, because a trip's days move with it. */}
+            <Alert color="yellow" icon={<IconAlertTriangle size={16} />} title={t("timeZoneMovesDays")}>
+              {t("timeZoneMovesDaysDescription")}
+            </Alert>
+          </Stack>
 
           <Group justify="flex-end">
             <Button type="submit" loading={save.isPending}>
@@ -326,9 +370,9 @@ const RatesSection = ({ defaultCurrency }: { defaultCurrency: string }) => {
               <Group justify="space-between" wrap="wrap">
                 <Stack gap={0}>
                   <Title order={6}>{t(rateKindLabelKey(group.kind))}</Title>
-                  {isClaimRateKind(group.kind) && (
-                    <Text size="xs" c="dimmed">
-                      {t("rateKindForTravelClaims")}
+                  {rateKindHintKey(group.kind) && (
+                    <Text size="xs" c="dimmed" maw={640}>
+                      {t(rateKindHintKey(group.kind) as string)}
                     </Text>
                   )}
                 </Stack>

@@ -5,7 +5,8 @@ import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
-import { markExpensesReimbursed } from "../api/reimbursements";
+import type { FlowUnits } from "../api/entries";
+import { markUnitsReimbursed } from "../api/reimbursements";
 import { ApiValidationError, EXPENSES_QUERY_KEY } from "../api/request";
 import { RefusalList } from "../components/refusal-list";
 import "../i18n";
@@ -16,8 +17,11 @@ import { refusalMessages } from "../lib/errors";
 export const REFERENCE_MAX_LENGTH = 100;
 
 export interface MarkReimbursedModalProps {
-  /** The expenses one payroll run pays for, or null when the modal is closed. */
-  entryIds: number[] | null;
+  /**
+   * The units one payroll run pays for — standalone expenses, whole travel
+   * claims or both — or null when the modal is closed.
+   */
+  units: FlowUnits | null;
   onClose: () => void;
   onDone: () => void;
 }
@@ -25,13 +29,14 @@ export interface MarkReimbursedModalProps {
 /**
  * One payroll run, recorded with the day it was made and the reference
  * whoever made it can find it by. All or nothing, exactly as the flow's
- * batches are: an expense that is not approved, owes the employee nothing, or
- * has been paid already refuses the whole request and nothing is stamped.
+ * batches are: a unit that is not approved, owes the employee nothing, or
+ * has been paid already refuses the whole request and nothing is stamped. A
+ * trip is paid as one unit, for the sum of what its lines owe.
  *
  * The date is today by default and can never be in the future — this records
  * a payment that happened, not one somebody means to make.
  */
-export const MarkReimbursedModal = ({ entryIds, onClose, onDone }: MarkReimbursedModalProps) => {
+export const MarkReimbursedModal = ({ units, onClose, onDone }: MarkReimbursedModalProps) => {
   const { t } = useI18n("expenses");
   const queryClient = useQueryClient();
   const [refusals, setRefusals] = useState<string[]>([]);
@@ -50,8 +55,8 @@ export const MarkReimbursedModal = ({ entryIds, onClose, onDone }: MarkReimburse
 
   const mark = useMutation({
     mutationFn: (values: { date: string | null; reference: string }) =>
-      markExpensesReimbursed({
-        entryIds: entryIds ?? [],
+      markUnitsReimbursed({
+        ...(units ?? {}),
         date: values.date ?? now,
         ...(values.reference.trim() ? { reference: values.reference.trim() } : {}),
       }),
@@ -59,10 +64,11 @@ export const MarkReimbursedModal = ({ entryIds, onClose, onDone }: MarkReimburse
       setRefusals([]);
       form.reset();
       await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
+      const count = paid.entries.length + paid.claims.length;
       notifications.show({
         color: "teal",
         title: t("markedReimbursed"),
-        message: paid.entries.length === 1 ? t("oneExpense") : t("countOfExpenses", { count: paid.entries.length }),
+        message: count === 1 ? t("oneExpense") : t("countOfExpenses", { count }),
       });
       onDone();
     },
@@ -80,7 +86,7 @@ export const MarkReimbursedModal = ({ entryIds, onClose, onDone }: MarkReimburse
 
   return (
     <Modal
-      opened={entryIds !== null}
+      opened={units !== null}
       onClose={onClose}
       title={t("markReimbursedTitle")}
       centered
@@ -89,7 +95,9 @@ export const MarkReimbursedModal = ({ entryIds, onClose, onDone }: MarkReimburse
       <form onSubmit={form.onSubmit((values) => mark.mutate(values))}>
         <Stack>
           <Text size="sm" c="dimmed">
-            {t("markReimbursedDescription", { count: entryIds?.length ?? 0 })}
+            {t("markReimbursedDescription", {
+              count: (units?.entryIds?.length ?? 0) + (units?.claimIds?.length ?? 0),
+            })}
           </Text>
           <RefusalList messages={refusals} />
           <DateInput

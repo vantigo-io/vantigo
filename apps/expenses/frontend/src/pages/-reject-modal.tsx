@@ -4,7 +4,8 @@ import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
-import { rejectExpenses } from "../api/approvals";
+import { rejectUnits } from "../api/approvals";
+import type { FlowUnits } from "../api/entries";
 import { ApiValidationError, EXPENSES_QUERY_KEY } from "../api/request";
 import { RefusalList } from "../components/refusal-list";
 import "../i18n";
@@ -14,18 +15,23 @@ import { refusalMessages } from "../lib/errors";
 export const REJECTION_REASON_MAX_LENGTH = 1000;
 
 export interface RejectModalProps {
-  /** The expenses to reject, or null when the modal is closed. */
-  entryIds: number[] | null;
+  /**
+   * The units to send back — standalone expenses, travel claims or both — or
+   * null when the modal is closed. A trip is rejected as one unit and its
+   * reason is stamped on the claim, which its owner then edits and submits
+   * afresh.
+   */
+  units: FlowUnits | null;
   onClose: () => void;
   onRejected: () => void;
 }
 
 /**
- * Rejecting expenses with a reason their owner sees. The batch is all or
- * nothing, so a refusal names each offending id and nothing is rejected —
- * every sentence is shown rather than the first.
+ * Rejecting units with a reason their owner sees. The batch is all or
+ * nothing across both lists, so a refusal names each offending id and nothing
+ * is rejected — every sentence is shown rather than the first.
  */
-export const RejectModal = ({ entryIds, onClose, onRejected }: RejectModalProps) => {
+export const RejectModal = ({ units, onClose, onRejected }: RejectModalProps) => {
   const { t } = useI18n("expenses");
   const queryClient = useQueryClient();
   const [refusals, setRefusals] = useState<string[]>([]);
@@ -41,16 +47,16 @@ export const RejectModal = ({ entryIds, onClose, onRejected }: RejectModalProps)
   });
 
   const reject = useMutation({
-    mutationFn: (reason: string) => rejectExpenses(entryIds ?? [], reason.trim()),
+    mutationFn: (reason: string) => rejectUnits(units ?? {}, reason.trim()),
     onSuccess: async (rejected) => {
       setRefusals([]);
       form.reset();
       await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
+      const count = rejected.entries.length + rejected.claims.length;
       notifications.show({
         color: "teal",
         title: t("expensesRejected"),
-        message:
-          rejected.entries.length === 1 ? t("oneExpense") : t("countOfExpenses", { count: rejected.entries.length }),
+        message: count === 1 ? t("oneExpense") : t("countOfExpenses", { count }),
       });
       onRejected();
     },
@@ -65,7 +71,7 @@ export const RejectModal = ({ entryIds, onClose, onRejected }: RejectModalProps)
 
   return (
     <Modal
-      opened={entryIds !== null}
+      opened={units !== null}
       onClose={onClose}
       title={t("rejectTitle")}
       centered

@@ -1,8 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { sent } from "../test/api";
-import { categories, rates, settings } from "../test/fixtures";
+import { problemResponse, sent } from "../test/api";
+import { categories, perDiemRates, rates, settings } from "../test/fixtures";
 import { renderRoute } from "../test/route-tree";
 import { stubExpensesApi } from "../test/server";
 
@@ -73,8 +73,68 @@ describe("SettingsPage", () => {
     expect(within(table).getAllByText("Own rate")).toHaveLength(1);
     // mileage_customer ships with no rows at all and is still listed, so one can be added.
     expect(screen.getByRole("button", { name: "Add a rate to Customer rate per kilometre" })).toBeInTheDocument();
-    // A per diem kind with no rows is not listed at all.
-    expect(screen.queryByText("Per diem, hotel")).not.toBeInTheDocument();
+  });
+
+  it("lists every per diem kind and every meal percentage, seeded or not", async () => {
+    stubExpensesApi({ entries: [], rates: [...rates, ...perDiemRates] });
+    renderRoute("/expenses/settings");
+
+    // The shipped per diem rows, priced in money.
+    expect(await screen.findByRole("table", { name: "Per diem, 6 to 12 hours" })).toHaveTextContent("397.00");
+    expect(screen.getByRole("table", { name: "Per diem, hotel" })).toHaveTextContent("1,012.00");
+    // A percentage is a percentage, not money.
+    expect(screen.getByRole("table", { name: "Breakfast deduction" })).toHaveTextContent("20 %");
+    expect(screen.getByRole("table", { name: "Dinner deduction" })).toHaveTextContent("50 %");
+
+    // The one kind the state agreement does not price is an empty group with a
+    // hint, so an administrator can put their own figure in it.
+    expect(screen.queryByRole("table", { name: "Per diem, other lodging" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add a rate to Per diem, other lodging" })).toBeInTheDocument();
+    expect(screen.getByText(/the agreement has one overnight rate, and it is the hotel one/)).toBeInTheDocument();
+  });
+
+  it("says what a meal percentage with no row in force does to a per diem", async () => {
+    stubExpensesApi({ entries: [], rates: [...rates, ...perDiemRates] });
+    renderRoute("/expenses/settings");
+
+    const hints = await screen.findAllByText(/a per diem with that meal covered is refused/);
+    expect(hints).toHaveLength(3);
+  });
+
+  it("saves the business time zone, warning out loud that it moves the days of recorded trips", async () => {
+    const fetchMock = stubExpensesApi({ entries: [], settings: settings({ timeZone: "Europe/Oslo" }) });
+    renderRoute("/expenses/settings");
+
+    const zone = await screen.findByRole("combobox", { name: "Business time zone" });
+    expect(zone).toHaveValue("Europe/Oslo");
+    expect(screen.getByText("Changing it moves the days of trips already recorded")).toBeInTheDocument();
+
+    await userEvent.click(zone);
+    await userEvent.clear(zone);
+    await userEvent.type(zone, "Europe/Stockholm");
+    await userEvent.click(await screen.findByRole("option", { name: "Europe/Stockholm" }));
+    await userEvent.click(screen.getAllByRole("button", { name: "Save" })[0]);
+
+    await waitFor(() =>
+      expect(put(fetchMock, "/expenses/settings").body).toMatchObject({ timeZone: "Europe/Stockholm" }),
+    );
+  });
+
+  it("puts a refused time zone on the field the choice was made in", async () => {
+    stubExpensesApi({
+      entries: [],
+      settings: settings(),
+      write: (method, path) =>
+        method === "PUT" && path === "/api/v1/expenses/settings"
+          ? problemResponse(400, "Invalid settings", { timeZone: ["Mars/Olympus is not a time zone"] })
+          : undefined,
+    });
+    renderRoute("/expenses/settings");
+
+    await screen.findByRole("combobox", { name: "Business time zone" });
+    await userEvent.click(screen.getAllByRole("button", { name: "Save" })[0]);
+
+    expect(await screen.findByText("Mars/Olympus is not a time zone")).toBeInTheDocument();
   });
 
   it("adds a rate to the kind whose own button was pressed", async () => {

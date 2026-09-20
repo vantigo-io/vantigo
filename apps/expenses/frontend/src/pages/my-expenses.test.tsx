@@ -227,6 +227,21 @@ describe("MyExpensesPage", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/expenses/claims/9001"));
   });
 
+  it("opens the trip form on arrival when the URL asks for it, and drops the parameter again", async () => {
+    // The host's Spotlight has a "New travel claim" quick action and no button
+    // of this page to press, so it lands here with `?create=claim` — the same
+    // seam every other app's create action uses.
+    stubExpensesApi({ entries: [] });
+    const { router } = renderRoute("/expenses?create=claim");
+
+    const dialog = await screen.findByRole("dialog", { name: "New travel claim" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    // Consumed once: a refresh must not reopen a form nobody asked for again.
+    await waitFor(() => expect(router.state.location.searchStr).not.toContain("create"));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "New travel claim" })).not.toBeInTheDocument());
+  });
+
   it("records a new outlay from the form and shows it in the list", async () => {
     const fetchMock = stubExpensesApi({ entries: [outlay()], meta: meta({ projectsAvailable: false }) });
     renderRoute("/expenses");

@@ -185,7 +185,11 @@ export const expensesCatalog = {
     unapprove: "Take the approval back",
     approveSelected: "Approve {{count}} selected",
     rejectSelected: "Reject {{count}} selected",
+    unapproveSelected: "Take {{count}} approvals back",
     expensesOf: "{{person}}'s expenses",
+    travelClaimsOf: "{{person}}'s travel claims",
+    claimFlags: "Worth a look",
+    couldNotDecideClaim: "Could not decide the travel claim",
     openExpense: "Open {{description}}",
     receiptsMissing: "{{count}} without a receipt",
     overriddenRates: "{{count}} with a replaced rate",
@@ -202,7 +206,9 @@ export const expensesCatalog = {
     couldNotUnapprove: "Could not take the approval back",
 
     overrideRate: "Replace the rate",
+    overrideRateFor: "Replace the rate on {{description}}",
     overrideRateTitle: "Replace the mileage rate",
+    overrideDayRateTitle: "Replace the day rate",
     tableValueToNew: "The table said {{table}} — this line becomes {{next}}.",
     passengerTableValueToNew: "The supplement was {{table}} — it becomes {{next}}.",
     passengersOnThisLine: "{{count}} passengers on this line",
@@ -211,12 +217,23 @@ export const expensesCatalog = {
     couldNotOverrideRate: "Could not replace the rate",
 
     setBilling: "Price for the customer",
+    setBillingFor: "Price {{description}} for the customer",
     setBillingTitle: "What the customer is billed",
     setBillingDescription: "The project's own figures. Leave one empty to keep what the line already carries.",
     keptWhenLeftEmpty: "Left empty, the line keeps what it carries.",
     billingSaved: "Pricing saved",
     billAmountIsNow: "The customer is billed {{amount}}.",
     couldNotSaveBilling: "Could not save the pricing",
+
+    markInvoiced: "Mark invoiced",
+    markInvoicedFor: "Mark {{description}} invoiced",
+    markInvoicedTitle: "Mark the line invoiced",
+    markInvoicedDescription:
+      "This records that the line went out on an invoice. What the customer is billed was decided when it was priced.",
+    invoiceReference: "Invoice reference",
+    invoiceReferenceDescription: "Optional, so whoever has to find the invoice again can.",
+    markedInvoiced: "Marked as invoiced",
+    couldNotMarkInvoiced: "Could not mark the line invoiced",
 
     reimbursements: "Reimbursements",
     reimbursementsDescription: "What people are owed back, per person, and what a payroll run has already paid.",
@@ -243,10 +260,11 @@ export const expensesCatalog = {
     exportReady: "The file is ready",
     couldNotExport: "Could not export the file",
     csvNote:
-      "The file is semicolon-separated with a decimal comma and ISO dates — what a Norwegian Excel opens without an import dialog.",
+      "The file is semicolon-separated with a decimal comma and ISO dates — what a Norwegian Excel opens without an import dialog. It holds one row per line, each under the unit it belongs to: a single expense is its own row, and a travel claim writes one row per expense on the trip, with its purpose beside it.",
     markReimbursed: "Mark as paid back",
     markReimbursedTitle: "Record a payroll run",
-    markReimbursedDescription: "{{count}} expenses are stamped as paid back. All or nothing.",
+    markReimbursedDescription:
+      "{{count}} expenses and travel claims are stamped as paid back. All or nothing, and a trip is paid as one.",
     markedReimbursed: "Marked as paid back",
     payoutDate: "Day the money went",
     payoutDateRequired: "Choose the day the payroll run was made",
@@ -277,6 +295,13 @@ export const expensesCatalog = {
     lockSetConfirm:
       "Every day before {{date}} closes: nobody but an expense manager can record, change, submit, approve or reject an expense dated before it.",
     lockClearConfirm: "The lock goes away and every day is open again.",
+    businessTimeZone: "Business time zone",
+    businessTimeZoneDescription:
+      "The calendar the company works by. A travel claim stores the instant somebody left and the instant they came back, and this decides which day each of those is — the day the period lock judges, the days a per diem may fall on, and the days a trip is suggested for.",
+    timeZoneRequired: "Choose the zone the company works in",
+    timeZoneMovesDays: "Changing it moves the days of trips already recorded",
+    timeZoneMovesDaysDescription:
+      "A trip that departed just after midnight may move to the day before, or the day after, and a per diem day may end up outside the trip it belongs to. Set it once, when the installation is set up.",
     settingsSaved: "Settings saved",
     couldNotSaveSettings: "Could not save the settings",
 
@@ -310,7 +335,11 @@ export const expensesCatalog = {
     stateRate: "State rate",
     ownRate: "Own rate",
     noRatesForKind: "No rows yet",
-    rateKindForTravelClaims: "Used by the travel claims of a later delivery.",
+    rateKindCustomerPrice: "What you charge a customer per kilometre. It is your own price, so nothing is shipped.",
+    rateKindOvernightOtherHint:
+      "No state rate is shipped for this: the agreement has one overnight rate, and it is the hotel one. Add your own row if your company pays differently for lodging without cooking facilities — until you do, a day of this kind cannot be priced.",
+    rateKindMealPercentHint:
+      "How much of the day rate a meal somebody else paid for takes off. With no row in force on a day, a per diem with that meal covered is refused rather than deducting nothing.",
     resetRateKind: "Restore",
     resetRateKindOf: "Restore the state rates of {{kind}}",
     resetRateKindTitle: "Restore the state rates?",
@@ -661,7 +690,11 @@ export const expensesCatalog = {
     unapprove: "Trekk tilbake godkjenningen",
     approveSelected: "Godkjenn {{count}} valgte",
     rejectSelected: "Avvis {{count}} valgte",
+    unapproveSelected: "Trekk tilbake {{count}} godkjenninger",
     expensesOf: "Utleggene til {{person}}",
+    travelClaimsOf: "Reiseregningene til {{person}}",
+    claimFlags: "Verdt et blikk",
+    couldNotDecideClaim: "Kunne ikke behandle reiseregningen",
     openExpense: "Åpne {{description}}",
     receiptsMissing: "{{count}} uten kvittering",
     overriddenRates: "{{count}} med endret sats",
@@ -678,7 +711,9 @@ export const expensesCatalog = {
     couldNotUnapprove: "Kunne ikke trekke tilbake godkjenningen",
 
     overrideRate: "Endre satsen",
+    overrideRateFor: "Endre satsen på {{description}}",
     overrideRateTitle: "Endre kilometersatsen",
+    overrideDayRateTitle: "Endre døgnsatsen",
     tableValueToNew: "Tabellen sa {{table}} — denne linjen blir {{next}}.",
     passengerTableValueToNew: "Tillegget var {{table}} — det blir {{next}}.",
     passengersOnThisLine: "{{count}} passasjerer på denne linjen",
@@ -687,12 +722,23 @@ export const expensesCatalog = {
     couldNotOverrideRate: "Kunne ikke endre satsen",
 
     setBilling: "Pris for kunden",
+    setBillingFor: "Prissett {{description}} for kunden",
     setBillingTitle: "Det kunden faktureres",
     setBillingDescription: "Prosjektets egne tall. La et felt stå tomt for å beholde det linjen allerede har.",
     keptWhenLeftEmpty: "Står feltet tomt, beholder linjen det den har.",
     billingSaved: "Prisingen er lagret",
     billAmountIsNow: "Kunden faktureres {{amount}}.",
     couldNotSaveBilling: "Kunne ikke lagre prisingen",
+
+    markInvoiced: "Merk som fakturert",
+    markInvoicedFor: "Merk {{description}} som fakturert",
+    markInvoicedTitle: "Merke linjen som fakturert",
+    markInvoicedDescription:
+      "Dette noterer at linjen gikk ut på en faktura. Hva kunden faktureres ble bestemt da den ble prissatt.",
+    invoiceReference: "Fakturareferanse",
+    invoiceReferenceDescription: "Valgfritt, så den som må finne fakturaen igjen kan det.",
+    markedInvoiced: "Merket som fakturert",
+    couldNotMarkInvoiced: "Kunne ikke merke linjen som fakturert",
 
     reimbursements: "Utbetaling",
     reimbursementsDescription: "Hva folk har til gode, per person, og hva en lønnskjøring allerede har betalt.",
@@ -719,10 +765,11 @@ export const expensesCatalog = {
     exportReady: "Filen er klar",
     couldNotExport: "Kunne ikke eksportere filen",
     csvNote:
-      "Filen er semikolonseparert med desimalkomma og ISO-datoer — slik et norsk Excel åpner den uten importdialog.",
+      "Filen er semikolonseparert med desimalkomma og ISO-datoer — slik et norsk Excel åpner den uten importdialog. Den har én rad per linje, hver under enheten den hører til: et enkelt utlegg er sin egen rad, og en reiseregning skriver én rad per utlegg på reisen, med formålet ved siden av.",
     markReimbursed: "Merk som utbetalt",
     markReimbursedTitle: "Før opp en lønnskjøring",
-    markReimbursedDescription: "{{count}} utlegg stemples som utbetalt. Alt eller ingenting.",
+    markReimbursedDescription:
+      "{{count}} utlegg og reiseregninger stemples som utbetalt. Alt eller ingenting, og en reise betales som én.",
     markedReimbursed: "Merket som utbetalt",
     payoutDate: "Dagen pengene gikk",
     payoutDateRequired: "Velg dagen lønnskjøringen ble gjort",
@@ -753,6 +800,13 @@ export const expensesCatalog = {
     lockSetConfirm:
       "Alle dager før {{date}} stenges: ingen andre enn en utleggsansvarlig kan føre, endre, sende inn, godkjenne eller avvise et utlegg datert før den.",
     lockClearConfirm: "Låsen fjernes og alle dager er åpne igjen.",
+    businessTimeZone: "Tidssone for virksomheten",
+    businessTimeZoneDescription:
+      "Kalenderen selskapet arbeider etter. En reiseregning lagrer øyeblikket noen dro og øyeblikket de kom hjem, og dette avgjør hvilken dag hvert av dem er — dagen periodelåsen dømmer etter, dagene en diett kan falle på, og dagene en reise får forslag for.",
+    timeZoneRequired: "Velg sonen selskapet arbeider i",
+    timeZoneMovesDays: "Endrer du den, flytter dagene på reiser som alt er ført",
+    timeZoneMovesDaysDescription:
+      "En reise som startet like etter midnatt kan flytte seg til dagen før eller dagen etter, og en diettdag kan havne utenfor reisen den hører til. Sett den én gang, når installasjonen settes opp.",
     settingsSaved: "Innstillingene er lagret",
     couldNotSaveSettings: "Kunne ikke lagre innstillingene",
 
@@ -785,7 +839,11 @@ export const expensesCatalog = {
     stateRate: "Statens sats",
     ownRate: "Egen sats",
     noRatesForKind: "Ingen rader ennå",
-    rateKindForTravelClaims: "Brukes av reiseregningene som kommer senere.",
+    rateKindCustomerPrice: "Det du fakturerer en kunde per kilometer. Det er din egen pris, så ingenting følger med.",
+    rateKindOvernightOtherHint:
+      "Ingen statlig sats følger med her: særavtalen har én overnattingssats, og det er hotellsatsen. Legg inn din egen rad hvis selskapet betaler annerledes for losji uten kokemuligheter — før du gjør det, kan ikke en døgndag av dette slaget prises.",
+    rateKindMealPercentHint:
+      "Hvor mye av døgnsatsen et måltid noen andre betalte trekker fra. Uten en rad som gjelder på dagen, avvises en diett der måltidet er dekket, i stedet for å trekke ingenting.",
     resetRateKind: "Gjenopprett",
     resetRateKindOf: "Gjenopprett statens satser for {{kind}}",
     resetRateKindTitle: "Gjenopprette statens satser?",

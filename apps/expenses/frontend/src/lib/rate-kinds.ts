@@ -2,9 +2,11 @@ import type { ExpenseRate } from "../api/rates";
 
 /**
  * Every rate kind the contract knows (design §3.4), in the order the settings
- * page lists them. The mileage three are what this delivery prices with; the
- * per diem and meal kinds are the travel claims of a later delivery, and are
- * shown only once somebody has put a row in one.
+ * page lists them: the three mileage kinds, the four per diem day types and
+ * the three meal percentages. All ten are listed whether they carry a row or
+ * not — a kind nobody can find is a kind nobody can price, and the one the
+ * product deliberately leaves unseeded (`per_diem_overnight_other`) is exactly
+ * the one an administrator has to be able to reach.
  */
 export const rateKinds = [
   "mileage",
@@ -21,9 +23,6 @@ export const rateKinds = [
 
 export type RateKind = (typeof rateKinds)[number];
 
-/** The three this delivery uses. They are always listed, empty or not, so a rate can be added. */
-export const mileageRateKinds: readonly RateKind[] = ["mileage", "mileage_passenger", "mileage_customer"];
-
 export const isRateKind = (value: unknown): value is RateKind =>
   typeof value === "string" && (rateKinds as readonly string[]).includes(value);
 
@@ -37,8 +36,25 @@ export const isPercentageRateKind = (kind: string): boolean => kind.endsWith("_p
 /** The `expenses` catalog key naming a kind, and the one naming what it is for. */
 export const rateKindLabelKey = (kind: string): string => `rateKind_${kind}`;
 
-/** Whether the kind belongs to the travel claims that have not shipped yet. */
-export const isClaimRateKind = (kind: string): boolean => kind.startsWith("per_diem") || isPercentageRateKind(kind);
+/**
+ * The sentence under a kind's heading, when it has one worth saying. Three
+ * kinds need one, and each for a different reason:
+ *
+ * - `mileage_customer` is the company's own price, never a public rate, so it
+ *   ships with no row;
+ * - `per_diem_overnight_other` ships with none either, because the state
+ *   agreement knows one overnight rate — a company that pays lodging without
+ *   cooking facilities differently has to enter its own figure, and until it
+ *   does a day of that type cannot be priced at all;
+ * - a **meal percentage** with no row in force on a day makes a per diem with
+ *   that meal covered refuse, rather than deducting nothing quietly.
+ */
+export const rateKindHintKey = (kind: string): string | undefined => {
+  if (kind === "mileage_customer") return "rateKindCustomerPrice";
+  if (kind === "per_diem_overnight_other") return "rateKindOvernightOtherHint";
+  if (isPercentageRateKind(kind)) return "rateKindMealPercentHint";
+  return undefined;
+};
 
 export interface RateGroup {
   kind: string;
@@ -47,24 +63,20 @@ export interface RateGroup {
 }
 
 /**
- * The rate table grouped for the settings page: the mileage kinds always, in
- * their own order, then every other kind that actually carries a row. A kind
- * the contract does not know still gets a group of its own rather than being
- * dropped — a client that hides a row nobody can then edit is worse than one
- * that shows an unfamiliar name.
+ * The rate table grouped for the settings page: **every kind the contract
+ * knows, in its own order, carrying a row or not**, and then any kind the
+ * table holds that this build has never heard of. A group with nothing in it
+ * is what makes a rate addable — the unseeded `per_diem_overnight_other` and
+ * `mileage_customer` exist only as empty groups until somebody fills them —
+ * and a client that hid a row nobody can then edit would be worse than one
+ * showing an unfamiliar name.
  */
 export const groupRatesByKind = (rates: ExpenseRate[] | undefined): RateGroup[] => {
   const byKind = new Map<string, ExpenseRate[]>();
   for (const rate of rates ?? []) byKind.set(rate.kind, [...(byKind.get(rate.kind) ?? []), rate]);
-  const ordered = [...mileageRateKinds, ...rateKinds.filter((kind) => !mileageRateKinds.includes(kind))];
-  const groups: RateGroup[] = [];
-  for (const kind of ordered) {
-    const rows = byKind.get(kind);
-    if (!rows && !mileageRateKinds.includes(kind)) continue;
-    groups.push({ kind, rates: rows ?? [] });
-  }
+  const groups: RateGroup[] = rateKinds.map((kind) => ({ kind, rates: byKind.get(kind) ?? [] }));
   for (const [kind, rows] of byKind) {
-    if (!(ordered as readonly string[]).includes(kind)) groups.push({ kind, rates: rows });
+    if (!(rateKinds as readonly string[]).includes(kind)) groups.push({ kind, rates: rows });
   }
   return groups;
 };

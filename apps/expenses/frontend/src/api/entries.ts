@@ -136,7 +136,13 @@ export interface FlowUnits {
   claimIds?: number[];
 }
 
-const unitsBody = ({ entryIds, claimIds }: FlowUnits): FlowUnits => ({
+/**
+ * The body a batch operation is sent with. An **empty list is left out**,
+ * because a present but empty selection is refused rather than read as
+ * "everything" — a page with only trips ticked must not name `entryIds` at
+ * all. Every operation that moves units goes through it.
+ */
+export const unitsBody = ({ entryIds, claimIds }: FlowUnits): FlowUnits => ({
   ...(entryIds && entryIds.length > 0 ? { entryIds } : {}),
   ...(claimIds && claimIds.length > 0 ? { claimIds } : {}),
 });

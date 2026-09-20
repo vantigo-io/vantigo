@@ -2,9 +2,38 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { jsonResponse, sent } from "../test/api";
-import { APPROVER, capabilities, OTHER, outlay } from "../test/fixtures";
+import { APPROVER, capabilities, claim, claimCapabilities, OTHER, outlay } from "../test/fixtures";
 import { renderRoute } from "../test/route-tree";
 import { stubExpensesApi } from "../test/server";
+
+const GRACE = { userId: OTHER, displayName: "Grace Hopper", active: true };
+
+/** An approved trip of Grace's that owes her something, with the one line that does. */
+const owedTrip = () => ({
+  trip: claim({
+    id: 1012,
+    status: "approved",
+    owner: GRACE,
+    capabilities: claimCapabilities({ canMarkReimbursed: true }),
+  }),
+  lines: [
+    outlay({
+      id: 801,
+      claimId: 1012,
+      description: "Hotel Bergen",
+      status: "approved",
+      entryDate: "2026-03-09",
+      owner: GRACE,
+      grossAmount: 2400,
+      vatAmount: 0,
+      netAmount: 2400,
+      owedToEmployee: 2400,
+      capabilities: capabilities(),
+    }),
+  ],
+});
+
+const claimRow = async (purpose: string) => (await screen.findByText(purpose)).closest("[data-claim]") as HTMLElement;
 
 const owed = (overrides = {}) =>
   outlay({
@@ -146,6 +175,55 @@ describe("ReimbursementsPage", () => {
     renderRoute("/expenses/reimbursements");
 
     expect(await screen.findByText("You cannot see what is owed back")).toBeInTheDocument();
+  });
+
+  it("lists a trip as one unit with what it owes, its lines never loose beside it", async () => {
+    const { trip, lines } = owedTrip();
+    stubExpensesApi({ entries: [owed(), ...lines], claims: [trip] });
+    renderRoute("/expenses/reimbursements");
+
+    const card = (await screen.findByText("Grace Hopper")).closest("[data-reimbursement-group]") as HTMLElement;
+    // The group's own total holds both kinds of unit: 2 400 loose + 2 400 on the trip.
+    expect(card).toHaveTextContent("4,800.00");
+
+    const one = await claimRow("Montasje hos kunden");
+    expect(one).toHaveTextContent("2,400.00");
+    const loose = within(card).getByRole("table", { name: "Grace Hopper's expenses" });
+    expect(within(loose).queryByText("Hotel Bergen")).not.toBeInTheDocument();
+  });
+
+  it("pays a trip and a loose expense in one payroll run", async () => {
+    const { trip, lines } = owedTrip();
+    const fetchMock = stubExpensesApi({ entries: [owed(), ...lines], claims: [trip] });
+    renderRoute("/expenses/reimbursements");
+
+    await userEvent.click(within(await row("Hotel")).getByRole("checkbox"));
+    await userEvent.click(within(await claimRow("Montasje hos kunden")).getByRole("checkbox"));
+    await userEvent.click(await screen.findByRole("button", { name: "Mark 2 as paid back" }));
+    const dialog = await screen.findByRole("dialog", { name: "Record a payroll run" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Mark as paid back" }));
+
+    await waitFor(() => expect(sent(fetchMock, "POST").url).toBe("/api/v1/expenses/reimbursed"));
+    expect(sent(fetchMock, "POST").body).toMatchObject({ entryIds: [501], claimIds: [1012] });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Record a payroll run" })).not.toBeInTheDocument());
+  });
+
+  it("exports a selection of trips alone with no entryIds parameter at all", async () => {
+    // A selection that is present and names nothing is a 400, so the list that
+    // holds nothing is left out of the URL rather than sent empty.
+    const { trip, lines } = owedTrip();
+    const fetchMock = stubExpensesApi({ entries: lines, claims: [trip] });
+    renderRoute("/expenses/reimbursements");
+
+    await userEvent.click(within(await claimRow("Montasje hos kunden")).getByRole("checkbox"));
+    await userEvent.click(await screen.findByRole("button", { name: "Export 1 selected" }));
+
+    await waitFor(() => {
+      const [url] = fetchMock.actualCalls.find(([candidate]) => String(candidate).includes("export.csv")) ?? [];
+      expect(String(url)).toContain("claimIds=1012");
+      expect(String(url)).not.toContain("entryIds");
+      expect(String(url)).not.toContain("state=");
+    });
   });
 
   it("names the column the payroll checkboxes sit in", async () => {

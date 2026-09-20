@@ -20,6 +20,14 @@ export interface MyExpensesSearch {
    * note on why a single merged page would be a lie.
    */
   claimPage: number;
+  /**
+   * A form to open on arrival. The host's Spotlight has a "New travel claim"
+   * quick action and nothing else to click, so the action lands here with
+   * `?create=claim` and the page opens the form — the same seam every other
+   * app's create action uses. Only `"claim"` exists: a new *expense* has no
+   * trip to belong to and the button is right there.
+   */
+  create?: "claim";
 }
 
 const optionalFlag = (value: unknown): boolean | undefined => {
@@ -42,6 +50,7 @@ export const validateMyExpensesSearch = (search: Record<string, unknown>): MyExp
   to: isIsoDate(search.to) ? search.to : undefined,
   page: Math.max(1, Number(search.page) || 1),
   claimPage: Math.max(1, Number(search.claimPage) || 1),
+  create: search.create === "claim" ? "claim" : undefined,
 });
 
 /**
@@ -53,11 +62,20 @@ export const validateMyExpensesSearch = (search: Record<string, unknown>): MyExp
 export interface ApprovalsSearch {
   state: "waiting" | "approved";
   page: number;
+  /**
+   * The approved travel claims' own page. The approved half lists two kinds
+   * of unit from two paged endpoints, so each pages itself rather than being
+   * shuffled into one page that would repeat rows or skip them. The waiting
+   * queue is paged **by person** and carries both kinds inside a group, so it
+   * needs no second key.
+   */
+  claimPage: number;
 }
 
 export const validateApprovalsSearch = (search: Record<string, unknown>): ApprovalsSearch => ({
   state: search.state === "approved" ? "approved" : "waiting",
   page: Math.max(1, Number(search.page) || 1),
+  claimPage: Math.max(1, Number(search.claimPage) || 1),
 });
 
 /**

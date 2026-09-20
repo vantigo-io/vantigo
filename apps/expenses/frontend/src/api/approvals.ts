@@ -1,6 +1,7 @@
 import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 import type { components } from "../api-schema";
-import type { Expense, FlowResult, PaginatedResponse } from "./entries";
+import type { Expense, FlowResult, FlowUnits, PaginatedResponse } from "./entries";
+import { unitsBody } from "./entries";
 import { EXPENSES_QUERY_KEY, json, request } from "./request";
 
 type Schemas = components["schemas"];
@@ -60,24 +61,32 @@ export const expenseApprovalsQueryOptions = (page: number) =>
   });
 
 /**
- * Approves expenses. All or nothing: one expense that may not be approved
- * refuses the whole request with a message per offending id on `entryIds`,
- * and nothing moves.
+ * Approves a selection of both kinds of unit in **one** request. All or
+ * nothing across both lists: a unit that may not be approved refuses the whole
+ * request with a message per offending id on the list that named it —
+ * `entryIds` for a standalone expense, `claimIds` for a trip — and nothing
+ * moves. An empty list is left out, because a present but empty one is a 400.
  */
-export const approveExpenses = (entryIds: number[]): Promise<FlowResult> =>
-  request<FlowResult>("/api/v1/expenses/approve", json("POST", { entryIds }));
+export const approveUnits = (units: FlowUnits): Promise<FlowResult> =>
+  request<FlowResult>("/api/v1/expenses/approve", json("POST", unitsBody(units)));
 
-/** Rejects expenses with a reason their owner sees. 1 to 1000 characters once trimmed. */
-export const rejectExpenses = (entryIds: number[], reason: string): Promise<FlowResult> =>
-  request<FlowResult>("/api/v1/expenses/reject", json("POST", { entryIds, reason }));
+/** Rejects units with a reason their owner sees. 1 to 1000 characters once trimmed. */
+export const rejectUnits = (units: FlowUnits, reason: string): Promise<FlowResult> =>
+  request<FlowResult>("/api/v1/expenses/reject", json("POST", { ...unitsBody(units), reason }));
 
 /**
- * Returns approved expenses to a draft their owner can change and submit
- * again. Never one that has been reimbursed or invoiced — each of those
- * tracks has an undo of its own.
+ * Returns approved units to a draft their owner can change and submit again.
+ * Never one that has been reimbursed, nor a trip left holding a line that has
+ * been invoiced — each of those tracks has an undo of its own.
  */
-export const unapproveExpenses = (entryIds: number[]): Promise<FlowResult> =>
-  request<FlowResult>("/api/v1/expenses/unapprove", json("POST", { entryIds }));
+export const unapproveUnits = (units: FlowUnits): Promise<FlowResult> =>
+  request<FlowResult>("/api/v1/expenses/unapprove", json("POST", unitsBody(units)));
+
+/** The same three, for a caller that only ever moves standalone expenses. */
+export const approveExpenses = (entryIds: number[]): Promise<FlowResult> => approveUnits({ entryIds });
+export const rejectExpenses = (entryIds: number[], reason: string): Promise<FlowResult> =>
+  rejectUnits({ entryIds }, reason);
+export const unapproveExpenses = (entryIds: number[]): Promise<FlowResult> => unapproveUnits({ entryIds });
 
 /**
  * Replaces the reimbursement rate on one submitted mileage line and reprices
@@ -95,3 +104,15 @@ export const overrideExpenseRate = (id: number, input: RateOverrideInput): Promi
  */
 export const setExpenseBilling = (id: number, input: BillingInput): Promise<Expense> =>
   request<Expense>(`/api/v1/expenses/entries/${id}/billing`, json("PUT", input));
+
+export type InvoicedInput = Schemas["ExpensesInvoicedRequest"];
+
+/**
+ * Marks one approved, billable line as billed on to the customer. The same
+ * financial rights the pricing door asks for, and the period lock does not
+ * reach it either — invoicing is bookkeeping done after a period closes. A per
+ * diem day is refused on `kind`, and `capabilities.canMarkInvoiced` is false
+ * for one, so the button is never offered.
+ */
+export const markExpenseInvoiced = (id: number, input: InvoicedInput): Promise<Expense> =>
+  request<Expense>(`/api/v1/expenses/entries/${id}/invoiced`, json("POST", input));
