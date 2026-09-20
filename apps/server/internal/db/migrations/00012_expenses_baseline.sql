@@ -118,9 +118,10 @@ CREATE INDEX ix_entries_reimbursement_waiting ON expenses.entries (user_id, entr
     WHERE status = 'approved' AND reimbursed_at IS NULL;
 -- The invoicing one is the same shape for the other track, keyed on the
 -- project because that is the side it belongs to: what a project still has to
--- put on an invoice. It goes in here because no later delivery of this module
--- adds a migration (internal/db/schema_test.go says so), so an index the
--- project-side reads will need has this one chance to be written.
+-- put on an invoice. No query reads that predicate yet — this delivery only
+-- marks one line at a time, by id — but the project-side reads that page
+-- through it arrive next, and a partial index over the rows still waiting to
+-- be invoiced costs almost nothing while it waits for them.
 CREATE INDEX ix_entries_to_invoice ON expenses.entries (project_id, entry_date)
     WHERE status = 'approved' AND billable AND invoiced_at IS NULL;
 

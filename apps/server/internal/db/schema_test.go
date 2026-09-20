@@ -1552,9 +1552,10 @@ func TestExpensesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 }
 
 // expensesColumns is design §3.1 and §3.2 written out: the entries and
-// attachments columns with their types and nullability. No later delivery of
-// this module may add a migration, so this is where the shape delivery B
-// builds on is pinned — a widened column or a dropped one fails here rather
+// attachments columns with their types and nullability. No later task of this
+// delivery changes 00012 — later deliveries bring migrations of their own,
+// travel claims an expenses.claims among them — so this is where the shape
+// they build on is pinned: a widened column or a dropped one fails here rather
 // than in whichever query first misses it.
 var expensesColumns = map[string][]expensesColumn{
 	"entries": {

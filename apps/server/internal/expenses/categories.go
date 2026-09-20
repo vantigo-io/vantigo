@@ -40,6 +40,34 @@ func validateCategoryPosition(position *int32) string {
 	return "A position must be 1 or greater"
 }
 
+// moveWithin is the new order of the category list: ids with moved taken out
+// and put back at position, which is 1-based. A position past the end is the
+// end — a picker dragged to the bottom sends whatever number the list happened
+// to have — and a moved that is not in ids, which is a category just created,
+// is simply inserted.
+//
+// It is projects' own moveWithin for a task among its siblings, written again
+// rather than shared: depguard forbids this module from importing another's,
+// and the platform has no home for it yet. The semantics are deliberately
+// identical, so the two pickers behave the same way for the person using them.
+func moveWithin(ids []int32, moved int32, position int32) []int32 {
+	rest := make([]int32, 0, len(ids)+1)
+	for _, id := range ids {
+		if id != moved {
+			rest = append(rest, id)
+		}
+	}
+	at := int(position) - 1
+	if at > len(rest) {
+		at = len(rest)
+	}
+	out := make([]int32, 0, len(rest)+1)
+	out = append(out, rest[:at]...)
+	out = append(out, moved)
+	out = append(out, rest[at:]...)
+	return out
+}
+
 // parseCategoryName is the name rule: required, trimmed, and at most the
 // column's width. It answers the trimmed name and the message to report.
 func parseCategoryName(raw string) (string, string) {
@@ -89,9 +117,11 @@ func (s *server) GetExpensesCategories(ctx context.Context, _ gen.GetExpensesCat
 // PostExpensesCategories Add an expense category
 // (POST /api/v1/expenses/categories)
 //
-// A category with no position goes last. Uniqueness is the index's rule, not a
-// read-then-write check, so two administrators adding the same name race to one
-// row and one name error.
+// A category with no position goes last; one with a position is inserted there
+// and the rest of the list moves around it. Uniqueness is the index's rule, not
+// a read-then-write check, so two administrators adding the same name race to
+// one row and one name error — the transaction that loses rolls back, and the
+// numbering rolls back with it.
 func (s *server) PostExpensesCategories(ctx context.Context, req gen.PostExpensesCategoriesRequestObject) (gen.PostExpensesCategoriesResponseObject, error) {
 	body := gen.ExpensesCategoryRequest{}
 	if req.Body != nil {
@@ -107,24 +137,31 @@ func (s *server) PostExpensesCategories(ctx context.Context, req gen.PostExpense
 			invalidCategory(fieldError("position", msg))), nil
 	}
 
-	q := store.New(s.deps.Pool)
 	active := true
 	if body.Active != nil {
 		active = *body.Active
 	}
-	position := int32(0)
-	if body.Position != nil {
-		position = *body.Position
-	} else {
-		next, err := q.NextCategoryPosition(ctx)
+	var created store.ExpensesCategory
+	err := s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+		ids, err := txq.CategoryIDsInOrder(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("expenses: find the next category position: %w", err)
+			return fmt.Errorf("expenses: lock the categories: %w", err)
 		}
-		position = next
-	}
-
-	created, err := q.InsertCategory(ctx, store.InsertCategoryParams{
-		Name: name, Active: active, Position: position, Now: s.deps.Clock(),
+		// With no position it goes last, which is already where the insert puts
+		// it: the list is dense, so n+1 is the end and nothing else moves.
+		position := int32(len(ids) + 1)
+		if body.Position != nil {
+			position = *body.Position
+		}
+		if created, err = txq.InsertCategory(ctx, store.InsertCategoryParams{
+			Name: name, Active: active, Position: position, Now: s.deps.Clock(),
+		}); err != nil {
+			return err
+		}
+		if body.Position == nil {
+			return nil
+		}
+		return s.renumberCategories(ctx, txq, moveWithin(ids, created.ID, position), &created)
 	})
 	if db.IsUniqueViolation(err, categoryNameIndex) {
 		return gen.PostExpensesCategories400ApplicationProblemPlusJSONResponse(
@@ -136,12 +173,42 @@ func (s *server) PostExpensesCategories(ctx context.Context, req gen.PostExpense
 	return gen.PostExpensesCategories201JSONResponse(categoryResponse(created)), nil
 }
 
+// renumberCategories writes order back as a dense 1..n and re-reads into, so
+// the answer carries the place the category actually ended up in rather than
+// the number the caller asked for — those differ whenever the request named a
+// slot past the end of the list.
+func (s *server) renumberCategories(ctx context.Context, txq *store.Queries, order []int32,
+	into *store.ExpensesCategory,
+) error {
+	if err := txq.RenumberCategories(ctx, store.RenumberCategoriesParams{
+		Ids: order, Now: s.deps.Clock(),
+	}); err != nil {
+		return fmt.Errorf("expenses: renumber the categories: %w", err)
+	}
+	row, err := txq.GetCategory(ctx, into.ID)
+	if err != nil {
+		return fmt.Errorf("expenses: re-read a category after renumbering: %w", err)
+	}
+	*into = row
+	return nil
+}
+
 // PutExpensesCategoriesById Change an expense category
 // (PUT /api/v1/expenses/categories/{id})
 //
 // A full replace of the name, whether it may be chosen, and where it sits. An
 // unknown id is a 404 before the body is judged. A category already in use may
 // be renamed freely — only onto another category's name it may not.
+//
+// The position is a *place in the list*, not a number the row keeps: the server
+// owns the numbering, exactly as projects owns a task's place among its
+// siblings. Storing whatever the caller sent would let two categories share a
+// slot, and then the listing's tie-break on the name decides the order — so a
+// "move up" that sends the neighbour's number would leave the category exactly
+// where it was. Instead the whole list is locked in one transaction, the
+// category is taken out of it and put back at position-1 (the end, for a
+// position past it), and every row is renumbered 1..n. A replace that leaves
+// the position alone renumbers nothing.
 func (s *server) PutExpensesCategoriesById(ctx context.Context, req gen.PutExpensesCategoriesByIdRequestObject) (gen.PutExpensesCategoriesByIdResponseObject, error) {
 	body := gen.ExpensesCategoryUpdateRequest{}
 	if req.Body != nil {
@@ -163,8 +230,34 @@ func (s *server) PutExpensesCategoriesById(ctx context.Context, req gen.PutExpen
 			invalidCategory(fieldError("position", msg))), nil
 	}
 
-	updated, err := q.UpdateCategory(ctx, store.UpdateCategoryParams{
-		ID: req.Id, Name: name, Active: body.Active, Position: body.Position, Now: s.deps.Clock(),
+	var (
+		updated store.ExpensesCategory
+		gone    bool
+	)
+	err := s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+		ids, err := txq.CategoryIDsInOrder(ctx)
+		if err != nil {
+			return fmt.Errorf("expenses: lock the categories: %w", err)
+		}
+		// The place it holds right now, read under the same lock the renumber
+		// writes under, so a move that raced this one is taken into account.
+		current, err := txq.GetCategory(ctx, req.Id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			gone = true
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("expenses: get a category: %w", err)
+		}
+		if updated, err = txq.UpdateCategory(ctx, store.UpdateCategoryParams{
+			ID: req.Id, Name: name, Active: body.Active, Position: body.Position, Now: s.deps.Clock(),
+		}); err != nil {
+			return err
+		}
+		if body.Position == current.Position {
+			return nil
+		}
+		return s.renumberCategories(ctx, txq, moveWithin(ids, req.Id, body.Position), &updated)
 	})
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
@@ -176,6 +269,8 @@ func (s *server) PutExpensesCategoriesById(ctx context.Context, req gen.PutExpen
 			invalidCategory(fieldError("name", categoryNameTaken(name)))), nil
 	case err != nil:
 		return nil, fmt.Errorf("expenses: change a category: %w", err)
+	case gone:
+		return gen.PutExpensesCategoriesById404Response{}, nil
 	}
 	return gen.PutExpensesCategoriesById200JSONResponse(categoryResponse(updated)), nil
 }

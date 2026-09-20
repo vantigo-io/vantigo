@@ -70,22 +70,24 @@ type ExpensesBillingRequest struct {
 	Revision int32 `json:"revision"`
 }
 
-// ExpensesCategoryRequest A new expense category. The name is unique case-insensitively; position orders the picker and defaults to the end.
+// ExpensesCategoryRequest A new expense category. The name is unique case-insensitively; position is the place it takes in the picker and defaults to the end.
 type ExpensesCategoryRequest struct {
 	// Active Whether the category may be chosen. Absent means active.
 	Active *bool  `json:"active,omitempty"`
 	Name   string `json:"name"`
 
-	// Position Where the category sits in the picker, 1 or greater. Absent puts it last.
+	// Position The 1-based place the category takes in the picker; the server renumbers the others around it, so the list stays a dense 1..n. A place past the end of the list is the end. Absent puts it last.
 	Position *int32 `json:"position,omitempty"`
 }
 
 // ExpensesCategoryResponse One expense category (design §3.3). Categories are deactivated, never deleted, once an expense has used one.
 type ExpensesCategoryResponse struct {
-	Active   bool   `json:"active"`
-	Id       int32  `json:"id"`
-	Name     string `json:"name"`
-	Position int32  `json:"position"`
+	Active bool   `json:"active"`
+	Id     int32  `json:"id"`
+	Name   string `json:"name"`
+
+	// Position The 1-based place it holds in the picker. Positions are a dense 1..n over every category, active or not, and the list is returned in that order — so this is the place it ended up in, which is not always the one a request asked for.
+	Position int32 `json:"position"`
 }
 
 // ExpensesCategoryUpdateRequest A full replace of a category's name, whether it may be chosen, and where it sits. Renaming it onto another category's name — however it is cased — is refused on the name field.
@@ -93,7 +95,7 @@ type ExpensesCategoryUpdateRequest struct {
 	Active bool   `json:"active"`
 	Name   string `json:"name"`
 
-	// Position Where the category sits in the picker, 1 or greater.
+	// Position The 1-based place the category is to take in the picker; the server renumbers the others, so the list stays a dense 1..n. Send the place you want it in, not the neighbour's number: sending a place it already holds changes no order at all, and a place past the end of the list is the end. Deactivated categories keep their place and are counted in the numbering.
 	Position int32 `json:"position"`
 }
 

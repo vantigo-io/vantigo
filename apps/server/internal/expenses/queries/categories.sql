@@ -7,10 +7,25 @@ SELECT * FROM expenses.categories ORDER BY position, name;
 -- name: GetCategory :one
 SELECT * FROM expenses.categories WHERE id = @id;
 
--- name: NextCategoryPosition :one
--- NextCategoryPosition is the position a new category takes when the caller
--- named none: last. An empty table answers 1.
-SELECT coalesce(max(position), 0) + 1 FROM expenses.categories;
+-- name: CategoryIDsInOrder :many
+-- CategoryIDsInOrder is every category in its current order, every row held
+-- for the rest of the transaction. A move reorders this list in Go and writes
+-- it back with RenumberCategories, so what it renumbers is exactly what it
+-- read, and two moves at once take the rows in the same order and queue.
+--
+-- Deactivated categories are in it: a category nobody may choose any more
+-- still sits where it sat, so deactivating one does not shuffle the picker.
+SELECT id FROM expenses.categories ORDER BY position, name FOR UPDATE;
+
+-- name: RenumberCategories :exec
+-- RenumberCategories writes the list back as a dense 1..n in one statement:
+-- ids is the categories in their new order and WITH ORDINALITY is the number
+-- each one takes. A row already carrying its number is left alone, so a move
+-- at one end of the list does not touch the other.
+UPDATE expenses.categories c
+SET position = v.ord::integer, updated_at = @now::timestamptz
+FROM unnest(@ids::integer[]) WITH ORDINALITY AS v(id, ord)
+WHERE c.id = v.id AND c.position <> v.ord::integer;
 
 -- name: InsertCategory :one
 -- InsertCategory adds a category. A name another row already holds, however

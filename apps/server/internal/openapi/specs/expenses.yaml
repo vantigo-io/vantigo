@@ -79,7 +79,7 @@ components:
                 - revision
             type: object
         ExpensesCategoryRequest:
-            description: A new expense category. The name is unique case-insensitively; position orders the picker and defaults to the end.
+            description: A new expense category. The name is unique case-insensitively; position is the place it takes in the picker and defaults to the end.
             properties:
                 active:
                     description: Whether the category may be chosen. Absent means active.
@@ -87,7 +87,7 @@ components:
                 name:
                     type: string
                 position:
-                    description: Where the category sits in the picker, 1 or greater. Absent puts it last.
+                    description: The 1-based place the category takes in the picker; the server renumbers the others around it, so the list stays a dense 1..n. A place past the end of the list is the end. Absent puts it last.
                     format: int32
                     type: integer
             required:
@@ -104,6 +104,7 @@ components:
                 name:
                     type: string
                 position:
+                    description: The 1-based place it holds in the picker. Positions are a dense 1..n over every category, active or not, and the list is returned in that order — so this is the place it ended up in, which is not always the one a request asked for.
                     format: int32
                     type: integer
             required:
@@ -120,7 +121,7 @@ components:
                 name:
                     type: string
                 position:
-                    description: Where the category sits in the picker, 1 or greater.
+                    description: 'The 1-based place the category is to take in the picker; the server renumbers the others, so the list stays a dense 1..n. Send the place you want it in, not the neighbour''s number: sending a place it already holds changes no order at all, and a place past the end of the list is the end. Deactivated categories keep their place and are counted in the numbering.'
                     format: int32
                     type: integer
             required:
@@ -1294,7 +1295,7 @@ paths:
             x-vantigo-access: permission:expenses:access
     /api/v1/expenses/categories:
         get:
-            description: Every expense category, in position order and then by name, inactive ones included so a stored expense can still name its own.
+            description: Every expense category in its own order, inactive ones included so a stored expense can still name its own. Positions are a dense 1..n that the server keeps, so this order is the positions themselves.
             operationId: getExpensesCategories
             responses:
                 "200":
@@ -1322,7 +1323,7 @@ paths:
                 - Expenses
             x-vantigo-access: permission:expenses:access
         post:
-            description: Adds an expense category.
+            description: Adds an expense category. With no position it goes last; with one it is inserted at that place and the rest of the list is renumbered around it.
             operationId: postExpensesCategories
             requestBody:
                 content:
@@ -1361,7 +1362,7 @@ paths:
             x-vantigo-access: permission:expenses:access+expenses:manage
     /api/v1/expenses/categories/{id}:
         put:
-            description: Replaces a category's name, whether it may be chosen, and where it sits. A category is never deleted — one that is no longer wanted is deactivated, so the expenses booked on it keep their name.
+            description: 'Replaces a category''s name, whether it may be chosen, and where it sits. A category is never deleted — one that is no longer wanted is deactivated, so the expenses booked on it keep their name. Moving one is this operation: send the place it should take and the server takes it out of the list, puts it back there and renumbers every category 1..n, so a move always moves. A request that repeats the place the category already holds reorders nothing.'
             operationId: putExpensesCategoriesById
             parameters:
                 - in: path
