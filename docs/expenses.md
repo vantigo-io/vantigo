@@ -339,8 +339,10 @@ remainder longer than six**:
 - `overnight: true` — one `overnight_hotel` per full 24-hour period from the
   departure, plus one more when what is left over runs *strictly* longer than
   six hours, and never fewer than one. The periods are 24 hours from the
-  departure *instant*, never calendar midnights, and each day is dated on the UTC
-  day its own period starts. So 6 h 00 and 24 h 00 and 30 h 00 are one day,
+  departure *instant*, never calendar midnights, and each day is dated on the
+  day its own period starts **in the installation's business time zone** — the
+  same rule as everywhere else, so a day the server proposes can never fall
+  outside the trip the save then judges it against. So 6 h 00 and 24 h 00 and 30 h 00 are one day,
   30 h 01 and 31 h are two, 48 h 00 is two and 54 h 01 is three.
 
 The six hours reads two ways on purpose: **inclusive** as the threshold a whole
@@ -386,8 +388,8 @@ row on a day the product never shipped. Nothing in the product fetches a rate
 from anywhere: **when the agreement is renegotiated — it expires 2027-12-31 —
 somebody has to enter the new rows by hand, dated from the day they take
 effect.** The old rows stay, which is the point: an expense dated last year is
-still priced by last year's figure, and a submitted one keeps whatever it was
-frozen with whatever the table says today.
+still priced by last year's figure, and a submitted one keeps what it was
+frozen with, whatever the table says today.
 
 Two kinds ship **unseeded**, and each is a deliberate blank rather than an
 oversight:
@@ -728,7 +730,8 @@ everything). Format, byte for byte:
   whole trip rather than splitting it.
 - Headers: `Content-Type: text/csv; charset=utf-8`,
   `Content-Disposition: attachment; filename="expenses-reimbursements-YYYY-MM-DD.csv"`
-  (today, UTC), `Cache-Control: private, no-store`.
+  (today in the business time zone, which is the day the clerk downloading it
+  would write on the folder), `Cache-Control: private, no-store`.
 - It takes the list's own filters, or explicit `entryIds` **and** `claimIds`
   instead of them; a selection that is present and names nothing at all is
   refused rather than read as "everything", and an id the export cannot hold is
