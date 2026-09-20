@@ -12,6 +12,34 @@ It depends on nobody but identity. [Projects](projects.md) is an **optional** re
 through `contracts.ProjectDirectory`: `MODULES=customers,expenses` is a valid
 installation, and so is `MODULES=expenses` alone.
 
+## What is in here
+
+- [Domain model](#domain-model) · [Money rules](#money-rules) (including what
+  **owed to the employee** means) · [The optional Projects link](#the-optional-projects-link)
+- The travel claim: [the unit an expense belongs to](#the-unit-an-expense-belongs-to) ·
+  [the lock order inside a claim](#the-lock-order-inside-a-claim) ·
+  [the per diem day](#the-per-diem-day)
+- [The rates, and what they deliberately do not model](#the-rates-and-what-they-deliberately-do-not-model)
+- The flow: [what freezes on submit](#the-flow-and-what-freezes-on-submit) ·
+  [the receipt rule](#the-receipt-rule) · [approval](#approval) ·
+  [pricing by the project side](#pricing-by-the-project-side) ·
+  [the two tracks after approval](#the-two-tracks-after-approval) ·
+  [the period lock](#the-period-lock)
+- Who sees what: [permissions](#permissions) ·
+  [visibility and shaping](#visibility-and-shaping) · [receipts](#receipts)
+- [The payroll CSV](#the-payroll-csv) · [stats and attention](#stats-and-attention) ·
+  [refusal codes](#refusal-codes) · [the locking rule](#the-locking-rule) ·
+  [API](#api) · [development](#development)
+
+**Administering it.** Four settings decide what everybody else may do, and they
+are the four an administrator actually opens: the
+[dated rates](#the-rates-and-what-they-deliberately-do-not-model) (including
+what to do when the state agreement is renegotiated, and what to do if your
+company pays its own), the [business time zone](#the-per-diem-day) under "Which
+day is which", the [period lock](#the-period-lock) and the
+[receipt rule](#the-receipt-rule). Everything between them is how the module
+enforces what they say.
+
 ## Domain model
 
 - **Entry** (`expenses.entries`) — one money line: an **outlay**, a **mileage**
@@ -104,6 +132,25 @@ numbers by hand gets; this module never does either.
   (`numeric(12,2)` for money, `9999.9` km for distance, `1000` % for a markup), and a
   computed figure that would overflow one is a 400 naming the field that drove it —
   never a database error.
+
+**What "owed to the employee" is.** `owedToEmployee` is the figure the payroll
+track is built on, and it is not the same thing as what the expense cost:
+
+- an **outlay the employee paid** owes them its whole **gross**, VAT and all —
+  they are out of pocket by what they handed over, not by the net;
+- an **outlay the company paid** owes them **nothing**, whatever it cost;
+- a **mileage line** owes them its amount, and a **per diem day** owes them
+  its amount — both are always the employee's;
+- a line whose gross rounds to nothing owes nothing, so it can never be put on
+  a payroll run.
+
+One rule, written twice on purpose and kept in step: `owesEmployee` in
+`authorize.go` decides whether a single unit may be marked reimbursed, and
+`ListReimbursementRows` applies the same predicate in SQL to build the list. A
+travel claim owes the **sum of what its lines owe**, and is paid as one unit
+for that sum. Nothing here is a net, a markup or a bill amount: what the
+customer is charged lives on the other track entirely and never touches this
+figure.
 
 ## The optional Projects link
 
@@ -374,24 +421,30 @@ short trip somebody slept away on is still a trip; six hours left over at the en
 of a longer one is not another day.
 
 `overnight: true` proposes `overnight_hotel` throughout, the type the agreement
-prices; a traveller who stayed somewhere else changes it on the line. The client
-may mirror the counting for display, but the figures on the page are the server's.
-A trip may run 366 days against a cap of 200 lines, so a "record them all" button
+prices; a traveller who stayed somewhere else changes it on the line. **No
+client counts days of its own** — the app asks for the suggestion and shows
+what comes back, because the rates are dated and an administrator may change a
+row between one page load and the next. A trip may run 366 days against a cap of 200 lines, so a "record them all" button
 has to reckon with the cap itself. The whole suggestion is priced from **one**
 read of one rate kind — every day of one suggestion shares a type — rather than a
 query a day.
 
-**A per diem day has no description of its own unless its owner wrote one.** The
-column takes the empty string: what the day *is* is its `perDiem.type`, which
-every reader already has, and a name the server invented would sit in the column
-in one language for ever.
+**A per diem day is named by what it is, never by a description.** The column is
+the only optional one on the kind — a per diem day is the one entry that may be
+saved without one, and a description that *is* sent is stored — but nothing ever
+shows it: the app names the day from `perDiem.type` in the reader's own
+language, and the payroll file writes the type code into that cell whatever the
+column holds. So the column is, in practice, dead on a per diem day. The
+alternative was for the server to invent a name, which would then sit in the
+database in one language for ever.
 
 ## The rates, and what they deliberately do not model
 
 The rate in force on a day is the row of that kind with the greatest `validFrom`
 on or before it, and a row carries **no end date**: it stands until a later row
-takes over. Every seeded row is written by migration 00013 with `validFrom`
-2026-01-01 and `source: "State rate"`:
+takes over. Every seeded row carries `validFrom` 2026-01-01 and
+`source: "State rate"`; the two mileage rows are migration **00012**'s and the
+six per diem and meal rows are **00013**'s:
 
 | Kind | Value | Source |
 |---|---|---|
@@ -413,6 +466,24 @@ somebody has to enter the new rows by hand, dated from the day they take
 effect.** The old rows stay, which is the point: an expense dated last year is
 still priced by last year's figure, and a submitted one keeps what it was
 frozen with, whatever the table says today.
+
+**On an installation that was already running delivery A**, the table above may
+not be what you hold. Delivery A's `POST /rates` already accepted every per
+diem and meal kind, so an administrator who had entered the company's own
+figures dated 2026-01-01 keeps **theirs**: 00013's insert is
+`ON CONFLICT (kind, valid_from) DO NOTHING`, and it neither overwrites a value
+nor relabels a `source`. `POST /rates/reset` is what puts the state figure
+back on those days, one kind at a time.
+
+**If your company pays its own domestic rates**, add a row dated the day your
+rate takes effect rather than editing the 2026-01-01 one. Both work — the rate
+in force is the latest row on or before the day — but they differ in two ways
+that matter. A row of your own, on a day the product does not ship, is
+**untouched by Reset** and leaves everything already recorded priced as it was;
+editing the shipped row reprices every draft day on its next save and is
+**overwritten** the next time anybody presses Reset on that kind. Either way a
+**submitted** day keeps what it was frozen with: changing the table never
+reaches back into a trip that has gone for approval.
 
 Two kinds ship **unseeded**, and each is a deliberate blank rather than an
 oversight:
@@ -623,7 +694,8 @@ closed, the date itself is open, and everyone reads it (the client greys out day
 nobody but `expenses:manage` may touch).
 
 **What it protects:** creating, editing, deleting and submitting an expense;
-approving, rejecting and unapproving one; and overriding a mileage rate — every
+approving, rejecting and unapproving one; and overriding the rate on a mileage
+line **or a per diem day** — every
 step of what the employee submitted and what an approver decided. A **travel
 claim** is judged by the day it departed, and its lines with it: a trip that left
 inside a closed period cannot be recorded, changed, submitted or decided on,
@@ -741,9 +813,9 @@ everything). Format, byte for byte:
   `claim 1012` — and `Purpose` carries the trip's own, empty for a standalone
   expense. A payroll system that wants the trip as one figure adds its rows; a
   person reading the file sees what each amount was for.
-- **A per diem day** has no description of its own unless its owner wrote one, so
-  its `Description` cell carries the per diem type (`day_6_12`, `overnight_hotel`,
-  …) and its `Category` cell is empty — it is booked on none.
+- **A per diem day** is named by what it is: its `Description` cell carries the
+  per diem type (`day_6_12`, `overnight_hotel`, …) **whatever the stored
+  description holds**, and its `Category` cell is empty — it is booked on none.
 - Rows are ordered by the person's **display name**, then by the **unit's own
   day** (a standalone expense's entry date; a travel claim's departure day in the
   installation's time zone), then by the unit itself, and inside a unit by the
