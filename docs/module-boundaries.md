@@ -58,6 +58,17 @@ Communications' outbox is the working example.
   its directory, and each forbidden module gets two deny entries — an exact,
   `$`-anchored match so it can never prefix-match a sibling, and a `…/<mod>/` match
   covering every subpackage including generated ones.
+  **`apps/server/internal/integration` is the second place, after `cmd/vantigo`,
+  that may import several business modules at once** — and the second deliberate
+  exception in `.golangci.yml`, after `internal/modtest`. It is absent from every
+  `files:` scope there — which is what lets one test import `projects`, `time` and
+  `expenses` together — because it is the one place several *real* modules are
+  composed, so that a cross-module promise ("two modules reading the same data
+  report the same figures") is pinned against the other side itself rather than
+  against a hand-written imitation of it. The exemption holds only while the
+  package stays **test-only**: it has no production code and nothing imports it,
+  so it buys a test and costs no coupling. Anything non-test added there needs a
+  depguard rule of its own; see its `doc.go`.
 - **Rule 4**: `apps/server/internal/db/schema_test.go` scans every migration and
   query file and fails when one module's SQL names another module's schema.
 - **Rule 5**: `module.Compose` itself. It fails on a duplicate module name, an

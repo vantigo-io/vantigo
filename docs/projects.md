@@ -668,7 +668,9 @@ somebody logged must appear somewhere.
 
 **No `expenses:access` is needed, and none is checked.** Whoever has financial
 rights on a project sees its expense aggregates here and on the portfolio without
-holding a single Expenses permission — exactly as they have always seen Time's
+holding a single Expenses permission — which is also why the Economy tab's link to
+the Expenses tab is filled in only for a caller who holds `expenses:access`, and the
+figures stand there without one — exactly as they have always seen Time's
 hours and amounts without `time:access`. The aggregate is *the project's money*,
 which is what financial rights on the project are rights to; `expenses:access` is
 the right to use the Expenses app, where the same caller is answered 403 for the
@@ -783,9 +785,9 @@ per-project read.
   dashboard's budget alerts hit the same cap and answer differently — see
   [The dashboard signals](#the-dashboard-signals).
 - **Totals are taken over the whole filtered set, before the page is cut** —
-  project count, over-budget count, ready count, ready expense count, and
-  `readyAmounts` (one entry per currency, by currency code) — so paging never
-  changes the headline figures. Rows are shaped once per read; customer names are
+  project count, over-budget count, ready count, ready expense count, the count of
+  projects with something ready in another currency, and `readyAmounts` (one entry
+  per currency, by currency code) — so paging never changes the headline figures. Rows are shaped once per read; customer names are
   resolved for the **page only**, once per distinct customer on it.
 
 **Ready to invoice, both halves.** A row's `readyAmount` and `readyCount` keep
@@ -794,14 +796,34 @@ are the project's ready expense lines **in its own currency only** — a portfol
 is one line of a table, so another currency is not folded in and no per-row currency
 list is offered; that is the per-project read's business — and `readyTotalAmount` is
 the two halves together, which is what the `readyAmount` **sort** orders by and what
-a project whose receipts outweigh another's milestone is ranked on. `hasReady=true`
-keeps a project whose *only* ready thing is a billable receipt: the filter asks "is
-there anything to invoice here". In the totals, each `readyAmounts` entry carries
-`amount` (milestones), `expenseAmount` and `totalAmount`, each rounded once from the
-exact sum across rows, and a currency appears when **either** half has something in
-it — a currency in the list only for its expenses reports `amount: 0`, which is a
-sum over no milestones rather than a missing figure. All five of those fields are
-absent when `expenseTracking` is `false`.
+a project whose receipts outweigh another's milestone is ranked on.
+
+**What is ready in another currency is flagged, never dropped.** A line whose
+currency is not the project's — and *every* ready line of a project that carries no
+currency at all — is in none of those figures, so the row carries
+**`readyExpenseOtherCurrency`**: present and `true` when there is such money, absent
+otherwise, and never `false`. It carries **no amount on purpose**: a row cannot hold
+a second currency without inviting somebody to add two figures that do not add up.
+The amounts are on the project's own Economy tab, under `expenses.otherCurrencies`,
+per currency and never converted. `hasReady=true` **keeps a flagged row** even though
+its `readyExpenseCount` is `0` — the filter asks "is there anything to invoice here",
+and there is. The UI reads the flag as one dimmed line under the figures ("More ready
+in another currency") and the project's own code beside it is the way to the amounts.
+
+In the totals, each `readyAmounts` entry carries `amount` (milestones),
+`expenseAmount` and `totalAmount`, each rounded once from the exact sum across rows,
+and a currency appears when **either** half has something in it — a currency in the
+list only for its expenses reports `amount: 0`, which is a sum over no milestones
+rather than a missing figure. Beside them **`readyExpenseOtherCurrencyCount`** counts
+**projects, not lines**: how many of them have something ready in a currency that is
+not their own. Projects is the only honest unit — amounts in different currencies do
+not add up, and a count of lines would invite a headline figure that mixes them.
+
+All **eight** of those fields — the row's `readyExpenseCount`, `readyExpenseAmount`,
+`readyTotalAmount` and `readyExpenseOtherCurrency`, the totals'
+`readyExpenseCount` and `readyExpenseOtherCurrencyCount`, and each `readyAmounts`
+entry's `expenseAmount` and `totalAmount` — are absent when `expenseTracking` is
+`false`.
 
 ### The dashboard signals
 
@@ -1210,13 +1232,39 @@ off. The host also owns the detail tab list, which is how Time and Expenses each
 a tab exactly as Energy does on the customer page — the Tasks and Economy tabs are
 two entries in that same list, gated on nothing but seeing the project.
 
+**What the Economy tab shows of the expenses.** Under the budget, a **Costs**
+section: the project's recorded expenses in three labelled rows — approved,
+submitted and awaiting approval, and draft (which is where a rejected one sits) —
+each with how many lines it holds, what they cost the company and what of them is
+passed on to the customer, over a total the server sends rather than the three rows
+added up. Under the table, what the figures leave out: billable lines nobody has
+priced yet, and one line per currency the project is not in, written in **that**
+currency and never converted. The section says in so many words that none of it is
+measured against the budget ([X12](#project-economy)), because it sits directly under
+"Budget used". Where the caller may also see costs, the **margin** now counts the
+expenses and says so, with the labour and expense halves of its cost side beside it.
+The invoice plan gains one row — the billable expenses ready to invoice, with their
+count and amount. An installation without the expenses module shows **none** of this,
+not a zero anywhere. On the **portfolio**, the ready column is what is ready
+altogether, with the milestone and expense halves named under it when there is one of
+each, and a line saying when more is ready in a currency the row cannot report; the
+ready card counts milestones and expense lines as two labelled numbers, gives each
+currency's total, and says how many projects have money waiting in another currency.
+
 The Economy tab's **costs** section and its "billable expenses ready to invoice" row
 are the project's own reading of what Expenses reports; the Expenses tab beside it is
 the same money from the other module's side, with the individual expenses the caller
 may open and a **Record a cost** button. The link between them is the host's:
 `ProjectEconomy` takes an optional `expensesHref`, which the host fills in with
-`/projects/{id}/expenses` only when the expenses module is mounted — this package
-knows no route of the Expenses app and imports nothing from it. Both tabs read the
+`/projects/{id}/expenses` **only when the Expenses tab itself is open to the
+caller** — the module mounted *and* `expenses:access` — from
+`visibleProjectDetailTabs`, the same function the tab row is built from, so the link
+and the tab can never give two different answers. A manager who may see the figures
+but does not use the Expenses app (see
+[Shaping — who sees what](#shaping--who-sees-what): no `expenses:access` is needed
+for the figures) therefore reads the row as plain text with no link, which is the
+right answer — the page it would lead to would refuse them. This package knows no
+route of the Expenses app and imports nothing from it. Both tabs read the
 same figures, so the host refreshes the economy queries when something on the
 Expenses tab changes them. See [docs/expenses.md](expenses.md#on-the-project-page). Spotlight has
 **Create project** and **Create task** quick actions and a Projects result group
