@@ -1693,6 +1693,68 @@ func TestExpensesClaims_AppliesAndIsIdempotent(t *testing.T) {
 	}
 }
 
+// TestExpensesClaims_AppliesOverACompanysOwnPerDiemRate is the migration
+// meeting a database the product has already been used on. Delivery A shipped
+// POST /rates accepting every per diem and meal kind, so an administrator
+// preparing for travel claims can already have entered the very rows this
+// migration seeds — on 2026-01-01, which is when the agreement took effect and
+// therefore the obvious day to enter. ux_rates_kind_valid_from admits one row
+// per kind and day, so a plain INSERT would abort the migration and leave the
+// tenant's server refusing to start, fixable only by hand in the database.
+//
+// The company's own figure wins: it is a rate an administrator entered on
+// purpose, and POST /rates/reset is the door that puts the shipped one back on
+// request.
+func TestExpensesClaims_AppliesOverACompanysOwnPerDiemRate(t *testing.T) {
+	url := testdb.URL(t)
+	ctx := context.Background()
+
+	migrateTo(t, url, 12)
+	pool, err := db.Open(ctx, url)
+	if err != nil {
+		t.Fatalf("open pool: %v", err)
+	}
+	defer pool.Close()
+
+	// One money kind and one percentage kind, because the seeds are of both.
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO expenses.rates (kind, valid_from, value, currency, source, created_at, updated_at) VALUES
+		    ('per_diem_6_12',       DATE '2026-01-01', 410.00, 'NOK', 'Vår egen sats', now(), now()),
+		    ('meal_lunch_percent',  DATE '2026-01-01',  25.00, NULL,  'Vår egen sats', now(), now())`); err != nil {
+		t.Fatalf("enter the company's own per diem rates on delivery A: %v", err)
+	}
+
+	migrateTo(t, url, 13)
+
+	// Their figures stand, under their own label.
+	for _, want := range []struct{ kind, value, source string }{
+		{"per_diem_6_12", "410.00", "Vår egen sats"},
+		{"meal_lunch_percent", "25.00", "Vår egen sats"},
+	} {
+		var value, source string
+		if err := pool.QueryRow(ctx, `
+			SELECT value::text, source FROM expenses.rates
+			WHERE kind = $1 AND valid_from = DATE '2026-01-01'`, want.kind).Scan(&value, &source); err != nil {
+			t.Fatalf("read %s after the migration: %v", want.kind, err)
+		}
+		if value != want.value || source != want.source {
+			t.Errorf("%s = %s (%s), want the company's own %s (%s) left alone",
+				want.kind, value, source, want.value, want.source)
+		}
+	}
+	// And the kinds they had not entered were seeded as usual.
+	var shipped int
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*) FROM expenses.rates
+		WHERE source = 'State rate' AND kind LIKE 'per_diem%' OR source = 'State rate' AND kind LIKE 'meal%'`).
+		Scan(&shipped); err != nil {
+		t.Fatalf("count the seeds: %v", err)
+	}
+	if shipped != 4 {
+		t.Errorf("%d shipped per diem rates, want the four kinds the company had not entered", shipped)
+	}
+}
+
 // TestExpensesClaims_TheDownMigrationKeepsACompanysOwnRates pins what the down
 // migration's seed identity actually means. It deletes the rows it wrote by
 // (kind, valid_from, source), so:
