@@ -160,14 +160,18 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/time/rates/{id}` (putTimeRatesById)
 - `PUT /api/v1/time/settings` (putTimeSettings)
 
-## expenses (37 uncovered)
+## expenses (44 uncovered)
 
 - `DELETE /api/v1/expenses/attachments/{id}` (deleteExpensesAttachmentsById)
+- `DELETE /api/v1/expenses/claims/{id}` (deleteExpensesClaimsById)
 - `DELETE /api/v1/expenses/entries/{id}` (deleteExpensesEntriesById)
 - `DELETE /api/v1/expenses/rates/{id}` (deleteExpensesRatesById)
 - `GET /api/v1/expenses/approvals` (getExpensesApprovals)
 - `GET /api/v1/expenses/attachments/{id}` (getExpensesAttachmentsById)
 - `GET /api/v1/expenses/categories` (getExpensesCategories)
+- `GET /api/v1/expenses/claims/{id}` (getExpensesClaimsById)
+- `GET /api/v1/expenses/claims` (getExpensesClaims)
+- `GET /api/v1/expenses/entries/{id}/billing-lines` (getExpensesEntriesByIdBillingLines)
 - `GET /api/v1/expenses/entries/{id}` (getExpensesEntriesById)
 - `GET /api/v1/expenses/entries` (getExpensesEntries)
 - `GET /api/v1/expenses/meta` (getExpensesMeta)
@@ -182,6 +186,8 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `GET /api/v1/expenses/stats` (getExpensesStats)
 - `POST /api/v1/expenses/approve` (postExpensesApprove)
 - `POST /api/v1/expenses/categories` (postExpensesCategories)
+- `POST /api/v1/expenses/claims/{id}/per-diem-suggestion` (postExpensesClaimsByIdPerDiemSuggestion)
+- `POST /api/v1/expenses/claims` (postExpensesClaims)
 - `POST /api/v1/expenses/entries/{id}/attachments` (postExpensesEntriesByIdAttachments)
 - `POST /api/v1/expenses/entries/{id}/invoiced/undo` (postExpensesEntriesByIdInvoicedUndo)
 - `POST /api/v1/expenses/entries/{id}/invoiced` (postExpensesEntriesByIdInvoiced)
@@ -194,10 +200,11 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `POST /api/v1/expenses/submit` (postExpensesSubmit)
 - `POST /api/v1/expenses/unapprove` (postExpensesUnapprove)
 - `PUT /api/v1/expenses/categories/{id}` (putExpensesCategoriesById)
+- `PUT /api/v1/expenses/claims/{id}` (putExpensesClaimsById)
 - `PUT /api/v1/expenses/entries/{id}/billing` (putExpensesEntriesByIdBilling)
 - `PUT /api/v1/expenses/entries/{id}/rate` (putExpensesEntriesByIdRate)
 - `PUT /api/v1/expenses/entries/{id}` (putExpensesEntriesById)
 - `PUT /api/v1/expenses/rates/{id}` (putExpensesRatesById)
 - `PUT /api/v1/expenses/settings` (putExpensesSettings)
 
-Total: 174 of 309 operations have no recorded exchange.
+Total: 181 of 316 operations have no recorded exchange.
