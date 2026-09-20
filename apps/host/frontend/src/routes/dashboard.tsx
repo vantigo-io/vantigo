@@ -426,10 +426,10 @@ export const awaitingApprovalHint = (
 /**
  * The Expenses card's primary figure: the first currency the caller is owed
  * in, with how many more there are when they are owed in several — nothing is
- * ever summed across currencies (design §4) — and a plain "nothing owed" once
- * `/stats/summary` has answered with an empty list. `undefined` (still
- * loading) is left to the caller, which shows "—" the way every other card
- * does.
+ * ever summed across currencies (design §4) — and a plain "nothing owed" for
+ * an empty list, or for no list at all. The caller shows "—" while the summary
+ * is still loading, the way every other card does, and only asks this once
+ * there is an answer.
  */
 export const expensesUnreimbursedValue = (
   totals: { currency: string; amount: number }[] | undefined,
