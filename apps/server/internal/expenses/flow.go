@@ -716,7 +716,8 @@ func (s *server) PostExpensesReject(ctx context.Context, req gen.PostExpensesRej
 // Approved expenses become fresh drafts — by whoever could have approved them,
 // or by expenses:manage — with the decision and the submission stamp cleared,
 // so the owner sees something to change and send again. Never one that has been
-// reimbursed or invoiced: undoing those is their own operation (Task 5).
+// reimbursed or invoiced: the reimbursement track and the invoicing track each
+// have an undo of their own.
 func (s *server) PostExpensesUnapprove(ctx context.Context, req gen.PostExpensesUnapproveRequestObject) (gen.PostExpensesUnapproveResponseObject, error) {
 	body := gen.ExpensesFlowRequest{}
 	if req.Body != nil {

@@ -162,7 +162,7 @@ components:
             description: What an expense bills its customer (decision X7). Present only for a caller with financial rights on the entry's project — its managers, projects:manage-all, and projects:view-financials on a project they can see — and then always present, even with nothing in it, so a client can tell "may see, nothing billed" from "may not see". The entry's owner does not see it as such.
             properties:
                 billAmount:
-                    description: What the customer is billed; zero on a line nobody bills.
+                    description: What the customer is billed; zero on a line nobody bills. It always follows the line as it now stands — a save that changes the net or the distance works it out again from the markup or the customer rate the line carries, in an installation with no projects module too, where those two are carried through untouched.
                     format: double
                     type: number
                 billRatePerKm:
@@ -281,7 +281,9 @@ components:
                     format: date-time
                     type: string
                 by:
-                    $ref: '#/components/schemas/ExpensesUserRef'
+                    allOf:
+                        - $ref: '#/components/schemas/ExpensesUserRef'
+                    description: Who decided it. Absent only for a row carrying a decision and no decider, which no operation here can produce.
                 reason:
                     description: Why it was rejected, as the approver wrote it. Absent on an approval.
                     type: string
@@ -291,7 +293,6 @@ components:
             required:
                 - status
                 - at
-                - by
             type: object
         ExpensesEntryOwner:
             description: The person the expense concerns — who gets the money back — which is not always who recorded it.
@@ -355,7 +356,7 @@ components:
                     format: date
                     type: string
                 reference:
-                    description: The payroll run it went with, as whoever marked it typed it. Absent when none was given.
+                    description: 'The payroll run it went with, as whoever marked it typed it. Absent when none was given, and absent for a reader who is neither the expense''s owner nor a holder of expenses:view-all, expenses:approve or expenses:manage: that the money went is everyone''s business, which batch it went in is the payroll clerk''s. A project manager therefore reads the stamp without this field.'
                     maxLength: 100
                     type: string
             required:
@@ -1069,7 +1070,7 @@ components:
                 - myUnreimbursed
             type: object
         ExpensesUserRef:
-            description: One person, named through identity — the owner of an approval group, or whoever overrode a rate.
+            description: One person, named through identity — an expense's owner, the owner of an approval or reimbursement group, whoever overrode a rate, whoever decided the expense, whoever paid it back, or whoever invoiced it.
             properties:
                 active:
                     description: Whether identity still has them as an active user.
@@ -1968,8 +1969,15 @@ paths:
             x-vantigo-access: permission:expenses:access
     /api/v1/expenses/projects:
         get:
-            description: The projects the caller may book an expense on, with their active billing lines, so the expense form needs no code of the projects module's own. Answers 404 in an installation with no projects module (decision X2) — the same answer as a path that is not there.
+            description: 'The projects the caller may book an expense on, with their active billing lines, so the expense form needs no code of the projects module''s own. With userId it is the projects that person may book on instead, which is what a form recording an expense for somebody else needs: the save is judged on the owner''s own bookability, so a picker offering the caller''s would offer projects the save then refuses. Answers 404 in an installation with no projects module (decision X2) — the same answer as a path that is not there.'
             operationId: getExpensesProjects
+            parameters:
+                - description: 'The person the expense is being recorded for. Naming anybody but the caller needs expenses:manage, the permission that lets one record for somebody else; left out, it is the caller''s own projects.'
+                  in: query
+                  name: userId
+                  schema:
+                    format: uuid
+                    type: string
             responses:
                 "200":
                     content:
@@ -1979,6 +1987,12 @@ paths:
                                     $ref: '#/components/schemas/ExpensesProjectOption'
                                 type: array
                     description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — on userId, for somebody the caller may not ask about or an id nobody active has.
                 "401":
                     content:
                         application/json:
@@ -2370,7 +2384,7 @@ paths:
                   schema:
                     format: date
                     type: string
-                - description: Exactly these expenses instead of the filters. An id that is not one the export could hold refuses the whole file rather than being left out of it silently.
+                - description: Exactly these expenses instead of the filters. An id that is not one the export could hold refuses the whole file rather than being left out of it silently, and a parameter that is present but names nothing is refused rather than read as "everything" — a button with nothing selected should leave it out and send the filters.
                   in: query
                   name: entryIds
                   schema:
@@ -2391,7 +2405,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
-                    description: Bad Request — on state for an unknown one, on entryIds for an id the export cannot hold or for more than 5000 of them, or, with no field errors at all, because the filters would produce more rows than one file may hold.
+                    description: Bad Request — on entryIds for an id the export cannot hold, for more than 5000 of them, or for a present but empty list; and, with no errors object at all, for an unknown state (the very body GET /reimbursements answers it with) or because the filters would produce more rows than one file may hold.
                 "401":
                     content:
                         application/json:
@@ -2706,7 +2720,7 @@ paths:
             x-vantigo-access: permission:expenses:access
     /api/v1/expenses/unapprove:
         post:
-            description: 'Returns approved expenses to a draft their owner can change and submit again — by whoever could have approved them, or by expenses:manage — clearing the decision and the submission stamp alike. The figures the submit froze stay on the line until the next save or submit recomputes them. Never an expense that has been reimbursed or invoiced: those are Task 5''s tracks and undoing them is their own operation.'
+            description: 'Returns approved expenses to a draft their owner can change and submit again — by whoever could have approved them, or by expenses:manage — clearing the decision and the submission stamp alike. The figures the submit froze stay on the line until the next save or submit recomputes them. Never an expense that has been reimbursed or invoiced: the reimbursement track and the invoicing track each have an undo of their own.'
             operationId: postExpensesUnapprove
             requestBody:
                 content:

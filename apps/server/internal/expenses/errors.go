@@ -114,6 +114,24 @@ func invalidQuery(messages []string) apicommon.ProblemDetails {
 	return apicommon.Problem(invalidQueryTitle, strings.Join(messages, " "))
 }
 
+// invalidQueryFields is invalidQuery for an operation whose 400 is declared as
+// a validation problem: the same title and the same detail, with the field
+// errors a caller can act on. The export and the project picker answer here.
+func invalidQueryFields(errs map[string][]string) apicommon.HttpValidationProblemDetails {
+	return apicommon.ValidationProblem(invalidQueryTitle, errs)
+}
+
+// invalidExportQuery is a query parameter the export cannot use, answered in
+// the shape and the words GET /reimbursements refuses the very same parameter
+// in — one title, one detail, no errors object — so a client handling the pair
+// has one shape to cope with rather than two. The per-id refusals stay field
+// errors: those are about the expenses named, not about the query.
+func invalidExportQuery(messages []string) apicommon.HttpValidationProblemDetails {
+	title, status := invalidQueryTitle, int32(http.StatusBadRequest)
+	detail := strings.Join(messages, " ")
+	return apicommon.HttpValidationProblemDetails{Title: &title, Status: &status, Detail: &detail}
+}
+
 // forbidden is the access layer's own 403 body, answered by a handler that
 // denies on something the router could not evaluate — whether the caller owns
 // *this* expense and it is still theirs to change.

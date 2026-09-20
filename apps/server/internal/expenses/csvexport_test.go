@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/expenses"
 )
 
@@ -147,9 +148,75 @@ func TestExpensesReimbursementsExport_RefusesWhatItCannotExport(t *testing.T) {
 		}
 	}
 
-	bad := refusedExport(t, boss, "?state=paid")
-	if len(bad["state"]) == 0 {
-		t.Errorf("errors = %v, want one on state", bad)
+	// entryIds given but empty is a mistake worth reporting, not "export
+	// everything": a client that builds the parameter from a row selection and
+	// sends nothing would otherwise hand payroll the whole unpaid list. An
+	// absent parameter is still the filter mode, which is what the button with
+	// nothing ticked should send instead.
+	if r := boss.Do(http.MethodGet, reimbursementsExportPath+"?entryIds=", nil); r.Status != http.StatusBadRequest {
+		t.Errorf("an empty entryIds: status %d body %s, want 400 rather than the whole unpaid list",
+			r.Status, r.Body)
+	}
+}
+
+// TestExpensesReimbursementsExport_RefusesAnUnknownStateTheWayTheListDoes: the
+// same bad parameter, refused the same way on both doors — one title, one
+// detail, no field errors — so a client handling the pair has one shape to
+// cope with rather than two.
+func TestExpensesReimbursementsExport_RefusesAnUnknownStateTheWayTheListDoes(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	boss, _ := signIn(t, h, "expenses:manage")
+
+	var fromList, fromExport map[string]any
+	for _, tc := range []struct {
+		path string
+		into *map[string]any
+	}{
+		{reimbursementsPath + "?state=paid", &fromList},
+		{reimbursementsExportPath + "?state=paid", &fromExport},
+	} {
+		r := boss.Do(http.MethodGet, tc.path, nil)
+		if r.Status != http.StatusBadRequest {
+			t.Fatalf("GET %s: status %d body %s, want 400", tc.path, r.Status, r.Body)
+		}
+		r.JSON(tc.into)
+	}
+	if fmt.Sprint(fromList["title"]) != fmt.Sprint(fromExport["title"]) ||
+		fmt.Sprint(fromList["detail"]) != fmt.Sprint(fromExport["detail"]) {
+		t.Errorf("the list answered %v and the export %v, want the same title and detail", fromList, fromExport)
+	}
+	if _, ok := fromExport["errors"]; ok {
+		t.Errorf("the export answered %v, want no errors object — the list carries none either", fromExport)
+	}
+}
+
+// TestExpensesReimbursementsExport_GuardsEveryTextColumn: the formula guard
+// sits in the cell writer, so it covers the three text columns this module
+// does not write itself — the person's display name, the category and the
+// project code — and not only the description somebody typed.
+func TestExpensesReimbursementsExport_GuardsEveryTextColumn(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.projects.addProject(contracts.ProjectEntry{
+		ID: projectFormula, Code: "=KV1", Name: "Formelprosjektet",
+		Status: "active", OpenForWork: true, BillingType: "time-and-materials", Currency: ptr("NOK"),
+	})
+	admin, _ := signIn(t, h, "expenses:manage")
+	category := createCategory(t, admin, map[string]any{"name": "+Materiell"})
+	boss, _ := signIn(t, h, "expenses:approve", "expenses:manage")
+	ola, olaID := signInAs(t, h, projectFormula, roleMember)
+	nameUser(t, h, olaID, "+Ola Nordmann")
+
+	entry := createEntry(t, ola, outlayBody(map[string]any{
+		"categoryId": category.Id, "projectId": projectFormula,
+	}))
+	approvedBy(t, ola, boss, entry.Id)
+
+	row := fmt.Sprintf("'+Ola Nordmann;%s;2026-03-10;outlay;Kabel og kontakter;'+Materiell;NOK;1250,00;;1250,00;'=KV1",
+		olaID)
+	if got := string(exportCSV(t, boss, "").Body); !strings.Contains(got, row) {
+		t.Errorf("the export is\n%q\nwant a row\n%q — every text cell neutralised, not only the description", got, row)
 	}
 }
 

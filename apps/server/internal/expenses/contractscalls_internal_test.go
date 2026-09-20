@@ -132,4 +132,16 @@ func TestContractCalls_AreReportedWithWhetherLocksWereHeld(t *testing.T) {
 	if !slices.Equal(inside, want) {
 		t.Errorf("inside a locked transaction the hook saw %v, want every call reported: %v", inside, want)
 	}
+
+	// A batch of no names is not a call. The dashboard's attention read builds
+	// its id list from an approval scope that is usually empty, so the common
+	// caller would otherwise make a cross-module call on every load that can
+	// only answer nothing.
+	outside = nil
+	if users, err := s.usersUsers(ctx, nil); err != nil || len(users) != 0 {
+		t.Errorf("usersUsers(nil) = %v, %v, want no users and no error", users, err)
+	}
+	if len(outside) != 0 {
+		t.Errorf("an empty batch of names reported %v, want no call at all", outside)
+	}
 }

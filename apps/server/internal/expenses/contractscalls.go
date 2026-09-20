@@ -98,7 +98,15 @@ func (s *server) usersUser(ctx context.Context, id uuid.UUID) (*contracts.UserEn
 	return s.deps.Users.User(ctx, id)
 }
 
+// usersUsers answers nothing for an empty batch without asking anybody. Every
+// place in this module that names people in bulk goes through here, and the
+// commonest of them — the dashboard's attention read, for a caller who
+// approves nothing — builds an empty list; a cross-module call on every
+// dashboard load that can only answer nothing is a call worth not making.
 func (s *server) usersUsers(ctx context.Context, ids []uuid.UUID) ([]contracts.UserEntry, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
 	noteContractCall(ctx, "Users.Users")
 	return s.deps.Users.Users(ctx, ids)
 }

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
 // This file is the first of design decision X5's two tracks after approval:
@@ -254,8 +256,9 @@ func TestExpensesReimbursed_IsNotHeldBackByThePeriodLock(t *testing.T) {
 	undoReimbursed(t, boss, entry.Id)
 }
 
-// TestExpensesUnapprove_RefusesWhatHasBeenReimbursed closes the loop Task 4
-// left open: the guard existed but nothing could set the flag through the API.
+// TestExpensesUnapprove_RefusesWhatHasBeenReimbursed drives the unapprove
+// guard from the door that can actually set the stamp: money that has gone out
+// is not unapproved back into a draft.
 func TestExpensesUnapprove_RefusesWhatHasBeenReimbursed(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -405,4 +408,92 @@ func TestExpensesReimbursements_WithoutProjects_IsTheSameTrack(t *testing.T) {
 		t.Error("an expense could not be reimbursed without the projects module")
 	}
 	undoReimbursed(t, boss, entry.Id)
+}
+
+// TestExpensesReimbursement_ThePayrollReferenceIsNarrowerThanTheStamp: that
+// somebody has been paid back is shown to everyone who may see the expense
+// (decision X5) — its owner first of all. *Which payroll run* it went with is
+// not: that is the payroll clerk's record, and it is shown to the owner and to
+// the three expenses permissions that read everybody's expenses, not to a
+// project manager who sees the line because of the project it sits on.
+func TestExpensesReimbursement_ThePayrollReferenceIsNarrowerThanTheStamp(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	boss, _ := signIn(t, h, "expenses:approve", "expenses:manage")
+	manager, _ := signInAs(t, h, projectKraftVerket, roleManager)
+	owner, _ := signInAs(t, h, projectKraftVerket, roleMember)
+
+	entry := createEntry(t, owner, outlayBody(map[string]any{"projectId": projectKraftVerket}))
+	approvedBy(t, owner, boss, entry.Id)
+	markReimbursed(t, boss, reimbursedBody([]int64{entry.Id}, map[string]any{"reference": "LØNN-2026-04"}))
+
+	viewer, _ := signIn(t, h, "expenses:view-all")
+	for name, tc := range map[string]struct {
+		client        *modtest.Client
+		wantReference bool
+	}{
+		"the owner":           {owner, true},
+		"expenses:view-all":   {viewer, true},
+		"expenses:manage":     {boss, true},
+		"the project manager": {manager, false},
+	} {
+		raw, ok := rawEntry(t, tc.client, entry.Id)["reimbursement"].(map[string]any)
+		if !ok {
+			t.Fatalf("%s: the reimbursement stamp is missing — everyone who may see the expense sees it", name)
+		}
+		for _, field := range []string{"at", "by", "date"} {
+			if _, present := raw[field]; !present {
+				t.Errorf("%s: the stamp has no %q", name, field)
+			}
+		}
+		reference, present := raw["reference"]
+		switch {
+		case tc.wantReference && reference != "LØNN-2026-04":
+			t.Errorf("%s: reference = %v, want the payroll run's", name, reference)
+		case !tc.wantReference && present:
+			t.Errorf("%s: reference = %v, want it absent", name, reference)
+		}
+	}
+}
+
+// TestExpensesReimbursed_ACompanyPaidLineSaysSoOnTheCapability: the per-id
+// refusal and the capability are one rule (owesEmployee), so a client driving
+// a button off canMarkReimbursed never posts a batch the server will refuse.
+func TestExpensesReimbursed_ACompanyPaidLineSaysSoOnTheCapability(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	boss, _ := signIn(t, h, "expenses:approve", "expenses:manage")
+	owner, _ := signIn(t, h)
+
+	company := createEntry(t, owner, companyPaid(nil))
+	employee := createEntry(t, owner, outlayBody(map[string]any{"description": "Boremaskin"}))
+	approvedBy(t, owner, boss, company.Id, employee.Id)
+
+	if caps := getEntry(t, boss, company.Id).Capabilities; caps.CanMarkReimbursed {
+		t.Error("canMarkReimbursed is true on an outlay the company paid for itself")
+	}
+	if caps := getEntry(t, boss, employee.Id).Capabilities; !caps.CanMarkReimbursed {
+		t.Error("canMarkReimbursed is false on an approved outlay the employee paid")
+	}
+}
+
+// TestExpensesReimbursements_APageNumberTooBigForTheOffsetIsARefusal: page ×
+// pageSize is computed in the int32 the OFFSET is sent as, so an unbounded
+// page number overflows it into a negative offset the database refuses — a 500
+// for a query that broke no documented rule. Every list in this module bounds
+// it on the same helper.
+func TestExpensesReimbursements_APageNumberTooBigForTheOffsetIsARefusal(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	boss, _ := signIn(t, h, "expenses:approve", "expenses:manage")
+
+	for _, path := range []string{
+		entriesPath + "?page=21474838&pageSize=100",
+		approvalsPath + "?page=21474838&pageSize=100",
+		reimbursementsPath + "?page=21474838&pageSize=100",
+	} {
+		if r := boss.Do(http.MethodGet, path, nil); r.Status != http.StatusBadRequest {
+			t.Errorf("GET %s: status %d body %s, want 400", path, r.Status, r.Body)
+		}
+	}
 }

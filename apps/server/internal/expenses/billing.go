@@ -64,8 +64,7 @@ type billingFigures struct {
 	// RateMissing is billable mileage that carries no customer rate and finds
 	// none in force on its date. It is not a refusal in itself — a line may
 	// wait billable with nothing billed until whoever sees the project's money
-	// fills the figure in (Task 2's rule) — so only a caller who could have
-	// named one is told.
+	// fills the figure in — so only a caller who could have named one is told.
 	RateMissing bool
 }
 

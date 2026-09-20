@@ -333,13 +333,21 @@ func (s *server) GetExpensesReimbursementsExportCsv(ctx context.Context, req gen
 	paid, msg := parseState(p.State)
 	if msg != "" {
 		return gen.GetExpensesReimbursementsExportCsv400ApplicationProblemPlusJSONResponse(
-			invalidExport(fieldError("state", msg))), nil
+			invalidExportQuery([]string{msg})), nil
 	}
+	// A parameter that is there and names nothing is a mistake, not "export
+	// everything": a client building it from a row selection with nothing
+	// ticked would otherwise be handed the whole unpaid list. Leaving it out
+	// is still the filter mode, which is what that button should send.
+	byIDs := p.EntryIds != nil
 	var ids []int64
-	if p.EntryIds != nil {
+	if byIDs {
 		ids = uniqueIDs(*p.EntryIds)
 	}
-	byIDs := len(ids) > 0
+	if byIDs && len(ids) == 0 {
+		return gen.GetExpensesReimbursementsExportCsv400ApplicationProblemPlusJSONResponse(
+			invalidExport(fieldError("entryIds", "At least one expense id is required"))), nil
+	}
 	if len(ids) > exportMaxRows {
 		return gen.GetExpensesReimbursementsExportCsv400ApplicationProblemPlusJSONResponse(
 			invalidExport(fieldError("entryIds", fmt.Sprintf(

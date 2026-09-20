@@ -302,6 +302,15 @@ type entryAccess struct {
 	CanSee        bool
 	CanSeeBilling bool
 
+	// SeesPayrollReference is the shaping of the payroll reference on a
+	// reimbursement stamp. That somebody has been paid back is shown to
+	// everyone who may see the expense (decision X5); *which payroll run* it
+	// went with is the clerk's own record, so it goes to the person it is
+	// about and to the three permissions that read everybody's expenses — and
+	// not to a project manager, who sees the line because of the project it
+	// sits on and has no business in the company's payroll batches.
+	SeesPayrollReference bool
+
 	// IsWriter is whether this expense is the caller's to change *at all* —
 	// its owner, or expenses:manage. It is the half of CanEdit that is about
 	// who is asking; entryStateRefusal is the half that is about what the
@@ -354,7 +363,14 @@ func (c *caller) accessFor(entry store.ExpensesEntry, role string) entryAccess {
 	}
 	a.IsApprover = a.IsManager || c.Approve
 	a.CanSee = a.IsOwner || a.IsManager || c.seesEveryone()
-	a.CanSeeBilling = entry.ProjectID != nil && c.seesProjectFinancials(role)
+	// Every billing answer is the projects module's, so none of them is true
+	// without it (decision X2). A row that still carries a project_id from
+	// before the module was switched off is exactly the case: the four doors
+	// behind these capabilities all answer "this installation has no projects
+	// module", and a capability that promised otherwise would be the one thing
+	// the capabilities exist to prevent.
+	a.CanSeeBilling = c.ProjectsOn && entry.ProjectID != nil && c.seesProjectFinancials(role)
+	a.SeesPayrollReference = a.IsOwner || c.seesEveryone()
 
 	open := c.mayWritePast(entry.EntryDate.Time)
 	a.IsWriter = a.IsOwner || c.Manage
@@ -382,9 +398,9 @@ func (c *caller) accessFor(entry store.ExpensesEntry, role string) entryAccess {
 	// the line for it holds financial rights on a project rather than
 	// expenses:manage, so a locked line would otherwise be unpriceable by
 	// anybody the design meant to price it.
-	a.CanSetBilling = c.ProjectsOn && a.CanSeeBilling && entry.InvoicedAt == nil
+	a.CanSetBilling = a.CanSeeBilling && entry.InvoicedAt == nil
 
-	financial := c.seesProjectFinancials(role)
+	financial := c.ProjectsOn && c.seesProjectFinancials(role)
 	// A line with no amount to bill cannot be invoiced, so the capability does
 	// not say it can: a billable mileage line saved while no customer rate was
 	// in force carries nothing to put on an invoice until somebody prices it.

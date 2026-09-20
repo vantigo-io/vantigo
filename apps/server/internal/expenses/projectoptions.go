@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/vantigo-io/vantigo/server/internal/expenses/gen"
+	"github.com/vantigo-io/vantigo/server/internal/expenses/store"
 )
 
 // This file is GET /projects: the projects the caller may book an expense on,
@@ -16,28 +17,55 @@ import (
 // GetExpensesProjects List the projects an expense may be booked on
 // (GET /api/v1/expenses/projects)
 //
-// The directory is asked for the caller's projects, then for each one whether
+// The directory is asked for the person's projects, then for each one whether
 // they may book on it (the rule a create is held to, so the picker can never
 // offer a project the save would refuse), and then for its billing lines. That
 // is one call per project on each of two counts: contracts.ProjectDirectory
 // offers no bulk form of either, and widening the contract for a picker is a
 // worse trade than three small reads of an in-process module. A caller holds
 // few enough projects for it.
-func (s *server) GetExpensesProjects(ctx context.Context, _ gen.GetExpensesProjectsRequestObject) (gen.GetExpensesProjectsResponseObject, error) {
+//
+// The person is the caller unless userId names somebody else, which is the
+// same rule and the same field the create answers: a save is judged on what
+// the expense's *owner* may book on (checkProject), so an administrator
+// recording for a colleague has to be offered the colleague's projects or the
+// picker would offer what the save then refuses. Naming anybody else needs
+// expenses:manage, which is what lets one record for somebody else at all.
+func (s *server) GetExpensesProjects(ctx context.Context, req gen.GetExpensesProjectsRequestObject) (gen.GetExpensesProjectsResponseObject, error) {
 	if !s.projectsAvailable() {
 		return gen.GetExpensesProjects404ApplicationProblemPlusJSONResponse(projectsNotInstalled()), nil
 	}
-	userID := callerID(ctx)
+	q := store.New(s.deps.Pool)
+	c, err := s.callerFor(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	userID := c.UserID
+	if id := req.Params.UserId; id != nil && *id != c.UserID {
+		if !c.Manage {
+			return gen.GetExpensesProjects400ApplicationProblemPlusJSONResponse(invalidQueryFields(fieldError(
+				"userId", "Listing somebody else's projects needs the Manage expenses permission"))), nil
+		}
+		user, err := s.usersUser(ctx, *id)
+		if err != nil {
+			return nil, fmt.Errorf("expenses: look up the person the picker is for: %w", err)
+		}
+		if user == nil || !user.Active {
+			return gen.GetExpensesProjects400ApplicationProblemPlusJSONResponse(
+				invalidQueryFields(fieldError("userId", "Nobody active has that user id"))), nil
+		}
+		userID = user.ID
+	}
 	projects, err := s.projectsForUser(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("expenses: list the caller's projects: %w", err)
+		return nil, fmt.Errorf("expenses: list the person's projects: %w", err)
 	}
 
 	options := make([]gen.ExpensesProjectOption, 0, len(projects))
 	for _, project := range projects {
 		allowed, err := s.projectsCanLogTime(ctx, project.ID, userID)
 		if err != nil {
-			return nil, fmt.Errorf("expenses: check the caller may book on a project: %w", err)
+			return nil, fmt.Errorf("expenses: check the person may book on a project: %w", err)
 		}
 		if !allowed {
 			continue

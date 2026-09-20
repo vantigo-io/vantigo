@@ -98,6 +98,15 @@ func TestExpensesInvoiced_NeedsFinancialRightsOnTheProject(t *testing.T) {
 		t.Error("canMarkInvoiced is true for a caller with no financial rights on the project")
 	}
 
+	// The owner is not spared it either. What they are owed is theirs to see;
+	// what the customer is charged for it is the project's, and a member of the
+	// project is not somebody who may see that.
+	forbidden(t, owner, http.MethodPost, entryInvoicedPath(entry.Id), invoicedBody(revision, nil))
+	forbidden(t, owner, http.MethodPost, entryInvoicedUndoPath(entry.Id), invoicedBody(revision, nil))
+	if caps := getEntry(t, owner, entry.Id).Capabilities; caps.CanMarkInvoiced || caps.CanSeeBilling {
+		t.Errorf("the owner's capabilities = %+v, want no sight of the project's money", caps)
+	}
+
 	// projects:view-financials on a project they can see is enough, as it is
 	// everywhere else here — beside whatever lets them see the expense at all,
 	// which a project role short of manager does not.

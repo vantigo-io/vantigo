@@ -33,8 +33,12 @@ const (
 	maxPercent       = 100.0
 )
 
-// categoryNameMaxLength is the category name column's width.
-const categoryNameMaxLength = 100
+// categoryNameMaxLength and rateSourceMaxLength are the two name columns'
+// widths, in characters — what varchar(n) counts.
+const (
+	categoryNameMaxLength = 100
+	rateSourceMaxLength   = 100
+)
 
 // withFieldError adds one message to a map another rule may already have put
 // something in. A nil map is the "nothing failed yet" case, so it is grown

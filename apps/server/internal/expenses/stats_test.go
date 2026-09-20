@@ -285,3 +285,38 @@ func TestExpensesStats_AttentionNamesThePersonRatherThanASentence(t *testing.T) 
 		t.Errorf("id = %q, entityId = %q; want them the same", items[0].Id, items[0].EntityId)
 	}
 }
+
+// TestExpensesStats_AProjectManagersAttentionIsTheirOwnProjectsAlone: the
+// dashboard's waiting figure is the approval queue's own predicate, so a
+// project manager without any expenses permission is told about the people
+// waiting on *their* projects and about nobody else. The same scope decides
+// the number on the summary card.
+func TestExpensesStats_AProjectManagersAttentionIsTheirOwnProjectsAlone(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	manager, _ := signInAs(t, h, projectKraftVerket, roleManager)
+	mine, mineID := signInAs(t, h, projectKraftVerket, roleMember)
+	nameUser(t, h, mineID, "Anna Ås")
+	elsewhere, _ := signIn(t, h)
+
+	onTheProject := createEntry(t, mine, outlayBody(map[string]any{"projectId": projectKraftVerket}))
+	offIt := createEntry(t, elsewhere, outlayBody(map[string]any{"description": "Ikke mitt prosjekt"}))
+	submitEntries(t, mine, onTheProject.Id)
+	submitEntries(t, elsewhere, offIt.Id)
+
+	items := attentionOfType(getAttention(t, manager), attentionApprovalWaiting)
+	if len(items) != 1 || items[0].EntityId != mineID.String() {
+		t.Fatalf("items = %+v, want the one owner waiting on the manager's own project", items)
+	}
+	if items[0].Count == nil || *items[0].Count != 1 {
+		t.Errorf("count = %v, want one", items[0].Count)
+	}
+	if got := getStatsSummary(t, manager, marchPeriod).AwaitingMyApproval; got != 1 {
+		t.Errorf("awaitingMyApproval = %d, want the one expense on their own project", got)
+	}
+	// And the colleague's project-less line is nobody's but an approver's.
+	approver, _ := signIn(t, h, "expenses:approve")
+	if items := attentionOfType(getAttention(t, approver), attentionApprovalWaiting); len(items) != 2 {
+		t.Errorf("an approver's items = %+v, want both owners", items)
+	}
+}

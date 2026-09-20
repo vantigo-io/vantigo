@@ -413,7 +413,7 @@ func (s *server) PostExpensesEntriesByIdAttachments(ctx context.Context, req gen
 	if !found {
 		return gen.PostExpensesEntriesByIdAttachments404Response{}, nil
 	}
-	if !a.IsOwner && !c.Manage {
+	if !a.IsWriter {
 		return gen.PostExpensesEntriesByIdAttachments403JSONResponse(forbidden()), nil
 	}
 	if msg := entryTakesReceipts(c, entry); msg != "" {
@@ -632,7 +632,7 @@ func (s *server) DeleteExpensesAttachmentsById(ctx context.Context, req gen.Dele
 			invalidReceipt(fieldError("entryId", msg))), nil
 	}
 
-	var settled string
+	var refusal string
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
 		locked, err := txq.LockEntry(ctx, entry.ID)
 		switch {
@@ -643,10 +643,12 @@ func (s *server) DeleteExpensesAttachmentsById(ctx context.Context, req gen.Dele
 			return nil
 		case err != nil:
 			return fmt.Errorf("expenses: lock an expense: %w", err)
-		case !slices.Contains(editableStatuses, locked.Status):
-			// A submit committed between the read and the lock — the state
-			// refusal above, arrived at a moment later.
-			settled = locked.Status
+		}
+		// Judged again on the row as it is under the lock, by the very rule
+		// that judged it before the transaction rather than by a copy of half
+		// of it: a submit that committed since is the refusal above, arrived a
+		// moment later.
+		if refusal = entryTakesReceipts(c, locked); refusal != "" {
 			return nil
 		}
 		if _, err := txq.DeleteAttachment(ctx, req.Id); err != nil {
@@ -657,9 +659,9 @@ func (s *server) DeleteExpensesAttachmentsById(ctx context.Context, req gen.Dele
 	if err != nil {
 		return nil, err
 	}
-	if settled != "" {
-		return gen.DeleteExpensesAttachmentsById400ApplicationProblemPlusJSONResponse(invalidReceipt(fieldError("entryId",
-			fmt.Sprintf("An expense that has been %s can no longer be changed", settled)))), nil
+	if refusal != "" {
+		return gen.DeleteExpensesAttachmentsById400ApplicationProblemPlusJSONResponse(
+			invalidReceipt(fieldError("entryId", refusal))), nil
 	}
 	s.removeReceiptObject(ctx, entry.ID, attachment.ObjectKey)
 	return gen.DeleteExpensesAttachmentsById204Response{}, nil

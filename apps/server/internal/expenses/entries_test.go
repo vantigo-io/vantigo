@@ -2,6 +2,7 @@ package expenses_test
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -513,3 +514,50 @@ func longText(n int) string {
 	}
 	return string(b)
 }
+
+// Every length rule in this module is a count of characters — which is what
+// its messages say, and what the varchar(n) columns hold. Counted in bytes
+// instead, a Norwegian description a third shorter than the limit is refused
+// with a message that names a number it is nowhere near.
+func TestExpensesValues_LengthsAreCountedInCharactersNotBytes(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	admin, _ := signIn(t, h, "expenses:approve", "expenses:manage")
+	employee, _ := signIn(t, h)
+
+	// "ø" is two bytes, so 500 of them is a thousand bytes and exactly the 500
+	// characters the column holds.
+	description := strings.Repeat("ø", descriptionLimit)
+	createEntry(t, employee, outlayBody(map[string]any{"description": description}))
+	if errs := refusedEntry(t, employee, http.MethodPost, entriesPath,
+		outlayBody(map[string]any{"description": description + "ø"})); len(errs["description"]) == 0 {
+		t.Errorf("a description one character over: errors = %v, want one on description", errs)
+	}
+
+	// The supplier and the two places are one helper, and so is the reference
+	// a payroll run carries.
+	createEntry(t, employee, outlayBody(map[string]any{"supplier": strings.Repeat("æ", 200)}))
+	if errs := refusedEntry(t, employee, http.MethodPost, entriesPath,
+		outlayBody(map[string]any{"supplier": strings.Repeat("æ", 201)})); len(errs["supplier"]) == 0 {
+		t.Errorf("a supplier one character over: errors = %v, want one on supplier", errs)
+	}
+	createEntry(t, employee, mileageBody(map[string]any{"fromPlace": strings.Repeat("å", 200)}))
+
+	paid := createEntry(t, employee, outlayBody(map[string]any{"description": "Boremaskin"}))
+	approvedBy(t, employee, admin, paid.Id)
+	markReimbursed(t, admin, reimbursedBody([]int64{paid.Id},
+		map[string]any{"reference": strings.Repeat("ø", 100)}))
+
+	// And a rate's source label, which has no rule at all today: 101 bytes of
+	// it reach a varchar(100) and the column refuses the write.
+	createRate(t, admin, map[string]any{"source": strings.Repeat("å", 100)})
+	if errs := refused(t, admin, http.MethodPost, ratesPath,
+		rateBody(map[string]any{"validFrom": "2026-02-01", "source": strings.Repeat("å", 101)}),
+		"Invalid rate"); len(errs["source"]) == 0 {
+		t.Errorf("a source one character over: errors = %v, want one on source", errs)
+	}
+}
+
+// descriptionLimit is the description column's width, repeated here so the
+// test says the number the message says.
+const descriptionLimit = 500

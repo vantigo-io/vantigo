@@ -521,8 +521,8 @@ func TestExpensesFlow_SubmitIsTheOwnersOrManages(t *testing.T) {
 	submitEntries(t, admin, first.Id)
 }
 
-// Decision X5's two tracks are Task 5's, but their columns are here already:
-// an expense that has been reimbursed or invoiced is no longer unapprovable.
+// Decision X5's two tracks after approval: an expense that has been reimbursed
+// or invoiced is no longer unapprovable, judged on the columns themselves.
 func TestExpensesFlow_UnapproveRefusesWhatIsReimbursedOrInvoiced(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -728,8 +728,8 @@ func TestExpensesFlow_SubmitRefreezesTheBillAmount(t *testing.T) {
 
 // The freeze prices the customer's side one last time too: a billable mileage
 // line recorded while no customer rate was in force is saved with nothing
-// billed (Task 2's rule, so an employee is never refused over a price they may
-// not know exists), and the submit picks up the rate that has since arrived.
+// billed — an employee is never refused over a price they may not know exists
+// — and the submit picks up the rate that has since arrived.
 func TestExpensesFlow_SubmitPricesTheCustomerSideOneLastTime(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -776,5 +776,34 @@ func TestExpensesFlow_ARepeatedIdIsOneExpense(t *testing.T) {
 	}
 	if got := getEntry(t, owner, entry.Id).Revision; got != 2 {
 		t.Errorf("revision = %d, want it moved once", got)
+	}
+}
+
+// TestExpensesFlow_ADecisionWithNoDeciderNamesNobody: the decision stamp is
+// three columns written together, so a row carrying a decision and no decider
+// is not reachable through any door here. If one ever is — a restore, a
+// support script, a column somebody nulls — the read must not answer a person
+// made of a nil uuid and an empty name. by is simply absent then, which the
+// contract allows and a client can tell from a name.
+func TestExpensesFlow_ADecisionWithNoDeciderNamesNobody(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	boss, _ := signIn(t, h, "expenses:approve")
+	owner, _ := signIn(t, h)
+
+	entry := createEntry(t, owner, outlayBody(nil))
+	submitEntries(t, owner, entry.Id)
+	rejectEntries(t, boss, "Mangler kvittering", entry.Id)
+	h.Exec(t, `UPDATE expenses.entries SET decided_by_user_id = NULL WHERE id = $1`, entry.Id)
+
+	decision, ok := rawEntry(t, owner, entry.Id)["decision"].(map[string]any)
+	if !ok {
+		t.Fatalf("the decision is missing; the expense was rejected")
+	}
+	if decision["status"] != "rejected" || decision["at"] == nil {
+		t.Errorf("decision = %v, want the status and the moment it was made", decision)
+	}
+	if by, present := decision["by"]; present {
+		t.Errorf("by = %v, want it absent rather than an empty person", by)
 	}
 }

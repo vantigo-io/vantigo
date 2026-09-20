@@ -35,7 +35,7 @@ type ExpensesApprovalGroup struct {
 	// Totals The group's figures, one line per currency, by currency code. Nothing is ever converted.
 	Totals []ExpensesCurrencyTotal `json:"totals"`
 
-	// User One person, named through identity — the owner of an approval group, or whoever overrode a rate.
+	// User One person, named through identity — an expense's owner, the owner of an approval or reimbursement group, whoever overrode a rate, whoever decided the expense, whoever paid it back, or whoever invoiced it.
 	User ExpensesUserRef `json:"user"`
 }
 
@@ -116,7 +116,7 @@ type ExpensesCurrencyTotal struct {
 
 // ExpensesEntryBilling What an expense bills its customer (decision X7). Present only for a caller with financial rights on the entry's project — its managers, projects:manage-all, and projects:view-financials on a project they can see — and then always present, even with nothing in it, so a client can tell "may see, nothing billed" from "may not see". The entry's owner does not see it as such.
 type ExpensesEntryBilling struct {
-	// BillAmount What the customer is billed; zero on a line nobody bills.
+	// BillAmount What the customer is billed; zero on a line nobody bills. It always follows the line as it now stands — a save that changes the net or the distance works it out again from the markup or the customer rate the line carries, in an installation with no projects module too, where those two are carried through untouched.
 	BillAmount float64 `json:"billAmount"`
 
 	// BillRatePerKm Billable mileage's rate per kilometre. Absent otherwise.
@@ -184,8 +184,8 @@ type ExpensesEntryCategory struct {
 type ExpensesEntryDecision struct {
 	At time.Time `json:"at"`
 
-	// By One person, named through identity — the owner of an approval group, or whoever overrode a rate.
-	By ExpensesUserRef `json:"by"`
+	// By Who decided it. Absent only for a row carrying a decision and no decider, which no operation here can produce.
+	By *ExpensesUserRef `json:"by,omitempty"`
 
 	// Reason Why it was rejected, as the approver wrote it. Absent on an approval.
 	Reason *string `json:"reason,omitempty"`
@@ -199,7 +199,7 @@ type ExpensesEntryInvoice struct {
 	// At When it was marked invoiced.
 	At time.Time `json:"at"`
 
-	// By One person, named through identity — the owner of an approval group, or whoever overrode a rate.
+	// By One person, named through identity — an expense's owner, the owner of an approval or reimbursement group, whoever overrode a rate, whoever decided the expense, whoever paid it back, or whoever invoiced it.
 	By ExpensesUserRef `json:"by"`
 
 	// Reference The invoice it went out on, as whoever marked it typed it. Absent when none was given.
@@ -225,7 +225,7 @@ type ExpensesEntryProject struct {
 
 // ExpensesEntryRateOverride The record an overridden mileage rate leaves on the line (decision X8) — who replaced the rates the table gave it, and what the table had said. Present only while an override stands: a submit reprices the line from the table and clears it, and an unapprove clears it with the rest of the decision it undoes. Shown to everyone who may see the expense, its owner included.
 type ExpensesEntryRateOverride struct {
-	// ByUser One person, named through identity — the owner of an approval group, or whoever overrode a rate.
+	// ByUser One person, named through identity — an expense's owner, the owner of an approval or reimbursement group, whoever overrode a rate, whoever decided the expense, whoever paid it back, or whoever invoiced it.
 	ByUser ExpensesUserRef `json:"byUser"`
 
 	// PassengerTableValue The passenger supplement per kilometre the line was frozen at before the first override of it. Absent when the supplement was never overridden, so a client can tell a changed supplement from an untouched one.
@@ -240,13 +240,13 @@ type ExpensesEntryReimbursement struct {
 	// At When it was marked reimbursed.
 	At time.Time `json:"at"`
 
-	// By One person, named through identity — the owner of an approval group, or whoever overrode a rate.
+	// By One person, named through identity — an expense's owner, the owner of an approval or reimbursement group, whoever overrode a rate, whoever decided the expense, whoever paid it back, or whoever invoiced it.
 	By ExpensesUserRef `json:"by"`
 
 	// Date The day the payroll run it went with was made. A calendar date, never in the future.
 	Date openapi_types.Date `json:"date"`
 
-	// Reference The payroll run it went with, as whoever marked it typed it. Absent when none was given.
+	// Reference The payroll run it went with, as whoever marked it typed it. Absent when none was given, and absent for a reader who is neither the expense's owner nor a holder of expenses:view-all, expenses:approve or expenses:manage: that the money went is everyone's business, which batch it went in is the payroll clerk's. A project manager therefore reads the stamp without this field.
 	Reference *string `json:"reference,omitempty"`
 }
 
@@ -580,7 +580,7 @@ type ExpensesReimbursementGroup struct {
 	// Totals The group's figures, one line per currency, by currency code. Nothing is ever converted.
 	Totals []ExpensesCurrencyTotal `json:"totals"`
 
-	// User One person, named through identity — the owner of an approval group, or whoever overrode a rate.
+	// User One person, named through identity — an expense's owner, the owner of an approval or reimbursement group, whoever overrode a rate, whoever decided the expense, whoever paid it back, or whoever invoiced it.
 	User ExpensesUserRef `json:"user"`
 }
 
@@ -675,7 +675,7 @@ type ExpensesStatsSummaryResponse struct {
 	To             time.Time                `json:"to"`
 }
 
-// ExpensesUserRef One person, named through identity — the owner of an approval group, or whoever overrode a rate.
+// ExpensesUserRef One person, named through identity — an expense's owner, the owner of an approval or reimbursement group, whoever overrode a rate, whoever decided the expense, whoever paid it back, or whoever invoiced it.
 type ExpensesUserRef struct {
 	// Active Whether identity still has them as an active user.
 	Active bool `json:"active"`
@@ -740,6 +740,12 @@ type PostExpensesEntriesByIdAttachmentsMultipartBody struct {
 	File openapi_types.File `json:"file"`
 }
 
+// GetExpensesProjectsParams defines parameters for GetExpensesProjects.
+type GetExpensesProjectsParams struct {
+	// UserId The person the expense is being recorded for. Naming anybody but the caller needs expenses:manage, the permission that lets one record for somebody else; left out, it is the caller's own projects.
+	UserId *openapi_types.UUID `form:"userId,omitempty" json:"userId,omitempty"`
+}
+
 // GetExpensesReimbursementsParams defines parameters for GetExpensesReimbursements.
 type GetExpensesReimbursementsParams struct {
 	// State 'waiting' (the default) or 'reimbursed'.
@@ -771,7 +777,7 @@ type GetExpensesReimbursementsExportCsvParams struct {
 	// To The latest entry date to include. Ignored when entryIds is given.
 	To *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
 
-	// EntryIds Exactly these expenses instead of the filters. An id that is not one the export could hold refuses the whole file rather than being left out of it silently.
+	// EntryIds Exactly these expenses instead of the filters. An id that is not one the export could hold refuses the whole file rather than being left out of it silently, and a parameter that is present but names nothing is refused rather than read as "everything" — a button with nothing selected should leave it out and send the filters.
 	EntryIds *[]int64 `form:"entryIds,omitempty" json:"entryIds,omitempty"`
 }
 
@@ -903,7 +909,7 @@ type ServerInterface interface {
 	GetExpensesMeta(w http.ResponseWriter, r *http.Request)
 	// GetExpensesProjects List the projects an expense may be booked on
 	// (GET /api/v1/expenses/projects)
-	GetExpensesProjects(w http.ResponseWriter, r *http.Request)
+	GetExpensesProjects(w http.ResponseWriter, r *http.Request, params GetExpensesProjectsParams)
 	// GetExpensesRates List the expense rates
 	// (GET /api/v1/expenses/rates)
 	GetExpensesRates(w http.ResponseWriter, r *http.Request)
@@ -1511,8 +1517,27 @@ func (siw *ServerInterfaceWrapper) GetExpensesMeta(w http.ResponseWriter, r *htt
 // GetExpensesProjects operation middleware
 func (siw *ServerInterfaceWrapper) GetExpensesProjects(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetExpensesProjectsParams
+
+	// ------------- Optional query parameter "userId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "userId", r.URL.Query(), &params.UserId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "userId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetExpensesProjects(w, r)
+		siw.Handler.GetExpensesProjects(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3498,6 +3523,7 @@ func (response GetExpensesMeta403JSONResponse) VisitGetExpensesMetaResponse(w ht
 }
 
 type GetExpensesProjectsRequestObject struct {
+	Params GetExpensesProjectsParams
 }
 
 type GetExpensesProjectsResponseObject interface {
@@ -3514,6 +3540,20 @@ func (response GetExpensesProjects200JSONResponse) VisitGetExpensesProjectsRespo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesProjects400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response GetExpensesProjects400ApplicationProblemPlusJSONResponse) VisitGetExpensesProjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -5338,8 +5378,10 @@ func (sh *strictHandler) GetExpensesMeta(w http.ResponseWriter, r *http.Request)
 }
 
 // GetExpensesProjects operation middleware
-func (sh *strictHandler) GetExpensesProjects(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) GetExpensesProjects(w http.ResponseWriter, r *http.Request, params GetExpensesProjectsParams) {
 	var request GetExpensesProjectsRequestObject
+
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetExpensesProjects(ctx, request.(GetExpensesProjectsRequestObject))
