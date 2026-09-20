@@ -39,8 +39,6 @@ export interface PerDiemSectionProps {
   lineCount: number;
   /** Refusals the submit answered, keyed by the line each one names. */
   refusals: Map<number, string[]>;
-  /** What a day of this trip is priced in — the claim's own currency abroad. */
-  currency: string;
 }
 
 /**
@@ -53,7 +51,7 @@ export interface PerDiemSectionProps {
  * revision its own last answer gave**, so two ticks in a row do not race each
  * other into a 409.
  */
-export const PerDiemSection = ({ claim, days, lineCount, refusals, currency }: PerDiemSectionProps) => {
+export const PerDiemSection = ({ claim, days, lineCount, refusals }: PerDiemSectionProps) => {
   const { t } = useI18n("expenses");
   const [suggesting, setSuggesting] = useState(false);
   const editable = claim.capabilities.canEdit;
@@ -124,13 +122,7 @@ export const PerDiemSection = ({ claim, days, lineCount, refusals, currency }: P
         </Text>
       </Stack>
 
-      <SuggestDaysModal
-        claim={claim}
-        currency={currency}
-        opened={suggesting}
-        room={room}
-        onClose={() => setSuggesting(false)}
-      />
+      <SuggestDaysModal claim={claim} opened={suggesting} room={room} onClose={() => setSuggesting(false)} />
     </Card>
   );
 };
@@ -331,13 +323,11 @@ const PerDiemDayRow = ({
  */
 const SuggestDaysModal = ({
   claim,
-  currency,
   opened,
   room,
   onClose,
 }: {
   claim: Claim;
-  currency: string;
   opened: boolean;
   room: number;
   onClose: () => void;
@@ -432,7 +422,15 @@ const SuggestDaysModal = ({
             mt={4}
             aria-label={t("overnightQuestion")}
             value={overnight}
-            onChange={setOvernight}
+            onChange={(next) => {
+              // The preview belongs to the answer that produced it. Keeping it
+              // after a flip would offer "No" days under a "Yes", and the
+              // after-failure reload would ask with the other answer.
+              setOvernight(next);
+              setSuggested(undefined);
+              setPicked([]);
+              setRefusals([]);
+            }}
             data={[
               { value: "no", label: t("no") },
               { value: "yes", label: t("yes") },
@@ -493,7 +491,10 @@ const SuggestDaysModal = ({
                       </Stack>
                     </Table.Td>
                     <Table.Td>
-                      {day.amount === undefined ? t("notAvailable") : format.money(day.amount, currency)}
+                      {/* The currency is the day's own — the server sends it
+                          with the figures, absent with them — so nothing here
+                          infers it from the claim. */}
+                      {day.amount === undefined ? t("notAvailable") : format.money(day.amount, day.currency ?? "")}
                     </Table.Td>
                   </Table.Tr>
                 ))}

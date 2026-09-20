@@ -363,6 +363,7 @@ const PersonCard = ({
                   </Table.Th>
                   <Table.Th>{t("claimTrip")}</Table.Th>
                   <Table.Th>{t("owedToEmployee")}</Table.Th>
+                  <Table.Th>{t("paidBack")}</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -383,6 +384,25 @@ const PersonCard = ({
                     </Table.Td>
                     <Table.Td>
                       <CurrencyTotals totals={claim.totals} owedOnly />
+                    </Table.Td>
+                    <Table.Td>
+                      {/* The trip carries the payroll run's own stamp, the way
+                          a loose expense does — the day in the installation's
+                          zone, and the reference when the run had one. */}
+                      {claim.reimbursement ? (
+                        <Stack gap={0}>
+                          <Text size="sm">{format.date(claim.reimbursement.date)}</Text>
+                          {claim.reimbursement.reference && (
+                            <Text size="xs" c="dimmed">
+                              {claim.reimbursement.reference}
+                            </Text>
+                          )}
+                        </Stack>
+                      ) : (
+                        <Text size="xs" c="dimmed">
+                          {t("notAvailable")}
+                        </Text>
+                      )}
                     </Table.Td>
                   </Table.Tr>
                 ))}

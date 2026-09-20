@@ -28,8 +28,13 @@ export type ClaimListItem = Omit<Schemas["ExpensesClaimListResponse"], "status">
  * One travel claim as a *unit* in a queue — the approval queue and the payroll
  * list. The trip at a glance, with the figures whoever is deciding needs; its
  * lines are one read away at `GET /claims/{id}`.
+ *
+ * It carries the trip's own `status` and, once a payroll run has paid it, the
+ * same `reimbursement` stamp the claim itself carries — so a queue row says
+ * what a trip is rather than inferring it from the list it arrived in. As on
+ * `ClaimListItem`, the status is narrowed here to the four the server answers.
  */
-export type ClaimSummary = Schemas["ExpensesClaimSummary"];
+export type ClaimSummary = Omit<Schemas["ExpensesClaimSummary"], "status"> & { status: ExpenseStatus };
 
 export type ClaimCapabilities = Schemas["ExpensesClaimCapabilities"];
 export type ClaimInput = Schemas["ExpensesClaimRequest"];
@@ -40,9 +45,11 @@ export type ClaimUpdateInput = Schemas["ExpensesClaimUpdateRequest"];
 /**
  * One day the server proposes for a trip. It is a suggestion and nothing
  * more: nothing is written, and the client records whichever days the
- * traveller agrees with as ordinary per diem lines. `dayRate` and `amount`
- * are absent together when the table prices no such day, and `exists` says
- * the claim already holds a per diem line on that date.
+ * traveller agrees with as ordinary per diem lines. `dayRate`, `amount` and
+ * the `currency` the two are in are absent together when the table prices no
+ * such day, and `exists` says the claim already holds a per diem line on that
+ * date. The currency is the server's — the claim's own abroad one, or the
+ * installation's default — so no client infers it from the claim.
  */
 export type PerDiemSuggestedDay = Omit<Schemas["ExpensesPerDiemSuggestedDay"], "perDiemType"> & {
   perDiemType: PerDiemType;
@@ -115,6 +122,12 @@ export const deleteClaim = (id: number): Promise<void> =>
  * traveller slept away is the one fact the stored times cannot tell, so it is
  * asked, and the answer decides whether the trip is counted in 24-hour
  * periods from the departure or as a single day.
+ *
+ * `overnight` is **always sent**, whatever the schema says. The contract
+ * leaves it optional so that the server's own 400 is what names it rather
+ * than a client's validator — a body without it is refused, not defaulted,
+ * because a suggestion that guessed would answer a confident day count from
+ * nothing.
  */
 export const perDiemSuggestion = (claimId: number, overnight: boolean): Promise<PerDiemSuggestedDay[]> =>
   request<PerDiemSuggestedDay[]>(`/api/v1/expenses/claims/${claimId}/per-diem-suggestion`, json("POST", { overnight }));

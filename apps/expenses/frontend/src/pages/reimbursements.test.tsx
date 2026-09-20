@@ -226,6 +226,21 @@ describe("ReimbursementsPage", () => {
     });
   });
 
+  it("shows a paid trip's own payroll stamp, as the expenses table does", async () => {
+    const { trip, lines } = owedTrip();
+    const paid = {
+      ...trip,
+      reimbursement: { at: "2026-09-20T10:00:00Z", by: APPROVER, date: "2026-09-20", reference: "LØNN-2026-09" },
+      capabilities: claimCapabilities({ canUndoReimbursed: true }),
+    };
+    stubExpensesApi({ entries: lines.map((line) => ({ ...line, status: "approved" as const })), claims: [paid] });
+    renderRoute("/expenses/reimbursements?state=reimbursed");
+
+    const one = await claimRow("Montasje hos kunden");
+    expect(one).toHaveTextContent("Sep 20, 2026");
+    expect(one).toHaveTextContent("LØNN-2026-09");
+  });
+
   it("names the column the payroll checkboxes sit in", async () => {
     stubExpensesApi({ entries: [owed()] });
     renderRoute("/expenses/reimbursements");

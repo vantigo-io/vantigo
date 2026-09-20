@@ -125,6 +125,15 @@ describe("ApprovalsPage", () => {
     expect(people).toEqual(["Grace Hopper", "Ada Lovelace"]);
   });
 
+  it("says what state a trip is in from the summary, rather than from the list it arrived in", async () => {
+    const { trip, lines } = tripWithLines();
+    stubExpensesApi({ entries: lines, claims: [trip], rates: [...rates, ...perDiemRates] });
+    renderRoute("/expenses/approvals");
+
+    const one = await claimRow("Montasje hos kunden");
+    expect(within(one).getByText("Submitted")).toBeInTheDocument();
+  });
+
   it("offers a checkbox only on the expenses the caller may approve", async () => {
     stubExpensesApi({
       entries: [

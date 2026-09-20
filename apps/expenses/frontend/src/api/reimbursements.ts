@@ -1,6 +1,7 @@
 import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 import { appUrl } from "@vantigo/frontend-shell";
 import type { components } from "../api-schema";
+import type { ClaimSummary } from "./claims";
 import type { Expense, FlowResult, FlowUnits, PaginatedResponse } from "./entries";
 import { unitsBody } from "./entries";
 import { ApiValidationError, EXPENSES_QUERY_KEY, handleUnauthorized, json, readJson, request } from "./request";
@@ -8,8 +9,9 @@ import { ApiValidationError, EXPENSES_QUERY_KEY, handleUnauthorized, json, readJ
 type Schemas = components["schemas"];
 
 /** One person's expenses that are owed back to them, with the figures a payroll run is made from. */
-export type ExpenseReimbursementGroup = Omit<Schemas["ExpensesReimbursementGroup"], "entries"> & {
+export type ExpenseReimbursementGroup = Omit<Schemas["ExpensesReimbursementGroup"], "entries" | "claims"> & {
   entries: Expense[];
+  claims: ClaimSummary[];
 };
 
 /** What the payroll list may be narrowed by. `waiting` is the server's own default. */
