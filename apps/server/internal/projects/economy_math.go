@@ -369,6 +369,133 @@ func (s bucketSums) add(o bucketSums) bucketSums {
 	}
 }
 
+// expenseSum is one bucket of recorded expenses as the arithmetic wants it:
+// an exact count of lines, and the exact cost and bill of those lines.
+//
+// It is deliberately not a bucketSum. An expense has no hours — a receipt is
+// not measured in time — and the count is a count of lines rather than of
+// anything that could be compared against a budget in hours, which is half of
+// why nothing here can ever reach budgetUsed by accident.
+type expenseSum struct {
+	Count int64
+	Cost  *big.Rat
+	Bill  *big.Rat
+}
+
+// currencyExpenses is everything recorded in one currency, as exact decimals:
+// the three buckets, the across-bucket Total the consumer reports as the
+// project's own figure, and the invoicing figures that span the buckets.
+//
+// Total is the provider's own, rounded once from the unrounded whole — never
+// the three buckets added up, for exactly the reason bucketSums says it of
+// logged work.
+type currencyExpenses struct {
+	Currency                          string
+	Approved, Submitted, Draft, Total expenseSum
+	ReadyCount                        int64
+	ReadyAmount                       *big.Rat
+	InvoicedCount                     int64
+	InvoicedAmount                    *big.Rat
+	UnpricedCount                     int64
+}
+
+// expenseFigures is one project's expenses split the way every surface here
+// needs them: the currency the project itself is in, every other currency it
+// happens to have spent in, and the day the most recent line was for.
+//
+// The split is made once, here, because it is the whole of the currency rule
+// (spec §4): a line counts towards a project's own figures only when its
+// currency is the project's, and otherwise is reported as what it is. Own is
+// nil for a project that carries no currency — then every currency is an
+// other one and the project has no figures of its own at all.
+type expenseFigures struct {
+	Own           *currencyExpenses
+	Others        []currencyExpenses
+	LastEntryDate *string
+}
+
+// expensesOf reads one project's answer from the expenses contract into exact
+// decimals and splits it by the project's currency.
+//
+// A project with nothing recorded is **absent from the provider's map**,
+// unlike the actuals contract's zero-valued entry, so the caller hands the
+// zero value in and it lands here as "a currency list with nothing in it" —
+// which, for a project that carries a currency, is Own at zero rather than
+// Own nil. "Nothing has been recorded" and "this installation cannot say" are
+// different answers and only the second is an absent block.
+func expensesOf(t contracts.ProjectExpenseTotals, currency *string) (expenseFigures, error) {
+	out := expenseFigures{LastEntryDate: t.LastEntryDate}
+	if currency != nil {
+		own := zeroCurrencyExpenses(*currency)
+		out.Own = &own
+	}
+	for _, reported := range t.Currencies {
+		one, err := currencyExpensesOf(reported)
+		if err != nil {
+			return expenseFigures{}, err
+		}
+		if currency != nil && one.Currency == *currency {
+			*out.Own = one
+			continue
+		}
+		out.Others = append(out.Others, one)
+	}
+	return out, nil
+}
+
+// currencyExpensesOf converts one currency's reported figures. An amount the
+// provider spelled in a text big.Rat cannot read is an error rather than a
+// zero, exactly as it is on the actuals side: a margin silently computed from
+// nothing is worse than no answer at all.
+func currencyExpensesOf(c contracts.CurrencyExpenses) (currencyExpenses, error) {
+	out := currencyExpenses{
+		Currency:      c.Currency,
+		ReadyCount:    c.ReadyCount,
+		InvoicedCount: c.InvoicedCount,
+		UnpricedCount: c.UnpricedCount,
+	}
+	for _, pair := range []struct {
+		from contracts.ExpenseBucket
+		to   *expenseSum
+	}{
+		{c.Approved, &out.Approved},
+		{c.Submitted, &out.Submitted},
+		{c.Draft, &out.Draft},
+		{c.Total, &out.Total},
+	} {
+		cost, err := exactAmount(pair.from.CostAmount)
+		if err != nil {
+			return currencyExpenses{}, err
+		}
+		bill, err := exactAmount(pair.from.BillAmount)
+		if err != nil {
+			return currencyExpenses{}, err
+		}
+		pair.to.Count, pair.to.Cost, pair.to.Bill = pair.from.Count, cost, bill
+	}
+	ready, err := exactAmount(c.ReadyAmount)
+	if err != nil {
+		return currencyExpenses{}, err
+	}
+	invoiced, err := exactAmount(c.InvoicedAmount)
+	if err != nil {
+		return currencyExpenses{}, err
+	}
+	out.ReadyAmount, out.InvoicedAmount = ready, invoiced
+	return out, nil
+}
+
+// zeroCurrencyExpenses is a currency nothing was recorded in — every figure at
+// zero rather than nil, so the arithmetic never has to check.
+func zeroCurrencyExpenses(currency string) currencyExpenses {
+	zero := func() expenseSum { return expenseSum{Cost: new(big.Rat), Bill: new(big.Rat)} }
+	return currencyExpenses{
+		Currency: currency,
+		Approved: zero(), Submitted: zero(), Draft: zero(), Total: zero(),
+		ReadyAmount: new(big.Rat), InvoicedAmount: new(big.Rat),
+	}
+}
+
 // exactAmount reads the decimal text the actuals contract carries amounts in.
 // An empty text is nothing rather than an error — a bucket a provider left
 // blank has no money in it — but a text that is not a decimal is an error,

@@ -1075,7 +1075,12 @@ export interface components {
             draft: number;
             /**
              * Format: double
-             * @description The three buckets' bill amount minus the three buckets' cost. Negative when the work has cost more than it bills.
+             * @description What the project's expenses cost the company, in its own currency — the other half of `margin`'s cost side, given here so a surface can show both without subtracting one from the other. It is the expenses' own-currency total, the same figure as `expenses.totalCost`, rounded on its own; `margin` is *not* this figure subtracted from anything, because it is rounded once from the unrounded whole. Absent exactly when expenseTracking is false.
+             */
+            expenseCost?: number | null;
+            /**
+             * Format: double
+             * @description What is left over: the value of the work plus what the expenses will bill, less what the work cost plus what the expenses cost — every term in the project's own currency, added exactly and rounded once at the end rather than half by half. All four terms are **across all three buckets**, the same basis the labour half has always used: the work's own total (approved, submitted and draft together, as `actuals.totalAmount` and `cost.total` report it) and the expenses' total (`expenses.totalCost` and `expenses.totalAmount`), never the approved bucket alone and never two different bases mixed. What is approved and what is not is shown by the three buckets themselves — `actuals.approved/submitted/draft` and `expenses.approved/submitted/draft`. With expenseTracking false the two expense terms are not there and this is the three buckets' bill amount minus their cost, as it has always been. Negative when the project has cost more than it brings in.
              */
             margin: number;
             /**
@@ -1099,6 +1104,100 @@ export interface components {
             /** Format: int32 */
             id: number;
             name?: string | null;
+        };
+        /** @description One bucket of recorded expenses — how many lines are in it, what they cost the company and what their billable lines will charge the customer. The bucket a line falls in is its *unit's* status, so a travel claim's line is judged through the claim somebody approved or sent back; approved carries the lines already invoiced, because invoicing is a stamp rather than a status, and draft carries the rejected ones, exactly as the three buckets of logged work do. Each amount is rounded on its own, so two buckets need not add up to the cent — that is what the totals beside them are for. */
+        ProjectEconomyExpenseBucket: {
+            /**
+             * Format: double
+             * @description What the bucket's billable lines will charge the customer. A non-billable line contributes nothing, and neither does a billable line nobody has priced — that one is in unpricedCount instead, because a missing price is not a price of nothing.
+             */
+            amount: number;
+            /**
+             * Format: double
+             * @description What the bucket's lines cost the company — the net, the gross less the VAT, whoever paid. Financial data like every figure here, but not *labour* cost, so it needs financial rights on the project and not projects:view-costs.
+             */
+            cost: number;
+            /**
+             * Format: int32
+             * @description How many lines are in the bucket. A travel claim's lines count one each: a trip is one unit of approval, but it is its lines that cost money.
+             */
+            count: number;
+        };
+        /** @description What was recorded in one currency the project itself is not in. Nothing is ever converted — adding two currencies would produce a number in neither — so a receipt in another currency is reported as what it is rather than folded into the project's figures or dropped. A project that carries no currency at all reports every currency this way and has no figures of its own. */
+        ProjectEconomyExpenseCurrency: {
+            /**
+             * Format: double
+             * @description What this currency's billable lines will charge the customer, across all three buckets.
+             */
+            amount: number;
+            /**
+             * Format: double
+             * @description What this currency's lines cost the company, across all three buckets.
+             */
+            cost: number;
+            /**
+             * Format: int32
+             * @description How many lines were recorded in this currency, in any bucket.
+             */
+            count: number;
+            /** @description The ISO 4217 code every figure here is in. */
+            currency: string;
+            /**
+             * Format: double
+             * @description What of this currency is ready to invoice — approved, billable, priced and not yet invoiced.
+             */
+            readyAmount: number;
+        };
+        /** @description What the project's expenses cost, what they will bill, and what of them is ready to invoice. Present when this installation has a module that reports expenses (expenseTracking) *and* the caller has financial rights on the project — every figure in it is money — and absent otherwise, never zeroed. **None of it reaches the budget**: expenses are not work measured against a budget, so nothing here is in budgetUsed, overBudget, a line's usedPercent or the logged work those are computed from. The nine figures of the project's own currency (the three buckets and the six beside them) are present or absent *together*, on the project carrying a currency; a project that carries none has only otherCurrencies. A project whose expenses are tracked and has none recorded is here with zeroes, which is a different answer from the block being absent. */
+        ProjectEconomyExpenses: {
+            /** @description What has been approved, in the project's own currency, invoiced lines included. Absent when the project carries no currency. */
+            approved?: components["schemas"]["ProjectEconomyExpenseBucket"];
+            /** @description What nobody has been asked to accept yet, rejected units included. Absent when the project carries no currency. */
+            draft?: components["schemas"]["ProjectEconomyExpenseBucket"];
+            /**
+             * Format: double
+             * @description What has already been charged for the invoiced lines, in the project's currency. Absent when the project carries no currency.
+             */
+            invoicedAmount?: number | null;
+            /**
+             * Format: int32
+             * @description How many lines have already been stamped as invoiced. Invoicing is a stamp, not a status: these lines are still in the approved bucket, and this says how much of it has already left the building. Absent when the project carries no currency.
+             */
+            invoicedCount?: number | null;
+            /**
+             * Format: date
+             * @description The day the most recently dated line was for, **across every currency and every bucket** — so on a project with a foreign-currency receipt it may be the day of a line reported under otherCurrencies. Absent when nothing has been recorded.
+             */
+            lastEntryDate?: string | null;
+            /** @description One entry per currency the project itself is not in, by currency code. Absent when everything was recorded in the project's own currency — and, on a project that carries no currency, this is the whole answer. */
+            otherCurrencies?: components["schemas"]["ProjectEconomyExpenseCurrency"][];
+            /**
+             * Format: double
+             * @description What the ready lines will charge, in the project's currency. Absent when the project carries no currency.
+             */
+            readyAmount?: number | null;
+            /**
+             * Format: int32
+             * @description How many lines can go on an invoice today: the unit approved, the line billable, a bill amount present and not yet invoiced. Absent when the project carries no currency.
+             */
+            readyCount?: number | null;
+            /** @description What is waiting for a decision. Absent when the project carries no currency. */
+            submitted?: components["schemas"]["ProjectEconomyExpenseBucket"];
+            /**
+             * Format: double
+             * @description What all three buckets' billable lines will charge, in the project's currency — the across-bucket figure the module that owns the expenses reports, rounded once from the unrounded whole rather than by adding the three buckets above, each of which was rounded on its own. Absent when the project carries no currency.
+             */
+            totalAmount?: number | null;
+            /**
+             * Format: double
+             * @description What all three buckets cost the company, in the project's currency, taken the same across-bucket way as totalAmount. It is the figure cost.expenseCost repeats for a caller who may also see the labour cost. Absent when the project carries no currency.
+             */
+            totalCost?: number | null;
+            /**
+             * Format: int32
+             * @description How many billable lines, in any bucket, carry no bill amount — billable mileage with no customer rate, an outlay nobody has priced yet. They are counted here and are in no amount, because a missing price is not a price of nothing: a surface showing what the project will bill must say how many lines the figure is short by. Absent when the project carries no currency.
+             */
+            unpricedCount?: number | null;
         };
         /** @description One row of the per-line breakdown — every billing line of the project, deactivated ones included, in the same order the billing tab lists them, plus one row without a billingLineId for work logged against no line at all. A line the project does not have that work was nonetheless logged against folds into that same row rather than being dropped. */
         ProjectEconomyLine: {
@@ -1139,6 +1238,8 @@ export interface components {
         /** @description One page of the economy portfolio, with totals over the whole filtered set rather than over the page: a portfolio read to decide where to look must not have its headline figures change when somebody turns the page. */
         ProjectEconomyListResponse: {
             data: components["schemas"]["ProjectEconomyRow"][];
+            /** @description Whether this installation has a module that reports what a project's expenses cost and bill, exactly as the per-project economy reports it. False means no row carries readyExpenseCount, readyExpenseAmount or readyTotalAmount and no currency's totals carry expenseAmount or totalAmount — not that nothing has been spent. */
+            expenseTracking: boolean;
             pagination: components["schemas"]["PaginationMetadata"];
             /** @description Whether this installation has a module that reports what has been logged against projects, exactly as the per-project economy reports it. False means no row carries actuals or budgetUsed — not that nothing has been logged. */
             timeTracking: boolean;
@@ -1164,11 +1265,24 @@ export interface components {
             /** @description 'planned' or 'ready' — the two open statuses. */
             status: string;
         };
-        /** @description What is ready to invoice in one currency. The portfolio's totals carry one of these per currency, by currency code, because amounts in different currencies are not comparable and adding them would produce a number in neither. */
+        /** @description What is ready to invoice in one currency. The portfolio's totals carry one of these per currency, by currency code, because amounts in different currencies are not comparable and adding them would produce a number in neither. Each figure is rounded once from the exact sum across every row in that currency, never from the rows' own rounded figures. */
         ProjectEconomyReadyAmount: {
-            /** Format: double */
+            /**
+             * Format: double
+             * @description What the ready *milestones* come to. It keeps that meaning: a currency in this list only because something is ready to invoice among its expenses reports 0 here, which is a sum over no milestones rather than a missing figure.
+             */
             amount: number;
             currency: string;
+            /**
+             * Format: double
+             * @description What the ready *expense lines* come to. Absent exactly when expenseTracking is false.
+             */
+            expenseAmount?: number | null;
+            /**
+             * Format: double
+             * @description amount and expenseAmount together — what is ready to invoice in this currency altogether, which is what the readyAmount sort orders rows by. Absent exactly when expenseTracking is false.
+             */
+            totalAmount?: number | null;
         };
         /** @description A project's budget against what has been logged on it (design §5, delivery B). Everyone who sees the project sees the hours; amounts, the fixed price, the milestone totals and the currency need financial rights on it, and the cost block needs projects:view-costs as well. Fields the caller may not see are absent, never null and never zero. Nothing here is cached: the hours are read live through the actuals contract on every request. */
         ProjectEconomyResponse: {
@@ -1181,6 +1295,10 @@ export interface components {
             cost?: components["schemas"]["ProjectEconomyCost"];
             /** @description The currency every amount in this response is in. Financial data, exactly as on the project itself, so a caller who may not see the money sees no currency either; absent too when the project carries none. */
             currency?: string | null;
+            /** @description Whether this installation has a module that reports what a project's expenses cost and bill. False means the expenses block is not there, the cost block carries no expenseCost and the margin is the labour one alone — not that nothing has been spent. It is about the installation rather than the caller, so it is true even for a caller who may not see the block. */
+            expenseTracking: boolean;
+            /** @description What the project's expenses cost and will bill. Absent when expenseTracking is false and absent without financial rights on the project. None of it reaches the budget (see the block's own description). */
+            expenses?: components["schemas"]["ProjectEconomyExpenses"];
             /** @description One row per billing line, plus the no-line row when anything was logged without one. Always present, and empty on a project with no lines and nothing logged. */
             lines: components["schemas"]["ProjectEconomyLine"][];
             /** @description The invoice plan's totals, the same sums GET /projects/{id}/milestones answers with. Financial data, so absent without financial rights on the project; present, with zeroes, for a project whose plan is empty. */
@@ -1215,14 +1333,29 @@ export interface components {
             project: components["schemas"]["ProjectEconomyRowProject"];
             /**
              * Format: double
-             * @description What the project's 'ready' milestones add up to, in its own currency. Absent when it has none ready, when none of them can be priced, and when the project carries no currency.
+             * @description What the project's 'ready' milestones add up to, in its own currency. Absent when it has none ready, when none of them can be priced, and when the project carries no currency. It keeps meaning milestones: the expenses are beside it, and the two together are readyTotalAmount.
              */
             readyAmount?: number | null;
             /**
              * Format: int32
-             * @description How many of the project's milestones are ready to invoice.
+             * @description How many of the project's milestones are ready to invoice. It keeps meaning milestones: the expense lines are counted in readyExpenseCount.
              */
             readyCount: number;
+            /**
+             * Format: double
+             * @description What the project's ready expense lines will charge, in its own currency. Absent when it has none ready, when the project carries no currency, and absent exactly when expenseTracking is false.
+             */
+            readyExpenseAmount?: number | null;
+            /**
+             * Format: int32
+             * @description How many of the project's expense lines are ready to invoice — approved, billable, priced, not yet invoiced — **in the project's own currency only**. A line in another currency is not counted and not converted here; the per-project economy is where a project's other currencies are reported, because a portfolio row is one line of a table. Absent exactly when expenseTracking is false, which is how "this installation cannot say" is told from "there are none".
+             */
+            readyExpenseCount?: number | null;
+            /**
+             * Format: double
+             * @description readyAmount and readyExpenseAmount together — what is ready to invoice on this project altogether, in its own currency, which is what the readyAmount sort orders by. Absent when neither half has an amount, and absent exactly when expenseTracking is false.
+             */
+            readyTotalAmount?: number | null;
         };
         /** @description What has been logged on a portfolio row's project — the three buckets and their totals, and no more. The unpriced, billable and non-billable splits are the per-project economy read's; a portfolio is read across hundreds of projects at once. */
         ProjectEconomyRowActuals: {
@@ -1264,13 +1397,18 @@ export interface components {
              * @description How many projects the filters matched, which is also the pagination's totalCount.
              */
             projectCount: number;
-            /** @description What is ready to invoice, one entry per currency, by currency code. A project whose ready milestones cannot be priced, or that carries no currency, contributes to readyCount and to no amount. */
+            /** @description What is ready to invoice, one entry per currency, by currency code — milestones, expenses and their total. A currency appears when either half has something in it. A project whose ready milestones cannot be priced, or that carries no currency, contributes to readyCount and to no amount. */
             readyAmounts: components["schemas"]["ProjectEconomyReadyAmount"][];
             /**
              * Format: int32
              * @description How many milestones across those projects are ready to invoice.
              */
             readyCount: number;
+            /**
+             * Format: int32
+             * @description How many expense lines across those projects are ready to invoice, each counted only in its own project's currency. Absent exactly when expenseTracking is false.
+             */
+            readyExpenseCount?: number | null;
         };
         /** @description The project's financial fields, present only when the caller may see them (capabilities.canSeeFinancials) and then always present, possibly with no fields inside, so a client can tell "may see, nothing entered" from "may not see". */
         ProjectFinancials: {

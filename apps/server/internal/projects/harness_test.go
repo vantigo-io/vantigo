@@ -67,6 +67,34 @@ func newHarnessWithActuals(t *testing.T, actuals *fakeActuals, opts ...modtest.O
 	return newProjectsHarness(t, newFakeCatalog(), append([]modtest.Option{modtest.WithActuals(actuals)}, opts...)...)
 }
 
+// newHarnessWithExpenses is newHarness with a module that reports what a
+// project's expenses cost and bill composed beside it, and *no* time
+// tracking: the combination an installation running expenses without time
+// runs, which is a real one — the two contracts are independent slots.
+// depguard forbids internal/projects/** from importing internal/expenses even
+// in a test, so the provider is a fake built directly against
+// internal/contracts and handed to Deps.Expenses through modtest.WithExpenses,
+// exactly the seam the actuals contract uses.
+func newHarnessWithExpenses(t *testing.T, expenses *fakeExpenses, opts ...modtest.Option) *modtest.Harness {
+	t.Helper()
+	return newProjectsHarness(t, newFakeCatalog(), append([]modtest.Option{modtest.WithExpenses(expenses)}, opts...)...)
+}
+
+// newHarnessWithActualsAndExpenses is the fourth combination: both optional
+// contracts present, which is the installation the economy read was designed
+// for and the only one where a margin spans labour and expenses at once.
+//
+// The four helpers — newHarness (neither), newHarnessWithActuals (time only),
+// newHarnessWithExpenses (expenses only) and this one — are named rather than
+// assembled at each call site because "which modules are installed" is the
+// axis half the cases here vary along, and a test that composed its own
+// option list would make that axis invisible.
+func newHarnessWithActualsAndExpenses(t *testing.T, actuals *fakeActuals, expenses *fakeExpenses, opts ...modtest.Option) *modtest.Harness {
+	t.Helper()
+	return newProjectsHarness(t, newFakeCatalog(),
+		append([]modtest.Option{modtest.WithActuals(actuals), modtest.WithExpenses(expenses)}, opts...)...)
+}
+
 // newProjectsHarness is the one composition every harness here is: the
 // catalog is the only thing they differ in, nil for "products disabled", so
 // it is the only thing any of them says. A second copy of the option list
@@ -432,6 +460,145 @@ func (f *fakeActuals) ActualsForProjects(ctx context.Context, reqs []contracts.A
 		out[req.ProjectID] = entry.Totals
 	}
 	return out, nil
+}
+
+// fakeExpenses is contracts.ProjectExpenses over whatever a test says has
+// been recorded. It carries the same three things fakeActuals does — what was
+// recorded (set), that the module that owns the expenses could not answer
+// (fail), and what was actually asked of it (asked, batched) — because the
+// rules of the read are the same rules: one call per request, over the whole
+// capped set at once, outside any transaction.
+//
+// It models the one place the two contracts differ, and the one task 3's
+// consumer is most likely to get wrong: **a project nothing was recorded
+// against is absent from the map**, where fakeActuals answers a zero-valued
+// entry for every project it was asked about. A consumer that indexed the map
+// blindly would read a project with a receipt on it as a project with none.
+type fakeExpenses struct {
+	mu      sync.Mutex
+	entries map[int32]contracts.ProjectExpenseTotals
+	err     error
+	batches [][]int32
+	onCall  func(context.Context, []int32)
+}
+
+var _ contracts.ProjectExpenses = (*fakeExpenses)(nil)
+
+func newFakeExpenses() *fakeExpenses {
+	return &fakeExpenses{entries: map[int32]contracts.ProjectExpenseTotals{}}
+}
+
+// set says what has been recorded against one project: one entry per currency
+// anything is in, by currency code ascending, and the date of the most
+// recently dated line over all of them.
+func (f *fakeExpenses) set(projectID int32, totals contracts.ProjectExpenseTotals) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.entries[projectID] = totals
+}
+
+// fail makes every later call answer err. It is "could not be read", never
+// "there is nothing" — the distinction the contract's own doc comment turns
+// into a 500 rather than a project that has apparently spent nothing.
+func (f *fakeExpenses) fail(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.err = err
+}
+
+// during registers a hook run inside every call, before it answers — how a
+// test proves the handler holds no lock while it waits.
+func (f *fakeExpenses) during(hook func(context.Context, []int32)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.onCall = hook
+}
+
+// asked is every project id the provider has been handed, in order and
+// flattened across batches; batched keeps the batches apart, which is what a
+// portfolio test reads to prove one request costs exactly one call however
+// many projects it is about.
+func (f *fakeExpenses) asked() []int32 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := []int32{}
+	for _, batch := range f.batches {
+		out = append(out, batch...)
+	}
+	return out
+}
+
+func (f *fakeExpenses) batched() [][]int32 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.batches)
+}
+
+// ExpensesForProjects refuses what the real provider refuses — a batch past
+// contracts.MaxExpensesProjects, and one project named twice — so a consumer
+// that builds a batch badly fails the test that built it rather than quietly
+// getting an answer the real module would never have given.
+func (f *fakeExpenses) ExpensesForProjects(ctx context.Context, projectIDs []int32) (map[int32]contracts.ProjectExpenseTotals, error) {
+	f.mu.Lock()
+	f.batches = append(f.batches, slices.Clone(projectIDs))
+	hook, err := f.onCall, f.err
+	f.mu.Unlock()
+
+	if hook != nil {
+		hook(ctx, projectIDs)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(projectIDs) > contracts.MaxExpensesProjects {
+		return nil, fmt.Errorf("projects test: %d projects in one batch, at most %d", len(projectIDs), contracts.MaxExpensesProjects)
+	}
+	seen := make(map[int32]bool, len(projectIDs))
+	for _, id := range projectIDs {
+		if seen[id] {
+			return nil, fmt.Errorf("projects test: project %d asked for twice in one batch", id)
+		}
+		seen[id] = true
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make(map[int32]contracts.ProjectExpenseTotals, len(projectIDs))
+	for _, id := range projectIDs {
+		if entry, ok := f.entries[id]; ok {
+			out[id] = entry
+		}
+	}
+	return out, nil
+}
+
+// spentBucket is one of the three expense buckets: how many lines are in it,
+// what they cost the company and what their billable lines will charge, the
+// amounts as the decimal text the contract uses.
+func spentBucket(count int64, cost, bill string) contracts.ExpenseBucket {
+	return contracts.ExpenseBucket{Count: count, CostAmount: cost, BillAmount: bill}
+}
+
+// spentInCurrency is one currency's figures with Total derived from the three
+// buckets, which is what the real provider answers whenever nothing lands on
+// a rounding boundary. A test whose subject *is* that boundary assigns Total
+// itself afterwards.
+func spentInCurrency(currency string, approved, submitted, draft contracts.ExpenseBucket) contracts.CurrencyExpenses {
+	return contracts.CurrencyExpenses{
+		Currency: currency, Approved: approved, Submitted: submitted, Draft: draft,
+		Total: contracts.ExpenseBucket{
+			Count:      approved.Count + submitted.Count + draft.Count,
+			CostAmount: addedAmounts(approved.CostAmount, submitted.CostAmount, draft.CostAmount),
+			BillAmount: addedAmounts(approved.BillAmount, submitted.BillAmount, draft.BillAmount),
+		},
+	}
+}
+
+// recordedExpenses is one project's whole answer: its currencies and the day
+// its most recently dated line was for. The contract promises a date on every
+// project that is in the map at all, so it is not optional here either.
+func recordedExpenses(lastEntryDate string, currencies ...contracts.CurrencyExpenses) contracts.ProjectExpenseTotals {
+	return contracts.ProjectExpenseTotals{Currencies: currencies, LastEntryDate: &lastEntryDate}
 }
 
 // loggedHours is a count of hours as the contract carries it — int64
@@ -1065,6 +1232,8 @@ func rawEconomy(t *testing.T, c *modtest.Client, projectID int32) map[string]any
 // pointer, because absent is what this endpoint says instead of zero.
 type economyJSON struct {
 	TimeTracking      bool                 `json:"timeTracking"`
+	ExpenseTracking   bool                 `json:"expenseTracking"`
+	Expenses          *economyExpensesJSON `json:"expenses"`
 	Currency          *string              `json:"currency"`
 	Budget            economyBudgetJSON    `json:"budget"`
 	Actuals           *economyActualsJSON  `json:"actuals"`
@@ -1120,12 +1289,50 @@ type budgetUsedJSON struct {
 }
 
 type economyCostJSON struct {
-	Approved      float64 `json:"approved"`
-	Submitted     float64 `json:"submitted"`
-	Draft         float64 `json:"draft"`
-	Total         float64 `json:"total"`
-	Margin        float64 `json:"margin"`
-	UncostedHours float64 `json:"uncostedHours"`
+	Approved      float64  `json:"approved"`
+	Submitted     float64  `json:"submitted"`
+	Draft         float64  `json:"draft"`
+	Total         float64  `json:"total"`
+	ExpenseCost   *float64 `json:"expenseCost"`
+	Margin        float64  `json:"margin"`
+	UncostedHours float64  `json:"uncostedHours"`
+}
+
+// economyExpensesJSON decodes ProjectEconomyExpenses. Every main figure is a
+// pointer because the nine of them are present or absent *together*, on the
+// project carrying a currency: a project with none reports every line it has
+// under otherCurrencies and has no figures of its own at all.
+type economyExpensesJSON struct {
+	Approved        *expenseBucketJSON    `json:"approved"`
+	Submitted       *expenseBucketJSON    `json:"submitted"`
+	Draft           *expenseBucketJSON    `json:"draft"`
+	TotalCost       *float64              `json:"totalCost"`
+	TotalAmount     *float64              `json:"totalAmount"`
+	ReadyCount      *int32                `json:"readyCount"`
+	ReadyAmount     *float64              `json:"readyAmount"`
+	InvoicedCount   *int32                `json:"invoicedCount"`
+	InvoicedAmount  *float64              `json:"invoicedAmount"`
+	UnpricedCount   *int32                `json:"unpricedCount"`
+	OtherCurrencies []expenseCurrencyJSON `json:"otherCurrencies"`
+	LastEntryDate   *string               `json:"lastEntryDate"`
+}
+
+// expenseBucketJSON decodes ProjectEconomyExpenseBucket: a count of lines,
+// what they cost and what they bill.
+type expenseBucketJSON struct {
+	Count  int32   `json:"count"`
+	Cost   float64 `json:"cost"`
+	Amount float64 `json:"amount"`
+}
+
+// expenseCurrencyJSON decodes ProjectEconomyExpenseCurrency — one currency
+// the project itself is not in, reported rather than converted or dropped.
+type expenseCurrencyJSON struct {
+	Currency    string  `json:"currency"`
+	Count       int32   `json:"count"`
+	Cost        float64 `json:"cost"`
+	Amount      float64 `json:"amount"`
+	ReadyAmount float64 `json:"readyAmount"`
 }
 
 // validationProblemJSON decodes the field-error body every §4.1 refusal

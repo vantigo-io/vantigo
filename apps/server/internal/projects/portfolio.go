@@ -31,18 +31,25 @@ import (
 // list. The `cost` block is not here at all; it is the per-project read's,
 // behind a second permission.
 //
-// **Three reads and one call, whatever the size of the portfolio.** One
+// **Three reads and two calls, whatever the size of the portfolio.** One
 // query for the matching projects, one call into the module that owns the
-// hours for all of them at once, one grouped read of their open milestones,
-// and the customer names of the *page* only. Nothing is per row, no
-// transaction is opened and no lock is held while another module's pool is
-// waited on.
+// hours and one into the module that owns the expenses — each for all of them
+// at once — one grouped read of their open milestones, and the customer names
+// of the *page* only. Nothing is per row, no transaction is opened and no
+// lock is held while another module's pool is waited on.
 //
 // **A cap rather than a truncation.** The actuals contract refuses a batch
-// past contracts.MaxActualsRequests, so more matching projects than that is a
-// 400 asking for a narrower filter. Answering the first two thousand would
-// mean totals computed over part of the set — a wrong number rather than a
-// missing one.
+// past contracts.MaxActualsRequests, and the expenses contract's own cap is
+// deliberately that same number, so more matching projects than that is a
+// 400 asking for a narrower filter — once, for both. Answering the first two
+// thousand would mean totals computed over part of the set — a wrong number
+// rather than a missing one.
+//
+// **Ready to invoice means both halves.** readyAmount and readyCount keep
+// meaning milestones; the expense lines are counted and priced beside them,
+// and readyTotalAmount is the two together — which is what the ready order is
+// taken on and what the hasReady filter asks about. Nothing from the expenses
+// contract touches budgetUsed or overBudget here either (X12).
 //
 // **Filtering, sorting and paging in Go.** Two of the filters and two of the
 // sorts are decided from what the other module reported, which no SQL of this
@@ -117,17 +124,22 @@ func (s *server) GetProjectsEconomy(ctx context.Context, req gen.GetProjectsEcon
 	if err != nil {
 		return nil, err
 	}
+	spent, err := s.portfolioExpenses(ctx, projects)
+	if err != nil {
+		return nil, err
+	}
 	milestones, err := q.OpenMilestonesForProjects(ctx, projectIDs(projects))
 	if err != nil {
 		return nil, fmt.Errorf("projects: read the portfolio's open milestones: %w", err)
 	}
 
-	rows, err := s.portfolioRows(ctx, projects, logged, milestones, s.deps.Actuals != nil)
+	expenseTracking := s.deps.Expenses != nil
+	rows, err := s.portfolioRows(ctx, projects, logged, spent, milestones, s.deps.Actuals != nil, expenseTracking)
 	if err != nil {
 		return nil, err
 	}
 	rows = filterPortfolio(rows, req.Params)
-	totals := portfolioTotals(rows)
+	totals := portfolioTotals(rows, expenseTracking)
 	sortPortfolio(rows, req.Params.Sort)
 
 	data, err := s.portfolioData(ctx, portfolioPage(rows, page, pageSize))
@@ -135,10 +147,11 @@ func (s *server) GetProjectsEconomy(ctx context.Context, req gen.GetProjectsEcon
 		return nil, err
 	}
 	return gen.GetProjectsEconomy200JSONResponse{
-		Data:         data,
-		Pagination:   apicommon.Pagination(page, pageSize, int32(len(rows))),
-		TimeTracking: s.deps.Actuals != nil,
-		Totals:       totals,
+		Data:            data,
+		Pagination:      apicommon.Pagination(page, pageSize, int32(len(rows))),
+		TimeTracking:    s.deps.Actuals != nil,
+		ExpenseTracking: expenseTracking,
+		Totals:          totals,
 	}, nil
 }
 
@@ -236,8 +249,42 @@ func (s *server) portfolioActuals(ctx context.Context, projects []store.Projects
 	return out, nil
 }
 
+// portfolioExpenses is the one call into the module that owns the expenses:
+// the same projects the actuals batch covers, in one batch, outside any
+// transaction. It answers nil for an installation without expense tracking,
+// which is not "nothing has been spent".
+//
+// There is no second cap. portfolioMaxProjects is contracts.MaxActualsRequests
+// and contracts.MaxExpensesProjects is deliberately the same number, so the
+// set that got past the 400 above is a set both providers will accept — a
+// caller who narrowed their filter once never has to narrow it again for the
+// other module.
+//
+// The duplicate guard is the actuals batch's, for the actuals batch's reason:
+// the read these ids come from returns one row per project, and the contract
+// makes naming a project twice an error rather than a resolvable ambiguity.
+func (s *server) portfolioExpenses(ctx context.Context, projects []store.ProjectsProject) (map[int32]contracts.ProjectExpenseTotals, error) {
+	if s.deps.Expenses == nil || len(projects) == 0 {
+		return nil, nil
+	}
+	ids := make([]int32, 0, len(projects))
+	seen := make(map[int32]bool, len(projects))
+	for _, project := range projects {
+		if seen[project.ID] {
+			continue
+		}
+		seen[project.ID] = true
+		ids = append(ids, project.ID)
+	}
+	recorded, err := s.expensesForProjects(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("projects: read what the portfolio's projects have spent: %w", err)
+	}
+	return recorded, nil
+}
+
 // portfolioRow is one row while it is still being decided: the contract's row
-// beside the two exact figures the orders are taken on. Both are kept as
+// beside the exact figures the orders are taken on. All of them are kept as
 // exact rationals rather than read back off the response, because a ratio
 // rounded for display must never be what a comparison is made on, and two
 // amounts that print the same may not be the same.
@@ -250,6 +297,22 @@ type portfolioRow struct {
 	// ready is what the project's ready milestones add up to, exactly, nil
 	// when it has nothing ready that anything can price.
 	ready *big.Rat
+	// readyExpense is what its ready expense lines add up to in its own
+	// currency, nil when it has none ready; readyTotal is the two together,
+	// which is what the ready order is taken on. Without expense tracking
+	// readyTotal is simply ready, so the order is the one it has always been.
+	readyExpense *big.Rat
+	readyTotal   *big.Rat
+}
+
+// readyExpenseCount is how many expense lines this row has ready, 0 for an
+// installation that cannot say — the filter treats the two the same, because
+// a row that cannot say has nothing to keep it in.
+func (r portfolioRow) readyExpenseCount() int32 {
+	if r.row.ReadyExpenseCount == nil {
+		return 0
+	}
+	return *r.row.ReadyExpenseCount
 }
 
 // portfolioRows builds every matching project's row. The milestones arrive as
@@ -260,8 +323,10 @@ func (s *server) portfolioRows(
 	ctx context.Context,
 	projects []store.ProjectsProject,
 	logged map[int32]loggedWork,
+	spent map[int32]contracts.ProjectExpenseTotals,
 	milestones []store.ProjectsBillingMilestone,
 	timeTracking bool,
+	expenseTracking bool,
 ) ([]portfolioRow, error) {
 	open := make(map[int32][]store.ProjectsBillingMilestone, len(projects))
 	for _, m := range milestones {
@@ -270,7 +335,12 @@ func (s *server) portfolioRows(
 	now := s.deps.Clock()
 	rows := make([]portfolioRow, 0, len(projects))
 	for _, project := range projects {
-		row, err := s.portfolioRowFor(ctx, project, logged[project.ID], open[project.ID], timeTracking, now)
+		// A project with nothing recorded is absent from the expenses
+		// provider's map, so the zero value here is its answer: nothing
+		// recorded, which is not the same as the installation having no
+		// expenses module — that is what expenseTracking says.
+		row, err := s.portfolioRowFor(ctx, project, logged[project.ID], spent[project.ID],
+			open[project.ID], timeTracking, expenseTracking, now)
 		if err != nil {
 			return nil, err
 		}
@@ -287,8 +357,10 @@ func (s *server) portfolioRowFor(
 	ctx context.Context,
 	project store.ProjectsProject,
 	logged loggedWork,
+	spent contracts.ProjectExpenseTotals,
 	open []store.ProjectsBillingMilestone,
 	timeTracking bool,
+	expenseTracking bool,
 	now time.Time,
 ) (portfolioRow, error) {
 	seesAmounts := project.Currency != nil
@@ -363,7 +435,43 @@ func (s *server) portfolioRowFor(
 		out.ready.Add(out.ready, exactCents(*amount))
 	}
 	out.row.ReadyAmount = numberPtr(out.ready)
+
+	// What is ready to invoice among the project's expenses, in the project's
+	// own currency and no other: a receipt in another currency is the
+	// per-project read's business, because a portfolio row is one line of a
+	// table and a second currency in it would be a number nobody could add up.
+	// readyAmount and readyCount keep meaning milestones; readyTotalAmount is
+	// the two halves together and is what the ready order is taken on.
+	out.readyTotal = out.ready
+	if expenseTracking {
+		figures, err := expensesOf(spent, project.Currency)
+		if err != nil {
+			return portfolioRow{}, err
+		}
+		count := int32(0)
+		if own := figures.Own; own != nil && own.ReadyCount > 0 {
+			count, out.readyExpense = int32(own.ReadyCount), own.ReadyAmount
+		}
+		out.row.ReadyExpenseCount = &count
+		out.row.ReadyExpenseAmount = numberPtr(out.readyExpense)
+		out.readyTotal = addReady(out.ready, out.readyExpense)
+		out.row.ReadyTotalAmount = numberPtr(out.readyTotal)
+	}
 	return out, nil
+}
+
+// addReady is the two halves of "ready to invoice" added exactly, nil when
+// neither half is there at all — a project with nothing ready has no total
+// rather than a total of nothing, exactly as it has no readyAmount.
+func addReady(milestones, expenses *big.Rat) *big.Rat {
+	switch {
+	case milestones == nil:
+		return expenses
+	case expenses == nil:
+		return milestones
+	default:
+		return new(big.Rat).Add(milestones, expenses)
+	}
 }
 
 // portfolioActualsOf is a row's actuals: the three buckets and their totals,
@@ -393,6 +501,12 @@ func portfolioActualsOf(w loggedWork, seesAmounts bool) gen.ProjectEconomyRowAct
 // budget, and having something ready to invoice. Both are "true keeps only
 // these"; false and absent are the same thing, because "show me the projects
 // that are not over budget" is not a question a portfolio is read with.
+//
+// hasReady asks "is there anything to invoice here", so a project whose only
+// ready thing is a billable receipt is kept: it is something to put on an
+// invoice, and a filter that hid it would send whoever invoices past the very
+// project they are looking for. On an installation without expense tracking
+// the count is always 0 and the filter is the one it has always been.
 func filterPortfolio(rows []portfolioRow, p gen.GetProjectsEconomyParams) []portfolioRow {
 	overBudget := p.OverBudget != nil && *p.OverBudget
 	hasReady := p.HasReady != nil && *p.HasReady
@@ -404,7 +518,7 @@ func filterPortfolio(rows []portfolioRow, p gen.GetProjectsEconomyParams) []port
 		if overBudget && !row.row.OverBudget {
 			continue
 		}
-		if hasReady && row.row.ReadyCount == 0 {
+		if hasReady && row.row.ReadyCount == 0 && row.readyExpenseCount() == 0 {
 			continue
 		}
 		kept = append(kept, row)
@@ -416,34 +530,80 @@ func filterPortfolio(rows []portfolioRow, p gen.GetProjectsEconomyParams) []port
 // is cut. readyAmounts is one sum per currency, by currency code: two
 // currencies never add up, and a single figure over a mixed portfolio would
 // be a number in neither.
-func portfolioTotals(rows []portfolioRow) gen.ProjectEconomyTotals {
+//
+// Each currency's three figures are added **exactly across the rows** and
+// rounded once at the end, never from the rows' own rounded figures — three
+// rows worth half a cent each are 0.01 apiece on screen and 0.02 altogether.
+//
+// A currency appears when either half has something in it, so a portfolio
+// whose only EUR project has nothing but a billable receipt still gets a EUR
+// entry; its milestone `amount` is then 0, which is a sum over no milestones
+// rather than a missing figure. Without expense tracking neither the expense
+// figures nor the count appear at all, and the list is the one it has always
+// been.
+func portfolioTotals(rows []portfolioRow, expenseTracking bool) gen.ProjectEconomyTotals {
 	totals := gen.ProjectEconomyTotals{
 		ProjectCount: int32(len(rows)),
 		ReadyAmounts: []gen.ProjectEconomyReadyAmount{},
 	}
-	amounts := map[string]*big.Rat{}
+	amounts, expenseAmounts := map[string]*big.Rat{}, map[string]*big.Rat{}
+	add := func(into map[string]*big.Rat, currency string, amount *big.Rat) {
+		sum, ok := into[currency]
+		if !ok {
+			sum = new(big.Rat)
+			into[currency] = sum
+		}
+		sum.Add(sum, amount)
+	}
+	readyExpenseCount := int32(0)
 	for _, row := range rows {
 		if row.row.OverBudget {
 			totals.OverBudgetCount++
 		}
 		totals.ReadyCount += row.row.ReadyCount
-		if row.ready == nil {
-			continue
-		}
+		readyExpenseCount += row.readyExpenseCount()
 		currency := portfolioCurrency(row)
-		sum, ok := amounts[currency]
-		if !ok {
-			sum = new(big.Rat)
-			amounts[currency] = sum
+		if row.ready != nil {
+			add(amounts, currency, row.ready)
 		}
-		sum.Add(sum, row.ready)
+		if row.readyExpense != nil {
+			add(expenseAmounts, currency, row.readyExpense)
+		}
 	}
-	for _, currency := range slices.Sorted(maps.Keys(amounts)) {
-		totals.ReadyAmounts = append(totals.ReadyAmounts, gen.ProjectEconomyReadyAmount{
-			Currency: currency, Amount: decimalNumber(amounts[currency]),
-		})
+	if expenseTracking {
+		totals.ReadyExpenseCount = &readyExpenseCount
+	}
+
+	currencies := slices.Sorted(maps.Keys(amounts))
+	if expenseTracking {
+		for currency := range expenseAmounts {
+			if _, ok := amounts[currency]; !ok {
+				currencies = append(currencies, currency)
+			}
+		}
+		slices.Sort(currencies)
+	}
+	for _, currency := range currencies {
+		entry := gen.ProjectEconomyReadyAmount{
+			Currency: currency, Amount: decimalNumber(orZero(amounts[currency])),
+		}
+		if expenseTracking {
+			expenseAmount := decimalNumber(orZero(expenseAmounts[currency]))
+			total := decimalNumber(new(big.Rat).Add(orZero(amounts[currency]), orZero(expenseAmounts[currency])))
+			entry.ExpenseAmount, entry.TotalAmount = &expenseAmount, &total
+		}
+		totals.ReadyAmounts = append(totals.ReadyAmounts, entry)
 	}
 	return totals
+}
+
+// orZero is an absent sum as the exact zero it stands for, for the one place
+// a currency is in the list because of its *other* half.
+func orZero(r *big.Rat) *big.Rat {
+	if r == nil {
+		return new(big.Rat)
+	}
+	return r
 }
 
 // portfolioCurrency is a row's currency, "" for a project that carries none —
@@ -511,19 +671,25 @@ func compareBudgetUsed(a, b portfolioRow) int {
 // answer — so they are grouped rather than interleaved, and the reader sees
 // each currency's largest first. Projects with nothing priced and ready come
 // last whatever their currency.
+//
+// The amount compared is readyTotalAmount — milestones and expenses together
+// — because the order answers "where is the most to invoice", and a project
+// whose receipts are worth more than another's milestone belongs above it.
+// Without expense tracking readyTotal is the milestone figure and the order
+// is unchanged.
 func compareReadyAmount(a, b portfolioRow) int {
 	switch {
-	case a.ready == nil && b.ready == nil:
+	case a.readyTotal == nil && b.readyTotal == nil:
 		return 0
-	case a.ready == nil:
+	case a.readyTotal == nil:
 		return 1
-	case b.ready == nil:
+	case b.readyTotal == nil:
 		return -1
 	}
 	if c := strings.Compare(portfolioCurrency(a), portfolioCurrency(b)); c != 0 {
 		return c
 	}
-	return -a.ready.Cmp(b.ready)
+	return -a.readyTotal.Cmp(b.readyTotal)
 }
 
 // compareNextMilestone is soonest first: dated open milestones in date order,

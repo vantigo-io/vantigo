@@ -498,14 +498,24 @@ rest of the module's endpoints.
 ## Project economy
 
 The Economy tab's second half: a project's budget against what has actually been
-logged on it, an across-project portfolio for whoever is responsible for several,
-and dashboard signals for both. Projects owns this view
-end to end; the hours themselves come from Time tracking through one optional
-contract — see [The optional actuals dependency](#the-optional-actuals-dependency)
-below. **Reads take no lock at all**: `GET /{id}/economy`, the portfolio and the
-dashboard's budget alerts call the actuals contract exactly once per request,
+logged on it, what its expenses cost and will bill, an across-project portfolio for
+whoever is responsible for several, and dashboard signals for both. Projects owns
+this view end to end; the hours come from Time tracking and the expenses from
+Expenses, each through one optional contract — see
+[The optional actuals dependency](#the-optional-actuals-dependency) and
+[The optional expenses dependency](#the-optional-expenses-dependency) below.
+**Reads take no lock at all**: `GET /{id}/economy`, the portfolio and the
+dashboard's budget alerts call each contract at most once per request,
 outside any transaction, so nothing another writer wants is ever held while another
 module's pool is waited on.
+
+**Expenses are never work.** Nothing the expenses contract reports reaches
+`budgetUsed`, `overBudget`, a line's `usedPercent`, the per-line table, the
+dashboard's budget alerts or the logged work any of those is computed from: a
+receipt is not hours measured against a budget, and a project that is inside its
+budget stays inside it however much it has spent on travel. Expenses appear in
+exactly three places — the `expenses` block, the margin, and what is ready to
+invoice — and the dashboard's budget alerts never even ask the provider.
 
 ### Budget used
 
@@ -562,6 +572,70 @@ figures that span all three:
   short by exactly what these hours would have cost, which is why the block always
   states how many there are rather than presenting a margin as complete.
 
+### What the expenses cost and bill
+
+`expenses` is the same idea for money somebody spent: the three buckets
+(`approved`, `submitted`, `draft`, each `{count, cost, amount}`), the two
+across-bucket totals, and the four invoicing figures. The bucket a line falls in is
+its **unit's** status — a travel claim's line is judged through the claim somebody
+approved or sent back — so `approved` carries the lines already invoiced (invoicing
+is a stamp here, not a status) and `draft` carries the rejected ones, exactly as the
+three buckets of logged work do. `cost` is the **net**, the gross less the VAT,
+whoever paid; `amount` is what the *billable* lines will charge.
+
+- **`unpricedCount`** — billable lines, in any bucket, carrying no bill amount:
+  billable mileage with no customer rate, an outlay nobody has priced yet. They are
+  counted and are in **no amount**, because a missing price is not a price of
+  nothing — a surface showing what the project will bill has to say how many lines
+  the figure is short by, exactly as `uncostedHours` does for the margin.
+- **`readyCount` / `readyAmount`** — what can go on an invoice today: the unit
+  approved, the line billable, a bill amount present, and not yet invoiced.
+- **`invoicedCount` / `invoicedAmount`** — how much of it has already left the
+  building.
+- **`lastEntryDate`** — the most recently dated line **across every currency**, so
+  on a project with a foreign receipt it may be the day of a line reported under
+  `otherCurrencies`.
+
+**The currency rule.** A line counts towards the project's own figures only when it
+was recorded in the project's currency. Everything else is reported as what it is,
+per currency, in `otherCurrencies` (`{currency, count, cost, amount, readyAmount}`)
+— never converted, never dropped and never added to anything, because a sum across
+currencies is a number in neither. A project that carries **no currency** therefore
+has no figures of its own at all: the nine own-currency figures are absent together
+and every currency is in `otherCurrencies`. `otherCurrencies` itself is absent when
+empty.
+
+**Tracked with nothing recorded is zeroes.** The provider leaves a project with
+nothing recorded out of its answer entirely, and "no key" means "nothing recorded":
+the block is then present with zero counts and zero amounts, exactly as `actuals` is
+present with zeroes for a project nobody has logged against. Only a missing
+*module* makes the block absent, and `expenseTracking: false` is how that is said.
+
+### The margin
+
+`margin` (inside the `cost` block) is what is left over once both halves are
+counted:
+
+```
+margin = (value of the work + what the expenses will bill)
+       − (what the work cost + what the expenses cost)
+```
+
+Every term is the subject's own **across-bucket total** — approved, submitted and
+draft together, the basis the labour half has always used — never the approved
+bucket alone and never two different bases mixed; what is approved and what is not
+is shown by the buckets themselves (`actuals.approved/submitted/draft` and
+`expenses.approved/submitted/draft`). All four terms are in the project's own
+currency, added **exactly** and **rounded once** at the end.
+
+That last point is why `cost.expenseCost` exists beside `cost.total`: the two halves
+of the cost are each rounded on their own for display, so a surface that subtracted
+them from the bill would be a cent or two out whenever either lands on a boundary.
+`expenseCost` is published so the UI can show both halves without doing the
+arithmetic, and `margin` is computed from the unrounded values. With
+`expenseTracking: false` there is no `expenseCost` and the margin is exactly the one
+it has always been.
+
 ### Per-line rows
 
 `lines` carries one row per billing line the project has, **inactive lines
@@ -577,11 +651,19 @@ somebody logged must appear somewhere.
 
 ### Shaping — who sees what
 
-| | Hours | Amounts (budget, bucket, line, milestone totals, currency) | Cost and margin |
-| --- | --- | --- | --- |
-| Anyone who sees the project | ✓ | – | – |
-| Financial rights on the project (manager, `manage-all`, or `view-financials` on a project they can see) | ✓ | ✓ | – |
-| The above **and** `projects:view-costs` | ✓ | ✓ | ✓ |
+| | Hours | Amounts (budget, bucket, line, milestone totals, currency) | The `expenses` block | Cost and margin |
+| --- | --- | --- | --- | --- |
+| Anyone who sees the project | ✓ | – | – | – |
+| Financial rights on the project (manager, `manage-all`, or `view-financials` on a project they can see) | ✓ | ✓ | ✓ | – |
+| The above **and** `projects:view-costs` | ✓ | ✓ | ✓ | ✓ |
+
+**Expense cost is not labour cost.** The whole `expenses` block, `cost` figures
+included, needs financial rights and *not* `projects:view-costs`: what a receipt
+cost the company is what somebody paid a supplier, and nothing in it can be divided
+by somebody's hours to recover their rate. The **margin** is the other way round —
+it contains the labour cost, so it stays inside the `cost` block behind the
+permission. A caller without financial rights is not asked about at all: the
+provider is never called for them, the way the invoice plan is not read for them.
 
 `unpricedHours` is on the hours side of that table, and it is worth saying out loud:
 it is an **hours** figure, so everyone who can see the project gets it, although Time
@@ -614,7 +696,19 @@ module's rule everywhere else. An outsider gets the same bare **404** as everywh
 else in this module, and there is no dedicated 403: a caller who may see the project
 but not its money is shown the hours-only half rather than refused.
 
-### Without Time tracking
+### Without Time tracking, without Expenses
+
+The two modules are **independent slots**, and all four combinations are real
+installations. `timeTracking` and `expenseTracking` are both required booleans on
+the per-project economy and on the portfolio, each `true` exactly when its contract
+is composed — a fact about the installation, never about the caller, so a member
+whose answer carries neither block still sees both flags.
+
+When `expenses` is not enabled, `Deps.Expenses` is nil and `expenseTracking` is
+`false`: there is no `expenses` block, no `cost.expenseCost`, the margin is the
+labour one alone, and no portfolio row or total carries an expense figure. Every
+other figure is byte-identical to what it was before the module existed — pinned by
+a golden-body test on both endpoints.
 
 When `time` is not enabled, `Deps.Actuals` is nil and `timeTracking` is `false`:
 the budget, the per-line budgets, the task estimate total and the milestone totals
@@ -623,7 +717,9 @@ project or on any line, no `budgetUsed`, no `cost`, and no `usedPercent` or
 `remainingHours` on a line. This is a different answer from "nothing has been
 logged": a project this installation cannot see the hours of and a project nobody
 has touched are not the same claim, so the response never fakes the second to avoid
-admitting the first.
+admitting the first. The `cost` block needs `timeTracking` on either way — it is
+the labour cost block, and `expenses.totalCost` is where an expenses-only
+installation reads what its receipts cost.
 
 ### When the provider fails
 
@@ -663,16 +759,32 @@ per-project read.
   nothing open last), `code`. Every order breaks its ties by project code, which is
   unique, so a page is the same page however many times it is turned to.
 - **The cap.** More than 2 000 matching projects (the actuals contract's own batch
-  limit) is a **400** naming `status` and asking to narrow with `status`,
-  `customerId` or `search`, rather than answering a partial portfolio — a total over
-  part of a filtered set is a wrong number, not a missing one. The dashboard's
-  budget alerts hit the same cap and answer differently — see
+  limit, which the expenses contract's `MaxExpensesProjects` deliberately equals, so
+  one cap covers both batches) is a **400** naming `status` and asking to narrow with
+  `status`, `customerId` or `search`, rather than answering a partial portfolio — a
+  total over part of a filtered set is a wrong number, not a missing one. The
+  dashboard's budget alerts hit the same cap and answer differently — see
   [The dashboard signals](#the-dashboard-signals).
 - **Totals are taken over the whole filtered set, before the page is cut** —
-  project count, over-budget count, ready count, and `readyAmounts` (one sum per
-  currency, by currency code) — so paging never changes the headline figures. Rows
-  are shaped once per read; customer names are resolved for the **page only**, once
-  per distinct customer on it.
+  project count, over-budget count, ready count, ready expense count, and
+  `readyAmounts` (one entry per currency, by currency code) — so paging never
+  changes the headline figures. Rows are shaped once per read; customer names are
+  resolved for the **page only**, once per distinct customer on it.
+
+**Ready to invoice, both halves.** A row's `readyAmount` and `readyCount` keep
+meaning **milestones**. Beside them, `readyExpenseCount` and `readyExpenseAmount`
+are the project's ready expense lines **in its own currency only** — a portfolio row
+is one line of a table, so another currency is not folded in and no per-row currency
+list is offered; that is the per-project read's business — and `readyTotalAmount` is
+the two halves together, which is what the `readyAmount` **sort** orders by and what
+a project whose receipts outweigh another's milestone is ranked on. `hasReady=true`
+keeps a project whose *only* ready thing is a billable receipt: the filter asks "is
+there anything to invoice here". In the totals, each `readyAmounts` entry carries
+`amount` (milestones), `expenseAmount` and `totalAmount`, each rounded once from the
+exact sum across rows, and a currency appears when **either** half has something in
+it — a currency in the list only for its expenses reports `amount: 0`, which is a
+sum over no milestones rather than a missing figure. All five of those fields are
+absent when `expenseTracking` is `false`.
 
 ### The dashboard signals
 
@@ -731,6 +843,33 @@ ever calls the other over HTTP or reads the other's schema, and there is no cycl
 request time — see [module boundaries](module-boundaries.md). With `time` disabled,
 `Deps.Actuals` is nil and this whole feature degrades to "budgets and plans, nothing
 to compare them with" (`timeTracking: false`), never to zeroes.
+
+### The optional expenses dependency
+
+**`contracts.ProjectExpenses`** is the same seam again, with Expenses as the
+provider: `ExpensesForProjects(ctx, projectIDs)` answers, per project and **per
+currency**, what the project's expenses cost and bill. Where the actuals contract
+takes the project's currency *in* on the request, this one reports every currency
+and lets Projects — which owns the project's currency — decide which of them is the
+project's and how to show the rest; nothing is ever converted, and the provider
+never has to ask the project directory anything while serving.
+
+Two things a consumer must not get wrong, both pinned by tests here:
+
+- **A project with nothing recorded is absent from the map** — unlike
+  `ActualsForProjects`, which answers a zero-valued entry for every project it was
+  asked about. "No key" means "nothing recorded", so it becomes zeroes in the
+  response; only a nil `Deps.Expenses` makes the block absent.
+- **Never add buckets or currencies.** Each bucket is rounded on its own, so the
+  `Total` the contract carries is the figure to publish and to compute from —
+  three buckets of half a cent are `0.01` apiece and `0.02` altogether.
+
+Both calls go through `projects/contracts.go`'s `expensesForProjects` accessor,
+wrapped in `noteContractCall`, and neither is ever made under `withProjectLock` —
+the harness-wide check fails the test if one ever is. A failing call is a **500** on
+both endpoints, exactly as a failing actuals call is: a margin or a "ready to
+invoice" column short by everything one module knows is a wrong number, not a
+missing one.
 
 ## Locking
 
@@ -881,23 +1020,34 @@ missing row is `(nil, nil)`, never an error.
   them. `TaskEntry` is deliberately thin — id, project, title, status, assignee and
   due date — enough to name a task on a timesheet row, never enough to manage one.
 - **`contracts.ProjectActuals`** — provided by *time*, **nil when time is disabled**
-  (the second optional contract, and the first Projects *consumes* rather than
-  provides). `Actuals(projectID, currency)` and `ActualsForProjects` (batch, capped
-  at `contracts.MaxActualsRequests`). It performs no authorization — Projects has
-  already decided who may see the project and its money — and reports hours in three
-  buckets (approved, submitted, draft) plus bill and cost amounts, each counted only
-  when logged in the currency Projects asked for. See
+  (the second optional contract, and the first of the two Projects *consumes*
+  rather than provides). `Actuals(projectID, currency)` and `ActualsForProjects`
+  (batch, capped at `contracts.MaxActualsRequests`). It performs no authorization —
+  Projects has already decided who may see the project and its money — and reports
+  hours in three buckets (approved, submitted, draft) plus bill and cost amounts,
+  each counted only when logged in the currency Projects asked for. See
   [Project economy](#project-economy) and [what Time reports](time.md#what-time-reports-to-other-modules).
+- **`contracts.ProjectExpenses`** — provided by *expenses*, **nil when expenses is
+  disabled** (the third optional contract, and the second Projects consumes).
+  `ExpensesForProjects(projectIDs)` (batch only, capped at
+  `contracts.MaxExpensesProjects`, which is `MaxActualsRequests`). It performs no
+  authorization either, and reports **per currency** rather than in a currency
+  Projects asks for — an expense carries its own currency per line. A project with
+  nothing recorded is **absent from its map**, which is the one way it differs from
+  the actuals contract. See
+  [The optional expenses dependency](#the-optional-expenses-dependency) and
+  [expenses](expenses.md).
 
 On the platform side, `module.Module` has provider fields `Users`, `Products`,
-`Projects` and `Actuals` beside `Directory`, and `module.Deps` has the matching
-consumer fields. `Compose` resolves **at most one enabled provider per slot** — two
-providers is a startup failure naming both — and builds them before any `Mount`
-runs, `Actuals` last of all so its provider's constructor may itself read the
-project directory. An *optional* provider whose module is disabled simply leaves its
-`Deps` field nil, and the consumer must handle that (see the 409 above, and
-`timeTracking: false` in [Project economy](#project-economy)). `modtest` has
-matching options so a module test can run against a fake or a real provider.
+`Projects`, `Actuals` and `Expenses` beside `Directory`, and `module.Deps` has the
+matching consumer fields. `Compose` resolves **at most one enabled provider per
+slot** — two providers is a startup failure naming both — and builds them before any
+`Mount` runs, `Actuals` and `Expenses` last of all so their providers' constructors
+may themselves read the project directory. An *optional* provider whose module is
+disabled simply leaves its `Deps` field nil, and the consumer must handle that (see
+the 409 above, and `timeTracking: false` / `expenseTracking: false` in
+[Project economy](#project-economy)). `modtest` has matching options so a module
+test can run against a fake or a real provider.
 
 ### What Time tracking should build on
 
@@ -960,7 +1110,7 @@ create additionally requires `projects:create`.
 | `DELETE /api/v1/projects/milestones/{milestoneId}` | Only `planned` and never moved; otherwise 400. Manager only |
 | `PUT /api/v1/projects/milestones/{milestoneId}/position` | Renumber the plan 1..n; carries `revision` (checked, not bumped). Manager only |
 | `POST /api/v1/projects/milestones/{milestoneId}/status` | One move through the status flow — see [Billing milestones and the invoice plan](#billing-milestones-and-the-invoice-plan) |
-| `GET /api/v1/projects/{id}/economy` | Budget vs. logged, per line and in total; hours for anyone who sees the project, amounts need financial rights, cost needs `projects:view-costs` too — see [Project economy](#project-economy) |
+| `GET /api/v1/projects/{id}/economy` | Budget vs. logged, per line and in total, plus what the expenses cost and will bill; hours for anyone who sees the project, amounts and the `expenses` block need financial rights, cost and margin need `projects:view-costs` too — see [Project economy](#project-economy) |
 | `GET /api/v1/projects/economy` | The portfolio: one row per project the caller has financial rights on. `projects:access`; paged, filtered and sorted — see [Project economy](#project-economy) |
 | `GET /api/v1/projects/{id}/tasks` | The project's task tree, with checklist counts and comment counts. Anyone who sees the project |
 | `POST /api/v1/projects/{id}/tasks` | Add a task. Member or manager |
