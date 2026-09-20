@@ -392,6 +392,34 @@ describe("EconomyPortfolio", () => {
     expect(projectRow).toHaveTextContent(`milestones ${money(200000)} · expenses ${money(5000)}`);
   });
 
+  // The case the ready filter was relabelled for: receipts waiting for an
+  // invoice and no milestone at all. The server says "none", not "cannot say",
+  // and the total above already is the expense half — so there is nothing to
+  // split and a dash would be a different claim.
+  it("splits nothing on a project whose only ready money is expenses", async () => {
+    stubPortfolio(
+      jsonResponse(
+        200,
+        trackedPortfolio([
+          trackedRow({
+            readyCount: 0,
+            readyAmount: undefined,
+            readyExpenseCount: 3,
+            readyExpenseAmount: 5000,
+            readyTotalAmount: 5000,
+          }),
+        ]),
+      ),
+    );
+    renderPage();
+
+    const projectRow = (await screen.findByRole("link", { name: "KVEWEBS" })).closest("tr") as HTMLElement;
+    expect(projectRow).toHaveTextContent(money(5000));
+    expect(projectRow).toHaveTextContent("0 milestones · 3 expense lines");
+    expect(within(projectRow).queryByTestId("ready-split")).not.toBeInTheDocument();
+    expect(projectRow).not.toHaveTextContent("milestones —");
+  });
+
   it("splits nothing on a project with no expense lines ready", async () => {
     stubPortfolio(jsonResponse(200, trackedPortfolio([trackedRow()])));
     renderPage();
@@ -440,8 +468,13 @@ describe("EconomyPortfolio", () => {
     expect(totals).toHaveTextContent(money(205000));
     expect(totals).toHaveTextContent(money(400, "EUR"));
     expect(totals).toHaveTextContent("5 milestones · 4 expense lines");
-    expect(totals).toHaveTextContent(`milestones ${money(200000)} · expenses ${money(5000)}`);
-    expect(totals).toHaveTextContent(`milestones ${money(0, "EUR")} · expenses ${money(400, "EUR")}`);
+    // Each currency is named and stands on its own line: two currencies in one
+    // flat list put a NOK expense figure beside a EUR "milestones".
+    const split = within(totals).getByTestId("ready-amount-split");
+    expect(within(split).getByText(`NOK: milestones ${money(200000)} · expenses ${money(5000)}`)).toBeInTheDocument();
+    expect(
+      within(split).getByText(`EUR: milestones ${money(0, "EUR")} · expenses ${money(400, "EUR")}`),
+    ).toBeInTheDocument();
     // A row folds in no other currency, by design — the note says where those
     // expenses are reported instead.
     expect(
