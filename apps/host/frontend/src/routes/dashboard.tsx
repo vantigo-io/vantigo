@@ -312,7 +312,18 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
   }
   if (item.module === "expenses") {
     if (item.type === "approvalWaiting") return "/expenses/approvals";
-    if (item.type === "expenseRejected") return "/expenses?status=rejected";
+    if (item.type === "expenseRejected") {
+      // A rejected unit is either a standalone expense, whose entity id is a
+      // bare number, or a whole travel claim, whose id is `claim/<id>` —
+      // the two units number independently, so a bare id would collide. The
+      // link keys on the prefix rather than on parsing the number, and a
+      // prefixed id with nothing after it falls back to the list.
+      const claimId = item.entityId.startsWith("claim/") ? item.entityId.slice("claim/".length) : undefined;
+      if (claimId !== undefined) {
+        return claimId ? `/expenses/claims/${encodeURIComponent(claimId)}` : "/expenses?status=rejected";
+      }
+      return "/expenses?status=rejected";
+    }
     if (item.type === "reimbursementWaiting") return "/expenses/reimbursements";
     // A type this build does not know: My expenses is the one page that is
     // right for any of them.

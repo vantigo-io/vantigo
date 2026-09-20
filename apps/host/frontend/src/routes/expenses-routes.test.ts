@@ -1,5 +1,7 @@
+import { isNotFound } from "@tanstack/react-router";
 import { describe, expect, it } from "vitest";
 import { Route as ExpensesApprovalsRoute } from "./expenses/approvals";
+import { Route as ExpensesClaimRoute } from "./expenses/claims.$claimId";
 import { Route as ExpensesIndexRoute } from "./expenses/index";
 import { Route as ExpensesReimbursementsRoute } from "./expenses/reimbursements";
 
@@ -61,5 +63,29 @@ describe("the expenses routes' search params", () => {
 
     expect(validate({})).toEqual({ state: "waiting", from: undefined, to: undefined, page: 1 });
     expect(validate({ state: "reimbursed" })).toEqual({ state: "reimbursed", from: undefined, to: undefined, page: 1 });
+  });
+
+  // The claim page takes no search params at all; what it does own is the path
+  // parameter, and an id that is not a positive whole number must never reach
+  // the API as `GET /claims/NaN`.
+  it("the travel claim route parses its id and refuses anything that is not one", () => {
+    const params = ExpensesClaimRoute.options.params as {
+      parse: (raw: { claimId: string }) => { claimId: number };
+      stringify: (parsed: { claimId: number }) => { claimId: string };
+    };
+    expect(params.parse({ claimId: "1012" })).toEqual({ claimId: 1012 });
+    expect(params.stringify({ claimId: 1012 })).toEqual({ claimId: "1012" });
+
+    const guard = ExpensesClaimRoute.options.beforeLoad as (context: { params: { claimId: number } }) => void;
+    expect(() => guard({ params: { claimId: 1012 } })).not.toThrow();
+    for (const claimId of [Number("abc"), 0, -3, 1.5]) {
+      let thrown: unknown;
+      try {
+        guard({ params: { claimId } });
+      } catch (error) {
+        thrown = error;
+      }
+      expect(isNotFound(thrown)).toBe(true);
+    }
   });
 });

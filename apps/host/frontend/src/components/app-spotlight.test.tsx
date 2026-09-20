@@ -177,6 +177,21 @@ describe("AppSpotlight navigation authorization", () => {
     expect(navigateMock).toHaveBeenCalledWith(expect.objectContaining({ to: "/expenses", search: undefined }));
   });
 
+  // A travel claim *does* have a search param: My expenses opens the trip form
+  // on arrival, the way the other apps' create actions land on their list with
+  // the form already open.
+  it("opens the travel claim form from the New travel claim quick action", async () => {
+    const onNavigate = vi.fn();
+    renderSpotlight(["expenses:access"], false, false, onNavigate);
+
+    fireEvent.click(await waitFor(() => screen.getByText("New travel claim", { exact: true })));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(navigateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "/expenses", search: { create: "claim" } }),
+    );
+  });
+
   it("hides New expense without expenses:access and when the expenses module is not enabled", async () => {
     renderSpotlight(["projects:access"], false, false);
     await waitFor(() => expect(screen.queryByText("New expense", { exact: true })).not.toBeInTheDocument());

@@ -220,6 +220,16 @@ describe("the dashboard's attention links", () => {
     expect(attentionHref({ module: "expenses", type: "expenseRejected", entityId: "42" })).toBe(
       "/expenses?status=rejected",
     );
+    // A rejected *trip* carries `claim/<id>`: the two units number
+    // independently, so a bare id would collide with an expense's. The link
+    // keys on the prefix, never on parsing the number.
+    expect(attentionHref({ module: "expenses", type: "expenseRejected", entityId: "claim/12" })).toBe(
+      "/expenses/claims/12",
+    );
+    // A prefixed id with nothing after it is not addressable; the list is.
+    expect(attentionHref({ module: "expenses", type: "expenseRejected", entityId: "claim/" })).toBe(
+      "/expenses?status=rejected",
+    );
     expect(attentionHref({ module: "expenses", type: "reimbursementWaiting", entityId: "reimbursements" })).toBe(
       "/expenses/reimbursements",
     );
