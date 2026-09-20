@@ -39,11 +39,11 @@ import (
 // (contractscalls.go) and also the only order that can serve one bare 404: the
 // authorization has to be settled before anything is read.
 
-// GetExpensesProjectSummary Sum up a project's expenses
+// GetExpensesProjectsByProjectIdSummary Sum up a project's expenses
 // (GET /api/v1/expenses/projects/{projectId}/summary)
-func (s *server) GetExpensesProjectSummary(ctx context.Context, req gen.GetExpensesProjectSummaryRequestObject) (gen.GetExpensesProjectSummaryResponseObject, error) {
+func (s *server) GetExpensesProjectsByProjectIdSummary(ctx context.Context, req gen.GetExpensesProjectsByProjectIdSummaryRequestObject) (gen.GetExpensesProjectsByProjectIdSummaryResponseObject, error) {
 	if !s.projectsAvailable() {
-		return gen.GetExpensesProjectSummary404Response{}, nil
+		return gen.GetExpensesProjectsByProjectIdSummary404Response{}, nil
 	}
 	q := store.New(s.deps.Pool)
 	c, err := s.callerFor(ctx, q)
@@ -51,22 +51,17 @@ func (s *server) GetExpensesProjectSummary(ctx context.Context, req gen.GetExpen
 		return nil, err
 	}
 
-	// The project first: a project the directory does not know has no money to
-	// report, and answering the role question about it would be answering a
-	// question about an id nobody here should be able to probe.
-	project, err := s.projectsProject(ctx, req.ProjectId)
-	if err != nil {
-		return nil, fmt.Errorf("expenses: look up the project: %w", err)
-	}
-	if project == nil {
-		return gen.GetExpensesProjectSummary404Response{}, nil
-	}
-	role, err := c.role(ctx, s, req.ProjectId)
+	// One question, asked of the directory before anything is read: may this
+	// caller see what this project makes? A project the directory does not
+	// know answers the same "no" a caller without the right does, which is
+	// what makes the three causes one refusal. It is the very question
+	// GET /entries?toInvoice=true is gated on, through the same function.
+	project, allowed, err := s.projectFinancials(ctx, c, req.ProjectId)
 	if err != nil {
 		return nil, err
 	}
-	if !c.seesProjectFinancials(role) {
-		return gen.GetExpensesProjectSummary404Response{}, nil
+	if !allowed {
+		return gen.GetExpensesProjectsByProjectIdSummary404Response{}, nil
 	}
 	// Projects' own rule for whether this caller may book a cost on the
 	// project (decision X9), asked here rather than guessed from the role, so
@@ -88,7 +83,7 @@ func (s *server) GetExpensesProjectSummary(ctx context.Context, req gen.GetExpen
 	if err != nil {
 		return nil, err
 	}
-	return gen.GetExpensesProjectSummary200JSONResponse(response), nil
+	return gen.GetExpensesProjectsByProjectIdSummary200JSONResponse(response), nil
 }
 
 // projectSummaryResponse renders the contract's totals as the API publishes

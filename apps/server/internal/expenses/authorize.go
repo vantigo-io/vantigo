@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/expenses/store"
 )
 
@@ -299,6 +300,37 @@ func (c *caller) seesProject(role string) bool {
 // the company charges its customer for it is the project's.
 func (c *caller) seesProjectFinancials(role string) bool {
 	return role == roleManager || c.ProjectsManageAll || (c.ProjectsFinancials && c.seesProject(role))
+}
+
+// projectFinancials asks the directory the one question two reads of this
+// module are gated on — may this caller see what a project makes? — and hands
+// back the project with the answer, because both callers need it: the summary
+// publishes its currency, and having asked once nothing should ask again.
+//
+// It is the whole of the rule, including the two ways it can be moot: an
+// installation with no projects module, and a project the directory no longer
+// knows. Both answer "no", which is what lets a caller refuse all three causes
+// with one indistinguishable answer rather than telling an outsider which
+// project ids exist.
+//
+// Every call it makes goes through contractscalls.go and happens before any
+// query and outside any transaction, which is this module's standing rule.
+func (s *server) projectFinancials(ctx context.Context, c *caller, projectID int32) (*contracts.ProjectEntry, bool, error) {
+	if !s.projectsAvailable() {
+		return nil, false, nil
+	}
+	project, err := s.projectsProject(ctx, projectID)
+	if err != nil {
+		return nil, false, fmt.Errorf("expenses: look up the project: %w", err)
+	}
+	if project == nil {
+		return nil, false, nil
+	}
+	role, err := c.role(ctx, s, projectID)
+	if err != nil {
+		return nil, false, err
+	}
+	return project, c.seesProjectFinancials(role), nil
 }
 
 // entryUnit is **the unit an expense belongs to**: the row whose status, whose

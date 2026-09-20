@@ -826,7 +826,7 @@ type ExpensesProjectSummaryCapabilities struct {
 	CanRecord bool `json:"canRecord"`
 }
 
-// ExpensesProjectSummaryCurrency One currency's figures for the project. A line carries its own currency, which may be neither its travel claim's nor its project's, so the figures are reported per currency and **nothing is ever converted**: a caller comparing them with a project's budget has to decide for itself which currency is the project's. The three status buckets are the **unit's** status — a travel claim's line is judged by its claim — and a **rejected** expense counts as draft, because it is back with its owner to fix and resubmit, exactly as Time buckets a rejected entry. There is no invoiced bucket: invoicing is a stamp, not a status, so an invoiced line is still an approved one.
+// ExpensesProjectSummaryCurrency One currency's figures for the project. A line carries its own currency, which may be neither its travel claim's nor its project's, so the figures are reported per currency and **nothing is ever converted**: the entry whose code is projectCurrency is the project's own, and every other entry is money spent in a currency the project is not in. The three status buckets are the **unit's** status — a travel claim's line is judged by its claim — and a **rejected** expense counts as draft, because it is back with its owner to fix and resubmit, exactly as Time buckets a rejected entry. There is no invoiced bucket: invoicing is a stamp, not a status, so an invoiced line is still an approved one.
 type ExpensesProjectSummaryCurrency struct {
 	// Approved One bucket of a project's expenses in one currency — what they cost the project and what they bill its customer. A figure is rounded once from the unrounded sum, so the three buckets must never be added together to make the total; read 'total' instead.
 	Approved ExpensesProjectSummaryBucket `json:"approved"`
@@ -1142,7 +1142,7 @@ type GetExpensesEntriesParams struct {
 	// Reimbursed Narrows the list to what has been reimbursed, or to what has not. Left out, both are in it.
 	Reimbursed *bool `form:"reimbursed,omitempty" json:"reimbursed,omitempty"`
 
-	// ToInvoice true lists only the lines **ready to invoice** — the unit is approved, the line is billable, it carries a bill amount, it has not been invoiced yet, and it is never a per diem day, which bills nobody anything — which is exactly the rule behind readyCount on GET /api/v1/expenses/projects/{projectId}/summary, so the list and the figure can never disagree. false means the same as leaving it out: no filter. true needs a projectId, because invoicing is done a project at a time, and is refused without one; a status other than 'approved' and kind=per_diem each contradict it and are refused rather than quietly answering an empty page. It widens nothing: a caller who may not see a project's expenses still gets none of them here, however many the summary counts.
+	// ToInvoice true lists only the lines **ready to invoice** — the unit is approved, the line is billable, it carries a bill amount, it has not been invoiced yet, and it is never a per diem day, which bills nobody anything — which is exactly the rule behind readyCount on GET /api/v1/expenses/projects/{projectId}/summary, so the list and the figure can never disagree. false means the same as leaving it out: no filter. true needs a projectId, because invoicing is done a project at a time, and is refused without one; a status other than 'approved' and kind=per_diem each contradict it and are refused rather than quietly answering an empty page. **true also needs financial rights on that project** — its manager, projects:manage-all, or projects:view-financials on a project they can see, the very rule the summary is gated on — because asking the question is itself a question about what a line bills: the answer tells the asker, per approved billable line, that it is priced and not yet invoiced, which is what a caller without those rights has stripped from every row. Anyone else is refused with a 403 whose body is the same whatever the cause (no projects module, no such project, no rights). It does not widen which rows come back: with or without it, a caller sees the expenses they could already see, shaped exactly as they were already shaped.
 	ToInvoice *bool  `form:"toInvoice,omitempty" json:"toInvoice,omitempty"`
 	Page      *int32 `form:"page,omitempty" json:"page,omitempty"`
 	PageSize  *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
@@ -1356,9 +1356,9 @@ type ServerInterface interface {
 	// GetExpensesProjects List the projects an expense may be booked on
 	// (GET /api/v1/expenses/projects)
 	GetExpensesProjects(w http.ResponseWriter, r *http.Request, params GetExpensesProjectsParams)
-	// GetExpensesProjectSummary Sum up a project's expenses
+	// GetExpensesProjectsByProjectIdSummary Sum up a project's expenses
 	// (GET /api/v1/expenses/projects/{projectId}/summary)
-	GetExpensesProjectSummary(w http.ResponseWriter, r *http.Request, projectId int32)
+	GetExpensesProjectsByProjectIdSummary(w http.ResponseWriter, r *http.Request, projectId int32)
 	// GetExpensesRates List the expense rates
 	// (GET /api/v1/expenses/rates)
 	GetExpensesRates(w http.ResponseWriter, r *http.Request)
@@ -2290,8 +2290,8 @@ func (siw *ServerInterfaceWrapper) GetExpensesProjects(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
-// GetExpensesProjectSummary operation middleware
-func (siw *ServerInterfaceWrapper) GetExpensesProjectSummary(w http.ResponseWriter, r *http.Request) {
+// GetExpensesProjectsByProjectIdSummary operation middleware
+func (siw *ServerInterfaceWrapper) GetExpensesProjectsByProjectIdSummary(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 	_ = err
@@ -2306,7 +2306,7 @@ func (siw *ServerInterfaceWrapper) GetExpensesProjectSummary(w http.ResponseWrit
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetExpensesProjectSummary(w, r, projectId)
+		siw.Handler.GetExpensesProjectsByProjectIdSummary(w, r, projectId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2983,7 +2983,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/expenses/entries/{id}/rate", wrapper.PutExpensesEntriesByIdRate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/meta", wrapper.GetExpensesMeta)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/projects", wrapper.GetExpensesProjects)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/projects/{projectId}/summary", wrapper.GetExpensesProjectSummary)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/projects/{projectId}/summary", wrapper.GetExpensesProjectsByProjectIdSummary)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/rates", wrapper.GetExpensesRates)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/rates", wrapper.PostExpensesRates)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/rates/reset", wrapper.PostExpensesRatesReset)
@@ -4880,17 +4880,17 @@ func (response GetExpensesProjects404ApplicationProblemPlusJSONResponse) VisitGe
 	return err
 }
 
-type GetExpensesProjectSummaryRequestObject struct {
+type GetExpensesProjectsByProjectIdSummaryRequestObject struct {
 	ProjectId int32 `json:"projectId"`
 }
 
-type GetExpensesProjectSummaryResponseObject interface {
-	VisitGetExpensesProjectSummaryResponse(w http.ResponseWriter) error
+type GetExpensesProjectsByProjectIdSummaryResponseObject interface {
+	VisitGetExpensesProjectsByProjectIdSummaryResponse(w http.ResponseWriter) error
 }
 
-type GetExpensesProjectSummary200JSONResponse ExpensesProjectSummaryResponse
+type GetExpensesProjectsByProjectIdSummary200JSONResponse ExpensesProjectSummaryResponse
 
-func (response GetExpensesProjectSummary200JSONResponse) VisitGetExpensesProjectSummaryResponse(w http.ResponseWriter) error {
+func (response GetExpensesProjectsByProjectIdSummary200JSONResponse) VisitGetExpensesProjectsByProjectIdSummaryResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -4902,9 +4902,9 @@ func (response GetExpensesProjectSummary200JSONResponse) VisitGetExpensesProject
 	return err
 }
 
-type GetExpensesProjectSummary401JSONResponse externalRef0.AuthErrorResponse
+type GetExpensesProjectsByProjectIdSummary401JSONResponse externalRef0.AuthErrorResponse
 
-func (response GetExpensesProjectSummary401JSONResponse) VisitGetExpensesProjectSummaryResponse(w http.ResponseWriter) error {
+func (response GetExpensesProjectsByProjectIdSummary401JSONResponse) VisitGetExpensesProjectsByProjectIdSummaryResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -4916,9 +4916,9 @@ func (response GetExpensesProjectSummary401JSONResponse) VisitGetExpensesProject
 	return err
 }
 
-type GetExpensesProjectSummary403JSONResponse externalRef0.AuthErrorResponse
+type GetExpensesProjectsByProjectIdSummary403JSONResponse externalRef0.AuthErrorResponse
 
-func (response GetExpensesProjectSummary403JSONResponse) VisitGetExpensesProjectSummaryResponse(w http.ResponseWriter) error {
+func (response GetExpensesProjectsByProjectIdSummary403JSONResponse) VisitGetExpensesProjectsByProjectIdSummaryResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -4930,10 +4930,10 @@ func (response GetExpensesProjectSummary403JSONResponse) VisitGetExpensesProject
 	return err
 }
 
-type GetExpensesProjectSummary404Response struct {
+type GetExpensesProjectsByProjectIdSummary404Response struct {
 }
 
-func (response GetExpensesProjectSummary404Response) VisitGetExpensesProjectSummaryResponse(w http.ResponseWriter) error {
+func (response GetExpensesProjectsByProjectIdSummary404Response) VisitGetExpensesProjectsByProjectIdSummaryResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
 }
@@ -6113,9 +6113,9 @@ type StrictServerInterface interface {
 	// GetExpensesProjects List the projects an expense may be booked on
 	// (GET /api/v1/expenses/projects)
 	GetExpensesProjects(ctx context.Context, request GetExpensesProjectsRequestObject) (GetExpensesProjectsResponseObject, error)
-	// GetExpensesProjectSummary Sum up a project's expenses
+	// GetExpensesProjectsByProjectIdSummary Sum up a project's expenses
 	// (GET /api/v1/expenses/projects/{projectId}/summary)
-	GetExpensesProjectSummary(ctx context.Context, request GetExpensesProjectSummaryRequestObject) (GetExpensesProjectSummaryResponseObject, error)
+	GetExpensesProjectsByProjectIdSummary(ctx context.Context, request GetExpensesProjectsByProjectIdSummaryRequestObject) (GetExpensesProjectsByProjectIdSummaryResponseObject, error)
 	// GetExpensesRates List the expense rates
 	// (GET /api/v1/expenses/rates)
 	GetExpensesRates(ctx context.Context, request GetExpensesRatesRequestObject) (GetExpensesRatesResponseObject, error)
@@ -6966,25 +6966,25 @@ func (sh *strictHandler) GetExpensesProjects(w http.ResponseWriter, r *http.Requ
 	}
 }
 
-// GetExpensesProjectSummary operation middleware
-func (sh *strictHandler) GetExpensesProjectSummary(w http.ResponseWriter, r *http.Request, projectId int32) {
-	var request GetExpensesProjectSummaryRequestObject
+// GetExpensesProjectsByProjectIdSummary operation middleware
+func (sh *strictHandler) GetExpensesProjectsByProjectIdSummary(w http.ResponseWriter, r *http.Request, projectId int32) {
+	var request GetExpensesProjectsByProjectIdSummaryRequestObject
 
 	request.ProjectId = projectId
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetExpensesProjectSummary(ctx, request.(GetExpensesProjectSummaryRequestObject))
+		return sh.ssi.GetExpensesProjectsByProjectIdSummary(ctx, request.(GetExpensesProjectsByProjectIdSummaryRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetExpensesProjectSummary")
+		handler = middleware(handler, "GetExpensesProjectsByProjectIdSummary")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetExpensesProjectSummaryResponseObject); ok {
-		if err := validResponse.VisitGetExpensesProjectSummaryResponse(w); err != nil {
+	} else if validResponse, ok := response.(GetExpensesProjectsByProjectIdSummaryResponseObject); ok {
+		if err := validResponse.VisitGetExpensesProjectsByProjectIdSummaryResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
