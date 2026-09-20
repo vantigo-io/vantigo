@@ -128,6 +128,13 @@ const asTheServerWouldSend = (body: Economy): Economy => {
     if (block.otherCurrencies?.some((entry) => entry.currency === body.currency)) {
       throw new Error("The project's own currency is never in otherCurrencies");
     }
+    const codes = (block.otherCurrencies ?? []).map((entry) => entry.currency);
+    if (codes.join() !== [...codes].sort().join()) throw new Error("otherCurrencies comes sorted by currency code");
+    const recorded =
+      [block.approved, block.submitted, block.draft].some((bucket) => (bucket?.count ?? 0) > 0) || codes.length > 0;
+    if (block.lastEntryDate && !recorded) {
+      throw new Error("A block with nothing recorded has no lastEntryDate");
+    }
   }
   return body;
 };
@@ -1242,6 +1249,76 @@ describe("ProjectEconomy — the budget half", () => {
     expect(section).not.toHaveTextContent(money(200));
   });
 
+  // The state every tracked project is in on its first day: the figures are all
+  // there and all zero. A table of zeroes says less than the sentence does.
+  it("says plainly when a project with a currency has nothing recorded yet", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: tracked(
+        expenses({
+          approved: bucket(0, 0, 0),
+          submitted: bucket(0, 0, 0),
+          draft: bucket(0, 0, 0),
+          totalCost: 0,
+          totalAmount: 0,
+          readyCount: 0,
+          readyAmount: 0,
+          invoicedCount: 0,
+          invoicedAmount: 0,
+          unpricedCount: 0,
+          lastEntryDate: undefined,
+        }),
+      ),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const section = await screen.findByTestId("project-expenses");
+    expect(within(section).getByText("No expenses recorded on this project yet.")).toBeInTheDocument();
+    expect(within(section).queryByRole("table")).not.toBeInTheDocument();
+  });
+
+  // A project that carries no currency reports *every* currency as another one,
+  // and has no figures of its own: the notes and the date are the whole answer.
+  it("reports a currencyless project's foreign receipts without a table", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: tracked(
+        { otherCurrencies: [otherCurrency()], lastEntryDate: "2026-03-14" },
+        { currency: undefined, budget: { hours: 400 }, budgetUsed: undefined },
+      ),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const section = await screen.findByTestId("project-expenses");
+    expect(within(section).getByTestId("expenses-other-currency-note")).toHaveTextContent(money(180, "EUR"));
+    expect(within(section).getByText("Last expense: Mar 14, 2026")).toBeInTheDocument();
+    expect(within(section).queryByRole("table")).not.toBeInTheDocument();
+    expect(within(section).queryByText("No expenses recorded on this project yet.")).not.toBeInTheDocument();
+  });
+
+  // Two lines of nothing under a table that already says nothing is there.
+  it("leaves out the ready and invoiced lines when there are no such lines", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: tracked(
+        expenses({
+          approved: bucket(0, 0, 0),
+          submitted: bucket(0, 0, 0),
+          draft: bucket(2, 500, 0),
+          totalCost: 500,
+          totalAmount: 0,
+          readyCount: 0,
+          readyAmount: 0,
+          invoicedCount: 0,
+          invoicedAmount: 0,
+        }),
+      ),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const section = await screen.findByTestId("project-expenses");
+    expect(within(section).getByRole("table", { name: "Costs" })).toBeInTheDocument();
+    expect(section).not.toHaveTextContent("Ready to invoice:");
+    expect(section).not.toHaveTextContent("Invoiced:");
+  });
+
   // The block can be empty — a project with no currency and nothing recorded,
   // read by somebody who may see the money — and an empty table of dashes says
   // less than one sentence does.
@@ -1298,7 +1375,9 @@ describe("ProjectEconomy — the budget half", () => {
     const headline = await screen.findByTestId("budget-headline");
     expect(within(headline).getByText("Margin").parentElement).toHaveTextContent(money(180500));
     expect(
-      screen.getByText("The margin counts the expenses too: what they will bill, less what they cost."),
+      screen.getByText(
+        "The margin counts the expenses too: what they will bill, less what they cost. Both halves count all three buckets — what is approved, what is waiting and what is still a draft.",
+      ),
     ).toBeInTheDocument();
     expect(screen.getByText(`Labour cost ${money(180000)} · Expense cost ${money(5500)}`)).toBeInTheDocument();
   });

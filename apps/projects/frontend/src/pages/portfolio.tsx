@@ -83,19 +83,22 @@ export const EconomyPortfolio = () => {
     .join(" · ");
   // A currency can be in the list for its expenses alone, where the milestone
   // half is a sum over no milestones rather than a figure that went missing.
+  // Each currency gets its own line, named: two currencies on one line with the
+  // same separator between their halves is a list nobody can group by eye.
   const readySplit = (totals?.readyAmounts ?? [])
     .filter((ready) => ready.expenseAmount)
-    .map((ready) =>
-      t("readySplit", {
+    .map((ready) => ({
+      currency: ready.currency,
+      text: t("readySplitForCurrency", {
+        currency: ready.currency,
         milestones: formatters.formatCurrency(ready.amount, ready.currency),
         expenses: formatters.formatCurrency(ready.expenseAmount ?? 0, ready.currency),
       }),
-    )
-    .join(" · ");
+    }));
   const readyCounts =
     totals?.readyExpenseCount == null
       ? undefined
-      : t("readyCountSplit", {
+      : t("readyCountSplitShort", {
           milestones: t("readyMilestoneCount", { count: totals.readyCount }),
           expenses: t("readyExpenseLineCount", { count: totals.readyExpenseCount }),
         });
@@ -109,24 +112,35 @@ export const EconomyPortfolio = () => {
           <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
             <KpiCard label={t("projects")} value={formatters.formatNumber(totals.projectCount)} />
             <KpiCard label={t("overBudget")} value={formatters.formatNumber(totals.overBudgetCount)} />
-            {/* The card's own figure keeps counting milestones; what the two
-                halves are is said in words underneath, where there is room for
-                both numbers and both amounts. */}
+            {/* The card's number and its amount must count the same thing:
+                with expenses tracked the amount is both halves, so the figure
+                is both halves too, each half labelled. Without them it is the
+                milestone count it has always been. */}
             <KpiCard
               label={t("readyTotal")}
-              value={formatters.formatNumber(totals.readyCount)}
+              value={
+                readyCounts ? (
+                  <Text span fw={700} size="md" data-testid="ready-counts">
+                    {readyCounts}
+                  </Text>
+                ) : (
+                  formatters.formatNumber(totals.readyCount)
+                )
+              }
               hint={readyAmounts || undefined}
             />
           </SimpleGrid>
-          {readyCounts && (
-            <Text size="sm" c="dimmed" data-testid="ready-counts">
-              {readyCounts}
-            </Text>
-          )}
-          {readySplit && (
-            <Text size="sm" c="dimmed" data-testid="ready-amount-split">
-              {t("readyAmountSplit", { split: readySplit })}
-            </Text>
+          {readySplit.length > 0 && (
+            <Stack gap={2} data-testid="ready-amount-split">
+              <Text size="sm" c="dimmed">
+                {t("readyAmountSplit")}
+              </Text>
+              {readySplit.map((ready) => (
+                <Text key={ready.currency} size="sm" c="dimmed">
+                  {ready.text}
+                </Text>
+              ))}
+            </Stack>
           )}
         </Stack>
       )}
@@ -371,7 +385,10 @@ const PortfolioRow = ({ row }: { row: EconomyRow }) => {
               {money(row.readyTotalAmount ?? row.readyAmount)}
             </Text>
           )}
-          {(row.readyExpenseCount ?? 0) > 0 && (
+          {/* Only when there is something on both sides to tell apart: with no
+              ready milestone the total above already *is* the expense half, and
+              a dash there would say "the API did not say" where it said none. */}
+          {row.readyCount > 0 && (row.readyExpenseCount ?? 0) > 0 && (
             <Text size="xs" c="dimmed" data-testid="ready-split">
               {t("readySplit", { milestones: money(row.readyAmount), expenses: money(row.readyExpenseAmount) })}
             </Text>

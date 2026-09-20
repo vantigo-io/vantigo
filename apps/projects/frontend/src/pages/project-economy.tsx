@@ -432,15 +432,17 @@ const ExpensesSection = ({ projectId }: { projectId: number }) => {
             )}
 
             <Stack gap={4}>
-              {expenses.readyCount != null && (
+              {/* Nothing ready and nothing invoiced is what the table above
+                  already says; the lines are here to name lines that exist. */}
+              {(expenses.readyCount ?? 0) > 0 && (
                 <Text size="sm">
-                  {t("expensesReadyLines", { count: expenses.readyCount, amount: money(expenses.readyAmount) })}
+                  {t("expensesReadyLines", { count: expenses.readyCount ?? 0, amount: money(expenses.readyAmount) })}
                 </Text>
               )}
-              {expenses.invoicedCount != null && (
+              {(expenses.invoicedCount ?? 0) > 0 && (
                 <Text size="sm">
                   {t("expensesInvoicedLines", {
-                    count: expenses.invoicedCount,
+                    count: expenses.invoicedCount ?? 0,
                     amount: money(expenses.invoicedAmount),
                   })}
                 </Text>
@@ -465,10 +467,11 @@ const ExpensesSection = ({ projectId }: { projectId: number }) => {
           </>
         )}
 
-        {/* Somebody reading "Budget used" above will ask, so it is answered
-            here rather than in a tooltip nobody opens. */}
+        {/* Somebody reading the budget headline above will ask, so it is
+            answered here rather than in a tooltip nobody opens. The field it
+            names is interpolated, so the two cannot drift apart. */}
         <Text size="sm" c="dimmed" data-testid="expenses-not-in-budget">
-          {t("expensesNotInBudget")}
+          {t("expensesNotInBudget", { budgetUsed: t("budgetUsed") })}
         </Text>
       </Stack>
     </Card>
