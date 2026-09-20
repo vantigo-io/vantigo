@@ -1075,12 +1075,12 @@ export interface components {
             draft: number;
             /**
              * Format: double
-             * @description What the project's expenses cost the company, in its own currency — the other half of `margin`'s cost side, given here so a surface can show both without subtracting one from the other. It is the expenses' own-currency total, the same figure as `expenses.totalCost`, rounded on its own; `margin` is *not* this figure subtracted from anything, because it is rounded once from the unrounded whole. Absent exactly when expenseTracking is false.
+             * @description What the project's expenses cost the company, in its own currency — the other half of `margin`'s cost side, given here so a surface can show both without subtracting one from the other. It is the expenses' own-currency total, the same figure as `expenses.totalCost`. `margin` is *not* built by subtracting the published figures from one another — it adds the same four totals exactly and publishes the result once — so the two need not agree to the cent when a provider's own total was itself rounded. Absent exactly when expenseTracking is false.
              */
             expenseCost?: number | null;
             /**
              * Format: double
-             * @description What is left over: the value of the work plus what the expenses will bill, less what the work cost plus what the expenses cost — every term in the project's own currency, added exactly and rounded once at the end rather than half by half. All four terms are **across all three buckets**, the same basis the labour half has always used: the work's own total (approved, submitted and draft together, as `actuals.totalAmount` and `cost.total` report it) and the expenses' total (`expenses.totalCost` and `expenses.totalAmount`), never the approved bucket alone and never two different bases mixed. What is approved and what is not is shown by the three buckets themselves — `actuals.approved/submitted/draft` and `expenses.approved/submitted/draft`. With expenseTracking false the two expense terms are not there and this is the three buckets' bill amount minus their cost, as it has always been. Negative when the project has cost more than it brings in.
+             * @description What is left over: the value of the work plus what the expenses will bill, less what the work cost plus what the expenses cost — every term in the project's own currency: four across-bucket totals, each rounded once by the module that owns it, added exactly in decimal and published once. The addition itself never rounds, so this is not the four *published* figures added up in floating point — it is their exact sum. All four terms are **across all three buckets**, the same basis the labour half has always used: the work's own total (approved, submitted and draft together, as `actuals.totalAmount` and `cost.total` report it) and the expenses' total (`expenses.totalCost` and `expenses.totalAmount`), never the approved bucket alone and never two different bases mixed. What is approved and what is not is shown by the three buckets themselves — `actuals.approved/submitted/draft` and `expenses.approved/submitted/draft`. With expenseTracking false the two expense terms are not there and this is the three buckets' bill amount minus their cost, as it has always been. Negative when the project has cost more than it brings in.
              */
             margin: number;
             /**
@@ -1144,7 +1144,7 @@ export interface components {
             currency: string;
             /**
              * Format: double
-             * @description What of this currency is ready to invoice — approved, billable, priced and not yet invoiced.
+             * @description What of this currency is ready to invoice — approved, billable, priced, not yet invoiced and never a per diem day.
              */
             readyAmount: number;
         };
@@ -1178,7 +1178,7 @@ export interface components {
             readyAmount?: number | null;
             /**
              * Format: int32
-             * @description How many lines can go on an invoice today: the unit approved, the line billable, a bill amount present and not yet invoiced. Absent when the project carries no currency.
+             * @description How many lines can go on an invoice today: the unit approved, the line billable, a bill amount present, invoiced_at not set, and never a per diem day — a subsistence allowance is the company's to pay and never the customer's to be charged, so it is not ready and never will be. Absent when the project carries no currency.
              */
             readyCount?: number | null;
             /** @description What is waiting for a decision. Absent when the project carries no currency. */
@@ -1195,7 +1195,7 @@ export interface components {
             totalCost?: number | null;
             /**
              * Format: int32
-             * @description How many billable lines, in any bucket, carry no bill amount — billable mileage with no customer rate, an outlay nobody has priced yet. They are counted here and are in no amount, because a missing price is not a price of nothing: a surface showing what the project will bill must say how many lines the figure is short by. Absent when the project carries no currency.
+             * @description How many billable lines, in any bucket, carry no bill amount — billable mileage with no customer rate, an outlay nobody has priced yet (per diem days are out of it: they are never billable, so they are not a price somebody forgot). They are counted here and are in no amount, because a missing price is not a price of nothing: a surface showing what the project will bill must say how many lines the figure is short by. Absent when the project carries no currency.
              */
             unpricedCount?: number | null;
         };
@@ -1280,7 +1280,7 @@ export interface components {
             expenseAmount?: number | null;
             /**
              * Format: double
-             * @description amount and expenseAmount together — what is ready to invoice in this currency altogether, which is what the readyAmount sort orders rows by. Absent exactly when expenseTracking is false.
+             * @description amount and expenseAmount together — what is ready to invoice in this currency altogether, which is what the readyAmount sort orders rows by. "Total" means every half this installation reports, which today is milestones and expenses; a half added later joins it rather than appearing beside it, so a consumer reads it as the whole and not as a fixed sum of two named parts. Absent exactly when expenseTracking is false.
              */
             totalAmount?: number | null;
         };
@@ -1348,14 +1348,14 @@ export interface components {
             readyExpenseAmount?: number | null;
             /**
              * Format: int32
-             * @description How many of the project's expense lines are ready to invoice — approved, billable, priced, not yet invoiced — **in the project's own currency only**. A line in another currency is not counted and not converted here; the per-project economy is where a project's other currencies are reported, because a portfolio row is one line of a table — and 0 on a project that carries no currency at all, whose lines are reported under the per-project economy's `otherCurrencies`. Absent exactly when expenseTracking is false, which is how "this installation cannot say" is told from "there are none".
+             * @description How many of the project's expense lines are ready to invoice — approved, billable, priced, not yet invoiced and never a per diem day — **in the project's own currency only**. A line in another currency is not counted and not converted here; the per-project economy is where a project's other currencies are reported, because a portfolio row is one line of a table — and 0 on a project that carries no currency at all, whose lines are reported under the per-project economy's `otherCurrencies`. Absent exactly when expenseTracking is false, which is how "this installation cannot say" is told from "there are none".
              */
             readyExpenseCount?: number | null;
             /** @description Present and **true** only when the project has expense lines ready to invoice in a currency that is not its own — including every ready line of a project that carries no currency at all. Absent otherwise, and absent exactly when expenseTracking is false. It carries no amount on purpose: a row cannot hold a second currency without inviting somebody to add two figures that do not add up. **The amounts are on the project's own Economy tab**, under `expenses.otherCurrencies`, and are never converted. The flag exists so that a project whose only invoiceable money is in another currency is *visible* here rather than silently dropped — `hasReady=true` keeps such a row, although its readyExpenseCount is 0. */
             readyExpenseOtherCurrency?: boolean | null;
             /**
              * Format: double
-             * @description readyAmount and readyExpenseAmount together — what is ready to invoice on this project altogether, in its own currency, which is what the readyAmount sort orders by. Absent when neither half has an amount, and absent exactly when expenseTracking is false.
+             * @description readyAmount and readyExpenseAmount together — what is ready to invoice on this project altogether, in its own currency, which is what the readyAmount sort orders by. "Total" means every half this installation reports, which today is milestones and expenses; a half this installation does not have is not in it, and a half added later (approved un-invoiced hours) will be, so a consumer reads it as the whole rather than as a fixed sum of two named parts. Absent when neither half has an amount, and absent exactly when expenseTracking is false.
              */
             readyTotalAmount?: number | null;
         };

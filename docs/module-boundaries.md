@@ -123,8 +123,8 @@ second: **Expenses provides it, Projects optionally consumes it** — what a
 project's expenses cost and bill, beside the hours Time already reports. It is the
 first contract whose provider requires *nothing* in return: Expenses depends on
 nobody but identity, so a `MODULES=expenses` installation provides a contract
-nothing consumes, and a `MODULES=projects,time` one consumes nothing of it. Where
-`ProjectActuals` takes the project's currency in on the request, this one reports
+nothing consumes, and a `MODULES=customers,projects,time` one consumes nothing of
+it. Where `ProjectActuals` takes the project's currency in on the request, this one reports
 **per currency** and never converts: an expense carries its own currency per line,
 and a provider that folded them into the project's would have had to ask the
 project directory while serving — the module cycle at request time both contracts

@@ -572,6 +572,42 @@ func TestGetProjectEconomy_ExpenseCostNeedsFinancialRightsAndNotViewCosts(t *tes
 	}
 }
 
+// Financial rights on the project are the whole of it: no Expenses permission
+// is needed here, and none is checked. A manager who holds not one of them —
+// and who would be answered 403 by the Expenses module's own endpoints — sees
+// the project's expense aggregates, exactly as a manager without time:access
+// has always seen its hours and amounts. The aggregate is the project's money;
+// expenses:access is the right to use the Expenses app.
+func TestGetProjectEconomy_ExpensesNeedNoExpensesPermission(t *testing.T) {
+	t.Parallel()
+	actuals, expenses := newFakeActuals(), newFakeExpenses()
+	h := newHarnessWithActualsAndExpenses(t, actuals, expenses)
+	// projects:create and nothing else: the caller becomes the project's
+	// manager and holds no expenses:access, expenses:view-all or anything of
+	// the sort. The permission list is the assertion.
+	manager, _ := signIn(t, h, "projects:create")
+	project, _, _ := economySetUp(t, manager, "ECOEXPPERM1000")
+	actuals.set(project.Id, loggedTotals(loggedBucket(10, "9000.00", "4000.00"),
+		loggedBucket(0, "0.00", "0.00"), loggedBucket(0, "0.00", "0.00")))
+	expenses.set(project.Id, recordedExpenses("2026-09-19", spentNOK(
+		spentInCurrency("NOK", spentBucket(2, "1000.00", "1200.00"),
+			spentBucket(0, "0.00", "0.00"), spentBucket(0, "0.00", "0.00")), 2, "1200.00", 0, "0.00", 0)))
+
+	economy := getEconomy(t, manager, project.Id)
+	if economy.Expenses == nil || economy.Expenses.TotalCost == nil || *economy.Expenses.TotalCost != 1000 {
+		t.Fatalf("expenses = %+v, want the block for a manager holding no expenses permission at all", economy.Expenses)
+	}
+	if economy.Expenses.ReadyAmount == nil || *economy.Expenses.ReadyAmount != 1200 {
+		t.Errorf("expenses.readyAmount = %v, want 1200", economy.Expenses.ReadyAmount)
+	}
+	// And the same on the portfolio, which is the other surface the rule
+	// covers.
+	row := portfolioRow(t, getPortfolio(t, manager, "status=all&sort=code"), "ECOEXPPERM1000")
+	if row.ReadyExpenseCount == nil || *row.ReadyExpenseCount != 2 {
+		t.Errorf("row.readyExpenseCount = %v, want 2 without any expenses permission", row.ReadyExpenseCount)
+	}
+}
+
 // A project member has no financial rights, so there is no expenses block —
 // and the provider is never asked at all, exactly as the invoice plan is not
 // read for a caller whose answer cannot carry it.

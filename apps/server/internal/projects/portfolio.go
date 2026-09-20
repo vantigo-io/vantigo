@@ -18,7 +18,7 @@ import (
 // This file is the economy portfolio (design §5, delivery B): one row per
 // project the caller has financial rights on, so somebody responsible for
 // several projects can see which of them need looking at without opening each
-// one. Four things run through it.
+// one. Five things run through it.
 //
 // **The row list is an authorization decision, not a shaping one.** Every
 // other read in this module answers a caller who may not see the money
