@@ -409,10 +409,14 @@ const ExpenseForm = ({
         // The list has to learn about it here, because `onSuccess` — where
         // every other write invalidates — is not going to run: a new draft
         // that is nowhere on screen is one somebody records a second time.
+        // And so does whoever is showing figures this package cannot reach:
+        // the draft is in the project's draft bucket and in its cost either
+        // way, so the save moved them even though the submission did not.
         setSaved(stored);
         setRevision(stored.revision);
         setAttachments(stored.attachments);
         await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
+        onSaved?.(stored);
         throw error;
       });
       return { stored: moved.entries[0] ?? stored, submitted: true as const };
@@ -647,10 +651,20 @@ const ExpenseForm = ({
           <>
             <Divider />
             <Stack gap="xs">
-              <Text size="sm">{t("bookedOnProject", { project: `${fixedProject.code} · ${fixedProject.name}` })}</Text>
-              <Text size="xs" c="dimmed">
-                {t("costFollowsProject")}
-              </Text>
+              {/* The project is a sentence rather than an input, but it is
+                  still a field the server can refuse: a create is never
+                  grandfathered, so a project completed — or a person taken off
+                  its team — while the form was open comes back as a 400 on
+                  `projectId`. Without a wrapper to carry it, "Save draft"
+                  would sit there having done nothing and said nothing. */}
+              <Input.Wrapper error={form.errors.projectId}>
+                <Text size="sm">
+                  {t("bookedOnProject", { project: `${fixedProject.code} · ${fixedProject.name}` })}
+                </Text>
+                <Text size="xs" c="dimmed">
+                  {t("costFollowsProject")}
+                </Text>
+              </Input.Wrapper>
               <Select
                 label={t("billingLine")}
                 placeholder={t("noBillingLine")}

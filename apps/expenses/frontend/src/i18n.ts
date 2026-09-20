@@ -1069,7 +1069,7 @@ export const expensesCatalog = {
     bucketSubmitted: "Venter på godkjenning — ikke godkjent ennå",
     bucketDraft: "Kladd — ikke sendt inn ennå, eller avvist",
     bucketTotal: "Totalt",
-    toTheCustomer: "Viderefaktureres",
+    toTheCustomer: "Til kunden",
     readyToInvoice: "Klar til fakturering",
     invoicedAlready: "Fakturert",
     countAndAmount: "{{count}} · {{amount}}",
@@ -1079,13 +1079,13 @@ export const expensesCatalog = {
     noProjectExpenses: "Ingen utlegg på dette prosjektet ennå",
     noProjectExpensesDescription:
       "Det som betales eller kjøres på prosjektet dukker opp her, med hva det koster og hva det faktureres for.",
-    projectExpenseFilters: "Hvilke utlegg som vises",
+    projectExpenseFilters: "Hvilke utlegg vises",
     filterAllExpenses: "Alle",
     nothingReadyToInvoice: "Ingenting er klart til fakturering",
     nothingReadyToInvoiceDescription:
-      "En linje er klar når utlegget er godkjent, merket for viderefakturering og priset — og den forsvinner herfra i det den merkes som fakturert.",
+      "En linje er klar når utlegget er godkjent, merket for viderefakturering og priset — og den forsvinner herfra idet den merkes som fakturert.",
     totalsCoverMoreThanTheList:
-      "Summene dekker alle utleggene på prosjektet. Listen viser dem du kan åpne: dine egne, og alle hvis du leder prosjektet eller kan se alle utlegg.",
+      "Summene dekker alle utleggene på prosjektet. Listen viser dem du kan åpne: dine egne — og alle sammen hvis du leder prosjektet eller kan se alle utlegg.",
     totalsButNotTheExpenses: "Du kan se summene for prosjektet, men ikke de enkelte utleggene bak dem.",
     recordACost: "Før en kostnad",
     openTheTravelClaim: "Åpne reisen",

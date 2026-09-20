@@ -8,6 +8,28 @@ import type { ExpenseRate } from "../api/rates";
 import type { ExpenseSettings } from "../api/settings";
 import type { ExpenseStats } from "../api/stats";
 
+/**
+ * One expense as the store holds it: everything the API renders, plus the one
+ * thing the wire cannot carry.
+ *
+ * `bill_amount` is a nullable column, and **no response says whether it is
+ * null**: the server renders `billing` whenever the caller may see it and puts
+ * `billAmount: 0` there for a SQL NULL (`responses.go` billingResponse →
+ * `floatFromNumeric`), and omits the whole block from a caller who may not.
+ * So neither the presence of `billing` nor a zero in it tells a line that is
+ * *priced at nothing* from one that is *not priced at all* — and every figure
+ * on the project summary that matters here turns on exactly that distinction:
+ * `ready` wants `bill_amount IS NOT NULL`, `unpricedCount` counts the NULLs.
+ *
+ * So a fixture says it outright. `billAmount: null` is the NULL column;
+ * a number is the column's value; left out, it follows the `billing` block it
+ * was given, which is what most fixtures mean.
+ */
+export interface StoredExpense extends Expense {
+  /** The `bill_amount` **column**: `null` for SQL NULL, a number for a price, absent to follow `billing`. */
+  billAmount?: number | null;
+}
+
 /** The caller every page test is signed in as. */
 export const ME = "11111111-1111-1111-1111-111111111111";
 
@@ -56,7 +78,7 @@ export const capabilities = (overrides: Partial<ExpenseCapabilities> = {}): Expe
 const owner = (userId = ME, displayName = "Ada Lovelace") => ({ userId, displayName, active: true });
 
 /** An outlay as the server answers one: the caller's own draft, nothing billed. */
-export const outlay = (overrides: Partial<Expense> = {}): Expense => ({
+export const outlay = (overrides: Partial<StoredExpense> = {}): StoredExpense => ({
   id: 501,
   kind: "outlay",
   entryDate: DAY,
@@ -82,7 +104,7 @@ export const outlay = (overrides: Partial<Expense> = {}): Expense => ({
 });
 
 /** A mileage line as the server answers one: priced from the dated rate table. */
-export const mileage = (overrides: Partial<Expense> = {}): Expense => ({
+export const mileage = (overrides: Partial<StoredExpense> = {}): StoredExpense => ({
   id: 601,
   kind: "mileage",
   entryDate: DAY,
@@ -117,7 +139,7 @@ export const attachment = (overrides: Partial<ExpenseAttachment> = {}): ExpenseA
 });
 
 /** An outlay carrying receipts, with the count the server keeps beside the list. */
-export const withReceipts = (entry: Expense, attachments: ExpenseAttachment[]): Expense => ({
+export const withReceipts = (entry: StoredExpense, attachments: ExpenseAttachment[]): StoredExpense => ({
   ...entry,
   attachments,
   attachmentCount: attachments.length,
@@ -235,7 +257,7 @@ export const settings = (overrides: Partial<ExpenseSettings> = {}): ExpenseSetti
 });
 
 /** A submitted expense of somebody else's that the caller may approve. */
-export const submitted = (overrides: Partial<Expense> = {}): Expense =>
+export const submitted = (overrides: Partial<StoredExpense> = {}): StoredExpense =>
   outlay({
     id: 701,
     status: "submitted",
@@ -295,7 +317,7 @@ export const claim = (overrides: Partial<Claim> = {}): Claim => ({
 });
 
 /** A per diem day as the server answers one: priced from the dated table, no meal covered. */
-export const perDiemLine = (overrides: Partial<Expense> = {}): Expense => ({
+export const perDiemLine = (overrides: Partial<StoredExpense> = {}): StoredExpense => ({
   id: 801,
   claimId: 1012,
   kind: "per_diem",
