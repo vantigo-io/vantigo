@@ -473,7 +473,7 @@ describe("EconomyPortfolio", () => {
     renderPage();
 
     const flaggedRow = (await screen.findByRole("link", { name: "KVEWEBS" })).closest("tr") as HTMLElement;
-    expect(within(flaggedRow).getByTestId("ready-other-currency")).toHaveTextContent("+ ready in another currency");
+    expect(within(flaggedRow).getByTestId("ready-other-currency")).toHaveTextContent("More ready in another currency");
     const plainRow = (await screen.findByRole("link", { name: "KVEAPP0" })).closest("tr") as HTMLElement;
     expect(within(plainRow).queryByTestId("ready-other-currency")).not.toBeInTheDocument();
   });
@@ -499,6 +499,76 @@ describe("EconomyPortfolio", () => {
     const totals = await screen.findByTestId("economy-portfolio-totals");
     expect(within(totals).getByTestId("ready-other-currency-count")).toHaveTextContent(
       "2 projects have something ready in another currency",
+    );
+  });
+
+  // The row the flag was invented for: a project carrying no currency at all,
+  // whose receipts are therefore every one of them "another currency". Nothing
+  // it has can be printed as an amount in this row — so the counts are zero,
+  // there is no figure and no split, and the flag is the whole of what the row
+  // can say.
+  it("says a currency-less project has something ready without inventing an amount", async () => {
+    stubPortfolio(
+      jsonResponse(
+        200,
+        trackedPortfolio(
+          [
+            trackedRow({
+              currency: undefined,
+              readyCount: 0,
+              readyAmount: undefined,
+              readyTotalAmount: undefined,
+              readyExpenseCount: 0,
+              readyExpenseOtherCurrency: true,
+            }),
+          ],
+          {
+            totals: {
+              projectCount: 1,
+              overBudgetCount: 0,
+              readyCount: 0,
+              readyExpenseCount: 0,
+              readyExpenseOtherCurrencyCount: 1,
+              readyAmounts: [],
+            },
+          },
+        ),
+      ),
+    );
+    renderPage();
+
+    const projectRow = (await screen.findByRole("link", { name: "KVEWEBS" })).closest("tr") as HTMLElement;
+    const readyCell = within(projectRow).getByTestId("ready-other-currency").closest("td") as HTMLElement;
+    expect(readyCell).toHaveTextContent("0 milestones · 0 expense lines");
+    expect(readyCell).toHaveTextContent("More ready in another currency");
+    // No amount at all: there is none this row could print, and a 0 would be a
+    // figure the server never sent.
+    expect(readyCell.textContent).toBe("0 milestones · 0 expense linesMore ready in another currency");
+    expect(within(projectRow).queryByTestId("ready-split")).not.toBeInTheDocument();
+  });
+
+  // One project reads as one project, in both languages.
+  it("counts a single project with money ready elsewhere in the singular", async () => {
+    stubPortfolio(
+      jsonResponse(
+        200,
+        trackedPortfolio([trackedRow({ readyExpenseOtherCurrency: true })], {
+          totals: {
+            projectCount: 1,
+            overBudgetCount: 0,
+            readyCount: 1,
+            readyExpenseCount: 0,
+            readyExpenseOtherCurrencyCount: 1,
+            readyAmounts: [{ currency: "NOK", amount: 200000, expenseAmount: 0, totalAmount: 200000 }],
+          },
+        }),
+      ),
+    );
+    renderPage();
+
+    const totals = await screen.findByTestId("economy-portfolio-totals");
+    expect(within(totals).getByTestId("ready-other-currency-count")).toHaveTextContent(
+      "1 project has something ready in another currency",
     );
   });
 
