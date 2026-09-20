@@ -27,7 +27,8 @@ installation, and so is `MODULES=expenses` alone.
   [the period lock](#the-period-lock)
 - Who sees what: [permissions](#permissions) ·
   [visibility and shaping](#visibility-and-shaping) · [receipts](#receipts)
-- [What a project's expenses come to](#what-a-projects-expenses-come-to) (the Expenses tab, and the lines waiting to be invoiced)
+- [What a project's expenses come to](#what-a-projects-expenses-come-to) (the figures behind the Expenses tab, and the lines waiting to be invoiced) ·
+  [on the project page](#on-the-project-page) (the tab itself, and recording a cost from it)
 - [The payroll CSV](#the-payroll-csv) · [stats and attention](#stats-and-attention) ·
   [refusal codes](#refusal-codes) · [the locking rule](#the-locking-rule) ·
   [API](#api) · [development](#development)
@@ -716,8 +717,9 @@ currency, which may be neither its travel claim's nor its project's):
 | `total` | the three buckets as one figure, rounded once from the unrounded sum. **Read this rather than adding the three up**: each of them was rounded on its own first |
 | `readyCount` / `readyAmount` | ready to invoice: the unit approved, the line billable, a bill amount present, not invoiced, never a per diem day |
 | `invoicedCount` / `invoicedAmount` | what has already gone on an invoice |
-| `unpricedCount` | billable lines with no bill amount — billable mileage with no customer rate. Counted, never billed as zero: a missing price is not a price of nothing, and this is the work still to do before the project can invoice them |
+| `unpricedCount` | billable lines with no bill amount — billable mileage with no customer rate (per diem days are out of it, as they are out of `readyCount`). Counted, never billed as zero: a missing price is not a price of nothing, and this is the work still to do before the project can invoice them |
 | `lastEntryDate` | the latest entry date over every currency and status; absent when nothing has been recorded |
+| `projectCurrency` | the project's own currency, when it has one — the entry of `currencies` with this code is the project's and every other one is in another currency, never converted |
 | `capabilities.canRecord` | whether *this caller* may book a cost on the project (projects' own `CanLogTime`), so a "Record a cost" button never offers what the save would refuse |
 
 A project with nothing recorded answers `200` with an empty `currencies` list — not
@@ -726,10 +728,13 @@ no business naming.
 
 **The list behind the figure.** `GET /entries?projectId=…&toInvoice=true` lists
 exactly the lines `readyCount` counts, under the same predicate in the same words,
-so the header and the rows under it can never disagree. It needs a `projectId`
-(invoicing is done a project at a time) and is refused without one; with `true` a
-`status` other than `approved` contradicts it and is refused too; `toInvoice=false`
-is everything else the caller may see.
+so the header and the rows under it can never disagree — and every line it answers
+is one `POST /entries/{id}/invoiced` accepts, which a test asserts by invoicing the
+whole page. It needs a `projectId` (invoicing is done a project at a time) and is
+refused without one; a `status` other than `approved` and `kind=per_diem` each
+contradict it and are refused rather than answering an empty page.
+**`toInvoice=false` means the parameter left out** — no filter and none of those
+rules — which is what an unticked checkbox asks for.
 
 **The aggregate and the rows are gated differently, on purpose.** The summary is
 totals and follows the financial-rights rule above; the list is individual
@@ -739,6 +744,80 @@ expenses and keeps [the visibility rule it has always had](#visibility-and-shapi
 `projects:view-financials` without managing the project reads every figure on the
 tab and is shown **no expenses at all** underneath. That is deliberate: the tab
 says so rather than widening who may read a colleague's receipts.
+
+**And the other way round**, which is the one that sounds wrong until you look at
+it: an `expenses:view-all` or `expenses:manage` administrator sees every one of a
+project's receipts in the list and gets a **404** on its totals. The summary draws
+exactly the line the row-level [`billing` block](#visibility-and-shaping) already
+draws — what a project charges its customer is commercial, belongs to the project's
+side, and is shaped by `seesProjectFinancials` there too — so the tab refuses them
+nothing they already have on the expenses themselves. An administrator who needs
+the totals needs `projects:view-financials`, the permission that says so.
+
+**`projectCurrency`** names the project's own currency, so the tab knows which
+entry of `currencies` is the project's and which are "in another currency". It is
+answered here rather than looked up because the caller this read exists for may
+hold no role on the project, and `GET /projects` is the *picker* for what the
+caller may book on — empty for exactly that person.
+
+## On the project page
+
+`/projects/$projectId/expenses` is the **Expenses** tab, last on the project page
+after Time. The host mounts `@vantigo/expenses-ui`'s `ProjectExpensesPanel` there,
+gated on the expenses module being enabled and on `expenses:access` — and on **no
+project capability at all**. A plain member of the project sees their own expenses
+on it; hiding the tab behind financial rights would have hidden somebody's own
+receipts from them.
+
+**Two halves, two different gates.** The totals at the top are
+[the summary above](#what-a-projects-expenses-come-to) and need financial rights on
+the project; the list underneath is individual expenses and keeps
+[the visibility rule](#visibility-and-shaping) every expense read has always had.
+Either half can be empty while the other is not, and the tab says which:
+
+| The caller | The totals | The list |
+| --- | --- | --- |
+| the project's manager | every figure | every expense on the project |
+| `projects:view-financials` without managing it | every figure | **nothing** — and the tab says so in words: "You can see this project's totals, but not the individual expenses behind them" |
+| `expenses:view-all` / `approve` / `manage` | **absent** (the summary's 404) | every expense on the project |
+| a plain member | absent | their own |
+
+A 404 on the totals is never drawn as an error: it means one of three deliberately
+indistinguishable things — no projects module, no such project, no financial rights
+— so the block is simply not there, and the list stands on its own. Any other
+failure is an error the caller can act on. When the list is shorter than the totals
+rather than empty, one sentence says so rather than letting the two disagree
+silently.
+
+**Nothing is added across currencies.** One card per currency, the project's own
+first and named as such; every other one is labelled "in another currency — not
+converted, and not part of the project's economy figures". Each card writes the
+three buckets out with the words that say what they are *not* ("awaiting approval —
+not approved yet", "draft — not submitted yet, or rejected"), because for a reader
+who cannot open the expenses this is the only thing that tells them apart, and the
+**total** is a row of its own rather than the three added up. Billable lines with no
+price are called out — counted, never billed as zero.
+
+**Ready to invoice** is a filter chip beside "All", offered only when the totals
+were readable: it asks the list for `toInvoice=true` on this project and nothing
+else, so the figure in the card and the rows under it are the same set by
+construction. Marking a line invoiced from its drawer moves it straight out of that
+list and out of `readyCount` into `invoicedCount` — invoicing is a stamp, not a
+status, so the line stays an approved one. The undo puts it back.
+
+**Record a cost** opens the ordinary expense form with the project **stated rather
+than offered** — the page it was opened from is the answer — the billing line picked
+from that project's own lines, an outlay the company paid to start with, and the
+billable switch in reach. It is still an expense of its own, so it can be saved and
+submitted in one step. Who may press it is `capabilities.canRecord` when the totals
+were readable, and otherwise whether the project is among the ones
+[`GET /projects`](#the-optional-projects-link) says the caller may book on; nothing
+in the client re-derives it from a permission.
+
+The project's own **Economy** tab shows the same money from the projects side (the
+costs section, the margin, and a row for what is ready to invoice, which links
+here). The two are refreshed together by the host: they read one set of figures
+through two modules' APIs, and no module package imports another's.
 
 ## The period lock
 
@@ -1000,9 +1079,19 @@ coverage gate (below) with no allow-list.
 
 ## What comes next
 
-**The project page itself**: the Expenses tab the summary above serves, and the
-Economy tab's cost side — what a project's expenses cost and bill, beside the hours
-Time already reports there.
+**Invoicing.** `invoiced_at` is set by hand today, one billable line at a time, by
+whoever holds financial rights on its project — [the two tracks after
+approval](#the-two-tracks-after-approval) — and "ready to invoice" is the list an
+invoice would be built from. The module that turns that list into an invoice does
+not exist yet; when it does, it owns the stamp, exactly as
+[docs/time.md](time.md#what-invoicing-will-read) says of the same column on an hour.
+**Supplier costs** are the other named gap: a project's non-hours cost today is what
+somebody put on an expense, not what a supplier invoiced — see
+[ROADMAP.md](../ROADMAP.md#projects).
+
+The project page is done, both sides: [the Expenses tab](#on-the-project-page) with
+the totals, the list and "Record a cost", and the Economy tab's cost side — what a
+project's expenses cost and bill, beside the hours Time already reports there.
 
 Travel claims and per diem are done, front to back: the trip's own page at
 `/expenses/claims/$claimId`, where the days are suggested and ticked off and
