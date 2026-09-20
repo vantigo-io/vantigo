@@ -315,6 +315,13 @@ func (r portfolioRow) readyExpenseCount() int32 {
 	return *r.row.ReadyExpenseCount
 }
 
+// readyExpenseOtherCurrency reports whether the project has something ready to
+// invoice in a currency that is not its own. It is false for an installation
+// that cannot say, the same reading readyExpenseCount gives.
+func (r portfolioRow) readyExpenseOtherCurrency() bool {
+	return r.row.ReadyExpenseOtherCurrency != nil && *r.row.ReadyExpenseOtherCurrency
+}
+
 // portfolioRows builds every matching project's row. The milestones arrive as
 // one ordered list for the whole set and are grouped here rather than read
 // per project; their order is already the "next milestone" rule's, so the
@@ -449,7 +456,7 @@ func (s *server) portfolioRowFor(
 		// rather than parsing every bucket of every currency to throw the rest
 		// away — and a malformed figure in a currency this table would never
 		// print cannot then fail the whole page.
-		ready, amount, err := readyExpensesOf(spent, project.Currency)
+		ready, amount, otherCurrency, err := readyExpensesOf(spent, project.Currency)
 		if err != nil {
 			return portfolioRow{}, err
 		}
@@ -458,6 +465,12 @@ func (s *server) portfolioRowFor(
 			count, out.readyExpense = int32(ready), amount
 		}
 		out.row.ReadyExpenseCount = &count
+		if otherCurrency {
+			// Present only when true: a flag whose false is absent reads as
+			// "nothing to say here", which is the module's rule everywhere.
+			flagged := true
+			out.row.ReadyExpenseOtherCurrency = &flagged
+		}
 		out.row.ReadyExpenseAmount = numberPtr(out.readyExpense)
 		out.readyTotal = addReady(out.ready, out.readyExpense)
 		out.row.ReadyTotalAmount = numberPtr(out.readyTotal)
@@ -510,8 +523,12 @@ func portfolioActualsOf(w loggedWork, seesAmounts bool) gen.ProjectEconomyRowAct
 // hasReady asks "is there anything to invoice here", so a project whose only
 // ready thing is a billable receipt is kept: it is something to put on an
 // invoice, and a filter that hid it would send whoever invoices past the very
-// project they are looking for. On an installation without expense tracking
-// the count is always 0 and the filter is the one it has always been.
+// project they are looking for. A project whose only ready receipts are in
+// **another** currency is kept for the same reason — its row carries no amount
+// for them, only readyExpenseOtherCurrency, but the money is real and the one
+// thing this filter must never do is hide it. On an installation without
+// expense tracking neither figure is set and the filter is the one it has
+// always been.
 func filterPortfolio(rows []portfolioRow, p gen.GetProjectsEconomyParams) []portfolioRow {
 	overBudget := p.OverBudget != nil && *p.OverBudget
 	hasReady := p.HasReady != nil && *p.HasReady
@@ -523,7 +540,7 @@ func filterPortfolio(rows []portfolioRow, p gen.GetProjectsEconomyParams) []port
 		if overBudget && !row.row.OverBudget {
 			continue
 		}
-		if hasReady && row.row.ReadyCount == 0 && row.readyExpenseCount() == 0 {
+		if hasReady && row.row.ReadyCount == 0 && row.readyExpenseCount() == 0 && !row.readyExpenseOtherCurrency() {
 			continue
 		}
 		kept = append(kept, row)
@@ -560,13 +577,16 @@ func portfolioTotals(rows []portfolioRow, expenseTracking bool) gen.ProjectEcono
 		}
 		sum.Add(sum, amount)
 	}
-	readyExpenseCount := int32(0)
+	readyExpenseCount, otherCurrencyCount := int32(0), int32(0)
 	for _, row := range rows {
 		if row.row.OverBudget {
 			totals.OverBudgetCount++
 		}
 		totals.ReadyCount += row.row.ReadyCount
 		readyExpenseCount += row.readyExpenseCount()
+		if row.readyExpenseOtherCurrency() {
+			otherCurrencyCount++
+		}
 		currency := portfolioCurrency(row)
 		if row.ready != nil {
 			add(amounts, currency, row.ready)
@@ -577,6 +597,10 @@ func portfolioTotals(rows []portfolioRow, expenseTracking bool) gen.ProjectEcono
 	}
 	if expenseTracking {
 		totals.ReadyExpenseCount = &readyExpenseCount
+		// Projects, not lines: the amounts are in currencies that do not add
+		// up, so the only honest headline figure is how many projects have
+		// something waiting somewhere else.
+		totals.ReadyExpenseOtherCurrencyCount = &otherCurrencyCount
 	}
 
 	currencies := slices.Sorted(maps.Keys(amounts))

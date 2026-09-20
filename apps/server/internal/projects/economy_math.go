@@ -526,21 +526,28 @@ func currencyExpensesOf(c contracts.CurrencyExpenses) (currencyExpenses, error) 
 // A project that carries no currency has nothing ready *in its own currency*,
 // which is 0 and no amount — its lines are reported by the per-project
 // economy's otherCurrencies instead.
-func readyExpensesOf(t contracts.ProjectExpenseTotals, currency *string) (int64, *big.Rat, error) {
-	if currency == nil {
-		return 0, nil, nil
-	}
+//
+// otherCurrency is the third answer, and it is why this function is not just
+// a lookup: a project whose only invoiceable money is in a currency that is
+// not its own would otherwise be a row of zeroes and a filter would drop it,
+// so whoever invoices from the portfolio would never find it. The flag says
+// "there is more here, on the project's own page" without putting a second
+// currency's amount in a row that could not add it up. It is decided on
+// **counts alone** — they are integers, so no unrelated amount is parsed and
+// a malformed figure in a currency this endpoint will never print still
+// cannot fail the page.
+func readyExpensesOf(t contracts.ProjectExpenseTotals, currency *string) (count int64, amount *big.Rat, otherCurrency bool, err error) {
 	for _, reported := range t.Currencies {
-		if reported.Currency != *currency {
+		if currency == nil || reported.Currency != *currency {
+			otherCurrency = otherCurrency || reported.ReadyCount > 0
 			continue
 		}
-		amount, err := exactAmount(reported.ReadyAmount)
-		if err != nil {
-			return 0, nil, err
+		if amount, err = exactAmount(reported.ReadyAmount); err != nil {
+			return 0, nil, false, err
 		}
-		return reported.ReadyCount, amount, nil
+		count = reported.ReadyCount
 	}
-	return 0, nil, nil
+	return count, amount, otherCurrency, nil
 }
 
 // zeroCurrencyExpenses is a currency nothing was recorded in — every figure at

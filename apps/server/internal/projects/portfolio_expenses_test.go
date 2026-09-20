@@ -238,6 +238,101 @@ func TestGetProjectsEconomy_RowCountsOnlyItsOwnCurrency(t *testing.T) {
 	}
 }
 
+// Money ready to invoice in a currency the row cannot report is **flagged**,
+// never silently dropped. The row carries no amount for it — a row that held
+// two currencies would invite somebody to add them — but it says there is
+// something to find, and the project's own Economy tab has the figures.
+func TestGetProjectsEconomy_ReadyInAnotherCurrencyIsFlagged(t *testing.T) {
+	t.Parallel()
+	actuals, expenses := newFakeActuals(), newFakeExpenses()
+	h := newHarnessWithActualsAndExpenses(t, actuals, expenses)
+	creator, _ := signIn(t, h, "projects:create")
+	mixed := portfolioProject(t, creator, "PXFLAG11", nil)
+	ownOnly := portfolioProject(t, creator, "PXFLAG22", nil)
+	portfolioProject(t, creator, "PXFLAG33", nil)
+	expenses.set(mixed.Id, recordedExpenses("2026-09-19",
+		readyExpenses("EUR", 2, "400.00"), readyExpenses("NOK", 1, "900.00")))
+	expenses.set(ownOnly.Id, recordedExpenses("2026-09-19", readyExpenses("NOK", 3, "300.00")))
+
+	page := getPortfolio(t, creator, "sort=code")
+	flagged := portfolioRow(t, page, "PXFLAG11")
+	if flagged.ReadyExpenseOtherCurrency == nil || !*flagged.ReadyExpenseOtherCurrency {
+		t.Errorf("row.readyExpenseOtherCurrency = %v, want true: two EUR lines are ready", flagged.ReadyExpenseOtherCurrency)
+	}
+	if flagged.ReadyExpenseCount == nil || *flagged.ReadyExpenseCount != 1 || *flagged.ReadyExpenseAmount != 900 {
+		t.Errorf("row = %+v, want the NOK figures alone beside the flag", flagged)
+	}
+	for _, code := range []string{"PXFLAG22", "PXFLAG33"} {
+		row := portfolioRow(t, page, code)
+		if row.ReadyExpenseOtherCurrency != nil {
+			t.Errorf("%s readyExpenseOtherCurrency = %v, want the key absent: nothing waits elsewhere",
+				code, *row.ReadyExpenseOtherCurrency)
+		}
+	}
+	if page.Totals.ReadyExpenseOtherCurrencyCount == nil || *page.Totals.ReadyExpenseOtherCurrencyCount != 1 {
+		t.Errorf("totals.readyExpenseOtherCurrencyCount = %v, want 1 project", page.Totals.ReadyExpenseOtherCurrencyCount)
+	}
+	if page.Totals.ReadyExpenseCount == nil || *page.Totals.ReadyExpenseCount != 4 {
+		t.Errorf("totals.readyExpenseCount = %v, want 4: only what a row could count", page.Totals.ReadyExpenseCount)
+	}
+}
+
+// A project that carries no currency at all has *every* ready line in
+// "another" currency, so it is flagged — and `hasReady=true` keeps it. Five
+// invoiceable lines with no trace on the portfolio was the one thing this
+// filter must never do.
+func TestGetProjectsEconomy_HasReadyKeepsAProjectWhoseReadyMoneyIsElsewhere(t *testing.T) {
+	t.Parallel()
+	actuals, expenses := newFakeActuals(), newFakeExpenses()
+	h := newHarnessWithActualsAndExpenses(t, actuals, expenses)
+	creator, _ := signIn(t, h, "projects:create")
+	bare := portfolioProject(t, creator, "PXELSE11", map[string]any{
+		"currency": nil, "budgetAmount": nil, "customerId": nil, "billingType": "non-billable",
+	})
+	foreign := portfolioProject(t, creator, "PXELSE22", nil)
+	portfolioProject(t, creator, "PXELSE33", nil)
+	expenses.set(bare.Id, recordedExpenses("2026-09-19", readyExpenses("NOK", 5, "5000.00")))
+	expenses.set(foreign.Id, recordedExpenses("2026-09-19", readyExpenses("EUR", 1, "120.00")))
+
+	kept := getPortfolio(t, creator, "hasReady=true&sort=code")
+	if got := portfolioCodes(kept); fmt.Sprint(got) != "[PXELSE11 PXELSE22]" {
+		t.Errorf("hasReady=true gave %v, want both projects whose ready money is in another currency", got)
+	}
+	bareRow := portfolioRow(t, kept, "PXELSE11")
+	if bareRow.ReadyExpenseOtherCurrency == nil || !*bareRow.ReadyExpenseOtherCurrency {
+		t.Errorf("a currencyless project's readyExpenseOtherCurrency = %v, want true: it has no currency of its own, so every ready line is elsewhere",
+			bareRow.ReadyExpenseOtherCurrency)
+	}
+	if bareRow.ReadyExpenseCount == nil || *bareRow.ReadyExpenseCount != 0 {
+		t.Errorf("a currencyless project's readyExpenseCount = %v, want 0", bareRow.ReadyExpenseCount)
+	}
+	if bareRow.ReadyExpenseAmount != nil || bareRow.ReadyTotalAmount != nil {
+		t.Errorf("a currencyless row's amounts = %v/%v, want both absent — they are on its own Economy tab",
+			bareRow.ReadyExpenseAmount, bareRow.ReadyTotalAmount)
+	}
+	if kept.Totals.ReadyExpenseOtherCurrencyCount == nil || *kept.Totals.ReadyExpenseOtherCurrencyCount != 2 {
+		t.Errorf("totals.readyExpenseOtherCurrencyCount = %v, want 2", kept.Totals.ReadyExpenseOtherCurrencyCount)
+	}
+}
+
+// Without expense tracking neither the flag nor its count exists: "this
+// installation cannot say" is said by their absence, not by a false.
+func TestGetProjectsEconomy_WithoutExpensesThereIsNoOtherCurrencyFlag(t *testing.T) {
+	t.Parallel()
+	actuals := newFakeActuals()
+	h := newHarnessWithActuals(t, actuals)
+	creator, _ := signIn(t, h, "projects:create")
+	project := portfolioProject(t, creator, "PXNOFLAG", nil)
+	movedMilestone(t, creator, createMilestone(t, creator, project.Id, map[string]any{"amount": 1000}), "ready", nil)
+
+	page := getPortfolio(t, creator, "sort=code")
+	row := portfolioRow(t, page, "PXNOFLAG")
+	if row.ReadyExpenseOtherCurrency != nil || page.Totals.ReadyExpenseOtherCurrencyCount != nil {
+		t.Errorf("flag/count = %v/%v, want both absent without the contract",
+			row.ReadyExpenseOtherCurrency, page.Totals.ReadyExpenseOtherCurrencyCount)
+	}
+}
+
 // The portfolio reads two figures of the contract's answer and parses two:
 // a currency it would never print cannot fail the page, however malformed it
 // is. The per-project economy publishes that currency and so still refuses
@@ -253,6 +348,10 @@ func TestGetProjectsEconomy_AMalformedOtherCurrencyDoesNotFailThePage(t *testing
 	rotten := spentInCurrency("EUR", spentBucket(1, "0.00", "0.00"),
 		spentBucket(0, "0.00", "0.00"), spentBucket(0, "0.00", "0.00"))
 	rotten.Submitted.BillAmount = "not a number"
+	// Ready, and unreadable: the flag has to be decided on the *count* alone,
+	// because parsing this currency's amount is the very thing that would
+	// take the page down.
+	rotten.ReadyCount, rotten.ReadyAmount = 1, "nor is this"
 	expenses.set(project.Id, recordedExpenses("2026-09-19",
 		readyExpenses("NOK", 2, "750.00"), rotten))
 
@@ -262,6 +361,10 @@ func TestGetProjectsEconomy_AMalformedOtherCurrencyDoesNotFailThePage(t *testing
 	}
 	if row.ReadyExpenseAmount == nil || *row.ReadyExpenseAmount != 750 {
 		t.Errorf("row.readyExpenseAmount = %v, want 750", row.ReadyExpenseAmount)
+	}
+	if row.ReadyExpenseOtherCurrency == nil || !*row.ReadyExpenseOtherCurrency {
+		t.Errorf("row.readyExpenseOtherCurrency = %v, want true — decided on the count, never on the amount",
+			row.ReadyExpenseOtherCurrency)
 	}
 
 	// The per-project read does publish that currency, so it refuses rather

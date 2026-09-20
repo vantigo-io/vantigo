@@ -130,6 +130,10 @@ type portfolioRowJSON struct {
 	ReadyExpenseCount  *int32   `json:"readyExpenseCount"`
 	ReadyExpenseAmount *float64 `json:"readyExpenseAmount"`
 	ReadyTotalAmount   *float64 `json:"readyTotalAmount"`
+	// A pointer for a *stronger* reason than the rest: the flag is present
+	// only when it is true, so a nil is "nothing waiting elsewhere" and a
+	// false would be a key that never exists.
+	ReadyExpenseOtherCurrency *bool `json:"readyExpenseOtherCurrency"`
 }
 
 type portfolioProjectJSON struct {
@@ -163,11 +167,12 @@ type portfolioMilestoneJSON struct {
 }
 
 type portfolioTotalsJSON struct {
-	ProjectCount      int32             `json:"projectCount"`
-	OverBudgetCount   int32             `json:"overBudgetCount"`
-	ReadyCount        int32             `json:"readyCount"`
-	ReadyExpenseCount *int32            `json:"readyExpenseCount"`
-	ReadyAmounts      []readyAmountJSON `json:"readyAmounts"`
+	ProjectCount                   int32             `json:"projectCount"`
+	OverBudgetCount                int32             `json:"overBudgetCount"`
+	ReadyCount                     int32             `json:"readyCount"`
+	ReadyExpenseCount              *int32            `json:"readyExpenseCount"`
+	ReadyExpenseOtherCurrencyCount *int32            `json:"readyExpenseOtherCurrencyCount"`
+	ReadyAmounts                   []readyAmountJSON `json:"readyAmounts"`
 }
 
 type readyAmountJSON struct {

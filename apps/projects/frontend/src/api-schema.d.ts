@@ -1351,6 +1351,8 @@ export interface components {
              * @description How many of the project's expense lines are ready to invoice — approved, billable, priced, not yet invoiced — **in the project's own currency only**. A line in another currency is not counted and not converted here; the per-project economy is where a project's other currencies are reported, because a portfolio row is one line of a table — and 0 on a project that carries no currency at all, whose lines are reported under the per-project economy's `otherCurrencies`. Absent exactly when expenseTracking is false, which is how "this installation cannot say" is told from "there are none".
              */
             readyExpenseCount?: number | null;
+            /** @description Present and **true** only when the project has expense lines ready to invoice in a currency that is not its own — including every ready line of a project that carries no currency at all. Absent otherwise, and absent exactly when expenseTracking is false. It carries no amount on purpose: a row cannot hold a second currency without inviting somebody to add two figures that do not add up. **The amounts are on the project's own Economy tab**, under `expenses.otherCurrencies`, and are never converted. The flag exists so that a project whose only invoiceable money is in another currency is *visible* here rather than silently dropped — `hasReady=true` keeps such a row, although its readyExpenseCount is 0. */
+            readyExpenseOtherCurrency?: boolean | null;
             /**
              * Format: double
              * @description readyAmount and readyExpenseAmount together — what is ready to invoice on this project altogether, in its own currency, which is what the readyAmount sort orders by. Absent when neither half has an amount, and absent exactly when expenseTracking is false.
@@ -1406,9 +1408,14 @@ export interface components {
             readyCount: number;
             /**
              * Format: int32
-             * @description How many expense lines across those projects are ready to invoice, each counted only in its own project's currency — a line in another currency, and every line of a project that carries no currency at all, is counted in no row and so in no total either. Absent exactly when expenseTracking is false.
+             * @description How many expense lines across those projects are ready to invoice, each counted only in its own project's currency — a line in another currency, and every line of a project that carries no currency at all, is counted in no row and so in no total either. Those projects are counted in readyExpenseOtherCurrencyCount instead, so the money is never silently missing. Absent exactly when expenseTracking is false.
              */
             readyExpenseCount?: number | null;
+            /**
+             * Format: int32
+             * @description How many of those projects have something ready to invoice in a currency that is not their own — projects, not lines, because amounts in different currencies do not add up and the only honest headline figure is how many places have money waiting somewhere else. Each project's own Economy tab reports the amounts, per currency and never converted. Absent exactly when expenseTracking is false.
+             */
+            readyExpenseOtherCurrencyCount?: number | null;
         };
         /** @description The project's financial fields, present only when the caller may see them (capabilities.canSeeFinancials) and then always present, possibly with no fields inside, so a client can tell "may see, nothing entered" from "may not see". */
         ProjectFinancials: {
