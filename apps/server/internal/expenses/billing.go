@@ -137,11 +137,13 @@ func billingColumns(f billingFigures) (markup, billRate, amount pgtype.Numeric, 
 // billingRefusal is why an expense cannot be priced right now — because of what
 // it is, not who is asking. Invoicing is the end of the line: what has been
 // sent to a customer is not repriced behind their back.
-func billingRefusal(c *caller, row store.ExpensesEntry) (string, string) {
-	switch {
-	case !c.mayWritePast(row.EntryDate.Time):
-		return "entryDate", lockedBeforeMessage(*lockedBefore(c.Settings))
-	case row.InvoicedAt != nil:
+//
+// The period lock is deliberately not one of the reasons (see accessFor's
+// CanSetBilling): pricing is bookkeeping done after a period closes, and the
+// people who do it hold financial rights on a project rather than
+// expenses:manage, whom the lock exempts.
+func billingRefusal(_ *caller, row store.ExpensesEntry) (string, string) {
+	if row.InvoicedAt != nil {
 		return "status", "An expense that has been invoiced can no longer be priced"
 	}
 	return "", ""
@@ -329,6 +331,18 @@ func (s *server) priceEntry(ctx context.Context, q *store.Queries, c *caller, ro
 	figures, err := resolveBilling(ctx, q, in)
 	if err != nil {
 		return billingFigures{}, nil, err
+	}
+	if !figures.Billable {
+		// The request asked for a figure on a line the project will never bill.
+		// Refused on its own field rather than answered 200 with everything
+		// cleared and nothing said.
+		if named != nil {
+			add("markupPercent", projectBillsNothing)
+		}
+		if namedRate != nil {
+			add("billRatePerKm", projectBillsNothing)
+		}
+		return figures, errs, nil
 	}
 	if figures.RateMissing {
 		// This caller can see the project's money, so they are the one who can

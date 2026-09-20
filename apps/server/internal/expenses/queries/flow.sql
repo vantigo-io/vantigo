@@ -34,6 +34,7 @@ UPDATE expenses.entries SET
     gross_amount = @gross_amount,
     rate_overridden_by_user_id = NULL,
     rate_table_value = NULL,
+    passenger_rate_table_value = NULL,
     billable = @billable,
     markup_percent = @markup_percent,
     bill_rate_per_km = @bill_rate_per_km,
@@ -79,17 +80,23 @@ RETURNING *;
 
 -- name: UnapproveEntries :many
 -- UnapproveEntries returns approved expenses to a fresh draft, clearing the
--- decision and the submission stamp alike, so the owner sees each as something
--- to change and send again. The frozen figures stay where they are until the
--- next save or submit recomputes them — including an overridden rate, which is
--- still what the line was priced at. Never an expense already reimbursed or
--- invoiced; the caller has refused those, and the guard here says so too.
+-- decision, the submission stamp and the record of any rate an approver had
+-- overridden: *fresh* means the draft carries nothing of the decision that was
+-- undone, and an override is part of that decision. The frozen amounts stay
+-- where they are — they are what the line was approved at — until the next save
+-- or submit reprices them from the table, which is also where the audit would
+-- have been cleared had the line gone forward instead. Never an expense already
+-- reimbursed or invoiced; the caller has refused those, and the guard here says
+-- so too.
 UPDATE expenses.entries SET
     status = 'draft',
     submitted_at = NULL,
     decided_at = NULL,
     decided_by_user_id = NULL,
     rejection_reason = NULL,
+    rate_overridden_by_user_id = NULL,
+    rate_table_value = NULL,
+    passenger_rate_table_value = NULL,
     revision = revision + 1,
     updated_at = @now::timestamptz
 WHERE id = ANY(@ids::bigint[]) AND status = 'approved'
@@ -98,16 +105,23 @@ RETURNING *;
 
 -- name: OverrideEntryRate :one
 -- OverrideEntryRate replaces a submitted mileage line's rate and the amount it
--- was frozen at (decision X8), recording who did it. rate_table_value keeps
--- what the line was frozen at before the *first* override, so a second one
--- never loses the table's own figure. The revision is guarded here as well as
--- under the lock, so no caller writes over a revision it did not read.
+-- was frozen at (decision X8), recording who did it and what the table had said
+-- about *both* rates it can replace. Each of the two table values keeps what the
+-- line was frozen at before the **first** override of that rate, so a second one
+-- never loses the table's own figure; the passenger one is only recorded when
+-- this request actually names a supplement, so its absence means "never
+-- touched" rather than "the same as the one still on the line". The revision is
+-- guarded here as well as under the lock, so no caller writes over a revision it
+-- did not read.
 UPDATE expenses.entries SET
     rate = @rate,
     passenger_rate = @passenger_rate,
     gross_amount = @gross_amount,
     rate_overridden_by_user_id = @overridden_by::uuid,
     rate_table_value = COALESCE(rate_table_value, rate),
+    passenger_rate_table_value = CASE WHEN @passenger_overridden::boolean
+        THEN COALESCE(passenger_rate_table_value, passenger_rate)
+        ELSE passenger_rate_table_value END,
     revision = revision + 1,
     updated_at = @now::timestamptz
 WHERE id = @id AND revision = @revision AND status = 'submitted' AND kind = 'mileage'

@@ -70,8 +70,14 @@ func TestExpensesEntries_WithoutProjects_AnEditKeepsTheStoredProjectColumns(t *t
 func entryColumnsDump(t *testing.T, h *harness, id int64) string {
 	t.Helper()
 	return modtest.One[string](t, h.Harness, `
-		SELECT format('project_id=%s billing_line_id=%s billable=%s markup=%s bill_rate=%s bill_amount=%s',
-			project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount)
+		SELECT format('status=%s revision=%s submitted_at=%s decided_at=%s decided_by=%s '
+			|| 'gross=%s rate=%s passenger_rate=%s overridden_by=%s rate_table_value=%s '
+			|| 'passenger_rate_table_value=%s project_id=%s billing_line_id=%s billable=%s '
+			|| 'markup=%s bill_rate=%s bill_amount=%s',
+			status, revision, submitted_at, decided_at, decided_by_user_id,
+			gross_amount, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value,
+			passenger_rate_table_value, project_id, billing_line_id, billable,
+			markup_percent, bill_rate_per_km, bill_amount)
 		FROM expenses.entries WHERE id = $1`, id)
 }
 

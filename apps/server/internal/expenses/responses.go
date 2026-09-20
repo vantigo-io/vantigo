@@ -147,10 +147,14 @@ func (s *server) namesFor(ctx context.Context, rows []store.ExpensesEntry) (entr
 	for _, row := range rows {
 		entryIDs = append(entryIDs, row.ID)
 		addUser(row.UserID)
-		// Whoever overrode a rate, paid the expense back or invoiced it is
-		// named on it too, in the same directory call as its owner.
+		// Whoever overrode a rate, decided the expense, paid it back or
+		// invoiced it is named on it too, in the same directory call as its
+		// owner — never one of their own, and never inside a transaction.
 		if row.RateOverriddenByUserID != nil {
 			addUser(*row.RateOverriddenByUserID)
+		}
+		if row.DecidedByUserID != nil {
+			addUser(*row.DecidedByUserID)
 		}
 		if row.ReimbursedByUserID != nil {
 			addUser(*row.ReimbursedByUserID)
@@ -249,8 +253,7 @@ func entryResponse(row store.ExpensesEntry, a entryAccess, names entryNames) (ge
 		Billable:        row.Billable,
 		Status:          row.Status,
 		SubmittedAt:     row.SubmittedAt,
-		DecidedAt:       row.DecidedAt,
-		RejectionReason: row.RejectionReason,
+		Decision:        decisionResponse(row, names),
 		AttachmentCount: int32(len(names.attachments[row.ID])),
 		Attachments:     attachmentsOf(names, row.ID),
 		Owner:           ownerResponse(row.UserID, names),
@@ -295,9 +298,16 @@ func entryResponse(row store.ExpensesEntry, a entryAccess, names entryNames) (ge
 		if err != nil {
 			return gen.ExpensesEntryResponse{}, err
 		}
+		// Absent rather than repeated when the supplement was never overridden,
+		// so a reader can tell a changed supplement from an untouched one.
+		passengerTableValue, err := floatPtrFromNumeric(row.PassengerRateTableValue)
+		if err != nil {
+			return gen.ExpensesEntryResponse{}, err
+		}
 		resp.RateOverride = &gen.ExpensesEntryRateOverride{
-			ByUser:     userRef(*row.RateOverriddenByUserID, names),
-			TableValue: tableValue,
+			ByUser:              userRef(*row.RateOverriddenByUserID, names),
+			TableValue:          tableValue,
+			PassengerTableValue: passengerTableValue,
 		}
 	}
 	if row.CategoryID != nil {
@@ -365,6 +375,32 @@ func invoicedBy(row store.ExpensesEntry) uuid.UUID {
 		return uuid.Nil
 	}
 	return *row.InvoicedByUserID
+}
+
+// decisionResponse is what was decided about the expense, by whom and when —
+// nil until a decision stands, and nil again the moment one is undone (a submit
+// and an unapprove both clear the three columns it reads).
+//
+// It is shown to **everyone who may see the expense**, its owner first of all:
+// being told who rejected you, and why, is the point of a rejection, and the
+// name it carries is one the owner could read off the approval queue anyway. It
+// is the same shape as the two stamps the tracks after approval leave
+// (reimbursement, invoice), so a client reads all three the same way. The
+// status is the decision's own word rather than a second reading of the row's,
+// because the columns are only ever written together.
+func decisionResponse(row store.ExpensesEntry, names entryNames) *gen.ExpensesEntryDecision {
+	if row.DecidedAt == nil {
+		return nil
+	}
+	decision := &gen.ExpensesEntryDecision{
+		Status: row.Status,
+		At:     *row.DecidedAt,
+		Reason: row.RejectionReason,
+	}
+	if row.DecidedByUserID != nil {
+		decision.By = userRef(*row.DecidedByUserID, names)
+	}
+	return decision
 }
 
 // attachmentsOf is an entry's receipts, always a list and never null: an

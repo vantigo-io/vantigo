@@ -21,7 +21,7 @@ func TestExpensesFlow_ADraftIsSubmittedApprovedAndUnapproved(t *testing.T) {
 	approver, approverID := signIn(t, h, "expenses:approve")
 
 	entry := createEntry(t, owner, outlayBody(nil))
-	if entry.Status != "draft" || entry.SubmittedAt != nil || entry.DecidedAt != nil {
+	if entry.Status != "draft" || entry.SubmittedAt != nil || entry.Decision != nil {
 		t.Fatalf("created = %+v, want an undecided draft", entry)
 	}
 
@@ -29,13 +29,20 @@ func TestExpensesFlow_ADraftIsSubmittedApprovedAndUnapproved(t *testing.T) {
 	if len(submitted) != 1 || submitted[0].Status != "submitted" || submitted[0].SubmittedAt == nil {
 		t.Fatalf("submitted = %+v, want one submitted expense with a stamp", submitted)
 	}
-	if submitted[0].DecidedAt != nil || submitted[0].RejectionReason != nil {
+	if submitted[0].Decision != nil {
 		t.Errorf("submitted = %+v, want no decision on it yet", submitted[0])
 	}
 
 	approved := approveEntries(t, approver, entry.Id)
-	if len(approved) != 1 || approved[0].Status != "approved" || approved[0].DecidedAt == nil {
+	if len(approved) != 1 || approved[0].Status != "approved" || approved[0].Decision == nil {
 		t.Fatalf("approved = %+v, want one approved expense with a decision stamp", approved)
+	}
+	// Who decided is on the expense, for its owner as much as for anyone else.
+	if d := approved[0].Decision; d.Status != "approved" || d.By.UserId != approverID || d.At == "" {
+		t.Errorf("decision = %+v, want it approved by the approver", d)
+	}
+	if owned := getEntry(t, owner, entry.Id); owned.Decision == nil || owned.Decision.By.UserId != approverID {
+		t.Errorf("the owner's copy = %+v, want the approver named to them too", owned.Decision)
 	}
 	if got := h.Count(t, `SELECT count(*) FROM expenses.entries WHERE id = $1 AND decided_by_user_id = $2`,
 		entry.Id, approverID); got != 1 {
@@ -46,7 +53,7 @@ func TestExpensesFlow_ADraftIsSubmittedApprovedAndUnapproved(t *testing.T) {
 	if len(back) != 1 || back[0].Status != "draft" {
 		t.Fatalf("unapproved = %+v, want a draft again", back)
 	}
-	if back[0].SubmittedAt != nil || back[0].DecidedAt != nil || back[0].RejectionReason != nil {
+	if back[0].SubmittedAt != nil || back[0].Decision != nil {
 		t.Errorf("unapproved = %+v, want a fresh draft with every stamp cleared", back[0])
 	}
 	if got := h.Count(t, `SELECT count(*) FROM expenses.entries
@@ -69,11 +76,12 @@ func TestExpensesFlow_RejectSendsItBackWithAReason(t *testing.T) {
 	if len(rejected) != 1 || rejected[0].Status != "rejected" {
 		t.Fatalf("rejected = %+v, want one rejected expense", rejected)
 	}
-	if rejected[0].RejectionReason == nil || *rejected[0].RejectionReason != "Mangler kvittering fra leverandøren" {
-		t.Errorf("rejectionReason = %v, want the reason given", rejected[0].RejectionReason)
+	d := rejected[0].Decision
+	if d == nil || d.Reason == nil || *d.Reason != "Mangler kvittering fra leverandøren" {
+		t.Errorf("decision = %+v, want the reason given", d)
 	}
-	if rejected[0].DecidedAt == nil {
-		t.Errorf("decidedAt = nil, want the decision stamped")
+	if d == nil || d.Status != "rejected" || d.At == "" || d.By.DisplayName == "" {
+		t.Errorf("decision = %+v, want it stamped, named and rejected", d)
 	}
 
 	// A rejected expense is its owner's again: editable, deletable, and
@@ -83,7 +91,7 @@ func TestExpensesFlow_RejectSendsItBackWithAReason(t *testing.T) {
 		t.Errorf("capabilities on a rejected expense = %+v, want it open to its owner again", seen.Capabilities)
 	}
 	again := submitEntries(t, owner, entry.Id)
-	if again[0].Status != "submitted" || again[0].RejectionReason != nil || again[0].DecidedAt != nil {
+	if again[0].Status != "submitted" || again[0].Decision != nil {
 		t.Errorf("resubmitted = %+v, want the previous decision cleared", again[0])
 	}
 }
@@ -281,8 +289,9 @@ func TestExpensesFlow_BatchesAreAllOrNothingWithAReasonPerId(t *testing.T) {
 	if !mentions(messages, fmt.Sprintf("Expense %d", other.Id)) || !mentions(messages, "Expense 987654") {
 		t.Errorf("messages = %v, want both offending ids named", messages)
 	}
-	if got := getEntry(t, owner, good.Id); got.Status != "submitted" {
-		t.Errorf("status = %q, want the approvable one left alone — the batch is all or nothing", got.Status)
+	if n := h.Count(t, `SELECT count(*) FROM expenses.entries
+		WHERE id = $1 AND status = 'submitted' AND decided_at IS NULL`, good.Id); n != 1 {
+		t.Errorf("the approvable one moved: %s — the batch is all or nothing", entryColumnsDump(t, h, good.Id))
 	}
 }
 
@@ -298,6 +307,25 @@ func TestExpensesFlow_AtMost500IdsAtOnce(t *testing.T) {
 	errs := refusedFlow(t, owner, submitPath, flowBody(ids, nil))
 	if !mentions(errs["entryIds"], "500") {
 		t.Fatalf("errors = %v, want one naming the cap", errs)
+	}
+}
+
+// The cap is on the expenses, not on the array: an id given twice is one
+// expense everywhere else here, so a long body naming few expenses is not the
+// thing the cap exists to refuse.
+func TestExpensesFlow_TheCapCountsExpensesRatherThanIds(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h)
+
+	entry := createEntry(t, owner, outlayBody(nil))
+	ids := make([]int64, 600)
+	for i := range ids {
+		ids[i] = entry.Id
+	}
+	moved := submitEntries(t, owner, ids...)
+	if len(moved) != 1 || moved[0].Status != "submitted" {
+		t.Errorf("submitted = %+v, want the one expense the 600 ids name", moved)
 	}
 }
 

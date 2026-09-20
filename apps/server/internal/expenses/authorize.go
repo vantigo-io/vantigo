@@ -374,7 +374,15 @@ func (c *caller) accessFor(entry store.ExpensesEntry, role string) entryAccess {
 	// line can still be priced in — its owner's progress through the flow is
 	// not the project manager's business — and closed once it has been
 	// invoiced, which is what it was priced for.
-	a.CanSetBilling = c.ProjectsOn && a.CanSeeBilling && open && entry.InvoicedAt == nil
+	//
+	// The period lock does not reach it, for the reason it does not reach the
+	// two tracks below: the lock protects what the employee submitted and what
+	// was approved, while pricing is bookkeeping done *after* a period closes.
+	// An invoice for December goes out in January, and the person who prices
+	// the line for it holds financial rights on a project rather than
+	// expenses:manage, so a locked line would otherwise be unpriceable by
+	// anybody the design meant to price it.
+	a.CanSetBilling = c.ProjectsOn && a.CanSeeBilling && entry.InvoicedAt == nil
 
 	financial := c.seesProjectFinancials(role)
 	// A line with no amount to bill cannot be invoiced, so the capability does

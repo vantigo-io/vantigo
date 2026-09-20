@@ -1542,6 +1542,7 @@ var expensesColumns = map[string][]expensesColumn{
 		{"passenger_rate", "numeric", "YES"},
 		{"rate_overridden_by_user_id", "uuid", "YES"},
 		{"rate_table_value", "numeric", "YES"},
+		{"passenger_rate_table_value", "numeric", "YES"},
 		{"project_id", "integer", "YES"},
 		{"billing_line_id", "integer", "YES"},
 		{"billable", "boolean", "NO"},

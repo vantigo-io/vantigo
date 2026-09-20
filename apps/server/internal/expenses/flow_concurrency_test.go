@@ -116,3 +116,82 @@ func TestExpensesFlow_TwoSubmitsOfOneExpense(t *testing.T) {
 		}
 	}
 }
+
+// An approval racing an unapproval of the same expense: both take its row lock
+// and both judge the status under it, so one lands and the other finds the
+// expense in the status it is no longer moving from. The end state is read from
+// the row, not from a response.
+func TestExpensesFlow_AnApprovalRacingAnUnapproval(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h)
+	approver, _ := signIn(t, h, "expenses:approve")
+	other, _ := signIn(t, h, "expenses:approve")
+
+	for round := range raceRounds {
+		entry := createEntry(t, owner, outlayBody(nil))
+		approvedBy(t, owner, approver, entry.Id)
+		// It is approved, so the unapproval is the move that can land; an
+		// approval of it must be refused, whichever order they arrive in.
+		body := flowBody([]int64{entry.Id}, nil)
+		var approve, unapprove int
+		race(
+			func() { approve = other.Do(http.MethodPost, approvePath, body).Status },
+			func() { unapprove = approver.Do(http.MethodPost, unapprovePath, body).Status },
+		)
+		if approve != http.StatusBadRequest {
+			t.Fatalf("round %d: the approval answered %d, want the per-id refusal", round, approve)
+		}
+		if unapprove != http.StatusOK {
+			t.Fatalf("round %d: the unapproval answered %d, want 200", round, unapprove)
+		}
+		if n := h.Count(t, `SELECT count(*) FROM expenses.entries
+			WHERE id = $1 AND status = 'draft' AND decided_at IS NULL AND decided_by_user_id IS NULL
+			  AND submitted_at IS NULL AND revision = 4`, entry.Id); n != 1 {
+			t.Errorf("round %d: %s, want one submit, one approval and one unapproval",
+				round, entryColumnsDump(t, h, entry.Id))
+		}
+	}
+}
+
+// A rate override racing an approval of the same submitted line: the override
+// holds the row and guards the revision, the approval holds it and guards the
+// status, so they serialize. Either the override lands and the approval follows
+// it, or the approval lands and the override is refused on the status it finds.
+func TestExpensesFlow_ARateOverrideRacingAnApproval(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h)
+	approver, approverID := signIn(t, h, "expenses:approve")
+	other, _ := signIn(t, h, "expenses:approve")
+
+	for round := range raceRounds {
+		entry := createEntry(t, owner, mileageBody(nil))
+		submitted := submitEntries(t, owner, entry.Id)
+
+		var override, approve int
+		race(
+			func() {
+				override = other.Do(http.MethodPut, entryRatePath(entry.Id),
+					map[string]any{"rate": 8.00, "revision": submitted[0].Revision}).Status
+			},
+			func() { approve = approver.Do(http.MethodPost, approvePath, flowBody([]int64{entry.Id}, nil)).Status },
+		)
+		if approve != http.StatusOK && approve != http.StatusBadRequest {
+			t.Fatalf("round %d: the approval answered %d, want 200 or a per-id refusal", round, approve)
+		}
+		if override != http.StatusOK && override != http.StatusBadRequest {
+			t.Fatalf("round %d: the override answered %d, want 200 or the 400 that names the status", round, override)
+		}
+
+		want := "636.00"
+		if override == http.StatusOK {
+			want = "960.00"
+		}
+		if n := h.Count(t, `SELECT count(*) FROM expenses.entries
+			WHERE id = $1 AND status = 'approved' AND decided_by_user_id = $2 AND gross_amount = $3::numeric`,
+			entry.Id, approverID, want); n != 1 {
+			t.Errorf("round %d: %s, want it approved at %s", round, entryColumnsDump(t, h, entry.Id), want)
+		}
+	}
+}

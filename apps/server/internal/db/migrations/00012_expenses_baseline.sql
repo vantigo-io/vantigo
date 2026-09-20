@@ -76,6 +76,7 @@ CREATE TABLE expenses.entries (
     passenger_rate             numeric(10,2),
     rate_overridden_by_user_id uuid,
     rate_table_value           numeric(10,2),
+    passenger_rate_table_value numeric(10,2),
     project_id                 integer,
     billing_line_id            integer,
     billable                   boolean       NOT NULL DEFAULT false,

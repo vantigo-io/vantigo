@@ -266,11 +266,14 @@ func TestExpensesBilling_ANonBillableProjectStaysNonBillable(t *testing.T) {
 	}
 }
 
-// The period lock holds the pricing back like every other write.
-func TestExpensesBilling_ThePeriodLockHoldsItBack(t *testing.T) {
+// The period lock protects what the employee submitted and what was approved.
+// Pricing is bookkeeping done after a period closes — an invoice for December
+// goes out in January — so the lock does not hold it back, and a project's
+// manager needs no expenses:manage to do it.
+func TestExpensesBilling_IsNotHeldBackByThePeriodLock(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	admin, _ := signIn(t, h, "expenses:manage", "projects:manage-all")
+	admin, _ := signIn(t, h, "expenses:manage")
 	owner, ownerID := signIn(t, h)
 	h.projects.addRole(projectKraftVerket, ownerID, roleMember)
 	manager, _ := signInAs(t, h, projectKraftVerket, roleManager)
@@ -278,13 +281,133 @@ func TestExpensesBilling_ThePeriodLockHoldsItBack(t *testing.T) {
 	entry := createEntry(t, owner, outlayBody(map[string]any{"projectId": projectKraftVerket}))
 	putSettings(t, admin, settingsBody(map[string]any{"lockedBefore": "2026-04-01"}))
 
-	body := setBillingBody(entry.Revision, map[string]any{"markupPercent": 10.00})
-	errs := refusedEntry(t, manager, http.MethodPut, entryBillingPath(entry.Id), body)
-	if len(errs["entryDate"]) == 0 {
-		t.Errorf("errors = %v, want one naming the lock", errs)
+	if got := getEntry(t, manager, entry.Id); !got.Capabilities.CanSetBilling {
+		t.Fatalf("canSetBilling = false behind the lock, want the project side able to price it")
 	}
-	// expenses:manage with financial rights works past it.
-	setBilling(t, admin, entry.Id, body)
+	priced := setBilling(t, manager, entry.Id, setBillingBody(entry.Revision,
+		map[string]any{"markupPercent": 10.00}))
+	if priced.Billing == nil || priced.Billing.BillAmount != 1375 {
+		t.Errorf("billing = %+v, want 1250 plus ten per cent", priced.Billing)
+	}
+	// And the lock still holds back what it is for: the owner cannot edit it.
+	if errs := refusedEntry(t, owner, http.MethodPut, entryPath(entry.Id),
+		outlayBody(map[string]any{"revision": priced.Revision})); len(errs["entryDate"]) == 0 {
+		t.Errorf("editing behind the lock: errors = %v, want one naming the lock", errs)
+	}
+}
+
+// Design §5's financial rights are three, not one: the project's manager role,
+// projects:manage-all, and projects:view-financials on a project the caller can
+// see. All three price; the owner, who is only a member of the project, does
+// not.
+func TestExpensesBilling_IsForEveryFinancialRightAndNotTheOwners(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, ownerID := signIn(t, h)
+	h.projects.addRole(projectKraftVerket, ownerID, roleMember)
+	// Both hold expenses:view-all, because a project permission alone sees no
+	// expenses at all (design §5): seeing the line comes first, and only then
+	// does a financial right decide whether its money comes with it.
+	manageAll, _ := signIn(t, h, "expenses:view-all", "projects:manage-all")
+	financials, _ := signIn(t, h, "expenses:view-all", "projects:view-financials", "projects:view-all")
+
+	entry := createEntry(t, owner, outlayBody(map[string]any{"projectId": projectKraftVerket}))
+
+	// The owner is a member of the project, so they see it — but what the
+	// company charges the customer for their expense is not theirs.
+	if got := getEntry(t, owner, entry.Id); got.Capabilities.CanSetBilling || got.Capabilities.CanSeeBilling {
+		t.Errorf("the owner's capabilities = %+v, want no billing at all", got.Capabilities)
+	}
+	if r := owner.Do(http.MethodPut, entryBillingPath(entry.Id), setBillingBody(entry.Revision, nil)); r.Status != http.StatusForbidden {
+		t.Errorf("the owner pricing: status %d body %s, want 403", r.Status, r.Body)
+	}
+
+	first := setBilling(t, manageAll, entry.Id, setBillingBody(entry.Revision,
+		map[string]any{"markupPercent": 10.00}))
+	if first.Billing == nil || first.Billing.BillAmount != 1375 {
+		t.Errorf("projects:manage-all priced it to %+v, want 1375", first.Billing)
+	}
+	second := setBilling(t, financials, entry.Id, setBillingBody(first.Revision,
+		map[string]any{"markupPercent": 20.00}))
+	if second.Billing == nil || second.Billing.BillAmount != 1500 {
+		t.Errorf("projects:view-financials priced it to %+v, want 1500", second.Billing)
+	}
+}
+
+// Design §8's grandfathering reaches the pricing door too: a billing line the
+// expense already carries is kept even once it stops accepting new bookings, so
+// a markup can still be corrected on a line whose code has been retired.
+func TestExpensesBilling_AKeptBillingLineIsNotJudgedAgain(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, ownerID := signIn(t, h)
+	h.projects.addRole(projectKraftVerket, ownerID, roleMember)
+	manager, _ := signInAs(t, h, projectKraftVerket, roleManager)
+
+	entry := createEntry(t, owner, outlayBody(map[string]any{"projectId": projectKraftVerket}))
+	priced := setBilling(t, manager, entry.Id, setBillingBody(entry.Revision,
+		map[string]any{"markupPercent": 10.00, "billingLineId": lineFixed}))
+
+	h.projects.deactivateLine(lineFixed)
+	t.Cleanup(func() { h.projects.activateLine(lineFixed) })
+
+	again := setBilling(t, manager, entry.Id, setBillingBody(priced.Revision,
+		map[string]any{"markupPercent": 25.00, "billingLineId": lineFixed}))
+	if again.BillingLine == nil || again.BillingLine.Id != lineFixed {
+		t.Errorf("billingLine = %+v, want the retired line kept", again.BillingLine)
+	}
+	if again.Billing == nil || again.Billing.BillAmount != 1562.5 {
+		t.Errorf("billing = %+v, want 1250 plus a quarter", again.Billing)
+	}
+	// Moving *onto* an inactive line is still refused.
+	if errs := refusedEntry(t, manager, http.MethodPut, entryBillingPath(entry.Id),
+		setBillingBody(again.Revision, map[string]any{"billingLineId": lineInactive})); len(errs["billingLineId"]) == 0 {
+		t.Errorf("moving onto an inactive line: errors = %v, want one on billingLineId", errs)
+	}
+}
+
+// A project that bills nothing cannot be given a markup: the figure would be
+// accepted, cleared and never mentioned again. It is refused on its own field,
+// through every door that takes one.
+func TestExpensesBilling_AFigureAProjectWillNeverUseIsRefused(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	// The project's own manager, recording their own expense on it: the one
+	// caller who may both write the expense (its owner) and name a figure on
+	// it (financial rights on the project).
+	manager, _ := signInAs(t, h, projectInternal, roleManager)
+
+	create := outlayBody(map[string]any{
+		"projectId": projectInternal, "billable": true, "markupPercent": 20.00,
+	})
+	if errs := refusedEntry(t, manager, http.MethodPost, entriesPath, create); len(errs["markupPercent"]) == 0 {
+		t.Errorf("POST /entries: errors = %v, want one on markupPercent", errs)
+	}
+	mileageCreate := mileageBody(map[string]any{
+		"projectId": projectInternal, "billable": true, "billRatePerKm": 9.00,
+	})
+	if errs := refusedEntry(t, manager, http.MethodPost, entriesPath, mileageCreate); len(errs["billRatePerKm"]) == 0 {
+		t.Errorf("POST /entries mileage: errors = %v, want one on billRatePerKm", errs)
+	}
+
+	entry := createEntry(t, manager, outlayBody(map[string]any{"projectId": projectInternal}))
+	update := outlayBody(map[string]any{
+		"projectId": projectInternal, "billable": true, "markupPercent": 20.00, "revision": entry.Revision,
+	})
+	if errs := refusedEntry(t, manager, http.MethodPut, entryPath(entry.Id), update); len(errs["markupPercent"]) == 0 {
+		t.Errorf("PUT /entries/{id}: errors = %v, want one on markupPercent", errs)
+	}
+	if errs := refusedEntry(t, manager, http.MethodPut, entryBillingPath(entry.Id),
+		setBillingBody(entry.Revision, map[string]any{"markupPercent": 20.00})); len(errs["markupPercent"]) == 0 {
+		t.Errorf("PUT /billing: errors = %v, want one on markupPercent", errs)
+	}
+
+	// Asking for nothing billable on such a project is still fine, and still
+	// bills nothing.
+	priced := setBilling(t, manager, entry.Id, setBillingBody(entry.Revision, nil))
+	if priced.Billable {
+		t.Errorf("priced = %+v, want billable forced false", priced)
+	}
 }
 
 // Decision X2: without the projects module there is nothing to price, and the
