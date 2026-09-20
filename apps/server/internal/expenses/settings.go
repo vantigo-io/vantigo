@@ -2,8 +2,12 @@ package expenses
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/expenses/gen"
@@ -23,6 +27,7 @@ type parsedSettings struct {
 	DefaultCurrency     string
 	DefaultMarkup       pgtype.Numeric
 	ReceiptRequiredOver pgtype.Numeric
+	TimeZone            string
 }
 
 // parseSettings runs §3.5's rules over a settings body: a three-letter
@@ -31,7 +36,7 @@ type parsedSettings struct {
 // failure is collected. A lockedBefore or receiptRequiredOver left out clears
 // that setting; any lock date is accepted, one in the future included, because
 // the lock is an administrator's statement about which period is closed.
-func parseSettings(body gen.ExpensesSettingsRequest) (parsedSettings, map[string][]string, error) {
+func parseSettings(body gen.ExpensesSettingsRequest, current store.ExpensesSetting) (parsedSettings, map[string][]string, error) {
 	var errs map[string][]string
 	add := func(field, msg string) {
 		if msg != "" {
@@ -48,6 +53,23 @@ func parseSettings(body gen.ExpensesSettingsRequest) (parsedSettings, map[string
 	if body.ReceiptRequiredOver != nil {
 		add("receiptRequiredOver", validateDecimal("A receipt threshold", *body.ReceiptRequiredOver, 0, maxMoney))
 	}
+	// The business time zone is the one setting a replace *keeps* rather than
+	// clears when it is left out: every date derived from a travel claim's two
+	// instants is taken in it, so an omission would silently move every trip in
+	// the installation by an hour's worth of days. Go's own tzdata answers here;
+	// Postgres is asked separately, because it carries its own.
+	zone := current.TimeZone
+	if body.TimeZone != nil {
+		zone = strings.TrimSpace(*body.TimeZone)
+		switch _, err := time.LoadLocation(zone); {
+		case zone == "" || zone == "Local":
+			// "Local" is whatever zone the *server process* happens to run in,
+			// which is not a statement about the company's calendar.
+			add("timeZone", "A time zone is an IANA name, such as 'Europe/Oslo'")
+		case err != nil:
+			add("timeZone", fmt.Sprintf("'%s' is not a time zone this installation knows", zone))
+		}
+	}
 	if len(errs) > 0 {
 		return parsedSettings{}, errs, nil
 	}
@@ -60,7 +82,9 @@ func parseSettings(body gen.ExpensesSettingsRequest) (parsedSettings, map[string
 	if err != nil {
 		return parsedSettings{}, nil, err
 	}
-	parsed := parsedSettings{DefaultCurrency: currency, DefaultMarkup: markup, ReceiptRequiredOver: threshold}
+	parsed := parsedSettings{
+		DefaultCurrency: currency, DefaultMarkup: markup, ReceiptRequiredOver: threshold, TimeZone: zone,
+	}
 	if body.LockedBefore != nil {
 		parsed.LockedBefore = pgDate(body.LockedBefore.Time)
 	}
@@ -106,19 +130,38 @@ func (s *server) PutExpensesSettings(ctx context.Context, req gen.PutExpensesSet
 	if req.Body != nil {
 		body = *req.Body
 	}
-	parsed, errs, err := parseSettings(body)
+	q := store.New(s.deps.Pool)
+	current, err := settings(ctx, q)
 	if err != nil {
 		return nil, err
+	}
+	parsed, errs, err := parseSettings(body, current)
+	if err != nil {
+		return nil, err
+	}
+	if len(errs) == 0 && parsed.TimeZone != current.TimeZone {
+		// And Postgres, which carries its own tzdata and runs the very same
+		// derivation in the claims list's filter. A name only one of the two
+		// knows would be stored here and then disagree with itself.
+		known, err := postgresKnowsZone(ctx, q, parsed.TimeZone)
+		if err != nil {
+			return nil, err
+		}
+		if !known {
+			errs = fieldError("timeZone",
+				fmt.Sprintf("'%s' is not a time zone this installation's database knows", parsed.TimeZone))
+		}
 	}
 	if len(errs) > 0 {
 		return gen.PutExpensesSettings400ApplicationProblemPlusJSONResponse(invalidSettings(errs)), nil
 	}
 
-	row, err := store.New(s.deps.Pool).UpdateSettings(ctx, store.UpdateSettingsParams{
+	row, err := q.UpdateSettings(ctx, store.UpdateSettingsParams{
 		LockedBefore:         parsed.LockedBefore,
 		DefaultCurrency:      parsed.DefaultCurrency,
 		DefaultMarkupPercent: parsed.DefaultMarkup,
 		ReceiptRequiredOver:  parsed.ReceiptRequiredOver,
+		TimeZone:             parsed.TimeZone,
 		Now:                  s.deps.Clock(),
 	})
 	if err != nil {
@@ -131,4 +174,24 @@ func (s *server) PutExpensesSettings(ctx context.Context, req gen.PutExpensesSet
 		return nil, err
 	}
 	return gen.PutExpensesSettings200JSONResponse(resp), nil
+}
+
+// invalidParameterValue is the SQLSTATE Postgres raises for a time zone name it
+// does not know.
+const invalidParameterValue = "22023"
+
+// postgresKnowsZone asks the database whether it knows a zone name, by doing
+// the very thing the claims list's filter will do with it. A name it does not
+// know is a refusal the caller can act on, not a failure: the two tzdata
+// databases — Go's and Postgres' — must both hold a name before it is stored,
+// or a date derived in Go and the same date derived in SQL could disagree.
+func postgresKnowsZone(ctx context.Context, q *store.Queries, name string) (bool, error) {
+	if _, err := q.ResolveTimeZone(ctx, name); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == invalidParameterValue {
+			return false, nil
+		}
+		return false, fmt.Errorf("expenses: check a time zone: %w", err)
+	}
+	return true, nil
 }

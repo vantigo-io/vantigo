@@ -359,54 +359,62 @@ func TestExpensesClaims_ThePeriodLockIsJudgedOnTheDeparture(t *testing.T) {
 	_ = locked
 }
 
-// **Which day a claim's instants name.** A claim stores two timestamptz, which
-// keep the instant and not the offset it was typed in, so there is exactly one
-// derivation available and this module uses it everywhere: the **UTC calendar
-// day**. A departure of 2026-03-01T00:30+02:00 is 2026-02-28T22:30Z, so every
-// date derived from it — the day the period lock judges, the day the list's
-// from/to filter matches, and the first day a per diem line may fall on — is
-// 2026-02-28, not 2026-03-01.
-//
-// Every other test here uses Z instants, which cannot tell the two apart; this
-// one is the offset case, and it is the reason the SQL filter is written
-// `(departure_at AT TIME ZONE 'UTC')::date` and the Go rule `utcDay(...)`.
-func TestExpensesClaims_ADeparturesDayIsItsUTCDay(t *testing.T) {
+// A claim stores two instants, and which calendar day one of them falls on
+// depends on where you are standing. The installation says where: its business
+// time zone (expenses.settings.time_zone, Europe/Oslo by default) is what the
+// period lock, the list's from/to filter, the days a per diem line may fall on
+// and the days the suggestion proposes are all taken in — one derivation, in Go
+// and in SQL alike.
+func TestExpensesClaims_ADeparturesDayIsItsDayInTheBusinessZone(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	admin, _ := signIn(t, h, "expenses:manage")
 	owner, _ := signIn(t, h)
 
-	// Typed as the first of March in Oslo, which is the last of February in
-	// UTC — and the lock closes everything before the first.
-	const departure = "2026-03-01T00:30:00+02:00"
-	putSettings(t, admin, settingsBody(map[string]any{"lockedBefore": "2026-03-01"}))
-	errs := refusedClaim(t, owner, http.MethodPost, claimsPath, claimBody(map[string]any{
-		"departureAt": departure, "returnAt": "2026-03-02T12:00:00Z",
-	}))
-	if !mentions(errs["departureAt"], "2026-03-01") {
-		t.Errorf("errors = %v, want the lock to judge the departure on its UTC day, 2026-02-28", errs)
+	if zone := getSettings(t, owner).TimeZone; zone != "Europe/Oslo" {
+		t.Fatalf("time zone = %q, want the shipped default", zone)
 	}
 
-	// With the lock a day earlier the very same trip saves, and the list finds
-	// it under the UTC day too — 02-28, not 03-01.
-	putSettings(t, admin, settingsBody(map[string]any{"lockedBefore": "2026-02-28"}))
-	claim := createClaim(t, owner, map[string]any{
-		"departureAt": departure, "returnAt": "2026-03-02T12:00:00Z",
-	})
-	if got := claimIDsOf(listClaims(t, owner, "?from=2026-02-28&to=2026-02-28")); len(got) != 1 || got[0] != claim.Id {
-		t.Errorf("claims departing on 2026-02-28 = %v, want [%d]", got, claim.Id)
+	// Half past midnight on the first of July in Oslo, which is the last half
+	// hour of June in UTC. June is closed; July is not — and this trip departed
+	// in July, because that is what the calendar on the office wall says.
+	const departure = "2026-07-01T00:30:00+02:00"
+	const returns = "2026-07-02T12:00:00+02:00"
+	putSettings(t, admin, settingsBody(map[string]any{"lockedBefore": "2026-07-01"}))
+	claim := createClaim(t, owner, map[string]any{"departureAt": departure, "returnAt": returns})
+
+	// The list finds it under the first of July, and not under the thirtieth of
+	// June — the SQL cast and businessDay reading the same stored name.
+	if got := claimIDsOf(listClaims(t, owner, "?from=2026-07-01&to=2026-07-01")); len(got) != 1 || got[0] != claim.Id {
+		t.Errorf("claims departing on 2026-07-01 = %v, want [%d]", got, claim.Id)
 	}
-	if got := claimIDsOf(listClaims(t, owner, "?from=2026-03-01")); len(got) != 0 {
-		t.Errorf("claims departing on or after 2026-03-01 = %v, want none", got)
+	if got := claimIDsOf(listClaims(t, owner, "?to=2026-06-30")); len(got) != 0 {
+		t.Errorf("claims departing on or before 2026-06-30 = %v, want none", got)
 	}
 
-	// And the trip's first day — what a per diem line may be dated on — is the
-	// same 2026-02-28. The day before it is outside the trip.
-	addLine(t, owner, claim.Id, perDiemBody(map[string]any{"entryDate": "2026-02-28"}))
-	errs = refusedEntry(t, owner, http.MethodPost, entriesPath,
-		perDiemBody(map[string]any{"claimId": claim.Id, "entryDate": "2026-02-27"}))
-	if len(errs["entryDate"]) == 0 {
-		t.Errorf("errors = %v, want entryDate to put 2026-02-27 outside the trip", errs)
+	// The trip's first day — what a per diem line may be dated on, and what the
+	// suggestion proposes — is the same first of July.
+	if days := suggestDays(t, owner, claim.Id, true); len(days) == 0 || days[0].EntryDate != "2026-07-01" {
+		t.Errorf("the first suggested day = %+v, want 2026-07-01", days)
+	}
+	addLine(t, owner, claim.Id, perDiemBody(map[string]any{"entryDate": "2026-07-01"}))
+	if errs := refusedEntry(t, owner, http.MethodPost, entriesPath,
+		perDiemBody(map[string]any{"claimId": claim.Id, "entryDate": "2026-06-30"})); len(errs["entryDate"]) == 0 {
+		t.Errorf("errors = %v, want 2026-06-30 outside a trip that departed in July", errs)
+	}
+
+	// An installation that keeps its calendar in UTC reads the very same
+	// instant as the thirtieth of June — which is the whole reason the setting
+	// exists, and what every Norwegian installation had before it.
+	putSettings(t, admin, settingsBody(map[string]any{"lockedBefore": "2026-07-01", "timeZone": "UTC"}))
+	if got := claimIDsOf(listClaims(t, owner, "?from=2026-06-30&to=2026-06-30")); len(got) != 1 || got[0] != claim.Id {
+		t.Errorf("claims departing on 2026-06-30 = %v, want the very same trip, read in UTC", got)
+	}
+	// And the lock now reaches it: the same trip departed in June.
+	if errs := refusedClaim(t, owner, http.MethodPut, claimPath(claim.Id), claimBody(map[string]any{
+		"departureAt": departure, "returnAt": returns, "revision": getClaim(t, owner, claim.Id).Revision,
+	})); !mentions(errs["departureAt"], "2026-07-01") {
+		t.Errorf("errors = %v, want the lock to reach a trip that is now a June one", errs)
 	}
 }
 

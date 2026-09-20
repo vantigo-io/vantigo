@@ -617,6 +617,7 @@ func entryAttachmentsPath(entryID int64) string {
 // expects rather than repeating the string.
 const (
 	invalidEntryTitle      = "Invalid expense"
+	invalidSettingsTitle   = "Invalid expense settings"
 	invalidClaimTitle      = "Invalid travel claim"
 	invalidQueryTitle      = "Invalid query parameters"
 	invalidReceiptTitle    = "Invalid receipt"
@@ -675,6 +676,7 @@ type settingsJSON struct {
 	DefaultMarkupPercent *float64 `json:"defaultMarkupPercent"`
 	LockedBefore         *string  `json:"lockedBefore"`
 	ReceiptRequiredOver  *float64 `json:"receiptRequiredOver"`
+	TimeZone             string   `json:"timeZone"`
 }
 
 // validationProblemJSON decodes the field-error body every refusal of a body

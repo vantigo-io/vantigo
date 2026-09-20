@@ -251,7 +251,7 @@ func (s *server) pricePerDiem(ctx context.Context, q *store.Queries, c *caller, 
 func (s *server) repriceUnderLock(ctx context.Context, txq *store.Queries, c *caller,
 	p *prepared, claim store.ExpensesClaim,
 ) (string, string, error) {
-	if from, to := claimDays(claim); p.Parsed.Date.Before(from) || p.Parsed.Date.After(to) {
+	if from, to := claimDays(claim, c.zone()); p.Parsed.Date.Before(from) || p.Parsed.Date.After(to) {
 		return "entryDate", perDiemOutsideTrip(from, to), nil
 	}
 	var errs map[string][]string
@@ -322,8 +322,8 @@ func perDiemOutsideTrip(from, to time.Time) string {
 // claimDays is the calendar days a trip covers, its departure day and its
 // return day included — the one derivation this module makes of a claim's
 // dates (see the file header).
-func claimDays(claim store.ExpensesClaim) (time.Time, time.Time) {
-	return utcDay(claim.DepartureAt), utcDay(claim.ReturnAt)
+func claimDays(claim store.ExpensesClaim, loc *time.Location) (time.Time, time.Time) {
+	return businessDay(claim.DepartureAt, loc), businessDay(claim.ReturnAt, loc)
 }
 
 // A per diem day is the first kind whose price and whose validity depend on
@@ -403,8 +403,8 @@ func claimWindowMoved(before, after store.ExpensesClaim) bool {
 // trip correction quietly taking money off a claim is the one outcome nobody
 // would forgive. The message names every stranded date, so one round trip tells
 // the caller exactly which days to remove first.
-func perDiemStrandedByWindow(lines []store.ExpensesEntry, after store.ExpensesClaim) map[string][]string {
-	from, to := claimDays(after)
+func perDiemStrandedByWindow(lines []store.ExpensesEntry, after store.ExpensesClaim, loc *time.Location) map[string][]string {
+	from, to := claimDays(after, loc)
 	var early, late []string
 	for _, line := range lines {
 		if line.Kind != kindPerDiem {
@@ -604,7 +604,7 @@ const perDiemPartPeriodHours = 6 * time.Hour
 //
 // Every overnight day is proposed as overnight_hotel, the type the agreement
 // prices; a traveller who stayed somewhere else changes it on the line.
-func suggestPerDiem(departure, returns time.Time, overnight bool) []suggestedDay {
+func suggestPerDiem(departure, returns time.Time, overnight bool, loc *time.Location) []suggestedDay {
 	duration := returns.Sub(departure)
 	if duration < perDiemPartPeriodHours {
 		return nil
@@ -614,7 +614,7 @@ func suggestPerDiem(departure, returns time.Time, overnight bool) []suggestedDay
 		if duration > 12*time.Hour {
 			dayType = perDiemOver12
 		}
-		return []suggestedDay{{Date: utcDay(departure), Type: dayType}}
+		return []suggestedDay{{Date: businessDay(departure, loc), Type: dayType}}
 	}
 
 	const period = 24 * time.Hour
@@ -632,7 +632,7 @@ func suggestPerDiem(departure, returns time.Time, overnight bool) []suggestedDay
 	out := make([]suggestedDay, 0, days)
 	for i := range days {
 		out = append(out, suggestedDay{
-			Date: utcDay(departure.Add(time.Duration(i) * period)),
+			Date: businessDay(departure.Add(time.Duration(i)*period), loc),
 			Type: perDiemOvernightHtl,
 		})
 	}
@@ -684,7 +684,7 @@ func (s *server) PostExpensesClaimsByIdPerDiemSuggestion(ctx context.Context,
 		}
 	}
 
-	days := suggestPerDiem(claim.DepartureAt, claim.ReturnAt, body.Overnight)
+	days := suggestPerDiem(claim.DepartureAt, claim.ReturnAt, body.Overnight, c.zone())
 	pricer, err := s.suggestionPricer(ctx, q, claim, days)
 	if err != nil {
 		return nil, err

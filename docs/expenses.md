@@ -76,8 +76,9 @@ installation, and so is `MODULES=expenses` alone.
   the product does not ship.
 - **Settings** (`expenses.settings`) — one row: the period lock (`lockedBefore`),
   the installation's `defaultCurrency`, `defaultMarkupPercent` (an
-  `expenses:manage`-only figure — see below), and the optional `receiptRequiredOver`
-  threshold.
+  `expenses:manage`-only figure — see below), the optional `receiptRequiredOver`
+  threshold, and the business `timeZone` every date derived from a travel claim's
+  instants is taken in (see "Which day is which").
 
 Every foreign identifier — users, projects, billing lines — is opaque: read through
 `contracts`, never through SQL (see [module boundaries](module-boundaries.md) rule 4).
@@ -287,15 +288,34 @@ taking the lock, so a claim edit committing in between cannot leave a day at
 yesterday's rate.
 
 **Which day is which.** A claim stores two instants, and `timestamptz` keeps the
-instant rather than the offset it was typed in, so this module makes exactly one
-derivation of "the day": the **UTC calendar day**, `utcDay(t)`. It is what the
-period lock is judged on, what `GET /claims`' `from`/`to` filter applies in SQL,
-what the within-the-trip rule compares against and what the suggestion dates a day
-by — one rule, so a day the server proposes can never fall outside the trip the
-save then judges it against. A departure typed as `2026-03-01T00:30+02:00` is
-therefore a trip that departed on **2026-02-28**: that is the day the lock
-closes on, the day the list filters it under, and the first day one of its per
-diem lines may be dated.
+instant rather than the offset it was typed in, so *which calendar day* a trip
+departed on depends on where you are standing. The installation says where: its
+**business time zone**, `expenses.settings.timeZone` — an IANA name,
+`Europe/Oslo` by default, because that is whose per diem agreement this module
+implements — and `businessDay(instant, zone)` is the module's one derivation of
+"the day". It is what the period lock is judged on, what `GET /claims`'
+`from`/`to` filter applies in SQL (the same stored name, as
+`(departure_at AT TIME ZONE …)::date`, so Go and the database can never
+disagree), what the within-the-trip rule compares against, and what the
+suggestion dates a day by — one rule, so a day the server proposes can never
+fall outside the trip the save then judges it against. **"Today"** is today in
+that zone too: the payroll run's not-in-the-future rule and the export's file
+name.
+
+A departure typed `2026-07-01T00:30+02:00` is therefore a trip that departed on
+**1 July**, which is what the calendar on the office wall says; under a UTC rule
+it was 30 June — one day early for an hour or two a day, and wrong at exactly
+the month boundaries a period lock and a payroll month are about.
+
+Every `expenses:access` holder reads the zone, because a client showing a trip's
+days has to label them in it rather than in the browser's; `expenses:manage`
+alone writes it, and a name is checked against **both** Go's tzdata and
+Postgres' before it is stored, so one that only half the system knows is a 400
+rather than a disagreement discovered later. **Changing it moves every trip's
+days**, which is why it is a setup decision rather than a preference: an
+installation that switches zones after recording per diem days may find some of
+them outside their own trip, and only a save of that claim or that line will say
+so.
 
 **The suggestion.** `POST /claims/{id}/per-diem-suggestion {overnight}` answers
 the days a trip's own times imply, each priced with the table as it stands (or the
@@ -691,7 +711,7 @@ says.
 | `POST /categories`, `PUT /categories/{id}` | `expenses:manage` |
 | `GET /rates` | Anyone in the app (the customer rate hidden without `expenses:manage`) |
 | `POST /rates`, `PUT /rates/{id}`, `DELETE /rates/{id}`, `POST /rates/reset` | `expenses:manage` |
-| `GET /settings` | Anyone in the app |
+| `GET /settings` | Anyone in the app (the business time zone included — a client labels a trip's days in it) |
 | `PUT /settings` | `expenses:manage` |
 | `GET /stats`, `/stats/summary`, `/stats/timeseries`, `/stats/attention` | The caller's own figures, plus their approval queue's size |
 

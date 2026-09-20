@@ -1588,6 +1588,8 @@ export interface components {
              * @description Zero or greater, at most two decimals. Zero means every employee-paid outlay needs a receipt; leaving it out turns the rule off.
              */
             receiptRequiredOver?: number;
+            /** @description The installation's own business time zone, as an IANA name ('Europe/Oslo'). It is what every date derived from a travel claim's two instants is taken in — the day the period lock judges, the day GET /claims' from/to filter matches, the days a per diem line may fall on and the days the suggestion proposes — because a claim stores instants and the company's own calendar is what a period lock and a payroll month mean. A name neither Go nor Postgres knows is refused on this field. Leaving it out keeps the zone the installation already has. */
+            timeZone?: string;
         };
         /** @description The installation's expense settings (design §3.5). Every expenses:access holder may read them — the lock and the receipt rule decide what they may record — and expenses:manage changes them. */
         ExpensesSettingsResponse: {
@@ -1607,6 +1609,8 @@ export interface components {
              * @description An employee-paid outlay above this gross amount cannot be submitted without a receipt. Zero means every one of them needs a receipt. Absent when the rule is off.
              */
             receiptRequiredOver?: number;
+            /** @description The installation's own business time zone, an IANA name. Every date derived from a travel claim's two instants is the calendar day of that instant here: the day the period lock judges, the day GET /claims' from/to filter matches, the days a per diem line may fall on and the days the suggestion proposes. A client showing a trip's days labels them in this zone and not in the browser's, or it will disagree with the server about which day a save lands on. Read by every expenses:access holder. */
+            timeZone: string;
         };
         /**
          * @description One thing the dashboard wants a human to look at. The shape is the dashboard's, shared by every module's /stats/attention, and the host translates the sentence from `type` — the title is only the name of the thing.
@@ -3820,7 +3824,7 @@ export interface operations {
                     "application/json": components["schemas"]["ExpensesSettingsResponse"];
                 };
             };
-            /** @description Bad Request — the currency, the markup or the receipt threshold did not pass. */
+            /** @description Bad Request — the currency, the markup, the receipt threshold or the time zone did not pass. */
             400: {
                 headers: {
                     [name: string]: unknown;

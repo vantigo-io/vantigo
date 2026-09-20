@@ -286,7 +286,7 @@ func (s *server) PostExpensesSubmit(ctx context.Context, req gen.PostExpensesSub
 // not see is the unknown id's "was not found", one they see but do not own says
 // only that, and only then are its status and its date judged.
 func (c *caller) submitRefusal(id int64, row store.ExpensesEntry) string {
-	unit := unitOf(row, nil)
+	unit := unitOf(row, nil, c.zone())
 	a := c.accessFor(row, unit, c.cachedRole(row.ProjectID))
 	switch {
 	case !a.CanSee:
@@ -516,7 +516,7 @@ func article(status string) string {
 // may. It runs inside the locked transaction on the row as it stands there and
 // reads c's roles only from the cache warmBatch filled.
 func (c *caller) decisionRefusal(d decision, id int64, row store.ExpensesEntry) string {
-	unit := unitOf(row, nil)
+	unit := unitOf(row, nil, c.zone())
 	a := c.accessFor(row, unit, c.cachedRole(row.ProjectID))
 	mayMove := a.IsApprover || (d.orManage && c.Manage)
 	if d.manageOnly {

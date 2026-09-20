@@ -13,7 +13,7 @@ import (
 )
 
 const getSettings = `-- name: GetSettings :one
-SELECT id, locked_before, default_currency, default_markup_percent, receipt_required_over, updated_at FROM expenses.settings WHERE id = 1
+SELECT id, locked_before, default_currency, default_markup_percent, receipt_required_over, updated_at, time_zone FROM expenses.settings WHERE id = 1
 `
 
 // GetSettings reads the installation's single settings row (design §3.5). The
@@ -28,8 +28,31 @@ func (q *Queries) GetSettings(ctx context.Context) (ExpensesSetting, error) {
 		&i.DefaultMarkupPercent,
 		&i.ReceiptRequiredOver,
 		&i.UpdatedAt,
+		&i.TimeZone,
 	)
 	return i, err
+}
+
+const resolveTimeZone = `-- name: ResolveTimeZone :one
+SELECT (now() AT TIME ZONE $1::text) IS NOT NULL
+`
+
+// ResolveTimeZone asks Postgres whether it knows a zone name, by doing the very
+// thing the claims list's filter will do with it. A business time zone is read
+// by Go (every date derived from a claim's instants) *and* by Postgres (that
+// same derivation in SQL), and the two carry their own tzdata: a name only one
+// of them knows would be stored here and then quietly disagree with itself.
+//
+// A name Postgres does not know raises 22023 rather than answering false, which
+// is exactly the signal the caller turns into the timeZone field error. The
+// view pg_timezone_names would answer more directly, but sqlc's catalog has no
+// entry for it, and a query the generator cannot type is not one this module
+// writes.
+func (q *Queries) ResolveTimeZone(ctx context.Context, name string) (interface{}, error) {
+	row := q.db.QueryRow(ctx, resolveTimeZone, name)
+	var column_1 interface{}
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const updateSettings = `-- name: UpdateSettings :one
@@ -38,9 +61,10 @@ UPDATE expenses.settings SET
     default_currency = $2,
     default_markup_percent = $3,
     receipt_required_over = $4,
-    updated_at = $5::timestamptz
+    time_zone = $5,
+    updated_at = $6::timestamptz
 WHERE id = 1
-RETURNING id, locked_before, default_currency, default_markup_percent, receipt_required_over, updated_at
+RETURNING id, locked_before, default_currency, default_markup_percent, receipt_required_over, updated_at, time_zone
 `
 
 type UpdateSettingsParams struct {
@@ -48,6 +72,7 @@ type UpdateSettingsParams struct {
 	DefaultCurrency      string
 	DefaultMarkupPercent pgtype.Numeric
 	ReceiptRequiredOver  pgtype.Numeric
+	TimeZone             string
 	Now                  time.Time
 }
 
@@ -59,6 +84,7 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		arg.DefaultCurrency,
 		arg.DefaultMarkupPercent,
 		arg.ReceiptRequiredOver,
+		arg.TimeZone,
 		arg.Now,
 	)
 	var i ExpensesSetting
@@ -69,6 +95,7 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		&i.DefaultMarkupPercent,
 		&i.ReceiptRequiredOver,
 		&i.UpdatedAt,
+		&i.TimeZone,
 	)
 	return i, err
 }

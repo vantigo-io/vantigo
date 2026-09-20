@@ -161,6 +161,10 @@ export const settings = (overrides: Partial<ExpenseSettings> = {}): ExpenseSetti
   defaultCurrency: "NOK",
   defaultMarkupPercent: 10,
   receiptRequiredOver: 1250,
+  // The installation's business time zone: what every date derived from a
+  // travel claim's two instants is taken in, and what a client labels a trip's
+  // days with rather than the browser's own zone.
+  timeZone: "Europe/Oslo",
   ...overrides,
 });
 

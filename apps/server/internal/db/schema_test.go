@@ -1584,6 +1584,26 @@ func TestExpensesClaims_AppliesAndIsIdempotent(t *testing.T) {
 		t.Errorf("tables = %v, want %v", gotTables, want)
 	}
 
+	// The installation's business time zone, and the default an installation
+	// that never sets it runs on. Every date derived from a claim's two
+	// instants is taken in it, so a migration that lost the default would put
+	// an existing installation's trips a day out.
+	var zone, zoneDefault string
+	if err := pool.QueryRow(ctx, `SELECT time_zone FROM expenses.settings`).Scan(&zone); err != nil {
+		t.Fatalf("read the settings time zone: %v", err)
+	}
+	if zone != "Europe/Oslo" {
+		t.Errorf("settings.time_zone = %q, want Europe/Oslo", zone)
+	}
+	if err := pool.QueryRow(ctx, `SELECT column_default FROM information_schema.columns
+		WHERE table_schema = 'expenses' AND table_name = 'settings' AND column_name = 'time_zone'`).
+		Scan(&zoneDefault); err != nil {
+		t.Fatalf("read the time zone's default: %v", err)
+	}
+	if !strings.Contains(zoneDefault, "Europe/Oslo") {
+		t.Errorf("settings.time_zone default = %q, want Europe/Oslo", zoneDefault)
+	}
+
 	// The claim indexes, predicates included, mirroring 00012's for the
 	// entries: a claim is a unit of approval and of payroll exactly as a
 	// standalone line is, and the queries that page each of those tracks read
@@ -1768,6 +1788,18 @@ func migrateTo(t *testing.T, databaseURL string, version int64) {
 // shape the module builds on is pinned: a widened column or a dropped one
 // fails here rather than in whichever query first misses it.
 var expensesColumns = map[string][]expensesColumn{
+	// The single settings row. time_zone is 00013's: the installation's own
+	// business zone, which every date derived from a claim's two instants is
+	// taken in.
+	"settings": {
+		{"id", "smallint", "NO"},
+		{"locked_before", "date", "YES"},
+		{"default_currency", "character", "NO"},
+		{"default_markup_percent", "numeric", "NO"},
+		{"receipt_required_over", "numeric", "YES"},
+		{"updated_at", "timestamp with time zone", "NO"},
+		{"time_zone", "character varying", "NO"},
+	},
 	"entries": {
 		{"id", "bigint", "NO"},
 		{"user_id", "uuid", "NO"},

@@ -76,6 +76,23 @@ ALTER TABLE expenses.entries
     ADD COLUMN meal_lunch_percent     numeric(5,2),
     ADD COLUMN meal_dinner_percent    numeric(5,2);
 
+-- The installation's own business time zone. A travel claim stores two
+-- instants, and every date derived from them — the day the period lock judges,
+-- the day GET /claims' from/to filter matches, the first and last day a per
+-- diem line may fall on, and the day the suggestion proposes — is the calendar
+-- day of that instant **here**, in the company's own zone. Without it the only
+-- derivation available is UTC, which puts a departure at 00:30 on 1 July in
+-- Oslo on 30 June: one day early for an hour or two a day, and wrong at exactly
+-- the month boundaries a period lock and a payroll run are about.
+--
+-- An IANA name (varchar(64) holds every one of them, the longest being 32
+-- characters), defaulted to Europe/Oslo because that is whose per diem
+-- agreement this module implements. PUT /settings checks a new one against both
+-- Go's tzdata and Postgres' pg_timezone_names, so a name only one of the two
+-- knows is refused rather than stored and later surprising one of them.
+ALTER TABLE expenses.settings
+    ADD COLUMN time_zone varchar(64) NOT NULL DEFAULT 'Europe/Oslo';
+
 -- The per diem seeds (design §3.4, delivery B), verified on 2026-09-20 against
 -- the state's Særavtale om dekning av utgifter til reise og kost innenlands,
 -- in force 2026-01-01 to 2027-12-31, §§ 6 and 9. They are ordinary rows an
@@ -110,6 +127,8 @@ ALTER TABLE expenses.entries
     DROP COLUMN lunch_covered,
     DROP COLUMN breakfast_covered,
     DROP COLUMN per_diem_type;
+
+ALTER TABLE expenses.settings DROP COLUMN time_zone;
 
 ALTER TABLE expenses.entries DROP CONSTRAINT fk_entries_claim_id;
 

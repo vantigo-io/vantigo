@@ -167,7 +167,7 @@ func (s *server) markInvoiced(ctx context.Context, id int64, revision int32, ref
 		out     invoicedOutcome
 	)
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
-		locked, lockedUnit, _, found, err := lockEntryUnit(ctx, txq, id, row.ClaimID)
+		locked, lockedUnit, _, found, err := lockEntryUnit(ctx, txq, c, id, row.ClaimID)
 		if err != nil {
 			return err
 		}

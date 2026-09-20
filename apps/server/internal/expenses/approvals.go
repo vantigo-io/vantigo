@@ -255,7 +255,7 @@ func (s *server) PutExpensesEntriesByIdRate(ctx context.Context, req gen.PutExpe
 		stale    [2]string
 	)
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
-		locked, lockedUnit, _, found, err := lockEntryUnit(ctx, txq, req.Id, row.ClaimID)
+		locked, lockedUnit, _, found, err := lockEntryUnit(ctx, txq, c, req.Id, row.ClaimID)
 		if err != nil {
 			return err
 		}

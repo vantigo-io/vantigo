@@ -84,16 +84,19 @@ WHERE id = @id
 -- name: CountClaims :one
 -- CountClaims counts what ListClaims pages through, under exactly the same
 -- predicate, so the total is the number of claims the caller may see and the
--- last page is never empty. from and to are judged on the departure day in
--- UTC, the same day the period lock is judged on.
+-- last page is never empty. from and to are judged on the departure day in the
+-- installation's own business time zone — the same derivation businessDay makes
+-- in Go, from the same stored name, so a filter and a period lock can never
+-- disagree about which day a trip departed on. The zone arrives as a parameter
+-- rather than a literal for exactly that reason.
 SELECT count(*) FROM expenses.claims
 WHERE (@see_all::boolean
        OR user_id = @caller_id::uuid
        OR (project_id IS NOT NULL AND project_id = ANY(@managed_project_ids::integer[])))
   AND (sqlc.narg(user_id)::uuid IS NULL OR user_id = sqlc.narg(user_id)::uuid)
   AND (sqlc.narg(status)::text IS NULL OR status = sqlc.narg(status)::text)
-  AND (sqlc.narg(from_date)::date IS NULL OR (departure_at AT TIME ZONE 'UTC')::date >= sqlc.narg(from_date)::date)
-  AND (sqlc.narg(to_date)::date IS NULL OR (departure_at AT TIME ZONE 'UTC')::date <= sqlc.narg(to_date)::date)
+  AND (sqlc.narg(from_date)::date IS NULL OR (departure_at AT TIME ZONE @time_zone::text)::date >= sqlc.narg(from_date)::date)
+  AND (sqlc.narg(to_date)::date IS NULL OR (departure_at AT TIME ZONE @time_zone::text)::date <= sqlc.narg(to_date)::date)
   AND (sqlc.narg(reimbursed)::boolean IS NULL OR (reimbursed_at IS NOT NULL) = sqlc.narg(reimbursed)::boolean);
 
 -- name: ListClaims :many
@@ -104,8 +107,8 @@ WHERE (@see_all::boolean
        OR (project_id IS NOT NULL AND project_id = ANY(@managed_project_ids::integer[])))
   AND (sqlc.narg(user_id)::uuid IS NULL OR user_id = sqlc.narg(user_id)::uuid)
   AND (sqlc.narg(status)::text IS NULL OR status = sqlc.narg(status)::text)
-  AND (sqlc.narg(from_date)::date IS NULL OR (departure_at AT TIME ZONE 'UTC')::date >= sqlc.narg(from_date)::date)
-  AND (sqlc.narg(to_date)::date IS NULL OR (departure_at AT TIME ZONE 'UTC')::date <= sqlc.narg(to_date)::date)
+  AND (sqlc.narg(from_date)::date IS NULL OR (departure_at AT TIME ZONE @time_zone::text)::date >= sqlc.narg(from_date)::date)
+  AND (sqlc.narg(to_date)::date IS NULL OR (departure_at AT TIME ZONE @time_zone::text)::date <= sqlc.narg(to_date)::date)
   AND (sqlc.narg(reimbursed)::boolean IS NULL OR (reimbursed_at IS NOT NULL) = sqlc.narg(reimbursed)::boolean)
 ORDER BY departure_at DESC, id DESC
 LIMIT @page_size OFFSET @page_offset;

@@ -467,21 +467,40 @@ func withoutProjects(what string) string {
 	return "This installation has no projects module, so an expense cannot be " + what
 }
 
-// utcDay is a calendar date as the UTC day it names, whatever offset it
-// arrived with — entry dates are calendar days, never instants.
+// utcDay is a **calendar date** as the day it names: an entryDate, a lock date,
+// a from/to filter — values that arrive on the wire as `2026-03-10` and mean
+// that day wherever the reader is. It normalises to UTC midnight, which is what
+// a `date` column holds and what every comparison in this module is made in.
 //
-// It is **the** derivation of "which day is this" in this module, and it is the
-// one an instant goes through too: a travel claim's departure and return are
-// timestamptz columns, which keep the instant and not the offset it was typed
-// in, so the day a trip belongs to is the UTC day of that instant. The instant
-// is moved to UTC first, because pgx hands a timestamptz back in the process's
-// own zone — read in Oslo, an 01:00 departure would otherwise be judged a day
-// later in Go than the very same row is judged in SQL, where ListClaims reads
-// (departure_at AT TIME ZONE 'UTC')::date. A calendar date off the wire is
-// already UTC midnight, so for those this changes nothing.
+// It is not for instants. A travel claim's departure and return are
+// timestamptz, and the day one of those falls on depends on *where you are
+// standing* — that is businessDay's question, and it has an answer only because
+// the installation says which zone it keeps its calendar in.
 func utcDay(d time.Time) time.Time {
 	d = d.UTC()
 	return time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+// businessDay is the calendar day an instant falls on **in the installation's
+// own time zone** (`expenses.settings.time_zone`), rendered as the UTC midnight
+// every date in this module is compared at.
+//
+// It is the module's one derivation of "which day is this trip's", and the
+// reason there is a setting at all: a claim stores instants, Postgres keeps the
+// instant and throws the typed offset away, and UTC is not what a Norwegian
+// company's calendar means. A departure at 00:30 on 1 July in Oslo is a trip
+// that departed on **1 July** — the day the period lock judges, the day
+// GET /claims' from/to filter matches, the first day a per diem line may fall
+// on and the first day the suggestion proposes. Under the UTC rule it was 30
+// June: one day early for an hour or two a day, and wrong at exactly the month
+// boundaries a period lock and a payroll month are about.
+//
+// The same expression runs in SQL — `(departure_at AT TIME ZONE @time_zone)::date`
+// — from the same stored name, so Go and the database can never disagree about
+// which day a claim is on.
+func businessDay(t time.Time, loc *time.Location) time.Time {
+	t = t.In(loc)
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
 }
 
 // lockedBeforeMessage is the entryDate message when a date falls before the
