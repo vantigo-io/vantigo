@@ -130,12 +130,17 @@ export const ProjectExpensesPanel = ({ projectId, onChanged }: ProjectExpensesPa
    * A page the list no longer has. Marking the last line on page 2 invoiced
    * takes the list down to one page while `page` stays at 2, and an empty page
    * 2 would be drawn as a project with nothing ready at all — over rows that
-   * are still there on page 1. Adjusted during render from the previous
-   * render's value, the way React documents, rather than in an effect that
-   * would paint the wrong empty state first.
+   * are still there on page 1.
+   *
+   * **Clamped to a page that exists**, which is never 0: an empty list is
+   * `totalPages: 0` (the bare ceiling division), and page 0 is refused with a
+   * 400 — so clamping to the answer itself would turn every empty list, which
+   * is the day-one state of every project, into a red error. Adjusted during
+   * render from the previous render's value, the way React documents.
    */
   const totalPages = list.data?.pagination.totalPages;
-  if (totalPages !== undefined && page > totalPages) setPage(totalPages);
+  const lastPage = totalPages === undefined ? undefined : Math.max(1, totalPages);
+  if (lastPage !== undefined && page > lastPage) setPage(lastPage);
 
   const onFilter = (next: string) => {
     setFilter(next === "ready" ? "ready" : "all");

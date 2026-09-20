@@ -520,6 +520,43 @@ describe("ProjectExpensesPanel", () => {
     expect(screen.queryByText("Nothing is ready to invoice")).not.toBeInTheDocument();
   });
 
+  it("asks for a page that exists, whatever the list is empty of", async () => {
+    // The server answers an empty list with `totalPages: 0` and refuses
+    // `page=0` with a 400 — so "clamp to the last page" has to mean the last
+    // page there *is*. This is the day-one state of every project, the finance
+    // reader's normal state and "nothing ready", all at once.
+    const fetchMock = stubExpensesApi({
+      entries: [],
+      projectSummary: projectSummary({
+        currencies: [summaryCurrency({ total: summaryBucket({ count: 7, cost: 3250 }), readyCount: 0 })],
+      }),
+    });
+    panel();
+
+    // Totals the caller may read over a list they may not: the sentence, not
+    // an error, and not an empty table.
+    expect(await screen.findByTestId("project-expenses-hidden")).toBeInTheDocument();
+    expect(screen.queryByText("Could not load the project's expenses")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("radio", { name: "Ready to invoice" }));
+    expect(await screen.findByText("Nothing is ready to invoice")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("radio", { name: "All" }));
+    await screen.findByTestId("project-expenses-hidden");
+
+    const asked = fetchMock.actualCalls.map(([url]) => String(url)).filter((url) => url.includes("/entries?"));
+    expect(asked.length).toBeGreaterThan(0);
+    expect(asked.filter((url) => url.includes("page=0"))).toEqual([]);
+  });
+
+  it("shows the empty state of a project nobody has recorded anything on", async () => {
+    const fetchMock = stubExpensesApi({ entries: [], projectSummary: projectSummary() });
+    panel();
+
+    expect(await screen.findByText("No expenses on this project yet")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(fetchMock.actualCalls.map(([url]) => String(url)).filter((url) => url.includes("page=0"))).toEqual([]);
+  });
+
   it("offers no filter at all on a project with nothing recorded", async () => {
     stubExpensesApi({ entries: [], projectSummary: projectSummary() });
     panel();
