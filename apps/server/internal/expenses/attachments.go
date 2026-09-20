@@ -306,6 +306,35 @@ func entryTakesReceipts(c *caller, entry store.ExpensesEntry) string {
 	return msg
 }
 
+// receiptsStranded is the message a save carries when it would change the kind
+// of an expense that still holds receipts. It is the other side of
+// entryTakesReceipts: a receipt belongs to an outlay and to nothing else, so a
+// line that stopped being one would leave its receipts where no door of this
+// module reaches them — the upload and the delete both refuse a mileage line,
+// and the owner's only way out would be deleting the whole expense. Removing
+// them here instead would put an object-store call in the update path, which
+// this module deliberately keeps out of it (see the file header), so the save
+// is what gives way.
+const receiptsStranded = "Remove this expense's receipts before making it a mileage line"
+
+// changeStrandsReceipts reports whether replacing current with a body of this
+// kind would leave receipts on a line that cannot carry them.
+//
+// It is asked twice, on the two queries a save already makes: in prepare, so
+// the caller hears about it before anything is locked, and again under the
+// expense's own row lock, where an upload that committed in between is counted
+// too — the upload takes that same lock, so the two cannot interleave.
+func changeStrandsReceipts(ctx context.Context, q *store.Queries, current store.ExpensesEntry, kind string) (bool, error) {
+	if current.Kind != kindOutlay || kind == kindOutlay {
+		return false, nil
+	}
+	count, err := q.CountAttachmentsForEntry(ctx, current.ID)
+	if err != nil {
+		return false, fmt.Errorf("expenses: count an expense's receipts: %w", err)
+	}
+	return count > 0, nil
+}
+
 // attachmentResponse renders one receipt row. The object key is not on it, and
 // there is no field on the generated type to put it in, so exposing it would
 // take a deliberate change to the contract rather than an accidental one.

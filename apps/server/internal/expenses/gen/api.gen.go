@@ -408,7 +408,9 @@ type ExpensesEntryUpdateRequest struct {
 	EntryDate   openapi_types.Date `json:"entryDate"`
 	FromPlace   *string            `json:"fromPlace,omitempty"`
 	GrossAmount *float64           `json:"grossAmount,omitempty"`
-	Kind        string             `json:"kind"`
+
+	// Kind Changing an outlay that still carries receipts into a mileage line is refused on this field: a receipt belongs to an outlay, so the change would leave them where nothing can reach them. Remove them first.
+	Kind string `json:"kind"`
 
 	// MarkupPercent See the create request: only a caller with financial rights on the project may name it, and leaving it out keeps what the line already carries.
 	MarkupPercent *float64 `json:"markupPercent,omitempty"`

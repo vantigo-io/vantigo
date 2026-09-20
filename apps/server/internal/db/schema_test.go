@@ -1464,6 +1464,43 @@ func TestExpensesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		t.Errorf("ux_rates_kind_valid_from columns = %v, want [kind valid_from]", cols)
 	}
 
+	// The two partial indexes the tracks after approval read through. Their
+	// predicates are pinned as well as their columns: an index whose WHERE no
+	// longer matches the queries' own is an index Postgres silently stops
+	// using, and the first symptom is a sequential scan on every dashboard
+	// paint. The payroll one is the only index that serves
+	// StatsReimbursementsWaiting, which has no user predicate at all.
+	for _, want := range []struct {
+		name      string
+		columns   []string
+		predicate string
+	}{
+		{
+			"ix_entries_reimbursement_waiting", []string{"user_id", "entry_date"},
+			"WHERE (((status)::text = 'approved'::text) AND (reimbursed_at IS NULL))",
+		},
+		{
+			"ix_entries_to_invoice", []string{"project_id", "entry_date"},
+			"WHERE (((status)::text = 'approved'::text) AND billable AND (invoiced_at IS NULL))",
+		},
+	} {
+		if cols := indexColumns(t, ctx, pool, "expenses", want.name); !equalStrings(cols, want.columns) {
+			t.Errorf("%s columns = %v, want %v", want.name, cols, want.columns)
+		}
+		var def string
+		if err := pool.QueryRow(ctx, `
+			SELECT pg_get_indexdef(i.indexrelid)
+			FROM pg_index i
+			JOIN pg_class ic ON ic.oid = i.indexrelid
+			JOIN pg_namespace n ON n.oid = ic.relnamespace
+			WHERE n.nspname = 'expenses' AND ic.relname = $1`, want.name).Scan(&def); err != nil {
+			t.Fatalf("query %s: %v", want.name, err)
+		}
+		if !strings.HasSuffix(def, want.predicate) {
+			t.Errorf("%s = %q, want it to end in %q", want.name, def, want.predicate)
+		}
+	}
+
 	// The category name is unique on lower(name), so the index is over an
 	// expression rather than a column and reads back as one unnamed member.
 	var nameIndex string

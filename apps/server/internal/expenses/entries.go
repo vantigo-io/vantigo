@@ -486,6 +486,15 @@ func (s *server) prepare(ctx context.Context, q *store.Queries, c *caller, body 
 	if err := checkCategory(ctx, q, parsed, current, add); err != nil {
 		return prepared{}, err
 	}
+	if current != nil {
+		stranded, err := changeStrandsReceipts(ctx, q, *current, parsed.Kind)
+		if err != nil {
+			return prepared{}, err
+		}
+		if stranded {
+			add("kind", receiptsStranded)
+		}
+	}
 	if !c.mayWritePast(parsed.Date) {
 		add("entryDate", lockedBeforeMessage(*lockedBefore(c.Settings)))
 	}
@@ -692,6 +701,17 @@ func (s *server) PutExpensesEntriesById(ctx context.Context, req gen.PutExpenses
 			return fmt.Errorf("expenses: lock an expense: %w", err)
 		}
 		if staleField, staleMsg = entryStateRefusal(c, row); staleMsg != "" {
+			return nil
+		}
+		// And judged again on the receipts as they stand under the lock: an
+		// upload that committed since must not be left on a line that stopped
+		// carrying receipts, which is the one state nothing here can undo.
+		stranded, err := changeStrandsReceipts(ctx, txq, row, p.Parsed.Kind)
+		if err != nil {
+			return err
+		}
+		if stranded {
+			staleField, staleMsg = "kind", receiptsStranded
 			return nil
 		}
 		if row.Revision != body.Revision {

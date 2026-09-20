@@ -347,6 +347,45 @@ func TestExpensesEntries_WhatTheExpenseIsRightNowIsA400ThatSaysWhy(t *testing.T)
 	}
 }
 
+// A receipt belongs to an outlay and to nothing else, so turning a draft that
+// carries one into a mileage line would leave its receipts where no door of
+// this module reaches them: the upload, the delete and the list all refuse a
+// mileage line. The save is refused on kind instead, and goes through the
+// moment the receipts are gone.
+func TestExpensesEntries_AKindChangeCannotStrandTheReceipts(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h)
+
+	entry := createEntry(t, owner, outlayBody(nil))
+	receipt := uploadReceipt(t, owner, entry.Id, "kvittering.pdf", "application/pdf", testPDF(64))
+
+	errs := refusedEntry(t, owner, http.MethodPut, entryPath(entry.Id),
+		mileageBody(map[string]any{"revision": entry.Revision}))
+	if len(errs["kind"]) == 0 || !mentions(errs["kind"], "receipt") {
+		t.Fatalf("errors = %v, want one on kind naming the receipts", errs)
+	}
+	// Nothing moved: it is still an outlay, and it still carries the receipt.
+	if after := getEntry(t, owner, entry.Id); after.Kind != "outlay" || after.AttachmentCount != 1 {
+		t.Errorf("after the refusal the expense is %s with %d receipts, want outlay with one",
+			after.Kind, after.AttachmentCount)
+	}
+	// An ordinary edit that keeps it an outlay is untouched by the rule.
+	updateEntry(t, owner, entry.Id, outlayBody(map[string]any{
+		"revision": entry.Revision, "description": "Kabel, kontakter og en skjøteledning",
+	}))
+
+	// And with the receipt removed the very same change is allowed.
+	if r := owner.Do(http.MethodDelete, attachmentPath(receipt.Id), nil); r.Status != http.StatusNoContent {
+		t.Fatalf("delete the receipt: status %d body %s, want 204", r.Status, r.Body)
+	}
+	current := getEntry(t, owner, entry.Id)
+	changed := updateEntry(t, owner, entry.Id, mileageBody(map[string]any{"revision": current.Revision}))
+	if changed.Kind != "mileage" {
+		t.Errorf("kind = %q, want mileage once the receipts are gone", changed.Kind)
+	}
+}
+
 // An amount the columns cannot hold is a refusal on the field that drove it,
 // not a failure: every field below passes its own rule and only their product
 // does not fit numeric(12,2).
