@@ -14,6 +14,7 @@ export const targets = [
   { module: "communications", output: "apps/communications/frontend/src/api-schema.d.ts" },
   { module: "projects", output: "apps/projects/frontend/src/api-schema.d.ts" },
   { module: "time", output: "apps/time/frontend/src/api-schema.d.ts" },
+  { module: "expenses", output: "apps/expenses/frontend/src/api-schema.d.ts" },
 ] as const;
 
 const header =
