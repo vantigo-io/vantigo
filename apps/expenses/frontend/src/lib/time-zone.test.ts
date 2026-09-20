@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { instantInZone, wallClockInZone, zoneCalendarDate, zoneOffsetMinutes } from "./time-zone";
+import { instantInZone, isKnownZone, wallClockInZone, zoneCalendarDate, zoneOffsetMinutes } from "./time-zone";
 
 /**
  * The installation's business time zone is the one a trip's days are taken in
@@ -55,5 +55,25 @@ describe("zoneCalendarDate", () => {
   it("is the day the trip departed in the installation's zone, not the browser's", () => {
     expect(zoneCalendarDate("2026-06-30T22:30:00Z", "Europe/Oslo")).toBe("2026-07-01");
     expect(zoneCalendarDate("2026-06-30T22:30:00Z", "UTC")).toBe("2026-06-30");
+  });
+});
+
+describe("isKnownZone", () => {
+  it("says no to a name this browser cannot do arithmetic in", () => {
+    expect(isKnownZone("Europe/Oslo")).toBe(true);
+    expect(isKnownZone("UTC")).toBe(true);
+    expect(isKnownZone("Mars/Phobos")).toBe(false);
+    expect(isKnownZone(undefined)).toBe(false);
+  });
+
+  // Reading falls back rather than throwing; writing is what must not, and
+  // the form asks `isKnownZone` before it converts at all. Both halves pinned:
+  // an unknown zone converts (in the reader's own, which is the bug) and a
+  // known one is exact.
+  it("falls back instead of throwing, which is why a form has to ask first", () => {
+    expect(() => wallClockInZone("2026-03-09T06:00:00Z", "Mars/Phobos")).not.toThrow();
+    expect(() => zoneCalendarDate("2026-03-09T06:00:00Z", "Mars/Phobos")).not.toThrow();
+    expect(instantInZone("2026-03-09", "07:00", "Mars/Phobos")).not.toBe("2026-03-09T07:00:00+01:00");
+    expect(instantInZone("2026-03-09", "07:00", "Europe/Oslo")).toBe("2026-03-09T07:00:00+01:00");
   });
 });

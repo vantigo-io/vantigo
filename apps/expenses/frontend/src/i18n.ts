@@ -401,6 +401,10 @@ export const expensesCatalog = {
     claimAbroadCurrency: "Currency abroad",
     claimAbroadHint: "A trip abroad is paid at the day rate you agree here, instead of the dated table.",
     timesAreIn: "Times are in {{zone}}.",
+    timesAreInYourZone: "Times are in your own time zone — this browser has never heard of the one this company keeps.",
+    zoneUnknownHere: "This browser does not know the company's time zone",
+    zoneUnknownHereDescription:
+      "The trip's times are recorded in {{zone}}, and this browser cannot work out what that is — it would save the trip hours off without saying so. Update the device, or record the trip from another one.",
     claimTotals: "The trip's totals",
     claimBillableTotal: "To the customer",
     claimLines: "The trip's expenses",
@@ -914,6 +918,10 @@ export const expensesCatalog = {
     claimAbroadCurrency: "Valuta utenlands",
     claimAbroadHint: "En reise utenlands betales med døgnsatsen du avtaler her, i stedet for den daterte tabellen.",
     timesAreIn: "Tidene er i {{zone}}.",
+    timesAreInYourZone: "Tidene er i din egen tidssone — denne nettleseren kjenner ikke den selskapet bruker.",
+    zoneUnknownHere: "Denne nettleseren kjenner ikke tidssonen selskapet bruker",
+    zoneUnknownHereDescription:
+      "Tidene på reisen føres i {{zone}}, og denne nettleseren klarer ikke å regne ut hva det er — reisen ville blitt lagret timer feil uten at noe sa fra. Oppdater enheten, eller før reisen fra en annen.",
     claimTotals: "Reisens totaler",
     claimBillableTotal: "Til kunden",
     claimLines: "Utleggene på reisen",

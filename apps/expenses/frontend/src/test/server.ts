@@ -353,6 +353,25 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
     };
   };
 
+  /**
+   * The period lock, **judged per unit** — the one rule the fake did not model
+   * and the one that hid a real bug. A standalone expense is judged on its own
+   * `entryDate`; a line of a travel claim is judged on the claim's **departure
+   * day** in the installation's zone, because the claim is the unit and a trip
+   * that departed after the lock may hold a receipt from before it.
+   * `expenses:manage` is never held back.
+   */
+  const lockRefusal = (date: string, claim: Claim | undefined): Record<string, string[]> | undefined => {
+    const meta = metaOf();
+    const locked = meta.lockedBefore;
+    if (!locked || meta.capabilities.canManage) return undefined;
+    const judged = claim ? zoneCalendarDate(claim.departureAt, meta.timeZone) : date;
+    if (judged >= locked) return undefined;
+    return claim
+      ? { claimId: [`Travel claim ${claim.id} departed before ${locked}, the lock date`] }
+      : { entryDate: [`An expense dated before ${locked} cannot be recorded`] };
+  };
+
   /** The rate row in force on a date for a kind — the rule `EffectiveRate` applies in SQL. */
   const rateOn = (kind: string, date: string): ExpenseRate | undefined =>
     ratesOf()
@@ -1040,6 +1059,8 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
           return Promise.resolve(jsonResponse(409, { title: "The expense has moved on", status: 409 }));
         }
         const claim = entry.claimId === undefined ? undefined : findClaim(entry.claimId);
+        const lockedEdit = lockRefusal(update.entryDate, claim);
+        if (lockedEdit) return Promise.resolve(problem(400, "Invalid expense", lockedEdit));
         if (update.kind === "per_diem") {
           if (!claim)
             return Promise.resolve(
@@ -1094,6 +1115,8 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
           problem(400, "Invalid expense", { claimId: [`Travel claim ${input.claimId} was not found`] }),
         );
       }
+      const locked = lockRefusal(input.entryDate, claim);
+      if (locked) return Promise.resolve(problem(400, "Invalid expense", locked));
       if (claim && linesOf(claim.id).length >= 200) {
         return Promise.resolve(
           problem(400, "Invalid expense", { claimId: ["A travel claim holds at most 200 expenses"] }),

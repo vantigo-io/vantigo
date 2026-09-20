@@ -57,16 +57,30 @@ const fieldsIn = (zone: string, instant: Date) => {
   };
 };
 
-const knownZone = (zone: string | undefined): string => {
-  if (!zone) return Intl.DateTimeFormat().resolvedOptions().timeZone;
+/**
+ * Whether this browser can do arithmetic in `zone` at all.
+ *
+ * Go and Postgres agree on the installation's zone before it is stored, but a
+ * traveller's older phone may not know a name either of them does — a recent
+ * rename (`Europe/Kyiv`, `America/Ciudad_Juarez`), or a tzdata release the
+ * device never got. **Reading** an instant in a zone it does not know falls
+ * back to the reader's own, which is a cosmetic wrong; **writing** one would
+ * capture the phone's offset under the installation's label and save the trip
+ * hours off with no refusal. A form asks this first and declines to convert.
+ */
+export const isKnownZone = (zone: string | undefined): zone is string => {
+  if (!zone) return false;
   try {
     fieldsIn(zone, new Date(0));
-    return zone;
+    return true;
   } catch {
     formatters.delete(zone);
-    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return false;
   }
 };
+
+const knownZone = (zone: string | undefined): string =>
+  isKnownZone(zone) ? zone : Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 /**
  * How many minutes east of UTC `zone` stood at that instant. It is derived,
@@ -86,6 +100,16 @@ const offsetLabel = (minutes: number): string => {
   return `${sign}${pad(Math.floor(absolute / 60))}:${pad(absolute % 60)}`;
 };
 
+const WALL_CLOCK_TIME = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
+
+/**
+ * Whether a value is a clock time a form may act on. A time field is empty
+ * for a moment while somebody retypes it, and half a time is not a time: a
+ * form asks this before it works an instant out, so nothing has to guess.
+ */
+export const isWallClockTime = (value: unknown): value is string =>
+  typeof value === "string" && WALL_CLOCK_TIME.test(value);
+
 /**
  * The instant a wall-clock day and time name in `zone`, as an ISO string
  * carrying that zone's offset — `2026-03-09T07:00:00+01:00` for an Oslo
@@ -97,16 +121,6 @@ const offsetLabel = (minutes: number): string => {
  * date except the hour a zone skips or repeats, where either answer names a
  * real instant and the traveller sees which one in the field beside it.
  */
-const WALL_CLOCK_TIME = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
-
-/**
- * Whether a value is a clock time a form may act on. A time field is empty
- * for a moment while somebody retypes it, and half a time is not a time: a
- * form asks this before it works an instant out, so nothing has to guess.
- */
-export const isWallClockTime = (value: unknown): value is string =>
-  typeof value === "string" && WALL_CLOCK_TIME.test(value);
-
 export const instantInZone = (date: string, time: string, zone: string): string => {
   const safeZone = knownZone(zone);
   const [year, month, day] = date.split("-").map(Number);

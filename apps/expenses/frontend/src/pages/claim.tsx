@@ -19,6 +19,7 @@ import "../i18n";
 import { lineNamedIn, refusalMessage, refusalsByUnit } from "../lib/errors";
 import { useExpenseFormat } from "../lib/format";
 import { useLineName } from "../lib/line-name";
+import { isKnownZone } from "../lib/time-zone";
 import { ClaimFormModal, type ClaimModalState } from "./-claim-form-modal";
 import { ExpenseFormModal, type ExpenseModalState } from "./-expense-form-modal";
 import { CLAIM_LINE_CAP, PerDiemSection } from "./-per-diem-section";
@@ -214,7 +215,10 @@ export const ClaimPage = ({ claimId }: ClaimPageProps) => {
             {`${format.zonedDateTime(claim.departureAt, zone)} – ${format.zonedDateTime(claim.returnAt, zone)}`}
           </Text>
           <Text size="xs" c="dimmed">
-            {t("timesAreIn", { zone })}
+            {/* A zone this browser cannot do arithmetic in is not the zone
+                the times are being written in, so the label says so rather
+                than naming one it is not using. */}
+            {isKnownZone(zone) ? t("timesAreIn", { zone }) : t("timesAreInYourZone")}
           </Text>
           {claim.abroad && claim.abroadDayRate !== undefined && (
             <Text size="sm">

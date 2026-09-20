@@ -443,4 +443,18 @@ describe("the expense form", () => {
     await waitFor(() => expect(within(dialog).getByRole("textbox", { name: "VAT" })).toHaveValue("400"));
     expect(within(dialog).getByRole("radio", { name: "25 %" })).toBeChecked();
   });
+
+  // The control for the claim-page pair: a **standalone** expense is judged on
+  // its own date, so the lock still holds it back and the form still says so.
+  it("still refuses a standalone expense dated before the lock, and says the day is locked", async () => {
+    const { dialog } = await openNew({ entries: [], meta: meta({ lockedBefore: "2026-03-05" }) });
+
+    expect(within(dialog).getByText(/are locked and can no longer be recorded/)).toBeInTheDocument();
+    const date = within(dialog).getByRole("textbox", { name: "Date" });
+    await userEvent.clear(date);
+    await userEvent.type(date, "Mar 2, 2026");
+    await userEvent.tab();
+
+    expect(date).not.toHaveValue("Mar 2, 2026");
+  });
 });

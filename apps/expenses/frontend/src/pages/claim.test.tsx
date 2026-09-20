@@ -464,6 +464,64 @@ describe("ClaimPage", () => {
     expect(within(tripDialog).queryByRole("combobox", { name: "Project" })).not.toBeInTheDocument();
   });
 
+  it("lets a trip's line be dated before the lock, and says nothing about a lock", async () => {
+    // August is closed; the trip departs 9 March, after the lock, so the whole
+    // trip is judged by its departure — the train ticket bought before the
+    // lock is a line of it and goes in. The server allows it; the form used to
+    // refuse it, and the date reverted on blur.
+    const fetchMock = openClaim(aClaim(), [], { meta: meta({ lockedBefore: "2026-03-05" }) });
+    await screen.findByText("Montasje hos kunden");
+
+    await userEvent.click(screen.getByRole("button", { name: "Add an outlay" }));
+    const dialog = await screen.findByRole("dialog", { name: "New expense" });
+    expect(within(dialog).queryByText(/are locked and can no longer be recorded/)).not.toBeInTheDocument();
+
+    const date = within(dialog).getByRole("textbox", { name: "Date" });
+    await userEvent.clear(date);
+    await userEvent.type(date, "Mar 2, 2026");
+    await userEvent.tab();
+    expect(date).toHaveValue("Mar 2, 2026");
+
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Description" }), "Togbillett");
+    await userEvent.click(within(dialog).getByRole("combobox", { name: "Category" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Travel" }));
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Amount including VAT" }), "420");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save draft" }));
+
+    await waitFor(() => expect(sent(fetchMock, "POST").url).toBe("/api/v1/expenses/entries"));
+    expect(sent(fetchMock, "POST").body).toMatchObject({ claimId: 1012, entryDate: "2026-03-02" });
+    // And it **lands**: the fake judges the lock per unit as the server does,
+    // so a request that merely went out would not be enough here.
+    expect(await screen.findByText("Togbillett")).toBeInTheDocument();
+  });
+
+  it("refuses to convert a trip's times in a zone this browser does not know", async () => {
+    // Go and Postgres agree on the name; an older device may not. Reading in
+    // the wrong zone is cosmetic, writing would save the trip hours off with
+    // no refusal — so the form declines rather than falling back.
+    openClaim(aClaim(), [], { meta: meta({ timeZone: "Mars/Phobos" }) });
+    await screen.findByText("Montasje hos kunden");
+
+    expect(screen.getByText(/Times are in your own time zone/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Edit the trip" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit the trip" });
+    expect(within(dialog).getByText("This browser does not know the company's time zone")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("textbox", { name: "Day of departure" })).not.toBeInTheDocument();
+  });
+
+  it("dates a new line on the trip's departure day, not on today", async () => {
+    // A trip in March recorded in September: today is no use as a default, and
+    // the day is the departure's **in the installation's zone**.
+    openClaim(aClaim(), []);
+    await screen.findByText("Montasje hos kunden");
+
+    await userEvent.click(screen.getByRole("button", { name: "Add an outlay" }));
+    const dialog = await screen.findByRole("dialog", { name: "New expense" });
+
+    expect(within(dialog).getByRole("textbox", { name: "Date" })).toHaveValue("Mar 9, 2026");
+  });
+
   it("shows every project control on the same trip where this installation has projects", async () => {
     openClaim(aClaim({ project: { id: 1001, code: "KVEM1000", name: "Kverneland web" } }), [], {
       projects: projectOptions,
