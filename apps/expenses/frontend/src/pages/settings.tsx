@@ -71,26 +71,35 @@ export const SettingsPage = () => {
 /** Off / Always / Over an amount — the three things `receiptRequiredOver` can say. */
 type ReceiptRule = "off" | "always" | "over";
 
+interface GeneralFormValues {
+  defaultCurrency: string;
+  defaultMarkupPercent: number | string;
+  receiptRule: ReceiptRule;
+  receiptRequiredOver: number | string;
+  lockedBefore: string | null;
+}
+
+/**
+ * The settings as the form holds them. The receipt rule is three states, not
+ * two: an absent threshold is "off", zero is "always", and a number is "over".
+ */
+const formValuesOf = (settings: ExpenseSettings): GeneralFormValues => ({
+  defaultCurrency: settings.defaultCurrency,
+  defaultMarkupPercent: settings.defaultMarkupPercent ?? 0,
+  receiptRule:
+    settings.receiptRequiredOver === undefined ? "off" : settings.receiptRequiredOver === 0 ? "always" : "over",
+  receiptRequiredOver: settings.receiptRequiredOver ?? "",
+  lockedBefore: settings.lockedBefore ?? null,
+});
+
 const GeneralForm = ({ settings }: { settings: ExpenseSettings }) => {
   const { t } = useI18n("expenses");
   const format = useExpenseFormat();
   const decimalSeparator = useDecimalSeparator();
   const queryClient = useQueryClient();
 
-  const form = useForm({
-    initialValues: {
-      defaultCurrency: settings.defaultCurrency,
-      defaultMarkupPercent: (settings.defaultMarkupPercent ?? 0) as number | string,
-      // Absent means the rule is off; 0 means every employee-paid outlay
-      // needs a receipt; a number means only above it. Three states, not two.
-      receiptRule: (settings.receiptRequiredOver === undefined
-        ? "off"
-        : settings.receiptRequiredOver === 0
-          ? "always"
-          : "over") as ReceiptRule,
-      receiptRequiredOver: (settings.receiptRequiredOver ?? "") as number | string,
-      lockedBefore: (settings.lockedBefore ?? null) as string | null,
-    },
+  const form = useForm<GeneralFormValues>({
+    initialValues: formValuesOf(settings),
     validate: {
       defaultCurrency: (value) => (/^[A-Za-z]{3}$/.test(value.trim()) ? null : t("currencyRequired")),
       defaultMarkupPercent: (value) => {
@@ -105,8 +114,31 @@ const GeneralForm = ({ settings }: { settings: ExpenseSettings }) => {
     },
   });
 
+  /**
+   * Mantine captures `initialValues` on the first mount, so an open form
+   * would keep showing a lock date somebody else has since changed — and the
+   * confirm below would then compare against a date that is no longer on
+   * screen. A pristine form follows the server; one being typed into is left
+   * alone, because nobody's work is thrown away for a background refetch.
+   * State adjusted during render from the previous render's value, the way
+   * React documents.
+   */
+  const loaded = JSON.stringify(settings);
+  const [seeded, setSeeded] = useState(loaded);
+  if (seeded !== loaded) {
+    setSeeded(loaded);
+    // Asked once: `setInitialValues` moves the baseline `isDirty` compares
+    // against, so asking again afterwards would answer "dirty" for a form
+    // nobody has touched.
+    if (!form.isDirty()) {
+      const next = formValuesOf(settings);
+      form.setInitialValues(next);
+      form.setValues(next);
+    }
+  }
+
   const save = useMutation({
-    mutationFn: (values: typeof form.values) =>
+    mutationFn: (values: GeneralFormValues) =>
       updateExpenseSettings({
         defaultCurrency: values.defaultCurrency.trim().toUpperCase(),
         defaultMarkupPercent: numeric(values.defaultMarkupPercent) ?? 0,
@@ -137,7 +169,7 @@ const GeneralForm = ({ settings }: { settings: ExpenseSettings }) => {
   });
 
   /** The lock closes a period for everybody but a manager, so it is confirmed out loud. */
-  const submit = (values: typeof form.values) => {
+  const submit = (values: GeneralFormValues) => {
     if (values.lockedBefore === (settings.lockedBefore ?? null)) {
       save.mutate(values);
       return;
@@ -336,7 +368,7 @@ const RatesSection = ({ defaultCurrency }: { defaultCurrency: string }) => {
                           <Table.Td>{format.date(rate.validFrom)}</Table.Td>
                           <Table.Td>
                             {isPercentageRateKind(rate.kind)
-                              ? t("vatPercent", { rate: format.number(rate.value, 0) })
+                              ? format.percent(rate.value)
                               : format.money(rate.value, rate.currency ?? defaultCurrency)}
                           </Table.Td>
                           <Table.Td>

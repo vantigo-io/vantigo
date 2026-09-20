@@ -130,4 +130,55 @@ describe("SettingsPage", () => {
       fetchMock.actualCalls.some(([url, init]) => String(url).endsWith("/categories") && init?.method === "POST"),
     ).toBe(false);
   });
+
+  it("writes a percentage with the decimals it was given, not the ones it was rounded to", async () => {
+    stubExpensesApi({
+      entries: [],
+      rates: [{ id: 21, kind: "meal_lunch_percent", validFrom: "2026-01-01", value: 12.5 }],
+    });
+    renderRoute("/expenses/settings");
+
+    const table = await screen.findByRole("table", { name: "Lunch deduction" });
+    expect(table).toHaveTextContent("12.5 %");
+  });
+
+  it("follows a settings change made elsewhere while the form is untouched", async () => {
+    const server: { settings: ReturnType<typeof settings> } = { settings: settings({ defaultCurrency: "NOK" }) };
+    stubExpensesApi({
+      entries: [],
+      get settings() {
+        return server.settings;
+      },
+    });
+    const { queryClient } = renderRoute("/expenses/settings");
+
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Default currency" })).toHaveValue("NOK"));
+
+    // Somebody else saves a different currency; the open form has to follow it,
+    // or the lock confirm below would compare against a value nobody can see.
+    server.settings = settings({ defaultCurrency: "EUR" });
+    await queryClient.invalidateQueries({ queryKey: ["expenses"] });
+
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Default currency" })).toHaveValue("EUR"));
+  });
+
+  it("leaves a form somebody is typing into alone", async () => {
+    const server: { settings: ReturnType<typeof settings> } = { settings: settings({ defaultCurrency: "NOK" }) };
+    stubExpensesApi({
+      entries: [],
+      get settings() {
+        return server.settings;
+      },
+    });
+    const { queryClient } = renderRoute("/expenses/settings");
+
+    const currency = await screen.findByRole("textbox", { name: "Default currency" });
+    await userEvent.clear(currency);
+    await userEvent.type(currency, "SEK");
+
+    server.settings = settings({ defaultCurrency: "EUR" });
+    await queryClient.invalidateQueries({ queryKey: ["expenses"] });
+
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Default currency" })).toHaveValue("SEK"));
+  });
 });

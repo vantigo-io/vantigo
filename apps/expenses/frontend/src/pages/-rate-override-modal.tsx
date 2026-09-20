@@ -111,7 +111,10 @@ const RateOverrideForm = ({ expense, revision, onClose, onSaved }: RateOverrideM
   });
 
   const newRate = numeric(form.values.rate);
-  const newPassengerRate = numeric(form.values.passengerRate);
+  // An empty supplement is left out of the request, and the server then keeps
+  // the one the line was frozen with — so the preview shows that, not a dash
+  // promising a change nobody asked for.
+  const newPassengerRate = numeric(form.values.passengerRate) ?? expense.passengerRate;
 
   return (
     <form onSubmit={form.onSubmit((values) => save.mutate(values))}>

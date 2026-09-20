@@ -210,4 +210,173 @@ describe("ApprovalsPage", () => {
 
     expect(await screen.findByText("You approve nobody's expenses")).toBeInTheDocument();
   });
+
+  it("offers the lines of the expense's own project, to a pricer who books nowhere", async () => {
+    // GET /projects would answer nothing at all for this caller — pricing is a
+    // different right from booking, and the dialog is judged by the pricing one.
+    const priceable = submitted({
+      id: 701,
+      description: "Hotel",
+      billable: true,
+      netAmount: 2000,
+      grossAmount: 2000,
+      project: { id: 1001, code: "KVEM1000", name: "Kverneland web" },
+      capabilities: capabilities({ canApprove: true, canSetBilling: true, canSeeBilling: true }),
+      billing: { billAmount: 0 },
+    });
+    const fetchMock = stubExpensesApi({
+      entries: [priceable],
+      projects: [],
+      billingLines: [
+        { id: 3001, code: "PM", active: true },
+        { id: 3002, code: "DEV", active: true },
+      ],
+    });
+    renderRoute("/expenses/approvals");
+
+    const drawer = await openDrawer("Hotel");
+    await userEvent.click(within(drawer).getByRole("button", { name: "Price for the customer" }));
+    const dialog = await screen.findByRole("dialog", { name: "What the customer is billed" });
+
+    const line = within(dialog).getByRole("combobox", { name: "Line" });
+    expect(line).toBeEnabled();
+    await userEvent.click(line);
+    expect(await screen.findByRole("option", { name: "DEV" })).toBeInTheDocument();
+    expect(fetchMock.actualCalls.some(([url]) => String(url).endsWith("/entries/701/billing-lines"))).toBe(true);
+  });
+
+  it("shows the line the expense already carries even once the project has dropped it", async () => {
+    const priceable = submitted({
+      id: 701,
+      description: "Hotel",
+      revision: 5,
+      billable: true,
+      netAmount: 2000,
+      grossAmount: 2000,
+      project: { id: 1001, code: "KVEM1000", name: "Kverneland web" },
+      billingLine: { id: 3009, code: "OLD" },
+      capabilities: capabilities({ canApprove: true, canSetBilling: true, canSeeBilling: true }),
+      billing: { billAmount: 0 },
+    });
+    const fetchMock = stubExpensesApi({
+      entries: [priceable],
+      projects: [],
+      billingLines: [
+        { id: 3001, code: "PM", active: true },
+        { id: 3009, code: "OLD", active: false },
+      ],
+    });
+    renderRoute("/expenses/approvals");
+
+    const drawer = await openDrawer("Hotel");
+    await userEvent.click(within(drawer).getByRole("button", { name: "Price for the customer" }));
+    const dialog = await screen.findByRole("dialog", { name: "What the customer is billed" });
+
+    await waitFor(() => expect(within(dialog).getByRole("combobox", { name: "Line" })).toHaveValue("OLD (inactive)"));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    // A line nobody touched is echoed back exactly as it was loaded.
+    await waitFor(() => expect(sent(fetchMock, "PUT").url).toBe("/api/v1/expenses/entries/701/billing"));
+    expect(sent(fetchMock, "PUT").body).toMatchObject({ billingLineId: 3009, revision: 5 });
+  });
+
+  it("carries the revision the first write answered into the second one in the same drawer", async () => {
+    // The drawer's whole design is one open, several writes. A refactor that
+    // read the revision off the row instead of the last answer would make every
+    // second action a 409, which the fake reproduces.
+    const line = mileage({
+      id: 702,
+      description: "Site visit",
+      status: "submitted",
+      revision: 3,
+      billable: true,
+      project: { id: 1001, code: "KVEM1000", name: "Kverneland web" },
+      owner: { userId: OTHER, displayName: "Grace Hopper", active: true },
+      capabilities: capabilities({ canOverrideRate: true, canSetBilling: true, canSeeBilling: true }),
+      billing: { billAmount: 0 },
+    });
+    const fetchMock = stubExpensesApi({ entries: [line], billingLines: [{ id: 3001, code: "PM", active: true }] });
+    renderRoute("/expenses/approvals");
+
+    const drawer = await openDrawer("Site visit");
+    await userEvent.click(within(drawer).getByRole("button", { name: "Replace the rate" }));
+    const override = await screen.findByRole("dialog", { name: "Replace the mileage rate" });
+    const rate = within(override).getByRole("textbox", { name: "Rate per kilometre" });
+    await userEvent.clear(rate);
+    await userEvent.type(rate, "6");
+    await userEvent.click(within(override).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(sent(fetchMock, "PUT").url).toBe("/api/v1/expenses/entries/702/rate"));
+
+    await userEvent.click(await within(drawer).findByRole("button", { name: "Price for the customer" }));
+    const pricing = await screen.findByRole("dialog", { name: "What the customer is billed" });
+    await userEvent.type(within(pricing).getByRole("textbox", { name: "Customer rate per kilometre" }), "9");
+    await userEvent.click(within(pricing).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      const [, init] = fetchMock.actualCalls.find(([url]) => String(url).endsWith("/entries/702/billing")) ?? [];
+      // 3 was the opened revision; the override answered 4, and that is what
+      // the pricing has to carry — anything else is the 409 the fake answers.
+      expect(JSON.parse(String(init?.body))).toMatchObject({ revision: 4 });
+    });
+    expect(await screen.findByText(/The customer is billed/)).toBeInTheDocument();
+  });
+
+  it("keeps the passenger supplement the line was frozen with when the field is left empty", async () => {
+    const line = mileage({
+      id: 702,
+      description: "Site visit",
+      status: "submitted",
+      passengers: 2,
+      passengerRate: 1,
+      grossAmount: 876,
+      owner: { userId: OTHER, displayName: "Grace Hopper", active: true },
+      capabilities: capabilities({ canOverrideRate: true }),
+    });
+    const fetchMock = stubExpensesApi({ entries: [line] });
+    renderRoute("/expenses/approvals");
+
+    const drawer = await openDrawer("Site visit");
+    await userEvent.click(within(drawer).getByRole("button", { name: "Replace the rate" }));
+    const dialog = await screen.findByRole("dialog", { name: "Replace the mileage rate" });
+
+    await userEvent.clear(within(dialog).getByRole("textbox", { name: "Passenger supplement per kilometre" }));
+
+    // The request omits it and the server keeps 1.00, so the preview says the
+    // supplement becomes 1.00 rather than promising a change to nothing.
+    const preview = (within(dialog).getByTestId("passenger-rate-change").textContent ?? "").replace(/\u00a0/g, " ");
+    expect(preview).toMatch(/was .*1\.00.* becomes .*1\.00/);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(sent(fetchMock, "PUT").url).toBe("/api/v1/expenses/entries/702/rate"));
+    expect(sent(fetchMock, "PUT").body).not.toHaveProperty("passengerRate");
+  });
+
+  it("names the column the approval checkboxes sit in", async () => {
+    stubExpensesApi({ entries: [submitted({ id: 701, description: "Hotel" })] });
+    renderRoute("/expenses/approvals");
+
+    const table = await screen.findByRole("table", { name: "Grace Hopper's expenses" });
+    expect(within(table).getByRole("columnheader", { name: "Select" })).toBeInTheDocument();
+  });
+
+  it("says when an approval was decided even when nobody is named", async () => {
+    stubExpensesApi({
+      entries: [
+        outlay({
+          id: 501,
+          status: "approved",
+          description: "Hotel",
+          decision: { status: "approved", at: "2026-09-19T12:00:00Z" },
+          capabilities: capabilities({ canUnapprove: true }),
+        }),
+      ],
+    });
+    renderRoute("/expenses/approvals");
+
+    await screen.findByRole("radio", { name: "Waiting" });
+    await userEvent.click(screen.getByRole("radio", { name: "Approved" }));
+
+    const drawer = await openDrawer("Hotel");
+    expect(within(drawer).getByText(/Approved on/)).toBeInTheDocument();
+  });
 });

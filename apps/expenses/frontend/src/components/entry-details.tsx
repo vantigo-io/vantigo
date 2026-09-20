@@ -48,13 +48,18 @@ export const EntryDetails = ({ expense, withReceipts = true }: EntryDetailsProps
 
       {expense.decision?.status === "rejected" && expense.decision.reason && (
         <Alert color="red" title={t("rejectedBecause", { reason: expense.decision.reason })}>
-          {expense.decision.by &&
-            t("rejectedBy", { person: expense.decision.by.displayName, date: format.dateTime(expense.decision.at) })}
+          {expense.decision.by
+            ? t("rejectedBy", { person: expense.decision.by.displayName, date: format.dateTime(expense.decision.at) })
+            : t("rejectedOn", { date: format.dateTime(expense.decision.at) })}
         </Alert>
       )}
-      {expense.decision?.status === "approved" && expense.decision.by && (
+      {expense.decision?.status === "approved" && (
         <Text size="sm" c="dimmed">
-          {t("approvedBy", { person: expense.decision.by.displayName, date: format.dateTime(expense.decision.at) })}
+          {/* `by` is optional in the contract. When nobody is named the day it
+              was approved is still worth saying, so only the attribution goes. */}
+          {expense.decision.by
+            ? t("approvedBy", { person: expense.decision.by.displayName, date: format.dateTime(expense.decision.at) })
+            : t("approvedOn", { date: format.dateTime(expense.decision.at) })}
         </Text>
       )}
 
@@ -123,9 +128,7 @@ export const EntryDetails = ({ expense, withReceipts = true }: EntryDetailsProps
           <Title order={6}>{t("billingHeading")}</Title>
           <Text size="sm">{`${t("billAmount")}: ${format.money(expense.billing.billAmount, expense.currency)}`}</Text>
           {expense.billing.markupPercent !== undefined && (
-            <Text size="sm">
-              {`${t("markupPercent")}: ${t("vatPercent", { rate: format.number(expense.billing.markupPercent, 0) })}`}
-            </Text>
+            <Text size="sm">{`${t("markupPercent")}: ${format.percent(expense.billing.markupPercent)}`}</Text>
           )}
           {expense.billing.billRatePerKm !== undefined && (
             <Text size="sm">

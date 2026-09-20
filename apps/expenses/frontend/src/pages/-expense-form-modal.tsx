@@ -243,8 +243,13 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
    * list the picker would render blank over "No project" and the form would
    * tell somebody their booked cost is unbooked.
    */
+  // `projects === undefined` is "still loading", not "does not offer it": a
+  // perfectly bookable project must not flash "(no longer bookable)" between
+  // the mount and the answer.
   const keptProject =
-    opened?.project && !projects?.some((project) => project.id === opened.project?.id) ? opened.project : undefined;
+    opened?.project && projects !== undefined && !projects.some((project) => project.id === opened.project?.id)
+      ? opened.project
+      : undefined;
   const projectOptions = [
     ...(projects ?? []).map((project) => ({
       value: String(project.id),
@@ -262,6 +267,7 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
   const chosenProject = projects?.find((project) => String(project.id) === values.projectId);
   const keptLine =
     opened?.billingLine &&
+    projects !== undefined &&
     String(opened.project?.id ?? "") === values.projectId &&
     !chosenProject?.billingLines.some((line) => line.id === opened.billingLine?.id)
       ? opened.billingLine
@@ -426,8 +432,9 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
             {/* `by` is optional in the contract, for a stored decision with no
                 decider that no operation can produce; the reason stands on its
                 own when there is nobody to name. */}
-            {saved.decision.by &&
-              t("rejectedBy", { person: saved.decision.by.displayName, date: format.dateTime(saved.decision.at) })}
+            {saved.decision.by
+              ? t("rejectedBy", { person: saved.decision.by.displayName, date: format.dateTime(saved.decision.at) })
+              : t("rejectedOn", { date: format.dateTime(saved.decision.at) })}
           </Alert>
         )}
         <RefusalList messages={refusals} />

@@ -3,9 +3,8 @@ import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
-import { type BillingInput, setExpenseBilling } from "../api/approvals";
+import { type BillingInput, expenseBillingLinesQueryOptions, setExpenseBilling } from "../api/approvals";
 import type { Expense } from "../api/entries";
-import { expenseProjectsQueryOptions } from "../api/projects";
 import { type ApiError, ApiValidationError, EXPENSES_QUERY_KEY } from "../api/request";
 import "../i18n";
 import { refusalMessage } from "../lib/errors";
@@ -55,10 +54,18 @@ const BillingForm = ({ expense, revision, onClose, onSaved }: BillingModalProps 
   const format = useExpenseFormat();
   const decimalSeparator = useDecimalSeparator();
   const queryClient = useQueryClient();
-  const { data: projects } = useQuery(expenseProjectsQueryOptions());
+  // Only asked for once the dialog is open, and only for an expense the
+  // caller may price: the endpoint is judged by the same rule the save is.
+  const { data: lines } = useQuery(expenseBillingLinesQueryOptions(expense.id));
 
   const mileage = expense.kind === "mileage";
-  const lines = projects?.find((project) => project.id === expense.project?.id)?.billingLines ?? [];
+  const lineOptions = (lines ?? []).map((line) => ({
+    value: String(line.id),
+    // A line the project has stopped using is in the list only because this
+    // expense already carries it; it is shown, and said to be inactive,
+    // rather than silently missing.
+    label: line.active ? line.code : t("billingLineInactive", { code: line.code }),
+  }));
 
   const form = useForm({
     initialValues: {
@@ -126,8 +133,8 @@ const BillingForm = ({ expense, revision, onClose, onSaved }: BillingModalProps 
           label={t("billingLine")}
           placeholder={t("noBillingLine")}
           clearable
-          disabled={lines.length === 0}
-          data={lines.map((line) => ({ value: String(line.id), label: line.code }))}
+          disabled={lineOptions.length === 0}
+          data={lineOptions}
           {...form.getInputProps("billingLineId")}
         />
         {form.values.billable &&
