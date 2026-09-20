@@ -36,6 +36,7 @@ import { expensesMetaQueryOptions } from "../api/meta";
 import { expenseProjectsQueryOptions } from "../api/projects";
 import { expenseRatesQueryOptions } from "../api/rates";
 import type { ApiError } from "../api/request";
+import { EntryDetails } from "../components/entry-details";
 import { ReceiptDropzone } from "../components/receipt-dropzone";
 import { ReceiptThumbnails } from "../components/receipt-thumbnails";
 import { RefusalList } from "../components/refusal-list";
@@ -367,10 +368,26 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
 
   const billing = saved?.capabilities.canSeeBilling ? saved.billing : undefined;
 
+  // An expense the caller may see but not change is written out in full
+  // rather than shown as a form nothing in it can be typed into — the same
+  // rendering the approval drawer uses.
+  if (readOnly && saved) {
+    return (
+      <Stack>
+        <Alert color="gray">{t("readOnlyNotice")}</Alert>
+        <EntryDetails expense={saved} />
+        <Group justify="flex-end">
+          <Button type="button" variant="default" onClick={onClose}>
+            {t("close")}
+          </Button>
+        </Group>
+      </Stack>
+    );
+  }
+
   return (
     <form onSubmit={submit(false)}>
       <Stack>
-        {readOnly && <Alert color="gray">{t("readOnlyNotice")}</Alert>}
         {saved?.decision?.status === "rejected" && saved.decision.reason && (
           <Alert color="red" title={t("rejectedBecause", { reason: saved.decision.reason })}>
             {/* `by` is optional in the contract, for a stored decision with no
@@ -386,7 +403,7 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
           <SegmentedControl
             fullWidth
             mt={4}
-            disabled={readOnly || saved !== undefined}
+            disabled={saved !== undefined}
             aria-label={t("kind")}
             value={values.kind}
             onChange={(next) => form.setFieldValue("kind", next as ExpenseKind)}
@@ -402,18 +419,11 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
             label={t("date")}
             valueFormat={t("dateInputFormat")}
             withAsterisk
-            disabled={readOnly}
             minDate={lockedBefore}
             description={lockedBefore ? t("lockedBeforeHint", { date: format.date(lockedBefore) }) : undefined}
             {...form.getInputProps("entryDate")}
           />
-          <TextInput
-            label={t("description")}
-            withAsterisk
-            disabled={readOnly}
-            data-autofocus
-            {...form.getInputProps("description")}
-          />
+          <TextInput label={t("description")} withAsterisk data-autofocus {...form.getInputProps("description")} />
         </Group>
 
         {values.kind === "outlay" ? (
@@ -424,11 +434,10 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
                 placeholder={t("chooseCategory")}
                 withAsterisk
                 searchable
-                disabled={readOnly}
                 data={categoryOptions}
                 {...form.getInputProps("categoryId")}
               />
-              <TextInput label={t("supplier")} disabled={readOnly} {...form.getInputProps("supplier")} />
+              <TextInput label={t("supplier")} {...form.getInputProps("supplier")} />
             </Group>
             <Group grow align="start">
               <NumberInput
@@ -438,7 +447,6 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
                 min={0}
                 decimalScale={2}
                 decimalSeparator={decimalSeparator}
-                disabled={readOnly}
                 {...form.getInputProps("grossAmount")}
               />
               <VatField
@@ -452,7 +460,6 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
             <Input.Wrapper label={t("paidBy")} labelElement="div">
               <SegmentedControl
                 mt={4}
-                disabled={readOnly}
                 aria-label={t("paidBy")}
                 value={values.paidBy}
                 onChange={(next) => form.setFieldValue("paidBy", next as PaidBy)}
@@ -466,8 +473,8 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
         ) : (
           <Stack>
             <Group grow align="start">
-              <TextInput label={t("fromPlace")} disabled={readOnly} {...form.getInputProps("fromPlace")} />
-              <TextInput label={t("toPlace")} disabled={readOnly} {...form.getInputProps("toPlace")} />
+              <TextInput label={t("fromPlace")} {...form.getInputProps("fromPlace")} />
+              <TextInput label={t("toPlace")} {...form.getInputProps("toPlace")} />
             </Group>
             <Group grow align="start">
               <NumberInput
@@ -476,7 +483,6 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
                 min={0}
                 decimalScale={1}
                 decimalSeparator={decimalSeparator}
-                disabled={readOnly}
                 {...form.getInputProps("distanceKm")}
               />
               <NumberInput
@@ -484,7 +490,6 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
                 min={0}
                 max={MAX_PASSENGERS}
                 allowDecimal={false}
-                disabled={readOnly}
                 {...form.getInputProps("passengers")}
               />
             </Group>
@@ -525,7 +530,6 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
                     placeholder={t("chooseProject")}
                     clearable
                     searchable
-                    disabled={readOnly}
                     data={projectOptions}
                     value={values.projectId}
                     error={form.errors.projectId}
@@ -535,17 +539,13 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
                     label={t("billingLine")}
                     placeholder={t("noBillingLine")}
                     clearable
-                    disabled={readOnly || lineOptions.length === 0}
+                    disabled={lineOptions.length === 0}
                     data={lineOptions}
                     {...form.getInputProps("billingLineId")}
                   />
                 </Group>
                 {values.projectId && (
-                  <Switch
-                    label={t("billable")}
-                    disabled={readOnly}
-                    {...form.getInputProps("billable", { type: "checkbox" })}
-                  />
+                  <Switch label={t("billable")} {...form.getInputProps("billable", { type: "checkbox" })} />
                 )}
                 {values.billable && billing === undefined && (
                   <Text size="xs" c="dimmed">
@@ -588,35 +588,26 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
                   })}
                 </Text>
               )}
-              <ReceiptThumbnails
-                attachments={attachments}
-                onRemove={readOnly ? undefined : (id) => removeReceipt.mutate(id)}
+              <ReceiptThumbnails attachments={attachments} onRemove={(id) => removeReceipt.mutate(id)} />
+              <ReceiptDropzone
+                entryId={saved?.id}
+                attachmentCount={attachments.length}
+                onUploaded={(one) => setAttachments((current) => [...current, one])}
               />
-              {!readOnly && (
-                <ReceiptDropzone
-                  entryId={saved?.id}
-                  attachmentCount={attachments.length}
-                  onUploaded={(one) => setAttachments((current) => [...current, one])}
-                />
-              )}
             </Stack>
           </>
         )}
 
         <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
           <Button type="button" variant="default" onClick={onClose}>
-            {readOnly ? t("close") : t("cancel")}
+            {t("cancel")}
           </Button>
-          {!readOnly && (
-            <Button type="submit" loading={save.isPending}>
-              {saved ? t("save") : t("saveDraft")}
-            </Button>
-          )}
-          {!readOnly && (
-            <Button type="button" variant="light" loading={save.isPending} onClick={() => submit(true)()}>
-              {t("saveAndSubmit")}
-            </Button>
-          )}
+          <Button type="submit" loading={save.isPending}>
+            {saved ? t("save") : t("saveDraft")}
+          </Button>
+          <Button type="button" variant="light" loading={save.isPending} onClick={() => submit(true)()}>
+            {t("saveAndSubmit")}
+          </Button>
         </SimpleGrid>
       </Stack>
     </form>
