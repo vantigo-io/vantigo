@@ -6,7 +6,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { markExpensesReimbursed } from "../api/reimbursements";
-import { ApiValidationError } from "../api/request";
+import { ApiValidationError, EXPENSES_QUERY_KEY } from "../api/request";
 import { RefusalList } from "../components/refusal-list";
 import "../i18n";
 import { today } from "../lib/dates";
@@ -58,7 +58,7 @@ export const MarkReimbursedModal = ({ entryIds, onClose, onDone }: MarkReimburse
     onSuccess: async (paid) => {
       setRefusals([]);
       form.reset();
-      await queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
       notifications.show({
         color: "teal",
         title: t("markedReimbursed"),

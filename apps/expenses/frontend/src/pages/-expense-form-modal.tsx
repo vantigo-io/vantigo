@@ -35,7 +35,7 @@ import {
 import { expensesMetaQueryOptions } from "../api/meta";
 import { expenseProjectsQueryOptions } from "../api/projects";
 import { expenseRatesQueryOptions } from "../api/rates";
-import type { ApiError } from "../api/request";
+import { type ApiError, EXPENSES_QUERY_KEY } from "../api/request";
 import { EntryDetails } from "../components/entry-details";
 import { ReceiptDropzone } from "../components/receipt-dropzone";
 import { ReceiptThumbnails } from "../components/receipt-thumbnails";
@@ -51,7 +51,9 @@ import {
   MAX_GROSS,
   MAX_PASSENGERS,
   PLACE_MAX_LENGTH,
-  round2,
+  round1,
+  type VatChoice,
+  vatFromGross,
 } from "../lib/money";
 import { mileagePreview } from "../lib/rates";
 import type { ExpenseKind, PaidBy } from "../lib/status";
@@ -155,6 +157,8 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
   const [revision, setRevision] = useState<number | undefined>(opened?.revision);
   const [attachments, setAttachments] = useState<ExpenseAttachment[]>(opened?.attachments ?? []);
   const [refusals, setRefusals] = useState<string[]>([]);
+  /** Which rate the VAT helper is set to; the gross input needs it too. */
+  const [vatChoice, setVatChoice] = useState<VatChoice>("none");
 
   const { data: meta } = useQuery(expensesMetaQueryOptions());
   const { data: projects } = useQuery({
@@ -232,15 +236,40 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
       : undefined;
   const missingRate = values.kind === "mileage" && distance > 0 && rates !== undefined && preview === undefined;
 
-  const projectOptions = (projects ?? []).map((project) => ({
-    value: String(project.id),
-    label: `${project.code} · ${project.name}`,
-  }));
+  /**
+   * `GET /projects` lists only what the owner may book on *now*, while a save
+   * grandfathers a link the expense already carries — a completed project, or
+   * one the owner has been taken off. Without the entry's own project in the
+   * list the picker would render blank over "No project" and the form would
+   * tell somebody their booked cost is unbooked.
+   */
+  const keptProject =
+    opened?.project && !projects?.some((project) => project.id === opened.project?.id) ? opened.project : undefined;
+  const projectOptions = [
+    ...(projects ?? []).map((project) => ({
+      value: String(project.id),
+      label: `${project.code} · ${project.name}`,
+    })),
+    ...(keptProject
+      ? [
+          {
+            value: String(keptProject.id),
+            label: t("projectNoLongerBookable", { project: `${keptProject.code} · ${keptProject.name}` }),
+          },
+        ]
+      : []),
+  ];
   const chosenProject = projects?.find((project) => String(project.id) === values.projectId);
-  const lineOptions = (chosenProject?.billingLines ?? []).map((line) => ({
-    value: String(line.id),
-    label: line.code,
-  }));
+  const keptLine =
+    opened?.billingLine &&
+    String(opened.project?.id ?? "") === values.projectId &&
+    !chosenProject?.billingLines.some((line) => line.id === opened.billingLine?.id)
+      ? opened.billingLine
+      : undefined;
+  const lineOptions = [
+    ...(chosenProject?.billingLines ?? []).map((line) => ({ value: String(line.id), label: line.code })),
+    ...(keptLine ? [{ value: String(keptLine.id), label: keptLine.code }] : []),
+  ];
 
   const categoryOptions = (meta?.categories ?? [])
     .filter((category) => category.active || String(category.id) === values.categoryId)
@@ -275,7 +304,7 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
     if (values.kind === "mileage") {
       return {
         ...shared,
-        distanceKm: round2(distance),
+        distanceKm: round1(distance),
         ...(passengers > 0 ? { passengers } : {}),
         ...(values.fromPlace.trim() ? { fromPlace: values.fromPlace.trim() } : {}),
         ...(values.toPlace.trim() ? { toPlace: values.toPlace.trim() } : {}),
@@ -320,18 +349,22 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
           ? await updateExpense(saved.id, { ...input, revision } as ExpenseUpdateInput)
           : await createExpense(input);
       if (!andSubmit) return { stored, submitted: false as const };
-      const [after] = await submitExpenses([stored.id]).catch((error: Error) => {
+      const [after] = await submitExpenses([stored.id]).catch(async (error: Error) => {
         // The expense is saved either way; only the submission was refused.
+        // The list has to learn about it here, because `onSuccess` — where
+        // every other write invalidates — is not going to run: a new draft
+        // that is nowhere on screen is one somebody records a second time.
         setSaved(stored);
         setRevision(stored.revision);
         setAttachments(stored.attachments);
+        await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
         throw error;
       });
       return { stored: after ?? stored, submitted: true as const };
     },
     onSuccess: async ({ stored, submitted }) => {
       setRefusals([]);
-      await queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
       // A new outlay stays open once it is a draft: its receipts can only be
       // attached to something that exists, and asking somebody to reopen the
       // form they just filled in to add them would be a poor trade.
@@ -353,7 +386,7 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
     mutationFn: (id: number) => deleteReceipt(id),
     onSuccess: async (_result, id) => {
       setAttachments((current) => current.filter((one) => one.id !== id));
-      await queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
       notifications.show({ color: "teal", title: t("receiptRemoved"), message: "" });
     },
     onError: (error) =>
@@ -448,12 +481,23 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
                 decimalScale={2}
                 decimalSeparator={decimalSeparator}
                 {...form.getInputProps("grossAmount")}
+                onChange={(next) => {
+                  form.setFieldValue("grossAmount", next);
+                  // A gross corrected under a chosen rate takes the VAT with
+                  // it: "25 %" must never stand over a figure that is not it.
+                  if (vatChoice !== "none") {
+                    const corrected = numeric(next) ?? 0;
+                    form.setFieldValue("vatAmount", corrected > 0 ? vatFromGross(corrected, vatChoice) : "");
+                  }
+                }}
               />
               <VatField
                 gross={gross}
                 currency={currency}
                 value={values.vatAmount}
                 error={form.errors.vatAmount}
+                choice={vatChoice}
+                onChoiceChange={setVatChoice}
                 onChange={(next) => form.setFieldValue("vatAmount", next)}
               />
             </Group>
@@ -518,7 +562,7 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
         {meta?.projectsAvailable && (
           <>
             <Divider />
-            {projectOptions.length === 0 ? (
+            {projectOptions.length === 0 && !values.projectId ? (
               <Text size="sm" c="dimmed">
                 {t("noBookableProjects")}
               </Text>
@@ -592,7 +636,12 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
               <ReceiptDropzone
                 entryId={saved?.id}
                 attachmentCount={attachments.length}
-                onUploaded={(one) => setAttachments((current) => [...current, one])}
+                onUploaded={(one) => {
+                  setAttachments((current) => [...current, one]);
+                  // The row's receipt count, the strip and the cached entry a
+                  // re-open is seeded from all have to learn about it.
+                  void queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
+                }}
               />
             </Stack>
           </>

@@ -78,7 +78,12 @@ export const ReceiptDropzone = ({ entryId, attachmentCount, onUploaded }: Receip
         onUploaded(await uploadReceipt(entryId, file));
         carried += 1;
       } catch (error) {
-        failed.push({ name: file.name, error: messageFor(error as Error) });
+        // The server's sentence does not name the file; the title does, which
+        // is what matters when several were dropped at once.
+        failed.push({
+          name: file.name,
+          error: `${t("couldNotUploadReceipt", { name: file.name })}: ${messageFor(error as Error)}`,
+        });
       }
     }
     setPending(failed);
@@ -134,8 +139,10 @@ export const ReceiptDropzone = ({ entryId, attachmentCount, onUploaded }: Receip
       )}
       {pending
         .filter((one) => one.error)
-        .map((one) => (
-          <Text key={one.name} size="sm" c="red">
+        // Two folders can hand over the same file name, so the index is part
+        // of the key: one refusal must not stand in for the other.
+        .map((one, index) => (
+          <Text key={`${one.name}:${index}`} size="sm" c="red">
             {one.error}
           </Text>
         ))}

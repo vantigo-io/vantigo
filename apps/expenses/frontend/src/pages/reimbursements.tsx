@@ -26,7 +26,7 @@ import {
   saveCsv,
   undoExpensesReimbursed,
 } from "../api/reimbursements";
-import type { ApiError } from "../api/request";
+import { type ApiError, EXPENSES_QUERY_KEY } from "../api/request";
 import { CurrencyTotals } from "../components/currency-totals";
 import { RefusalList } from "../components/refusal-list";
 import "../i18n";
@@ -76,7 +76,7 @@ export const ReimbursementsPage = () => {
     onSuccess: async (moved) => {
       setRefusals(new Map());
       setSelected([]);
-      await queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
       notifications.show({
         color: "teal",
         title: t("reimbursementUndone"),

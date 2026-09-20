@@ -10,6 +10,7 @@ import {
   Stack,
   Table,
   Text,
+  VisuallyHidden,
 } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { modals } from "@mantine/modals";
@@ -20,6 +21,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { deleteExpense, type Expense, expensesQueryOptions, submitExpenses } from "../api/entries";
+import { EXPENSES_QUERY_KEY } from "../api/request";
 import { expenseStatsQueryOptions } from "../api/stats";
 import { ExpenseStatusBadge } from "../components/expense-status-badge";
 import { ReceiptThumbnails } from "../components/receipt-thumbnails";
@@ -62,13 +64,17 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
   const [selected, setSelected] = useState<number[]>([]);
   const [refusals, setRefusals] = useState<Map<number, string[]>>(new Map());
 
-  // A selection belongs to the page it was picked on: turning the list starts
-  // a new one. State adjusted during render from the previous render's value,
-  // the way React documents, rather than an effect that would flash the old bar.
-  const [pageShown, setPageShown] = useState(page);
-  if (pageShown !== page) {
-    setPageShown(page);
+  // A selection belongs to the page *and the filters* it was picked on:
+  // changing either starts a new one, so nothing stays checked behind a
+  // filter that hides it. State adjusted during render from the previous
+  // render's value, the way React documents, rather than an effect that would
+  // flash the old bar.
+  const shownKey = JSON.stringify(search);
+  const [shown, setShown] = useState(shownKey);
+  if (shown !== shownKey) {
+    setShown(shownKey);
     setSelected([]);
+    setRefusals(new Map());
   }
 
   const filterBy = (next: Partial<MyExpensesSearch>) => navigate({ search: { ...search, ...next, page: 1 } });
@@ -85,7 +91,7 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
     onSuccess: async (moved) => {
       setRefusals(new Map());
       setSelected([]);
-      await queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
       notifications.show({
         color: "teal",
         title: t("expensesSubmitted"),
@@ -104,7 +110,7 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
   const remove = useMutation({
     mutationFn: (id: number) => deleteExpense(id),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
       notifications.show({ color: "teal", title: t("expenseDeleted"), message: "" });
     },
     onError: (error) =>
@@ -218,7 +224,9 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
                 <Table striped highlightOnHover aria-label={t("myExpenses")}>
                   <Table.Thead>
                     <Table.Tr>
-                      <Table.Th />
+                      <Table.Th>
+                        <VisuallyHidden>{t("select")}</VisuallyHidden>
+                      </Table.Th>
                       <Table.Th>{t("date")}</Table.Th>
                       <Table.Th>{t("description")}</Table.Th>
                       <Table.Th>{t("kind")}</Table.Th>
@@ -290,7 +298,7 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
                         <Table.Td>
                           <Stack gap={0}>
                             <Text size="sm">{format.money(expense.grossAmount, expense.currency)}</Text>
-                            {expense.owedToEmployee === 0 && (
+                            {expense.paidBy === "company" && (
                               <Text size="xs" c="dimmed">
                                 {t("paidByCompany")}
                               </Text>

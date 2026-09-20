@@ -5,7 +5,7 @@ import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
 import { createExpenseRate, type ExpenseRate, updateExpenseRate } from "../api/rates";
-import { ApiValidationError } from "../api/request";
+import { ApiValidationError, EXPENSES_QUERY_KEY } from "../api/request";
 import "../i18n";
 import { today } from "../lib/dates";
 import { refusalMessage } from "../lib/errors";
@@ -100,7 +100,7 @@ const RateForm = ({ state, defaultCurrency, onClose }: RateFormModalProps & { st
       return editing ? updateExpenseRate(editing.id, shared) : createExpenseRate({ ...shared, kind: values.kind });
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
       notifications.show({ color: "teal", title: t("rateSaved"), message: t(rateKindLabelKey(form.values.kind)) });
       onClose();
     },

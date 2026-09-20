@@ -5,7 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { rejectExpenses } from "../api/approvals";
-import { ApiValidationError } from "../api/request";
+import { ApiValidationError, EXPENSES_QUERY_KEY } from "../api/request";
 import { RefusalList } from "../components/refusal-list";
 import "../i18n";
 import { refusalMessages } from "../lib/errors";
@@ -45,7 +45,7 @@ export const RejectModal = ({ entryIds, onClose, onRejected }: RejectModalProps)
     onSuccess: async (rejected) => {
       setRefusals([]);
       form.reset();
-      await queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
       notifications.show({
         color: "teal",
         title: t("expensesRejected"),

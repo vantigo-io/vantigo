@@ -1,6 +1,6 @@
 import { Input, NumberInput, SegmentedControl, Stack, Text } from "@mantine/core";
 import { useI18n } from "@vantigo/frontend-shell";
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 import "../i18n";
 import { useDecimalSeparator, useExpenseFormat } from "../lib/format";
 import { netOf, type VatChoice, vatFromGross, vatRates } from "../lib/money";
@@ -10,6 +10,14 @@ export interface VatFieldProps {
   gross: number;
   value: number | string;
   onChange: (value: number | string) => void;
+  /**
+   * The rate the helper is set to. It is the form's state rather than this
+   * component's, because the *gross* input has to know about it too: a gross
+   * corrected under a chosen rate recomputes the VAT there, on the keystroke,
+   * rather than in an effect that would write state during a render pass.
+   */
+  choice: VatChoice;
+  onChoiceChange: (choice: VatChoice) => void;
   /** The expense's own currency — the net is written in it, never converted. */
   currency: string;
   error?: ReactNode;
@@ -25,23 +33,22 @@ export interface VatFieldProps {
  * The net is shown beside it because that, not the VAT, is what the project
  * is charged and what a markup is taken on.
  */
-export const VatField = ({ gross, value, onChange, currency, error }: VatFieldProps) => {
+export const VatField = ({ gross, value, onChange, choice, onChoiceChange, currency, error }: VatFieldProps) => {
   const { t } = useI18n("expenses");
   const format = useExpenseFormat();
   const decimalSeparator = useDecimalSeparator();
-  const [choice, setChoice] = useState<VatChoice>("none");
 
   const entered = typeof value === "number" ? value : Number(value.replace(",", "."));
   const vat = Number.isFinite(entered) ? entered : 0;
 
   const pick = (next: string) => {
     if (next === "none") {
-      setChoice("none");
+      onChoiceChange("none");
       onChange("");
       return;
     }
     const rate = Number(next) as (typeof vatRates)[number];
-    setChoice(rate);
+    onChoiceChange(rate);
     onChange(gross > 0 ? vatFromGross(gross, rate) : "");
   };
 
@@ -56,7 +63,7 @@ export const VatField = ({ gross, value, onChange, currency, error }: VatFieldPr
         error={error}
         onChange={(next) => {
           // The person is typing: the figure is theirs now, not the helper's.
-          setChoice("none");
+          onChoiceChange("none");
           onChange(next);
         }}
       />

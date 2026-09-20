@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { netOf, round2, vatFromGross } from "./money";
+import { netOf, round1, round2, vatFromGross } from "./money";
 
 describe("vatFromGross", () => {
   it("takes the VAT out of a gross at the rate, half-up to two places", () => {
@@ -19,6 +19,14 @@ describe("netOf", () => {
   it("is the gross less the VAT", () => {
     expect(netOf(625, 125)).toBe(500);
     expect(netOf(100.1, 20.02)).toBe(80.08);
+  });
+});
+
+describe("round1", () => {
+  it("is what a distance is rounded to — the contract allows one decimal and refuses a second", () => {
+    expect(round1(12.34)).toBe(12.3);
+    expect(round1(12.35)).toBe(12.4);
+    expect(round1(120)).toBe(120);
   });
 });
 

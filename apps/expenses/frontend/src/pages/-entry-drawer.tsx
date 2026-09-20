@@ -5,6 +5,7 @@ import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { approveExpenses, unapproveExpenses } from "../api/approvals";
 import type { Expense } from "../api/entries";
+import { EXPENSES_QUERY_KEY } from "../api/request";
 import { EntryDetails } from "../components/entry-details";
 import { RefusalList } from "../components/refusal-list";
 import "../i18n";
@@ -60,7 +61,7 @@ const EntryActions = ({ expense, onClose }: { expense: Expense; onClose: () => v
   const decided = (title: string, failure: string) => ({
     onSuccess: async ([moved]: Expense[]) => {
       setRefusals([]);
-      await queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
       notifications.show({ color: "teal", title, message: current.description });
       if (moved) saved(moved);
       onClose();
