@@ -6,6 +6,7 @@ export * from "./api/categories";
 export * from "./api/claims";
 export * from "./api/entries";
 export { type ExpensesMeta, type ExpensesMetaCapabilities, expensesMetaQueryOptions, isBeforeLock } from "./api/meta";
+export * from "./api/project-expenses";
 export * from "./api/projects";
 export * from "./api/rates";
 export * from "./api/reimbursements";
@@ -22,6 +23,10 @@ export { CurrencyTotals, type CurrencyTotalsProps } from "./components/currency-
 export { EntryDetails, type EntryDetailsProps } from "./components/entry-details";
 export { ExpenseStatusBadge, type ExpenseStatusBadgeProps } from "./components/expense-status-badge";
 export { PerDiemDetails, type PerDiemDetailsProps } from "./components/per-diem-details";
+export {
+  ProjectExpensesPanel,
+  type ProjectExpensesPanelProps,
+} from "./components/project-expenses-panel";
 export { ReceiptDropzone, type ReceiptDropzoneProps } from "./components/receipt-dropzone";
 export { ReceiptThumbnails, type ReceiptThumbnailsProps } from "./components/receipt-thumbnails";
 export { ReceiptViewer, type ReceiptViewerProps } from "./components/receipt-viewer";

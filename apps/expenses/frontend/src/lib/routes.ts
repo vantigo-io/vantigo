@@ -13,3 +13,12 @@ export const claimLinkOptions = (claimId: number) => ({
   to: CLAIM_ROUTE_PATH,
   params: { claimId: String(claimId) },
 });
+
+/**
+ * The same path as a plain URL, for a component the host may mount **outside**
+ * the expenses route tree — the project page's Expenses tab, which renders its
+ * links through the shell's link component rather than this package's router
+ * hooks. Built from the one constant above, so a renamed route cannot leave a
+ * dead link behind on the project page.
+ */
+export const claimHref = (claimId: number): string => CLAIM_ROUTE_PATH.replace("$claimId", String(claimId));

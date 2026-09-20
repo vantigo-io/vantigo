@@ -63,6 +63,16 @@ export interface ExpenseFilters {
    * would otherwise be counted twice. Left out, both are in the list.
    */
   standalone?: boolean;
+  /**
+   * `true` lists exactly the lines a project's `readyCount` counts — the unit
+   * approved through its claim, billable, priced, not invoiced, never a per
+   * diem day — under the very predicate that figure is summed with, so the
+   * header and the rows under it can never disagree. It **needs** a
+   * `projectId` (invoicing is done one project at a time) and cannot be
+   * combined with a `status` other than `approved`; both are refused with a
+   * 400 rather than quietly answered with an empty page.
+   */
+  toInvoice?: boolean;
   page?: number;
   pageSize?: number;
 }
@@ -78,6 +88,7 @@ const listQuery = (filters: ExpenseFilters): string => {
   if (filters.from) query.set("from", filters.from);
   if (filters.to) query.set("to", filters.to);
   if (filters.reimbursed !== undefined) query.set("reimbursed", String(filters.reimbursed));
+  if (filters.toInvoice !== undefined) query.set("toInvoice", String(filters.toInvoice));
   if (filters.page !== undefined) query.set("page", String(filters.page));
   if (filters.pageSize !== undefined) query.set("pageSize", String(filters.pageSize));
   const search = query.toString();

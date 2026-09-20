@@ -34,6 +34,7 @@ import {
   updateExpense,
 } from "../api/entries";
 import { expensesMetaQueryOptions } from "../api/meta";
+import type { ExpenseProjectOption } from "../api/projects";
 import { expenseRatesQueryOptions } from "../api/rates";
 import { type ApiError, EXPENSES_QUERY_KEY } from "../api/request";
 import { EntryDetails } from "../components/entry-details";
@@ -66,14 +67,26 @@ import { zoneCalendarDate } from "../lib/time-zone";
  * A `claim` makes it a **line of a travel claim**: the kind is fixed by the
  * section it was opened from, the project block is replaced by the trip's own
  * project, and there is no "save and submit" — a trip is submitted whole.
+ *
+ * A `project` makes it a **cost recorded from that project's own page**: the
+ * project is stated rather than offered, because the form was opened from it
+ * and pointing it somewhere else would be a different action; the billing
+ * line is picked from that project's lines. It is still an expense of its
+ * own, so it can be saved and submitted in one go.
  */
 export type ExpenseModalState =
-  | { mode: "create"; kind?: ExpenseKind; claim?: Claim }
+  | { mode: "create"; kind?: ExpenseKind; claim?: Claim; project?: ExpenseProjectOption }
   | { mode: "edit"; expense: Expense; claim?: Claim };
 
 export interface ExpenseFormModalProps {
   state: ExpenseModalState | null;
   onClose: () => void;
+  /**
+   * The expense a save answered with. A page that shows figures the save
+   * moved — the project page's Expenses tab — needs to know it happened; the
+   * modal's own cache invalidation cannot reach another module's.
+   */
+  onSaved?: (expense: Expense) => void;
 }
 
 interface ExpenseFormValues {
@@ -130,7 +143,7 @@ const numeric = (value: number | string): number | undefined => {
  * The form lives in `ExpenseForm`, which the modal mounts fresh every time it
  * opens, so no previous expense's values survive a close.
  */
-export const ExpenseFormModal = ({ state, onClose }: ExpenseFormModalProps) => {
+export const ExpenseFormModal = ({ state, onClose, onSaved }: ExpenseFormModalProps) => {
   const { t } = useI18n("expenses");
   return (
     <Modal
@@ -141,13 +154,26 @@ export const ExpenseFormModal = ({ state, onClose }: ExpenseFormModalProps) => {
       size="lg"
     >
       {state && (
-        <ExpenseForm key={state.mode === "edit" ? state.expense.id : "create"} state={state} onClose={onClose} />
+        <ExpenseForm
+          key={state.mode === "edit" ? state.expense.id : "create"}
+          state={state}
+          onClose={onClose}
+          onSaved={onSaved}
+        />
       )}
     </Modal>
   );
 };
 
-const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: () => void }) => {
+const ExpenseForm = ({
+  state,
+  onClose,
+  onSaved,
+}: {
+  state: ExpenseModalState;
+  onClose: () => void;
+  onSaved?: (expense: Expense) => void;
+}) => {
   const { t } = useI18n("expenses");
   const format = useExpenseFormat();
   const decimalSeparator = useDecimalSeparator();
@@ -160,6 +186,13 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
    * it is submitted — is the claim's, so the form neither asks nor sends it.
    */
   const claim = state.claim;
+  /**
+   * The project this cost is being recorded on, when the form was opened from
+   * that project's own page. It is stated, never offered: the page the form
+   * came from *is* the answer, and a picker here would let somebody book a
+   * cost on a project they never meant to open.
+   */
+  const fixedProject = state.mode === "create" ? state.project : undefined;
   /**
    * What the form is editing. A create becomes an edit as soon as it is
    * saved, so its receipts can be added without closing and reopening.
@@ -207,12 +240,15 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
       supplier: opened?.supplier ?? "",
       grossAmount: opened && opened.kind === "outlay" ? opened.grossAmount : "",
       vatAmount: opened?.vatAmount ?? "",
-      paidBy: opened?.paidBy ?? "employee",
+      // A cost booked from a project's own page is the company's spending on
+      // it far more often than somebody's own pocket, so that is what it
+      // starts on; the control is still there and still switches the payload.
+      paidBy: opened?.paidBy ?? (fixedProject ? "company" : "employee"),
       fromPlace: opened?.fromPlace ?? "",
       toPlace: opened?.toPlace ?? "",
       distanceKm: opened?.distanceKm ?? "",
       passengers: opened?.passengers ?? 0,
-      projectId: opened?.project ? String(opened.project.id) : null,
+      projectId: opened?.project ? String(opened.project.id) : fixedProject ? String(fixedProject.id) : null,
       billingLineId: opened?.billingLine ? String(opened.billingLine.id) : null,
       billable: opened?.billable ?? false,
     },
@@ -263,7 +299,10 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
       : undefined;
   const missingRate = values.kind === "mileage" && distance > 0 && rates !== undefined && preview === undefined;
 
-  const chosenProject = projects?.find((project) => String(project.id) === values.projectId);
+  // The fixed project carries its own billing lines, so the picker is filled
+  // even before `GET /projects` answers — and on a project whose options the
+  // caller would not otherwise be offered.
+  const chosenProject = fixedProject ?? projects?.find((project) => String(project.id) === values.projectId);
   const keptLine =
     opened?.billingLine &&
     projects !== undefined &&
@@ -385,6 +424,7 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
       // attached to something that exists, and asking somebody to reopen the
       // form they just filled in to add them would be a poor trade.
       const keepOpen = !submitted && saved === undefined && stored.kind === "outlay";
+      onSaved?.(stored);
       setSaved(stored);
       setRevision(stored.revision);
       setAttachments(stored.attachments);
@@ -599,7 +639,37 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
           </>
         )}
 
-        {claim === undefined && meta?.projectsAvailable && (
+        {/* Recorded from a project's own page: the project is a sentence, not
+            a picker, exactly as a trip's line states the trip's project. The
+            billing line and the billable flag are still the caller's to set —
+            they are about this cost, not about which project it is on. */}
+        {claim === undefined && fixedProject !== undefined && meta?.projectsAvailable && (
+          <>
+            <Divider />
+            <Stack gap="xs">
+              <Text size="sm">{t("bookedOnProject", { project: `${fixedProject.code} · ${fixedProject.name}` })}</Text>
+              <Text size="xs" c="dimmed">
+                {t("costFollowsProject")}
+              </Text>
+              <Select
+                label={t("billingLine")}
+                placeholder={t("noBillingLine")}
+                clearable
+                disabled={lineOptions.length === 0}
+                data={lineOptions}
+                {...form.getInputProps("billingLineId")}
+              />
+              <Switch label={t("billable")} {...form.getInputProps("billable", { type: "checkbox" })} />
+              {values.billable && billing === undefined && (
+                <Text size="xs" c="dimmed">
+                  {t("pricingIsTheProjects")}
+                </Text>
+              )}
+            </Stack>
+          </>
+        )}
+
+        {claim === undefined && fixedProject === undefined && meta?.projectsAvailable && (
           <>
             <Divider />
             {projectOptions.length === 0 && !values.projectId ? (

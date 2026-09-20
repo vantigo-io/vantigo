@@ -2,6 +2,7 @@ import type { ExpenseUserRef } from "../api/approvals";
 import type { Claim, ClaimCapabilities } from "../api/claims";
 import type { Expense, ExpenseAttachment, ExpenseCapabilities } from "../api/entries";
 import type { ExpensesMeta } from "../api/meta";
+import type { ProjectExpensesBucket, ProjectExpensesCurrency, ProjectExpensesSummary } from "../api/project-expenses";
 import type { ExpenseProjectOption } from "../api/projects";
 import type { ExpenseRate } from "../api/rates";
 import type { ExpenseSettings } from "../api/settings";
@@ -136,6 +137,43 @@ export const meta = (overrides: Partial<ExpensesMeta> = {}): ExpensesMeta => ({
   categories,
   receiptRequiredOver: 1250,
   capabilities: { canApprove: false, canViewAll: false, canManage: false },
+  ...overrides,
+});
+
+/** The project the panel tests are about — the first of `projectOptions`. */
+export const PROJECT = 1001;
+
+export const summaryBucket = (overrides: Partial<ProjectExpensesBucket> = {}): ProjectExpensesBucket => ({
+  count: 0,
+  cost: 0,
+  billAmount: 0,
+  ...overrides,
+});
+
+/**
+ * One currency of a project's summary. Written out rather than derived so a
+ * test can give `total` a figure that is **not** the three buckets added up —
+ * which is what the server publishes, each bucket having been rounded once on
+ * its own, and the only way to catch a client that adds them itself.
+ */
+export const summaryCurrency = (overrides: Partial<ProjectExpensesCurrency> = {}): ProjectExpensesCurrency => ({
+  currency: "NOK",
+  approved: summaryBucket(),
+  submitted: summaryBucket(),
+  draft: summaryBucket(),
+  total: summaryBucket(),
+  readyCount: 0,
+  readyAmount: 0,
+  invoicedCount: 0,
+  invoicedAmount: 0,
+  unpricedCount: 0,
+  ...overrides,
+});
+
+/** A project's expense totals as the server answers them; nothing recorded by default. */
+export const projectSummary = (overrides: Partial<ProjectExpensesSummary> = {}): ProjectExpensesSummary => ({
+  currencies: [],
+  capabilities: { canRecord: false },
   ...overrides,
 });
 
