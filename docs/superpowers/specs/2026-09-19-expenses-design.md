@@ -173,9 +173,19 @@ the greatest `valid_from ≤ date`.
 
 Seeds (delivery A): `mileage` 5.30 NOK and `mileage_passenger` 1.00 NOK, source
 "State rate", verified against Skatteetaten's published rates on 2026-09-19;
-`mileage_customer` is not seeded (a company's own price). Per diem seeds are
-delivery B's and must be verified against the official source at that time —
-never written from memory.
+`mileage_customer` is not seeded (a company's own price).
+
+Seeds (delivery B), verified on 2026-09-20 against the state's *Særavtale om
+dekning av utgifter til reise og kost innenlands* (in force 2026-01-01 to
+2027-12-31, §§ 6 and 9): `per_diem_6_12` 397 NOK, `per_diem_over_12` 736 NOK,
+`per_diem_overnight_hotel` 1012 NOK, `meal_breakfast_percent` 20,
+`meal_lunch_percent` 30, `meal_dinner_percent` 50 — all `valid_from` 2026-01-01,
+source "State rate". The agreement knows ONE overnight rate; the
+`per_diem_overnight_other` kind is therefore not seeded — it is for a company's
+own rate (the tax authority's lower figures for a boarding house or barracks, for
+instance), and a day of that type cannot be priced until one exists. The
+agreement's unreceipted night supplement (§ 10, 452 NOK) and its conditions on
+distance (over 15 km) are not modelled: an approver judges them.
 
 ### 3.5 `expenses.settings` (single row)
 
