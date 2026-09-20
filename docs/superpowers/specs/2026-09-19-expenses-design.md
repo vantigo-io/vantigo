@@ -313,7 +313,7 @@ project.
 | Settings | `GET|PUT /settings` · `GET|POST /rates` · `PUT|DELETE /rates/{id}` · `POST /rates/reset` · `GET|POST /categories` · `PUT /categories/{id}` |
 | Dashboard | `GET /stats` · `/stats/summary` · `/stats/timeseries` · `/stats/attention` (`approvalWaiting`, `expenseRejected`, `reimbursementWaiting`) |
 | Claims (B) | `GET|POST /claims` · `GET|PUT|DELETE /claims/{id}` · `POST /claims/{id}/per-diem-suggestion` |
-| Per project (C, as built) | `GET /projects/{projectId}/summary` — a project's expenses in sum, **per currency, never converted**, with `projectCurrency`, `lastEntryDate` and `capabilities.canRecord`; for whoever has financial rights on the project (one bare 404 otherwise — `expenses:view-all` / `approve` / `manage` do not grant it, as they do not grant the row-level billing figures) · `GET /entries?projectId=…&toInvoice=true` — the lines behind "ready to invoice" (unit approved, billable, priced, not invoiced, never a per diem day), for the same people (a bare 403 otherwise); the visibility of single expenses does not widen |
+| Per project (C, as built) | `GET /projects/{projectId}/summary` — a project's expenses in sum, **per currency, never converted**, with `projectCurrency`, `lastEntryDate` and `capabilities.canRecord`; for whoever has financial rights on the project (one bare 404 otherwise — `expenses:view-all` / `approve` / `manage` do not grant it, as they do not grant the row-level billing figures) · `GET /entries?projectId=…&toInvoice=true` — the lines behind "ready to invoice" (unit approved, billable, priced, not invoiced, never a per diem day), for the same people (the access layer's uniform 403 otherwise); the visibility of single expenses does not widen |
 
 ## 7. Frontend
 
