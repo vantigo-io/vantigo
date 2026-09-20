@@ -16,11 +16,13 @@ import { jsonResponse } from "./api";
 import { type StubbedFetch, stubFetch } from "./fetch";
 import {
   APPROVER,
+  capabilities as capabilitiesOf,
   categories as defaultCategories,
   meta as defaultMeta,
   rates as defaultRates,
   settings as defaultSettings,
   ME,
+  noCapabilities,
   ownClaimCapabilities,
   ownDraftCapabilities,
   stats,
@@ -958,6 +960,29 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
           claim.abroad !== after.abroad ||
           claim.abroadDayRate !== after.abroadDayRate ||
           claim.abroadCurrency !== after.abroadCurrency;
+        const rePointed = (claim.project?.id ?? undefined) !== (projectAfter?.id ?? undefined);
+        // The whole edit is refused when a day cannot be priced after the
+        // change — a trip turned domestic on a date the table prices no day of
+        // that type — because half a claim repriced is worse than an edit the
+        // caller can undo. Worked out **before** anything is written.
+        if (repriced) {
+          for (const line of linesOf(claim.id).filter((one) => one.kind === "per_diem" && one.perDiem)) {
+            const perDiem = line.perDiem as PerDiem;
+            const { refusal } = pricePerDiem(
+              {
+                kind: "per_diem",
+                entryDate: line.entryDate,
+                perDiemType: perDiem.type,
+                breakfastCovered: perDiem.breakfastCovered,
+                lunchCovered: perDiem.lunchCovered,
+                dinnerCovered: perDiem.dinnerCovered,
+              },
+              after,
+              metaOf().defaultCurrency,
+            );
+            if (refusal) return Promise.resolve(problem(400, "Invalid travel claim", refusal));
+          }
+        }
         Object.assign(claim, {
           purpose: after.purpose,
           destination: after.destination,
@@ -969,12 +994,18 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
           project: projectAfter,
           revision: claim.revision + 1,
         });
-        for (const line of linesOf(claim.id)) {
-          Object.assign(line, {
-            project: projectAfter,
-            ...(projectAfter === undefined ? { billable: false, billingLine: undefined, billing: undefined } : {}),
-            revision: line.revision + 1,
-          });
+        // A line's revision moves when the line does: a re-point, or a
+        // repricing. An unrelated header edit — a new purpose, a wider window
+        // — leaves every line exactly as it was, which is what the server
+        // does and what a row holding its own revision depends on.
+        if (rePointed) {
+          for (const line of linesOf(claim.id)) {
+            Object.assign(line, {
+              project: projectAfter,
+              ...(projectAfter === undefined ? { billable: false, billingLine: undefined, billing: undefined } : {}),
+              revision: line.revision + 1,
+            });
+          }
         }
         if (repriced) {
           // The claim's own money changing reprices every day it holds, in the
@@ -1066,6 +1097,17 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
             return Promise.resolve(
               problem(400, "Invalid expense", { claimId: ["A per diem belongs to a travel claim"] }),
             );
+          // A day must fall inside the trip on a replace as well as on a
+          // create; the server checks both, and the fake used to check only
+          // the create.
+          const zone = metaOf().timeZone;
+          const from = zoneCalendarDate(claim.departureAt, zone);
+          const to = zoneCalendarDate(claim.returnAt, zone);
+          if (update.entryDate < from || update.entryDate > to) {
+            return Promise.resolve(
+              problem(400, "Invalid expense", { entryDate: [`A per diem day falls between ${from} and ${to}`] }),
+            );
+          }
           const clash = linesOf(claim.id).find(
             (line) => line.kind === "per_diem" && line.id !== entry.id && line.entryDate === update.entryDate,
           );
@@ -1172,7 +1214,18 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
         revision: 1,
         createdAt: "2026-09-19T09:00:00Z",
         updatedAt: "2026-09-19T09:00:00Z",
-        capabilities: ownDraftCapabilities,
+        // A claim's line carries **no flow of its own**: it is never
+        // submitted, approved or reimbursed by itself, and it may be changed
+        // only while its claim may be. The server answers exactly this, and a
+        // fake that handed every line `ownDraftCapabilities` would let a
+        // future "submit this line" control pass every test.
+        capabilities: claim
+          ? capabilitiesOf({
+              ...noCapabilities,
+              canEdit: claim.capabilities.canEdit,
+              canDelete: claim.capabilities.canEdit,
+            })
+          : ownDraftCapabilities,
         ...(perDiem ?? priced(input, ratesOf(), metaOf().defaultCurrency)),
       } as Expense;
       entries.push(saved);

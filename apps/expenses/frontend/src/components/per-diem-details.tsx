@@ -8,6 +8,13 @@ export interface PerDiemDetailsProps {
   perDiem: PerDiem;
   /** The line's own currency, which a trip abroad takes from the claim. */
   currency: string;
+  /**
+   * Left out, the block opens with the kind of day. A caller that has already
+   * named the line from its type — the claim's own lines table does, through
+   * `useLineName` — passes true, so the row does not read "Overnight, hotel /
+   * Overnight, hotel / Day rate…".
+   */
+  withoutType?: boolean;
 }
 
 /**
@@ -19,12 +26,12 @@ export interface PerDiemDetailsProps {
  * priced" rather than as a deduction of nothing. The amount itself is the
  * line's `grossAmount` and is never worked out here.
  */
-export const PerDiemDetails = ({ perDiem, currency }: PerDiemDetailsProps) => {
+export const PerDiemDetails = ({ perDiem, currency, withoutType = false }: PerDiemDetailsProps) => {
   const { t } = useI18n("expenses");
   const format = useExpenseFormat();
   return (
     <Stack gap={2}>
-      <Text size="sm">{t(perDiemTypeLabelKey(perDiem.type))}</Text>
+      {!withoutType && <Text size="sm">{t(perDiemTypeLabelKey(perDiem.type))}</Text>}
       <Text size="xs" c="dimmed">
         {`${t("perDiemDayRate")}: ${format.money(perDiem.dayRate, currency)}`}
       </Text>
@@ -36,7 +43,7 @@ export const PerDiemDetails = ({ perDiem, currency }: PerDiemDetailsProps) => {
               : deduction.covered
                 ? t("mealCoveredDeducts", {
                     meal: t(mealLabelKey(deduction.meal)),
-                    percent: format.number(deduction.percent, 0),
+                    percent: format.percent(deduction.percent),
                   })
                 : t("mealNotCovered", { meal: t(mealLabelKey(deduction.meal)) })}
           </Text>

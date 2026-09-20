@@ -17,6 +17,12 @@ export interface BillingModalProps {
   revision: number | undefined;
   onClose: () => void;
   onSaved: (expense: Expense) => void;
+  /**
+   * A 409: the line moved on under the caller. A drawer that lives off a query
+   * reads it again here, so reopening this dialog does not send the same
+   * revision and earn the same refusal.
+   */
+  onConflict?: () => void;
 }
 
 const numeric = (value: number | string): number | undefined => {
@@ -38,18 +44,25 @@ const numeric = (value: number | string): number | undefined => {
  * the line already carries; a line that carries none takes the settings'
  * default markup or the `mileage_customer` rate in force on its date.
  */
-export const BillingModal = ({ expense, revision, onClose, onSaved }: BillingModalProps) => {
+export const BillingModal = ({ expense, revision, onClose, onConflict, onSaved }: BillingModalProps) => {
   const { t } = useI18n("expenses");
   return (
     <Modal opened={expense !== null} onClose={onClose} title={t("setBillingTitle")} centered>
       {expense && (
-        <BillingForm key={expense.id} expense={expense} revision={revision} onClose={onClose} onSaved={onSaved} />
+        <BillingForm
+          key={expense.id}
+          expense={expense}
+          revision={revision}
+          onClose={onClose}
+          onConflict={onConflict}
+          onSaved={onSaved}
+        />
       )}
     </Modal>
   );
 };
 
-const BillingForm = ({ expense, revision, onClose, onSaved }: BillingModalProps & { expense: Expense }) => {
+const BillingForm = ({ expense, revision, onClose, onConflict, onSaved }: BillingModalProps & { expense: Expense }) => {
   const { t } = useI18n("expenses");
   const format = useExpenseFormat();
   const decimalSeparator = useDecimalSeparator();
@@ -114,6 +127,7 @@ const BillingForm = ({ expense, revision, onClose, onSaved }: BillingModalProps 
         }
       }
       const conflict = (error as ApiError).status === 409;
+      if (conflict) onConflict?.();
       notifications.show({
         color: "red",
         title: t("couldNotSaveBilling"),

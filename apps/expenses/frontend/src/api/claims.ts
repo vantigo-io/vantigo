@@ -2,7 +2,7 @@ import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 import type { components } from "../api-schema";
 import type { PerDiemType } from "../lib/per-diem";
 import type { ExpenseStatus } from "../lib/status";
-import type { Expense, FlowResult, PaginatedResponse } from "./entries";
+import type { Expense, PaginatedResponse } from "./entries";
 import { EXPENSES_QUERY_KEY, json, request } from "./request";
 
 type Schemas = components["schemas"];
@@ -131,13 +131,3 @@ export const deleteClaim = (id: number): Promise<void> =>
  */
 export const perDiemSuggestion = (claimId: number, overnight: boolean): Promise<PerDiemSuggestedDay[]> =>
   request<PerDiemSuggestedDay[]>(`/api/v1/expenses/claims/${claimId}/per-diem-suggestion`, json("POST", { overnight }));
-
-/**
- * Submits travel claims for approval. A trip moves as one unit, lines and
- * all, and `capabilities.canSubmit` is optimistic — the server still refuses
- * an empty trip, a line that cannot be priced, one that wants a receipt or a
- * day the trip no longer covers — so the per-id messages on `claimIds` are
- * what the caller is shown.
- */
-export const submitClaims = (claimIds: number[]): Promise<FlowResult> =>
-  request<FlowResult>("/api/v1/expenses/submit", json("POST", { claimIds }));

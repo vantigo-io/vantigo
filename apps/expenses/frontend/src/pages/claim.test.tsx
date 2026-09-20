@@ -307,7 +307,7 @@ describe("ClaimPage", () => {
     const row = await dayRow("Overnight, hotel");
     expect(row).toHaveTextContent("1,012.00");
 
-    await userEvent.click(within(row).getByRole("checkbox", { name: "Breakfast covered on Mar 9, 2026" }));
+    await userEvent.click(within(row).getByRole("checkbox", { name: /^Breakfast covered on Mar 9, 2026/ }));
 
     await waitFor(() => expect(allSent(fetchMock, "PUT")).toHaveLength(1));
     expect(allSent(fetchMock, "PUT")[0].body).toMatchObject({
@@ -332,10 +332,10 @@ describe("ClaimPage", () => {
     const fetchMock = openClaim(aClaim(), [perDiemLine()], { frozenReads: true });
     const row = await dayRow("Overnight, hotel");
 
-    await userEvent.click(within(row).getByRole("checkbox", { name: "Breakfast covered on Mar 9, 2026" }));
+    await userEvent.click(within(row).getByRole("checkbox", { name: /^Breakfast covered on Mar 9, 2026/ }));
     await waitFor(() => expect(allSent(fetchMock, "PUT")).toHaveLength(1));
     await userEvent.click(
-      within(await dayRow("Overnight, hotel")).getByRole("checkbox", { name: "Lunch covered on Mar 9, 2026" }),
+      within(await dayRow("Overnight, hotel")).getByRole("checkbox", { name: /^Lunch covered on Mar 9, 2026/ }),
     );
 
     await waitFor(() => expect(allSent(fetchMock, "PUT")).toHaveLength(2));
@@ -366,7 +366,7 @@ describe("ClaimPage", () => {
     });
     const row = await dayRow("Overnight, hotel");
 
-    await userEvent.click(within(row).getByRole("checkbox", { name: "Breakfast covered on Mar 9, 2026" }));
+    await userEvent.click(within(row).getByRole("checkbox", { name: /^Breakfast covered on Mar 9, 2026/ }));
 
     const refusal = await within(await dayRow("Overnight, hotel")).findByText(
       /No meal_breakfast_percent rate applies on 2026-03-09/,
@@ -387,7 +387,7 @@ describe("ClaimPage", () => {
     const row = await dayRow("Overnight, hotel");
     const readsBefore = fetchMock.actualCalls.filter(([url]) => String(url).includes("/claims/1012")).length;
 
-    await userEvent.click(within(row).getByRole("checkbox", { name: "Lunch covered on Mar 9, 2026" }));
+    await userEvent.click(within(row).getByRole("checkbox", { name: /^Lunch covered on Mar 9, 2026/ }));
 
     // A 409 is not a field error: it belongs in the row's own message, with
     // the sentence that tells the traveller what to do about it.
@@ -441,6 +441,11 @@ describe("ClaimPage", () => {
       distanceKm: 120,
     });
     expect(await screen.findByText("Til anlegget")).toBeInTheDocument();
+    // The line the server answered carries **no flow of its own**: a trip is
+    // submitted as one, never a line at a time.
+    const row = (await screen.findByText("Til anlegget")).closest("[data-expense]") as HTMLElement;
+    expect(within(row).queryByRole("button", { name: /Submit/ })).not.toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "Edit Til anlegget" })).toBeInTheDocument();
   });
 
   it("leaves every project control out where this installation has no projects", async () => {
@@ -645,7 +650,10 @@ describe("ClaimPage", () => {
     });
   });
 
-  it("offers no way to add anything once the trip holds the two hundred it may", async () => {
+  // Two hundred rows with two icon buttons each is the slowest test in the
+  // package — 7 s on a fast machine, and a CI core is slower — so it gets a
+  // limit of its own rather than sitting two seconds under the shared one.
+  it("offers no way to add anything once the trip holds the two hundred it may", { timeout: 30_000 }, async () => {
     const lines = Array.from({ length: 200 }, (_, index) =>
       mileage({ id: 1000 + index, claimId: 1012, entryDate: "2026-03-09", description: `Tur ${index}` }),
     );
@@ -658,6 +666,82 @@ describe("ClaimPage", () => {
     expect(
       screen.getAllByText("This travel claim already holds the 200 expenses a travel claim may hold.").length,
     ).toBeGreaterThan(1);
+  });
+
+  it("walks the traveller's loop: rejected, refused, fixed, sent, read-only", async () => {
+    // Each step is tested alone elsewhere; the defects sat in the seams. The
+    // rejection is dated in the installation's zone, the refusal names a line,
+    // fixing the line clears it, and the resubmit sends one claimIds.
+    const line = outlay({
+      id: 801,
+      claimId: 1012,
+      description: "Hotel Bergen",
+      entryDate: "2026-03-09",
+      status: "rejected",
+      category: { id: 11, name: "Travel" },
+    });
+    let refuse = true;
+    const fetchMock = openClaim(
+      aClaim({
+        status: "rejected",
+        capabilities: claimCapabilities({ canEdit: true, canDelete: true, canSubmit: true }),
+        // 01:00 UTC is the 2nd in Oslo and the 1st in the browser's zone,
+        // which this suite pins to America/New_York.
+        decision: { status: "rejected", at: "2026-04-02T01:00:00Z", reason: "The receipt is missing" },
+      }),
+      [line],
+      {
+        write: (method: string, path: string) =>
+          method === "POST" && path === "/api/v1/expenses/submit" && refuse
+            ? problemResponse(400, "Invalid submission", {
+                claimIds: [
+                  "Travel claim 1012 cannot be submitted: Expense 801 needs a receipt: an outlay the employee paid for more than 1000.00 cannot be submitted without one",
+                ],
+              })
+            : undefined,
+      },
+    );
+    await screen.findByText("Montasje hos kunden");
+
+    expect(screen.getByText(/Rejected on Apr 2, 2026/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Submit claim" }));
+    const row = (await screen.findByText("Hotel Bergen")).closest("[data-expense]") as HTMLElement;
+    expect(await within(row).findByText(/needs a receipt/)).toBeInTheDocument();
+
+    // The traveller puts it right. The sentence described the trip as it was,
+    // so it goes when the line is touched rather than standing until the next
+    // submit and telling them to fix what they have just fixed.
+    refuse = false;
+    await userEvent.click(within(row).getByRole("button", { name: "Edit Hotel Bergen" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit the expense" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(within(row).queryByText(/needs a receipt/)).not.toBeInTheDocument());
+    expect(screen.queryByText(/Could not send the travel claim/)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Submit claim" }));
+    await waitFor(() =>
+      expect(allSent(fetchMock, "POST").at(-1)).toEqual({
+        url: "/api/v1/expenses/submit",
+        body: { claimIds: [1012] },
+      }),
+    );
+    expect(await screen.findByText("Sent for approval")).toBeInTheDocument();
+    // And the trip is nobody's to change any more.
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Add an outlay" })).not.toBeInTheDocument());
+  });
+
+  it("gives a trip's line no flow of its own", async () => {
+    // A line is never submitted, approved or reimbursed by itself — the claim
+    // is the unit — and it may be changed only while the claim may be.
+    openClaim(aClaim({ status: "submitted", capabilities: claimCapabilities() }), [
+      outlay({ id: 801, claimId: 1012, description: "Hotel Bergen", entryDate: "2026-03-09", status: "submitted" }),
+    ]);
+    await screen.findByText("Hotel Bergen");
+
+    expect(screen.queryByRole("button", { name: /Submit Hotel Bergen/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Edit Hotel Bergen/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Delete Hotel Bergen/ })).not.toBeInTheDocument();
   });
 
   it("submits the whole trip as one unit", async () => {

@@ -86,24 +86,6 @@ export const refusalsByUnit = (
   return { byEntry, byClaim, rest };
 };
 
-/** What `refusalsByUnit` answers for a caller that only draws expense rows. */
-export interface RefusalsByEntry {
-  byEntry: Map<number, string[]>;
-  rest: string[];
-}
-
-/**
- * The same refusals, for a page with nowhere to put a travel claim's sentence:
- * a trip's message goes to `rest` and is said out loud rather than dropped.
- */
-export const refusalsByEntry = (
-  error: Error,
-  fields: string | readonly string[] = flowRefusalFields,
-): RefusalsByEntry => {
-  const { byEntry, byClaim, rest } = refusalsByUnit(error, fields);
-  return { byEntry, rest: [...rest, ...[...byClaim.values()].flat()] };
-};
-
 /**
  * The line a travel claim's refusal points at, when it points at one — the
  * submit refuses the whole trip and names the expense that stopped it

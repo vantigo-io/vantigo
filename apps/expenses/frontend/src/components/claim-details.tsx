@@ -153,7 +153,7 @@ export const ClaimDetails = ({
                   <Stack gap={2}>
                     <Text size="sm">{lineName(line)}</Text>
                     {withLineDetails && line.kind === "per_diem" && line.perDiem && (
-                      <PerDiemDetails perDiem={line.perDiem} currency={line.currency} />
+                      <PerDiemDetails perDiem={line.perDiem} currency={line.currency} withoutType />
                     )}
                     {withLineDetails && line.kind === "mileage" && line.distanceKm !== undefined && (
                       <Text size="xs" c="dimmed">

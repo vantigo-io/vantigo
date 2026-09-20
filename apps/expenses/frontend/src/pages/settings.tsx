@@ -196,19 +196,34 @@ const GeneralForm = ({ settings }: { settings: ExpenseSettings }) => {
   });
 
   /** The lock closes a period for everybody but a manager, so it is confirmed out loud. */
+  /**
+   * Two changes are asked about out loud, and the zone is the heavier of the
+   * two: the lock closes a period and can be reopened, while the zone **moves
+   * the days of every trip already recorded** and cannot put them back. The
+   * standing warning beside the field is not the same thing as being asked.
+   */
   const submit = (values: GeneralFormValues) => {
-    if (values.lockedBefore === (settings.lockedBefore ?? null)) {
+    const lockChanged = values.lockedBefore !== (settings.lockedBefore ?? null);
+    const zoneChanged = values.timeZone !== settings.timeZone;
+    if (!lockChanged && !zoneChanged) {
       save.mutate(values);
       return;
     }
     modals.openConfirmModal({
-      title: t("lockChangeTitle"),
+      title: zoneChanged ? t("timeZoneChangeTitle") : t("lockChangeTitle"),
       children: (
-        <Text size="sm">
-          {values.lockedBefore
-            ? t("lockSetConfirm", { date: format.date(values.lockedBefore) })
-            : t("lockClearConfirm")}
-        </Text>
+        <Stack gap="xs">
+          {zoneChanged && (
+            <Text size="sm">{t("timeZoneChangeConfirm", { from: settings.timeZone, to: values.timeZone })}</Text>
+          )}
+          {lockChanged && (
+            <Text size="sm">
+              {values.lockedBefore
+                ? t("lockSetConfirm", { date: format.date(values.lockedBefore) })
+                : t("lockClearConfirm")}
+            </Text>
+          )}
+        </Stack>
       ),
       labels: { confirm: t("save"), cancel: t("cancel") },
       onConfirm: () => save.mutate(values),
