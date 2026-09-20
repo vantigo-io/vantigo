@@ -791,6 +791,10 @@ Either half can be empty while the other is not, and the tab says which:
 | `expenses:view-all` / `approve` / `manage` | **absent** (the summary's 404) | every expense on the project |
 | a plain member | absent | their own |
 
+Everyone in the "absent" column is also refused the *question* "what is ready to
+invoice?" — see the chip below — so the two halves of the tab refuse the same
+callers for the same reason.
+
 A 404 on the totals is never drawn as an error: it means one of three deliberately
 indistinguishable things — no projects module, no such project, no financial rights
 — so the block is simply not there, and the list stands on its own. Any other
@@ -807,12 +811,22 @@ who cannot open the expenses this is the only thing that tells them apart, and t
 **total** is a row of its own rather than the three added up. Billable lines with no
 price are called out — counted, never billed as zero.
 
-**Ready to invoice** is a filter chip beside "All", offered only when the totals
-were readable: it asks the list for `toInvoice=true` on this project and nothing
-else, so the figure in the card and the rows under it are the same set by
-construction. Marking a line invoiced from its drawer moves it straight out of that
-list and out of `readyCount` into `invoicedCount` — invoicing is a stamp, not a
-status, so the line stays an approved one. The undo puts it back.
+**Ready to invoice** is a filter chip beside "All". It asks the list for
+`toInvoice=true` on this project and nothing else, so the figure in the card and
+the rows under it are the same set by construction. Marking a line invoiced from
+its drawer moves it straight out of that list and out of `readyCount` into
+`invoicedCount` — invoicing is a stamp, not a status, so the line stays an
+approved one. The undo puts it back.
+
+**The chip's question is the totals' question**, so it is refused to exactly the
+callers the totals are: what a line *bills* is the project's money, and
+`toInvoice=true` answers everyone in the "absent" column of the table above with
+the access layer's uniform **403** — one body whatever the cause, never an empty
+page that would read as "nothing is ready". The query is validated first, so a
+`toInvoice=true` that contradicts itself is the 400 about the query, whoever
+asked. The tab therefore offers the chip **only when the totals were readable and
+say there is something recorded**; if the rights change between the two reads, the
+refusal is shown in the server's own words and the totals are read again.
 
 **Record a cost** opens the ordinary expense form with the project **stated rather
 than offered** — the page it was opened from is the answer — the billing line picked
