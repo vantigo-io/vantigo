@@ -2,17 +2,17 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import { ProjectExpensesPanel } from "@vantigo/expenses-ui/components/project-expenses-panel";
 import { useI18n } from "@vantigo/frontend-shell";
-import { ModuleNotEnabledPage } from "../../components/errors";
-import { enabledModuleKeys } from "../../lib/enabled-modules";
+import { ModuleTabGate } from "./-module-tab-gate";
 import "../../i18n";
 
 /**
  * The project page's Expenses tab. It lives on the projects page but calls the
- * expenses API, so it gates on the expenses module itself: the tab is hidden
- * without it, but a pasted link must not hit an API that is not mounted. Who
- * may see the project's totals, and which of the expenses behind them, is the
- * panel's own question — the expenses API answers a bare 404 for the figures
- * and shapes the list by its own visibility rule.
+ * expenses API, so it carries that module's own two gates (`ModuleTabGate`):
+ * the tab is hidden without them, and a pasted link must reach neither an API
+ * that is not mounted nor one that refuses every read. Who may see the
+ * project's totals, and which of the expenses behind them, is the panel's own
+ * question — the expenses API answers a bare 404 for the figures and shapes
+ * the list by its own visibility rule.
  *
  * The host is also the only place that may refresh the **Economy** tab's
  * figures when something here changes them. Both tabs read the same expenses,
@@ -27,11 +27,12 @@ export const ProjectExpensesTab = () => {
   const { t } = useI18n("host");
   const { projectId } = useParams({ from: "/projects/$projectId" });
   const queryClient = useQueryClient();
-  if (!enabledModuleKeys().includes("expenses")) return <ModuleNotEnabledPage appLabel={t("navigation.expenses")} />;
   return (
-    <ProjectExpensesPanel
-      projectId={projectId}
-      onChanged={() => void queryClient.invalidateQueries({ queryKey: ["projects", "economy"] })}
-    />
+    <ModuleTabGate module="expenses" permission="expenses:access" appLabel={t("navigation.expenses")}>
+      <ProjectExpensesPanel
+        projectId={projectId}
+        onChanged={() => void queryClient.invalidateQueries({ queryKey: ["projects", "economy"] })}
+      />
+    </ModuleTabGate>
   );
 };

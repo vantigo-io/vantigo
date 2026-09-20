@@ -1,6 +1,8 @@
 import { MantineProvider } from "@mantine/core";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { sessionQueryKey } from "../../api/auth";
 import { ProjectEconomyRoute } from "./-project-economy-route";
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
@@ -16,11 +18,22 @@ vi.mock("@vantigo/projects-ui/pages/project-economy", () => ({
   ),
 }));
 
-const renderRoute = (modules: string[]) => {
+const renderRoute = (modules: string[], permissions: string[] = ["expenses:access"]) => {
   window.__VANTIGO_APP__ = { basePath: "/", title: "Vantigo", support: {}, modules };
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // What the layout above already put there. The link is decided from the same
+  // three answers the tab row is, so it cannot disagree with it.
+  queryClient.setQueryData(sessionQueryKey, { user: { id: "user-1", roles: [] } });
+  queryClient.setQueryData(["authorization", "me", "none"], { permissions });
+  queryClient.setQueryData(["projects", "detail", 31], {
+    id: 31,
+    capabilities: { canManage: true, canContribute: true, canSeeFinancials: true },
+  });
   render(
     <MantineProvider env="test">
-      <ProjectEconomyRoute />
+      <QueryClientProvider client={queryClient}>
+        <ProjectEconomyRoute />
+      </QueryClientProvider>
     </MantineProvider>,
   );
 };
@@ -42,6 +55,16 @@ describe("the project page's economy route", () => {
 
   it("offers no link at all when the installation did not mount expenses", () => {
     renderRoute(["projects"]);
+
+    expect(screen.getByText(/no expenses link/)).toBeInTheDocument();
+  });
+
+  // Economy needs only `projects:*`, so a manager with financial rights and no
+  // Expenses app is an ordinary combination — and every operation of that API
+  // demands `expenses:access`. A link for them would land on a page of
+  // refusals under a tab strip the tab is not even in.
+  it("offers no link to a caller who may not open the Expenses tab", () => {
+    renderRoute(["projects", "expenses"], ["projects:access"]);
 
     expect(screen.getByText(/no expenses link/)).toBeInTheDocument();
   });

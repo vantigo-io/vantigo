@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { sessionQueryKey } from "../../api/auth";
 import { ProjectExpensesTab } from "./-project-expenses-tab";
 import "../../i18n";
 
@@ -32,9 +33,13 @@ vi.mock("@vantigo/expenses-ui/components/project-expenses-panel", () => ({
   ),
 }));
 
-const renderTab = (modules?: string[]) => {
+const renderTab = (modules?: string[], permissions: string[] = ["expenses:access"]) => {
   if (modules) window.__VANTIGO_APP__ = { basePath: "/", title: "Vantigo", support: {}, modules };
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // The layout above this tab has already asked for both, so the gate reads
+  // them from the cache; seeding them is what a click on the tab row does.
+  queryClient.setQueryData(sessionQueryKey, { user: { id: "user-1", roles: [] } });
+  queryClient.setQueryData(["authorization", "me", "none"], { permissions });
   const invalidate = vi.spyOn(queryClient, "invalidateQueries");
   render(
     <MantineProvider env="test">
@@ -56,6 +61,16 @@ describe("the project page's expenses tab", () => {
     renderTab(["projects", "expenses"]);
 
     expect(screen.getByText("expenses for project 31")).toBeInTheDocument();
+  });
+
+  // A pasted URL must not reach an API that will refuse every read: the tab
+  // is not even in the tab strip for this caller, so a panel of red alerts
+  // would be a dead end with nothing to act on.
+  it("renders the forbidden page for a deep link without expenses:access", () => {
+    renderTab(["projects", "expenses"], ["projects:access"]);
+
+    expect(screen.getByRole("heading", { name: "Access denied" })).toBeInTheDocument();
+    expect(screen.queryByText(/expenses for project/)).not.toBeInTheDocument();
   });
 
   it("renders the not-enabled page in place when the installation did not mount expenses", () => {
