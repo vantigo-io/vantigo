@@ -74,6 +74,14 @@ type Deps struct {
 	// though never while it serves; it is nil when time is disabled, which a
 	// caller reads as "time tracking is off".
 	Actuals contracts.ProjectActuals
+	// Expenses is what a project's expenses cost and bill, the one sanctioned
+	// way a module reads another's record of recorded costs (see
+	// contracts.ProjectExpenses). Compose sets it, on every module's Deps
+	// copy, from whichever enabled module declares Module.Expenses, after
+	// Projects — so the provider may read deps.Projects while it is built,
+	// though never while it serves; it is nil when expenses is disabled,
+	// which a caller reads as "expense tracking is off".
+	Expenses contracts.ProjectExpenses
 	// HTTPTransport is the RoundTripper a module's own outbound HTTP client
 	// (customers' Brreg lookup, so far the only one) dials through. nil in
 	// production, meaning http.DefaultTransport; a test harness sets it to a
@@ -153,6 +161,13 @@ type Module struct {
 	// every module's Deps, including the provider's own, the same way it
 	// resolves Directory.
 	Actuals func(Deps) contracts.ProjectActuals
+	// Expenses builds this module's contracts.ProjectExpenses
+	// implementation, if it provides one. At most one enabled module may set
+	// it; Compose calls it before any Mount runs — after it has resolved
+	// Projects, so a provider built here may read deps.Projects — and puts
+	// the result on every module's Deps, including the provider's own, the
+	// same way it resolves Actuals.
+	Expenses func(Deps) contracts.ProjectExpenses
 	// Workers builds this module's background workers (worker.Worker), if
 	// it has any. Unlike Directory, any number of enabled modules may set
 	// it; Workers (workers.go) resolves it from deps the same way — before

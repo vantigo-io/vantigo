@@ -990,6 +990,138 @@ func TestCompose_PresetActualsSurviveWhenNoProvider(t *testing.T) {
 	}
 }
 
+type fakeProjectExpenses struct {
+	projects contracts.ProjectDirectory // whatever Deps carried when it was built
+}
+
+func (*fakeProjectExpenses) ExpensesForProjects(context.Context, []int32) (map[int32]contracts.ProjectExpenseTotals, error) {
+	return nil, nil
+}
+
+// Expenses is the sixth provider slot (contracts.ProjectExpenses) and
+// resolves like the others: before any Mount runs, onto every module's Deps.
+func TestCompose_InjectsExpensesProvider(t *testing.T) {
+	expenses := &fakeProjectExpenses{}
+	var got Deps
+
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "beta", Expenses: func(Deps) contracts.ProjectExpenses { return expenses }, Mount: staticHandler("beta")},
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.Expenses != expenses {
+		t.Errorf("Deps.Expenses = %v, want the provider's expenses", got.Expenses)
+	}
+}
+
+// Expenses resolves after Projects, as Actuals does: a provider may read the
+// project directory while it is built. That it must not call it while it
+// serves is the provider's own test.
+func TestCompose_ExpensesProviderSeesTheProjectDirectory(t *testing.T) {
+	projects := &fakeProjectDirectory{}
+	built := &fakeProjectExpenses{}
+
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "beta", Expenses: func(d Deps) contracts.ProjectExpenses {
+			built.projects = d.Projects
+			return built
+		}, Mount: staticHandler("beta")},
+		Module{Name: "alpha", Projects: func(Deps) contracts.ProjectDirectory { return projects }, Mount: staticHandler("alpha")},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if built.projects != projects {
+		t.Errorf("the expenses provider saw Deps.Projects = %v, want the project directory resolved before it", built.projects)
+	}
+}
+
+// Two modules both declaring Expenses is a compose error naming both.
+func TestCompose_DuplicateExpensesProvider_Fails(t *testing.T) {
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Expenses: func(Deps) contracts.ProjectExpenses { return &fakeProjectExpenses{} }, Mount: staticHandler("alpha")},
+		Module{Name: "beta", Expenses: func(Deps) contracts.ProjectExpenses { return &fakeProjectExpenses{} }, Mount: staticHandler("beta")},
+	)
+	if err == nil {
+		t.Fatal("compose: want an error when two modules declare project expenses")
+	}
+	if !strings.Contains(err.Error(), "project expenses") {
+		t.Errorf("error %q does not say \"project expenses\"", err)
+	}
+	if !strings.Contains(err.Error(), "alpha") || !strings.Contains(err.Error(), "beta") {
+		t.Errorf("error %q does not name both modules", err)
+	}
+}
+
+// With expenses disabled, the consumer's Deps.Expenses is nil rather than the
+// disabled module's provider — which is how projects tells "expense tracking
+// is off" from "nothing recorded".
+func TestCompose_DisabledExpensesProvider_LeavesNil(t *testing.T) {
+	var got Deps
+	_, err := compose(
+		Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha"}}},
+		fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+		Module{Name: "beta", Expenses: func(Deps) contracts.ProjectExpenses { return &fakeProjectExpenses{} }, Mount: staticHandler("beta")},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.Expenses != nil {
+		t.Errorf("Deps.Expenses = %v, want nil: beta (the expenses provider) is disabled", got.Expenses)
+	}
+}
+
+// A value preset on Deps.Expenses survives when no enabled module declares
+// Module.Expenses: the seam modtest.WithExpenses relies on.
+func TestCompose_PresetExpensesSurviveWhenNoProvider(t *testing.T) {
+	preset := &fakeProjectExpenses{}
+	var got Deps
+	_, err := compose(Deps{Access: &fakeAccess{}, Expenses: preset}, fakeLoad(map[string]string{"alpha": alphaContract}),
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.Expenses != preset {
+		t.Errorf("Deps.Expenses = %v, want the preset value to survive with no provider", got.Expenses)
+	}
+}
+
+// The two project-shaped providers are independent: a composition with only
+// one of them leaves the other's slot nil, which is the "Time on, Expenses
+// off" (and the reverse) installation the consumer must handle.
+func TestCompose_ActualsAndExpensesAreIndependentSlots(t *testing.T) {
+	var got Deps
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "beta", Expenses: func(Deps) contracts.ProjectExpenses { return &fakeProjectExpenses{} }, Mount: staticHandler("beta")},
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.Expenses == nil {
+		t.Error("Deps.Expenses = nil, want the provider's expenses")
+	}
+	if got.Actuals != nil {
+		t.Errorf("Deps.Actuals = %v, want nil: no module declares one here", got.Actuals)
+	}
+}
+
 // Decision (task 1): the three new provider slots (Users, Products,
 // Projects) resolve the same way Directory does — before any Mount runs —
 // and each reaches every module's Deps, including a module that provides
