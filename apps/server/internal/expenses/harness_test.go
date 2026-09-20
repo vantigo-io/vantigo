@@ -1052,6 +1052,95 @@ type projectOptionJSON struct {
 	BillingLines []entryLineJSON `json:"billingLines"`
 }
 
+// The pieces of ExpensesProjectSummaryResponse a test reads — what one
+// project's expenses cost and bill, per currency.
+type (
+	summaryBucketJSON struct {
+		Count      int32   `json:"count"`
+		Cost       float64 `json:"cost"`
+		BillAmount float64 `json:"billAmount"`
+	}
+	summaryCurrencyJSON struct {
+		Currency       string            `json:"currency"`
+		Approved       summaryBucketJSON `json:"approved"`
+		Submitted      summaryBucketJSON `json:"submitted"`
+		Draft          summaryBucketJSON `json:"draft"`
+		Total          summaryBucketJSON `json:"total"`
+		ReadyCount     int32             `json:"readyCount"`
+		ReadyAmount    float64           `json:"readyAmount"`
+		InvoicedCount  int32             `json:"invoicedCount"`
+		InvoicedAmount float64           `json:"invoicedAmount"`
+		UnpricedCount  int32             `json:"unpricedCount"`
+	}
+)
+
+// projectSummaryJSON decodes ExpensesProjectSummaryResponse.
+type projectSummaryJSON struct {
+	Currencies    []summaryCurrencyJSON `json:"currencies"`
+	LastEntryDate *string               `json:"lastEntryDate"`
+	Capabilities  struct {
+		CanRecord bool `json:"canRecord"`
+	} `json:"capabilities"`
+}
+
+// projectSummaryPath is where one project's expenses are summed up.
+func projectSummaryPath(id int32) string {
+	return fmt.Sprintf("%s/%d/summary", projectOptionsPath, id)
+}
+
+// getProjectSummary reads a project's expense summary and fails the test
+// unless it answered 200.
+func getProjectSummary(t *testing.T, c *modtest.Client, id int32) projectSummaryJSON {
+	t.Helper()
+	r := c.Do(http.MethodGet, projectSummaryPath(id), nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("get the summary of project %d: status %d body %s, want 200", id, r.Status, r.Body)
+	}
+	var summary projectSummaryJSON
+	r.JSON(&summary)
+	return summary
+}
+
+// rawProjectSummary reads the summary as a bare JSON object, for a test whose
+// subject is whether a key is there at all — a nil pointer cannot tell
+// "absent" from "null".
+func rawProjectSummary(t *testing.T, c *modtest.Client, id int32) map[string]any {
+	t.Helper()
+	r := c.Do(http.MethodGet, projectSummaryPath(id), nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("get the summary of project %d: status %d body %s, want 200", id, r.Status, r.Body)
+	}
+	var raw map[string]any
+	r.JSON(&raw)
+	return raw
+}
+
+// summaryCurrency picks one currency out of a summary, or fails the test.
+func summaryCurrency(t *testing.T, summary projectSummaryJSON, code string) summaryCurrencyJSON {
+	t.Helper()
+	for _, c := range summary.Currencies {
+		if c.Currency == code {
+			return c
+		}
+	}
+	t.Fatalf("no %s among %+v", code, summary.Currencies)
+	return summaryCurrencyJSON{}
+}
+
+// summaryDenied asserts that the summary of a project answers the one bare
+// 404 it refuses everybody with: no projects module, no such project, and no
+// financial rights on it are byte for byte the same answer.
+func summaryDenied(t *testing.T, c *modtest.Client, id int32, who string) {
+	t.Helper()
+	r := c.Do(http.MethodGet, projectSummaryPath(id), nil)
+	if r.Status != http.StatusNotFound {
+		t.Errorf("%s reading the summary of project %d: status %d body %s, want 404", who, id, r.Status, r.Body)
+	}
+	if len(r.Body) > 0 {
+		t.Errorf("%s reading the summary of project %d: body %s, want it empty", who, id, r.Body)
+	}
+}
+
 // outlayBody is a valid minimal outlay — a receipt the employee paid — which
 // tests override one field of at a time. A nil override value removes that
 // field.

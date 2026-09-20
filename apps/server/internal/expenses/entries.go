@@ -1169,6 +1169,36 @@ func validateListParams(p gen.GetExpensesEntriesParams) []string {
 		errs = append(errs, fmt.Sprintf("'kind' must be one of %s, but was '%s'.",
 			strings.Join(entryKinds, ", "), *value))
 	}
+	return append(errs, validateToInvoice(p)...)
+}
+
+// validateToInvoice is the two rules the ready-to-invoice filter carries, both
+// refusals rather than silent answers.
+//
+// It needs a projectId, because that is what the filter is *for*: the figure
+// it is the list behind — readyCount on GET /projects/{projectId}/summary — is
+// a project's, invoicing is done a project at a time, and the same filter
+// across an installation would be a full scan answering a question nobody
+// asked. Without one it is refused rather than quietly ignored.
+//
+// And with toInvoice=true a status other than 'approved' contradicts it: only
+// an approved unit is ever ready, so the pair can only ever answer an empty
+// page. A caller who asked for both meant one of them, and an empty page would
+// not say which was wrong. toInvoice=false says nothing about the status, so
+// no status contradicts it.
+func validateToInvoice(p gen.GetExpensesEntriesParams) []string {
+	if p.ToInvoice == nil {
+		return nil
+	}
+	var errs []string
+	if p.ProjectId == nil {
+		errs = append(errs, "'toInvoice' needs a 'projectId': what is ready to invoice is read one project at a time.")
+	}
+	if status := filterValue(p.Status); *p.ToInvoice && status != nil && *status != statusApproved {
+		errs = append(errs, fmt.Sprintf(
+			"'toInvoice=true' is only ever about approved expenses, so it cannot be combined with 'status=%s'.",
+			*status))
+	}
 	return errs
 }
 
@@ -1229,6 +1259,7 @@ func (s *server) GetExpensesEntries(ctx context.Context, req gen.GetExpensesEntr
 		FromDate:          optionalDate(p.From),
 		ToDate:            optionalDate(p.To),
 		Reimbursed:        p.Reimbursed,
+		ToInvoice:         p.ToInvoice,
 	}
 	total, err := q.CountEntries(ctx, filter)
 	if err != nil {
@@ -1247,6 +1278,7 @@ func (s *server) GetExpensesEntries(ctx context.Context, req gen.GetExpensesEntr
 		FromDate:          filter.FromDate,
 		ToDate:            filter.ToDate,
 		Reimbursed:        filter.Reimbursed,
+		ToInvoice:         filter.ToInvoice,
 		PageSize:          pageSize,
 		PageOffset:        (page - 1) * pageSize,
 	})

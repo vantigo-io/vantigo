@@ -29,6 +29,12 @@ WHERE ($1::boolean
   AND ($11::date IS NULL OR e.entry_date <= $11::date)
   AND ($12::boolean IS NULL
        OR (COALESCE(c.reimbursed_at, e.reimbursed_at) IS NOT NULL) = $12::boolean)
+  AND ($13::boolean IS NULL
+       OR (COALESCE(c.status, e.status) = 'approved'
+           AND e.billable
+           AND e.kind <> 'per_diem'
+           AND e.bill_amount IS NOT NULL
+           AND e.invoiced_at IS NULL) = $13::boolean)
 `
 
 type CountEntriesParams struct {
@@ -44,6 +50,7 @@ type CountEntriesParams struct {
 	FromDate          pgtype.Date
 	ToDate            pgtype.Date
 	Reimbursed        *bool
+	ToInvoice         *bool
 }
 
 // CountEntries counts what ListEntries pages through, under exactly the same
@@ -62,6 +69,16 @@ type CountEntriesParams struct {
 // standalone and claim_id narrow the list to one side of that distinction; an
 // absent standalone leaves both in, so the list a client that knows nothing of
 // claims asks for is exactly the list it always got.
+//
+// to_invoice is the "ready to invoice" predicate, word for word the one
+// ProjectExpenseGroups counts its ready_count by: the unit is approved, the
+// line is billable, it is not a per diem day, it carries a bill amount and
+// nobody has invoiced it yet.
+// The two must stay the same sentence — the project page shows the figure as
+// the header of this very list — so a change to one is a change to both.
+// Note it reads the *unit's* status, which is why the claim join matters here
+// too: ix_entries_to_invoice's own predicate is on the entry's column, so a
+// trip's line (whose column stays at 'draft') can never be found through it.
 func (q *Queries) CountEntries(ctx context.Context, arg CountEntriesParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countEntries,
 		arg.SeeAll,
@@ -76,6 +93,7 @@ func (q *Queries) CountEntries(ctx context.Context, arg CountEntriesParams) (int
 		arg.FromDate,
 		arg.ToDate,
 		arg.Reimbursed,
+		arg.ToInvoice,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -350,8 +368,14 @@ WHERE ($1::boolean
   AND ($11::date IS NULL OR e.entry_date <= $11::date)
   AND ($12::boolean IS NULL
        OR (COALESCE(c.reimbursed_at, e.reimbursed_at) IS NOT NULL) = $12::boolean)
+  AND ($13::boolean IS NULL
+       OR (COALESCE(c.status, e.status) = 'approved'
+           AND e.billable
+           AND e.kind <> 'per_diem'
+           AND e.bill_amount IS NOT NULL
+           AND e.invoiced_at IS NULL) = $13::boolean)
 ORDER BY e.entry_date DESC, e.id DESC
-LIMIT $14 OFFSET $13
+LIMIT $15 OFFSET $14
 `
 
 type ListEntriesParams struct {
@@ -367,6 +391,7 @@ type ListEntriesParams struct {
 	FromDate          pgtype.Date
 	ToDate            pgtype.Date
 	Reimbursed        *bool
+	ToInvoice         *bool
 	PageOffset        int32
 	PageSize          int32
 }
@@ -387,6 +412,7 @@ func (q *Queries) ListEntries(ctx context.Context, arg ListEntriesParams) ([]Exp
 		arg.FromDate,
 		arg.ToDate,
 		arg.Reimbursed,
+		arg.ToInvoice,
 		arg.PageOffset,
 		arg.PageSize,
 	)

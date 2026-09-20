@@ -1231,6 +1231,99 @@ components:
                 - id
                 - code
             type: object
+        ExpensesProjectSummaryBucket:
+            description: One bucket of a project's expenses in one currency — what they cost the project and what they bill its customer. A figure is rounded once from the unrounded sum, so the three buckets must never be added together to make the total; read 'total' instead.
+            properties:
+                billAmount:
+                    description: What the billable lines in this bucket bill the customer. A billable line carrying no price adds nothing here and is counted in 'unpricedCount' instead — a missing price is not a price of nothing.
+                    format: double
+                    type: number
+                cost:
+                    description: What the lines cost the project — the net, the gross less the VAT, whoever paid. An outlay the company paid costs exactly what one the employee is reimbursed for does.
+                    format: double
+                    type: number
+                count:
+                    description: How many expense lines are in this bucket.
+                    format: int32
+                    type: integer
+            required:
+                - count
+                - cost
+                - billAmount
+            type: object
+        ExpensesProjectSummaryCapabilities:
+            description: What the caller may do about this project's expenses, so the tab needs no permission logic of its own.
+            properties:
+                canRecord:
+                    description: Whether the caller may book an expense on this project — projects' own CanLogTime, the rule a create is judged by (decision X9), so a "Record a cost" button can never offer what the save would refuse. It is false for somebody who may read these figures without being on the project's team.
+                    type: boolean
+            required:
+                - canRecord
+            type: object
+        ExpensesProjectSummaryCurrency:
+            description: 'One currency''s figures for the project. A line carries its own currency, which may be neither its travel claim''s nor its project''s, so the figures are reported per currency and **nothing is ever converted**: a caller comparing them with a project''s budget has to decide for itself which currency is the project''s. The three status buckets are the **unit''s** status — a travel claim''s line is judged by its claim — and a **rejected** expense counts as draft, because it is back with its owner to fix and resubmit, exactly as Time buckets a rejected entry. There is no invoiced bucket: invoicing is a stamp, not a status, so an invoiced line is still an approved one.'
+            properties:
+                approved:
+                    $ref: '#/components/schemas/ExpensesProjectSummaryBucket'
+                currency:
+                    description: The ISO 4217 code the lines were recorded in.
+                    type: string
+                draft:
+                    $ref: '#/components/schemas/ExpensesProjectSummaryBucket'
+                invoicedAmount:
+                    description: What the invoiced lines billed. Per currency, never added across currencies.
+                    format: double
+                    type: number
+                invoicedCount:
+                    description: How many lines have been marked invoiced.
+                    format: int32
+                    type: integer
+                readyAmount:
+                    description: What the lines waiting to be invoiced bill together. Per currency, never added across currencies.
+                    format: double
+                    type: number
+                readyCount:
+                    description: 'How many lines are **ready to invoice**: the unit is approved, the line is billable, it carries a bill amount, and it has not been invoiced yet. It is exactly what GET /entries?toInvoice=true lists, so the figure and the list can never disagree.'
+                    format: int32
+                    type: integer
+                submitted:
+                    $ref: '#/components/schemas/ExpensesProjectSummaryBucket'
+                total:
+                    $ref: '#/components/schemas/ExpensesProjectSummaryBucket'
+                unpricedCount:
+                    description: How many billable lines carry no bill amount — billable mileage with no customer rate, say. They are counted rather than billed as zero, so the figure is the work still to do before the project can invoice them.
+                    format: int32
+                    type: integer
+            required:
+                - currency
+                - approved
+                - submitted
+                - draft
+                - total
+                - readyCount
+                - readyAmount
+                - invoicedCount
+                - invoicedAmount
+                - unpricedCount
+            type: object
+        ExpensesProjectSummaryResponse:
+            description: What one project's expenses cost and bill, in sum. It is computed by the very code contracts.ProjectExpenses answers the projects module with, so the Expenses tab's figures and the Economy tab's can never drift apart.
+            properties:
+                capabilities:
+                    $ref: '#/components/schemas/ExpensesProjectSummaryCapabilities'
+                currencies:
+                    description: One entry per currency anything was recorded in, by code ascending. Empty when the project has no expenses at all — which is a project with nothing recorded, never a project the caller may not see.
+                    items:
+                        $ref: '#/components/schemas/ExpensesProjectSummaryCurrency'
+                    type: array
+                lastEntryDate:
+                    description: The entry date of the project's most recent expense, over every currency and every status. Absent when nothing has been recorded.
+                    format: date
+                    type: string
+            required:
+                - currencies
+                - capabilities
+            type: object
         ExpensesRateOverrideRequest:
             description: A replacement rate for one submitted mileage line or per diem day (decision X8). It reprices the line's amount and nothing else — the customer's own rate per kilometre is untouched — and records who set it and what the rate table had said.
             properties:
@@ -2240,6 +2333,11 @@ paths:
                   name: reimbursed
                   schema:
                     type: boolean
+                - description: 'true lists only the lines **ready to invoice** — the unit is approved, the line is billable, it carries a bill amount and it has not been invoiced yet — which is exactly the rule behind readyCount on GET /api/v1/expenses/projects/{projectId}/summary, so the list and the figure can never disagree; false lists everything else. It needs a projectId, because invoicing is done a project at a time, and is refused without one. With true, a status other than ''approved'' contradicts it and is refused rather than quietly answering an empty page. It widens nothing: a caller who may not see a project''s expenses still gets none of them here, however many the summary counts.'
+                  in: query
+                  name: toInvoice
+                  schema:
+                    type: boolean
                 - in: query
                   name: page
                   schema:
@@ -2262,7 +2360,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: common.yaml#/components/schemas/ProblemDetails
-                    description: Bad Request — paging out of range, or an unknown status or kind.
+                    description: Bad Request — paging out of range, an unknown status or kind, or toInvoice without a projectId or against a contradictory status.
                 "401":
                     content:
                         application/json:
@@ -2849,6 +2947,43 @@ paths:
                                 $ref: common.yaml#/components/schemas/ProblemDetails
                     description: Not Found — this installation has no projects module.
             summary: List the projects an expense may be booked on
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access
+    /api/v1/expenses/projects/{projectId}/summary:
+        get:
+            description: 'What one project''s expenses cost and bill, in sum — the Expenses tab on the project page. It is for whoever has **financial rights on the project**: its manager, projects:manage-all, or projects:view-financials on a project they can see. expenses:manage, expenses:approve and expenses:view-all do not grant it — they open other people''s expenses, not a project''s money, which is the same rule pricing a line is held to. Everybody else, an unknown project and an installation with no projects module are one and the same **bare 404**, so nothing here says whether a project exists. The figures are aggregates only: they do not widen who may see an individual expense, so a reader who is not the project''s manager may well see these totals over a list (GET /entries?projectId=) that answers them nothing. Everything is per currency and **nothing is converted**; a rejected expense counts as draft.'
+            operationId: getExpensesProjectSummary
+            parameters:
+                - description: The project to sum up, as the projects module numbers it.
+                  in: path
+                  name: projectId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ExpensesProjectSummaryResponse'
+                    description: OK — a project with nothing recorded answers an empty currencies list, not a 404.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — this installation has no projects module, no project has that id, or the caller has no financial rights on it. The three are one answer with an empty body, so none of them can be told from the others.
+            summary: Sum up a project's expenses
             tags:
                 - Expenses
             x-vantigo-access: permission:expenses:access

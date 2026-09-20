@@ -1472,6 +1472,11 @@ func TestExpensesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	// using, and the first symptom is a sequential scan on every dashboard
 	// paint. The payroll one is the only index that serves
 	// StatsReimbursementsWaiting, which has no user predicate at all.
+	//
+	// applyUpDownUp ends with every migration applied, so the invoicing one is
+	// 00014's predicate here, not the one this migration created — see
+	// TestExpensesToInvoiceIndex_ReplacesTheOneNoReadCouldUse for why it was
+	// replaced.
 	for _, want := range []struct {
 		name      string
 		columns   []string
@@ -1483,7 +1488,7 @@ func TestExpensesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		},
 		{
 			"ix_entries_to_invoice", []string{"project_id", "entry_date"},
-			"WHERE (((status)::text = 'approved'::text) AND billable AND (invoiced_at IS NULL))",
+			"WHERE (billable AND (invoiced_at IS NULL))",
 		},
 	} {
 		if cols := indexColumns(t, ctx, pool, "expenses", want.name); !equalStrings(cols, want.columns) {
@@ -1821,6 +1826,63 @@ func TestExpensesClaims_TheDownMigrationKeepsACompanysOwnRates(t *testing.T) {
 	if shipped != 0 {
 		t.Errorf("the edited shipped row is still there, want the rollback to take it with the rest of its seeds")
 	}
+}
+
+// TestExpensesToInvoiceIndex_ReplacesTheOneNoReadCouldUse proves
+// 00014_expenses_to_invoice_index.sql applies, rolls back and re-applies
+// cleanly, and pins both predicates: the one the reads can use, and 00012's,
+// which a rollback has to put back exactly.
+//
+// The predicate is the whole point of the migration. 00012's named `status`,
+// which on a travel claim's line is the default 'draft' nobody reads — every
+// read of this module judges a line by its *unit*, COALESCE(claim.status,
+// entry.status) — so an approved trip's billable line is ready to invoice
+// while its own column says otherwise, and the index could not find it. The
+// planner did not choose it at all: measured on a 206 000-row table, dropping
+// it changed neither the plan nor the buffers, while the predicate below cut
+// the candidate rows from 6 100 to 1 357 and the heap blocks from 226 to 149.
+// If a later change puts `status` back into this predicate, it is dead weight
+// again and this test is what says so.
+func TestExpensesToInvoiceIndex_ReplacesTheOneNoReadCouldUse(t *testing.T) {
+	url := testdb.URL(t)
+	applyUpDownUp(t, url, 14) // 00014_expenses_to_invoice_index.sql
+
+	ctx := context.Background()
+	pool, err := db.Open(ctx, url)
+	if err != nil {
+		t.Fatalf("open pool: %v", err)
+	}
+	defer pool.Close()
+
+	if cols := indexColumns(t, ctx, pool, "expenses", "ix_entries_to_invoice"); !equalStrings(cols, []string{"project_id", "entry_date"}) {
+		t.Errorf("ix_entries_to_invoice columns = %v, want [project_id entry_date]", cols)
+	}
+	if def := indexDefinition(t, ctx, pool, "expenses", "ix_entries_to_invoice"); !strings.HasSuffix(def, "WHERE (billable AND (invoiced_at IS NULL))") {
+		t.Errorf("ix_entries_to_invoice = %q, want it to end in WHERE (billable AND (invoiced_at IS NULL))", def)
+	}
+
+	// Down puts 00012's index back exactly, so an installation that rolls this
+	// migration back is the installation 00012 described.
+	migrateTo(t, url, 13)
+	want := "WHERE (((status)::text = 'approved'::text) AND billable AND (invoiced_at IS NULL))"
+	if def := indexDefinition(t, ctx, pool, "expenses", "ix_entries_to_invoice"); !strings.HasSuffix(def, want) {
+		t.Errorf("after the rollback ix_entries_to_invoice = %q, want it to end in %q", def, want)
+	}
+}
+
+// indexDefinition is one index's CREATE INDEX text, or a failed test.
+func indexDefinition(t *testing.T, ctx context.Context, pool *pgxpool.Pool, schema, name string) string {
+	t.Helper()
+	var def string
+	if err := pool.QueryRow(ctx, `
+		SELECT pg_get_indexdef(i.indexrelid)
+		FROM pg_index i
+		JOIN pg_class ic ON ic.oid = i.indexrelid
+		JOIN pg_namespace n ON n.oid = ic.relnamespace
+		WHERE n.nspname = $1 AND ic.relname = $2`, schema, name).Scan(&def); err != nil {
+		t.Fatalf("query %s.%s: %v", schema, name, err)
+	}
+	return def
 }
 
 // migrateTo moves the database to exactly version, up or down.

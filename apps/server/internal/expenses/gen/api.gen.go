@@ -808,6 +808,69 @@ type ExpensesProjectOptionBillingLine struct {
 	Id   int32  `json:"id"`
 }
 
+// ExpensesProjectSummaryBucket One bucket of a project's expenses in one currency — what they cost the project and what they bill its customer. A figure is rounded once from the unrounded sum, so the three buckets must never be added together to make the total; read 'total' instead.
+type ExpensesProjectSummaryBucket struct {
+	// BillAmount What the billable lines in this bucket bill the customer. A billable line carrying no price adds nothing here and is counted in 'unpricedCount' instead — a missing price is not a price of nothing.
+	BillAmount float64 `json:"billAmount"`
+
+	// Cost What the lines cost the project — the net, the gross less the VAT, whoever paid. An outlay the company paid costs exactly what one the employee is reimbursed for does.
+	Cost float64 `json:"cost"`
+
+	// Count How many expense lines are in this bucket.
+	Count int32 `json:"count"`
+}
+
+// ExpensesProjectSummaryCapabilities What the caller may do about this project's expenses, so the tab needs no permission logic of its own.
+type ExpensesProjectSummaryCapabilities struct {
+	// CanRecord Whether the caller may book an expense on this project — projects' own CanLogTime, the rule a create is judged by (decision X9), so a "Record a cost" button can never offer what the save would refuse. It is false for somebody who may read these figures without being on the project's team.
+	CanRecord bool `json:"canRecord"`
+}
+
+// ExpensesProjectSummaryCurrency One currency's figures for the project. A line carries its own currency, which may be neither its travel claim's nor its project's, so the figures are reported per currency and **nothing is ever converted**: a caller comparing them with a project's budget has to decide for itself which currency is the project's. The three status buckets are the **unit's** status — a travel claim's line is judged by its claim — and a **rejected** expense counts as draft, because it is back with its owner to fix and resubmit, exactly as Time buckets a rejected entry. There is no invoiced bucket: invoicing is a stamp, not a status, so an invoiced line is still an approved one.
+type ExpensesProjectSummaryCurrency struct {
+	// Approved One bucket of a project's expenses in one currency — what they cost the project and what they bill its customer. A figure is rounded once from the unrounded sum, so the three buckets must never be added together to make the total; read 'total' instead.
+	Approved ExpensesProjectSummaryBucket `json:"approved"`
+
+	// Currency The ISO 4217 code the lines were recorded in.
+	Currency string `json:"currency"`
+
+	// Draft One bucket of a project's expenses in one currency — what they cost the project and what they bill its customer. A figure is rounded once from the unrounded sum, so the three buckets must never be added together to make the total; read 'total' instead.
+	Draft ExpensesProjectSummaryBucket `json:"draft"`
+
+	// InvoicedAmount What the invoiced lines billed. Per currency, never added across currencies.
+	InvoicedAmount float64 `json:"invoicedAmount"`
+
+	// InvoicedCount How many lines have been marked invoiced.
+	InvoicedCount int32 `json:"invoicedCount"`
+
+	// ReadyAmount What the lines waiting to be invoiced bill together. Per currency, never added across currencies.
+	ReadyAmount float64 `json:"readyAmount"`
+
+	// ReadyCount How many lines are **ready to invoice**: the unit is approved, the line is billable, it carries a bill amount, and it has not been invoiced yet. It is exactly what GET /entries?toInvoice=true lists, so the figure and the list can never disagree.
+	ReadyCount int32 `json:"readyCount"`
+
+	// Submitted One bucket of a project's expenses in one currency — what they cost the project and what they bill its customer. A figure is rounded once from the unrounded sum, so the three buckets must never be added together to make the total; read 'total' instead.
+	Submitted ExpensesProjectSummaryBucket `json:"submitted"`
+
+	// Total One bucket of a project's expenses in one currency — what they cost the project and what they bill its customer. A figure is rounded once from the unrounded sum, so the three buckets must never be added together to make the total; read 'total' instead.
+	Total ExpensesProjectSummaryBucket `json:"total"`
+
+	// UnpricedCount How many billable lines carry no bill amount — billable mileage with no customer rate, say. They are counted rather than billed as zero, so the figure is the work still to do before the project can invoice them.
+	UnpricedCount int32 `json:"unpricedCount"`
+}
+
+// ExpensesProjectSummaryResponse What one project's expenses cost and bill, in sum. It is computed by the very code contracts.ProjectExpenses answers the projects module with, so the Expenses tab's figures and the Economy tab's can never drift apart.
+type ExpensesProjectSummaryResponse struct {
+	// Capabilities What the caller may do about this project's expenses, so the tab needs no permission logic of its own.
+	Capabilities ExpensesProjectSummaryCapabilities `json:"capabilities"`
+
+	// Currencies One entry per currency anything was recorded in, by code ascending. Empty when the project has no expenses at all — which is a project with nothing recorded, never a project the caller may not see.
+	Currencies []ExpensesProjectSummaryCurrency `json:"currencies"`
+
+	// LastEntryDate The entry date of the project's most recent expense, over every currency and every status. Absent when nothing has been recorded.
+	LastEntryDate *openapi_types.Date `json:"lastEntryDate,omitempty"`
+}
+
 // ExpensesRateOverrideRequest A replacement rate for one submitted mileage line or per diem day (decision X8). It reprices the line's amount and nothing else — the customer's own rate per kilometre is untouched — and records who set it and what the rate table had said.
 type ExpensesRateOverrideRequest struct {
 	// PassengerRate The passenger supplement per kilometre, 0 or more with at most two decimals. Only on a mileage line that carries passengers; left out, the line keeps the supplement it was frozen with. Refused on a per diem day, which carries no supplement.
@@ -1074,9 +1137,12 @@ type GetExpensesEntriesParams struct {
 	To *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
 
 	// Reimbursed Narrows the list to what has been reimbursed, or to what has not. Left out, both are in it.
-	Reimbursed *bool  `form:"reimbursed,omitempty" json:"reimbursed,omitempty"`
-	Page       *int32 `form:"page,omitempty" json:"page,omitempty"`
-	PageSize   *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+	Reimbursed *bool `form:"reimbursed,omitempty" json:"reimbursed,omitempty"`
+
+	// ToInvoice true lists only the lines **ready to invoice** — the unit is approved, the line is billable, it carries a bill amount and it has not been invoiced yet — which is exactly the rule behind readyCount on GET /api/v1/expenses/projects/{projectId}/summary, so the list and the figure can never disagree; false lists everything else. It needs a projectId, because invoicing is done a project at a time, and is refused without one. With true, a status other than 'approved' contradicts it and is refused rather than quietly answering an empty page. It widens nothing: a caller who may not see a project's expenses still gets none of them here, however many the summary counts.
+	ToInvoice *bool  `form:"toInvoice,omitempty" json:"toInvoice,omitempty"`
+	Page      *int32 `form:"page,omitempty" json:"page,omitempty"`
+	PageSize  *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
 
 // PostExpensesEntriesByIdAttachmentsMultipartBody defines parameters for PostExpensesEntriesByIdAttachments.
@@ -1287,6 +1353,9 @@ type ServerInterface interface {
 	// GetExpensesProjects List the projects an expense may be booked on
 	// (GET /api/v1/expenses/projects)
 	GetExpensesProjects(w http.ResponseWriter, r *http.Request, params GetExpensesProjectsParams)
+	// GetExpensesProjectSummary Sum up a project's expenses
+	// (GET /api/v1/expenses/projects/{projectId}/summary)
+	GetExpensesProjectSummary(w http.ResponseWriter, r *http.Request, projectId int32)
 	// GetExpensesRates List the expense rates
 	// (GET /api/v1/expenses/rates)
 	GetExpensesRates(w http.ResponseWriter, r *http.Request)
@@ -1873,6 +1942,19 @@ func (siw *ServerInterfaceWrapper) GetExpensesEntries(w http.ResponseWriter, r *
 		return
 	}
 
+	// ------------- Optional query parameter "toInvoice" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "toInvoice", r.URL.Query(), &params.ToInvoice, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "toInvoice"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "toInvoice", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "page" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
@@ -2196,6 +2278,32 @@ func (siw *ServerInterfaceWrapper) GetExpensesProjects(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetExpensesProjects(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetExpensesProjectSummary operation middleware
+func (siw *ServerInterfaceWrapper) GetExpensesProjectSummary(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "projectId" -------------
+	var projectId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "projectId", r.PathValue("projectId"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetExpensesProjectSummary(w, r, projectId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2872,6 +2980,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/expenses/entries/{id}/rate", wrapper.PutExpensesEntriesByIdRate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/meta", wrapper.GetExpensesMeta)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/projects", wrapper.GetExpensesProjects)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/projects/{projectId}/summary", wrapper.GetExpensesProjectSummary)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/rates", wrapper.GetExpensesRates)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/rates", wrapper.PostExpensesRates)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/rates/reset", wrapper.PostExpensesRatesReset)
@@ -4768,6 +4877,64 @@ func (response GetExpensesProjects404ApplicationProblemPlusJSONResponse) VisitGe
 	return err
 }
 
+type GetExpensesProjectSummaryRequestObject struct {
+	ProjectId int32 `json:"projectId"`
+}
+
+type GetExpensesProjectSummaryResponseObject interface {
+	VisitGetExpensesProjectSummaryResponse(w http.ResponseWriter) error
+}
+
+type GetExpensesProjectSummary200JSONResponse ExpensesProjectSummaryResponse
+
+func (response GetExpensesProjectSummary200JSONResponse) VisitGetExpensesProjectSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesProjectSummary401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesProjectSummary401JSONResponse) VisitGetExpensesProjectSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesProjectSummary403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesProjectSummary403JSONResponse) VisitGetExpensesProjectSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesProjectSummary404Response struct {
+}
+
+func (response GetExpensesProjectSummary404Response) VisitGetExpensesProjectSummaryResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
 type GetExpensesRatesRequestObject struct {
 }
 
@@ -5943,6 +6110,9 @@ type StrictServerInterface interface {
 	// GetExpensesProjects List the projects an expense may be booked on
 	// (GET /api/v1/expenses/projects)
 	GetExpensesProjects(ctx context.Context, request GetExpensesProjectsRequestObject) (GetExpensesProjectsResponseObject, error)
+	// GetExpensesProjectSummary Sum up a project's expenses
+	// (GET /api/v1/expenses/projects/{projectId}/summary)
+	GetExpensesProjectSummary(ctx context.Context, request GetExpensesProjectSummaryRequestObject) (GetExpensesProjectSummaryResponseObject, error)
 	// GetExpensesRates List the expense rates
 	// (GET /api/v1/expenses/rates)
 	GetExpensesRates(ctx context.Context, request GetExpensesRatesRequestObject) (GetExpensesRatesResponseObject, error)
@@ -6786,6 +6956,32 @@ func (sh *strictHandler) GetExpensesProjects(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetExpensesProjectsResponseObject); ok {
 		if err := validResponse.VisitGetExpensesProjectsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetExpensesProjectSummary operation middleware
+func (sh *strictHandler) GetExpensesProjectSummary(w http.ResponseWriter, r *http.Request, projectId int32) {
+	var request GetExpensesProjectSummaryRequestObject
+
+	request.ProjectId = projectId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetExpensesProjectSummary(ctx, request.(GetExpensesProjectSummaryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetExpensesProjectSummary")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetExpensesProjectSummaryResponseObject); ok {
+		if err := validResponse.VisitGetExpensesProjectSummaryResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

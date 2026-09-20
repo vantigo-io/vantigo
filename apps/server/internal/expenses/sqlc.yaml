@@ -8,6 +8,7 @@ sql:
     schema:
       - ../db/migrations/00012_expenses_baseline.sql
       - ../db/migrations/00013_expenses_claims.sql
+      - ../db/migrations/00014_expenses_to_invoice_index.sql
     queries: queries
     gen:
       go:
