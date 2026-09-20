@@ -1,7 +1,8 @@
 import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 import { appUrl } from "@vantigo/frontend-shell";
 import type { components } from "../api-schema";
-import type { Expense, FlowResult, PaginatedResponse } from "./entries";
+import type { Expense, FlowResult, FlowUnits, PaginatedResponse } from "./entries";
+import { unitsBody } from "./entries";
 import { ApiValidationError, EXPENSES_QUERY_KEY, handleUnauthorized, json, readJson, request } from "./request";
 
 type Schemas = components["schemas"];
@@ -49,16 +50,21 @@ export const expenseReimbursementsQueryOptions = (filters: ReimbursementFilters)
     placeholderData: keepPreviousData,
   });
 
-/**
- * Marks approved expenses as paid back — one payroll run, with the day it was
- * made and a reference whoever made it can find it by. All or nothing.
- */
-export const markExpensesReimbursed = (input: ReimbursedInput): Promise<FlowResult> =>
-  request<FlowResult>("/api/v1/expenses/reimbursed", json("POST", input));
+/** What one payroll run pays for: the units, the day it was made and its reference. */
+export type ReimbursedUnits = FlowUnits & { date: string; reference?: string };
 
-/** Takes the reimbursement stamp back off expenses that were paid by mistake. */
-export const undoExpensesReimbursed = (entryIds: number[]): Promise<FlowResult> =>
-  request<FlowResult>("/api/v1/expenses/reimbursed/undo", json("POST", { entryIds }));
+/**
+ * Marks approved units as paid back — one payroll run, with the day it was
+ * made and a reference whoever made it can find it by. Standalone expenses and
+ * whole travel claims go in one request; a trip is paid as one unit, for the
+ * sum of what its lines owe. All or nothing, and an empty list is left out.
+ */
+export const markUnitsReimbursed = ({ entryIds, claimIds, ...run }: ReimbursedUnits): Promise<FlowResult> =>
+  request<FlowResult>("/api/v1/expenses/reimbursed", json("POST", { ...unitsBody({ entryIds, claimIds }), ...run }));
+
+/** Takes the reimbursement stamp back off units that were paid by mistake. */
+export const undoUnitsReimbursed = (units: FlowUnits): Promise<FlowResult> =>
+  request<FlowResult>("/api/v1/expenses/reimbursed/undo", json("POST", unitsBody(units)));
 
 export interface CsvDownload {
   blob: Blob;
@@ -86,16 +92,23 @@ const fileNameFrom = (disposition: string | null): string => {
  * detail asking for a narrower filter. Reading the body ourselves is what lets
  * all three be shown.
  *
- * `entryIds` replaces the filters when it is given, and an *empty* one is
- * refused rather than read as "everything" — so the page never sends one.
+ * A selection replaces the filters when it is given, and one that is
+ * **present but names nothing at all** is refused rather than read as
+ * "everything" — so "export everything" passes no selection, and a selection
+ * of trips alone sends `claimIds` and no `entryIds` parameter at all. One of a
+ * claim's lines named on `entryIds` is refused and pointed at its claim, even
+ * when `claimIds` names that claim too: a payroll file holds a trip whole or
+ * not at all.
  */
 export const downloadReimbursementsCsv = async (
   filters: ReimbursementFilters,
-  entryIds?: number[],
+  selection?: FlowUnits,
 ): Promise<CsvDownload> => {
-  const query = entryIds === undefined ? filterQuery(filters) : new URLSearchParams();
+  const picked = selection === undefined ? undefined : unitsBody(selection);
+  const query = picked === undefined ? filterQuery(filters) : new URLSearchParams();
   query.delete("page");
-  for (const id of entryIds ?? []) query.append("entryIds", String(id));
+  for (const id of picked?.entryIds ?? []) query.append("entryIds", String(id));
+  for (const id of picked?.claimIds ?? []) query.append("claimIds", String(id));
   const response = await fetch(appUrl(`/api/v1/expenses/reimbursements/export.csv?${query.toString()}`), {
     credentials: "include",
   });

@@ -2,7 +2,19 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { problemResponse, sent } from "../test/api";
-import { capabilities, mileage, OTHER, outlay, projectOptions, submitted } from "../test/fixtures";
+import {
+  capabilities,
+  claim,
+  claimCapabilities,
+  mileage,
+  OTHER,
+  outlay,
+  perDiemLine,
+  perDiemRates,
+  projectOptions,
+  rates,
+  submitted,
+} from "../test/fixtures";
 import { renderRoute } from "../test/route-tree";
 import { stubExpensesApi } from "../test/server";
 
@@ -12,10 +24,51 @@ const group = async (person: string) =>
 const row = async (description: string) =>
   (await screen.findByText(description)).closest("[data-expense]") as HTMLElement;
 
+const claimRow = async (purpose: string) => (await screen.findByText(purpose)).closest("[data-claim]") as HTMLElement;
+
 const openDrawer = async (description: string) => {
   await userEvent.click(within(await row(description)).getByRole("button", { name: `Open ${description}` }));
   return screen.findByRole("dialog", { name: description });
 };
+
+const openClaimDrawer = async (purpose: string) => {
+  await userEvent.click(within(await claimRow(purpose)).getByRole("button", { name: `Open ${purpose}` }));
+  return screen.findByRole("dialog", { name: purpose });
+};
+
+const GRACE = { userId: OTHER, displayName: "Grace Hopper", active: true };
+
+/**
+ * A submitted trip of somebody else's, and its two lines: an outlay with no
+ * receipt and a per diem day. A line's status and owner are the claim's, and
+ * a line carries no approve of its own — the claim is the unit.
+ */
+const tripWithLines = (overrides: Parameters<typeof claim>[0] = {}) => ({
+  trip: claim({
+    id: 1012,
+    status: "submitted",
+    owner: GRACE,
+    submittedAt: "2026-03-12T09:00:00Z",
+    capabilities: claimCapabilities({ canApprove: true }),
+    ...overrides,
+  }),
+  lines: [
+    outlay({
+      id: 801,
+      claimId: 1012,
+      description: "Hotel Bergen",
+      status: "submitted",
+      entryDate: "2026-03-09",
+      owner: GRACE,
+      grossAmount: 2400,
+      vatAmount: 0,
+      netAmount: 2400,
+      owedToEmployee: 2400,
+      capabilities: capabilities(),
+    }),
+    perDiemLine({ id: 802, claimId: 1012, status: "submitted", owner: GRACE, capabilities: capabilities() }),
+  ],
+});
 
 describe("ApprovalsPage", () => {
   it("groups the queue per person, with their totals, receipts missing and replaced rates", async () => {
@@ -375,6 +428,227 @@ describe("ApprovalsPage", () => {
 
     const table = await screen.findByRole("table", { name: "Grace Hopper's expenses" });
     expect(within(table).getByRole("columnheader", { name: "Select" })).toBeInTheDocument();
+  });
+
+  it("lists a trip as one row of its own, and never its lines among the loose expenses", async () => {
+    const { trip, lines } = tripWithLines();
+    stubExpensesApi({
+      entries: [submitted({ id: 701, description: "Taxi" }), ...lines],
+      claims: [trip],
+      rates: [...rates, ...perDiemRates],
+    });
+    renderRoute("/expenses/approvals");
+
+    const card = await group("Grace Hopper");
+    const trips = within(card).getByRole("table", { name: "Grace Hopper's travel claims" });
+    const one = within(trips).getByText("Montasje hos kunden").closest("[data-claim]") as HTMLElement;
+    expect(one).toHaveTextContent("Bergen");
+    expect(one).toHaveTextContent("2 expenses");
+    // The trip's own figures, per currency: 2 400 + 1 012.
+    expect(one).toHaveTextContent("3,412.00");
+    // A flag is a word as well as a colour.
+    expect(within(one).getByText("1 without a receipt")).toBeInTheDocument();
+
+    // The trip's lines are the trip's: the loose table holds only the taxi.
+    const loose = within(card).getByRole("table", { name: "Grace Hopper's expenses" });
+    expect(within(loose).getByText("Taxi")).toBeInTheDocument();
+    expect(within(loose).queryByText("Hotel Bergen")).not.toBeInTheDocument();
+  });
+
+  it("approves a trip and a loose expense in one request carrying both lists", async () => {
+    const { trip, lines } = tripWithLines();
+    const fetchMock = stubExpensesApi({
+      entries: [submitted({ id: 701, description: "Taxi" }), ...lines],
+      claims: [trip],
+      rates: [...rates, ...perDiemRates],
+    });
+    renderRoute("/expenses/approvals");
+
+    await userEvent.click(within(await row("Taxi")).getByRole("checkbox"));
+    await userEvent.click(within(await claimRow("Montasje hos kunden")).getByRole("checkbox"));
+    await userEvent.click(await screen.findByRole("button", { name: "Approve 2 selected" }));
+
+    // One request, both lists. Two would be two batches, and the server moves
+    // a batch all or nothing.
+    await waitFor(() =>
+      expect(sent(fetchMock, "POST")).toEqual({
+        url: "/api/v1/expenses/approve",
+        body: { entryIds: [701], claimIds: [1012] },
+      }),
+    );
+    expect(
+      fetchMock.actualCalls.filter(([url, init]) => String(url).endsWith("/approve") && init?.method === "POST"),
+    ).toHaveLength(1);
+  });
+
+  it("puts a refusal named on claimIds against the trip's own row", async () => {
+    const { trip, lines } = tripWithLines();
+    stubExpensesApi({
+      entries: [submitted({ id: 701, description: "Taxi" }), ...lines],
+      claims: [trip],
+      rates: [...rates, ...perDiemRates],
+      write: (method, path) =>
+        method === "POST" && path === "/api/v1/expenses/approve"
+          ? problemResponse(400, "Invalid approval", {
+              claimIds: ["Travel claim 1012 departed before 2026-04-01, the lock date"],
+            })
+          : undefined,
+    });
+    renderRoute("/expenses/approvals");
+
+    await userEvent.click(within(await row("Taxi")).getByRole("checkbox"));
+    await userEvent.click(within(await claimRow("Montasje hos kunden")).getByRole("checkbox"));
+    await userEvent.click(await screen.findByRole("button", { name: "Approve 2 selected" }));
+
+    // The two units number independently, so the sentence goes to the trip and
+    // not to whatever expense happens to be numbered 1012.
+    expect(await within(await claimRow("Montasje hos kunden")).findByText(/the lock date/)).toBeInTheDocument();
+    expect(within(await row("Taxi")).queryByText(/the lock date/)).not.toBeInTheDocument();
+  });
+
+  it("opens the whole trip read-only in a drawer, lines and all", async () => {
+    const { trip, lines } = tripWithLines();
+    stubExpensesApi({ entries: lines, claims: [trip], rates: [...rates, ...perDiemRates] });
+    renderRoute("/expenses/approvals");
+
+    const drawer = await openClaimDrawer("Montasje hos kunden");
+
+    const table = within(drawer).getByRole("table", { name: "The trip's expenses" });
+    expect(within(table).getByText("Hotel Bergen")).toBeInTheDocument();
+    // A per diem day has no description of its own; what the day *is* names it.
+    expect(within(table).getAllByText("Overnight, hotel").length).toBeGreaterThan(0);
+    expect(drawer).toHaveTextContent("Day rate");
+  });
+
+  it("replaces the day rate on a per diem line from inside the trip's drawer", async () => {
+    const { trip, lines } = tripWithLines();
+    const day = perDiemLine({
+      id: 802,
+      claimId: 1012,
+      status: "submitted",
+      revision: 3,
+      owner: GRACE,
+      capabilities: capabilities({ canOverrideRate: true }),
+    });
+    const fetchMock = stubExpensesApi({
+      entries: [lines[0], day],
+      claims: [trip],
+      rates: [...rates, ...perDiemRates],
+    });
+    renderRoute("/expenses/approvals");
+
+    const drawer = await openClaimDrawer("Montasje hos kunden");
+    await userEvent.click(within(drawer).getByRole("button", { name: "Replace the rate on Overnight, hotel" }));
+    const dialog = await screen.findByRole("dialog", { name: "Replace the day rate" });
+    const rate = within(dialog).getByRole("textbox", { name: "Day rate" });
+    await userEvent.clear(rate);
+    await userEvent.type(rate, "900");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(sent(fetchMock, "PUT").url).toBe("/api/v1/expenses/entries/802/rate"));
+    expect(sent(fetchMock, "PUT").body).toEqual({ rate: 900, revision: 3 });
+    // A per diem day carries no passenger supplement, so nothing offers one.
+    expect(
+      within(dialog).queryByRole("textbox", { name: "Passenger supplement per kilometre" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("prices a trip's outlay and then marks it invoiced, carrying the revision each write answered", async () => {
+    // Pricing and invoicing stay the *line's* own doors — each is about one
+    // amount — while the decision above them is the claim's. A per diem day is
+    // never billed on, so neither door is offered on one.
+    const { trip } = tripWithLines({ status: "approved", capabilities: claimCapabilities() });
+    const billable = outlay({
+      id: 801,
+      claimId: 1012,
+      description: "Hotel Bergen",
+      status: "approved",
+      entryDate: "2026-03-09",
+      revision: 5,
+      billable: true,
+      grossAmount: 2400,
+      vatAmount: 0,
+      netAmount: 2400,
+      owedToEmployee: 2400,
+      owner: GRACE,
+      project: { id: 1001, code: "KVEM1000", name: "Kverneland web" },
+      capabilities: capabilities({ canSetBilling: true, canSeeBilling: true, canMarkInvoiced: true }),
+      billing: { billAmount: 0 },
+    });
+    const day = perDiemLine({ id: 802, claimId: 1012, status: "approved", owner: GRACE, capabilities: capabilities() });
+    const fetchMock = stubExpensesApi({
+      entries: [billable, day],
+      claims: [trip],
+      rates: [...rates, ...perDiemRates],
+      billingLines: [{ id: 3001, code: "PM", active: true }],
+      // Every read of the trip answers the snapshot the first one produced, so
+      // a drawer that took the revision off the row it was handed would send
+      // the stale 5 the refetch still shows rather than the 6 the pricing
+      // answered — which is the whole point of holding what a write answered.
+      frozenReads: true,
+    });
+    renderRoute("/expenses/approvals?state=approved");
+
+    const drawer = await openClaimDrawer("Montasje hos kunden");
+    expect(within(drawer).queryByRole("button", { name: /Overnight, hotel/ })).not.toBeInTheDocument();
+
+    await userEvent.click(within(drawer).getByRole("button", { name: "Price Hotel Bergen for the customer" }));
+    const pricing = await screen.findByRole("dialog", { name: "What the customer is billed" });
+    await userEvent.type(within(pricing).getByRole("textbox", { name: "Markup" }), "20");
+    await userEvent.click(within(pricing).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(sent(fetchMock, "PUT").body).toMatchObject({ markupPercent: 20, revision: 5 }));
+
+    await userEvent.click(await within(drawer).findByRole("button", { name: "Mark Hotel Bergen invoiced" }));
+    const invoice = await screen.findByRole("dialog", { name: "Mark the line invoiced" });
+    await userEvent.type(within(invoice).getByRole("textbox", { name: "Invoice reference" }), "F-2026-41");
+    await userEvent.click(within(invoice).getByRole("button", { name: "Mark invoiced" }));
+
+    await waitFor(() => {
+      const [, init] = fetchMock.actualCalls.find(([url]) => String(url).endsWith("/entries/801/invoiced")) ?? [];
+      // 5 was the revision the drawer read; the pricing answered 6, and that is
+      // what the invoicing has to carry or the fake answers a 409.
+      expect(JSON.parse(String(init?.body))).toEqual({ revision: 6, reference: "F-2026-41" });
+    });
+  });
+
+  it("approves the whole trip from its drawer and closes it", async () => {
+    const { trip, lines } = tripWithLines();
+    const fetchMock = stubExpensesApi({ entries: lines, claims: [trip], rates: [...rates, ...perDiemRates] });
+    renderRoute("/expenses/approvals");
+
+    const drawer = await openClaimDrawer("Montasje hos kunden");
+    await userEvent.click(within(drawer).getByRole("button", { name: "Approve" }));
+
+    await waitFor(() =>
+      expect(sent(fetchMock, "POST")).toEqual({ url: "/api/v1/expenses/approve", body: { claimIds: [1012] } }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Montasje hos kunden" })).not.toBeInTheDocument());
+  });
+
+  it("shows the server's refusal when a trip that offers an unapprove cannot be unapproved", async () => {
+    // `canUnapprove` is the server's answer and it is right, but a line that
+    // has been invoiced since still refuses — the sentence has to be read.
+    const { trip, lines } = tripWithLines({
+      status: "approved",
+      capabilities: claimCapabilities({ canUnapprove: true }),
+    });
+    stubExpensesApi({
+      entries: lines.map((line) => ({ ...line, status: "approved" as const })),
+      claims: [trip],
+      rates: [...rates, ...perDiemRates],
+      write: (method, path) =>
+        method === "POST" && path === "/api/v1/expenses/unapprove"
+          ? problemResponse(400, "Invalid approval", {
+              claimIds: ["Travel claim 1012 holds expense 801, which has been invoiced"],
+            })
+          : undefined,
+    });
+    renderRoute("/expenses/approvals?state=approved");
+
+    const drawer = await openClaimDrawer("Montasje hos kunden");
+    await userEvent.click(within(drawer).getByRole("button", { name: "Take the approval back" }));
+
+    expect(await within(drawer).findByText(/has been invoiced/)).toBeInTheDocument();
   });
 
   it("says when an approval was decided even when nobody is named", async () => {

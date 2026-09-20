@@ -1,6 +1,6 @@
 import type { ExpenseApprovalGroup, ExpenseBillingLineOption, ExpenseCurrencyTotal } from "../api/approvals";
 import type { ExpenseCategory } from "../api/categories";
-import type { Claim, ClaimListItem, PerDiemSuggestedDay } from "../api/claims";
+import type { Claim, ClaimListItem, ClaimSummary, PerDiemSuggestedDay } from "../api/claims";
 import type { Expense, ExpenseAttachment, ExpenseInput, ExpenseUpdateInput } from "../api/entries";
 import type { ExpensesMeta } from "../api/meta";
 import type { ExpenseProjectOption } from "../api/projects";
@@ -162,18 +162,39 @@ const totalsOf = (entries: Expense[]): ExpenseCurrencyTotal[] => {
   return [...byCurrency.values()].sort((a, b) => a.currency.localeCompare(b.currency));
 };
 
-/** The store's expenses grouped per person, the one who has waited longest first. */
-const groupedByOwner = (entries: Expense[]): { user: Expense["owner"]; entries: Expense[] }[] => {
-  const byUser = new Map<string, Expense[]>();
-  for (const entry of entries) byUser.set(entry.owner.userId, [...(byUser.get(entry.owner.userId) ?? []), entry]);
-  return [...byUser.values()]
-    .map((rows) => ({
-      user: rows[0].owner,
-      entries: [...rows].sort((a, b) =>
-        a.entryDate === b.entryDate ? a.id - b.id : a.entryDate < b.entryDate ? -1 : 1,
-      ),
-    }))
-    .sort((a, b) => (a.entries[0].entryDate < b.entries[0].entryDate ? -1 : 1));
+/** One person's units in a queue: their loose expenses and their whole trips. */
+interface UnitGroup {
+  user: Expense["owner"];
+  entries: Expense[];
+  claims: Claim[];
+}
+
+/**
+ * The two kinds of unit grouped per person, the way both queues page them. A
+ * person with nothing but trips is a group of their own — the server counts
+ * units, not expenses, and a queue that dropped them would hide the very thing
+ * this delivery adds.
+ */
+const groupedUnits = (entries: Expense[], claims: Claim[]): UnitGroup[] => {
+  const byUser = new Map<string, UnitGroup>();
+  const groupFor = (user: Expense["owner"]) => {
+    const existing = byUser.get(user.userId);
+    if (existing) return existing;
+    const fresh: UnitGroup = { user, entries: [], claims: [] };
+    byUser.set(user.userId, fresh);
+    return fresh;
+  };
+  for (const entry of entries) groupFor(entry.owner).entries.push(entry);
+  for (const claim of claims) groupFor(claim.owner).claims.push(claim);
+  return [...byUser.values()].map((group) => ({
+    ...group,
+    entries: [...group.entries].sort((a, b) =>
+      a.entryDate === b.entryDate ? a.id - b.id : a.entryDate < b.entryDate ? -1 : 1,
+    ),
+    claims: [...group.claims].sort((a, b) =>
+      a.departureAt === b.departureAt ? a.id - b.id : a.departureAt < b.departureAt ? -1 : 1,
+    ),
+  }));
 };
 
 /**
@@ -256,6 +277,29 @@ export const stubExpensesApi = (server: ExpensesServer = {}) => {
       revision: claim.revision,
       createdAt: claim.createdAt,
       updatedAt: claim.updatedAt,
+      capabilities: claim.capabilities,
+    };
+  };
+
+  /**
+   * One claim as a *queue unit*: the trip at a glance with the figures whoever
+   * is deciding needs, and never its lines — those are one read away at
+   * `GET /claims/{id}`. Every count is derived from the entries store, the way
+   * the queue's own SQL derives it.
+   */
+  const claimSummary = (claim: Claim): ClaimSummary => {
+    const held = linesOf(claim.id);
+    return {
+      id: claim.id,
+      purpose: claim.purpose,
+      ...(claim.destination ? { destination: claim.destination } : {}),
+      departureAt: claim.departureAt,
+      returnAt: claim.returnAt,
+      ...(claim.project ? { project: claim.project } : {}),
+      lineCount: held.length,
+      totals: totalsOf(held),
+      receiptsMissing: held.filter((one) => one.kind === "outlay" && one.attachmentCount === 0).length,
+      overriddenRates: held.filter((one) => one.rateOverride !== undefined).length,
       capabilities: claim.capabilities,
     };
   };
@@ -478,18 +522,27 @@ export const stubExpensesApi = (server: ExpensesServer = {}) => {
 
     if (path === "/api/v1/expenses/approvals" && method === "GET") {
       if (server.approvals instanceof Response) return Promise.resolve(server.approvals.clone());
+      // A trip's lines are never loose entries in a queue: the claim is the
+      // unit, and its lines take their rendered status from it.
       const groups: ExpenseApprovalGroup[] =
         server.approvals ??
-        groupedByOwner(entries.filter((entry) => entry.status === "submitted")).map((group) => ({
-          user: group.user,
-          entries: group.entries,
-          // The fake server knows only loose expenses; a travel claim is a unit
-          // of its own and this app's pages do not build one yet.
-          claims: [],
-          totals: totalsOf(group.entries),
-          receiptsMissing: group.entries.filter((one) => one.kind === "outlay" && one.attachmentCount === 0).length,
-          overriddenRates: group.entries.filter((one) => one.rateOverride !== undefined).length,
-        }));
+        groupedUnits(
+          entries.filter((entry) => entry.status === "submitted" && entry.claimId === undefined),
+          claims.filter((claim) => claim.status === "submitted"),
+        ).map((group) => {
+          // The group's figures hold both kinds of unit — how much of this
+          // person's work there is to look at — so the client does no
+          // arithmetic of its own.
+          const lines = [...group.entries, ...group.claims.flatMap((claim) => linesOf(claim.id))];
+          return {
+            user: group.user,
+            entries: group.entries,
+            claims: group.claims.map(claimSummary),
+            totals: totalsOf(lines),
+            receiptsMissing: lines.filter((one) => one.kind === "outlay" && one.attachmentCount === 0).length,
+            overriddenRates: lines.filter((one) => one.rateOverride !== undefined).length,
+          };
+        });
       return Promise.resolve(
         jsonResponse(200, page(groups, Number(url.searchParams.get("page") ?? 1), server.pageSize ?? 25)),
       );
@@ -563,10 +616,25 @@ export const stubExpensesApi = (server: ExpensesServer = {}) => {
       };
       entry.rate = body.rate;
       if (body.passengerRate !== undefined) entry.passengerRate = body.passengerRate;
-      const amount = round2(
-        (entry.distanceKm ?? 0) * body.rate +
-          (entry.distanceKm ?? 0) * (entry.passengerRate ?? 0) * (entry.passengers ?? 0),
-      );
+      // A per diem day is repriced from the new day rate and **the meal
+      // percentages the line was saved with** — never the table as it stands
+      // today — so correcting a rate neither drops a breakfast somebody else
+      // paid for nor picks up a percentage that has changed since.
+      let amount: number;
+      if (entry.kind === "per_diem" && entry.perDiem) {
+        const held = entry.perDiem;
+        const deducted =
+          (held.breakfastCovered ? (held.mealPercents.breakfast ?? 0) : 0) +
+          (held.lunchCovered ? (held.mealPercents.lunch ?? 0) : 0) +
+          (held.dinnerCovered ? (held.mealPercents.dinner ?? 0) : 0);
+        amount = Math.max(0, round2(body.rate * (1 - deducted / 100)));
+        entry.perDiem = { ...held, dayRate: body.rate };
+      } else {
+        amount = round2(
+          (entry.distanceKm ?? 0) * body.rate +
+            (entry.distanceKm ?? 0) * (entry.passengerRate ?? 0) * (entry.passengers ?? 0),
+        );
+      }
       entry.grossAmount = amount;
       entry.netAmount = amount;
       entry.owedToEmployee = amount;
@@ -583,6 +651,23 @@ export const stubExpensesApi = (server: ExpensesServer = {}) => {
         ? [{ id: entry.billingLine.id, code: entry.billingLine.code, active: true }]
         : [];
       return Promise.resolve(jsonResponse(200, server.billingLines ?? own));
+    }
+
+    const invoiced = /^\/api\/v1\/expenses\/entries\/(\d+)\/invoiced$/.exec(path);
+    if (invoiced && method === "POST") {
+      const entry = find(Number(invoiced[1]));
+      if (!entry) return Promise.resolve(new Response(null, { status: 404 }));
+      if (body.revision !== entry.revision) {
+        return Promise.resolve(jsonResponse(409, { title: "The expense has moved on", status: 409 }));
+      }
+      entry.billing = {
+        billAmount: entry.billing?.billAmount ?? 0,
+        ...(entry.billing ?? {}),
+        invoice: { at: "2026-09-20T11:00:00Z", by: APPROVER, ...(body.reference ? { reference: body.reference } : {}) },
+      };
+      entry.capabilities = { ...entry.capabilities, canMarkInvoiced: false, canUndoInvoiced: true };
+      entry.revision += 1;
+      return Promise.resolve(jsonResponse(200, entry));
     }
 
     const billing = /^\/api\/v1\/expenses\/entries\/(\d+)\/billing$/.exec(path);
@@ -616,18 +701,24 @@ export const stubExpensesApi = (server: ExpensesServer = {}) => {
     if (path === "/api/v1/expenses/reimbursements" && method === "GET") {
       if (server.reimbursements instanceof Response) return Promise.resolve(server.reimbursements.clone());
       const state = url.searchParams.get("state") ?? "waiting";
-      const owed = entries.filter((entry) =>
+      const owes = (unit: { status?: string; reimbursement?: unknown }, owed: number) =>
         state === "reimbursed"
-          ? entry.reimbursement !== undefined
-          : entry.status === "approved" && entry.owedToEmployee > 0 && entry.reimbursement === undefined,
+          ? unit.reimbursement !== undefined
+          : unit.status === "approved" && owed > 0 && unit.reimbursement === undefined;
+      const owedEntries = entries.filter((entry) => entry.claimId === undefined && owes(entry, entry.owedToEmployee));
+      const owedClaims = claims.filter((claim) =>
+        owes(
+          claim,
+          linesOf(claim.id).reduce((sum, line) => sum + line.owedToEmployee, 0),
+        ),
       );
       const groups: ExpenseReimbursementGroup[] =
         server.reimbursements ??
-        groupedByOwner(owed).map((group) => ({
+        groupedUnits(owedEntries, owedClaims).map((group) => ({
           user: group.user,
           entries: group.entries,
-          claims: [],
-          totals: totalsOf(group.entries),
+          claims: group.claims.map(claimSummary),
+          totals: totalsOf([...group.entries, ...group.claims.flatMap((claim) => linesOf(claim.id))]),
         }));
       return Promise.resolve(
         jsonResponse(200, page(groups, Number(url.searchParams.get("page") ?? 1), server.pageSize ?? 25)),

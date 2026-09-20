@@ -19,19 +19,22 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
-import type { Expense } from "../api/entries";
+import type { ClaimSummary } from "../api/claims";
+import type { Expense, FlowUnits } from "../api/entries";
+import { expensesMetaQueryOptions } from "../api/meta";
 import {
   downloadReimbursementsCsv,
   type ExpenseReimbursementGroup,
   expenseReimbursementsQueryOptions,
   saveCsv,
-  undoExpensesReimbursed,
+  undoUnitsReimbursed,
 } from "../api/reimbursements";
 import { type ApiError, EXPENSES_QUERY_KEY } from "../api/request";
+import { ClaimSummaryLine } from "../components/claim-summary";
 import { CurrencyTotals } from "../components/currency-totals";
 import { RefusalList } from "../components/refusal-list";
 import "../i18n";
-import { refusalMessage, refusalsByEntry } from "../lib/errors";
+import { refusalMessage, refusalsByUnit } from "../lib/errors";
 import { useExpenseFormat } from "../lib/format";
 import type { ReimbursementsSearch } from "../lib/search";
 import { MarkReimbursedModal } from "./-mark-reimbursed-modal";
@@ -42,6 +45,10 @@ export type { ReimbursementsSearch } from "../lib/search";
  * Reimbursements (design §7): what a payroll run is made from, grouped per
  * person with their totals per currency, and — on the other half of the
  * switch — what has already been paid, where an undo is reachable.
+ *
+ * A **unit** is a standalone expense or a whole travel claim, and a trip is
+ * paid as one: one row, for the sum of what its lines owe its owner. A
+ * selection spans both kinds and a payroll run carries them in one request.
  *
  * The page needs nothing from the host; the endpoint is `expenses:manage`
  * only, and a caller without it gets the 403 this shows as an empty state.
@@ -54,40 +61,53 @@ export const ReimbursementsPage = () => {
   const { state = "waiting", page = 1, from, to } = search;
 
   const [selected, setSelected] = useState<number[]>([]);
+  const [selectedClaims, setSelectedClaims] = useState<number[]>([]);
   const [refusals, setRefusals] = useState<Map<number, string[]>>(new Map());
+  const [claimRefusals, setClaimRefusals] = useState<Map<number, string[]>>(new Map());
   const [exportError, setExportError] = useState<string[]>([]);
-  const [marking, setMarking] = useState<number[] | null>(null);
+  const [marking, setMarking] = useState<FlowUnits | null>(null);
 
   const [shown, setShown] = useState(`${state}/${page}/${from}/${to}`);
   if (shown !== `${state}/${page}/${from}/${to}`) {
     setShown(`${state}/${page}/${from}/${to}`);
     setSelected([]);
+    setSelectedClaims([]);
     setRefusals(new Map());
+    setClaimRefusals(new Map());
   }
 
   const filters = { state, from, to };
+  const { data: meta } = useQuery(expensesMetaQueryOptions());
   const { data, isPending, isError, error } = useQuery(expenseReimbursementsQueryOptions({ ...filters, page }));
   const forbidden = (error as ApiError | null)?.status === 403;
   const groups = data?.data ?? [];
   const everything = groups.flatMap((group) => group.entries);
+  const everyClaim = groups.flatMap((group) => group.claims);
   const picked = selected.filter((id) => everything.some((entry) => entry.id === id));
+  const pickedClaims = selectedClaims.filter((id) => everyClaim.some((claim) => claim.id === id));
+  const pickedUnits: FlowUnits = { entryIds: picked, claimIds: pickedClaims };
+  const pickedCount = picked.length + pickedClaims.length;
 
   const undo = useMutation({
-    mutationFn: (entryIds: number[]) => undoExpensesReimbursed(entryIds),
+    mutationFn: (units: FlowUnits) => undoUnitsReimbursed(units),
     onSuccess: async (moved) => {
       setRefusals(new Map());
+      setClaimRefusals(new Map());
       setSelected([]);
+      setSelectedClaims([]);
       await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
+      const count = moved.entries.length + moved.claims.length;
       notifications.show({
         color: "teal",
         title: t("reimbursementUndone"),
-        message: moved.entries.length === 1 ? t("oneExpense") : t("countOfExpenses", { count: moved.entries.length }),
+        message: count === 1 ? t("oneExpense") : t("countOfExpenses", { count }),
       });
     },
     onError: (failure) => {
-      const { byEntry, rest } = refusalsByEntry(failure);
+      const { byEntry, byClaim, rest } = refusalsByUnit(failure);
       setRefusals(byEntry);
-      if (rest.length > 0 || byEntry.size === 0) {
+      setClaimRefusals(byClaim);
+      if (rest.length > 0 || (byEntry.size === 0 && byClaim.size === 0)) {
         notifications.show({
           color: "red",
           title: t("couldNotUndoReimbursement"),
@@ -98,13 +118,14 @@ export const ReimbursementsPage = () => {
   });
 
   /**
-   * Two buttons on purpose. An absent or empty `entryIds` falls back to the
-   * filters and downloads everything, so "Export selected" never sends one —
-   * it is disabled with nothing picked, and "Export all" sends the filters
-   * explicitly instead.
+   * Two buttons on purpose. A selection that is *present but names nothing*
+   * is refused rather than read as "everything", so "Export everything" sends
+   * no selection at all and the filters instead, while "Export selected"
+   * sends only the list or lists that actually hold something — a selection
+   * of trips alone carries no `entryIds` parameter.
    */
   const exportCsv = useMutation({
-    mutationFn: (entryIds?: number[]) => downloadReimbursementsCsv(filters, entryIds),
+    mutationFn: (units?: FlowUnits) => downloadReimbursementsCsv(filters, units),
     onSuccess: (file) => {
       setExportError([]);
       saveCsv(file);
@@ -113,14 +134,22 @@ export const ReimbursementsPage = () => {
     onError: (failure) => {
       // The row-cap refusal carries no `errors` object at all — only a title
       // and a detail asking for a narrower filter — so both shapes are shown.
-      const messages = refusalsByEntry(failure, "entryIds");
-      const all = [...messages.rest, ...[...messages.byEntry.values()].flat()];
+      const messages = refusalsByUnit(failure);
+      const all = [
+        ...messages.rest,
+        ...[...messages.byEntry.values()].flat(),
+        ...[...messages.byClaim.values()].flat(),
+      ];
       setExportError(all.length > 0 ? all : [refusalMessage(failure)]);
     },
   });
 
   const toggle = (ids: number[], on: boolean) =>
     setSelected((current) =>
+      on ? [...current, ...ids.filter((id) => !current.includes(id))] : current.filter((id) => !ids.includes(id)),
+    );
+  const toggleClaims = (ids: number[], on: boolean) =>
+    setSelectedClaims((current) =>
       on ? [...current, ...ids.filter((id) => !current.includes(id))] : current.filter((id) => !ids.includes(id)),
     );
 
@@ -158,18 +187,18 @@ export const ReimbursementsPage = () => {
 
       <Group wrap="wrap">
         {state === "waiting" && (
-          <Button disabled={picked.length === 0} onClick={() => setMarking(picked)}>
-            {t("markSelectedReimbursed", { count: picked.length })}
+          <Button disabled={pickedCount === 0} onClick={() => setMarking(pickedUnits)}>
+            {t("markSelectedReimbursed", { count: pickedCount })}
           </Button>
         )}
         {state === "reimbursed" && (
           <Button
             variant="default"
-            disabled={picked.length === 0}
+            disabled={pickedCount === 0}
             loading={undo.isPending}
-            onClick={() => undo.mutate(picked)}
+            onClick={() => undo.mutate(pickedUnits)}
           >
-            {t("undoSelectedReimbursement", { count: picked.length })}
+            {t("undoSelectedReimbursement", { count: pickedCount })}
           </Button>
         )}
         <Button
@@ -183,14 +212,20 @@ export const ReimbursementsPage = () => {
         <Button
           variant="default"
           leftSection={<IconDownload size={16} />}
-          disabled={picked.length === 0}
+          disabled={pickedCount === 0}
           loading={exportCsv.isPending && exportCsv.variables !== undefined}
-          onClick={() => exportCsv.mutate(picked)}
+          onClick={() => exportCsv.mutate(pickedUnits)}
         >
-          {t("exportSelected", { count: picked.length })}
+          {t("exportSelected", { count: pickedCount })}
         </Button>
-        {picked.length > 0 && (
-          <Button variant="subtle" onClick={() => setSelected([])}>
+        {pickedCount > 0 && (
+          <Button
+            variant="subtle"
+            onClick={() => {
+              setSelected([]);
+              setSelectedClaims([]);
+            }}
+          >
             {t("clearSelection")}
           </Button>
         )}
@@ -230,7 +265,17 @@ export const ReimbursementsPage = () => {
       )}
 
       {groups.map((group) => (
-        <PersonCard key={group.user.userId} group={group} selected={picked} refusals={refusals} onToggle={toggle} />
+        <PersonCard
+          key={group.user.userId}
+          group={group}
+          timeZone={meta?.timeZone ?? "UTC"}
+          selected={picked}
+          selectedClaims={pickedClaims}
+          refusals={refusals}
+          claimRefusals={claimRefusals}
+          onToggle={toggle}
+          onToggleClaims={toggleClaims}
+        />
       ))}
 
       {data && data.pagination.totalPages > 1 && (
@@ -244,11 +289,12 @@ export const ReimbursementsPage = () => {
       )}
 
       <MarkReimbursedModal
-        entryIds={marking}
+        units={marking}
         onClose={() => setMarking(null)}
         onDone={() => {
           setMarking(null);
           setSelected([]);
+          setSelectedClaims([]);
         }}
       />
 
@@ -261,19 +307,31 @@ export const ReimbursementsPage = () => {
 
 const PersonCard = ({
   group,
+  timeZone,
   selected,
+  selectedClaims,
   refusals,
+  claimRefusals,
   onToggle,
+  onToggleClaims,
 }: {
   group: ExpenseReimbursementGroup;
+  timeZone: string;
   selected: number[];
+  selectedClaims: number[];
   refusals: Map<number, string[]>;
+  claimRefusals: Map<number, string[]>;
   onToggle: (ids: number[], on: boolean) => void;
+  onToggleClaims: (ids: number[], on: boolean) => void;
 }) => {
   const { t } = useI18n("expenses");
   const format = useExpenseFormat();
   const ids = group.entries.map((entry) => entry.id);
-  const allPicked = ids.length > 0 && ids.every((id) => selected.includes(id));
+  const claimIds = group.claims.map((claim) => claim.id);
+  const allPicked =
+    ids.length + claimIds.length > 0 &&
+    ids.every((id) => selected.includes(id)) &&
+    claimIds.every((id) => selectedClaims.includes(id));
 
   return (
     <Card withBorder padding="lg" radius="md" data-reimbursement-group={group.user.userId}>
@@ -281,71 +339,116 @@ const PersonCard = ({
         <Group justify="space-between" align="start" wrap="wrap">
           <Stack gap={2}>
             <Title order={5}>{group.user.displayName}</Title>
+            {/* The group's totals already hold the claims' lines, so nothing
+                is added up here. */}
             <CurrencyTotals totals={group.totals} owedOnly />
           </Stack>
           <Checkbox
             label={t("selectEveryoneOf", { person: group.user.displayName })}
             checked={allPicked}
-            onChange={(event) => onToggle(ids, event.currentTarget.checked)}
+            onChange={(event) => {
+              onToggle(ids, event.currentTarget.checked);
+              onToggleClaims(claimIds, event.currentTarget.checked);
+            }}
           />
         </Group>
 
-        <Table.ScrollContainer minWidth={760}>
-          <Table striped highlightOnHover aria-label={t("expensesOf", { person: group.user.displayName })}>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>
-                  <VisuallyHidden>{t("select")}</VisuallyHidden>
-                </Table.Th>
-                <Table.Th>{t("date")}</Table.Th>
-                <Table.Th>{t("description")}</Table.Th>
-                <Table.Th>{t("project")}</Table.Th>
-                <Table.Th>{t("owedToEmployee")}</Table.Th>
-                <Table.Th>{t("paidBack")}</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {group.entries.map((entry: Expense) => (
-                <Table.Tr key={entry.id} data-expense={entry.id}>
-                  <Table.Td>
-                    <Checkbox
-                      aria-label={t("selectExpense", { description: entry.description })}
-                      checked={selected.includes(entry.id)}
-                      onChange={(event) => onToggle([entry.id], event.currentTarget.checked)}
-                    />
-                  </Table.Td>
-                  <Table.Td>{format.date(entry.entryDate)}</Table.Td>
-                  <Table.Td>
-                    <Stack gap={2}>
-                      <Text size="sm">{entry.description}</Text>
-                      <RefusalList messages={refusals.get(entry.id) ?? []} />
-                    </Stack>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm">{entry.project ? entry.project.code : t("notAvailable")}</Text>
-                  </Table.Td>
-                  <Table.Td>{format.money(entry.owedToEmployee, entry.currency)}</Table.Td>
-                  <Table.Td>
-                    {entry.reimbursement ? (
-                      <Stack gap={0}>
-                        <Text size="sm">{format.date(entry.reimbursement.date)}</Text>
-                        {entry.reimbursement.reference && (
-                          <Text size="xs" c="dimmed">
-                            {entry.reimbursement.reference}
-                          </Text>
-                        )}
-                      </Stack>
-                    ) : (
-                      <Text size="xs" c="dimmed">
-                        {t("notAvailable")}
-                      </Text>
-                    )}
-                  </Table.Td>
+        {group.claims.length > 0 && (
+          <Table.ScrollContainer minWidth={720}>
+            <Table striped highlightOnHover aria-label={t("travelClaimsOf", { person: group.user.displayName })}>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>
+                    <VisuallyHidden>{t("select")}</VisuallyHidden>
+                  </Table.Th>
+                  <Table.Th>{t("claimTrip")}</Table.Th>
+                  <Table.Th>{t("owedToEmployee")}</Table.Th>
                 </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
+              </Table.Thead>
+              <Table.Tbody>
+                {group.claims.map((claim: ClaimSummary) => (
+                  <Table.Tr key={claim.id} data-claim={claim.id}>
+                    <Table.Td>
+                      <Checkbox
+                        aria-label={t("selectTravelClaim", { purpose: claim.purpose })}
+                        checked={selectedClaims.includes(claim.id)}
+                        onChange={(event) => onToggleClaims([claim.id], event.currentTarget.checked)}
+                      />
+                    </Table.Td>
+                    <Table.Td>
+                      <Stack gap={2}>
+                        <ClaimSummaryLine claim={claim} timeZone={timeZone} />
+                        <RefusalList messages={claimRefusals.get(claim.id) ?? []} />
+                      </Stack>
+                    </Table.Td>
+                    <Table.Td>
+                      <CurrencyTotals totals={claim.totals} owedOnly />
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        )}
+
+        {group.entries.length > 0 && (
+          <Table.ScrollContainer minWidth={760}>
+            <Table striped highlightOnHover aria-label={t("expensesOf", { person: group.user.displayName })}>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>
+                    <VisuallyHidden>{t("select")}</VisuallyHidden>
+                  </Table.Th>
+                  <Table.Th>{t("date")}</Table.Th>
+                  <Table.Th>{t("description")}</Table.Th>
+                  <Table.Th>{t("project")}</Table.Th>
+                  <Table.Th>{t("owedToEmployee")}</Table.Th>
+                  <Table.Th>{t("paidBack")}</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {group.entries.map((entry: Expense) => (
+                  <Table.Tr key={entry.id} data-expense={entry.id}>
+                    <Table.Td>
+                      <Checkbox
+                        aria-label={t("selectExpense", { description: entry.description })}
+                        checked={selected.includes(entry.id)}
+                        onChange={(event) => onToggle([entry.id], event.currentTarget.checked)}
+                      />
+                    </Table.Td>
+                    <Table.Td>{format.date(entry.entryDate)}</Table.Td>
+                    <Table.Td>
+                      <Stack gap={2}>
+                        <Text size="sm">{entry.description}</Text>
+                        <RefusalList messages={refusals.get(entry.id) ?? []} />
+                      </Stack>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm">{entry.project ? entry.project.code : t("notAvailable")}</Text>
+                    </Table.Td>
+                    <Table.Td>{format.money(entry.owedToEmployee, entry.currency)}</Table.Td>
+                    <Table.Td>
+                      {entry.reimbursement ? (
+                        <Stack gap={0}>
+                          <Text size="sm">{format.date(entry.reimbursement.date)}</Text>
+                          {entry.reimbursement.reference && (
+                            <Text size="xs" c="dimmed">
+                              {entry.reimbursement.reference}
+                            </Text>
+                          )}
+                        </Stack>
+                      ) : (
+                        <Text size="xs" c="dimmed">
+                          {t("notAvailable")}
+                        </Text>
+                      )}
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        )}
       </Stack>
     </Card>
   );

@@ -46,7 +46,7 @@ const EntryActions = ({ expense, onClose }: { expense: Expense; onClose: () => v
   const [current, setCurrent] = useState(expense);
   const [revision, setRevision] = useState(expense.revision);
   const [refusals, setRefusals] = useState<string[]>([]);
-  const [rejecting, setRejecting] = useState<number[] | null>(null);
+  const [rejecting, setRejecting] = useState(false);
   const [overriding, setOverriding] = useState<Expense | null>(null);
   const [pricing, setPricing] = useState<Expense | null>(null);
 
@@ -93,7 +93,7 @@ const EntryActions = ({ expense, onClose }: { expense: Expense; onClose: () => v
           </Button>
         )}
         {current.capabilities.canApprove && (
-          <Button color="red" variant="light" onClick={() => setRejecting([current.id])}>
+          <Button color="red" variant="light" onClick={() => setRejecting(true)}>
             {t("reject")}
           </Button>
         )}
@@ -115,10 +115,10 @@ const EntryActions = ({ expense, onClose }: { expense: Expense; onClose: () => v
       </Group>
 
       <RejectModal
-        entryIds={rejecting}
-        onClose={() => setRejecting(null)}
+        units={rejecting ? { entryIds: [current.id] } : null}
+        onClose={() => setRejecting(false)}
         onRejected={() => {
-          setRejecting(null);
+          setRejecting(false);
           onClose();
         }}
       />
