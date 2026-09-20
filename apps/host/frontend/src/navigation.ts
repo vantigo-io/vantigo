@@ -3,7 +3,15 @@ import type { ComponentType } from "react";
 // The module keys this build knows. Which of them are enabled comes from the
 // injected runtime config (see lib/enabled-modules.ts); which destinations
 // belong to which module is declared by the app registry (apps.ts).
-export const moduleKeys = ["communications", "customers", "energy", "products", "projects", "time"] as const;
+export const moduleKeys = [
+  "communications",
+  "customers",
+  "energy",
+  "expenses",
+  "products",
+  "projects",
+  "time",
+] as const;
 export type ModuleKey = (typeof moduleKeys)[number];
 
 export interface NavItem {

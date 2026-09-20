@@ -8,7 +8,7 @@ import { spotlightNavSections } from "../apps";
 import { type ModuleKey, visibleNavSections } from "../navigation";
 import { AppSpotlight } from "./app-spotlight";
 
-const allModules: ModuleKey[] = ["communications", "customers", "energy", "products", "projects", "time"];
+const allModules: ModuleKey[] = ["communications", "customers", "energy", "expenses", "products", "projects", "time"];
 
 const navigateMock = vi.hoisted(() => vi.fn());
 
@@ -163,6 +163,36 @@ describe("AppSpotlight navigation authorization", () => {
     renderSpotlight(["*"], true, true, undefined, ["customers", "communications", "products", "energy", "projects"]);
     await waitFor(() => expect(screen.getByText("Create customer", { exact: true })).toBeInTheDocument());
     expect(screen.queryByText("Log time", { exact: true })).not.toBeInTheDocument();
+  });
+
+  // Recording an expense has no default search param the way My week has none
+  // for a week, so the action lands on My expenses with no filter at all.
+  it("opens My expenses from the New expense quick action", async () => {
+    const onNavigate = vi.fn();
+    renderSpotlight(["expenses:access"], false, false, onNavigate);
+
+    fireEvent.click(await waitFor(() => screen.getByText("New expense", { exact: true })));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(navigateMock).toHaveBeenCalledWith(expect.objectContaining({ to: "/expenses", search: undefined }));
+  });
+
+  it("hides New expense without expenses:access and when the expenses module is not enabled", async () => {
+    renderSpotlight(["projects:access"], false, false);
+    await waitFor(() => expect(screen.queryByText("New expense", { exact: true })).not.toBeInTheDocument());
+
+    cleanup();
+    spotlight.close();
+    renderSpotlight(["*"], true, true, undefined, [
+      "customers",
+      "communications",
+      "products",
+      "energy",
+      "projects",
+      "time",
+    ]);
+    await waitFor(() => expect(screen.getByText("Create customer", { exact: true })).toBeInTheDocument());
+    expect(screen.queryByText("New expense", { exact: true })).not.toBeInTheDocument();
   });
 
   it("hides Create task when the projects module is not enabled", async () => {

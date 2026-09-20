@@ -6,6 +6,7 @@ import {
   attentionTitleKey,
   attentionWeek,
   awaitingApprovalHint,
+  expensesUnreimbursedValue,
   projectsCardHint,
   readyMilestonesHint,
 } from "./dashboard";
@@ -206,5 +207,108 @@ describe("the dashboard's attention links", () => {
     expect(awaitingApprovalHint(0, t)).toBeUndefined();
     expect(awaitingApprovalHint(undefined, t)).toBeUndefined();
     expect(awaitingApprovalHint(3, t)).toBe("dashboard.awaitingApprovalHint:3");
+  });
+
+  // Expenses' three attention types: a rejection is the owner's own, an
+  // approval group carries the owner's user id (not the expense's), and the
+  // payroll item carries the literal "reimbursements". Anything this build
+  // does not know about falls back to the app's own list.
+  it("sends each expenses item to the page that answers it, and falls back to the app for an unknown type", () => {
+    expect(attentionHref({ module: "expenses", type: "approvalWaiting", entityId: "user-1" })).toBe(
+      "/expenses/approvals",
+    );
+    expect(attentionHref({ module: "expenses", type: "expenseRejected", entityId: "42" })).toBe(
+      "/expenses?status=rejected",
+    );
+    expect(attentionHref({ module: "expenses", type: "reimbursementWaiting", entityId: "reimbursements" })).toBe(
+      "/expenses/reimbursements",
+    );
+    expect(attentionHref({ module: "expenses", type: "somethingNew", entityId: "x" })).toBe("/expenses");
+  });
+
+  // The server's `reimbursementWaiting` title is a deliberately untranslated
+  // English fallback built from a count it cannot localise; the host renders
+  // it from the type and the count instead of showing that sentence. The
+  // approval-waiting title also takes a count when the server sent one.
+  it("names expenses' items from a catalog, using the count when the server sent one", () => {
+    expect(attentionTitleKey({ module: "expenses", type: "expenseRejected" })).toBe("dashboard.expenseRejected");
+    expect(attentionTitleKey({ module: "expenses", type: "approvalWaiting" })).toBe("dashboard.expenseApprovalWaiting");
+    expect(attentionTitleKey({ module: "expenses", type: "approvalWaiting", count: 3 })).toBe(
+      "dashboard.expenseApprovalWaitingCount",
+    );
+    expect(attentionTitleKey({ module: "expenses", type: "reimbursementWaiting" })).toBe(
+      "dashboard.expenseReimbursementWaiting",
+    );
+    expect(attentionTitleKey({ module: "expenses", type: "somethingNew" })).toBeUndefined();
+
+    const t = (key: string, values?: Record<string, unknown>) => `${key}:${values?.name}:${values?.count}`;
+    expect(
+      attentionTitle(
+        { module: "expenses", type: "expenseRejected", entityId: "42", title: "Taxi to the airport" },
+        t,
+        formatInLosAngeles,
+      ),
+    ).toBe("dashboard.expenseRejected:Taxi to the airport:undefined");
+    expect(
+      attentionTitle(
+        { module: "expenses", type: "approvalWaiting", entityId: "user-1", title: "Anna Ås", count: 3 },
+        t,
+        formatInLosAngeles,
+      ),
+    ).toBe("dashboard.expenseApprovalWaitingCount:Anna Ås:3");
+    expect(
+      attentionTitle(
+        {
+          module: "expenses",
+          type: "reimbursementWaiting",
+          entityId: "reimbursements",
+          title: "5 expenses are waiting to be reimbursed",
+          count: 5,
+        },
+        t,
+        formatInLosAngeles,
+      ),
+    ).toBe("dashboard.expenseReimbursementWaiting:5 expenses are waiting to be reimbursed:5");
+  });
+
+  it("leaves an unknown expenses item's title exactly as the server wrote it", () => {
+    const item = { module: "expenses" as const, type: "somethingNew", entityId: "x", title: "A new kind of thing" };
+
+    expect(attentionTitle(item, () => "never", formatInLosAngeles)).toBe("A new kind of thing");
+  });
+
+  it("has every expenses attention title in English and Norwegian", () => {
+    for (const key of [
+      "dashboard.expenseRejected",
+      "dashboard.expenseApprovalWaiting",
+      "dashboard.expenseApprovalWaitingCount",
+      "dashboard.expenseReimbursementWaiting",
+    ]) {
+      for (const lng of ["en", "nb"]) {
+        expect(i18n.t(key, { ns: "host", lng, name: "Anna Ås", count: 3 })).not.toBe(key);
+      }
+    }
+  });
+
+  // The card's primary figure: the first currency the caller is owed in, with
+  // "+N more" when there is more than one, and a plain "nothing owed" once
+  // loaded with nothing in it — never a currency-mixed sum (design §4).
+  it("shows the first currency the caller is owed in, and how many more there are", () => {
+    const format = (value: number, currency: string) => `${value} ${currency}`;
+    const t = (key: string, values?: Record<string, unknown>) => `${key}:${values?.count}`;
+
+    expect(expensesUnreimbursedValue(undefined, format, t)).toBe("dashboard.nothingOwed:undefined");
+    expect(expensesUnreimbursedValue([], format, t)).toBe("dashboard.nothingOwed:undefined");
+    expect(expensesUnreimbursedValue([{ currency: "NOK", amount: 500 }], format, t)).toBe("500 NOK");
+    expect(
+      expensesUnreimbursedValue(
+        [
+          { currency: "NOK", amount: 500 },
+          { currency: "EUR", amount: 20 },
+        ],
+        format,
+        t,
+      ),
+    ).toBe("500 NOK dashboard.moreCurrencies:1");
   });
 });

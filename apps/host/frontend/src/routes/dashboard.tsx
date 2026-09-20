@@ -24,6 +24,7 @@ import {
   IconInbox,
   IconMessage,
   IconPackage,
+  IconReceipt2,
   IconRefreshAlert,
   IconUsers,
 } from "@tabler/icons-react";
@@ -116,12 +117,28 @@ interface TimeSummary {
   awaitingMyApprovalDelta: number;
 }
 
+interface ExpensesSummary {
+  from: string;
+  to: string;
+  awaitingMyApproval: number;
+  awaitingMyApprovalDelta: number;
+  myDrafts: number;
+  /** Never summed across currencies (design §4): one line per currency. */
+  myUnreimbursed: { currency: string; amount: number }[];
+}
+
 interface AttentionItem {
   id: string;
   type: string;
   title: string;
   occurredAt: string;
   entityId: string;
+  /**
+   * Optional, added by the Expenses module: a number a server-built title
+   * cannot localise, so the host renders its own sentence from `type` and
+   * this count instead of the server's English fallback.
+   */
+  count?: number;
 }
 
 const moduleCards = [
@@ -179,6 +196,14 @@ const moduleCards = [
     module: "time" as ModuleKey,
     requiredPermissions: ["time:access"],
   },
+  {
+    title: "dashboard.expenses",
+    description: "dashboard.manageExpenses",
+    path: "/expenses",
+    icon: IconReceipt2,
+    module: "expenses" as ModuleKey,
+    requiredPermissions: ["expenses:access"],
+  },
 ] as const;
 
 const presetDays: Record<Exclude<DashboardPreset, "custom">, number> = {
@@ -200,6 +225,7 @@ const metrics = [
   { module: "energy" as ModuleKey, metric: "consumptionKwh", color: "teal.6", label: "dashboard.consumption" },
   { module: "projects" as ModuleKey, metric: "newProjects", color: "grape.6", label: "dashboard.newProjects" },
   { module: "time" as ModuleKey, metric: "hours", color: "cyan.6", label: "dashboard.hoursLogged" },
+  { module: "expenses" as ModuleKey, metric: "netAmount", color: "pink.6", label: "dashboard.netExpenses" },
 ] as const;
 
 const dateOnly = (value: Date) => value.toISOString().slice(0, 10);
@@ -284,6 +310,14 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
     // right for any of them, and is certainly not the approval queue.
     return "/time";
   }
+  if (item.module === "expenses") {
+    if (item.type === "approvalWaiting") return "/expenses/approvals";
+    if (item.type === "expenseRejected") return "/expenses?status=rejected";
+    if (item.type === "reimbursementWaiting") return "/expenses/reimbursements";
+    // A type this build does not know: My expenses is the one page that is
+    // right for any of them.
+    return "/expenses";
+  }
   return "/communications/inbox";
 };
 
@@ -303,13 +337,25 @@ const projectAttentionTitleKeys: Record<string, string> = {
  * treatment, this time with the name filled into the sentence rather than a
  * date.
  */
-export const attentionTitleKey = (item: { module: ModuleKey; type: string }) => {
+export const attentionTitleKey = (item: { module: ModuleKey; type: string; count?: number }) => {
   if (item.module === "time") {
     if (item.type === "weekUnsubmitted") return "dashboard.timeWeekUnsubmitted";
     if (item.type === "approvalWaiting") return "dashboard.timeApprovalWaiting";
     return undefined;
   }
   if (item.module === "projects") return projectAttentionTitleKeys[item.type];
+  if (item.module === "expenses") {
+    if (item.type === "expenseRejected") return "dashboard.expenseRejected";
+    // The count is the server's, sent because a title it builds cannot be
+    // localised with a number baked in; when it is present the sentence
+    // names it, and when it is not (a caller with exactly one waiting) the
+    // shorter form still reads naturally.
+    if (item.type === "approvalWaiting") {
+      return item.count ? "dashboard.expenseApprovalWaitingCount" : "dashboard.expenseApprovalWaiting";
+    }
+    if (item.type === "reimbursementWaiting") return "dashboard.expenseReimbursementWaiting";
+    return undefined;
+  }
   return undefined;
 };
 
@@ -326,13 +372,18 @@ export const attentionWeek = (entityId: string) => entityId.slice(entityId.index
  * title would then name a different week from the one the link opens.
  */
 export const attentionTitle = (
-  item: { module: ModuleKey; type: string; entityId: string; title: string },
+  item: { module: ModuleKey; type: string; entityId: string; title: string; count?: number },
   t: (key: string, values?: Record<string, unknown>) => string,
   formatDate: (value: string, options: Intl.DateTimeFormatOptions) => string,
 ) => {
   const key = attentionTitleKey(item);
   if (!key) return item.title;
-  if (item.module === "projects") return t(key, { name: item.title });
+  // Projects' and expenses' titles are both server-built from data (a
+  // project's, a milestone's or an expense's own name, or nothing at all for
+  // the payroll item), not from a catalog, so both name the item and — for
+  // expenses — the count the server sent, if any. Time's is the odd one out:
+  // its entityId carries the week the title is about, not a name.
+  if (item.module === "projects" || item.module === "expenses") return t(key, { name: item.title, count: item.count });
   return t(key, { date: formatDate(attentionWeek(item.entityId), { dateStyle: "medium", timeZone: "UTC" }) });
 };
 
@@ -371,6 +422,25 @@ export const awaitingApprovalHint = (
   count: number | undefined,
   t: (key: string, values?: Record<string, unknown>) => string,
 ): string | undefined => (count ? t("dashboard.awaitingApprovalHint", { count }) : undefined);
+
+/**
+ * The Expenses card's primary figure: the first currency the caller is owed
+ * in, with how many more there are when they are owed in several — nothing is
+ * ever summed across currencies (design §4) — and a plain "nothing owed" once
+ * `/stats/summary` has answered with an empty list. `undefined` (still
+ * loading) is left to the caller, which shows "—" the way every other card
+ * does.
+ */
+export const expensesUnreimbursedValue = (
+  totals: { currency: string; amount: number }[] | undefined,
+  formatCurrency: (value: number, currency: string) => string,
+  t: (key: string, values?: Record<string, unknown>) => string,
+): string => {
+  if (!totals || totals.length === 0) return t("dashboard.nothingOwed");
+  const [first, ...rest] = totals;
+  const base = formatCurrency(first.amount, first.currency);
+  return rest.length ? `${base} ${t("dashboard.moreCurrencies", { count: rest.length })}` : base;
+};
 
 const deltaPercent = (current: number, absoluteDelta: number) => {
   const previous = current - absoluteDelta;
@@ -460,6 +530,13 @@ const DashboardPage = () => {
     retry: false,
   });
 
+  const expensesSummary = useQuery({
+    queryKey: ["dashboard", "expenses", "summary", range.from.toISOString(), range.to.toISOString()],
+    queryFn: ({ signal }) => fetchSummary<ExpensesSummary>("expenses", range, signal),
+    enabled: allowed("expenses"),
+    retry: false,
+  });
+
   const customersTimeseries = useQuery({
     queryKey: [
       "dashboard",
@@ -513,6 +590,13 @@ const DashboardPage = () => {
     retry: false,
   });
 
+  const expensesTimeseries = useQuery({
+    queryKey: ["dashboard", "expenses", "timeseries", "netAmount", range.from.toISOString(), range.to.toISOString()],
+    queryFn: ({ signal }) => fetchTimeseries("expenses", "netAmount", range, signal),
+    enabled: allowed("expenses"),
+    retry: false,
+  });
+
   const customersAttention = useQuery({
     queryKey: ["dashboard", "customers", "attention"],
     queryFn: ({ signal }) => fetchAttention("customers", signal),
@@ -552,6 +636,13 @@ const DashboardPage = () => {
     retry: false,
   });
 
+  const expensesAttention = useQuery({
+    queryKey: ["dashboard", "expenses", "attention"],
+    queryFn: ({ signal }) => fetchAttention("expenses", signal),
+    enabled: allowed("expenses"),
+    retry: false,
+  });
+
   const timeseriesByMetric: Record<string, DailyPoint[] | undefined> = {
     "customers:newCustomers": customersTimeseries.data,
     "communications:newConversations": communicationsTimeseries.data,
@@ -559,6 +650,7 @@ const DashboardPage = () => {
     "energy:consumptionKwh": energyTimeseries.data,
     "projects:newProjects": projectsTimeseries.data,
     "time:hours": timeTimeseries.data,
+    "expenses:netAmount": expensesTimeseries.data,
   };
   const timeseriesQueries: Record<string, { isPending: boolean; isError: boolean }> = {
     "customers:newCustomers": customersTimeseries,
@@ -567,6 +659,7 @@ const DashboardPage = () => {
     "energy:consumptionKwh": energyTimeseries,
     "projects:newProjects": projectsTimeseries,
     "time:hours": timeTimeseries,
+    "expenses:netAmount": expensesTimeseries,
   };
   const availableMetrics = metrics.filter((metric) => allowed(metric.module));
   const defaultMetric = availableMetrics[0];
@@ -587,14 +680,16 @@ const DashboardPage = () => {
     (allowed("products") && productsAttention.isPending) ||
     (allowed("energy") && energyAttention.isPending) ||
     (allowed("projects") && projectsAttention.isPending) ||
-    (allowed("time") && timeAttention.isPending);
+    (allowed("time") && timeAttention.isPending) ||
+    (allowed("expenses") && expensesAttention.isPending);
   const activityLoading =
     (allowed("customers") && customersTimeseries.isPending) ||
     (allowed("communications") && communicationsTimeseries.isPending) ||
     (allowed("products") && productsTimeseries.isPending) ||
     (allowed("energy") && energyTimeseries.isPending) ||
     (allowed("projects") && projectsTimeseries.isPending) ||
-    (allowed("time") && timeTimeseries.isPending);
+    (allowed("time") && timeTimeseries.isPending) ||
+    (allowed("expenses") && expensesTimeseries.isPending);
 
   const attentionItems = [
     ...(customersAttention.data ?? []).map((item) => ({ ...item, module: "customers" as ModuleKey })),
@@ -603,6 +698,7 @@ const DashboardPage = () => {
     ...(energyAttention.data ?? []).map((item) => ({ ...item, module: "energy" as ModuleKey })),
     ...(projectsAttention.data ?? []).map((item) => ({ ...item, module: "projects" as ModuleKey })),
     ...(timeAttention.data ?? []).map((item) => ({ ...item, module: "time" as ModuleKey })),
+    ...(expensesAttention.data ?? []).map((item) => ({ ...item, module: "expenses" as ModuleKey })),
   ]
     .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
     .slice(0, 8);
@@ -623,6 +719,9 @@ const DashboardPage = () => {
       .slice(-3)
       .map((item) => ({ ...item, module: "projects" as ModuleKey, metric: "newProjects" })),
     ...(timeTimeseries.data ?? []).slice(-3).map((item) => ({ ...item, module: "time" as ModuleKey, metric: "hours" })),
+    ...(expensesTimeseries.data ?? [])
+      .slice(-3)
+      .map((item) => ({ ...item, module: "expenses" as ModuleKey, metric: "netAmount" })),
   ]
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 6);
@@ -822,6 +921,27 @@ const DashboardPage = () => {
                 sparklineData={sparkline(timeTimeseries.data)}
                 href={href}
                 loading={timeSummary.isPending || timeTimeseries.isPending}
+              />
+            );
+          }
+          if (module.module === "expenses") {
+            return (
+              <KpiCard
+                key={module.module}
+                label={t("dashboard.unreimbursed")}
+                value={
+                  expensesSummary.data
+                    ? expensesUnreimbursedValue(expensesSummary.data.myUnreimbursed, formatters.formatCurrency, t)
+                    : "—"
+                }
+                // The more actionable figure — approvals waiting on this
+                // caller — is the hint rather than a card of its own, and it
+                // is hidden once there is nothing to approve, the same rule
+                // as Time's own approval hint.
+                hint={awaitingApprovalHint(expensesSummary.data?.awaitingMyApproval, t)}
+                sparklineData={sparkline(expensesTimeseries.data)}
+                href={href}
+                loading={expensesSummary.isPending || expensesTimeseries.isPending}
               />
             );
           }

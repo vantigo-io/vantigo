@@ -12,7 +12,7 @@ import {
   switcherTiles,
 } from "./apps";
 
-const allModules = ["communications", "customers", "energy", "products", "projects", "time"] as const;
+const allModules = ["communications", "customers", "energy", "expenses", "products", "projects", "time"] as const;
 
 describe("the app registry", () => {
   it("lists Home first, without a module, and every module app once", () => {
@@ -23,6 +23,7 @@ describe("the app registry", () => {
       "customers",
       "projects",
       "time",
+      "expenses",
       "communications",
       "products",
       "energy",
@@ -53,6 +54,10 @@ describe("the app registry", () => {
       "/time/approvals",
       "/time/people",
       "/time/settings",
+      "/expenses",
+      "/expenses/approvals",
+      "/expenses/reimbursements",
+      "/expenses/settings",
       "/communications/inbox",
       "/communications/channels",
       "/communications/suppressions",
@@ -146,6 +151,56 @@ describe("the app registry", () => {
     expect(paths(["*"])).toEqual(["/time", "/time/approvals", "/time/people", "/time/settings"]);
   });
 
+  // Expenses is four destinations behind three different permissions, the
+  // same shape as Time: Approvals is offered to the dedicated approvers in
+  // the sidebar, but a project manager approves their own project's expenses
+  // through their role alone and reaches the same queue from the dashboard's
+  // attention list — the guard only asks for the app (see the module access
+  // guard's own tests).
+  it("gives Expenses four destinations, each behind its own permission", () => {
+    const expenses = appForKey("expenses");
+    expect(expenses).toMatchObject({ module: "expenses", label: "navigation.expenses", home: "/expenses" });
+    expect(expenses.requiredPermissions).toEqual(["expenses:access", "expenses:approve", "expenses:manage"]);
+    const items = expenses.navSections.flatMap((section) => section.items);
+    expect(items.map((item) => [item.label, item.to, item.requiredPermissions, item.guardPermissions])).toEqual([
+      ["navigation.myExpenses", "/expenses", ["expenses:access"], undefined],
+      ["navigation.expenseApprovals", "/expenses/approvals", ["expenses:approve"], ["expenses:access"]],
+      ["navigation.reimbursements", "/expenses/reimbursements", ["expenses:manage"], undefined],
+      ["navigation.expensesSettings", "/expenses/settings", ["expenses:manage"], undefined],
+    ]);
+  });
+
+  it("shows the Expenses tile for expenses:access, hides it without, and mutes it when the module is off", () => {
+    const keys = (permissions: string[], enabled: readonly (typeof allModules)[number][]) =>
+      switcherTiles(permissions, enabled, undefined).map((tile) => [tile.app.key, tile.enabled]);
+    expect(keys(["expenses:access"], allModules)).toContainEqual(["expenses", true]);
+    expect(keys(["customers:view"], allModules).map(([key]) => key)).not.toContain("expenses");
+    expect(keys(["expenses:access"], ["customers"])).toContainEqual(["expenses", false]);
+  });
+
+  it("shows an expenses:access holder My expenses alone, and each further page with its permission", () => {
+    const paths = (permissions: string[]) =>
+      appNavSections(appForKey("expenses"), allModules, {
+        permissions,
+        isOwner: false,
+        canManageAuthorization: false,
+        enabledModules: allModules,
+      }).flatMap((section) => section.items.map((item) => item.to));
+    expect(paths(["expenses:access"])).toEqual(["/expenses"]);
+    expect(paths(["expenses:access", "expenses:approve"])).toEqual(["/expenses", "/expenses/approvals"]);
+    expect(paths(["expenses:access", "expenses:manage"])).toEqual([
+      "/expenses",
+      "/expenses/reimbursements",
+      "/expenses/settings",
+    ]);
+    expect(paths(["*"])).toEqual([
+      "/expenses",
+      "/expenses/approvals",
+      "/expenses/reimbursements",
+      "/expenses/settings",
+    ]);
+  });
+
   it("treats Home as always enabled and module apps as enabled when their module is", () => {
     expect(isAppEnabled(appForKey("home"), [])).toBe(true);
     expect(isAppEnabled(appForKey("energy"), ["customers"])).toBe(false);
@@ -164,6 +219,7 @@ describe("the administration areas", () => {
       "customers",
       "projects",
       "time",
+      "expenses",
       "communications",
       "products",
       "energy",
@@ -253,6 +309,7 @@ describe("switcherTiles", () => {
       ["customers", true],
       ["projects", false],
       ["time", false],
+      ["expenses", false],
       ["communications", false],
       ["products", false],
       ["energy", false],
