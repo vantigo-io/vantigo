@@ -1,6 +1,6 @@
 import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 import type { components } from "../api-schema";
-import type { Expense, PaginatedResponse } from "./entries";
+import type { Expense, FlowResult, PaginatedResponse } from "./entries";
 import { EXPENSES_QUERY_KEY, json, request } from "./request";
 
 type Schemas = components["schemas"];
@@ -64,20 +64,20 @@ export const expenseApprovalsQueryOptions = (page: number) =>
  * refuses the whole request with a message per offending id on `entryIds`,
  * and nothing moves.
  */
-export const approveExpenses = (entryIds: number[]): Promise<Expense[]> =>
-  request<Expense[]>("/api/v1/expenses/approve", json("POST", { entryIds }));
+export const approveExpenses = (entryIds: number[]): Promise<FlowResult> =>
+  request<FlowResult>("/api/v1/expenses/approve", json("POST", { entryIds }));
 
 /** Rejects expenses with a reason their owner sees. 1 to 1000 characters once trimmed. */
-export const rejectExpenses = (entryIds: number[], reason: string): Promise<Expense[]> =>
-  request<Expense[]>("/api/v1/expenses/reject", json("POST", { entryIds, reason }));
+export const rejectExpenses = (entryIds: number[], reason: string): Promise<FlowResult> =>
+  request<FlowResult>("/api/v1/expenses/reject", json("POST", { entryIds, reason }));
 
 /**
  * Returns approved expenses to a draft their owner can change and submit
  * again. Never one that has been reimbursed or invoiced — each of those
  * tracks has an undo of its own.
  */
-export const unapproveExpenses = (entryIds: number[]): Promise<Expense[]> =>
-  request<Expense[]>("/api/v1/expenses/unapprove", json("POST", { entryIds }));
+export const unapproveExpenses = (entryIds: number[]): Promise<FlowResult> =>
+  request<FlowResult>("/api/v1/expenses/unapprove", json("POST", { entryIds }));
 
 /**
  * Replaces the reimbursement rate on one submitted mileage line and reprices

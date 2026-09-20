@@ -642,14 +642,18 @@ type claimAccess struct {
 
 // claimAccessFor is claimAccess given c's role on the claim's project.
 //
-// The three flow capabilities and the two payroll ones are computed truthfully
-// although the operations that act on them arrive with the claim flow: a
-// capability that lied about a door that does not exist yet would be worse
-// than one that is simply always false, and this way the door needs no second
-// rule when it opens. owesAnything is what the claim's lines come to for its
-// owner, which only a caller that has read them can answer; false is the safe
-// answer for a reading that has not.
-func (c *caller) claimAccessFor(claim store.ExpensesClaim, role string, owesAnything bool) claimAccess {
+// f is what the claim's lines come to, which only a caller that has read them
+// can answer: how many there are, and whether they owe the owner anything. The
+// zero value is the safe answer for a reading that has not — it makes canSubmit
+// and canMarkReimbursed false, which is exactly what an unread claim should
+// promise.
+//
+// Two capabilities lean on it. A trip with **no lines at all** cannot be
+// submitted: there is nothing to freeze and nothing to approve, and the submit
+// refuses it by id, so the capability says so rather than offering a button
+// that answers 400. A trip that owes its owner nothing cannot be marked
+// reimbursed, for the reason a company-paid outlay cannot.
+func (c *caller) claimAccessFor(claim store.ExpensesClaim, role string, f claimFigures) claimAccess {
 	unit := claimUnit(claim, c.zone())
 	a := claimAccess{IsOwner: claim.UserID == c.UserID, IsManager: role == roleManager}
 	a.IsApprover = a.IsManager || c.Approve
@@ -662,14 +666,14 @@ func (c *caller) claimAccessFor(claim store.ExpensesClaim, role string, owesAnyt
 	editable := unit.editable()
 	a.CanEdit = a.IsWriter && open && editable
 	a.CanDelete = a.CanEdit
-	a.CanSubmit = a.CanEdit
+	a.CanSubmit = a.CanEdit && f.Lines > 0
 	a.CanApprove = a.IsApprover && open && claim.Status == statusSubmitted
 	a.CanUnapprove = (a.IsApprover || c.Manage) && open && claim.Status == statusApproved &&
 		claim.ReimbursedAt == nil
 	// The payroll track does not consult the period lock, for the reason it
 	// does not on a standalone expense: payroll runs after the books close.
 	a.CanMarkReimbursed = c.Manage && claim.Status == statusApproved &&
-		claim.ReimbursedAt == nil && owesAnything
+		claim.ReimbursedAt == nil && f.Owes
 	a.CanUndoReimbursed = c.Manage && claim.ReimbursedAt != nil
 	return a
 }

@@ -172,13 +172,23 @@ status now takes a unit: `entryStateRefusal`, `accessFor`, `entryResponse`,
 queries that repeat a status guard in SQL (`OverrideEntryRate` and
 `MarkEntryInvoiced`, which read it through the claim with a subquery).
 
-**A line is never a unit.** `POST /submit`, `/approve`, `/reject`,
-`/unapprove`, `/reimbursed` and `/reimbursed/undo` refuse a line by id with a
-per-id message pointing at the claim ("Expense 5 belongs to travel claim 7;
-submit the claim") — all-or-nothing, as every batch here is — and the line's
-five flow capabilities are false. Pricing, invoicing and a rate override stay
-the line's own doors, because those are about this one amount; each of them
-reads the *claim's* status for the state it is judged in.
+**A line is never a unit; the claim is.** `POST /submit`, `/approve`,
+`/reject`, `/unapprove`, `/reimbursed` and `/reimbursed/undo` each take
+`{entryIds?, claimIds?}` — standalone expenses, travel claims, or both in one
+batch — and refuse a *line* by id with a per-id message pointing at the claim
+("Expense 5 belongs to travel claim 7; submit the claim"). The line's five flow
+capabilities are false; the claim's are true when the claim may move. Every one
+of those batches is all-or-nothing across **both** lists, at least one id
+between them is required, and the cap of 500 counts distinct **units** across
+the two — an id given twice is one unit, and a trip is one however many lines
+it holds. A refusal is keyed by the list that named the id, `entryIds` or
+`claimIds`, so a client that ticked both knows which half to put right, and the
+answer is `{entries, claims}`, each list in the order its own ids were given.
+
+Pricing, invoicing and a rate override stay the line's own doors, because those
+are about this one amount; each of them reads the *claim's* status for the
+state it is judged in. So a billable line of an **approved** claim is invoiced
+exactly as a billable standalone expense is.
 
 **A line moves neither in nor out.** A `claimId` on a replace must equal the
 one the line already carries; a standalone expense naming one, or a line naming
@@ -193,6 +203,14 @@ Every write takes its locks in one order, and nothing may invent another:
 1. the claim's own row (`SELECT … FOR UPDATE`), then
 2. its lines, in id order — all of them for a project re-point, or the one line
    the write is about.
+
+A batch that names several units keeps the same order, widened: **every named
+claim's row in id order, and then every expense row of the batch — the claims'
+lines and the named standalone expenses alike — in one ascending pass**. One
+statement for the second half is what makes it safe: taking each claim's lines
+separately and the named expenses afterwards would let two batches that name
+each other's claims cross, one holding claim 9's lines and waiting for a line of
+claim 8 while the other does the mirror image.
 
 So a write on the claim and a write on one of its lines start at the same row
 and queue rather than deadlock. Changing a claim's project re-points every line
@@ -375,20 +393,45 @@ draft ───────────► submitted ───────► ap
 - **rejected** — sent back with a reason (required, at most 1000 characters).
   Editing a rejected line makes it a draft again, so it is submitted afresh.
 
-**Submit is where the line freezes.** For a mileage line, the rate, the passenger
-supplement and the resulting amount are priced one last time from the dated rate
-table in force on the entry's own date, and the result is what the row carries from
-then on — a later change to the rate table, an approval, or a settings change never
-recomputes it. The same freeze reprices what the line bills the customer, if it is
-billable and the project bills at all. Two things are checked at the same moment,
-under the entry's own row lock, so nothing can slip past between the read and the
-write: the receipt rule (below), and — after this task's fix — that a kind change
-racing an upload cannot leave a mileage line holding receipts.
+**The unit that moves is a standalone expense or a whole travel claim.** A
+claim runs the very same four arrows, its lines carried along: the status, the
+submission stamp and the decision are the claim's, and its lines keep their own
+`status` column at its default for ever.
+
+**Submit is where the line freezes.** For a mileage line, the rate, the
+passenger supplement and the resulting amount are priced one last time from the
+dated rate table in force on the entry's own date, and the result is what the
+row carries from then on — a later change to the rate table, an approval, or a
+settings change never recomputes it. A per diem day is frozen the same way, and
+from the same one function every draft save runs: the day rate in force on its
+own date (or the claim's own rate abroad), the three meal percentages as they
+stood that day, the currency, and the amount the four come to. The same freeze
+reprices what the line bills the customer, if it is billable and the project
+bills at all. Two things are checked at the same moment, under the entry's own
+row lock, so nothing can slip past between the read and the write: the receipt
+rule (below), and that a kind change racing an upload cannot leave a mileage
+line holding receipts.
+
+**Submitting a claim freezes every one of its lines, in one transaction**, and
+refuses the whole trip rather than half of it. Four things stop it, each naming
+what is wrong: a claim that holds **no expenses at all** (there is nothing to
+freeze and nothing to approve, and `canSubmit` says so before the button is
+drawn); a line the tables can no longer price — a mileage rate or a per diem day
+rate that has gone, a covered meal the table prices no deduction for; a **per
+diem day left outside its own trip**, which only a change of the installation's
+business time zone can do, and which the submit is the last place to notice; and
+the receipt rule, applied per employee-paid outlay line and naming the line.
+After the submit nothing recomputes a line's figures but an approver's rate
+override and the project side's pricing — and both `PUT /claims/{id}` and the
+statement that reprices a claim's per diem days carry the claim's own status in
+SQL as well as in Go, so a regression writes nothing rather than repricing an
+approved trip.
 
 An expense may not be submitted, approved, rejected, unapproved or edited on a date
 the period lock closes (see below), and the owner (or `expenses:manage`) is who may
-submit; anyone approaching this from the wrong side gets the ordinary 403/404 split
-described under "Refusal codes".
+submit; **a travel claim is judged on the day it departed**. Anyone approaching
+this from the wrong side gets the ordinary 403/404 split described under
+"Refusal codes".
 
 ## The receipt rule
 
@@ -409,26 +452,35 @@ threshold.
 
 ## Approval
 
-Who may approve or reject a **submitted** expense: `expenses:approve` for anything,
-or the manager role on the expense's own project (the same role Time and Projects
-use) — nothing else. **`expenses:manage` does not, on its own, let anyone approve or
+Who may approve or reject a **submitted** unit: `expenses:approve` for anything,
+or the manager role on its own project (the same role Time and Projects use) —
+nothing else. A travel claim is judged on the *claim's* project, so a project's
+manager approves the trips booked on it and never a project-less one. **`expenses:manage` does not, on its own, let anyone approve or
 reject**; it is a separate, deliberately narrower set of powers (below).
 **Self-approval is allowed**: an approver who is also the expense's owner may
 approve their own line, exactly as Time allows.
 
-`GET /approvals` is the queue: submitted expenses the caller may approve, grouped
-one card per person, the person who has waited longest first, **paged by person in
-SQL** so a page never splits a group across two pages. A caller who approves
-nothing at all — no `expenses:approve`, no project managed — gets the access
-layer's 403 rather than an empty page. `/approve`, `/reject` and `/unapprove` are
-all-or-nothing batches of up to 500 ids: naming one id twice counts once, and a
-batch that cannot move even one of its ids answers a message per refused id rather
-than moving the rest.
+`GET /approvals` is the queue: submitted **units** the caller may approve,
+grouped one card per person, the person who has waited longest first, **paged by
+person in SQL** so a page never splits a group across two pages. A group carries
+its `entries` and its `claims` separately: a trip is one row with its purpose,
+its window, its line count, its totals per currency and how many of its lines
+want a receipt or carry a replaced rate — never a run of loose expenses, which is
+what a line of it would look like among the entries. The group's own totals and
+its two counts hold both kinds together, and the trip's own page (`GET
+/claims/{id}`) is where its lines are. A caller who approves nothing at all — no
+`expenses:approve`, no project managed — gets the access layer's 403 rather than
+an empty page. `/approve`, `/reject` and `/unapprove` are all-or-nothing batches
+of up to 500 distinct units: naming one id twice counts once, and a batch that
+cannot move even one of its ids answers a message per refused id rather than
+moving the rest.
 
-**Unapprove** additionally accepts `expenses:manage` (`orManage`), takes an approved
-line back to a fresh **draft** — clearing the decision and the submission stamp, so
-it goes round the loop again — and refuses a line that has already been reimbursed
-or invoiced: undoing those has its own door, on each track.
+**Unapprove** additionally accepts `expenses:manage` (`orManage`), takes an
+approved unit back to a fresh **draft** — clearing the decision and the
+submission stamp, so it goes round the loop again, and for a travel claim every
+line's rate-override audit with them — and refuses one that has already been
+reimbursed, or a trip holding a line that has been invoiced: undoing those has
+its own door, on each track.
 
 **Rate override.** `PUT /entries/{id}/rate` replaces a *submitted mileage line's
 or per diem day's* rate and, optionally — on mileage alone — its passenger
@@ -477,13 +529,17 @@ Once approved, an expense can move down either or both of two independent tracks
 in any order — reimbursed, invoiced, both, or neither:
 
 - **Reimbursed** (`expenses:manage` only) — what the employee is paid back.
-  `POST /reimbursed {entryIds, date, reference?}` records one payroll run over
-  every named expense that is approved and owes its owner something (a
-  company-paid outlay owes nothing and cannot be marked); `POST /reimbursed/undo`
-  clears the whole stamp — the date, the reference and who made it — putting the
-  expenses back in the waiting list exactly as they were. `GET /reimbursements`
-  lists what a run would cover (or what has already been paid), grouped per
-  person and paged the same way the approval queue is.
+  `POST /reimbursed {entryIds?, claimIds?, date, reference?}` records one payroll
+  run over every named **unit** that is approved and owes its owner something (a
+  company-paid outlay owes nothing and cannot be marked, and neither can a trip
+  whose lines come to nothing); `POST /reimbursed/undo` clears the whole stamp —
+  the date, the reference and who made it — putting the units back in the waiting
+  list exactly as they were. **A trip is paid as one**, for the sum of what its
+  lines owe its owner — every employee-paid outlay, every mileage line and every
+  per diem day — and the stamp goes on the claim, which each of its lines then
+  reads. `GET /reimbursements` lists what a run would cover (or what has already
+  been paid), grouped per person with the same two lists the approval queue
+  carries, and paged the same way.
 - **Invoiced** (financial rights on the project, not `expenses:manage`) — what has
   been billed to the customer. `POST /entries/{id}/invoiced {reference?, revision}`
   marks one **billable, priced** approved line invoiced; `.../invoiced/undo` takes
@@ -504,7 +560,10 @@ nobody but `expenses:manage` may touch).
 
 **What it protects:** creating, editing, deleting and submitting an expense;
 approving, rejecting and unapproving one; and overriding a mileage rate — every
-step of what the employee submitted and what an approver decided.
+step of what the employee submitted and what an approver decided. A **travel
+claim** is judged by the day it departed, and its lines with it: a trip that left
+inside a closed period cannot be recorded, changed, submitted or decided on,
+whatever the dates of the expenses it holds.
 
 **What it deliberately does not protect:** reimbursing (and its undo), pricing
 from the project's side (`PUT /billing`), and invoicing (and its undo). Those three
@@ -608,17 +667,30 @@ everything). Format, byte for byte:
   every text column — so a description, a display name, a category or a project
   code that happens to start with one of those characters cannot execute when a
   colleague opens the file in a spreadsheet.
-- **Columns, in order**: `Employee;User id;Date;Kind;Description;Category;Currency;Gross;VAT;Owed;Project code`.
+- **Columns, in order**: `Unit;Purpose;Employee;User id;Date;Kind;Description;Category;Currency;Gross;VAT;Owed;Project code`.
   The header is English and untranslated on purpose — the file is read by a payroll
   system, not by every employee — and the project column is always present, even in
   an installation with no projects module, so a payroll system need not know which
   modules run.
+- **One row per line.** A standalone expense is its own row; a travel claim
+  writes one row per expense it holds. `Unit` says which — `expense 2001` or
+  `claim 1012` — and `Purpose` carries the trip's own, empty for a standalone
+  expense. A payroll system that wants the trip as one figure adds its rows; a
+  person reading the file sees what each amount was for.
+- **A per diem day** has no description of its own unless its owner wrote one, so
+  its `Description` cell carries the per diem type (`day_6_12`, `overnight_hotel`,
+  …) and its `Category` cell is empty — it is booked on none.
 - Rows are ordered by the person's **display name**, then entry date, then id — a
   file read by a person, not by the database's own uuid order.
 - Headers: `Content-Type: text/csv; charset=utf-8`,
   `Content-Disposition: attachment; filename="expenses-reimbursements-YYYY-MM-DD.csv"`
   (today, UTC), `Cache-Control: private, no-store`.
-- **Capped at 5 000 rows.** Over the cap is a 400 titled "Too many rows to export",
+- It takes the list's own filters, or explicit `entryIds` **and** `claimIds`
+  instead of them; a selection that is present and names nothing at all is
+  refused rather than read as "everything", and an id the export cannot hold is
+  named under the list that named it rather than left out silently.
+- **Capped at 5 000 rows.** The cap counts *rows*, so a trip of forty lines
+  costs forty of them. Over the cap is a 400 titled "Too many rows to export",
   with a `detail` asking for a narrower filter and **no `errors` object at all** —
   the file is not paged or truncated; half a payroll file is worse than none.
 
@@ -631,20 +703,27 @@ in the installation's default currency only, for the reason Time's hours are sco
 to the caller: a figure that changed meaning with the reader's permissions would
 mean a different thing to every reader of the same card.
 
-**The per-status counts are of standalone expenses only.** A travel claim's
-lines keep their own `status` column at its default and it is never read, so
-counting them would report five drafts for a trip whose owner can do nothing
-with one of them on its own — while the one thing that *is* actionable, the
-claim, would be missing from the figure. The claims' own counts arrive with the
-claim flow and are added on top.
+**Every figure counts units.** A travel claim is one draft, one submitted, one
+approved — whatever it holds — and its lines are never counted beside it: their
+own `status` column stays at its default and is never read, so counting them
+would report five drafts for a trip whose owner can do nothing with one of them
+on its own, while the one thing that *is* actionable would be missing. What the
+caller is still owed (`unreimbursed`, `myUnreimbursed`) sums over every unit that
+owes them, a claim's lines included, and `awaitingMyApproval` counts a trip
+waiting for this approver once. The timeseries is the one figure that is per
+*line*: it is money per day, and a trip's lines each fall on their own date.
 
-Three attention types, in `GET /stats/attention`:
+Three attention types, in `GET /stats/attention`, each counted in units:
 
 | Type | Told to | `entityId` | `count` |
 | --- | --- | --- | --- |
-| `expenseRejected` | the owner, about their own | the expense id (decimal) | absent |
-| `approvalWaiting` | whoever may approve | the **owner's** user id (uuid) | how many are waiting |
-| `reimbursementWaiting` | `expenses:manage` | the literal string `"reimbursements"` | how many are waiting |
+| `expenseRejected` | the owner, about their own | the expense id (decimal), or `claim/<id>` for a travel claim | absent |
+| `approvalWaiting` | whoever may approve | the **owner's** user id (uuid) | how many units are waiting |
+| `reimbursementWaiting` | `expenses:manage` | the literal string `"reimbursements"` | how many units are waiting |
+
+A rejected trip is **one** item, titled by its purpose rather than by any line's
+description. Its entity is written `claim/<id>` because the two units number
+independently and a bare `12` would not say which page to open.
 
 `title` is a name — an expense's description, a person's display name — never a
 finished sentence, **except `reimbursementWaiting`, whose title is a deliberately
@@ -685,7 +764,7 @@ says.
 
 | Endpoint | Access |
 | --- | --- |
-| `GET /meta` | What this installation can do, the settings a new expense starts from, the categories, and the caller's own capabilities |
+| `GET /meta` | What this installation can do, the settings a new expense starts from (the business time zone included), the categories, and the caller's own capabilities |
 | `GET /entries` (`userId`, `projectId`, `claimId`, `standalone`, `status`, `kind`, `from`, `to`, `reimbursed`, paging) | The caller's own; a project manager also sees their projects'; view-all/approve/manage see everyone's |
 | `GET /entries/{id}` | The owner, the project's manager, or view-all/approve/manage; a bare 404 otherwise |
 | `POST /entries` | Record one — your own, or (`userId`) a colleague's, with `expenses:manage`; `claimId` records it as a line of a travel claim |
@@ -697,15 +776,15 @@ says.
 | `PUT /entries/{id}`, `DELETE /entries/{id}` | Owner or `expenses:manage`, while draft or rejected, not past the lock |
 | `POST /entries/{id}/attachments`, `DELETE /attachments/{id}` | Same as edit, an outlay only |
 | `GET /attachments/{id}` | Whoever may see the expense |
-| `POST /submit` | Your own drafts and rejected lines (or anyone's, `expenses:manage`) |
-| `POST /approve`, `/reject` | `expenses:approve`, or the project's own manager |
+| `POST /submit` | Your own draft and rejected units — expenses, travel claims, or both (or anyone's, `expenses:manage`) |
+| `POST /approve`, `/reject` | `expenses:approve`, or the unit's own project's manager |
 | `POST /unapprove` | Same, plus `expenses:manage` |
-| `GET /approvals` | An approver; 403 for a caller who approves nothing |
+| `GET /approvals` | An approver; the units waiting, grouped per person; 403 for a caller who approves nothing |
 | `PUT /entries/{id}/rate` | An approver or `expenses:manage`, on a submitted mileage line or per diem day |
 | `PUT /entries/{id}/billing` | Financial rights on the entry's project; never a per diem day |
 | `GET /entries/{id}/billing-lines` | Financial rights on the entry's project — the pricing dialog's own picker, not the caller's bookable-projects list |
 | `POST /entries/{id}/invoiced`, `.../invoiced/undo` | Financial rights on the entry's project; never a per diem day |
-| `GET /reimbursements`, `/reimbursements/export.csv`, `POST /reimbursed`, `/reimbursed/undo` | `expenses:manage` |
+| `GET /reimbursements`, `/reimbursements/export.csv`, `POST /reimbursed`, `/reimbursed/undo` | `expenses:manage`; the unit is an expense or a whole trip |
 | `GET /projects` | The caller's own bookable projects (or, `userId`, a colleague's, with `expenses:manage`) |
 | `GET /categories` | Anyone in the app |
 | `POST /categories`, `PUT /categories/{id}` | `expenses:manage` |
@@ -720,12 +799,11 @@ coverage gate (below) with no allow-list.
 
 ## What comes next
 
-The travel claim's own flow — submitting, approving, unapproving and paying
-back a whole trip, and the claim units in the approval queue, the reimbursement
-list, the payroll CSV and the dashboard reads — and then the trip's own page in
-the app, where the days above are ticked off and the suggestion is offered. Then
-**the project page's own Economy tab, on the cost side**: what a project's
-expenses cost and bill, beside the hours Time already reports there.
+The trip's own page in the app, where the days above are ticked off, the
+suggestion is offered and a whole trip is submitted, approved and put on a
+payroll run through the units this module now serves. Then **the project page's
+own Economy tab, on the cost side**: what a project's expenses cost and bill,
+beside the hours Time already reports there.
 
 ## Development
 

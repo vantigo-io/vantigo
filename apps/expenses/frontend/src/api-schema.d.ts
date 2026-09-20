@@ -11,7 +11,7 @@ export interface paths {
         };
         /**
          * Get the approval queue
-         * @description The approval queue — the submitted expenses the caller may approve (every one of them for expenses:approve, the ones on the projects they manage otherwise, and not those dated before the period lock unless they hold expenses:manage, whose approval the lock would refuse anyway) — grouped per person, the person who has been waiting longest first, and paged by person, so a page always holds whole groups.
+         * @description The approval queue — the submitted *units* the caller may approve (every one of them for expenses:approve, the ones on the projects they manage otherwise, and not those dated before the period lock unless they hold expenses:manage, whose approval the lock would refuse anyway) — grouped per person, the person who has been waiting longest first, and paged by person, so a page always holds whole groups. A unit is a standalone expense or a whole travel claim: each group carries its entries and its claims separately, and a claim's lines are never listed as loose expenses.
          */
         get: operations["getExpensesApprovals"];
         put?: never;
@@ -33,7 +33,7 @@ export interface paths {
         put?: never;
         /**
          * Approve expenses
-         * @description Approves submitted expenses (decision X4), recording who decided and when. Each must be submitted, each must be one the caller approves for — expenses:approve for anything, or the manager role on its project — and none may be dated before the period lock unless the caller holds expenses:manage. The frozen amounts are not touched: an approval agrees with them.
+         * @description Approves submitted units — standalone expenses, travel claims, or both in one batch (decision X4) — recording who decided and when. Each must be submitted, each must be one the caller approves for (expenses:approve for anything, or the manager role on its project; a claim is judged on the claim's own project), and none may be dated before the period lock unless the caller holds expenses:manage — a claim on the day it departed. The frozen amounts are not touched: an approval agrees with them.
          */
         post: operations["postExpensesApprove"];
         delete?: never;
@@ -473,7 +473,7 @@ export interface paths {
         put?: never;
         /**
          * Mark expenses reimbursed
-         * @description Marks approved expenses as paid back to the people who are owed them (decision X5) — one payroll run, recorded with the day it was made and the reference whoever made it can find it by. All or nothing: an expense that is not approved, owes the employee nothing, or has been paid already refuses the whole request on entryIds and nothing is stamped. The period lock does not hold it back — payroll runs after the books close, and only expenses:manage, whom the lock never held back anyway, may do this at all.
+         * @description Marks approved units as paid back to the people who are owed them (decision X5) — one payroll run over standalone expenses, travel claims, or both, recorded with the day it was made and the reference whoever made it can find it by. A trip is one unit, paid for the sum of what its lines owe its owner. All or nothing: a unit that is not approved, owes the employee nothing, or has been paid already refuses the whole request on the list that named it and nothing is stamped. The period lock does not hold it back — payroll runs after the books close, and only expenses:manage, whom the lock never held back anyway, may do this at all.
          */
         post: operations["postExpensesReimbursed"];
         delete?: never;
@@ -493,7 +493,7 @@ export interface paths {
         put?: never;
         /**
          * Undo marking expenses reimbursed
-         * @description Takes the reimbursement stamp back off expenses that were paid by mistake — the whole of it, so the expenses appear in the waiting list again exactly as they were.
+         * @description Takes the reimbursement stamp back off units that were paid by mistake — the whole of it, so they appear in the waiting list again exactly as they were. A travel claim's stamp is the claim's own, so undoing it puts the whole trip back.
          */
         post: operations["postExpensesReimbursedUndo"];
         delete?: never;
@@ -511,7 +511,7 @@ export interface paths {
         };
         /**
          * List what is owed back
-         * @description What a payroll run is made from: approved expenses that owe their owner something and have not been paid, grouped per person with their totals per currency, and paged by person, so a page always holds whole people. state=reimbursed answers what has already been paid instead, the latest payout first, so an undo is reachable.
+         * @description What a payroll run is made from: approved *units* that owe their owner something and have not been paid — standalone expenses and whole travel claims — grouped per person with their totals per currency, and paged by person, so a page always holds whole people. A trip is one unit, owed the sum of what its lines owe; its lines are never listed as loose expenses. state=reimbursed answers what has already been paid instead, the latest payout first, so an undo is reachable.
          */
         get: operations["getExpensesReimbursements"];
         put?: never;
@@ -533,9 +533,9 @@ export interface paths {
          * Export what is owed back as CSV
          * @description The same expenses the reimbursement list holds, as the file a payroll system reads: UTF-8 with a byte order mark, semicolon-separated, decimal comma, ISO dates, CRLF line ends and a header row — the form a Norwegian Excel opens correctly without an import dialog. Quoting is RFC 4180's with the semicolon as the separator: a value holding a semicolon, a quote or a line break is quoted and its quotes doubled. A text cell beginning with '=', '+', '-', '@', a tab or a carriage return is prefixed with an apostrophe, so a description nobody vetted cannot become a formula in somebody's spreadsheet.
          *
-         *     The columns, in order: employee display name, user id, date, kind, description, category, currency, gross, VAT, owed, project code. Rows are ordered by the person's display name, then by date and id. The VAT and project code cells are empty when there is none — including in an installation with no projects module, which keeps the column so a payroll system need not know which modules an installation runs.
+         *     The columns, in order: unit, purpose, employee display name, user id, date, kind, description, category, currency, gross, VAT, owed, project code. One row per *line*: a standalone expense is its own line, and a travel claim writes one row per expense it holds. The unit cell says which — 'expense 2001' or 'claim 1012' — and purpose carries the trip's own, empty for a standalone expense. A per diem day has no description of its own, so its description cell carries the per diem type and its category cell is empty. Rows are ordered by the person's display name, then by date and id. The VAT and project code cells are empty when there is none — including in an installation with no projects module, which keeps the column so a payroll system need not know which modules an installation runs.
          *
-         *     It takes the list's own filters, or explicit entryIds instead of them, and it is deliberately not paged: half a payroll file is worse than none, so an export of more than 5000 rows is refused and asks for a narrower filter.
+         *     It takes the list's own filters, or explicit entryIds and claimIds instead of them, and it is deliberately not paged: half a payroll file is worse than none, so an export of more than 5000 rows is refused and asks for a narrower filter. The cap counts rows, so a trip of forty lines costs forty of them.
          */
         get: operations["getExpensesReimbursementsExportCsv"];
         put?: never;
@@ -557,7 +557,7 @@ export interface paths {
         put?: never;
         /**
          * Reject expenses
-         * @description Rejects submitted expenses with a reason their owner sees, under exactly the rules an approval follows. A rejected expense is its owner's to edit, delete or submit again; submitting it prices it once more, so a line sent back over a wrong rate comes back at the right one.
+         * @description Rejects submitted units — standalone expenses, travel claims, or both — with a reason their owner sees, under exactly the rules an approval follows. A rejected unit is its owner's to edit, delete or submit again; submitting it prices it once more, so a line sent back over a wrong rate comes back at the right one. A claim's rejection is stamped on the claim, and its lines carry no decision of their own.
          */
         post: operations["postExpensesReject"];
         delete?: never;
@@ -678,7 +678,7 @@ export interface paths {
         put?: never;
         /**
          * Submit expenses
-         * @description Submits expenses for approval (decision X4). Each must be the caller's own draft or rejected line — expenses:manage submits on somebody else's behalf — and none may be dated before the period lock unless the caller holds expenses:manage. This is where the figures freeze: the mileage rate, the passenger supplement, the amount and what the customer is billed are computed one last time from the tables in force on the expense's own date, stored, and never computed again. A mileage line with no rate in force on its date cannot be submitted, and an employee-paid outlay whose gross exceeds the settings' receipt threshold cannot be submitted without a receipt.
+         * @description Submits units for approval (decision X4): standalone expenses, travel claims, or both. Each must be the caller's own draft or rejected unit — expenses:manage submits on somebody else's behalf — and none may be dated before the period lock unless the caller holds expenses:manage, a claim on the day it departed. This is where the figures freeze: the mileage rate, the passenger supplement, a per diem day's day rate and meal percentages, the amounts they make and what the customer is billed are computed one last time from the tables in force on each line's own date, stored, and never computed again. Submitting a claim freezes every one of its lines, in one transaction: a claim with no lines at all, a line whose rate has vanished from the table, a per diem day left outside the trip by a change of the installation's time zone, or an employee-paid outlay over the receipt threshold with no receipt each refuse the whole submit and name what is wrong.
          */
         post: operations["postExpensesSubmit"];
         delete?: never;
@@ -698,7 +698,7 @@ export interface paths {
         put?: never;
         /**
          * Unapprove expenses
-         * @description Returns approved expenses to a draft their owner can change and submit again — by whoever could have approved them, or by expenses:manage — clearing the decision and the submission stamp alike. The figures the submit froze stay on the line until the next save or submit recomputes them. Never an expense that has been reimbursed or invoiced: the reimbursement track and the invoicing track each have an undo of their own.
+         * @description Returns approved units to a draft their owner can change and submit again — by whoever could have approved them, or by expenses:manage — clearing the decision and the submission stamp alike. For a travel claim every line's rate-override audit goes with them, so the trip is a fresh draft in every sense. The figures the submit froze stay until the next save or submit recomputes them. Never a unit that has been reimbursed, nor one whose lines have been invoiced: the reimbursement track and the invoicing track each have an undo of their own.
          */
         post: operations["postExpensesUnapprove"];
         delete?: never;
@@ -711,21 +711,23 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** @description One person's submitted expenses that the caller may approve, with the figures an approver decides on at a glance. */
+        /** @description One person's submitted units that the caller may approve, with the figures an approver decides on at a glance. A unit is a standalone expense or a whole travel claim, so the group holds two lists: a claim is one row of claims and never a run of loose entries. */
         ExpensesApprovalGroup: {
-            /** @description The person's submitted expenses, oldest day first and then as recorded. Shaped exactly as a single read of each would be for this caller. */
+            /** @description The person's submitted travel claims, the earliest departure first. Each is one unit to approve; the trip's own page (GET /claims/{id}) holds its lines. */
+            claims: components["schemas"]["ExpensesClaimSummary"][];
+            /** @description The person's submitted standalone expenses, oldest day first and then as recorded. Shaped exactly as a single read of each would be for this caller. A travel claim's lines are never here — the claim is the unit. */
             entries: components["schemas"]["ExpensesEntryResponse"][];
             /**
              * Format: int32
-             * @description How many of the entries carry a rate an approver has already replaced.
+             * @description How many lines in the group carry a rate an approver has already replaced, the claims' lines included.
              */
             overriddenRates: number;
             /**
              * Format: int32
-             * @description How many of the entries are outlays with no receipt at all. Mileage never takes one and is never counted.
+             * @description How many lines in the group are outlays with no receipt at all, the claims' lines included. Mileage and a per diem day never take one and are never counted.
              */
             receiptsMissing: number;
-            /** @description The group's figures, one line per currency, by currency code. Nothing is ever converted. */
+            /** @description The group's figures, one line per currency, by currency code — the standalone expenses and the claims' lines together. Nothing is ever converted. */
             totals: components["schemas"]["ExpensesCurrencyTotal"][];
             user: components["schemas"]["ExpensesUserRef"];
         };
@@ -947,6 +949,36 @@ export interface components {
             totals: components["schemas"]["ExpensesCurrencyTotal"][];
             /** Format: date-time */
             updatedAt: string;
+        };
+        /** @description One travel claim as a *unit* in a queue — the approval queue and the reimbursement list. It is the trip at a glance, with the figures whoever is deciding needs and nothing else: the lines themselves are one read away at GET /claims/{id}, which a queue of a hundred trips has no business carrying. */
+        ExpensesClaimSummary: {
+            capabilities: components["schemas"]["ExpensesClaimCapabilities"];
+            /** Format: date-time */
+            departureAt: string;
+            destination?: string;
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: int32
+             * @description How many expenses the trip holds.
+             */
+            lineCount: number;
+            /**
+             * Format: int32
+             * @description How many of its lines carry a rate an approver has already replaced.
+             */
+            overriddenRates: number;
+            project?: components["schemas"]["ExpensesEntryProject"];
+            purpose: string;
+            /**
+             * Format: int32
+             * @description How many of its lines are outlays with no receipt at all. Mileage and a per diem day never take one and are never counted.
+             */
+            receiptsMissing: number;
+            /** Format: date-time */
+            returnAt: string;
+            /** @description The trip's figures, one line per currency, by currency code. Nothing is ever converted. */
+            totals: components["schemas"]["ExpensesCurrencyTotal"][];
         };
         /** @description A full replace of a travel claim's header, guarded by the revision it was read at. What is left out is cleared. Changing the project re-points every line onto it in the same transaction and clears a line's billing line when it does not belong to the new project; clearing the project makes every line non-billable. A line that has already been invoiced holds the project where it is. The owner stays whoever the claim already concerns. */
         ExpensesClaimUpdateRequest: {
@@ -1380,12 +1412,19 @@ export interface components {
             /** Format: double */
             vatAmount?: number;
         };
-        /** @description The expenses to move through the flow (decision X4). All or nothing: one expense that may not be moved refuses the whole request with a message per offending id on entryIds, and nothing changes. At most 500 distinct expenses at once; an id given twice is one expense, so the cap is counted after the duplicates are collapsed. */
+        /** @description The units to move through the flow (decision X4): standalone expenses, travel claims, or both in one batch. All or nothing — one unit that may not be moved refuses the whole request, with a message per offending id on the list that named it, and nothing changes. At least one id between the two lists is required. At most 500 distinct *units* across both; an id given twice is one unit, so the cap is counted after the duplicates are collapsed. */
         ExpensesFlowRequest: {
-            /** @description Reserved for the travel claims of a later delivery, which are approved as one unit. A request naming one is refused on this field; an empty array or none at all is accepted. */
+            /** @description The travel claims to move. A claim moves as one unit — its lines go with it and are never named on their own — so an entryIds naming one of a claim's lines is refused and points at the claim. */
             claimIds?: number[];
-            /** @description At most 500 *distinct* expenses; an id given twice is one expense, here as everywhere else. A longer array naming no more than 500 expenses is accepted. */
-            entryIds: number[];
+            /** @description The standalone expenses to move. An id that belongs to a travel claim is refused with a message naming the claim. */
+            entryIds?: number[];
+        };
+        /** @description What one batch moved. The two lists are separate because the two units are — a claim is not an expense, and a client that ticked both gets each back in the shape it reads it in — and each holds its own ids in the order they were given. */
+        ExpensesFlowResponse: {
+            /** @description The travel claims that moved, in the order their ids were given. */
+            claims: components["schemas"]["ExpensesClaimListResponse"][];
+            /** @description The standalone expenses that moved, in the order their ids were given. */
+            entries: components["schemas"]["ExpensesEntryResponse"][];
         };
         /** @description Marks one approved, billable line as billed on to the customer (decision X5). The caller needs financial rights on the line's project; the period lock does not hold it back, because invoicing is bookkeeping done after the period closes. */
         ExpensesInvoicedRequest: {
@@ -1438,6 +1477,8 @@ export interface components {
              * @description An employee-paid outlay above this gross amount cannot be submitted without a receipt. Zero means every one of them needs a receipt. Absent when the rule is off.
              */
             receiptRequiredOver?: number;
+            /** @description The installation's business time zone, an IANA name ('Europe/Oslo' by default): the zone every date derived from a travel claim's departure and return instants is taken in. A form labelling a trip's days has to label them in it rather than in the browser's, or it will disagree with the server about which day a save lands on. The same value GET /settings answers, here because meta is the one read an expense form makes. */
+            timeZone: string;
         };
         /** @description One day the server proposes for a trip. It is a suggestion and nothing more: nothing is written, and the client records whichever of them the traveller agrees with as ordinary per diem lines. A trip may run 366 days while a claim holds at most 200 expenses, so a client offering "record them all" has to reckon with the cap itself — the 201st create is refused on claimId and says nothing about the suggestion. */
         ExpensesPerDiemSuggestedDay: {
@@ -1541,34 +1582,36 @@ export interface components {
             /** Format: double */
             value: number;
         };
-        /** @description The expenses one payroll run pays for (decision X5). All or nothing, exactly as the flow's batches are: one expense that may not be paid refuses the whole request with a message per offending id on entryIds, and nothing is stamped. At most 500 distinct expenses at once; an id given twice is one expense. */
+        /** @description The units one payroll run pays for (decision X5): standalone expenses, travel claims, or both. All or nothing, exactly as the flow's batches are — one unit that may not be paid refuses the whole request with a message per offending id on the list that named it, and nothing is stamped. At least one id between the two lists is required, and at most 500 distinct units across both. */
         ExpensesReimbursedRequest: {
-            /** @description Reserved for the travel claims of a later delivery, which are reimbursed as one unit. A request naming one is refused on this field; an empty array or none at all is accepted. */
+            /** @description The travel claims to pay. A trip is paid as one unit, for the sum of what its lines owe its owner; a claim that owes nothing cannot be marked. */
             claimIds?: number[];
             /**
              * Format: date
              * @description The day the payroll run was made. A calendar date, today or earlier — never a date somebody means to pay on.
              */
             date: string;
-            /** @description At most 500 *distinct* expenses; an id given twice is one expense. */
-            entryIds: number[];
+            /** @description The standalone expenses to pay. An id that belongs to a travel claim is refused with a message naming the claim. */
+            entryIds?: number[];
             /** @description The payroll run, for whoever has to find it again. Optional, at most 100 characters once trimmed. */
             reference?: string;
         };
-        /** @description One person's approved expenses that are owed back to them, with the figures a payroll run is made from. */
+        /** @description One person's approved units that are owed back to them, with the figures a payroll run is made from. A unit is a standalone expense or a whole travel claim, so the group holds two lists: a trip is paid as one. */
         ExpensesReimbursementGroup: {
-            /** @description The person's expenses, oldest day first and then as recorded. Shaped exactly as a single read of each would be for this caller. */
+            /** @description The person's approved travel claims that owe them something, the earliest departure first. Each is one unit of the payroll run. */
+            claims: components["schemas"]["ExpensesClaimSummary"][];
+            /** @description The person's standalone expenses, oldest day first and then as recorded. Shaped exactly as a single read of each would be for this caller. A travel claim's lines are never here — the claim is the unit. */
             entries: components["schemas"]["ExpensesEntryResponse"][];
-            /** @description The group's figures, one line per currency, by currency code. Nothing is ever converted. */
+            /** @description The group's figures, one line per currency, by currency code — the standalone expenses and the claims' lines together. Nothing is ever converted. */
             totals: components["schemas"]["ExpensesCurrencyTotal"][];
             user: components["schemas"]["ExpensesUserRef"];
         };
-        /** @description The expenses to reject and why, under exactly the rules an approval follows. The reason is shown to their owner, who may then edit and submit again. */
+        /** @description The units to reject and why, under exactly the rules an approval follows. The reason is shown to their owner, who may then edit and submit again. At least one id between the two lists is required, and at most 500 distinct units across both. */
         ExpensesRejectRequest: {
-            /** @description Reserved for the travel claims of a later delivery; a request naming one is refused on this field. */
+            /** @description The travel claims to reject. The reason is stamped on the claim, which its owner edits and submits afresh. */
             claimIds?: number[];
-            /** @description At most 500 *distinct* expenses; an id given twice is one expense. */
-            entryIds: number[];
+            /** @description The standalone expenses to reject. An id that belongs to a travel claim is refused with a message naming the claim. */
+            entryIds?: number[];
             /** @description Why they are rejected. Required; 1 to 1000 characters once trimmed. */
             reason: string;
         };
@@ -1615,7 +1658,7 @@ export interface components {
         /**
          * @description One thing the dashboard wants a human to look at. The shape is the dashboard's, shared by every module's /stats/attention, and the host translates the sentence from `type` — the title is only the name of the thing.
          *
-         *     Three types, each with its own recipients. `approvalWaiting`: one per person with submitted expenses the caller may approve; entityId and id are that person's user id, title is their display name, occurredAt is the oldest of their submissions and count is how many expenses are waiting. `expenseRejected`: one of the caller's own expenses that was sent back; entityId and id are the expense id, title is its description and occurredAt is when it was decided, newest first and at most twenty of them. `reimbursementWaiting`: for holders of expenses:manage, a single item when anything at all is waiting to be paid; entityId and id are the literal string 'reimbursements', because the payroll list is what it links to rather than any one expense, occurredAt is the oldest approval among them and count is how many.
+         *     Three types, each with its own recipients, and each counted in *units* — a standalone expense or a whole travel claim. `approvalWaiting`: one per person with submitted units the caller may approve; entityId and id are that person's user id, title is their display name, occurredAt is the oldest of their submissions and count is how many units are waiting. `expenseRejected`: one of the caller's own units that was sent back; for an expense entityId and id are the expense id and title is its description, for a travel claim they are 'claim/<id>' and title is the trip's purpose, and occurredAt is when it was decided, newest first and at most twenty of them. `reimbursementWaiting`: for holders of expenses:manage, a single item when anything at all is waiting to be paid; entityId and id are the literal string 'reimbursements', because the payroll list is what it links to rather than any one unit, occurredAt is the oldest approval among them and count is how many units.
          */
         ExpensesStatsAttentionItem: {
             /**
@@ -1819,16 +1862,16 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK — the approved expenses, in the order their ids were given. */
+            /** @description OK — the approved expenses, each list in the order its own ids were given. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ExpensesEntryResponse"][];
+                    "application/json": components["schemas"]["ExpensesFlowResponse"];
                 };
             };
-            /** @description Bad Request — no ids, more than 500, a claimId, or at least one expense that may not be approved; the errors on entryIds name each offending id (an expense the caller may not see reads as not found), and nothing was approved. */
+            /** @description Bad Request — no ids at all, more than 500 distinct units, or at least one unit that may not be approved; the errors on entryIds and on claimIds name each offending id under the list that named it (a unit the caller may not see reads as not found), and nothing was approved. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -3508,16 +3551,16 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK — the paid expenses, in the order their ids were given. */
+            /** @description OK — the paid expenses, each list in the order its own ids were given. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ExpensesEntryResponse"][];
+                    "application/json": components["schemas"]["ExpensesFlowResponse"];
                 };
             };
-            /** @description Bad Request — no ids, more than 500, a claimId, a missing or future date, a reference over 100 characters, or at least one expense that may not be paid; the errors on entryIds name each offending id, and nothing was stamped. */
+            /** @description Bad Request — no ids at all, more than 500 distinct units, a missing or future date, a reference over 100 characters, or at least one unit that may not be paid; the errors on entryIds and on claimIds name each offending id under the list that named it, and nothing was stamped. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -3559,16 +3602,16 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK — the expenses as they now stand, in the order their ids were given. */
+            /** @description OK — the expenses as they now stand, each list in the order its own ids were given. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ExpensesEntryResponse"][];
+                    "application/json": components["schemas"]["ExpensesFlowResponse"];
                 };
             };
-            /** @description Bad Request — no ids, more than 500, a claimId, or at least one expense that has not been reimbursed; the errors on entryIds name each offending id, and nothing was changed. */
+            /** @description Bad Request — no ids at all, more than 500 distinct units, or at least one unit that has not been reimbursed; the errors on entryIds and on claimIds name each offending id under the list that named it, and nothing was changed. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -3666,8 +3709,10 @@ export interface operations {
                 from?: string;
                 /** @description The latest entry date to include. Ignored when entryIds is given. */
                 to?: string;
-                /** @description Exactly these expenses instead of the filters. An id that is not one the export could hold refuses the whole file rather than being left out of it silently, and a parameter that is present but names nothing is refused rather than read as "everything" — a button with nothing selected should leave it out and send the filters. */
+                /** @description Exactly these standalone expenses instead of the filters, together with claimIds. An id that is not one the export could hold refuses the whole file rather than being left out of it silently, and a selection that is present but names nothing at all is refused rather than read as "everything" — a button with nothing ticked should leave both out and send the filters. */
                 entryIds?: number[];
+                /** @description Exactly these travel claims instead of the filters, together with entryIds. Each writes one row per line of the trip, under its own unit cell. */
+                claimIds?: number[];
             };
             header?: never;
             path?: never;
@@ -3684,7 +3729,7 @@ export interface operations {
                     "text/csv": string;
                 };
             };
-            /** @description Bad Request — on entryIds for an id the export cannot hold, for more than 5000 of them, or for a present but empty list; and, with no errors object at all, for an unknown state (the very body GET /reimbursements answers it with) or because the filters would produce more rows than one file may hold. */
+            /** @description Bad Request — on entryIds or claimIds for an id the export cannot hold, for more than 5000 of them, or for a selection that is present and names nothing; and, with no errors object at all, for an unknown state (the very body GET /reimbursements answers it with) or because the filters would produce more rows than one file may hold. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -3726,16 +3771,16 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK — the rejected expenses, in the order their ids were given. */
+            /** @description OK — the rejected expenses, each list in the order its own ids were given. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ExpensesEntryResponse"][];
+                    "application/json": components["schemas"]["ExpensesFlowResponse"];
                 };
             };
-            /** @description Bad Request — no reason or one too long, no ids, more than 500, a claimId, or at least one expense that may not be rejected; nothing was rejected. */
+            /** @description Bad Request — no reason or one too long, no ids at all, more than 500 distinct units, or at least one unit that may not be rejected; the errors on entryIds and on claimIds name each offending id under the list that named it, and nothing was rejected. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -4043,16 +4088,16 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK — the submitted expenses, in the order their ids were given. */
+            /** @description OK — the submitted expenses, each list in the order its own ids were given. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ExpensesEntryResponse"][];
+                    "application/json": components["schemas"]["ExpensesFlowResponse"];
                 };
             };
-            /** @description Bad Request — no ids, more than 500, a claimId, or at least one expense that may not be submitted; the errors on entryIds name each offending id (an expense the caller may not see reads as not found), and nothing was submitted. */
+            /** @description Bad Request — no ids at all, more than 500 distinct units, or at least one unit that may not be submitted; the errors on entryIds and on claimIds name each offending id under the list that named it (a unit the caller may not see reads as not found), and nothing was submitted. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -4094,16 +4139,16 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK — the expenses as fresh drafts, in the order their ids were given. */
+            /** @description OK — the expenses as fresh drafts, each list in the order its own ids were given. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ExpensesEntryResponse"][];
+                    "application/json": components["schemas"]["ExpensesFlowResponse"];
                 };
             };
-            /** @description Bad Request — no ids, more than 500, a claimId, or at least one expense that may not be unapproved; nothing was changed. */
+            /** @description Bad Request — no ids at all, more than 500 distinct units, or at least one unit that may not be unapproved; the errors on entryIds and on claimIds name each offending id under the list that named it, and nothing was changed. */
             400: {
                 headers: {
                     [name: string]: unknown;

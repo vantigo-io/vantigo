@@ -1,7 +1,7 @@
 import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 import { appUrl } from "@vantigo/frontend-shell";
 import type { components } from "../api-schema";
-import type { Expense, PaginatedResponse } from "./entries";
+import type { Expense, FlowResult, PaginatedResponse } from "./entries";
 import { ApiValidationError, EXPENSES_QUERY_KEY, handleUnauthorized, json, readJson, request } from "./request";
 
 type Schemas = components["schemas"];
@@ -53,12 +53,12 @@ export const expenseReimbursementsQueryOptions = (filters: ReimbursementFilters)
  * Marks approved expenses as paid back — one payroll run, with the day it was
  * made and a reference whoever made it can find it by. All or nothing.
  */
-export const markExpensesReimbursed = (input: ReimbursedInput): Promise<Expense[]> =>
-  request<Expense[]>("/api/v1/expenses/reimbursed", json("POST", input));
+export const markExpensesReimbursed = (input: ReimbursedInput): Promise<FlowResult> =>
+  request<FlowResult>("/api/v1/expenses/reimbursed", json("POST", input));
 
 /** Takes the reimbursement stamp back off expenses that were paid by mistake. */
-export const undoExpensesReimbursed = (entryIds: number[]): Promise<Expense[]> =>
-  request<Expense[]>("/api/v1/expenses/reimbursed/undo", json("POST", { entryIds }));
+export const undoExpensesReimbursed = (entryIds: number[]): Promise<FlowResult> =>
+  request<FlowResult>("/api/v1/expenses/reimbursed/undo", json("POST", { entryIds }));
 
 export interface CsvDownload {
   blob: Blob;

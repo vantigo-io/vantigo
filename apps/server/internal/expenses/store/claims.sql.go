@@ -13,6 +13,50 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const claimAttentionCounts = `-- name: ClaimAttentionCounts :many
+SELECT e.claim_id,
+       count(*) FILTER (WHERE e.kind = 'outlay' AND NOT EXISTS (
+           SELECT 1 FROM expenses.attachments a WHERE a.entry_id = e.id))::bigint AS receipts_missing,
+       count(*) FILTER (WHERE e.rate_overridden_by_user_id IS NOT NULL)::bigint AS overridden_rates
+FROM expenses.entries e
+WHERE e.claim_id = ANY($1::bigint[])
+GROUP BY e.claim_id
+`
+
+type ClaimAttentionCountsRow struct {
+	ClaimID         *int64
+	ReceiptsMissing int64
+	OverriddenRates int64
+}
+
+// ClaimAttentionCounts is the two figures a queue shows about a trip that its
+// totals cannot: how many of its lines are outlays with no receipt at all, and
+// how many carry a rate an approver has already replaced. It is the claim's own
+// version of what approvalGroups counts over loose expenses, for a whole page of
+// trips at once.
+//
+// Mileage and a per diem day take no receipt, so neither is ever counted as
+// missing one.
+func (q *Queries) ClaimAttentionCounts(ctx context.Context, claimIds []int64) ([]ClaimAttentionCountsRow, error) {
+	rows, err := q.db.Query(ctx, claimAttentionCounts, claimIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ClaimAttentionCountsRow
+	for rows.Next() {
+		var i ClaimAttentionCountsRow
+		if err := rows.Scan(&i.ClaimID, &i.ReceiptsMissing, &i.OverriddenRates); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const claimTotals = `-- name: ClaimTotals :many
 SELECT
     claim_id,
@@ -680,7 +724,15 @@ UPDATE expenses.entries SET
     passenger_rate_table_value = NULL,
     revision = revision + 1,
     updated_at = $7::timestamptz
-WHERE id = $8 AND kind = 'per_diem'
+WHERE expenses.entries.id = $8
+  AND expenses.entries.kind = 'per_diem'
+  -- The claim's own status, guarded here as well as in Go. A claim's edit is
+  -- the only caller, and PUT /claims/{id} is refused once the trip has been
+  -- submitted — but this statement writes a *frozen* figure, and the one rule
+  -- of the freeze is that nothing recomputes it afterwards. A Go regression
+  -- should write nothing rather than quietly reprice an approved trip.
+  AND (SELECT c.status FROM expenses.claims c WHERE c.id = expenses.entries.claim_id)
+      IN ('draft', 'rejected')
 `
 
 type RepricePerDiemLineParams struct {

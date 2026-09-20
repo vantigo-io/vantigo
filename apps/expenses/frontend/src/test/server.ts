@@ -297,6 +297,9 @@ export const stubExpensesApi = (server: ExpensesServer = {}) => {
         groupedByOwner(entries.filter((entry) => entry.status === "submitted")).map((group) => ({
           user: group.user,
           entries: group.entries,
+          // The fake server knows only loose expenses; a travel claim is a unit
+          // of its own and this app's pages do not build one yet.
+          claims: [],
           totals: totalsOf(group.entries),
           receiptsMissing: group.entries.filter((one) => one.kind === "outlay" && one.attachmentCount === 0).length,
           overriddenRates: group.entries.filter((one) => one.rateOverride !== undefined).length,
@@ -428,6 +431,7 @@ export const stubExpensesApi = (server: ExpensesServer = {}) => {
         groupedByOwner(owed).map((group) => ({
           user: group.user,
           entries: group.entries,
+          claims: [],
           totals: totalsOf(group.entries),
         }));
       return Promise.resolve(

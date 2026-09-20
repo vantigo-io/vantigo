@@ -131,6 +131,7 @@ export const categories: ExpensesMeta["categories"] = [
 export const meta = (overrides: Partial<ExpensesMeta> = {}): ExpensesMeta => ({
   projectsAvailable: true,
   defaultCurrency: "NOK",
+  timeZone: "Europe/Oslo",
   categories,
   receiptRequiredOver: 1250,
   capabilities: { canApprove: false, canViewAll: false, canManage: false },

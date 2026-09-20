@@ -52,9 +52,9 @@ func TestExpensesReimbursementsExport_IsExactlyTheseBytes(t *testing.T) {
 	approvedBy(t, anna, boss, trip.Id, receipt.Id)
 
 	want := csvBOM + strings.Join([]string{
-		"Employee;User id;Date;Kind;Description;Category;Currency;Gross;VAT;Owed;Project code",
-		fmt.Sprintf("Anna Ås;%s;2026-03-01;mileage;Til anlegget;;NOK;636,00;;636,00;", annaID),
-		fmt.Sprintf("Anna Ås;%s;2026-03-10;outlay;\"'=SUM(A1);\"\"farlig\"\"\nlinje to\";Materials;NOK;1250,00;250,00;1250,00;KVEM1000", annaID),
+		"Unit;Purpose;Employee;User id;Date;Kind;Description;Category;Currency;Gross;VAT;Owed;Project code",
+		fmt.Sprintf("expense %d;;Anna Ås;%s;2026-03-01;mileage;Til anlegget;;NOK;636,00;;636,00;", trip.Id, annaID),
+		fmt.Sprintf("expense %d;;Anna Ås;%s;2026-03-10;outlay;\"'=SUM(A1);\"\"farlig\"\"\nlinje to\";Materials;NOK;1250,00;250,00;1250,00;KVEM1000", receipt.Id, annaID),
 		"",
 	}, "\r\n")
 
@@ -213,8 +213,8 @@ func TestExpensesReimbursementsExport_GuardsEveryTextColumn(t *testing.T) {
 	}))
 	approvedBy(t, ola, boss, entry.Id)
 
-	row := fmt.Sprintf("'+Ola Nordmann;%s;2026-03-10;outlay;Kabel og kontakter;'+Materiell;NOK;1250,00;;1250,00;'=KV1",
-		olaID)
+	row := fmt.Sprintf("expense %d;;'+Ola Nordmann;%s;2026-03-10;outlay;Kabel og kontakter;'+Materiell;NOK;1250,00;;1250,00;'=KV1",
+		entry.Id, olaID)
 	if got := string(exportCSV(t, boss, "").Body); !strings.Contains(got, row) {
 		t.Errorf("the export is\n%q\nwant a row\n%q — every text cell neutralised, not only the description", got, row)
 	}
@@ -267,8 +267,8 @@ func TestExpensesReimbursementsExport_WithoutProjects_LeavesTheProjectColumnEmpt
 
 	got := string(exportCSV(t, boss, "").Body)
 	want := csvBOM + strings.Join([]string{
-		"Employee;User id;Date;Kind;Description;Category;Currency;Gross;VAT;Owed;Project code",
-		fmt.Sprintf("Ola Nordmann;%s;2026-03-10;outlay;Kabel og kontakter;Materials;NOK;1250,00;;1250,00;", ownerID),
+		"Unit;Purpose;Employee;User id;Date;Kind;Description;Category;Currency;Gross;VAT;Owed;Project code",
+		fmt.Sprintf("expense %d;;Ola Nordmann;%s;2026-03-10;outlay;Kabel og kontakter;Materials;NOK;1250,00;;1250,00;", entry.Id, ownerID),
 		"",
 	}, "\r\n")
 	if got != want {

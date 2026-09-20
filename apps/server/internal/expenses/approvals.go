@@ -1,13 +1,11 @@
 package expenses
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"math/big"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -23,10 +21,15 @@ import (
 // GetExpensesApprovals Get the approval queue
 // (GET /api/v1/expenses/approvals)
 //
-// The submitted expenses the caller may approve, grouped per person, the person
-// who has been waiting longest first, paged **by person in SQL** — the database
-// takes the page of people and hands back only their expenses, rather than
-// every waiting expense for Go to page afterwards.
+// The submitted **units** the caller may approve — a standalone expense, or a
+// whole travel claim — grouped per person, the person who has been waiting
+// longest first, paged **by person in SQL**: the database takes the page of
+// people and hands back only their units, rather than every waiting one for Go
+// to page afterwards.
+//
+// A claim is one row of the group's claims, with the figures an approver
+// decides on; its lines are never listed among the entries, because a line is
+// not something anybody can approve on its own. The trip's own page holds them.
 //
 // A caller who approves nothing at all gets the access layer's 403, as the
 // batch decisions do: there is no queue for them to be shown an empty page of.
@@ -52,16 +55,32 @@ func (s *server) GetExpensesApprovals(ctx context.Context, req gen.GetExpensesAp
 
 	total, err := q.CountApprovalGroups(ctx, store.CountApprovalGroupsParams{
 		SeeAll: scope.seeAll, ManagedProjectIds: scope.managed, LockedBefore: scope.lock,
+		TimeZone: c.Settings.TimeZone,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("expenses: count the approval queue's groups: %w", err)
 	}
-	rows, err := q.ListApprovalGroupEntries(ctx, store.ListApprovalGroupEntriesParams{
+	userIDs, err := q.ListApprovalGroups(ctx, store.ListApprovalGroupsParams{
 		SeeAll: scope.seeAll, ManagedProjectIds: scope.managed, LockedBefore: scope.lock,
+		TimeZone: c.Settings.TimeZone,
 		PageSize: pageSize, PageOffset: (page - 1) * pageSize,
 	})
 	if err != nil {
+		return nil, fmt.Errorf("expenses: page the approval queue: %w", err)
+	}
+	rows, err := q.ListApprovalGroupEntries(ctx, store.ListApprovalGroupEntriesParams{
+		SeeAll: scope.seeAll, ManagedProjectIds: scope.managed, LockedBefore: scope.lock,
+		UserIds: userIDs,
+	})
+	if err != nil {
 		return nil, fmt.Errorf("expenses: list the approval queue: %w", err)
+	}
+	claims, err := q.ListApprovalGroupClaims(ctx, store.ListApprovalGroupClaimsParams{
+		SeeAll: scope.seeAll, ManagedProjectIds: scope.managed, LockedBefore: scope.lock,
+		TimeZone: c.Settings.TimeZone, UserIds: userIDs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("expenses: list the travel claims awaiting approval: %w", err)
 	}
 	// One renderer: an expense in the queue is shaped exactly as a single read
 	// of it would be for this caller, billing object, capabilities and all.
@@ -69,7 +88,11 @@ func (s *server) GetExpensesApprovals(ctx context.Context, req gen.GetExpensesAp
 	if err != nil {
 		return nil, err
 	}
-	data, err := approvalGroups(rows, entries)
+	units, err := s.claimUnitsOf(ctx, q, c, claims)
+	if err != nil {
+		return nil, err
+	}
+	data, err := approvalGroups(userIDs, rows, entries, units)
 	if err != nil {
 		return nil, err
 	}
@@ -79,47 +102,42 @@ func (s *server) GetExpensesApprovals(ctx context.Context, req gen.GetExpensesAp
 	}, nil
 }
 
-// approvalGroups gathers one page's rows into one group per person, in the
-// queue's own order: the oldest expense date in the group first, then the user
-// id. That is the very order the page was taken in (ListApprovalGroupEntries),
-// re-derived here from the rows themselves — which it can be, because a page
-// holds whole groups. The names come off the rendered expenses, so the queue
-// asks identity for nothing the shaping has not already asked for.
-func approvalGroups(rows []store.ExpensesEntry, entries []gen.ExpensesEntryResponse) ([]gen.ExpensesApprovalGroup, error) {
+// approvalGroups gathers one page's units into one group per person, in the
+// queue's own order: the user ids arrive from SQL already sorted by who has
+// waited longest, so Go re-derives nothing and the page and the order can never
+// disagree. The names come off the rendered units, so the queue asks identity
+// for nothing the shaping has not already asked for.
+func approvalGroups(userIDs []uuid.UUID, rows []store.ExpensesEntry,
+	entries []gen.ExpensesEntryResponse, units []claimUnitResponse,
+) ([]gen.ExpensesApprovalGroup, error) {
 	type group struct {
 		user    gen.ExpensesUserRef
-		oldest  time.Time
 		entries []gen.ExpensesEntryResponse
+		claims  []gen.ExpensesClaimSummary
 		totals  map[string]*currencyTotal
 		missing int32
 		ridden  int32
 	}
-	order := make([]uuid.UUID, 0, len(rows))
-	byUser := map[uuid.UUID]*group{}
+	byUser := make(map[uuid.UUID]*group, len(userIDs))
+	for _, id := range userIDs {
+		byUser[id] = &group{totals: map[string]*currencyTotal{}}
+	}
 	for i, row := range rows {
 		g, ok := byUser[row.UserID]
 		if !ok {
-			g = &group{
-				user: gen.ExpensesUserRef{
-					UserId:      entries[i].Owner.UserId,
-					DisplayName: entries[i].Owner.DisplayName,
-					Active:      entries[i].Owner.Active,
-				},
-				oldest: row.EntryDate.Time,
-				totals: map[string]*currencyTotal{},
-			}
-			byUser[row.UserID] = g
-			order = append(order, row.UserID)
+			continue
 		}
-		if row.EntryDate.Time.Before(g.oldest) {
-			g.oldest = row.EntryDate.Time
+		g.user = gen.ExpensesUserRef{
+			UserId:      entries[i].Owner.UserId,
+			DisplayName: entries[i].Owner.DisplayName,
+			Active:      entries[i].Owner.Active,
 		}
 		g.entries = append(g.entries, entries[i])
 		if err := addToTotals(g.totals, row); err != nil {
 			return nil, err
 		}
-		// A receipt is what an approver checks an outlay against; mileage takes
-		// none and is never counted as missing one.
+		// A receipt is what an approver checks an outlay against; mileage and a
+		// per diem day take none and are never counted as missing one.
 		if row.Kind == kindOutlay && entries[i].AttachmentCount == 0 {
 			g.missing++
 		}
@@ -127,16 +145,30 @@ func approvalGroups(rows []store.ExpensesEntry, entries []gen.ExpensesEntryRespo
 			g.ridden++
 		}
 	}
-	slices.SortFunc(order, func(a, b uuid.UUID) int {
-		return cmp.Or(byUser[a].oldest.Compare(byUser[b].oldest), strings.Compare(a.String(), b.String()))
-	})
+	for _, unit := range units {
+		g, ok := byUser[unit.owner.UserId]
+		if !ok {
+			continue
+		}
+		g.user = unit.owner
+		g.claims = append(g.claims, unit.summary)
+		addSummaryToTotals(g.totals, unit.summary)
+		// A trip's own two counts roll up into its owner's: the card above the
+		// group says how much of this person's work an approver has to look at,
+		// whether it is loose or gathered into a trip.
+		g.missing += unit.summary.ReceiptsMissing
+		g.ridden += unit.summary.OverriddenRates
+	}
 
-	data := make([]gen.ExpensesApprovalGroup, 0, len(order))
-	for _, id := range order {
+	data := make([]gen.ExpensesApprovalGroup, 0, len(userIDs))
+	for _, id := range userIDs {
 		g := byUser[id]
+		if g.user.UserId == uuid.Nil {
+			g.user = gen.ExpensesUserRef{UserId: id, DisplayName: unknownUser}
+		}
 		data = append(data, gen.ExpensesApprovalGroup{
-			User: g.user, Entries: g.entries, Totals: currencyTotals(g.totals),
-			ReceiptsMissing: g.missing, OverriddenRates: g.ridden,
+			User: g.user, Entries: entriesOrEmpty(g.entries), Claims: claimsOrEmpty(g.claims),
+			Totals: currencyTotals(g.totals), ReceiptsMissing: g.missing, OverriddenRates: g.ridden,
 		})
 	}
 	return data, nil
@@ -149,6 +181,23 @@ func approvalGroups(rows []store.ExpensesEntry, entries []gen.ExpensesEntryRespo
 type currencyTotal struct {
 	gross *big.Rat
 	owed  *big.Rat
+}
+
+// addSummaryToTotals folds one travel claim's own per-currency figures into a
+// group's, so a person's total is their loose expenses and their trips
+// together. The claim's figures are already the database's sum of exact
+// numerics (ClaimTotals), so this adds the two sums rather than re-adding the
+// lines — one rounding, as everywhere else here.
+func addSummaryToTotals(totals map[string]*currencyTotal, summary gen.ExpensesClaimSummary) {
+	for _, line := range summary.Totals {
+		t, ok := totals[line.Currency]
+		if !ok {
+			t = &currencyTotal{gross: new(big.Rat), owed: new(big.Rat)}
+			totals[line.Currency] = t
+		}
+		t.gross.Add(t.gross, ratFromFloat(line.Gross))
+		t.owed.Add(t.owed, ratFromFloat(line.OwedToEmployee))
+	}
 }
 
 // addToTotals folds one expense into its currency's total, starting that total

@@ -31,8 +31,14 @@ func (s *server) GetExpensesMeta(ctx context.Context, _ gen.GetExpensesMetaReque
 		return nil, err
 	}
 	return gen.GetExpensesMeta200JSONResponse(gen.ExpensesMetaResponse{
-		ProjectsAvailable:    s.projectsAvailable(),
-		DefaultCurrency:      current.DefaultCurrency,
+		ProjectsAvailable: s.projectsAvailable(),
+		DefaultCurrency:   current.DefaultCurrency,
+		// The business time zone, through the same shaping GET /settings uses:
+		// meta is the one read an expense or a travel-claim form makes, and a
+		// form labelling a trip's days has to label them in the installation's
+		// zone or it will disagree with the server about which day a save lands
+		// on.
+		TimeZone:             current.TimeZone,
 		DefaultMarkupPercent: current.DefaultMarkupPercent,
 		LockedBefore:         current.LockedBefore,
 		ReceiptRequiredOver:  current.ReceiptRequiredOver,

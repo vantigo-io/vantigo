@@ -62,7 +62,7 @@ export const MarkReimbursedModal = ({ entryIds, onClose, onDone }: MarkReimburse
       notifications.show({
         color: "teal",
         title: t("markedReimbursed"),
-        message: paid.length === 1 ? t("oneExpense") : t("countOfExpenses", { count: paid.length }),
+        message: paid.entries.length === 1 ? t("oneExpense") : t("countOfExpenses", { count: paid.entries.length }),
       });
       onDone();
     },
