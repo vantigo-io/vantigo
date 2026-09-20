@@ -106,22 +106,28 @@ type CurrencyExpenses struct {
 	// either way.
 	Approved, Submitted, Draft, Total ExpenseBucket
 	// ReadyCount and ReadyAmount are the lines that can go on an invoice
-	// today: the unit approved, the line billable, a bill amount present, and
-	// invoiced_at not set. They span the buckets' definition rather than
-	// sitting inside one — only approved lines qualify — and are given
-	// separately because "ready to invoice" is a decision about the invoicing
-	// track, not about the approval one.
+	// today: the unit approved, the line billable, a bill amount present,
+	// invoiced_at not set, and never a per diem day, which bills nobody
+	// anything. They span the buckets' definition rather than sitting inside
+	// one — only approved lines qualify — and are given separately because
+	// "ready to invoice" is a decision about the invoicing track, not about
+	// the approval one. ReadyAmount is decimal text in ExpenseBucket's
+	// format: two decimals, half away from zero, "0.00" for nothing, and it
+	// is this currency's alone — never added to another's.
 	ReadyCount  int64
 	ReadyAmount string
 	// InvoicedCount and InvoicedAmount are the lines already stamped as
 	// invoiced, and what was billed for them. Invoicing is a stamp, not a
 	// status: an invoiced line is still in the Approved bucket, and these two
 	// figures say how much of it has already left the building.
+	// InvoicedAmount carries the same decimal text and the same rule as
+	// ReadyAmount: this currency's own figure, never added across currencies.
 	InvoicedCount  int64
 	InvoicedAmount string
 	// UnpricedCount is the billable lines, in any bucket, that carry no bill
 	// amount — billable mileage with no customer rate per kilometre, a
-	// billable outlay nobody has priced yet. They are counted here and are
+	// billable outlay nobody has priced yet; per diem days are out of it, as
+	// they are out of ReadyCount. They are counted here and are
 	// *not* in any BillAmount, because a missing price is not a price of
 	// nothing: a consumer showing what a project will bill must surface this,
 	// or the figure it shows is short by however much these lines turn out to
