@@ -604,10 +604,12 @@ func (s *server) visibleEntry(ctx context.Context, q *store.Queries, c *caller, 
 // the caller least about what they may not touch: an expense they may not see
 // is the unknown id's 404, one they may see but not change the access layer's
 // 403, and only then is the body judged (400). Inside the transaction the row
-// is locked and read again: a save that committed since answers 403 if it
-// settled the expense and 409 if it only moved the revision on — the status
-// first, because a caller holding a stale revision of an expense that has been
-// submitted can do nothing with a fresher one either.
+// is locked and read again, and judged by exactly the rule that judged it
+// before the transaction: a submit that committed since is entryStateRefusal's
+// 400 naming the status, arrived a moment later, and a save that only moved the
+// revision on is a 409 — the state first, because a caller holding a stale
+// revision of an expense that has been submitted can do nothing with a fresher
+// one either.
 func (s *server) PutExpensesEntriesById(ctx context.Context, req gen.PutExpensesEntriesByIdRequestObject) (gen.PutExpensesEntriesByIdResponseObject, error) {
 	body := gen.ExpensesEntryUpdateRequest{}
 	if req.Body != nil {
@@ -653,10 +655,11 @@ func (s *server) PutExpensesEntriesById(ctx context.Context, req gen.PutExpenses
 	}
 
 	var (
-		updated  store.ExpensesEntry
-		gone     bool
-		settled  bool
-		conflict *int32
+		updated    store.ExpensesEntry
+		gone       bool
+		staleField string
+		staleMsg   string
+		conflict   *int32
 	)
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
 		row, err := txq.LockEntry(ctx, req.Id)
@@ -667,11 +670,10 @@ func (s *server) PutExpensesEntriesById(ctx context.Context, req gen.PutExpenses
 		if err != nil {
 			return fmt.Errorf("expenses: lock an expense: %w", err)
 		}
-		switch {
-		case !slices.Contains(editableStatuses, row.Status):
-			settled = true
+		if staleField, staleMsg = entryStateRefusal(c, row); staleMsg != "" {
 			return nil
-		case row.Revision != body.Revision:
+		}
+		if row.Revision != body.Revision {
 			conflict = &row.Revision
 			return nil
 		}
@@ -725,8 +727,9 @@ func (s *server) PutExpensesEntriesById(ctx context.Context, req gen.PutExpenses
 		return nil, fmt.Errorf("expenses: change an expense: %w", err)
 	case gone:
 		return gen.PutExpensesEntriesById404Response{}, nil
-	case settled:
-		return gen.PutExpensesEntriesById403JSONResponse(forbidden()), nil
+	case staleMsg != "":
+		return gen.PutExpensesEntriesById400ApplicationProblemPlusJSONResponse(
+			invalidEntry(fieldError(staleField, staleMsg))), nil
 	case conflict != nil:
 		return gen.PutExpensesEntriesById409ApplicationProblemPlusJSONResponse(
 			revisionConflict(*conflict, body.Revision)), nil

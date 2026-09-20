@@ -29,7 +29,29 @@ const (
 	invalidEntryTitle    = "Invalid expense"
 	invalidQueryTitle    = "Invalid query parameters"
 	invalidReceiptTitle  = "Invalid receipt"
+
+	// The two batch titles. A submission and a decision are told apart because
+	// they are made by different people at different moments, and a client
+	// showing "this could not be submitted" beside "this could not be approved"
+	// should not have to read the field errors to know which it is. The two
+	// single-expense writes this delivery adds — the rate override and the
+	// project side's pricing — keep invalidEntryTitle: they change one expense,
+	// exactly as a replace does.
+	invalidSubmissionTitle = "Invalid submission"
+	invalidApprovalTitle   = "Invalid approval"
 )
+
+// invalidSubmission is the 400 body for a submit that moved nothing: its ids,
+// or the state of the expenses they name.
+func invalidSubmission(errs map[string][]string) apicommon.HttpValidationProblemDetails {
+	return apicommon.ValidationProblem(invalidSubmissionTitle, errs)
+}
+
+// invalidApproval is the 400 body for an approval, a rejection or an
+// unapproval that moved nothing.
+func invalidApproval(errs map[string][]string) apicommon.HttpValidationProblemDetails {
+	return apicommon.ValidationProblem(invalidApprovalTitle, errs)
+}
 
 // invalidEntry is the 400 body for an expense whose fields did not pass
 // design §3.1 and §4.

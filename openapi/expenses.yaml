@@ -1,5 +1,53 @@
 components:
     schemas:
+        ExpensesApprovalGroup:
+            description: One person's submitted expenses that the caller may approve, with the figures an approver decides on at a glance.
+            properties:
+                entries:
+                    description: The person's submitted expenses, oldest day first and then as recorded. Shaped exactly as a single read of each would be for this caller.
+                    items:
+                        $ref: '#/components/schemas/ExpensesEntryResponse'
+                    type: array
+                overriddenRates:
+                    description: How many of the entries carry a rate an approver has already replaced.
+                    format: int32
+                    type: integer
+                receiptsMissing:
+                    description: How many of the entries are outlays with no receipt at all. Mileage never takes one and is never counted.
+                    format: int32
+                    type: integer
+                totals:
+                    description: The group's figures, one line per currency, by currency code. Nothing is ever converted.
+                    items:
+                        $ref: '#/components/schemas/ExpensesApprovalTotal'
+                    type: array
+                user:
+                    $ref: '#/components/schemas/ExpensesUserRef'
+            required:
+                - user
+                - entries
+                - totals
+                - receiptsMissing
+                - overriddenRates
+            type: object
+        ExpensesApprovalTotal:
+            description: One currency's figures inside an approval group.
+            properties:
+                currency:
+                    type: string
+                gross:
+                    description: The entries' gross amounts together.
+                    format: double
+                    type: number
+                owedToEmployee:
+                    description: What the person is owed back — the company's own outlays add nothing.
+                    format: double
+                    type: number
+            required:
+                - currency
+                - gross
+                - owedToEmployee
+            type: object
         ExpensesAttachmentResponse:
             description: 'One receipt on an expense (design §3.2). The bytes themselves are never in a JSON body: they are read back from GET /attachments/{id}, which serves them with the expense''s own visibility.'
             properties:
@@ -21,6 +69,32 @@ components:
                 - fileName
                 - contentType
                 - sizeBytes
+            type: object
+        ExpensesBillingRequest:
+            description: 'What an expense bills its customer, set from the project''s side (decision X7). It is a full replace of the billing fields alone and touches nothing else about the expense: not its amount, not its status, not its receipts. Only a caller with financial rights on the entry''s project may send it — expenses:manage is not one of them — because the markup and the customer rate per kilometre are the project''s figures and an employee''s form never carries them. Allowed while the expense is a draft, rejected, submitted or approved; refused once it has been invoiced.'
+            properties:
+                billRatePerKm:
+                    description: What the customer is charged per kilometre. Only on billable mileage. Left out, the line keeps whatever it carries, and a line that carries none takes the mileage_customer rate in force on the entry date.
+                    format: double
+                    type: number
+                billable:
+                    description: Whether the line is billed on to the customer. Forced false on a project that bills nothing. Turning it off clears the markup, the customer rate and the bill amount.
+                    type: boolean
+                billingLineId:
+                    description: An active billing line of the entry's own project, or absent to book it against none.
+                    format: int32
+                    type: integer
+                markupPercent:
+                    description: A billable outlay's markup on the net, 0 to 1000 with at most two decimals. Left out, the line keeps whatever it carries, and a line that carries none takes the settings' default.
+                    format: double
+                    type: number
+                revision:
+                    description: The revision the expense was read at. A revision that has moved on is a 409.
+                    format: int32
+                    type: integer
+            required:
+                - billable
+                - revision
             type: object
         ExpensesCategoryRequest:
             description: A new expense category. The name is unique case-insensitively; position orders the picker and defaults to the end.
@@ -118,22 +192,30 @@ components:
                     description: Whether the caller may mark it invoiced — financial rights on its project, while it is an approved billable line that is not invoiced yet.
                     type: boolean
                 canOverrideRate:
-                    description: Whether the caller may override the rate on it — an approver of it or expenses:manage, while it is a submitted line carrying a rate.
+                    description: Whether the caller may override the rate on it — an approver of it or expenses:manage, while it is a submitted mileage line.
                     type: boolean
                 canSeeBilling:
                     description: Whether the billing object is in this copy of the entry.
                     type: boolean
+                canSetBilling:
+                    description: Whether the caller may price it from the project's side (PUT /entries/{id}/billing) — financial rights on its project, while it has not been invoiced and is not before the period lock.
+                    type: boolean
                 canSubmit:
-                    description: Whether the caller may submit it.
+                    description: Whether the caller may submit it — its owner or expenses:manage, while it is a draft or rejected, and not before the period lock.
+                    type: boolean
+                canUnapprove:
+                    description: Whether the caller may return it to a draft — an approver of it or expenses:manage, while it is approved and has been neither reimbursed nor invoiced.
                     type: boolean
             required:
                 - canEdit
                 - canDelete
                 - canSubmit
                 - canApprove
+                - canUnapprove
                 - canOverrideRate
                 - canMarkInvoiced
                 - canSeeBilling
+                - canSetBilling
             type: object
         ExpensesEntryCategory:
             description: The category an outlay is booked under, with the name as it stands now. Absent on a mileage line, which carries none.
@@ -178,6 +260,18 @@ components:
                 - id
                 - code
                 - name
+            type: object
+        ExpensesEntryRateOverride:
+            description: The record an overridden mileage rate leaves on the line (decision X8) — who replaced the rate the table gave it, and what the table had said. Present only when somebody has, and then shown to everyone who may see the expense, its owner included.
+            properties:
+                byUser:
+                    $ref: '#/components/schemas/ExpensesUserRef'
+                tableValue:
+                    description: The reimbursement rate per kilometre the line was frozen at before the first override. Absent when the line carried none.
+                    format: double
+                    type: number
+            required:
+                - byUser
             type: object
         ExpensesEntryRequest:
             description: 'One money line (design §3.1). The fields a kind does not carry are refused on their own field rather than ignored: an outlay carries a category, a payer, a currency and a gross amount with optional VAT; a mileage line carries a distance, optional places and passengers, and is priced by the server from the dated rate table. Travel claims and their per diem arrive in a later delivery, so kind per_diem and claimId are refused for now.'
@@ -335,6 +429,8 @@ components:
                     description: The reimbursement rate per kilometre the line was priced with. Absent on an outlay.
                     format: double
                     type: number
+                rateOverride:
+                    $ref: '#/components/schemas/ExpensesEntryRateOverride'
                 rejectionReason:
                     type: string
                 revision:
@@ -444,6 +540,25 @@ components:
                 - description
                 - revision
             type: object
+        ExpensesFlowRequest:
+            description: 'The expenses to move through the flow (decision X4). All or nothing: one expense that may not be moved refuses the whole request with a message per offending id on entryIds, and nothing changes. At most 500 ids at once; an id given twice is one expense.'
+            properties:
+                claimIds:
+                    description: Reserved for the travel claims of a later delivery, which are approved as one unit. A request naming one is refused on this field; an empty array or none at all is accepted.
+                    items:
+                        format: int64
+                        type: integer
+                    maxItems: 500
+                    type: array
+                entryIds:
+                    items:
+                        format: int64
+                        type: integer
+                    maxItems: 500
+                    type: array
+            required:
+                - entryIds
+            type: object
         ExpensesMetaCapabilities:
             description: What the calling user may do in this module, so the frontend never re-derives the rules.
             properties:
@@ -531,6 +646,25 @@ components:
                 - id
                 - code
             type: object
+        ExpensesRateOverrideRequest:
+            description: A replacement rate for one submitted mileage line (decision X8). It reprices the line's amount and nothing else — the customer's own rate per kilometre is untouched — and records who set it and what the rate table had said.
+            properties:
+                passengerRate:
+                    description: The passenger supplement per kilometre, 0 or more with at most two decimals. Only on a line that carries passengers; left out, the line keeps the supplement it was frozen with.
+                    format: double
+                    type: number
+                rate:
+                    description: The reimbursement rate per kilometre — greater than zero, at most two decimals.
+                    format: double
+                    type: number
+                revision:
+                    description: The revision the expense was read at. A revision that has moved on is a 409.
+                    format: int32
+                    type: integer
+            required:
+                - rate
+                - revision
+            type: object
         ExpensesRateRequest:
             description: A new dated rate (design §3.4). A money kind carries a currency and a value greater than zero with at most two decimals; a percentage kind carries no currency and a value between 0 and 100. One row per kind and valid-from day.
             properties:
@@ -605,6 +739,29 @@ components:
                 - validFrom
                 - value
             type: object
+        ExpensesRejectRequest:
+            description: The expenses to reject and why, under exactly the rules an approval follows. The reason is shown to their owner, who may then edit and submit again.
+            properties:
+                claimIds:
+                    description: Reserved for the travel claims of a later delivery; a request naming one is refused on this field.
+                    items:
+                        format: int64
+                        type: integer
+                    maxItems: 500
+                    type: array
+                entryIds:
+                    items:
+                        format: int64
+                        type: integer
+                    maxItems: 500
+                    type: array
+                reason:
+                    description: Why they are rejected. Required; 1 to 1000 characters once trimmed.
+                    type: string
+            required:
+                - entryIds
+                - reason
+            type: object
         ExpensesSettingsRequest:
             description: A full replace of the installation's expense settings. Leaving lockedBefore or receiptRequiredOver out — or sending null — clears it.
             properties:
@@ -646,6 +803,35 @@ components:
             required:
                 - defaultCurrency
             type: object
+        ExpensesUserRef:
+            description: One person, named through identity — the owner of an approval group, or whoever overrode a rate.
+            properties:
+                active:
+                    description: Whether identity still has them as an active user.
+                    type: boolean
+                displayName:
+                    description: Their display name; 'Unknown user' when the directory no longer knows them.
+                    type: string
+                userId:
+                    format: uuid
+                    type: string
+            required:
+                - userId
+                - displayName
+                - active
+            type: object
+        PaginatedResponseOfExpensesApprovalGroup:
+            properties:
+                data:
+                    items:
+                        $ref: '#/components/schemas/ExpensesApprovalGroup'
+                    type: array
+                pagination:
+                    $ref: common.yaml#/components/schemas/PaginationMetadata
+            required:
+                - data
+                - pagination
+            type: object
         PaginatedResponseOfExpensesEntryResponse:
             properties:
                 data:
@@ -663,6 +849,91 @@ info:
     version: "1"
 openapi: 3.0.3
 paths:
+    /api/v1/expenses/approvals:
+        get:
+            description: The approval queue — the submitted expenses the caller may approve (every one of them for expenses:approve, the ones on the projects they manage otherwise, and not those dated before the period lock unless they hold expenses:manage, whose approval the lock would refuse anyway) — grouped per person, the person who has been waiting longest first, and paged by person, so a page always holds whole groups.
+            operationId: getExpensesApprovals
+            parameters:
+                - in: query
+                  name: page
+                  schema:
+                    format: int32
+                    type: integer
+                - in: query
+                  name: pageSize
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PaginatedResponseOfExpensesApprovalGroup'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request — paging out of range.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller holds neither expenses:approve nor the manager role on any project, so there is nothing they could ever approve.
+            summary: Get the approval queue
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access
+    /api/v1/expenses/approve:
+        post:
+            description: 'Approves submitted expenses (decision X4), recording who decided and when. Each must be submitted, each must be one the caller approves for — expenses:approve for anything, or the manager role on its project — and none may be dated before the period lock unless the caller holds expenses:manage. The frozen amounts are not touched: an approval agrees with them.'
+            operationId: postExpensesApprove
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ExpensesFlowRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/ExpensesEntryResponse'
+                                type: array
+                    description: OK — the approved expenses, in the order their ids were given.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — no ids, more than 500, a claimId, or at least one expense that may not be approved; the errors on entryIds name each offending id (an expense the caller may not see reads as not found), and nothing was approved.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller approves nothing at all; they hold neither expenses:approve nor the manager role on any project.
+            summary: Approve expenses
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access
     /api/v1/expenses/attachments/{id}:
         delete:
             description: 'Removes a receipt while its expense is still its owner''s to change — a draft or a rejected line, by its owner or by expenses:manage, and not before the period lock. The stored object goes with the row. The two refusals are told apart as they are everywhere else here: who is asking is a 403, what the expense is right now is a 400 naming the reason.'
@@ -1170,6 +1441,114 @@ paths:
             tags:
                 - Expenses
             x-vantigo-access: permission:expenses:access
+    /api/v1/expenses/entries/{id}/billing:
+        put:
+            description: 'Prices one expense from its project''s side: what it bills the customer, and which billing line it is booked against. This is a door of its own because expenses:manage does not imply financial rights on a project and an employee''s expense form never carries a markup — the project''s manager prices the line when they approve it, whatever status it has reached. It changes nothing else about the expense.'
+            operationId: putExpensesEntriesByIdBilling
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ExpensesBillingRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ExpensesEntryResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — on projectId when the expense is on no project or this installation has no projects module, on status when it has been invoiced, on entryDate when it falls before the period lock, and on the figures' own fields otherwise.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller may see the expense but not the money its project makes on it.
+                "404":
+                    description: Not Found — no expense has that id, or the caller may not see it.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict — the expense's revision has moved on.
+            summary: Price an expense from its project
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access
+    /api/v1/expenses/entries/{id}/rate:
+        put:
+            description: Replaces the reimbursement rate on one submitted mileage line (decision X8) and reprices its amount. Its owner cannot — unless they also approve it, because self-approval is allowed. What the rate table had said is recorded beside the new rate, the first time and no later, so the original is never lost.
+            operationId: putExpensesEntriesByIdRate
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ExpensesRateOverrideRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ExpensesEntryResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — on kind when the expense is not a mileage line, on status when it is not submitted, on entryDate when it falls before the period lock, and on rate, passengerRate or revision otherwise.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller may see the expense but does not approve it and does not hold expenses:manage.
+                "404":
+                    description: Not Found — no expense has that id, or the caller may not see it.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict — the expense's revision has moved on.
+            summary: Override a mileage rate
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access
     /api/v1/expenses/meta:
         get:
             description: What this installation of Expenses can do (decision X2) and the settings and categories every form needs, in one read.
@@ -1419,6 +1798,47 @@ paths:
             tags:
                 - Expenses
             x-vantigo-access: permission:expenses:access+expenses:manage
+    /api/v1/expenses/reject:
+        post:
+            description: Rejects submitted expenses with a reason their owner sees, under exactly the rules an approval follows. A rejected expense is its owner's to edit, delete or submit again; submitting it prices it once more, so a line sent back over a wrong rate comes back at the right one.
+            operationId: postExpensesReject
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ExpensesRejectRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/ExpensesEntryResponse'
+                                type: array
+                    description: OK — the rejected expenses, in the order their ids were given.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — no reason or one too long, no ids, more than 500, a claimId, or at least one expense that may not be rejected; nothing was rejected.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller approves nothing at all.
+            summary: Reject expenses
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access
     /api/v1/expenses/settings:
         get:
             description: The settings every expenses:access holder may know — the currency a new expense starts in, the default markup, the receipt threshold and the period lock.
@@ -1484,5 +1904,87 @@ paths:
             tags:
                 - Expenses
             x-vantigo-access: permission:expenses:access+expenses:manage
+    /api/v1/expenses/submit:
+        post:
+            description: 'Submits expenses for approval (decision X4). Each must be the caller''s own draft or rejected line — expenses:manage submits on somebody else''s behalf — and none may be dated before the period lock unless the caller holds expenses:manage. This is where the figures freeze: the mileage rate, the passenger supplement, the amount and what the customer is billed are computed one last time from the tables in force on the expense''s own date, stored, and never computed again. A mileage line with no rate in force on its date cannot be submitted, and an employee-paid outlay whose gross exceeds the settings'' receipt threshold cannot be submitted without a receipt.'
+            operationId: postExpensesSubmit
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ExpensesFlowRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/ExpensesEntryResponse'
+                                type: array
+                    description: OK — the submitted expenses, in the order their ids were given.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — no ids, more than 500, a claimId, or at least one expense that may not be submitted; the errors on entryIds name each offending id (an expense the caller may not see reads as not found), and nothing was submitted.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Submit expenses
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access
+    /api/v1/expenses/unapprove:
+        post:
+            description: 'Returns approved expenses to a draft their owner can change and submit again — by whoever could have approved them, or by expenses:manage — clearing the decision and the submission stamp alike. The figures the submit froze stay on the line until the next save or submit recomputes them. Never an expense that has been reimbursed or invoiced: those are Task 5''s tracks and undoing them is their own operation.'
+            operationId: postExpensesUnapprove
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ExpensesFlowRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/ExpensesEntryResponse'
+                                type: array
+                    description: OK — the expenses as fresh drafts, in the order their ids were given.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — no ids, more than 500, a claimId, or at least one expense that may not be unapproved; nothing was changed.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller approves nothing at all and does not hold expenses:manage.
+            summary: Unapprove expenses
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access
 servers:
     - url: /

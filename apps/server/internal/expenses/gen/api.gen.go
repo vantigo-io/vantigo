@@ -21,6 +21,35 @@ import (
 	externalRef0 "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 )
 
+// ExpensesApprovalGroup One person's submitted expenses that the caller may approve, with the figures an approver decides on at a glance.
+type ExpensesApprovalGroup struct {
+	// Entries The person's submitted expenses, oldest day first and then as recorded. Shaped exactly as a single read of each would be for this caller.
+	Entries []ExpensesEntryResponse `json:"entries"`
+
+	// OverriddenRates How many of the entries carry a rate an approver has already replaced.
+	OverriddenRates int32 `json:"overriddenRates"`
+
+	// ReceiptsMissing How many of the entries are outlays with no receipt at all. Mileage never takes one and is never counted.
+	ReceiptsMissing int32 `json:"receiptsMissing"`
+
+	// Totals The group's figures, one line per currency, by currency code. Nothing is ever converted.
+	Totals []ExpensesApprovalTotal `json:"totals"`
+
+	// User One person, named through identity — the owner of an approval group, or whoever overrode a rate.
+	User ExpensesUserRef `json:"user"`
+}
+
+// ExpensesApprovalTotal One currency's figures inside an approval group.
+type ExpensesApprovalTotal struct {
+	Currency string `json:"currency"`
+
+	// Gross The entries' gross amounts together.
+	Gross float64 `json:"gross"`
+
+	// OwedToEmployee What the person is owed back — the company's own outlays add nothing.
+	OwedToEmployee float64 `json:"owedToEmployee"`
+}
+
 // ExpensesAttachmentResponse One receipt on an expense (design §3.2). The bytes themselves are never in a JSON body: they are read back from GET /attachments/{id}, which serves them with the expense's own visibility.
 type ExpensesAttachmentResponse struct {
 	// ContentType What the receipt was detected to be when it was uploaded — image/jpeg, image/png, image/heic or application/pdf — and what the download is served as.
@@ -32,6 +61,24 @@ type ExpensesAttachmentResponse struct {
 
 	// SizeBytes The receipt's size in bytes, at most 10 MB.
 	SizeBytes int64 `json:"sizeBytes"`
+}
+
+// ExpensesBillingRequest What an expense bills its customer, set from the project's side (decision X7). It is a full replace of the billing fields alone and touches nothing else about the expense: not its amount, not its status, not its receipts. Only a caller with financial rights on the entry's project may send it — expenses:manage is not one of them — because the markup and the customer rate per kilometre are the project's figures and an employee's form never carries them. Allowed while the expense is a draft, rejected, submitted or approved; refused once it has been invoiced.
+type ExpensesBillingRequest struct {
+	// BillRatePerKm What the customer is charged per kilometre. Only on billable mileage. Left out, the line keeps whatever it carries, and a line that carries none takes the mileage_customer rate in force on the entry date.
+	BillRatePerKm *float64 `json:"billRatePerKm,omitempty"`
+
+	// Billable Whether the line is billed on to the customer. Forced false on a project that bills nothing. Turning it off clears the markup, the customer rate and the bill amount.
+	Billable bool `json:"billable"`
+
+	// BillingLineId An active billing line of the entry's own project, or absent to book it against none.
+	BillingLineId *int32 `json:"billingLineId,omitempty"`
+
+	// MarkupPercent A billable outlay's markup on the net, 0 to 1000 with at most two decimals. Left out, the line keeps whatever it carries, and a line that carries none takes the settings' default.
+	MarkupPercent *float64 `json:"markupPercent,omitempty"`
+
+	// Revision The revision the expense was read at. A revision that has moved on is a 409.
+	Revision int32 `json:"revision"`
 }
 
 // ExpensesCategoryRequest A new expense category. The name is unique case-insensitively; position orders the picker and defaults to the end.
@@ -93,14 +140,20 @@ type ExpensesEntryCapabilities struct {
 	// CanMarkInvoiced Whether the caller may mark it invoiced — financial rights on its project, while it is an approved billable line that is not invoiced yet.
 	CanMarkInvoiced bool `json:"canMarkInvoiced"`
 
-	// CanOverrideRate Whether the caller may override the rate on it — an approver of it or expenses:manage, while it is a submitted line carrying a rate.
+	// CanOverrideRate Whether the caller may override the rate on it — an approver of it or expenses:manage, while it is a submitted mileage line.
 	CanOverrideRate bool `json:"canOverrideRate"`
 
 	// CanSeeBilling Whether the billing object is in this copy of the entry.
 	CanSeeBilling bool `json:"canSeeBilling"`
 
-	// CanSubmit Whether the caller may submit it.
+	// CanSetBilling Whether the caller may price it from the project's side (PUT /entries/{id}/billing) — financial rights on its project, while it has not been invoiced and is not before the period lock.
+	CanSetBilling bool `json:"canSetBilling"`
+
+	// CanSubmit Whether the caller may submit it — its owner or expenses:manage, while it is a draft or rejected, and not before the period lock.
 	CanSubmit bool `json:"canSubmit"`
+
+	// CanUnapprove Whether the caller may return it to a draft — an approver of it or expenses:manage, while it is approved and has been neither reimbursed nor invoiced.
+	CanUnapprove bool `json:"canUnapprove"`
 }
 
 // ExpensesEntryCategory The category an outlay is booked under, with the name as it stands now. Absent on a mileage line, which carries none.
@@ -124,6 +177,15 @@ type ExpensesEntryProject struct {
 	Code string `json:"code"`
 	Id   int32  `json:"id"`
 	Name string `json:"name"`
+}
+
+// ExpensesEntryRateOverride The record an overridden mileage rate leaves on the line (decision X8) — who replaced the rate the table gave it, and what the table had said. Present only when somebody has, and then shown to everyone who may see the expense, its owner included.
+type ExpensesEntryRateOverride struct {
+	// ByUser One person, named through identity — the owner of an approval group, or whoever overrode a rate.
+	ByUser ExpensesUserRef `json:"byUser"`
+
+	// TableValue The reimbursement rate per kilometre the line was frozen at before the first override. Absent when the line carried none.
+	TableValue *float64 `json:"tableValue,omitempty"`
 }
 
 // ExpensesEntryRequest One money line (design §3.1). The fields a kind does not carry are refused on their own field rather than ignored: an outlay carries a category, a payer, a currency and a gross amount with optional VAT; a mileage line carries a distance, optional places and passengers, and is priced by the server from the dated rate table. Travel claims and their per diem arrive in a later delivery, so kind per_diem and claimId are refused for now.
@@ -244,8 +306,11 @@ type ExpensesEntryResponse struct {
 	Project *ExpensesEntryProject `json:"project,omitempty"`
 
 	// Rate The reimbursement rate per kilometre the line was priced with. Absent on an outlay.
-	Rate            *float64 `json:"rate,omitempty"`
-	RejectionReason *string  `json:"rejectionReason,omitempty"`
+	Rate *float64 `json:"rate,omitempty"`
+
+	// RateOverride The record an overridden mileage rate leaves on the line (decision X8) — who replaced the rate the table gave it, and what the table had said. Present only when somebody has, and then shown to everyone who may see the expense, its owner included.
+	RateOverride    *ExpensesEntryRateOverride `json:"rateOverride,omitempty"`
+	RejectionReason *string                    `json:"rejectionReason,omitempty"`
 
 	// Revision What an update must carry to be allowed to save.
 	Revision int32 `json:"revision"`
@@ -294,6 +359,13 @@ type ExpensesEntryUpdateRequest struct {
 	Supplier  *string  `json:"supplier,omitempty"`
 	ToPlace   *string  `json:"toPlace,omitempty"`
 	VatAmount *float64 `json:"vatAmount,omitempty"`
+}
+
+// ExpensesFlowRequest The expenses to move through the flow (decision X4). All or nothing: one expense that may not be moved refuses the whole request with a message per offending id on entryIds, and nothing changes. At most 500 ids at once; an id given twice is one expense.
+type ExpensesFlowRequest struct {
+	// ClaimIds Reserved for the travel claims of a later delivery, which are approved as one unit. A request naming one is refused on this field; an empty array or none at all is accepted.
+	ClaimIds *[]int64 `json:"claimIds,omitempty"`
+	EntryIds []int64  `json:"entryIds"`
 }
 
 // ExpensesMetaCapabilities What the calling user may do in this module, so the frontend never re-derives the rules.
@@ -350,6 +422,18 @@ type ExpensesProjectOptionBillingLine struct {
 	Id   int32  `json:"id"`
 }
 
+// ExpensesRateOverrideRequest A replacement rate for one submitted mileage line (decision X8). It reprices the line's amount and nothing else — the customer's own rate per kilometre is untouched — and records who set it and what the rate table had said.
+type ExpensesRateOverrideRequest struct {
+	// PassengerRate The passenger supplement per kilometre, 0 or more with at most two decimals. Only on a line that carries passengers; left out, the line keeps the supplement it was frozen with.
+	PassengerRate *float64 `json:"passengerRate,omitempty"`
+
+	// Rate The reimbursement rate per kilometre — greater than zero, at most two decimals.
+	Rate float64 `json:"rate"`
+
+	// Revision The revision the expense was read at. A revision that has moved on is a 409.
+	Revision int32 `json:"revision"`
+}
+
 // ExpensesRateRequest A new dated rate (design §3.4). A money kind carries a currency and a value greater than zero with at most two decimals; a percentage kind carries no currency and a value between 0 and 100. One row per kind and valid-from day.
 type ExpensesRateRequest struct {
 	// Currency A three-letter ISO 4217 code. Required for the money kinds, refused for the percentage kinds.
@@ -390,6 +474,16 @@ type ExpensesRateUpdateRequest struct {
 	Value     float64            `json:"value"`
 }
 
+// ExpensesRejectRequest The expenses to reject and why, under exactly the rules an approval follows. The reason is shown to their owner, who may then edit and submit again.
+type ExpensesRejectRequest struct {
+	// ClaimIds Reserved for the travel claims of a later delivery; a request naming one is refused on this field.
+	ClaimIds *[]int64 `json:"claimIds,omitempty"`
+	EntryIds []int64  `json:"entryIds"`
+
+	// Reason Why they are rejected. Required; 1 to 1000 characters once trimmed.
+	Reason string `json:"reason"`
+}
+
 // ExpensesSettingsRequest A full replace of the installation's expense settings. Leaving lockedBefore or receiptRequiredOver out — or sending null — clears it.
 type ExpensesSettingsRequest struct {
 	// DefaultCurrency A three-letter ISO 4217 code.
@@ -417,10 +511,32 @@ type ExpensesSettingsResponse struct {
 	ReceiptRequiredOver *float64 `json:"receiptRequiredOver,omitempty"`
 }
 
+// ExpensesUserRef One person, named through identity — the owner of an approval group, or whoever overrode a rate.
+type ExpensesUserRef struct {
+	// Active Whether identity still has them as an active user.
+	Active bool `json:"active"`
+
+	// DisplayName Their display name; 'Unknown user' when the directory no longer knows them.
+	DisplayName string             `json:"displayName"`
+	UserId      openapi_types.UUID `json:"userId"`
+}
+
+// PaginatedResponseOfExpensesApprovalGroup defines model for PaginatedResponseOfExpensesApprovalGroup.
+type PaginatedResponseOfExpensesApprovalGroup struct {
+	Data       []ExpensesApprovalGroup         `json:"data"`
+	Pagination externalRef0.PaginationMetadata `json:"pagination"`
+}
+
 // PaginatedResponseOfExpensesEntryResponse defines model for PaginatedResponseOfExpensesEntryResponse.
 type PaginatedResponseOfExpensesEntryResponse struct {
 	Data       []ExpensesEntryResponse         `json:"data"`
 	Pagination externalRef0.PaginationMetadata `json:"pagination"`
+}
+
+// GetExpensesApprovalsParams defines parameters for GetExpensesApprovals.
+type GetExpensesApprovalsParams struct {
+	Page     *int32 `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
 
 // GetExpensesEntriesParams defines parameters for GetExpensesEntries.
@@ -451,6 +567,9 @@ type PostExpensesEntriesByIdAttachmentsMultipartBody struct {
 	File openapi_types.File `json:"file"`
 }
 
+// PostExpensesApproveJSONRequestBody defines body for PostExpensesApprove for application/json ContentType.
+type PostExpensesApproveJSONRequestBody = ExpensesFlowRequest
+
 // PostExpensesCategoriesJSONRequestBody defines body for PostExpensesCategories for application/json ContentType.
 type PostExpensesCategoriesJSONRequestBody = ExpensesCategoryRequest
 
@@ -466,6 +585,12 @@ type PutExpensesEntriesByIdJSONRequestBody = ExpensesEntryUpdateRequest
 // PostExpensesEntriesByIdAttachmentsMultipartRequestBody defines body for PostExpensesEntriesByIdAttachments for multipart/form-data ContentType.
 type PostExpensesEntriesByIdAttachmentsMultipartRequestBody PostExpensesEntriesByIdAttachmentsMultipartBody
 
+// PutExpensesEntriesByIdBillingJSONRequestBody defines body for PutExpensesEntriesByIdBilling for application/json ContentType.
+type PutExpensesEntriesByIdBillingJSONRequestBody = ExpensesBillingRequest
+
+// PutExpensesEntriesByIdRateJSONRequestBody defines body for PutExpensesEntriesByIdRate for application/json ContentType.
+type PutExpensesEntriesByIdRateJSONRequestBody = ExpensesRateOverrideRequest
+
 // PostExpensesRatesJSONRequestBody defines body for PostExpensesRates for application/json ContentType.
 type PostExpensesRatesJSONRequestBody = ExpensesRateRequest
 
@@ -475,11 +600,26 @@ type PostExpensesRatesResetJSONRequestBody = ExpensesRateResetRequest
 // PutExpensesRatesByIdJSONRequestBody defines body for PutExpensesRatesById for application/json ContentType.
 type PutExpensesRatesByIdJSONRequestBody = ExpensesRateUpdateRequest
 
+// PostExpensesRejectJSONRequestBody defines body for PostExpensesReject for application/json ContentType.
+type PostExpensesRejectJSONRequestBody = ExpensesRejectRequest
+
 // PutExpensesSettingsJSONRequestBody defines body for PutExpensesSettings for application/json ContentType.
 type PutExpensesSettingsJSONRequestBody = ExpensesSettingsRequest
 
+// PostExpensesSubmitJSONRequestBody defines body for PostExpensesSubmit for application/json ContentType.
+type PostExpensesSubmitJSONRequestBody = ExpensesFlowRequest
+
+// PostExpensesUnapproveJSONRequestBody defines body for PostExpensesUnapprove for application/json ContentType.
+type PostExpensesUnapproveJSONRequestBody = ExpensesFlowRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// GetExpensesApprovals Get the approval queue
+	// (GET /api/v1/expenses/approvals)
+	GetExpensesApprovals(w http.ResponseWriter, r *http.Request, params GetExpensesApprovalsParams)
+	// PostExpensesApprove Approve expenses
+	// (POST /api/v1/expenses/approve)
+	PostExpensesApprove(w http.ResponseWriter, r *http.Request)
 	// DeleteExpensesAttachmentsById Delete a receipt
 	// (DELETE /api/v1/expenses/attachments/{id})
 	DeleteExpensesAttachmentsById(w http.ResponseWriter, r *http.Request, id int64)
@@ -513,6 +653,12 @@ type ServerInterface interface {
 	// PostExpensesEntriesByIdAttachments Attach a receipt to an expense
 	// (POST /api/v1/expenses/entries/{id}/attachments)
 	PostExpensesEntriesByIdAttachments(w http.ResponseWriter, r *http.Request, id int64)
+	// PutExpensesEntriesByIdBilling Price an expense from its project
+	// (PUT /api/v1/expenses/entries/{id}/billing)
+	PutExpensesEntriesByIdBilling(w http.ResponseWriter, r *http.Request, id int64)
+	// PutExpensesEntriesByIdRate Override a mileage rate
+	// (PUT /api/v1/expenses/entries/{id}/rate)
+	PutExpensesEntriesByIdRate(w http.ResponseWriter, r *http.Request, id int64)
 	// GetExpensesMeta Get the Expenses metadata
 	// (GET /api/v1/expenses/meta)
 	GetExpensesMeta(w http.ResponseWriter, r *http.Request)
@@ -534,12 +680,21 @@ type ServerInterface interface {
 	// PutExpensesRatesById Change an expense rate
 	// (PUT /api/v1/expenses/rates/{id})
 	PutExpensesRatesById(w http.ResponseWriter, r *http.Request, id int32)
+	// PostExpensesReject Reject expenses
+	// (POST /api/v1/expenses/reject)
+	PostExpensesReject(w http.ResponseWriter, r *http.Request)
 	// GetExpensesSettings Get the expense settings
 	// (GET /api/v1/expenses/settings)
 	GetExpensesSettings(w http.ResponseWriter, r *http.Request)
 	// PutExpensesSettings Change the expense settings
 	// (PUT /api/v1/expenses/settings)
 	PutExpensesSettings(w http.ResponseWriter, r *http.Request)
+	// PostExpensesSubmit Submit expenses
+	// (POST /api/v1/expenses/submit)
+	PostExpensesSubmit(w http.ResponseWriter, r *http.Request)
+	// PostExpensesUnapprove Unapprove expenses
+	// (POST /api/v1/expenses/unapprove)
+	PostExpensesUnapprove(w http.ResponseWriter, r *http.Request)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -550,6 +705,66 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetExpensesApprovals operation middleware
+func (siw *ServerInterfaceWrapper) GetExpensesApprovals(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetExpensesApprovalsParams
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetExpensesApprovals(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostExpensesApprove operation middleware
+func (siw *ServerInterfaceWrapper) PostExpensesApprove(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostExpensesApprove(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // DeleteExpensesAttachmentsById operation middleware
 func (siw *ServerInterfaceWrapper) DeleteExpensesAttachmentsById(w http.ResponseWriter, r *http.Request) {
@@ -899,6 +1114,58 @@ func (siw *ServerInterfaceWrapper) PostExpensesEntriesByIdAttachments(w http.Res
 	handler.ServeHTTP(w, r)
 }
 
+// PutExpensesEntriesByIdBilling operation middleware
+func (siw *ServerInterfaceWrapper) PutExpensesEntriesByIdBilling(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutExpensesEntriesByIdBilling(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutExpensesEntriesByIdRate operation middleware
+func (siw *ServerInterfaceWrapper) PutExpensesEntriesByIdRate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutExpensesEntriesByIdRate(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetExpensesMeta operation middleware
 func (siw *ServerInterfaceWrapper) GetExpensesMeta(w http.ResponseWriter, r *http.Request) {
 
@@ -1021,6 +1288,20 @@ func (siw *ServerInterfaceWrapper) PutExpensesRatesById(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// PostExpensesReject operation middleware
+func (siw *ServerInterfaceWrapper) PostExpensesReject(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostExpensesReject(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetExpensesSettings operation middleware
 func (siw *ServerInterfaceWrapper) GetExpensesSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -1040,6 +1321,34 @@ func (siw *ServerInterfaceWrapper) PutExpensesSettings(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutExpensesSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostExpensesSubmit operation middleware
+func (siw *ServerInterfaceWrapper) PostExpensesSubmit(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostExpensesSubmit(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostExpensesUnapprove operation middleware
+func (siw *ServerInterfaceWrapper) PostExpensesUnapprove(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostExpensesUnapprove(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1169,6 +1478,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/approvals", wrapper.GetExpensesApprovals)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/approve", wrapper.PostExpensesApprove)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/expenses/attachments/{id}", wrapper.DeleteExpensesAttachmentsById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/attachments/{id}", wrapper.GetExpensesAttachmentsById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/categories", wrapper.GetExpensesCategories)
@@ -1180,6 +1491,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/entries/{id}", wrapper.GetExpensesEntriesById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/expenses/entries/{id}", wrapper.PutExpensesEntriesById)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/entries/{id}/attachments", wrapper.PostExpensesEntriesByIdAttachments)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/expenses/entries/{id}/billing", wrapper.PutExpensesEntriesByIdBilling)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/expenses/entries/{id}/rate", wrapper.PutExpensesEntriesByIdRate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/meta", wrapper.GetExpensesMeta)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/projects", wrapper.GetExpensesProjects)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/rates", wrapper.GetExpensesRates)
@@ -1187,10 +1500,141 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/rates/reset", wrapper.PostExpensesRatesReset)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/expenses/rates/{id}", wrapper.DeleteExpensesRatesById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/expenses/rates/{id}", wrapper.PutExpensesRatesById)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/reject", wrapper.PostExpensesReject)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/settings", wrapper.GetExpensesSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/expenses/settings", wrapper.PutExpensesSettings)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/submit", wrapper.PostExpensesSubmit)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/unapprove", wrapper.PostExpensesUnapprove)
 
 	return m
+}
+
+type GetExpensesApprovalsRequestObject struct {
+	Params GetExpensesApprovalsParams
+}
+
+type GetExpensesApprovalsResponseObject interface {
+	VisitGetExpensesApprovalsResponse(w http.ResponseWriter) error
+}
+
+type GetExpensesApprovals200JSONResponse PaginatedResponseOfExpensesApprovalGroup
+
+func (response GetExpensesApprovals200JSONResponse) VisitGetExpensesApprovalsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesApprovals400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetExpensesApprovals400ApplicationProblemPlusJSONResponse) VisitGetExpensesApprovalsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesApprovals401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesApprovals401JSONResponse) VisitGetExpensesApprovalsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesApprovals403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesApprovals403JSONResponse) VisitGetExpensesApprovalsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesApproveRequestObject struct {
+	Body *PostExpensesApproveJSONRequestBody
+}
+
+type PostExpensesApproveResponseObject interface {
+	VisitPostExpensesApproveResponse(w http.ResponseWriter) error
+}
+
+type PostExpensesApprove200JSONResponse []ExpensesEntryResponse
+
+func (response PostExpensesApprove200JSONResponse) VisitPostExpensesApproveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesApprove400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostExpensesApprove400ApplicationProblemPlusJSONResponse) VisitPostExpensesApproveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesApprove401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostExpensesApprove401JSONResponse) VisitPostExpensesApproveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesApprove403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostExpensesApprove403JSONResponse) VisitPostExpensesApproveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type DeleteExpensesAttachmentsByIdRequestObject struct {
@@ -1974,6 +2418,180 @@ func (response PostExpensesEntriesByIdAttachments503ApplicationProblemPlusJSONRe
 	return err
 }
 
+type PutExpensesEntriesByIdBillingRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PutExpensesEntriesByIdBillingJSONRequestBody
+}
+
+type PutExpensesEntriesByIdBillingResponseObject interface {
+	VisitPutExpensesEntriesByIdBillingResponse(w http.ResponseWriter) error
+}
+
+type PutExpensesEntriesByIdBilling200JSONResponse ExpensesEntryResponse
+
+func (response PutExpensesEntriesByIdBilling200JSONResponse) VisitPutExpensesEntriesByIdBillingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutExpensesEntriesByIdBilling400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutExpensesEntriesByIdBilling400ApplicationProblemPlusJSONResponse) VisitPutExpensesEntriesByIdBillingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutExpensesEntriesByIdBilling401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutExpensesEntriesByIdBilling401JSONResponse) VisitPutExpensesEntriesByIdBillingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutExpensesEntriesByIdBilling403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutExpensesEntriesByIdBilling403JSONResponse) VisitPutExpensesEntriesByIdBillingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutExpensesEntriesByIdBilling404Response struct {
+}
+
+func (response PutExpensesEntriesByIdBilling404Response) VisitPutExpensesEntriesByIdBillingResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutExpensesEntriesByIdBilling409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PutExpensesEntriesByIdBilling409ApplicationProblemPlusJSONResponse) VisitPutExpensesEntriesByIdBillingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutExpensesEntriesByIdRateRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PutExpensesEntriesByIdRateJSONRequestBody
+}
+
+type PutExpensesEntriesByIdRateResponseObject interface {
+	VisitPutExpensesEntriesByIdRateResponse(w http.ResponseWriter) error
+}
+
+type PutExpensesEntriesByIdRate200JSONResponse ExpensesEntryResponse
+
+func (response PutExpensesEntriesByIdRate200JSONResponse) VisitPutExpensesEntriesByIdRateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutExpensesEntriesByIdRate400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutExpensesEntriesByIdRate400ApplicationProblemPlusJSONResponse) VisitPutExpensesEntriesByIdRateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutExpensesEntriesByIdRate401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutExpensesEntriesByIdRate401JSONResponse) VisitPutExpensesEntriesByIdRateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutExpensesEntriesByIdRate403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutExpensesEntriesByIdRate403JSONResponse) VisitPutExpensesEntriesByIdRateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutExpensesEntriesByIdRate404Response struct {
+}
+
+func (response PutExpensesEntriesByIdRate404Response) VisitPutExpensesEntriesByIdRateResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutExpensesEntriesByIdRate409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PutExpensesEntriesByIdRate409ApplicationProblemPlusJSONResponse) VisitPutExpensesEntriesByIdRateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetExpensesMetaRequestObject struct {
 }
 
@@ -2388,6 +3006,70 @@ func (response PutExpensesRatesById404Response) VisitPutExpensesRatesByIdRespons
 	return nil
 }
 
+type PostExpensesRejectRequestObject struct {
+	Body *PostExpensesRejectJSONRequestBody
+}
+
+type PostExpensesRejectResponseObject interface {
+	VisitPostExpensesRejectResponse(w http.ResponseWriter) error
+}
+
+type PostExpensesReject200JSONResponse []ExpensesEntryResponse
+
+func (response PostExpensesReject200JSONResponse) VisitPostExpensesRejectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesReject400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostExpensesReject400ApplicationProblemPlusJSONResponse) VisitPostExpensesRejectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesReject401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostExpensesReject401JSONResponse) VisitPostExpensesRejectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesReject403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostExpensesReject403JSONResponse) VisitPostExpensesRejectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetExpensesSettingsRequestObject struct {
 }
 
@@ -2501,8 +3183,142 @@ func (response PutExpensesSettings403JSONResponse) VisitPutExpensesSettingsRespo
 	return err
 }
 
+type PostExpensesSubmitRequestObject struct {
+	Body *PostExpensesSubmitJSONRequestBody
+}
+
+type PostExpensesSubmitResponseObject interface {
+	VisitPostExpensesSubmitResponse(w http.ResponseWriter) error
+}
+
+type PostExpensesSubmit200JSONResponse []ExpensesEntryResponse
+
+func (response PostExpensesSubmit200JSONResponse) VisitPostExpensesSubmitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesSubmit400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostExpensesSubmit400ApplicationProblemPlusJSONResponse) VisitPostExpensesSubmitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesSubmit401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostExpensesSubmit401JSONResponse) VisitPostExpensesSubmitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesSubmit403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostExpensesSubmit403JSONResponse) VisitPostExpensesSubmitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesUnapproveRequestObject struct {
+	Body *PostExpensesUnapproveJSONRequestBody
+}
+
+type PostExpensesUnapproveResponseObject interface {
+	VisitPostExpensesUnapproveResponse(w http.ResponseWriter) error
+}
+
+type PostExpensesUnapprove200JSONResponse []ExpensesEntryResponse
+
+func (response PostExpensesUnapprove200JSONResponse) VisitPostExpensesUnapproveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesUnapprove400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostExpensesUnapprove400ApplicationProblemPlusJSONResponse) VisitPostExpensesUnapproveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesUnapprove401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostExpensesUnapprove401JSONResponse) VisitPostExpensesUnapproveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesUnapprove403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostExpensesUnapprove403JSONResponse) VisitPostExpensesUnapproveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// GetExpensesApprovals Get the approval queue
+	// (GET /api/v1/expenses/approvals)
+	GetExpensesApprovals(ctx context.Context, request GetExpensesApprovalsRequestObject) (GetExpensesApprovalsResponseObject, error)
+	// PostExpensesApprove Approve expenses
+	// (POST /api/v1/expenses/approve)
+	PostExpensesApprove(ctx context.Context, request PostExpensesApproveRequestObject) (PostExpensesApproveResponseObject, error)
 	// DeleteExpensesAttachmentsById Delete a receipt
 	// (DELETE /api/v1/expenses/attachments/{id})
 	DeleteExpensesAttachmentsById(ctx context.Context, request DeleteExpensesAttachmentsByIdRequestObject) (DeleteExpensesAttachmentsByIdResponseObject, error)
@@ -2536,6 +3352,12 @@ type StrictServerInterface interface {
 	// PostExpensesEntriesByIdAttachments Attach a receipt to an expense
 	// (POST /api/v1/expenses/entries/{id}/attachments)
 	PostExpensesEntriesByIdAttachments(ctx context.Context, request PostExpensesEntriesByIdAttachmentsRequestObject) (PostExpensesEntriesByIdAttachmentsResponseObject, error)
+	// PutExpensesEntriesByIdBilling Price an expense from its project
+	// (PUT /api/v1/expenses/entries/{id}/billing)
+	PutExpensesEntriesByIdBilling(ctx context.Context, request PutExpensesEntriesByIdBillingRequestObject) (PutExpensesEntriesByIdBillingResponseObject, error)
+	// PutExpensesEntriesByIdRate Override a mileage rate
+	// (PUT /api/v1/expenses/entries/{id}/rate)
+	PutExpensesEntriesByIdRate(ctx context.Context, request PutExpensesEntriesByIdRateRequestObject) (PutExpensesEntriesByIdRateResponseObject, error)
 	// GetExpensesMeta Get the Expenses metadata
 	// (GET /api/v1/expenses/meta)
 	GetExpensesMeta(ctx context.Context, request GetExpensesMetaRequestObject) (GetExpensesMetaResponseObject, error)
@@ -2557,12 +3379,21 @@ type StrictServerInterface interface {
 	// PutExpensesRatesById Change an expense rate
 	// (PUT /api/v1/expenses/rates/{id})
 	PutExpensesRatesById(ctx context.Context, request PutExpensesRatesByIdRequestObject) (PutExpensesRatesByIdResponseObject, error)
+	// PostExpensesReject Reject expenses
+	// (POST /api/v1/expenses/reject)
+	PostExpensesReject(ctx context.Context, request PostExpensesRejectRequestObject) (PostExpensesRejectResponseObject, error)
 	// GetExpensesSettings Get the expense settings
 	// (GET /api/v1/expenses/settings)
 	GetExpensesSettings(ctx context.Context, request GetExpensesSettingsRequestObject) (GetExpensesSettingsResponseObject, error)
 	// PutExpensesSettings Change the expense settings
 	// (PUT /api/v1/expenses/settings)
 	PutExpensesSettings(ctx context.Context, request PutExpensesSettingsRequestObject) (PutExpensesSettingsResponseObject, error)
+	// PostExpensesSubmit Submit expenses
+	// (POST /api/v1/expenses/submit)
+	PostExpensesSubmit(ctx context.Context, request PostExpensesSubmitRequestObject) (PostExpensesSubmitResponseObject, error)
+	// PostExpensesUnapprove Unapprove expenses
+	// (POST /api/v1/expenses/unapprove)
+	PostExpensesUnapprove(ctx context.Context, request PostExpensesUnapproveRequestObject) (PostExpensesUnapproveResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -2602,6 +3433,63 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// GetExpensesApprovals operation middleware
+func (sh *strictHandler) GetExpensesApprovals(w http.ResponseWriter, r *http.Request, params GetExpensesApprovalsParams) {
+	var request GetExpensesApprovalsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetExpensesApprovals(ctx, request.(GetExpensesApprovalsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetExpensesApprovals")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetExpensesApprovalsResponseObject); ok {
+		if err := validResponse.VisitGetExpensesApprovalsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostExpensesApprove operation middleware
+func (sh *strictHandler) PostExpensesApprove(w http.ResponseWriter, r *http.Request) {
+	var request PostExpensesApproveRequestObject
+
+	var body PostExpensesApproveJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostExpensesApprove(ctx, request.(PostExpensesApproveRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostExpensesApprove")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostExpensesApproveResponseObject); ok {
+		if err := validResponse.VisitPostExpensesApproveResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // DeleteExpensesAttachmentsById operation middleware
@@ -2919,6 +3807,72 @@ func (sh *strictHandler) PostExpensesEntriesByIdAttachments(w http.ResponseWrite
 	}
 }
 
+// PutExpensesEntriesByIdBilling operation middleware
+func (sh *strictHandler) PutExpensesEntriesByIdBilling(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PutExpensesEntriesByIdBillingRequestObject
+
+	request.Id = id
+
+	var body PutExpensesEntriesByIdBillingJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutExpensesEntriesByIdBilling(ctx, request.(PutExpensesEntriesByIdBillingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutExpensesEntriesByIdBilling")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutExpensesEntriesByIdBillingResponseObject); ok {
+		if err := validResponse.VisitPutExpensesEntriesByIdBillingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutExpensesEntriesByIdRate operation middleware
+func (sh *strictHandler) PutExpensesEntriesByIdRate(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PutExpensesEntriesByIdRateRequestObject
+
+	request.Id = id
+
+	var body PutExpensesEntriesByIdRateJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutExpensesEntriesByIdRate(ctx, request.(PutExpensesEntriesByIdRateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutExpensesEntriesByIdRate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutExpensesEntriesByIdRateResponseObject); ok {
+		if err := validResponse.VisitPutExpensesEntriesByIdRateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetExpensesMeta operation middleware
 func (sh *strictHandler) GetExpensesMeta(w http.ResponseWriter, r *http.Request) {
 	var request GetExpensesMetaRequestObject
@@ -3112,6 +4066,37 @@ func (sh *strictHandler) PutExpensesRatesById(w http.ResponseWriter, r *http.Req
 	}
 }
 
+// PostExpensesReject operation middleware
+func (sh *strictHandler) PostExpensesReject(w http.ResponseWriter, r *http.Request) {
+	var request PostExpensesRejectRequestObject
+
+	var body PostExpensesRejectJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostExpensesReject(ctx, request.(PostExpensesRejectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostExpensesReject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostExpensesRejectResponseObject); ok {
+		if err := validResponse.VisitPostExpensesRejectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetExpensesSettings operation middleware
 func (sh *strictHandler) GetExpensesSettings(w http.ResponseWriter, r *http.Request) {
 	var request GetExpensesSettingsRequestObject
@@ -3160,6 +4145,68 @@ func (sh *strictHandler) PutExpensesSettings(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutExpensesSettingsResponseObject); ok {
 		if err := validResponse.VisitPutExpensesSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostExpensesSubmit operation middleware
+func (sh *strictHandler) PostExpensesSubmit(w http.ResponseWriter, r *http.Request) {
+	var request PostExpensesSubmitRequestObject
+
+	var body PostExpensesSubmitJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostExpensesSubmit(ctx, request.(PostExpensesSubmitRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostExpensesSubmit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostExpensesSubmitResponseObject); ok {
+		if err := validResponse.VisitPostExpensesSubmitResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostExpensesUnapprove operation middleware
+func (sh *strictHandler) PostExpensesUnapprove(w http.ResponseWriter, r *http.Request) {
+	var request PostExpensesUnapproveRequestObject
+
+	var body PostExpensesUnapproveJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostExpensesUnapprove(ctx, request.(PostExpensesUnapproveRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostExpensesUnapprove")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostExpensesUnapproveResponseObject); ok {
+		if err := validResponse.VisitPostExpensesUnapproveResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
