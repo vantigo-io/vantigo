@@ -25,6 +25,7 @@ describe("project detail tab visibility", () => {
       "billing",
       "economy",
       "time",
+      "expenses",
     ]);
   });
 
@@ -61,8 +62,33 @@ describe("project detail tab visibility", () => {
     expect(values(undefined, ["*"], canSeeEverything)).not.toContain("time");
   });
 
-  it("puts the time tab last, after the project's own views end", () => {
-    expect(values(moduleKeys, ["*"], canSeeEverything).at(-1)).toBe("time");
+  // Expenses is the second tab from another module, and it carries **no**
+  // project capability: a plain member of the project sees their own expenses
+  // on it. What the totals above the list say — and whether there are any —
+  // is the expenses API's answer, not a gate here.
+  it("shows the expenses tab only when the module is on and the caller holds expenses:access", () => {
+    expect(values(moduleKeys, ["projects:access", "expenses:access"], canSeeEverything)).toContain("expenses");
+    expect(values(moduleKeys, ["projects:access"], canSeeEverything)).not.toContain("expenses");
+    expect(values(["projects"], ["*"], canSeeEverything)).not.toContain("expenses");
+    expect(values(undefined, ["*"], canSeeEverything)).not.toContain("expenses");
+  });
+
+  it("shows the expenses tab to a plain member with no financial rights on the project", () => {
+    expect(
+      values(moduleKeys, ["projects:access", "expenses:access"], {
+        canManage: false,
+        canContribute: true,
+        canSeeFinancials: false,
+        canManageMilestones: false,
+        canSeeCosts: false,
+      }),
+    ).toContain("expenses");
+  });
+
+  it("puts the two tabs other modules add last, time before expenses", () => {
+    const shown = values(moduleKeys, ["*"], canSeeEverything);
+    expect(shown.at(-1)).toBe("expenses");
+    expect(shown.indexOf("time")).toBeLessThan(shown.indexOf("expenses"));
   });
 
   // Tasks follow the project's own roles — there is no task permission and no
@@ -96,11 +122,18 @@ describe("project detail tab visibility", () => {
         canManageMilestones: true,
         canSeeCosts: false,
       }),
-    ).toEqual(["overview", "tasks", "people", "economy", "time"]);
+    ).toEqual(["overview", "tasks", "people", "economy", "time", "expenses"]);
   });
 
   it("hides the billing tab while the project is still loading, but keeps economy", () => {
-    expect(values(moduleKeys, ["*"], undefined)).toEqual(["overview", "tasks", "people", "economy", "time"]);
+    expect(values(moduleKeys, ["*"], undefined)).toEqual([
+      "overview",
+      "tasks",
+      "people",
+      "economy",
+      "time",
+      "expenses",
+    ]);
   });
 
   // The app's own tabs carry no module or permission gate: the
