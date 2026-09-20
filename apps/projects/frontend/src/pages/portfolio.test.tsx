@@ -66,6 +66,8 @@ const portfolio = (rows: EconomyRow[], overrides: Partial<EconomyPortfolioPage> 
     readyAmounts: [{ currency: "NOK", amount: 200000 }],
   },
   timeTracking: true,
+  // This installation has no expenses module; the expenses half of the table is Task 4's.
+  expenseTracking: false,
   ...overrides,
 });
 

@@ -105,10 +105,11 @@ func portfolioRow(t *testing.T, page portfolioJSON, code string) portfolioRowJSO
 
 // portfolioJSON decodes ProjectEconomyListResponse.
 type portfolioJSON struct {
-	Data         []portfolioRowJSON  `json:"data"`
-	Pagination   paginationJSON      `json:"pagination"`
-	Totals       portfolioTotalsJSON `json:"totals"`
-	TimeTracking bool                `json:"timeTracking"`
+	Data            []portfolioRowJSON  `json:"data"`
+	Pagination      paginationJSON      `json:"pagination"`
+	Totals          portfolioTotalsJSON `json:"totals"`
+	TimeTracking    bool                `json:"timeTracking"`
+	ExpenseTracking bool                `json:"expenseTracking"`
 }
 
 // portfolioRowJSON decodes ProjectEconomyRow. Every optional field is a
@@ -123,6 +124,12 @@ type portfolioRowJSON struct {
 	NextMilestone *portfolioMilestoneJSON `json:"nextMilestone"`
 	ReadyCount    int32                   `json:"readyCount"`
 	ReadyAmount   *float64                `json:"readyAmount"`
+	// The three expense figures are pointers because all three are absent
+	// exactly when expenseTracking is false — "this installation cannot say",
+	// which is a different answer from a project with nothing ready.
+	ReadyExpenseCount  *int32   `json:"readyExpenseCount"`
+	ReadyExpenseAmount *float64 `json:"readyExpenseAmount"`
+	ReadyTotalAmount   *float64 `json:"readyTotalAmount"`
 }
 
 type portfolioProjectJSON struct {
@@ -156,15 +163,18 @@ type portfolioMilestoneJSON struct {
 }
 
 type portfolioTotalsJSON struct {
-	ProjectCount    int32             `json:"projectCount"`
-	OverBudgetCount int32             `json:"overBudgetCount"`
-	ReadyCount      int32             `json:"readyCount"`
-	ReadyAmounts    []readyAmountJSON `json:"readyAmounts"`
+	ProjectCount      int32             `json:"projectCount"`
+	OverBudgetCount   int32             `json:"overBudgetCount"`
+	ReadyCount        int32             `json:"readyCount"`
+	ReadyExpenseCount *int32            `json:"readyExpenseCount"`
+	ReadyAmounts      []readyAmountJSON `json:"readyAmounts"`
 }
 
 type readyAmountJSON struct {
-	Currency string  `json:"currency"`
-	Amount   float64 `json:"amount"`
+	Currency      string   `json:"currency"`
+	Amount        float64  `json:"amount"`
+	ExpenseAmount *float64 `json:"expenseAmount"`
+	TotalAmount   *float64 `json:"totalAmount"`
 }
 
 // Who gets a row. The portfolio lists projects the caller has *financial

@@ -20,20 +20,28 @@ import (
 // beside what has actually been logged against it. Four things run through
 // it.
 //
-// **Projects owns the view, Time owns the hours.** Nothing here reads a time
-// entry — depguard would not allow it and no SQL crosses the schema. The
-// hours arrive through contracts.ProjectActuals (deps.Actuals), which is
-// optional: nil is an installation without time tracking, and the answer is
-// then the budget and the invoice plan with nothing to compare them against
-// (timeTracking: false), never zeroes pretending nobody logged anything.
+// **Projects owns the view, its neighbours own the figures.** Nothing here
+// reads a time entry or an expense — depguard would not allow it and no SQL
+// crosses the schema. The hours arrive through contracts.ProjectActuals
+// (deps.Actuals) and what has been spent through contracts.ProjectExpenses
+// (deps.Expenses). Both are optional and independent: nil is an installation
+// without that module, and the answer is then the budget and the invoice plan
+// with nothing to compare them against (timeTracking / expenseTracking:
+// false), never zeroes pretending nobody logged or spent anything.
 //
-// **One call, no lock, no transaction.** The provider is asked exactly once
-// per request, after every row this module needs has been read and outside
-// any transaction at all: this read takes no lock, so nothing another writer
-// wants is held while another module's pool is waited on (design §3.3's rule,
-// applied to the one read that could most easily break it). A failure to
-// reach it fails the request — a 500 — because a budget compared against
-// zeroes is a wrong answer, not a degraded one.
+// **Expenses are not work.** Nothing the expenses contract reports reaches
+// budgetUsed, overBudget, a line's usedPercent, the per-line table or the
+// logged work those are computed from — a receipt is not hours measured
+// against a budget. They appear in three places and no others: the expenses
+// block, the margin, and what is ready to invoice.
+//
+// **One call each, no lock, no transaction.** Each provider is asked exactly
+// once per request, after every row this module needs has been read and
+// outside any transaction at all: this read takes no lock, so nothing another
+// writer wants is held while another module's pool is waited on (design
+// §3.3's rule, applied to the two reads that could most easily break it). A
+// failure to reach either fails the request — a 500 — because a budget or a
+// margin compared against zeroes is a wrong answer, not a degraded one.
 //
 // **Shaping by absence.** Hours are planning data: everyone who can see the
 // project sees them. Amounts, the currency, the fixed price and the milestone
@@ -94,8 +102,12 @@ func (s *server) GetProjectsByIdEconomy(ctx context.Context, req gen.GetProjects
 	if err != nil {
 		return nil, err
 	}
+	spent, err := s.projectExpenses(ctx, a, project.ID)
+	if err != nil {
+		return nil, err
+	}
 
-	resp, err := s.economyResponse(ctx, project, a, lines, milestones, estimate, logged)
+	resp, err := s.economyResponse(ctx, project, a, lines, milestones, estimate, logged, spent)
 	if err != nil {
 		return nil, err
 	}
@@ -126,6 +138,37 @@ func (s *server) projectActuals(ctx context.Context, project store.ProjectsProje
 	return &entry, nil
 }
 
+// projectExpenses is the one call into the module that owns the expenses. It
+// answers nil for an installation without expense tracking — deps.Expenses is
+// optional exactly as deps.Actuals is — and an error for a provider that
+// could not answer, which the handler turns into a 500 rather than into a
+// project that has apparently spent nothing.
+//
+// It is skipped entirely for a caller without financial rights on the
+// project, the way the invoice plan is: every figure the answer could carry
+// is money, so a member's request does not pay for figures their answer
+// cannot hold. expenseTracking is still true for them — it is a fact about
+// the installation, not about the caller — and it is read from deps.Expenses
+// rather than from this call's result, which is the only thing that keeps the
+// two apart.
+//
+// A project with nothing recorded is **absent from the provider's map**,
+// which is the one place this contract differs from the actuals one. Absent
+// means "nothing recorded", so it becomes the zero value here rather than a
+// nil: the block is then reported with zeroes, and only a nil deps.Expenses
+// makes it absent.
+func (s *server) projectExpenses(ctx context.Context, a access, projectID int32) (*contracts.ProjectExpenseTotals, error) {
+	if s.deps.Expenses == nil || !a.CanSeeFinancials {
+		return nil, nil
+	}
+	recorded, err := s.expensesForProjects(ctx, []int32{projectID})
+	if err != nil {
+		return nil, fmt.Errorf("projects: read what the project's expenses cost: %w", err)
+	}
+	entry := recorded[projectID]
+	return &entry, nil
+}
+
 // economyResponse assembles the answer for one caller. seesAmounts is the
 // whole of the financial shaping: financial rights on the project *and* a
 // currency to denominate an amount in, since a number in no currency is a
@@ -138,6 +181,7 @@ func (s *server) economyResponse(
 	milestones []store.ProjectsBillingMilestone,
 	estimate pgtype.Numeric,
 	logged *contracts.ProjectActualsEntry,
+	spent *contracts.ProjectExpenseTotals,
 ) (gen.ProjectEconomyResponse, error) {
 	seesAmounts := a.CanSeeFinancials && project.Currency != nil
 
@@ -151,7 +195,11 @@ func (s *server) economyResponse(
 	}
 
 	resp := gen.ProjectEconomyResponse{
-		TimeTracking:      logged != nil,
+		TimeTracking: logged != nil,
+		// The installation, never the caller and never the answer: a member
+		// gets true here and no block, and a project with nothing recorded
+		// gets true here and a block of zeroes.
+		ExpenseTracking:   s.deps.Expenses != nil,
 		Budget:            budget,
 		Lines:             []gen.ProjectEconomyLine{},
 		TaskEstimateHours: taskEstimate,
@@ -165,6 +213,22 @@ func (s *server) economyResponse(
 			return gen.ProjectEconomyResponse{}, err
 		}
 		resp.Milestones = &totals
+	}
+
+	// The expenses are read before the no-time-tracking return below, because
+	// the two modules are independent: an installation running expenses
+	// without time has budgets, no actuals, and expenses all the same.
+	var expenses *currencyExpenses
+	if spent != nil {
+		figures, err := expensesOf(*spent, project.Currency)
+		if err != nil {
+			return gen.ProjectEconomyResponse{}, err
+		}
+		block, err := economyExpenses(figures)
+		if err != nil {
+			return gen.ProjectEconomyResponse{}, err
+		}
+		resp.Expenses, expenses = block, figures.Own
 	}
 
 	if logged == nil {
@@ -195,7 +259,7 @@ func (s *server) economyResponse(
 		resp.OverBudget = use.OverBudget
 	}
 	if a.canSeeCosts() && project.Currency != nil {
-		resp.Cost = economyCost(totals)
+		resp.Cost = economyCost(totals, expenses)
 	}
 
 	resp.Lines, err = economyLines(lines, logged.Lines, seesAmounts)
@@ -302,20 +366,94 @@ func economyActuals(w loggedWork, seesAmounts bool) (gen.ProjectEconomyActuals, 
 }
 
 // economyCost is design §2 E7's block, reached only by a caller who has both
-// halves of canSeeCosts. The margin is the bill total minus the cost total,
-// both in the project's currency; uncostedHours is what the cost leaves out,
-// so a surface never presents a margin as complete when it is short by the
-// cost of hours nobody carded.
-func economyCost(w loggedWork) *gen.ProjectEconomyCost {
+// halves of canSeeCosts. uncostedHours is what the cost leaves out, so a
+// surface never presents a margin as complete when it is short by the cost of
+// hours nobody carded.
+//
+// The margin spans both halves of what a project is worth: the value of the
+// work plus what its expenses will bill, less what the work cost plus what
+// the expenses cost. Every term is the subject's own **across-bucket total**
+// — approved, submitted and draft together, the basis the labour half has
+// always used — so the two sides are never measured differently; what is
+// approved and what is not is shown by the buckets themselves.
+//
+// It is computed from the exact decimals and rounded **once**, which is why
+// it is not total and expenseCost subtracted from anything: those two are
+// each rounded on their own first, and a margin built from them would be a
+// cent or two out whenever either lands on a boundary. expenseCost is
+// published beside them precisely so a surface can show the two halves of the
+// cost without doing that arithmetic itself.
+//
+// expenses is nil for an installation without expense tracking, and then the
+// margin is exactly the one it has always been and the block carries no
+// expense half at all — never a zero standing in for "we cannot say".
+func economyCost(w loggedWork, expenses *currencyExpenses) *gen.ProjectEconomyCost {
 	total := w.Cost.totalAmount()
-	return &gen.ProjectEconomyCost{
+	bill, cost := w.Bill.totalAmount(), total
+	out := gen.ProjectEconomyCost{
 		Approved:      decimalNumber(w.Cost.Approved.Amount),
 		Submitted:     decimalNumber(w.Cost.Submitted.Amount),
 		Draft:         decimalNumber(w.Cost.Draft.Amount),
 		Total:         decimalNumber(total),
-		Margin:        decimalNumber(new(big.Rat).Sub(w.Bill.totalAmount(), total)),
 		UncostedHours: decimalNumber(exactHours(w.UncostedHundredths)),
 	}
+	if expenses != nil {
+		expenseCost := decimalNumber(expenses.Total.Cost)
+		out.ExpenseCost = &expenseCost
+		bill = new(big.Rat).Add(bill, expenses.Total.Bill)
+		cost = new(big.Rat).Add(cost, expenses.Total.Cost)
+	}
+	out.Margin = decimalNumber(new(big.Rat).Sub(bill, cost))
+	return &out
+}
+
+// economyExpenses is what the project's expenses cost and will bill, for a
+// caller who may see money at all. The nine figures of the project's own
+// currency are present or absent together, on the project carrying one: a
+// project without a currency has no figures of its own, because a line counts
+// towards a project's figures only when it is in the project's currency and
+// there is then no currency for anything to be in.
+//
+// otherCurrencies is what is left — never converted, never dropped and never
+// added to anything, because a sum across currencies is a number in neither.
+// It is absent when empty rather than an empty list: this module says "there
+// are none" by leaving the key out.
+func economyExpenses(f expenseFigures) (*gen.ProjectEconomyExpenses, error) {
+	lastEntryDate, err := economyDate(f.LastEntryDate)
+	if err != nil {
+		return nil, err
+	}
+	out := gen.ProjectEconomyExpenses{LastEntryDate: lastEntryDate}
+	if own := f.Own; own != nil {
+		bucket := func(b expenseSum) *gen.ProjectEconomyExpenseBucket {
+			return &gen.ProjectEconomyExpenseBucket{
+				Count: int32(b.Count), Cost: decimalNumber(b.Cost), Amount: decimalNumber(b.Bill),
+			}
+		}
+		totalCost, totalAmount := decimalNumber(own.Total.Cost), decimalNumber(own.Total.Bill)
+		readyCount, readyAmount := int32(own.ReadyCount), decimalNumber(own.ReadyAmount)
+		invoicedCount, invoicedAmount := int32(own.InvoicedCount), decimalNumber(own.InvoicedAmount)
+		unpricedCount := int32(own.UnpricedCount)
+		out.Approved, out.Submitted, out.Draft = bucket(own.Approved), bucket(own.Submitted), bucket(own.Draft)
+		out.TotalCost, out.TotalAmount = &totalCost, &totalAmount
+		out.ReadyCount, out.ReadyAmount = &readyCount, &readyAmount
+		out.InvoicedCount, out.InvoicedAmount = &invoicedCount, &invoicedAmount
+		out.UnpricedCount = &unpricedCount
+	}
+	if len(f.Others) > 0 {
+		others := make([]gen.ProjectEconomyExpenseCurrency, 0, len(f.Others))
+		for _, other := range f.Others {
+			others = append(others, gen.ProjectEconomyExpenseCurrency{
+				Currency:    other.Currency,
+				Count:       int32(other.Total.Count),
+				Cost:        decimalNumber(other.Total.Cost),
+				Amount:      decimalNumber(other.Total.Bill),
+				ReadyAmount: decimalNumber(other.ReadyAmount),
+			})
+		}
+		out.OtherCurrencies = &others
+	}
+	return &out, nil
 }
 
 // economyLines is the per-line breakdown: every billing line of the project

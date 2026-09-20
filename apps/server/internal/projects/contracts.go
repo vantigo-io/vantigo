@@ -11,8 +11,9 @@ import (
 
 // This file is the whole of this module's reach into its neighbours. Every
 // call into contracts.ProductCatalog (deps.Products), contracts.UserDirectory
-// (deps.Users), contracts.CustomerDirectory (deps.Directory) and
-// contracts.ProjectActuals (deps.Actuals) is made through one of the thin
+// (deps.Users), contracts.CustomerDirectory (deps.Directory),
+// contracts.ProjectActuals (deps.Actuals) and contracts.ProjectExpenses
+// (deps.Expenses) is made through one of the thin
 // accessors below and through nowhere else, which is what makes "what does
 // Projects ask of another module, and when" a question with one place to read
 // the answer — and one place to check it from.
@@ -99,4 +100,18 @@ func (s *server) actualsFor(ctx context.Context, req contracts.ActualsRequest) (
 func (s *server) actualsForProjects(ctx context.Context, reqs []contracts.ActualsRequest) (map[int32]contracts.ActualsTotals, error) {
 	noteContractCall(ctx, "Actuals.ActualsForProjects")
 	return s.deps.Actuals.ActualsForProjects(ctx, reqs)
+}
+
+// expensesForProjects is what another module has recorded as spent on
+// projects. deps.Expenses is optional in exactly the way deps.Actuals is — an
+// installation without expense tracking has none — and every caller checks
+// for nil before reaching this.
+//
+// There is one accessor rather than two because the contract has one method:
+// a project's own economy asks about a batch of one, which costs the provider
+// the same query a portfolio's batch of hundreds costs it and keeps "how many
+// calls does a request make" a question with one answer.
+func (s *server) expensesForProjects(ctx context.Context, projectIDs []int32) (map[int32]contracts.ProjectExpenseTotals, error) {
+	noteContractCall(ctx, "Expenses.ExpensesForProjects")
+	return s.deps.Expenses.ExpensesForProjects(ctx, projectIDs)
 }

@@ -38,6 +38,8 @@ const work = (
 /** What the economy endpoint answers a manager with financial rights but no cost rights. */
 const economy = (overrides: Partial<Economy> = {}): Economy => ({
   timeTracking: true,
+  // This installation has no expenses module; the expenses half of the page is Task 4's.
+  expenseTracking: false,
   currency: "NOK",
   budget: { hours: 400, amount: 480000, fixedPrice: 1000000 },
   lines: [],
