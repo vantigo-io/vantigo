@@ -10,6 +10,37 @@ import (
 	"time"
 )
 
+const categoryIDsInOrder = `-- name: CategoryIDsInOrder :many
+SELECT id FROM expenses.categories ORDER BY position, name FOR UPDATE
+`
+
+// CategoryIDsInOrder is every category in its current order, every row held
+// for the rest of the transaction. A move reorders this list in Go and writes
+// it back with RenumberCategories, so what it renumbers is exactly what it
+// read, and two moves at once take the rows in the same order and queue.
+//
+// Deactivated categories are in it: a category nobody may choose any more
+// still sits where it sat, so deactivating one does not shuffle the picker.
+func (q *Queries) CategoryIDsInOrder(ctx context.Context) ([]int32, error) {
+	rows, err := q.db.Query(ctx, categoryIDsInOrder)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int32
+	for rows.Next() {
+		var id int32
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getCategory = `-- name: GetCategory :one
 SELECT id, name, active, position, created_at, updated_at FROM expenses.categories WHERE id = $1
 `
@@ -97,17 +128,25 @@ func (q *Queries) ListCategories(ctx context.Context) ([]ExpensesCategory, error
 	return items, nil
 }
 
-const nextCategoryPosition = `-- name: NextCategoryPosition :one
-SELECT coalesce(max(position), 0) + 1 FROM expenses.categories
+const renumberCategories = `-- name: RenumberCategories :exec
+UPDATE expenses.categories c
+SET position = v.ord::integer, updated_at = $1::timestamptz
+FROM unnest($2::integer[]) WITH ORDINALITY AS v(id, ord)
+WHERE c.id = v.id AND c.position <> v.ord::integer
 `
 
-// NextCategoryPosition is the position a new category takes when the caller
-// named none: last. An empty table answers 1.
-func (q *Queries) NextCategoryPosition(ctx context.Context) (int32, error) {
-	row := q.db.QueryRow(ctx, nextCategoryPosition)
-	var column_1 int32
-	err := row.Scan(&column_1)
-	return column_1, err
+type RenumberCategoriesParams struct {
+	Now time.Time
+	Ids []int32
+}
+
+// RenumberCategories writes the list back as a dense 1..n in one statement:
+// ids is the categories in their new order and WITH ORDINALITY is the number
+// each one takes. A row already carrying its number is left alone, so a move
+// at one end of the list does not touch the other.
+func (q *Queries) RenumberCategories(ctx context.Context, arg RenumberCategoriesParams) error {
+	_, err := q.db.Exec(ctx, renumberCategories, arg.Now, arg.Ids)
+	return err
 }
 
 const updateCategory = `-- name: UpdateCategory :one

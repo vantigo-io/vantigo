@@ -75,13 +75,13 @@ export interface paths {
         };
         /**
          * List expense categories
-         * @description Every expense category, in position order and then by name, inactive ones included so a stored expense can still name its own.
+         * @description Every expense category in its own order, inactive ones included so a stored expense can still name its own. Positions are a dense 1..n that the server keeps, so this order is the positions themselves.
          */
         get: operations["getExpensesCategories"];
         put?: never;
         /**
          * Add an expense category
-         * @description Adds an expense category.
+         * @description Adds an expense category. With no position it goes last; with one it is inserted at that place and the rest of the list is renumbered around it.
          */
         post: operations["postExpensesCategories"];
         delete?: never;
@@ -100,7 +100,7 @@ export interface paths {
         get?: never;
         /**
          * Change an expense category
-         * @description Replaces a category's name, whether it may be chosen, and where it sits. A category is never deleted — one that is no longer wanted is deactivated, so the expenses booked on it keep their name.
+         * @description Replaces a category's name, whether it may be chosen, and where it sits. A category is never deleted — one that is no longer wanted is deactivated, so the expenses booked on it keep their name. Moving one is this operation: send the place it should take and the server takes it out of the list, puts it back there and renumbers every category 1..n, so a move always moves. A request that repeats the place the category already holds reorders nothing.
          */
         put: operations["putExpensesCategoriesById"];
         post?: never;
@@ -676,14 +676,14 @@ export interface components {
              */
             revision: number;
         };
-        /** @description A new expense category. The name is unique case-insensitively; position orders the picker and defaults to the end. */
+        /** @description A new expense category. The name is unique case-insensitively; position is the place it takes in the picker and defaults to the end. */
         ExpensesCategoryRequest: {
             /** @description Whether the category may be chosen. Absent means active. */
             active?: boolean;
             name: string;
             /**
              * Format: int32
-             * @description Where the category sits in the picker, 1 or greater. Absent puts it last.
+             * @description The 1-based place the category takes in the picker; the server renumbers the others around it, so the list stays a dense 1..n. A place past the end of the list is the end. Absent puts it last.
              */
             position?: number;
         };
@@ -693,7 +693,10 @@ export interface components {
             /** Format: int32 */
             id: number;
             name: string;
-            /** Format: int32 */
+            /**
+             * Format: int32
+             * @description The 1-based place it holds in the picker. Positions are a dense 1..n over every category, active or not, and the list is returned in that order — so this is the place it ended up in, which is not always the one a request asked for.
+             */
             position: number;
         };
         /** @description A full replace of a category's name, whether it may be chosen, and where it sits. Renaming it onto another category's name — however it is cased — is refused on the name field. */
@@ -702,7 +705,7 @@ export interface components {
             name: string;
             /**
              * Format: int32
-             * @description Where the category sits in the picker, 1 or greater.
+             * @description The 1-based place the category is to take in the picker; the server renumbers the others, so the list stays a dense 1..n. Send the place you want it in, not the neighbour's number: sending a place it already holds changes no order at all, and a place past the end of the list is the end. Deactivated categories keep their place and are counted in the numbering.
              */
             position: number;
         };
