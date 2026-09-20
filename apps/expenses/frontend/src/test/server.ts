@@ -1359,30 +1359,34 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
       const standalone = query.get("standalone");
       const claimId = query.get("claimId");
       const projectId = query.get("projectId");
-      const toInvoice = query.get("toInvoice");
-      // `toInvoice` is read one project at a time, and `true` is only ever
-      // about approved expenses: both are refused rather than quietly
-      // answered with an empty page, which would not say which was wrong.
-      if (toInvoice !== null && projectId === null) {
-        return Promise.resolve(
-          problem(400, "Invalid query parameters", {
-            toInvoice: ["'toInvoice' needs a 'projectId': what is ready to invoice is read one project at a time"],
-          }),
-        );
-      }
-      if (toInvoice === "true" && query.get("status") && query.get("status") !== "approved") {
-        return Promise.resolve(
-          problem(400, "Invalid query parameters", {
-            toInvoice: [
-              `'toInvoice=true' is only ever about approved expenses, so it cannot be combined with 'status=${query.get("status")}'`,
-            ],
-          }),
-        );
+      // `toInvoice=false` is the parameter **left out** — no filter, and none
+      // of the rules below — which is what an unticked box asks for. `true`
+      // is read one project at a time, is only ever about approved expenses
+      // and never names a per diem day: each contradiction is refused rather
+      // than answered with an empty page that would not say which was wrong.
+      const toInvoice = query.get("toInvoice") === "true";
+      if (toInvoice) {
+        const errors: string[] = [];
+        if (projectId === null) {
+          errors.push("'toInvoice=true' needs a 'projectId': what is ready to invoice is read one project at a time.");
+        }
+        const status = query.get("status");
+        if (status && status !== "approved") {
+          errors.push(
+            `'toInvoice=true' is only ever about approved expenses, so it cannot be combined with 'status=${status}'.`,
+          );
+        }
+        if (query.get("kind") === "per_diem") {
+          errors.push("'toInvoice=true' never names a per diem day, so it cannot be combined with 'kind=per_diem'.");
+        }
+        if (errors.length > 0) {
+          return Promise.resolve(problem(400, "Invalid query parameters", { toInvoice: errors }));
+        }
       }
       const matching = entries
         .filter((entry) => !userId || entry.owner.userId === userId)
         .filter((entry) => projectId === null || entry.project?.id === Number(projectId))
-        .filter((entry) => toInvoice === null || isReady(entry) === (toInvoice === "true"))
+        .filter((entry) => !toInvoice || isReady(entry))
         // A claim's lines are the trip's, so "My expenses" asks for the units
         // of their own and the trip is listed beside them rather than twice.
         .filter((entry) => standalone === null || (entry.claimId === undefined) === (standalone === "true"))
