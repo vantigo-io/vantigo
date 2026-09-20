@@ -52,6 +52,14 @@ type ExpensesAttachmentResponse struct {
 	SizeBytes int64 `json:"sizeBytes"`
 }
 
+// ExpensesBillingLineOption One billing line a pricer may book an expense against. It carries active because the list holds the expense's own current line even after the project has stopped using it: the dialog has to be able to show what is stored without offering it again.
+type ExpensesBillingLineOption struct {
+	// Active Whether the project still offers the line. False only for the line this expense already carries — every other line in the list is active.
+	Active bool   `json:"active"`
+	Code   string `json:"code"`
+	Id     int32  `json:"id"`
+}
+
 // ExpensesBillingRequest What an expense bills its customer, set from the project's side (decision X7). It is a full replace of the billing fields alone and touches nothing else about the expense: not its amount, not its status, not its receipts. Only a caller with financial rights on the entry's project may send it — expenses:manage is not one of them — because the markup and the customer rate per kilometre are the project's figures and an employee's form never carries them. Allowed while the expense is a draft, rejected, submitted or approved; refused once it has been invoiced. The period lock does not reach it: the lock protects what the employee submitted and what was approved, while pricing is bookkeeping done after a period closes — an invoice for December goes out in January.
 type ExpensesBillingRequest struct {
 	// BillRatePerKm What the customer is charged per kilometre. Only on billable mileage. Left out, the line keeps whatever it carries, and a line that carries none takes the mileage_customer rate in force on the entry date. Refused on a project that bills nothing, rather than accepted and cleared.
@@ -897,6 +905,9 @@ type ServerInterface interface {
 	// PutExpensesEntriesByIdBilling Price an expense from its project
 	// (PUT /api/v1/expenses/entries/{id}/billing)
 	PutExpensesEntriesByIdBilling(w http.ResponseWriter, r *http.Request, id int64)
+	// GetExpensesEntriesByIdBillingLines List the billing lines an expense may be priced against
+	// (GET /api/v1/expenses/entries/{id}/billing-lines)
+	GetExpensesEntriesByIdBillingLines(w http.ResponseWriter, r *http.Request, id int64)
 	// PostExpensesEntriesByIdInvoiced Mark an expense invoiced
 	// (POST /api/v1/expenses/entries/{id}/invoiced)
 	PostExpensesEntriesByIdInvoiced(w http.ResponseWriter, r *http.Request, id int64)
@@ -1415,6 +1426,32 @@ func (siw *ServerInterfaceWrapper) PutExpensesEntriesByIdBilling(w http.Response
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutExpensesEntriesByIdBilling(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetExpensesEntriesByIdBillingLines operation middleware
+func (siw *ServerInterfaceWrapper) GetExpensesEntriesByIdBillingLines(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetExpensesEntriesByIdBillingLines(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2190,6 +2227,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/entries/{id}", wrapper.GetExpensesEntriesById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/expenses/entries/{id}", wrapper.PutExpensesEntriesById)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/entries/{id}/attachments", wrapper.PostExpensesEntriesByIdAttachments)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/entries/{id}/billing-lines", wrapper.GetExpensesEntriesByIdBillingLines)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/expenses/entries/{id}/billing", wrapper.PutExpensesEntriesByIdBilling)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/entries/{id}/invoiced", wrapper.PostExpensesEntriesByIdInvoiced)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/entries/{id}/invoiced/undo", wrapper.PostExpensesEntriesByIdInvoicedUndo)
@@ -3210,6 +3248,84 @@ func (response PutExpensesEntriesByIdBilling409ApplicationProblemPlusJSONRespons
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesEntriesByIdBillingLinesRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetExpensesEntriesByIdBillingLinesResponseObject interface {
+	VisitGetExpensesEntriesByIdBillingLinesResponse(w http.ResponseWriter) error
+}
+
+type GetExpensesEntriesByIdBillingLines200JSONResponse []ExpensesBillingLineOption
+
+func (response GetExpensesEntriesByIdBillingLines200JSONResponse) VisitGetExpensesEntriesByIdBillingLinesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesEntriesByIdBillingLines400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response GetExpensesEntriesByIdBillingLines400ApplicationProblemPlusJSONResponse) VisitGetExpensesEntriesByIdBillingLinesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesEntriesByIdBillingLines401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesEntriesByIdBillingLines401JSONResponse) VisitGetExpensesEntriesByIdBillingLinesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesEntriesByIdBillingLines403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesEntriesByIdBillingLines403JSONResponse) VisitGetExpensesEntriesByIdBillingLinesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesEntriesByIdBillingLines404ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetExpensesEntriesByIdBillingLines404ApplicationProblemPlusJSONResponse) VisitGetExpensesEntriesByIdBillingLinesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -4741,6 +4857,9 @@ type StrictServerInterface interface {
 	// PutExpensesEntriesByIdBilling Price an expense from its project
 	// (PUT /api/v1/expenses/entries/{id}/billing)
 	PutExpensesEntriesByIdBilling(ctx context.Context, request PutExpensesEntriesByIdBillingRequestObject) (PutExpensesEntriesByIdBillingResponseObject, error)
+	// GetExpensesEntriesByIdBillingLines List the billing lines an expense may be priced against
+	// (GET /api/v1/expenses/entries/{id}/billing-lines)
+	GetExpensesEntriesByIdBillingLines(ctx context.Context, request GetExpensesEntriesByIdBillingLinesRequestObject) (GetExpensesEntriesByIdBillingLinesResponseObject, error)
 	// PostExpensesEntriesByIdInvoiced Mark an expense invoiced
 	// (POST /api/v1/expenses/entries/{id}/invoiced)
 	PostExpensesEntriesByIdInvoiced(ctx context.Context, request PostExpensesEntriesByIdInvoicedRequestObject) (PostExpensesEntriesByIdInvoicedResponseObject, error)
@@ -5249,6 +5368,32 @@ func (sh *strictHandler) PutExpensesEntriesByIdBilling(w http.ResponseWriter, r 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutExpensesEntriesByIdBillingResponseObject); ok {
 		if err := validResponse.VisitPutExpensesEntriesByIdBillingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetExpensesEntriesByIdBillingLines operation middleware
+func (sh *strictHandler) GetExpensesEntriesByIdBillingLines(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetExpensesEntriesByIdBillingLinesRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetExpensesEntriesByIdBillingLines(ctx, request.(GetExpensesEntriesByIdBillingLinesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetExpensesEntriesByIdBillingLines")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetExpensesEntriesByIdBillingLinesResponseObject); ok {
+		if err := validResponse.VisitGetExpensesEntriesByIdBillingLinesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

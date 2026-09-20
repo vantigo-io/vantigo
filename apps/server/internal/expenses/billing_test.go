@@ -1,7 +1,9 @@
 package expenses_test
 
 import (
+	"fmt"
 	"net/http"
+	"slices"
 	"testing"
 
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
@@ -425,5 +427,183 @@ func TestExpensesBilling_WithoutProjects_IsA400OnProjectId(t *testing.T) {
 	}
 	if got := getEntry(t, owner, id); got.Capabilities.CanSetBilling {
 		t.Errorf("canSetBilling = true without the projects module, want false")
+	}
+}
+
+// billingLinesPath is the pricing dialog's own read: the lines of the expense's
+// project, judged by the right to price rather than the right to book.
+func billingLinesPath(id int64) string {
+	return fmt.Sprintf("%s/%d/billing-lines", entriesPath, id)
+}
+
+// billingLineOptionJSON decodes ExpensesBillingLineOption.
+type billingLineOptionJSON struct {
+	Id     int32  `json:"id"`
+	Code   string `json:"code"`
+	Active bool   `json:"active"`
+}
+
+// getBillingLines reads them and fails the test unless it answered 200.
+func getBillingLines(t *testing.T, c *modtest.Client, id int64) []billingLineOptionJSON {
+	t.Helper()
+	r := c.Do(http.MethodGet, billingLinesPath(id), nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("billing lines of %d: status %d body %s, want 200", id, r.Status, r.Body)
+	}
+	var lines []billingLineOptionJSON
+	r.JSON(&lines)
+	return lines
+}
+
+// lineCodes is the codes a read answered, in the order it answered them.
+func lineCodes(lines []billingLineOptionJSON) []string {
+	codes := make([]string, 0, len(lines))
+	for _, l := range lines {
+		codes = append(codes, l.Code)
+	}
+	return codes
+}
+
+// The pricing dialog needs the lines of the expense's project, and the right to
+// price is not the right to book: GET /projects answers what the *caller* may
+// book on (a member or a manager of a project still open for work), so a
+// finance person on no project team, and anybody pricing a line on a completed
+// project, would be offered nothing at all. This read is keyed on the expense
+// and judged by exactly the rule the pricing door is judged by.
+func TestExpensesBillingLines_AreTheRightToPriceRatherThanTheRightToBook(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	manager, _ := signInAs(t, h, projectKraftVerket, roleManager)
+	owner, _ := signInAs(t, h, projectKraftVerket, roleMember)
+	entry := createEntry(t, owner, outlayBody(map[string]any{
+		"projectId": projectKraftVerket, "billable": true,
+	}))
+
+	// A finance person holding no role on any project at all. GET /projects
+	// offers them nothing; this offers the expense's own lines.
+	finance, _ := signIn(t, h, "expenses:view-all", "projects:view-all", "projects:view-financials")
+	if options := listProjectOptions(t, finance); len(options) != 0 {
+		t.Fatalf("the picker offers them %+v, want nothing — they may book on no project", options)
+	}
+	if codes := lineCodes(getBillingLines(t, finance, entry.Id)); !slices.Equal(codes, []string{"PM"}) {
+		t.Errorf("the finance reader got %v, want the project's one active line", codes)
+	}
+	// And so does the project's manager.
+	if codes := lineCodes(getBillingLines(t, manager, entry.Id)); !slices.Equal(codes, []string{"PM"}) {
+		t.Errorf("the manager got %v, want the project's one active line", codes)
+	}
+
+	// A project that has been completed accepts no new bookings, so its manager
+	// is offered nothing by the picker — and still has to be able to price what
+	// was booked on it while it was open.
+	h.projects.setCanLogTime(projectKraftVerket, false)
+	t.Cleanup(func() { h.projects.clearCanLogTime(projectKraftVerket) })
+	if options := listProjectOptions(t, manager); len(options) != 0 {
+		t.Fatalf("the picker offers the manager %+v, want nothing on a closed project", options)
+	}
+	if codes := lineCodes(getBillingLines(t, manager, entry.Id)); !slices.Equal(codes, []string{"PM"}) {
+		t.Errorf("the manager of a closed project got %v, want its lines all the same", codes)
+	}
+}
+
+// The line the expense already carries stays in the list even once the project
+// has stopped using it, flagged so the dialog can show what is stored without
+// offering it again. Every other line in the list is active, and they come by
+// code.
+func TestExpensesBillingLines_KeepTheEntrysOwnLineEvenOnceItIsDeactivated(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	manager, _ := signInAs(t, h, projectKraftVerket, roleManager)
+	owner, _ := signInAs(t, h, projectKraftVerket, roleMember)
+
+	// OLD is in use while the expense is booked on it.
+	h.projects.activateLine(lineInactive)
+	onIt := createEntry(t, owner, outlayBody(map[string]any{
+		"projectId": projectKraftVerket, "billingLineId": lineInactive,
+	}))
+	elsewhere := createEntry(t, owner, outlayBody(map[string]any{
+		"description": "Skruer", "projectId": projectKraftVerket, "billingLineId": lineFixed,
+	}))
+	// And goes out of use afterwards — design §8's "existing lines stay".
+	h.projects.deactivateLine(lineInactive)
+
+	lines := getBillingLines(t, manager, onIt.Id)
+	if codes := lineCodes(lines); !slices.Equal(codes, []string{"OLD", "PM"}) {
+		t.Fatalf("lines = %v, want the stored OLD beside the active PM, by code", codes)
+	}
+	for _, l := range lines {
+		if want := l.Code == "PM"; l.Active != want {
+			t.Errorf("%s active = %v, want %v", l.Code, l.Active, want)
+		}
+	}
+	// An expense on another line of the same project is not offered OLD at all.
+	if codes := lineCodes(getBillingLines(t, manager, elsewhere.Id)); !slices.Equal(codes, []string{"PM"}) {
+		t.Errorf("lines of an expense on PM = %v, want the active one alone", codes)
+	}
+}
+
+// The four refusals are the pricing door's own, in the same order, so the two
+// can never disagree about who may price what.
+func TestExpensesBillingLines_RefuseExactlyWhatThePricingDoorRefuses(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	manager, _ := signInAs(t, h, projectKraftVerket, roleManager)
+	owner, _ := signInAs(t, h, projectKraftVerket, roleMember)
+	entry := createEntry(t, owner, outlayBody(map[string]any{
+		"projectId": projectKraftVerket, "billable": true,
+	}))
+
+	// The owner sees the expense and not the money its project makes on it.
+	forbidden(t, owner, http.MethodGet, billingLinesPath(entry.Id), nil)
+	// A stranger gets the unknown id's bare 404, body and all.
+	stranger, _ := signIn(t, h)
+	r := stranger.Do(http.MethodGet, billingLinesPath(entry.Id), nil)
+	unknown := stranger.Do(http.MethodGet, billingLinesPath(90210), nil)
+	if r.Status != http.StatusNotFound || unknown.Status != http.StatusNotFound {
+		t.Errorf("a stranger got %d and an unknown id %d, want 404 for both", r.Status, unknown.Status)
+	}
+	if string(r.Body) != string(unknown.Body) {
+		t.Errorf("a stranger's body is %q and an unknown id's %q, want them identical", r.Body, unknown.Body)
+	}
+
+	// An expense on no project has nothing to bill anybody for, which is a 400
+	// on projectId — the very field and the very message PUT /billing answers,
+	// and before the 403, because whether an expense they can already see
+	// carries a project is in their own copy of it.
+	loose := createEntry(t, owner, outlayBody(map[string]any{"description": "Uten prosjekt"}))
+	errs := refusedEntry(t, owner, http.MethodGet, billingLinesPath(loose.Id), nil)
+	if len(errs["projectId"]) == 0 {
+		t.Errorf("an expense on no project: errors = %v, want one on projectId", errs)
+	}
+	// A project manager cannot see a colleague's project-less expense at all,
+	// so for them it is the unknown id's 404 — the visibility rule, unchanged.
+	if r := manager.Do(http.MethodGet, billingLinesPath(loose.Id), nil); r.Status != http.StatusNotFound {
+		t.Errorf("a project manager on a project-less expense: status %d, want 404", r.Status)
+	}
+	// And the pricing door itself answers the two the same way.
+	if r := owner.Do(http.MethodPut, entryBillingPath(loose.Id),
+		map[string]any{"revision": loose.Revision, "billable": false}); r.Status != http.StatusBadRequest {
+		t.Errorf("PUT /billing on the same expense: status %d body %s, want the same 400", r.Status, r.Body)
+	}
+}
+
+// Without the projects module the operation is not there at all, the answer
+// GET /projects gives for the same reason (decision X2).
+func TestExpensesBillingLines_WithoutProjects_AreNotThere(t *testing.T) {
+	t.Parallel()
+	h := newHarnessWithoutProjects(t)
+	owner, ownerID := signIn(t, h, "expenses:manage")
+	id := seedProjectedEntry(t, h, ownerID)
+
+	r := owner.Do(http.MethodGet, billingLinesPath(id), nil)
+	if r.Status != http.StatusNotFound {
+		t.Fatalf("billing lines without the projects module: status %d body %s, want 404", r.Status, r.Body)
+	}
+	var problem struct {
+		Title string `json:"title"`
+	}
+	r.JSON(&problem)
+	if problem.Title == "" {
+		t.Errorf("body = %s, want a problem saying the module is not installed", r.Body)
 	}
 }
