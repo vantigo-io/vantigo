@@ -846,7 +846,7 @@ type ExpensesProjectSummaryCurrency struct {
 	// ReadyAmount What the lines waiting to be invoiced bill together. Per currency, never added across currencies.
 	ReadyAmount float64 `json:"readyAmount"`
 
-	// ReadyCount How many lines are **ready to invoice**: the unit is approved, the line is billable, it carries a bill amount, and it has not been invoiced yet. It is exactly what GET /entries?toInvoice=true lists, so the figure and the list can never disagree.
+	// ReadyCount How many lines are **ready to invoice**: the unit is approved, the line is billable, it carries a bill amount, it has not been invoiced yet, and it is never a per diem day, which bills nobody anything. It is exactly what GET /entries?toInvoice=true lists, so the figure and the list can never disagree.
 	ReadyCount int32 `json:"readyCount"`
 
 	// Submitted One bucket of a project's expenses in one currency — what they cost the project and what they bill its customer. A figure is rounded once from the unrounded sum, so the three buckets must never be added together to make the total; read 'total' instead.
@@ -855,7 +855,7 @@ type ExpensesProjectSummaryCurrency struct {
 	// Total One bucket of a project's expenses in one currency — what they cost the project and what they bill its customer. A figure is rounded once from the unrounded sum, so the three buckets must never be added together to make the total; read 'total' instead.
 	Total ExpensesProjectSummaryBucket `json:"total"`
 
-	// UnpricedCount How many billable lines carry no bill amount — billable mileage with no customer rate, say. They are counted rather than billed as zero, so the figure is the work still to do before the project can invoice them.
+	// UnpricedCount How many billable lines carry no bill amount — billable mileage with no customer rate, say (per diem days are out of it, as they are out of readyCount). They are counted rather than billed as zero, so the figure is the work still to do before the project can invoice them.
 	UnpricedCount int32 `json:"unpricedCount"`
 }
 
@@ -869,6 +869,9 @@ type ExpensesProjectSummaryResponse struct {
 
 	// LastEntryDate The entry date of the project's most recent expense, over every currency and every status. Absent when nothing has been recorded.
 	LastEntryDate *openapi_types.Date `json:"lastEntryDate,omitempty"`
+
+	// ProjectCurrency The project's own currency — the entry of `currencies` with this code is the project's; every other entry is in another currency, never converted. Absent when the project carries none, in which case every entry is in another currency and the project has no figures of its own. It is answered here rather than left to a second read because the caller this endpoint exists for may hold no role on the project, and GET /api/v1/expenses/projects — which is a picker for what the caller may book on, not a lookup — answers them nothing.
+	ProjectCurrency *string `json:"projectCurrency,omitempty"`
 }
 
 // ExpensesRateOverrideRequest A replacement rate for one submitted mileage line or per diem day (decision X8). It reprices the line's amount and nothing else — the customer's own rate per kilometre is untouched — and records who set it and what the rate table had said.
@@ -1139,7 +1142,7 @@ type GetExpensesEntriesParams struct {
 	// Reimbursed Narrows the list to what has been reimbursed, or to what has not. Left out, both are in it.
 	Reimbursed *bool `form:"reimbursed,omitempty" json:"reimbursed,omitempty"`
 
-	// ToInvoice true lists only the lines **ready to invoice** — the unit is approved, the line is billable, it carries a bill amount and it has not been invoiced yet — which is exactly the rule behind readyCount on GET /api/v1/expenses/projects/{projectId}/summary, so the list and the figure can never disagree; false lists everything else. It needs a projectId, because invoicing is done a project at a time, and is refused without one. With true, a status other than 'approved' contradicts it and is refused rather than quietly answering an empty page. It widens nothing: a caller who may not see a project's expenses still gets none of them here, however many the summary counts.
+	// ToInvoice true lists only the lines **ready to invoice** — the unit is approved, the line is billable, it carries a bill amount, it has not been invoiced yet, and it is never a per diem day, which bills nobody anything — which is exactly the rule behind readyCount on GET /api/v1/expenses/projects/{projectId}/summary, so the list and the figure can never disagree. false means the same as leaving it out: no filter. true needs a projectId, because invoicing is done a project at a time, and is refused without one; a status other than 'approved' and kind=per_diem each contradict it and are refused rather than quietly answering an empty page. It widens nothing: a caller who may not see a project's expenses still gets none of them here, however many the summary counts.
 	ToInvoice *bool  `form:"toInvoice,omitempty" json:"toInvoice,omitempty"`
 	Page      *int32 `form:"page,omitempty" json:"page,omitempty"`
 	PageSize  *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`

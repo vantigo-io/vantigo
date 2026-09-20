@@ -177,9 +177,8 @@ project id an expense already carries is not cleared when the module is switched
 off — the column is data, not a fact this module owns the right to delete — but
 nothing can be judged against a project nobody can ask about any more, so a save on
 such a row carries those six columns through untouched instead of refusing the
-edit. See
-[Expenses](expenses.md) for the model, and for what changes with and without
-Projects.
+edit. See [Expenses](expenses.md) for the model, and for what changes with and
+without Projects.
 
 ## Adding a module
 

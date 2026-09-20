@@ -1172,32 +1172,43 @@ func validateListParams(p gen.GetExpensesEntriesParams) []string {
 	return append(errs, validateToInvoice(p)...)
 }
 
-// validateToInvoice is the two rules the ready-to-invoice filter carries, both
-// refusals rather than silent answers.
+// validateToInvoice is the three rules the ready-to-invoice filter carries,
+// all of them refusals rather than silent answers.
 //
-// It needs a projectId, because that is what the filter is *for*: the figure
-// it is the list behind — readyCount on GET /projects/{projectId}/summary — is
-// a project's, invoicing is done a project at a time, and the same filter
-// across an installation would be a full scan answering a question nobody
-// asked. Without one it is refused rather than quietly ignored.
+// toInvoice=false is the parameter left out: no filter, and none of the rules
+// below. That is the conventional reading of a boolean filter — a client
+// binding a checkbox sends the box's state, and an unticked box is not a
+// request for "everything that is not ready" — and it keeps one meaning in the
+// contract instead of two.
 //
-// And with toInvoice=true a status other than 'approved' contradicts it: only
-// an approved unit is ever ready, so the pair can only ever answer an empty
-// page. A caller who asked for both meant one of them, and an empty page would
-// not say which was wrong. toInvoice=false says nothing about the status, so
-// no status contradicts it.
+// toInvoice=true needs a projectId, because that is what the filter is *for*:
+// the figure it is the list behind — readyCount on
+// GET /projects/{projectId}/summary — is a project's, invoicing is done a
+// project at a time, and the same filter across an installation would be a
+// full scan answering a question nobody asked. Without one it is refused
+// rather than quietly ignored.
+//
+// A status other than 'approved' and kind=per_diem each contradict it: only an
+// approved unit is ever ready, and a per diem day bills nobody anything, so
+// either pair can only ever answer an empty page. A caller who asked for both
+// meant one of them, and an empty page would not say which was wrong.
 func validateToInvoice(p gen.GetExpensesEntriesParams) []string {
-	if p.ToInvoice == nil {
+	if p.ToInvoice == nil || !*p.ToInvoice {
 		return nil
 	}
 	var errs []string
 	if p.ProjectId == nil {
-		errs = append(errs, "'toInvoice' needs a 'projectId': what is ready to invoice is read one project at a time.")
+		errs = append(errs,
+			"'toInvoice=true' needs a 'projectId': what is ready to invoice is read one project at a time.")
 	}
-	if status := filterValue(p.Status); *p.ToInvoice && status != nil && *status != statusApproved {
+	if status := filterValue(p.Status); status != nil && *status != statusApproved {
 		errs = append(errs, fmt.Sprintf(
 			"'toInvoice=true' is only ever about approved expenses, so it cannot be combined with 'status=%s'.",
 			*status))
+	}
+	if kind := filterValue(p.Kind); kind != nil && *kind == kindPerDiem {
+		errs = append(errs, fmt.Sprintf(
+			"'toInvoice=true' never names a per diem day, so it cannot be combined with 'kind=%s'.", *kind))
 	}
 	return errs
 }

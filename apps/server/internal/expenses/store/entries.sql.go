@@ -29,12 +29,12 @@ WHERE ($1::boolean
   AND ($11::date IS NULL OR e.entry_date <= $11::date)
   AND ($12::boolean IS NULL
        OR (COALESCE(c.reimbursed_at, e.reimbursed_at) IS NOT NULL) = $12::boolean)
-  AND ($13::boolean IS NULL
+  AND ($13::boolean IS NOT TRUE
        OR (COALESCE(c.status, e.status) = 'approved'
            AND e.billable
            AND e.kind <> 'per_diem'
            AND e.bill_amount IS NOT NULL
-           AND e.invoiced_at IS NULL) = $13::boolean)
+           AND e.invoiced_at IS NULL))
 `
 
 type CountEntriesParams struct {
@@ -77,8 +77,14 @@ type CountEntriesParams struct {
 // The two must stay the same sentence — the project page shows the figure as
 // the header of this very list — so a change to one is a change to both.
 // Note it reads the *unit's* status, which is why the claim join matters here
-// too: ix_entries_to_invoice's own predicate is on the entry's column, so a
-// trip's line (whose column stays at 'draft') can never be found through it.
+// too: ix_entries_to_invoice's predicate before 00014 was on the entry's own
+// column, so a trip's line (whose column stays at 'draft') could never be
+// found through it.
+//
+// It narrows only when it is true. false is the filter left out — the reading
+// an unticked checkbox has — so IS NOT TRUE, not IS NULL: the clause then has
+// one meaning whatever reaches it, and no caller can ask for "everything that
+// is not ready", which is a page nobody wants and a promise nobody made.
 func (q *Queries) CountEntries(ctx context.Context, arg CountEntriesParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countEntries,
 		arg.SeeAll,
@@ -368,12 +374,12 @@ WHERE ($1::boolean
   AND ($11::date IS NULL OR e.entry_date <= $11::date)
   AND ($12::boolean IS NULL
        OR (COALESCE(c.reimbursed_at, e.reimbursed_at) IS NOT NULL) = $12::boolean)
-  AND ($13::boolean IS NULL
+  AND ($13::boolean IS NOT TRUE
        OR (COALESCE(c.status, e.status) = 'approved'
            AND e.billable
            AND e.kind <> 'per_diem'
            AND e.bill_amount IS NOT NULL
-           AND e.invoiced_at IS NULL) = $13::boolean)
+           AND e.invoiced_at IS NULL))
 ORDER BY e.entry_date DESC, e.id DESC
 LIMIT $15 OFFSET $14
 `
