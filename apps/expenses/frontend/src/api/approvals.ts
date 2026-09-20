@@ -1,5 +1,6 @@
 import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 import type { components } from "../api-schema";
+import type { ClaimSummary } from "./claims";
 import type { Expense, FlowResult, FlowUnits, PaginatedResponse } from "./entries";
 import { unitsBody } from "./entries";
 import { EXPENSES_QUERY_KEY, json, request } from "./request";
@@ -13,7 +14,10 @@ type Schemas = components["schemas"];
  * with no receipt at all (mileage is never counted); `overriddenRates` counts
  * the lines an approver has already repriced.
  */
-export type ExpenseApprovalGroup = Omit<Schemas["ExpensesApprovalGroup"], "entries"> & { entries: Expense[] };
+export type ExpenseApprovalGroup = Omit<Schemas["ExpensesApprovalGroup"], "entries" | "claims"> & {
+  entries: Expense[];
+  claims: ClaimSummary[];
+};
 export type ExpenseCurrencyTotal = Schemas["ExpensesCurrencyTotal"];
 export type ExpenseUserRef = Schemas["ExpensesUserRef"];
 

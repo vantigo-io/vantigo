@@ -333,8 +333,9 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
                     <Table.Th>
                       <VisuallyHidden>{t("select")}</VisuallyHidden>
                     </Table.Th>
+                    {/* The status is part of the trip's own line
+                        (`ClaimSummaryLine`), so the row does not draw it twice. */}
                     <Table.Th>{t("claimTrip")}</Table.Th>
-                    <Table.Th>{t("status")}</Table.Th>
                     <Table.Th>{t("rowActions")}</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
@@ -361,9 +362,6 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
                           <ClaimSummaryLine claim={claim} timeZone={meta?.timeZone ?? "UTC"} />
                           <RefusalList messages={claimRefusals.get(claim.id) ?? []} />
                         </Stack>
-                      </Table.Td>
-                      <Table.Td>
-                        <ExpenseStatusBadge status={claim.status} />
                       </Table.Td>
                       <Table.Td>
                         <Group gap={4} wrap="nowrap">

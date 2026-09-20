@@ -341,6 +341,10 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
       departureAt: claim.departureAt,
       returnAt: claim.returnAt,
       ...(claim.project ? { project: claim.project } : {}),
+      // The trip's own status and its payroll stamp: a queue row says what a
+      // trip is rather than inferring it from the list it arrived in.
+      status: claim.status,
+      ...(claim.reimbursement ? { reimbursement: claim.reimbursement } : {}),
       lineCount: held.length,
       totals: totalsOf(held),
       receiptsMissing: held.filter((one) => one.kind === "outlay" && one.attachmentCount === 0).length,
@@ -435,11 +439,15 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
     return starts.map(({ at, type }) => {
       const entryDate = zoneCalendarDate(new Date(at).toISOString(), zone);
       const dayRate = claim.abroad ? claim.abroadDayRate : rateOn(perDiemRateKind(type), entryDate)?.value;
+      // The currency travels with the figures — the claim's own abroad, the
+      // installation's default otherwise — and is absent with them, so a
+      // client never has to infer it from the claim.
+      const currency = claim.abroad ? (claim.abroadCurrency ?? metaOf().defaultCurrency) : metaOf().defaultCurrency;
       return {
         entryDate,
         perDiemType: type,
         exists: taken.has(entryDate),
-        ...(dayRate === undefined ? {} : { dayRate, amount: dayRate }),
+        ...(dayRate === undefined ? {} : { dayRate, amount: dayRate, currency }),
       };
     });
   };

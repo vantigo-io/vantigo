@@ -173,6 +173,49 @@ describe("ClaimPage", () => {
     expect(allSent(fetchMock, "PUT")).toHaveLength(1);
   });
 
+  it("prices a suggested day in the currency the server sent with it", async () => {
+    // The currency travels with the figures now, so the preview must not infer
+    // it from the claim: a domestic trip whose suggestion answers SEK is
+    // written in SEK, not in the installation's own NOK.
+    openClaim(aClaim(), [], {
+      suggestion: [
+        {
+          entryDate: "2026-03-09",
+          perDiemType: "overnight_hotel",
+          exists: false,
+          dayRate: 900,
+          amount: 900,
+          currency: "SEK",
+        },
+      ],
+    });
+    await screen.findByText("Montasje hos kunden");
+
+    await userEvent.click(screen.getByRole("button", { name: "Suggest days" }));
+    const dialog = await screen.findByRole("dialog", { name: "Suggest the trip's days" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Suggest" }));
+
+    const suggested = await within(dialog).findByRole("table", { name: "Suggested days" });
+    expect(suggested.textContent).toContain("SEK");
+    expect(suggested.textContent).not.toContain("NOK");
+  });
+
+  it("throws the preview away when the overnight answer is changed", async () => {
+    // The days belong to the answer that produced them; keeping them would
+    // offer "No" days under a "Yes", and "Add" would post them.
+    openClaim(aClaim(), []);
+    await screen.findByText("Montasje hos kunden");
+
+    await userEvent.click(screen.getByRole("button", { name: "Suggest days" }));
+    const dialog = await screen.findByRole("dialog", { name: "Suggest the trip's days" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Suggest" }));
+    await within(dialog).findByRole("table", { name: "Suggested days" });
+
+    await userEvent.click(within(dialog).getByRole("radio", { name: "Yes" }));
+
+    expect(within(dialog).queryByRole("table", { name: "Suggested days" })).not.toBeInTheDocument();
+  });
+
   it("suggests the trip's days once it is told whether the traveller slept away", async () => {
     const fetchMock = openClaim(aClaim(), [perDiemLine({ entryDate: "2026-03-09" })]);
     await screen.findByText("Montasje hos kunden");

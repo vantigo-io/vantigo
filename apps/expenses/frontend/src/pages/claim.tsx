@@ -123,7 +123,6 @@ export const ClaimPage = ({ claimId }: ClaimPageProps) => {
 
   const zone = meta?.timeZone ?? "UTC";
   const atCap = claim.lines.length >= CLAIM_LINE_CAP;
-  const currency = claim.abroad && claim.abroadCurrency ? claim.abroadCurrency : (meta?.defaultCurrency ?? "");
   const editable = claim.capabilities.canEdit;
   const perDiemDays = claim.lines.filter((line) => line.kind === "per_diem");
   const mileageLines = claim.lines.filter((line) => line.kind === "mileage");
@@ -225,8 +224,11 @@ export const ClaimPage = ({ claimId }: ClaimPageProps) => {
           {claim.decision?.status === "rejected" && claim.decision.reason && (
             <Alert color="red" title={t("rejectedBecause", { reason: claim.decision.reason })}>
               {claim.decision.by
-                ? t("rejectedBy", { person: claim.decision.by.displayName, date: format.dateTime(claim.decision.at) })
-                : t("rejectedOn", { date: format.dateTime(claim.decision.at) })}
+                ? t("rejectedBy", {
+                    person: claim.decision.by.displayName,
+                    date: format.zonedDate(claim.decision.at, zone),
+                  })
+                : t("rejectedOn", { date: format.zonedDate(claim.decision.at, zone) })}
             </Alert>
           )}
           {claim.reimbursement && (
@@ -255,13 +257,7 @@ export const ClaimPage = ({ claimId }: ClaimPageProps) => {
         </Stack>
       </Card>
 
-      <PerDiemSection
-        claim={claim}
-        days={perDiemDays}
-        lineCount={claim.lines.length}
-        refusals={lineRefusals}
-        currency={currency}
-      />
+      <PerDiemSection claim={claim} days={perDiemDays} lineCount={claim.lines.length} refusals={lineRefusals} />
 
       <LineSection
         claim={claim}
