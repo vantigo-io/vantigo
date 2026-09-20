@@ -90,7 +90,7 @@ func TestReceiptUploadPolicy_IsRegisteredOnTheUpload(t *testing.T) {
 	t.Parallel()
 	want := ratelimit.Policy{
 		Name:    "ExpensesReceiptUpload",
-		Limit:   120,
+		Limit:   600,
 		Window:  time.Hour,
 		Message: "Too many receipt uploads. Please wait a little before adding more.",
 	}
