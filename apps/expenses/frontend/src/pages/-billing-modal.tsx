@@ -6,7 +6,7 @@ import { useI18n } from "@vantigo/frontend-shell";
 import { type BillingInput, setExpenseBilling } from "../api/approvals";
 import type { Expense } from "../api/entries";
 import { expenseProjectsQueryOptions } from "../api/projects";
-import { type ApiError, ApiValidationError } from "../api/request";
+import { type ApiError, ApiValidationError, EXPENSES_QUERY_KEY } from "../api/request";
 import "../i18n";
 import { refusalMessage } from "../lib/errors";
 import { useDecimalSeparator, useExpenseFormat } from "../lib/format";
@@ -83,7 +83,7 @@ const BillingForm = ({ expense, revision, onClose, onSaved }: BillingModalProps 
       return setExpenseBilling(expense.id, input);
     },
     onSuccess: async (saved) => {
-      await queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
       notifications.show({
         color: "teal",
         title: t("billingSaved"),

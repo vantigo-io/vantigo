@@ -273,4 +273,174 @@ describe("the expense form", () => {
 
     expect(await within(dialog).findByText(/Expense 501 needs a receipt/)).toBeInTheDocument();
   });
+  it("carries the revision the first save answered into the second one", async () => {
+    // The modal stays open on a new outlay, so the same form saves twice. The
+    // fake 409s on a stale revision, which is what makes this bite.
+    const { dialog, fetchMock } = await openNew({ entries: [outlay()], meta: noProjects });
+
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Description" }), "Train ticket");
+    await choose(dialog, "Category", "Travel");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Amount including VAT" }), "420");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save draft" }));
+
+    await waitFor(() => expect(sent(fetchMock, "POST").url).toBe("/api/v1/expenses/entries"));
+    await within(dialog).findByLabelText("Add receipts");
+
+    const description = within(dialog).getByRole("textbox", { name: "Description" });
+    await userEvent.clear(description);
+    await userEvent.type(description, "Train ticket, return");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(sent(fetchMock, "PUT").url).toBe("/api/v1/expenses/entries/9001"));
+    expect(sent(fetchMock, "PUT").body).toMatchObject({ description: "Train ticket, return", revision: 1 });
+    expect(await screen.findByText("Expense saved")).toBeInTheDocument();
+  });
+
+  it("sends no project field at all when the installation has none, whatever the entry carries", async () => {
+    const { dialog, fetchMock } = await openEdit(
+      {
+        // The stored link is carried through by the server untouched; naming
+        // it in the request would be a 400 on the field.
+        entries: [
+          outlay({
+            billable: true,
+            project: { id: 1001, code: "KVEM1000", name: "Kverneland web" },
+            billingLine: { id: 3001, code: "PM" },
+          }),
+        ],
+        meta: noProjects,
+      },
+      "Taxi to the airport",
+    );
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(sent(fetchMock, "PUT").url).toBe("/api/v1/expenses/entries/501"));
+    const body = sent(fetchMock, "PUT").body;
+    for (const forbidden of ["projectId", "billingLineId", "billable"]) {
+      expect(body).not.toHaveProperty(forbidden);
+    }
+  });
+
+  it("keeps the expense's own project in the picker when it is no longer bookable", async () => {
+    const { dialog } = await openEdit(
+      {
+        entries: [
+          outlay({
+            billable: true,
+            project: { id: 4004, code: "OLD1000", name: "Finished project" },
+            billingLine: { id: 4400, code: "PM" },
+          }),
+        ],
+        // The person has been taken off it, so GET /projects no longer lists it.
+        projects: projectOptions,
+      },
+      "Taxi to the airport",
+    );
+
+    expect(within(dialog).getByRole("combobox", { name: "Project" })).toHaveValue(
+      "OLD1000 · Finished project (no longer bookable)",
+    );
+    expect(within(dialog).queryByText(/you cannot book an expense on any project yet/i)).not.toBeInTheDocument();
+  });
+
+  it("says nothing about unbooked costs when the only project the entry has is one it kept", async () => {
+    const { dialog } = await openEdit(
+      {
+        entries: [outlay({ project: { id: 4004, code: "OLD1000", name: "Finished project" } })],
+        projects: [],
+      },
+      "Taxi to the airport",
+    );
+
+    expect(within(dialog).queryByText(/you cannot book an expense on any project yet/i)).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("combobox", { name: "Project" })).toHaveValue(
+      "OLD1000 · Finished project (no longer bookable)",
+    );
+  });
+
+  it("refreshes the list when a receipt lands, so the row and a re-open both know", async () => {
+    const entries = [outlay()];
+    const { dialog, fetchMock } = await openEdit({ entries, meta: noProjects }, "Taxi to the airport");
+
+    await userEvent.upload(await within(dialog).findByLabelText("Add receipts"), receipt("ticket.jpg"));
+    await within(dialog).findByRole("img", { name: "ticket.jpg" });
+
+    // The store now carries it, and the list has been asked again for it.
+    expect(entries[0].attachmentCount).toBe(1);
+    await waitFor(() => {
+      const reads = fetchMock.actualCalls.filter(([url]) => String(url).includes("/entries?"));
+      expect(reads.length).toBeGreaterThan(1);
+    });
+  });
+
+  it("puts a new draft in the list even when the submit that followed was refused", async () => {
+    const entries = [outlay()];
+    const { dialog } = await openNew({
+      entries,
+      meta: noProjects,
+      write: (method, path) =>
+        method === "POST" && path === "/api/v1/expenses/submit"
+          ? problemResponse(400, "Invalid submission", {
+              entryIds: [
+                "Expense 9001 needs a receipt: an outlay the employee paid for more than 1250.00 cannot be submitted without one",
+              ],
+            })
+          : undefined,
+    });
+
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Description" }), "Hotel");
+    await choose(dialog, "Category", "Travel");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Amount including VAT" }), "2400");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save and submit" }));
+
+    expect(await within(dialog).findByText(/Expense 9001 needs a receipt/)).toBeInTheDocument();
+    // The draft exists, the modal is on it, and the list behind it knows.
+    expect(entries).toHaveLength(2);
+    expect(await within(dialog).findByLabelText("Add receipts")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByText("Hotel").length).toBeGreaterThan(0));
+  });
+
+  it("says what the upload allowance and a store outage mean, rather than repeating a status", async () => {
+    const { dialog } = await openEdit(
+      {
+        entries: [outlay()],
+        meta: noProjects,
+        upload: () => new Response(null, { status: 429, headers: { "Retry-After": "60" } }),
+      },
+      "Taxi to the airport",
+    );
+
+    await userEvent.upload(await within(dialog).findByLabelText("Add receipts"), receipt("ticket.jpg"));
+    expect(await within(dialog).findByText(/try again in a moment/)).toBeInTheDocument();
+  });
+
+  it("says the receipt store could not be reached when it answers 503", async () => {
+    const { dialog } = await openEdit(
+      {
+        entries: [outlay()],
+        meta: noProjects,
+        upload: () => new Response(null, { status: 503 }),
+      },
+      "Taxi to the airport",
+    );
+
+    await userEvent.upload(await within(dialog).findByLabelText("Add receipts"), receipt("ticket.jpg"));
+    expect(await within(dialog).findByText(/receipt store could not be reached/)).toBeInTheDocument();
+  });
+
+  it("keeps the VAT helper honest when the gross is corrected under it", async () => {
+    const { dialog } = await openNew({ entries: [outlay()], meta: noProjects });
+
+    const grossInput = within(dialog).getByRole("textbox", { name: "Amount including VAT" });
+    await userEvent.type(grossInput, "1000");
+    await userEvent.click(within(dialog).getByRole("radio", { name: "25 %" }));
+    expect(within(dialog).getByRole("textbox", { name: "VAT" })).toHaveValue("200");
+
+    await userEvent.clear(grossInput);
+    await userEvent.type(grossInput, "2000");
+
+    await waitFor(() => expect(within(dialog).getByRole("textbox", { name: "VAT" })).toHaveValue("400"));
+    expect(within(dialog).getByRole("radio", { name: "25 %" })).toBeChecked();
+  });
 });

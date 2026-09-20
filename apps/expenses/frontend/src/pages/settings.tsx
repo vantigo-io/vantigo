@@ -24,7 +24,7 @@ import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/front
 import { useState } from "react";
 import { type ExpenseCategory, expenseCategoriesQueryOptions, updateExpenseCategory } from "../api/categories";
 import { deleteExpenseRate, type ExpenseRate, expenseRatesQueryOptions, resetExpenseRateKind } from "../api/rates";
-import { ApiValidationError } from "../api/request";
+import { ApiValidationError, EXPENSES_QUERY_KEY } from "../api/request";
 import { type ExpenseSettings, expenseSettingsQueryOptions, updateExpenseSettings } from "../api/settings";
 import "../i18n";
 import { refusalMessage } from "../lib/errors";
@@ -118,7 +118,7 @@ const GeneralForm = ({ settings }: { settings: ExpenseSettings }) => {
         ...(values.lockedBefore ? { lockedBefore: values.lockedBefore } : {}),
       }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
       notifications.show({ color: "teal", title: t("settingsSaved"), message: "" });
     },
     onError: (error) => {
@@ -227,7 +227,7 @@ const RatesSection = ({ defaultCurrency }: { defaultCurrency: string }) => {
   const remove = useMutation({
     mutationFn: (id: number) => deleteExpenseRate(id),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
       notifications.show({ color: "teal", title: t("rateDeleted"), message: "" });
     },
     onError: (failure) =>
@@ -237,7 +237,7 @@ const RatesSection = ({ defaultCurrency }: { defaultCurrency: string }) => {
   const reset = useMutation({
     mutationFn: (kind: string) => resetExpenseRateKind(kind),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
       notifications.show({ color: "teal", title: t("rateKindReset"), message: "" });
     },
     onError: (failure) =>
@@ -392,7 +392,7 @@ const CategoriesSection = () => {
         position: changes.position ?? category.position,
       }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
     },
     onError: (failure) =>
       notifications.show({ color: "red", title: t("couldNotSaveCategory"), message: refusalMessage(failure) }),

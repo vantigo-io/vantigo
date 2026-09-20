@@ -5,7 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
 import { overrideExpenseRate } from "../api/approvals";
 import type { Expense } from "../api/entries";
-import { type ApiError, ApiValidationError } from "../api/request";
+import { type ApiError, ApiValidationError, EXPENSES_QUERY_KEY } from "../api/request";
 import "../i18n";
 import { refusalMessage } from "../lib/errors";
 import { useDecimalSeparator, useExpenseFormat } from "../lib/format";
@@ -85,7 +85,7 @@ const RateOverrideForm = ({ expense, revision, onClose, onSaved }: RateOverrideM
       });
     },
     onSuccess: async (saved) => {
-      await queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
       notifications.show({
         color: "teal",
         title: t("rateOverridden"),

@@ -4,7 +4,7 @@ import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
 import { createExpenseCategory, type ExpenseCategory, updateExpenseCategory } from "../api/categories";
-import { ApiValidationError } from "../api/request";
+import { ApiValidationError, EXPENSES_QUERY_KEY } from "../api/request";
 import "../i18n";
 import { refusalMessage } from "../lib/errors";
 
@@ -57,7 +57,7 @@ const CategoryForm = ({ state, onClose }: CategoryFormModalProps & { state: Cate
           })
         : createExpenseCategory({ name: values.name.trim() }),
     onSuccess: async (saved) => {
-      await queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
       notifications.show({ color: "teal", title: t("categorySaved"), message: saved.name });
       onClose();
     },

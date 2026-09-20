@@ -45,6 +45,7 @@ export const expensesCatalog = {
     amount: "Amount",
     receipts: "Receipts",
     rowActions: "Actions",
+    select: "Select",
     noReceipts: "No receipts",
     receiptCount: "{{count}} receipts",
     oneReceipt: "1 receipt",
@@ -98,6 +99,7 @@ export const expensesCatalog = {
 
     chooseProject: "No project",
     noBookableProjects: "You cannot book an expense on any project yet, so this one is recorded without one.",
+    projectNoLongerBookable: "{{project}} (no longer bookable)",
     billingLine: "Line",
     noBillingLine: "No line",
     billable: "Billable",
@@ -142,7 +144,6 @@ export const expensesCatalog = {
     couldNotUploadReceipt: "Could not add {{name}}",
     receiptRateLimited: "That is a lot of receipts at once — try again in a moment.",
     receiptStoreDown: "The receipt store could not be reached. Try again.",
-    receiptAdded: "Receipt added",
     removeReceipt: "Remove {{name}}",
     receiptRemoved: "Receipt removed",
     couldNotRemoveReceipt: "Could not remove the receipt",
@@ -151,7 +152,6 @@ export const expensesCatalog = {
     previousReceipt: "Previous receipt",
     nextReceipt: "Next receipt",
     receiptPosition: "{{index}} of {{total}}",
-    receiptOpensInNewTab: "This kind of receipt opens in a new tab.",
 
     yes: "Yes",
     no: "No",
@@ -391,6 +391,7 @@ export const expensesCatalog = {
     amount: "Beløp",
     receipts: "Kvitteringer",
     rowActions: "Handlinger",
+    select: "Velg",
     noReceipts: "Ingen kvitteringer",
     receiptCount: "{{count}} kvitteringer",
     oneReceipt: "1 kvittering",
@@ -444,6 +445,7 @@ export const expensesCatalog = {
 
     chooseProject: "Uten prosjekt",
     noBookableProjects: "Du kan ikke føre utlegg på noe prosjekt ennå, så dette føres uten.",
+    projectNoLongerBookable: "{{project}} (kan ikke lenger føres på)",
     billingLine: "Linje",
     noBillingLine: "Ingen linje",
     billable: "Fakturerbar",
@@ -488,7 +490,6 @@ export const expensesCatalog = {
     couldNotUploadReceipt: "Kunne ikke legge ved {{name}}",
     receiptRateLimited: "Det ble mange kvitteringer på en gang — prøv igjen om et øyeblikk.",
     receiptStoreDown: "Kvitteringslageret svarte ikke. Prøv igjen.",
-    receiptAdded: "Kvitteringen er lagt ved",
     removeReceipt: "Fjern {{name}}",
     receiptRemoved: "Kvitteringen er fjernet",
     couldNotRemoveReceipt: "Kunne ikke fjerne kvitteringen",
@@ -497,7 +498,6 @@ export const expensesCatalog = {
     previousReceipt: "Forrige kvittering",
     nextReceipt: "Neste kvittering",
     receiptPosition: "{{index}} av {{total}}",
-    receiptOpensInNewTab: "Denne typen kvittering åpnes i en ny fane.",
 
     yes: "Ja",
     no: "Nei",

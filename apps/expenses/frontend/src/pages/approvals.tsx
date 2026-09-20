@@ -21,7 +21,7 @@ import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/front
 import { useState } from "react";
 import { approveExpenses, type ExpenseApprovalGroup, expenseApprovalsQueryOptions } from "../api/approvals";
 import { type Expense, expensesQueryOptions } from "../api/entries";
-import type { ApiError } from "../api/request";
+import { type ApiError, EXPENSES_QUERY_KEY } from "../api/request";
 import { CurrencyTotals } from "../components/currency-totals";
 import { ExpenseStatusBadge } from "../components/expense-status-badge";
 import { RefusalList } from "../components/refusal-list";
@@ -87,7 +87,7 @@ export const ApprovalsPage = () => {
     onSuccess: async (moved) => {
       setRefusals(new Map());
       setSelected([]);
-      await queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
       notifications.show({
         color: "teal",
         title: t("expensesApproved"),
