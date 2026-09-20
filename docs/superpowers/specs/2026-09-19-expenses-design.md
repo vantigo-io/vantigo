@@ -42,7 +42,10 @@ The coupling is optional in the other direction too (delivery C).
 `projectsAvailable`. Without it there is no project field, billing line,
 billable flag or markup anywhere, and the API refuses them. With it, a project is
 optional on every expense and claim. If Projects is switched off later, stored
-project ids stay and are simply not shown.
+project ids stay and are simply not shown: an edit keeps the project, the billing
+line, `billable`, the markup and the customer rate as stored and only recomputes
+the bill amount when the net or the distance changed; every project-side
+capability is false.
 
 **X3 — Three kinds of line**: `outlay`, `mileage`, `per_diem`. Outlay and mileage
 stand alone or sit inside a travel claim; per diem only inside a claim.
@@ -61,14 +64,25 @@ VAT.
 
 **X7 — Markup on outlays, a customer rate on mileage.** Bill amount = net ×
 (1 + markup %) for outlays; km × customer rate per km for mileage. Per diem is
-never billable. Billable requires a project.
+never billable. Billable requires a project. **Pricing belongs to the project
+side:** markup and customer rate are visible *and settable* only with financial
+rights on the project — `expenses:manage` does not imply them. The employee ticks
+"billable"; the server applies the default markup (or the dated customer rate, if
+one applies); whoever has the rights prices the line through
+`PUT /entries/{id}/billing`, open in every status except invoiced. An edit by
+someone without the rights keeps the stored figures.
 
 **X8 — Rates are admin-managed.** A dated table (mileage reimbursement, passenger
 supplement, customer rate per km, the domestic per diem rates, the meal
 deduction percentages). Seeded rows are ordinary rows labelled with their source
-("State rate 2026"); `expenses:manage` adds, edits, removes and resets them. An
+("State rate"); `expenses:manage` adds, edits, removes and resets them. An
 approver or admin may override the rate on one line before approval; the line
-records that, by whom, and what the table said. Employees cannot.
+records that, by whom, and what the table said — for the km rate and for the
+passenger supplement. Employees cannot. "Reset to default" restores missing and
+edited seeded rows; a company's own dated rows are untouched. Unapprove forgets
+an override: a fresh draft reprices from the table. Everyone with access may read
+the reimbursement rates (the form previews them); the customer rate per km is for
+`expenses:manage`.
 
 **X9 — Approval follows what is there.** `expenses:approve` approves anything;
 with a project, that project's managers approve too. Booking on a project needs
@@ -79,7 +93,10 @@ what logging time needs (member or manager, project active —
 caller who can approve nothing, all-or-nothing batches of at most 500 ids with a
 per-id explanation, a period lock, revision-guarded full-replace PUT, exact
 decimals with a 400 on a third decimal, absent-not-null shaping, no call to
-another module inside a locked transaction.
+another module — nor to the object store — inside a locked transaction. One rule
+for refusals: 404 when the caller cannot see it, 403 when it is not theirs to
+change, and a 400 naming the reason when the expense's own state forbids it (its
+status, or the period lock).
 
 **X11 — Receipts are attachments scoped to expenses**, stored through
 `internal/storage`, served only through the API with the expense's own
@@ -198,8 +215,14 @@ whose gross exceeds it cannot be submitted without an attachment (400 naming the
 entry).
 
 **Period lock.** Nothing dated before `locked_before` is created, edited,
-deleted, submitted, approved, rejected or unapproved — except by
-`expenses:manage`.
+deleted, given or stripped of a receipt, submitted, approved, rejected,
+unapproved or rate-overridden — except by `expenses:manage`. It protects what the
+employee submitted and what was approved. It deliberately does not reach
+reimbursing, pricing or invoicing: that is bookkeeping done after a period
+closes.
+
+**Kind.** A draft outlay that carries receipts cannot become a mileage line
+(mileage takes no receipts); the receipts are removed first.
 
 **Currency.** One per line; never converted. Mileage and per diem use the default
 currency. A line counts towards a project's figures only when its currency is the
@@ -210,7 +233,9 @@ project's; otherwise it is reported as "in another currency", never dropped.
 `expenses:access`, `expenses:approve`, `expenses:view-all`, `expenses:manage`
 (sensitive). An expense is visible to its owner, to a manager of its project, and
 to holders of `view-all` / `approve` / `manage`; anyone else gets a bare 404.
-Markup, customer rate and bill amount need financial rights on the project
+The payroll reference on a reimbursement is for the owner and for `view-all` /
+`approve` / `manage`, not for a project manager as such. Markup, customer rate
+and bill amount need financial rights on the project
 (manager role, `projects:manage-all`, or `projects:view-financials` on a project
 the caller can see); the owner always sees their own gross, VAT and what they are
 owed. Marking reimbursed, overriding via settings, recording for a colleague and
@@ -222,11 +247,11 @@ project.
 
 | Area | Operations |
 |---|---|
-| Meta | `GET /meta` — `projectsAvailable`, default currency, default markup, categories, `lockedBefore`, `receiptRequiredOver`, capabilities (`canApprove`, `canViewAll`, `canManage`) |
-| Entries | `GET /entries` (userId, projectId, status, kind, from, to, claimId/standalone, reimbursed, paged) · `POST /entries` · `GET|PUT|DELETE /entries/{id}` |
-| Project options | `GET /projects` — the projects the caller may book on (when available), with their billing lines — so the form needs no Projects UI code |
+| Meta | `GET /meta` — `projectsAvailable`, default currency, default markup (for `expenses:manage` only, here and in `/settings` — the server applies it, no form needs it), categories, `lockedBefore`, `receiptRequiredOver`, capabilities (`canApprove`, `canViewAll`, `canManage`) |
+| Entries | `GET /entries` (userId, projectId, status, kind, from, to, reimbursed, paged; the claim filters arrive with delivery B) · `POST /entries` · `GET|PUT|DELETE /entries/{id}` |
+| Project options | `GET /projects` — the projects the caller (or, for `expenses:manage`, `?userId=` a colleague) may book on, with their billing lines — so the form needs no Projects UI code · `GET /entries/{id}/billing-lines` — the lines of an expense's project for whoever may *price* it, which is not the same people |
 | Receipts | `POST /entries/{id}/attachments` (multipart) · `GET /attachments/{id}` · `DELETE /attachments/{id}` |
-| Flow | `POST /submit` · `/approve` · `/reject` · `/unapprove` — `{entryIds, claimIds?}` · `GET /approvals` (grouped per person) · `PUT /entries/{id}/rate` (override) |
+| Flow | `POST /submit` · `/approve` · `/reject` (a reason is required) · `/unapprove` (whoever could approve it, or `expenses:manage`) — `{entryIds, claimIds?}`, `claimIds` refused until delivery B · `GET /approvals` (grouped per person, longest-waiting first, paged by group) · `PUT /entries/{id}/rate` (override) · `PUT /entries/{id}/billing` (pricing) |
 | After approval | `POST /reimbursed` · `/reimbursed/undo` · `GET /reimbursements` (approved, owed, per person) · `GET /reimbursements/export.csv` · `POST /entries/{id}/invoiced` · `/invoiced/undo` |
 | Settings | `GET|PUT /settings` · `GET|POST /rates` · `PUT|DELETE /rates/{id}` · `POST /rates/reset` · `GET|POST /categories` · `PUT /categories/{id}` |
 | Dashboard | `GET /stats` · `/stats/summary` · `/stats/timeseries` · `/stats/attention` (`approvalWaiting`, `expenseRejected`, `reimbursementWaiting`) |
@@ -237,8 +262,9 @@ project.
 
 A new app "Expenses" / "Utlegg" (`apps/expenses/frontend`,
 `@vantigo/expenses-ui`). Sidebar: **My expenses** (`expenses:access`),
-**Approvals** (`expenses:approve`; route open to `expenses:access` via
-`guardPermissions`, as Time), **Reimbursements** and **Settings**
+**Expense approvals** (`expenses:approve`; route open to `expenses:access` via
+`guardPermissions`, as Time — named so because the spotlight lists every app's
+actions together), **Reimbursements** and **Settings**
 (`expenses:manage`).
 
 - **My expenses**: own lines and claims, status filters, a strip with draft /
