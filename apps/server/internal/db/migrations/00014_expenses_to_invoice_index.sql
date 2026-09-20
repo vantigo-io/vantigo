@@ -36,6 +36,14 @@
 -- Dropping `status` from the predicate is what makes it usable rather than a
 -- widening for its own sake: the status is judged through the claims join,
 -- which no index on this table can carry, so it stays a filter either way.
+--
+-- What it costs to maintain: more tuples, fewer writes. The new predicate
+-- admits every billable un-invoiced row in any status, roughly three times
+-- what 00012's approved-only one held — but it also removes the predicate
+-- *churn*. Under 00012 every approval and every unapproval moved a row into or
+-- out of the index, which is a guaranteed non-HOT update; under this one only
+-- a change to `billable` or `invoiced_at` does, and those happen once in a
+-- line's life rather than on the commonest transition it makes.
 DROP INDEX expenses.ix_entries_to_invoice;
 CREATE INDEX ix_entries_to_invoice ON expenses.entries (project_id, entry_date)
     WHERE billable AND invoiced_at IS NULL;

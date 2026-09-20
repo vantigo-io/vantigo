@@ -118,16 +118,22 @@ func TestExpensesProjectSummary_AnswersTheSameFiguresAsTheContract(t *testing.T)
 				t.Errorf("%s %s bill = %v, want %s", got.Currency, pair.name, pair.got.BillAmount, pair.want.BillAmount)
 			}
 		}
-		switch {
-		case int64(got.ReadyCount) != want.ReadyCount:
+		// Five independent checks rather than one chain: a rendering that
+		// mixed two of these up should say so on every field it broke, not
+		// only the first.
+		if int64(got.ReadyCount) != want.ReadyCount {
 			t.Errorf("%s readyCount = %d, want %d", got.Currency, got.ReadyCount, want.ReadyCount)
-		case !sameAmount(got.ReadyAmount, decimal(t, want.ReadyAmount)):
+		}
+		if !sameAmount(got.ReadyAmount, decimal(t, want.ReadyAmount)) {
 			t.Errorf("%s readyAmount = %v, want %s", got.Currency, got.ReadyAmount, want.ReadyAmount)
-		case int64(got.InvoicedCount) != want.InvoicedCount:
+		}
+		if int64(got.InvoicedCount) != want.InvoicedCount {
 			t.Errorf("%s invoicedCount = %d, want %d", got.Currency, got.InvoicedCount, want.InvoicedCount)
-		case !sameAmount(got.InvoicedAmount, decimal(t, want.InvoicedAmount)):
+		}
+		if !sameAmount(got.InvoicedAmount, decimal(t, want.InvoicedAmount)) {
 			t.Errorf("%s invoicedAmount = %v, want %s", got.Currency, got.InvoicedAmount, want.InvoicedAmount)
-		case int64(got.UnpricedCount) != want.UnpricedCount:
+		}
+		if int64(got.UnpricedCount) != want.UnpricedCount {
 			t.Errorf("%s unpricedCount = %d, want %d", got.Currency, got.UnpricedCount, want.UnpricedCount)
 		}
 	}
@@ -161,13 +167,14 @@ func TestExpensesProjectSummary_TheFiguresPerCurrency(t *testing.T) {
 	wantSummaryBucket(t, "NOK submitted", nok.Submitted, 1, 700, 800)
 	wantSummaryBucket(t, "NOK draft", nok.Draft, 1, 150, 0)
 	wantSummaryBucket(t, "NOK total", nok.Total, 7, 3250, 2550)
-	switch {
-	case nok.ReadyCount != 2 || !sameAmount(nok.ReadyAmount, 1250):
+	if nok.ReadyCount != 2 || !sameAmount(nok.ReadyAmount, 1250) {
 		t.Errorf("NOK ready = %d/%v, want 2/1250 — the priced approved lines nobody has invoiced, the trip's included",
 			nok.ReadyCount, nok.ReadyAmount)
-	case nok.InvoicedCount != 1 || !sameAmount(nok.InvoicedAmount, 500):
+	}
+	if nok.InvoicedCount != 1 || !sameAmount(nok.InvoicedAmount, 500) {
 		t.Errorf("NOK invoiced = %d/%v, want 1/500", nok.InvoicedCount, nok.InvoicedAmount)
-	case nok.UnpricedCount != 1:
+	}
+	if nok.UnpricedCount != 1 {
 		t.Errorf("NOK unpricedCount = %d, want 1 — the billable mileage nobody has priced", nok.UnpricedCount)
 	}
 
@@ -364,12 +371,18 @@ func TestExpensesEntries_ToInvoiceListsExactlyTheReadyLines(t *testing.T) {
 			throughAClaim)
 	}
 
-	// And the other side of the filter is everything else the caller may see.
-	rest := listEntries(t, manager, fmt.Sprintf("?projectId=%d&toInvoice=false", projectKraftVerket))
+	// false is the parameter left out — not "everything that is not ready".
+	// A client binding a checkbox sends the box's state, and an unticked box
+	// asks for the ordinary list.
+	off := listEntries(t, manager, fmt.Sprintf("?projectId=%d&toInvoice=false", projectKraftVerket))
 	all := listEntries(t, manager, fmt.Sprintf("?projectId=%d", projectKraftVerket))
-	if len(rest.Data)+len(page.Data) != len(all.Data) {
-		t.Errorf("toInvoice true and false list %d + %d rows, want the whole %d",
-			len(page.Data), len(rest.Data), len(all.Data))
+	if len(off.Data) != len(all.Data) || off.Pagination.TotalCount != all.Pagination.TotalCount {
+		t.Errorf("toInvoice=false listed %d of %d rows, want the whole list, exactly as leaving it out does",
+			len(off.Data), len(all.Data))
+	}
+	if len(all.Data) <= len(page.Data) {
+		t.Errorf("the whole list is %d rows and the ready one %d: the fixture no longer proves the filter narrows",
+			len(all.Data), len(page.Data))
 	}
 }
 
@@ -383,12 +396,11 @@ func TestExpensesEntries_ToInvoiceNeedsAProjectAndAgreesWithStatus(t *testing.T)
 
 	for _, query := range []string{
 		"?toInvoice=true",
-		"?toInvoice=false",
 		"?claimId=1&toInvoice=true&status=approved",
 	} {
 		r := manager.Do(http.MethodGet, entriesPath+query, nil)
 		if r.Status != http.StatusBadRequest {
-			t.Errorf("list entries %q: status %d body %s, want 400 — toInvoice needs a projectId",
+			t.Errorf("list entries %q: status %d body %s, want 400 — toInvoice=true needs a projectId",
 				query, r.Status, r.Body)
 		}
 	}
@@ -402,10 +414,26 @@ func TestExpensesEntries_ToInvoiceNeedsAProjectAndAgreesWithStatus(t *testing.T)
 		}
 	}
 
-	// status=approved agrees with it and is allowed; so is any status beside
-	// toInvoice=false, which says nothing about the status.
+	// A per diem day can never be ready either, so the pair is as
+	// contradictory as a status is, and is refused in the same words rather
+	// than answering an empty page.
+	perDiem := fmt.Sprintf("?projectId=%d&toInvoice=true&kind=per_diem", projectKraftVerket)
+	r := manager.Do(http.MethodGet, entriesPath+perDiem, nil)
+	if r.Status != http.StatusBadRequest {
+		t.Errorf("list entries %q: status %d body %s, want 400 — a per diem day bills nobody anything",
+			perDiem, r.Status, r.Body)
+	}
+
+	// status=approved and the other kinds agree with it and are allowed.
 	listEntries(t, manager, fmt.Sprintf("?projectId=%d&toInvoice=true&status=approved", projectKraftVerket))
+	listEntries(t, manager, fmt.Sprintf("?projectId=%d&toInvoice=true&kind=outlay", projectKraftVerket))
+
+	// toInvoice=false is the parameter left out, so none of the three rules
+	// applies to it: no projectId, a contradictory status and a per diem kind
+	// are all ordinary requests.
+	listEntries(t, manager, "?toInvoice=false")
 	listEntries(t, manager, fmt.Sprintf("?projectId=%d&toInvoice=false&status=draft", projectKraftVerket))
+	listEntries(t, manager, "?toInvoice=false&kind=per_diem")
 }
 
 // TestExpensesEntries_ToInvoiceWidensNobodysSight is spec §5, pinned: the
@@ -455,5 +483,113 @@ func TestExpensesEntries_ToInvoiceKeepsTheListsOwnVisibility(t *testing.T) {
 	}
 	if page.Data[0].Owner.UserId != strangerID {
 		t.Errorf("the listed line belongs to %v, want the caller", page.Data[0].Owner.UserId)
+	}
+}
+
+// TestExpensesProjectSummary_NamesTheProjectsOwnCurrency: which of the
+// currencies is the project's is a fact the tab cannot work out for itself and
+// cannot fetch either. The caller this endpoint exists for may hold no role on
+// the project, and GET /projects — the booking picker, the only other place
+// this module publishes a project's currency — answers exactly that caller
+// nothing, so the summary says it.
+func TestExpensesProjectSummary_NamesTheProjectsOwnCurrency(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, ownerID := signInAs(t, h, projectKraftVerket, roleMember)
+	seedProjectFixture(t, h, ownerID)
+
+	// The finance reader is the case: no role on the project, so the picker
+	// they could otherwise have read it from is empty for them.
+	finance, _ := signIn(t, h, "projects:view-financials", "projects:view-all")
+	if options := listProjectOptions(t, finance); len(options) != 0 {
+		t.Fatalf("the picker answered %d projects for a caller on no team, want none — "+
+			"the fixture no longer shows why the summary has to name the currency", len(options))
+	}
+	summary := getProjectSummary(t, finance, projectKraftVerket)
+	if summary.ProjectCurrency == nil || *summary.ProjectCurrency != "NOK" {
+		t.Fatalf("projectCurrency = %v, want NOK — the project's own", summary.ProjectCurrency)
+	}
+	// And it is one of the currencies reported, so the tab can pick it out:
+	// the EUR receipt on this NOK project is the "in another currency" one.
+	summaryCurrency(t, summary, *summary.ProjectCurrency)
+	if len(summary.Currencies) != 2 {
+		t.Errorf("currencies = %+v, want the project's and the other one", summary.Currencies)
+	}
+}
+
+// A project carrying no currency of its own answers the key absent, not an
+// empty string: every currency it reports is then "in another currency" and it
+// has no figures of its own at all.
+func TestExpensesProjectSummary_AProjectWithNoCurrencyOfItsOwn(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	// 1002 is the internal, non-billable project, and the directory gives it
+	// no currency.
+	manager, managerID := signInAs(t, h, projectInternal, roleManager)
+	recordExpense(t, h, managerID, recordedExpense{project: projectInternal, gross: "125.00",
+		vat: "25.00", paidBy: "employee", status: "approved"})
+
+	summary := getProjectSummary(t, manager, projectInternal)
+	if summary.ProjectCurrency != nil {
+		t.Errorf("projectCurrency = %q, want it absent: this project carries none", *summary.ProjectCurrency)
+	}
+	raw := rawProjectSummary(t, manager, projectInternal)
+	if _, present := raw["projectCurrency"]; present {
+		t.Errorf("projectCurrency is present as %v, want the key absent rather than empty", raw["projectCurrency"])
+	}
+	if len(summary.Currencies) != 1 {
+		t.Errorf("currencies = %+v, want the one thing was recorded in", summary.Currencies)
+	}
+}
+
+// TestExpensesEntries_ToInvoiceListsOnlyWhatTheInvoicingDoorAccepts is the
+// sentence the whole feature promises, asserted end to end: a figure called
+// "ready to invoice" must not name a line POST /entries/{id}/invoiced would
+// refuse. Every row the filter answers is marked invoiced through the real
+// door, and the summary then reads 0 ready and exactly those lines invoiced.
+func TestExpensesEntries_ToInvoiceListsOnlyWhatTheInvoicingDoorAccepts(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	manager, managerID := signInAs(t, h, projectKraftVerket, roleManager)
+	seedProjectFixture(t, h, managerID)
+
+	before := getProjectSummary(t, manager, projectKraftVerket)
+	nokReady := summaryCurrency(t, before, "NOK").ReadyCount
+	eurReady := summaryCurrency(t, before, "EUR").ReadyCount
+	nokInvoicedBefore := summaryCurrency(t, before, "NOK").InvoicedCount
+
+	page := listEntries(t, manager, fmt.Sprintf("?projectId=%d&toInvoice=true", projectKraftVerket))
+	if len(page.Data) == 0 {
+		t.Fatal("the fixture lists nothing ready, so this proves nothing")
+	}
+	for _, e := range page.Data {
+		// The door's own refusals are 400s naming a field; a 200 is the whole
+		// assertion. It is called with the revision the list handed over, so a
+		// line the door would refuse for what it *is* cannot hide behind a
+		// stale revision.
+		r := manager.Do(http.MethodPost, entryInvoicedPath(e.Id), map[string]any{"revision": e.Revision})
+		if r.Status != http.StatusOK {
+			t.Errorf("POST invoiced on entry %d (kind %q, status %q), which toInvoice=true listed: status %d body %s, want 200",
+				e.Id, e.Kind, e.Status, r.Status, r.Body)
+		}
+	}
+
+	after := getProjectSummary(t, manager, projectKraftVerket)
+	nok, eur := summaryCurrency(t, after, "NOK"), summaryCurrency(t, after, "EUR")
+	if nok.ReadyCount != 0 || eur.ReadyCount != 0 {
+		t.Errorf("ready after invoicing the whole list = NOK %d / EUR %d, want nothing left",
+			nok.ReadyCount, eur.ReadyCount)
+	}
+	if want := nokInvoicedBefore + nokReady; nok.InvoicedCount != want {
+		t.Errorf("NOK invoicedCount = %d, want %d — the %d that were ready, on top of the %d already invoiced",
+			nok.InvoicedCount, want, nokReady, nokInvoicedBefore)
+	}
+	if eur.InvoicedCount != eurReady {
+		t.Errorf("EUR invoicedCount = %d, want the %d that were ready", eur.InvoicedCount, eurReady)
+	}
+	// And the list is empty now, which is the other half of "the figure and
+	// the list can never disagree".
+	if rest := listEntries(t, manager, fmt.Sprintf("?projectId=%d&toInvoice=true", projectKraftVerket)); len(rest.Data) != 0 {
+		t.Errorf("toInvoice still lists %d rows while readyCount is 0", len(rest.Data))
 	}
 }

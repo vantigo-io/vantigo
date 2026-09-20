@@ -1078,7 +1078,11 @@ type (
 type projectSummaryJSON struct {
 	Currencies    []summaryCurrencyJSON `json:"currencies"`
 	LastEntryDate *string               `json:"lastEntryDate"`
-	Capabilities  struct {
+	// ProjectCurrency is the project's own — the entry of Currencies with this
+	// code is the project's, every other one is in another currency. A pointer,
+	// because a project may carry none.
+	ProjectCurrency *string `json:"projectCurrency"`
+	Capabilities    struct {
 		CanRecord bool `json:"canRecord"`
 	} `json:"capabilities"`
 }

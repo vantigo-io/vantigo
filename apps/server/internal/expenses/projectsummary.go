@@ -84,7 +84,7 @@ func (s *server) GetExpensesProjectSummary(ctx context.Context, req gen.GetExpen
 	// here it is a project with no expenses yet: an empty list of currencies
 	// and no last entry date, never a 404 — which would say the caller may not
 	// see it — and never a zeroed currency this module has no business naming.
-	response, err := projectSummaryResponse(totals[req.ProjectId], canRecord)
+	response, err := projectSummaryResponse(totals[req.ProjectId], project.Currency, canRecord)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +98,18 @@ func (s *server) GetExpensesProjectSummary(ctx context.Context, req gen.GetExpen
 // billAmount already do, so the text is parsed back to the exact decimal it
 // came from and rendered once. Nothing is recomputed and nothing is rounded a
 // second time: each figure was rounded once, where it was summed.
-func projectSummaryResponse(totals contracts.ProjectExpenseTotals, canRecord bool) (gen.ExpensesProjectSummaryResponse, error) {
+//
+// projectCurrency is the project's own, straight off the ProjectEntry the
+// handler already held to decide the 404. It is answered rather than left to
+// the reader to fetch because the caller this endpoint exists for may hold no
+// role on the project at all, and the only other place this module publishes a
+// project's currency — GET /projects, the booking picker — answers exactly
+// that caller nothing. Without it the tab could not say which of the
+// currencies is the project's and which are "in another currency", which is
+// the one thing the per-currency shape exists to let it say.
+func projectSummaryResponse(totals contracts.ProjectExpenseTotals, projectCurrency *string,
+	canRecord bool,
+) (gen.ExpensesProjectSummaryResponse, error) {
 	currencies := make([]gen.ExpensesProjectSummaryCurrency, 0, len(totals.Currencies))
 	for _, currency := range totals.Currencies {
 		published := gen.ExpensesProjectSummaryCurrency{
@@ -131,8 +142,9 @@ func projectSummaryResponse(totals contracts.ProjectExpenseTotals, canRecord boo
 	}
 
 	response := gen.ExpensesProjectSummaryResponse{
-		Currencies:   currencies,
-		Capabilities: gen.ExpensesProjectSummaryCapabilities{CanRecord: canRecord},
+		Currencies:      currencies,
+		ProjectCurrency: projectCurrency,
+		Capabilities:    gen.ExpensesProjectSummaryCapabilities{CanRecord: canRecord},
 	}
 	if totals.LastEntryDate != nil {
 		day, err := time.Parse(time.DateOnly, *totals.LastEntryDate)

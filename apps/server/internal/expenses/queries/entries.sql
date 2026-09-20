@@ -139,8 +139,14 @@ WHERE expenses.entries.id = @id
 -- The two must stay the same sentence — the project page shows the figure as
 -- the header of this very list — so a change to one is a change to both.
 -- Note it reads the *unit's* status, which is why the claim join matters here
--- too: ix_entries_to_invoice's own predicate is on the entry's column, so a
--- trip's line (whose column stays at 'draft') can never be found through it.
+-- too: ix_entries_to_invoice's predicate before 00014 was on the entry's own
+-- column, so a trip's line (whose column stays at 'draft') could never be
+-- found through it.
+--
+-- It narrows only when it is true. false is the filter left out — the reading
+-- an unticked checkbox has — so IS NOT TRUE, not IS NULL: the clause then has
+-- one meaning whatever reaches it, and no caller can ask for "everything that
+-- is not ready", which is a page nobody wants and a promise nobody made.
 SELECT count(*) FROM expenses.entries e
 LEFT JOIN expenses.claims c ON c.id = e.claim_id
 WHERE (@see_all::boolean
@@ -156,12 +162,12 @@ WHERE (@see_all::boolean
   AND (sqlc.narg(to_date)::date IS NULL OR e.entry_date <= sqlc.narg(to_date)::date)
   AND (sqlc.narg(reimbursed)::boolean IS NULL
        OR (COALESCE(c.reimbursed_at, e.reimbursed_at) IS NOT NULL) = sqlc.narg(reimbursed)::boolean)
-  AND (sqlc.narg(to_invoice)::boolean IS NULL
+  AND (sqlc.narg(to_invoice)::boolean IS NOT TRUE
        OR (COALESCE(c.status, e.status) = 'approved'
            AND e.billable
            AND e.kind <> 'per_diem'
            AND e.bill_amount IS NOT NULL
-           AND e.invoiced_at IS NULL) = sqlc.narg(to_invoice)::boolean);
+           AND e.invoiced_at IS NULL));
 
 -- name: ListEntries :many
 -- ListEntries is one page of CountEntries' expenses, the latest day first and,
@@ -181,11 +187,11 @@ WHERE (@see_all::boolean
   AND (sqlc.narg(to_date)::date IS NULL OR e.entry_date <= sqlc.narg(to_date)::date)
   AND (sqlc.narg(reimbursed)::boolean IS NULL
        OR (COALESCE(c.reimbursed_at, e.reimbursed_at) IS NOT NULL) = sqlc.narg(reimbursed)::boolean)
-  AND (sqlc.narg(to_invoice)::boolean IS NULL
+  AND (sqlc.narg(to_invoice)::boolean IS NOT TRUE
        OR (COALESCE(c.status, e.status) = 'approved'
            AND e.billable
            AND e.kind <> 'per_diem'
            AND e.bill_amount IS NOT NULL
-           AND e.invoiced_at IS NULL) = sqlc.narg(to_invoice)::boolean)
+           AND e.invoiced_at IS NULL))
 ORDER BY e.entry_date DESC, e.id DESC
 LIMIT @page_size OFFSET @page_offset;
