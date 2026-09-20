@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
 import { getAuthorizationMe } from "../../api/authorization";
-import { ForbiddenPage, ModuleNotEnabledPage } from "../../components/errors";
+import { ForbiddenPage, ModuleNotEnabledPage, UnexpectedErrorPage } from "../../components/errors";
 import { enabledModuleKeys } from "../../lib/enabled-modules";
 import { hasPermissions, type ModuleKey } from "../../navigation";
 import "../../i18n";
@@ -32,6 +32,10 @@ export interface ModuleTabGateProps {
  * Whether the caller may see *this project's* figures is not asked here: that
  * is the module's own answer, shaped per project, and the panels say it in
  * their own words.
+ *
+ * A permission read that **failed** is not a permission that was refused: it
+ * gets the retry an error page offers, not "Access denied", which would tell
+ * somebody they lack a right they may well hold.
  */
 export const ModuleTabGate = ({ module, permission, appLabel, children }: ModuleTabGateProps) => {
   const { data: session } = useQuery({ queryKey: sessionQueryKey, queryFn: fetchSession, staleTime: 300_000 });
@@ -46,6 +50,8 @@ export const ModuleTabGate = ({ module, permission, appLabel, children }: Module
   // The layout above has already asked for both of these, so on a click they
   // are warm and this never paints; on a pasted URL it is one short wait
   // rather than a panel that appears and is then taken away.
+  if (authorization.isError)
+    return <UnexpectedErrorPage error={authorization.error} reset={() => void authorization.refetch()} />;
   if (authorization.isPending)
     return (
       <Center mih="30vh">
