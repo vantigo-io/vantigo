@@ -787,7 +787,7 @@ Either half can be empty while the other is not, and the tab says which:
 | The caller | The totals | The list |
 | --- | --- | --- |
 | the project's manager | every figure | every expense on the project |
-| `projects:view-financials` without managing it | every figure | **nothing** — and the tab says so in words: "You can see this project's totals, but not the individual expenses behind them" |
+| `projects:view-financials` without managing it | every figure | **their own expenses on the project, and nothing else** — which for most such callers is nothing at all, and the tab then says so in words: "You can see this project's totals, but not the individual expenses behind them" |
 | `expenses:view-all` / `approve` / `manage` | **absent** (the summary's 404) | every expense on the project |
 | a plain member | absent | their own |
 
