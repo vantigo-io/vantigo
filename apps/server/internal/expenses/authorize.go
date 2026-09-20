@@ -92,9 +92,19 @@ func (c *caller) zone() *time.Location {
 // zoneOf parses a settings row's business time zone.
 //
 // A name Go cannot load falls back to UTC rather than failing the request: the
-// settings door refuses a name neither Go nor Postgres knows, so a row that
-// holds one has been written past this module, and answering "a day, in UTC" is
-// better than answering nothing at all.
+// settings door refuses a name Go cannot load, one Postgres does not know, and
+// one the two read differently, so a row that holds such a name has been
+// written past this module, and answering "a day, in UTC" is better than
+// answering nothing at all.
+//
+// What that fallback costs is worth naming, because it is the one state in
+// which this module's central promise does not hold: SQL keeps using the stored
+// name, so every date Go derives would be a UTC day and every date a query
+// derives would be a day in whatever the database makes of the name. It cannot
+// arise from the default or from any value PUT /settings accepts; it would take
+// a row written by hand, or a Go release that dropped a zone the database kept.
+// The way back is to set the zone again through PUT /settings, which refuses
+// anything the two halves do not agree on.
 func zoneOf(row store.ExpensesSetting) *time.Location {
 	loc, err := time.LoadLocation(row.TimeZone)
 	if err != nil {
