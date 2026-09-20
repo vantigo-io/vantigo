@@ -19,6 +19,12 @@ export interface MarkInvoicedModalProps {
   revision: number | undefined;
   onClose: () => void;
   onSaved: (expense: Expense) => void;
+  /**
+   * A 409: the line moved on under the caller. A drawer that lives off a query
+   * reads it again here, so reopening this dialog does not send the same
+   * revision and earn the same refusal.
+   */
+  onConflict?: () => void;
 }
 
 /**
@@ -31,18 +37,31 @@ export interface MarkInvoicedModalProps {
  * was billed was decided at the pricing door, and this records that it went
  * out.
  */
-export const MarkInvoicedModal = ({ expense, revision, onClose, onSaved }: MarkInvoicedModalProps) => {
+export const MarkInvoicedModal = ({ expense, revision, onClose, onConflict, onSaved }: MarkInvoicedModalProps) => {
   const { t } = useI18n("expenses");
   return (
     <Modal opened={expense !== null} onClose={onClose} title={t("markInvoicedTitle")} centered>
       {expense && (
-        <InvoiceForm key={expense.id} expense={expense} revision={revision} onClose={onClose} onSaved={onSaved} />
+        <InvoiceForm
+          key={expense.id}
+          expense={expense}
+          revision={revision}
+          onClose={onClose}
+          onConflict={onConflict}
+          onSaved={onSaved}
+        />
       )}
     </Modal>
   );
 };
 
-const InvoiceForm = ({ expense, revision, onClose, onSaved }: MarkInvoicedModalProps & { expense: Expense }) => {
+const InvoiceForm = ({
+  expense,
+  revision,
+  onClose,
+  onConflict,
+  onSaved,
+}: MarkInvoicedModalProps & { expense: Expense }) => {
   const { t } = useI18n("expenses");
   const queryClient = useQueryClient();
   const form = useForm({
@@ -69,6 +88,7 @@ const InvoiceForm = ({ expense, revision, onClose, onSaved }: MarkInvoicedModalP
         return;
       }
       const conflict = (error as ApiError).status === 409;
+      if (conflict) onConflict?.();
       notifications.show({
         color: "red",
         title: t("couldNotMarkInvoiced"),

@@ -227,6 +227,18 @@ describe("MyExpensesPage", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/expenses/claims/9001"));
   });
 
+  it("never says there are no travel claims while the read is in flight or has failed", async () => {
+    // "You have none" is a fact about an answer. With the read refused the
+    // page already says so in red; saying "Record a trip, add what it cost…"
+    // underneath it contradicts itself.
+    stubExpensesApi({ entries: [], claimList: problemResponse(500, "The travel claims are unavailable") });
+    renderRoute("/expenses");
+
+    expect(await screen.findByText("Could not load the travel claims")).toBeInTheDocument();
+    expect(screen.queryByText("No travel claims yet")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Record a trip, add what it cost/)).not.toBeInTheDocument();
+  });
+
   it("opens the trip form on arrival when the URL asks for it, and drops the parameter again", async () => {
     // The host's Spotlight has a "New travel claim" quick action and no button
     // of this page to press, so it lands here with `?create=claim` — the same

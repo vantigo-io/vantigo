@@ -88,13 +88,22 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
   // filter that hides it. State adjusted during render from the previous
   // render's value, the way React documents, rather than an effect that would
   // flash the old bar.
-  const shownKey = JSON.stringify(search);
-  const [shown, setShown] = useState(shownKey);
-  if (shown !== shownKey) {
-    setShown(shownKey);
+  // Each section's selection belongs to **its own** page and to the filters:
+  // paging the trips must not throw away expenses somebody has just ticked,
+  // which is the same rule the approval queue follows.
+  const filterKey = JSON.stringify(filters);
+  const entryKey = `${filterKey}/${page}`;
+  const [shownEntries, setShownEntries] = useState(entryKey);
+  if (shownEntries !== entryKey) {
+    setShownEntries(entryKey);
     setSelected([]);
-    setSelectedClaims([]);
     setRefusals(new Map());
+  }
+  const claimKey = `${filterKey}/${claimPage}`;
+  const [shownClaims, setShownClaims] = useState(claimKey);
+  if (shownClaims !== claimKey) {
+    setShownClaims(claimKey);
+    setSelectedClaims([]);
     setClaimRefusals(new Map());
   }
 
@@ -321,9 +330,16 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
             <Text size="sm" c="dimmed">
               {t("claimsIgnoreKindFilter")}
             </Text>
+          ) : claimPageData === undefined ? (
+            // "You have none" is a fact about an answer, not about a request
+            // in flight or one that failed — the alert above says what
+            // happened, and this would contradict it.
+            claimsFailed ? null : (
+              <ContentSkeleton rows={2} rowHeight={52} />
+            )
           ) : claims.length === 0 ? (
             <Text size="sm" c="dimmed">
-              {filtered ? t("noTravelClaimsForFilter") : t("noTravelClaimsDescription")}
+              {filtered ? t("noTravelClaimsForFilter") : t("noTravelClaims")}
             </Text>
           ) : (
             <Table.ScrollContainer minWidth={760}>
@@ -377,6 +393,7 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
                           {claim.capabilities.canSubmit && (
                             <ActionIcon
                               variant="subtle"
+                              loading={submit.isPending}
                               aria-label={t("submitTravelClaim", { purpose: claim.purpose })}
                               onClick={() => submit.mutate({ entryIds: [], claimIds: [claim.id] })}
                             >
@@ -528,6 +545,7 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
                             {expense.capabilities.canSubmit && (
                               <ActionIcon
                                 variant="subtle"
+                                loading={submit.isPending}
                                 aria-label={t("submitExpense", { description: expense.description })}
                                 onClick={() => submit.mutate({ entryIds: [expense.id], claimIds: [] })}
                               >

@@ -86,6 +86,17 @@ const ClaimActions = ({ claimId, onClose }: { claimId: number; onClose: () => vo
     setInvoicing(null);
   };
 
+  /**
+   * A conflict means somebody else has moved the line on. The drawer lives off
+   * a query, so it reads the trip again rather than holding the revision that
+   * was just refused — without this, reopening the dialog sends the same one
+   * and earns the same 409 until the drawer is closed.
+   */
+  const conflicted = () => {
+    setWritten(new Map());
+    void queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
+  };
+
   const undoInvoiced = useUndoInvoiced(saved);
 
   /** Approve and unapprove differ only in the call and the words; the handling is one shape. */
@@ -244,13 +255,21 @@ const ClaimActions = ({ claimId, onClose }: { claimId: number; onClose: () => vo
         expense={overriding}
         revision={overriding?.revision}
         onClose={() => setOverriding(null)}
+        onConflict={conflicted}
         onSaved={saved}
       />
-      <BillingModal expense={pricing} revision={pricing?.revision} onClose={() => setPricing(null)} onSaved={saved} />
+      <BillingModal
+        expense={pricing}
+        revision={pricing?.revision}
+        onClose={() => setPricing(null)}
+        onConflict={conflicted}
+        onSaved={saved}
+      />
       <MarkInvoicedModal
         expense={invoicing}
         revision={invoicing?.revision}
         onClose={() => setInvoicing(null)}
+        onConflict={conflicted}
         onSaved={saved}
       />
     </Stack>

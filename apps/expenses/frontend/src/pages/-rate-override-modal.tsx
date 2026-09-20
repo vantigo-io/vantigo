@@ -17,6 +17,12 @@ export interface RateOverrideModalProps {
   revision: number | undefined;
   onClose: () => void;
   onSaved: (expense: Expense) => void;
+  /**
+   * A 409: the line moved on under the caller. A drawer that lives off a query
+   * reads it again here, so reopening this dialog does not send the same
+   * revision and earn the same refusal.
+   */
+  onConflict?: () => void;
 }
 
 const numeric = (value: number | string): number | undefined => {
@@ -43,7 +49,7 @@ const numeric = (value: number | string): number | undefined => {
  * picks up a percentage that has changed since. A per diem day carries no
  * passenger supplement, and the field for one is never shown.
  */
-export const RateOverrideModal = ({ expense, revision, onClose, onSaved }: RateOverrideModalProps) => {
+export const RateOverrideModal = ({ expense, revision, onClose, onConflict, onSaved }: RateOverrideModalProps) => {
   const { t } = useI18n("expenses");
   return (
     <Modal
@@ -53,13 +59,26 @@ export const RateOverrideModal = ({ expense, revision, onClose, onSaved }: RateO
       centered
     >
       {expense && (
-        <RateOverrideForm key={expense.id} expense={expense} revision={revision} onClose={onClose} onSaved={onSaved} />
+        <RateOverrideForm
+          key={expense.id}
+          expense={expense}
+          revision={revision}
+          onClose={onClose}
+          onConflict={onConflict}
+          onSaved={onSaved}
+        />
       )}
     </Modal>
   );
 };
 
-const RateOverrideForm = ({ expense, revision, onClose, onSaved }: RateOverrideModalProps & { expense: Expense }) => {
+const RateOverrideForm = ({
+  expense,
+  revision,
+  onClose,
+  onConflict,
+  onSaved,
+}: RateOverrideModalProps & { expense: Expense }) => {
   const { t } = useI18n("expenses");
   const format = useExpenseFormat();
   const decimalSeparator = useDecimalSeparator();
@@ -116,6 +135,7 @@ const RateOverrideForm = ({ expense, revision, onClose, onSaved }: RateOverrideM
         }
       }
       const conflict = (error as ApiError).status === 409;
+      if (conflict) onConflict?.();
       notifications.show({
         color: "red",
         title: t("couldNotOverrideRate"),

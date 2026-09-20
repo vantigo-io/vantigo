@@ -553,8 +553,10 @@ describe("ApprovalsPage", () => {
 
     const table = within(drawer).getByRole("table", { name: "The trip's expenses" });
     expect(within(table).getByText("Hotel Bergen")).toBeInTheDocument();
-    // A per diem day has no description of its own; what the day *is* names it.
-    expect(within(table).getAllByText("Overnight, hotel").length).toBeGreaterThan(0);
+    // A per diem day has no description of its own; what the day *is* names
+    // it — **once**. The row used to read "Overnight, hotel / Overnight,
+    // hotel / Day rate…" because the details block repeated the line's name.
+    expect(within(table).getAllByText("Overnight, hotel")).toHaveLength(1);
     expect(drawer).toHaveTextContent("Day rate");
   });
 
@@ -628,7 +630,14 @@ describe("ApprovalsPage", () => {
     renderRoute("/expenses/approvals?state=approved");
 
     const drawer = await openClaimDrawer("Montasje hos kunden");
-    expect(within(drawer).queryByRole("button", { name: /Overnight, hotel/ })).not.toBeInTheDocument();
+    // A per diem day is never billed on to a customer, and the server says so
+    // through its capabilities. The assertion only means something beside a
+    // **sibling that does** offer the doors: the outlay's row draws two, the
+    // day's row draws none, in the same table of the same drawer.
+    const outlayRow = drawer.querySelector('[data-expense="801"]') as HTMLElement;
+    const dayRow = drawer.querySelector('[data-expense="802"]') as HTMLElement;
+    expect(within(outlayRow).getAllByRole("button")).toHaveLength(2);
+    expect(within(dayRow).queryAllByRole("button")).toHaveLength(0);
 
     await userEvent.click(within(drawer).getByRole("button", { name: "Price Hotel Bergen for the customer" }));
     const pricing = await screen.findByRole("dialog", { name: "What the customer is billed" });

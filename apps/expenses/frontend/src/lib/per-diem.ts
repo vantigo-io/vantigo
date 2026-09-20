@@ -53,28 +53,3 @@ export const mealDeductions = (perDiem: PerDiem): MealDeduction[] =>
     covered: coveredFlag(perDiem, meal),
     ...(perDiem.mealPercents[meal] !== undefined ? { percent: perDiem.mealPercents[meal] } : {}),
   }));
-
-const HOUR = 3_600_000;
-const PERIOD = 24 * HOUR;
-const PART_PERIOD = 6 * HOUR;
-
-/**
- * How many days the server would propose for this trip — the same counting
- * `suggestPerDiem` does, mirrored here **for the sentence beside the button
- * and nothing else**: a trip earns a day when it is a full 24 hours, or a
- * part longer than six, and a trip of at least six hours with an overnight is
- * one day however short it is.
- *
- * Every rate and every amount on the page comes from
- * `POST /claims/{id}/per-diem-suggestion`. The rates are dated and
- * administrator-managed, so a client that priced a day itself would be wrong
- * the moment somebody changed a row.
- */
-export const suggestedDayCount = (departureAt: string, returnAt: string, overnight: boolean): number => {
-  const duration = new Date(returnAt).getTime() - new Date(departureAt).getTime();
-  if (!Number.isFinite(duration) || duration < PART_PERIOD) return 0;
-  if (!overnight) return 1;
-  const whole = Math.floor(duration / PERIOD);
-  if (whole === 0) return 1;
-  return duration % PERIOD > PART_PERIOD ? whole + 1 : whole;
-};

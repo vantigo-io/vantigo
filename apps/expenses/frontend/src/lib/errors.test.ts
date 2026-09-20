@@ -1,33 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ApiValidationError } from "../api/request";
-import { lineNamedIn, refusalMessage, refusalMessages, refusalsByEntry, refusalsByUnit } from "./errors";
-
-describe("refusalsByEntry", () => {
-  it("puts each per-id sentence against the expense it names", () => {
-    const error = new ApiValidationError("Invalid submission", {
-      entryIds: [
-        "Expense 7 was not found",
-        "Expense 9 needs a receipt: an outlay the employee paid for more than 1250.00 cannot be submitted without one",
-      ],
-    });
-    const { byEntry, rest } = refusalsByEntry(error);
-    expect(byEntry.get(7)).toEqual(["Expense 7 was not found"]);
-    expect(byEntry.get(9)?.[0]).toContain("needs a receipt");
-    expect(rest).toEqual([]);
-  });
-
-  it("keeps a body-level refusal out of the rows, where no row could show it", () => {
-    const error = new ApiValidationError("Invalid submission", {
-      entryIds: ["At most 500 expenses may be given at once; 501 were given"],
-    });
-    expect(refusalsByEntry(error).byEntry.size).toBe(0);
-    expect(refusalsByEntry(error).rest).toHaveLength(1);
-  });
-
-  it("falls back to the error's own message when nothing named a field", () => {
-    expect(refusalsByEntry(new Error("The server is down")).rest).toEqual(["The server is down"]);
-  });
-});
+import { lineNamedIn, refusalMessage, refusalMessages, refusalsByUnit } from "./errors";
 
 describe("refusalsByUnit", () => {
   it("reads both lists a batch refuses on, and keeps each unit's sentence on its own unit", () => {

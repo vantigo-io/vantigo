@@ -6,8 +6,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
-import { type Claim, deleteClaim, expenseClaimQueryOptions, submitClaims } from "../api/claims";
-import { deleteExpense, type Expense } from "../api/entries";
+import { type Claim, deleteClaim, expenseClaimQueryOptions } from "../api/claims";
+import { deleteExpense, type Expense, submitUnits } from "../api/entries";
 import { expensesMetaQueryOptions } from "../api/meta";
 import { type ApiError, EXPENSES_QUERY_KEY } from "../api/request";
 import { ClaimDetails } from "../components/claim-details";
@@ -55,14 +55,25 @@ export const ClaimPage = ({ claimId }: ClaimPageProps) => {
   const [refusals, setRefusals] = useState<string[]>([]);
   const [lineRefusals, setLineRefusals] = useState<Map<number, string[]>>(new Map());
 
+  /**
+   * A refusal describes the trip **as it was when it was refused**. Attaching
+   * the receipt it asked for, or editing the line, makes it stale — and it
+   * would otherwise stand until the next submit, telling the traveller to fix
+   * something they have just fixed. Anything that can change the trip clears
+   * it, and the next submit says what is still wrong.
+   */
+  const clearRefusals = () => {
+    setRefusals([]);
+    setLineRefusals(new Map());
+  };
+
   const { data: meta, isPending: metaPending } = useQuery(expensesMetaQueryOptions());
   const { data: claim, isPending, isError, error } = useQuery(expenseClaimQueryOptions(claimId));
 
   const submit = useMutation({
-    mutationFn: () => submitClaims([claimId]),
+    mutationFn: () => submitUnits({ claimIds: [claimId] }),
     onSuccess: async () => {
-      setRefusals([]);
-      setLineRefusals(new Map());
+      clearRefusals();
       await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
       notifications.show({ color: "teal", title: t("claimSubmitted"), message: claim?.purpose ?? "" });
     },
@@ -123,8 +134,15 @@ export const ClaimPage = ({ claimId }: ClaimPageProps) => {
   }
 
   const zone = meta?.timeZone ?? "UTC";
-  const atCap = claim.lines.length >= CLAIM_LINE_CAP;
   const editable = claim.capabilities.canEdit;
+  // The modals unmount when the page turns read-only, but their state does
+  // not: a trip submitted in another tab and later rejected would reopen a
+  // stale edit form the moment the refetch landed.
+  if (!editable && (claimModal || lineModal)) {
+    setClaimModal(null);
+    setLineModal(null);
+  }
+  const atCap = claim.lines.length >= CLAIM_LINE_CAP;
   const perDiemDays = claim.lines.filter((line) => line.kind === "per_diem");
   const mileageLines = claim.lines.filter((line) => line.kind === "mileage");
   const outlayLines = claim.lines.filter((line) => line.kind === "outlay");
@@ -201,8 +219,20 @@ export const ClaimPage = ({ claimId }: ClaimPageProps) => {
       {header}
       {refusalBanner}
 
-      <ClaimFormModal state={claimModal} onClose={() => setClaimModal(null)} />
-      <ExpenseFormModal state={lineModal} onClose={() => setLineModal(null)} />
+      <ClaimFormModal
+        state={claimModal}
+        onClose={() => {
+          setClaimModal(null);
+          clearRefusals();
+        }}
+      />
+      <ExpenseFormModal
+        state={lineModal}
+        onClose={() => {
+          setLineModal(null);
+          clearRefusals();
+        }}
+      />
 
       <Card withBorder padding="lg" radius="md" data-testid="claim-trip">
         <Stack gap="xs">
@@ -275,7 +305,10 @@ export const ClaimPage = ({ claimId }: ClaimPageProps) => {
         refusals={lineRefusals}
         onAdd={() => setLineModal({ mode: "create", kind: "mileage", claim })}
         onEdit={(line) => setLineModal({ mode: "edit", expense: line, claim })}
-        onRemove={(line) => removeLine.mutate(line.id)}
+        onRemove={(line) => {
+          clearRefusals();
+          removeLine.mutate(line.id);
+        }}
         lineName={lineName}
       />
 
@@ -291,7 +324,10 @@ export const ClaimPage = ({ claimId }: ClaimPageProps) => {
         refusals={lineRefusals}
         onAdd={() => setLineModal({ mode: "create", kind: "outlay", claim })}
         onEdit={(line) => setLineModal({ mode: "edit", expense: line, claim })}
-        onRemove={(line) => removeLine.mutate(line.id)}
+        onRemove={(line) => {
+          clearRefusals();
+          removeLine.mutate(line.id);
+        }}
         lineName={lineName}
       />
     </Stack>

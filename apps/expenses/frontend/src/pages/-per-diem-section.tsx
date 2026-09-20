@@ -54,6 +54,8 @@ export interface PerDiemSectionProps {
 export const PerDiemSection = ({ claim, days, lineCount, refusals }: PerDiemSectionProps) => {
   const { t } = useI18n("expenses");
   const [suggesting, setSuggesting] = useState(false);
+  /** Where focus goes when a row is removed: the section's own action. */
+  const suggestRef = useRef<HTMLButtonElement>(null);
   const editable = claim.capabilities.canEdit;
   const room = CLAIM_LINE_CAP - lineCount;
 
@@ -69,6 +71,7 @@ export const PerDiemSection = ({ claim, days, lineCount, refusals }: PerDiemSect
           </Stack>
           {editable && (
             <Button
+              ref={suggestRef}
               variant="light"
               leftSection={<IconWand size={16} />}
               disabled={room <= 0}
@@ -86,9 +89,12 @@ export const PerDiemSection = ({ claim, days, lineCount, refusals }: PerDiemSect
         )}
 
         {days.length === 0 ? (
-          <Text size="sm" c="dimmed">
-            {t("perDiemNoneDescription")}
-          </Text>
+          <Stack gap={0}>
+            <Text size="sm">{t("perDiemNone")}</Text>
+            <Text size="sm" c="dimmed">
+              {t("perDiemNoneDescription")}
+            </Text>
+          </Stack>
         ) : (
           <Table.ScrollContainer minWidth={720}>
             <Table aria-label={t("perDiemDays")}>
@@ -97,7 +103,7 @@ export const PerDiemSection = ({ claim, days, lineCount, refusals }: PerDiemSect
                   <Table.Th>{t("date")}</Table.Th>
                   <Table.Th>{t("perDiemType")}</Table.Th>
                   <Table.Th>{t("perDiemDayRate")}</Table.Th>
-                  <Table.Th>{t("perDiem")}</Table.Th>
+                  <Table.Th>{t("mealsCovered")}</Table.Th>
                   <Table.Th>{t("amount")}</Table.Th>
                   <Table.Th>{t("rowActions")}</Table.Th>
                 </Table.Tr>
@@ -110,6 +116,7 @@ export const PerDiemSection = ({ claim, days, lineCount, refusals }: PerDiemSect
                     day={day}
                     editable={editable}
                     refusals={refusals.get(day.id) ?? []}
+                    onRemoved={() => suggestRef.current?.focus()}
                   />
                 ))}
               </Table.Tbody>
@@ -135,11 +142,14 @@ const PerDiemDayRow = ({
   day,
   editable,
   refusals,
+  onRemoved,
 }: {
   claim: Claim;
   day: Expense;
   editable: boolean;
   refusals: string[];
+  /** Where focus goes once this row is gone — its own trigger goes with it. */
+  onRemoved: () => void;
 }) => {
   const { t } = useI18n("expenses");
   const format = useExpenseFormat();
@@ -226,6 +236,10 @@ const PerDiemDayRow = ({
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
       notifications.show({ color: "teal", title: t("perDiemDayRemoved"), message: "" });
+      // The button that opened the confirm has just been unmounted with its
+      // row, so focus would fall to <body> and a keyboard reader would start
+      // again from the top of the document.
+      onRemoved();
     },
     onError: (failure) =>
       notifications.show({ color: "red", title: t("couldNotRemovePerDiemDay"), message: refusalMessage(failure) }),
@@ -256,25 +270,33 @@ const PerDiemDayRow = ({
       </Table.Td>
       <Table.Td>{format.money(perDiem.dayRate, line.currency)}</Table.Td>
       <Table.Td>
-        <Stack gap={2}>
-          {meals.map((meal) => (
-            <Checkbox
-              key={meal}
-              size="sm"
-              aria-label={t("mealCoveredOn", { meal: t(mealLabelKey(meal)), date: label })}
-              error={mealErrors[meal]}
-              label={
-                perDiem.mealPercents[meal] === undefined
-                  ? t("mealNotPriced", { meal: t(mealLabelKey(meal)) })
-                  : `${t(mealLabelKey(meal))} · ${format.number(perDiem.mealPercents[meal] ?? 0, 0)} %`
-              }
-              checked={covered[meal]}
-              disabled={!editable || save.isPending}
-              onChange={(event) =>
-                save.mutate({ type: perDiem.type, covered: { ...covered, [meal]: event.currentTarget.checked } })
-              }
-            />
-          ))}
+        {/* Each mis-tap is a server write, so the targets are Mantine's
+            default rather than 20 px stacked two pixels apart — and the
+            accessible name carries the percentage the visible label shows,
+            which an `aria-label` would otherwise have replaced. */}
+        <Stack gap="xs">
+          {meals.map((meal) => {
+            const percent = perDiem.mealPercents[meal];
+            const shown =
+              percent === undefined
+                ? t("mealNotPriced", { meal: t(mealLabelKey(meal)) })
+                : `${t(mealLabelKey(meal))} · ${format.percent(percent)}`;
+            return (
+              <Checkbox
+                key={meal}
+                aria-label={`${t("mealCoveredOn", { meal: t(mealLabelKey(meal)), date: label })} · ${
+                  percent === undefined ? t("mealNotPriced", { meal: t(mealLabelKey(meal)) }) : format.percent(percent)
+                }`}
+                error={mealErrors[meal]}
+                label={shown}
+                checked={covered[meal]}
+                disabled={!editable || save.isPending}
+                onChange={(event) =>
+                  save.mutate({ type: perDiem.type, covered: { ...covered, [meal]: event.currentTarget.checked } })
+                }
+              />
+            );
+          })}
         </Stack>
       </Table.Td>
       <Table.Td>

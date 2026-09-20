@@ -115,6 +115,13 @@ describe("SettingsPage", () => {
     await userEvent.click(await screen.findByRole("option", { name: "Europe/Stockholm" }));
     await userEvent.click(screen.getAllByRole("button", { name: "Save" })[0]);
 
+    // The lock is reversible and is asked about; the zone moves the days of
+    // every trip already recorded and nothing puts them back, so it is asked
+    // about too.
+    const confirm = await screen.findByRole("dialog", { name: "Change the business time zone?" });
+    expect(confirm).toHaveTextContent(/Every trip already recorded is re-read in Europe\/Stockholm/);
+    await userEvent.click(within(confirm).getByRole("button", { name: "Save" }));
+
     await waitFor(() =>
       expect(put(fetchMock, "/expenses/settings").body).toMatchObject({ timeZone: "Europe/Stockholm" }),
     );

@@ -29,9 +29,6 @@ export const rateKinds = [
 
 export type RateKind = (typeof rateKinds)[number];
 
-export const isRateKind = (value: unknown): value is RateKind =>
-  typeof value === "string" && (rateKinds as readonly string[]).includes(value);
-
 /**
  * A percentage kind carries no currency and a value between 0 and 100; a
  * money kind carries a three-letter code and a value greater than zero. The

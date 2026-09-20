@@ -66,7 +66,10 @@ export const ApprovalsPage = () => {
     setSelected([]);
     setRefusals(new Map());
   }
-  const claimKey = `${state}/${claimPage}`;
+  // The waiting queue is paged **by person** and carries both kinds inside a
+  // group, so there the trips' scope is the queue's own page; only the
+  // approved half pages them separately.
+  const claimKey = state === "waiting" ? `${state}/${page}` : `${state}/${claimPage}`;
   const [shownClaims, setShownClaims] = useState(claimKey);
   if (shownClaims !== claimKey) {
     setShownClaims(claimKey);
@@ -286,15 +289,28 @@ export const ApprovalsPage = () => {
 
       {state === "approved" && approvedEntries.length > 0 && (
         <Card withBorder padding="lg" radius="md">
-          <EntryTable
-            label={t("statusApproved")}
-            entries={approvedEntries}
-            refusals={refusals}
-            selected={picked}
-            selectable={(entry) => entry.capabilities.canUnapprove}
-            onToggle={toggle}
-            onOpen={setOpened}
-          />
+          <Stack gap="sm">
+            <EntryTable
+              label={t("statusApproved")}
+              entries={approvedEntries}
+              refusals={refusals}
+              selected={picked}
+              selectable={(entry) => entry.capabilities.canUnapprove}
+              onToggle={toggle}
+              onOpen={setOpened}
+            />
+            {/* Inside its own card: under the travel-claims card it looked
+                like the pager of the trips, which have one of their own. */}
+            {pagination && pagination.totalPages > 1 && (
+              <Group justify="center">
+                <Pagination
+                  total={pagination.totalPages}
+                  value={page}
+                  onChange={(next) => navigate({ search: { ...search, page: next } })}
+                />
+              </Group>
+            )}
+          </Stack>
         </Card>
       )}
 
@@ -330,7 +346,7 @@ export const ApprovalsPage = () => {
         </Card>
       )}
 
-      {pagination && pagination.totalPages > 1 && (
+      {state === "waiting" && pagination && pagination.totalPages > 1 && (
         <Group justify="center">
           <Pagination
             total={pagination.totalPages}
