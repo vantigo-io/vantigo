@@ -291,7 +291,7 @@ export interface paths {
         };
         /**
          * List the projects an expense may be booked on
-         * @description The projects the caller may book an expense on, with their active billing lines, so the expense form needs no code of the projects module's own. Answers 404 in an installation with no projects module (decision X2) — the same answer as a path that is not there.
+         * @description The projects the caller may book an expense on, with their active billing lines, so the expense form needs no code of the projects module's own. With userId it is the projects that person may book on instead, which is what a form recording an expense for somebody else needs: the save is judged on the owner's own bookability, so a picker offering the caller's would offer projects the save then refuses. Answers 404 in an installation with no projects module (decision X2) — the same answer as a path that is not there.
          */
         get: operations["getExpensesProjects"];
         put?: never;
@@ -606,7 +606,7 @@ export interface paths {
         put?: never;
         /**
          * Unapprove expenses
-         * @description Returns approved expenses to a draft their owner can change and submit again — by whoever could have approved them, or by expenses:manage — clearing the decision and the submission stamp alike. The figures the submit froze stay on the line until the next save or submit recomputes them. Never an expense that has been reimbursed or invoiced: those are Task 5's tracks and undoing them is their own operation.
+         * @description Returns approved expenses to a draft their owner can change and submit again — by whoever could have approved them, or by expenses:manage — clearing the decision and the submission stamp alike. The figures the submit froze stay on the line until the next save or submit recomputes them. Never an expense that has been reimbursed or invoiced: the reimbursement track and the invoicing track each have an undo of their own.
          */
         post: operations["postExpensesUnapprove"];
         delete?: never;
@@ -730,7 +730,7 @@ export interface components {
         ExpensesEntryBilling: {
             /**
              * Format: double
-             * @description What the customer is billed; zero on a line nobody bills.
+             * @description What the customer is billed; zero on a line nobody bills. It always follows the line as it now stands — a save that changes the net or the distance works it out again from the markup or the customer rate the line carries, in an installation with no projects module too, where those two are carried through untouched.
              */
             billAmount: number;
             /**
@@ -800,7 +800,8 @@ export interface components {
         ExpensesEntryDecision: {
             /** Format: date-time */
             at: string;
-            by: components["schemas"]["ExpensesUserRef"];
+            /** @description Who decided it. Absent only for a row carrying a decision and no decider, which no operation here can produce. */
+            by?: components["schemas"]["ExpensesUserRef"];
             /** @description Why it was rejected, as the approver wrote it. Absent on an approval. */
             reason?: string;
             /** @description 'approved' or 'rejected' — what was decided, which is the status the expense has been left in. */
@@ -849,7 +850,7 @@ export interface components {
              * @description The day the payroll run it went with was made. A calendar date, never in the future.
              */
             date: string;
-            /** @description The payroll run it went with, as whoever marked it typed it. Absent when none was given. */
+            /** @description The payroll run it went with, as whoever marked it typed it. Absent when none was given, and absent for a reader who is neither the expense's owner nor a holder of expenses:view-all, expenses:approve or expenses:manage: that the money went is everyone's business, which batch it went in is the payroll clerk's. A project manager therefore reads the stamp without this field. */
             reference?: string;
         };
         /** @description One money line (design §3.1). The fields a kind does not carry are refused on their own field rather than ignored: an outlay carries a category, a payer, a currency and a gross amount with optional VAT; a mileage line carries a distance, optional places and passengers, and is priced by the server from the dated rate table. Travel claims and their per diem arrive in a later delivery, so kind per_diem and claimId are refused for now. */
@@ -1338,7 +1339,7 @@ export interface components {
             /** Format: date-time */
             to: string;
         };
-        /** @description One person, named through identity — the owner of an approval group, or whoever overrode a rate. */
+        /** @description One person, named through identity — an expense's owner, the owner of an approval or reimbursement group, whoever overrode a rate, whoever decided the expense, whoever paid it back, or whoever invoiced it. */
         ExpensesUserRef: {
             /** @description Whether identity still has them as an active user. */
             active: boolean;
@@ -2451,7 +2452,10 @@ export interface operations {
     };
     getExpensesProjects: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The person the expense is being recorded for. Naming anybody but the caller needs expenses:manage, the permission that lets one record for somebody else; left out, it is the caller's own projects. */
+                userId?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2465,6 +2469,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExpensesProjectOption"][];
+                };
+            };
+            /** @description Bad Request — on userId, for somebody the caller may not ask about or an id nobody active has. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
                 };
             };
             /** @description Unauthorized */
@@ -2912,7 +2925,7 @@ export interface operations {
                 from?: string;
                 /** @description The latest entry date to include. Ignored when entryIds is given. */
                 to?: string;
-                /** @description Exactly these expenses instead of the filters. An id that is not one the export could hold refuses the whole file rather than being left out of it silently. */
+                /** @description Exactly these expenses instead of the filters. An id that is not one the export could hold refuses the whole file rather than being left out of it silently, and a parameter that is present but names nothing is refused rather than read as "everything" — a button with nothing selected should leave it out and send the filters. */
                 entryIds?: number[];
             };
             header?: never;
@@ -2930,7 +2943,7 @@ export interface operations {
                     "text/csv": string;
                 };
             };
-            /** @description Bad Request — on state for an unknown one, on entryIds for an id the export cannot hold or for more than 5000 of them, or, with no field errors at all, because the filters would produce more rows than one file may hold. */
+            /** @description Bad Request — on entryIds for an id the export cannot hold, for more than 5000 of them, or for a present but empty list; and, with no errors object at all, for an unknown state (the very body GET /reimbursements answers it with) or because the filters would produce more rows than one file may hold. */
             400: {
                 headers: {
                     [name: string]: unknown;
