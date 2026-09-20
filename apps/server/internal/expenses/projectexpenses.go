@@ -96,11 +96,11 @@ func projectExpenseTotals(ctx context.Context, q *store.Queries, projectIDs []in
 		return nil, fmt.Errorf("expenses: read what the projects' expenses cost and bill: %w", err)
 	}
 
+	// No row needs checking against wanted: the query filters on the very same
+	// slice, so every group it answers is one that was asked for. The map is
+	// built for the duplicate check above and nothing else.
 	sums := make(map[int32]*projectExpenseSum, len(rows))
 	for _, row := range rows {
-		if _, want := wanted[row.ProjectID]; !want {
-			continue
-		}
 		sum := sums[row.ProjectID]
 		if sum == nil {
 			sum = &projectExpenseSum{currencies: map[string]*currencyExpenseSum{}}

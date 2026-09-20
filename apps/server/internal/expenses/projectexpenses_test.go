@@ -409,16 +409,31 @@ func TestProjectExpensesReadyThroughTheClaim(t *testing.T) {
 // Two currencies on one project are two entries, by code ascending, each
 // complete and neither converted: a NOK project with a EUR receipt has two
 // figures, not one.
+//
+// The five figures that are not buckets — ready, invoiced and unpriced — are
+// asserted on both currencies here, and that is the whole point of doing it in
+// this test: they live on the currency, not on the project, and a summation
+// that folded them onto the project would pass every other test in this file
+// while reporting a EUR receipt as a NOK amount "ready to invoice". That
+// number is in neither currency, and it would land straight in the portfolio's
+// readyAmounts.
 func TestProjectExpensesReportsEachCurrencyOnItsOwn(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	_, user := signIn(t, h)
 	p := expensesProvider(t, h)
 
+	// NOK: one approved line nobody bills, and one billable outlay nobody has
+	// priced. EUR: one approved, billable, priced line — ready to invoice —
+	// and one invoiced one.
 	recordExpense(t, h, user, recordedExpense{project: projectKraftVerket, gross: "125.00", vat: "25.00",
 		paidBy: "employee", status: "approved"})
+	recordExpense(t, h, user, recordedExpense{project: projectKraftVerket, gross: "80.00",
+		paidBy: "employee", billable: true, status: "approved"})
 	recordExpense(t, h, user, recordedExpense{project: projectKraftVerket, currency: "EUR", gross: "50.00",
 		paidBy: "employee", billable: true, billAmount: "60.00", status: "approved"})
+	recordExpense(t, h, user, recordedExpense{project: projectKraftVerket, currency: "EUR", gross: "20.00",
+		paidBy: "employee", billable: true, billAmount: "25.00", status: "approved", invoiced: true})
 
 	totals := projectExpensesOf(t, p, projectKraftVerket)
 	if len(totals.Currencies) != 2 {
@@ -428,8 +443,31 @@ func TestProjectExpensesReportsEachCurrencyOnItsOwn(t *testing.T) {
 		t.Errorf("currencies = %q and %q, want EUR then NOK (ascending)",
 			totals.Currencies[0].Currency, totals.Currencies[1].Currency)
 	}
-	wantBucket(t, "EUR approved", totals.Currencies[0].Approved, 1, "50.00", "60.00")
-	wantBucket(t, "NOK approved", totals.Currencies[1].Approved, 1, "100.00", "0.00")
+	eur, nok := totals.Currencies[0], totals.Currencies[1]
+	wantBucket(t, "EUR approved", eur.Approved, 2, "70.00", "85.00")
+	wantBucket(t, "NOK approved", nok.Approved, 2, "180.00", "0.00")
+
+	// Ready is the EUR line that has not been invoiced, and nothing at all in
+	// NOK — not "the project's ready amount", rendered into both.
+	if eur.ReadyCount != 1 || eur.ReadyAmount != "60.00" {
+		t.Errorf("EUR ready = %d worth %q, want 1 worth \"60.00\"", eur.ReadyCount, eur.ReadyAmount)
+	}
+	if nok.ReadyCount != 0 || nok.ReadyAmount != "0.00" {
+		t.Errorf("NOK ready = %d worth %q, want none at all: its only billable line has no price",
+			nok.ReadyCount, nok.ReadyAmount)
+	}
+	if eur.InvoicedCount != 1 || eur.InvoicedAmount != "25.00" {
+		t.Errorf("EUR invoiced = %d worth %q, want 1 worth \"25.00\"", eur.InvoicedCount, eur.InvoicedAmount)
+	}
+	if nok.InvoicedCount != 0 || nok.InvoicedAmount != "0.00" {
+		t.Errorf("NOK invoiced = %d worth %q, want none", nok.InvoicedCount, nok.InvoicedAmount)
+	}
+	if nok.UnpricedCount != 1 {
+		t.Errorf("NOK unpricedCount = %d, want 1: the billable line nobody has priced", nok.UnpricedCount)
+	}
+	if eur.UnpricedCount != 0 {
+		t.Errorf("EUR unpricedCount = %d, want 0: both its lines carry a price", eur.UnpricedCount)
+	}
 }
 
 // Total is the ordinary case too: the three buckets' counts and their money,
@@ -636,5 +674,102 @@ func TestProjectExpensesAsksTheProjectDirectoryNothing(t *testing.T) {
 
 	if _, err := p.ExpensesForProjects(t.Context(), []int32{projectKraftVerket, projectEuro, projectInternal}); err != nil {
 		t.Fatalf("expenses for projects: %v", err)
+	}
+}
+
+// TestProjectExpensesFollowsTheModulesOwnWrites is the one test here that
+// records nothing in SQL. Every other fixture in this file is a raw INSERT,
+// which is the only way to reach the status matrix, but it also means they
+// would all still pass if this module stored a bill amount in another column
+// or stamped invoicing on another field. This one drives the real doors —
+// record, price, submit, approve, invoice — and asserts the provider's figures
+// after each, so the summation is tied to what the module actually writes.
+func TestProjectExpensesFollowsTheModulesOwnWrites(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	manager, _ := signInAs(t, h, projectKraftVerket, roleManager, "expenses:approve")
+	owner, _ := signInAs(t, h, projectKraftVerket, roleMember)
+	p := expensesProvider(t, h)
+
+	// A 1250.00 receipt with 250.00 of VAT: the project's cost is the 1000.00
+	// net, whatever the customer is charged for it.
+	entry := createEntry(t, owner, outlayBody(map[string]any{
+		"projectId": projectKraftVerket, "billable": true, "vatAmount": 250.00,
+	}))
+	// Priced from the project's side: the net plus a ten per cent markup.
+	priced := setBilling(t, manager, entry.Id, map[string]any{
+		"revision": entry.Revision, "billable": true, "markupPercent": 10.0,
+	})
+	if priced.Billing == nil || priced.Billing.BillAmount != 1100 {
+		t.Fatalf("the priced line bills %+v, want 1100.00", priced.Billing)
+	}
+
+	// A draft is in draft and is ready for nothing: ready is an approval
+	// question, and the pricing door does not answer it.
+	draft := currencyOf(t, projectExpensesOf(t, p, projectKraftVerket), "NOK")
+	wantBucket(t, "draft", draft.Draft, 1, "1000.00", "1100.00")
+	if draft.ReadyCount != 0 || draft.UnpricedCount != 0 {
+		t.Errorf("a priced draft reads ready %d / unpriced %d, want 0 / 0",
+			draft.ReadyCount, draft.UnpricedCount)
+	}
+
+	approvedBy(t, owner, manager, entry.Id)
+	approved := currencyOf(t, projectExpensesOf(t, p, projectKraftVerket), "NOK")
+	wantBucket(t, "approved", approved.Approved, 1, "1000.00", "1100.00")
+	wantBucket(t, "draft", approved.Draft, 0, "0.00", "0.00")
+	if approved.ReadyCount != 1 || approved.ReadyAmount != "1100.00" {
+		t.Errorf("after the approval ready = %d worth %q, want 1 worth \"1100.00\"",
+			approved.ReadyCount, approved.ReadyAmount)
+	}
+	if approved.InvoicedCount != 0 || approved.InvoicedAmount != "0.00" {
+		t.Errorf("after the approval invoiced = %d worth %q, want none",
+			approved.InvoicedCount, approved.InvoicedAmount)
+	}
+
+	markInvoiced(t, manager, entry.Id, map[string]any{"revision": getEntry(t, manager, entry.Id).Revision})
+	billed := currencyOf(t, projectExpensesOf(t, p, projectKraftVerket), "NOK")
+	// Invoicing is a stamp, not a status: the line stays in approved, and it
+	// moves from ready to invoiced.
+	wantBucket(t, "approved", billed.Approved, 1, "1000.00", "1100.00")
+	if billed.ReadyCount != 0 || billed.ReadyAmount != "0.00" {
+		t.Errorf("after the invoicing ready = %d worth %q, want nothing left to invoice",
+			billed.ReadyCount, billed.ReadyAmount)
+	}
+	if billed.InvoicedCount != 1 || billed.InvoicedAmount != "1100.00" {
+		t.Errorf("after the invoicing invoiced = %d worth %q, want 1 worth \"1100.00\"",
+			billed.InvoicedCount, billed.InvoicedAmount)
+	}
+}
+
+// A per diem day is never ready to invoice and never unpriced, even when the
+// row says it is billable. No door in this module can write that row — a per
+// diem day bills nobody anything (design §4), and the entry doors, the pricing
+// door and the invoicing door each refuse it — so this fixture is one the
+// module cannot reach, seeded on purpose: the two write-side doors guard the
+// rule twice, and a figure called "ready to invoice" must never name a line
+// POST /entries/{id}/invoiced would refuse.
+func TestProjectExpensesNeverCountsAPerDiemDayAsReady(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, user := signIn(t, h)
+	p := expensesProvider(t, h)
+
+	recordExpense(t, h, user, recordedExpense{project: projectKraftVerket, kind: "per_diem",
+		gross: "400.00", billable: true, billAmount: "500.00", status: "approved"})
+	recordExpense(t, h, user, recordedExpense{project: projectKraftVerket, kind: "per_diem",
+		gross: "300.00", billable: true, status: "approved"})
+
+	nok := currencyOf(t, projectExpensesOf(t, p, projectKraftVerket), "NOK")
+	// The cost is real — the company paid for those days — and so is the bill
+	// amount the row carries, which is why only ready and unpriced name the
+	// kind: they are about what may be invoiced, and this never may.
+	wantBucket(t, "approved", nok.Approved, 2, "700.00", "500.00")
+	if nok.ReadyCount != 0 || nok.ReadyAmount != "0.00" {
+		t.Errorf("ready = %d worth %q, want none: a per diem day bills nobody anything",
+			nok.ReadyCount, nok.ReadyAmount)
+	}
+	if nok.UnpricedCount != 0 {
+		t.Errorf("unpricedCount = %d, want 0: an unpriced per diem day is not work waiting to be done",
+			nok.UnpricedCount)
 	}
 }
