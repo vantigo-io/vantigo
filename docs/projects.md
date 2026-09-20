@@ -1168,6 +1168,7 @@ like every other module package; module packages never import each other.
 | `/projects/$projectId/people` | People tab (assignments, role badges, add/change/remove for managers) |
 | `/projects/$projectId/billing` | Billing tab, gated on `capabilities.canSeeFinancials` |
 | `/projects/$projectId/economy` | Economy tab (invoice plan and budget vs. logged), between Billing and Time; shown to everyone who sees the project — unlike Billing, it carries no capability gate, because it has an hours-only half for a caller without financial rights |
+| `/projects/$projectId/expenses` | **Expenses** tab, from `@vantigo/expenses-ui`; last, after Time, and only when the expenses module is mounted and the caller holds `expenses:access`. It carries no project capability: a plain member sees their own expenses on the project, and the expenses API decides who reads the totals above the list |
 | `/projects/economy` | The economy portfolio, one row per project the caller has financial rights on; sidebar entry "Project economy" behind `projects:access` (the page's own empty state covers a caller with nothing to see) |
 | `/customers/$customerId/projects` | Projects tab on the customer page |
 
@@ -1177,9 +1178,19 @@ every tab of the detail page rather than on the Overview tab alone.
 
 The app is registered in `apps/host/frontend/src/apps.ts` and shows in the switcher
 for anyone with `projects:access`, greying out with "Not enabled" when the module is
-off. The host also owns the detail tab list, so Time tracking can add a tab later
-exactly as Energy does on the customer page — the Tasks and Economy tabs are two
-entries in that same list, gated on nothing but seeing the project. Spotlight has
+off. The host also owns the detail tab list, which is how Time and Expenses each add
+a tab exactly as Energy does on the customer page — the Tasks and Economy tabs are
+two entries in that same list, gated on nothing but seeing the project.
+
+The Economy tab's **costs** section and its "billable expenses ready to invoice" row
+are the project's own reading of what Expenses reports; the Expenses tab beside it is
+the same money from the other module's side, with the individual expenses the caller
+may open and a **Record a cost** button. The link between them is the host's:
+`ProjectEconomy` takes an optional `expensesHref`, which the host fills in with
+`/projects/{id}/expenses` only when the expenses module is mounted — this package
+knows no route of the Expenses app and imports nothing from it. Both tabs read the
+same figures, so the host refreshes the economy queries when something on the
+Expenses tab changes them. See [docs/expenses.md](expenses.md#on-the-project-page). Spotlight has
 **Create project** and **Create task** quick actions and a Projects result group
 searching by code or name; the dashboard has a Projects card (the `newProjects`
 metric and, once anything is ready to invoice, a `readyMilestones` hint), the
