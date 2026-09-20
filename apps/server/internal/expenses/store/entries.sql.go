@@ -178,44 +178,55 @@ INSERT INTO expenses.entries (
     user_id, created_by_user_id, claim_id, kind, entry_date, description,
     category_id, supplier, paid_by, currency, gross_amount, vat_amount,
     distance_km, from_place, to_place, passengers, rate, passenger_rate,
+    per_diem_type, breakfast_covered, lunch_covered, dinner_covered,
+    meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent,
     project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount,
     created_at, updated_at
 ) VALUES (
     $1, $2, $3, $4, $5, $6,
     $7, $8, $9, $10, $11, $12,
     $13, $14, $15, $16, $17, $18,
-    $19, $20, $21, $22, $23, $24,
-    $25::timestamptz, $25::timestamptz
+    $19, $20, $21, $22,
+    $23, $24, $25,
+    $26, $27, $28, $29, $30, $31,
+    $32::timestamptz, $32::timestamptz
 )
 RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent
 `
 
 type InsertEntryParams struct {
-	UserID          uuid.UUID
-	CreatedByUserID uuid.UUID
-	ClaimID         *int64
-	Kind            string
-	EntryDate       pgtype.Date
-	Description     string
-	CategoryID      *int32
-	Supplier        *string
-	PaidBy          *string
-	Currency        string
-	GrossAmount     pgtype.Numeric
-	VatAmount       pgtype.Numeric
-	DistanceKm      pgtype.Numeric
-	FromPlace       *string
-	ToPlace         *string
-	Passengers      int16
-	Rate            pgtype.Numeric
-	PassengerRate   pgtype.Numeric
-	ProjectID       *int32
-	BillingLineID   *int32
-	Billable        bool
-	MarkupPercent   pgtype.Numeric
-	BillRatePerKm   pgtype.Numeric
-	BillAmount      pgtype.Numeric
-	Now             time.Time
+	UserID               uuid.UUID
+	CreatedByUserID      uuid.UUID
+	ClaimID              *int64
+	Kind                 string
+	EntryDate            pgtype.Date
+	Description          string
+	CategoryID           *int32
+	Supplier             *string
+	PaidBy               *string
+	Currency             string
+	GrossAmount          pgtype.Numeric
+	VatAmount            pgtype.Numeric
+	DistanceKm           pgtype.Numeric
+	FromPlace            *string
+	ToPlace              *string
+	Passengers           int16
+	Rate                 pgtype.Numeric
+	PassengerRate        pgtype.Numeric
+	PerDiemType          *string
+	BreakfastCovered     bool
+	LunchCovered         bool
+	DinnerCovered        bool
+	MealBreakfastPercent pgtype.Numeric
+	MealLunchPercent     pgtype.Numeric
+	MealDinnerPercent    pgtype.Numeric
+	ProjectID            *int32
+	BillingLineID        *int32
+	Billable             bool
+	MarkupPercent        pgtype.Numeric
+	BillRatePerKm        pgtype.Numeric
+	BillAmount           pgtype.Numeric
+	Now                  time.Time
 }
 
 // InsertEntry records one expense as a draft, with every amount already
@@ -248,6 +259,13 @@ func (q *Queries) InsertEntry(ctx context.Context, arg InsertEntryParams) (Expen
 		arg.Passengers,
 		arg.Rate,
 		arg.PassengerRate,
+		arg.PerDiemType,
+		arg.BreakfastCovered,
+		arg.LunchCovered,
+		arg.DinnerCovered,
+		arg.MealBreakfastPercent,
+		arg.MealLunchPercent,
+		arg.MealDinnerPercent,
 		arg.ProjectID,
 		arg.BillingLineID,
 		arg.Billable,
@@ -520,56 +538,70 @@ UPDATE expenses.entries SET
     passengers = $13,
     rate = $14,
     passenger_rate = $15,
+    per_diem_type = $16,
+    breakfast_covered = $17,
+    lunch_covered = $18,
+    dinner_covered = $19,
+    meal_breakfast_percent = $20,
+    meal_lunch_percent = $21,
+    meal_dinner_percent = $22,
     rate_overridden_by_user_id = NULL,
     rate_table_value = NULL,
     passenger_rate_table_value = NULL,
-    project_id = $16,
-    billing_line_id = $17,
-    billable = $18,
-    markup_percent = $19,
-    bill_rate_per_km = $20,
-    bill_amount = $21,
+    project_id = $23,
+    billing_line_id = $24,
+    billable = $25,
+    markup_percent = $26,
+    bill_rate_per_km = $27,
+    bill_amount = $28,
     status = 'draft',
     rejection_reason = NULL,
     submitted_at = NULL,
     decided_at = NULL,
     decided_by_user_id = NULL,
     revision = revision + 1,
-    updated_at = $22::timestamptz
-WHERE id = $23
-  AND revision = $24
+    updated_at = $29::timestamptz
+WHERE id = $30
+  AND revision = $31
   AND status IN ('draft', 'rejected')
-  AND ($25::boolean OR user_id = $26::uuid)
+  AND ($32::boolean OR user_id = $33::uuid)
 RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent
 `
 
 type UpdateEntryParams struct {
-	Kind          string
-	EntryDate     pgtype.Date
-	Description   string
-	CategoryID    *int32
-	Supplier      *string
-	PaidBy        *string
-	Currency      string
-	GrossAmount   pgtype.Numeric
-	VatAmount     pgtype.Numeric
-	DistanceKm    pgtype.Numeric
-	FromPlace     *string
-	ToPlace       *string
-	Passengers    int16
-	Rate          pgtype.Numeric
-	PassengerRate pgtype.Numeric
-	ProjectID     *int32
-	BillingLineID *int32
-	Billable      bool
-	MarkupPercent pgtype.Numeric
-	BillRatePerKm pgtype.Numeric
-	BillAmount    pgtype.Numeric
-	Now           time.Time
-	ID            int64
-	Revision      int32
-	AnyOwner      bool
-	UserID        uuid.UUID
+	Kind                 string
+	EntryDate            pgtype.Date
+	Description          string
+	CategoryID           *int32
+	Supplier             *string
+	PaidBy               *string
+	Currency             string
+	GrossAmount          pgtype.Numeric
+	VatAmount            pgtype.Numeric
+	DistanceKm           pgtype.Numeric
+	FromPlace            *string
+	ToPlace              *string
+	Passengers           int16
+	Rate                 pgtype.Numeric
+	PassengerRate        pgtype.Numeric
+	PerDiemType          *string
+	BreakfastCovered     bool
+	LunchCovered         bool
+	DinnerCovered        bool
+	MealBreakfastPercent pgtype.Numeric
+	MealLunchPercent     pgtype.Numeric
+	MealDinnerPercent    pgtype.Numeric
+	ProjectID            *int32
+	BillingLineID        *int32
+	Billable             bool
+	MarkupPercent        pgtype.Numeric
+	BillRatePerKm        pgtype.Numeric
+	BillAmount           pgtype.Numeric
+	Now                  time.Time
+	ID                   int64
+	Revision             int32
+	AnyOwner             bool
+	UserID               uuid.UUID
 }
 
 // UpdateEntry replaces an expense's content, its amounts computed again (a
@@ -595,6 +627,13 @@ func (q *Queries) UpdateEntry(ctx context.Context, arg UpdateEntryParams) (Expen
 		arg.Passengers,
 		arg.Rate,
 		arg.PassengerRate,
+		arg.PerDiemType,
+		arg.BreakfastCovered,
+		arg.LunchCovered,
+		arg.DinnerCovered,
+		arg.MealBreakfastPercent,
+		arg.MealLunchPercent,
+		arg.MealDinnerPercent,
 		arg.ProjectID,
 		arg.BillingLineID,
 		arg.Billable,

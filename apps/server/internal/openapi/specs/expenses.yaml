@@ -594,6 +594,45 @@ components:
                 - displayName
                 - active
             type: object
+        ExpensesEntryMealPercents:
+            description: 'The meal deductions the per diem day was priced with, as they stood in the rate table on its own date. Each one is absent rather than zero when the table held no percentage for that meal and the meal was not covered anyway: a deduction of nothing and a deduction nobody has set are different facts. A meal that *was* covered on a date the table prices no deduction for is refused instead, so a misconfigured table can never quietly pay out the whole day.'
+            properties:
+                breakfast:
+                    format: double
+                    type: number
+                dinner:
+                    format: double
+                    type: number
+                lunch:
+                    format: double
+                    type: number
+            type: object
+        ExpensesEntryPerDiem:
+            description: 'The per diem day one line is (design §4): which kind of day it was, which meals somebody else covered, and the dated figures it was priced from. The amount itself is the line''s own grossAmount — the day rate less each covered meal''s percentage of it, never below zero, rounded once.'
+            properties:
+                breakfastCovered:
+                    type: boolean
+                dayRate:
+                    description: What a whole day of this kind was worth — the per_diem_* rate in force on the entry date, or the claim's own abroadDayRate on a trip abroad. It is the line's rate column, so an approver's override moves it and the amount with it.
+                    format: double
+                    type: number
+                dinnerCovered:
+                    type: boolean
+                lunchCovered:
+                    type: boolean
+                mealPercents:
+                    $ref: '#/components/schemas/ExpensesEntryMealPercents'
+                type:
+                    description: '''day_6_12'', ''day_over_12'', ''overnight_hotel'' or ''overnight_other''.'
+                    type: string
+            required:
+                - type
+                - breakfastCovered
+                - lunchCovered
+                - dinnerCovered
+                - dayRate
+                - mealPercents
+            type: object
         ExpensesEntryProject:
             description: The project an expense is booked on, resolved through the project directory. Absent when the entry is on none, when this installation has no projects module (decision X2), or when the directory no longer knows the project — the stored id stays either way.
             properties:
@@ -648,62 +687,74 @@ components:
                 - date
             type: object
         ExpensesEntryRequest:
-            description: 'One money line (design §3.1). The fields a kind does not carry are refused on their own field rather than ignored: an outlay carries a category, a payer, a currency and a gross amount with optional VAT; a mileage line carries a distance, optional places and passengers, and is priced by the server from the dated rate table. claimId records it as a line of a travel claim instead of a standalone expense; the per diem kind arrives in a later delivery and is refused for now.'
+            description: 'One money line (design §3.1). The fields a kind does not carry are refused on their own field rather than ignored: an outlay carries a category, a payer, a currency and a gross amount with optional VAT; a mileage line carries a distance, optional places and passengers, and is priced by the server from the dated rate table; a per diem day carries a type and three covered-meal flags, and is priced the same way. claimId records it as a line of a travel claim instead of a standalone expense, which is the only place a per diem day exists.'
             properties:
                 billRatePerKm:
                     description: 'What the customer is charged per kilometre on billable mileage. Only a caller with financial rights on the project — the ones who are sent the billing object — may name it; anyone else is refused on this field. Left out, a save keeps whatever the line already carries, and a line that carries none takes the mileage_customer rate in force on the entry date. When there is no such rate and the caller could not have named one, the line is saved billable with no customer rate and nothing billed, for whoever can see the project''s money to fill in. Refused on anything but billable mileage, and on a project that bills nothing.'
                     format: double
                     type: number
                 billable:
-                    description: Whether the line is billed on to the customer. Requires a project, and is forced false on a project that bills nothing.
+                    description: Whether the line is billed on to the customer. Requires a project, and is forced false on a project that bills nothing. Refused on a per diem day, which is never billed on.
                     type: boolean
                 billingLineId:
-                    description: An active billing line of the same project.
+                    description: An active billing line of the same project. Refused on a per diem day.
                     format: int32
                     type: integer
+                breakfastCovered:
+                    description: Whether somebody else paid for that day's breakfast, which deducts the meal_breakfast_percent rate in force on the entry date. Per diem only; absent means false.
+                    type: boolean
                 categoryId:
-                    description: Required on an outlay, and must be an active category. Refused on a mileage line.
+                    description: Required on an outlay, and must be an active category. Refused on a mileage line and on a per diem day.
                     format: int32
                     type: integer
                 claimId:
-                    description: 'The travel claim this expense is a line of. The caller must be allowed to change that claim, and it must still be a draft or rejected; the line takes the claim''s owner and its project, so userId naming somebody else and projectId naming another project are both refused. Only an outlay or a mileage line may be added this way: a per diem day arrives in a later delivery.'
+                    description: 'The travel claim this expense is a line of. The caller must be allowed to change that claim, and it must still be a draft or rejected; the line takes the claim''s owner and its project, so userId naming somebody else and projectId naming another project are both refused. A per diem day is refused without one: it belongs to a travel claim and exists nowhere else.'
                     format: int64
                     type: integer
                 currency:
-                    description: A three-letter ISO 4217 code. Required on an outlay. A mileage line takes the installation's default currency and refuses any other.
+                    description: A three-letter ISO 4217 code. Required on an outlay. A mileage line takes the installation's default currency and refuses any other; a per diem day refuses it outright and takes the installation's currency, or the claim's own abroadCurrency on a trip abroad.
                     type: string
                 description:
-                    description: 1 to 500 characters.
+                    description: 1 to 500 characters. Required on an outlay and on a mileage line; on a per diem day it may be left out, and the server names the line after the kind of day it is.
                     type: string
+                dinnerCovered:
+                    description: Whether somebody else paid for that day's dinner, which deducts the meal_dinner_percent rate in force on the entry date. Per diem only; absent means false.
+                    type: boolean
                 distanceKm:
-                    description: Mileage's distance — greater than zero, at most 9999.9, at most one decimal. Refused on an outlay.
+                    description: Mileage's distance — greater than zero, at most 9999.9, at most one decimal. Refused on an outlay and on a per diem day.
                     format: double
                     type: number
                 entryDate:
-                    description: The day the money was spent or the distance driven. Nothing before the period lock may be recorded except by expenses:manage.
+                    description: The day the money was spent or the distance driven. Nothing before the period lock may be recorded except by expenses:manage. On a per diem day it is the day of the trip, which must fall between the claim's departure day and its return day, and no two per diem days of one claim may share it.
                     format: date
                     type: string
                 fromPlace:
                     description: At most 200 characters. Mileage only.
                     type: string
                 grossAmount:
-                    description: An outlay's amount including VAT — greater than zero, at most 9999999999.99, at most two decimals. Refused on a mileage line, whose amount the server computes.
+                    description: An outlay's amount including VAT — greater than zero, at most 9999999999.99, at most two decimals. Refused on a mileage line and on a per diem day, whose amounts the server computes.
                     format: double
                     type: number
                 kind:
-                    description: '''outlay'' or ''mileage''.'
+                    description: '''outlay'', ''mileage'' or ''per_diem''. A per diem day exists only inside a travel claim, so it is refused without a claimId.'
                     type: string
+                lunchCovered:
+                    description: Whether somebody else paid for that day's lunch, which deducts the meal_lunch_percent rate in force on the entry date. Per diem only; absent means false.
+                    type: boolean
                 markupPercent:
                     description: 'A billable outlay''s markup on the net, 0 to 1000 with at most two decimals. Only a caller with financial rights on the project — the ones who are sent the billing object — may name it; anyone else is refused on this field. Left out, a save keeps whatever the line already carries, and a line that carries none takes the settings'' default. Refused on anything but a billable outlay.'
                     format: double
                     type: number
                 paidBy:
-                    description: '''employee'' or ''company''. Required on an outlay, refused on a mileage line — mileage is always owed to the employee.'
+                    description: '''employee'' or ''company''. Required on an outlay, refused on a mileage line and on a per diem day — both are always owed to the employee.'
                     type: string
                 passengers:
                     description: 0 to 8. Mileage only; each one adds the passenger supplement per kilometre.
                     format: int32
                     type: integer
+                perDiemType:
+                    description: '''day_6_12'', ''day_over_12'', ''overnight_hotel'' or ''overnight_other''. Required on a per diem day and refused on every other kind. It names the per_diem_* rate the day is priced at; a type with no rate in force on the entry date is refused on this field, which is what a day of type overnight_other gets until an administrator enters the company''s own rate for it. On a claim abroad the day rate is the claim''s own abroadDayRate and the type is recorded rather than priced from.'
+                    type: string
                 projectId:
                     description: The project to book the expense on. The person it concerns must be allowed to book on it — what logging time needs. Refused when this installation has no projects module.
                     format: int32
@@ -719,13 +770,12 @@ components:
                     format: uuid
                     type: string
                 vatAmount:
-                    description: An outlay's VAT, from zero to its gross. Refused on a mileage line.
+                    description: An outlay's VAT, from zero to its gross. Refused on a mileage line and on a per diem day, neither of which carries VAT.
                     format: double
                     type: number
             required:
                 - kind
                 - entryDate
-                - description
             type: object
         ExpensesEntryResponse:
             description: One expense as the caller may see it (design §5). What the caller may not see is absent rather than null or zero — above all the billing object, which needs financial rights on the entry's project.
@@ -772,7 +822,7 @@ components:
                 fromPlace:
                     type: string
                 grossAmount:
-                    description: An outlay's amount as entered, VAT included; a mileage line's computed amount.
+                    description: An outlay's amount as entered, VAT included; a mileage line's or a per diem day's computed amount.
                     format: double
                     type: number
                 id:
@@ -785,7 +835,7 @@ components:
                     format: double
                     type: number
                 owedToEmployee:
-                    description: What the owner gets back — the gross of an outlay they paid, a mileage line's amount, and nothing at all for an outlay the company paid.
+                    description: What the owner gets back — the gross of an outlay they paid, a mileage line's amount, a per diem day's amount, and nothing at all for an outlay the company paid.
                     format: double
                     type: number
                 owner:
@@ -799,10 +849,14 @@ components:
                 passengers:
                     format: int32
                     type: integer
+                perDiem:
+                    allOf:
+                        - $ref: '#/components/schemas/ExpensesEntryPerDiem'
+                    description: The per diem day this line is. Absent on every other kind.
                 project:
                     $ref: '#/components/schemas/ExpensesEntryProject'
                 rate:
-                    description: The reimbursement rate per kilometre the line was priced with. Absent on an outlay.
+                    description: The reimbursement rate per kilometre the line was priced with, or a per diem day's own day rate. Absent on an outlay.
                     format: double
                     type: number
                 rateOverride:
@@ -863,6 +917,9 @@ components:
                 billingLineId:
                     format: int32
                     type: integer
+                breakfastCovered:
+                    description: 'See the create request: per diem only, absent means false.'
+                    type: boolean
                 categoryId:
                     format: int32
                     type: integer
@@ -873,7 +930,11 @@ components:
                 currency:
                     type: string
                 description:
+                    description: 'See the create request: required on an outlay and on a mileage line, and named after the kind of day on a per diem line that leaves it out.'
                     type: string
+                dinnerCovered:
+                    description: 'See the create request: per diem only, absent means false.'
+                    type: boolean
                 distanceKm:
                     format: double
                     type: number
@@ -887,8 +948,11 @@ components:
                     format: double
                     type: number
                 kind:
-                    description: 'Changing an outlay that still carries receipts into a mileage line is refused on this field: a receipt belongs to an outlay, so the change would leave them where nothing can reach them. Remove them first.'
+                    description: 'Changing an outlay that still carries receipts into a line of another kind is refused on this field: a receipt belongs to an outlay, so the change would leave them where nothing can reach them. Remove them first.'
                     type: string
+                lunchCovered:
+                    description: 'See the create request: per diem only, absent means false.'
+                    type: boolean
                 markupPercent:
                     description: 'See the create request: only a caller with financial rights on the project may name it, and leaving it out keeps what the line already carries.'
                     format: double
@@ -898,6 +962,9 @@ components:
                 passengers:
                     format: int32
                     type: integer
+                perDiemType:
+                    description: 'See the create request: required on a per diem day and refused on every other kind.'
+                    type: string
                 projectId:
                     description: A project the line already carries is kept even once it stops accepting new bookings; a different one is judged in full.
                     format: int32
@@ -916,7 +983,6 @@ components:
             required:
                 - kind
                 - entryDate
-                - description
                 - revision
             type: object
         ExpensesFlowRequest:
@@ -1012,6 +1078,41 @@ components:
                 - categories
                 - capabilities
             type: object
+        ExpensesPerDiemSuggestedDay:
+            description: 'One day the server proposes for a trip. It is a suggestion and nothing more: nothing is written, and the client records whichever of them the traveller agrees with as ordinary per diem lines.'
+            properties:
+                amount:
+                    description: What that day would come to with no meal covered — the day rate, rounded once. Absent with the rate, for the same reason.
+                    format: double
+                    type: number
+                dayRate:
+                    description: The per_diem_* rate in force on that date for that type, or the claim's own abroadDayRate on a trip abroad. Absent when the table prices no such day — which is what a day of type overnight_other gets until an administrator enters the company's own rate for it.
+                    format: double
+                    type: number
+                entryDate:
+                    description: The day the period starts, as a calendar day in UTC.
+                    format: date
+                    type: string
+                exists:
+                    description: Whether the claim already holds a per diem line on that date. The suggestion is answered either way — what to do about a day already recorded is the client's decision, not the server's — and this is what lets it say so without a second read.
+                    type: boolean
+                perDiemType:
+                    description: '''day_6_12'', ''day_over_12'', ''overnight_hotel'' or ''overnight_other''.'
+                    type: string
+            required:
+                - entryDate
+                - perDiemType
+                - exists
+            type: object
+        ExpensesPerDiemSuggestionRequest:
+            description: 'What the trip''s times cannot say. Whether the traveller slept away is a fact only they know, and it decides whether the trip is counted in 24-hour periods from the departure or as a single day.'
+            properties:
+                overnight:
+                    description: Whether the traveller stayed the night away from home.
+                    type: boolean
+            required:
+                - overnight
+            type: object
         ExpensesProjectOption:
             description: One project the caller may book an expense on, with the billing lines they may book it against — so the expense form needs no code of the projects module's own.
             properties:
@@ -1049,14 +1150,14 @@ components:
                 - code
             type: object
         ExpensesRateOverrideRequest:
-            description: A replacement rate for one submitted mileage line (decision X8). It reprices the line's amount and nothing else — the customer's own rate per kilometre is untouched — and records who set it and what the rate table had said.
+            description: A replacement rate for one submitted mileage line or per diem day (decision X8). It reprices the line's amount and nothing else — the customer's own rate per kilometre is untouched — and records who set it and what the rate table had said.
             properties:
                 passengerRate:
-                    description: The passenger supplement per kilometre, 0 or more with at most two decimals. Only on a line that carries passengers; left out, the line keeps the supplement it was frozen with.
+                    description: The passenger supplement per kilometre, 0 or more with at most two decimals. Only on a mileage line that carries passengers; left out, the line keeps the supplement it was frozen with. Refused on a per diem day, which carries no supplement.
                     format: double
                     type: number
                 rate:
-                    description: The reimbursement rate per kilometre — greater than zero, at most two decimals.
+                    description: The reimbursement rate per kilometre, or a per diem day's day rate — greater than zero, at most two decimals. On a per diem day the amount is worked out again from it and the meal percentages the line was saved with, so an approver correcting the day rate does not lose the deductions.
                     format: double
                     type: number
                 revision:
@@ -1942,6 +2043,50 @@ paths:
             tags:
                 - Expenses
             x-vantigo-access: permission:expenses:access
+    /api/v1/expenses/claims/{id}/per-diem-suggestion:
+        post:
+            description: 'The per diem days a trip would have, worked out from its departure and its return (design §4). It writes nothing: the client shows the days and records whichever ones the traveller agrees with as ordinary per diem lines. A trip under six hours suggests none. Without an overnight it is one day — day_6_12 up to and including twelve hours, day_over_12 beyond — dated on the departure day. With one it is one overnight_hotel line per full 24-hour period from the departure, plus one more when what is left over is longer than six hours, each dated on the day its own period starts. The day boundaries are 24 hours from the departure instant, not calendar midnights, and the dates are calendar days in UTC. It is a POST because the answer depends on a body, and readable by whoever may see the claim.'
+            operationId: postExpensesClaimsByIdPerDiemSuggestion
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ExpensesPerDiemSuggestionRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/ExpensesPerDiemSuggestedDay'
+                                type: array
+                    description: OK — the days in order, empty when the trip is too short to earn one.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no claim has that id, or the caller may not see it.
+            summary: Suggest a trip's per diem days
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access
     /api/v1/expenses/entries:
         get:
             description: Expenses, the latest day first, and only where the caller may see them — their own, everything on a project they manage, and everyone's for expenses:view-all, expenses:approve and expenses:manage. The same rule a single read applies, so the list never holds an entry its own read would answer 404 for and its total counts only what the caller may see.
@@ -1975,7 +2120,7 @@ paths:
                   name: status
                   schema:
                     type: string
-                - description: '''outlay'' or ''mileage''.'
+                - description: '''outlay'', ''mileage'' or ''per_diem''.'
                   in: query
                   name: kind
                   schema:
@@ -2037,7 +2182,7 @@ paths:
                 - Expenses
             x-vantigo-access: permission:expenses:access
         post:
-            description: Records one expense as a draft. A mileage line is priced from the dated rate table for its own date; an outlay is entered as it stands.
+            description: Records one expense as a draft. A mileage line and a per diem day are priced from the dated rate table for the entry's own date; an outlay is entered as it stands.
             operationId: postExpensesEntries
             requestBody:
                 content:
@@ -2482,7 +2627,7 @@ paths:
             x-vantigo-access: permission:expenses:access
     /api/v1/expenses/entries/{id}/rate:
         put:
-            description: Replaces the reimbursement rate on one submitted mileage line (decision X8) and reprices its amount. Its owner cannot — unless they also approve it, because self-approval is allowed. What the rate table had said is recorded beside the new rate, the first time and no later, so the original is never lost.
+            description: Replaces the rate on one submitted mileage line or per diem day (decision X8) and reprices its amount. Its owner cannot — unless they also approve it, because self-approval is allowed. What the rate table had said is recorded beside the new rate, the first time and no later, so the original is never lost.
             operationId: putExpensesEntriesByIdRate
             parameters:
                 - in: path
@@ -2509,7 +2654,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
-                    description: Bad Request — on kind when the expense is not a mileage line, on status when it is not submitted, on entryDate when it falls before the period lock, and on rate, passengerRate or revision otherwise.
+                    description: Bad Request — on kind when the expense is neither a mileage line nor a per diem day, on status when it is not submitted, on entryDate when it falls before the period lock, and on rate, passengerRate or revision otherwise.
                 "401":
                     content:
                         application/json:
@@ -2530,7 +2675,7 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/ProblemDetails
                     description: Conflict — the expense's revision has moved on.
-            summary: Override a mileage rate
+            summary: Override a rate
             tags:
                 - Expenses
             x-vantigo-access: permission:expenses:access

@@ -422,7 +422,7 @@ UPDATE expenses.entries SET
     updated_at = $6::timestamptz
 WHERE expenses.entries.id = $7
   AND expenses.entries.revision = $8
-  AND expenses.entries.kind = 'mileage'
+  AND expenses.entries.kind IN ('mileage', 'per_diem')
   AND COALESCE(
         (SELECT c.status FROM expenses.claims c WHERE c.id = expenses.entries.claim_id),
         expenses.entries.status) = 'submitted'
@@ -440,8 +440,9 @@ type OverrideEntryRateParams struct {
 	Revision            int32
 }
 
-// OverrideEntryRate replaces a submitted mileage line's rate and the amount it
-// was frozen at (decision X8), recording who did it and what the table had said
+// OverrideEntryRate replaces a submitted mileage line's or per diem day's rate
+// and the amount it was frozen at (decision X8), recording who did it and what
+// the table had said
 // about *both* rates it can replace. Each of the two table values keeps what the
 // line was frozen at before the **first** override of that rate, so a second one
 // never loses the table's own figure; the passenger one is only recorded when

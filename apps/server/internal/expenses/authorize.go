@@ -530,7 +530,8 @@ func (c *caller) accessFor(entry store.ExpensesEntry, unit entryUnit, role strin
 	a.CanApprove = standalone && a.IsApprover && open && unit.Status == statusSubmitted
 	a.CanUnapprove = standalone && (a.IsApprover || c.Manage) && open && unit.Status == statusApproved &&
 		unit.ReimbursedAt == nil && entry.InvoicedAt == nil
-	a.CanOverrideRate = (a.IsApprover || c.Manage) && open && unit.Status == statusSubmitted && entry.Kind == kindMileage
+	a.CanOverrideRate = (a.IsApprover || c.Manage) && open && unit.Status == statusSubmitted &&
+		(entry.Kind == kindMileage || entry.Kind == kindPerDiem)
 	// Pricing an expense from the project's side is open in every status the
 	// line can still be priced in — its owner's progress through the flow is
 	// not the project manager's business — and closed once it has been

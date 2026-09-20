@@ -83,6 +83,32 @@ func (q *Queries) CountClaimLines(ctx context.Context, claimID *int64) (int64, e
 	return count, err
 }
 
+const countClaimPerDiemOnDate = `-- name: CountClaimPerDiemOnDate :one
+SELECT count(*) FROM expenses.entries
+WHERE claim_id = $1
+  AND kind = 'per_diem'
+  AND entry_date = $2
+  AND id <> $3::bigint
+`
+
+type CountClaimPerDiemOnDateParams struct {
+	ClaimID   *int64
+	EntryDate pgtype.Date
+	ExcludeID int64
+}
+
+// CountClaimPerDiemOnDate is how many per diem days a claim already holds for
+// one date, read under the claim's own row lock so two days of the same date
+// added at once cannot both slip through. exclude_id is the line being
+// replaced, 0 on a create — a save that keeps a per diem day where it is must
+// not find itself.
+func (q *Queries) CountClaimPerDiemOnDate(ctx context.Context, arg CountClaimPerDiemOnDateParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countClaimPerDiemOnDate, arg.ClaimID, arg.EntryDate, arg.ExcludeID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countClaims = `-- name: CountClaims :one
 SELECT count(*) FROM expenses.claims
 WHERE ($1::boolean

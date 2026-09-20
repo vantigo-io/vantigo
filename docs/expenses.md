@@ -1,34 +1,37 @@
 # Expenses module
 
-The Expenses module is outlays and mileage, standalone or gathered into a
-travel claim, with receipts, an approval flow, two independent tracks after
-approval — paying the employee back and invoicing the customer — dated rates,
-categories and admin settings. It is a vertical-slice module
+The Expenses module is outlays, mileage and per diem days, standalone or
+gathered into a travel claim, with receipts, an approval flow, two independent
+tracks after approval — paying the employee back and invoicing the customer —
+dated rates, categories and admin settings. It is a vertical-slice module
 inside the single Vantigo binary (`apps/server/internal/expenses`), owns the
 `expenses` schema in the shared PostgreSQL database, and serves `openapi/expenses.yaml`
 under `/api/v1/expenses`.
 
 It depends on nobody but identity. [Projects](projects.md) is an **optional** read
 through `contracts.ProjectDirectory`: `MODULES=customers,expenses` is a valid
-installation, and so is `MODULES=expenses` alone. The per diem day is a later
-delivery's; this one refuses `kind: "per_diem"` with a message that says so
-rather than treating it as an unknown value.
+installation, and so is `MODULES=expenses` alone.
 
 ## Domain model
 
-- **Entry** (`expenses.entries`) — one money line: an **outlay** or a **mileage**
-  line (`kind`), owned by `userId`, dated `entryDate`, with a `description`, a
-  `status`, and the audit stamps every mutating path leaves. The id is a `bigint`.
+- **Entry** (`expenses.entries`) — one money line: an **outlay**, a **mileage**
+  line or a **per diem day** (`kind`), owned by `userId`, dated `entryDate`, with a
+  `description`, a `status`, and the audit stamps every mutating path leaves. The id
+  is a `bigint`.
   - An **outlay**: a `categoryId`, an optional `supplier`, who `paidBy` it
     (`employee` or `company`), a `currency`, a `grossAmount`, an optional
     `vatAmount`, and up to ten receipts.
   - A **mileage line**: a `distanceKm`, optional `fromPlace`/`toPlace`, `passengers`
     (0–8), and no amount of its own — the dated rate table prices it, in the
     installation's own currency, and it never carries a receipt.
-  - Both kinds can carry a `projectId`, optionally a `billingLineId`, a `billable`
-    flag, and — only when billable and only on the project's side — a
+  - A **per diem day** (`per_diem`, only inside a travel claim): a `perDiemType`
+    and three covered-meal flags, priced by the dated table for its own date; see
+    "The per diem day" below.
+  - The first two can carry a `projectId`, optionally a `billingLineId`, a
+    `billable` flag, and — only when billable and only on the project's side — a
     `markupPercent` (outlay) or `billRatePerKm` (mileage) and the resulting
-    `billAmount`.
+    `billAmount`. A per diem day carries the claim's project and nothing else of
+    that list: it is never billed on.
 - **Travel claim** (`expenses.claims`) — the container a trip's expenses sit in:
   a `purpose`, an optional `destination`, `departureAt` and `returnAt` as the
   instants they were entered as, `abroad` with the claim's own `abroadDayRate`
@@ -94,6 +97,11 @@ numbers by hand gets; this module never does either.
   carried — the kilometres again at the passenger supplement, the whole sum rounded
   once. A rate with no supplement priced for it (only possible with zero passengers)
   contributes nothing.
+- **A per diem day** pays the day rate in force on its date less the percentages of
+  every meal somebody else covered — the percentages summed first and applied
+  together, so the whole day rounds once — floored at zero, because percentages an
+  administrator set to more than a hundred between them must not make a day owe the
+  company money.
 - **Markup** (a billable outlay): the net times `(1 + markupPercent / 100)`, rounded
   once — a named markup, or the line's own kept figure, or the installation's
   `defaultMarkupPercent`.
@@ -195,6 +203,74 @@ line that has already been invoiced holds the project where it is. The cap of
 200 lines is decided under the claim's lock, so two lines racing for the last
 slot cannot both take it.
 
+## The per diem day
+
+A per diem day is a line of a travel claim and of nothing else — a trip is what
+gives a day its rate, its currency and the window its date has to fall in — so a
+`kind: "per_diem"` with no `claimId` is a 400 on `kind` ("A per diem belongs to a
+travel claim"). It carries a `perDiemType` (`day_6_12`, `day_over_12`,
+`overnight_hotel`, `overnight_other`) and the three flags `breakfastCovered`,
+`lunchCovered` and `dinnerCovered`, and nothing else: a category, a supplier, a
+payer, an amount, a VAT, a currency, the mileage fields, `billable`, a billing
+line, a markup and a customer rate per kilometre are each refused **on their own
+field**. It is always owed to the employee, never billed on, carries no VAT and
+takes no receipt.
+
+**What it is worth.** `dayRate × (1 − Σ covered meal percents / 100)`, floored at
+zero, rounded once. The day rate is the `per_diem_*` row in force on the line's
+own date — or, on a claim `abroad`, the claim's own `abroadDayRate`, in its own
+`abroadCurrency`, the type then recorded rather than priced from. The meal
+percentages come from the table either way. **A day rate the table does not price
+is a 400 on `perDiemType`** — which is what a day of type `overnight_other` gets
+until an administrator enters the company's own figure — and **a covered meal the
+table prices no deduction for is a 400 on that meal's own flag**, so a rate table
+somebody emptied is visible rather than silently generous. A meal nobody covered
+needs no percentage and records none.
+
+Every draft save reprices the day and stores what it was priced from: the day
+rate in `rate` and the three percentages in `meal_*_percent`. The claim's submit
+freezes exactly what that last save wrote, and an approver's `PUT
+/entries/{id}/rate` replaces the day rate and works the amount out again **from
+the percentages the line was saved with** — never from the table as it stands
+today, so correcting a rate can neither drop a breakfast somebody else paid for
+nor pick up a percentage that has changed since. `passengerRate` is refused on a
+per diem day.
+
+**Its date.** At most one per diem day per claim per date — decided under the
+claim's own row lock, so two days racing for one date cannot both take it (400 on
+`entryDate`) — and the date must fall between the trip's departure day and its
+return day, both included.
+
+**Which day is which.** A claim stores two instants, and `timestamptz` keeps the
+instant rather than the offset it was typed in, so this module makes exactly one
+derivation of "the day": the **UTC calendar day**, `utcDay(t)`. It is what the
+period lock is judged on, what `GET /claims`' `from`/`to` filter applies in SQL,
+what the within-the-trip rule compares against and what the suggestion dates a day
+by — one rule, so a day the server proposes can never fall outside the trip the
+save then judges it against.
+
+**The suggestion.** `POST /claims/{id}/per-diem-suggestion {overnight}` answers
+the days a trip's own times imply, each priced with the table as it stands (or the
+claim's own rate abroad) and marked `exists` when the claim already holds a day
+for that date. **It writes nothing**, and it filters nothing out: what to do about
+a day already recorded is the client's decision. Whoever may *see* the claim may
+ask for it. The counting, in one sentence — **a period earns a day when it is a
+full 24 hours or a part longer than six**:
+
+- under six hours the trip earns nothing at all;
+- `overnight: false` — one day on the departure: `day_6_12` up to and including
+  twelve hours, `day_over_12` beyond. A trip of several days that nobody slept
+  away on is still one day;
+- `overnight: true` — one `overnight_hotel` per full 24-hour period from the
+  departure, plus one more when what is left over runs longer than six hours. The
+  periods are 24 hours from the departure *instant*, never calendar midnights, and
+  each day is dated on the UTC day its own period starts. So 24 h 00 and 30 h 00
+  are one day, 30 h 01 and 31 h are two, 48 h 00 is two and 54 h 01 is three.
+
+`overnight: true` proposes `overnight_hotel` throughout, the type the agreement
+prices; a traveller who stayed somewhere else changes it on the line. The client
+may mirror the counting for display, but the figures on the page are the server's.
+
 ## The flow, and what freezes on submit
 
 ```text
@@ -270,10 +346,10 @@ line back to a fresh **draft** — clearing the decision and the submission stam
 it goes round the loop again — and refuses a line that has already been reimbursed
 or invoiced: undoing those has its own door, on each track.
 
-**Rate override.** `PUT /entries/{id}/rate` replaces a *submitted mileage* line's
-rate and, optionally, its passenger supplement — an approver's (or
-`expenses:manage`'s) correction when the table's own figure is wrong for this one
-trip. It is guarded by the revision the line was read at (409 on a stale one) and
+**Rate override.** `PUT /entries/{id}/rate` replaces a *submitted mileage line's
+or per diem day's* rate and, optionally — on mileage alone — its passenger
+supplement, an approver's (or `expenses:manage`'s) correction when the table's own
+figure is wrong for this one trip. It is guarded by the revision the line was read at (409 on a stale one) and
 records an audit: who overrode it, and — the first time a request replaces it —
 what the table's own value had been (`rateOverride.tableValue`,
 `rateOverride.passengerTableValue`), so a later reader can see what changed without
@@ -388,9 +464,9 @@ row a single read of it would 404 for.
 
 A receipt is JPEG, PNG, HEIC or PDF, at most 10 MiB (10,485,760 bytes, "10 MB" the
 friendly figure the contract itself uses), and an outlay carries at most ten. Only
-an outlay takes one at all — a mileage line never does, and a save that
-would turn an outlay with receipts into a mileage line is refused (on `kind`) rather
-than stranding them.
+an outlay takes one at all — neither a mileage line nor a per diem day ever does,
+and a save that would turn an outlay with receipts into a line of another kind is
+refused (on `kind`) rather than stranding them.
 
 **The type is decided by the bytes, not by what the client called the file.** The
 upload is sniffed from its own leading bytes (HEIC by its ISO base-media brand,
@@ -522,6 +598,7 @@ says.
 | `GET /claims` (`userId`, `status`, `from`, `to`, `reimbursed`, paging) | The same visibility rule the entries' list applies, one level up |
 | `POST /claims` | Record a trip — your own, or (`userId`) a colleague's, with `expenses:manage` |
 | `GET /claims/{id}` | The claim with its lines, its totals per currency and its capabilities |
+| `POST /claims/{id}/per-diem-suggestion` | Whoever may see the claim — the days its times imply, priced; it writes nothing |
 | `PUT /claims/{id}`, `DELETE /claims/{id}` | Owner or `expenses:manage`, while draft or rejected, not past the lock |
 | `PUT /entries/{id}`, `DELETE /entries/{id}` | Owner or `expenses:manage`, while draft or rejected, not past the lock |
 | `POST /entries/{id}/attachments`, `DELETE /attachments/{id}` | Same as edit, an outlay only |
@@ -530,7 +607,7 @@ says.
 | `POST /approve`, `/reject` | `expenses:approve`, or the project's own manager |
 | `POST /unapprove` | Same, plus `expenses:manage` |
 | `GET /approvals` | An approver; 403 for a caller who approves nothing |
-| `PUT /entries/{id}/rate` | An approver or `expenses:manage`, on a submitted mileage line |
+| `PUT /entries/{id}/rate` | An approver or `expenses:manage`, on a submitted mileage line or per diem day |
 | `PUT /entries/{id}/billing` | Financial rights on the entry's project |
 | `GET /entries/{id}/billing-lines` | Financial rights on the entry's project — the pricing dialog's own picker, not the caller's bookable-projects list |
 | `POST /entries/{id}/invoiced`, `.../invoiced/undo` | Financial rights on the entry's project |
@@ -544,16 +621,15 @@ says.
 | `PUT /settings` | `expenses:manage` |
 | `GET /stats`, `/stats/summary`, `/stats/timeseries`, `/stats/attention` | The caller's own figures, plus their approval queue's size |
 
-That is all 43 operations the contract declares, each exercised by the module's own
+That is all 44 operations the contract declares, each exercised by the module's own
 coverage gate (below) with no allow-list.
 
 ## What comes next
 
 The travel claim's own flow — submitting, approving, unapproving and paying
 back a whole trip, and the claim units in the approval queue, the reimbursement
-list, the payroll CSV and the dashboard reads — and the **per diem day**: the
-`per_diem` kind, its meal deductions against the rates this delivery seeds, and
-the suggestion that proposes a trip's days from its departure and return. Then
+list, the payroll CSV and the dashboard reads — and then the trip's own page in
+the app, where the days above are ticked off and the suggestion is offered. Then
 **the project page's own Economy tab, on the cost side**: what a project's
 expenses cost and bill, beside the hours Time already reports there.
 

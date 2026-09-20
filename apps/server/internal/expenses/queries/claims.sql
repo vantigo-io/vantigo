@@ -147,6 +147,18 @@ SELECT * FROM expenses.entries WHERE claim_id = @claim_id ORDER BY id FOR UPDATE
 -- claim's own lock so two lines added at once cannot both slip past the cap.
 SELECT count(*) FROM expenses.entries WHERE claim_id = @claim_id;
 
+-- name: CountClaimPerDiemOnDate :one
+-- CountClaimPerDiemOnDate is how many per diem days a claim already holds for
+-- one date, read under the claim's own row lock so two days of the same date
+-- added at once cannot both slip through. exclude_id is the line being
+-- replaced, 0 on a create — a save that keeps a per diem day where it is must
+-- not find itself.
+SELECT count(*) FROM expenses.entries
+WHERE claim_id = @claim_id
+  AND kind = 'per_diem'
+  AND entry_date = @entry_date
+  AND id <> @exclude_id::bigint;
+
 -- name: SetClaimLineProject :exec
 -- SetClaimLineProject re-points one of a claim's lines onto the claim's
 -- project, in the transaction that changed it. The billing columns come with

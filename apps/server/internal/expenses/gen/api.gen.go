@@ -380,6 +380,13 @@ type ExpensesEntryInvoice struct {
 	Reference *string `json:"reference,omitempty"`
 }
 
+// ExpensesEntryMealPercents The meal deductions the per diem day was priced with, as they stood in the rate table on its own date. Each one is absent rather than zero when the table held no percentage for that meal and the meal was not covered anyway: a deduction of nothing and a deduction nobody has set are different facts. A meal that *was* covered on a date the table prices no deduction for is refused instead, so a misconfigured table can never quietly pay out the whole day.
+type ExpensesEntryMealPercents struct {
+	Breakfast *float64 `json:"breakfast,omitempty"`
+	Dinner    *float64 `json:"dinner,omitempty"`
+	Lunch     *float64 `json:"lunch,omitempty"`
+}
+
 // ExpensesEntryOwner The person the expense concerns — who gets the money back — which is not always who recorded it.
 type ExpensesEntryOwner struct {
 	// Active Whether identity still has them as an active user.
@@ -388,6 +395,22 @@ type ExpensesEntryOwner struct {
 	// DisplayName Their display name; 'Unknown user' when the directory no longer knows them.
 	DisplayName string             `json:"displayName"`
 	UserId      openapi_types.UUID `json:"userId"`
+}
+
+// ExpensesEntryPerDiem The per diem day one line is (design §4): which kind of day it was, which meals somebody else covered, and the dated figures it was priced from. The amount itself is the line's own grossAmount — the day rate less each covered meal's percentage of it, never below zero, rounded once.
+type ExpensesEntryPerDiem struct {
+	BreakfastCovered bool `json:"breakfastCovered"`
+
+	// DayRate What a whole day of this kind was worth — the per_diem_* rate in force on the entry date, or the claim's own abroadDayRate on a trip abroad. It is the line's rate column, so an approver's override moves it and the amount with it.
+	DayRate       float64 `json:"dayRate"`
+	DinnerCovered bool    `json:"dinnerCovered"`
+	LunchCovered  bool    `json:"lunchCovered"`
+
+	// MealPercents The meal deductions the per diem day was priced with, as they stood in the rate table on its own date. Each one is absent rather than zero when the table held no percentage for that meal and the meal was not covered anyway: a deduction of nothing and a deduction nobody has set are different facts. A meal that *was* covered on a date the table prices no deduction for is refused instead, so a misconfigured table can never quietly pay out the whole day.
+	MealPercents ExpensesEntryMealPercents `json:"mealPercents"`
+
+	// Type 'day_6_12', 'day_over_12', 'overnight_hotel' or 'overnight_other'.
+	Type string `json:"type"`
 }
 
 // ExpensesEntryProject The project an expense is booked on, resolved through the project directory. Absent when the entry is on none, when this installation has no projects module (decision X2), or when the directory no longer knows the project — the stored id stays either way.
@@ -424,52 +447,64 @@ type ExpensesEntryReimbursement struct {
 	Reference *string `json:"reference,omitempty"`
 }
 
-// ExpensesEntryRequest One money line (design §3.1). The fields a kind does not carry are refused on their own field rather than ignored: an outlay carries a category, a payer, a currency and a gross amount with optional VAT; a mileage line carries a distance, optional places and passengers, and is priced by the server from the dated rate table. claimId records it as a line of a travel claim instead of a standalone expense; the per diem kind arrives in a later delivery and is refused for now.
+// ExpensesEntryRequest One money line (design §3.1). The fields a kind does not carry are refused on their own field rather than ignored: an outlay carries a category, a payer, a currency and a gross amount with optional VAT; a mileage line carries a distance, optional places and passengers, and is priced by the server from the dated rate table; a per diem day carries a type and three covered-meal flags, and is priced the same way. claimId records it as a line of a travel claim instead of a standalone expense, which is the only place a per diem day exists.
 type ExpensesEntryRequest struct {
 	// BillRatePerKm What the customer is charged per kilometre on billable mileage. Only a caller with financial rights on the project — the ones who are sent the billing object — may name it; anyone else is refused on this field. Left out, a save keeps whatever the line already carries, and a line that carries none takes the mileage_customer rate in force on the entry date. When there is no such rate and the caller could not have named one, the line is saved billable with no customer rate and nothing billed, for whoever can see the project's money to fill in. Refused on anything but billable mileage, and on a project that bills nothing.
 	BillRatePerKm *float64 `json:"billRatePerKm,omitempty"`
 
-	// Billable Whether the line is billed on to the customer. Requires a project, and is forced false on a project that bills nothing.
+	// Billable Whether the line is billed on to the customer. Requires a project, and is forced false on a project that bills nothing. Refused on a per diem day, which is never billed on.
 	Billable *bool `json:"billable,omitempty"`
 
-	// BillingLineId An active billing line of the same project.
+	// BillingLineId An active billing line of the same project. Refused on a per diem day.
 	BillingLineId *int32 `json:"billingLineId,omitempty"`
 
-	// CategoryId Required on an outlay, and must be an active category. Refused on a mileage line.
+	// BreakfastCovered Whether somebody else paid for that day's breakfast, which deducts the meal_breakfast_percent rate in force on the entry date. Per diem only; absent means false.
+	BreakfastCovered *bool `json:"breakfastCovered,omitempty"`
+
+	// CategoryId Required on an outlay, and must be an active category. Refused on a mileage line and on a per diem day.
 	CategoryId *int32 `json:"categoryId,omitempty"`
 
-	// ClaimId The travel claim this expense is a line of. The caller must be allowed to change that claim, and it must still be a draft or rejected; the line takes the claim's owner and its project, so userId naming somebody else and projectId naming another project are both refused. Only an outlay or a mileage line may be added this way: a per diem day arrives in a later delivery.
+	// ClaimId The travel claim this expense is a line of. The caller must be allowed to change that claim, and it must still be a draft or rejected; the line takes the claim's owner and its project, so userId naming somebody else and projectId naming another project are both refused. A per diem day is refused without one: it belongs to a travel claim and exists nowhere else.
 	ClaimId *int64 `json:"claimId,omitempty"`
 
-	// Currency A three-letter ISO 4217 code. Required on an outlay. A mileage line takes the installation's default currency and refuses any other.
+	// Currency A three-letter ISO 4217 code. Required on an outlay. A mileage line takes the installation's default currency and refuses any other; a per diem day refuses it outright and takes the installation's currency, or the claim's own abroadCurrency on a trip abroad.
 	Currency *string `json:"currency,omitempty"`
 
-	// Description 1 to 500 characters.
-	Description string `json:"description"`
+	// Description 1 to 500 characters. Required on an outlay and on a mileage line; on a per diem day it may be left out, and the server names the line after the kind of day it is.
+	Description *string `json:"description,omitempty"`
 
-	// DistanceKm Mileage's distance — greater than zero, at most 9999.9, at most one decimal. Refused on an outlay.
+	// DinnerCovered Whether somebody else paid for that day's dinner, which deducts the meal_dinner_percent rate in force on the entry date. Per diem only; absent means false.
+	DinnerCovered *bool `json:"dinnerCovered,omitempty"`
+
+	// DistanceKm Mileage's distance — greater than zero, at most 9999.9, at most one decimal. Refused on an outlay and on a per diem day.
 	DistanceKm *float64 `json:"distanceKm,omitempty"`
 
-	// EntryDate The day the money was spent or the distance driven. Nothing before the period lock may be recorded except by expenses:manage.
+	// EntryDate The day the money was spent or the distance driven. Nothing before the period lock may be recorded except by expenses:manage. On a per diem day it is the day of the trip, which must fall between the claim's departure day and its return day, and no two per diem days of one claim may share it.
 	EntryDate openapi_types.Date `json:"entryDate"`
 
 	// FromPlace At most 200 characters. Mileage only.
 	FromPlace *string `json:"fromPlace,omitempty"`
 
-	// GrossAmount An outlay's amount including VAT — greater than zero, at most 9999999999.99, at most two decimals. Refused on a mileage line, whose amount the server computes.
+	// GrossAmount An outlay's amount including VAT — greater than zero, at most 9999999999.99, at most two decimals. Refused on a mileage line and on a per diem day, whose amounts the server computes.
 	GrossAmount *float64 `json:"grossAmount,omitempty"`
 
-	// Kind 'outlay' or 'mileage'.
+	// Kind 'outlay', 'mileage' or 'per_diem'. A per diem day exists only inside a travel claim, so it is refused without a claimId.
 	Kind string `json:"kind"`
+
+	// LunchCovered Whether somebody else paid for that day's lunch, which deducts the meal_lunch_percent rate in force on the entry date. Per diem only; absent means false.
+	LunchCovered *bool `json:"lunchCovered,omitempty"`
 
 	// MarkupPercent A billable outlay's markup on the net, 0 to 1000 with at most two decimals. Only a caller with financial rights on the project — the ones who are sent the billing object — may name it; anyone else is refused on this field. Left out, a save keeps whatever the line already carries, and a line that carries none takes the settings' default. Refused on anything but a billable outlay.
 	MarkupPercent *float64 `json:"markupPercent,omitempty"`
 
-	// PaidBy 'employee' or 'company'. Required on an outlay, refused on a mileage line — mileage is always owed to the employee.
+	// PaidBy 'employee' or 'company'. Required on an outlay, refused on a mileage line and on a per diem day — both are always owed to the employee.
 	PaidBy *string `json:"paidBy,omitempty"`
 
 	// Passengers 0 to 8. Mileage only; each one adds the passenger supplement per kilometre.
 	Passengers *int32 `json:"passengers,omitempty"`
+
+	// PerDiemType 'day_6_12', 'day_over_12', 'overnight_hotel' or 'overnight_other'. Required on a per diem day and refused on every other kind. It names the per_diem_* rate the day is priced at; a type with no rate in force on the entry date is refused on this field, which is what a day of type overnight_other gets until an administrator enters the company's own rate for it. On a claim abroad the day rate is the claim's own abroadDayRate and the type is recorded rather than priced from.
+	PerDiemType *string `json:"perDiemType,omitempty"`
 
 	// ProjectId The project to book the expense on. The person it concerns must be allowed to book on it — what logging time needs. Refused when this installation has no projects module.
 	ProjectId *int32 `json:"projectId,omitempty"`
@@ -483,7 +518,7 @@ type ExpensesEntryRequest struct {
 	// UserId The person the expense concerns. Absent means the caller; naming somebody else needs expenses:manage, and they must be a user identity still has as active.
 	UserId *openapi_types.UUID `json:"userId,omitempty"`
 
-	// VatAmount An outlay's VAT, from zero to its gross. Refused on a mileage line.
+	// VatAmount An outlay's VAT, from zero to its gross. Refused on a mileage line and on a per diem day, neither of which carries VAT.
 	VatAmount *float64 `json:"vatAmount,omitempty"`
 }
 
@@ -522,7 +557,7 @@ type ExpensesEntryResponse struct {
 	EntryDate  openapi_types.Date `json:"entryDate"`
 	FromPlace  *string            `json:"fromPlace,omitempty"`
 
-	// GrossAmount An outlay's amount as entered, VAT included; a mileage line's computed amount.
+	// GrossAmount An outlay's amount as entered, VAT included; a mileage line's or a per diem day's computed amount.
 	GrossAmount float64 `json:"grossAmount"`
 	Id          int64   `json:"id"`
 	Kind        string  `json:"kind"`
@@ -530,7 +565,7 @@ type ExpensesEntryResponse struct {
 	// NetAmount The gross less the VAT — the project's cost and the markup's base.
 	NetAmount float64 `json:"netAmount"`
 
-	// OwedToEmployee What the owner gets back — the gross of an outlay they paid, a mileage line's amount, and nothing at all for an outlay the company paid.
+	// OwedToEmployee What the owner gets back — the gross of an outlay they paid, a mileage line's amount, a per diem day's amount, and nothing at all for an outlay the company paid.
 	OwedToEmployee float64 `json:"owedToEmployee"`
 
 	// Owner The person the expense concerns — who gets the money back — which is not always who recorded it.
@@ -541,10 +576,13 @@ type ExpensesEntryResponse struct {
 	PassengerRate *float64 `json:"passengerRate,omitempty"`
 	Passengers    *int32   `json:"passengers,omitempty"`
 
+	// PerDiem The per diem day this line is. Absent on every other kind.
+	PerDiem *ExpensesEntryPerDiem `json:"perDiem,omitempty"`
+
 	// Project The project an expense is booked on, resolved through the project directory. Absent when the entry is on none, when this installation has no projects module (decision X2), or when the directory no longer knows the project — the stored id stays either way.
 	Project *ExpensesEntryProject `json:"project,omitempty"`
 
-	// Rate The reimbursement rate per kilometre the line was priced with. Absent on an outlay.
+	// Rate The reimbursement rate per kilometre the line was priced with, or a per diem day's own day rate. Absent on an outlay.
 	Rate *float64 `json:"rate,omitempty"`
 
 	// RateOverride The record an overridden mileage rate leaves on the line (decision X8) — who replaced the rates the table gave it, and what the table had said. Present only while an override stands: a submit reprices the line from the table and clears it, and an unapprove clears it with the rest of the decision it undoes. Shown to everyone who may see the expense, its owner included.
@@ -573,26 +611,40 @@ type ExpensesEntryUpdateRequest struct {
 	BillRatePerKm *float64 `json:"billRatePerKm,omitempty"`
 	Billable      *bool    `json:"billable,omitempty"`
 	BillingLineId *int32   `json:"billingLineId,omitempty"`
-	CategoryId    *int32   `json:"categoryId,omitempty"`
+
+	// BreakfastCovered See the create request: per diem only, absent means false.
+	BreakfastCovered *bool  `json:"breakfastCovered,omitempty"`
+	CategoryId       *int32 `json:"categoryId,omitempty"`
 
 	// ClaimId The travel claim the expense is already a line of. It must be exactly the one it carries, or absent: a standalone expense cannot be moved into a claim, and a claim's line cannot be moved out of one or into another.
-	ClaimId     *int64   `json:"claimId,omitempty"`
-	Currency    *string  `json:"currency,omitempty"`
-	Description string   `json:"description"`
-	DistanceKm  *float64 `json:"distanceKm,omitempty"`
+	ClaimId  *int64  `json:"claimId,omitempty"`
+	Currency *string `json:"currency,omitempty"`
+
+	// Description See the create request: required on an outlay and on a mileage line, and named after the kind of day on a per diem line that leaves it out.
+	Description *string `json:"description,omitempty"`
+
+	// DinnerCovered See the create request: per diem only, absent means false.
+	DinnerCovered *bool    `json:"dinnerCovered,omitempty"`
+	DistanceKm    *float64 `json:"distanceKm,omitempty"`
 
 	// EntryDate Neither the day the entry had nor the day it is given may fall before the period lock, except for expenses:manage.
 	EntryDate   openapi_types.Date `json:"entryDate"`
 	FromPlace   *string            `json:"fromPlace,omitempty"`
 	GrossAmount *float64           `json:"grossAmount,omitempty"`
 
-	// Kind Changing an outlay that still carries receipts into a mileage line is refused on this field: a receipt belongs to an outlay, so the change would leave them where nothing can reach them. Remove them first.
+	// Kind Changing an outlay that still carries receipts into a line of another kind is refused on this field: a receipt belongs to an outlay, so the change would leave them where nothing can reach them. Remove them first.
 	Kind string `json:"kind"`
+
+	// LunchCovered See the create request: per diem only, absent means false.
+	LunchCovered *bool `json:"lunchCovered,omitempty"`
 
 	// MarkupPercent See the create request: only a caller with financial rights on the project may name it, and leaving it out keeps what the line already carries.
 	MarkupPercent *float64 `json:"markupPercent,omitempty"`
 	PaidBy        *string  `json:"paidBy,omitempty"`
 	Passengers    *int32   `json:"passengers,omitempty"`
+
+	// PerDiemType See the create request: required on a per diem day and refused on every other kind.
+	PerDiemType *string `json:"perDiemType,omitempty"`
 
 	// ProjectId A project the line already carries is kept even once it stops accepting new bookings; a different one is judged in full.
 	ProjectId *int32 `json:"projectId,omitempty"`
@@ -664,6 +716,30 @@ type ExpensesMetaResponse struct {
 	ReceiptRequiredOver *float64 `json:"receiptRequiredOver,omitempty"`
 }
 
+// ExpensesPerDiemSuggestedDay One day the server proposes for a trip. It is a suggestion and nothing more: nothing is written, and the client records whichever of them the traveller agrees with as ordinary per diem lines.
+type ExpensesPerDiemSuggestedDay struct {
+	// Amount What that day would come to with no meal covered — the day rate, rounded once. Absent with the rate, for the same reason.
+	Amount *float64 `json:"amount,omitempty"`
+
+	// DayRate The per_diem_* rate in force on that date for that type, or the claim's own abroadDayRate on a trip abroad. Absent when the table prices no such day — which is what a day of type overnight_other gets until an administrator enters the company's own rate for it.
+	DayRate *float64 `json:"dayRate,omitempty"`
+
+	// EntryDate The day the period starts, as a calendar day in UTC.
+	EntryDate openapi_types.Date `json:"entryDate"`
+
+	// Exists Whether the claim already holds a per diem line on that date. The suggestion is answered either way — what to do about a day already recorded is the client's decision, not the server's — and this is what lets it say so without a second read.
+	Exists bool `json:"exists"`
+
+	// PerDiemType 'day_6_12', 'day_over_12', 'overnight_hotel' or 'overnight_other'.
+	PerDiemType string `json:"perDiemType"`
+}
+
+// ExpensesPerDiemSuggestionRequest What the trip's times cannot say. Whether the traveller slept away is a fact only they know, and it decides whether the trip is counted in 24-hour periods from the departure or as a single day.
+type ExpensesPerDiemSuggestionRequest struct {
+	// Overnight Whether the traveller stayed the night away from home.
+	Overnight bool `json:"overnight"`
+}
+
 // ExpensesProjectOption One project the caller may book an expense on, with the billing lines they may book it against — so the expense form needs no code of the projects module's own.
 type ExpensesProjectOption struct {
 	// BillingLines The project's active billing lines, by code. Empty when it has none.
@@ -682,12 +758,12 @@ type ExpensesProjectOptionBillingLine struct {
 	Id   int32  `json:"id"`
 }
 
-// ExpensesRateOverrideRequest A replacement rate for one submitted mileage line (decision X8). It reprices the line's amount and nothing else — the customer's own rate per kilometre is untouched — and records who set it and what the rate table had said.
+// ExpensesRateOverrideRequest A replacement rate for one submitted mileage line or per diem day (decision X8). It reprices the line's amount and nothing else — the customer's own rate per kilometre is untouched — and records who set it and what the rate table had said.
 type ExpensesRateOverrideRequest struct {
-	// PassengerRate The passenger supplement per kilometre, 0 or more with at most two decimals. Only on a line that carries passengers; left out, the line keeps the supplement it was frozen with.
+	// PassengerRate The passenger supplement per kilometre, 0 or more with at most two decimals. Only on a mileage line that carries passengers; left out, the line keeps the supplement it was frozen with. Refused on a per diem day, which carries no supplement.
 	PassengerRate *float64 `json:"passengerRate,omitempty"`
 
-	// Rate The reimbursement rate per kilometre — greater than zero, at most two decimals.
+	// Rate The reimbursement rate per kilometre, or a per diem day's day rate — greater than zero, at most two decimals. On a per diem day the amount is worked out again from it and the meal percentages the line was saved with, so an approver correcting the day rate does not lose the deductions.
 	Rate float64 `json:"rate"`
 
 	// Revision The revision the expense was read at. A revision that has moved on is a 409.
@@ -929,7 +1005,7 @@ type GetExpensesEntriesParams struct {
 	// Status 'draft', 'submitted', 'approved' or 'rejected'. On a claim's line it is the claim's own status that is matched, because that is the status the line is rendered with.
 	Status *string `form:"status,omitempty" json:"status,omitempty"`
 
-	// Kind 'outlay' or 'mileage'.
+	// Kind 'outlay', 'mileage' or 'per_diem'.
 	Kind *string `form:"kind,omitempty" json:"kind,omitempty"`
 
 	// From The earliest entry date to include.
@@ -1018,6 +1094,9 @@ type PostExpensesClaimsJSONRequestBody = ExpensesClaimRequest
 // PutExpensesClaimsByIdJSONRequestBody defines body for PutExpensesClaimsById for application/json ContentType.
 type PutExpensesClaimsByIdJSONRequestBody = ExpensesClaimUpdateRequest
 
+// PostExpensesClaimsByIdPerDiemSuggestionJSONRequestBody defines body for PostExpensesClaimsByIdPerDiemSuggestion for application/json ContentType.
+type PostExpensesClaimsByIdPerDiemSuggestionJSONRequestBody = ExpensesPerDiemSuggestionRequest
+
 // PostExpensesEntriesJSONRequestBody defines body for PostExpensesEntries for application/json ContentType.
 type PostExpensesEntriesJSONRequestBody = ExpensesEntryRequest
 
@@ -1104,6 +1183,9 @@ type ServerInterface interface {
 	// PutExpensesClaimsById Change a travel claim
 	// (PUT /api/v1/expenses/claims/{id})
 	PutExpensesClaimsById(w http.ResponseWriter, r *http.Request, id int64)
+	// PostExpensesClaimsByIdPerDiemSuggestion Suggest a trip's per diem days
+	// (POST /api/v1/expenses/claims/{id}/per-diem-suggestion)
+	PostExpensesClaimsByIdPerDiemSuggestion(w http.ResponseWriter, r *http.Request, id int64)
 	// GetExpensesEntries List expenses
 	// (GET /api/v1/expenses/entries)
 	GetExpensesEntries(w http.ResponseWriter, r *http.Request, params GetExpensesEntriesParams)
@@ -1134,7 +1216,7 @@ type ServerInterface interface {
 	// PostExpensesEntriesByIdInvoicedUndo Undo marking an expense invoiced
 	// (POST /api/v1/expenses/entries/{id}/invoiced/undo)
 	PostExpensesEntriesByIdInvoicedUndo(w http.ResponseWriter, r *http.Request, id int64)
-	// PutExpensesEntriesByIdRate Override a mileage rate
+	// PutExpensesEntriesByIdRate Override a rate
 	// (PUT /api/v1/expenses/entries/{id}/rate)
 	PutExpensesEntriesByIdRate(w http.ResponseWriter, r *http.Request, id int64)
 	// GetExpensesMeta Get the Expenses metadata
@@ -1568,6 +1650,32 @@ func (siw *ServerInterfaceWrapper) PutExpensesClaimsById(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutExpensesClaimsById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostExpensesClaimsByIdPerDiemSuggestion operation middleware
+func (siw *ServerInterfaceWrapper) PostExpensesClaimsByIdPerDiemSuggestion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostExpensesClaimsByIdPerDiemSuggestion(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2675,6 +2783,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/expenses/claims/{id}", wrapper.DeleteExpensesClaimsById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/claims/{id}", wrapper.GetExpensesClaimsById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/expenses/claims/{id}", wrapper.PutExpensesClaimsById)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/claims/{id}/per-diem-suggestion", wrapper.PostExpensesClaimsByIdPerDiemSuggestion)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/entries", wrapper.GetExpensesEntries)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/entries", wrapper.PostExpensesEntries)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/expenses/entries/{id}", wrapper.DeleteExpensesEntriesById)
@@ -3506,6 +3615,65 @@ func (response PutExpensesClaimsById409ApplicationProblemPlusJSONResponse) Visit
 	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type PostExpensesClaimsByIdPerDiemSuggestionRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostExpensesClaimsByIdPerDiemSuggestionJSONRequestBody
+}
+
+type PostExpensesClaimsByIdPerDiemSuggestionResponseObject interface {
+	VisitPostExpensesClaimsByIdPerDiemSuggestionResponse(w http.ResponseWriter) error
+}
+
+type PostExpensesClaimsByIdPerDiemSuggestion200JSONResponse []ExpensesPerDiemSuggestedDay
+
+func (response PostExpensesClaimsByIdPerDiemSuggestion200JSONResponse) VisitPostExpensesClaimsByIdPerDiemSuggestionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesClaimsByIdPerDiemSuggestion401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostExpensesClaimsByIdPerDiemSuggestion401JSONResponse) VisitPostExpensesClaimsByIdPerDiemSuggestionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesClaimsByIdPerDiemSuggestion403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostExpensesClaimsByIdPerDiemSuggestion403JSONResponse) VisitPostExpensesClaimsByIdPerDiemSuggestionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesClaimsByIdPerDiemSuggestion404Response struct {
+}
+
+func (response PostExpensesClaimsByIdPerDiemSuggestion404Response) VisitPostExpensesClaimsByIdPerDiemSuggestionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
 }
 
 type GetExpensesEntriesRequestObject struct {
@@ -5644,6 +5812,9 @@ type StrictServerInterface interface {
 	// PutExpensesClaimsById Change a travel claim
 	// (PUT /api/v1/expenses/claims/{id})
 	PutExpensesClaimsById(ctx context.Context, request PutExpensesClaimsByIdRequestObject) (PutExpensesClaimsByIdResponseObject, error)
+	// PostExpensesClaimsByIdPerDiemSuggestion Suggest a trip's per diem days
+	// (POST /api/v1/expenses/claims/{id}/per-diem-suggestion)
+	PostExpensesClaimsByIdPerDiemSuggestion(ctx context.Context, request PostExpensesClaimsByIdPerDiemSuggestionRequestObject) (PostExpensesClaimsByIdPerDiemSuggestionResponseObject, error)
 	// GetExpensesEntries List expenses
 	// (GET /api/v1/expenses/entries)
 	GetExpensesEntries(ctx context.Context, request GetExpensesEntriesRequestObject) (GetExpensesEntriesResponseObject, error)
@@ -5674,7 +5845,7 @@ type StrictServerInterface interface {
 	// PostExpensesEntriesByIdInvoicedUndo Undo marking an expense invoiced
 	// (POST /api/v1/expenses/entries/{id}/invoiced/undo)
 	PostExpensesEntriesByIdInvoicedUndo(ctx context.Context, request PostExpensesEntriesByIdInvoicedUndoRequestObject) (PostExpensesEntriesByIdInvoicedUndoResponseObject, error)
-	// PutExpensesEntriesByIdRate Override a mileage rate
+	// PutExpensesEntriesByIdRate Override a rate
 	// (PUT /api/v1/expenses/entries/{id}/rate)
 	PutExpensesEntriesByIdRate(ctx context.Context, request PutExpensesEntriesByIdRateRequestObject) (PutExpensesEntriesByIdRateResponseObject, error)
 	// GetExpensesMeta Get the Expenses metadata
@@ -6110,6 +6281,39 @@ func (sh *strictHandler) PutExpensesClaimsById(w http.ResponseWriter, r *http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutExpensesClaimsByIdResponseObject); ok {
 		if err := validResponse.VisitPutExpensesClaimsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostExpensesClaimsByIdPerDiemSuggestion operation middleware
+func (sh *strictHandler) PostExpensesClaimsByIdPerDiemSuggestion(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostExpensesClaimsByIdPerDiemSuggestionRequestObject
+
+	request.Id = id
+
+	var body PostExpensesClaimsByIdPerDiemSuggestionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostExpensesClaimsByIdPerDiemSuggestion(ctx, request.(PostExpensesClaimsByIdPerDiemSuggestionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostExpensesClaimsByIdPerDiemSuggestion")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostExpensesClaimsByIdPerDiemSuggestionResponseObject); ok {
+		if err := validResponse.VisitPostExpensesClaimsByIdPerDiemSuggestionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
