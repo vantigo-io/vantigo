@@ -24,6 +24,25 @@ const customer = (type: "business" | "person", overrides: { revision?: number } 
   ...overrides,
 });
 
+// The Overview tab's billing card (design D6) always GETs the billing
+// profile, which answers 200 with every field null for a customer that has
+// none (design D4) — every route test below needs this stubbed the same way
+// it stubs the customer's own GET, legal identity and timeline.
+const emptyBillingProfile = {
+  invoiceEmail: null,
+  reminderEmail: null,
+  paymentTermsDays: null,
+  currency: null,
+  language: null,
+  invoiceDelivery: null,
+  reminderDelivery: null,
+  peppolId: null,
+  gln: null,
+  buyerReference: null,
+  revision: 1,
+  warnings: [],
+};
+
 const renderCustomer = async () => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const router = createRouter({
@@ -60,6 +79,8 @@ describe("changing a customer's type", () => {
       }
       if (path === "/api/v1/customers/1001") return Promise.resolve(jsonResponse(200, current));
       if (path === "/api/v1/customers/1001/legal-identity") return Promise.resolve(new Response(null, { status: 204 }));
+      if (path === "/api/v1/customers/1001/billing-profile")
+        return Promise.resolve(jsonResponse(200, emptyBillingProfile));
       if (path.includes("/timeline")) return Promise.resolve(jsonResponse(200, { data: [], nextCursor: null }));
       return Promise.resolve(new Response(null, { status: 404 }));
     });
@@ -95,6 +116,8 @@ describe("changing a customer's type", () => {
       }
       if (path === "/api/v1/customers/1001") return Promise.resolve(jsonResponse(200, current));
       if (path === "/api/v1/customers/1001/legal-identity") return Promise.resolve(new Response(null, { status: 204 }));
+      if (path === "/api/v1/customers/1001/billing-profile")
+        return Promise.resolve(jsonResponse(200, emptyBillingProfile));
       if (path.includes("/timeline")) return Promise.resolve(jsonResponse(200, { data: [], nextCursor: null }));
       return Promise.resolve(new Response(null, { status: 404 }));
     });
@@ -131,6 +154,8 @@ describe("changing a customer's type", () => {
       }
       if (path === "/api/v1/customers/1001") return Promise.resolve(jsonResponse(200, putCalls > 0 ? latest : initial));
       if (path === "/api/v1/customers/1001/legal-identity") return Promise.resolve(new Response(null, { status: 204 }));
+      if (path === "/api/v1/customers/1001/billing-profile")
+        return Promise.resolve(jsonResponse(200, emptyBillingProfile));
       if (path.includes("/timeline")) return Promise.resolve(jsonResponse(200, { data: [], nextCursor: null }));
       return Promise.resolve(new Response(null, { status: 404 }));
     });
@@ -155,6 +180,8 @@ describe("changing a customer's type", () => {
       const path = String(url);
       if (path === "/api/v1/customers/1001") return Promise.resolve(jsonResponse(200, customer("person")));
       if (path === "/api/v1/customers/1001/legal-identity") return Promise.resolve(new Response(null, { status: 204 }));
+      if (path === "/api/v1/customers/1001/billing-profile")
+        return Promise.resolve(jsonResponse(200, emptyBillingProfile));
       if (path.includes("/timeline")) return Promise.resolve(jsonResponse(200, { data: [], nextCursor: null }));
       return Promise.resolve(new Response(null, { status: 404 }));
     });

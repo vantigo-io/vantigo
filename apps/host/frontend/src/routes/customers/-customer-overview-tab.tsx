@@ -7,8 +7,9 @@ import { hasPermissions } from "../../navigation";
 
 /**
  * The customer page's Overview tab: the package's own contact/addresses,
- * contacts and timeline cards, plus `canEdit` (design D6), which this route
- * computes from the caller's `customers:update` permission the same way
+ * billing, contacts and timeline cards, plus `canEdit` and `canManageBilling`
+ * (design D6), which this route computes from the caller's
+ * `customers:update` and `customers:billing-manage` permissions the same way
  * `-customer-detail-layout.tsx` computes `canArchive`/`canRestore` and
  * `-customer-projects-tab.tsx` computes `canCreate` — the host reads
  * permissions, the package never fetches them itself.
@@ -32,6 +33,7 @@ export const CustomerOverviewTab = () => {
     <CustomerOverview
       customerId={customerId}
       canEdit={hasPermissions(authorization.data?.permissions, ["customers:update"])}
+      canManageBilling={hasPermissions(authorization.data?.permissions, ["customers:billing-manage"])}
     />
   );
 };

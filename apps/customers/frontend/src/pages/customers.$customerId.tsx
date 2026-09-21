@@ -31,6 +31,7 @@ import {
   LegalValueBadge,
 } from "../components/legal-badges";
 import { getLegalSource } from "../lib/legal-sources";
+import { CustomerBillingCard } from "./-customer-billing-card";
 import { CustomerContactCard } from "./-customer-contact-card";
 import { CustomerContactsCard } from "./-customer-contacts-card";
 import { CustomerFormModal, type CustomerModalState } from "./-customer-form-modal";
@@ -298,10 +299,30 @@ const useRestoreCustomer = (customer: CustomerResponse) => {
   });
 };
 
-export const CustomerOverview = ({ customerId, canEdit }: { customerId: number; canEdit?: boolean }) => (
-  <Stack gap="lg">
-    <CustomerContactCard customerId={customerId} canEdit={canEdit} />
-    <CustomerContactsCard customerId={customerId} />
-    <CustomerTimeline customerId={customerId} />
-  </Stack>
-);
+/**
+ * `canManageBilling` (design D6) comes from the host's own
+ * `customers:billing-manage` check, deliberately separate from `canEdit`
+ * (`customers:update`) — see `-customer-billing-card.tsx`. The customer
+ * itself is fetched once here and passed to `CustomerBillingCard`, which
+ * needs its `contactInfo`, `type` and `identity` for the resolved-recipient
+ * hints, rather than that card issuing a query of its own.
+ */
+export const CustomerOverview = ({
+  customerId,
+  canEdit,
+  canManageBilling,
+}: {
+  customerId: number;
+  canEdit?: boolean;
+  canManageBilling?: boolean;
+}) => {
+  const { data: customer } = useSuspenseQuery(customerQueryOptions(customerId));
+  return (
+    <Stack gap="lg">
+      <CustomerContactCard customerId={customerId} canEdit={canEdit} />
+      <CustomerBillingCard customerId={customerId} customer={customer} canManageBilling={canManageBilling} />
+      <CustomerContactsCard customerId={customerId} />
+      <CustomerTimeline customerId={customerId} />
+    </Stack>
+  );
+};
