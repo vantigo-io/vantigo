@@ -248,9 +248,13 @@ duplicate) already carries the same `(country, id)`, the write is refused with:
   name/source/type edit, or resubmitting the same `(country, id)`, is never a
   conflict with itself. On create there is no such exemption — every create is a
   fresh identity by definition.
-- The caller already holds `customers:legal-identity-manage` by the time this check
-  runs, so naming the other customer in the response leaks nothing it could not
-  already see by holding that permission.
+- **`duplicates` is only present when the caller holds `customers:view`.** None of the
+  three write paths implies it — `POST /customers` needs `customers:create` plus
+  `customers:legal-identity-manage`, and the legal-identity `PUT` needs
+  `customers:legal-identity-manage` plus `customers:legal-identity-view` — so a caller
+  who cannot read a customer at all still gets the title, code, detail and status
+  (that the identity is taken is a fact about their own request), but the conflict
+  names nobody. That is why `duplicates` is optional in the contract.
 - The check runs inside the write's own transaction, before the write (and, on
   create, before the customer-number counter is advanced — a refused create burns no
   number).

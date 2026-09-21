@@ -60,12 +60,22 @@ func identityCountryAndIDEqual(a, b *legalIdentity) bool {
 // the write's own transaction-scoped *store.Queries (db.WithTx's txq): the
 // check must see, and answer inside, the same transaction the write commits
 // or rolls back with, never a snapshot taken outside it. nil, nil means no
-// conflict — including a status the caller cannot see the row of, since an
-// archived holder still conflicts and duplicates never leaks more than
-// CustomerConflictDuplicate already exposes to every caller who reached
-// this handler at all (they hold legal-identity-manage by the time this
-// runs).
-func (s *server) duplicateIdentityProblem(ctx context.Context, q *store.Queries, identity legalIdentity, excludeID int32) (*gen.CustomerConflictProblem, error) {
+// conflict — an archived holder still conflicts, whatever the caller's own
+// view of the row would be.
+//
+// nameHolders decides whether the conflict body carries duplicates at all:
+// none of the three write paths implies customers:view (POST /customers needs
+// create + legal-identity-manage; the legal-identity PUT needs
+// legal-identity-manage + legal-identity-view), so a caller who cannot read a
+// customer must not learn another customer's id, number, name and status from
+// a refusal. Such a caller still gets the full title/code/detail/status — that
+// the identity is taken is about their own request — just nobody's name with
+// it; duplicates is optional in the contract for exactly this. The caller
+// resolves nameHolders *before* opening the transaction, because it is an
+// access check (a session lookup and a permission query), and this module
+// makes no access or directory call while holding a database lock — the same
+// discipline actorFor is held to (actor.go).
+func (s *server) duplicateIdentityProblem(ctx context.Context, q *store.Queries, identity legalIdentity, excludeID int32, nameHolders bool) (*gen.CustomerConflictProblem, error) {
 	rows, err := q.CustomersByLegalIdentity(ctx, store.CustomersByLegalIdentityParams{
 		Country:   identity.Country,
 		LegalID:   identity.ID,
@@ -78,16 +88,19 @@ func (s *server) duplicateIdentityProblem(ctx context.Context, q *store.Queries,
 		return nil, nil
 	}
 
+	title, code, detail := duplicateIdentityTitle, duplicateIdentityCode, duplicateIdentityDetail
+	status := int32(http.StatusConflict)
+	problem := &gen.CustomerConflictProblem{Title: &title, Code: &code, Detail: &detail, Status: &status}
+	if !nameHolders {
+		return problem, nil
+	}
+
 	duplicates := make([]gen.CustomerConflictDuplicate, 0, len(rows))
 	for _, r := range rows {
 		duplicates = append(duplicates, gen.CustomerConflictDuplicate{
 			Id: r.ID, CustomerNumber: r.CustomerNumber, Name: r.Name, Status: r.Status,
 		})
 	}
-
-	title, code, detail := duplicateIdentityTitle, duplicateIdentityCode, duplicateIdentityDetail
-	status := int32(http.StatusConflict)
-	return &gen.CustomerConflictProblem{
-		Title: &title, Code: &code, Detail: &detail, Status: &status, Duplicates: &duplicates,
-	}, nil
+	problem.Duplicates = &duplicates
+	return problem, nil
 }

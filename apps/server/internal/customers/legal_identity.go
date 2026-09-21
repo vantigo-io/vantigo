@@ -137,6 +137,13 @@ func (s *server) PutCustomersByIdLegalIdentity(ctx context.Context, req gen.PutC
 		}
 	}
 
+	// Whether a duplicate conflict may name the other customer, resolved
+	// before the transaction for the same reason: it is an access check, and
+	// this operation's own permissions (legal-identity-view plus
+	// legal-identity-manage) say nothing about reading a customer
+	// (duplicates.go).
+	nameHolders := needsDuplicateCheck && s.hasPermission(ctx, customersView)
+
 	legalCountry, legalID, legalName, legalSource, legalType := legalColumns(after)
 	var conflict *gen.CustomerConflictProblem
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
@@ -146,7 +153,7 @@ func (s *server) PutCustomersByIdLegalIdentity(ctx context.Context, req gen.PutC
 		// UpdateCustomer ever runs, so a refused replace leaves the row (and
 		// its revision) untouched.
 		if needsDuplicateCheck {
-			problem, err := s.duplicateIdentityProblem(ctx, txq, *after, req.Id)
+			problem, err := s.duplicateIdentityProblem(ctx, txq, *after, req.Id, nameHolders)
 			if err != nil {
 				return err
 			}
