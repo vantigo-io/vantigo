@@ -63,8 +63,11 @@ func (s *server) GetCustomersByIdLegalIdentity(ctx context.Context, req gen.GetC
 // 404 when the customer does not exist. The before/after comparison and the
 // customer.updated timeline event it conditionally records are exactly
 // PutCustomersById's own identity-replacement path (identityEqual,
-// recordCustomerUpdated, timeline_events.go): resubmitting the identity
-// unchanged records no event and leaves updated_at alone.
+// recordCustomerUpdated, timeline_events.go) — including its no-op rule
+// (customers foundation design D5): a resubmit of the identity already stored,
+// equal in all five fields, writes nothing whatsoever (no row update, so no
+// revision bump and no updated_at move, and no event) and answers the same 200
+// as a replace that did something.
 //
 // The duplicate-legal-identity check (customers foundation design D6) runs
 // last, immediately before the write, inside the same transaction — after
@@ -73,9 +76,9 @@ func (s *server) GetCustomersByIdLegalIdentity(ctx context.Context, req gen.GetC
 // request's (country, id) matches what the row already has
 // (identityCountryAndIDEqual, duplicates.go — a bare name/source/type edit
 // is never a conflict with itself) or when the request carries
-// allowDuplicateIdentity: true. Unlike changed, which is what the timeline
-// event and updated_at gate on, the duplicate check never looks at
-// name/source/type at all.
+// allowDuplicateIdentity: true. Unlike changed, which compares all five
+// fields, the duplicate check never looks at name/source/type at all — so a
+// bare name edit is a real write that the check still skips.
 //
 // The request body is gen.PutLegalIdentityRequest, not gen.LegalIdentityRequest
 // (customers.yaml): the latter is also nested, via allOf, as
@@ -115,26 +118,29 @@ func (s *server) PutCustomersByIdLegalIdentity(ctx context.Context, req gen.PutC
 	after := &parsed
 	changed := !identityEqual(before, after)
 
+	// No-op rule, mirroring PutCustomersById's (customers foundation design
+	// D5): a resubmit of exactly the stored identity writes nothing at all —
+	// no revision bump, no updated_at move, no timeline event — and answers
+	// the same 200 as a real replace. The duplicate check cannot want to run
+	// on such a request either: equal in all five fields implies an unchanged
+	// (country, id), so it is skipped by its own rule below, which is why
+	// returning before the transaction opens is safe.
+	if !changed {
+		return gen.PutCustomersByIdLegalIdentity200JSONResponse(legalIdentityResponse(parsed)), nil
+	}
+
 	allowDuplicateIdentity := body.AllowDuplicateIdentity != nil && *body.AllowDuplicateIdentity
 	needsDuplicateCheck := !identityCountryAndIDEqual(before, after) && !allowDuplicateIdentity
 
 	now := s.deps.Clock()
-	updatedAt := existing.UpdatedAt
-	if changed {
-		updatedAt = now
-	}
 
-	// Resolved before the transaction opens, and only when the identity
-	// actually changed: an unchanged resubmit records no event and must not
-	// pay for a directory lookup it will not use (customers foundation
+	// Resolved before the transaction opens: this handler always records a
+	// customer.updated event once it reaches here (the unchanged resubmit
+	// returned above), so the actor is always needed (customers foundation
 	// design D1, actor.go).
-	var act actor
-	if changed {
-		var err error
-		act, err = s.actorFor(ctx, generatedFallbackActor)
-		if err != nil {
-			return nil, fmt.Errorf("customers: resolve actor: %w", err)
-		}
+	act, err := s.actorFor(ctx, generatedFallbackActor)
+	if err != nil {
+		return nil, fmt.Errorf("customers: resolve actor: %w", err)
 	}
 
 	// Whether a duplicate conflict may name the other customer, resolved
@@ -164,17 +170,14 @@ func (s *server) PutCustomersByIdLegalIdentity(ctx context.Context, req gen.PutC
 		}
 		// ExpectedRevision is always nil here: the legal-identity sub-resource
 		// stays an unconditional write, not a revision-guarded one (customers
-		// foundation design D5) — every call bumps the row's revision by one,
-		// whether or not the identity itself changed.
+		// foundation design D5) — a call that changes the identity bumps the
+		// row's revision by one whatever revision the caller last read.
 		if _, err := txq.UpdateCustomer(ctx, store.UpdateCustomerParams{
 			ID: req.Id, Name: existing.Name, Status: existing.Status,
 			LegalCountry: legalCountry, LegalID: legalID, LegalName: legalName, LegalSource: legalSource, LegalType: legalType,
-			UpdatedAt: updatedAt,
+			UpdatedAt: now,
 		}); err != nil {
 			return err
-		}
-		if !changed {
-			return nil
 		}
 		return recordCustomerUpdated(ctx, txq, now, req.Id, existing.Name, before, existing.Name, after, act.Kind, act.Display, act.UserID)
 	})

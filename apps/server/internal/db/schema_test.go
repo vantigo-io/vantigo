@@ -1870,6 +1870,44 @@ func TestExpensesToInvoiceIndex_ReplacesTheOneNoReadCouldUse(t *testing.T) {
 	}
 }
 
+// TestCustomersRevision_AppliesWithANonUniqueLegalIdentityIndex proves
+// 00016_customers_revision.sql applies, rolls back and re-applies cleanly, and
+// pins the one thing about its index that is a design decision rather than a
+// tuning detail: it is **not** unique. The duplicate-legal-identity check
+// (customers foundation design D6) is an application rule the caller may
+// overrule with allowDuplicateIdentity: true — two departments of one company
+// kept as separate customers — so the same (legal_country, legal_id) pair
+// legitimately sits on more than one row, and a unique index here would refuse
+// writes the design allows. If someone ever "tightens" this to UNIQUE, this
+// test is what says no.
+func TestCustomersRevision_AppliesWithANonUniqueLegalIdentityIndex(t *testing.T) {
+	url := testdb.URL(t)
+	applyUpDownUp(t, url, 16) // 00016_customers_revision.sql
+
+	ctx := context.Background()
+	pool, err := db.Open(ctx, url)
+	if err != nil {
+		t.Fatalf("open pool: %v", err)
+	}
+	defer pool.Close()
+
+	if cols := indexColumns(t, ctx, pool, "customers", "ix_customers_legal_identity"); !equalStrings(cols, []string{"legal_country", "legal_id"}) {
+		t.Errorf("ix_customers_legal_identity columns = %v, want [legal_country legal_id]", cols)
+	}
+	var unique bool
+	if err := pool.QueryRow(ctx, `
+		SELECT i.indisunique
+		FROM pg_index i
+		JOIN pg_class ic ON ic.oid = i.indexrelid
+		JOIN pg_namespace n ON n.oid = ic.relnamespace
+		WHERE n.nspname = 'customers' AND ic.relname = 'ix_customers_legal_identity'`).Scan(&unique); err != nil {
+		t.Fatalf("query ix_customers_legal_identity uniqueness: %v", err)
+	}
+	if unique {
+		t.Error("ix_customers_legal_identity is UNIQUE, want a plain btree: D6 lets a caller keep a duplicate identity on purpose")
+	}
+}
+
 // indexDefinition is one index's CREATE INDEX text, or a failed test.
 func indexDefinition(t *testing.T, ctx context.Context, pool *pgxpool.Pool, schema, name string) string {
 	t.Helper()
