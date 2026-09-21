@@ -312,6 +312,7 @@ linters:
             - "**/internal/health/**"
             - "**/internal/httpx/**"
             - "**/internal/mail/**"
+            - "**/internal/management/**"
             - "**/internal/openapi/**"
             - "**/internal/ratelimit/**"
             - "**/internal/secrets/**"
