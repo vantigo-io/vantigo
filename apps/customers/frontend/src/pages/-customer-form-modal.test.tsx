@@ -1,6 +1,7 @@
 import { MantineProvider } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
@@ -20,6 +21,33 @@ const renderModal = (state: Parameters<typeof CustomerFormModal>[0]["state"], on
   );
   render(<CustomerFormModal state={state} onClose={onClose} />, { wrapper });
   return { onClose };
+};
+
+/**
+ * Renders the modal under a real router, the way the sibling tests that
+ * render `Link`s do (see `src/test/route-tree.tsx`) — needed by the
+ * duplicate-identity and similar-names links, which navigate through the
+ * package's router-Link convention rather than a plain `<a href>`, so a
+ * click here is a real assertion of client-side navigation, not a full
+ * page reload.
+ */
+const renderModalWithRouter = async (state: Parameters<typeof CustomerFormModal>[0]["state"], onClose = vi.fn()) => {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  const rootRoute = createRootRoute({
+    component: () => (
+      <MantineProvider env="test">
+        <Notifications />
+        <QueryClientProvider client={queryClient}>
+          <CustomerFormModal state={state} onClose={onClose} />
+        </QueryClientProvider>
+      </MantineProvider>
+    ),
+  });
+  const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: ["/"] }) });
+  await router.load();
+  render(<RouterProvider router={router} />);
+  await screen.findByRole("dialog");
+  return { onClose, router };
 };
 
 describe("CustomerFormModal", () => {
@@ -272,7 +300,7 @@ describe("CustomerFormModal", () => {
       return Promise.resolve(new Response(null, { status: 404 }));
     });
     stubFetch(fetchMock);
-    const { onClose } = renderModal({
+    const { onClose } = await renderModalWithRouter({
       mode: "edit",
       customer: {
         id: 1001,
@@ -303,6 +331,49 @@ describe("CustomerFormModal", () => {
     });
   });
 
+  it("clicking a duplicate's link navigates through the router (no full page reload) and closes the modal", async () => {
+    const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(url);
+      if (path === "/api/v1/customers/1001" && init?.method === "PUT") {
+        return Promise.resolve(
+          jsonResponse(409, {
+            title: "Duplicate legal identity",
+            code: "duplicate_legal_identity",
+            detail: "Another customer already has this legal identity.",
+            status: 409,
+            duplicates: [{ id: 2002, customerNumber: 6002, name: "Acme Holding AS", status: "active" }],
+          }),
+        );
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    stubFetch(fetchMock);
+    const { onClose, router } = await renderModalWithRouter({
+      mode: "edit",
+      customer: {
+        id: 1001,
+        customerNumber: 5001,
+        name: "Initech",
+        status: "active",
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+        type: "business",
+        identity: null,
+        timelineSummary: { entryCount: 0, latestOccurredOn: null },
+        revision: 3,
+      },
+    });
+    await userEvent.click(screen.getByRole("button", { name: /save changes/i }));
+    const link = await screen.findByRole("link", { name: /acme holding as/i });
+
+    await userEvent.click(link);
+
+    // A plain <a href> click would leave the router's own location alone;
+    // the router-Link intercepts the click and navigates client-side.
+    expect(router.state.location.pathname).toBe("/customers/2002");
+    expect(onClose).toHaveBeenCalled();
+  });
+
   it("shows a duplicate-identity conflict on create and resubmits with allowDuplicateIdentity on Create anyway", async () => {
     let attempts = 0;
     const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
@@ -325,7 +396,7 @@ describe("CustomerFormModal", () => {
       return Promise.resolve(new Response(null, { status: 404 }));
     });
     stubFetch(fetchMock);
-    const { onClose } = renderModal({ mode: "create" });
+    const { onClose } = await renderModalWithRouter({ mode: "create" });
     await userEvent.click(screen.getByRole("radio", { name: /private/i }));
     await userEvent.type(screen.getByLabelText(/name/i), "Kari Nordmann");
     await userEvent.click(screen.getByRole("button", { name: /create customer/i }));
@@ -369,7 +440,7 @@ describe("CustomerFormModal", () => {
       return Promise.resolve(new Response(null, { status: 404 }));
     });
     stubFetch(fetchMock);
-    renderModal({ mode: "create" });
+    const { onClose, router } = await renderModalWithRouter({ mode: "create" });
     await userEvent.click(screen.getByRole("radio", { name: /private/i }));
 
     await userEvent.type(screen.getByLabelText(/name/i), "Ac");
@@ -382,5 +453,15 @@ describe("CustomerFormModal", () => {
     expect(screen.queryByText("Widgets Inc")).not.toBeInTheDocument();
     const call = fetchMock.mock.calls.find(([url]) => String(url).includes("search=Acme"));
     expect(call).toBeDefined();
+
+    const link = screen.getByRole("link", { name: "Acme Holding" });
+    expect(link).toHaveAttribute("href", "/customers/9001");
+    await userEvent.click(link);
+
+    // Same router-Link convention as the duplicate list above: a real
+    // client-side navigation, and the modal closes rather than staying open
+    // over the customer the caller just navigated to.
+    expect(router.state.location.pathname).toBe("/customers/9001");
+    expect(onClose).toHaveBeenCalled();
   });
 });

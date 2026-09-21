@@ -18,13 +18,16 @@ import { type UseFormReturnType, useForm } from "@mantine/form";
 import { useDebouncedValue } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { useI18n } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
 import {
   ApiConflictError,
   ApiValidationError,
+  type ConflictDuplicate,
   type CustomerResponse,
   type CustomerType,
+  conflictDuplicates,
   createCustomer,
   customerQueryOptions,
   customersQueryOptions,
@@ -43,15 +46,13 @@ type CustomerFormValues = {
   type: CustomerType;
 };
 
-type DuplicateIdentity = { id: number; customerNumber: number; name: string; status: string };
-
 /**
  * What the modal has to show instead of the form's own validation once a
  * submit comes back as a 409: D5's revision conflict (nothing else to say —
  * the fix is to look at the latest version) or D6's duplicate legal identity
  * (who already has it, with an escape hatch to save anyway).
  */
-type SaveConflict = { kind: "revision" } | { kind: "duplicate"; duplicates: DuplicateIdentity[] };
+type SaveConflict = { kind: "revision" } | { kind: "duplicate"; duplicates: ConflictDuplicate[] };
 
 /**
  * Creates or edits a customer. The type — business or private person — is
@@ -135,7 +136,7 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
       if (error instanceof ApiConflictError) {
         setConflict(
           error.code === "duplicate_legal_identity"
-            ? { kind: "duplicate", duplicates: error.duplicates ?? [] }
+            ? { kind: "duplicate", duplicates: conflictDuplicates(error) }
             : { kind: "revision" },
         );
         return;
@@ -192,7 +193,11 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
                 <Stack gap={4}>
                   {conflict.duplicates.map((duplicate) => (
                     <Group key={duplicate.id} justify="space-between" wrap="nowrap">
-                      <Anchor href={`/customers/${duplicate.id}`} size="sm">
+                      <Anchor
+                        size="sm"
+                        onClick={onClose}
+                        renderRoot={(props) => <Link to={`/customers/${duplicate.id}` as never} {...props} />}
+                      >
                         {duplicate.name}
                       </Anchor>
                       <Group gap="xs" wrap="nowrap">
@@ -248,7 +253,7 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
               {...form.getInputProps("name")}
             />
           )}
-          {!isEdit && <SimilarNamesHint name={form.values.name} t={t} />}
+          {!isEdit && <SimilarNamesHint name={form.values.name} t={t} onNavigate={onClose} />}
           <Select
             label={t("status")}
             data={[
@@ -354,7 +359,15 @@ const statusBadgeLabel = (status: string, t: (key: string) => string) =>
  * matches contacts and organisation numbers, which would be a confusing
  * reason for a name to show up here, so the client filters to name matches.
  */
-const SimilarNamesHint = ({ name, t }: { name: string; t: (key: string) => string }) => {
+const SimilarNamesHint = ({
+  name,
+  t,
+  onNavigate,
+}: {
+  name: string;
+  t: (key: string) => string;
+  onNavigate: () => void;
+}) => {
   const [debounced] = useDebouncedValue(name, 300);
   const trimmed = debounced.trim();
   const enabled = trimmed.length >= 3;
@@ -373,7 +386,11 @@ const SimilarNamesHint = ({ name, t }: { name: string; t: (key: string) => strin
       <Stack gap={4}>
         {matches.map((customer) => (
           <Group key={customer.id} gap="xs" wrap="nowrap">
-            <Anchor href={`/customers/${customer.id}`} size="sm">
+            <Anchor
+              size="sm"
+              onClick={onNavigate}
+              renderRoot={(props) => <Link to={`/customers/${customer.id}` as never} {...props} />}
+            >
               {customer.name}
             </Anchor>
             <Text size="xs" c="dimmed">
