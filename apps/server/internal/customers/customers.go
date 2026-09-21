@@ -376,6 +376,14 @@ func (s *server) PostCustomers(ctx context.Context, req gen.PostCustomersRequest
 
 	allowDuplicateIdentity := body.AllowDuplicateIdentity != nil && *body.AllowDuplicateIdentity
 
+	// Whether a duplicate conflict may name the customer that already holds
+	// the identity (duplicates.go): resolved here, before the transaction
+	// opens, because it is an access check — and only when the check can
+	// actually run, so a create that will never raise the conflict pays
+	// nothing for the answer.
+	needsDuplicateCheck := identity != nil && !allowDuplicateIdentity
+	nameHolders := needsDuplicateCheck && s.hasPermission(ctx, customersView)
+
 	legalCountry, legalID, legalName, legalSource, legalType := legalColumns(identity)
 	var created store.CustomersCustomer
 	var conflict *gen.CustomerConflictProblem
@@ -386,8 +394,8 @@ func (s *server) PostCustomers(ctx context.Context, req gen.PostCustomersRequest
 		// aborts the transaction via errDuplicateIdentity, so no number is
 		// ever allocated for a create that gets refused. excludeID is 0 —
 		// there is no existing row to exclude on a create.
-		if identity != nil && !allowDuplicateIdentity {
-			problem, err := s.duplicateIdentityProblem(ctx, txq, *identity, 0)
+		if needsDuplicateCheck {
+			problem, err := s.duplicateIdentityProblem(ctx, txq, *identity, 0, nameHolders)
 			if err != nil {
 				return err
 			}
@@ -600,6 +608,12 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 		return nil, fmt.Errorf("customers: resolve actor: %w", err)
 	}
 
+	// Resolved here for the same reason, and on the same rule, as
+	// PostCustomers's above: whether a duplicate conflict may name the other
+	// customer is an access check (duplicates.go), so it happens before the
+	// transaction opens and only when the check can run at all.
+	nameHolders := needsDuplicateCheck && s.hasPermission(ctx, customersView)
+
 	legalCountry, legalID, legalName, legalSource, legalType := legalColumns(afterIdentity)
 	var updated store.CustomersCustomer
 	var conflict *gen.CustomerConflictProblem
@@ -609,7 +623,7 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 		// conflict aborts the transaction via errDuplicateIdentity before
 		// UpdateCustomer ever runs — no revision bump, no timeline event.
 		if needsDuplicateCheck {
-			problem, err := s.duplicateIdentityProblem(ctx, txq, *afterIdentity, req.Id)
+			problem, err := s.duplicateIdentityProblem(ctx, txq, *afterIdentity, req.Id, nameHolders)
 			if err != nil {
 				return err
 			}

@@ -369,6 +369,77 @@ func TestPutCustomersByIdLegalIdentity_DuplicateLegalIdentity_WithAllowDuplicate
 	}
 }
 
+// TestPostCustomers_DuplicateLegalIdentity_WithoutCustomersView_NamesNobody
+// pins the controller ruling on who may be told *which* customer holds the
+// identity: POST /customers admits a caller holding only customers:create
+// plus legal-identity-manage, and neither of those implies customers:view, so
+// a caller who cannot read a customer at all still gets the conflict — title,
+// code, detail, status — but the response names no one. duplicates is optional
+// in the contract precisely so it can be left out here.
+func TestPostCustomers_DuplicateLegalIdentity_WithoutCustomersView_NamesNobody(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	admin := authenticatedClient(t, h)
+	createCustomerWithIdentity(t, admin, "Acme Holder", "no", "923609016")
+
+	c := h.SignIn(t, "customers:create", "customers:legal-identity-manage") // no customers:view
+	r := c.Do(http.MethodPost, "/api/v1/customers", map[string]any{
+		"name": "Acme Copy",
+		"identity": map[string]any{
+			"country": "no", "type": "business", "id": "923609016", "name": "Acme Copy AS", "source": "manual",
+		},
+	})
+	if r.Status != http.StatusConflict {
+		t.Fatalf("status %d body %s, want 409", r.Status, r.Body)
+	}
+	var problem conflictProblemJSON
+	r.JSON(&problem)
+	if problem.Code == nil || *problem.Code != "duplicate_legal_identity" {
+		t.Errorf("Code = %v, want duplicate_legal_identity (the caller still learns the identity is taken)", problem.Code)
+	}
+	if problemTitle(problem.Title) != "Duplicate legal identity" {
+		t.Errorf("Title = %q, want %q", problemTitle(problem.Title), "Duplicate legal identity")
+	}
+	if problemTitle(problem.Detail) != "Another customer already has this legal identity." {
+		t.Errorf("Detail = %q, want the fixed duplicate-identity detail", problemTitle(problem.Detail))
+	}
+	if problem.Status == nil || *problem.Status != int32(http.StatusConflict) {
+		t.Errorf("Status = %v, want 409", problem.Status)
+	}
+	if len(problem.Duplicates) != 0 {
+		t.Errorf("duplicates = %+v, want none: this caller cannot read customers, so the conflict must name nobody", problem.Duplicates)
+	}
+}
+
+// TestPutCustomersByIdLegalIdentity_DuplicateLegalIdentity_WithoutCustomersView_NamesNobody
+// is the same ruling on the third write path: the dedicated legal-identity PUT
+// admits legal-identity-view plus legal-identity-manage, which say nothing
+// about reading a customer either.
+func TestPutCustomersByIdLegalIdentity_DuplicateLegalIdentity_WithoutCustomersView_NamesNobody(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	admin := authenticatedClient(t, h)
+	createCustomerWithIdentity(t, admin, "Held Co", "no", "923609016")
+	mover := createCustomerWithIdentity(t, admin, "Mover Co", "no", "974760673")
+
+	// no customers:view
+	c := h.SignIn(t, "customers:legal-identity-view", "customers:legal-identity-manage")
+	r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/legal-identity", mover.Id), map[string]any{
+		"country": "no", "type": "business", "id": "923609016", "name": "Mover Co AS", "source": "manual",
+	})
+	if r.Status != http.StatusConflict {
+		t.Fatalf("status %d body %s, want 409", r.Status, r.Body)
+	}
+	var problem conflictProblemJSON
+	r.JSON(&problem)
+	if problem.Code == nil || *problem.Code != "duplicate_legal_identity" {
+		t.Errorf("Code = %v, want duplicate_legal_identity", problem.Code)
+	}
+	if len(problem.Duplicates) != 0 {
+		t.Errorf("duplicates = %+v, want none: this caller cannot read customers", problem.Duplicates)
+	}
+}
+
 // TestPostCustomers_DuplicateIdentityWithoutManagePermission_Returns403NotConflict
 // proves the controller ruling's ordering: the legal-identity-manage 403
 // gate wins over the 409 — a caller who cannot even attach an identity must

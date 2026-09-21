@@ -113,7 +113,7 @@ func TestPutCustomersById_WithStaleRevision_ReturnsConflictAndLeavesRowUntouched
 	if r.Status != http.StatusConflict {
 		t.Fatalf("status %d body %s, want 409", r.Status, r.Body)
 	}
-	var problem problemDetailsJSON
+	var problem conflictProblemJSON
 	r.JSON(&problem)
 	if problemTitle(problem.Title) != "Customer revision conflict" {
 		t.Errorf("Title = %q, want %q", problemTitle(problem.Title), "Customer revision conflict")
@@ -121,6 +121,17 @@ func TestPutCustomersById_WithStaleRevision_ReturnsConflictAndLeavesRowUntouched
 	wantDetail := "The customer has been changed since revision 999 was read; it is now at revision 1."
 	if problemTitle(problem.Detail) != wantDetail {
 		t.Errorf("Detail = %q, want %q", problemTitle(problem.Detail), wantDetail)
+	}
+	// The absent code and duplicates are load-bearing, not incidental: the
+	// frontend tells the two 409s apart by exactly this (a code means the
+	// duplicate-identity conflict, no code means this one), so a revision
+	// conflict that grew a code would silently send the modal down the wrong
+	// branch (see -customer-form-modal.tsx's onError).
+	if problem.Code != nil {
+		t.Errorf("Code = %v, want nil: a revision conflict carries no code, which is how the frontend recognises it", problem.Code)
+	}
+	if len(problem.Duplicates) != 0 {
+		t.Errorf("duplicates = %+v, want none (a revision conflict names no one)", problem.Duplicates)
 	}
 
 	after := fetchCustomerJSON(t, c, created.Id)
@@ -222,10 +233,18 @@ func TestPutCustomersByIdType_WithStaleRevision_ReturnsConflict(t *testing.T) {
 	if r.Status != http.StatusConflict {
 		t.Fatalf("status %d body %s, want 409", r.Status, r.Body)
 	}
-	var problem problemDetailsJSON
+	var problem conflictProblemJSON
 	r.JSON(&problem)
 	if problemTitle(problem.Title) != "Customer revision conflict" {
 		t.Errorf("Title = %q, want %q", problemTitle(problem.Title), "Customer revision conflict")
+	}
+	// Same pinning as the general PUT's above: no code and no duplicates is
+	// what the frontend branches on.
+	if problem.Code != nil {
+		t.Errorf("Code = %v, want nil: a revision conflict carries no code", problem.Code)
+	}
+	if len(problem.Duplicates) != 0 {
+		t.Errorf("duplicates = %+v, want none (a revision conflict names no one)", problem.Duplicates)
 	}
 	if got := fetchCustomerJSON(t, c, created.Id); got.Revision != 1 {
 		t.Errorf("persisted revision = %d, want unchanged 1", got.Revision)

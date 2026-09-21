@@ -26,6 +26,15 @@ func newServer(d module.Deps) *server {
 	return &server{deps: d, brreg: newBrregClient(d.Config.BrregBaseURL, d.Config.BrregTimeout, d.HTTPTransport, d.HTTPBackoff)}
 }
 
+// customersView is the permission that admits the module's read operations
+// (module.Router enforces it on GetCustomers/GetCustomer). The handlers only
+// ever ask about it themselves for the duplicate-identity conflict body
+// (duplicates.go): none of the three write paths that can raise that conflict
+// requires customers:view, so whether the 409 may name the other customer has
+// to be asked separately. Like legalIdentityView this is response-shaping, not
+// a gate — it never answers 403.
+const customersView = "customers:view"
+
 // legalIdentityView is the permission that decides whether a customer
 // response's legal-identity sub-object (or the stats endpoint's
 // identity-derived figures) is included. It is never what admits the
