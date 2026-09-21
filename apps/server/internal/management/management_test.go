@@ -95,6 +95,30 @@ func TestStatus_RequiresTheBearerToken(t *testing.T) {
 	}
 }
 
+// TestStatus_TheBearerSchemeIsCaseInsensitive mirrors identity/scim.go's
+// scimBearer: RFC 7235 makes the auth scheme case-insensitive, so "bearer"
+// and "BEARER" must authenticate exactly as "Bearer" does, while a scheme
+// with no credential, the wrong scheme and a bare token (no scheme at all)
+// still get 401.
+func TestStatus_TheBearerSchemeIsCaseInsensitive(t *testing.T) {
+	h := handler(management.Options{})
+	for name, tc := range map[string]struct {
+		authorization string
+		wantStatus    int
+	}{
+		"lower case scheme": {"bearer " + token, http.StatusOK},
+		"upper case scheme": {"BEARER " + token, http.StatusOK},
+		"no credential":     {"Bearer", http.StatusUnauthorized},
+		"wrong scheme":      {"Basic " + token, http.StatusUnauthorized},
+		"bare token":        {token, http.StatusUnauthorized},
+	} {
+		res := get(t, h, "/management/status", tc.authorization, "")
+		if res.StatusCode != tc.wantStatus {
+			t.Errorf("%s: status %d, want %d", name, res.StatusCode, tc.wantStatus)
+		}
+	}
+}
+
 func TestStatus_AnEmptyConfiguredTokenRejectsEverything(t *testing.T) {
 	// Config validation requires MANAGEMENT_TOKEN to be at least 32
 	// characters, so this is unreachable through normal configuration — but

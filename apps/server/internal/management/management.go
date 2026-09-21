@@ -103,7 +103,7 @@ func bearer(token string) func(http.Handler) http.Handler {
 	expected := sha256.Sum256([]byte(token))
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			presented, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+			presented, ok := bearerToken(r.Header.Get("Authorization"))
 			digest := sha256.Sum256([]byte(presented))
 			authenticated := ok && token != "" && presented != "" &&
 				subtle.ConstantTimeCompare(digest[:], expected[:]) == 1
@@ -115,6 +115,17 @@ func bearer(token string) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// bearerToken reads header the way identity/scim.go's scimBearer does: RFC
+// 7235 makes the auth scheme case-insensitive, so "Bearer " is matched with
+// strings.EqualFold rather than a literal prefix, and what follows it is
+// trimmed.
+func bearerToken(header string) (string, bool) {
+	if len(header) < len("Bearer ") || !strings.EqualFold(header[:len("Bearer ")], "Bearer ") {
+		return "", false
+	}
+	return strings.TrimSpace(header[len("Bearer "):]), true
 }
 
 // DatabaseBytes reports the size of the connected database. pg_database_size
