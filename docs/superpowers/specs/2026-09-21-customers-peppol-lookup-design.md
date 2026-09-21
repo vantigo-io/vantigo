@@ -30,12 +30,24 @@ user switch to EHF with one click.
   not registered at that SMP. Gotchas seen live: the base URL may or may not end in `/`
   (trim it — `//` answers 400), and `Accept: application/xml` answers 406 on ELMA (send no
   `Accept`).
-- Document types that mean "can receive an EHF invoice / credit note":
+- Document types that mean "can receive an EHF invoice / credit note" — compared as the
+  **full identifier string, exactly**, against this allow-list and nothing looser:
   `busdox-docid-qns::urn:oasis:names:specification:ubl:schema:xsd:Invoice-2::Invoice##urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0::2.1`
-  and the `CreditNote-2::CreditNote` twin; and, to be future-proof, a
-  `peppol-doctype-wildcard::` id whose value starts with the same
-  `…Invoice-2::Invoice##urn:peppol:pint:billing-1` / `…CreditNote-2::CreditNote##urn:peppol:pint:billing-1`
-  root (today every Norwegian wildcard registrant also has the exact id).
+  and the `CreditNote-2::CreditNote` twin. Two failure modes seen live make anything looser
+  wrong: participants that resolve and answer 200 with **no** invoice document type at all
+  (IBM Norge, Dell AS — order or response profiles only), and DFØ's EHF **Reminder**
+  profile, whose id also starts `…Invoice-2::Invoice##urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0#conformant#…reminder…`
+  — a substring or prefix match says yes to a reminder-only receiver. The
+  `peppol-doctype-wildcard` PINT ids are deliberately not accepted: Norway is not on PINT,
+  a PINT specialisation is another country's format, and every Norwegian wildcard
+  registrant also publishes the exact id (12,947 of 12,947 measured).
+- Roughly one Norwegian participant in ten sits on a foreign SMP (Tickstar, Arratech,
+  Seeburger, OpenText); Digdir itself says the only valid lookup is "the PEPPOL way … via
+  the SML". ELMA's REST API needs an agreement and says it must not be used for this.
+- Three outcomes at the DNS step, never two: NXDOMAIN → not registered (definitive);
+  SERVFAIL / REFUSED / timeout → a technical failure, retryable, **never** "not
+  registered"; NAPTR records but none with `U` + `Meta:SMP` → registered with no SMP
+  service (reported as registered, able to receive nothing).
 - Access is open and unauthenticated by specification; SMP URLs are https on 443 only.
   The Peppol Directory is *not* authoritative for a negative and is not used.
 
@@ -56,7 +68,8 @@ client that fetches and parses the ServiceGroup.
 `Lookup(ctx, participant) (Result, error)`:
 `Result{Registered bool; SMPHost string; CanReceiveInvoice, CanReceiveCreditNote bool}`.
 NXDOMAIN and SMP 404 are `Registered=false`, not errors. Anything else that fails (DNS
-timeout, SERVFAIL, non-2xx/404, unparsable XML, a malformed NAPTR) is an error.
+timeout, SERVFAIL, REFUSED, non-2xx/404, unparsable XML, a malformed NAPTR) is an error.
+NAPTR records with no usable `Meta:SMP` entry are `Registered=true` with no capabilities.
 
 ### D2 — The SMP URL comes from DNS, so the fetch is guarded
 
@@ -140,7 +153,7 @@ identifier derivation (an explicit `peppolId` of any scheme is looked up as type
 NAPTR RDATA decoding from captured bytes incl. malformed input (fuzz-safe: never panics);
 resolver against an in-process UDP/TCP DNS stub (truncation → TCP, NXDOMAIN, SERVFAIL,
 timeout); SMP client against `httptest` (trailing-slash base, no `Accept` header sent, 404,
-500, oversized body, href decoding, exact and wildcard doc types); URL policy (http, port,
+500, oversized body, href decoding, exact doc types only — a reminder-profile id and a wildcard PINT id must NOT count); URL policy (http, port,
 userinfo rejected). `internal/netguard`: the range table moves with its tests; mail's
 tests stay green unchanged. Customers: handler tests through `modtest` with a fake
 `PeppolLookup` for every outcome, the participant-selection rule, withholding, staleness,
