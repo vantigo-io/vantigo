@@ -131,7 +131,7 @@ describe("CustomersPage", () => {
     await screen.findByText("Equinor");
 
     expect(
-      screen.getByPlaceholderText("Search by name, number, organisation number or contact..."),
+      screen.getByPlaceholderText("Search by name, number, organisation number, contact or email..."),
     ).toBeInTheDocument();
   });
 
