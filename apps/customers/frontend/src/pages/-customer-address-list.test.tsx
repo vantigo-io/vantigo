@@ -90,7 +90,7 @@ describe("CustomerAddressesSection", () => {
 
     await screen.findByText("Main office");
     expect(screen.getByText("Primary")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Make primary" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^make branch office the primary address$/i })).toBeInTheDocument();
   });
 
   it("hides Make primary and edit/delete actions without canEdit", async () => {
@@ -131,7 +131,7 @@ describe("CustomerAddressesSection", () => {
     renderSection(fetchMock);
 
     await screen.findByText("Branch office");
-    await userEvent.click(screen.getByRole("button", { name: "Make primary" }));
+    await userEvent.click(screen.getByRole("button", { name: /^make branch office the primary address$/i }));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/1001/addresses/2", {
@@ -166,7 +166,7 @@ describe("CustomerAddressesSection", () => {
     renderSection(fetchMock);
 
     await screen.findByText("Main office");
-    await userEvent.click(screen.getByLabelText("Delete address"));
+    await userEvent.click(screen.getByRole("button", { name: /^delete address — main office$/i }));
 
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText(/delete this invoice address/i)).toBeInTheDocument();
@@ -177,5 +177,81 @@ describe("CustomerAddressesSection", () => {
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/1001/addresses/1", { method: "DELETE" }),
     );
+  });
+
+  it("names each row's actions after its own address, so two addresses of the same type stay individually addressable", async () => {
+    const oslo = address({ id: 1, type: "delivery", label: "Warehouse Oslo", line1: "Osloveien 1", isPrimary: true });
+    const bergen = address({
+      id: 2,
+      type: "delivery",
+      label: "Warehouse Bergen",
+      line1: "Bergensveien 2",
+      isPrimary: false,
+    });
+    const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(url);
+      if (path === "/api/v1/customers/1001/addresses" && (!init || init.method === undefined)) {
+        return Promise.resolve(jsonResponse(200, { data: [oslo, bergen] }));
+      }
+      if (path === "/api/v1/customers/1001/addresses/2" && init?.method === "PUT") {
+        return Promise.resolve(jsonResponse(200, { ...bergen, isPrimary: true }));
+      }
+      if (path === "/api/v1/customers/1001/addresses/1" && init?.method === "DELETE") {
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    renderSection(fetchMock);
+
+    await screen.findByText("Warehouse Bergen");
+
+    // Each row's Edit/Delete/Make-primary resolves to exactly one element —
+    // the bare "Edit address"/"Delete address" wording would otherwise match
+    // two elements per query and throw.
+    const editOslo = screen.getByRole("button", { name: /edit address — warehouse oslo/i });
+    const editBergen = screen.getByRole("button", { name: /edit address — warehouse bergen/i });
+    expect(editOslo).not.toBe(editBergen);
+    const deleteOslo = screen.getByRole("button", { name: /delete address — warehouse oslo/i });
+    const deleteBergen = screen.getByRole("button", { name: /delete address — warehouse bergen/i });
+    expect(deleteOslo).not.toBe(deleteBergen);
+    const makeBergenPrimary = screen.getByRole("button", {
+      name: /^make warehouse bergen the primary address$/i,
+    });
+
+    // Clicking Bergen's "Make primary" acts on Bergen (id 2), never Oslo (id 1).
+    await userEvent.click(makeBergenPrimary);
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.filter(
+          ([calledUrl, calledInit]) =>
+            String(calledUrl) === "/api/v1/customers/1001/addresses/2" && calledInit?.method === "PUT",
+        ),
+      ).toHaveLength(1),
+    );
+    expect(
+      fetchMock.mock.calls.some(
+        ([calledUrl, calledInit]) =>
+          String(calledUrl) === "/api/v1/customers/1001/addresses/1" && calledInit?.method === "PUT",
+      ),
+    ).toBe(false);
+
+    // Clicking Oslo's Delete (not Bergen's) removes Oslo (id 1).
+    await userEvent.click(deleteOslo);
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.filter(
+          ([calledUrl, calledInit]) =>
+            String(calledUrl) === "/api/v1/customers/1001/addresses/1" && calledInit?.method === "DELETE",
+        ),
+      ).toHaveLength(1),
+    );
+    expect(
+      fetchMock.mock.calls.some(
+        ([calledUrl, calledInit]) =>
+          String(calledUrl) === "/api/v1/customers/1001/addresses/2" && calledInit?.method === "DELETE",
+      ),
+    ).toBe(false);
   });
 });

@@ -232,10 +232,24 @@ describe("CustomerContactCard", () => {
       await within(dialog).findByText("This customer was changed by someone else. Reload to see the latest version."),
     ).toBeInTheDocument();
 
+    const customerGets = () =>
+      fetchMock.mock.calls.filter(
+        ([url, init]) =>
+          String(url) === "/api/v1/customers/1001" &&
+          ((init as RequestInit | undefined)?.method ?? undefined) === undefined,
+      );
+    const getsBeforeReload = customerGets().length;
+
     await userEvent.click(within(dialog).getByRole("button", { name: /reload/i }));
 
     dialog = await screen.findByRole("dialog");
     expect(await within(dialog).findByLabelText(/^email/i)).toHaveValue("latest@acme.test");
+
+    // Minor 2 (task 5 review): Reload fetches the customer exactly once —
+    // invalidating ["customers"] refetches this card's own active
+    // useSuspenseQuery, and that refetch's result is read back out of the
+    // cache rather than also being fetched a second time explicitly.
+    expect(customerGets().length).toBe(getsBeforeReload + 1);
 
     await userEvent.click(within(dialog).getByRole("button", { name: /save changes/i }));
 

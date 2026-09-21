@@ -193,7 +193,7 @@ export const CustomerAddressModal = ({
             error={form.errors.country}
           />
           <Checkbox
-            label={t("primaryAddressCheckbox", { type: addressTypeLabel(t, form.values.type) })}
+            label={t("primaryAddressCheckbox", { type: addressTypeLabel(t, form.values.type).toLocaleLowerCase() })}
             description={forcedPrimary ? t("primaryAddressHint") : undefined}
             error={form.errors.isPrimary}
             checked={forcedPrimary || form.values.isPrimary}

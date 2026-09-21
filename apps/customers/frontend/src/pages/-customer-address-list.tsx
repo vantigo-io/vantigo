@@ -107,70 +107,82 @@ export const CustomerAddressesSection = ({ customerId, canEdit }: { customerId: 
                 {addressTypeLabel(t, group.type)}
               </Text>
               <Stack gap={4}>
-                {group.items.map((address) => (
-                  <Group key={address.id} justify="space-between" align="flex-start" wrap="nowrap">
-                    <Stack gap={0}>
-                      {address.label && (
-                        <Text size="sm" fw={500}>
-                          {address.label}
+                {group.items.map((address) => {
+                  // The visible label is short ("Edit", a pencil icon, "Make
+                  // primary"), but a customer with two addresses of the same
+                  // type (two "Delivery" addresses, say) would otherwise give
+                  // every row's actions the same accessible name — no way for
+                  // assistive tech to tell which button acts on which address.
+                  // Each aria-label names its own row's address.
+                  const addressName = address.label ?? address.line1;
+                  return (
+                    <Group key={address.id} justify="space-between" align="flex-start" wrap="nowrap">
+                      <Stack gap={0}>
+                        {address.label && (
+                          <Text size="sm" fw={500}>
+                            {address.label}
+                          </Text>
+                        )}
+                        <Text size="sm">{address.line1}</Text>
+                        {address.line2 && <Text size="sm">{address.line2}</Text>}
+                        {(address.postalCode || address.city) && (
+                          <Text size="sm" c="dimmed">
+                            {[address.postalCode, address.city].filter(Boolean).join(" ")}
+                          </Text>
+                        )}
+                        {address.region && (
+                          <Text size="sm" c="dimmed">
+                            {address.region}
+                          </Text>
+                        )}
+                        <Text size="xs" c="dimmed">
+                          {countryDisplayName(address.country, locale)}
                         </Text>
-                      )}
-                      <Text size="sm">{address.line1}</Text>
-                      {address.line2 && <Text size="sm">{address.line2}</Text>}
-                      {(address.postalCode || address.city) && (
-                        <Text size="sm" c="dimmed">
-                          {[address.postalCode, address.city].filter(Boolean).join(" ")}
-                        </Text>
-                      )}
-                      {address.region && (
-                        <Text size="sm" c="dimmed">
-                          {address.region}
-                        </Text>
-                      )}
-                      <Text size="xs" c="dimmed">
-                        {countryDisplayName(address.country, locale)}
-                      </Text>
-                    </Stack>
-                    <Group gap={4} wrap="nowrap">
-                      {address.isPrimary ? (
-                        <Badge size="sm" variant="light" color="teal">
-                          {t("primaryBadge")}
-                        </Badge>
-                      ) : (
-                        canEdit && (
-                          <Button
-                            variant="subtle"
-                            size="compact-xs"
-                            loading={makePrimaryMutation.isPending && makePrimaryMutation.variables?.id === address.id}
-                            onClick={() => makePrimaryMutation.mutate(address)}
-                          >
-                            {t("makePrimary")}
-                          </Button>
-                        )
-                      )}
-                      {canEdit && (
-                        <>
-                          <ActionIcon
-                            variant="subtle"
-                            color="gray"
-                            aria-label={t("editAddress")}
-                            onClick={() => setModalState({ mode: "edit", address })}
-                          >
-                            <IconPencil size={16} />
-                          </ActionIcon>
-                          <ActionIcon
-                            variant="subtle"
-                            color="red"
-                            aria-label={t("deleteAddress")}
-                            onClick={() => confirmDelete(address)}
-                          >
-                            <IconTrash size={16} />
-                          </ActionIcon>
-                        </>
-                      )}
+                      </Stack>
+                      <Group gap={4} wrap="nowrap">
+                        {address.isPrimary ? (
+                          <Badge size="sm" variant="light" color="teal">
+                            {t("primaryBadge")}
+                          </Badge>
+                        ) : (
+                          canEdit && (
+                            <Button
+                              variant="subtle"
+                              size="compact-xs"
+                              aria-label={t("makePrimaryNamed", { address: addressName })}
+                              loading={
+                                makePrimaryMutation.isPending && makePrimaryMutation.variables?.id === address.id
+                              }
+                              onClick={() => makePrimaryMutation.mutate(address)}
+                            >
+                              {t("makePrimary")}
+                            </Button>
+                          )
+                        )}
+                        {canEdit && (
+                          <>
+                            <ActionIcon
+                              variant="subtle"
+                              color="gray"
+                              aria-label={t("editAddressNamed", { address: addressName })}
+                              onClick={() => setModalState({ mode: "edit", address })}
+                            >
+                              <IconPencil size={16} />
+                            </ActionIcon>
+                            <ActionIcon
+                              variant="subtle"
+                              color="red"
+                              aria-label={t("deleteAddressNamed", { address: addressName })}
+                              onClick={() => confirmDelete(address)}
+                            >
+                              <IconTrash size={16} />
+                            </ActionIcon>
+                          </>
+                        )}
+                      </Group>
                     </Group>
-                  </Group>
-                ))}
+                  );
+                })}
               </Stack>
             </Stack>
           ))}
