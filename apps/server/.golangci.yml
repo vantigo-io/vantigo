@@ -313,6 +313,7 @@ linters:
             - "**/internal/httpx/**"
             - "**/internal/mail/**"
             - "**/internal/management/**"
+            - "**/internal/netguard/**"
             - "**/internal/openapi/**"
             - "**/internal/ratelimit/**"
             - "**/internal/secrets/**"

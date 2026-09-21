@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+
+	"github.com/vantigo-io/vantigo/server/internal/netguard"
 )
 
 // ErrDestinationRejected wraps every rejection the destination guard makes,
@@ -87,54 +89,14 @@ func (g *destinationGuard) resolve(ctx context.Context, host string) ([]netip.Ad
 // disallowedDestination reports whether addr is a private (RFC1918),
 // unique-local (RFC4193), link-local (RFC3927, including the
 // 169.254.169.254 cloud metadata address), loopback, multicast, or
-// otherwise non-routable/reserved address.
+// otherwise non-routable/reserved address. The range table itself lives in
+// internal/netguard, shared with every other outbound client this server
+// guards; only the loopback test hook stays here, since netguard.Disallowed
+// is pure and has no allowlist of its own.
 func disallowedDestination(addr netip.Addr) bool {
 	candidate := addr.Unmap()
 	if candidate.IsLoopback() {
 		return !allowLoopback
 	}
-	// Multicast is refused for IPv4 too, stricter than .NET's
-	// SmtpDestinationGuard, which let 224.0.0.0/4 through; no SMTP server
-	// lives there.
-	if candidate.IsUnspecified() || candidate.IsMulticast() {
-		return true
-	}
-	if candidate.Is4() {
-		return disallowedIPv4(candidate.As4())
-	}
-	return disallowedIPv6(candidate.As16())
-}
-
-func disallowedIPv4(b [4]byte) bool {
-	switch {
-	case b[0] == 0: // 0.0.0.0/8 - "this network"
-		return true
-	case b[0] == 10: // 10.0.0.0/8 - RFC1918
-		return true
-	case b[0] == 100 && b[1] >= 64 && b[1] <= 127: // 100.64.0.0/10 - carrier-grade NAT
-		return true
-	case b[0] == 169 && b[1] == 254: // 169.254.0.0/16 - RFC3927 link-local, incl. the 169.254.169.254 cloud metadata address
-		return true
-	case b[0] == 172 && b[1] >= 16 && b[1] <= 31: // 172.16.0.0/12 - RFC1918
-		return true
-	case b[0] == 192 && b[1] == 0 && b[2] == 0: // 192.0.0.0/24 - IETF protocol assignments
-		return true
-	case b[0] == 192 && b[1] == 168: // 192.168.0.0/16 - RFC1918
-		return true
-	case b[0] >= 240: // 240.0.0.0/4 - reserved, plus 255.255.255.255
-		return true
-	default:
-		return false
-	}
-}
-
-func disallowedIPv6(b [16]byte) bool {
-	addr := netip.AddrFrom16(b)
-	if addr.IsLinkLocalUnicast() {
-		return true
-	}
-	if b[0] == 0xfe && b[1]&0xc0 == 0xc0 { // fec0::/10 - deprecated site-local
-		return true
-	}
-	return b[0]&0xfe == 0xfc // fc00::/7 - RFC4193 unique local addresses
+	return netguard.Disallowed(candidate)
 }
