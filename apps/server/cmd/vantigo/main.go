@@ -377,6 +377,34 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 	}
 	mods := businessModules(access)
 
+	// The management listener is bound here — before any worker starts —
+	// so a bind failure (the port is taken) returns while nothing is
+	// running yet: no worker to strand, and closePool's deferred close
+	// races nothing. It does not begin SERVING until after
+	// identity.RunStartup and the workers below (see the second half of
+	// this split, near srv's construction), so it only answers once the
+	// process is really up; a connection that arrives before that simply
+	// waits in the kernel's accept backlog. mgmtServing tracks the
+	// hand-off: closed by the deferred call right below on every early
+	// return before Serve takes ownership of it, and left alone once it
+	// does, since Server.Shutdown (deferred later, once serving starts)
+	// already closes a listener it was given — closing it twice here would
+	// just log a spurious error on the normal path.
+	var mgmtLn net.Listener
+	if withAPI && cfg.Management != nil {
+		mgmtLn, err = listenManagement(cfg.Management.Port)
+		if err != nil {
+			logger.Error("cannot listen", "port", cfg.Management.Port, "error", err)
+			return 1
+		}
+	}
+	mgmtServing := false
+	defer func() {
+		if mgmtLn != nil && !mgmtServing {
+			_ = mgmtLn.Close()
+		}
+	}()
+
 	if withAPI {
 		assets := web.Assets()
 		index, err := web.NewIndex(assets, cfg.BasePath, cfg.Branding, cfg.Modules)
@@ -432,15 +460,11 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 
 	// The management listener is private and separate on purpose: it has no
 	// host filter, so a control plane can reach it by Service name, and the
-	// public listener never serves it. It starts last, so it only answers
-	// once the process is really up. Registered after closePool's defer, its
-	// shutdown runs first: its handlers use the pool.
-	if withAPI && cfg.Management != nil {
-		mgmtLn, err := listenManagement(cfg.Management.Port)
-		if err != nil {
-			logger.Error("cannot listen", "port", cfg.Management.Port, "error", err)
-			return 1
-		}
+	// public listener never serves it. Serving starts last (Serve below),
+	// so it only answers once the process is really up, even though the
+	// port was bound earlier, before the workers, above. Registered after
+	// closePool's defer, its shutdown runs first: its handlers use the pool.
+	if mgmtLn != nil {
 		mgmt := &http.Server{
 			Handler: management.Handler(management.Options{
 				Logger:  logger,
@@ -456,6 +480,7 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 			IdleTimeout:       idleTimeout,
 			ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
 		}
+		mgmtServing = true
 		go func() {
 			if err := mgmt.Serve(mgmtLn); !errors.Is(err, http.ErrServerClosed) {
 				logger.Error("management listener stopped unexpectedly", "error", err)
