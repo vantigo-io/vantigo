@@ -309,6 +309,8 @@ type GetCustomersParams struct {
 	SortDirection   *string `form:"sortDirection,omitempty" json:"sortDirection,omitempty"`
 	IncludeArchived *bool   `form:"includeArchived,omitempty" json:"includeArchived,omitempty"`
 	Search          *string `form:"search,omitempty" json:"search,omitempty"`
+	Status          *string `form:"status,omitempty" json:"status,omitempty"`
+	Type            *string `form:"type,omitempty" json:"type,omitempty"`
 }
 
 // GetCustomersContactsParams defines parameters for GetCustomersContacts.
@@ -570,6 +572,32 @@ func (siw *ServerInterfaceWrapper) GetCustomers(w http.ResponseWriter, r *http.R
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "search"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "search", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "type", r.URL.Query(), &params.Type, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "type", Err: err})
 		}
 		return
 	}

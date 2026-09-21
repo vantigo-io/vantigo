@@ -658,6 +658,7 @@ paths:
                 - in: query
                   name: sortBy
                   schema:
+                    description: "'id', 'name', 'customerNumber', 'createdAt' or 'updatedAt'. Defaults to 'id'."
                     type: string
                 - in: query
                   name: sortDirection
@@ -670,6 +671,17 @@ paths:
                 - in: query
                   name: search
                   schema:
+                    description: "Matches, case-insensitively, the name, customer number and, only for a caller who may see them, the legal name/id and any linked contact's name/email."
+                    type: string
+                - in: query
+                  name: status
+                  schema:
+                    description: "'active', 'disabled' or 'archived', case-sensitive. Naming a status shows exactly that status, regardless of includeArchived."
+                    type: string
+                - in: query
+                  name: type
+                  schema:
+                    description: "'business' or 'person', case-sensitive."
                     type: string
             responses:
                 "200":

@@ -633,6 +633,8 @@ export interface operations {
                 sortDirection?: string;
                 includeArchived?: boolean;
                 search?: string;
+                status?: string;
+                type?: string;
             };
             header?: never;
             path?: never;
