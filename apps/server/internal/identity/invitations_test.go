@@ -281,6 +281,44 @@ func TestInvitations_OwnerInvitationGrantsOwner(t *testing.T) {
 	}
 }
 
+// TestInvitations_TheFirstOwnerGetsTheBootstrapRoles proves decision 1: an
+// Owner invitation accepted while no Owner exists seats the installation's
+// administrator — Owner and SystemAdmin, with the bootstrap marker written —
+// exactly as /setup would. A later Owner invitation still grants Owner alone
+// (TestInvitations_OwnerInvitationGrantsOwner).
+func TestInvitations_TheFirstOwnerGetsTheBootstrapRoles(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+
+	token, hash := identity.NewTokenForTest()
+	h.exec(t, `INSERT INTO identity.invitations
+		(id, email, normalized_email, role, token_hash, created_at, expires_at)
+		VALUES ($1, 'first@example.test', $2, 'Owner', $3, $4, $5)`,
+		uuid.New(), identity.NormalizeEmailForTest("first@example.test"), hash, h.now(), h.now().Add(time.Hour))
+
+	c := h.client(t)
+	r := accept(c, token, inviteePassword, "First Owner")
+	if r.status != http.StatusCreated {
+		t.Fatalf("accept: status %d body %s", r.status, r.body)
+	}
+	var got struct {
+		User struct {
+			Roles []string `json:"roles"`
+		} `json:"user"`
+	}
+	r.json(&got)
+	slices.Sort(got.User.Roles)
+	if !slices.Equal(got.User.Roles, []string{identity.RoleOwner, identity.RoleSystemAdmin}) {
+		t.Errorf("roles %v, want [Owner SystemAdmin]", got.User.Roles)
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.bootstrap_state`); n != 1 {
+		t.Errorf("bootstrap_state rows = %d, want 1", n)
+	}
+	if bootstrapAvailable(t, h.client(t)) {
+		t.Error("bootstrap must be consumed once the first Owner exists")
+	}
+}
+
 // TestInvitations_ResendMintsANewTokenAndRevokesTheOld resends an
 // invitation twice: each resend is a new invitation with a new token, and
 // every earlier token stops working. An accepted invitation cannot be
