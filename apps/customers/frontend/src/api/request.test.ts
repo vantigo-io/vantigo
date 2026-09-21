@@ -2,7 +2,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { stubFetch } from "../test/fetch";
 import { sessionQueryKey } from "./auth";
-import { request, setAuthStateClearer, setUnauthorizedHandler } from "./request";
+import { ApiConflictError, request, setAuthStateClearer, setUnauthorizedHandler } from "./request";
 
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -91,5 +91,58 @@ describe("request", () => {
       name: "ApiValidationError",
       fields: expect.any(Object),
     });
+  });
+
+  it("throws ApiConflictError for a revision conflict (409, no code, no fields)", async () => {
+    stubFetch(() =>
+      Promise.resolve(
+        jsonResponse(409, {
+          title: "Customer revision conflict",
+          detail: "The customer was changed by someone else.",
+          status: 409,
+        }),
+      ),
+    );
+
+    const error = await request("/api/v1/customers/1001", { method: "PUT" }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiConflictError);
+    expect((error as ApiConflictError).status).toBe(409);
+    expect((error as ApiConflictError).title).toBe("Customer revision conflict");
+    expect((error as ApiConflictError).detail).toBe("The customer was changed by someone else.");
+    expect((error as ApiConflictError).code).toBeUndefined();
+    expect((error as ApiConflictError).duplicates).toBeUndefined();
+    expect((error as ApiConflictError).message).toBe("The customer was changed by someone else.");
+  });
+
+  it("throws ApiConflictError carrying code and duplicates for a duplicate legal identity", async () => {
+    stubFetch(() =>
+      Promise.resolve(
+        jsonResponse(409, {
+          title: "Duplicate legal identity",
+          code: "duplicate_legal_identity",
+          detail: "Another customer already has this legal identity.",
+          status: 409,
+          duplicates: [{ id: 5, customerNumber: 1005, name: "Acme AS", status: "active" }],
+        }),
+      ),
+    );
+
+    const error = await request("/api/v1/customers", { method: "POST" }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiConflictError);
+    expect((error as ApiConflictError).code).toBe("duplicate_legal_identity");
+    expect((error as ApiConflictError).duplicates).toEqual([
+      { id: 5, customerNumber: 1005, name: "Acme AS", status: "active" },
+    ]);
+  });
+
+  it("still throws the generic error for a 409 with an unparsable body", async () => {
+    stubFetch(() => Promise.resolve(new Response(null, { status: 409 })));
+
+    const error = await request("/api/v1/customers/1001/timeline/7", { method: "DELETE" }).catch((e: unknown) => e);
+
+    expect(error).not.toBeInstanceOf(ApiConflictError);
+    expect((error as { status?: number }).status).toBe(409);
   });
 });
