@@ -148,6 +148,28 @@ describe("CustomerBillingCard", () => {
     });
   });
 
+  it("saves without asking again for the profile the server just handed back", async () => {
+    // The 200 body is written into this query's own cache, so the broad
+    // ["customers"] invalidation that follows deliberately skips it.
+    const fetchMock = renderCard(emptyProfile);
+    await userEvent.click(await screen.findByLabelText("Edit billing profile"));
+    const dialog = await screen.findByRole("dialog");
+    const billingGets = () =>
+      fetchMock.mock.calls.filter(
+        ([url, init]) =>
+          String(url).endsWith("/billing-profile") && (init as RequestInit | undefined)?.method === undefined,
+      );
+    const getsBeforeSave = billingGets().length;
+
+    await userEvent.click(within(dialog).getByRole("button", { name: /save changes/i }));
+
+    // The save's invalidation runs before the modal closes, so by the time
+    // the dialog is gone any extra GET it asked for would be on record.
+    await waitFor(() => expect(lastBillingPut(fetchMock)).toBeTruthy());
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(billingGets().length).toBe(getsBeforeSave);
+  });
+
   it("renders each set field through its own human label", async () => {
     renderCard({
       ...emptyProfile,

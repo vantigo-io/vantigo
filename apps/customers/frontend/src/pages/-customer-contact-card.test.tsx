@@ -184,6 +184,64 @@ describe("CustomerContactCard", () => {
     expect(await within(dialog).findByText("Not a valid email address")).toBeInTheDocument();
   });
 
+  it("keeps the conflict banner and the refused revision when the reload itself fails", async () => {
+    // Awaiting an invalidation would resolve even when the refetch under it
+    // failed, leaving stale values, a stale revision and no banner — a save
+    // that looks armed and is not.
+    const fetchMock = vi.fn();
+    let conflicted = false;
+    fetchMock.mockImplementation((url: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(url);
+      if (path === "/api/v1/customers/1001" && (!init || init.method === undefined)) {
+        return conflicted
+          ? Promise.resolve(new Response(null, { status: 500 }))
+          : Promise.resolve(
+              jsonResponse(200, customer({ contactInfo: { email: "old@acme.test", phone: null, website: null } })),
+            );
+      }
+      if (path === "/api/v1/customers/1001/contact-info" && init?.method === "PUT") {
+        conflicted = true;
+        return Promise.resolve(
+          jsonResponse(409, {
+            title: "Customer revision conflict",
+            detail: "The customer was changed by someone else.",
+            status: 409,
+          }),
+        );
+      }
+      if (path === "/api/v1/customers/1001/addresses") return Promise.resolve(jsonResponse(200, { data: [] }));
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    stubFetch(fetchMock);
+    renderCard();
+
+    await userEvent.click(await screen.findByLabelText("Edit contact details"));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: /save changes/i }));
+
+    const banner = "This customer was changed by someone else. Reload to see the latest version.";
+    expect(await within(dialog).findByText(banner)).toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole("button", { name: /reload/i }));
+
+    expect(await within(dialog).findByText("Could not reload. Try again.")).toBeInTheDocument();
+    expect(within(dialog).getByText(banner)).toBeInTheDocument();
+
+    // The revision was not quietly re-seeded as fresh: the next save still
+    // sends the one the server refused.
+    await userEvent.click(within(dialog).getByRole("button", { name: /save changes/i }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.filter(
+          ([url, init]) =>
+            String(url) === "/api/v1/customers/1001/contact-info" &&
+            (init as RequestInit | undefined)?.method === "PUT",
+        ),
+      ).toHaveLength(2),
+    );
+    expect(JSON.parse(String((lastContactInfoPut(fetchMock) as [string, RequestInit])[1].body)).revision).toBe(3);
+  });
+
   it("shows the Reload pattern on a revision conflict, re-seeding values and the revision the next save sends", async () => {
     const fetchMock = vi.fn();
     let reloaded = false;
