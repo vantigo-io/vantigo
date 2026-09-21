@@ -90,6 +90,22 @@ describe("customer detail header — archive and restore", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/1001", { method: "DELETE" }));
   });
 
+  it("hides Archive for an already-archived customer even with canArchive", async () => {
+    await renderHeader(
+      (url) => {
+        const identity = legalIdentity404(url);
+        if (identity) return identity;
+        if (String(url) === "/api/v1/customers/1001")
+          return Promise.resolve(jsonResponse(200, customer({ status: "archived" })));
+        return Promise.resolve(new Response(null, { status: 404 }));
+      },
+      { canArchive: true },
+    );
+
+    expect(screen.getByText(/this customer is archived/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /archive customer/i })).not.toBeInTheDocument();
+  });
+
   it("shows an archived banner and restores through updateCustomer with the current revision", async () => {
     let current = customer({ status: "archived" });
     const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
