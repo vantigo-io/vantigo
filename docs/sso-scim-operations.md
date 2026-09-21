@@ -287,6 +287,11 @@ enabled. Create the first Owner through `/setup` on the fresh installation, befo
 anyone else can reach it; that account is also the SystemAdmin. Local password login,
 passkeys and local MFA are independent of the external provider.
 
+If the installation is reachable before an operator can complete `/setup`, set
+`BOOTSTRAP_OWNER_EMAIL` instead: the same break-glass Owner is then seated by an
+emailed invitation issued at startup rather than by whoever reaches `/setup`
+first. See [the management listener](management.md#seating-the-first-owner-without-setup).
+
 With `OWNERS_REQUIRE_MFA=1` (the default outside development), Owner and SystemAdmin
 operations require a second factor — a TOTP code, a recovery code or a passkey. Store
 recovery codes offline in the organization's break-glass process. OIDC claims never
