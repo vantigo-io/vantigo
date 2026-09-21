@@ -6,7 +6,21 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
 )
+
+// addressReq builds a gen.CustomerAddressRequest from validateAddress's old
+// positional shape, so the table-driven-style calls below stay terse now
+// that validateAddress takes the generated request type directly (fix-round
+// 1's minor: "a small input struct ... instead of eight positional
+// arguments").
+func addressReq(addrType string, label *string, line1 string, line2, postalCode, city, region *string, country string) gen.CustomerAddressRequest {
+	return gen.CustomerAddressRequest{
+		Type: addrType, Label: label, Line1: line1, Line2: line2,
+		PostalCode: postalCode, City: city, Region: region, Country: country,
+	}
+}
 
 // Ported from Domain/Customers/Common/FriendlyNameTests.cs.
 // Constructor_WithNullOrWhitespace_ThrowsDomainException. Asserts the exact
@@ -848,7 +862,7 @@ func TestValidateAddressType_NormalizesAndRejects(t *testing.T) {
 
 func TestValidateAddress_ValidValuesNormalize(t *testing.T) {
 	label, line2, postal, city, region := "HQ", "Suite 2", "0155", "Oslo", "Oslo"
-	got, errs := validateAddress(" Invoice ", &label, " Storgata 1 ", &line2, &postal, &city, &region, " NO ")
+	got, errs := validateAddress(addressReq(" Invoice ", &label, " Storgata 1 ", &line2, &postal, &city, &region, " NO "))
 	if errs != nil {
 		t.Fatalf("validateAddress: unexpected errors %v", errs)
 	}
@@ -867,7 +881,7 @@ func TestValidateAddress_ValidValuesNormalize(t *testing.T) {
 // optional field.
 func TestValidateAddress_OptionalFieldsBlankOrAbsentClearToNil(t *testing.T) {
 	blank := "   "
-	got, errs := validateAddress("postal", &blank, "Storgata 1", nil, nil, nil, &blank, "se")
+	got, errs := validateAddress(addressReq("postal", &blank, "Storgata 1", nil, nil, nil, &blank, "se"))
 	if errs != nil {
 		t.Fatalf("validateAddress: unexpected errors %v", errs)
 	}
@@ -877,7 +891,7 @@ func TestValidateAddress_OptionalFieldsBlankOrAbsentClearToNil(t *testing.T) {
 }
 
 func TestValidateAddress_RequiredFieldsBlankOrInvalidReportAllErrors(t *testing.T) {
-	_, errs := validateAddress("bogus", nil, "", nil, nil, nil, nil, "xx")
+	_, errs := validateAddress(addressReq("bogus", nil, "", nil, nil, nil, nil, "xx"))
 	keys := make([]string, 0, len(errs))
 	for k := range errs {
 		keys = append(keys, k)
@@ -891,7 +905,7 @@ func TestValidateAddress_RequiredFieldsBlankOrInvalidReportAllErrors(t *testing.
 
 func TestValidateAddress_OptionalFieldTooLongReportsItsOwnError(t *testing.T) {
 	label := strings.Repeat("a", 101)
-	_, errs := validateAddress("postal", &label, "Storgata 1", nil, nil, nil, nil, "no")
+	_, errs := validateAddress(addressReq("postal", &label, "Storgata 1", nil, nil, nil, nil, "no"))
 	want := "A label cannot be longer than 100 characters, the given value was 101 characters"
 	if got := errs["label"]; len(got) != 1 || got[0] != want {
 		t.Errorf(`validateAddress errors["label"] = %v, want [%q]`, got, want)
@@ -901,7 +915,7 @@ func TestValidateAddress_OptionalFieldTooLongReportsItsOwnError(t *testing.T) {
 // TestValidateAddress_NorwegianAddressRequiresFourDigitPostalCodeAndCity
 // pins the controller ruling's exact wording for D3's one cross-field rule.
 func TestValidateAddress_NorwegianAddressRequiresFourDigitPostalCodeAndCity(t *testing.T) {
-	_, errs := validateAddress("postal", nil, "Storgata 1", nil, nil, nil, nil, "no")
+	_, errs := validateAddress(addressReq("postal", nil, "Storgata 1", nil, nil, nil, nil, "no"))
 	wantPostal := "A Norwegian address needs a four-digit postal code"
 	if got := errs["postalCode"]; len(got) != 1 || got[0] != wantPostal {
 		t.Errorf(`validateAddress (no postal/city given) errors["postalCode"] = %v, want [%q]`, got, wantPostal)
@@ -913,21 +927,39 @@ func TestValidateAddress_NorwegianAddressRequiresFourDigitPostalCodeAndCity(t *t
 
 	fiveDigits := "01550"
 	city := "Oslo"
-	_, errs = validateAddress("postal", nil, "Storgata 1", nil, &fiveDigits, &city, nil, "no")
+	_, errs = validateAddress(addressReq("postal", nil, "Storgata 1", nil, &fiveDigits, &city, nil, "no"))
 	if got := errs["postalCode"]; len(got) != 1 || got[0] != wantPostal {
 		t.Errorf(`validateAddress (5-digit postal code) errors["postalCode"] = %v, want [%q]`, got, wantPostal)
 	}
 
 	postal := "0155"
-	_, errs = validateAddress("postal", nil, "Storgata 1", nil, &postal, &city, nil, "no")
+	_, errs = validateAddress(addressReq("postal", nil, "Storgata 1", nil, &postal, &city, nil, "no"))
 	if errs != nil {
 		t.Errorf("validateAddress (valid Norwegian postal code and city) = unexpected errors %v", errs)
 	}
 
 	// A non-Norwegian address needs neither: postalCode and city stay
 	// optional, the ordinary D3 rule.
-	_, errs = validateAddress("postal", nil, "Storgata 1", nil, nil, nil, nil, "se")
+	_, errs = validateAddress(addressReq("postal", nil, "Storgata 1", nil, nil, nil, nil, "se"))
 	if errs != nil {
 		t.Errorf("validateAddress (non-Norwegian, no postal/city) = unexpected errors %v", errs)
+	}
+}
+
+// TestValidateAddress_NorwegianRuleAppliesRegardlessOfCountryCasing proves
+// the cross-field check runs against validateCountryCode's already-lowercased
+// c, not the caller's raw country string: "NO" (unnormalized) must still
+// trigger the same postalCode/city requirement "no" does — a check that
+// compared the raw country instead would silently skip the rule for any
+// caller that sent it upper- or mixed-case.
+func TestValidateAddress_NorwegianRuleAppliesRegardlessOfCountryCasing(t *testing.T) {
+	_, errs := validateAddress(addressReq("postal", nil, "Storgata 1", nil, nil, nil, nil, "NO"))
+	wantPostal := "A Norwegian address needs a four-digit postal code"
+	if got := errs["postalCode"]; len(got) != 1 || got[0] != wantPostal {
+		t.Errorf(`validateAddress (country "NO") errors["postalCode"] = %v, want [%q]`, got, wantPostal)
+	}
+	wantCity := "A Norwegian address needs a city"
+	if got := errs["city"]; len(got) != 1 || got[0] != wantCity {
+		t.Errorf(`validateAddress (country "NO") errors["city"] = %v, want [%q]`, got, wantCity)
 	}
 }

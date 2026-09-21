@@ -71,8 +71,15 @@ LIMIT 1;
 -- (invoice-ready customer design D3): the demote-before-promote step a write
 -- elsewhere in the same transaction needs before its own INSERT/UPDATE can
 -- safely set a different address of the same type primary, without
--- transiently violating ux_customer_addresses_primary.
-UPDATE customers.customer_addresses SET is_primary = @is_primary, updated_at = @updated_at::timestamptz WHERE id = @id;
+-- transiently violating ux_customer_addresses_primary. Scoped to
+-- customer_id, like every other write in this file (GetCustomerAddress,
+-- UpdateCustomerAddress, DeleteCustomerAddress): every id this statement
+-- ever receives already came from a row this same transaction just read
+-- under that customer's lock, so the extra predicate changes no row this
+-- code path touches — it exists so a call site mistake (the wrong id)
+-- fails to match zero rows instead of silently flipping some other
+-- customer's address.
+UPDATE customers.customer_addresses SET is_primary = @is_primary, updated_at = @updated_at::timestamptz WHERE id = @id AND customer_id = @customer_id;
 
 -- name: InsertCustomerAddress :one
 -- InsertCustomerAddress is PostCustomersByIdAddresses's write (invoice-ready

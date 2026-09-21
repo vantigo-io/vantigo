@@ -7,6 +7,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf16"
+
+	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
 )
 
 // This file ports the .NET Customers module's value objects
@@ -567,27 +569,30 @@ type validatedAddress struct {
 // country, postalCode and city have each already passed their own check,
 // the same ordering validateLegalIdentity's Norwegian organisation-number
 // rule uses: it never overwrites the specific reason postalCode or city
-// already failed for on its own.
-func validateAddress(addrType string, label *string, line1 string, line2, postalCode, city, region *string, country string) (validatedAddress, map[string][]string) {
+// already failed for on its own. Takes the generated request type directly,
+// the same shape validateBillingProfile's own does — req.IsPrimary carries
+// no value of its own to validate (it is a plain bool the caller already
+// defaults), so it is not read here; addresses.go composes the two.
+func validateAddress(req gen.CustomerAddressRequest) (validatedAddress, map[string][]string) {
 	errs := map[string][]string{}
 
-	t, err := validateAddressType(addrType)
+	t, err := validateAddressType(req.Type)
 	if err != "" {
 		errs["type"] = []string{err}
 	}
-	l1, err := validateAddressLine1(line1)
+	l1, err := validateAddressLine1(req.Line1)
 	if err != "" {
 		errs["line1"] = []string{err}
 	}
-	c, err := validateCountryCode(country)
+	c, err := validateCountryCode(req.Country)
 	if err != "" {
 		errs["country"] = []string{err}
 	}
-	lbl := validateOptionalAddressText(label, "label", "A label", 100, errs)
-	l2 := validateOptionalAddressText(line2, "line2", "An address's second line", 255, errs)
-	pc := validateOptionalAddressText(postalCode, "postalCode", "A postal code", 20, errs)
-	ct := validateOptionalAddressText(city, "city", "A city", 100, errs)
-	rg := validateOptionalAddressText(region, "region", "A region", 100, errs)
+	lbl := validateOptionalAddressText(req.Label, "label", "A label", 100, errs)
+	l2 := validateOptionalAddressText(req.Line2, "line2", "An address's second line", 255, errs)
+	pc := validateOptionalAddressText(req.PostalCode, "postalCode", "A postal code", 20, errs)
+	ct := validateOptionalAddressText(req.City, "city", "A city", 100, errs)
+	rg := validateOptionalAddressText(req.Region, "region", "A region", 100, errs)
 
 	if errs["country"] == nil && c == "no" {
 		if errs["postalCode"] == nil && (pc == nil || !norwegianPostalCode.MatchString(*pc)) {
