@@ -525,6 +525,67 @@ describe("CustomerFormModal", () => {
     ]);
   });
 
+  it("sends contactInfo with trimmed email and phone when either is filled", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, { id: 1004 }));
+    stubFetch(fetchMock);
+    const { onClose } = renderModal({ mode: "create" });
+    await userEvent.type(screen.getByLabelText(/name/i), "Acme");
+    await userEvent.type(screen.getByLabelText(/^email/i), "  hello@acme.test  ");
+    await userEvent.type(screen.getByLabelText(/^phone/i), "  +47 934 89 731  ");
+    await userEvent.click(screen.getByRole("button", { name: /create customer/i }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Acme",
+        status: "active",
+        type: "business",
+        contactInfo: { email: "hello@acme.test", phone: "+47 934 89 731" },
+      }),
+    });
+  });
+
+  it("sends only the filled half of contactInfo", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, { id: 1005 }));
+    stubFetch(fetchMock);
+    const { onClose } = renderModal({ mode: "create" });
+    await userEvent.type(screen.getByLabelText(/name/i), "Acme");
+    await userEvent.type(screen.getByLabelText(/^email/i), "hello@acme.test");
+    await userEvent.click(screen.getByRole("button", { name: /create customer/i }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Acme",
+        status: "active",
+        type: "business",
+        contactInfo: { email: "hello@acme.test" },
+      }),
+    });
+  });
+
+  it("maps a 400 keyed contactInfo.email/contactInfo.phone onto the email/phone inputs", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(400, {
+        title: "Invalid customer",
+        status: 400,
+        errors: {
+          "contactInfo.email": ["Not a valid email address"],
+          "contactInfo.phone": ["Not a valid phone number"],
+        },
+      }),
+    );
+    stubFetch(fetchMock);
+    renderModal({ mode: "create" });
+    await userEvent.type(screen.getByLabelText(/name/i), "Acme");
+    await userEvent.type(screen.getByLabelText(/^email/i), "not-an-email");
+    await userEvent.click(screen.getByRole("button", { name: /create customer/i }));
+    expect(await screen.findByText("Not a valid email address")).toBeInTheDocument();
+    expect(screen.getByText("Not a valid phone number")).toBeInTheDocument();
+  });
+
   it("hints at existing customers with a similar name while creating (debounced, 3+ characters)", async () => {
     const fetchMock = vi.fn((url: RequestInfo | URL) => {
       const path = String(url);

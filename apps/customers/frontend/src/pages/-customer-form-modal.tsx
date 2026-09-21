@@ -44,7 +44,32 @@ type CustomerFormValues = {
   identity: CustomerIdentity | undefined;
   status: string;
   type: CustomerType;
+  /** Design D2/D6: create-only — email and phone are edited afterwards through the contact-info card. */
+  email: string;
+  phone: string;
 };
+
+/**
+ * The optional `contactInfo` create sends (design D2) — only when at least
+ * one of email/phone is filled, and website is not offered on this form (the
+ * contact-info card's own edit modal is where that is set).
+ */
+const contactInfoToSend = (email: string, phone: string) => {
+  const trimmedEmail = email.trim();
+  const trimmedPhone = phone.trim();
+  if (!trimmedEmail && !trimmedPhone) return undefined;
+  return { ...(trimmedEmail ? { email: trimmedEmail } : {}), ...(trimmedPhone ? { phone: trimmedPhone } : {}) };
+};
+
+/**
+ * Validation errors for `contactInfo.email`/`contactInfo.phone` (design D2)
+ * are keyed the way `identity.<field>` already is — this maps them onto the
+ * form's own bare `email`/`phone` fields.
+ */
+const mapContactInfoErrors = (fieldErrors: Record<string, string>): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(fieldErrors).map(([field, message]) => [field.replace(/^contactInfo\./, ""), message]),
+  );
 
 /**
  * What the modal has to show instead of the form's own validation once a
@@ -90,7 +115,7 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
     if (conflict) setConflict(null);
   }
   const form = useForm<CustomerFormValues>({
-    initialValues: { name: "", identity: undefined, status: "active", type: "business" },
+    initialValues: { name: "", identity: undefined, status: "active", type: "business", email: "", phone: "" },
     validate: { name: (value: string) => (value.trim() ? null : t("customerNameRequired")) },
   });
   useEffect(() => {
@@ -100,6 +125,8 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
         identity: undefined,
         status: state.mode === "edit" ? state.customer.status : "active",
         type: state.mode === "edit" ? state.customer.type : "business",
+        email: "",
+        phone: "",
       });
       form.resetDirty();
       form.clearErrors();
@@ -108,27 +135,31 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
   }, [state]);
   const mutation = useMutation({
     mutationFn: ({
-      values: { name, status, identity, type },
+      values: { name, status, identity, type, email, phone },
       override,
     }: {
       values: CustomerFormValues;
       override: boolean;
-    }) =>
-      isEdit
-        ? updateCustomer(state.customer.id, {
-            name,
-            status,
-            ...(identity ? { identity } : {}),
-            revision,
-            ...(override ? { allowDuplicateIdentity: true } : {}),
-          })
-        : createCustomer({
-            name,
-            status,
-            type,
-            ...(identity ? { identity } : {}),
-            ...(override ? { allowDuplicateIdentity: true } : {}),
-          }),
+    }) => {
+      if (isEdit) {
+        return updateCustomer(state.customer.id, {
+          name,
+          status,
+          ...(identity ? { identity } : {}),
+          revision,
+          ...(override ? { allowDuplicateIdentity: true } : {}),
+        });
+      }
+      const contactInfo = contactInfoToSend(email, phone);
+      return createCustomer({
+        name,
+        status,
+        type,
+        ...(identity ? { identity } : {}),
+        ...(contactInfo ? { contactInfo } : {}),
+        ...(override ? { allowDuplicateIdentity: true } : {}),
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       setConflict(null);
@@ -141,7 +172,7 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
     },
     onError: (error) => {
       if (error instanceof ApiValidationError) {
-        form.setErrors(error.fieldErrors);
+        form.setErrors(mapContactInfoErrors(error.fieldErrors));
         return;
       }
       if (error instanceof ApiConflictError) {
@@ -278,6 +309,12 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
             />
           )}
           {!isEdit && <SimilarNamesHint name={form.values.name} t={t} onNavigate={onClose} />}
+          {!isEdit && (
+            <Group grow>
+              <TextInput label={t("email")} placeholder={t("emailPlaceholder")} {...form.getInputProps("email")} />
+              <TextInput label={t("phone")} placeholder={t("phonePlaceholder")} {...form.getInputProps("phone")} />
+            </Group>
+          )}
           <Select
             label={t("status")}
             data={[
