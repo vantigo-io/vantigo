@@ -73,6 +73,15 @@ func (s *server) hasPermission(ctx context.Context, key string) bool {
 	return contracts.HasPermission(ctx, s.deps.Access, key)
 }
 
+// hasPermissions is hasPermission for an AND-gate of several keys, asked as one
+// access check rather than one per key (contracts.HasPermissions). GetCustomers
+// is its caller: contactsView and associationsView are only ever wanted
+// together, and a check is a session lookup plus a permission query, so asking
+// for both at once halves what the list endpoint pays for the answer.
+func (s *server) hasPermissions(ctx context.Context, keys ...string) bool {
+	return contracts.HasPermissions(ctx, s.deps.Access, keys...)
+}
+
 // deref returns *s, or "" for a nil s.
 func deref(s *string) string {
 	if s == nil {
