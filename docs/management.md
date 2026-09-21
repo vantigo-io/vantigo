@@ -33,7 +33,7 @@ other unknown path does).
 | `version` | The build version, the same string `/health/ready` reports |
 | `bootstrap` | `pending`: no Owner and no invitation that can be accepted. `invited`: an Owner invitation is waiting. `completed`: an Owner exists |
 | `usage.users` | Every account |
-| `usage.activeUsers` | Accounts that can sign in: not disabled and not locked out. It says nothing about recency |
+| `usage.activeUsers` | Accounts that can sign in: not disabled and not locked out, and, while SCIM is enabled, not deprovisioned upstream — except an Owner, who stays counted as the break-glass account even then. It says nothing about recency |
 | `usage.databaseBytes` | `pg_database_size` of the instance's database |
 
 There is no `usage.storageBytes` field — usage is users, active users and

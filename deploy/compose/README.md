@@ -77,8 +77,9 @@ users from `/settings`.
 
 If the stack will be reachable before an operator can complete `/setup`, set
 `BOOTSTRAP_OWNER_EMAIL` in `vantigo.env` instead: `/setup` is closed from the
-start, and that address is mailed an Owner invitation at every start until it
-is accepted. See [the management listener](../../docs/management.md).
+start, and that address is mailed an Owner invitation once; if it expires
+unused, the next start issues a fresh one. See
+[the management listener](../../docs/management.md).
 
 ## Configuration
 
