@@ -394,7 +394,7 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 	if withAPI && cfg.Management != nil {
 		mgmtLn, err = listenManagement(cfg.Management.Port)
 		if err != nil {
-			logger.Error("cannot listen", "port", cfg.Management.Port, "error", err)
+			logger.Error("cannot listen on the management port", "port", cfg.Management.Port, "error", err)
 			return 1
 		}
 	}
