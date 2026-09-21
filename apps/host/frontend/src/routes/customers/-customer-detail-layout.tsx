@@ -111,6 +111,8 @@ export const CustomerDetailLayout = () => {
     <>
       <CustomerDetailHeader
         customerId={customerId}
+        canArchive={hasPermissions(permissions, ["customers:delete"])}
+        canRestore={hasPermissions(permissions, ["customers:update"])}
         actions={
           showCorrespondenceAction(enabledModules, permissions) ? (
             <Button
