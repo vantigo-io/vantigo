@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -39,6 +40,7 @@ type customerRow struct {
 	LegalType        *string
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+	Revision         int32
 	EntryCount       int64
 	LatestOccurredOn pgtype.Date
 }
@@ -47,7 +49,7 @@ func fromCustomerRow(c store.CustomersCustomer, ts store.CustomerTimelineSummary
 	return customerRow{
 		ID: c.ID, CustomerNumber: c.CustomerNumber, Name: c.Name, Status: c.Status, Type: c.Type,
 		LegalCountry: c.LegalCountry, LegalID: c.LegalID, LegalName: c.LegalName, LegalSource: c.LegalSource, LegalType: c.LegalType,
-		CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
+		CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, Revision: c.Revision,
 		EntryCount: ts.EntryCount, LatestOccurredOn: ts.LatestOccurredOn,
 	}
 }
@@ -60,7 +62,7 @@ func fromListRow(r store.ListCustomersRow) customerRow {
 	return customerRow{
 		ID: r.ID, CustomerNumber: r.CustomerNumber, Name: r.Name, Status: r.Status, Type: r.Type,
 		LegalCountry: r.LegalCountry, LegalID: r.LegalID, LegalName: r.LegalName, LegalSource: r.LegalSource, LegalType: r.LegalType,
-		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, Revision: r.Revision,
 		EntryCount: r.EntryCount, LatestOccurredOn: r.LatestOccurredOn,
 	}
 }
@@ -110,6 +112,7 @@ func safeCustomerResponse(row customerRow, includeIdentity bool) gen.SafeCustome
 		Type:           &row.Type,
 		CreatedAt:      row.CreatedAt,
 		UpdatedAt:      row.UpdatedAt,
+		Revision:       &row.Revision,
 		TimelineSummary: gen.SafeTimelineSummary{
 			EntryCount:       int32(row.EntryCount),
 			LatestOccurredOn: dateFromPgtype(row.LatestOccurredOn),
@@ -119,6 +122,22 @@ func safeCustomerResponse(row customerRow, includeIdentity bool) gen.SafeCustome
 		resp.Identity = &gen.SafeCustomerIdentity{Country: *row.LegalCountry, Type: *row.LegalType, Id: *row.LegalID}
 	}
 	return resp
+}
+
+// customerRevisionConflictTitle is the title every revision-guarded write in
+// this file (and customer_type.go) answers 409 with — customers foundation
+// design D5, the module's own revision convention (time/projects'
+// "revision", not the timeline's "expectedRevision").
+const customerRevisionConflictTitle = "Customer revision conflict"
+
+// customerRevisionConflict builds the 409 body for a stale revision: read is
+// the revision the caller supplied (and, by the time this is called, is
+// known to disagree with the row), now is the row's current one.
+func customerRevisionConflict(read, now int32) gen.CustomerConflictProblem {
+	title := customerRevisionConflictTitle
+	detail := fmt.Sprintf("The customer has been changed since revision %d was read; it is now at revision %d.", read, now)
+	status := int32(http.StatusConflict)
+	return gen.CustomerConflictProblem{Title: &title, Detail: &detail, Status: &status}
 }
 
 // likeReplacer escapes ILIKE's special characters as .NET's
@@ -393,17 +412,23 @@ func (s *server) GetCustomer(ctx context.Context, req gen.GetCustomerRequestObje
 // PutCustomersById Update a customer
 // (PUT /api/v1/customers/{id})
 //
-// Ordering follows UpdateCustomerEndpoint.cs:23-129 (inventory §1.4): (1)
-// the same legal-identity-manage 403 gate as PostCustomers, first, ahead of
+// Ordering follows UpdateCustomerEndpoint.cs:23-129 (inventory §1.4), with
+// the revision guard (customers foundation design D5) inserted where the
+// controller ruling for that design places it: (1) the same
+// legal-identity-manage 403 gate as PostCustomers, first, ahead of
 // everything else — before field validation, before the 404 lookup, and
 // before the post-404 identity re-validation; (2) name and status are
 // validated next, together, before the customer lookup; (3) the lookup
-// itself, 404 if missing; (4) only once the customer is found is the
-// identity re-validated, as its own ValidationProblem — so an invalid name
-// against a missing id answers 400 (validation wins) while an invalid
-// identity against a missing id answers 404 (existence wins), but identity
-// supplied without legal-identity-manage against a missing id answers 403
-// (the permission gate wins over both).
+// itself, 404 if missing; (4) a supplied revision that disagrees with the
+// row just read, 409 — before the identity is even looked at, since a
+// caller working from a stale picture should be told to re-read before
+// anything about the request body is judged further; (5) only once the
+// customer is found and its revision confirmed is the identity
+// re-validated, as its own ValidationProblem — so an invalid name against a
+// missing id answers 400 (validation wins), an invalid identity against a
+// missing id answers 404 (existence wins), identity supplied without
+// legal-identity-manage against a missing id answers 403 (the permission
+// gate wins over both), and a stale revision wins over an invalid identity.
 //
 // When the request omits identity, the persisted identity is left
 // unchanged: UpdateCustomerEndpoint.cs:71 seeds customerIdentity from
@@ -454,6 +479,14 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 		return nil, fmt.Errorf("customers: get customer: %w", err)
 	}
 
+	// A stale revision is a 409 regardless of what the rest of the request
+	// would do — including a request that, once parsed, turns out to be a
+	// no-op (customers foundation design D5): the caller's picture of the
+	// row is stale either way.
+	if body.Revision != nil && *body.Revision != existing.Revision {
+		return gen.PutCustomersById409ApplicationProblemPlusJSONResponse(customerRevisionConflict(*body.Revision, existing.Revision)), nil
+	}
+
 	beforeIdentity := identityFromRow(existing.LegalCountry, existing.LegalID, existing.LegalName, existing.LegalSource, existing.LegalType)
 	afterIdentity := beforeIdentity
 	if body.Identity != nil {
@@ -481,23 +514,31 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 	changed := existing.Name != name || !identityEqual(beforeIdentity, afterIdentity)
 	statusChanged := finalStatus != existing.Status
 
-	now := s.deps.Clock()
-	updatedAt := existing.UpdatedAt
-	if changed || statusChanged {
-		updatedAt = now
+	// No-op rule (customers foundation design D5): a request that leaves the
+	// customer exactly as it was writes nothing at all — not even an
+	// identical rewrite of the same values — so neither updated_at nor
+	// revision moves, the same as before this design existed. A stale
+	// revision has already been refused above, so reaching here with a
+	// revision means it agreed with existing.Revision, which this response
+	// still carries unchanged.
+	if !changed && !statusChanged {
+		summary, err := q.CustomerTimelineSummary(ctx, req.Id)
+		if err != nil {
+			return nil, fmt.Errorf("customers: timeline summary: %w", err)
+		}
+		includeIdentity := s.hasPermission(ctx, legalIdentityView)
+		return gen.PutCustomersById200JSONResponse(safeCustomerResponse(fromCustomerRow(existing, summary), includeIdentity)), nil
 	}
 
-	// Resolved before the transaction opens, and only when a generated event
-	// will actually be written: an update that changes neither the customer
-	// nor its status records nothing, and must not pay for a directory
-	// lookup it will not use (customers foundation design D1, actor.go).
-	var act actor
-	if changed || statusChanged {
-		var err error
-		act, err = s.actorFor(ctx, generatedFallbackActor)
-		if err != nil {
-			return nil, fmt.Errorf("customers: resolve actor: %w", err)
-		}
+	now := s.deps.Clock()
+
+	// Resolved before the transaction opens: this update always records at
+	// least one event once it reaches here (the no-op case returned above),
+	// so the actor is always needed (customers foundation design D1,
+	// actor.go).
+	act, err := s.actorFor(ctx, generatedFallbackActor)
+	if err != nil {
+		return nil, fmt.Errorf("customers: resolve actor: %w", err)
 	}
 
 	legalCountry, legalID, legalName, legalSource, legalType := legalColumns(afterIdentity)
@@ -508,7 +549,7 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 		updated, err = txq.UpdateCustomer(ctx, store.UpdateCustomerParams{
 			ID: req.Id, Name: name, Status: finalStatus,
 			LegalCountry: legalCountry, LegalID: legalID, LegalName: legalName, LegalSource: legalSource, LegalType: legalType,
-			UpdatedAt: updatedAt,
+			UpdatedAt: now, ExpectedRevision: body.Revision,
 		})
 		if err != nil {
 			return err
@@ -525,7 +566,23 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 		}
 		return nil
 	})
-	if err != nil {
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		// The guarded UPDATE's WHERE clause matched no row: a concurrent
+		// writer moved the revision between our read above and this write.
+		// Re-read to report the row's now-current revision (customers
+		// foundation design D5's controller ruling) — a customer is never
+		// hard-deleted, so this only answers 404 if something else entirely
+		// removed the row out from under us.
+		fresh, ferr := q.GetCustomer(ctx, req.Id)
+		if errors.Is(ferr, pgx.ErrNoRows) {
+			return gen.PutCustomersById404Response{}, nil
+		}
+		if ferr != nil {
+			return nil, fmt.Errorf("customers: re-read customer after conflict: %w", ferr)
+		}
+		return gen.PutCustomersById409ApplicationProblemPlusJSONResponse(customerRevisionConflict(existing.Revision, fresh.Revision)), nil
+	case err != nil:
 		return nil, fmt.Errorf("customers: update customer: %w", err)
 	}
 

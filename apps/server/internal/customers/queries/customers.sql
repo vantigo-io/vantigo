@@ -20,12 +20,12 @@ INSERT INTO customers.customers (
     @now::timestamptz, @now::timestamptz, @type
 )
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at, type;
+          created_at, updated_at, type, revision;
 
 -- name: GetCustomer :one
 -- GetCustomer fetches one customer by id.
 SELECT id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-       created_at, updated_at, type
+       created_at, updated_at, type, revision
 FROM customers.customers
 WHERE id = @id;
 
@@ -34,7 +34,13 @@ WHERE id = @id;
 -- (UpdateCustomerEndpoint.cs:88-109): name, status, and the legal identity
 -- (all five columns together, or all five NULL). updated_at is whatever the
 -- caller computes it should be — the row's own timestamp when nothing
--- changed, now when it did — never a database default.
+-- changed, now when it did — never a database default. revision always
+-- advances by one on every execution of this statement (customers
+-- foundation design D5): the caller (customers.go, legal_identity.go)
+-- decides in Go whether to run it at all, exactly as it already decides
+-- updated_at. sqlc.narg(expected_revision) is the optimistic-concurrency
+-- guard PUT /customers/{id} supplies; the legal-identity writes leave it
+-- NULL, an unconditional write that always succeeds while the row exists.
 UPDATE customers.customers
 SET name = @name,
     status = @status,
@@ -43,27 +49,35 @@ SET name = @name,
     legal_name = @legal_name,
     legal_source = @legal_source,
     legal_type = @legal_type,
-    updated_at = @updated_at::timestamptz
+    updated_at = @updated_at::timestamptz,
+    revision = revision + 1
 WHERE id = @id
+  AND (sqlc.narg(expected_revision)::int IS NULL OR revision = sqlc.narg(expected_revision)::int)
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at, type;
+          created_at, updated_at, type, revision;
 
 -- name: SetCustomerStatus :one
 -- SetCustomerStatus is DeleteCustomerEndpoint's archive transition
 -- (DeleteCustomerEndpoint.cs:31-38): status and updated_at only, called
--- once the handler has confirmed the row is not archived already.
+-- once the handler has confirmed the row is not archived already. revision
+-- advances by one, unconditionally (customers foundation design D5: archive
+-- is idempotent by construction — the handler never calls this on an
+-- already-archived row — so it needs no revision guard of its own).
 UPDATE customers.customers
-SET status = @status, updated_at = @now::timestamptz
+SET status = @status, updated_at = @now::timestamptz, revision = revision + 1
 WHERE id = @id
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at, type;
+          created_at, updated_at, type, revision;
 
 -- name: SetCustomerType :one
 -- SetCustomerType is PUT /customers/{id}/type's write: the customer type
 -- and, because a legal identity of the old type makes no sense on the new
 -- one, the five legal columns the handler passes (all NULL when it clears
 -- the identity, the row's own values otherwise). updated_at is the
--- caller's, as for UpdateCustomer.
+-- caller's, as for UpdateCustomer. revision advances by one on every
+-- execution, guarded the same way UpdateCustomer's is (customers
+-- foundation design D5) — the handler skips calling this entirely when the
+-- requested type is already the customer's own.
 UPDATE customers.customers
 SET type = @type,
     legal_country = @legal_country,
@@ -71,10 +85,12 @@ SET type = @type,
     legal_name = @legal_name,
     legal_source = @legal_source,
     legal_type = @legal_type,
-    updated_at = @updated_at::timestamptz
+    updated_at = @updated_at::timestamptz,
+    revision = revision + 1
 WHERE id = @id
+  AND (sqlc.narg(expected_revision)::int IS NULL OR revision = sqlc.narg(expected_revision)::int)
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at, type;
+          created_at, updated_at, type, revision;
 
 -- name: CountCustomers :one
 -- CountCustomers is the total row count GetCustomers paginates over
@@ -137,7 +153,7 @@ WHERE (
 -- whatever direction @descending asks for, the same shape
 -- ListCustomersByName's name-then-id ordering had.
 SELECT c.id, c.customer_number, c.name, c.status, c.type, c.legal_country, c.legal_id, c.legal_name, c.legal_source,
-       c.legal_type, c.created_at, c.updated_at,
+       c.legal_type, c.created_at, c.updated_at, c.revision,
        (SELECT count(*) FROM customers.customers_timeline_entries e
          WHERE e.customer_id = c.id AND e.state = 'active') AS entry_count,
        (SELECT max(e.occurred_on)::date FROM customers.customers_timeline_entries e

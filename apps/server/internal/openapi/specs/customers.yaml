@@ -110,6 +110,11 @@ components:
             type: object
         CustomerTypeRequest:
             properties:
+                revision:
+                    description: The revision the caller read the customer at. Optional (customers foundation design D5) — omitted, the change applies regardless; present and stale, a 409.
+                    format: int32
+                    nullable: true
+                    type: integer
                 type:
                     description: "'business' or 'person', case-insensitive."
                     type: string
@@ -129,6 +134,52 @@ components:
                 - customerNumber
             type: object
             x-vantigo-source: Vantigo.Customers
+        CustomerConflictDuplicate:
+            properties:
+                customerNumber:
+                    format: int64
+                    type: integer
+                id:
+                    format: int32
+                    type: integer
+                name:
+                    type: string
+                status:
+                    type: string
+            required:
+                - id
+                - customerNumber
+                - name
+                - status
+            type: object
+        CustomerConflictProblem:
+            description: ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). code and duplicates are populated only by the duplicate-legal-identity conflict; a revision conflict carries neither.
+            properties:
+                code:
+                    nullable: true
+                    type: string
+                detail:
+                    nullable: true
+                    type: string
+                duplicates:
+                    items:
+                        $ref: '#/components/schemas/CustomerConflictDuplicate'
+                    nullable: true
+                    type: array
+                instance:
+                    nullable: true
+                    type: string
+                status:
+                    format: int32
+                    nullable: true
+                    type: integer
+                title:
+                    nullable: true
+                    type: string
+                type:
+                    nullable: true
+                    type: string
+            type: object
         CustomerContactRequest:
             properties:
                 email:
@@ -427,6 +478,10 @@ components:
                     nullable: true
                 name:
                     type: string
+                revision:
+                    description: "The customer row's optimistic-concurrency token (customers foundation design D5). Optional here only because the recorded exchange corpus predates it — always present."
+                    format: int32
+                    type: integer
                 status:
                     type: string
                 timelineSummary:
@@ -630,6 +685,11 @@ components:
                     nullable: true
                 name:
                     type: string
+                revision:
+                    description: The revision the caller read the customer at (customers foundation design D5). Optional — omitted, the update applies regardless; present and stale, a 409.
+                    format: int32
+                    nullable: true
+                    type: integer
                 status:
                     nullable: true
                     type: string
@@ -864,6 +924,12 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: Conflict
             summary: Update a customer
             tags:
                 - Customers
@@ -1201,6 +1267,12 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: Conflict
             summary: Change a customer's type
             tags:
                 - Customers

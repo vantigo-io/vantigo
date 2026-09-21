@@ -30,6 +30,11 @@ import (
 
 // customerJSON decodes SafeCustomerResponse (Task 6's contract surface);
 // legalIdentityJSON only ever appears as customerJSON.Identity.
+// Revision decodes as a plain int32, not a pointer, even though
+// SafeCustomerResponse's schema marks it optional (corpus compatibility,
+// customers foundation design D5): every response this module's own
+// handlers build always sets it, the same convention customer_type_test.go's
+// typedCustomerJSON.Type already follows for that field.
 type customerJSON struct {
 	Id             int32             `json:"id"`
 	CustomerNumber int64             `json:"customerNumber"`
@@ -37,6 +42,7 @@ type customerJSON struct {
 	Status         string            `json:"status"`
 	CreatedAt      time.Time         `json:"createdAt"`
 	UpdatedAt      time.Time         `json:"updatedAt"`
+	Revision       int32             `json:"revision"`
 	Identity       *legalIdentityRef `json:"identity"`
 }
 
