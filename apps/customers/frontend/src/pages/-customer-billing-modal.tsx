@@ -12,7 +12,9 @@ import {
   customerBillingProfileQueryOptions,
   updateBillingProfile,
 } from "../api/billing-profile";
+import { invalidateCustomersExcept, syncCustomerRevision } from "../api/customers";
 import { billingLanguageLabel, deliveryMethodLabel } from "../lib/billing-labels";
+import { useCustomerReload } from "../lib/customer-reload";
 import "../i18n";
 
 interface BillingFormValues {
@@ -88,7 +90,6 @@ export const CustomerBillingModal = ({
   const { t } = useI18n("customers");
   const queryClient = useQueryClient();
   const [conflict, setConflict] = useState(false);
-  const [reloading, setReloading] = useState(false);
   const [revision, setRevision] = useState(profile.revision);
   // Re-seeds the form and the revision this modal will send next whenever it
   // is (re)opened — the same open-transition pattern
@@ -97,6 +98,22 @@ export const CustomerBillingModal = ({
   // away what the caller is mid-typing.
   const [wasOpened, setWasOpened] = useState(opened);
   const form = useForm<BillingFormValues>({ initialValues: valuesFromProfile(profile) });
+  // The conflict alert's Reload, shared with the other two modals that edit
+  // this row: it refetches the billing profile rather than the customer, but
+  // seeds the same row revision (design D4) and fails as loudly.
+  const reload = useCustomerReload({
+    customerId,
+    queryKey: customerBillingProfileQueryOptions(customerId).queryKey,
+    fetchFresh: () => queryClient.fetchQuery({ ...customerBillingProfileQueryOptions(customerId), staleTime: 0 }),
+    revisionOf: (fresh) => fresh.revision,
+    seed: (fresh) => {
+      form.setValues(valuesFromProfile(fresh));
+      form.resetDirty();
+      form.clearErrors();
+      setRevision(fresh.revision);
+      setConflict(false);
+    },
+  });
   if (opened !== wasOpened) {
     setWasOpened(opened);
     if (opened) {
@@ -105,6 +122,7 @@ export const CustomerBillingModal = ({
       form.clearErrors();
       setRevision(profile.revision);
       setConflict(false);
+      reload.forget();
     }
   }
 
@@ -112,11 +130,16 @@ export const CustomerBillingModal = ({
     mutationFn: (values: BillingFormValues) => updateBillingProfile(customerId, toInput(values, revision)),
     onSuccess: (saved) => {
       // The row's revision moved — set this query's own data from the 200
-      // body (so the card's warnings and hints are fresh without a refetch)
-      // and invalidate the `["customers"]` prefix so the customer query and
-      // any other form built on its revision do not keep a stale one.
-      queryClient.setQueryData(customerBillingProfileQueryOptions(customerId).queryKey, saved);
-      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      // body (so the card's warnings and hints are fresh without a refetch),
+      // carry that revision to the customer query, whose forms are built on
+      // the same counter, and invalidate the rest of the `["customers"]`
+      // prefix. The profile's own key is left out of that invalidation: it
+      // already holds what the server just answered, and refetching it would
+      // throw the 200 body away for a round trip.
+      const profileKey = customerBillingProfileQueryOptions(customerId).queryKey;
+      queryClient.setQueryData(profileKey, saved);
+      syncCustomerRevision(queryClient, customerId, saved.revision);
+      invalidateCustomersExcept(queryClient, profileKey);
       setConflict(false);
       onClose();
       notifications.show({ color: "teal", title: t("billingProfileUpdated"), message: t("billingProfileSaved") });
@@ -135,20 +158,6 @@ export const CustomerBillingModal = ({
     },
   });
 
-  const reload = async () => {
-    setReloading(true);
-    try {
-      const fresh = await queryClient.fetchQuery({ ...customerBillingProfileQueryOptions(customerId), staleTime: 0 });
-      form.setValues(valuesFromProfile(fresh));
-      form.resetDirty();
-      form.clearErrors();
-      setRevision(fresh.revision);
-      setConflict(false);
-    } finally {
-      setReloading(false);
-    }
-  };
-
   return (
     <Modal opened={opened} onClose={onClose} title={t("editBillingProfile")} centered>
       <form onSubmit={form.onSubmit((values) => mutation.mutate(values))}>
@@ -158,8 +167,13 @@ export const CustomerBillingModal = ({
               <Stack gap="xs">
                 <Text size="sm">{t("customerChangedMessage")}</Text>
                 <Text size="sm">{t("customerChangesNotSaved")}</Text>
+                {reload.failed && (
+                  <Text size="sm" c="red">
+                    {t("couldNotReload")}
+                  </Text>
+                )}
                 <Group justify="flex-end">
-                  <Button size="xs" variant="light" color="yellow" loading={reloading} onClick={reload}>
+                  <Button size="xs" variant="light" color="yellow" loading={reload.reloading} onClick={reload.reload}>
                     {t("reload")}
                   </Button>
                 </Group>

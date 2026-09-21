@@ -103,7 +103,7 @@ describe("CustomerBillingModal", () => {
   });
 
   it("maps field errors from a 400 onto the right inputs", async () => {
-    const fetchMock = renderModal(emptyProfile, {
+    renderModal(emptyProfile, {
       billingPut: () =>
         jsonResponse(400, {
           title: "Invalid billing profile",
@@ -111,7 +111,6 @@ describe("CustomerBillingModal", () => {
           errors: { currency: ["Currency must be three letters"] },
         }),
     });
-    stubFetch(fetchMock);
 
     const dialog = await screen.findByRole("dialog");
     await userEvent.click(within(dialog).getByRole("button", { name: /save changes/i }));
@@ -179,5 +178,64 @@ describe("CustomerBillingModal", () => {
       const [, init] = put as [string, RequestInit];
       expect(JSON.parse(String(init.body)).revision).toBe(4);
     });
+  });
+
+  it("keeps the conflict banner and the refused revision when the reload itself fails", async () => {
+    let conflicted = false;
+    const fetchMock = vi.fn().mockImplementation((url: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(url);
+      if (path === "/api/v1/customers/1001/billing-profile" && init?.method === "PUT") {
+        conflicted = true;
+        return Promise.resolve(
+          jsonResponse(409, {
+            title: "Customer revision conflict",
+            detail: "The customer was changed by someone else.",
+            status: 409,
+          }),
+        );
+      }
+      if (path === "/api/v1/customers/1001/billing-profile") {
+        return conflicted
+          ? Promise.resolve(new Response(null, { status: 500 }))
+          : Promise.resolve(jsonResponse(200, emptyProfile));
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    stubFetch(fetchMock);
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(
+      <MantineProvider env="test">
+        <Notifications />
+        <QueryClientProvider client={queryClient}>
+          <CustomerBillingModal opened customerId={1001} profile={emptyProfile as never} onClose={() => {}} />
+        </QueryClientProvider>
+      </MantineProvider>,
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: /save changes/i }));
+
+    const banner = "This customer was changed by someone else. Reload to see the latest version.";
+    expect(await within(dialog).findByText(banner)).toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole("button", { name: /reload/i }));
+
+    expect(await within(dialog).findByText("Could not reload. Try again.")).toBeInTheDocument();
+    expect(within(dialog).getByText(banner)).toBeInTheDocument();
+
+    // Nothing was re-seeded: the next save still sends the revision the
+    // server refused, rather than one a failed reload invented.
+    await userEvent.click(within(dialog).getByRole("button", { name: /save changes/i }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.filter(
+          ([url, init]) =>
+            String(url).endsWith("/billing-profile") && (init as RequestInit | undefined)?.method === "PUT",
+        ),
+      ).toHaveLength(2),
+    );
+    const [, init] = lastBillingPut(fetchMock) as [string, RequestInit];
+    expect(JSON.parse(String(init.body)).revision).toBe(3);
   });
 });

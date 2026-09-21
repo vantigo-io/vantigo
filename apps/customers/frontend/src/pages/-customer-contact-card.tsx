@@ -12,8 +12,10 @@ import {
   type CustomerContactInfo,
   type CustomerResponse,
   customerQueryOptions,
+  syncCustomerRevision,
   updateContactInfo,
 } from "../api/customers";
+import { useCustomerReload } from "../lib/customer-reload";
 import { CustomerAddressesSection } from "./-customer-address-list";
 import "../i18n";
 
@@ -186,7 +188,6 @@ const CustomerContactInfoModal = ({
   const { t } = useI18n("customers");
   const queryClient = useQueryClient();
   const [conflict, setConflict] = useState(false);
-  const [reloading, setReloading] = useState(false);
   const [revision, setRevision] = useState(customer.revision);
   // Re-seeds the form and the revision this modal will send next whenever it
   // is (re)opened — adjusted during render, the same pattern
@@ -196,6 +197,22 @@ const CustomerContactInfoModal = ({
   // another tab's edit) must not blow away what the caller is mid-typing.
   const [wasOpened, setWasOpened] = useState(opened);
   const form = useForm<ContactInfoFormValues>({ initialValues: contactInfoValues(customer) });
+  // The conflict alert's Reload — one fetch, and a failure that says so
+  // rather than quietly re-seeding the revision the server already refused
+  // (see `useCustomerReload`).
+  const reload = useCustomerReload({
+    customerId: customer.id,
+    queryKey: customerQueryOptions(customer.id).queryKey,
+    fetchFresh: () => queryClient.fetchQuery({ ...customerQueryOptions(customer.id), staleTime: 0 }),
+    revisionOf: (fresh) => fresh.revision,
+    seed: (fresh) => {
+      form.setValues(contactInfoValues(fresh));
+      form.resetDirty();
+      form.clearErrors();
+      setRevision(fresh.revision);
+      setConflict(false);
+    },
+  });
   if (opened !== wasOpened) {
     setWasOpened(opened);
     if (opened) {
@@ -204,6 +221,7 @@ const CustomerContactInfoModal = ({
       form.clearErrors();
       setRevision(customer.revision);
       setConflict(false);
+      reload.forget();
     }
   }
 
@@ -215,7 +233,12 @@ const CustomerContactInfoModal = ({
         website: values.website.trim() || null,
         revision,
       }),
-    onSuccess: () => {
+    onSuccess: (saved) => {
+      // The 200 body is the whole customer, so the row's fresh revision is
+      // in hand: write it to every cache entry that carries it before the
+      // invalidation's refetches have had time to land, or the next editor
+      // opened in that window sends the revision this save just replaced.
+      syncCustomerRevision(queryClient, customer.id, saved.revision);
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       setConflict(false);
       onClose();
@@ -236,30 +259,6 @@ const CustomerContactInfoModal = ({
     },
   });
 
-  const reload = async () => {
-    setReloading(true);
-    try {
-      // One fetch of the customer, not two: invalidating ["customers"] first
-      // refetches every active observer under that prefix — including this
-      // card's own useSuspenseQuery(customerQueryOptions(customer.id)), which
-      // is always mounted above this modal — so the fresh row can be read
-      // straight back out of the cache instead of also fetching it directly.
-      // The explicit fetchQuery is a fallback only, for the unlikely case
-      // nothing left that query active.
-      await queryClient.invalidateQueries({ queryKey: ["customers"] });
-      const fresh =
-        queryClient.getQueryData<CustomerResponse>(customerQueryOptions(customer.id).queryKey) ??
-        (await queryClient.fetchQuery({ ...customerQueryOptions(customer.id), staleTime: 0 }));
-      form.setValues(contactInfoValues(fresh));
-      form.resetDirty();
-      form.clearErrors();
-      setRevision(fresh.revision);
-      setConflict(false);
-    } finally {
-      setReloading(false);
-    }
-  };
-
   return (
     <Modal opened={opened} onClose={onClose} title={t("editContactDetails")} centered>
       <form onSubmit={form.onSubmit((values) => mutation.mutate(values))}>
@@ -269,8 +268,13 @@ const CustomerContactInfoModal = ({
               <Stack gap="xs">
                 <Text size="sm">{t("customerChangedMessage")}</Text>
                 <Text size="sm">{t("customerChangesNotSaved")}</Text>
+                {reload.failed && (
+                  <Text size="sm" c="red">
+                    {t("couldNotReload")}
+                  </Text>
+                )}
                 <Group justify="flex-end">
-                  <Button size="xs" variant="light" color="yellow" loading={reloading} onClick={reload}>
+                  <Button size="xs" variant="light" color="yellow" loading={reload.reloading} onClick={reload.reload}>
                     {t("reload")}
                   </Button>
                 </Group>

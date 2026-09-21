@@ -1,4 +1,5 @@
-import { keepPreviousData, queryOptions } from "@tanstack/react-query";
+import { hashKey, keepPreviousData, type QueryClient, type QueryKey, queryOptions } from "@tanstack/react-query";
+import { type CustomerBillingProfile, customerBillingProfileQueryOptions } from "./billing-profile";
 import type { ApiConflictError } from "./request";
 import { NotFoundError, request } from "./request";
 
@@ -186,6 +187,45 @@ export const customerQueryOptions = (id: number) =>
     queryKey: ["customers", id],
     queryFn: ({ signal }) => fetchCustomer(id, signal),
   });
+
+/**
+ * The customer row's revision (design D5) lives in two cache entries: the
+ * customer itself and its billing profile, whose revision *is* the row's
+ * (design D4). Four editors — the form modal, the type change, contact info
+ * and the billing profile — plus Restore all send it, so a write that gets a
+ * fresh revision back writes it to both entries straight away, before its
+ * own invalidations: those cost a round trip, and an editor opened inside
+ * that window would otherwise seed itself from the revision the server has
+ * already moved past and come back with a spurious 409.
+ *
+ * Entries that are not cached are left alone — a revision is not enough to
+ * invent a row out of — and a write that answers no revision at all (Archive
+ * is a 204) simply has nothing to sync.
+ */
+export const syncCustomerRevision = (queryClient: QueryClient, id: number, revision: number | undefined) => {
+  if (revision === undefined) return;
+  queryClient.setQueryData(customerQueryOptions(id).queryKey, (old?: CustomerResponse) =>
+    old ? { ...old, revision } : old,
+  );
+  queryClient.setQueryData(customerBillingProfileQueryOptions(id).queryKey, (old?: CustomerBillingProfile) =>
+    old ? { ...old, revision } : old,
+  );
+};
+
+/**
+ * Invalidates every `["customers"]` query except the one whose fresh data
+ * the caller has just put in the cache itself — from a write's own 200 body
+ * or a `fetchQuery` a moment earlier. Without the exception the broad prefix
+ * would throw that data away and fetch it again, which is the one round trip
+ * reading the response body was meant to save.
+ */
+export const invalidateCustomersExcept = (queryClient: QueryClient, except: QueryKey) => {
+  const alreadyFresh = hashKey(except);
+  return queryClient.invalidateQueries({
+    queryKey: ["customers"],
+    predicate: (query) => hashKey(query.queryKey) !== alreadyFresh,
+  });
+};
 
 /**
  * A 400 validation problem (RFC 9457) from the API, carrying errors keyed by the

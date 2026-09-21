@@ -1,14 +1,19 @@
+import { QueryClient } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { stubFetch } from "../test/fetch";
+import { type CustomerBillingProfile, customerBillingProfileQueryOptions } from "./billing-profile";
 import {
   ApiValidationError,
+  type CustomerResponse,
   conflictDuplicates,
   createCustomer,
   customerQueryOptions,
   customersListParams,
   customersQueryOptions,
+  invalidateCustomersExcept,
   legalIdentityQueryOptions,
   NotFoundError,
+  syncCustomerRevision,
   updateContactInfo,
   updateCustomer,
   upsertLegalIdentity,
@@ -333,5 +338,81 @@ describe("updateContactInfo", () => {
     const result = await updateContactInfo(1001, { email: "hello@acme.test", phone: null, website: null, revision: 3 });
 
     expect(result.contactInfo).toEqual({ email: "hello@acme.test", phone: null, website: null });
+  });
+});
+
+const cachedCustomer = (revision: number): CustomerResponse => ({
+  id: 1001,
+  customerNumber: 5001,
+  name: "Acme",
+  status: "active",
+  type: "business",
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:00:00Z",
+  identity: null,
+  timelineSummary: { entryCount: 0, latestOccurredOn: null },
+  revision,
+});
+
+const cachedProfile = (revision: number): CustomerBillingProfile => ({
+  invoiceEmail: "invoices@acme.test",
+  reminderEmail: null,
+  paymentTermsDays: null,
+  currency: null,
+  language: null,
+  invoiceDelivery: null,
+  reminderDelivery: null,
+  peppolId: null,
+  gln: null,
+  buyerReference: null,
+  revision,
+  warnings: [],
+});
+
+describe("syncCustomerRevision", () => {
+  const customerKey = customerQueryOptions(1001).queryKey;
+  const profileKey = customerBillingProfileQueryOptions(1001).queryKey;
+
+  it("writes the fresh revision to both cache entries that carry it", () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(customerKey, cachedCustomer(3));
+    queryClient.setQueryData(profileKey, cachedProfile(3));
+
+    syncCustomerRevision(queryClient, 1001, 4);
+
+    expect(queryClient.getQueryData(customerKey)).toMatchObject({ name: "Acme", revision: 4 });
+    expect(queryClient.getQueryData(profileKey)).toMatchObject({ invoiceEmail: "invoices@acme.test", revision: 4 });
+  });
+
+  it("leaves an entry nothing has cached alone rather than inventing one", () => {
+    const queryClient = new QueryClient();
+
+    syncCustomerRevision(queryClient, 1001, 4);
+
+    expect(queryClient.getQueryData(customerKey)).toBeUndefined();
+    expect(queryClient.getQueryData(profileKey)).toBeUndefined();
+  });
+
+  it("has nothing to do for a write that answers no revision (Archive's 204)", () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(customerKey, cachedCustomer(3));
+
+    syncCustomerRevision(queryClient, 1001, undefined);
+
+    expect(queryClient.getQueryData(customerKey)).toMatchObject({ revision: 3 });
+  });
+});
+
+describe("invalidateCustomersExcept", () => {
+  it("invalidates every customers query but the one the caller just made fresh", () => {
+    const queryClient = new QueryClient();
+    const profileKey = customerBillingProfileQueryOptions(1001).queryKey;
+    queryClient.setQueryData(customerQueryOptions(1001).queryKey, cachedCustomer(4));
+    queryClient.setQueryData(profileKey, cachedProfile(4));
+
+    invalidateCustomersExcept(queryClient, profileKey);
+
+    expect(queryClient.getQueryState(customerQueryOptions(1001).queryKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(profileKey)?.isInvalidated).toBe(false);
   });
 });

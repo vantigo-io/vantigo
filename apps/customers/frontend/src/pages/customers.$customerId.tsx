@@ -21,6 +21,7 @@ import {
   changeCustomerType,
   customerQueryOptions,
   legalIdentityQueryOptions,
+  syncCustomerRevision,
   updateCustomer,
 } from "../api/customers";
 import {
@@ -184,7 +185,11 @@ const useCustomerTypeChange = (customer: CustomerResponse) => {
   const to = customerTypeLabel(t, target).toLocaleLowerCase();
   const mutation = useMutation({
     mutationFn: () => changeCustomerType(customer.id, target, customer.revision),
-    onSuccess: () => {
+    onSuccess: (changed) => {
+      // The 200 body carries the row's new revision: hand it to every cache
+      // entry built on it before the refetch below lands, so an editor
+      // opened in that window does not send the one this write replaced.
+      syncCustomerRevision(queryClient, customer.id, changed.revision);
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       notifications.show({
         color: "teal",
@@ -274,7 +279,10 @@ const useRestoreCustomer = (customer: CustomerResponse) => {
   return useMutation({
     mutationFn: () =>
       updateCustomer(customer.id, { name: customer.name, status: "active", revision: customer.revision }),
-    onSuccess: () => {
+    onSuccess: (restored) => {
+      // Same as the type change above: the fresh revision travels with the
+      // response, not a round trip later.
+      syncCustomerRevision(queryClient, customer.id, restored.revision);
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       notifications.show({
         color: "teal",
