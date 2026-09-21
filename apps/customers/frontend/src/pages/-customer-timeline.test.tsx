@@ -154,6 +154,18 @@ describe("CustomerTimeline", () => {
     expect(screen.queryByText("Edit")).not.toBeInTheDocument();
   });
 
+  it("shows the entry's author next to its date", async () => {
+    await renderTimeline(
+      vi.fn().mockResolvedValue(json({ data: [entry({ actorDisplay: "Anders Refsdal" })], nextCursor: null })),
+    );
+    expect(await screen.findByText(/Anders Refsdal/)).toBeInTheDocument();
+  });
+
+  it("falls back to Unattributed when the entry has no author", async () => {
+    await renderTimeline(vi.fn().mockResolvedValue(json({ data: [entry({ actorDisplay: null })], nextCursor: null })));
+    expect(await screen.findByText(/Unattributed/)).toBeInTheDocument();
+  });
+
   it("loads the next page using the returned cursor", async () => {
     const fetchMock = vi
       .fn()
@@ -244,8 +256,9 @@ describe("CustomerTimeline", () => {
     await renderTimeline(fetchMock);
     await userEvent.click(await waitFor(actionsButton));
     await userEvent.click(await screen.findByText("Revision history"));
-    expect(await screen.findByText("Revised text")).toBeInTheDocument();
-    expect(screen.getByText(/Unattributed/)).toBeInTheDocument();
+    const dialog = await screen.findByRole("dialog", { name: "Revision history" });
+    expect(await within(dialog).findByText("Revised text")).toBeInTheDocument();
+    expect(within(dialog).getByText(/Unattributed/)).toBeInTheDocument();
   });
 
   it("refreshes after a successful 204 delete", async () => {
