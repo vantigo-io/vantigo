@@ -362,18 +362,30 @@ for a customer. [ROADMAP phase 2](../ROADMAP.md#customers) is where it grows.
   (name, legal-identity badges, status/type badges, edit and change-type actions) and
   an overview tab (contacts card, timeline); other modules add their own tabs (Energy,
   Projects) the same way the host composes any module's tabs onto a customer.
-  **Archive and Restore** are landing in this same branch, gated on the host's
-  permission check rather than a local one: Archive (with a confirmation dialog)
-  needs `customers:delete`, Restore — a `PUT` with `status: "active"` — needs
-  `customers:update`; an archived customer shows a banner.
+  **Archive and Restore** are gated on the host's permission check rather than a
+  local one — the header takes `canArchive`/`canRestore` props and never fetches
+  permissions itself: Archive needs `customers:delete` and goes through the shared
+  confirmation dialog, Restore needs `customers:update` and is a plain `PUT` with
+  `status: "active"` and the row's revision, straight through with no confirmation
+  (it undoes nothing). Archive is hidden for a customer that is already archived,
+  Restore for one that is not, and an archived customer shows a banner above the
+  header. A `PUT` refused as a stale revision tells the user the customer changed
+  and refetches it, rather than leaving a failure behind a button that would keep
+  failing.
 - **Form** (create/edit modal) — sends `revision` on every edit, so a stale write is
   caught by the backend's 409 rather than silently overwriting a concurrent change;
   a 409 revision conflict tells the user the customer changed underneath them and
-  reloads it; a 409 duplicate identity shows who already holds it, with a link to
-  each, and a "Create/Save anyway" action that resubmits with
-  `allowDuplicateIdentity: true`; the similar-names hint queries the list endpoint
-  live while a name is typed.
-- **Timeline** — each entry shows its author, from the `actorDisplay` D1 added.
+  offers Reload, which re-seeds the form *and the revision the next save sends*; a
+  409 duplicate identity shows who already holds it, with a link to each — or, when
+  the server withholds that list from a caller without `customers:view`, just says
+  the identity is taken — and offers a "Create/Save anyway" action that resubmits
+  with `allowDuplicateIdentity: true`; the similar-names hint queries the list
+  endpoint live while a name is typed.
+- **Timeline** — each entry, and each revision in its history, shows its author. The
+  label comes from D1's `actorKind`, not the snapshotted name: the server's sentinels
+  for "nobody in particular" (`System`, `Unattributed`, `Unknown user`) are English
+  literals, so they are mapped to catalogue keys instead of shown as stored
+  (`src/lib/actor-label.ts`). A real person's name is never translated.
 
 ## API
 
