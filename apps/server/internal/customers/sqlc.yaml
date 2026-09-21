@@ -12,6 +12,7 @@ sql:
       - ../db/migrations/00016_customers_revision.sql
       - ../db/migrations/00017_customers_contact_info.sql
       - ../db/migrations/00018_customers_addresses.sql
+      - ../db/migrations/00019_customers_billing_profile.sql
     queries: queries
     gen:
       go:

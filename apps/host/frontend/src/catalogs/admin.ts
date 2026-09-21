@@ -105,6 +105,12 @@ export const hostPermissionTranslationKeys = {
     displayNameKey: "admin.permission.customersLookupView",
     descriptionKey: "admin.permission.customersLookupViewDescription",
   },
+  "customers:billing-manage": {
+    moduleKey: "admin.permission.module.customers",
+    categoryKey: "admin.permission.category.billing",
+    displayNameKey: "admin.permission.customersBillingManage",
+    descriptionKey: "admin.permission.customersBillingManageDescription",
+  },
   "communications:conversations-view": {
     moduleKey: "admin.permission.module.communications",
     categoryKey: "admin.permission.category.communications",
@@ -422,6 +428,7 @@ const en = {
   "admin.permission.category.associations": "Associations",
   "admin.permission.category.timeline": "Timeline",
   "admin.permission.category.lookup": "Lookup",
+  "admin.permission.category.billing": "Billing",
   "admin.permission.category.communications": "Communications",
   "admin.permission.category.products": "Products",
   "admin.permission.category.variants": "Variants",
@@ -461,6 +468,9 @@ const en = {
   "admin.permission.customersTimelineManageDescription": "Create, update, and delete customer timeline entries.",
   "admin.permission.customersLookupView": "Use registry lookup",
   "admin.permission.customersLookupViewDescription": "Search the external business registry for legal identities.",
+  "admin.permission.customersBillingManage": "Manage billing profiles",
+  "admin.permission.customersBillingManageDescription":
+    "Set a customer's payment terms, invoice delivery and billing addresses for documents.",
   "admin.permission.communicationsConversationsView": "View communications conversations",
   "admin.permission.communicationsConversationsViewDescription":
     "View conversations, messages, participants, bodies, attachments, and tags.",
@@ -757,6 +767,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.category.associations": "Tilknytninger",
   "admin.permission.category.timeline": "Tidslinje",
   "admin.permission.category.lookup": "Oppslag",
+  "admin.permission.category.billing": "Fakturering",
   "admin.permission.category.communications": "Kommunikasjon",
   "admin.permission.category.products": "Produkter",
   "admin.permission.category.variants": "Varianter",
@@ -799,6 +810,9 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.customersLookupView": "Bruk registeroppslag",
   "admin.permission.customersLookupViewDescription":
     "Søk i det eksterne foretaksregisteret etter juridiske identiteter.",
+  "admin.permission.customersBillingManage": "Administrer faktureringsprofiler",
+  "admin.permission.customersBillingManageDescription":
+    "Sett en kundes betalingsbetingelser, fakturalevering og faktureringsadresser for dokumenter.",
   "admin.permission.communicationsConversationsView": "Se kommunikasjonssamtaler",
   "admin.permission.communicationsConversationsViewDescription":
     "Se samtaler, meldinger, deltakere, brødtekst, vedlegg og etiketter.",

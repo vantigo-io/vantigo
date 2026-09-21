@@ -48,14 +48,50 @@ type customerRow struct {
 	LatestOccurredOn pgtype.Date
 }
 
-func fromCustomerRow(c store.CustomersCustomer, ts store.CustomerTimelineSummaryRow) customerRow {
+// customerRowFrom is fromCustomerRow and its three sibling adapters' shared
+// core: since customers.customers gained ten billing columns none of
+// GetCustomer/UpdateCustomer/SetCustomerType/UpdateCustomerContactInfo
+// selects (invoice-ready customer design D4's controller ruling — the
+// billing profile must never reach SafeCustomerResponse), sqlc can no longer
+// reuse store.CustomersCustomer as any of their return types: each query's
+// own explicit column list only matches the table's full column set for the
+// one query (GetCustomerBillingProfile) that actually selects them all, so
+// every other query now gets its own generated row type instead, even though
+// all four still select exactly the same sixteen columns. This one function
+// holds the actual field mapping; each adapter below is a one-line unpacking
+// of its own row type into it.
+func customerRowFrom(id int32, customerNumber int64, name, status, typ string, legalCountry, legalID, legalName, legalSource, legalType *string, createdAt, updatedAt time.Time, revision int32, email, phone, website *string, ts store.CustomerTimelineSummaryRow) customerRow {
 	return customerRow{
-		ID: c.ID, CustomerNumber: c.CustomerNumber, Name: c.Name, Status: c.Status, Type: c.Type,
-		LegalCountry: c.LegalCountry, LegalID: c.LegalID, LegalName: c.LegalName, LegalSource: c.LegalSource, LegalType: c.LegalType,
-		CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, Revision: c.Revision,
-		Email: c.Email, Phone: c.Phone, Website: c.Website,
+		ID: id, CustomerNumber: customerNumber, Name: name, Status: status, Type: typ,
+		LegalCountry: legalCountry, LegalID: legalID, LegalName: legalName, LegalSource: legalSource, LegalType: legalType,
+		CreatedAt: createdAt, UpdatedAt: updatedAt, Revision: revision,
+		Email: email, Phone: phone, Website: website,
 		EntryCount: ts.EntryCount, LatestOccurredOn: ts.LatestOccurredOn,
 	}
+}
+
+// fromCustomerRow is GetCustomer's own row (store.GetCustomerRow) reduced to
+// a customerRow — every GetCustomer(ctx, id) call in this module funnels
+// through here, whichever handler made it.
+func fromCustomerRow(c store.GetCustomerRow, ts store.CustomerTimelineSummaryRow) customerRow {
+	return customerRowFrom(c.ID, c.CustomerNumber, c.Name, c.Status, c.Type, c.LegalCountry, c.LegalID, c.LegalName, c.LegalSource, c.LegalType, c.CreatedAt, c.UpdatedAt, c.Revision, c.Email, c.Phone, c.Website, ts)
+}
+
+// fromUpdateCustomerRow is UpdateCustomer's own row (PutCustomersById's write).
+func fromUpdateCustomerRow(c store.UpdateCustomerRow, ts store.CustomerTimelineSummaryRow) customerRow {
+	return customerRowFrom(c.ID, c.CustomerNumber, c.Name, c.Status, c.Type, c.LegalCountry, c.LegalID, c.LegalName, c.LegalSource, c.LegalType, c.CreatedAt, c.UpdatedAt, c.Revision, c.Email, c.Phone, c.Website, ts)
+}
+
+// fromSetCustomerTypeRow is SetCustomerType's own row
+// (PutCustomersByIdType's write, customer_type.go).
+func fromSetCustomerTypeRow(c store.SetCustomerTypeRow, ts store.CustomerTimelineSummaryRow) customerRow {
+	return customerRowFrom(c.ID, c.CustomerNumber, c.Name, c.Status, c.Type, c.LegalCountry, c.LegalID, c.LegalName, c.LegalSource, c.LegalType, c.CreatedAt, c.UpdatedAt, c.Revision, c.Email, c.Phone, c.Website, ts)
+}
+
+// fromUpdateCustomerContactInfoRow is UpdateCustomerContactInfo's own row
+// (PutCustomersByIdContactInfo's write, contact_info.go).
+func fromUpdateCustomerContactInfoRow(c store.UpdateCustomerContactInfoRow, ts store.CustomerTimelineSummaryRow) customerRow {
+	return customerRowFrom(c.ID, c.CustomerNumber, c.Name, c.Status, c.Type, c.LegalCountry, c.LegalID, c.LegalName, c.LegalSource, c.LegalType, c.CreatedAt, c.UpdatedAt, c.Revision, c.Email, c.Phone, c.Website, ts)
 }
 
 // fromListRow is store.ListCustomersRow's customerRow, the one list-query
@@ -410,7 +446,7 @@ func (s *server) PostCustomers(ctx context.Context, req gen.PostCustomersRequest
 	nameHolders := needsDuplicateCheck && s.hasPermission(ctx, customersView)
 
 	legalCountry, legalID, legalName, legalSource, legalType := legalColumns(identity)
-	var created store.CustomersCustomer
+	var created store.InsertCustomerRow
 	var conflict *gen.CustomerConflictProblem
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
@@ -643,7 +679,7 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 	nameHolders := needsDuplicateCheck && s.hasPermission(ctx, customersView)
 
 	legalCountry, legalID, legalName, legalSource, legalType := legalColumns(afterIdentity)
-	var updated store.CustomersCustomer
+	var updated store.UpdateCustomerRow
 	var conflict *gen.CustomerConflictProblem
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
@@ -708,7 +744,7 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 		return nil, fmt.Errorf("customers: timeline summary: %w", err)
 	}
 	includeIdentity := s.hasPermission(ctx, legalIdentityView)
-	return gen.PutCustomersById200JSONResponse(safeCustomerResponse(fromCustomerRow(updated, summary), includeIdentity)), nil
+	return gen.PutCustomersById200JSONResponse(safeCustomerResponse(fromUpdateCustomerRow(updated, summary), includeIdentity)), nil
 }
 
 // DeleteCustomersById Archive a customer (customers are never hard-deleted)

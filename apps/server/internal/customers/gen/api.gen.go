@@ -111,6 +111,22 @@ type CustomerAddressRequest struct {
 	Type       string  `json:"type"`
 }
 
+// CustomerBillingProfile A customer's billing profile (invoice-ready customer design D1, D4): payment terms, currency, document language, delivery methods and the identifiers used to send it invoices — every field nullable, meaning "not decided here, whoever invoices uses its own default". warnings is computed at read time from the profile plus the customer's type, legal identity, contact email and addresses — never stored — in a fixed order: ehf_without_recipient, email_without_address, efaktura_for_business, no_invoice_address.
+type CustomerBillingProfile struct {
+	BuyerReference   *string  `json:"buyerReference,omitempty"`
+	Currency         *string  `json:"currency,omitempty"`
+	Gln              *string  `json:"gln,omitempty"`
+	InvoiceDelivery  *string  `json:"invoiceDelivery,omitempty"`
+	InvoiceEmail     *string  `json:"invoiceEmail,omitempty"`
+	Language         *string  `json:"language,omitempty"`
+	PaymentTermsDays *int32   `json:"paymentTermsDays,omitempty"`
+	PeppolId         *string  `json:"peppolId,omitempty"`
+	ReminderDelivery *string  `json:"reminderDelivery,omitempty"`
+	ReminderEmail    *string  `json:"reminderEmail,omitempty"`
+	Revision         int32    `json:"revision"`
+	Warnings         []string `json:"warnings"`
+}
+
 // CustomerConflictDuplicate defines model for CustomerConflictDuplicate.
 type CustomerConflictDuplicate struct {
 	CustomerNumber int64  `json:"customerNumber"`
@@ -271,6 +287,23 @@ type PaginatedResponseOfResponse struct {
 type PaginatedResponseOfSafeCustomerResponse struct {
 	Data       []SafeCustomerResponse          `json:"data"`
 	Pagination externalRef0.PaginationMetadata `json:"pagination"`
+}
+
+// PutCustomerBillingProfileRequest PUT /customers/{id}/billing-profile's own request body (invoice-ready customer design D1, D4): a full replace of the customer's billing profile — every field present or null, absent and null both meaning the field is cleared. revision is optional, as PUT /customers/{id}'s own is.
+type PutCustomerBillingProfileRequest struct {
+	BuyerReference   *string `json:"buyerReference,omitempty"`
+	Currency         *string `json:"currency,omitempty"`
+	Gln              *string `json:"gln,omitempty"`
+	InvoiceDelivery  *string `json:"invoiceDelivery,omitempty"`
+	InvoiceEmail     *string `json:"invoiceEmail,omitempty"`
+	Language         *string `json:"language,omitempty"`
+	PaymentTermsDays *int32  `json:"paymentTermsDays,omitempty"`
+	PeppolId         *string `json:"peppolId,omitempty"`
+	ReminderDelivery *string `json:"reminderDelivery,omitempty"`
+	ReminderEmail    *string `json:"reminderEmail,omitempty"`
+
+	// Revision The revision the caller read the customer at (customers foundation design D5). Optional — omitted, the change applies regardless; present and stale, a 409.
+	Revision *int32 `json:"revision,omitempty"`
 }
 
 // PutCustomerContactInfoRequest PUT /customers/{id}/contact-info's own request body (invoice-ready customer design D1): a full replace of the customer's contact info — every field present or null, absent and null both meaning the field is cleared. revision is optional, as PUT /customers/{id}'s own is.
@@ -473,6 +506,9 @@ type PostCustomersByIdAddressesJSONRequestBody = CustomerAddressRequest
 // PutCustomersByIdAddressesByAddressIdJSONRequestBody defines body for PutCustomersByIdAddressesByAddressId for application/json ContentType.
 type PutCustomersByIdAddressesByAddressIdJSONRequestBody = CustomerAddressRequest
 
+// PutCustomersByIdBillingProfileJSONRequestBody defines body for PutCustomersByIdBillingProfile for application/json ContentType.
+type PutCustomersByIdBillingProfileJSONRequestBody = PutCustomerBillingProfileRequest
+
 // PutCustomersByIdContactInfoJSONRequestBody defines body for PutCustomersByIdContactInfo for application/json ContentType.
 type PutCustomersByIdContactInfoJSONRequestBody = PutCustomerContactInfoRequest
 
@@ -556,6 +592,12 @@ type ServerInterface interface {
 	// PutCustomersByIdAddressesByAddressId Replace a customer's address
 	// (PUT /api/v1/customers/{id}/addresses/{addressId})
 	PutCustomersByIdAddressesByAddressId(w http.ResponseWriter, r *http.Request, id int32, addressId int32)
+	// GetCustomersByIdBillingProfile Get a customer's billing profile
+	// (GET /api/v1/customers/{id}/billing-profile)
+	GetCustomersByIdBillingProfile(w http.ResponseWriter, r *http.Request, id int32)
+	// PutCustomersByIdBillingProfile Replace a customer's billing profile
+	// (PUT /api/v1/customers/{id}/billing-profile)
+	PutCustomersByIdBillingProfile(w http.ResponseWriter, r *http.Request, id int32)
 	// PutCustomersByIdContactInfo Replace a customer's contact info
 	// (PUT /api/v1/customers/{id}/contact-info)
 	PutCustomersByIdContactInfo(w http.ResponseWriter, r *http.Request, id int32)
@@ -1332,6 +1374,58 @@ func (siw *ServerInterfaceWrapper) PutCustomersByIdAddressesByAddressId(w http.R
 	handler.ServeHTTP(w, r)
 }
 
+// GetCustomersByIdBillingProfile operation middleware
+func (siw *ServerInterfaceWrapper) GetCustomersByIdBillingProfile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCustomersByIdBillingProfile(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutCustomersByIdBillingProfile operation middleware
+func (siw *ServerInterfaceWrapper) PutCustomersByIdBillingProfile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutCustomersByIdBillingProfile(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PutCustomersByIdContactInfo operation middleware
 func (siw *ServerInterfaceWrapper) PutCustomersByIdContactInfo(w http.ResponseWriter, r *http.Request) {
 
@@ -2002,6 +2096,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/addresses", wrapper.PostCustomersByIdAddresses)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/{id}/addresses/{addressId}", wrapper.DeleteCustomersByIdAddressesByAddressId)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/addresses/{addressId}", wrapper.PutCustomersByIdAddressesByAddressId)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/billing-profile", wrapper.GetCustomersByIdBillingProfile)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/billing-profile", wrapper.PutCustomersByIdBillingProfile)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/contact-info", wrapper.PutCustomersByIdContactInfo)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/contacts", wrapper.GetCustomersByIdContacts)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/contacts", wrapper.PostCustomersByIdContacts)
@@ -3344,6 +3440,151 @@ func (response PutCustomersByIdAddressesByAddressId404Response) VisitPutCustomer
 	return nil
 }
 
+type GetCustomersByIdBillingProfileRequestObject struct {
+	Id int32 `json:"id"`
+}
+
+type GetCustomersByIdBillingProfileResponseObject interface {
+	VisitGetCustomersByIdBillingProfileResponse(w http.ResponseWriter) error
+}
+
+type GetCustomersByIdBillingProfile200JSONResponse CustomerBillingProfile
+
+func (response GetCustomersByIdBillingProfile200JSONResponse) VisitGetCustomersByIdBillingProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdBillingProfile401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersByIdBillingProfile401JSONResponse) VisitGetCustomersByIdBillingProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdBillingProfile403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersByIdBillingProfile403JSONResponse) VisitGetCustomersByIdBillingProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdBillingProfile404Response struct {
+}
+
+func (response GetCustomersByIdBillingProfile404Response) VisitGetCustomersByIdBillingProfileResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutCustomersByIdBillingProfileRequestObject struct {
+	Id   int32 `json:"id"`
+	Body *PutCustomersByIdBillingProfileJSONRequestBody
+}
+
+type PutCustomersByIdBillingProfileResponseObject interface {
+	VisitPutCustomersByIdBillingProfileResponse(w http.ResponseWriter) error
+}
+
+type PutCustomersByIdBillingProfile200JSONResponse CustomerBillingProfile
+
+func (response PutCustomersByIdBillingProfile200JSONResponse) VisitPutCustomersByIdBillingProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdBillingProfile400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutCustomersByIdBillingProfile400ApplicationProblemPlusJSONResponse) VisitPutCustomersByIdBillingProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdBillingProfile401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCustomersByIdBillingProfile401JSONResponse) VisitPutCustomersByIdBillingProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdBillingProfile403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCustomersByIdBillingProfile403JSONResponse) VisitPutCustomersByIdBillingProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdBillingProfile404Response struct {
+}
+
+func (response PutCustomersByIdBillingProfile404Response) VisitPutCustomersByIdBillingProfileResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutCustomersByIdBillingProfile409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PutCustomersByIdBillingProfile409ApplicationProblemPlusJSONResponse) VisitPutCustomersByIdBillingProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PutCustomersByIdContactInfoRequestObject struct {
 	Id   int32 `json:"id"`
 	Body *PutCustomersByIdContactInfoJSONRequestBody
@@ -4477,6 +4718,12 @@ type StrictServerInterface interface {
 	// PutCustomersByIdAddressesByAddressId Replace a customer's address
 	// (PUT /api/v1/customers/{id}/addresses/{addressId})
 	PutCustomersByIdAddressesByAddressId(ctx context.Context, request PutCustomersByIdAddressesByAddressIdRequestObject) (PutCustomersByIdAddressesByAddressIdResponseObject, error)
+	// GetCustomersByIdBillingProfile Get a customer's billing profile
+	// (GET /api/v1/customers/{id}/billing-profile)
+	GetCustomersByIdBillingProfile(ctx context.Context, request GetCustomersByIdBillingProfileRequestObject) (GetCustomersByIdBillingProfileResponseObject, error)
+	// PutCustomersByIdBillingProfile Replace a customer's billing profile
+	// (PUT /api/v1/customers/{id}/billing-profile)
+	PutCustomersByIdBillingProfile(ctx context.Context, request PutCustomersByIdBillingProfileRequestObject) (PutCustomersByIdBillingProfileResponseObject, error)
 	// PutCustomersByIdContactInfo Replace a customer's contact info
 	// (PUT /api/v1/customers/{id}/contact-info)
 	PutCustomersByIdContactInfo(ctx context.Context, request PutCustomersByIdContactInfoRequestObject) (PutCustomersByIdContactInfoResponseObject, error)
@@ -5112,6 +5359,65 @@ func (sh *strictHandler) PutCustomersByIdAddressesByAddressId(w http.ResponseWri
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutCustomersByIdAddressesByAddressIdResponseObject); ok {
 		if err := validResponse.VisitPutCustomersByIdAddressesByAddressIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCustomersByIdBillingProfile operation middleware
+func (sh *strictHandler) GetCustomersByIdBillingProfile(w http.ResponseWriter, r *http.Request, id int32) {
+	var request GetCustomersByIdBillingProfileRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCustomersByIdBillingProfile(ctx, request.(GetCustomersByIdBillingProfileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCustomersByIdBillingProfile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCustomersByIdBillingProfileResponseObject); ok {
+		if err := validResponse.VisitGetCustomersByIdBillingProfileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutCustomersByIdBillingProfile operation middleware
+func (sh *strictHandler) PutCustomersByIdBillingProfile(w http.ResponseWriter, r *http.Request, id int32) {
+	var request PutCustomersByIdBillingProfileRequestObject
+
+	request.Id = id
+
+	var body PutCustomersByIdBillingProfileJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutCustomersByIdBillingProfile(ctx, request.(PutCustomersByIdBillingProfileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutCustomersByIdBillingProfile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutCustomersByIdBillingProfileResponseObject); ok {
+		if err := validResponse.VisitPutCustomersByIdBillingProfileResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

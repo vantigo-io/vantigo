@@ -184,6 +184,7 @@ func TestOperationIDsAreUniqueAcrossModules(t *testing.T) {
 var KnownServeMuxConflicts = []string{
 	"DELETE /api/v1/customers/contacts/{id} ⟷ DELETE /api/v1/customers/{id}/legal-identity",
 	"GET /api/v1/customers/contacts/{id} ⟷ GET /api/v1/customers/{id}/addresses",
+	"GET /api/v1/customers/contacts/{id} ⟷ GET /api/v1/customers/{id}/billing-profile",
 	"GET /api/v1/customers/contacts/{id} ⟷ GET /api/v1/customers/{id}/contacts",
 	"GET /api/v1/customers/contacts/{id} ⟷ GET /api/v1/customers/{id}/legal-identity",
 	"GET /api/v1/customers/contacts/{id} ⟷ GET /api/v1/customers/{id}/timeline",
@@ -204,6 +205,7 @@ var KnownServeMuxConflicts = []string{
 	"GET /api/v1/projects/tasks/{taskId} ⟷ GET /api/v1/projects/{id}/roles",
 	"GET /api/v1/projects/tasks/{taskId} ⟷ GET /api/v1/projects/{id}/tasks",
 	"GET /api/v1/projects/tasks/{taskId} ⟷ GET /api/v1/projects/{id}/timeline",
+	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/billing-profile",
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/contact-info",
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/legal-identity",
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/type",

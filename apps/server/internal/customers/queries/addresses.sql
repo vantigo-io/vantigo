@@ -109,6 +109,19 @@ SET type = @type, label = @label, line1 = @line1, line2 = @line2, postal_code = 
 WHERE id = @id AND customer_id = @customer_id
 RETURNING id, customer_id, type, label, line1, line2, postal_code, city, region, country, is_primary, created_at, updated_at;
 
+-- name: CustomerHasInvoiceAddress :one
+-- CustomerHasInvoiceAddress is billing_profile.go's own read (invoice-ready
+-- customer design D4's no_invoice_address warning): true when the customer
+-- has a primary invoice address or, lacking that, a primary postal one —
+-- the same resolution order D3 defines for "the invoice address" everywhere
+-- else. At most one primary per (customer, type) can ever exist (D3's
+-- partial unique index), so this is a plain existence check, never a
+-- priority pick between two candidate rows.
+SELECT EXISTS (
+    SELECT 1 FROM customers.customer_addresses
+    WHERE customer_id = @customer_id AND is_primary AND type IN ('invoice', 'postal')
+);
+
 -- name: DeleteCustomerAddress :exec
 -- DeleteCustomerAddress is DeleteCustomersByIdAddressesByAddressId's write,
 -- scoped to the customer the same way GetCustomerAddress is.
