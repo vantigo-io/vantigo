@@ -49,6 +49,19 @@ func TestDisallowed_RejectsForbiddenRanges(t *testing.T) {
 		"ff02::1",                // multicast (v6)
 		"::ffff:10.0.0.1",        // IPv4-mapped IPv6 of a private address
 		"::ffff:169.254.169.254", // IPv4-mapped IPv6 of the cloud metadata address
+
+		// IPv6 forms that embed (or obfuscate) an IPv4 address, so a
+		// translation gateway cannot be talked into reaching a forbidden
+		// IPv4 destination. See TestDisallowed_AcceptsPublicAddressEmbeddedInIPv6
+		// for the mirror-image cases where the embedded address is public.
+		"64:ff9b::a9fe:a9fe", // NAT64 well-known prefix, embedding the cloud metadata address
+		"64:ff9b::a00:1",     // NAT64 well-known prefix, embedding 10.0.0.1
+		"::a00:1",            // deprecated IPv4-compatible ::/96, embedding 10.0.0.1
+		"2002:a00:1::",       // 6to4, embedding 10.0.0.1
+		"64:ff9b:1::1",       // RFC 8215 local-use NAT64 /48 - refused outright, embedding position is operator-defined
+		"2001::1",            // Teredo 2001::/32 - refused outright, embedding is obfuscated
+		"64:ff9b::7f00:1",    // NAT64, embedding loopback 127.0.0.1
+		"64:ff9b::e000:1",    // NAT64, embedding multicast 224.0.0.1
 	}
 	for _, host := range cases {
 		host := host
@@ -70,6 +83,38 @@ func TestDisallowed_AcceptsPublicAddress(t *testing.T) {
 	}
 }
 
+// TestDisallowed_AcceptsPublicAddressEmbeddedInIPv6 proves the embedded-IPv4
+// classification lets a public address through: a NAT64/6to4-only host must
+// keep working, so only the embedded address's own forbidden-ness matters,
+// not the mere fact of embedding.
+func TestDisallowed_AcceptsPublicAddressEmbeddedInIPv6(t *testing.T) {
+	t.Parallel()
+	cases := []string{
+		"64:ff9b::808:808",     // NAT64 well-known prefix, embedding 8.8.8.8
+		"::808:808",            // deprecated IPv4-compatible ::/96, embedding 8.8.8.8
+		"2002:808:808::",       // 6to4, embedding 8.8.8.8
+		"2a00:1450:4001::200e", // an ordinary global IPv6 address, not any embedding form
+	}
+	for _, host := range cases {
+		host := host
+		t.Run(host, func(t *testing.T) {
+			t.Parallel()
+			if Disallowed(mustAddr(t, host)) {
+				t.Fatalf("Disallowed(%q) = true, want false", host)
+			}
+		})
+	}
+}
+
+// TestDisallowed_RejectsInvalidAddr proves the zero-value/invalid
+// netip.Addr is disallowed — there is nothing valid to dial.
+func TestDisallowed_RejectsInvalidAddr(t *testing.T) {
+	t.Parallel()
+	if !Disallowed(netip.Addr{}) {
+		t.Fatalf("Disallowed(netip.Addr{}) = false, want true")
+	}
+}
+
 // fakeResolver lets a test hand DialContext a canned DNS answer instead of
 // touching real DNS, and records whether it was called at all — proving a
 // literal IP host never reaches it.
@@ -77,10 +122,15 @@ type fakeResolver struct {
 	addrs  []netip.Addr
 	err    error
 	called bool
+	// ctx records the context.Context LookupNetIP was called with, so a
+	// test can prove the caller's context (including its cancellation)
+	// reaches the resolver rather than a fresh one.
+	ctx context.Context
 }
 
-func (r *fakeResolver) LookupNetIP(context.Context, string, string) ([]netip.Addr, error) {
+func (r *fakeResolver) LookupNetIP(ctx context.Context, _ string, _ string) ([]netip.Addr, error) {
 	r.called = true
+	r.ctx = ctx
 	if r.err != nil {
 		return nil, r.err
 	}
@@ -205,5 +255,110 @@ func TestDialContext_RefusesInvalidAddress(t *testing.T) {
 	_, err := DialContext(resolver, dial)(context.Background(), "tcp", "not-a-host-port")
 	if err == nil {
 		t.Fatalf("DialContext() = nil, want an error for an address with no port")
+	}
+}
+
+// TestDialContext_RefusesEmptyHost proves DialContext refuses an empty host
+// itself — it does not depend on the resolver (real or fake) happening to
+// reject an empty string.
+func TestDialContext_RefusesEmptyHost(t *testing.T) {
+	t.Parallel()
+	resolver := &fakeResolver{}
+	dial := func(context.Context, string, string) (net.Conn, error) {
+		t.Fatalf("dial func was called, want it never called for an empty host")
+		return nil, nil
+	}
+
+	_, err := DialContext(resolver, dial)(context.Background(), "tcp", ":25")
+	if !errors.Is(err, ErrDisallowed) {
+		t.Fatalf("DialContext() = %v, want ErrDisallowed", err)
+	}
+	if resolver.called {
+		t.Fatalf("resolver.LookupNetIP was called for an empty host")
+	}
+}
+
+// TestDialContext_RefusesDisallowedLiteral proves the literal-IP path (no
+// resolver lookup) is checked against the guard exactly like a resolved
+// address.
+func TestDialContext_RefusesDisallowedLiteral(t *testing.T) {
+	t.Parallel()
+	resolver := &fakeResolver{}
+	dialed := false
+	dial := func(context.Context, string, string) (net.Conn, error) {
+		dialed = true
+		return fakeConn{}, nil
+	}
+
+	_, err := DialContext(resolver, dial)(context.Background(), "tcp", "10.0.0.5:25")
+	if !errors.Is(err, ErrDisallowed) {
+		t.Fatalf("DialContext() = %v, want ErrDisallowed", err)
+	}
+	if dialed {
+		t.Fatalf("dial func was called, want it never called for a disallowed literal")
+	}
+	if resolver.called {
+		t.Fatalf("resolver.LookupNetIP was called for a literal IP host")
+	}
+}
+
+// TestDialContext_RefusesIPv4MappedLiteral proves a literal IPv4-mapped
+// IPv6 host is unwrapped and classified like the plain IPv4 address it
+// carries.
+func TestDialContext_RefusesIPv4MappedLiteral(t *testing.T) {
+	t.Parallel()
+	resolver := &fakeResolver{}
+	dial := func(context.Context, string, string) (net.Conn, error) {
+		t.Fatalf("dial func was called, want it never called for a disallowed literal")
+		return nil, nil
+	}
+
+	_, err := DialContext(resolver, dial)(context.Background(), "tcp", "[::ffff:10.0.0.1]:443")
+	if !errors.Is(err, ErrDisallowed) {
+		t.Fatalf("DialContext() = %v, want ErrDisallowed", err)
+	}
+}
+
+// TestDialContext_RefusesZonedLinkLocalLiteral proves a literal link-local
+// host carrying a zone identifier (as a network interface would hand back)
+// is still classified as link-local.
+func TestDialContext_RefusesZonedLinkLocalLiteral(t *testing.T) {
+	t.Parallel()
+	resolver := &fakeResolver{}
+	dial := func(context.Context, string, string) (net.Conn, error) {
+		t.Fatalf("dial func was called, want it never called for a disallowed literal")
+		return nil, nil
+	}
+
+	_, err := DialContext(resolver, dial)(context.Background(), "tcp", "[fe80::1%eth0]:443")
+	if !errors.Is(err, ErrDisallowed) {
+		t.Fatalf("DialContext() = %v, want ErrDisallowed", err)
+	}
+}
+
+// TestDialContext_PropagatesCancellationToResolverAndDial proves the
+// caller's context — including its cancellation — reaches both the
+// resolver and the dial func, rather than DialContext substituting a fresh
+// one at either step.
+func TestDialContext_PropagatesCancellationToResolverAndDial(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	resolver := &fakeResolver{addrs: []netip.Addr{mustAddr(t, "203.0.113.5")}}
+
+	var dialCtx context.Context
+	dial := func(ctx context.Context, _ string, _ string) (net.Conn, error) {
+		dialCtx = ctx
+		return fakeConn{}, nil
+	}
+
+	_, _ = DialContext(resolver, dial)(ctx, "tcp", "mail.example.test:25")
+
+	if resolver.ctx == nil || resolver.ctx.Err() != context.Canceled {
+		t.Fatalf("resolver context = %v, want a context already Canceled", resolver.ctx)
+	}
+	if dialCtx == nil || dialCtx.Err() != context.Canceled {
+		t.Fatalf("dial context = %v, want a context already Canceled", dialCtx)
 	}
 }
