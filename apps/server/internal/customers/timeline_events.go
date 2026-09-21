@@ -162,3 +162,36 @@ func recordCustomerStatusChanged(ctx context.Context, q *store.Queries, now time
 	}
 	return recordGeneratedEvent(ctx, q, customerID, now, "customer.status_changed", summary, payload, 1, actorKind, actorDisplay, actorUserID)
 }
+
+// contactInfoChanges is recordCustomerContactInfoUpdated's changes map,
+// shaped like recordCustomerUpdated's: only the fields that actually moved,
+// each keyed to its own before/after pair (customers foundation design D2).
+func contactInfoChanges(before, after contactInfo) map[string]any {
+	changes := map[string]any{}
+	if !stringPtrEqual(before.Email, after.Email) {
+		changes["email"] = map[string]any{"before": before.Email, "after": after.Email}
+	}
+	if !stringPtrEqual(before.Phone, after.Phone) {
+		changes["phone"] = map[string]any{"before": before.Phone, "after": after.Phone}
+	}
+	if !stringPtrEqual(before.Website, after.Website) {
+		changes["website"] = map[string]any{"before": before.Website, "after": after.Website}
+	}
+	return changes
+}
+
+// recordCustomerContactInfoUpdated is PutCustomersByIdContactInfo's own
+// generated event (invoice-ready customer design D2), shaped like
+// recordCustomerStatusChanged/recordCustomerTypeChanged: no .NET ancestor,
+// since contact info is new to this port. Only called once the handler has
+// already confirmed something changed (contact_info.go's no-op rule), so
+// changes is never empty here.
+func recordCustomerContactInfoUpdated(ctx context.Context, q *store.Queries, now time.Time, customerID int32, before, after contactInfo, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	payload := map[string]any{
+		"customerId": customerID,
+		"before":     before,
+		"after":      after,
+		"changes":    contactInfoChanges(before, after),
+	}
+	return recordGeneratedEvent(ctx, q, customerID, now, "customer.contact_info_updated", "Customer contact info updated", payload, 1, actorKind, actorDisplay, actorUserID)
+}

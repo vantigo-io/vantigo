@@ -64,10 +64,13 @@ type ContactResponse struct {
 // CreateCustomerRequest defines model for CreateCustomerRequest.
 type CreateCustomerRequest struct {
 	// AllowDuplicateIdentity When true, skips the duplicate-legal-identity conflict check entirely (customers foundation design D6) — two departments of one company kept as separate customers is legitimate. Absent or false, an identity another customer already has is a 409.
-	AllowDuplicateIdentity *bool                 `json:"allowDuplicateIdentity,omitempty"`
-	Identity               *LegalIdentityRequest `json:"identity,omitempty"`
-	Name                   string                `json:"name"`
-	Status                 *string               `json:"status,omitempty"`
+	AllowDuplicateIdentity *bool `json:"allowDuplicateIdentity,omitempty"`
+
+	// ContactInfo When present, the customer is created with its own contact details already set (invoice-ready customer design D2) — the same validation PUT /customers/{id}/contact-info applies, nested under contactInfo.<field>.
+	ContactInfo *CustomerContactInfo  `json:"contactInfo,omitempty"`
+	Identity    *LegalIdentityRequest `json:"identity,omitempty"`
+	Name        string                `json:"name"`
+	Status      *string               `json:"status,omitempty"`
 
 	// Type 'business' or 'person'. Defaults to 'business'. When an identity is supplied, its type must agree. Changed afterwards only through PUT /customers/{id}/type.
 	Type *string `json:"type,omitempty"`
@@ -96,6 +99,13 @@ type CustomerConflictProblem struct {
 	Status     *int32                       `json:"status,omitempty"`
 	Title      *string                      `json:"title,omitempty"`
 	Type       *string                      `json:"type,omitempty"`
+}
+
+// CustomerContactInfo A customer's own contact details (invoice-ready customer design D2) — what reaches the customer itself, not one of its contacts. Each field is nullable; a blank value is stored as null.
+type CustomerContactInfo struct {
+	Email   *string `json:"email,omitempty"`
+	Phone   *string `json:"phone,omitempty"`
+	Website *string `json:"website,omitempty"`
 }
 
 // CustomerContactRequest defines model for CustomerContactRequest.
@@ -229,6 +239,16 @@ type PaginatedResponseOfSafeCustomerResponse struct {
 	Pagination externalRef0.PaginationMetadata `json:"pagination"`
 }
 
+// PutCustomerContactInfoRequest PUT /customers/{id}/contact-info's own request body (invoice-ready customer design D1): a full replace of the customer's contact info — every field present or null, absent and null both meaning the field is cleared. revision is optional, as PUT /customers/{id}'s own is.
+type PutCustomerContactInfoRequest struct {
+	Email *string `json:"email,omitempty"`
+	Phone *string `json:"phone,omitempty"`
+
+	// Revision The revision the caller read the customer at (customers foundation design D5). Optional — omitted, the change applies regardless; present and stale, a 409.
+	Revision *int32  `json:"revision,omitempty"`
+	Website  *string `json:"website,omitempty"`
+}
+
 // PutLegalIdentityRequest PUT /customers/{id}/legal-identity's own request body — not LegalIdentityRequest plus an allOf, deliberately: LegalIdentityRequest is also nested (via allOf) as CreateCustomerRequest.identity/UpdateCustomerRequest.identity, and allowDuplicateIdentity belongs to this operation's body alone. Composing it onto LegalIdentityRequest would have surfaced it a second time, nested and inert, under identity on those two requests — confusing a caller into believing it took effect there. The five identity fields are repeated here rather than shared, so this stays a clean, flat generated type.
 type PutLegalIdentityRequest struct {
 	// AllowDuplicateIdentity When true, skips the duplicate-legal-identity conflict check entirely (customers foundation design D6) — two departments of one company kept as separate customers is legitimate. Absent or false, an identity another customer already has is a 409. Only consulted when it differs from the identity already on file.
@@ -249,6 +269,8 @@ type SafeCustomerIdentity struct {
 
 // SafeCustomerResponse defines model for SafeCustomerResponse.
 type SafeCustomerResponse struct {
+	// ContactInfo A customer's own contact details (invoice-ready customer design D2). Always present; optional here only because the recorded exchange corpus predates it.
+	ContactInfo    *CustomerContactInfo  `json:"contactInfo,omitempty"`
 	CreatedAt      time.Time             `json:"createdAt"`
 	CustomerNumber int64                 `json:"customerNumber"`
 	Id             int32                 `json:"id"`
@@ -411,6 +433,9 @@ type PutCustomersContactsByIdJSONRequestBody = ContactRequest
 // PutCustomersByIdJSONRequestBody defines body for PutCustomersById for application/json ContentType.
 type PutCustomersByIdJSONRequestBody = UpdateCustomerRequest
 
+// PutCustomersByIdContactInfoJSONRequestBody defines body for PutCustomersByIdContactInfo for application/json ContentType.
+type PutCustomersByIdContactInfoJSONRequestBody = PutCustomerContactInfoRequest
+
 // PostCustomersByIdContactsJSONRequestBody defines body for PostCustomersByIdContacts for application/json ContentType.
 type PostCustomersByIdContactsJSONRequestBody = AttachCustomerContactRequest
 
@@ -479,6 +504,9 @@ type ServerInterface interface {
 	// PutCustomersById Update a customer
 	// (PUT /api/v1/customers/{id})
 	PutCustomersById(w http.ResponseWriter, r *http.Request, id int32)
+	// PutCustomersByIdContactInfo Replace a customer's contact info
+	// (PUT /api/v1/customers/{id}/contact-info)
+	PutCustomersByIdContactInfo(w http.ResponseWriter, r *http.Request, id int32)
 	// GetCustomersByIdContacts List the contacts associated with a customer
 	// (GET /api/v1/customers/{id}/contacts)
 	GetCustomersByIdContacts(w http.ResponseWriter, r *http.Request, id int32)
@@ -1130,6 +1158,32 @@ func (siw *ServerInterfaceWrapper) PutCustomersById(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// PutCustomersByIdContactInfo operation middleware
+func (siw *ServerInterfaceWrapper) PutCustomersByIdContactInfo(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutCustomersByIdContactInfo(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetCustomersByIdContacts operation middleware
 func (siw *ServerInterfaceWrapper) GetCustomersByIdContacts(w http.ResponseWriter, r *http.Request) {
 
@@ -1770,6 +1824,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/{id}", wrapper.DeleteCustomersById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}", wrapper.GetCustomer)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}", wrapper.PutCustomersById)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/contact-info", wrapper.PutCustomersByIdContactInfo)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/contacts", wrapper.GetCustomersByIdContacts)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/contacts", wrapper.PostCustomersByIdContacts)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/{id}/contacts/{contactId}", wrapper.DeleteCustomersByIdContactsByContactId)
@@ -2843,6 +2898,93 @@ func (response PutCustomersById409ApplicationProblemPlusJSONResponse) VisitPutCu
 	return err
 }
 
+type PutCustomersByIdContactInfoRequestObject struct {
+	Id   int32 `json:"id"`
+	Body *PutCustomersByIdContactInfoJSONRequestBody
+}
+
+type PutCustomersByIdContactInfoResponseObject interface {
+	VisitPutCustomersByIdContactInfoResponse(w http.ResponseWriter) error
+}
+
+type PutCustomersByIdContactInfo200JSONResponse SafeCustomerResponse
+
+func (response PutCustomersByIdContactInfo200JSONResponse) VisitPutCustomersByIdContactInfoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdContactInfo400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutCustomersByIdContactInfo400ApplicationProblemPlusJSONResponse) VisitPutCustomersByIdContactInfoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdContactInfo401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCustomersByIdContactInfo401JSONResponse) VisitPutCustomersByIdContactInfoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdContactInfo403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCustomersByIdContactInfo403JSONResponse) VisitPutCustomersByIdContactInfoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdContactInfo404Response struct {
+}
+
+func (response PutCustomersByIdContactInfo404Response) VisitPutCustomersByIdContactInfoResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutCustomersByIdContactInfo409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PutCustomersByIdContactInfo409ApplicationProblemPlusJSONResponse) VisitPutCustomersByIdContactInfoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCustomersByIdContactsRequestObject struct {
 	Id int32 `json:"id"`
 }
@@ -3877,6 +4019,9 @@ type StrictServerInterface interface {
 	// PutCustomersById Update a customer
 	// (PUT /api/v1/customers/{id})
 	PutCustomersById(ctx context.Context, request PutCustomersByIdRequestObject) (PutCustomersByIdResponseObject, error)
+	// PutCustomersByIdContactInfo Replace a customer's contact info
+	// (PUT /api/v1/customers/{id}/contact-info)
+	PutCustomersByIdContactInfo(ctx context.Context, request PutCustomersByIdContactInfoRequestObject) (PutCustomersByIdContactInfoResponseObject, error)
 	// GetCustomersByIdContacts List the contacts associated with a customer
 	// (GET /api/v1/customers/{id}/contacts)
 	GetCustomersByIdContacts(ctx context.Context, request GetCustomersByIdContactsRequestObject) (GetCustomersByIdContactsResponseObject, error)
@@ -4389,6 +4534,39 @@ func (sh *strictHandler) PutCustomersById(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutCustomersByIdResponseObject); ok {
 		if err := validResponse.VisitPutCustomersByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutCustomersByIdContactInfo operation middleware
+func (sh *strictHandler) PutCustomersByIdContactInfo(w http.ResponseWriter, r *http.Request, id int32) {
+	var request PutCustomersByIdContactInfoRequestObject
+
+	request.Id = id
+
+	var body PutCustomersByIdContactInfoJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutCustomersByIdContactInfo(ctx, request.(PutCustomersByIdContactInfoRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutCustomersByIdContactInfo")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutCustomersByIdContactInfoResponseObject); ok {
+		if err := validResponse.VisitPutCustomersByIdContactInfoResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

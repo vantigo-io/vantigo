@@ -10,6 +10,7 @@ sql:
       - ../db/migrations/00007_customers_type.sql
       - ../db/migrations/00015_customers_timeline_actor.sql
       - ../db/migrations/00016_customers_revision.sql
+      - ../db/migrations/00017_customers_contact_info.sql
     queries: queries
     gen:
       go:

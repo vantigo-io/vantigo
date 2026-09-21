@@ -65,6 +65,8 @@ WHERE (
         $4::text IS NULL
      OR c.name ILIKE $4::text
      OR c.customer_number::text ILIKE $5::text
+     OR c.email ILIKE $4::text
+     OR regexp_replace(c.phone, '\s', '', 'g') ILIKE $5::text
      OR ($6::bool AND (
             c.legal_name ILIKE $4::text
          OR c.legal_id ILIKE $5::text))
@@ -102,11 +104,15 @@ type CountCustomersParams struct {
 // status keeps today's rule (archived hidden unless include_archived).
 // search matches the name, the customer number (also against
 // search_compact, so "923 609 016" finds a legal id stored as
-// "923609016") and, only when the caller may see that data
-// (search_identity/search_contacts — customers foundation design D4), the
-// legal name/id and any linked contact's name/email: a caller lacking
-// those permissions gets exactly today's name-and-number behaviour, never
-// an oracle for data the response would withhold.
+// "923609016"), the customer's own email and, compacted with its
+// whitespace stripped the same way search_compact strips the caller's, its
+// own phone (invoice-ready customer design D2 — ungated, since
+// SafeCustomerResponse.contactInfo shows both to anyone who can list at
+// all) and, only when the caller may see that data (search_identity/
+// search_contacts — customers foundation design D4), the legal name/id and
+// any linked contact's name/email: a caller lacking those permissions gets
+// exactly today's name-and-number behaviour, never an oracle for data the
+// response would withhold.
 func (q *Queries) CountCustomers(ctx context.Context, arg CountCustomersParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countCustomers,
 		arg.Status,
@@ -493,7 +499,7 @@ func (q *Queries) DirectoryCustomer(ctx context.Context, id int32) (DirectoryCus
 
 const getCustomer = `-- name: GetCustomer :one
 SELECT id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-       created_at, updated_at, type, revision
+       created_at, updated_at, type, revision, email, phone, website
 FROM customers.customers
 WHERE id = $1
 `
@@ -516,6 +522,9 @@ func (q *Queries) GetCustomer(ctx context.Context, id int32) (CustomersCustomer,
 		&i.UpdatedAt,
 		&i.Type,
 		&i.Revision,
+		&i.Email,
+		&i.Phone,
+		&i.Website,
 	)
 	return i, err
 }
@@ -523,13 +532,13 @@ func (q *Queries) GetCustomer(ctx context.Context, id int32) (CustomersCustomer,
 const insertCustomer = `-- name: InsertCustomer :one
 INSERT INTO customers.customers (
     customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-    created_at, updated_at, type
+    created_at, updated_at, type, email, phone, website
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8,
-    $9::timestamptz, $9::timestamptz, $10
+    $9::timestamptz, $9::timestamptz, $10, $11, $12, $13
 )
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at, type, revision
+          created_at, updated_at, type, revision, email, phone, website
 `
 
 type InsertCustomerParams struct {
@@ -543,10 +552,15 @@ type InsertCustomerParams struct {
 	LegalType      *string
 	Now            time.Time
 	Type           string
+	Email          *string
+	Phone          *string
+	Website        *string
 }
 
 // InsertCustomer creates a customer row. created_at and updated_at are the
 // same instant on creation, supplied by the caller from Deps.Clock().
+// email/phone/website are the customer's own contact info (invoice-ready
+// customer design D2), NULL when PostCustomers received none.
 func (q *Queries) InsertCustomer(ctx context.Context, arg InsertCustomerParams) (CustomersCustomer, error) {
 	row := q.db.QueryRow(ctx, insertCustomer,
 		arg.CustomerNumber,
@@ -559,6 +573,9 @@ func (q *Queries) InsertCustomer(ctx context.Context, arg InsertCustomerParams) 
 		arg.LegalType,
 		arg.Now,
 		arg.Type,
+		arg.Email,
+		arg.Phone,
+		arg.Website,
 	)
 	var i CustomersCustomer
 	err := row.Scan(
@@ -575,6 +592,9 @@ func (q *Queries) InsertCustomer(ctx context.Context, arg InsertCustomerParams) 
 		&i.UpdatedAt,
 		&i.Type,
 		&i.Revision,
+		&i.Email,
+		&i.Phone,
+		&i.Website,
 	)
 	return i, err
 }
@@ -646,7 +666,7 @@ func (q *Queries) InsertGeneratedTimelineEvent(ctx context.Context, arg InsertGe
 
 const listCustomers = `-- name: ListCustomers :many
 SELECT c.id, c.customer_number, c.name, c.status, c.type, c.legal_country, c.legal_id, c.legal_name, c.legal_source,
-       c.legal_type, c.created_at, c.updated_at, c.revision,
+       c.legal_type, c.created_at, c.updated_at, c.revision, c.email, c.phone, c.website,
        (SELECT count(*) FROM customers.customers_timeline_entries e
          WHERE e.customer_id = c.id AND e.state = 'active') AS entry_count,
        (SELECT max(e.occurred_on)::date FROM customers.customers_timeline_entries e
@@ -661,6 +681,8 @@ WHERE (
         $4::text IS NULL
      OR c.name ILIKE $4::text
      OR c.customer_number::text ILIKE $5::text
+     OR c.email ILIKE $4::text
+     OR regexp_replace(c.phone, '\s', '', 'g') ILIKE $5::text
      OR ($6::bool AND (
             c.legal_name ILIKE $4::text
          OR c.legal_id ILIKE $5::text))
@@ -719,6 +741,9 @@ type ListCustomersRow struct {
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 	Revision         int32
+	Email            *string
+	Phone            *string
+	Website          *string
 	EntryCount       int64
 	LatestOccurredOn pgtype.Date
 }
@@ -774,6 +799,9 @@ func (q *Queries) ListCustomers(ctx context.Context, arg ListCustomersParams) ([
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Revision,
+			&i.Email,
+			&i.Phone,
+			&i.Website,
 			&i.EntryCount,
 			&i.LatestOccurredOn,
 		); err != nil {
@@ -811,7 +839,7 @@ UPDATE customers.customers
 SET status = $1, updated_at = $2::timestamptz, revision = revision + 1
 WHERE id = $3
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at, type, revision
+          created_at, updated_at, type, revision, email, phone, website
 `
 
 type SetCustomerStatusParams struct {
@@ -843,6 +871,9 @@ func (q *Queries) SetCustomerStatus(ctx context.Context, arg SetCustomerStatusPa
 		&i.UpdatedAt,
 		&i.Type,
 		&i.Revision,
+		&i.Email,
+		&i.Phone,
+		&i.Website,
 	)
 	return i, err
 }
@@ -860,7 +891,7 @@ SET type = $1,
 WHERE id = $8
   AND ($9::int IS NULL OR revision = $9::int)
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at, type, revision
+          created_at, updated_at, type, revision, email, phone, website
 `
 
 type SetCustomerTypeParams struct {
@@ -910,6 +941,9 @@ func (q *Queries) SetCustomerType(ctx context.Context, arg SetCustomerTypeParams
 		&i.UpdatedAt,
 		&i.Type,
 		&i.Revision,
+		&i.Email,
+		&i.Phone,
+		&i.Website,
 	)
 	return i, err
 }
@@ -928,7 +962,7 @@ SET name = $1,
 WHERE id = $9
   AND ($10::int IS NULL OR revision = $10::int)
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at, type, revision
+          created_at, updated_at, type, revision, email, phone, website
 `
 
 type UpdateCustomerParams struct {
@@ -955,6 +989,10 @@ type UpdateCustomerParams struct {
 // updated_at. sqlc.narg(expected_revision) is the optimistic-concurrency
 // guard PUT /customers/{id} supplies; the legal-identity writes leave it
 // NULL, an unconditional write that always succeeds while the row exists.
+// email/phone/website (invoice-ready customer design D2) are never in this
+// statement's SET list — PUT /customers/{id} does not touch contact info
+// (D1: it is its own sub-resource) — so RETURNING them here only reports
+// whatever the row already has, unchanged by this write.
 func (q *Queries) UpdateCustomer(ctx context.Context, arg UpdateCustomerParams) (CustomersCustomer, error) {
 	row := q.db.QueryRow(ctx, updateCustomer,
 		arg.Name,
@@ -983,6 +1021,70 @@ func (q *Queries) UpdateCustomer(ctx context.Context, arg UpdateCustomerParams) 
 		&i.UpdatedAt,
 		&i.Type,
 		&i.Revision,
+		&i.Email,
+		&i.Phone,
+		&i.Website,
+	)
+	return i, err
+}
+
+const updateCustomerContactInfo = `-- name: UpdateCustomerContactInfo :one
+UPDATE customers.customers
+SET email = $1,
+    phone = $2,
+    website = $3,
+    updated_at = $4::timestamptz,
+    revision = revision + 1
+WHERE id = $5
+  AND ($6::int IS NULL OR revision = $6::int)
+RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
+          created_at, updated_at, type, revision, email, phone, website
+`
+
+type UpdateCustomerContactInfoParams struct {
+	Email            *string
+	Phone            *string
+	Website          *string
+	UpdatedAt        time.Time
+	ID               int32
+	ExpectedRevision *int32
+}
+
+// UpdateCustomerContactInfo is PUT /customers/{id}/contact-info's write
+// (invoice-ready customer design D1, D2): a full replace of the three
+// contact-info columns only — name, status and the legal identity are
+// untouched, since this sub-resource never writes them. Guarded and
+// revision-bumping exactly like UpdateCustomer/SetCustomerType above:
+// sqlc.narg(expected_revision) is PutCustomerContactInfoRequest's optional
+// revision, and the caller (contact_info.go) skips calling this entirely
+// when nothing about the contact info actually changed.
+func (q *Queries) UpdateCustomerContactInfo(ctx context.Context, arg UpdateCustomerContactInfoParams) (CustomersCustomer, error) {
+	row := q.db.QueryRow(ctx, updateCustomerContactInfo,
+		arg.Email,
+		arg.Phone,
+		arg.Website,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.ExpectedRevision,
+	)
+	var i CustomersCustomer
+	err := row.Scan(
+		&i.ID,
+		&i.CustomerNumber,
+		&i.Name,
+		&i.Status,
+		&i.LegalCountry,
+		&i.LegalID,
+		&i.LegalName,
+		&i.LegalSource,
+		&i.LegalType,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Type,
+		&i.Revision,
+		&i.Email,
+		&i.Phone,
+		&i.Website,
 	)
 	return i, err
 }

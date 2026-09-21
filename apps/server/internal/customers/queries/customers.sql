@@ -12,20 +12,22 @@ RETURNING next_value;
 -- name: InsertCustomer :one
 -- InsertCustomer creates a customer row. created_at and updated_at are the
 -- same instant on creation, supplied by the caller from Deps.Clock().
+-- email/phone/website are the customer's own contact info (invoice-ready
+-- customer design D2), NULL when PostCustomers received none.
 INSERT INTO customers.customers (
     customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-    created_at, updated_at, type
+    created_at, updated_at, type, email, phone, website
 ) VALUES (
     @customer_number, @name, @status, @legal_country, @legal_id, @legal_name, @legal_source, @legal_type,
-    @now::timestamptz, @now::timestamptz, @type
+    @now::timestamptz, @now::timestamptz, @type, @email, @phone, @website
 )
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at, type, revision;
+          created_at, updated_at, type, revision, email, phone, website;
 
 -- name: GetCustomer :one
 -- GetCustomer fetches one customer by id.
 SELECT id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-       created_at, updated_at, type, revision
+       created_at, updated_at, type, revision, email, phone, website
 FROM customers.customers
 WHERE id = @id;
 
@@ -60,6 +62,10 @@ LIMIT 5;
 -- updated_at. sqlc.narg(expected_revision) is the optimistic-concurrency
 -- guard PUT /customers/{id} supplies; the legal-identity writes leave it
 -- NULL, an unconditional write that always succeeds while the row exists.
+-- email/phone/website (invoice-ready customer design D2) are never in this
+-- statement's SET list — PUT /customers/{id} does not touch contact info
+-- (D1: it is its own sub-resource) — so RETURNING them here only reports
+-- whatever the row already has, unchanged by this write.
 UPDATE customers.customers
 SET name = @name,
     status = @status,
@@ -73,7 +79,7 @@ SET name = @name,
 WHERE id = @id
   AND (sqlc.narg(expected_revision)::int IS NULL OR revision = sqlc.narg(expected_revision)::int)
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at, type, revision;
+          created_at, updated_at, type, revision, email, phone, website;
 
 -- name: SetCustomerStatus :one
 -- SetCustomerStatus is DeleteCustomerEndpoint's archive transition
@@ -86,7 +92,7 @@ UPDATE customers.customers
 SET status = @status, updated_at = @now::timestamptz, revision = revision + 1
 WHERE id = @id
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at, type, revision;
+          created_at, updated_at, type, revision, email, phone, website;
 
 -- name: SetCustomerType :one
 -- SetCustomerType is PUT /customers/{id}/type's write: the customer type
@@ -109,7 +115,27 @@ SET type = @type,
 WHERE id = @id
   AND (sqlc.narg(expected_revision)::int IS NULL OR revision = sqlc.narg(expected_revision)::int)
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at, type, revision;
+          created_at, updated_at, type, revision, email, phone, website;
+
+-- name: UpdateCustomerContactInfo :one
+-- UpdateCustomerContactInfo is PUT /customers/{id}/contact-info's write
+-- (invoice-ready customer design D1, D2): a full replace of the three
+-- contact-info columns only — name, status and the legal identity are
+-- untouched, since this sub-resource never writes them. Guarded and
+-- revision-bumping exactly like UpdateCustomer/SetCustomerType above:
+-- sqlc.narg(expected_revision) is PutCustomerContactInfoRequest's optional
+-- revision, and the caller (contact_info.go) skips calling this entirely
+-- when nothing about the contact info actually changed.
+UPDATE customers.customers
+SET email = @email,
+    phone = @phone,
+    website = @website,
+    updated_at = @updated_at::timestamptz,
+    revision = revision + 1
+WHERE id = @id
+  AND (sqlc.narg(expected_revision)::int IS NULL OR revision = sqlc.narg(expected_revision)::int)
+RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
+          created_at, updated_at, type, revision, email, phone, website;
 
 -- name: CountCustomers :one
 -- CountCustomers is the total row count GetCustomers paginates over
@@ -123,11 +149,15 @@ RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name
 -- status keeps today's rule (archived hidden unless include_archived).
 -- search matches the name, the customer number (also against
 -- search_compact, so "923 609 016" finds a legal id stored as
--- "923609016") and, only when the caller may see that data
--- (search_identity/search_contacts — customers foundation design D4), the
--- legal name/id and any linked contact's name/email: a caller lacking
--- those permissions gets exactly today's name-and-number behaviour, never
--- an oracle for data the response would withhold.
+-- "923609016"), the customer's own email and, compacted with its
+-- whitespace stripped the same way search_compact strips the caller's, its
+-- own phone (invoice-ready customer design D2 — ungated, since
+-- SafeCustomerResponse.contactInfo shows both to anyone who can list at
+-- all) and, only when the caller may see that data (search_identity/
+-- search_contacts — customers foundation design D4), the legal name/id and
+-- any linked contact's name/email: a caller lacking those permissions gets
+-- exactly today's name-and-number behaviour, never an oracle for data the
+-- response would withhold.
 SELECT count(*)
 FROM customers.customers c
 WHERE (
@@ -139,6 +169,8 @@ WHERE (
         sqlc.narg(search)::text IS NULL
      OR c.name ILIKE sqlc.narg(search)::text
      OR c.customer_number::text ILIKE sqlc.narg(search_compact)::text
+     OR c.email ILIKE sqlc.narg(search)::text
+     OR regexp_replace(c.phone, '\s', '', 'g') ILIKE sqlc.narg(search_compact)::text
      OR (@search_identity::bool AND (
             c.legal_name ILIKE sqlc.narg(search)::text
          OR c.legal_id ILIKE sqlc.narg(search_compact)::text))
@@ -172,7 +204,7 @@ WHERE (
 -- whatever direction @descending asks for, the same shape
 -- ListCustomersByName's name-then-id ordering had.
 SELECT c.id, c.customer_number, c.name, c.status, c.type, c.legal_country, c.legal_id, c.legal_name, c.legal_source,
-       c.legal_type, c.created_at, c.updated_at, c.revision,
+       c.legal_type, c.created_at, c.updated_at, c.revision, c.email, c.phone, c.website,
        (SELECT count(*) FROM customers.customers_timeline_entries e
          WHERE e.customer_id = c.id AND e.state = 'active') AS entry_count,
        (SELECT max(e.occurred_on)::date FROM customers.customers_timeline_entries e
@@ -187,6 +219,8 @@ WHERE (
         sqlc.narg(search)::text IS NULL
      OR c.name ILIKE sqlc.narg(search)::text
      OR c.customer_number::text ILIKE sqlc.narg(search_compact)::text
+     OR c.email ILIKE sqlc.narg(search)::text
+     OR regexp_replace(c.phone, '\s', '', 'g') ILIKE sqlc.narg(search_compact)::text
      OR (@search_identity::bool AND (
             c.legal_name ILIKE sqlc.narg(search)::text
          OR c.legal_id ILIKE sqlc.narg(search_compact)::text))

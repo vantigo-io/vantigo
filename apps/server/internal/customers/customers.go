@@ -41,6 +41,9 @@ type customerRow struct {
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 	Revision         int32
+	Email            *string
+	Phone            *string
+	Website          *string
 	EntryCount       int64
 	LatestOccurredOn pgtype.Date
 }
@@ -50,6 +53,7 @@ func fromCustomerRow(c store.CustomersCustomer, ts store.CustomerTimelineSummary
 		ID: c.ID, CustomerNumber: c.CustomerNumber, Name: c.Name, Status: c.Status, Type: c.Type,
 		LegalCountry: c.LegalCountry, LegalID: c.LegalID, LegalName: c.LegalName, LegalSource: c.LegalSource, LegalType: c.LegalType,
 		CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, Revision: c.Revision,
+		Email: c.Email, Phone: c.Phone, Website: c.Website,
 		EntryCount: ts.EntryCount, LatestOccurredOn: ts.LatestOccurredOn,
 	}
 }
@@ -63,6 +67,7 @@ func fromListRow(r store.ListCustomersRow) customerRow {
 		ID: r.ID, CustomerNumber: r.CustomerNumber, Name: r.Name, Status: r.Status, Type: r.Type,
 		LegalCountry: r.LegalCountry, LegalID: r.LegalID, LegalName: r.LegalName, LegalSource: r.LegalSource, LegalType: r.LegalType,
 		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, Revision: r.Revision,
+		Email: r.Email, Phone: r.Phone, Website: r.Website,
 		EntryCount: r.EntryCount, LatestOccurredOn: r.LatestOccurredOn,
 	}
 }
@@ -103,6 +108,9 @@ func dateFromPgtype(d pgtype.Date) *openapi_types.Date {
 // (GetCustomerEndpoint.cs:54-75, GetCustomersEndpoint.cs:82-103,
 // UpdateCustomerEndpoint.cs:111-129): the legal-identity sub-object is only
 // populated when the caller holds legal-identity-view (inventory §6).
+// contactInfo (invoice-ready customer design D2) is never gated this way —
+// it is always set, ungated, since D2 makes it as visible as the name and
+// status every list caller already sees.
 func safeCustomerResponse(row customerRow, includeIdentity bool) gen.SafeCustomerResponse {
 	resp := gen.SafeCustomerResponse{
 		Id:             row.ID,
@@ -113,6 +121,7 @@ func safeCustomerResponse(row customerRow, includeIdentity bool) gen.SafeCustome
 		CreatedAt:      row.CreatedAt,
 		UpdatedAt:      row.UpdatedAt,
 		Revision:       &row.Revision,
+		ContactInfo:    &gen.CustomerContactInfo{Email: row.Email, Phone: row.Phone, Website: row.Website},
 		TimelineSummary: gen.SafeTimelineSummary{
 			EntryCount:       int32(row.EntryCount),
 			LatestOccurredOn: dateFromPgtype(row.LatestOccurredOn),
@@ -361,6 +370,22 @@ func (s *server) PostCustomers(ctx context.Context, req gen.PostCustomersRequest
 		}
 	}
 
+	// contactInfo (invoice-ready customer design D2): optional, so a customer
+	// can be created complete. validateContactInfo is the same validator
+	// PutCustomersByIdContactInfo uses (contact_info.go); errors nest under
+	// "contactInfo.<field>" the same way identity's do under "identity.<field>".
+	var contact contactInfo
+	if body.ContactInfo != nil {
+		ci, ciErrs := validateContactInfo(body.ContactInfo.Email, body.ContactInfo.Phone, body.ContactInfo.Website)
+		if ciErrs != nil {
+			for field, msgs := range ciErrs {
+				errs["contactInfo."+field] = msgs
+			}
+		} else {
+			contact = ci
+		}
+	}
+
 	if len(errs) > 0 {
 		return gen.PostCustomers400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid customer", errs)), nil
 	}
@@ -419,6 +444,9 @@ func (s *server) PostCustomers(ctx context.Context, req gen.PostCustomersRequest
 			LegalSource:    legalSource,
 			LegalType:      legalType,
 			Now:            now,
+			Email:          contact.Email,
+			Phone:          contact.Phone,
+			Website:        contact.Website,
 		})
 		if err != nil {
 			return err
