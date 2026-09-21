@@ -567,8 +567,8 @@ func TestCustomerUpdatesDescribeLegalIdentityChanges(t *testing.T) {
 			t.Fatalf("update customer identity: status %d body %s, want 200", r.Status, r.Body)
 		}
 	}
-	updateCustomerIdentity(map[string]any{"country": "no", "type": "business", "id": "123456789", "name": "Legal AS", "source": "manual"})
-	updateCustomerIdentity(map[string]any{"country": "no", "type": "business", "id": "987654321", "name": "New Legal AS", "source": "brreg"})
+	updateCustomerIdentity(map[string]any{"country": "no", "type": "business", "id": "123456785", "name": "Legal AS", "source": "manual"})
+	updateCustomerIdentity(map[string]any{"country": "no", "type": "business", "id": "987654325", "name": "New Legal AS", "source": "brreg"})
 	c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d", customer.Id), map[string]any{"name": "Timeline final"})
 	c.Do(http.MethodDelete, fmt.Sprintf("/api/v1/customers/%d/legal-identity", customer.Id), nil)
 

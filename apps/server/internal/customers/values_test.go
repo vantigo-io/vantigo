@@ -1,6 +1,7 @@
 package customers
 
 import (
+	"fmt"
 	"slices"
 	"sort"
 	"strings"
@@ -62,11 +63,48 @@ func TestValidateCountryCode_BlankIsInvalid(t *testing.T) {
 }
 
 // Ported from Domain/Customers/Common/CountryCodeTests.cs.
-// Constructor_TrimsAndLowercasesValue.
+// Constructor_TrimsAndLowercasesValue. "no" is an assigned ISO 3166-1
+// alpha-2 code, so this also exercises the shape check added in customers
+// foundation design D2 without tripping it.
 func TestValidateCountryCode_TrimsAndLowercases(t *testing.T) {
 	got, err := validateCountryCode(" NO ")
 	if err != "" || got != "no" {
 		t.Errorf("validateCountryCode(%q) = %q, %q, want \"no\", no error", " NO ", got, err)
+	}
+}
+
+// Not a port: .NET's CountryCode never checked ISO 3166-1 shape (customers
+// foundation design D2 adds it). "nor" is the alpha-3 form of a real
+// country, not an alpha-2 code; "Narnia" is not a country at all; both, like
+// "xx", must be rejected with the raw (unnormalized) value quoted back, this
+// module's usual convention.
+func TestValidateCountryCode_RejectsUnknownCodes(t *testing.T) {
+	for _, v := range []string{"xx", "nor", "Narnia"} {
+		want := fmt.Sprintf("A country code must be an ISO 3166-1 alpha-2 code, but was '%s'", v)
+		if _, err := validateCountryCode(v); err != want {
+			t.Errorf("validateCountryCode(%q) = error %q, want %q", v, err, want)
+		}
+	}
+}
+
+// Not a port: pins the ISO 3166-1 alpha-2 table itself (customers
+// foundation design D2) against silent drift — 249 officially assigned
+// codes, no more and no fewer — plus a few codes people commonly confuse
+// with an assigned one: "xk" (Kosovo) and "uk" (the everyday alias for
+// "gb") are both still unassigned by ISO, so neither belongs in the set.
+func TestIso3166Alpha2_Has249AssignedCodes(t *testing.T) {
+	if n := len(iso3166Alpha2); n != 249 {
+		t.Errorf("len(iso3166Alpha2) = %d, want 249", n)
+	}
+	for _, code := range []string{"no", "se", "gb", "us"} {
+		if _, ok := iso3166Alpha2[code]; !ok {
+			t.Errorf("iso3166Alpha2[%q] missing, want present", code)
+		}
+	}
+	for _, code := range []string{"xk", "uk"} {
+		if _, ok := iso3166Alpha2[code]; ok {
+			t.Errorf("iso3166Alpha2[%q] present, want absent", code)
+		}
 	}
 }
 
@@ -107,6 +145,30 @@ func TestValidateLegalID_TrimsAndLowercases(t *testing.T) {
 	got, err := validateLegalID(" 923609016-A ")
 	if err != "" || got != "923609016-a" {
 		t.Errorf("validateLegalID(%q) = %q, %q, want \"923609016-a\", no error", " 923609016-A ", got, err)
+	}
+}
+
+// Not a port: pins validNorwegianOrgNumber, the mod-11 check customers
+// foundation design D2 adds (weights 3 2 7 6 5 4 3 2 over the first eight
+// digits; a remainder that would produce check digit 10 is invalid, since
+// nine digits cannot encode it). The function takes an already-stripped
+// digit string — validateLegalIdentity strips whitespace before calling it
+// — so it need not tolerate spaces itself.
+func TestValidNorwegianOrgNumber(t *testing.T) {
+	cases := map[string]bool{
+		"923609016":  true,  // Equinor ASA
+		"974760673":  true,  // Brønnøysundregistrene
+		"923609017":  false, // Equinor's number with the check digit flipped
+		"92360901":   false, // eight digits
+		"9236090166": false, // ten digits
+		"92360901a":  false, // a letter where a digit belongs
+		"912345678":  false, // the first eight digits' weighted sum gives check digit 10
+		"":           false,
+	}
+	for v, want := range cases {
+		if got := validNorwegianOrgNumber(v); got != want {
+			t.Errorf("validNorwegianOrgNumber(%q) = %v, want %v", v, got, want)
+		}
 	}
 }
 
@@ -309,6 +371,75 @@ func TestValidateLegalIdentity_UnknownSourceReportsSourceOnly(t *testing.T) {
 	if _, ok := errs["source"]; !ok {
 		t.Error(`validateLegalIdentity errors missing "source"`)
 	}
+}
+
+// Not a port: customers foundation design D2's controller ruling — the
+// Norwegian organisation-number rule lives in validateLegalIdentity, where
+// both the normalised country and type are known, not inside validateLegalID
+// itself. Covers the valid cases (a plain nine digits, and whitespace
+// stripped from "974 760 673"), the invalid ones (wrong check digit, wrong
+// digit count, letters, the check-digit-10 case), and the two "unchanged
+// rule" cases: a non-Norwegian country, and a Norwegian person, both keep
+// today's non-blank/length-only check regardless of the id's shape.
+func TestValidateLegalIdentity_NorwegianOrgNumberRule(t *testing.T) {
+	const wantErr = "A Norwegian organisation number must be nine digits with a valid check digit, but was '%s'"
+
+	t.Run("valid", func(t *testing.T) {
+		got, errs := validateLegalIdentity("no", "business", "923609016", "Acme AS", "manual")
+		if errs != nil {
+			t.Fatalf("validateLegalIdentity: unexpected errors %v", errs)
+		}
+		if got.ID != "923609016" {
+			t.Errorf("ID = %q, want %q", got.ID, "923609016")
+		}
+	})
+
+	t.Run("whitespace stripped", func(t *testing.T) {
+		got, errs := validateLegalIdentity("no", "business", "974 760 673", "Brønnøysundregistrene", "manual")
+		if errs != nil {
+			t.Fatalf("validateLegalIdentity: unexpected errors %v", errs)
+		}
+		if got.ID != "974760673" {
+			t.Errorf("ID = %q, want %q", got.ID, "974760673")
+		}
+	})
+
+	invalid := map[string]string{
+		"923609017":  "923609017",  // wrong check digit
+		"92360901":   "92360901",   // eight digits
+		"9236090166": "9236090166", // ten digits
+		"92360901a":  "92360901a",  // letters
+		"912345678":  "912345678",  // check-digit-10 case
+	}
+	for id, raw := range invalid {
+		t.Run("invalid/"+id, func(t *testing.T) {
+			_, errs := validateLegalIdentity("no", "business", id, "Acme AS", "manual")
+			want := fmt.Sprintf(wantErr, raw)
+			if got := errs["id"]; len(got) != 1 || got[0] != want {
+				t.Errorf("validateLegalIdentity(%q) errors[\"id\"] = %v, want [%q]", id, got, want)
+			}
+		})
+	}
+
+	t.Run("other country keeps the unchanged rule", func(t *testing.T) {
+		got, errs := validateLegalIdentity("se", "business", "not-an-org-number", "Acme AB", "manual")
+		if errs != nil {
+			t.Fatalf("validateLegalIdentity: unexpected errors %v", errs)
+		}
+		if got.ID != "not-an-org-number" {
+			t.Errorf("ID = %q, want unchanged \"not-an-org-number\"", got.ID)
+		}
+	})
+
+	t.Run("person type keeps the unchanged rule", func(t *testing.T) {
+		got, errs := validateLegalIdentity("no", "person", "010170-12345", "Kari Nordmann", "manual")
+		if errs != nil {
+			t.Fatalf("validateLegalIdentity: unexpected errors %v", errs)
+		}
+		if got.ID != "010170-12345" {
+			t.Errorf("ID = %q, want unchanged \"010170-12345\"", got.ID)
+		}
+	})
 }
 
 // Ported from Domain/Contacts/Common/ContactValueObjectTests.cs.
