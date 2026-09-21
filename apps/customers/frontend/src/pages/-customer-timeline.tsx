@@ -401,6 +401,7 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
                       <Text size="sm" c="dimmed">
                         {formatMoment(entry.occurredOn, entry.occurredAt)}
                         {entry.producer ? ` · ${entry.producer}` : ""}
+                        {` · ${entry.actorDisplay || t("unattributed")}`}
                       </Text>
                       <Text size="sm">{entry.note || entry.summary || t("noAdditionalDetails")}</Text>
                       {details && (

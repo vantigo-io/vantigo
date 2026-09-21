@@ -42,6 +42,8 @@ export interface TimelineEntry {
   currentRevision: number;
   createdAt: string;
   updatedAt: string;
+  /** The author's name, snapshotted at write time (design D1). Blank for entries older than the change, and for a write with no user principal. */
+  actorDisplay?: string | null;
 }
 export interface TimelinePage {
   data: TimelineEntry[];
