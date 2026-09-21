@@ -12,6 +12,22 @@ import (
 	"github.com/google/uuid"
 )
 
+const countPendingOwnerInvitations = `-- name: CountPendingOwnerInvitations :one
+SELECT count(*)::int
+FROM identity.invitations
+WHERE role = 'Owner' AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > $1::timestamptz
+`
+
+// CountPendingOwnerInvitations is how many Owner invitations can still be
+// accepted at @now: BOOTSTRAP_OWNER_EMAIL's startup step issues one only when
+// there is none, and the management status reports "invited" while there is.
+func (q *Queries) CountPendingOwnerInvitations(ctx context.Context, now time.Time) (int32, error) {
+	row := q.db.QueryRow(ctx, countPendingOwnerInvitations, now)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const getActiveInvitationByTokenHash = `-- name: GetActiveInvitationByTokenHash :one
 SELECT id, email, normalized_email, role, display_name, token_hash, invited_by_user_id, created_at, expires_at, revoked_at, accepted_at FROM identity.invitations
 WHERE token_hash = $1

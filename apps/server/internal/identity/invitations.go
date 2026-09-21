@@ -14,6 +14,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/identity/gen"
 	"github.com/vantigo-io/vantigo/server/internal/identity/store"
+	"github.com/vantigo-io/vantigo/server/internal/module"
 )
 
 // ownerInvitationsPath is the owner invitations collection, the Location of
@@ -92,32 +93,40 @@ func (s *server) PostIdentityOwnerInvitations(ctx context.Context, req gen.PostI
 	}, nil
 }
 
+func (s *server) issueInvitation(ctx context.Context, q *store.Queries, inv store.InsertInvitationParams, now time.Time) (store.IdentityInvitation, string, error) {
+	return issueInvitation(ctx, q, s.deps.Config.InvitationLifetime, inv, now)
+}
+
 // issueInvitation revokes the pending invitations for inv's email and
 // stores inv as its one active invitation, with a fresh id and token, made
-// at now and expiring INVITATION_LIFETIME later
+// at now and expiring lifetime later
 // (EA/AuthAccountEndpoints.cs:1076-1146, :1203-1265). Only the token's hash
 // is stored; the token itself goes back to the caller for the email alone.
-func (s *server) issueInvitation(ctx context.Context, q *store.Queries, inv store.InsertInvitationParams, now time.Time) (store.IdentityInvitation, string, error) {
+func issueInvitation(ctx context.Context, q *store.Queries, lifetime time.Duration, inv store.InsertInvitationParams, now time.Time) (store.IdentityInvitation, string, error) {
 	if err := q.RevokeActiveInvitationsForEmail(ctx, store.RevokeActiveInvitationsForEmailParams{NormalizedEmail: inv.NormalizedEmail, Now: now}); err != nil {
 		return store.IdentityInvitation{}, "", err
 	}
 	token, hash := newToken()
-	inv.ID, inv.TokenHash, inv.CreatedAt, inv.ExpiresAt = uuid.New(), hash, now, now.Add(s.deps.Config.InvitationLifetime)
+	inv.ID, inv.TokenHash, inv.CreatedAt, inv.ExpiresAt = uuid.New(), hash, now, now.Add(lifetime)
 	row, err := q.InsertInvitation(ctx, inv)
 	return row, token, err
+}
+
+func (s *server) deliverInvitation(ctx context.Context, inv store.IdentityInvitation, token string) error {
+	return deliverInvitation(ctx, s.q, s.deps, inv, token)
 }
 
 // deliverInvitation emails inv's link once its transaction has committed
 // (EA/AuthAccountEndpoints.cs:1133-1143, :1454-1467). When the send fails,
 // nobody holds the token, so the invitation is revoked, even if the caller
-// has gone, and the failure is the answer: a 500. The mail driver's error
-// stays out of it, because it can name the recipient (go-mail lists the
-// affected recipients).
-func (s *server) deliverInvitation(ctx context.Context, inv store.IdentityInvitation, token string) error {
-	if err := s.deps.Mail.Send(ctx, invitationMail(inv.Email, inviteURL(s.deps.Config.InvitationAcceptURL, token))); err == nil {
+// has gone, and the failure is the answer. The mail driver's error stays out
+// of it, because it can name the recipient (go-mail lists the affected
+// recipients).
+func deliverInvitation(ctx context.Context, q *store.Queries, d module.Deps, inv store.IdentityInvitation, token string) error {
+	if err := d.Mail.Send(ctx, invitationMail(inv.Email, inviteURL(d.Config.InvitationAcceptURL, token))); err == nil {
 		return nil
 	}
-	if _, err := s.q.RevokeInvitation(context.WithoutCancel(ctx), store.RevokeInvitationParams{ID: inv.ID, Now: s.deps.Clock()}); err != nil {
+	if _, err := q.RevokeInvitation(context.WithoutCancel(ctx), store.RevokeInvitationParams{ID: inv.ID, Now: d.Clock()}); err != nil {
 		return fmt.Errorf("identity: invitation %s could not be sent, nor revoked: %w", inv.ID, err)
 	}
 	return fmt.Errorf("identity: invitation %s could not be sent and was revoked", inv.ID)
