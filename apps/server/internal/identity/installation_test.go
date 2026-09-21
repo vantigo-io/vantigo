@@ -52,3 +52,48 @@ func TestInstallationStatus_ADisabledUserIsNotActive(t *testing.T) {
 		t.Errorf("%+v, want 2 users of which 1 active", st)
 	}
 }
+
+// TestInstallationStatus_InvitedFollowsTheConfiguredAddress covers the
+// window between a corrected BOOTSTRAP_OWNER_EMAIL and the restart that
+// re-issues to it: reporting "invited" off the unscoped pending-Owner-
+// invitation count would describe an invitation addressed to the OLD
+// address, not the one now configured. It must report "pending" until a
+// start under the corrected Config has actually invited that address, using
+// the same deps-copy technique
+// TestBootstrapInvite_ACorrectedAddressReplacesTheOldInvitation uses to
+// stand in for a restart with a corrected environment variable.
+func TestInstallationStatus_InvitedFollowsTheConfiguredAddress(t *testing.T) {
+	t.Parallel()
+	h := invitedHarness(t)
+	if err := h.runStartup(); err != nil {
+		t.Fatal(err)
+	}
+	if st := installation(t, h); st.Bootstrap != identity.BootstrapInvited {
+		t.Fatalf("after the first startup: %+v, want invited", st)
+	}
+
+	const corrected = "owner-corrected@customer.example"
+	deps := h.deps
+	cfg := *h.cfg
+	cfg.BootstrapOwnerEmail = corrected
+	deps.Config = &cfg
+
+	st, err := identity.ReadInstallationStatus(context.Background(), deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Bootstrap != identity.BootstrapPending {
+		t.Errorf("before the restart re-issues to the corrected address: %+v, want pending", st)
+	}
+
+	if err := identity.RunStartup(context.Background(), deps); err != nil {
+		t.Fatal(err)
+	}
+	st, err = identity.ReadInstallationStatus(context.Background(), deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Bootstrap != identity.BootstrapInvited {
+		t.Errorf("after the restart invites the corrected address: %+v, want invited", st)
+	}
+}
