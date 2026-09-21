@@ -44,6 +44,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/health"
 	"github.com/vantigo-io/vantigo/server/internal/identity"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
+	"github.com/vantigo-io/vantigo/server/internal/management"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/products"
 	"github.com/vantigo-io/vantigo/server/internal/projects"
@@ -77,6 +78,12 @@ const (
 	readHeaderTimeout = 15 * time.Second
 	idleTimeout       = 120 * time.Second
 )
+
+// listenManagement opens the management listener. A variable so a test can
+// bind an ephemeral loopback port instead of MANAGEMENT_PORT.
+var listenManagement = func(port int) (net.Listener, error) {
+	return net.Listen("tcp", fmt.Sprintf(":%d", port))
+}
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 
@@ -421,6 +428,47 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 		workers := module.Workers(deps, append(mods, extraModules...)...)
 		runner = worker.NewRunner(logger)
 		runner.Start(workerCtx, workers)
+	}
+
+	// The management listener is private and separate on purpose: it has no
+	// host filter, so a control plane can reach it by Service name, and the
+	// public listener never serves it. It starts last, so it only answers
+	// once the process is really up. Registered after closePool's defer, its
+	// shutdown runs first: its handlers use the pool.
+	if withAPI && cfg.Management != nil {
+		mgmtLn, err := listenManagement(cfg.Management.Port)
+		if err != nil {
+			logger.Error("cannot listen", "port", cfg.Management.Port, "error", err)
+			return 1
+		}
+		mgmt := &http.Server{
+			Handler: management.Handler(management.Options{
+				Logger:  logger,
+				Version: buildinfo.Version,
+				Token:   cfg.Management.Token,
+				Installation: func(ctx context.Context) (management.Installation, error) {
+					st, err := identity.ReadInstallationStatus(ctx, deps)
+					return management.Installation{Bootstrap: st.Bootstrap, Users: st.Users, ActiveUsers: st.ActiveUsers}, err
+				},
+				DatabaseBytes: management.DatabaseBytes(pool),
+			}),
+			ReadHeaderTimeout: readHeaderTimeout,
+			IdleTimeout:       idleTimeout,
+			ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
+		}
+		go func() {
+			if err := mgmt.Serve(mgmtLn); !errors.Is(err, http.ErrServerClosed) {
+				logger.Error("management listener stopped unexpectedly", "error", err)
+			}
+		}()
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := mgmt.Shutdown(shutdownCtx); err != nil {
+				logger.Warn("management listener did not drain", "error", err)
+			}
+		}()
+		logger.Info("management listener is up", "addr", mgmtLn.Addr().String())
 	}
 
 	srv := &http.Server{
