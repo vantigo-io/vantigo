@@ -295,6 +295,14 @@ real one before the deployment has to deliver invitations or password resets.
 those mails carry bearer links — and `APP_ENV=development` would silently relax the
 owner MFA and storage-permission rules along with it.
 
+By default the first Owner is created through `/setup`, which needs no secret —
+so complete it before anyone else can reach the address. If that is not
+possible, set `BOOTSTRAP_OWNER_EMAIL`: `/setup` is closed and the Owner is
+seated by an emailed invitation instead. A control plane running many
+instances can also poll each one over a private, bearer-protected listener
+(`MANAGEMENT_PORT` and `MANAGEMENT_TOKEN`) instead of holding a session; see
+[the management listener](docs/management.md).
+
 `APP_SECRET` derives every key the process uses (CSRF tokens, cookie signing, TOTP
 secret encryption) through HKDF-SHA256. There is no external key vault to provision,
 and losing it is equivalent to losing a signing key: every open session and every
