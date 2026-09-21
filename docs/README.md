@@ -13,6 +13,9 @@ Operator and contributor documentation for Vantigo:
   contract document.
 - [Docker Compose deployment](../deploy/compose/README.md) — the pre-built image
   quick start, proxy example, upgrades, and production notes.
+- [Management listener](management.md) — the private, bearer-protected status
+  endpoint a control plane polls, and seating the first Owner by invitation
+  instead of `/setup`.
 - [Customers module](customers.md) — customers, legal identity and its validation,
   contacts and associations, the timeline and its authorship, the list endpoint's
   search reach, revision, the duplicate-identity guard and permissions.

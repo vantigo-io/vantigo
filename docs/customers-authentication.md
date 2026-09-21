@@ -76,6 +76,27 @@ unavailable once the first Owner exists. The bootstrap account is an ordinary lo
 password account, and a local Owner remains the break-glass path even when workforce
 OIDC is enabled.
 
+**`BOOTSTRAP_OWNER_EMAIL` replaces `/setup` with an emailed invitation**, for a
+deployment that is reachable before an operator can sign in. While it is set and no
+Owner exists, `/setup` and `POST /api/v1/identity/bootstrap` answer the same 409
+`bootstrap_unavailable` a consumed bootstrap gets, and every start mails that
+address an Owner invitation — once: a pending invitation is not re-sent before it
+expires, and an expired one is re-issued on the next start. The invitation follows
+the configured address, not a fixed one: changing `BOOTSTRAP_OWNER_EMAIL` while no
+Owner exists revokes the invitation already issued to the previous address and
+mails the new one on the next start, so a mistyped address does not keep the
+installation's only live Owner token. An address some account already holds is
+never invited — a warning is logged instead. A failed send revokes the invitation
+and logs the failure without stopping startup; the next start retries. Whichever
+account accepts the invitation becomes the installation's Owner and SystemAdmin,
+exactly as `/setup` would create it.
+
+The installation's first Owner holds `Owner` and `SystemAdmin`, and the bootstrap
+marker is written, **however that account is created** — `/setup`'s anonymous form
+and an accepted Owner invitation reach the same outcome. This also closes a
+previous gap where an installation whose only (invited) Owner was later removed
+counted as un-bootstrapped again.
+
 Owners invite `User` or `Owner` accounts from `/settings`. Invitation tokens are
 opaque and stored only as hashes. `INVITATION_LIFETIME` defaults to `168h` (seven
 days) and is accepted from `24h` to `720h`; a value outside that range fails
@@ -289,6 +310,7 @@ summary. Booleans are strict `0`/`1` switches — anything else fails startup.
 | `INVITATION_LIFETIME` | Invitation validity, `24h`–`720h` | `168h` |
 | `INVITATION_ACCEPT_URL` | Template containing `{token}` | derived from `APP_URL` + `APP_BASE_PATH` |
 | `PASSWORD_RESET_URL` | Template containing `{email}` and `{token}` | derived from `APP_URL` + `APP_BASE_PATH` |
+| `BOOTSTRAP_OWNER_EMAIL` | Closes `/setup`; seats the first Owner by emailed invitation instead | unset (`/setup` open) |
 
 ### Mail
 
@@ -330,6 +352,16 @@ summary. Booleans are strict `0`/`1` switches — anything else fails startup.
 | `BRREG_BASE_URL` | Brønnøysundregisteret origin | `https://data.brreg.no` |
 | `BRREG_TIMEOUT` | Budget for one lookup, retries included | `15s` |
 | `APP_TITLE`, `APP_LOGO_URL`, `APP_SUPPORT_EMAIL`, `APP_SUPPORT_PHONE`, `APP_SUPPORT_URL` | SPA branding | unset |
+
+### Management listener
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `MANAGEMENT_PORT` | Port of the private control-plane listener (must differ from `PORT`) | unset (disabled) |
+| `MANAGEMENT_TOKEN` | Bearer token for it, ≥ 32 characters, no whitespace | unset (disabled) |
+
+The two are one switch: set both or neither. See
+[the management listener](management.md).
 
 Communications' own settings (`COMMUNICATIONS_*`) are documented in
 [Communications](communications.md). OpenTelemetry is configured with the standard

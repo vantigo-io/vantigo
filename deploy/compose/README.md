@@ -75,6 +75,11 @@ the address is reachable by anyone else. Setup closes once the Owner exists, and
 the API logs a warning at every start until then. Owners can invite further
 users from `/settings`.
 
+If the stack will be reachable before an operator can complete `/setup`, set
+`BOOTSTRAP_OWNER_EMAIL` in `vantigo.env` instead: `/setup` is closed from the
+start, and that address is mailed an Owner invitation at every start until it
+is accepted. See [the management listener](../../docs/management.md).
+
 ## Configuration
 
 | File | Purpose |
@@ -301,6 +306,11 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   `application/scim+json`. Set `SCIM_TOKEN`; during rotation, optionally set
   `SCIM_PREVIOUS_TOKEN` together with `SCIM_PREVIOUS_TOKEN_EXPIRES_AT`
   (future, and no more than 24 hours after startup).
+- `MANAGEMENT_PORT` and `MANAGEMENT_TOKEN` enable a private status endpoint
+  for a control plane ([docs/management.md](../../docs/management.md)). The
+  Compose stack deliberately does **not** publish that port: reach it from
+  another container on the Compose network, never from the host's public
+  interface.
 - **Remove `OWNERS_REQUIRE_MFA=0` and `OWNERS_ALLOW_INSECURE_NO_MFA=1` from
   `vantigo.env`.** The quick-start stack ships with both because a fresh
   installation has no enrolled authenticator, and with the requirement on an
