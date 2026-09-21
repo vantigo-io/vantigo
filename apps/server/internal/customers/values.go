@@ -274,7 +274,12 @@ func validatePhoneNumber(raw string) (string, string) {
 // hasValidEmailShape is EmailAddress.HasValidShape
 // (DM/Contacts/Common/EmailAddress.cs:45-54): exactly one '@' at a positive
 // index, a '.' somewhere after it with at least one character in between,
-// not trailing, and no space anywhere.
+// not trailing, and no whitespace anywhere. Widened from "no space" to "no
+// Unicode whitespace" in review fix round 1: no contacts test pinned the
+// narrower space-only behaviour (a tab-containing address was never
+// exercised), and validateEmail (D2, below) now shares this function for its
+// own shape check — one email shape rule for the module, not two that can
+// silently drift apart.
 func hasValidEmailShape(value string) bool {
 	at := strings.IndexByte(value, '@')
 	if at <= 0 || at != strings.LastIndexByte(value, '@') {
@@ -287,7 +292,7 @@ func hasValidEmailShape(value string) bool {
 	if strings.HasSuffix(value, ".") {
 		return false
 	}
-	return !strings.Contains(value, " ")
+	return !strings.ContainsFunc(value, unicode.IsSpace)
 }
 
 // validateEmailAddress is EmailAddress's Validate and constructor
@@ -331,21 +336,21 @@ func validateContactRole(raw string) (string, string) {
 // field as "clear to NULL" before ever reaching here, so each function below
 // only ever validates a string already known to be non-blank.
 
-// validateEmail is D2's email rule: at most 255 UTF-16 code units; exactly
-// one '@' with a non-empty local part and a domain containing a dot; trimmed
+// validateEmail is D2's email rule: at most 255 UTF-16 code units; trimmed
 // but never lower-cased — unlike validateEmailAddress, a customer's own
-// address is stored as typed, not canonicalized.
+// address is stored as typed, not canonicalized. The shape check itself is
+// hasValidEmailShape (review fix round 1: the original inline check here —
+// "exactly one '@', a non-empty local part, a domain containing a dot" —
+// missed embedded whitespace and a leading/trailing dot on the domain, cases
+// hasValidEmailShape already guarded for contacts). One email shape rule for
+// the whole module now, not two that can drift apart; only the message and
+// the no-lower-casing normalisation stay D2's own.
 func validateEmail(raw string) (string, string) {
 	if n := utf16Length(raw); n > 255 {
 		return "", fmt.Sprintf("An email address cannot be longer than 255 characters, the given value was %d characters", n)
 	}
 	trimmed := strings.TrimSpace(raw)
-	at := strings.IndexByte(trimmed, '@')
-	domain := ""
-	if at >= 0 {
-		domain = trimmed[at+1:]
-	}
-	if at <= 0 || at != strings.LastIndexByte(trimmed, '@') || domain == "" || !strings.Contains(domain, ".") {
+	if !hasValidEmailShape(trimmed) {
 		return "", fmt.Sprintf("An email address must look like name@example.com, but was '%s'", raw)
 	}
 	return trimmed, ""
