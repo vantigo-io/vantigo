@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { stubFetch } from "../test/fetch";
 import {
   ApiValidationError,
+  conflictDuplicates,
   createCustomer,
   customerQueryOptions,
   customersListParams,
@@ -10,6 +11,7 @@ import {
   NotFoundError,
   updateCustomer,
 } from "./customers";
+import type { ApiConflictError } from "./request";
 
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -219,5 +221,36 @@ describe("legalIdentityQueryOptions", () => {
     const result = await (options.queryFn as (context: unknown) => Promise<unknown>)({ signal: undefined });
 
     expect(result).toBeNull();
+  });
+});
+
+describe("conflictDuplicates", () => {
+  const conflict = (problem: Record<string, unknown>) => ({ problem }) as ApiConflictError;
+
+  it("reads well-shaped duplicates out of the conflict's problem body", () => {
+    const duplicates = [
+      { id: 5, customerNumber: 1005, name: "Acme AS", status: "active" },
+      { id: 6, customerNumber: 1006, name: "Acme Holding", status: "archived" },
+    ];
+
+    expect(conflictDuplicates(conflict({ duplicates }))).toEqual(duplicates);
+  });
+
+  it("drops entries that do not match the expected shape rather than showing a broken row", () => {
+    const duplicates = [
+      { id: 5, customerNumber: 1005, name: "Acme AS", status: "active" },
+      { id: "not-a-number", customerNumber: 1006, name: "Bad Row", status: "active" },
+      { customerNumber: 1007, name: "Missing id", status: "active" },
+      "not even an object",
+    ];
+
+    expect(conflictDuplicates(conflict({ duplicates }))).toEqual([
+      { id: 5, customerNumber: 1005, name: "Acme AS", status: "active" },
+    ]);
+  });
+
+  it("returns an empty list when the problem carries no duplicates at all", () => {
+    expect(conflictDuplicates(conflict({ title: "Customer revision conflict" }))).toEqual([]);
+    expect(conflictDuplicates(conflict({ duplicates: null }))).toEqual([]);
   });
 });

@@ -2,7 +2,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { stubFetch } from "../test/fetch";
 import { sessionQueryKey } from "./auth";
-import { ApiConflictError, request, setAuthStateClearer, setUnauthorizedHandler } from "./request";
+import { request, setAuthStateClearer, setUnauthorizedHandler } from "./request";
 
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -93,29 +93,12 @@ describe("request", () => {
     });
   });
 
-  it("throws ApiConflictError for a revision conflict (409, no code, no fields)", async () => {
-    stubFetch(() =>
-      Promise.resolve(
-        jsonResponse(409, {
-          title: "Customer revision conflict",
-          detail: "The customer was changed by someone else.",
-          status: 409,
-        }),
-      ),
-    );
-
-    const error = await request("/api/v1/customers/1001", { method: "PUT" }).catch((e: unknown) => e);
-
-    expect(error).toBeInstanceOf(ApiConflictError);
-    expect((error as ApiConflictError).status).toBe(409);
-    expect((error as ApiConflictError).title).toBe("Customer revision conflict");
-    expect((error as ApiConflictError).detail).toBe("The customer was changed by someone else.");
-    expect((error as ApiConflictError).code).toBeUndefined();
-    expect((error as ApiConflictError).duplicates).toBeUndefined();
-    expect((error as ApiConflictError).message).toBe("The customer was changed by someone else.");
-  });
-
-  it("throws ApiConflictError carrying code and duplicates for a duplicate legal identity", async () => {
+  // ApiConflictError itself — status/message/code/problem mapping for every
+  // 409 shape — is `@vantigo/frontend-api-client`'s own to test (this file
+  // is a thin re-export of that client, not a second implementation of it).
+  // This is the one wiring smoke test that belongs here: that this app's
+  // `request` really does surface it, end to end.
+  it("surfaces a duplicate-legal-identity 409 as ApiConflictError", async () => {
     stubFetch(() =>
       Promise.resolve(
         jsonResponse(409, {
@@ -128,21 +111,11 @@ describe("request", () => {
       ),
     );
 
-    const error = await request("/api/v1/customers", { method: "POST" }).catch((e: unknown) => e);
-
-    expect(error).toBeInstanceOf(ApiConflictError);
-    expect((error as ApiConflictError).code).toBe("duplicate_legal_identity");
-    expect((error as ApiConflictError).duplicates).toEqual([
-      { id: 5, customerNumber: 1005, name: "Acme AS", status: "active" },
-    ]);
-  });
-
-  it("still throws the generic error for a 409 with an unparsable body", async () => {
-    stubFetch(() => Promise.resolve(new Response(null, { status: 409 })));
-
-    const error = await request("/api/v1/customers/1001/timeline/7", { method: "DELETE" }).catch((e: unknown) => e);
-
-    expect(error).not.toBeInstanceOf(ApiConflictError);
-    expect((error as { status?: number }).status).toBe(409);
+    await expect(request("/api/v1/customers", { method: "POST" })).rejects.toMatchObject({
+      name: "ApiConflictError",
+      status: 409,
+      code: "duplicate_legal_identity",
+      problem: { duplicates: [{ id: 5, customerNumber: 1005, name: "Acme AS", status: "active" }] },
+    });
   });
 });

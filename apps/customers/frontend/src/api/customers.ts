@@ -1,4 +1,5 @@
 import { keepPreviousData, queryOptions } from "@tanstack/react-query";
+import type { ApiConflictError } from "./request";
 import { NotFoundError, request } from "./request";
 
 export { ApiConflictError, ApiValidationError, NotFoundError } from "./request";
@@ -169,6 +170,35 @@ export interface CustomerInput {
   /** Goes ahead even though the identity is already used by another customer (design D6). */
   allowDuplicateIdentity?: boolean;
 }
+
+/** One customer already holding the legal identity a write tried to set (design D6). */
+export interface ConflictDuplicate {
+  id: number;
+  customerNumber: number;
+  name: string;
+  status: string;
+}
+
+const isConflictDuplicate = (value: unknown): value is ConflictDuplicate =>
+  !!value &&
+  typeof value === "object" &&
+  typeof (value as Record<string, unknown>).id === "number" &&
+  typeof (value as Record<string, unknown>).customerNumber === "number" &&
+  typeof (value as Record<string, unknown>).name === "string" &&
+  typeof (value as Record<string, unknown>).status === "string";
+
+/**
+ * Reads D6's duplicate list out of a duplicate-legal-identity `ApiConflictError`.
+ * `duplicates` is this module's own conflict field, not one `ApiConflictError`
+ * types generically (its `problem` is a plain `Record<string, unknown>`,
+ * shared across every app that reuses the class) — so this module validates
+ * the shape itself rather than trusting the server's JSON blindly. Anything
+ * that does not match is dropped rather than shown as a broken row.
+ */
+export const conflictDuplicates = (error: ApiConflictError): ConflictDuplicate[] => {
+  const raw = error.problem.duplicates;
+  return Array.isArray(raw) ? raw.filter(isConflictDuplicate) : [];
+};
 
 /** The type is chosen on create only; afterwards it changes through changeCustomerType. */
 export interface CreateCustomerInput extends CustomerInput {
