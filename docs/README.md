@@ -13,6 +13,9 @@ Operator and contributor documentation for Vantigo:
   contract document.
 - [Docker Compose deployment](../deploy/compose/README.md) — the pre-built image
   quick start, proxy example, upgrades, and production notes.
+- [Customers module](customers.md) — customers, legal identity and its validation,
+  contacts and associations, the timeline and its authorship, the list endpoint's
+  search reach, revision, the duplicate-identity guard and permissions.
 - [Products module](products.md) — product domain and API reference.
 - [Communications module](communications.md) — communications domain and API reference.
 - [Projects module](projects.md) — projects, codes, roles, financial shaping, the
