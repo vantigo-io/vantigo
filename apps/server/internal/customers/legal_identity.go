@@ -76,8 +76,17 @@ func (s *server) GetCustomersByIdLegalIdentity(ctx context.Context, req gen.GetC
 // allowDuplicateIdentity: true. Unlike changed, which is what the timeline
 // event and updated_at gate on, the duplicate check never looks at
 // name/source/type at all.
+//
+// The request body is gen.PutLegalIdentityRequest, not gen.LegalIdentityRequest
+// (customers.yaml): the latter is also nested, via allOf, as
+// CreateCustomerRequest.identity/UpdateCustomerRequest.identity, so giving it
+// its own allowDuplicateIdentity would have made that field appear a second
+// time — inert — under identity on those two requests, letting a caller
+// believe nesting it there worked. PutLegalIdentityRequest repeats the five
+// identity fields instead of sharing the schema, so this operation's flag
+// exists in exactly one place.
 func (s *server) PutCustomersByIdLegalIdentity(ctx context.Context, req gen.PutCustomersByIdLegalIdentityRequestObject) (gen.PutCustomersByIdLegalIdentityResponseObject, error) {
-	body := gen.LegalIdentityRequest{}
+	body := gen.PutLegalIdentityRequest{}
 	if req.Body != nil {
 		body = *req.Body
 	}

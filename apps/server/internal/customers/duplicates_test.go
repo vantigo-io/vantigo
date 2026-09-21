@@ -73,6 +73,12 @@ func TestPostCustomers_DuplicateLegalIdentity_ReturnsConflictNamingHolder(t *tes
 
 	first := createCustomerWithIdentity(t, c, "Acme Holder", "no", "923609016")
 
+	// Captured before the refused attempt: the duplicate check must abort
+	// before NextCounterValue, and the whole write is one transaction, so
+	// neither the counter nor the timeline should move at all.
+	counterBefore := modtest.One[int64](t, h, `SELECT next_value FROM customers.counters WHERE counter_name = 'customer-number'`)
+	timelineBefore := h.Count(t, `SELECT count(*) FROM customers.customers_timeline_entries`)
+
 	r := c.Do(http.MethodPost, "/api/v1/customers", map[string]any{
 		"name": "Acme Copy",
 		"identity": map[string]any{
@@ -106,6 +112,12 @@ func TestPostCustomers_DuplicateLegalIdentity_ReturnsConflictNamingHolder(t *tes
 	// or written a timeline event for the customer it never made.
 	if n := h.Count(t, `SELECT count(*) FROM customers.customers WHERE name = 'Acme Copy'`); n != 0 {
 		t.Errorf("customers named Acme Copy = %d, want 0 (refused create wrote nothing)", n)
+	}
+	if counterAfter := modtest.One[int64](t, h, `SELECT next_value FROM customers.counters WHERE counter_name = 'customer-number'`); counterAfter != counterBefore {
+		t.Errorf("customer-number counter = %d, want unchanged %d (a refused create must not burn a number)", counterAfter, counterBefore)
+	}
+	if timelineAfter := h.Count(t, `SELECT count(*) FROM customers.customers_timeline_entries`); timelineAfter != timelineBefore {
+		t.Errorf("timeline entries = %d, want unchanged %d (a refused create must write no event)", timelineAfter, timelineBefore)
 	}
 }
 
@@ -245,6 +257,43 @@ func TestPutCustomersById_ChangingIdentityToATakenOne_ReturnsConflict(t *testing
 	after := fetchCustomerJSON(t, c, mover.Id)
 	if after.Revision != 1 {
 		t.Errorf("revision = %d, want unchanged 1", after.Revision)
+	}
+}
+
+// TestPutCustomersById_StaleRevisionWithDuplicateIdentity_ReturnsRevisionConflict
+// pins the controller ruling's order on PUT /customers/{id}: revision is
+// checked before the identity is even looked at, so a request that is both
+// stale and would-be duplicate answers the revision conflict, never the
+// duplicate one — the caller must re-read before anything about the body,
+// identity included, is worth judging.
+func TestPutCustomersById_StaleRevisionWithDuplicateIdentity_ReturnsRevisionConflict(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+
+	createCustomerWithIdentity(t, c, "Taken Co", "no", "923609016")
+	mover := createCustomerWithIdentity(t, c, "Mover Co", "no", "974760673")
+
+	r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d", mover.Id), map[string]any{
+		"name":     "Mover Co",
+		"revision": 999,
+		"identity": map[string]any{
+			"country": "no", "type": "business", "id": "923609016", "name": "Mover Co AS", "source": "manual",
+		},
+	})
+	if r.Status != http.StatusConflict {
+		t.Fatalf("status %d body %s, want 409", r.Status, r.Body)
+	}
+	var problem conflictProblemJSON
+	r.JSON(&problem)
+	if problemTitle(problem.Title) != "Customer revision conflict" {
+		t.Errorf("Title = %q, want %q (the revision conflict, not the duplicate-identity one)", problemTitle(problem.Title), "Customer revision conflict")
+	}
+	if problem.Code != nil {
+		t.Errorf("Code = %v, want nil (a revision conflict carries no code)", problem.Code)
+	}
+	if len(problem.Duplicates) != 0 {
+		t.Errorf("duplicates = %+v, want none (a revision conflict names no one)", problem.Duplicates)
 	}
 }
 
