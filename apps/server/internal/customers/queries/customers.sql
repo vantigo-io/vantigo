@@ -78,22 +78,64 @@ RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name
 
 -- name: CountCustomers :one
 -- CountCustomers is the total row count GetCustomers paginates over
--- (GetCustomersEndpoint.cs:58), the same filters ListCustomersByID/ByName
--- apply below: archived customers excluded unless requested, and search
--- ILIKE-matching the name only (inventory oddity #2: the legal name and
--- legal id are never searched, despite GetCustomers's own stale doc
--- comment claiming otherwise; TS/CustomersEndpointsTests.cs's
--- GetCustomers_Search_MatchesLegalNameAndLegalIdCaseInsensitively pins the
--- absence).
+-- (GetCustomersEndpoint.cs:58), the same filters ListCustomers applies
+-- below. sqlc has no query fragments, so this WHERE clause and
+-- ListCustomers's must be kept textually identical by hand — a drift
+-- between them would make pagination.totalCount disagree with what the
+-- page actually shows.
+--
+-- status/customer_type narrow to exactly that value when given; absent
+-- status keeps today's rule (archived hidden unless include_archived).
+-- search matches the name, the customer number (also against
+-- search_compact, so "923 609 016" finds a legal id stored as
+-- "923609016") and, only when the caller may see that data
+-- (search_identity/search_contacts — customers foundation design D4), the
+-- legal name/id and any linked contact's name/email: a caller lacking
+-- those permissions gets exactly today's name-and-number behaviour, never
+-- an oracle for data the response would withhold.
 SELECT count(*)
-FROM customers.customers
-WHERE (@include_archived::bool OR status <> 'archived')
-  AND (sqlc.narg(search)::text IS NULL OR name ILIKE sqlc.narg(search)::text);
+FROM customers.customers c
+WHERE (
+        (sqlc.narg(status)::text IS NOT NULL AND c.status = sqlc.narg(status)::text)
+     OR (sqlc.narg(status)::text IS NULL AND (@include_archived::bool OR c.status <> 'archived'))
+      )
+  AND (sqlc.narg(customer_type)::text IS NULL OR c.type = sqlc.narg(customer_type)::text)
+  AND (
+        sqlc.narg(search)::text IS NULL
+     OR c.name ILIKE sqlc.narg(search)::text
+     OR c.customer_number::text ILIKE sqlc.narg(search_compact)::text
+     OR (@search_identity::bool AND (
+            c.legal_name ILIKE sqlc.narg(search)::text
+         OR c.legal_id ILIKE sqlc.narg(search_compact)::text))
+     OR (@search_contacts::bool AND EXISTS (
+            SELECT 1
+            FROM customers.customers_contacts cc
+            JOIN customers.contacts ct ON ct.id = cc.contact_id
+            WHERE cc.customer_id = c.id
+              AND (ct.first_name ILIKE sqlc.narg(search)::text
+                OR ct.last_name ILIKE sqlc.narg(search)::text
+                OR (ct.first_name || ' ' || ct.last_name) ILIKE sqlc.narg(search)::text
+                OR ct.email ILIKE sqlc.narg(search)::text
+                OR cc.email ILIKE sqlc.narg(search)::text)))
+      );
 
--- name: ListCustomersByID :many
--- ListCustomersByID is GetCustomers's default sort (id, ascending unless
--- descending is requested), one page of rows with each row's timeline
--- summary inlined (GetCustomersEndpoint.cs:60-103, SafeCustomerProjection).
+-- name: ListCustomers :many
+-- ListCustomers is GetCustomers's one list query (customers foundation
+-- design D4): where two near-identical queries stood before
+-- (ListCustomersByID/ListCustomersByName, one per sortBy value), sortBy now
+-- has five values, so the sort key becomes a query parameter instead —
+-- one page of rows with each row's timeline summary inlined
+-- (GetCustomersEndpoint.cs:60-103, SafeCustomerProjection). The WHERE
+-- clause is CountCustomers's, kept textually identical (see its comment).
+--
+-- sort_by picks which CASE pair actually contributes a value to ORDER BY;
+-- the other four contribute NULL to every row, so they change nothing
+-- about the ordering (unlike a per-row expression, this is a query-wide
+-- choice, made once). id, name, customer_number, created_at and updated_at
+-- each need their own CASE pair — one CASE cannot mix a bigint, a text and
+-- a timestamptz branch — and c.id is always the final tie-break, in
+-- whatever direction @descending asks for, the same shape
+-- ListCustomersByName's name-then-id ordering had.
 SELECT c.id, c.customer_number, c.name, c.status, c.type, c.legal_country, c.legal_id, c.legal_name, c.legal_source,
        c.legal_type, c.created_at, c.updated_at,
        (SELECT count(*) FROM customers.customers_timeline_entries e
@@ -101,32 +143,40 @@ SELECT c.id, c.customer_number, c.name, c.status, c.type, c.legal_country, c.leg
        (SELECT max(e.occurred_on)::date FROM customers.customers_timeline_entries e
          WHERE e.customer_id = c.id AND e.state = 'active') AS latest_occurred_on
 FROM customers.customers c
-WHERE (@include_archived::bool OR c.status <> 'archived')
-  AND (sqlc.narg(search)::text IS NULL OR c.name ILIKE sqlc.narg(search)::text)
+WHERE (
+        (sqlc.narg(status)::text IS NOT NULL AND c.status = sqlc.narg(status)::text)
+     OR (sqlc.narg(status)::text IS NULL AND (@include_archived::bool OR c.status <> 'archived'))
+      )
+  AND (sqlc.narg(customer_type)::text IS NULL OR c.type = sqlc.narg(customer_type)::text)
+  AND (
+        sqlc.narg(search)::text IS NULL
+     OR c.name ILIKE sqlc.narg(search)::text
+     OR c.customer_number::text ILIKE sqlc.narg(search_compact)::text
+     OR (@search_identity::bool AND (
+            c.legal_name ILIKE sqlc.narg(search)::text
+         OR c.legal_id ILIKE sqlc.narg(search_compact)::text))
+     OR (@search_contacts::bool AND EXISTS (
+            SELECT 1
+            FROM customers.customers_contacts cc
+            JOIN customers.contacts ct ON ct.id = cc.contact_id
+            WHERE cc.customer_id = c.id
+              AND (ct.first_name ILIKE sqlc.narg(search)::text
+                OR ct.last_name ILIKE sqlc.narg(search)::text
+                OR (ct.first_name || ' ' || ct.last_name) ILIKE sqlc.narg(search)::text
+                OR ct.email ILIKE sqlc.narg(search)::text
+                OR cc.email ILIKE sqlc.narg(search)::text)))
+      )
 ORDER BY
-    CASE WHEN NOT @descending::bool THEN c.id END ASC,
-    CASE WHEN @descending::bool THEN c.id END DESC
-LIMIT @page_size::int OFFSET @row_offset::int;
-
--- name: ListCustomersByName :many
--- ListCustomersByName is GetCustomers's sortBy=name path: name first, id as
--- the tie-break (.NET's ThenBy(c => c.Id)), same filters and pagination as
--- ListCustomersByID. Exactly one of the two CASE pairs below is non-null
--- for every row in a given call (the sort direction is a query-wide
--- parameter, not a per-row one), so the other pair contributes nothing to
--- the ordering.
-SELECT c.id, c.customer_number, c.name, c.status, c.type, c.legal_country, c.legal_id, c.legal_name, c.legal_source,
-       c.legal_type, c.created_at, c.updated_at,
-       (SELECT count(*) FROM customers.customers_timeline_entries e
-         WHERE e.customer_id = c.id AND e.state = 'active') AS entry_count,
-       (SELECT max(e.occurred_on)::date FROM customers.customers_timeline_entries e
-         WHERE e.customer_id = c.id AND e.state = 'active') AS latest_occurred_on
-FROM customers.customers c
-WHERE (@include_archived::bool OR c.status <> 'archived')
-  AND (sqlc.narg(search)::text IS NULL OR c.name ILIKE sqlc.narg(search)::text)
-ORDER BY
-    CASE WHEN NOT @descending::bool THEN c.name END ASC,
-    CASE WHEN @descending::bool THEN c.name END DESC,
+    CASE WHEN @sort_by::text = 'id' AND NOT @descending::bool THEN c.id END ASC,
+    CASE WHEN @sort_by::text = 'id' AND @descending::bool THEN c.id END DESC,
+    CASE WHEN @sort_by::text = 'name' AND NOT @descending::bool THEN c.name END ASC,
+    CASE WHEN @sort_by::text = 'name' AND @descending::bool THEN c.name END DESC,
+    CASE WHEN @sort_by::text = 'customerNumber' AND NOT @descending::bool THEN c.customer_number END ASC,
+    CASE WHEN @sort_by::text = 'customerNumber' AND @descending::bool THEN c.customer_number END DESC,
+    CASE WHEN @sort_by::text = 'createdAt' AND NOT @descending::bool THEN c.created_at END ASC,
+    CASE WHEN @sort_by::text = 'createdAt' AND @descending::bool THEN c.created_at END DESC,
+    CASE WHEN @sort_by::text = 'updatedAt' AND NOT @descending::bool THEN c.updated_at END ASC,
+    CASE WHEN @sort_by::text = 'updatedAt' AND @descending::bool THEN c.updated_at END DESC,
     CASE WHEN NOT @descending::bool THEN c.id END ASC,
     CASE WHEN @descending::bool THEN c.id END DESC
 LIMIT @page_size::int OFFSET @row_offset::int;

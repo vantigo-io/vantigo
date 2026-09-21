@@ -55,26 +55,68 @@ func (q *Queries) ContactCreationBuckets(ctx context.Context, arg ContactCreatio
 
 const countCustomers = `-- name: CountCustomers :one
 SELECT count(*)
-FROM customers.customers
-WHERE ($1::bool OR status <> 'archived')
-  AND ($2::text IS NULL OR name ILIKE $2::text)
+FROM customers.customers c
+WHERE (
+        ($1::text IS NOT NULL AND c.status = $1::text)
+     OR ($1::text IS NULL AND ($2::bool OR c.status <> 'archived'))
+      )
+  AND ($3::text IS NULL OR c.type = $3::text)
+  AND (
+        $4::text IS NULL
+     OR c.name ILIKE $4::text
+     OR c.customer_number::text ILIKE $5::text
+     OR ($6::bool AND (
+            c.legal_name ILIKE $4::text
+         OR c.legal_id ILIKE $5::text))
+     OR ($7::bool AND EXISTS (
+            SELECT 1
+            FROM customers.customers_contacts cc
+            JOIN customers.contacts ct ON ct.id = cc.contact_id
+            WHERE cc.customer_id = c.id
+              AND (ct.first_name ILIKE $4::text
+                OR ct.last_name ILIKE $4::text
+                OR (ct.first_name || ' ' || ct.last_name) ILIKE $4::text
+                OR ct.email ILIKE $4::text
+                OR cc.email ILIKE $4::text)))
+      )
 `
 
 type CountCustomersParams struct {
+	Status          *string
 	IncludeArchived bool
+	CustomerType    *string
 	Search          *string
+	SearchCompact   *string
+	SearchIdentity  bool
+	SearchContacts  bool
 }
 
 // CountCustomers is the total row count GetCustomers paginates over
-// (GetCustomersEndpoint.cs:58), the same filters ListCustomersByID/ByName
-// apply below: archived customers excluded unless requested, and search
-// ILIKE-matching the name only (inventory oddity #2: the legal name and
-// legal id are never searched, despite GetCustomers's own stale doc
-// comment claiming otherwise; TS/CustomersEndpointsTests.cs's
-// GetCustomers_Search_MatchesLegalNameAndLegalIdCaseInsensitively pins the
-// absence).
+// (GetCustomersEndpoint.cs:58), the same filters ListCustomers applies
+// below. sqlc has no query fragments, so this WHERE clause and
+// ListCustomers's must be kept textually identical by hand — a drift
+// between them would make pagination.totalCount disagree with what the
+// page actually shows.
+//
+// status/customer_type narrow to exactly that value when given; absent
+// status keeps today's rule (archived hidden unless include_archived).
+// search matches the name, the customer number (also against
+// search_compact, so "923 609 016" finds a legal id stored as
+// "923609016") and, only when the caller may see that data
+// (search_identity/search_contacts — customers foundation design D4), the
+// legal name/id and any linked contact's name/email: a caller lacking
+// those permissions gets exactly today's name-and-number behaviour, never
+// an oracle for data the response would withhold.
 func (q *Queries) CountCustomers(ctx context.Context, arg CountCustomersParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countCustomers, arg.IncludeArchived, arg.Search)
+	row := q.db.QueryRow(ctx, countCustomers,
+		arg.Status,
+		arg.IncludeArchived,
+		arg.CustomerType,
+		arg.Search,
+		arg.SearchCompact,
+		arg.SearchIdentity,
+		arg.SearchContacts,
+	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -542,7 +584,7 @@ func (q *Queries) InsertGeneratedTimelineEvent(ctx context.Context, arg InsertGe
 	return err
 }
 
-const listCustomersByID = `-- name: ListCustomersByID :many
+const listCustomers = `-- name: ListCustomers :many
 SELECT c.id, c.customer_number, c.name, c.status, c.type, c.legal_country, c.legal_id, c.legal_name, c.legal_source,
        c.legal_type, c.created_at, c.updated_at,
        (SELECT count(*) FROM customers.customers_timeline_entries e
@@ -550,23 +592,60 @@ SELECT c.id, c.customer_number, c.name, c.status, c.type, c.legal_country, c.leg
        (SELECT max(e.occurred_on)::date FROM customers.customers_timeline_entries e
          WHERE e.customer_id = c.id AND e.state = 'active') AS latest_occurred_on
 FROM customers.customers c
-WHERE ($1::bool OR c.status <> 'archived')
-  AND ($2::text IS NULL OR c.name ILIKE $2::text)
+WHERE (
+        ($1::text IS NOT NULL AND c.status = $1::text)
+     OR ($1::text IS NULL AND ($2::bool OR c.status <> 'archived'))
+      )
+  AND ($3::text IS NULL OR c.type = $3::text)
+  AND (
+        $4::text IS NULL
+     OR c.name ILIKE $4::text
+     OR c.customer_number::text ILIKE $5::text
+     OR ($6::bool AND (
+            c.legal_name ILIKE $4::text
+         OR c.legal_id ILIKE $5::text))
+     OR ($7::bool AND EXISTS (
+            SELECT 1
+            FROM customers.customers_contacts cc
+            JOIN customers.contacts ct ON ct.id = cc.contact_id
+            WHERE cc.customer_id = c.id
+              AND (ct.first_name ILIKE $4::text
+                OR ct.last_name ILIKE $4::text
+                OR (ct.first_name || ' ' || ct.last_name) ILIKE $4::text
+                OR ct.email ILIKE $4::text
+                OR cc.email ILIKE $4::text)))
+      )
 ORDER BY
-    CASE WHEN NOT $3::bool THEN c.id END ASC,
-    CASE WHEN $3::bool THEN c.id END DESC
-LIMIT $5::int OFFSET $4::int
+    CASE WHEN $8::text = 'id' AND NOT $9::bool THEN c.id END ASC,
+    CASE WHEN $8::text = 'id' AND $9::bool THEN c.id END DESC,
+    CASE WHEN $8::text = 'name' AND NOT $9::bool THEN c.name END ASC,
+    CASE WHEN $8::text = 'name' AND $9::bool THEN c.name END DESC,
+    CASE WHEN $8::text = 'customerNumber' AND NOT $9::bool THEN c.customer_number END ASC,
+    CASE WHEN $8::text = 'customerNumber' AND $9::bool THEN c.customer_number END DESC,
+    CASE WHEN $8::text = 'createdAt' AND NOT $9::bool THEN c.created_at END ASC,
+    CASE WHEN $8::text = 'createdAt' AND $9::bool THEN c.created_at END DESC,
+    CASE WHEN $8::text = 'updatedAt' AND NOT $9::bool THEN c.updated_at END ASC,
+    CASE WHEN $8::text = 'updatedAt' AND $9::bool THEN c.updated_at END DESC,
+    CASE WHEN NOT $9::bool THEN c.id END ASC,
+    CASE WHEN $9::bool THEN c.id END DESC
+LIMIT $11::int OFFSET $10::int
 `
 
-type ListCustomersByIDParams struct {
+type ListCustomersParams struct {
+	Status          *string
 	IncludeArchived bool
+	CustomerType    *string
 	Search          *string
+	SearchCompact   *string
+	SearchIdentity  bool
+	SearchContacts  bool
+	SortBy          string
 	Descending      bool
 	RowOffset       int32
 	PageSize        int32
 }
 
-type ListCustomersByIDRow struct {
+type ListCustomersRow struct {
 	ID               int32
 	CustomerNumber   int64
 	Name             string
@@ -583,13 +662,32 @@ type ListCustomersByIDRow struct {
 	LatestOccurredOn pgtype.Date
 }
 
-// ListCustomersByID is GetCustomers's default sort (id, ascending unless
-// descending is requested), one page of rows with each row's timeline
-// summary inlined (GetCustomersEndpoint.cs:60-103, SafeCustomerProjection).
-func (q *Queries) ListCustomersByID(ctx context.Context, arg ListCustomersByIDParams) ([]ListCustomersByIDRow, error) {
-	rows, err := q.db.Query(ctx, listCustomersByID,
+// ListCustomers is GetCustomers's one list query (customers foundation
+// design D4): where two near-identical queries stood before
+// (ListCustomersByID/ListCustomersByName, one per sortBy value), sortBy now
+// has five values, so the sort key becomes a query parameter instead —
+// one page of rows with each row's timeline summary inlined
+// (GetCustomersEndpoint.cs:60-103, SafeCustomerProjection). The WHERE
+// clause is CountCustomers's, kept textually identical (see its comment).
+//
+// sort_by picks which CASE pair actually contributes a value to ORDER BY;
+// the other four contribute NULL to every row, so they change nothing
+// about the ordering (unlike a per-row expression, this is a query-wide
+// choice, made once). id, name, customer_number, created_at and updated_at
+// each need their own CASE pair — one CASE cannot mix a bigint, a text and
+// a timestamptz branch — and c.id is always the final tie-break, in
+// whatever direction @descending asks for, the same shape
+// ListCustomersByName's name-then-id ordering had.
+func (q *Queries) ListCustomers(ctx context.Context, arg ListCustomersParams) ([]ListCustomersRow, error) {
+	rows, err := q.db.Query(ctx, listCustomers,
+		arg.Status,
 		arg.IncludeArchived,
+		arg.CustomerType,
 		arg.Search,
+		arg.SearchCompact,
+		arg.SearchIdentity,
+		arg.SearchContacts,
+		arg.SortBy,
 		arg.Descending,
 		arg.RowOffset,
 		arg.PageSize,
@@ -598,99 +696,9 @@ func (q *Queries) ListCustomersByID(ctx context.Context, arg ListCustomersByIDPa
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListCustomersByIDRow
+	var items []ListCustomersRow
 	for rows.Next() {
-		var i ListCustomersByIDRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.CustomerNumber,
-			&i.Name,
-			&i.Status,
-			&i.Type,
-			&i.LegalCountry,
-			&i.LegalID,
-			&i.LegalName,
-			&i.LegalSource,
-			&i.LegalType,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.EntryCount,
-			&i.LatestOccurredOn,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listCustomersByName = `-- name: ListCustomersByName :many
-SELECT c.id, c.customer_number, c.name, c.status, c.type, c.legal_country, c.legal_id, c.legal_name, c.legal_source,
-       c.legal_type, c.created_at, c.updated_at,
-       (SELECT count(*) FROM customers.customers_timeline_entries e
-         WHERE e.customer_id = c.id AND e.state = 'active') AS entry_count,
-       (SELECT max(e.occurred_on)::date FROM customers.customers_timeline_entries e
-         WHERE e.customer_id = c.id AND e.state = 'active') AS latest_occurred_on
-FROM customers.customers c
-WHERE ($1::bool OR c.status <> 'archived')
-  AND ($2::text IS NULL OR c.name ILIKE $2::text)
-ORDER BY
-    CASE WHEN NOT $3::bool THEN c.name END ASC,
-    CASE WHEN $3::bool THEN c.name END DESC,
-    CASE WHEN NOT $3::bool THEN c.id END ASC,
-    CASE WHEN $3::bool THEN c.id END DESC
-LIMIT $5::int OFFSET $4::int
-`
-
-type ListCustomersByNameParams struct {
-	IncludeArchived bool
-	Search          *string
-	Descending      bool
-	RowOffset       int32
-	PageSize        int32
-}
-
-type ListCustomersByNameRow struct {
-	ID               int32
-	CustomerNumber   int64
-	Name             string
-	Status           string
-	Type             string
-	LegalCountry     *string
-	LegalID          *string
-	LegalName        *string
-	LegalSource      *string
-	LegalType        *string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-	EntryCount       int64
-	LatestOccurredOn pgtype.Date
-}
-
-// ListCustomersByName is GetCustomers's sortBy=name path: name first, id as
-// the tie-break (.NET's ThenBy(c => c.Id)), same filters and pagination as
-// ListCustomersByID. Exactly one of the two CASE pairs below is non-null
-// for every row in a given call (the sort direction is a query-wide
-// parameter, not a per-row one), so the other pair contributes nothing to
-// the ordering.
-func (q *Queries) ListCustomersByName(ctx context.Context, arg ListCustomersByNameParams) ([]ListCustomersByNameRow, error) {
-	rows, err := q.db.Query(ctx, listCustomersByName,
-		arg.IncludeArchived,
-		arg.Search,
-		arg.Descending,
-		arg.RowOffset,
-		arg.PageSize,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListCustomersByNameRow
-	for rows.Next() {
-		var i ListCustomersByNameRow
+		var i ListCustomersRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.CustomerNumber,

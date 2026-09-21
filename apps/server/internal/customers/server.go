@@ -49,6 +49,18 @@ const legalIdentityView = "customers:legal-identity-view"
 // should claim to be the only one.
 const legalIdentityManage = "customers:legal-identity-manage"
 
+// contactsView and associationsView are the two permissions GetCustomers
+// checks together (customers foundation design D4) to decide whether
+// search may reach into a linked contact's name and email: both are
+// required, the same "never an oracle for data the response would
+// withhold" reasoning as legalIdentityView, because a caller who cannot
+// list a customer's contacts or associations (Task 7's own gates) must not
+// be able to discover them by searching for one instead.
+const (
+	contactsView     = "customers:contacts-view"
+	associationsView = "customers:associations-view"
+)
+
 // hasPermission reports whether the signed-in caller holds key, evaluated
 // the same way module.Router evaluates x-vantigo-access. Any failure,
 // infrastructure errors included, reads as false. hasPermission itself never

@@ -811,23 +811,27 @@ func TestGetCustomers_SortByNameDescending_ReturnsCustomersInDescendingOrder(t *
 }
 
 // Ported from Integration/CustomersEndpointsTests.cs.
-// GetCustomers_Search_MatchesLegalNameAndLegalIdCaseInsensitively. Despite
-// its .NET name, the assertions are all Assert.Empty: search matches Name
-// only, never the legal name or legal id (inventory oddity #2). This is the
-// search test the task brief calls out explicitly.
-func TestGetCustomers_Search_MatchesNameOnly(t *testing.T) {
+// GetCustomers_Search_MatchesLegalNameAndLegalIdCaseInsensitively — but its
+// original assertions (all Assert.Empty) pinned .NET's inventory oddity #2:
+// search never actually matched the legal name or legal id, despite the
+// test's own name. Customers foundation design D4 gives search that reach,
+// for a caller who holds legal-identity-view (authenticatedClient does), so
+// this test now asserts a match where the ported one asserted an absence.
+// The permission-gated absence (a caller *without* legal-identity-view)
+// moves to customers_list_test.go, alongside the rest of D4's search cases.
+func TestGetCustomers_Search_MatchesLegalNameAndLegalId(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	c := authenticatedClient(t, h)
 	c.Do(http.MethodPost, "/api/v1/customers", map[string]any{
 		"name": "Searchable",
 		"identity": map[string]any{
-			"country": "no", "type": "business", "id": "998877660", "name": "Umbrella Norge AS", "source": "manual",
+			"country": "no", "type": "business", "id": "923609016", "name": "Umbrella Norge AS", "source": "manual",
 		},
 	})
 
 	byLegalName := c.Do(http.MethodGet, "/api/v1/customers?search="+url.QueryEscape("umbrella norge"), nil)
-	byLegalID := c.Do(http.MethodGet, "/api/v1/customers?search=998877660", nil)
+	byLegalID := c.Do(http.MethodGet, "/api/v1/customers?search=923609016", nil)
 	noMatch := c.Do(http.MethodGet, "/api/v1/customers?search=no-such-customer", nil)
 
 	var byName, byID, none customerListJSON
@@ -835,11 +839,11 @@ func TestGetCustomers_Search_MatchesNameOnly(t *testing.T) {
 	byLegalID.JSON(&byID)
 	noMatch.JSON(&none)
 
-	if len(byName.Data) != 0 {
-		t.Errorf("search by legal name: data = %+v, want empty (search matches Name only)", byName.Data)
+	if !namesEqual(byName.Data, "Searchable") {
+		t.Errorf("search by legal name: names = %v, want [Searchable]", names(byName.Data))
 	}
-	if len(byID.Data) != 0 {
-		t.Errorf("search by legal id: data = %+v, want empty (search matches Name only)", byID.Data)
+	if !namesEqual(byID.Data, "Searchable") {
+		t.Errorf("search by legal id: names = %v, want [Searchable]", names(byID.Data))
 	}
 	if len(none.Data) != 0 || none.Pagination.TotalCount != 0 {
 		t.Errorf("search with no match: data = %+v totalCount = %d, want empty/0", none.Data, none.Pagination.TotalCount)

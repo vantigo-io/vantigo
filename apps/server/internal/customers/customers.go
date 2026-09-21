@@ -23,10 +23,9 @@ import (
 // alongside them; customer_type.go the dedicated type change; contacts,
 // legal identity, lookup and timeline live in their own files.
 
-// customerRow is the shape GetCustomer, ListCustomersByID and
-// ListCustomersByName all reduce to before building a SafeCustomerResponse:
-// one seam so safeCustomerResponse only has to know one shape, whichever
-// sqlc-generated row it came from.
+// customerRow is the shape GetCustomer and ListCustomers both reduce to
+// before building a SafeCustomerResponse: one seam so safeCustomerResponse
+// only has to know one shape, whichever sqlc-generated row it came from.
 type customerRow struct {
 	ID               int32
 	CustomerNumber   int64
@@ -53,16 +52,11 @@ func fromCustomerRow(c store.CustomersCustomer, ts store.CustomerTimelineSummary
 	}
 }
 
-func fromListByIDRow(r store.ListCustomersByIDRow) customerRow {
-	return customerRow{
-		ID: r.ID, CustomerNumber: r.CustomerNumber, Name: r.Name, Status: r.Status, Type: r.Type,
-		LegalCountry: r.LegalCountry, LegalID: r.LegalID, LegalName: r.LegalName, LegalSource: r.LegalSource, LegalType: r.LegalType,
-		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
-		EntryCount: r.EntryCount, LatestOccurredOn: r.LatestOccurredOn,
-	}
-}
-
-func fromListByNameRow(r store.ListCustomersByNameRow) customerRow {
+// fromListRow is store.ListCustomersRow's customerRow, the one list-query
+// shape now that ListCustomersByID/ListCustomersByName (one per sortBy
+// value) are a single ListCustomers with sort_by as a query parameter
+// (customers foundation design D4).
+func fromListRow(r store.ListCustomersRow) customerRow {
 	return customerRow{
 		ID: r.ID, CustomerNumber: r.CustomerNumber, Name: r.Name, Status: r.Status, Type: r.Type,
 		LegalCountry: r.LegalCountry, LegalID: r.LegalID, LegalName: r.LegalName, LegalSource: r.LegalSource, LegalType: r.LegalType,
@@ -150,11 +144,22 @@ func validateGetCustomersParams(p gen.GetCustomersParams) []string {
 	if p.PageSize != nil && (*p.PageSize < 1 || *p.PageSize > 100) {
 		errs = append(errs, fmt.Sprintf("'pageSize' must be between 1 and 100, but was %d.", *p.PageSize))
 	}
-	if p.SortBy != nil && *p.SortBy != "id" && *p.SortBy != "name" {
-		errs = append(errs, fmt.Sprintf("'sortBy' must be one of 'id' or 'name', but was '%s'.", *p.SortBy))
+	if p.SortBy != nil && *p.SortBy != "id" && *p.SortBy != "name" && *p.SortBy != "customerNumber" && *p.SortBy != "createdAt" && *p.SortBy != "updatedAt" {
+		errs = append(errs, fmt.Sprintf("'sortBy' must be one of 'id', 'name', 'customerNumber', 'createdAt' or 'updatedAt', but was '%s'.", *p.SortBy))
 	}
 	if p.SortDirection != nil && *p.SortDirection != "asc" && *p.SortDirection != "desc" {
 		errs = append(errs, fmt.Sprintf("'sortDirection' must be one of 'asc' or 'desc', but was '%s'.", *p.SortDirection))
+	}
+	// status/type are matched case-sensitively, exactly as sortBy is above —
+	// unlike validateCustomerStatus/validateCustomerType (values.go), which
+	// normalize a request body's value before comparing it. A query
+	// parameter is never normalized: 'Active' is rejected, not silently
+	// lowercased.
+	if p.Status != nil && *p.Status != "active" && *p.Status != "disabled" && *p.Status != "archived" {
+		errs = append(errs, fmt.Sprintf("'status' must be one of 'active', 'disabled' or 'archived', but was '%s'.", *p.Status))
+	}
+	if p.Type != nil && *p.Type != "business" && *p.Type != "person" {
+		errs = append(errs, fmt.Sprintf("'type' must be one of 'business' or 'person', but was '%s'.", *p.Type))
 	}
 	return errs
 }
@@ -175,50 +180,63 @@ func (s *server) GetCustomers(ctx context.Context, req gen.GetCustomersRequestOb
 		pageSize = *req.Params.PageSize
 	}
 	includeArchived := req.Params.IncludeArchived != nil && *req.Params.IncludeArchived
-	var search *string
+	var search, searchCompact *string
 	if req.Params.Search != nil {
 		if trimmed := strings.TrimSpace(*req.Params.Search); trimmed != "" {
 			p := likePattern(trimmed)
 			search = &p
+			// search_compact matches the customer number and legal id the
+			// way a person actually types them: "923 609 016" finds a legal
+			// id stored, with no spaces, as "923609016" (customers
+			// foundation design D4).
+			cp := likePattern(stripWhitespace(trimmed))
+			searchCompact = &cp
 		}
 	}
 	descending := req.Params.SortDirection != nil && *req.Params.SortDirection == "desc"
-	sortByName := req.Params.SortBy != nil && *req.Params.SortBy == "name"
+	sortBy := "id"
+	if req.Params.SortBy != nil {
+		sortBy = *req.Params.SortBy
+	}
+
+	// search_identity/search_contacts gate the legal-identity and
+	// contact/association branches of search: a caller who cannot see that
+	// data through its own endpoints must not be able to use search as an
+	// oracle for it either (customers foundation design D4). Computed once
+	// here and reused for both queries below, so the count and the page
+	// never disagree about what search reaches.
+	searchIdentity := s.hasPermission(ctx, legalIdentityView)
+	searchContacts := s.hasPermission(ctx, contactsView) && s.hasPermission(ctx, associationsView)
 
 	q := store.New(s.deps.Pool)
-	total, err := q.CountCustomers(ctx, store.CountCustomersParams{IncludeArchived: includeArchived, Search: search})
+	total, err := q.CountCustomers(ctx, store.CountCustomersParams{
+		IncludeArchived: includeArchived, Status: req.Params.Status, CustomerType: req.Params.Type,
+		Search: search, SearchCompact: searchCompact, SearchIdentity: searchIdentity, SearchContacts: searchContacts,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("customers: count customers: %w", err)
 	}
 
-	includeIdentity := s.hasPermission(ctx, legalIdentityView)
 	offset := (page - 1) * pageSize
-	rows := make([]customerRow, 0)
-	if sortByName {
-		list, err := q.ListCustomersByName(ctx, store.ListCustomersByNameParams{
-			IncludeArchived: includeArchived, Search: search, Descending: descending, PageSize: pageSize, RowOffset: offset,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("customers: list customers: %w", err)
-		}
-		for _, r := range list {
-			rows = append(rows, fromListByNameRow(r))
-		}
-	} else {
-		list, err := q.ListCustomersByID(ctx, store.ListCustomersByIDParams{
-			IncludeArchived: includeArchived, Search: search, Descending: descending, PageSize: pageSize, RowOffset: offset,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("customers: list customers: %w", err)
-		}
-		for _, r := range list {
-			rows = append(rows, fromListByIDRow(r))
-		}
+	list, err := q.ListCustomers(ctx, store.ListCustomersParams{
+		IncludeArchived: includeArchived, Status: req.Params.Status, CustomerType: req.Params.Type,
+		Search: search, SearchCompact: searchCompact, SearchIdentity: searchIdentity, SearchContacts: searchContacts,
+		SortBy: sortBy, Descending: descending, PageSize: pageSize, RowOffset: offset,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("customers: list customers: %w", err)
+	}
+	rows := make([]customerRow, 0, len(list))
+	for _, r := range list {
+		rows = append(rows, fromListRow(r))
 	}
 
+	// searchIdentity doubles as includeIdentity here: legalIdentityView
+	// answers both "may search reach the legal identity" and "may the
+	// response show it", so one hasPermission call serves both.
 	data := make([]gen.SafeCustomerResponse, 0, len(rows))
 	for _, r := range rows {
-		data = append(data, safeCustomerResponse(r, includeIdentity))
+		data = append(data, safeCustomerResponse(r, searchIdentity))
 	}
 
 	return gen.GetCustomers200JSONResponse{
