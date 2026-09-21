@@ -391,10 +391,6 @@ components:
             type: object
         LegalIdentityRequest:
             properties:
-                allowDuplicateIdentity:
-                    description: When true, skips the duplicate-legal-identity conflict check entirely (customers foundation design D6) — two departments of one company kept as separate customers is legitimate. Absent or false, an identity another customer already has is a 409. Only consulted when it differs from the identity already on file.
-                    nullable: true
-                    type: boolean
                 country:
                     type: string
                 id:
@@ -432,6 +428,30 @@ components:
                 - source
             type: object
             x-vantigo-source: Vantigo.Customers
+        PutLegalIdentityRequest:
+            description: "PUT /customers/{id}/legal-identity's own request body — not LegalIdentityRequest plus an allOf, deliberately: LegalIdentityRequest is also nested (via allOf) as CreateCustomerRequest.identity/UpdateCustomerRequest.identity, and allowDuplicateIdentity belongs to this operation's body alone. Composing it onto LegalIdentityRequest would have surfaced it a second time, nested and inert, under identity on those two requests — confusing a caller into believing it took effect there. The five identity fields are repeated here rather than shared, so this stays a clean, flat generated type."
+            properties:
+                allowDuplicateIdentity:
+                    description: When true, skips the duplicate-legal-identity conflict check entirely (customers foundation design D6) — two departments of one company kept as separate customers is legitimate. Absent or false, an identity another customer already has is a 409. Only consulted when it differs from the identity already on file.
+                    nullable: true
+                    type: boolean
+                country:
+                    type: string
+                id:
+                    type: string
+                name:
+                    type: string
+                source:
+                    type: string
+                type:
+                    type: string
+            required:
+                - country
+                - type
+                - id
+                - name
+                - source
+            type: object
         PaginatedResponseOfResponse:
             properties:
                 data:
@@ -1208,7 +1228,7 @@ paths:
                 content:
                     application/json:
                         schema:
-                            $ref: '#/components/schemas/LegalIdentityRequest'
+                            $ref: '#/components/schemas/PutLegalIdentityRequest'
                 required: true
             responses:
                 "200":

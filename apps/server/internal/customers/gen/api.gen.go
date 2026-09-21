@@ -201,13 +201,11 @@ type GetCustomerStatsResponse struct {
 
 // LegalIdentityRequest defines model for LegalIdentityRequest.
 type LegalIdentityRequest struct {
-	// AllowDuplicateIdentity When true, skips the duplicate-legal-identity conflict check entirely (customers foundation design D6) — two departments of one company kept as separate customers is legitimate. Absent or false, an identity another customer already has is a 409. Only consulted when it differs from the identity already on file.
-	AllowDuplicateIdentity *bool  `json:"allowDuplicateIdentity,omitempty"`
-	Country                string `json:"country"`
-	Id                     string `json:"id"`
-	Name                   string `json:"name"`
-	Source                 string `json:"source"`
-	Type                   string `json:"type"`
+	Country string `json:"country"`
+	Id      string `json:"id"`
+	Name    string `json:"name"`
+	Source  string `json:"source"`
+	Type    string `json:"type"`
 }
 
 // LegalIdentityResponse defines model for LegalIdentityResponse.
@@ -229,6 +227,17 @@ type PaginatedResponseOfResponse struct {
 type PaginatedResponseOfSafeCustomerResponse struct {
 	Data       []SafeCustomerResponse          `json:"data"`
 	Pagination externalRef0.PaginationMetadata `json:"pagination"`
+}
+
+// PutLegalIdentityRequest PUT /customers/{id}/legal-identity's own request body — not LegalIdentityRequest plus an allOf, deliberately: LegalIdentityRequest is also nested (via allOf) as CreateCustomerRequest.identity/UpdateCustomerRequest.identity, and allowDuplicateIdentity belongs to this operation's body alone. Composing it onto LegalIdentityRequest would have surfaced it a second time, nested and inert, under identity on those two requests — confusing a caller into believing it took effect there. The five identity fields are repeated here rather than shared, so this stays a clean, flat generated type.
+type PutLegalIdentityRequest struct {
+	// AllowDuplicateIdentity When true, skips the duplicate-legal-identity conflict check entirely (customers foundation design D6) — two departments of one company kept as separate customers is legitimate. Absent or false, an identity another customer already has is a 409. Only consulted when it differs from the identity already on file.
+	AllowDuplicateIdentity *bool  `json:"allowDuplicateIdentity,omitempty"`
+	Country                string `json:"country"`
+	Id                     string `json:"id"`
+	Name                   string `json:"name"`
+	Source                 string `json:"source"`
+	Type                   string `json:"type"`
 }
 
 // SafeCustomerIdentity defines model for SafeCustomerIdentity.
@@ -409,7 +418,7 @@ type PostCustomersByIdContactsJSONRequestBody = AttachCustomerContactRequest
 type PutCustomersByIdContactsByContactIdJSONRequestBody = CustomerContactRequest
 
 // PutCustomersByIdLegalIdentityJSONRequestBody defines body for PutCustomersByIdLegalIdentity for application/json ContentType.
-type PutCustomersByIdLegalIdentityJSONRequestBody = LegalIdentityRequest
+type PutCustomersByIdLegalIdentityJSONRequestBody = PutLegalIdentityRequest
 
 // PostCustomersByIdTimelineJSONRequestBody defines body for PostCustomersByIdTimeline for application/json ContentType.
 type PostCustomersByIdTimelineJSONRequestBody = TimelineManualTimelineRequest

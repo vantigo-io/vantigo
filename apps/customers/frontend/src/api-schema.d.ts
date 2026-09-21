@@ -483,8 +483,6 @@ export interface components {
             totalCount: number;
         };
         LegalIdentityRequest: {
-            /** @description When true, skips the duplicate-legal-identity conflict check entirely (customers foundation design D6) — two departments of one company kept as separate customers is legitimate. Absent or false, an identity another customer already has is a 409. Only consulted when it differs from the identity already on file. */
-            allowDuplicateIdentity?: boolean | null;
             country: string;
             id: string;
             name: string;
@@ -492,6 +490,16 @@ export interface components {
             type: string;
         };
         LegalIdentityResponse: {
+            country: string;
+            id: string;
+            name: string;
+            source: string;
+            type: string;
+        };
+        /** @description PUT /customers/{id}/legal-identity's own request body — not LegalIdentityRequest plus an allOf, deliberately: LegalIdentityRequest is also nested (via allOf) as CreateCustomerRequest.identity/UpdateCustomerRequest.identity, and allowDuplicateIdentity belongs to this operation's body alone. Composing it onto LegalIdentityRequest would have surfaced it a second time, nested and inert, under identity on those two requests — confusing a caller into believing it took effect there. The five identity fields are repeated here rather than shared, so this stays a clean, flat generated type. */
+        PutLegalIdentityRequest: {
+            /** @description When true, skips the duplicate-legal-identity conflict check entirely (customers foundation design D6) — two departments of one company kept as separate customers is legitimate. Absent or false, an identity another customer already has is a 409. Only consulted when it differs from the identity already on file. */
+            allowDuplicateIdentity?: boolean | null;
             country: string;
             id: string;
             name: string;
@@ -1232,7 +1240,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LegalIdentityRequest"];
+                "application/json": components["schemas"]["PutLegalIdentityRequest"];
             };
         };
         responses: {
