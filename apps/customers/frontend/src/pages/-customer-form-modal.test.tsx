@@ -361,6 +361,67 @@ describe("CustomerFormModal", () => {
     });
   });
 
+  it("shows the duplicate alert and its anyway button even when the conflict names nobody", async () => {
+    // A caller without customers:view gets the conflict without the duplicates
+    // list (the server withholds it — see duplicates.go). The alert still has
+    // everything the caller can act on: what went wrong, and the override.
+    let attempts = 0;
+    const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(url);
+      if (path === "/api/v1/customers/1001" && init?.method === "PUT") {
+        attempts += 1;
+        if (attempts === 1) {
+          return Promise.resolve(
+            jsonResponse(409, {
+              title: "Duplicate legal identity",
+              code: "duplicate_legal_identity",
+              detail: "Another customer already has this legal identity.",
+              status: 409,
+            }),
+          );
+        }
+        return Promise.resolve(
+          jsonResponse(200, {
+            id: 1001,
+            name: "Initech",
+            status: "active",
+            timelineSummary: { entryCount: 0, latestOccurredOn: null },
+          }),
+        );
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    stubFetch(fetchMock);
+    const { onClose } = await renderModalWithRouter({
+      mode: "edit",
+      customer: {
+        id: 1001,
+        customerNumber: 5001,
+        name: "Initech",
+        status: "active",
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+        type: "business",
+        identity: null,
+        timelineSummary: { entryCount: 0, latestOccurredOn: null },
+        revision: 3,
+      },
+    });
+    await userEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    expect(await screen.findByText(/another customer already has this legal identity/i)).toBeInTheDocument();
+    expect(screen.queryAllByRole("link")).toHaveLength(0);
+
+    await userEvent.click(screen.getByRole("button", { name: /save anyway/i }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(fetchMock).toHaveBeenLastCalledWith("/api/v1/customers/1001", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Initech", status: "active", revision: 3, allowDuplicateIdentity: true }),
+    });
+  });
+
   it("clicking a duplicate's link navigates through the router (no full page reload) and closes the modal", async () => {
     const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
       const path = String(url);

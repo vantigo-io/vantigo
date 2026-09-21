@@ -281,6 +281,17 @@ const useRestoreCustomer = (customer: CustomerResponse) => {
       });
     },
     onError: (error) => {
+      if (error instanceof ApiConflictError && !error.code) {
+        // D5's revision conflict, handled exactly as useCustomerTypeChange
+        // handles its own: Restore sends the revision this page was rendered
+        // with, so it can lose the race too, and a red "could not be restored"
+        // would leave the caller pressing a button that keeps failing on the
+        // same stale revision. A code, by contrast, means the duplicate-identity
+        // conflict, which Restore cannot raise — it sends no identity.
+        queryClient.invalidateQueries({ queryKey: ["customers"] });
+        notifications.show({ color: "yellow", title: t("customerChangedTitle"), message: t("customerChangedMessage") });
+        return;
+      }
       notifications.show({ color: "red", title: t("customerCouldNotBeRestored"), message: error.message });
     },
   });

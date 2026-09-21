@@ -26,6 +26,7 @@ const entry = (overrides: Partial<TimelineEntry> = {}): TimelineEntry => ({
   currentRevision: 2,
   createdAt: "2026-07-20T00:00:00Z",
   updatedAt: "2026-07-20T00:00:00Z",
+  actorKind: "user",
   ...overrides,
 });
 
@@ -162,8 +163,32 @@ describe("CustomerTimeline", () => {
   });
 
   it("falls back to Unattributed when the entry has no author", async () => {
-    await renderTimeline(vi.fn().mockResolvedValue(json({ data: [entry({ actorDisplay: null })], nextCursor: null })));
+    await renderTimeline(
+      vi
+        .fn()
+        .mockResolvedValue(
+          json({ data: [entry({ actorKind: "unattributed", actorDisplay: "Unattributed" })], nextCursor: null }),
+        ),
+    );
     expect(await screen.findByText(/Unattributed/)).toBeInTheDocument();
+  });
+
+  it("labels a generated event's author from its kind, not from the name the server snapshotted", async () => {
+    // The server stores the English literal "System" for a generated event, and
+    // the English catalogue says "System" too — so the fixture's actorDisplay
+    // has to disagree for an English-locale test to see which of the two the
+    // card actually reads. It is the kind: that is what lets the Norwegian
+    // catalogue translate these sentinels instead of leaking them
+    // (lib/actor-label.ts, and its own test for the mapping itself).
+    await renderTimeline(
+      vi
+        .fn()
+        .mockResolvedValue(
+          json({ data: [entry({ actorKind: "system", actorDisplay: "not the label" })], nextCursor: null }),
+        ),
+    );
+    expect(await screen.findByText(/System/)).toBeInTheDocument();
+    expect(screen.queryByText(/not the label/)).not.toBeInTheDocument();
   });
 
   it("loads the next page using the returned cursor", async () => {
@@ -246,6 +271,7 @@ describe("CustomerTimeline", () => {
                   note: "Revised text",
                   sourceUrl: null,
                   changedAt: "2026-07-21T10:00:00Z",
+                  actorKind: "unattributed",
                   actorDisplayName: "Unattributed",
                 },
               ],
