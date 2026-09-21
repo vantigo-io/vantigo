@@ -28,6 +28,27 @@ func (q *Queries) CountPendingOwnerInvitations(ctx context.Context, now time.Tim
 	return column_1, err
 }
 
+const countPendingOwnerInvitationsForEmail = `-- name: CountPendingOwnerInvitationsForEmail :one
+SELECT count(*)::int
+FROM identity.invitations
+WHERE role = 'Owner' AND normalized_email = $1 AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > $2::timestamptz
+`
+
+type CountPendingOwnerInvitationsForEmailParams struct {
+	NormalizedEmail string
+	Now             time.Time
+}
+
+// CountPendingOwnerInvitationsForEmail is how many Owner invitations to
+// @normalized_email can still be accepted at @now. BOOTSTRAP_OWNER_EMAIL's
+// startup step issues one to the configured address only when this is 0.
+func (q *Queries) CountPendingOwnerInvitationsForEmail(ctx context.Context, arg CountPendingOwnerInvitationsForEmailParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countPendingOwnerInvitationsForEmail, arg.NormalizedEmail, arg.Now)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const getActiveInvitationByTokenHash = `-- name: GetActiveInvitationByTokenHash :one
 SELECT id, email, normalized_email, role, display_name, token_hash, invited_by_user_id, created_at, expires_at, revoked_at, accepted_at FROM identity.invitations
 WHERE token_hash = $1
@@ -266,4 +287,28 @@ func (q *Queries) RevokeInvitation(ctx context.Context, arg RevokeInvitationPara
 		&i.AcceptedAt,
 	)
 	return i, err
+}
+
+const revokePendingOwnerInvitationsExceptEmail = `-- name: RevokePendingOwnerInvitationsExceptEmail :execrows
+UPDATE identity.invitations
+SET revoked_at = $1::timestamptz
+WHERE role = 'Owner' AND normalized_email != $2 AND accepted_at IS NULL AND revoked_at IS NULL
+`
+
+type RevokePendingOwnerInvitationsExceptEmailParams struct {
+	Now             time.Time
+	NormalizedEmail string
+}
+
+// RevokePendingOwnerInvitationsExceptEmail revokes every pending Owner
+// invitation not addressed to @normalized_email, expired ones included.
+// BOOTSTRAP_OWNER_EMAIL's startup step calls this before deciding whether to
+// issue: a corrected value then retires the token a previous, mistyped one
+// mailed out, instead of leaving it live for up to INVITATION_LIFETIME.
+func (q *Queries) RevokePendingOwnerInvitationsExceptEmail(ctx context.Context, arg RevokePendingOwnerInvitationsExceptEmailParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokePendingOwnerInvitationsExceptEmail, arg.Now, arg.NormalizedEmail)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

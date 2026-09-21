@@ -58,3 +58,21 @@ UPDATE identity.invitations SET accepted_at = @now::timestamptz WHERE id = @id;
 SELECT count(*)::int
 FROM identity.invitations
 WHERE role = 'Owner' AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > @now::timestamptz;
+
+-- name: RevokePendingOwnerInvitationsExceptEmail :execrows
+-- RevokePendingOwnerInvitationsExceptEmail revokes every pending Owner
+-- invitation not addressed to @normalized_email, expired ones included.
+-- BOOTSTRAP_OWNER_EMAIL's startup step calls this before deciding whether to
+-- issue: a corrected value then retires the token a previous, mistyped one
+-- mailed out, instead of leaving it live for up to INVITATION_LIFETIME.
+UPDATE identity.invitations
+SET revoked_at = @now::timestamptz
+WHERE role = 'Owner' AND normalized_email != @normalized_email AND accepted_at IS NULL AND revoked_at IS NULL;
+
+-- name: CountPendingOwnerInvitationsForEmail :one
+-- CountPendingOwnerInvitationsForEmail is how many Owner invitations to
+-- @normalized_email can still be accepted at @now. BOOTSTRAP_OWNER_EMAIL's
+-- startup step issues one to the configured address only when this is 0.
+SELECT count(*)::int
+FROM identity.invitations
+WHERE role = 'Owner' AND normalized_email = @normalized_email AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > @now::timestamptz;
