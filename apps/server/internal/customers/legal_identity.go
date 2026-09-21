@@ -101,6 +101,19 @@ func (s *server) PutCustomersByIdLegalIdentity(ctx context.Context, req gen.PutC
 		updatedAt = now
 	}
 
+	// Resolved before the transaction opens, and only when the identity
+	// actually changed: an unchanged resubmit records no event and must not
+	// pay for a directory lookup it will not use (customers foundation
+	// design D1, actor.go).
+	var act actor
+	if changed {
+		var err error
+		act, err = s.actorFor(ctx, generatedFallbackActor)
+		if err != nil {
+			return nil, fmt.Errorf("customers: resolve actor: %w", err)
+		}
+	}
+
 	legalCountry, legalID, legalName, legalSource, legalType := legalColumns(after)
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
@@ -114,7 +127,7 @@ func (s *server) PutCustomersByIdLegalIdentity(ctx context.Context, req gen.PutC
 		if !changed {
 			return nil
 		}
-		return recordCustomerUpdated(ctx, txq, now, req.Id, existing.Name, before, existing.Name, after)
+		return recordCustomerUpdated(ctx, txq, now, req.Id, existing.Name, before, existing.Name, after, act.Kind, act.Display, act.UserID)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("customers: replace legal identity: %w", err)
@@ -145,6 +158,14 @@ func (s *server) DeleteCustomersByIdLegalIdentity(ctx context.Context, req gen.D
 		return gen.DeleteCustomersByIdLegalIdentity204Response{}, nil
 	}
 
+	// Resolved before the transaction opens: this handler always records a
+	// customer.updated event once it reaches here (the no-identity no-op
+	// returned above), so the actor is always needed.
+	act, err := s.actorFor(ctx, generatedFallbackActor)
+	if err != nil {
+		return nil, fmt.Errorf("customers: resolve actor: %w", err)
+	}
+
 	now := s.deps.Clock()
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
@@ -155,7 +176,7 @@ func (s *server) DeleteCustomersByIdLegalIdentity(ctx context.Context, req gen.D
 		}); err != nil {
 			return err
 		}
-		return recordCustomerUpdated(ctx, txq, now, req.Id, existing.Name, before, existing.Name, nil)
+		return recordCustomerUpdated(ctx, txq, now, req.Id, existing.Name, before, existing.Name, nil, act.Kind, act.Display, act.UserID)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("customers: remove legal identity: %w", err)

@@ -491,7 +491,14 @@ const timelineRevisionConflictTitle = "Timeline revision conflict"
 // (UpdateManualTimelineEntry or SetTimelineEntryDeleted) succeeded. Its
 // uniqueness on (entry id, revision number) is the third concurrency guard,
 // customers inventory §4.
-func insertTimelineRevisionFromEntry(ctx context.Context, q *store.Queries, e store.CustomersCustomersTimelineEntry) error {
+//
+// act is the actor of *this* revision — the caller resolved for the write
+// that produced it (server.actorFor, customers foundation design D1) — not
+// e.ActorKind/e.ActorDisplay: those are the entry's own, original author,
+// unchanged by an update or delete somebody else makes. Before D1 the two
+// were always the same value (a revision simply copied the entry's actor);
+// D1 is exactly the change that lets them differ.
+func insertTimelineRevisionFromEntry(ctx context.Context, q *store.Queries, e store.CustomersCustomersTimelineEntry, act actor) error {
 	return q.InsertTimelineRevision(ctx, store.InsertTimelineRevisionParams{
 		EntryID:         e.ID,
 		RevisionNumber:  e.CurrentRevision,
@@ -508,8 +515,9 @@ func insertTimelineRevisionFromEntry(ctx context.Context, q *store.Queries, e st
 		PayloadVersion:  e.PayloadVersion,
 		CurrentRevision: e.CurrentRevision,
 		State:           e.State,
-		ActorKind:       e.ActorKind,
-		ActorDisplay:    e.ActorDisplay,
+		ActorKind:       act.Kind,
+		ActorDisplay:    act.Display,
+		ActorUserID:     act.UserID,
 		CreatedAt:       e.CreatedAt,
 		UpdatedAt:       e.UpdatedAt,
 		DeletedAt:       e.DeletedAt,
@@ -652,6 +660,14 @@ func (s *server) PostCustomersByIdTimeline(ctx context.Context, req gen.PostCust
 		return gen.PostCustomersByIdTimeline400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid timeline entry", errs)), nil
 	}
 
+	// Resolved before any database access, let alone a transaction: the
+	// directory lookup actorFor can make is an out-of-process call
+	// (customers foundation design D1, actor.go).
+	act, err := s.actorFor(ctx, manualFallbackActor)
+	if err != nil {
+		return nil, fmt.Errorf("customers: resolve actor: %w", err)
+	}
+
 	q := store.New(s.deps.Pool)
 	if _, err := q.GetCustomer(ctx, req.Id); errors.Is(err, pgx.ErrNoRows) {
 		return gen.PostCustomersByIdTimeline404Response{}, nil
@@ -660,14 +676,17 @@ func (s *server) PostCustomersByIdTimeline(ctx context.Context, req gen.PostCust
 	}
 
 	created, err := q.InsertManualTimelineEntry(ctx, store.InsertManualTimelineEntryParams{
-		CustomerID: req.Id,
-		EventType:  parsed.EventType,
-		OccurredOn: pgtype.Date{Time: parsed.OccurredOn, Valid: true},
-		OccurredAt: parsed.OccurredAt,
-		Summary:    truncateUTF16(parsed.Note, 500),
-		Note:       parsed.Note,
-		SourceUrl:  parsed.SourceURL,
-		Now:        now,
+		CustomerID:   req.Id,
+		EventType:    parsed.EventType,
+		OccurredOn:   pgtype.Date{Time: parsed.OccurredOn, Valid: true},
+		OccurredAt:   parsed.OccurredAt,
+		Summary:      truncateUTF16(parsed.Note, 500),
+		Note:         parsed.Note,
+		SourceUrl:    parsed.SourceURL,
+		ActorKind:    act.Kind,
+		ActorDisplay: act.Display,
+		ActorUserID:  act.UserID,
+		Now:          now,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("customers: create timeline entry: %w", err)
@@ -752,6 +771,16 @@ func (s *server) PutCustomersByIdTimelineByEntryId(ctx context.Context, req gen.
 			fmt.Sprintf("The timeline entry has revision %d; the supplied expectedRevision was %d.", entry.CurrentRevision, expectedRevision))), nil
 	}
 
+	// Resolved before the transaction opens (see PostCustomersByIdTimeline):
+	// this is the actor of *this* revision, who may not be the entry's
+	// original author (customers foundation design D1) — the entry row
+	// itself is left carrying its own author, untouched by
+	// UpdateManualTimelineEntry below.
+	act, err := s.actorFor(ctx, manualFallbackActor)
+	if err != nil {
+		return nil, fmt.Errorf("customers: resolve actor: %w", err)
+	}
+
 	newRevision := entry.CurrentRevision + 1
 	var updated store.CustomersCustomersTimelineEntry
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
@@ -773,7 +802,7 @@ func (s *server) PutCustomersByIdTimelineByEntryId(ctx context.Context, req gen.
 		if err != nil {
 			return err
 		}
-		return insertTimelineRevisionFromEntry(ctx, txq, updated)
+		return insertTimelineRevisionFromEntry(ctx, txq, updated, act)
 	})
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
@@ -822,6 +851,14 @@ func (s *server) DeleteCustomersByIdTimelineByEntryId(ctx context.Context, req g
 			fmt.Sprintf("The timeline entry has revision %d; the supplied expectedRevision was %s.", entry.CurrentRevision, supplied))), nil
 	}
 
+	// Resolved before the transaction opens: this is the actor of the delete
+	// revision itself, not necessarily the entry's original author (see
+	// PutCustomersByIdTimelineByEntryId, customers foundation design D1).
+	act, err := s.actorFor(ctx, manualFallbackActor)
+	if err != nil {
+		return nil, fmt.Errorf("customers: resolve actor: %w", err)
+	}
+
 	now := s.deps.Clock()
 	newRevision := entry.CurrentRevision + 1
 	var deleted store.CustomersCustomersTimelineEntry
@@ -838,7 +875,7 @@ func (s *server) DeleteCustomersByIdTimelineByEntryId(ctx context.Context, req g
 		if err != nil {
 			return err
 		}
-		return insertTimelineRevisionFromEntry(ctx, txq, deleted)
+		return insertTimelineRevisionFromEntry(ctx, txq, deleted, act)
 	})
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):

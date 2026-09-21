@@ -64,6 +64,14 @@ func (s *server) PutCustomersByIdType(ctx context.Context, req gen.PutCustomersB
 		after = nil
 	}
 
+	// Resolved before the transaction opens: this handler always records at
+	// least the type-changed event once it reaches here (the resubmitted-type
+	// no-op returned above), so the actor is always needed.
+	act, err := s.actorFor(ctx, generatedFallbackActor)
+	if err != nil {
+		return nil, fmt.Errorf("customers: resolve actor: %w", err)
+	}
+
 	now := s.deps.Clock()
 	legalCountry, legalID, legalName, legalSource, legalType := legalColumns(after)
 	var updated store.CustomersCustomer
@@ -78,11 +86,11 @@ func (s *server) PutCustomersByIdType(ctx context.Context, req gen.PutCustomersB
 		if err != nil {
 			return err
 		}
-		if err := recordCustomerTypeChanged(ctx, txq, now, req.Id, existing.Type, customerType); err != nil {
+		if err := recordCustomerTypeChanged(ctx, txq, now, req.Id, existing.Type, customerType, act.Kind, act.Display, act.UserID); err != nil {
 			return err
 		}
 		if !identityEqual(before, after) {
-			return recordCustomerUpdated(ctx, txq, now, req.Id, existing.Name, before, existing.Name, after)
+			return recordCustomerUpdated(ctx, txq, now, req.Id, existing.Name, before, existing.Name, after, act.Kind, act.Display, act.UserID)
 		}
 		return nil
 	})

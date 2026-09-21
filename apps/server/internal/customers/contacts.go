@@ -364,8 +364,17 @@ func (s *server) PutCustomersContactsById(ctx context.Context, req gen.PutCustom
 // association's customer, and only then is the contact (and, via ON DELETE
 // CASCADE, its associations) deleted — all in one transaction.
 func (s *server) DeleteCustomersContactsById(ctx context.Context, req gen.DeleteCustomersContactsByIdRequestObject) (gen.DeleteCustomersContactsByIdResponseObject, error) {
+	// Resolved before the transaction opens: the directory lookup actorFor
+	// can make is an out-of-process call this module never wants to make
+	// while holding the contact row's FOR UPDATE lock (customers foundation
+	// design D1, actor.go).
+	act, err := s.actorFor(ctx, generatedFallbackActor)
+	if err != nil {
+		return nil, fmt.Errorf("customers: resolve actor: %w", err)
+	}
+
 	now := s.deps.Clock()
-	err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
 		contact, err := txq.GetContactForUpdate(ctx, req.Id)
 		if err != nil {
@@ -376,7 +385,7 @@ func (s *server) DeleteCustomersContactsById(ctx context.Context, req gen.Delete
 			return err
 		}
 		for _, a := range associations {
-			if err := recordContactRemoved(ctx, txq, now, a.CustomerID, contact, a.Role, a.Phone, a.Email); err != nil {
+			if err := recordContactRemoved(ctx, txq, now, a.CustomerID, contact, a.Role, a.Phone, a.Email, act.Kind, act.Display, act.UserID); err != nil {
 				return err
 			}
 		}
@@ -472,8 +481,15 @@ func (s *server) PostCustomersByIdContacts(ctx context.Context, req gen.PostCust
 	}
 
 	now := s.deps.Clock()
+	// Resolved before the transaction opens (customers foundation design D1,
+	// actor.go).
+	act, err := s.actorFor(ctx, generatedFallbackActor)
+	if err != nil {
+		return nil, fmt.Errorf("customers: resolve actor: %w", err)
+	}
+
 	var response gen.CustomerContactResponse
-	err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
 
 		customer, err := txq.GetCustomer(ctx, req.Id)
@@ -504,7 +520,7 @@ func (s *server) PostCustomersByIdContacts(ctx context.Context, req gen.PostCust
 		}); err != nil {
 			return err
 		}
-		if err := recordContactAttached(ctx, txq, now, customer.ID, contact, assoc.Role, assoc.Phone, assoc.Email); err != nil {
+		if err := recordContactAttached(ctx, txq, now, customer.ID, contact, assoc.Role, assoc.Phone, assoc.Email, act.Kind, act.Display, act.UserID); err != nil {
 			return err
 		}
 
@@ -565,6 +581,19 @@ func (s *server) PutCustomersByIdContactsByContactId(ctx context.Context, req ge
 	changed := existing.Role != assoc.Role || deref(existing.AssociationPhone) != deref(assoc.Phone) || deref(existing.AssociationEmail) != deref(assoc.Email)
 
 	now := s.deps.Clock()
+	// Resolved before the transaction opens, and only when the relationship
+	// actually changed: resubmitting the same values records no event and
+	// must not pay for a directory lookup it will not use (customers
+	// foundation design D1, actor.go).
+	var act actor
+	if changed {
+		var err error
+		act, err = s.actorFor(ctx, generatedFallbackActor)
+		if err != nil {
+			return nil, fmt.Errorf("customers: resolve actor: %w", err)
+		}
+	}
+
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
 		if err := txq.UpdateAssociation(ctx, store.UpdateAssociationParams{
@@ -573,7 +602,7 @@ func (s *server) PutCustomersByIdContactsByContactId(ctx context.Context, req ge
 			return err
 		}
 		if changed {
-			return recordContactRelationshipUpdated(ctx, txq, now, req.Id, contactFromAssociationRow(existing), assoc.Role, assoc.Phone, assoc.Email)
+			return recordContactRelationshipUpdated(ctx, txq, now, req.Id, contactFromAssociationRow(existing), assoc.Role, assoc.Phone, assoc.Email, act.Kind, act.Display, act.UserID)
 		}
 		return nil
 	})
@@ -602,13 +631,20 @@ func (s *server) DeleteCustomersByIdContactsByContactId(ctx context.Context, req
 		return nil, fmt.Errorf("customers: get association: %w", err)
 	}
 
+	// Resolved before the transaction opens: this handler always records a
+	// "detached" event once it reaches here.
+	act, err := s.actorFor(ctx, generatedFallbackActor)
+	if err != nil {
+		return nil, fmt.Errorf("customers: resolve actor: %w", err)
+	}
+
 	now := s.deps.Clock()
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
 		if err := txq.DeleteAssociation(ctx, store.DeleteAssociationParams{CustomerID: req.Id, ContactID: req.ContactId}); err != nil {
 			return err
 		}
-		return recordContactDetached(ctx, txq, now, req.Id, contactFromAssociationRow(existing), existing.Role, existing.AssociationPhone, existing.AssociationEmail)
+		return recordContactDetached(ctx, txq, now, req.Id, contactFromAssociationRow(existing), existing.Role, existing.AssociationPhone, existing.AssociationEmail, act.Kind, act.Display, act.UserID)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("customers: detach contact: %w", err)

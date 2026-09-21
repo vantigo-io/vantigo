@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
@@ -58,8 +59,12 @@ func identityEqual(a, b *legalIdentity) bool {
 // revision. now's UTC calendar date becomes the entry's occurred_on, and
 // now itself its occurred_at, created_at and updated_at, as .NET's recorder
 // stamps every field from one captured DateTimeOffset.UtcNow
-// (SV/CustomerTimelineRecorder.cs:132-133).
-func recordGeneratedEvent(ctx context.Context, q *store.Queries, customerID int32, now time.Time, eventType, summary string, payload any, payloadVersion int32) error {
+// (SV/CustomerTimelineRecorder.cs:132-133). actorKind/actorDisplay/actorUserID
+// are the acting user's resolved actor (server.actorFor, customers
+// foundation design D1) — every caller resolves it once, before opening the
+// transaction this function runs inside, and threads it down to here rather
+// than this function resolving it itself.
+func recordGeneratedEvent(ctx context.Context, q *store.Queries, customerID int32, now time.Time, eventType, summary string, payload any, payloadVersion int32, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("customers: encode timeline payload: %w", err)
@@ -74,18 +79,21 @@ func recordGeneratedEvent(ctx context.Context, q *store.Queries, customerID int3
 		Summary:        summary,
 		PayloadJson:    payloadJSON,
 		PayloadVersion: payloadVersion,
+		ActorKind:      actorKind,
+		ActorDisplay:   actorDisplay,
+		ActorUserID:    actorUserID,
 	})
 }
 
 // recordCustomerCreated is RecordCustomerCreated
 // (SV/CustomerTimelineRecorder.cs:28-33).
-func recordCustomerCreated(ctx context.Context, q *store.Queries, now time.Time, customerID int32, name string, identity *legalIdentity) error {
+func recordCustomerCreated(ctx context.Context, q *store.Queries, now time.Time, customerID int32, name string, identity *legalIdentity, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
 	payload := map[string]any{
 		"customerId":    customerID,
 		"customerName":  name,
 		"legalIdentity": identitySnapshot(identity),
 	}
-	return recordGeneratedEvent(ctx, q, customerID, now, "customer.created", fmt.Sprintf("Customer created: %s", name), payload, 1)
+	return recordGeneratedEvent(ctx, q, customerID, now, "customer.created", fmt.Sprintf("Customer created: %s", name), payload, 1, actorKind, actorDisplay, actorUserID)
 }
 
 // recordCustomerUpdated is RecordCustomerUpdated
@@ -93,7 +101,7 @@ func recordCustomerCreated(ctx context.Context, q *store.Queries, now time.Time,
 // legal identity actually changed (UpdateCustomerEndpoint.cs:93,97-100), and
 // its payload is the only one in the module carrying PayloadVersion 2
 // (inventory §2.4).
-func recordCustomerUpdated(ctx context.Context, q *store.Queries, now time.Time, customerID int32, beforeName string, beforeIdentity *legalIdentity, afterName string, afterIdentity *legalIdentity) error {
+func recordCustomerUpdated(ctx context.Context, q *store.Queries, now time.Time, customerID int32, beforeName string, beforeIdentity *legalIdentity, afterName string, afterIdentity *legalIdentity, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
 	identityChanged := !identityEqual(beforeIdentity, afterIdentity)
 	changeNote := ""
 	switch {
@@ -122,14 +130,14 @@ func recordCustomerUpdated(ctx context.Context, q *store.Queries, now time.Time,
 		changes["customerName"] = map[string]any{"before": beforeName, "after": afterName}
 	}
 	payload := map[string]any{"customerId": customerID, "before": before, "after": after, "changes": changes}
-	return recordGeneratedEvent(ctx, q, customerID, now, "customer.updated", summary, payload, 2)
+	return recordGeneratedEvent(ctx, q, customerID, now, "customer.updated", summary, payload, 2, actorKind, actorDisplay, actorUserID)
 }
 
 // recordCustomerTypeChanged is the customer.type_changed event
 // PutCustomersByIdType writes, shaped like recordCustomerStatusChanged's:
 // no .NET ancestor, since the customer type is new to this port
 // (00007_customers_type.sql).
-func recordCustomerTypeChanged(ctx context.Context, q *store.Queries, now time.Time, customerID int32, previousType, currentType string) error {
+func recordCustomerTypeChanged(ctx context.Context, q *store.Queries, now time.Time, customerID int32, previousType, currentType string, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
 	summary := fmt.Sprintf("Customer type changed: %s → %s", previousType, currentType)
 	payload := map[string]any{
 		"customerId": customerID,
@@ -137,14 +145,14 @@ func recordCustomerTypeChanged(ctx context.Context, q *store.Queries, now time.T
 		"after":      map[string]any{"type": currentType},
 		"changes":    map[string]any{"type": map[string]any{"before": previousType, "after": currentType}},
 	}
-	return recordGeneratedEvent(ctx, q, customerID, now, "customer.type_changed", summary, payload, 1)
+	return recordGeneratedEvent(ctx, q, customerID, now, "customer.type_changed", summary, payload, 1, actorKind, actorDisplay, actorUserID)
 }
 
 // recordCustomerStatusChanged is RecordCustomerStatusChanged
 // (SV/CustomerTimelineRecorder.cs:65-76): called from both PutCustomersById
 // (an explicit status change) and DeleteCustomersById (the archive
 // transition).
-func recordCustomerStatusChanged(ctx context.Context, q *store.Queries, now time.Time, customerID int32, previousStatus, currentStatus string) error {
+func recordCustomerStatusChanged(ctx context.Context, q *store.Queries, now time.Time, customerID int32, previousStatus, currentStatus string, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
 	summary := fmt.Sprintf("Customer status changed: %s → %s", previousStatus, currentStatus)
 	payload := map[string]any{
 		"customerId": customerID,
@@ -152,5 +160,5 @@ func recordCustomerStatusChanged(ctx context.Context, q *store.Queries, now time
 		"after":      map[string]any{"status": currentStatus},
 		"changes":    map[string]any{"status": map[string]any{"before": previousStatus, "after": currentStatus}},
 	}
-	return recordGeneratedEvent(ctx, q, customerID, now, "customer.status_changed", summary, payload, 1)
+	return recordGeneratedEvent(ctx, q, customerID, now, "customer.status_changed", summary, payload, 1, actorKind, actorDisplay, actorUserID)
 }

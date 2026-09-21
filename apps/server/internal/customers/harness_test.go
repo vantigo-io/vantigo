@@ -3,6 +3,8 @@ package customers_test
 import (
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/vantigo-io/vantigo/server/internal/customers"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
@@ -31,11 +33,29 @@ func newHarness(t *testing.T, opts ...modtest.Option) *modtest.Harness {
 // permission sign in separately with a narrower set too.
 func authenticatedClient(t *testing.T, h *modtest.Harness) *modtest.Client {
 	t.Helper()
-	return h.SignIn(t, "customers:view", "customers:create", "customers:update", "customers:delete",
+	c, _ := authenticatedClientWithID(t, h)
+	return c
+}
+
+// authenticatedClientWithID is authenticatedClient, but also returns the
+// signed-in user's id — for a test that must name that specific user, such
+// as asserting a timeline entry's actor against the caller who wrote it
+// (customers foundation design D1).
+func authenticatedClientWithID(t *testing.T, h *modtest.Harness) (*modtest.Client, uuid.UUID) {
+	t.Helper()
+	return h.SignInUser(t, "customers:view", "customers:create", "customers:update", "customers:delete",
 		"customers:legal-identity-view", "customers:legal-identity-manage",
 		"customers:contacts-view", "customers:contacts-manage",
 		"customers:associations-view", "customers:associations-manage",
 		"customers:timeline-view", "customers:timeline-manage")
+}
+
+// userDisplayName is the display name identity.users stores for userID — the
+// value D1 says an actor's actorDisplay must equal, resolved from the same
+// row actorFor itself reads from, never a literal the test invents.
+func userDisplayName(t *testing.T, h *modtest.Harness, userID uuid.UUID) string {
+	t.Helper()
+	return modtest.One[string](t, h, `SELECT display_name FROM identity.users WHERE id = $1`, userID)
 }
 
 // insertCustomer creates a customer with the given name and status and returns
