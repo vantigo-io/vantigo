@@ -10,7 +10,7 @@ const en = {
   total: "{{count}} total",
   createNewCustomer: "Create new customer",
   createNewContact: "Create new contact",
-  searchCustomers: "Search by customer name...",
+  searchCustomers: "Search by name, number, organisation number or contact...",
   searchContacts: "Search by name, phone or email...",
   failedLoadCustomers: "Failed to load customers",
   failedLoadContacts: "Failed to load contacts",
@@ -260,6 +260,9 @@ const en = {
   statCountries: "Countries",
   createdOnDate: "Created {{date}}",
   updatedOnDate: "Updated {{date}}",
+  statusAllOpen: "All open",
+  customerNumberColumn: "Number",
+  createdColumn: "Created",
 } as const;
 
 const nb = {
@@ -272,7 +275,7 @@ const nb = {
   total: "{{count}} totalt",
   createNewCustomer: "Opprett ny kunde",
   createNewContact: "Opprett ny kontakt",
-  searchCustomers: "Søk etter kundenavn...",
+  searchCustomers: "Søk etter navn, nummer, organisasjonsnummer eller kontakt...",
   searchContacts: "Søk etter navn, telefon eller e-post...",
   failedLoadCustomers: "Kunne ikke laste kunder",
   failedLoadContacts: "Kunne ikke laste kontakter",
@@ -522,6 +525,9 @@ const nb = {
   statCountries: "Land",
   createdOnDate: "Opprettet {{date}}",
   updatedOnDate: "Oppdatert {{date}}",
+  statusAllOpen: "Alle åpne",
+  customerNumberColumn: "Nummer",
+  createdColumn: "Opprettet",
 } as const;
 
 export const customersCatalog = { en, nb } satisfies CatalogResources;

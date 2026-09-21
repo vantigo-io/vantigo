@@ -4,6 +4,8 @@ import {
   ApiValidationError,
   createCustomer,
   customerQueryOptions,
+  customersListParams,
+  customersQueryOptions,
   legalIdentityQueryOptions,
   NotFoundError,
   updateCustomer,
@@ -116,6 +118,86 @@ describe("customerQueryOptions", () => {
     }).catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(NotFoundError);
+  });
+});
+
+describe("customersQueryOptions", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("builds the query string from page, search, status, type and sort", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        data: [],
+        pagination: { page: 1, pageSize: 25, totalCount: 0, totalPages: 0, hasNextPage: false, hasPreviousPage: false },
+      }),
+    );
+    stubFetch(fetchMock);
+
+    const options = customersQueryOptions({
+      page: 2,
+      pageSize: 25,
+      search: "923 609 016",
+      status: "archived",
+      type: "business",
+      sortBy: "customerNumber",
+      sortDirection: "desc",
+    });
+    await (options.queryFn as (context: unknown) => Promise<unknown>)({ signal: undefined });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/customers?page=2&pageSize=25&search=923+609+016&status=archived&type=business&sortBy=customerNumber&sortDirection=desc",
+      { signal: undefined },
+    );
+  });
+
+  it("omits status, type and sort from the query string when absent", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        data: [],
+        pagination: { page: 1, pageSize: 25, totalCount: 0, totalPages: 0, hasNextPage: false, hasPreviousPage: false },
+      }),
+    );
+    stubFetch(fetchMock);
+
+    const options = customersQueryOptions({ page: 1, pageSize: 25 });
+    await (options.queryFn as (context: unknown) => Promise<unknown>)({ signal: undefined });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers?page=1&pageSize=25", { signal: undefined });
+  });
+});
+
+describe("customersListParams", () => {
+  it("maps the list page's search state to query params, dropping an empty search string", () => {
+    expect(
+      customersListParams({
+        page: 2,
+        search: "",
+        status: "active",
+        type: "person",
+        sortBy: "name",
+        sortDirection: "asc",
+      }),
+    ).toEqual({
+      page: 2,
+      pageSize: 25,
+      search: undefined,
+      status: "active",
+      type: "person",
+      sortBy: "name",
+      sortDirection: "asc",
+    });
+  });
+
+  it("carries no filter or sort when the search state has none", () => {
+    expect(customersListParams({ page: 1, search: "acme" })).toEqual({
+      page: 1,
+      pageSize: 25,
+      search: "acme",
+      status: undefined,
+      type: undefined,
+      sortBy: undefined,
+      sortDirection: undefined,
+    });
   });
 });
 

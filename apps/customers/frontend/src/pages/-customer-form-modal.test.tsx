@@ -95,6 +95,7 @@ describe("CustomerFormModal", () => {
       mode: "edit",
       customer: {
         id: 1001,
+        customerNumber: 5001,
         name: "Initech",
         status: "active",
         createdAt: "2026-01-01T00:00:00Z",
