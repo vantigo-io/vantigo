@@ -268,9 +268,21 @@ func (s *server) PostIdentityInvitationsAccept(ctx context.Context, req gen.Post
 		if inv.RevokedAt != nil || inv.AcceptedAt != nil || !inv.ExpiresAt.After(now) {
 			return invitationInvalid
 		}
+		// The first Owner of an installation is its administrator however
+		// they were created: /setup and an accepted invitation grant the same
+		// bootstrapRoles and write the same marker.
+		roles := []string{inv.Role}
+		firstOwner := false
 		if inv.Role == RoleOwner {
 			if err := lockOwners(ctx, q); err != nil {
 				return err
+			}
+			consumed, err := q.BootstrapConsumed(ctx)
+			if err != nil {
+				return err
+			}
+			if !consumed {
+				roles, firstOwner = bootstrapRoles, true
 			}
 		}
 		displayName := inv.Email
@@ -300,8 +312,15 @@ func (s *server) PostIdentityInvitationsAccept(ctx context.Context, req gen.Post
 		}); err != nil {
 			return err
 		}
-		if _, err := q.AssignUserRole(ctx, store.AssignUserRoleParams{UserID: userID, RoleID: builtInRoleID(inv.Role)}); err != nil {
-			return err
+		for _, role := range roles {
+			if _, err := q.AssignUserRole(ctx, store.AssignUserRoleParams{UserID: userID, RoleID: builtInRoleID(role)}); err != nil {
+				return err
+			}
+		}
+		if firstOwner {
+			if err := q.InsertBootstrapState(ctx, now); err != nil {
+				return err
+			}
 		}
 		if err := q.MarkInvitationAccepted(ctx, store.MarkInvitationAcceptedParams{ID: inv.ID, Now: now}); err != nil {
 			return err

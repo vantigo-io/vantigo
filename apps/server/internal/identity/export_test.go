@@ -43,3 +43,9 @@ var (
 	RevokeAllSessions   = (*Access).revokeAllSessions
 	HashPassword        = hashPassword
 )
+
+// NewTokenForTest mints a token and its stored hash the way issueInvitation does.
+func NewTokenForTest() (string, []byte) { return newToken() }
+
+// NormalizeEmailForTest is normalizeEmail.
+func NormalizeEmailForTest(email string) string { return normalizeEmail(email) }
