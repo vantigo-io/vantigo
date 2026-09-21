@@ -47,6 +47,22 @@ type CustomersCustomer struct {
 	Website        *string
 }
 
+type CustomersCustomerAddress struct {
+	ID         int32
+	CustomerID int32
+	Type       string
+	Label      *string
+	Line1      string
+	Line2      *string
+	PostalCode *string
+	City       *string
+	Region     *string
+	Country    string
+	IsPrimary  bool
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
 type CustomersCustomersContact struct {
 	CustomerID int32
 	ContactID  int32

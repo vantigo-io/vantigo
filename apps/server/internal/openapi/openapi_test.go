@@ -183,6 +183,7 @@ func TestOperationIDsAreUniqueAcrossModules(t *testing.T) {
 // import module itself without an import cycle.
 var KnownServeMuxConflicts = []string{
 	"DELETE /api/v1/customers/contacts/{id} ⟷ DELETE /api/v1/customers/{id}/legal-identity",
+	"GET /api/v1/customers/contacts/{id} ⟷ GET /api/v1/customers/{id}/addresses",
 	"GET /api/v1/customers/contacts/{id} ⟷ GET /api/v1/customers/{id}/contacts",
 	"GET /api/v1/customers/contacts/{id} ⟷ GET /api/v1/customers/{id}/legal-identity",
 	"GET /api/v1/customers/contacts/{id} ⟷ GET /api/v1/customers/{id}/timeline",

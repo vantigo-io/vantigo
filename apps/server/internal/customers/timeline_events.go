@@ -195,3 +195,85 @@ func recordCustomerContactInfoUpdated(ctx context.Context, q *store.Queries, now
 	}
 	return recordGeneratedEvent(ctx, q, customerID, now, "customer.contact_info_updated", "Customer contact info updated", payload, 1, actorKind, actorDisplay, actorUserID)
 }
+
+// addressChanges is recordCustomerAddressUpdated's changes map, shaped like
+// contactInfoChanges: only the fields that actually moved, each keyed to its
+// own before/after pair (invoice-ready customer design D3).
+func addressChanges(before, after addressSnapshot) map[string]any {
+	changes := map[string]any{}
+	if before.Type != after.Type {
+		changes["type"] = map[string]any{"before": before.Type, "after": after.Type}
+	}
+	if !stringPtrEqual(before.Label, after.Label) {
+		changes["label"] = map[string]any{"before": before.Label, "after": after.Label}
+	}
+	if before.Line1 != after.Line1 {
+		changes["line1"] = map[string]any{"before": before.Line1, "after": after.Line1}
+	}
+	if !stringPtrEqual(before.Line2, after.Line2) {
+		changes["line2"] = map[string]any{"before": before.Line2, "after": after.Line2}
+	}
+	if !stringPtrEqual(before.PostalCode, after.PostalCode) {
+		changes["postalCode"] = map[string]any{"before": before.PostalCode, "after": after.PostalCode}
+	}
+	if !stringPtrEqual(before.City, after.City) {
+		changes["city"] = map[string]any{"before": before.City, "after": after.City}
+	}
+	if !stringPtrEqual(before.Region, after.Region) {
+		changes["region"] = map[string]any{"before": before.Region, "after": after.Region}
+	}
+	if before.Country != after.Country {
+		changes["country"] = map[string]any{"before": before.Country, "after": after.Country}
+	}
+	if before.IsPrimary != after.IsPrimary {
+		changes["isPrimary"] = map[string]any{"before": before.IsPrimary, "after": after.IsPrimary}
+	}
+	return changes
+}
+
+// recordCustomerAddressAdded is PostCustomersByIdAddresses's own generated
+// event (invoice-ready customer design D3): no .NET ancestor. The payload
+// always carries addressId, type, label and a one-line display rendering
+// (addresses.go's addressDisplay) — the controller ruling's own list of what
+// every one of the three address events must never omit.
+func recordCustomerAddressAdded(ctx context.Context, q *store.Queries, now time.Time, customerID, addressID int32, addr addressSnapshot, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	display := addressDisplay(addr)
+	payload := map[string]any{
+		"customerId": customerID, "addressId": addressID,
+		"type": addr.Type, "label": addr.Label, "display": display,
+	}
+	return recordGeneratedEvent(ctx, q, customerID, now, "customer.address_added", fmt.Sprintf("Address added: %s", display), payload, 1, actorKind, actorDisplay, actorUserID)
+}
+
+// recordCustomerAddressUpdated is PutCustomersByIdAddressesByAddressId's own
+// generated event (invoice-ready customer design D3): the controller
+// ruling's "one event, not two" case — a PUT that makes this address primary
+// and so demotes a different one in the same transaction records only this
+// one, naming only the address the request itself was about. type/label/
+// display reflect the address's state after the write, as
+// recordCustomerContactInfoUpdated's before/after/changes shape does.
+func recordCustomerAddressUpdated(ctx context.Context, q *store.Queries, now time.Time, customerID, addressID int32, before, after addressSnapshot, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	display := addressDisplay(after)
+	payload := map[string]any{
+		"customerId": customerID, "addressId": addressID,
+		"type": after.Type, "label": after.Label, "display": display,
+		"before": before, "after": after, "changes": addressChanges(before, after),
+	}
+	return recordGeneratedEvent(ctx, q, customerID, now, "customer.address_updated", fmt.Sprintf("Address updated: %s", display), payload, 1, actorKind, actorDisplay, actorUserID)
+}
+
+// recordCustomerAddressRemoved is DeleteCustomersByIdAddressesByAddressId's
+// own generated event (invoice-ready customer design D3): addr is the
+// address's state just before the delete — the only state left to describe,
+// since the row is gone once this runs. Promoting a different address of the
+// same type to primary in the same transaction (the delete-the-primary
+// case) records no event of its own, the same "one event, not two" rule
+// recordCustomerAddressUpdated's doc comment describes.
+func recordCustomerAddressRemoved(ctx context.Context, q *store.Queries, now time.Time, customerID, addressID int32, addr addressSnapshot, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	display := addressDisplay(addr)
+	payload := map[string]any{
+		"customerId": customerID, "addressId": addressID,
+		"type": addr.Type, "label": addr.Label, "display": display,
+	}
+	return recordGeneratedEvent(ctx, q, customerID, now, "customer.address_removed", fmt.Sprintf("Address removed: %s", display), payload, 1, actorKind, actorDisplay, actorUserID)
+}

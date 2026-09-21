@@ -3,6 +3,7 @@ package customers
 import (
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf16"
@@ -469,4 +470,131 @@ func stripWhitespace(s string) string {
 		}
 		return r
 	}, s)
+}
+
+// validateAddressType, validatedAddress and validateAddress are the
+// invoice-ready customer design's typed address value object
+// (docs/superpowers/specs/2026-09-21-customers-invoice-ready-design.md, D3):
+// no .NET ancestor, since addresses are new to this port. Shaped like
+// validateLegalIdentity above — every field validated independently, every
+// error reported together, keyed by the request's own JSON field name — not
+// like contactInfo's three fields (contact_info.go), which are validated one
+// at a time inline because none of them has a cross-field rule. isPrimary
+// carries no value of its own to validate (it is a plain bool addresses.go
+// already defaults from an absent request field), so it is not part of
+// either type here; addresses.go composes the two.
+
+// validateAddressType is the address type value object: one of postal/
+// invoice/delivery/visiting, case-insensitive, trimmed and lowercased,
+// shaped like validateCustomerType.
+func validateAddressType(raw string) (string, string) {
+	if strings.TrimSpace(raw) == "" {
+		return "", "An address type cannot be null or empty"
+	}
+	lower := strings.ToLower(strings.TrimSpace(raw))
+	switch lower {
+	case "postal", "invoice", "delivery", "visiting":
+		return lower, ""
+	default:
+		return "", fmt.Sprintf("An address type must be one of 'postal', 'invoice', 'delivery' or 'visiting', but was '%s'", raw)
+	}
+}
+
+// validateAddressLine1 is line1's value object: non-blank, at most 255
+// UTF-16 code units, trimmed but case-preserved — shaped like
+// validateLegalName.
+func validateAddressLine1(raw string) (string, string) {
+	if strings.TrimSpace(raw) == "" {
+		return "", "An address's first line cannot be null or empty"
+	}
+	if n := utf16Length(raw); n > 255 {
+		return "", fmt.Sprintf("An address's first line cannot be longer than 255 characters, the given value was %d characters", n)
+	}
+	return strings.TrimSpace(raw), ""
+}
+
+// validateOptionalAddressText is label/line2/postalCode/city/region's shared
+// rule: nil or blank/whitespace-only both mean "not set" — never an error on
+// their own, the same treatment contact_info.go's normalizedOrNil gives
+// email/phone/website — only a non-blank value longer than max is rejected,
+// under field, worded with noun ("a label", "an address's second line", …).
+func validateOptionalAddressText(raw *string, field, noun string, max int, errs map[string][]string) *string {
+	if raw == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*raw)
+	if trimmed == "" {
+		return nil
+	}
+	if n := utf16Length(trimmed); n > max {
+		errs[field] = []string{fmt.Sprintf("%s cannot be longer than %d characters, the given value was %d characters", noun, max, n)}
+		return nil
+	}
+	return &trimmed
+}
+
+// norwegianPostalCode is the four-digit shape a Norwegian postal code must
+// have (invoice-ready customer design D3) — postnummer are always four
+// digits, "0001" through "9990" in practice, but this checks the shape only,
+// not a registered-range table.
+var norwegianPostalCode = regexp.MustCompile(`^[0-9]{4}$`)
+
+// validatedAddress is CustomerAddressRequest's validated, normalized values
+// (invoice-ready customer design D3), everything but isPrimary (see the
+// comment above validateAddressType).
+type validatedAddress struct {
+	Type       string
+	Label      *string
+	Line1      string
+	Line2      *string
+	PostalCode *string
+	City       *string
+	Region     *string
+	Country    string
+}
+
+// validateAddress is CustomerAddressRequest's TryCreate (invoice-ready
+// customer design D3): every field validated independently and every error
+// reported together, keyed "type"/"label"/"line1"/"line2"/"postalCode"/
+// "city"/"region"/"country" — never short-circuited on the first failure.
+// The one cross-field rule — a Norwegian address needs a four-digit postal
+// code and a city (the controller ruling's exact wording) — only runs once
+// country, postalCode and city have each already passed their own check,
+// the same ordering validateLegalIdentity's Norwegian organisation-number
+// rule uses: it never overwrites the specific reason postalCode or city
+// already failed for on its own.
+func validateAddress(addrType string, label *string, line1 string, line2, postalCode, city, region *string, country string) (validatedAddress, map[string][]string) {
+	errs := map[string][]string{}
+
+	t, err := validateAddressType(addrType)
+	if err != "" {
+		errs["type"] = []string{err}
+	}
+	l1, err := validateAddressLine1(line1)
+	if err != "" {
+		errs["line1"] = []string{err}
+	}
+	c, err := validateCountryCode(country)
+	if err != "" {
+		errs["country"] = []string{err}
+	}
+	lbl := validateOptionalAddressText(label, "label", "A label", 100, errs)
+	l2 := validateOptionalAddressText(line2, "line2", "An address's second line", 255, errs)
+	pc := validateOptionalAddressText(postalCode, "postalCode", "A postal code", 20, errs)
+	ct := validateOptionalAddressText(city, "city", "A city", 100, errs)
+	rg := validateOptionalAddressText(region, "region", "A region", 100, errs)
+
+	if errs["country"] == nil && c == "no" {
+		if errs["postalCode"] == nil && (pc == nil || !norwegianPostalCode.MatchString(*pc)) {
+			errs["postalCode"] = []string{"A Norwegian address needs a four-digit postal code"}
+		}
+		if errs["city"] == nil && ct == nil {
+			errs["city"] = []string{"A Norwegian address needs a city"}
+		}
+	}
+
+	if len(errs) > 0 {
+		return validatedAddress{}, errs
+	}
+	return validatedAddress{Type: t, Label: lbl, Line1: l1, Line2: l2, PostalCode: pc, City: ct, Region: rg, Country: c}, nil
 }

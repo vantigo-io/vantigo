@@ -143,6 +143,82 @@ components:
                 - customerNumber
             type: object
             x-vantigo-source: Vantigo.Customers
+        CustomerAddress:
+            description: One of a customer's typed addresses (invoice-ready customer design D3) — postal, invoice, delivery or visiting, any number of each, at most one primary per type.
+            properties:
+                city:
+                    nullable: true
+                    type: string
+                country:
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                id:
+                    format: int32
+                    type: integer
+                isPrimary:
+                    type: boolean
+                label:
+                    nullable: true
+                    type: string
+                line1:
+                    type: string
+                line2:
+                    nullable: true
+                    type: string
+                postalCode:
+                    nullable: true
+                    type: string
+                region:
+                    nullable: true
+                    type: string
+                type:
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - type
+                - line1
+                - country
+                - isPrimary
+                - createdAt
+                - updatedAt
+            type: object
+        CustomerAddressRequest:
+            description: "POST/PUT .../addresses(/{addressId})'s own request body (invoice-ready customer design D1, D3): a full replace of one address — every field present or null. isPrimary absent means false, which for a type's first (or otherwise-only-primary) address follows D3's own rules: the first address of a type is primary whatever the request says, and false on the address that is currently the only or primary one of its type is refused."
+            properties:
+                city:
+                    nullable: true
+                    type: string
+                country:
+                    type: string
+                isPrimary:
+                    nullable: true
+                    type: boolean
+                label:
+                    nullable: true
+                    type: string
+                line1:
+                    type: string
+                line2:
+                    nullable: true
+                    type: string
+                postalCode:
+                    nullable: true
+                    type: string
+                region:
+                    nullable: true
+                    type: string
+                type:
+                    type: string
+            required:
+                - type
+                - line1
+                - country
+            type: object
         CustomerConflictDuplicate:
             properties:
                 customerNumber:
@@ -365,6 +441,15 @@ components:
             required:
                 - contact
                 - customerCount
+            type: object
+        GetCustomerAddressesResponse:
+            properties:
+                data:
+                    items:
+                        $ref: '#/components/schemas/CustomerAddress'
+                    type: array
+            required:
+                - data
             type: object
         GetCustomerContactsResponse:
             properties:
@@ -1009,6 +1094,181 @@ paths:
                                 $ref: '#/components/schemas/CustomerConflictProblem'
                     description: Conflict
             summary: Update a customer
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:update+customers:view
+    /api/v1/customers/{id}/addresses:
+        get:
+            operationId: getCustomersByIdAddresses
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCustomerAddressesResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: List a customer's addresses
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:view
+        post:
+            operationId: postCustomersByIdAddresses
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CustomerAddressRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerAddress'
+                    description: Created
+                    headers:
+                        Location:
+                            description: The path of the newly created address, /api/v1/customers/{id}/addresses/{addressId}.
+                            schema:
+                                type: string
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: Add an address to a customer
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:update+customers:view
+    /api/v1/customers/{id}/addresses/{addressId}:
+        delete:
+            operationId: deleteCustomersByIdAddressesByAddressId
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+                - in: path
+                  name: addressId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: Remove an address from a customer
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:update+customers:view
+        put:
+            operationId: putCustomersByIdAddressesByAddressId
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+                - in: path
+                  name: addressId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CustomerAddressRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerAddress'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: Replace a customer's address
             tags:
                 - Customers
             x-vantigo-access: permission:customers:update+customers:view

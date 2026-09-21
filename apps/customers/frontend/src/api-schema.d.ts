@@ -39,6 +39,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/customers/{id}/addresses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a customer's addresses */
+        get: operations["getCustomersByIdAddresses"];
+        put?: never;
+        /** Add an address to a customer */
+        post: operations["postCustomersByIdAddresses"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/customers/{id}/addresses/{addressId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace a customer's address */
+        put: operations["putCustomersByIdAddressesByAddressId"];
+        post?: never;
+        /** Remove an address from a customer */
+        delete: operations["deleteCustomersByIdAddressesByAddressId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/customers/{id}/contact-info": {
         parameters: {
             query?: never;
@@ -391,6 +427,36 @@ export interface components {
             /** Format: int32 */
             id: number;
         };
+        /** @description One of a customer's typed addresses (invoice-ready customer design D3) — postal, invoice, delivery or visiting, any number of each, at most one primary per type. */
+        CustomerAddress: {
+            city?: string | null;
+            country: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int32 */
+            id: number;
+            isPrimary: boolean;
+            label?: string | null;
+            line1: string;
+            line2?: string | null;
+            postalCode?: string | null;
+            region?: string | null;
+            type: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description POST/PUT .../addresses(/{addressId})'s own request body (invoice-ready customer design D1, D3): a full replace of one address — every field present or null. isPrimary absent means false, which for a type's first (or otherwise-only-primary) address follows D3's own rules: the first address of a type is primary whatever the request says, and false on the address that is currently the only or primary one of its type is refused. */
+        CustomerAddressRequest: {
+            city?: string | null;
+            country: string;
+            isPrimary?: boolean | null;
+            label?: string | null;
+            line1: string;
+            line2?: string | null;
+            postalCode?: string | null;
+            region?: string | null;
+            type: string;
+        };
         CustomerConflictDuplicate: {
             /** Format: int64 */
             customerNumber: number;
@@ -487,6 +553,9 @@ export interface components {
             customer?: components["schemas"]["CustomerReference"] | null;
             /** Format: int32 */
             customerCount: number;
+        };
+        GetCustomerAddressesResponse: {
+            data: components["schemas"]["CustomerAddress"][];
         };
         GetCustomerContactsResponse: {
             data: components["schemas"]["CustomerContactResponse"][];
@@ -951,6 +1020,222 @@ export interface operations {
             header?: never;
             path: {
                 id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getCustomersByIdAddresses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GetCustomerAddressesResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postCustomersByIdAddresses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomerAddressRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    /** @description The path of the newly created address, /api/v1/customers/{id}/addresses/{addressId}. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerAddress"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putCustomersByIdAddressesByAddressId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                addressId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomerAddressRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerAddress"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deleteCustomersByIdAddressesByAddressId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                addressId: number;
             };
             cookie?: never;
         };
