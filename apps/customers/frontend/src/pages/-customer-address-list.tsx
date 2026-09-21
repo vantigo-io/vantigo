@@ -12,6 +12,7 @@ import {
   deleteCustomerAddress,
   makeAddressPrimary,
 } from "../api/addresses";
+import { customerBillingProfileQueryOptions } from "../api/billing-profile";
 import { addressTypeLabel } from "../lib/address-type-label";
 import { countryDisplayName } from "../lib/country-display";
 import { type AddressModalState, CustomerAddressModal } from "./-customer-address-modal";
@@ -29,11 +30,19 @@ import "../i18n";
 export const CustomerAddressesSection = ({ customerId, canEdit }: { customerId: number; canEdit?: boolean }) => {
   const { t, locale } = useI18n("customers");
   const queryClient = useQueryClient();
-  const { data, isPending } = useQuery(customerAddressesQueryOptions(customerId));
+  const { data, isPending, isError, refetch } = useQuery(customerAddressesQueryOptions(customerId));
   const addresses = data ?? [];
   const [modalState, setModalState] = useState<AddressModalState>(null);
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["customers", customerId, "addresses"] });
+  // An address write moves no revision on the customer row (design D3), so
+  // the customer query is left alone — but the billing profile's warnings
+  // are computed from the customer's addresses at read time (design D4):
+  // `no_invoice_address` goes the moment an invoice address exists, and
+  // comes back when the last one is deleted.
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: customerAddressesQueryOptions(customerId).queryKey });
+    queryClient.invalidateQueries({ queryKey: customerBillingProfileQueryOptions(customerId).queryKey });
+  };
 
   const makePrimaryMutation = useMutation({
     mutationFn: (address: CustomerAddress) => makeAddressPrimary(customerId, address),
@@ -97,6 +106,16 @@ export const CustomerAddressesSection = ({ customerId, canEdit }: { customerId: 
 
       {isPending ? (
         <ContentSkeleton rows={2} rowHeight={48} />
+      ) : isError ? (
+        // A failed load is not an empty list: "No addresses yet" would invite
+        // adding a second copy of an address the customer already has. Same
+        // shape as the timeline's own failure.
+        <Stack align="center" py="md">
+          <Text c="red">{t("failedLoadAddresses")}</Text>
+          <Button variant="light" onClick={() => refetch()}>
+            {t("tryAgain")}
+          </Button>
+        </Stack>
       ) : addresses.length === 0 ? (
         <EmptyState size="sm" title={t("noAddressesYet")} action={canEdit ? addButton : undefined} />
       ) : (
