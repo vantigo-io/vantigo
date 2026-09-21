@@ -134,6 +134,25 @@ describe("customer contacts card", () => {
     timelineSummary: { entryCount: 0, latestOccurredOn: null },
   };
 
+  // The Overview tab's billing card (design D6) always GETs the billing
+  // profile, which answers 200 with every field null for a customer that
+  // has none (design D4) — every route test below needs this stubbed the
+  // same way it stubs the customer's own GET.
+  const emptyBillingProfile = {
+    invoiceEmail: null,
+    reminderEmail: null,
+    paymentTermsDays: null,
+    currency: null,
+    language: null,
+    invoiceDelivery: null,
+    reminderDelivery: null,
+    peppolId: null,
+    gln: null,
+    buyerReference: null,
+    revision: 1,
+    warnings: [],
+  };
+
   const stubFetch = (handlers: Record<string, (init?: RequestInit) => Response | Promise<Response>>) =>
     stubTestFetch((url: RequestInfo | URL, init?: RequestInit) => {
       const key = `${init?.method ?? "GET"} ${String(url).split("?")[0]}`;
@@ -144,6 +163,7 @@ describe("customer contacts card", () => {
   it("lists associated contacts with connection values falling back to the contact's own", async () => {
     stubFetch({
       "GET /api/v1/customers/2002": () => jsonResponse(200, customer),
+      "GET /api/v1/customers/2002/billing-profile": () => jsonResponse(200, emptyBillingProfile),
       "GET /api/v1/customers/2002/contacts": () =>
         jsonResponse(200, {
           data: [
@@ -169,6 +189,7 @@ describe("customer contacts card", () => {
   it("shows an empty state when the customer has no contacts", async () => {
     stubFetch({
       "GET /api/v1/customers/2002": () => jsonResponse(200, customer),
+      "GET /api/v1/customers/2002/billing-profile": () => jsonResponse(200, emptyBillingProfile),
       "GET /api/v1/customers/2002/contacts": () => jsonResponse(200, { data: [] }),
     });
 
@@ -189,6 +210,7 @@ describe("customer contacts card", () => {
 
     stubFetch({
       "GET /api/v1/customers/2002": () => jsonResponse(200, customer),
+      "GET /api/v1/customers/2002/billing-profile": () => jsonResponse(200, emptyBillingProfile),
       "GET /api/v1/customers/2002/contacts": () => jsonResponse(200, { data: [] }),
       "GET /api/v1/customers/contacts": () =>
         jsonResponse(
@@ -230,6 +252,7 @@ describe("customer contacts card", () => {
 
     stubFetch({
       "GET /api/v1/customers/2002": () => jsonResponse(200, customer),
+      "GET /api/v1/customers/2002/billing-profile": () => jsonResponse(200, emptyBillingProfile),
       "GET /api/v1/customers/2002/contacts": () => jsonResponse(200, { data: [] }),
       "GET /api/v1/customers/contacts": () => jsonResponse(200, paginated([])),
       "POST /api/v1/customers/contacts": createSpy,

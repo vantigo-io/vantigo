@@ -13,6 +13,25 @@ const jsonResponse = (status: number, body: unknown) =>
     headers: { "Content-Type": "application/json" },
   });
 
+// The Overview tab's billing card (design D6) always GETs the billing
+// profile, which answers 200 with every field null for a customer that has
+// none (design D4) — every route test below needs this stubbed the same way
+// it stubs the customer's own GET and legal identity.
+const emptyBillingProfile = {
+  invoiceEmail: null,
+  reminderEmail: null,
+  paymentTermsDays: null,
+  currency: null,
+  language: null,
+  invoiceDelivery: null,
+  reminderDelivery: null,
+  peppolId: null,
+  gln: null,
+  buyerReference: null,
+  revision: 1,
+  warnings: [],
+};
+
 const renderRoute = async (path: string, heading: string) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -63,6 +82,8 @@ describe("customer details page", () => {
         return Promise.resolve(
           jsonResponse(200, { country: "no", type: "business", id: "923609016", name: "EQUINOR ASA", source: "brreg" }),
         );
+      if (String(url) === "/api/v1/customers/1001/billing-profile")
+        return Promise.resolve(jsonResponse(200, emptyBillingProfile));
       return Promise.resolve(new Response(null, { status: 404 }));
     });
 
@@ -102,9 +123,11 @@ describe("customer details page", () => {
           )
         : String(url) === "/api/v1/customers/1002/legal-identity"
           ? Promise.resolve(new Response(null, { status: 403 }))
-          : String(url).includes("/timeline")
-            ? Promise.resolve(jsonResponse(200, { data: [], nextCursor: null }))
-            : Promise.resolve(new Response(null, { status: 404 })),
+          : String(url) === "/api/v1/customers/1002/billing-profile"
+            ? Promise.resolve(jsonResponse(200, emptyBillingProfile))
+            : String(url).includes("/timeline")
+              ? Promise.resolve(jsonResponse(200, { data: [], nextCursor: null }))
+              : Promise.resolve(new Response(null, { status: 404 })),
     );
 
     await renderRoute("/customers/1002", "Acme");
