@@ -1018,6 +1018,9 @@ func TestLoad_BootstrapOwnerEmail(t *testing.T) {
 			t.Errorf("%q: error = %q", bad, msg)
 		}
 	}
+	if cfg := mustLoad(t, with(validEnv(), "BOOTSTRAP_OWNER_EMAIL", "   ")); cfg.BootstrapOwnerEmail != "" {
+		t.Errorf("BootstrapOwnerEmail = %q, want a whitespace-only value to load as disabled", cfg.BootstrapOwnerEmail)
+	}
 }
 
 func TestLoad_Management_DisabledByDefault(t *testing.T) {
@@ -1043,6 +1046,7 @@ func TestLoad_Management(t *testing.T) {
 		{[]string{"MANAGEMENT_PORT", "8080", "MANAGEMENT_TOKEN", token}, "MANAGEMENT_PORT: must differ from PORT"},
 		{[]string{"MANAGEMENT_PORT", "9090", "MANAGEMENT_TOKEN", "short"}, "MANAGEMENT_TOKEN: must be at least 32 characters"},
 		{[]string{"MANAGEMENT_PORT", "9090", "MANAGEMENT_TOKEN", strings.Repeat("t", 31) + " "}, "MANAGEMENT_TOKEN: must not contain whitespace"},
+		{[]string{"MANAGEMENT_PORT", "9090", "MANAGEMENT_TOKEN", "   "}, "MANAGEMENT_TOKEN: must not contain whitespace"},
 	}
 	for _, tc := range cases {
 		msg := loadError(t, with(validEnv(), tc.pairs...))

@@ -23,6 +23,7 @@ const (
 	fmtDBPassword       = "db-password-value"
 	fmtMigrationsPass   = "migrations password value"
 	fmtCommsAIKey       = "communications-ai-api-key-value"
+	fmtManagementToken  = "management-token-value-0123456789ab"
 )
 
 // secretPatterns is every way fmt could render one of the secrets: the
@@ -30,7 +31,7 @@ const (
 // decimal bytes (%v, %d).
 func secretPatterns() []string {
 	var out []string
-	for _, s := range []string{fmtAppSecret, fmtSMTPPassword, fmtOIDCClientSecret, fmtSCIMToken, fmtSCIMPrevious, fmtDBPassword, fmtMigrationsPass, fmtCommsAIKey} {
+	for _, s := range []string{fmtAppSecret, fmtSMTPPassword, fmtOIDCClientSecret, fmtSCIMToken, fmtSCIMPrevious, fmtDBPassword, fmtMigrationsPass, fmtCommsAIKey, fmtManagementToken} {
 		out = append(out, s, hex.EncodeToString([]byte(s)), strings.ToUpper(hex.EncodeToString([]byte(s))))
 	}
 	decimal := make([]string, 0, len(fmtAppSecret))
@@ -51,6 +52,8 @@ func secretConfig(t *testing.T) *Config {
 		"SCIM_PREVIOUS_TOKEN", fmtSCIMPrevious,
 		"SCIM_PREVIOUS_TOKEN_EXPIRES_AT", time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
 		"COMMUNICATIONS_AI_API_KEY", fmtCommsAIKey,
+		"MANAGEMENT_PORT", "9090",
+		"MANAGEMENT_TOKEN", fmtManagementToken,
 		"DATABASE_URL", "postgres://vantigo:"+fmtDBPassword+"@db.internal:5432/vantigo?sslmode=verify-full",
 		"MIGRATIONS_DATABASE_URL", "host=db.internal user=owner password='"+fmtMigrationsPass+"' dbname=vantigo sslmode=verify-full",
 	))
@@ -78,6 +81,7 @@ func TestFormat_NeverPrintsASecret(t *testing.T) {
 		"MailConfig": cfg.Mail, "*MailConfig": &cfg.Mail,
 		"OIDCConfig": *cfg.OIDC, "*OIDCConfig": cfg.OIDC,
 		"SCIMConfig": *cfg.SCIM, "*SCIMConfig": cfg.SCIM,
+		"ManagementConfig": *cfg.Management, "*ManagementConfig": cfg.Management,
 	}
 	for name, v := range values {
 		for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%d", "%x", "%X", "%q", "%10v"} {
@@ -103,7 +107,7 @@ func TestLogValue_NeverLogsASecret(t *testing.T) {
 	} {
 		var buf bytes.Buffer
 		slog.New(newHandler(&buf)).Info("configuration",
-			"cfg", *cfg, "ptr", cfg, "mail", cfg.Mail, "oidc", cfg.OIDC, "scim", cfg.SCIM,
+			"cfg", *cfg, "ptr", cfg, "mail", cfg.Mail, "oidc", cfg.OIDC, "scim", cfg.SCIM, "management", cfg.Management,
 			slog.Group("nested", "cfg", cfg))
 		out := buf.String()
 		assertNoSecret(t, name+" handler", out)
