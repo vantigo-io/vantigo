@@ -51,14 +51,6 @@ SELECT * FROM identity.invitations WHERE token_hash = @token_hash FOR UPDATE;
 -- name: MarkInvitationAccepted :exec
 UPDATE identity.invitations SET accepted_at = @now::timestamptz WHERE id = @id;
 
--- name: CountPendingOwnerInvitations :one
--- CountPendingOwnerInvitations is how many Owner invitations can still be
--- accepted at @now: BOOTSTRAP_OWNER_EMAIL's startup step issues one only when
--- there is none, and the management status reports "invited" while there is.
-SELECT count(*)::int
-FROM identity.invitations
-WHERE role = 'Owner' AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > @now::timestamptz;
-
 -- name: RevokePendingOwnerInvitationsExceptEmail :execrows
 -- RevokePendingOwnerInvitationsExceptEmail revokes every pending Owner
 -- invitation not addressed to @normalized_email, expired ones included.
@@ -72,7 +64,9 @@ WHERE role = 'Owner' AND normalized_email != @normalized_email AND accepted_at I
 -- name: CountPendingOwnerInvitationsForEmail :one
 -- CountPendingOwnerInvitationsForEmail is how many Owner invitations to
 -- @normalized_email can still be accepted at @now. BOOTSTRAP_OWNER_EMAIL's
--- startup step issues one to the configured address only when this is 0.
+-- startup step issues one to the configured address only when this is 0, and
+-- the management status reports "invited" only when it is above 0 for that
+-- same configured address.
 SELECT count(*)::int
 FROM identity.invitations
 WHERE role = 'Owner' AND normalized_email = @normalized_email AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > @now::timestamptz;
