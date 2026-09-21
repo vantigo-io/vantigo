@@ -56,20 +56,35 @@ worth building the invoice-ready customer on top of.
 
 ### Phase 2 — The invoice-ready customer (align with Invoices)
 
-Addresses (invoice/postal, delivery, visiting — table stakes in every Nordic system
-compared). Customer-level contact info: email, phone, website, with an **invoice
-email** and a **reminder email** kept separate from the general contact address, since
-Norwegian eFaktura/EHF and dunning correspondence route differently. A billing
-profile: payment terms (days), currency, document language, invoice delivery method,
-reminder delivery method, a Peppol participant id/GLN, and a default buyer reference
-("deres referanse"). A Peppol capability lookup (SML DNS → SMP → BIS Billing 3.0
-support) that sets the delivery method to EHF automatically, the way every Nordic
-competitor surveyed but Fortnox does. `contracts.CustomerDirectory` grows a
-billing-profile read for Invoices and a batch `Customers(ids)` lookup (Projects'
-project list does one directory call per distinct customer today).
+Decided in
+[`docs/superpowers/specs/2026-09-21-customers-invoice-ready-design.md`](docs/superpowers/specs/2026-09-21-customers-invoice-ready-design.md),
+split into two deliveries.
 
-*Unblocks:* Invoices — today a customer cannot be invoiced: there is nowhere to send
-it and no terms to put on it.
+**Delivery A (done)** — the data, its API, the UI and the directory. Addresses
+(postal, invoice, delivery, visiting — table stakes in every Nordic system
+compared), any number of each, one primary per type. Customer-level contact info:
+email, phone, website, on the customer itself. A billing profile behind its own
+permission (`customers:billing-manage`, deliberately narrower than
+`customers:update`): payment terms (days), currency, document language, invoice
+delivery method, reminder delivery method, a Peppol participant id/GLN, and a
+default buyer reference ("deres referanse") — with an **invoice email** and a
+**reminder email** kept separate from the general contact address, since Norwegian
+eFaktura/EHF and dunning correspondence route differently. `contracts.CustomerDirectory`
+grew a `BillingProfile` read (every field resolved once, for Invoices) and a batch
+`Customers(ids)` lookup — Projects' project list now makes one directory call per
+page instead of one per distinct customer. See [`docs/customers.md`](docs/customers.md).
+
+**Delivery B (remaining)** — a Peppol capability lookup (SML DNS → SMP → BIS
+Billing 3.0 support) that sets the invoice delivery method to EHF automatically,
+the way every Nordic competitor surveyed but Fortnox does. Delivery A did not wait
+for it: `peppolId` and `invoiceDelivery` are plain fields a person can already fill
+in by hand, and the billing profile's `ehf_without_recipient` warning already
+flags a customer set to `ehf` with no Peppol id to send to.
+
+*Unblocks:* Invoices can now read a resolved billing profile through the
+directory — delivery A gave a customer somewhere to send an invoice and terms to
+put on it; delivery B is what makes EHF fill itself in instead of being typed by
+hand.
 
 ### Phase 3 — Brreg in full
 
