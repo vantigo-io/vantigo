@@ -224,8 +224,18 @@ func (s *server) GetCustomers(ctx context.Context, req gen.GetCustomersRequestOb
 	// oracle for it either (customers foundation design D4). Computed once
 	// here and reused for both queries below, so the count and the page
 	// never disagree about what search reaches.
+	//
+	// Each answer costs an access check — a session lookup plus a permission
+	// query — so the list endpoint asks for as few as it needs: searchIdentity
+	// unconditionally, because legalIdentityView also decides whether the
+	// response's identity block is populated (see includeIdentity below);
+	// searchContacts only when there is a search term at all, since with no
+	// term the contact/association branch of the query is unreachable and the
+	// flag cannot change a single row either way. The two contact permissions
+	// travel as one AND-gated check (hasPermissions, server.go) rather than
+	// two.
 	searchIdentity := s.hasPermission(ctx, legalIdentityView)
-	searchContacts := s.hasPermission(ctx, contactsView) && s.hasPermission(ctx, associationsView)
+	searchContacts := search != nil && s.hasPermissions(ctx, contactsView, associationsView)
 
 	q := store.New(s.deps.Pool)
 	total, err := q.CountCustomers(ctx, store.CountCustomersParams{

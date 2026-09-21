@@ -69,11 +69,29 @@ func ResponseWriterFrom(ctx context.Context) (http.ResponseWriter, bool) {
 // fails closed. It is for the handler-side checks the router cannot make:
 // a permission conditional on request-body content.
 func HasPermission(ctx context.Context, a Access, key string) bool {
+	return HasPermissions(ctx, a, key)
+}
+
+// HasPermissions is HasPermission for several keys at once: it reports whether
+// the caller holds every one of them. The keys travel in a single
+// Rule{Kind: RulePermission, Names: keys}, which Access evaluates as an AND
+// (identity/access.go's permitted refuses on the first key the caller does not
+// hold) — one Check, not one per key, because a Check is a session lookup plus
+// a permission query, and a handler gating on two permissions together should
+// pay for one round of that rather than two.
+//
+// It fails closed exactly as HasPermission does. Naming no key at all is false
+// too, and without asking Access: an empty Names list satisfies the AND
+// vacuously, which is never the gate a caller passing no keys meant to open.
+func HasPermissions(ctx context.Context, a Access, keys ...string) bool {
+	if len(keys) == 0 {
+		return false
+	}
 	r, ok := RequestFrom(ctx)
 	if !ok {
 		return false
 	}
-	_, err := a.Check(r, Rule{Kind: RulePermission, Names: []string{key}})
+	_, err := a.Check(r, Rule{Kind: RulePermission, Names: keys})
 	return err == nil
 }
 
