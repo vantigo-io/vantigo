@@ -104,8 +104,11 @@ adds one: update, type change, legal identity put/delete, archive.
   nothing is written; the comparison is repeated in the `UPDATE`'s `WHERE` so two writers who
   both read the same revision cannot both win. When absent the write goes through as today
   (corpus compatibility; the frontend always sends it).
-- The legal-identity sub-resource and archive stay unconditional writes: each replaces one
-  self-contained thing, and archive is idempotent.
+- The legal-identity sub-resource and archive stay unconditional writes — they never ask
+  the caller for a revision: each replaces one self-contained thing, and archive is
+  idempotent. Unconditional is not "always writes": a request that changes nothing (the
+  identity already stored, resubmitted) writes nothing, the same no-op rule the main PUT
+  has, so it bumps no revision either.
 - This follows the `revision` convention of `time` and `projects`, not the timeline's
   `expectedRevision` naming.
 

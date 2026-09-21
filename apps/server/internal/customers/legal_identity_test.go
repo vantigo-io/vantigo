@@ -422,6 +422,13 @@ func TestPutCustomersByIdLegalIdentity_InvalidBodyAgainstMissingCustomer_Returns
 // pins for UpdateCustomerEndpoint (customers inventory §2.4), applied here
 // to the dedicated endpoint. The harness clock is advanced between the two
 // PUTs so an accidental updated_at bump cannot hide behind an unmoved clock.
+//
+// The revision is part of that no-op now too (customers foundation design
+// D5's no-op rule, as the main PUT has always had it): the resubmit issues no
+// UPDATE at all, so there is nothing for the revision to be bumped by. This
+// endpoint stays an *unconditional* write — it never asks the caller for a
+// revision — but unconditional is not the same as "writes even when there is
+// nothing to write".
 func TestPutCustomersByIdLegalIdentity_ResubmittingUnchangedIdentity_IsANoOp(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -447,6 +454,9 @@ func TestPutCustomersByIdLegalIdentity_ResubmittingUnchangedIdentity_IsANoOp(t *
 	after := fetchCustomerJSON(t, c, created.Id)
 	if !after.UpdatedAt.Equal(before.UpdatedAt) {
 		t.Errorf("UpdatedAt = %v, want unchanged at %v (resubmitting the same identity must be a no-op)", after.UpdatedAt, before.UpdatedAt)
+	}
+	if after.Revision != before.Revision {
+		t.Errorf("revision = %d, want unchanged %d (an unchanged resubmission writes nothing to bump it)", after.Revision, before.Revision)
 	}
 	if got := countTimelineEvents(t, h, created.Id, "customer.updated"); got != 1 {
 		t.Errorf("customer.updated events = %d, want still 1 (no event for an unchanged resubmission)", got)

@@ -197,7 +197,10 @@ every other timeline column).
 
 `customers.customers` carries `revision integer NOT NULL DEFAULT 1`. **Every write to
 the row** — a general update, a type change, a legal-identity put or delete, an
-archive — increments it by one.
+archive — increments it by one. A request that turns out to write nothing is not a
+write: like `PUT /customers/{id}`, a legal-identity `PUT` that resubmits the identity
+already stored (equal in all five fields) issues no `UPDATE` at all, so neither
+`revision` nor `updated_at` moves and no event is recorded.
 
 - `SafeCustomerResponse` carries `revision` (optional in the schema, for corpus
   compatibility — see below).
@@ -215,7 +218,10 @@ archive — increments it by one.
 - The legal-identity sub-resource (`PUT`/`DELETE .../legal-identity`) and archive
   (`DELETE /customers/{id}`) stay **unconditional writes**, never revision-guarded:
   each replaces or clears one self-contained thing, and archive is idempotent by
-  construction rather than by concurrency control.
+  construction rather than by concurrency control. Unconditional means they never
+  ask the caller for a revision — not that they write when there is nothing to
+  write: each has its own no-op rule (an identical identity, an identity already
+  absent, a customer already archived) under which nothing happens at all.
 - Check order on `PUT /customers/{id}`: legal-identity-manage gate (if the body
   carries an identity) → name/status validation → the 404 lookup → the revision
   check → identity re-validation → the duplicate-identity check (last, immediately
@@ -243,7 +249,9 @@ duplicate) already carries the same `(country, id)`, the write is refused with:
 
 - The request may carry `allowDuplicateIdentity: true` to go ahead anyway — two
   departments of one company kept as separate customers is a legitimate case — which
-  is exactly **why there is no unique index** on `(legal_country, legal_id)`.
+  is exactly **why there is no unique index** on `(legal_country, legal_id)`. There is
+  a plain btree one (`ix_customers_legal_identity`, migration 00016) so the check
+  itself is an index lookup rather than a sequential scan.
 - An identity that is **unchanged** by the request is never checked: a bare
   name/source/type edit, or resubmitting the same `(country, id)`, is never a
   conflict with itself. On create there is no such exemption — every create is a
