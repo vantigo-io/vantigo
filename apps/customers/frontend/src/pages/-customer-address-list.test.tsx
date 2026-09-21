@@ -142,6 +142,12 @@ describe("CustomerAddressesSection", () => {
     renderSection(fetchMock);
 
     await screen.findByText("Branch office");
+    const addressGets = () =>
+      fetchMock.mock.calls.filter(
+        ([url, init]) =>
+          String(url) === "/api/v1/customers/1001/addresses" && (init as RequestInit | undefined)?.method === undefined,
+      );
+    const getsBeforePut = addressGets().length;
     await userEvent.click(screen.getByRole("button", { name: /^make branch office the primary address$/i }));
 
     await waitFor(() =>
@@ -161,6 +167,9 @@ describe("CustomerAddressesSection", () => {
         }),
       }),
     );
+    // The invalidation the title promises: the list is read again, so the
+    // badge moves without a page reload.
+    await waitFor(() => expect(addressGets().length).toBeGreaterThan(getsBeforePut));
   });
 
   it("Delete confirms before removing an address", async () => {

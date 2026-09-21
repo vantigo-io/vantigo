@@ -173,6 +173,16 @@ export const CustomerAddressModal = ({
             data={ADDRESS_TYPE_ORDER.map((type) => ({ value: type, label: addressTypeLabel(t, type) }))}
             allowDeselect={false}
             {...form.getInputProps("type")}
+            onChange={(value) => {
+              const next = value ?? form.values.type;
+              form.setFieldValue("type", next);
+              // "Primary" is per type (design D3): a tick that belonged to
+              // the old type says nothing about the new one, where another
+              // address may already hold it. Moving back to the address's own
+              // type restores what it actually is; the forced case (first of
+              // the new type) re-ticks the box on its own.
+              if (isEdit) form.setFieldValue("isPrimary", next === state.address.type && state.address.isPrimary);
+            }}
           />
           <TextInput
             label={t("addressLabel")}

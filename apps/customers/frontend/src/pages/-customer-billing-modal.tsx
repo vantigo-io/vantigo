@@ -195,6 +195,10 @@ export const CustomerBillingModal = ({
             label={t("billingPaymentTermsDays")}
             min={0}
             max={365}
+            // Payment terms are whole days, and never negative — the server
+            // refuses both, so the input should not offer them.
+            allowDecimal={false}
+            allowNegative={false}
             {...form.getInputProps("paymentTermsDays")}
           />
           <TextInput

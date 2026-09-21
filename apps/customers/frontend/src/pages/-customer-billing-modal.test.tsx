@@ -94,6 +94,37 @@ describe("CustomerBillingModal", () => {
     });
   });
 
+  it("sends a literal 0 for payment terms, and null once the field is cleared", async () => {
+    // Zero days is "due on receipt", not "not set": the difference has to
+    // survive a field whose empty value is an empty string.
+    const fetchMock = renderModal(emptyProfile, {
+      billingPut: () => jsonResponse(200, { ...emptyProfile, paymentTermsDays: 0, revision: 4 }),
+    });
+
+    const dialog = await screen.findByRole("dialog");
+    const paymentTerms = within(dialog).getByLabelText(/payment terms/i);
+    await userEvent.type(paymentTerms, "0");
+    await userEvent.click(within(dialog).getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(lastBillingPut(fetchMock)).toBeTruthy());
+    expect(JSON.parse(String((lastBillingPut(fetchMock) as [string, RequestInit])[1].body)).paymentTermsDays).toBe(0);
+
+    await userEvent.clear(paymentTerms);
+    await userEvent.click(within(dialog).getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.filter(
+          ([url, init]) =>
+            String(url).endsWith("/billing-profile") && (init as RequestInit | undefined)?.method === "PUT",
+        ),
+      ).toHaveLength(2),
+    );
+    expect(
+      JSON.parse(String((lastBillingPut(fetchMock) as [string, RequestInit])[1].body)).paymentTermsDays,
+    ).toBeNull();
+  });
+
   it("upper-cases the currency as it is typed", async () => {
     renderModal(emptyProfile);
     const dialog = await screen.findByRole("dialog");

@@ -12,6 +12,7 @@ import {
   deliveryMethodLabel,
   KNOWN_BILLING_WARNING_CODES,
 } from "../lib/billing-labels";
+import { validNorwegianOrgNumber } from "../lib/norwegian-org-number";
 import { CustomerBillingModal } from "./-customer-billing-modal";
 import "../i18n";
 
@@ -51,7 +52,9 @@ export const CustomerBillingCard = ({
         <Group justify="space-between">
           <Group gap="xs">
             <IconReceipt size={18} stroke={1.5} />
-            <Text fw={600}>{t("billing")}</Text>
+            <Text fw={600} component="h3">
+              {t("billing")}
+            </Text>
           </Group>
           {/* Editing needs the profile the modal seeds itself from, so the
               action appears with it, not before. */}
@@ -128,10 +131,12 @@ const BillingRow = ({ label, value, hint }: { label: string; value: ReactNode; h
  * `apps/server/internal/customers/directory.go`: an invoice email falls back
  * to the customer's own contact email, a reminder email falls back to the
  * resolved invoice email, and an EHF recipient is derived as
- * "0192:<organisation number>" for a business customer with a Norwegian
- * legal identity. No hint is shown when the identity is absent — it is
- * absent whenever the viewer may not see it, and a derived recipient built
- * from a guess would be worse than none.
+ * "0192:<organisation number>" for a business customer whose Norwegian legal
+ * identity really carries an organisation number — the server derives
+ * nothing from a legacy id that fails the mod-11 check, so neither does the
+ * hint. No hint is shown when the identity is absent either: it is absent
+ * whenever the viewer may not see it, and a derived recipient built from a
+ * guess would be worse than none.
  */
 const BillingFields = ({ customer, profile }: { customer: CustomerResponse; profile: CustomerBillingProfile }) => {
   const { t } = useI18n("customers");
@@ -151,7 +156,10 @@ const BillingFields = ({ customer, profile }: { customer: CustomerResponse; prof
       ? t("billingRemindersGoTo", { email: resolvedInvoiceEmail })
       : null;
   const derivedPeppolId =
-    profile.peppolId === null && customer.type === "business" && customer.identity?.country === "no"
+    profile.peppolId === null &&
+    customer.type === "business" &&
+    customer.identity?.country === "no" &&
+    validNorwegianOrgNumber(customer.identity.id)
       ? `0192:${customer.identity.id}`
       : null;
   const peppolHint = derivedPeppolId ? t("billingEhfRecipientDerived", { id: derivedPeppolId }) : null;

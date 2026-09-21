@@ -92,9 +92,9 @@ const renderCard = (
 describe("CustomerBillingCard", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("titles the card 'Billing'", async () => {
+  it("titles the card with a heading, not a bold line", async () => {
     renderCard(emptyProfile);
-    expect(await screen.findByText("Billing")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Billing", level: 3 })).toBeInTheDocument();
   });
 
   it("shows 'Not set — the invoicing default applies' for every null field", async () => {
@@ -223,7 +223,15 @@ describe("CustomerBillingCard", () => {
 
   it("hints the EHF recipient derived from a Norwegian business's organisation number", async () => {
     renderCard(emptyProfile, { type: "business", identity: { country: "no", type: "business", id: "923609016" } });
-    expect(await screen.findByText("EHF recipient 0192:923609016 (from the organisation number)")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Would use 0192:923609016 as the EHF recipient (from the organisation number)"),
+    ).toBeInTheDocument();
+  });
+
+  it("promises no EHF recipient the server could not derive from a malformed legacy id", async () => {
+    renderCard(emptyProfile, { type: "business", identity: { country: "no", type: "business", id: "923609017" } });
+    await screen.findByText("Peppol ID");
+    expect(screen.queryByText(/EHF recipient/)).not.toBeInTheDocument();
   });
 
   it("shows no derived-recipient hint when the identity is absent (viewer may not see it)", async () => {
