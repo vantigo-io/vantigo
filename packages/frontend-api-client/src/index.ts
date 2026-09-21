@@ -53,11 +53,44 @@ export class NotFoundError extends Error {
   }
 }
 
+/**
+ * A 409 whose body parses as problem JSON with a `title` — the request went
+ * through, but something it named already exists or has since changed.
+ * Sibling to `ApiValidationError`: a status-specific shape, not a generic
+ * `ApiError`. `message`/`status`/`code` match exactly what the generic
+ * fallback would have produced for the same response, so an existing caller
+ * matching on those (`error.status === 409`, `error.code === "…"`) behaves
+ * identically whether or not it has been updated to catch this class.
+ * `problem` is the parsed body itself: a module's own conflict fields (say,
+ * customers' `duplicates`) are read from there by that module, not typed
+ * here — this package stays generic across every app that shares it.
+ */
+export class ApiConflictError extends Error {
+  readonly status = 409;
+  readonly title?: string;
+  readonly detail?: string;
+  readonly code?: string;
+  readonly problem: Record<string, unknown>;
+
+  constructor(
+    message: string,
+    options: { title?: string; detail?: string; code?: string; problem: Record<string, unknown> },
+  ) {
+    super(message);
+    this.name = "ApiConflictError";
+    this.title = options.title;
+    this.detail = options.detail;
+    this.code = options.code;
+    this.problem = options.problem;
+  }
+}
+
 type ProblemDetails = {
   error?: { code?: unknown; message?: unknown; fields?: unknown };
   detail?: unknown;
   title?: unknown;
   errors?: unknown;
+  code?: unknown;
 };
 
 const defaultOptions: Required<ApiClientOptions> = {
@@ -132,12 +165,16 @@ export const createApiClient = (clientOptions: ApiClientOptions = {}): ApiClient
     if ((response.status === 400 || response.status === 409) && fields) {
       throw new ApiValidationError(problemMessage(problem, response.status), fields, response.status);
     }
-    throw apiError(
-      problemMessage(problem, response.status),
-      response.status,
-      fields,
-      typeof details.error?.code === "string" ? details.error.code : undefined,
-    );
+    const code = typeof details.error?.code === "string" ? details.error.code : undefined;
+    if (response.status === 409 && problem && typeof problem === "object" && typeof details.title === "string") {
+      throw new ApiConflictError(problemMessage(problem, response.status), {
+        title: details.title,
+        detail: typeof details.detail === "string" ? details.detail : undefined,
+        code: code ?? (typeof details.code === "string" ? details.code : undefined),
+        problem: problem as Record<string, unknown>,
+      });
+    }
+    throw apiError(problemMessage(problem, response.status), response.status, fields, code);
   };
 
   return {
