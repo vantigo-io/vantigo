@@ -285,6 +285,19 @@ func addressChanges(before, after addressSnapshot) map[string]any {
 	return changes
 }
 
+// addressSummary is "Address added/updated/removed: <display>", truncated
+// to customers_timeline_entries.summary's varchar(500) the same way
+// truncateUTF16 already protects the manual-entry summary (timeline.go): a
+// valid address (line1 and line2 each up to their own 255-character limit,
+// plus label/postalCode/city/country) can produce a display well past 500
+// characters on its own — untruncated, InsertGeneratedTimelineEvent's insert
+// would fail with a database-level "value too long" error on an otherwise
+// perfectly valid request. The payload's own "display" field (below) is
+// never truncated — only the stored summary column is.
+func addressSummary(verb, display string) string {
+	return truncateUTF16(fmt.Sprintf("Address %s: %s", verb, display), 500)
+}
+
 // recordCustomerAddressAdded is PostCustomersByIdAddresses's own generated
 // event (invoice-ready customer design D3): no .NET ancestor. The payload
 // always carries addressId, type, label and a one-line display rendering
@@ -296,7 +309,7 @@ func recordCustomerAddressAdded(ctx context.Context, q *store.Queries, now time.
 		"customerId": customerID, "addressId": addressID,
 		"type": addr.Type, "label": addr.Label, "display": display,
 	}
-	return recordGeneratedEvent(ctx, q, customerID, now, "customer.address_added", fmt.Sprintf("Address added: %s", display), payload, 1, actorKind, actorDisplay, actorUserID)
+	return recordGeneratedEvent(ctx, q, customerID, now, "customer.address_added", addressSummary("added", display), payload, 1, actorKind, actorDisplay, actorUserID)
 }
 
 // recordCustomerAddressUpdated is PutCustomersByIdAddressesByAddressId's own
@@ -313,7 +326,7 @@ func recordCustomerAddressUpdated(ctx context.Context, q *store.Queries, now tim
 		"type": after.Type, "label": after.Label, "display": display,
 		"before": before, "after": after, "changes": addressChanges(before, after),
 	}
-	return recordGeneratedEvent(ctx, q, customerID, now, "customer.address_updated", fmt.Sprintf("Address updated: %s", display), payload, 1, actorKind, actorDisplay, actorUserID)
+	return recordGeneratedEvent(ctx, q, customerID, now, "customer.address_updated", addressSummary("updated", display), payload, 1, actorKind, actorDisplay, actorUserID)
 }
 
 // recordCustomerAddressRemoved is DeleteCustomersByIdAddressesByAddressId's
@@ -329,5 +342,5 @@ func recordCustomerAddressRemoved(ctx context.Context, q *store.Queries, now tim
 		"customerId": customerID, "addressId": addressID,
 		"type": addr.Type, "label": addr.Label, "display": display,
 	}
-	return recordGeneratedEvent(ctx, q, customerID, now, "customer.address_removed", fmt.Sprintf("Address removed: %s", display), payload, 1, actorKind, actorDisplay, actorUserID)
+	return recordGeneratedEvent(ctx, q, customerID, now, "customer.address_removed", addressSummary("removed", display), payload, 1, actorKind, actorDisplay, actorUserID)
 }

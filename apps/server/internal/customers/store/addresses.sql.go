@@ -334,22 +334,35 @@ func (q *Queries) PrimaryCustomerAddressOfType(ctx context.Context, arg PrimaryC
 }
 
 const setCustomerAddressPrimary = `-- name: SetCustomerAddressPrimary :exec
-UPDATE customers.customer_addresses SET is_primary = $1, updated_at = $2::timestamptz WHERE id = $3
+UPDATE customers.customer_addresses SET is_primary = $1, updated_at = $2::timestamptz WHERE id = $3 AND customer_id = $4
 `
 
 type SetCustomerAddressPrimaryParams struct {
-	IsPrimary bool
-	UpdatedAt time.Time
-	ID        int32
+	IsPrimary  bool
+	UpdatedAt  time.Time
+	ID         int32
+	CustomerID int32
 }
 
 // SetCustomerAddressPrimary flips one address's is_primary flag alone
 // (invoice-ready customer design D3): the demote-before-promote step a write
 // elsewhere in the same transaction needs before its own INSERT/UPDATE can
 // safely set a different address of the same type primary, without
-// transiently violating ux_customer_addresses_primary.
+// transiently violating ux_customer_addresses_primary. Scoped to
+// customer_id, like every other write in this file (GetCustomerAddress,
+// UpdateCustomerAddress, DeleteCustomerAddress): every id this statement
+// ever receives already came from a row this same transaction just read
+// under that customer's lock, so the extra predicate changes no row this
+// code path touches — it exists so a call site mistake (the wrong id)
+// fails to match zero rows instead of silently flipping some other
+// customer's address.
 func (q *Queries) SetCustomerAddressPrimary(ctx context.Context, arg SetCustomerAddressPrimaryParams) error {
-	_, err := q.db.Exec(ctx, setCustomerAddressPrimary, arg.IsPrimary, arg.UpdatedAt, arg.ID)
+	_, err := q.db.Exec(ctx, setCustomerAddressPrimary,
+		arg.IsPrimary,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.CustomerID,
+	)
 	return err
 }
 

@@ -3,6 +3,7 @@ package customers_test
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -810,7 +811,7 @@ func TestPostCustomersByIdAddresses_RecordsAddressAddedEventWithActorAndPayload(
 func TestPutCustomersByIdAddressesByAddressId_RecordsAddressUpdatedEventWithBeforeAfter(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	c := authenticatedClient(t, h)
+	c, userID := authenticatedClientWithID(t, h)
 	customer := createCustomer(t, c, "Event Updated Co")
 	address := createAddress(t, c, customer.Id, map[string]any{"type": "postal", "line1": "Old line", "country": "se"})
 
@@ -831,12 +832,25 @@ func TestPutCustomersByIdAddressesByAddressId_RecordsAddressUpdatedEventWithBefo
 	if after == nil || after["line1"] != "Storgata 1" {
 		t.Errorf("after.line1 = %v, want \"Storgata 1\"", after["line1"])
 	}
+
+	gotActor := modtest.One[string](t, h, `
+		SELECT actor_user_id::text FROM customers.customers_timeline_entries
+		WHERE customer_id = $1 AND event_type = 'customer.address_updated'`, customer.Id)
+	if gotActor != userID.String() {
+		t.Errorf("actor_user_id = %s, want %s", gotActor, userID)
+	}
+	gotActorKind := modtest.One[string](t, h, `
+		SELECT actor_kind FROM customers.customers_timeline_entries
+		WHERE customer_id = $1 AND event_type = 'customer.address_updated'`, customer.Id)
+	if gotActorKind != "user" {
+		t.Errorf("actor_kind = %s, want user", gotActorKind)
+	}
 }
 
 func TestDeleteCustomersByIdAddressesByAddressId_RecordsAddressRemovedEvent(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	c := authenticatedClient(t, h)
+	c, userID := authenticatedClientWithID(t, h)
 	customer := createCustomer(t, c, "Event Removed Co")
 	address := createAddress(t, c, customer.Id, fullAddressBody("delivery", nil))
 
@@ -854,5 +868,110 @@ func TestDeleteCustomersByIdAddressesByAddressId_RecordsAddressRemovedEvent(t *t
 	}
 	if event.Payload["type"] != "delivery" {
 		t.Errorf("payload type = %v, want delivery", event.Payload["type"])
+	}
+
+	gotActor := modtest.One[string](t, h, `
+		SELECT actor_user_id::text FROM customers.customers_timeline_entries
+		WHERE customer_id = $1 AND event_type = 'customer.address_removed'`, customer.Id)
+	if gotActor != userID.String() {
+		t.Errorf("actor_user_id = %s, want %s", gotActor, userID)
+	}
+	gotActorKind := modtest.One[string](t, h, `
+		SELECT actor_kind FROM customers.customers_timeline_entries
+		WHERE customer_id = $1 AND event_type = 'customer.address_removed'`, customer.Id)
+	if gotActorKind != "user" {
+		t.Errorf("actor_kind = %s, want user", gotActorKind)
+	}
+}
+
+// TestAddressWrites_DoNotChangeCustomerRevision pins D3's own rule: address
+// writes never touch customers.customers, so the customer row's revision
+// (customers foundation design D5) is exactly the same before and after a
+// POST, a PUT and a DELETE — unlike every write PUT /customers/{id},
+// .../type, .../contact-info and .../billing-profile make.
+func TestAddressWrites_DoNotChangeCustomerRevision(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	customer := createCustomer(t, c, "Revision Untouched Co")
+	before := fetchCustomerJSON(t, c, customer.Id)
+	if before.Revision != 1 {
+		t.Fatalf("revision = %d, want 1", before.Revision)
+	}
+
+	created := createAddress(t, c, customer.Id, fullAddressBody("postal", nil))
+	if got := fetchCustomerJSON(t, c, customer.Id); got.Revision != 1 {
+		t.Errorf("revision after POST = %d, want unchanged 1", got.Revision)
+	}
+
+	r := putAddress(t, c, customer.Id, created.Id, fullAddressBody("postal", boolPtr(true)))
+	if r.Status != http.StatusOK {
+		t.Fatalf("put: status %d body %s, want 200", r.Status, r.Body)
+	}
+	if got := fetchCustomerJSON(t, c, customer.Id); got.Revision != 1 {
+		t.Errorf("revision after PUT = %d, want unchanged 1", got.Revision)
+	}
+
+	r = deleteAddress(t, c, customer.Id, created.Id)
+	if r.Status != http.StatusNoContent {
+		t.Fatalf("delete: status %d body %s, want 204", r.Status, r.Body)
+	}
+	if got := fetchCustomerJSON(t, c, customer.Id); got.Revision != 1 {
+		t.Errorf("revision after DELETE = %d, want unchanged 1", got.Revision)
+	}
+}
+
+// TestAddressWrites_LongLine1AndLine2_StoredSummaryIsTruncatedButPayloadDisplayIsWhole
+// pins the fix-round-1 finding: line1 and line2 each at their own 255-
+// character validation limit produce a display well past
+// customers_timeline_entries.summary's varchar(500) once "Address
+// added/updated/removed: " is prepended — a valid request must never 500 on
+// that, but the payload's own "display" field (what a UI actually renders)
+// must stay the full, untruncated string.
+func TestAddressWrites_LongLine1AndLine2_StoredSummaryIsTruncatedButPayloadDisplayIsWhole(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	customer := createCustomer(t, c, "Long Summary Co")
+
+	line1 := strings.Repeat("a", 255)
+	line2 := strings.Repeat("b", 255)
+	wantDisplay := line1 + ", " + line2 + ", 0155 Oslo, NO"
+	body := map[string]any{
+		"type": "postal", "line1": line1, "line2": line2,
+		"postalCode": "0155", "city": "Oslo", "country": "no", "isPrimary": true,
+	}
+
+	created := createAddress(t, c, customer.Id, body)
+	addedEvent := fetchTimelineEvent(t, h, customer.Id, "customer.address_added")
+	if n := len(addedEvent.Summary); n > 500 {
+		t.Errorf("stored summary length = %d, want <= 500 (a valid request must not overflow varchar(500))", n)
+	}
+	if addedEvent.Payload["display"] != wantDisplay {
+		t.Errorf("payload display = %v, want the full, untruncated %q", addedEvent.Payload["display"], wantDisplay)
+	}
+
+	r := putAddress(t, c, customer.Id, created.Id, body)
+	if r.Status != http.StatusOK {
+		t.Fatalf("put: status %d body %s, want 200", r.Status, r.Body)
+	}
+	updatedEvent := fetchTimelineEvent(t, h, customer.Id, "customer.address_updated")
+	if n := len(updatedEvent.Summary); n > 500 {
+		t.Errorf("stored summary length = %d, want <= 500", n)
+	}
+	if updatedEvent.Payload["display"] != wantDisplay {
+		t.Errorf("payload display = %v, want the full, untruncated %q", updatedEvent.Payload["display"], wantDisplay)
+	}
+
+	r = deleteAddress(t, c, customer.Id, created.Id)
+	if r.Status != http.StatusNoContent {
+		t.Fatalf("delete: status %d body %s, want 204", r.Status, r.Body)
+	}
+	removedEvent := fetchTimelineEvent(t, h, customer.Id, "customer.address_removed")
+	if n := len(removedEvent.Summary); n > 500 {
+		t.Errorf("stored summary length = %d, want <= 500", n)
+	}
+	if removedEvent.Payload["display"] != wantDisplay {
+		t.Errorf("payload display = %v, want the full, untruncated %q", removedEvent.Payload["display"], wantDisplay)
 	}
 }

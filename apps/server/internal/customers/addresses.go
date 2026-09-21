@@ -143,7 +143,26 @@ func demoteCurrentPrimary(ctx context.Context, txq *store.Queries, customerID in
 	if err != nil {
 		return err
 	}
-	return txq.SetCustomerAddressPrimary(ctx, store.SetCustomerAddressPrimaryParams{ID: current.ID, IsPrimary: false, UpdatedAt: now})
+	return txq.SetCustomerAddressPrimary(ctx, store.SetCustomerAddressPrimaryParams{ID: current.ID, CustomerID: customerID, IsPrimary: false, UpdatedAt: now})
+}
+
+// promoteOldestOfType is the shared step PutCustomersByIdAddressesByAddressId
+// (a type change moving a primary address away) and
+// DeleteCustomersByIdAddressesByAddressId (deleting a primary address) both
+// need afterward: the oldest remaining address of addrType, other than
+// excludeID (the address that just left or was deleted), becomes the new
+// primary. A missing candidate (nothing remains of that type) is not an
+// error — the type is simply empty now, and the "always a primary while any
+// address of the type exists" invariant is vacuous when none do.
+func promoteOldestOfType(ctx context.Context, txq *store.Queries, customerID int32, addrType string, excludeID int32, now time.Time) error {
+	oldest, err := txq.OldestCustomerAddressOfType(ctx, store.OldestCustomerAddressOfTypeParams{CustomerID: customerID, Type: addrType, ExcludeID: excludeID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return txq.SetCustomerAddressPrimary(ctx, store.SetCustomerAddressPrimaryParams{ID: oldest.ID, CustomerID: customerID, IsPrimary: true, UpdatedAt: now})
 }
 
 // GetCustomersByIdAddresses List a customer's addresses
@@ -192,7 +211,7 @@ func (s *server) PostCustomersByIdAddresses(ctx context.Context, req gen.PostCus
 		body = *req.Body
 	}
 
-	parsed, errs := validateAddress(body.Type, body.Label, body.Line1, body.Line2, body.PostalCode, body.City, body.Region, body.Country)
+	parsed, errs := validateAddress(body)
 	if errs != nil {
 		return gen.PostCustomersByIdAddresses400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid address", errs)), nil
 	}
@@ -297,16 +316,21 @@ func (s *server) PutCustomersByIdAddressesByAddressId(ctx context.Context, req g
 		body = *req.Body
 	}
 
-	parsed, errs := validateAddress(body.Type, body.Label, body.Line1, body.Line2, body.PostalCode, body.City, body.Region, body.Country)
+	parsed, errs := validateAddress(body)
 	if errs != nil {
 		return gen.PutCustomersByIdAddressesByAddressId400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid address", errs)), nil
 	}
 	requestedPrimary := body.IsPrimary != nil && *body.IsPrimary
 
 	// Resolved before the transaction opens (customers foundation design D1):
-	// a write always happens once the address is found, so the actor is
-	// always needed past that point; the 404 case wastes one directory call,
-	// the same trade-off contact_info.go's own PUT accepts.
+	// the first thing the transaction does is lock the customer row, and no
+	// directory call may happen while holding it — so, unlike
+	// contact_info.go's PUT (which learns of a missing customer with a plain
+	// SELECT before ever opening a transaction, and can return its 404
+	// before resolving an actor at all), this handler cannot know whether the
+	// customer or the address exists until it is already inside the
+	// transaction. The actor is resolved up front instead, at the cost of
+	// one wasted directory call on the 404/primary-refused paths.
 	act, err := s.actorFor(ctx, generatedFallbackActor)
 	if err != nil {
 		return nil, fmt.Errorf("customers: resolve actor: %w", err)
@@ -375,12 +399,7 @@ func (s *server) PutCustomersByIdAddressesByAddressId(ctx context.Context, req g
 		after = addressSnapshotFromRow(updated)
 
 		if parsed.Type != existing.Type && existing.IsPrimary {
-			oldest, err := txq.OldestCustomerAddressOfType(ctx, store.OldestCustomerAddressOfTypeParams{CustomerID: req.Id, Type: existing.Type, ExcludeID: req.AddressId})
-			if errors.Is(err, pgx.ErrNoRows) {
-				// Nothing remains of the old type — nothing to promote.
-			} else if err != nil {
-				return err
-			} else if err := txq.SetCustomerAddressPrimary(ctx, store.SetCustomerAddressPrimaryParams{ID: oldest.ID, IsPrimary: true, UpdatedAt: now}); err != nil {
+			if err := promoteOldestOfType(ctx, txq, req.Id, existing.Type, req.AddressId, now); err != nil {
 				return err
 			}
 		}
@@ -447,12 +466,7 @@ func (s *server) DeleteCustomersByIdAddressesByAddressId(ctx context.Context, re
 		}
 
 		if existing.IsPrimary {
-			oldest, err := txq.OldestCustomerAddressOfType(ctx, store.OldestCustomerAddressOfTypeParams{CustomerID: req.Id, Type: existing.Type, ExcludeID: req.AddressId})
-			if errors.Is(err, pgx.ErrNoRows) {
-				// This was the last address of its type — nothing to promote.
-			} else if err != nil {
-				return err
-			} else if err := txq.SetCustomerAddressPrimary(ctx, store.SetCustomerAddressPrimaryParams{ID: oldest.ID, IsPrimary: true, UpdatedAt: now}); err != nil {
+			if err := promoteOldestOfType(ctx, txq, req.Id, existing.Type, req.AddressId, now); err != nil {
 				return err
 			}
 		}
