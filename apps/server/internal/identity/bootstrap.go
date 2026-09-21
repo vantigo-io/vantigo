@@ -44,7 +44,10 @@ var bootstrapRoles = []string{RoleOwner, RoleSystemAdmin}
 
 // GetIdentityBootstrapStatus reports whether bootstrap is still available:
 // no Owner exists and the marker is not written. It is a hint for the UI
-// only; POST /bootstrap decides.
+// only; POST /bootstrap decides. With BOOTSTRAP_OWNER_EMAIL set, anonymous
+// bootstrap never opens: it reports unavailable even before an Owner exists,
+// since the Owner is seated by invitation instead (RunStartup,
+// inviteBootstrapOwner).
 func (s *server) GetIdentityBootstrapStatus(ctx context.Context, _ gen.GetIdentityBootstrapStatusRequestObject) (gen.GetIdentityBootstrapStatusResponseObject, error) {
 	consumed, err := s.q.BootstrapConsumed(ctx)
 	if err != nil {
@@ -59,13 +62,17 @@ func (s *server) GetIdentityBootstrapStatus(ctx context.Context, _ gen.GetIdenti
 // them in (EA/AuthEndpoints.cs:155-268). It is anonymous and needs no
 // secret: whoever completes setup first on a fresh installation is its
 // administrator, and the consumed check below makes that a one-time event.
-// In order: the request is validated (400 invalid_request with per-field
-// errors); then one serializable transaction, under the owner lock, refuses
-// a consumed bootstrap (409 bootstrap_unavailable), applies the password
-// policy and the account checks ASP.NET Identity's CreateAsync made (400
-// identity_validation_failed), creates the user with bootstrapRoles, and
-// records the marker and the audit event. Only after commit does it start a
-// session: 201 with Location /session.
+// In order: BOOTSTRAP_OWNER_EMAIL, when set, refuses every call with the
+// same 409 bootstrap_unavailable a consumed bootstrap gets, before any
+// validation or database work — the Owner is seated by invitation instead
+// (RunStartup, inviteBootstrapOwner). Otherwise: the request is validated
+// (400 invalid_request with per-field errors); then one serializable
+// transaction, under the owner lock, refuses a consumed bootstrap (409
+// bootstrap_unavailable), applies the password policy and the account
+// checks ASP.NET Identity's CreateAsync made (400 identity_validation_failed),
+// creates the user with bootstrapRoles, and records the marker and the audit
+// event. Only after commit does it start a session: 201 with Location
+// /session.
 //
 // A concurrent bootstrap that wins makes this one fail on a serialization
 // failure, a deadlock or a unique violation; each is the same 409. It is
@@ -318,16 +325,23 @@ func RunStartup(ctx context.Context, d module.Deps) error {
 }
 
 // inviteBootstrapOwner mails BOOTSTRAP_OWNER_EMAIL an Owner invitation while
-// the installation has no Owner and no invitation that can still be accepted.
-// It runs on every start of every serving replica, so the decision is made
-// under the owner lock: a concurrent start waits, then finds the invitation
-// pending and sends nothing.
+// the installation has no Owner and no invitation to that address that can
+// still be accepted. It runs on every start of every serving replica, so the
+// decision is made under the owner lock: a concurrent start waits, then
+// finds the invitation pending and sends nothing.
+//
+// It first revokes any pending Owner invitation addressed to a DIFFERENT
+// email: BOOTSTRAP_OWNER_EMAIL names one operator address, and an operator
+// who mistypes it, restarts once the mistyped mail has gone out, then
+// corrects the variable must not leave the mistyped recipient holding the
+// installation's only live Owner token for up to INVITATION_LIFETIME.
 //
 // A failed send is logged and does not stop startup. deliverInvitation has
 // revoked the invitation by then, so the next start tries again; refusing to
 // boot would turn an SMTP outage into a crash loop.
 func inviteBootstrapOwner(ctx context.Context, d module.Deps) error {
 	email := d.Config.BootstrapOwnerEmail
+	normalized := normalizeEmail(email)
 	now := d.Clock()
 
 	var inv store.IdentityInvitation
@@ -339,12 +353,30 @@ func inviteBootstrapOwner(ctx context.Context, d module.Deps) error {
 			return err
 		}
 		consumed, err := q.BootstrapConsumed(ctx)
-		if err != nil || consumed {
+		if err != nil {
 			return err
 		}
-		pending, err := q.CountPendingOwnerInvitations(ctx, now)
-		if err != nil || pending > 0 {
+		if consumed {
+			return nil
+		}
+		revoked, err := q.RevokePendingOwnerInvitationsExceptEmail(ctx, store.RevokePendingOwnerInvitationsExceptEmailParams{
+			Now: now, NormalizedEmail: normalized,
+		})
+		if err != nil {
 			return err
+		}
+		if revoked > 0 {
+			d.Logger.InfoContext(ctx, "revoked a pending owner invitation issued to a previous BOOTSTRAP_OWNER_EMAIL")
+		}
+		pending, err := q.CountPendingOwnerInvitationsForEmail(ctx, store.CountPendingOwnerInvitationsForEmailParams{
+			NormalizedEmail: normalized, Now: now,
+		})
+		if err != nil {
+			return err
+		}
+		if pending > 0 {
+			d.Logger.InfoContext(ctx, "an owner invitation is already pending; not sending another")
+			return nil
 		}
 		if _, taken, err := emailTaken(ctx, q, email); err != nil {
 			return err
@@ -354,7 +386,7 @@ func inviteBootstrapOwner(ctx context.Context, d module.Deps) error {
 		}
 		inv, token, err = issueInvitation(ctx, q, d.Config.InvitationLifetime, store.InsertInvitationParams{
 			Email:           email,
-			NormalizedEmail: normalizeEmail(email),
+			NormalizedEmail: normalized,
 			Role:            RoleOwner,
 		}, now)
 		issued = err == nil

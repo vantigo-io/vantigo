@@ -1,6 +1,7 @@
 package identity_test
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"slices"
@@ -60,6 +61,9 @@ func TestBootstrapInvite_StartupInvitesTheOwnerOnce(t *testing.T) {
 	}
 	if got := len(h.mailTo(bootstrapOwner)); got != 1 {
 		t.Errorf("mails after a second start = %d, want still 1", got)
+	}
+	if !strings.Contains(string(h.log.Bytes()), "an owner invitation is already pending; not sending another") {
+		t.Error("the second start did not log why it sent nothing")
 	}
 }
 
@@ -158,5 +162,81 @@ func TestBootstrapInvite_UnsetKeepsTheSetupFlow(t *testing.T) {
 	}
 	if !bootstrapAvailable(t, h.client(t)) {
 		t.Error("/setup must stay available")
+	}
+}
+
+// TestBootstrapInvite_ACorrectedAddressReplacesTheOldInvitation covers an
+// operator who mistypes BOOTSTRAP_OWNER_EMAIL, restarts once the mistyped
+// mail has gone out, then corrects the variable: the mistyped recipient must
+// not keep the installation's only live Owner token.
+func TestBootstrapInvite_ACorrectedAddressReplacesTheOldInvitation(t *testing.T) {
+	t.Parallel()
+	h := invitedHarness(t)
+	if err := h.runStartup(); err != nil {
+		t.Fatal(err)
+	}
+	typoToken := mailedLink(t, h, bootstrapOwner).Query().Get("token")
+
+	// The next start runs with the corrected address: one harness, one
+	// database, so the correction is a deps copy with a corrected Config,
+	// exactly as a restart with a corrected environment variable would be.
+	const corrected = "owner-corrected@customer.example"
+	deps := h.deps
+	cfg := *h.cfg
+	cfg.BootstrapOwnerEmail = corrected
+	deps.Config = &cfg
+	if err := identity.RunStartup(context.Background(), deps); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := len(h.mailTo(corrected)); got != 1 {
+		t.Fatalf("mails to the corrected address = %d, want 1", got)
+	}
+	if r := accept(h.client(t), typoToken, inviteePassword, ""); r.status != http.StatusBadRequest || r.code() != "invitation_invalid" {
+		t.Errorf("accepting the typo address's token: status %d code %q, want 400 invitation_invalid", r.status, r.code())
+	}
+	if n := pendingOwnerInvitations(t, h); n != 1 {
+		t.Fatalf("pending owner invitations = %d, want exactly 1 (the corrected one)", n)
+	}
+
+	correctedToken := mailedLink(t, h, corrected).Query().Get("token")
+	r := accept(h.client(t), correctedToken, inviteePassword, "Corrected Owner")
+	if r.status != http.StatusCreated {
+		t.Fatalf("accept the corrected address: status %d body %s", r.status, r.body)
+	}
+	var got struct {
+		User struct {
+			Roles []string `json:"roles"`
+		} `json:"user"`
+	}
+	r.json(&got)
+	slices.Sort(got.User.Roles)
+	if !slices.Equal(got.User.Roles, []string{identity.RoleOwner, identity.RoleSystemAdmin}) {
+		t.Errorf("roles %v, want [Owner SystemAdmin]", got.User.Roles)
+	}
+}
+
+// TestBootstrapInvite_AnAddressThatAlreadyHasAnAccountIsNotInvited covers
+// BOOTSTRAP_OWNER_EMAIL naming an address some non-Owner account already
+// holds: startup must not invite it, and must say why in the log.
+func TestBootstrapInvite_AnAddressThatAlreadyHasAnAccountIsNotInvited(t *testing.T) {
+	t.Parallel()
+	h := invitedHarness(t)
+	h.insertUser(t, bootstrapOwner)
+
+	if err := h.runStartup(); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(h.mailTo(bootstrapOwner)); got != 0 {
+		t.Errorf("mails = %d, want 0", got)
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.invitations`); n != 0 {
+		t.Errorf("invitations = %d, want 0", n)
+	}
+	if !strings.Contains(string(h.log.Bytes()), "BOOTSTRAP_OWNER_EMAIL already belongs to an account that is not an Owner; no invitation was sent") {
+		t.Error("the reason was not logged")
+	}
+	if bootstrapAvailable(t, h.client(t)) {
+		t.Error("bootstrap must stay closed while BOOTSTRAP_OWNER_EMAIL is set")
 	}
 }
