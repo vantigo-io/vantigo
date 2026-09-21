@@ -272,6 +272,18 @@ const en = {
   saveAnyway: "Save anyway",
   createAnyway: "Create anyway",
   similarCustomersTitle: "Existing customers with a similar name",
+  archiveCustomer: "Archive customer",
+  archiveCustomerTitle: "Archive customer",
+  archiveCustomerConfirm: "Archive {{name}}? It is kept, but hidden from most lists until restored.",
+  customerArchived: "Customer archived",
+  customerArchivedMessage: "{{name}} was archived.",
+  customerCouldNotBeArchived: "Customer could not be archived",
+  restoreCustomer: "Restore customer",
+  customerRestored: "Customer restored",
+  customerRestoredMessage: "{{name}} was restored.",
+  customerCouldNotBeRestored: "Customer could not be restored",
+  archivedBannerTitle: "This customer is archived",
+  archivedBannerMessage: "It is hidden from most lists until restored.",
 } as const;
 
 const nb = {
@@ -546,6 +558,18 @@ const nb = {
   saveAnyway: "Lagre likevel",
   createAnyway: "Opprett likevel",
   similarCustomersTitle: "Eksisterende kunder med lignende navn",
+  archiveCustomer: "Arkiver kunde",
+  archiveCustomerTitle: "Arkiver kunde",
+  archiveCustomerConfirm: "Arkivere {{name}}? Kunden beholdes, men skjules fra de fleste lister til den gjenopprettes.",
+  customerArchived: "Kunden er arkivert",
+  customerArchivedMessage: "{{name}} ble arkivert.",
+  customerCouldNotBeArchived: "Kunne ikke arkivere kunden",
+  restoreCustomer: "Gjenopprett kunde",
+  customerRestored: "Kunden er gjenopprettet",
+  customerRestoredMessage: "{{name}} ble gjenopprettet.",
+  customerCouldNotBeRestored: "Kunne ikke gjenopprette kunden",
+  archivedBannerTitle: "Denne kunden er arkivert",
+  archivedBannerMessage: "Den er skjult fra de fleste lister til den gjenopprettes.",
 } as const;
 
 export const customersCatalog = { en, nb } satisfies CatalogResources;

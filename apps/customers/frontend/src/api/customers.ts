@@ -203,6 +203,9 @@ export async function changeCustomerType(id: number, type: CustomerType, revisio
   });
 }
 
+/** Archives a customer (design D7). Idempotent, like the endpoint itself. */
+export const archiveCustomer = (id: number) => request<void>(`/api/v1/customers/${id}`, { method: "DELETE" });
+
 export const legalIdentityQueryOptions = (id: number) =>
   queryOptions({
     queryKey: ["customers", id, "legal-identity"],

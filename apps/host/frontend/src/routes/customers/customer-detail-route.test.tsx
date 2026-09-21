@@ -31,9 +31,25 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 });
 
 // The header does its own suspense-query data fetching; irrelevant to tab
-// wiring, so it is reduced to its actions slot.
+// wiring, so it is reduced to its actions slot plus the two capability props
+// this route computes from permissions (see the archive/restore assertions
+// below — the package's own tests cover what the header does with them).
 vi.mock("@vantigo/customers-ui/pages/customers.$customerId", () => ({
-  CustomerDetailHeader: ({ actions }: { actions?: ReactNode }) => <div>{actions}</div>,
+  CustomerDetailHeader: ({
+    actions,
+    canArchive,
+    canRestore,
+  }: {
+    actions?: ReactNode;
+    canArchive?: boolean;
+    canRestore?: boolean;
+  }) => (
+    <div>
+      {actions}
+      <span data-testid="can-archive">{String(Boolean(canArchive))}</span>
+      <span data-testid="can-restore">{String(Boolean(canRestore))}</span>
+    </div>
+  ),
 }));
 
 const renderCustomerDetailLayout = () => {
@@ -77,5 +93,33 @@ describe("the customer detail route's tab row", () => {
     expect(screen.queryByRole("tab")).not.toBeInTheDocument();
     expect(screen.queryByText("Overview")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Open in inbox" })).not.toBeInTheDocument();
+  });
+});
+
+describe("the customer detail route's archive/restore capability props", () => {
+  it("passes canArchive from customers:delete and canRestore from customers:update", () => {
+    vi.mocked(useQuery).mockImplementation((options) =>
+      options.queryKey[0] === "authorization"
+        ? ({ data: { permissions: ["customers:delete", "customers:update"] }, isPending: false } as never)
+        : ({ data: { user: { id: "user-1", roles: [] } } } as never),
+    );
+
+    renderCustomerDetailLayout();
+
+    expect(screen.getByTestId("can-archive")).toHaveTextContent("true");
+    expect(screen.getByTestId("can-restore")).toHaveTextContent("true");
+  });
+
+  it("withholds each capability without its own permission", () => {
+    vi.mocked(useQuery).mockImplementation((options) =>
+      options.queryKey[0] === "authorization"
+        ? ({ data: { permissions: ["customers:update"] }, isPending: false } as never)
+        : ({ data: { user: { id: "user-1", roles: [] } } } as never),
+    );
+
+    renderCustomerDetailLayout();
+
+    expect(screen.getByTestId("can-archive")).toHaveTextContent("false");
+    expect(screen.getByTestId("can-restore")).toHaveTextContent("true");
   });
 });

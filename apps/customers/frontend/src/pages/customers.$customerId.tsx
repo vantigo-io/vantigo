@@ -1,18 +1,27 @@
-import { Badge, Button, Group, List, Stack, Text } from "@mantine/core";
+import { Alert, Badge, Button, Group, List, Stack, Text } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
-import { IconArrowsExchange, IconBuilding, IconPencil, IconUser } from "@tabler/icons-react";
+import {
+  IconArchive,
+  IconArrowBackUp,
+  IconArrowsExchange,
+  IconBuilding,
+  IconPencil,
+  IconUser,
+} from "@tabler/icons-react";
 import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { type ReactNode, useState } from "react";
 
 import {
   ApiConflictError,
+  archiveCustomer,
   type CustomerResponse,
   type CustomerType,
   changeCustomerType,
   customerQueryOptions,
   legalIdentityQueryOptions,
+  updateCustomer,
 } from "../api/customers";
 import {
   CopyableBadge,
@@ -31,18 +40,39 @@ import "../i18n";
  * The customer page's header. `actions` lets the host append entries that
  * lead out of the page (the Communications inbox, say) next to the
  * customer's own actions, without this package knowing about other modules.
+ * `canArchive`/`canRestore` come from the host, which reads the caller's
+ * `customers:delete`/`customers:update` permissions — this package never
+ * fetches permissions itself.
  */
-export const CustomerDetailHeader = ({ customerId, actions }: { customerId: number; actions?: ReactNode }) => {
+export const CustomerDetailHeader = ({
+  customerId,
+  actions,
+  canArchive,
+  canRestore,
+}: {
+  customerId: number;
+  actions?: ReactNode;
+  canArchive?: boolean;
+  canRestore?: boolean;
+}) => {
   const { t, formatters } = useI18n("customers");
   const { data: customer } = useSuspenseQuery(customerQueryOptions(customerId));
   const [modalState, setModalState] = useState<CustomerModalState | null>(null);
   const confirmTypeChange = useCustomerTypeChange(customer);
+  const confirmArchive = useArchiveCustomer(customer);
+  const restore = useRestoreCustomer(customer);
+  const isArchived = customer.status === "archived";
 
   const { data: identity } = useSuspenseQuery(legalIdentityQueryOptions(customerId));
   const TypeIcon = customer.type === "business" ? IconBuilding : IconUser;
 
   return (
     <Stack gap="lg">
+      {isArchived && (
+        <Alert color="gray" icon={<IconArchive size={16} />} title={t("archivedBannerTitle")}>
+          {t("archivedBannerMessage")}
+        </Alert>
+      )}
       <Stack gap="xs">
         <PageHeader
           breadcrumbs={[{ label: t("customers"), to: "/customers" }, { label: customer.name }]}
@@ -103,6 +133,22 @@ export const CustomerDetailHeader = ({ customerId, actions }: { customerId: numb
               >
                 {t("changeCustomerType")}
               </Button>
+              {canArchive && !isArchived && (
+                <Button variant="light" color="red" leftSection={<IconArchive size={16} />} onClick={confirmArchive}>
+                  {t("archiveCustomer")}
+                </Button>
+              )}
+              {canRestore && isArchived && (
+                <Button
+                  variant="light"
+                  color="teal"
+                  leftSection={<IconArrowBackUp size={16} />}
+                  loading={restore.isPending}
+                  onClick={() => restore.mutate()}
+                >
+                  {t("restoreCustomer")}
+                </Button>
+              )}
               {actions}
             </Group>
           }
@@ -180,6 +226,64 @@ const useCustomerTypeChange = (customer: CustomerResponse) => {
       confirmProps: { color: "red" },
       onConfirm: () => mutation.mutate(),
     });
+};
+
+/**
+ * Archive (design D7): kept, but hidden from most lists until restored — the
+ * shared confirm-modal pattern, since it is the one destructive-looking
+ * action a customer offers (see `useCustomerTypeChange` above).
+ */
+const useArchiveCustomer = (customer: CustomerResponse) => {
+  const { t } = useI18n("customers");
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: () => archiveCustomer(customer.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      notifications.show({
+        color: "teal",
+        title: t("customerArchived"),
+        message: t("customerArchivedMessage", { name: customer.name }),
+      });
+    },
+    onError: (error) => {
+      notifications.show({ color: "red", title: t("customerCouldNotBeArchived"), message: error.message });
+    },
+  });
+
+  return () =>
+    modals.openConfirmModal({
+      title: t("archiveCustomerTitle"),
+      children: <Text size="sm">{t("archiveCustomerConfirm", { name: customer.name })}</Text>,
+      labels: { confirm: t("archiveCustomer"), cancel: t("cancel") },
+      confirmProps: { color: "red" },
+      onConfirm: () => mutation.mutate(),
+    });
+};
+
+/**
+ * Restore (design D7): a PUT with `status: "active"`, same as any other
+ * update — unlike Archive it undoes nothing destructive, so it goes straight
+ * through without a confirmation step.
+ */
+const useRestoreCustomer = (customer: CustomerResponse) => {
+  const { t } = useI18n("customers");
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      updateCustomer(customer.id, { name: customer.name, status: "active", revision: customer.revision }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      notifications.show({
+        color: "teal",
+        title: t("customerRestored"),
+        message: t("customerRestoredMessage", { name: customer.name }),
+      });
+    },
+    onError: (error) => {
+      notifications.show({ color: "red", title: t("customerCouldNotBeRestored"), message: error.message });
+    },
+  });
 };
 
 export const CustomerOverview = ({ customerId }: { customerId: number }) => (
