@@ -98,7 +98,7 @@ export const CustomerAddressesSection = ({ customerId, canEdit }: { customerId: 
   return (
     <Stack gap="xs">
       <Group justify="space-between">
-        <Text fw={500} size="sm" c="dimmed">
+        <Text fw={500} size="sm" c="dimmed" component="h4">
           {t("addresses")}
         </Text>
         {canEdit && addresses.length > 0 && addButton}

@@ -71,12 +71,13 @@ const renderCard = (canEdit = true) => {
 describe("CustomerContactCard", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("titles the card 'Contact & addresses'", async () => {
+  it("titles the card and its address section with headings, not bold lines", async () => {
     const fetchMock = vi.fn();
     stubRoutes(fetchMock, { customer: () => customer() });
     stubFetch(fetchMock);
     renderCard();
-    expect(await screen.findByText("Contact & addresses")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Contact & addresses", level: 3 })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Addresses", level: 4 })).toBeInTheDocument();
   });
 
   it("shows email as a mailto: link, phone as a tel: link and website as an external link", async () => {

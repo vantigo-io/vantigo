@@ -96,11 +96,31 @@ describe("CustomerAddressModal", () => {
   });
 
   it("lower-cases the interpolated type in Norwegian, matching deleteAddressConfirm's own call site", async () => {
-    // Without lower-casing, addressTypeLabel's nb "Faktura" would render
-    // "Primær Fakturaadresse" — a mid-sentence capital.
+    // The type is a parenthetical, not a compound: nb reads "Primæradresse
+    // (fakturaadresse)", never a word glued together through interpolation.
     setLanguagePreference("nb");
     renderModal({ mode: "add" }, []);
-    expect(await screen.findByRole("checkbox", { name: "Primær fakturaadresse" })).toBeInTheDocument();
+    expect(await screen.findByRole("checkbox", { name: "Primæradresse (fakturaadresse)" })).toBeInTheDocument();
+  });
+
+  it("drops the primary tick when the address is moved to a type that already has one", async () => {
+    // "Primary" is per type: the invoice address's tick says nothing about
+    // the postal group, where another address already holds it.
+    const invoicePrimary = address({ id: 1, type: "invoice", isPrimary: true });
+    renderModal({ mode: "edit", address: invoicePrimary }, [
+      invoicePrimary,
+      address({ id: 2, type: "invoice", isPrimary: false }),
+      address({ id: 3, type: "postal", isPrimary: true }),
+    ]);
+
+    expect(screen.getByRole("checkbox", { name: "Primary invoice address" })).toBeChecked();
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Address type" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Postal" }));
+
+    const checkbox = await screen.findByRole("checkbox", { name: "Primary postal address" });
+    expect(checkbox).not.toBeChecked();
+    expect(checkbox).not.toBeDisabled();
   });
 
   it("POSTs the full new address on add", async () => {

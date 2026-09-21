@@ -40,7 +40,11 @@ export const CustomerContactCard = ({ customerId, canEdit }: { customerId: numbe
       <Stack gap="lg">
         <Group gap="xs">
           <IconAddressBook size={18} stroke={1.5} />
-          <Text fw={600}>{t("contactAndAddresses")}</Text>
+          {/* A card title is a heading, as the timeline's own is — the page
+              otherwise reads as one flat block to assistive tech. */}
+          <Text fw={600} component="h3">
+            {t("contactAndAddresses")}
+          </Text>
         </Group>
 
         <ContactInfoSection
