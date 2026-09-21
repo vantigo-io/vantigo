@@ -49,6 +49,27 @@ func (q *Queries) CountCustomerAddressesOfType(ctx context.Context, arg CountCus
 	return count, err
 }
 
+const customerHasInvoiceAddress = `-- name: CustomerHasInvoiceAddress :one
+SELECT EXISTS (
+    SELECT 1 FROM customers.customer_addresses
+    WHERE customer_id = $1 AND is_primary AND type IN ('invoice', 'postal')
+)
+`
+
+// CustomerHasInvoiceAddress is billing_profile.go's own read (invoice-ready
+// customer design D4's no_invoice_address warning): true when the customer
+// has a primary invoice address or, lacking that, a primary postal one —
+// the same resolution order D3 defines for "the invoice address" everywhere
+// else. At most one primary per (customer, type) can ever exist (D3's
+// partial unique index), so this is a plain existence check, never a
+// priority pick between two candidate rows.
+func (q *Queries) CustomerHasInvoiceAddress(ctx context.Context, customerID int32) (bool, error) {
+	row := q.db.QueryRow(ctx, customerHasInvoiceAddress, customerID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const deleteCustomerAddress = `-- name: DeleteCustomerAddress :exec
 DELETE FROM customers.customer_addresses WHERE id = $1 AND customer_id = $2
 `

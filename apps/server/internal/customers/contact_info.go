@@ -154,7 +154,7 @@ func (s *server) PutCustomersByIdContactInfo(ctx context.Context, req gen.PutCus
 		return nil, fmt.Errorf("customers: resolve actor: %w", err)
 	}
 
-	var updated store.CustomersCustomer
+	var updated store.UpdateCustomerContactInfoRow
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
 		var err error
@@ -189,5 +189,5 @@ func (s *server) PutCustomersByIdContactInfo(ctx context.Context, req gen.PutCus
 	if err != nil {
 		return nil, fmt.Errorf("customers: timeline summary: %w", err)
 	}
-	return gen.PutCustomersByIdContactInfo200JSONResponse(safeCustomerResponse(fromCustomerRow(updated, summary), includeIdentity)), nil
+	return gen.PutCustomersByIdContactInfo200JSONResponse(safeCustomerResponse(fromUpdateCustomerContactInfoRow(updated, summary), includeIdentity)), nil
 }

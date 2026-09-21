@@ -219,6 +219,51 @@ components:
                 - line1
                 - country
             type: object
+        CustomerBillingProfile:
+            description: "A customer's billing profile (invoice-ready customer design D1, D4): payment terms, currency, document language, delivery methods and the identifiers used to send it invoices — every field nullable, meaning \"not decided here, whoever invoices uses its own default\". warnings is computed at read time from the profile plus the customer's type, legal identity, contact email and addresses — never stored — in a fixed order: ehf_without_recipient, email_without_address, efaktura_for_business, no_invoice_address."
+            properties:
+                buyerReference:
+                    nullable: true
+                    type: string
+                currency:
+                    nullable: true
+                    type: string
+                gln:
+                    nullable: true
+                    type: string
+                invoiceDelivery:
+                    nullable: true
+                    type: string
+                invoiceEmail:
+                    nullable: true
+                    type: string
+                language:
+                    nullable: true
+                    type: string
+                paymentTermsDays:
+                    format: int32
+                    nullable: true
+                    type: integer
+                peppolId:
+                    nullable: true
+                    type: string
+                reminderDelivery:
+                    nullable: true
+                    type: string
+                reminderEmail:
+                    nullable: true
+                    type: string
+                revision:
+                    format: int32
+                    type: integer
+                warnings:
+                    items:
+                        type: string
+                    type: array
+            required:
+                - revision
+                - warnings
+            type: object
         CustomerConflictDuplicate:
             properties:
                 customerNumber:
@@ -531,6 +576,46 @@ components:
                 - source
             type: object
             x-vantigo-source: Vantigo.Customers
+        PutCustomerBillingProfileRequest:
+            description: "PUT /customers/{id}/billing-profile's own request body (invoice-ready customer design D1, D4): a full replace of the customer's billing profile — every field present or null, absent and null both meaning the field is cleared. revision is optional, as PUT /customers/{id}'s own is."
+            properties:
+                buyerReference:
+                    nullable: true
+                    type: string
+                currency:
+                    nullable: true
+                    type: string
+                gln:
+                    nullable: true
+                    type: string
+                invoiceDelivery:
+                    nullable: true
+                    type: string
+                invoiceEmail:
+                    nullable: true
+                    type: string
+                language:
+                    nullable: true
+                    type: string
+                paymentTermsDays:
+                    format: int32
+                    nullable: true
+                    type: integer
+                peppolId:
+                    nullable: true
+                    type: string
+                reminderDelivery:
+                    nullable: true
+                    type: string
+                reminderEmail:
+                    nullable: true
+                    type: string
+                revision:
+                    description: The revision the caller read the customer at (customers foundation design D5). Optional — omitted, the change applies regardless; present and stale, a 409.
+                    format: int32
+                    nullable: true
+                    type: integer
+            type: object
         PutCustomerContactInfoRequest:
             description: "PUT /customers/{id}/contact-info's own request body (invoice-ready customer design D1): a full replace of the customer's contact info — every field present or null, absent and null both meaning the field is cleared. revision is optional, as PUT /customers/{id}'s own is."
             properties:
@@ -1272,6 +1357,93 @@ paths:
             tags:
                 - Customers
             x-vantigo-access: permission:customers:update+customers:view
+    /api/v1/customers/{id}/billing-profile:
+        get:
+            operationId: getCustomersByIdBillingProfile
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerBillingProfile'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: Get a customer's billing profile
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:view
+        put:
+            operationId: putCustomersByIdBillingProfile
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PutCustomerBillingProfileRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerBillingProfile'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: Conflict
+            summary: Replace a customer's billing profile
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:billing-manage+customers:view
     /api/v1/customers/{id}/contact-info:
         put:
             operationId: putCustomersByIdContactInfo

@@ -20,7 +20,11 @@ import (
 // (AZ/CustomerPermissionCatalogContributor.cs:9-49, inventory §6). The .NET
 // contributor never passed Delegable, so every key takes the descriptor's
 // default of true; only Sensitive is ever overridden, and only view, create
-// and update are not sensitive.
+// and update are not sensitive. customers:billing-manage (invoice-ready
+// customer design D1, D4) is the one key with no .NET ancestor: writing a
+// customer's billing profile — payment terms and delivery channel decide
+// when and how money arrives — is its own sensitive permission, deliberately
+// narrower than customers:update.
 var permissions = []contracts.Permission{
 	{Key: "customers:view", Display: "View customers", Description: "View customer names, identifiers, and a sanitized activity summary.", Category: "Customers", Sensitive: false, Delegable: true},
 	{Key: "customers:create", Display: "Create customers", Description: "Create customers without legal identity data.", Category: "Customers", Sensitive: false, Delegable: true},
@@ -35,6 +39,7 @@ var permissions = []contracts.Permission{
 	{Key: "customers:timeline-view", Display: "View customer timeline", Description: "View customer timeline entries, notes, provenance, and revisions.", Category: "Timeline", Sensitive: true, Delegable: true},
 	{Key: "customers:timeline-manage", Display: "Manage customer timeline", Description: "Create, update, and delete customer timeline entries.", Category: "Timeline", Sensitive: true, Delegable: true},
 	{Key: "customers:lookup-view", Display: "Use registry lookup", Description: "Search the external business registry for legal identities.", Category: "Lookup", Sensitive: true, Delegable: true},
+	{Key: "customers:billing-manage", Display: "Manage billing profiles", Description: "Set a customer's payment terms, invoice delivery and billing addresses for documents.", Category: "Billing", Sensitive: true, Delegable: true},
 }
 
 // limits maps each rate-limited operationId to its policy. It is empty and
@@ -43,7 +48,7 @@ var permissions = []contracts.Permission{
 var limits = map[string]ratelimit.Policy{}
 
 // Module is customers as a platform module: its contract mounted under
-// /api/v1/customers/, its thirteen permissions in the composed catalog, and
+// /api/v1/customers/, its fourteen permissions in the composed catalog, and
 // the customer directory it publishes to every other module.
 func Module() module.Module {
 	return module.Module{

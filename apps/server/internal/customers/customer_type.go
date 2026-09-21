@@ -84,7 +84,7 @@ func (s *server) PutCustomersByIdType(ctx context.Context, req gen.PutCustomersB
 
 	now := s.deps.Clock()
 	legalCountry, legalID, legalName, legalSource, legalType := legalColumns(after)
-	var updated store.CustomersCustomer
+	var updated store.SetCustomerTypeRow
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
 		var err error
@@ -121,5 +121,5 @@ func (s *server) PutCustomersByIdType(ctx context.Context, req gen.PutCustomersB
 		return nil, fmt.Errorf("customers: change customer type: %w", err)
 	}
 
-	return gen.PutCustomersByIdType200JSONResponse(safeCustomerResponse(fromCustomerRow(updated, summary), includeIdentity)), nil
+	return gen.PutCustomersByIdType200JSONResponse(safeCustomerResponse(fromSetCustomerTypeRow(updated, summary), includeIdentity)), nil
 }

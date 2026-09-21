@@ -504,10 +504,29 @@ FROM customers.customers
 WHERE id = $1
 `
 
+type GetCustomerRow struct {
+	ID             int32
+	CustomerNumber int64
+	Name           string
+	Status         string
+	LegalCountry   *string
+	LegalID        *string
+	LegalName      *string
+	LegalSource    *string
+	LegalType      *string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	Type           string
+	Revision       int32
+	Email          *string
+	Phone          *string
+	Website        *string
+}
+
 // GetCustomer fetches one customer by id.
-func (q *Queries) GetCustomer(ctx context.Context, id int32) (CustomersCustomer, error) {
+func (q *Queries) GetCustomer(ctx context.Context, id int32) (GetCustomerRow, error) {
 	row := q.db.QueryRow(ctx, getCustomer, id)
-	var i CustomersCustomer
+	var i GetCustomerRow
 	err := row.Scan(
 		&i.ID,
 		&i.CustomerNumber,
@@ -525,6 +544,72 @@ func (q *Queries) GetCustomer(ctx context.Context, id int32) (CustomersCustomer,
 		&i.Email,
 		&i.Phone,
 		&i.Website,
+	)
+	return i, err
+}
+
+const getCustomerBillingProfile = `-- name: GetCustomerBillingProfile :one
+SELECT id, revision, type, legal_country, legal_id, legal_name, legal_source, legal_type, email,
+       invoice_email, reminder_email, payment_terms_days, currency, language,
+       invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference
+FROM customers.customers
+WHERE id = $1
+`
+
+type GetCustomerBillingProfileRow struct {
+	ID               int32
+	Revision         int32
+	Type             string
+	LegalCountry     *string
+	LegalID          *string
+	LegalName        *string
+	LegalSource      *string
+	LegalType        *string
+	Email            *string
+	InvoiceEmail     *string
+	ReminderEmail    *string
+	PaymentTermsDays *int32
+	Currency         *string
+	Language         *string
+	InvoiceDelivery  *string
+	ReminderDelivery *string
+	PeppolID         *string
+	Gln              *string
+	BuyerReference   *string
+}
+
+// GetCustomerBillingProfile is GET /customers/{id}/billing-profile's read
+// (invoice-ready customer design D1, D4): the ten billing columns plus
+// everything billingWarnings (billing_profile.go) needs to compute its
+// warnings at read time — the customer's type and legal identity (the
+// ehf_without_recipient check) and its own contact-info email (the
+// email_without_address check) — in one round trip, without ever adding a
+// billing column to GetCustomer/ListCustomers's own SELECT list (the
+// controller ruling: the billing profile must never reach
+// SafeCustomerResponse).
+func (q *Queries) GetCustomerBillingProfile(ctx context.Context, id int32) (GetCustomerBillingProfileRow, error) {
+	row := q.db.QueryRow(ctx, getCustomerBillingProfile, id)
+	var i GetCustomerBillingProfileRow
+	err := row.Scan(
+		&i.ID,
+		&i.Revision,
+		&i.Type,
+		&i.LegalCountry,
+		&i.LegalID,
+		&i.LegalName,
+		&i.LegalSource,
+		&i.LegalType,
+		&i.Email,
+		&i.InvoiceEmail,
+		&i.ReminderEmail,
+		&i.PaymentTermsDays,
+		&i.Currency,
+		&i.Language,
+		&i.InvoiceDelivery,
+		&i.ReminderDelivery,
+		&i.PeppolID,
+		&i.Gln,
+		&i.BuyerReference,
 	)
 	return i, err
 }
@@ -557,11 +642,30 @@ type InsertCustomerParams struct {
 	Website        *string
 }
 
+type InsertCustomerRow struct {
+	ID             int32
+	CustomerNumber int64
+	Name           string
+	Status         string
+	LegalCountry   *string
+	LegalID        *string
+	LegalName      *string
+	LegalSource    *string
+	LegalType      *string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	Type           string
+	Revision       int32
+	Email          *string
+	Phone          *string
+	Website        *string
+}
+
 // InsertCustomer creates a customer row. created_at and updated_at are the
 // same instant on creation, supplied by the caller from Deps.Clock().
 // email/phone/website are the customer's own contact info (invoice-ready
 // customer design D2), NULL when PostCustomers received none.
-func (q *Queries) InsertCustomer(ctx context.Context, arg InsertCustomerParams) (CustomersCustomer, error) {
+func (q *Queries) InsertCustomer(ctx context.Context, arg InsertCustomerParams) (InsertCustomerRow, error) {
 	row := q.db.QueryRow(ctx, insertCustomer,
 		arg.CustomerNumber,
 		arg.Name,
@@ -577,7 +681,7 @@ func (q *Queries) InsertCustomer(ctx context.Context, arg InsertCustomerParams) 
 		arg.Phone,
 		arg.Website,
 	)
-	var i CustomersCustomer
+	var i InsertCustomerRow
 	err := row.Scan(
 		&i.ID,
 		&i.CustomerNumber,
@@ -848,15 +952,34 @@ type SetCustomerStatusParams struct {
 	ID     int32
 }
 
+type SetCustomerStatusRow struct {
+	ID             int32
+	CustomerNumber int64
+	Name           string
+	Status         string
+	LegalCountry   *string
+	LegalID        *string
+	LegalName      *string
+	LegalSource    *string
+	LegalType      *string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	Type           string
+	Revision       int32
+	Email          *string
+	Phone          *string
+	Website        *string
+}
+
 // SetCustomerStatus is DeleteCustomerEndpoint's archive transition
 // (DeleteCustomerEndpoint.cs:31-38): status and updated_at only, called
 // once the handler has confirmed the row is not archived already. revision
 // advances by one, unconditionally (customers foundation design D5: archive
 // is idempotent by construction — the handler never calls this on an
 // already-archived row — so it needs no revision guard of its own).
-func (q *Queries) SetCustomerStatus(ctx context.Context, arg SetCustomerStatusParams) (CustomersCustomer, error) {
+func (q *Queries) SetCustomerStatus(ctx context.Context, arg SetCustomerStatusParams) (SetCustomerStatusRow, error) {
 	row := q.db.QueryRow(ctx, setCustomerStatus, arg.Status, arg.Now, arg.ID)
-	var i CustomersCustomer
+	var i SetCustomerStatusRow
 	err := row.Scan(
 		&i.ID,
 		&i.CustomerNumber,
@@ -906,6 +1029,25 @@ type SetCustomerTypeParams struct {
 	ExpectedRevision *int32
 }
 
+type SetCustomerTypeRow struct {
+	ID             int32
+	CustomerNumber int64
+	Name           string
+	Status         string
+	LegalCountry   *string
+	LegalID        *string
+	LegalName      *string
+	LegalSource    *string
+	LegalType      *string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	Type           string
+	Revision       int32
+	Email          *string
+	Phone          *string
+	Website        *string
+}
+
 // SetCustomerType is PUT /customers/{id}/type's write: the customer type
 // and, because a legal identity of the old type makes no sense on the new
 // one, the five legal columns the handler passes (all NULL when it clears
@@ -914,7 +1056,7 @@ type SetCustomerTypeParams struct {
 // execution, guarded the same way UpdateCustomer's is (customers
 // foundation design D5) — the handler skips calling this entirely when the
 // requested type is already the customer's own.
-func (q *Queries) SetCustomerType(ctx context.Context, arg SetCustomerTypeParams) (CustomersCustomer, error) {
+func (q *Queries) SetCustomerType(ctx context.Context, arg SetCustomerTypeParams) (SetCustomerTypeRow, error) {
 	row := q.db.QueryRow(ctx, setCustomerType,
 		arg.Type,
 		arg.LegalCountry,
@@ -926,7 +1068,7 @@ func (q *Queries) SetCustomerType(ctx context.Context, arg SetCustomerTypeParams
 		arg.ID,
 		arg.ExpectedRevision,
 	)
-	var i CustomersCustomer
+	var i SetCustomerTypeRow
 	err := row.Scan(
 		&i.ID,
 		&i.CustomerNumber,
@@ -978,6 +1120,25 @@ type UpdateCustomerParams struct {
 	ExpectedRevision *int32
 }
 
+type UpdateCustomerRow struct {
+	ID             int32
+	CustomerNumber int64
+	Name           string
+	Status         string
+	LegalCountry   *string
+	LegalID        *string
+	LegalName      *string
+	LegalSource    *string
+	LegalType      *string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	Type           string
+	Revision       int32
+	Email          *string
+	Phone          *string
+	Website        *string
+}
+
 // UpdateCustomer applies PUT /customers/{id}'s validated fields
 // (UpdateCustomerEndpoint.cs:88-109): name, status, and the legal identity
 // (all five columns together, or all five NULL). updated_at is whatever the
@@ -993,7 +1154,7 @@ type UpdateCustomerParams struct {
 // statement's SET list — PUT /customers/{id} does not touch contact info
 // (D1: it is its own sub-resource) — so RETURNING them here only reports
 // whatever the row already has, unchanged by this write.
-func (q *Queries) UpdateCustomer(ctx context.Context, arg UpdateCustomerParams) (CustomersCustomer, error) {
+func (q *Queries) UpdateCustomer(ctx context.Context, arg UpdateCustomerParams) (UpdateCustomerRow, error) {
 	row := q.db.QueryRow(ctx, updateCustomer,
 		arg.Name,
 		arg.Status,
@@ -1006,7 +1167,7 @@ func (q *Queries) UpdateCustomer(ctx context.Context, arg UpdateCustomerParams) 
 		arg.ID,
 		arg.ExpectedRevision,
 	)
-	var i CustomersCustomer
+	var i UpdateCustomerRow
 	err := row.Scan(
 		&i.ID,
 		&i.CustomerNumber,
@@ -1024,6 +1185,113 @@ func (q *Queries) UpdateCustomer(ctx context.Context, arg UpdateCustomerParams) 
 		&i.Email,
 		&i.Phone,
 		&i.Website,
+	)
+	return i, err
+}
+
+const updateCustomerBillingProfile = `-- name: UpdateCustomerBillingProfile :one
+UPDATE customers.customers
+SET invoice_email = $1,
+    reminder_email = $2,
+    payment_terms_days = $3,
+    currency = $4,
+    language = $5,
+    invoice_delivery = $6,
+    reminder_delivery = $7,
+    peppol_id = $8,
+    gln = $9,
+    buyer_reference = $10,
+    updated_at = $11::timestamptz,
+    revision = revision + 1
+WHERE id = $12
+  AND ($13::int IS NULL OR revision = $13::int)
+RETURNING id, revision, type, legal_country, legal_id, legal_name, legal_source, legal_type, email,
+          invoice_email, reminder_email, payment_terms_days, currency, language,
+          invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference
+`
+
+type UpdateCustomerBillingProfileParams struct {
+	InvoiceEmail     *string
+	ReminderEmail    *string
+	PaymentTermsDays *int32
+	Currency         *string
+	Language         *string
+	InvoiceDelivery  *string
+	ReminderDelivery *string
+	PeppolID         *string
+	Gln              *string
+	BuyerReference   *string
+	UpdatedAt        time.Time
+	ID               int32
+	ExpectedRevision *int32
+}
+
+type UpdateCustomerBillingProfileRow struct {
+	ID               int32
+	Revision         int32
+	Type             string
+	LegalCountry     *string
+	LegalID          *string
+	LegalName        *string
+	LegalSource      *string
+	LegalType        *string
+	Email            *string
+	InvoiceEmail     *string
+	ReminderEmail    *string
+	PaymentTermsDays *int32
+	Currency         *string
+	Language         *string
+	InvoiceDelivery  *string
+	ReminderDelivery *string
+	PeppolID         *string
+	Gln              *string
+	BuyerReference   *string
+}
+
+// UpdateCustomerBillingProfile is PUT /customers/{id}/billing-profile's
+// write (invoice-ready customer design D1, D4): a full replace of the ten
+// billing columns only — name, status, type and the legal identity are
+// untouched, since this sub-resource never writes them. Guarded and
+// revision-bumping exactly like UpdateCustomerContactInfo above; RETURNING
+// mirrors GetCustomerBillingProfile's own column list, so the handler can
+// recompute warnings from the same row shape after the write.
+func (q *Queries) UpdateCustomerBillingProfile(ctx context.Context, arg UpdateCustomerBillingProfileParams) (UpdateCustomerBillingProfileRow, error) {
+	row := q.db.QueryRow(ctx, updateCustomerBillingProfile,
+		arg.InvoiceEmail,
+		arg.ReminderEmail,
+		arg.PaymentTermsDays,
+		arg.Currency,
+		arg.Language,
+		arg.InvoiceDelivery,
+		arg.ReminderDelivery,
+		arg.PeppolID,
+		arg.Gln,
+		arg.BuyerReference,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.ExpectedRevision,
+	)
+	var i UpdateCustomerBillingProfileRow
+	err := row.Scan(
+		&i.ID,
+		&i.Revision,
+		&i.Type,
+		&i.LegalCountry,
+		&i.LegalID,
+		&i.LegalName,
+		&i.LegalSource,
+		&i.LegalType,
+		&i.Email,
+		&i.InvoiceEmail,
+		&i.ReminderEmail,
+		&i.PaymentTermsDays,
+		&i.Currency,
+		&i.Language,
+		&i.InvoiceDelivery,
+		&i.ReminderDelivery,
+		&i.PeppolID,
+		&i.Gln,
+		&i.BuyerReference,
 	)
 	return i, err
 }
@@ -1050,6 +1318,25 @@ type UpdateCustomerContactInfoParams struct {
 	ExpectedRevision *int32
 }
 
+type UpdateCustomerContactInfoRow struct {
+	ID             int32
+	CustomerNumber int64
+	Name           string
+	Status         string
+	LegalCountry   *string
+	LegalID        *string
+	LegalName      *string
+	LegalSource    *string
+	LegalType      *string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	Type           string
+	Revision       int32
+	Email          *string
+	Phone          *string
+	Website        *string
+}
+
 // UpdateCustomerContactInfo is PUT /customers/{id}/contact-info's write
 // (invoice-ready customer design D1, D2): a full replace of the three
 // contact-info columns only — name, status and the legal identity are
@@ -1058,7 +1345,7 @@ type UpdateCustomerContactInfoParams struct {
 // sqlc.narg(expected_revision) is PutCustomerContactInfoRequest's optional
 // revision, and the caller (contact_info.go) skips calling this entirely
 // when nothing about the contact info actually changed.
-func (q *Queries) UpdateCustomerContactInfo(ctx context.Context, arg UpdateCustomerContactInfoParams) (CustomersCustomer, error) {
+func (q *Queries) UpdateCustomerContactInfo(ctx context.Context, arg UpdateCustomerContactInfoParams) (UpdateCustomerContactInfoRow, error) {
 	row := q.db.QueryRow(ctx, updateCustomerContactInfo,
 		arg.Email,
 		arg.Phone,
@@ -1067,7 +1354,7 @@ func (q *Queries) UpdateCustomerContactInfo(ctx context.Context, arg UpdateCusto
 		arg.ID,
 		arg.ExpectedRevision,
 	)
-	var i CustomersCustomer
+	var i UpdateCustomerContactInfoRow
 	err := row.Scan(
 		&i.ID,
 		&i.CustomerNumber,

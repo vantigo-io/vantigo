@@ -196,6 +196,60 @@ func recordCustomerContactInfoUpdated(ctx context.Context, q *store.Queries, now
 	return recordGeneratedEvent(ctx, q, customerID, now, "customer.contact_info_updated", "Customer contact info updated", payload, 1, actorKind, actorDisplay, actorUserID)
 }
 
+// billingProfileChanges is recordCustomerBillingProfileUpdated's changes
+// map, shaped like contactInfoChanges: only the fields that actually moved,
+// each keyed to its own before/after pair (invoice-ready customer design D4).
+func billingProfileChanges(before, after billingProfile) map[string]any {
+	changes := map[string]any{}
+	if !stringPtrEqual(before.InvoiceEmail, after.InvoiceEmail) {
+		changes["invoiceEmail"] = map[string]any{"before": before.InvoiceEmail, "after": after.InvoiceEmail}
+	}
+	if !stringPtrEqual(before.ReminderEmail, after.ReminderEmail) {
+		changes["reminderEmail"] = map[string]any{"before": before.ReminderEmail, "after": after.ReminderEmail}
+	}
+	if !int32PtrEqual(before.PaymentTermsDays, after.PaymentTermsDays) {
+		changes["paymentTermsDays"] = map[string]any{"before": before.PaymentTermsDays, "after": after.PaymentTermsDays}
+	}
+	if !stringPtrEqual(before.Currency, after.Currency) {
+		changes["currency"] = map[string]any{"before": before.Currency, "after": after.Currency}
+	}
+	if !stringPtrEqual(before.Language, after.Language) {
+		changes["language"] = map[string]any{"before": before.Language, "after": after.Language}
+	}
+	if !stringPtrEqual(before.InvoiceDelivery, after.InvoiceDelivery) {
+		changes["invoiceDelivery"] = map[string]any{"before": before.InvoiceDelivery, "after": after.InvoiceDelivery}
+	}
+	if !stringPtrEqual(before.ReminderDelivery, after.ReminderDelivery) {
+		changes["reminderDelivery"] = map[string]any{"before": before.ReminderDelivery, "after": after.ReminderDelivery}
+	}
+	if !stringPtrEqual(before.PeppolID, after.PeppolID) {
+		changes["peppolId"] = map[string]any{"before": before.PeppolID, "after": after.PeppolID}
+	}
+	if !stringPtrEqual(before.Gln, after.Gln) {
+		changes["gln"] = map[string]any{"before": before.Gln, "after": after.Gln}
+	}
+	if !stringPtrEqual(before.BuyerReference, after.BuyerReference) {
+		changes["buyerReference"] = map[string]any{"before": before.BuyerReference, "after": after.BuyerReference}
+	}
+	return changes
+}
+
+// recordCustomerBillingProfileUpdated is PutCustomersByIdBillingProfile's
+// own generated event (invoice-ready customer design D1, D4), shaped like
+// recordCustomerContactInfoUpdated: no .NET ancestor, since a billing
+// profile is new to this port. Only called once the handler has already
+// confirmed something changed (billing_profile.go's no-op rule), so changes
+// is never empty here.
+func recordCustomerBillingProfileUpdated(ctx context.Context, q *store.Queries, now time.Time, customerID int32, before, after billingProfile, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	payload := map[string]any{
+		"customerId": customerID,
+		"before":     before,
+		"after":      after,
+		"changes":    billingProfileChanges(before, after),
+	}
+	return recordGeneratedEvent(ctx, q, customerID, now, "customer.billing_profile_updated", "Customer billing profile updated", payload, 1, actorKind, actorDisplay, actorUserID)
+}
+
 // addressChanges is recordCustomerAddressUpdated's changes map, shaped like
 // contactInfoChanges: only the fields that actually moved, each keyed to its
 // own before/after pair (invoice-ready customer design D3).

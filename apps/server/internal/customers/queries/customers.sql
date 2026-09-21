@@ -137,6 +137,49 @@ WHERE id = @id
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
           created_at, updated_at, type, revision, email, phone, website;
 
+-- name: GetCustomerBillingProfile :one
+-- GetCustomerBillingProfile is GET /customers/{id}/billing-profile's read
+-- (invoice-ready customer design D1, D4): the ten billing columns plus
+-- everything billingWarnings (billing_profile.go) needs to compute its
+-- warnings at read time — the customer's type and legal identity (the
+-- ehf_without_recipient check) and its own contact-info email (the
+-- email_without_address check) — in one round trip, without ever adding a
+-- billing column to GetCustomer/ListCustomers's own SELECT list (the
+-- controller ruling: the billing profile must never reach
+-- SafeCustomerResponse).
+SELECT id, revision, type, legal_country, legal_id, legal_name, legal_source, legal_type, email,
+       invoice_email, reminder_email, payment_terms_days, currency, language,
+       invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference
+FROM customers.customers
+WHERE id = @id;
+
+-- name: UpdateCustomerBillingProfile :one
+-- UpdateCustomerBillingProfile is PUT /customers/{id}/billing-profile's
+-- write (invoice-ready customer design D1, D4): a full replace of the ten
+-- billing columns only — name, status, type and the legal identity are
+-- untouched, since this sub-resource never writes them. Guarded and
+-- revision-bumping exactly like UpdateCustomerContactInfo above; RETURNING
+-- mirrors GetCustomerBillingProfile's own column list, so the handler can
+-- recompute warnings from the same row shape after the write.
+UPDATE customers.customers
+SET invoice_email = @invoice_email,
+    reminder_email = @reminder_email,
+    payment_terms_days = @payment_terms_days,
+    currency = @currency,
+    language = @language,
+    invoice_delivery = @invoice_delivery,
+    reminder_delivery = @reminder_delivery,
+    peppol_id = @peppol_id,
+    gln = @gln,
+    buyer_reference = @buyer_reference,
+    updated_at = @updated_at::timestamptz,
+    revision = revision + 1
+WHERE id = @id
+  AND (sqlc.narg(expected_revision)::int IS NULL OR revision = sqlc.narg(expected_revision)::int)
+RETURNING id, revision, type, legal_country, legal_id, legal_name, legal_source, legal_type, email,
+          invoice_email, reminder_email, payment_terms_days, currency, language,
+          invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference;
+
 -- name: CountCustomers :one
 -- CountCustomers is the total row count GetCustomers paginates over
 -- (GetCustomersEndpoint.cs:58), the same filters ListCustomers applies

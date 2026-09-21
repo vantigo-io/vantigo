@@ -75,6 +75,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/customers/{id}/billing-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a customer's billing profile */
+        get: operations["getCustomersByIdBillingProfile"];
+        /** Replace a customer's billing profile */
+        put: operations["putCustomersByIdBillingProfile"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/customers/{id}/contact-info": {
         parameters: {
             query?: never;
@@ -457,6 +475,23 @@ export interface components {
             region?: string | null;
             type: string;
         };
+        /** @description A customer's billing profile (invoice-ready customer design D1, D4): payment terms, currency, document language, delivery methods and the identifiers used to send it invoices — every field nullable, meaning "not decided here, whoever invoices uses its own default". warnings is computed at read time from the profile plus the customer's type, legal identity, contact email and addresses — never stored — in a fixed order: ehf_without_recipient, email_without_address, efaktura_for_business, no_invoice_address. */
+        CustomerBillingProfile: {
+            buyerReference?: string | null;
+            currency?: string | null;
+            gln?: string | null;
+            invoiceDelivery?: string | null;
+            invoiceEmail?: string | null;
+            language?: string | null;
+            /** Format: int32 */
+            paymentTermsDays?: number | null;
+            peppolId?: string | null;
+            reminderDelivery?: string | null;
+            reminderEmail?: string | null;
+            /** Format: int32 */
+            revision: number;
+            warnings: string[];
+        };
         CustomerConflictDuplicate: {
             /** Format: int64 */
             customerNumber: number;
@@ -589,6 +624,25 @@ export interface components {
             name: string;
             source: string;
             type: string;
+        };
+        /** @description PUT /customers/{id}/billing-profile's own request body (invoice-ready customer design D1, D4): a full replace of the customer's billing profile — every field present or null, absent and null both meaning the field is cleared. revision is optional, as PUT /customers/{id}'s own is. */
+        PutCustomerBillingProfileRequest: {
+            buyerReference?: string | null;
+            currency?: string | null;
+            gln?: string | null;
+            invoiceDelivery?: string | null;
+            invoiceEmail?: string | null;
+            language?: string | null;
+            /** Format: int32 */
+            paymentTermsDays?: number | null;
+            peppolId?: string | null;
+            reminderDelivery?: string | null;
+            reminderEmail?: string | null;
+            /**
+             * Format: int32
+             * @description The revision the caller read the customer at (customers foundation design D5). Optional — omitted, the change applies regardless; present and stale, a 409.
+             */
+            revision?: number | null;
         };
         /** @description PUT /customers/{id}/contact-info's own request body (invoice-ready customer design D1): a full replace of the customer's contact info — every field present or null, absent and null both meaning the field is cleared. revision is optional, as PUT /customers/{id}'s own is. */
         PutCustomerContactInfoRequest: {
@@ -1272,6 +1326,122 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getCustomersByIdBillingProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerBillingProfile"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putCustomersByIdBillingProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutCustomerBillingProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerBillingProfile"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
+                };
             };
         };
     };
