@@ -31,6 +31,7 @@ import {
   LegalValueBadge,
 } from "../components/legal-badges";
 import { getLegalSource } from "../lib/legal-sources";
+import { CustomerContactCard } from "./-customer-contact-card";
 import { CustomerContactsCard } from "./-customer-contacts-card";
 import { CustomerFormModal, type CustomerModalState } from "./-customer-form-modal";
 import { CustomerTimeline } from "./-customer-timeline";
@@ -297,8 +298,9 @@ const useRestoreCustomer = (customer: CustomerResponse) => {
   });
 };
 
-export const CustomerOverview = ({ customerId }: { customerId: number }) => (
+export const CustomerOverview = ({ customerId, canEdit }: { customerId: number; canEdit?: boolean }) => (
   <Stack gap="lg">
+    <CustomerContactCard customerId={customerId} canEdit={canEdit} />
     <CustomerContactsCard customerId={customerId} />
     <CustomerTimeline customerId={customerId} />
   </Stack>

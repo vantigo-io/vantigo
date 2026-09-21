@@ -21,6 +21,17 @@ export interface CustomerIdentitySummary {
 /** Whether a customer is a company or a private person, independent of its legal identity. */
 export type CustomerType = "business" | "person";
 
+/**
+ * A customer's own contact details (invoice-ready customer design D2) — what
+ * reaches the customer itself, not one of its contacts. Each field is
+ * nullable; a blank value is stored (and shown) as null.
+ */
+export interface CustomerContactInfo {
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+}
+
 export interface CustomerResponse {
   id: number;
   /** The customer-facing number (KVEM1000-CU style), shown in the list in place of the database id. */
@@ -35,6 +46,8 @@ export interface CustomerResponse {
   timelineSummary: { entryCount: number; latestOccurredOn: string | null };
   /** The row's optimistic-concurrency token (design D5). Absent only for corpus responses that predate it. */
   revision?: number;
+  /** Design D2. Always present on responses from this version on; absent only for corpus responses that predate it. */
+  contactInfo?: CustomerContactInfo;
 }
 
 export interface CustomerStatsResponse {
@@ -200,9 +213,22 @@ export const conflictDuplicates = (error: ApiConflictError): ConflictDuplicate[]
   return Array.isArray(raw) ? raw.filter(isConflictDuplicate) : [];
 };
 
+/**
+ * The subset of contact info the create form offers (email and phone —
+ * design D6). Website is part of the contract's `contactInfo` too, but
+ * nothing on create collects it; the type stays narrow to what callers
+ * actually send.
+ */
+export interface CreateContactInfoInput {
+  email?: string;
+  phone?: string;
+}
+
 /** The type is chosen on create only; afterwards it changes through changeCustomerType. */
 export interface CreateCustomerInput extends CustomerInput {
   type?: CustomerType;
+  /** Design D2: a customer can be created contact-ready in one call. */
+  contactInfo?: CreateContactInfoInput;
 }
 
 export async function createCustomer(input: CreateCustomerInput): Promise<{ id: number }> {
@@ -268,3 +294,28 @@ export const upsertLegalIdentity = (id: number, input: LegalIdentityUpsertInput)
   });
 export const deleteLegalIdentity = (id: number) =>
   request<void>(`/api/v1/customers/${id}/legal-identity`, { method: "DELETE" });
+
+/**
+ * PUT /customers/{id}/contact-info's own request body (design D1, D2): a full
+ * replace of the customer's contact info — every field present or null,
+ * absent and null both meaning the field is cleared. `revision` is optional,
+ * as `updateCustomer`'s own is.
+ */
+export interface ContactInfoInput {
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+  revision?: number;
+}
+
+/**
+ * Replaces a customer's contact info. Answers the full customer (not just the
+ * contact info) so a caller can read the fresh revision straight off the
+ * response, the way `updateCustomer` does.
+ */
+export const updateContactInfo = (id: number, input: ContactInfoInput) =>
+  request<CustomerResponse>(`/api/v1/customers/${id}/contact-info`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });

@@ -1,11 +1,6 @@
-import { createFileRoute, useParams } from "@tanstack/react-router";
-import { CustomerOverview } from "@vantigo/customers-ui/pages/customers.$customerId";
-
-const CustomerOverviewRoute = () => {
-  const { customerId } = useParams({ from: "/customers/$customerId" });
-  return <CustomerOverview customerId={customerId} />;
-};
+import { createFileRoute } from "@tanstack/react-router";
+import { CustomerOverviewTab } from "./-customer-overview-tab";
 
 export const Route = createFileRoute("/customers/$customerId/")({
-  component: CustomerOverviewRoute,
+  component: CustomerOverviewTab,
 });
