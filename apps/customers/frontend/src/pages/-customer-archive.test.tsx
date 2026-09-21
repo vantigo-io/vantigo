@@ -134,4 +134,42 @@ describe("customer detail header — archive and restore", () => {
       }),
     );
   });
+
+  it("tells the user the customer changed, and refetches it, when Restore hits a revision conflict", async () => {
+    // Restore sends the revision the page was rendered with, so it can lose the
+    // race like any other write. It must recover the way the type change does —
+    // say so and refetch — not leave a red "could not be restored" behind a
+    // button that will keep failing on the same stale revision.
+    let putCalls = 0;
+    const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+      const identity = legalIdentity404(url);
+      if (identity) return identity;
+      const path = String(url);
+      if (path === "/api/v1/customers/1001" && init?.method === "PUT") {
+        putCalls += 1;
+        return Promise.resolve(
+          jsonResponse(409, {
+            title: "Customer revision conflict",
+            detail: "The customer was changed by someone else.",
+            status: 409,
+          }),
+        );
+      }
+      if (path === "/api/v1/customers/1001")
+        return Promise.resolve(jsonResponse(200, customer({ status: "archived", revision: putCalls > 0 ? 6 : 4 })));
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    const customerGets = () =>
+      fetchMock.mock.calls.filter(([url, init]) => String(url) === "/api/v1/customers/1001" && !init?.method).length;
+    await renderHeader(fetchMock, { canRestore: true });
+    const getsBefore = customerGets();
+
+    await userEvent.click(screen.getByRole("button", { name: /restore customer/i }));
+
+    expect(
+      await screen.findByText("This customer was changed by someone else. Reload to see the latest version."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/could not be restored/i)).not.toBeInTheDocument();
+    await waitFor(() => expect(customerGets()).toBeGreaterThan(getsBefore));
+  });
 });

@@ -10,6 +10,7 @@ import {
   legalIdentityQueryOptions,
   NotFoundError,
   updateCustomer,
+  upsertLegalIdentity,
 } from "./customers";
 import type { ApiConflictError } from "./request";
 
@@ -18,6 +19,8 @@ const jsonResponse = (status: number, body: unknown) =>
     status,
     headers: { "Content-Type": "application/json" },
   });
+
+const identity = { country: "no", type: "business", id: "923609016", name: "Acme AS", source: "manual" };
 
 describe("createCustomer", () => {
   afterEach(() => {
@@ -252,5 +255,37 @@ describe("conflictDuplicates", () => {
   it("returns an empty list when the problem carries no duplicates at all", () => {
     expect(conflictDuplicates(conflict({ title: "Customer revision conflict" }))).toEqual([]);
     expect(conflictDuplicates(conflict({ duplicates: null }))).toEqual([]);
+  });
+});
+
+describe("upsertLegalIdentity", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("PUTs the five identity fields to the dedicated sub-resource", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, identity));
+    stubFetch(fetchMock);
+
+    await upsertLegalIdentity(1001, identity);
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/1001/legal-identity", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(identity),
+    });
+  });
+
+  it("can overrule a duplicate-identity conflict, which this endpoint's own body carries (design D6)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, identity));
+    stubFetch(fetchMock);
+
+    await upsertLegalIdentity(1001, { ...identity, allowDuplicateIdentity: true });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/1001/legal-identity", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...identity, allowDuplicateIdentity: true }),
+    });
   });
 });

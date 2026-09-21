@@ -72,10 +72,6 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
   // and D6's duplicate identity needs the caller to see who already has it.
   const [conflict, setConflict] = useState<SaveConflict | null>(null);
   const [reloading, setReloading] = useState(false);
-  // A fresh `state` (the modal opening, or opening on a different customer)
-  // clears a conflict left over from the previous time it was open, adjusted
-  // during render rather than an effect, the way the list page's own
-  // "arrived with create open" flag is (see customers.index.tsx).
   // The revision the next save sends. It cannot be read off `state` at submit
   // time: the modal state is a snapshot the opening page handed over (the list
   // row, or the detail page's customer as it was rendered), and neither is
@@ -83,6 +79,10 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
   // still carries the revision the server has already refused. Holding it here
   // is what lets Reload actually unblock the next save (design D5).
   const [revision, setRevision] = useState(revisionOf(state));
+  // A fresh `state` (the modal opening, or opening on a different customer)
+  // re-seeds that revision and clears a conflict left over from the previous
+  // time it was open, adjusted during render rather than an effect, the way the
+  // list page's own "arrived with create open" flag is (see customers.index.tsx).
   const [seenState, setSeenState] = useState(state);
   if (state !== seenState) {
     setSeenState(state);
@@ -207,7 +207,13 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
           {conflict?.kind === "duplicate" && (
             <Alert color="yellow" title={t("duplicateIdentityTitle")}>
               <Stack gap="xs">
-                <Text size="sm">{t("duplicateIdentityMessage")}</Text>
+                {/* The server withholds `duplicates` from a caller without
+                    customers:view (design D6), so the list is not guaranteed:
+                    the message then has to stand on its own, and the override
+                    below is the only thing left to act on. */}
+                <Text size="sm">
+                  {conflict.duplicates.length > 0 ? t("duplicateIdentityMessage") : t("duplicateIdentityMessageAlone")}
+                </Text>
                 <Stack gap={4}>
                   {conflict.duplicates.map((duplicate) => (
                     <Group key={duplicate.id} justify="space-between" wrap="nowrap">

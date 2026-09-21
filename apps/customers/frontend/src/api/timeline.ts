@@ -44,6 +44,8 @@ export interface TimelineEntry {
   updatedAt: string;
   /** The author's name, snapshotted at write time (design D1). Blank for entries older than the change, and for a write with no user principal. */
   actorDisplay?: string | null;
+  /** What kind of author it was: `user`, `system` (a generated event) or `unattributed`. Decides the label, since the display's sentinels are English — see `lib/actor-label.ts`. */
+  actorKind: string;
 }
 export interface TimelinePage {
   data: TimelineEntry[];
@@ -59,6 +61,8 @@ export interface TimelineRevision {
   sourceUrl: string | null;
   changedAt: string;
   actorDisplayName: string;
+  /** The same D1 actor kind the entry itself carries, and read the same way. */
+  actorKind: string;
 }
 export interface TimelineRevisionResponse {
   data: TimelineRevision[];

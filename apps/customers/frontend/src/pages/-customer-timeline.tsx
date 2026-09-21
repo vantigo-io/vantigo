@@ -48,6 +48,7 @@ import {
   timelineRevisionsQueryOptions,
   updateTimelineEntry,
 } from "../api/timeline";
+import { actorLabel } from "../lib/actor-label";
 import "../i18n";
 
 const manualTypes = [
@@ -401,7 +402,7 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
                       <Text size="sm" c="dimmed">
                         {formatMoment(entry.occurredOn, entry.occurredAt)}
                         {entry.producer ? ` · ${entry.producer}` : ""}
-                        {` · ${entry.actorDisplay || t("unattributed")}`}
+                        {` · ${actorLabel(entry.actorKind, entry.actorDisplay, t)}`}
                       </Text>
                       <Text size="sm">{entry.note || entry.summary || t("noAdditionalDetails")}</Text>
                       {details && (
@@ -645,7 +646,7 @@ const RevisionPanel = ({
               <Accordion.Panel>
                 <Stack gap="xs">
                   <Text size="sm">
-                    {revision.action} · {revision.actorDisplayName || t("unattributed")}
+                    {revision.action} · {actorLabel(revision.actorKind, revision.actorDisplayName, t)}
                   </Text>
                   <Text>{revision.note || t("noDescription")}</Text>
                 </Stack>

@@ -248,7 +248,19 @@ export const legalIdentityQueryOptions = (id: number) =>
       }
     },
   });
-export const upsertLegalIdentity = (id: number, input: LegalIdentityInput) =>
+/**
+ * The dedicated legal-identity PUT's body. It is the five identity fields at
+ * the top level, plus D6's override — which lives here rather than on
+ * `LegalIdentityInput` because that type is also the nested `identity` of
+ * create/update, where the flag belongs to the *enclosing* request
+ * (`CustomerInput.allowDuplicateIdentity`) and would be inert if nested.
+ */
+export interface LegalIdentityUpsertInput extends LegalIdentityInput {
+  /** Goes ahead even though the identity is already used by another customer (design D6). */
+  allowDuplicateIdentity?: boolean;
+}
+
+export const upsertLegalIdentity = (id: number, input: LegalIdentityUpsertInput) =>
   request<LegalIdentityResponse>(`/api/v1/customers/${id}/legal-identity`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
