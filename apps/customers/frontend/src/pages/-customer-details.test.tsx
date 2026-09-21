@@ -72,6 +72,7 @@ describe("customer details page", () => {
         );
       if (String(url) === "/api/v1/customers/1001/billing-profile")
         return Promise.resolve(jsonResponse(200, emptyBillingProfile));
+      if (String(url) === "/api/v1/customers/1001/addresses") return Promise.resolve(jsonResponse(200, { data: [] }));
       return Promise.resolve(new Response(null, { status: 404 }));
     });
 
@@ -113,9 +114,11 @@ describe("customer details page", () => {
           ? Promise.resolve(new Response(null, { status: 403 }))
           : String(url) === "/api/v1/customers/1002/billing-profile"
             ? Promise.resolve(jsonResponse(200, emptyBillingProfile))
-            : String(url).includes("/timeline")
-              ? Promise.resolve(jsonResponse(200, { data: [], nextCursor: null }))
-              : Promise.resolve(new Response(null, { status: 404 })),
+            : String(url) === "/api/v1/customers/1002/addresses"
+              ? Promise.resolve(jsonResponse(200, { data: [] }))
+              : String(url).includes("/timeline")
+                ? Promise.resolve(jsonResponse(200, { data: [], nextCursor: null }))
+                : Promise.resolve(new Response(null, { status: 404 })),
     );
 
     await renderRoute("/customers/1002", "Acme");
@@ -124,6 +127,41 @@ describe("customer details page", () => {
     expect(screen.getByText("#1002")).toBeInTheDocument();
     expect(screen.getByText(/legal identity is not available/i)).toBeInTheDocument();
     expect(screen.getByText("Private")).toBeInTheDocument();
+  });
+
+  it("keeps the rest of the Overview when the billing profile fails to load", async () => {
+    stubFetch((url: RequestInfo | URL) => {
+      const path = String(url);
+      if (path === "/api/v1/customers/1001")
+        return Promise.resolve(
+          jsonResponse(200, {
+            id: 1001,
+            name: "Equinor",
+            status: "active",
+            type: "business",
+            createdAt: "2026-06-01T10:00:00Z",
+            updatedAt: "2026-07-01T10:00:00Z",
+            identity: null,
+            timelineSummary: { entryCount: 0, latestOccurredOn: null },
+          }),
+        );
+      if (path === "/api/v1/customers/1001/legal-identity") return Promise.resolve(new Response(null, { status: 403 }));
+      if (path === "/api/v1/customers/1001/billing-profile")
+        return Promise.resolve(new Response(null, { status: 500 }));
+      if (path === "/api/v1/customers/1001/addresses") return Promise.resolve(jsonResponse(200, { data: [] }));
+      if (path.includes("/contacts")) return Promise.resolve(jsonResponse(200, { data: [] }));
+      if (path.includes("/timeline")) return Promise.resolve(jsonResponse(200, { data: [], nextCursor: null }));
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+
+    await renderRoute("/customers/1001", "Equinor");
+
+    // The billing card says so itself rather than throwing the whole tab at
+    // the route's error component.
+    expect(await screen.findByText("Could not load the billing profile.")).toBeInTheDocument();
+    expect(screen.getByText("Contact & addresses")).toBeInTheDocument();
+    expect(screen.getByText("Timeline")).toBeInTheDocument();
+    expect(screen.queryByText("Customer not found")).not.toBeInTheDocument();
   });
 
   it("shows a not-found state for unknown customers", async () => {

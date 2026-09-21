@@ -1,7 +1,7 @@
-import { ActionIcon, Alert, Card, Group, List, Stack, Text } from "@mantine/core";
+import { ActionIcon, Alert, Button, Card, Group, List, Stack, Text } from "@mantine/core";
 import { IconAlertTriangle, IconPencil, IconReceipt } from "@tabler/icons-react";
-import { useSuspenseQuery } from "@tanstack/react-query";
-import { useI18n } from "@vantigo/frontend-shell";
+import { useQuery } from "@tanstack/react-query";
+import { ContentSkeleton, useI18n } from "@vantigo/frontend-shell";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { type CustomerBillingProfile, customerBillingProfileQueryOptions } from "../api/billing-profile";
@@ -17,10 +17,13 @@ import "../i18n";
 
 /**
  * The customer page's "Billing" card (design D4, D6): the profile GET
- * .../billing-profile always answers (every field null for a customer that
- * has none — a profile always exists conceptually), shown read-only with the
- * warnings explained in words and the server's resolution rules mirrored as
- * hints under the fields they resolve. `canManageBilling` comes from the
+ * .../billing-profile always answers (a profile always exists conceptually,
+ * with nothing decided for a customer that has none), shown read-only with
+ * the warnings explained in words and the server's resolution rules mirrored
+ * as hints under the fields they resolve. A plain `useQuery` with a skeleton
+ * and an error branch, not `useSuspenseQuery`: its siblings on the Overview
+ * tab load the same way, and a failing profile GET must cost this card
+ * alone, not the whole tab. `canManageBilling` comes from the
  * host, which reads the caller's `customers:billing-manage` permission — a
  * narrower door than `canEdit`'s `customers:update` (design D1): the person
  * who may rename a customer is not thereby the person who may give it 90
@@ -38,9 +41,9 @@ export const CustomerBillingCard = ({
   canManageBilling?: boolean;
 }) => {
   const { t } = useI18n("customers");
-  const { data: profile } = useSuspenseQuery(customerBillingProfileQueryOptions(customerId));
+  const { data: profile, isPending, isError, refetch } = useQuery(customerBillingProfileQueryOptions(customerId));
   const [modalOpened, setModalOpened] = useState(false);
-  const warnings = profile.warnings.filter((code) => KNOWN_BILLING_WARNING_CODES.includes(code));
+  const warnings = (profile?.warnings ?? []).filter((code) => KNOWN_BILLING_WARNING_CODES.includes(code));
 
   return (
     <Card withBorder padding="lg" radius="md">
@@ -50,7 +53,9 @@ export const CustomerBillingCard = ({
             <IconReceipt size={18} stroke={1.5} />
             <Text fw={600}>{t("billing")}</Text>
           </Group>
-          {canManageBilling && (
+          {/* Editing needs the profile the modal seeds itself from, so the
+              action appears with it, not before. */}
+          {canManageBilling && profile && (
             <ActionIcon
               variant="subtle"
               color="gray"
@@ -72,15 +77,30 @@ export const CustomerBillingCard = ({
           </Alert>
         )}
 
-        <BillingFields customer={customer} profile={profile} />
+        {isPending ? (
+          <ContentSkeleton rows={4} rowHeight={24} />
+        ) : isError ? (
+          // The same shape the timeline's own failure takes: what went wrong
+          // and a way to ask again, inside the card.
+          <Stack align="center" py="md">
+            <Text c="red">{t("failedLoadBillingProfile")}</Text>
+            <Button variant="light" onClick={() => refetch()}>
+              {t("tryAgain")}
+            </Button>
+          </Stack>
+        ) : (
+          <BillingFields customer={customer} profile={profile} />
+        )}
       </Stack>
 
-      <CustomerBillingModal
-        opened={modalOpened}
-        customerId={customerId}
-        profile={profile}
-        onClose={() => setModalOpened(false)}
-      />
+      {profile && (
+        <CustomerBillingModal
+          opened={modalOpened}
+          customerId={customerId}
+          profile={profile}
+          onClose={() => setModalOpened(false)}
+        />
+      )}
     </Card>
   );
 };

@@ -3,7 +3,6 @@ import { Notifications } from "@mantine/notifications";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Suspense } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CustomerResponse } from "../api/customers";
 import { stubFetch } from "../test/fetch";
@@ -79,13 +78,11 @@ const renderCard = (
     <MantineProvider env="test">
       <Notifications />
       <QueryClientProvider client={queryClient}>
-        <Suspense fallback="loading">
-          <CustomerBillingCard
-            customerId={1001}
-            customer={customer(customerOverrides) as CustomerResponse}
-            canManageBilling={canManageBilling}
-          />
-        </Suspense>
+        <CustomerBillingCard
+          customerId={1001}
+          customer={customer(customerOverrides) as CustomerResponse}
+          canManageBilling={canManageBilling}
+        />
       </QueryClientProvider>
     </MantineProvider>,
   );
@@ -102,16 +99,14 @@ describe("CustomerBillingCard", () => {
 
   it("shows 'Not set — the invoicing default applies' for every null field", async () => {
     renderCard(emptyProfile);
-    await screen.findByText("Billing");
     // Ten billing fields, all null in emptyProfile.
-    expect(screen.getAllByText("Not set — the invoicing default applies")).toHaveLength(10);
+    expect(await screen.findAllByText("Not set — the invoicing default applies")).toHaveLength(10);
   });
 
   it("reads a profile whose unset fields the server left out entirely", async () => {
     renderCard(omittedProfile);
-    await screen.findByText("Billing");
 
-    expect(screen.getAllByText("Not set — the invoicing default applies")).toHaveLength(10);
+    expect(await screen.findAllByText("Not set — the invoicing default applies")).toHaveLength(10);
     // "Payment terms" would otherwise render the raw catalog key: i18next
     // cannot pluralise a count of undefined.
     expect(screen.queryByText(/paymentTermsDaysValue/)).not.toBeInTheDocument();
@@ -211,7 +206,7 @@ describe("CustomerBillingCard", () => {
 
   it("shows no derived-recipient hint when the identity is absent (viewer may not see it)", async () => {
     renderCard(emptyProfile, { type: "business", identity: null });
-    await screen.findByText("Billing");
+    await screen.findByText("Peppol ID");
     expect(screen.queryByText(/EHF recipient/)).not.toBeInTheDocument();
   });
 
@@ -224,7 +219,7 @@ describe("CustomerBillingCard", () => {
 
   it("shows no edit affordance without canManageBilling", async () => {
     renderCard(emptyProfile, {}, false);
-    await screen.findByText("Billing");
+    await screen.findByText("Peppol ID");
     expect(screen.queryByLabelText("Edit billing profile")).not.toBeInTheDocument();
   });
 });
