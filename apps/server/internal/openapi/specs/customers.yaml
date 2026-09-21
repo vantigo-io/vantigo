@@ -92,6 +92,10 @@ components:
             type: object
         CreateCustomerRequest:
             properties:
+                allowDuplicateIdentity:
+                    description: When true, skips the duplicate-legal-identity conflict check entirely (customers foundation design D6) — two departments of one company kept as separate customers is legitimate. Absent or false, an identity another customer already has is a 409.
+                    nullable: true
+                    type: boolean
                 identity:
                     allOf:
                         - $ref: '#/components/schemas/LegalIdentityRequest'
@@ -387,6 +391,10 @@ components:
             type: object
         LegalIdentityRequest:
             properties:
+                allowDuplicateIdentity:
+                    description: When true, skips the duplicate-legal-identity conflict check entirely (customers foundation design D6) — two departments of one company kept as separate customers is legitimate. Absent or false, an identity another customer already has is a 409. Only consulted when it differs from the identity already on file.
+                    nullable: true
+                    type: boolean
                 country:
                     type: string
                 id:
@@ -679,6 +687,10 @@ components:
             type: object
         UpdateCustomerRequest:
             properties:
+                allowDuplicateIdentity:
+                    description: When true, skips the duplicate-legal-identity conflict check entirely (customers foundation design D6) — two departments of one company kept as separate customers is legitimate. Absent or false, an identity another customer already has is a 409. Only consulted when the request's identity differs from the one already on file.
+                    nullable: true
+                    type: boolean
                 identity:
                     allOf:
                         - $ref: '#/components/schemas/LegalIdentityRequest'
@@ -813,6 +825,12 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: Conflict
             summary: Create a new customer
             tags:
                 - Customers
@@ -1219,6 +1237,12 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: Conflict
             summary: Replace a customer's legal identity
             tags:
                 - Customers

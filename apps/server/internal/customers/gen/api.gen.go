@@ -63,9 +63,11 @@ type ContactResponse struct {
 
 // CreateCustomerRequest defines model for CreateCustomerRequest.
 type CreateCustomerRequest struct {
-	Identity *LegalIdentityRequest `json:"identity,omitempty"`
-	Name     string                `json:"name"`
-	Status   *string               `json:"status,omitempty"`
+	// AllowDuplicateIdentity When true, skips the duplicate-legal-identity conflict check entirely (customers foundation design D6) — two departments of one company kept as separate customers is legitimate. Absent or false, an identity another customer already has is a 409.
+	AllowDuplicateIdentity *bool                 `json:"allowDuplicateIdentity,omitempty"`
+	Identity               *LegalIdentityRequest `json:"identity,omitempty"`
+	Name                   string                `json:"name"`
+	Status                 *string               `json:"status,omitempty"`
 
 	// Type 'business' or 'person'. Defaults to 'business'. When an identity is supplied, its type must agree. Changed afterwards only through PUT /customers/{id}/type.
 	Type *string `json:"type,omitempty"`
@@ -199,11 +201,13 @@ type GetCustomerStatsResponse struct {
 
 // LegalIdentityRequest defines model for LegalIdentityRequest.
 type LegalIdentityRequest struct {
-	Country string `json:"country"`
-	Id      string `json:"id"`
-	Name    string `json:"name"`
-	Source  string `json:"source"`
-	Type    string `json:"type"`
+	// AllowDuplicateIdentity When true, skips the duplicate-legal-identity conflict check entirely (customers foundation design D6) — two departments of one company kept as separate customers is legitimate. Absent or false, an identity another customer already has is a 409. Only consulted when it differs from the identity already on file.
+	AllowDuplicateIdentity *bool  `json:"allowDuplicateIdentity,omitempty"`
+	Country                string `json:"country"`
+	Id                     string `json:"id"`
+	Name                   string `json:"name"`
+	Source                 string `json:"source"`
+	Type                   string `json:"type"`
 }
 
 // LegalIdentityResponse defines model for LegalIdentityResponse.
@@ -321,8 +325,10 @@ type TimelineRevisionResponse struct {
 
 // UpdateCustomerRequest defines model for UpdateCustomerRequest.
 type UpdateCustomerRequest struct {
-	Identity *LegalIdentityRequest `json:"identity,omitempty"`
-	Name     string                `json:"name"`
+	// AllowDuplicateIdentity When true, skips the duplicate-legal-identity conflict check entirely (customers foundation design D6) — two departments of one company kept as separate customers is legitimate. Absent or false, an identity another customer already has is a 409. Only consulted when the request's identity differs from the one already on file.
+	AllowDuplicateIdentity *bool                 `json:"allowDuplicateIdentity,omitempty"`
+	Identity               *LegalIdentityRequest `json:"identity,omitempty"`
+	Name                   string                `json:"name"`
 
 	// Revision The revision the caller read the customer at (customers foundation design D5). Optional — omitted, the update applies regardless; present and stale, a 409.
 	Revision *int32  `json:"revision,omitempty"`
@@ -1936,6 +1942,20 @@ func (response PostCustomers403JSONResponse) VisitPostCustomersResponse(w http.R
 	return err
 }
 
+type PostCustomers409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PostCustomers409ApplicationProblemPlusJSONResponse) VisitPostCustomersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCustomersContactsRequestObject struct {
 	Params GetCustomersContactsParams
 }
@@ -3275,6 +3295,20 @@ type PutCustomersByIdLegalIdentity404Response struct {
 func (response PutCustomersByIdLegalIdentity404Response) VisitPutCustomersByIdLegalIdentityResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type PutCustomersByIdLegalIdentity409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PutCustomersByIdLegalIdentity409ApplicationProblemPlusJSONResponse) VisitPutCustomersByIdLegalIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetCustomersByIdTimelineRequestObject struct {

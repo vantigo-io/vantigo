@@ -318,6 +318,64 @@ func (q *Queries) CustomerTimelineSummary(ctx context.Context, customerID int32)
 	return i, err
 }
 
+const customersByLegalIdentity = `-- name: CustomersByLegalIdentity :many
+SELECT id, customer_number, name, status
+FROM customers.customers
+WHERE legal_country = $1::text AND legal_id = $2::text AND id <> $3::int
+ORDER BY id
+LIMIT 5
+`
+
+type CustomersByLegalIdentityParams struct {
+	Country   string
+	LegalID   string
+	ExcludeID int32
+}
+
+type CustomersByLegalIdentityRow struct {
+	ID             int32
+	CustomerNumber int64
+	Name           string
+	Status         string
+}
+
+// CustomersByLegalIdentity is the duplicate-legal-identity conflict check
+// (customers foundation design D6): any customer — of any status, archived
+// included, since the right move for one is usually to restore it rather
+// than create a second — already holding (@country, @legal_id), other than
+// @exclude_id itself. Country and id are compared as stored, i.e. already
+// normalised by validateLegalIdentity (lower-cased country, stripped
+// Norwegian org number), so this is a plain equality, not another ILIKE.
+// Ordered by id and capped at 5: the conflict body only ever names a
+// handful of holders (CustomerConflictProblem.duplicates), never every one.
+// No unique index backs this — the design deliberately allows a race
+// between two simultaneous creates; allowDuplicateIdentity is how a caller
+// who knows better goes ahead anyway.
+func (q *Queries) CustomersByLegalIdentity(ctx context.Context, arg CustomersByLegalIdentityParams) ([]CustomersByLegalIdentityRow, error) {
+	rows, err := q.db.Query(ctx, customersByLegalIdentity, arg.Country, arg.LegalID, arg.ExcludeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CustomersByLegalIdentityRow
+	for rows.Next() {
+		var i CustomersByLegalIdentityRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CustomerNumber,
+			&i.Name,
+			&i.Status,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const directoryContact = `-- name: DirectoryContact :one
 SELECT id, first_name, last_name, email
 FROM customers.contacts
