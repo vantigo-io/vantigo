@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -831,5 +832,121 @@ func TestRunBounded_ReturnsFalseWhenFnOutlivesTheTimeout(t *testing.T) {
 
 	if runBounded(func() { <-stuck }, 20*time.Millisecond) {
 		t.Error("runBounded = true, want false for a fn that never returns within the timeout")
+	}
+}
+
+// managementAddr makes serve bind the management listener on an ephemeral
+// loopback port and returns a func reporting the address it got. It swaps a
+// package variable, so tests using it must not run in parallel.
+func managementAddr(t *testing.T) func() string {
+	t.Helper()
+	original := listenManagement
+	addr := make(chan string, 1)
+	listenManagement = func(int) (net.Listener, error) {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err == nil {
+			addr <- ln.Addr().String()
+		}
+		return ln, err
+	}
+	t.Cleanup(func() { listenManagement = original })
+	return func() string {
+		select {
+		case a := <-addr:
+			return a
+		case <-time.After(10 * time.Second):
+			t.Fatal("the management listener never started")
+			return ""
+		}
+	}
+}
+
+func managementStatus(t *testing.T, addr, token string) (int, string) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, "http://"+addr+"/management/status", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	b, _ := io.ReadAll(res.Body)
+	return res.StatusCode, string(b)
+}
+
+func TestServe_ManagementListener(t *testing.T) {
+	token := strings.Repeat("m", 32)
+	addr := managementAddr(t)
+	base, stop := startServeEnv(t, modeServer, map[string]string{
+		"MANAGEMENT_PORT":       "9090",
+		"MANAGEMENT_TOKEN":      token,
+		"BOOTSTRAP_OWNER_EMAIL": "owner@customer.example",
+	})
+	mgmt := addr()
+
+	code, text := managementStatus(t, mgmt, token)
+	if code != http.StatusOK || !strings.Contains(text, `"version":"dev"`) || !strings.Contains(text, `"bootstrap":"`) || !strings.Contains(text, `"databaseBytes":`) {
+		t.Errorf("status: %d %s", code, text)
+	}
+	if code, _ := managementStatus(t, mgmt, ""); code != http.StatusUnauthorized {
+		t.Errorf("without a token: %d, want 401", code)
+	}
+	// The public listener has no /management route: server.New's root mux
+	// falls through to the SPA catch-all (web.Handler) for anything outside
+	// /api and /health, exactly as it does for any other unmatched path, so a
+	// 200 alone would not distinguish "fell through to the SPA" from "reached
+	// management.Handler". Assert the body actually is the SPA shell rather
+	// than the management status payload.
+	if code, html, _ := body(t, base+"/management/status"); code != http.StatusOK ||
+		!strings.Contains(html, "window.__VANTIGO_APP__") || strings.Contains(html, `"databaseBytes"`) {
+		t.Errorf("/management/status on the public listener did not fall through to the SPA: %d %q", code, html)
+	}
+	if code := stop(); code != 0 {
+		t.Errorf("exit %d after a clean shutdown", code)
+	}
+	if _, err := net.DialTimeout("tcp", mgmt, time.Second); err == nil {
+		t.Error("the management listener is still accepting after shutdown")
+	}
+}
+
+func TestServe_NoManagementListenerByDefault(t *testing.T) {
+	addr := make(chan struct{}, 1)
+	original := listenManagement
+	listenManagement = func(int) (net.Listener, error) {
+		addr <- struct{}{}
+		return nil, errors.New("must not be called")
+	}
+	t.Cleanup(func() { listenManagement = original })
+
+	_, stop := startServe(t, modeServer)
+	if code := stop(); code != 0 {
+		t.Errorf("exit %d", code)
+	}
+	select {
+	case <-addr:
+		t.Error("the management listener was opened without MANAGEMENT_PORT")
+	default:
+	}
+}
+
+func TestServe_WorkerModeHasNoManagementListener(t *testing.T) {
+	called := false
+	original := listenManagement
+	listenManagement = func(int) (net.Listener, error) { called = true; return nil, errors.New("must not be called") }
+	t.Cleanup(func() { listenManagement = original })
+
+	_, stop := startServeEnv(t, modeWorker, map[string]string{
+		"MANAGEMENT_PORT": "9090", "MANAGEMENT_TOKEN": strings.Repeat("m", 32),
+	})
+	if code := stop(); code != 0 {
+		t.Errorf("exit %d", code)
+	}
+	if called {
+		t.Error("worker mode must not open the management listener")
 	}
 }
