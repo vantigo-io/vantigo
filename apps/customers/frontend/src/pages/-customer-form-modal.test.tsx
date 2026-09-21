@@ -207,15 +207,30 @@ describe("CustomerFormModal", () => {
     });
   });
 
-  it("shows a revision-conflict alert and discards the typed changes on Reload", async () => {
+  it("shows a revision-conflict alert, and Reload makes the next save send the fresh revision", async () => {
     const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
       const path = String(url);
       if (path === "/api/v1/customers/1001" && init?.method === "PUT") {
+        // The server's side of the revision guard: the stale revision the
+        // modal opened with is refused, the one Reload just read through.
+        // Without a modal-local revision the second save would repeat the
+        // first one's body and 409 forever.
+        const sent = JSON.parse(String(init?.body)) as { revision?: number };
+        if (sent.revision !== 4) {
+          return Promise.resolve(
+            jsonResponse(409, {
+              title: "Customer revision conflict",
+              detail: "The customer was changed by someone else.",
+              status: 409,
+            }),
+          );
+        }
         return Promise.resolve(
-          jsonResponse(409, {
-            title: "Customer revision conflict",
-            detail: "The customer was changed by someone else.",
-            status: 409,
+          jsonResponse(200, {
+            id: 1001,
+            name: "Initech Latest",
+            status: "active",
+            timelineSummary: { entryCount: 0, latestOccurredOn: null },
           }),
         );
       }
@@ -238,7 +253,7 @@ describe("CustomerFormModal", () => {
       return Promise.resolve(new Response(null, { status: 404 }));
     });
     stubFetch(fetchMock);
-    renderModal({
+    const { onClose } = renderModal({
       mode: "edit",
       customer: {
         id: 1001,
@@ -266,6 +281,21 @@ describe("CustomerFormModal", () => {
     await userEvent.click(screen.getByRole("button", { name: /reload/i }));
 
     expect(await screen.findByLabelText(/name/i)).toHaveValue("Initech Latest");
+    expect(
+      screen.queryByText("This customer was changed by someone else. Reload to see the latest version."),
+    ).not.toBeInTheDocument();
+
+    // The point of Reload: the next save works. The modal-state prop still
+    // carries revision 3 (the list row it was opened from is not re-derived),
+    // so the revision the mutation sends has to come from what Reload read.
+    await userEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(fetchMock).toHaveBeenLastCalledWith("/api/v1/customers/1001", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Initech Latest", status: "active", revision: 4 }),
+    });
     expect(
       screen.queryByText("This customer was changed by someone else. Reload to see the latest version."),
     ).not.toBeInTheDocument();

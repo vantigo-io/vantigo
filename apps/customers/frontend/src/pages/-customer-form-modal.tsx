@@ -54,6 +54,9 @@ type CustomerFormValues = {
  */
 type SaveConflict = { kind: "revision" } | { kind: "duplicate"; duplicates: ConflictDuplicate[] };
 
+/** The revision a modal state opens with: an edited customer's, and nothing on create. */
+const revisionOf = (state: CustomerModalState | null) => (state?.mode === "edit" ? state.customer.revision : undefined);
+
 /**
  * Creates or edits a customer. The type — business or private person — is
  * chosen on create, above the name, and decides whether the name is looked up
@@ -73,9 +76,17 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
   // clears a conflict left over from the previous time it was open, adjusted
   // during render rather than an effect, the way the list page's own
   // "arrived with create open" flag is (see customers.index.tsx).
+  // The revision the next save sends. It cannot be read off `state` at submit
+  // time: the modal state is a snapshot the opening page handed over (the list
+  // row, or the detail page's customer as it was rendered), and neither is
+  // re-derived while the modal is open — so after a 409 and a Reload, `state`
+  // still carries the revision the server has already refused. Holding it here
+  // is what lets Reload actually unblock the next save (design D5).
+  const [revision, setRevision] = useState(revisionOf(state));
   const [seenState, setSeenState] = useState(state);
   if (state !== seenState) {
     setSeenState(state);
+    setRevision(revisionOf(state));
     if (conflict) setConflict(null);
   }
   const form = useForm<CustomerFormValues>({
@@ -108,7 +119,7 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
             name,
             status,
             ...(identity ? { identity } : {}),
-            revision: state.customer.revision,
+            revision,
             ...(override ? { allowDuplicateIdentity: true } : {}),
           })
         : createCustomer({
@@ -149,7 +160,8 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
 
   // The conflict alert's Reload action: the caller's typed values are
   // discarded (the alert says so) and the form is re-seeded from the row the
-  // server holds now, so the next submit's revision is the current one.
+  // server holds now — its revision included, which is the half that makes the
+  // next submit go through instead of hitting the same 409 again.
   const reload = async () => {
     if (!isEdit) return;
     setReloading(true);
@@ -158,7 +170,13 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
       form.setValues({ name: fresh.name, identity: undefined, status: fresh.status, type: fresh.type });
       form.resetDirty();
       form.clearErrors();
+      setRevision(fresh.revision);
       setConflict(null);
+      // Everything else looking at this customer was showing the row the
+      // server has already moved past — including the list row this modal may
+      // have been opened from, which would otherwise hand a stale revision to
+      // the *next* edit. The same broad prefix onSuccess uses.
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
     } finally {
       setReloading(false);
     }
