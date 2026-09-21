@@ -126,21 +126,26 @@ func TestGetCustomers_Search_MatchesOrgNumberWithAndWithoutSpaces(t *testing.T) 
 }
 
 // TestGetCustomers_Search_MatchesContactNameAndEmail exercises every D4
-// contact-search field at once: last name, first+last name together, a
-// contact's own canonical email and a customer-specific association email
-// (which overrides the canonical one for that relationship). Each assertion
-// wants exactly one row, so an unrelated control customer/contact that
-// happens to be present would be caught the same way a false match would.
+// contact-search field at once: first name alone, last name alone,
+// first+last name together, a contact's own canonical email and a
+// customer-specific association email (which overrides the canonical one
+// for that relationship). Each assertion wants exactly one row, so an
+// unrelated control customer/contact that happens to be present would be
+// caught the same way a false match would.
 func TestGetCustomers_Search_MatchesContactNameAndEmail(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	c := authenticatedClient(t, h)
 
+	byFirstName := insertCustomer(t, h, "Found By First Name Co", "active")
 	byLastName := insertCustomer(t, h, "Found By Last Name Co", "active")
 	byFullName := insertCustomer(t, h, "Found By Full Name Co", "active")
 	byCanonicalEmail := insertCustomer(t, h, "Found By Canonical Email Co", "active")
 	byAssocEmail := insertCustomer(t, h, "Found By Association Email Co", "active")
 	control := insertCustomer(t, h, "Not Found Co", "active")
+
+	firstNameContact := insertContact(t, h, "Zaphod", "Beeblebrox", nil)
+	associate(t, h, byFirstName, firstNameContact, nil)
 
 	lastNameContact := insertContact(t, h, "Ada", "Lovelace", nil)
 	associate(t, h, byLastName, lastNameContact, nil)
@@ -160,11 +165,15 @@ func TestGetCustomers_Search_MatchesContactNameAndEmail(t *testing.T) {
 	controlContact := insertContact(t, h, "No", "Match", ptr("no-match@example.com"))
 	associate(t, h, control, controlContact, nil)
 
+	byFirstNameResult := getList(t, c, "search="+url.QueryEscape("Zaphod"))
 	byLastNameResult := getList(t, c, "search="+url.QueryEscape("Lovelace"))
 	byFullNameResult := getList(t, c, "search="+url.QueryEscape("Grace Hopper"))
 	byCanonicalEmailResult := getList(t, c, "search="+url.QueryEscape("rene@example.com"))
 	byAssocEmailResult := getList(t, c, "search="+url.QueryEscape("assoc-only@example.com"))
 
+	if !idsEqual(idsOf(byFirstNameResult), byFirstName) {
+		t.Errorf("search by contact first name: ids = %v, want [%d]", idsOf(byFirstNameResult), byFirstName)
+	}
 	if !idsEqual(idsOf(byLastNameResult), byLastName) {
 		t.Errorf("search by contact last name: ids = %v, want [%d]", idsOf(byLastNameResult), byLastName)
 	}
@@ -207,11 +216,16 @@ func TestGetCustomers_Search_WithoutLegalIdentityView_OrgNumberMatchesNothing(t 
 	}
 }
 
-// TestGetCustomers_Search_WithoutContactsView_ContactEmailMatchesNothing is
-// the contact-search counterpart: search_contacts needs *both*
-// contacts-view and associations-view, so a caller holding only one of the
-// two — associations-view here, deliberately, not neither — still gets
-// nothing.
+// TestGetCustomers_Search_WithoutContactsView_ContactEmailMatchesNothing and
+// TestGetCustomers_Search_WithoutAssociationsView_ContactEmailMatchesNothing
+// are the contact-search counterpart to the legal-identity-view test above:
+// search_contacts needs *both* contacts-view and associations-view
+// (customers.go: `s.hasPermission(ctx, contactsView) && s.hasPermission(ctx,
+// associationsView)`), so a caller holding only one of the two must still
+// get nothing. One test alone, missing only contacts-view, would pass even
+// if the `&& associationsView` half of that check were dropped entirely —
+// proving the AND needs both halves exercised, one caller missing each
+// permission in turn, holding the other.
 func TestGetCustomers_Search_WithoutContactsView_ContactEmailMatchesNothing(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -227,8 +241,28 @@ func TestGetCustomers_Search_WithoutContactsView_ContactEmailMatchesNothing(t *t
 
 	viewer := h.SignIn(t, "customers:view", "customers:associations-view") // no contacts-view
 	gated := getList(t, viewer, "search="+url.QueryEscape("gina.gate@example.com"))
-	if len(gated.Data) != 0 {
-		t.Errorf("search without contacts-view: data = %+v, want empty", gated.Data)
+	if len(gated.Data) != 0 || gated.Pagination.TotalCount != 0 {
+		t.Errorf("search without contacts-view: data = %+v totalCount = %d, want empty/0", gated.Data, gated.Pagination.TotalCount)
+	}
+}
+
+func TestGetCustomers_Search_WithoutAssociationsView_ContactEmailMatchesNothing(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner := authenticatedClient(t, h)
+	customerID := insertCustomer(t, h, "Gated Association Co", "active")
+	contactID := insertContact(t, h, "Gio", "Gate", ptr("gio.gate@example.com"))
+	associate(t, h, customerID, contactID, nil)
+
+	setupCheck := getList(t, owner, "search="+url.QueryEscape("gio.gate@example.com"))
+	if !namesEqual(setupCheck.Data, "Gated Association Co") {
+		t.Fatalf("owner search (setup check): names = %v, want [Gated Association Co]", names(setupCheck.Data))
+	}
+
+	viewer := h.SignIn(t, "customers:view", "customers:contacts-view") // no associations-view
+	gated := getList(t, viewer, "search="+url.QueryEscape("gio.gate@example.com"))
+	if len(gated.Data) != 0 || gated.Pagination.TotalCount != 0 {
+		t.Errorf("search without associations-view: data = %+v totalCount = %d, want empty/0", gated.Data, gated.Pagination.TotalCount)
 	}
 }
 
@@ -236,6 +270,9 @@ func TestGetCustomers_Search_WithoutContactsView_ContactEmailMatchesNothing(t *t
 // likeReplacer's escaping (customers.go) still holds now that search
 // reaches more columns: each control row would match its sibling search
 // term if % or _ were left as SQL wildcards instead of literal characters.
+// The plain (name) path and the compact (customer number/legal id) path
+// build their patterns from the same likePattern call, but are separate
+// SQL clauses, so both get their own case here.
 func TestGetCustomers_Search_TreatsLikeMetacharactersLiterally(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -253,6 +290,31 @@ func TestGetCustomers_Search_TreatsLikeMetacharactersLiterally(t *testing.T) {
 	}
 	if !namesEqual(underscore.Data, "AB_CD Co") {
 		t.Errorf("search containing _: names = %v, want [AB_CD Co]", names(underscore.Data))
+	}
+
+	// The compact path: a legal id (never subject to Task 2's Norwegian
+	// mod-11 check outside country "no") containing a literal %, found only
+	// via search_compact once the search term's own internal space is
+	// stripped — "12% 34" has no substring in common with "12%34" on the
+	// plain (unstripped) path. The control's "12XY34" would match under an
+	// unescaped wildcard reading of the compact pattern ("12" + anything +
+	// "34") but must not match once % is escaped.
+	c.Do(http.MethodPost, "/api/v1/customers", map[string]any{
+		"name": "Compact Percent Co",
+		"identity": map[string]any{
+			"country": "se", "type": "business", "id": "12%34", "name": "Compact Percent AB", "source": "manual",
+		},
+	})
+	c.Do(http.MethodPost, "/api/v1/customers", map[string]any{
+		"name": "Compact Percent Control Co",
+		"identity": map[string]any{
+			"country": "se", "type": "business", "id": "12XY34", "name": "Compact Percent Control AB", "source": "manual",
+		},
+	})
+
+	compactPercent := getList(t, c, "search="+url.QueryEscape("12% 34"))
+	if !namesEqual(compactPercent.Data, "Compact Percent Co") {
+		t.Errorf("search containing %% via the compact path: names = %v, want [Compact Percent Co]", names(compactPercent.Data))
 	}
 }
 
