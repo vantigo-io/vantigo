@@ -9,6 +9,7 @@ import {
   customersQueryOptions,
   legalIdentityQueryOptions,
   NotFoundError,
+  updateContactInfo,
   updateCustomer,
   upsertLegalIdentity,
 } from "./customers";
@@ -112,6 +113,24 @@ describe("customerQueryOptions", () => {
     expect(result).toEqual(customer);
     expect(options.queryKey).toEqual(["customers", 1001]);
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/1001", { signal: undefined });
+  });
+
+  it("fills in the contact-info fields the server leaves out with null", async () => {
+    // `email`, `phone` and `website` are `omitempty` on the wire, so a
+    // customer that has only a phone number arrives with the other two
+    // missing rather than null.
+    const customer = {
+      id: 1001,
+      name: "Acme",
+      timelineSummary: { entryCount: 0, latestOccurredOn: null },
+      contactInfo: { phone: "+47 934 89 731" },
+    };
+    stubFetch(vi.fn().mockResolvedValue(jsonResponse(200, customer)));
+
+    const options = customerQueryOptions(1001);
+    const result = await (options.queryFn as (context: unknown) => Promise<unknown>)({ signal: undefined });
+
+    expect(result).toEqual({ ...customer, contactInfo: { email: null, phone: "+47 934 89 731", website: null } });
   });
 
   it("throws NotFoundError on 404", async () => {
@@ -287,5 +306,32 @@ describe("upsertLegalIdentity", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...identity, allowDuplicateIdentity: true }),
     });
+  });
+});
+
+describe("updateContactInfo", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("normalises the returned customer's contact info the same way the GET does", async () => {
+    // The 200 body is a full customer, omitted fields and all, and its
+    // revision is read straight off it — so it has to arrive in the same
+    // shape the cache already holds.
+    stubFetch(
+      vi.fn().mockResolvedValue(
+        jsonResponse(200, {
+          id: 1001,
+          name: "Acme",
+          revision: 4,
+          timelineSummary: { entryCount: 0, latestOccurredOn: null },
+          contactInfo: { email: "hello@acme.test" },
+        }),
+      ),
+    );
+
+    const result = await updateContactInfo(1001, { email: "hello@acme.test", phone: null, website: null, revision: 3 });
+
+    expect(result.contactInfo).toEqual({ email: "hello@acme.test", phone: null, website: null });
   });
 });

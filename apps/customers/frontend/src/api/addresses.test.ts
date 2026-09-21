@@ -44,6 +44,26 @@ describe("customerAddressesQueryOptions", () => {
     expect(result).toEqual([address]);
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/1001/addresses", expect.anything());
   });
+
+  it("fills in the optional fields the server leaves out with null", async () => {
+    // `label`, `line2`, `postalCode`, `city` and `region` are `omitempty` on
+    // the wire, so an address with only a line1 arrives this bare.
+    const bare = {
+      id: 1,
+      type: "invoice",
+      line1: "Storgata 1",
+      country: "no",
+      isPrimary: true,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    };
+    stubFetch(vi.fn().mockResolvedValue(jsonResponse(200, { data: [bare] })));
+
+    const options = customerAddressesQueryOptions(1001);
+    const result = await (options.queryFn as (context: unknown) => Promise<unknown>)({ signal: undefined });
+
+    expect(result).toEqual([{ ...address, postalCode: null, city: null }]);
+  });
 });
 
 describe("createCustomerAddress", () => {
