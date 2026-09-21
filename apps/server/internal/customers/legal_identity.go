@@ -117,6 +117,10 @@ func (s *server) PutCustomersByIdLegalIdentity(ctx context.Context, req gen.PutC
 	legalCountry, legalID, legalName, legalSource, legalType := legalColumns(after)
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
+		// ExpectedRevision is always nil here: the legal-identity sub-resource
+		// stays an unconditional write, not a revision-guarded one (customers
+		// foundation design D5) — every call bumps the row's revision by one,
+		// whether or not the identity itself changed.
 		if _, err := txq.UpdateCustomer(ctx, store.UpdateCustomerParams{
 			ID: req.Id, Name: existing.Name, Status: existing.Status,
 			LegalCountry: legalCountry, LegalID: legalID, LegalName: legalName, LegalSource: legalSource, LegalType: legalType,
@@ -169,6 +173,8 @@ func (s *server) DeleteCustomersByIdLegalIdentity(ctx context.Context, req gen.D
 	now := s.deps.Clock()
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
+		// ExpectedRevision is always nil here, the same unconditional write as
+		// the PUT above (customers foundation design D5).
 		if _, err := txq.UpdateCustomer(ctx, store.UpdateCustomerParams{
 			ID: req.Id, Name: existing.Name, Status: existing.Status,
 			LegalCountry: nil, LegalID: nil, LegalName: nil, LegalSource: nil, LegalType: nil,

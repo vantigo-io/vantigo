@@ -356,6 +356,11 @@ export interface components {
             type?: string | null;
         };
         CustomerTypeRequest: {
+            /**
+             * Format: int32
+             * @description The revision the caller read the customer at. Optional (customers foundation design D5) — omitted, the change applies regardless; present and stale, a 409.
+             */
+            revision?: number | null;
             /** @description 'business' or 'person', case-insensitive. */
             type: string;
         };
@@ -364,6 +369,25 @@ export interface components {
             customerNumber: number;
             /** Format: int32 */
             id: number;
+        };
+        CustomerConflictDuplicate: {
+            /** Format: int64 */
+            customerNumber: number;
+            /** Format: int32 */
+            id: number;
+            name: string;
+            status: string;
+        };
+        /** @description ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). code and duplicates are populated only by the duplicate-legal-identity conflict; a revision conflict carries neither. */
+        CustomerConflictProblem: {
+            code?: string | null;
+            detail?: string | null;
+            duplicates?: components["schemas"]["CustomerConflictDuplicate"][] | null;
+            instance?: string | null;
+            /** Format: int32 */
+            status?: number | null;
+            title?: string | null;
+            type?: string | null;
         };
         CustomerContactRequest: {
             email?: string | null;
@@ -492,6 +516,11 @@ export interface components {
             id: number;
             identity?: components["schemas"]["SafeCustomerIdentity"] | null;
             name: string;
+            /**
+             * Format: int32
+             * @description The customer row's optimistic-concurrency token (customers foundation design D5). Optional here only because the recorded exchange corpus predates it — always present.
+             */
+            revision?: number;
             status: string;
             timelineSummary: components["schemas"]["SafeTimelineSummary"];
             /** @description 'business' or 'person'. Always present; optional here only because the recorded exchange corpus predates it. */
@@ -572,6 +601,11 @@ export interface components {
         UpdateCustomerRequest: {
             identity?: components["schemas"]["LegalIdentityRequest"] | null;
             name: string;
+            /**
+             * Format: int32
+             * @description The revision the caller read the customer at (customers foundation design D5). Optional — omitted, the update applies regardless; present and stale, a 409.
+             */
+            revision?: number | null;
             status?: string | null;
         };
         PaginationMetadata: {
@@ -838,6 +872,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
+                };
             };
         };
     };
@@ -1325,6 +1368,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
+                };
             };
         };
     };

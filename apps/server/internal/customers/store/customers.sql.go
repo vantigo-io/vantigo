@@ -435,7 +435,7 @@ func (q *Queries) DirectoryCustomer(ctx context.Context, id int32) (DirectoryCus
 
 const getCustomer = `-- name: GetCustomer :one
 SELECT id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-       created_at, updated_at, type
+       created_at, updated_at, type, revision
 FROM customers.customers
 WHERE id = $1
 `
@@ -457,6 +457,7 @@ func (q *Queries) GetCustomer(ctx context.Context, id int32) (CustomersCustomer,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Type,
+		&i.Revision,
 	)
 	return i, err
 }
@@ -470,7 +471,7 @@ INSERT INTO customers.customers (
     $9::timestamptz, $9::timestamptz, $10
 )
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at, type
+          created_at, updated_at, type, revision
 `
 
 type InsertCustomerParams struct {
@@ -515,6 +516,7 @@ func (q *Queries) InsertCustomer(ctx context.Context, arg InsertCustomerParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Type,
+		&i.Revision,
 	)
 	return i, err
 }
@@ -586,7 +588,7 @@ func (q *Queries) InsertGeneratedTimelineEvent(ctx context.Context, arg InsertGe
 
 const listCustomers = `-- name: ListCustomers :many
 SELECT c.id, c.customer_number, c.name, c.status, c.type, c.legal_country, c.legal_id, c.legal_name, c.legal_source,
-       c.legal_type, c.created_at, c.updated_at,
+       c.legal_type, c.created_at, c.updated_at, c.revision,
        (SELECT count(*) FROM customers.customers_timeline_entries e
          WHERE e.customer_id = c.id AND e.state = 'active') AS entry_count,
        (SELECT max(e.occurred_on)::date FROM customers.customers_timeline_entries e
@@ -658,6 +660,7 @@ type ListCustomersRow struct {
 	LegalType        *string
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+	Revision         int32
 	EntryCount       int64
 	LatestOccurredOn pgtype.Date
 }
@@ -712,6 +715,7 @@ func (q *Queries) ListCustomers(ctx context.Context, arg ListCustomersParams) ([
 			&i.LegalType,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Revision,
 			&i.EntryCount,
 			&i.LatestOccurredOn,
 		); err != nil {
@@ -746,10 +750,10 @@ func (q *Queries) NextCounterValue(ctx context.Context, counterName string) (int
 
 const setCustomerStatus = `-- name: SetCustomerStatus :one
 UPDATE customers.customers
-SET status = $1, updated_at = $2::timestamptz
+SET status = $1, updated_at = $2::timestamptz, revision = revision + 1
 WHERE id = $3
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at, type
+          created_at, updated_at, type, revision
 `
 
 type SetCustomerStatusParams struct {
@@ -760,7 +764,10 @@ type SetCustomerStatusParams struct {
 
 // SetCustomerStatus is DeleteCustomerEndpoint's archive transition
 // (DeleteCustomerEndpoint.cs:31-38): status and updated_at only, called
-// once the handler has confirmed the row is not archived already.
+// once the handler has confirmed the row is not archived already. revision
+// advances by one, unconditionally (customers foundation design D5: archive
+// is idempotent by construction — the handler never calls this on an
+// already-archived row — so it needs no revision guard of its own).
 func (q *Queries) SetCustomerStatus(ctx context.Context, arg SetCustomerStatusParams) (CustomersCustomer, error) {
 	row := q.db.QueryRow(ctx, setCustomerStatus, arg.Status, arg.Now, arg.ID)
 	var i CustomersCustomer
@@ -777,6 +784,7 @@ func (q *Queries) SetCustomerStatus(ctx context.Context, arg SetCustomerStatusPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Type,
+		&i.Revision,
 	)
 	return i, err
 }
@@ -789,28 +797,34 @@ SET type = $1,
     legal_name = $4,
     legal_source = $5,
     legal_type = $6,
-    updated_at = $7::timestamptz
+    updated_at = $7::timestamptz,
+    revision = revision + 1
 WHERE id = $8
+  AND ($9::int IS NULL OR revision = $9::int)
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at, type
+          created_at, updated_at, type, revision
 `
 
 type SetCustomerTypeParams struct {
-	Type         string
-	LegalCountry *string
-	LegalID      *string
-	LegalName    *string
-	LegalSource  *string
-	LegalType    *string
-	UpdatedAt    time.Time
-	ID           int32
+	Type             string
+	LegalCountry     *string
+	LegalID          *string
+	LegalName        *string
+	LegalSource      *string
+	LegalType        *string
+	UpdatedAt        time.Time
+	ID               int32
+	ExpectedRevision *int32
 }
 
 // SetCustomerType is PUT /customers/{id}/type's write: the customer type
 // and, because a legal identity of the old type makes no sense on the new
 // one, the five legal columns the handler passes (all NULL when it clears
 // the identity, the row's own values otherwise). updated_at is the
-// caller's, as for UpdateCustomer.
+// caller's, as for UpdateCustomer. revision advances by one on every
+// execution, guarded the same way UpdateCustomer's is (customers
+// foundation design D5) — the handler skips calling this entirely when the
+// requested type is already the customer's own.
 func (q *Queries) SetCustomerType(ctx context.Context, arg SetCustomerTypeParams) (CustomersCustomer, error) {
 	row := q.db.QueryRow(ctx, setCustomerType,
 		arg.Type,
@@ -821,6 +835,7 @@ func (q *Queries) SetCustomerType(ctx context.Context, arg SetCustomerTypeParams
 		arg.LegalType,
 		arg.UpdatedAt,
 		arg.ID,
+		arg.ExpectedRevision,
 	)
 	var i CustomersCustomer
 	err := row.Scan(
@@ -836,6 +851,7 @@ func (q *Queries) SetCustomerType(ctx context.Context, arg SetCustomerTypeParams
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Type,
+		&i.Revision,
 	)
 	return i, err
 }
@@ -849,29 +865,38 @@ SET name = $1,
     legal_name = $5,
     legal_source = $6,
     legal_type = $7,
-    updated_at = $8::timestamptz
+    updated_at = $8::timestamptz,
+    revision = revision + 1
 WHERE id = $9
+  AND ($10::int IS NULL OR revision = $10::int)
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at, type
+          created_at, updated_at, type, revision
 `
 
 type UpdateCustomerParams struct {
-	Name         string
-	Status       string
-	LegalCountry *string
-	LegalID      *string
-	LegalName    *string
-	LegalSource  *string
-	LegalType    *string
-	UpdatedAt    time.Time
-	ID           int32
+	Name             string
+	Status           string
+	LegalCountry     *string
+	LegalID          *string
+	LegalName        *string
+	LegalSource      *string
+	LegalType        *string
+	UpdatedAt        time.Time
+	ID               int32
+	ExpectedRevision *int32
 }
 
 // UpdateCustomer applies PUT /customers/{id}'s validated fields
 // (UpdateCustomerEndpoint.cs:88-109): name, status, and the legal identity
 // (all five columns together, or all five NULL). updated_at is whatever the
 // caller computes it should be — the row's own timestamp when nothing
-// changed, now when it did — never a database default.
+// changed, now when it did — never a database default. revision always
+// advances by one on every execution of this statement (customers
+// foundation design D5): the caller (customers.go, legal_identity.go)
+// decides in Go whether to run it at all, exactly as it already decides
+// updated_at. sqlc.narg(expected_revision) is the optimistic-concurrency
+// guard PUT /customers/{id} supplies; the legal-identity writes leave it
+// NULL, an unconditional write that always succeeds while the row exists.
 func (q *Queries) UpdateCustomer(ctx context.Context, arg UpdateCustomerParams) (CustomersCustomer, error) {
 	row := q.db.QueryRow(ctx, updateCustomer,
 		arg.Name,
@@ -883,6 +908,7 @@ func (q *Queries) UpdateCustomer(ctx context.Context, arg UpdateCustomerParams) 
 		arg.LegalType,
 		arg.UpdatedAt,
 		arg.ID,
+		arg.ExpectedRevision,
 	)
 	var i CustomersCustomer
 	err := row.Scan(
@@ -898,6 +924,7 @@ func (q *Queries) UpdateCustomer(ctx context.Context, arg UpdateCustomerParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Type,
+		&i.Revision,
 	)
 	return i, err
 }

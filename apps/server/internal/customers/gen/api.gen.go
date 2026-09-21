@@ -77,6 +77,25 @@ type CreateCustomerResponse struct {
 	Id             int32 `json:"id"`
 }
 
+// CustomerConflictDuplicate defines model for CustomerConflictDuplicate.
+type CustomerConflictDuplicate struct {
+	CustomerNumber int64  `json:"customerNumber"`
+	Id             int32  `json:"id"`
+	Name           string `json:"name"`
+	Status         string `json:"status"`
+}
+
+// CustomerConflictProblem ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). code and duplicates are populated only by the duplicate-legal-identity conflict; a revision conflict carries neither.
+type CustomerConflictProblem struct {
+	Code       *string                      `json:"code,omitempty"`
+	Detail     *string                      `json:"detail,omitempty"`
+	Duplicates *[]CustomerConflictDuplicate `json:"duplicates,omitempty"`
+	Instance   *string                      `json:"instance,omitempty"`
+	Status     *int32                       `json:"status,omitempty"`
+	Title      *string                      `json:"title,omitempty"`
+	Type       *string                      `json:"type,omitempty"`
+}
+
 // CustomerContactRequest defines model for CustomerContactRequest.
 type CustomerContactRequest struct {
 	Email *string `json:"email,omitempty"`
@@ -128,6 +147,9 @@ type CustomerStatsSummaryResponse struct {
 
 // CustomerTypeRequest defines model for CustomerTypeRequest.
 type CustomerTypeRequest struct {
+	// Revision The revision the caller read the customer at. Optional (customers foundation design D5) — omitted, the change applies regardless; present and stale, a 409.
+	Revision *int32 `json:"revision,omitempty"`
+
 	// Type 'business' or 'person', case-insensitive.
 	Type string `json:"type"`
 }
@@ -214,13 +236,16 @@ type SafeCustomerIdentity struct {
 
 // SafeCustomerResponse defines model for SafeCustomerResponse.
 type SafeCustomerResponse struct {
-	CreatedAt       time.Time             `json:"createdAt"`
-	CustomerNumber  int64                 `json:"customerNumber"`
-	Id              int32                 `json:"id"`
-	Identity        *SafeCustomerIdentity `json:"identity,omitempty"`
-	Name            string                `json:"name"`
-	Status          string                `json:"status"`
-	TimelineSummary SafeTimelineSummary   `json:"timelineSummary"`
+	CreatedAt      time.Time             `json:"createdAt"`
+	CustomerNumber int64                 `json:"customerNumber"`
+	Id             int32                 `json:"id"`
+	Identity       *SafeCustomerIdentity `json:"identity,omitempty"`
+	Name           string                `json:"name"`
+
+	// Revision The customer row's optimistic-concurrency token (customers foundation design D5). Optional here only because the recorded exchange corpus predates it — always present.
+	Revision        *int32              `json:"revision,omitempty"`
+	Status          string              `json:"status"`
+	TimelineSummary SafeTimelineSummary `json:"timelineSummary"`
 
 	// Type 'business' or 'person'. Always present; optional here only because the recorded exchange corpus predates it.
 	Type      *string   `json:"type,omitempty"`
@@ -298,7 +323,10 @@ type TimelineRevisionResponse struct {
 type UpdateCustomerRequest struct {
 	Identity *LegalIdentityRequest `json:"identity,omitempty"`
 	Name     string                `json:"name"`
-	Status   *string               `json:"status,omitempty"`
+
+	// Revision The revision the caller read the customer at (customers foundation design D5). Optional — omitted, the update applies regardless; present and stale, a 409.
+	Revision *int32  `json:"revision,omitempty"`
+	Status   *string `json:"status,omitempty"`
 }
 
 // GetCustomersParams defines parameters for GetCustomers.
@@ -2772,6 +2800,20 @@ func (response PutCustomersById404Response) VisitPutCustomersByIdResponse(w http
 	return nil
 }
 
+type PutCustomersById409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PutCustomersById409ApplicationProblemPlusJSONResponse) VisitPutCustomersByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCustomersByIdContactsRequestObject struct {
 	Id int32 `json:"id"`
 }
@@ -3726,6 +3768,20 @@ type PutCustomersByIdType404Response struct {
 func (response PutCustomersByIdType404Response) VisitPutCustomersByIdTypeResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type PutCustomersByIdType409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PutCustomersByIdType409ApplicationProblemPlusJSONResponse) VisitPutCustomersByIdTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 // StrictServerInterface represents all server handlers.

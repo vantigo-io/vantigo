@@ -28,7 +28,13 @@ import (
 // the same transaction, recorded as the customer.updated "legal identity
 // removed" event PutCustomersById would have written, next to the
 // customer.type_changed event itself. Resubmitting the current type is a
-// no-op: no write, no event, updated_at untouched.
+// no-op: no write, no event, updated_at and revision untouched.
+//
+// Ordering (customers foundation design D5's controller ruling): (1) type
+// validation, 400; (2) the customer lookup, 404; (3) a supplied revision
+// that disagrees with the row just read, 409 — ahead of the no-op check
+// below, so resubmitting the current type with a stale revision is still a
+// conflict, not a free pass; (4) the write, guarded the same way.
 func (s *server) PutCustomersByIdType(ctx context.Context, req gen.PutCustomersByIdTypeRequestObject) (gen.PutCustomersByIdTypeResponseObject, error) {
 	body := gen.CustomerTypeRequest{}
 	if req.Body != nil {
@@ -47,6 +53,10 @@ func (s *server) PutCustomersByIdType(ctx context.Context, req gen.PutCustomersB
 	}
 	if err != nil {
 		return nil, fmt.Errorf("customers: get customer: %w", err)
+	}
+
+	if body.Revision != nil && *body.Revision != existing.Revision {
+		return gen.PutCustomersByIdType409ApplicationProblemPlusJSONResponse(customerRevisionConflict(*body.Revision, existing.Revision)), nil
 	}
 
 	includeIdentity := s.hasPermission(ctx, legalIdentityView)
@@ -81,7 +91,7 @@ func (s *server) PutCustomersByIdType(ctx context.Context, req gen.PutCustomersB
 		updated, err = txq.SetCustomerType(ctx, store.SetCustomerTypeParams{
 			ID: req.Id, Type: customerType,
 			LegalCountry: legalCountry, LegalID: legalID, LegalName: legalName, LegalSource: legalSource, LegalType: legalType,
-			UpdatedAt: now,
+			UpdatedAt: now, ExpectedRevision: body.Revision,
 		})
 		if err != nil {
 			return err
@@ -94,7 +104,20 @@ func (s *server) PutCustomersByIdType(ctx context.Context, req gen.PutCustomersB
 		}
 		return nil
 	})
-	if err != nil {
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		// Same race as PutCustomersById's guarded write (customers
+		// foundation design D5): a concurrent writer moved the revision
+		// between our read above and this write.
+		fresh, ferr := q.GetCustomer(ctx, req.Id)
+		if errors.Is(ferr, pgx.ErrNoRows) {
+			return gen.PutCustomersByIdType404Response{}, nil
+		}
+		if ferr != nil {
+			return nil, fmt.Errorf("customers: re-read customer after conflict: %w", ferr)
+		}
+		return gen.PutCustomersByIdType409ApplicationProblemPlusJSONResponse(customerRevisionConflict(existing.Revision, fresh.Revision)), nil
+	case err != nil:
 		return nil, fmt.Errorf("customers: change customer type: %w", err)
 	}
 
