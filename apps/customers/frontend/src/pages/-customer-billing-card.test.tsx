@@ -1,7 +1,7 @@
 import { MantineProvider } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Suspense } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -42,13 +42,33 @@ const emptyProfile = {
   warnings: [],
 };
 
+/**
+ * What the server really sends for a customer that has decided nothing: the
+ * ten optional fields are `omitempty` on the wire (see
+ * `apps/server/internal/customers/gen/api.gen.go`), so they are absent, not
+ * null. Every other fixture here spells the nulls out, which the wire never
+ * does.
+ */
+const omittedProfile = { revision: 3, warnings: ["no_invoice_address"] };
+
+/** The last PUT to the billing-profile endpoint fetch saw — never "the last fetch". */
+const lastBillingPut = (fetchMock: ReturnType<typeof vi.fn>) =>
+  fetchMock.mock.calls
+    .filter(
+      ([url, init]) => String(url).endsWith("/billing-profile") && (init as RequestInit | undefined)?.method === "PUT",
+    )
+    .at(-1);
+
 const renderCard = (
   profile: Record<string, unknown>,
   customerOverrides: Record<string, unknown> = {},
   canManageBilling = true,
 ) => {
-  const fetchMock = vi.fn().mockImplementation((url: RequestInfo | URL) => {
+  const fetchMock = vi.fn().mockImplementation((url: RequestInfo | URL, init?: RequestInit) => {
     const path = String(url);
+    if (path === "/api/v1/customers/1001/billing-profile" && init?.method === "PUT") {
+      return Promise.resolve(jsonResponse(200, { ...(profile as object), revision: 4 }));
+    }
     if (path === "/api/v1/customers/1001/billing-profile") return Promise.resolve(jsonResponse(200, profile));
     return Promise.resolve(new Response(null, { status: 404 }));
   });
@@ -85,6 +105,52 @@ describe("CustomerBillingCard", () => {
     await screen.findByText("Billing");
     // Ten billing fields, all null in emptyProfile.
     expect(screen.getAllByText("Not set — the invoicing default applies")).toHaveLength(10);
+  });
+
+  it("reads a profile whose unset fields the server left out entirely", async () => {
+    renderCard(omittedProfile);
+    await screen.findByText("Billing");
+
+    expect(screen.getAllByText("Not set — the invoicing default applies")).toHaveLength(10);
+    // "Payment terms" would otherwise render the raw catalog key: i18next
+    // cannot pluralise a count of undefined.
+    expect(screen.queryByText(/paymentTermsDaysValue/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText("There is no invoice address — add one so invoices have somewhere to be sent."),
+    ).toBeInTheDocument();
+  });
+
+  it("still resolves the recipient hints when the fields behind them were left out", async () => {
+    renderCard(omittedProfile, { contactInfo: { email: "hello@acme.test" } });
+
+    expect(await screen.findByText("Invoices go to hello@acme.test")).toBeInTheDocument();
+    expect(screen.getByText("Reminders go to hello@acme.test")).toBeInTheDocument();
+  });
+
+  it("keeps the modal's selects controlled, so an untouched one is saved as an explicit null", async () => {
+    // A field the server left out reaches the modal as null, not undefined —
+    // `JSON.stringify` drops an undefined value, which would turn the full
+    // replace PUT into a partial one.
+    const fetchMock = renderCard(omittedProfile);
+    await userEvent.click(await screen.findByLabelText("Edit billing profile"));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(lastBillingPut(fetchMock)).toBeTruthy());
+    const [, init] = lastBillingPut(fetchMock) as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({
+      invoiceEmail: null,
+      reminderEmail: null,
+      paymentTermsDays: null,
+      currency: null,
+      language: null,
+      invoiceDelivery: null,
+      reminderDelivery: null,
+      peppolId: null,
+      gln: null,
+      buyerReference: null,
+      revision: 3,
+    });
   });
 
   it("renders each set field through its own human label", async () => {

@@ -102,7 +102,8 @@ async function fetchCustomers(
   if (params.sortDirection) searchParams.set("sortDirection", params.sortDirection);
 
   const query = searchParams.size > 0 ? `?${searchParams}` : "";
-  return request(`/api/v1/customers${query}`, { signal });
+  const response = await request<PaginatedResponse<RawCustomerResponse>>(`/api/v1/customers${query}`, { signal });
+  return { ...response, data: response.data.map(normalizeCustomer) };
 }
 
 export const customersQueryOptions = (params: CustomersQueryParams) =>
@@ -146,10 +147,34 @@ export const customerStatsQueryOptions = () =>
     queryFn: ({ signal }) => request<CustomerStatsResponse>("/api/v1/customers/stats", { signal }),
   });
 
+/**
+ * A customer as it actually arrives: `contactInfo`'s three fields are
+ * `omitempty` on the wire (see `apps/server/internal/customers/gen/api.gen.go`),
+ * so a customer with only a phone number comes back without `email` and
+ * `website` rather than with nulls. Absent and null mean the same thing
+ * (design D2), so the boundary maps them to the one shape the rest of the
+ * package reads — the same treatment addresses and the billing profile get.
+ * `contactInfo` itself stays optional: it is genuinely absent on the
+ * recorded responses that predate design D2.
+ */
+type RawCustomerResponse = Omit<CustomerResponse, "contactInfo"> & { contactInfo?: Partial<CustomerContactInfo> };
+
+const normalizeCustomer = (raw: RawCustomerResponse): CustomerResponse =>
+  raw.contactInfo
+    ? {
+        ...raw,
+        contactInfo: {
+          email: raw.contactInfo.email ?? null,
+          phone: raw.contactInfo.phone ?? null,
+          website: raw.contactInfo.website ?? null,
+        },
+      }
+    : (raw as CustomerResponse);
+
 /** The requested resource does not exist (HTTP 404). */
 async function fetchCustomer(id: number, signal?: AbortSignal): Promise<CustomerResponse> {
   try {
-    return await request(`/api/v1/customers/${id}`, { signal });
+    return normalizeCustomer(await request<RawCustomerResponse>(`/api/v1/customers/${id}`, { signal }));
   } catch (error) {
     if ((error as { status?: number }).status === 404) throw new NotFoundError(`Customer ${id} does not exist`);
     throw error;
@@ -240,11 +265,13 @@ export async function createCustomer(input: CreateCustomerInput): Promise<{ id: 
 }
 
 export async function updateCustomer(id: number, input: CustomerInput): Promise<CustomerResponse> {
-  return request<CustomerResponse>(`/api/v1/customers/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
+  return normalizeCustomer(
+    await request<RawCustomerResponse>(`/api/v1/customers/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }),
+  );
 }
 
 /**
@@ -252,11 +279,13 @@ export async function updateCustomer(id: number, input: CustomerInput): Promise<
  * part of updateCustomer: a legal identity of the old type is removed with it.
  */
 export async function changeCustomerType(id: number, type: CustomerType, revision?: number): Promise<CustomerResponse> {
-  return request<CustomerResponse>(`/api/v1/customers/${id}/type`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ type, revision }),
-  });
+  return normalizeCustomer(
+    await request<RawCustomerResponse>(`/api/v1/customers/${id}/type`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, revision }),
+    }),
+  );
 }
 
 /** Archives a customer (design D7). Idempotent, like the endpoint itself. */
@@ -313,9 +342,11 @@ export interface ContactInfoInput {
  * contact info) so a caller can read the fresh revision straight off the
  * response, the way `updateCustomer` does.
  */
-export const updateContactInfo = (id: number, input: ContactInfoInput) =>
-  request<CustomerResponse>(`/api/v1/customers/${id}/contact-info`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
+export const updateContactInfo = async (id: number, input: ContactInfoInput) =>
+  normalizeCustomer(
+    await request<RawCustomerResponse>(`/api/v1/customers/${id}/contact-info`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }),
+  );

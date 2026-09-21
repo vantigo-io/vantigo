@@ -45,9 +45,31 @@ export interface CustomerAddressInput {
   isPrimary: boolean;
 }
 
+/**
+ * An address as it actually arrives: `label`, `line2`, `postalCode`, `city`
+ * and `region` are `omitempty` on the wire (see
+ * `apps/server/internal/customers/gen/api.gen.go`), so an address with only a
+ * line1 comes back without them rather than with nulls. Absent and null mean
+ * the same thing, so the boundary maps them to the one shape the rest of the
+ * package reads — the same treatment the billing profile gets.
+ */
+type RawCustomerAddress = Omit<CustomerAddress, "label" | "line2" | "postalCode" | "city" | "region"> &
+  Partial<Pick<CustomerAddress, "label" | "line2" | "postalCode" | "city" | "region">>;
+
+const normalizeAddress = (raw: RawCustomerAddress): CustomerAddress => ({
+  ...raw,
+  label: raw.label ?? null,
+  line2: raw.line2 ?? null,
+  postalCode: raw.postalCode ?? null,
+  city: raw.city ?? null,
+  region: raw.region ?? null,
+});
+
 async function fetchCustomerAddresses(customerId: number, signal?: AbortSignal): Promise<CustomerAddress[]> {
-  const response = await request<{ data: CustomerAddress[] }>(`/api/v1/customers/${customerId}/addresses`, { signal });
-  return response.data;
+  const response = await request<{ data: RawCustomerAddress[] }>(`/api/v1/customers/${customerId}/addresses`, {
+    signal,
+  });
+  return response.data.map(normalizeAddress);
 }
 
 export const customerAddressesQueryOptions = (customerId: number) =>
@@ -56,19 +78,23 @@ export const customerAddressesQueryOptions = (customerId: number) =>
     queryFn: ({ signal }) => fetchCustomerAddresses(customerId, signal),
   });
 
-export const createCustomerAddress = (customerId: number, input: CustomerAddressInput) =>
-  request<CustomerAddress>(`/api/v1/customers/${customerId}/addresses`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
+export const createCustomerAddress = async (customerId: number, input: CustomerAddressInput) =>
+  normalizeAddress(
+    await request<RawCustomerAddress>(`/api/v1/customers/${customerId}/addresses`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }),
+  );
 
-export const updateCustomerAddress = (customerId: number, addressId: number, input: CustomerAddressInput) =>
-  request<CustomerAddress>(`/api/v1/customers/${customerId}/addresses/${addressId}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
+export const updateCustomerAddress = async (customerId: number, addressId: number, input: CustomerAddressInput) =>
+  normalizeAddress(
+    await request<RawCustomerAddress>(`/api/v1/customers/${customerId}/addresses/${addressId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }),
+  );
 
 /**
  * Address writes carry no revision of their own (design D3: they do not

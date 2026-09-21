@@ -135,23 +135,11 @@ describe("customer contacts card", () => {
   };
 
   // The Overview tab's billing card (design D6) always GETs the billing
-  // profile, which answers 200 with every field null for a customer that
-  // has none (design D4) — every route test below needs this stubbed the
-  // same way it stubs the customer's own GET.
-  const emptyBillingProfile = {
-    invoiceEmail: null,
-    reminderEmail: null,
-    paymentTermsDays: null,
-    currency: null,
-    language: null,
-    invoiceDelivery: null,
-    reminderDelivery: null,
-    peppolId: null,
-    gln: null,
-    buyerReference: null,
-    revision: 1,
-    warnings: [],
-  };
+  // profile, which answers 200 for every customer (design D4) — with the
+  // ten optional fields left out entirely when nothing is set, as the wire
+  // really encodes them. Every route test below needs this stubbed the same
+  // way it stubs the customer's own GET.
+  const emptyBillingProfile = { revision: 1, warnings: [] };
 
   const stubFetch = (handlers: Record<string, (init?: RequestInit) => Response | Promise<Response>>) =>
     stubTestFetch((url: RequestInfo | URL, init?: RequestInit) => {

@@ -44,6 +44,30 @@ describe("customerBillingProfileQueryOptions", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/1001/billing-profile", expect.anything());
   });
 
+  it("fills in every field the server leaves out with null", async () => {
+    // The server encodes an unset optional field by omitting it
+    // (`omitempty` on every nullable field of `CustomerBillingProfile`), so
+    // a customer that has decided nothing answers exactly this much.
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { revision: 3, warnings: ["no_invoice_address"] }));
+    stubFetch(fetchMock);
+
+    const options = customerBillingProfileQueryOptions(1001);
+    const result = await (options.queryFn as (context: unknown) => Promise<unknown>)({ signal: undefined });
+
+    expect(result).toEqual({ ...profile, warnings: ["no_invoice_address"] });
+  });
+
+  it("treats an absent warnings list as no warnings", async () => {
+    // Go marshals a nil slice as JSON null, so `warnings` can arrive null
+    // even though the contract lists it as always present.
+    stubFetch(vi.fn().mockResolvedValue(jsonResponse(200, { revision: 3, warnings: null })));
+
+    const options = customerBillingProfileQueryOptions(1001);
+    const result = await (options.queryFn as (context: unknown) => Promise<unknown>)({ signal: undefined });
+
+    expect(result).toEqual(profile);
+  });
+
   it('is covered by an invalidateQueries({queryKey: ["customers"]}) prefix — the controller ruling contact info and the customer PUT rely on', () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(customerBillingProfileQueryOptions(1001).queryKey, profile);
@@ -97,6 +121,18 @@ describe("updateBillingProfile", () => {
     buyerReference: null,
     revision: 3,
   };
+
+  it("normalises the saved profile the same way the GET does", async () => {
+    // The PUT's 200 body is the same schema, omitted fields and all — and it
+    // is written straight into the card's query cache, so it has to arrive
+    // in the same full shape or the card would read undefined where it
+    // expects null.
+    stubFetch(vi.fn().mockResolvedValue(jsonResponse(200, { revision: 4, warnings: [] })));
+
+    const result = await updateBillingProfile(1001, emptyInput);
+
+    expect(result).toEqual({ ...profile, revision: 4 });
+  });
 
   it("throws ApiValidationError keyed by field on a 400", async () => {
     stubFetch(
