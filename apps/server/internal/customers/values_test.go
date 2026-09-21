@@ -699,3 +699,100 @@ func TestIdentityTypeMismatch(t *testing.T) {
 		t.Errorf("identityTypeMismatch(person, business) = %q, want %q", got, want)
 	}
 }
+
+// TestValidateEmail_ValidValuesSucceedWithoutLowercasing pins D2's departure
+// from validateEmailAddress: the local part's casing is kept as given, only
+// whitespace is trimmed.
+func TestValidateEmail_ValidValuesSucceedWithoutLowercasing(t *testing.T) {
+	cases := map[string]string{
+		"anders@vantigo.io":   "anders@vantigo.io",
+		"  Anders@Vantigo.IO": "Anders@Vantigo.IO",
+		"a@b.co":              "a@b.co",
+	}
+	for v, want := range cases {
+		if got, err := validateEmail(v); err != "" || got != want {
+			t.Errorf("validateEmail(%q) = %q, %q, want %q, no error", v, got, err, want)
+		}
+	}
+}
+
+func TestValidateEmail_InvalidShapeFails(t *testing.T) {
+	for _, v := range []string{"no-at-sign", "@vantigo.io", "anders@", "anders@vantigo", "anders@@vantigo.io"} {
+		want := fmt.Sprintf("An email address must look like name@example.com, but was '%s'", v)
+		if _, err := validateEmail(v); err != want {
+			t.Errorf("validateEmail(%q) = error %q, want %q", v, err, want)
+		}
+	}
+}
+
+func TestValidateEmail_TooLongIsInvalid(t *testing.T) {
+	v := strings.Repeat("a", 251) + "@a.io" // 256 characters
+	want := "An email address cannot be longer than 255 characters, the given value was 256 characters"
+	if _, err := validateEmail(v); err != want {
+		t.Errorf("validateEmail(256 chars) = error %q, want %q", err, want)
+	}
+}
+
+func TestValidatePhone_CommonFormatsSucceed(t *testing.T) {
+	for _, v := range []string{"+47 934 89 731", "(555) 123-4567", "22864400"} {
+		if got, err := validatePhone(v); err != "" || got != v {
+			t.Errorf("validatePhone(%q) = %q, %q, want %q, no error", v, got, err, v)
+		}
+	}
+}
+
+// TestValidatePhone_FewerThanFiveDigitsFails pins D2's own floor: at least
+// five digits, unlike validatePhoneNumber's "at least one".
+func TestValidatePhone_FewerThanFiveDigitsFails(t *testing.T) {
+	for _, v := range []string{"", "   ", "1234", "+47 12"} {
+		want := fmt.Sprintf("A phone number may only contain digits, spaces and + - ( ), and needs at least five digits, but was '%s'", v)
+		if _, err := validatePhone(v); err != want {
+			t.Errorf("validatePhone(%q) = error %q, want %q", v, err, want)
+		}
+	}
+}
+
+// TestValidatePhone_DisallowedCharacterFails pins that '.' — allowed by
+// validatePhoneNumber — is not allowed here (D2's own character set has no
+// dot).
+func TestValidatePhone_DisallowedCharacterFails(t *testing.T) {
+	for _, v := range []string{"22.86.44.00", "not a number", "+47 934 89 731 ext#2"} {
+		want := fmt.Sprintf("A phone number may only contain digits, spaces and + - ( ), and needs at least five digits, but was '%s'", v)
+		if _, err := validatePhone(v); err != want {
+			t.Errorf("validatePhone(%q) = error %q, want %q", v, err, want)
+		}
+	}
+}
+
+func TestValidatePhone_TooLongIsInvalid(t *testing.T) {
+	v := strings.Repeat("1", 31)
+	want := "A phone number cannot be longer than 30 characters, the given value was 31 characters"
+	if _, err := validatePhone(v); err != want {
+		t.Errorf("validatePhone(31 chars) = error %q, want %q", err, want)
+	}
+}
+
+func TestValidateWebsite_ValidAbsoluteURLSucceeds(t *testing.T) {
+	for _, v := range []string{"https://vantigo.io", "http://example.com/path?x=1"} {
+		if got, err := validateWebsite(v); err != "" || got != v {
+			t.Errorf("validateWebsite(%q) = %q, %q, want %q, no error", v, got, err, v)
+		}
+	}
+}
+
+func TestValidateWebsite_NotAnAbsoluteHttpUrlFails(t *testing.T) {
+	for _, v := range []string{"vantigo.io", "ftp://vantigo.io", "https://", "not a url"} {
+		want := fmt.Sprintf("A website must be an absolute http or https URL, but was '%s'", v)
+		if _, err := validateWebsite(v); err != want {
+			t.Errorf("validateWebsite(%q) = error %q, want %q", v, err, want)
+		}
+	}
+}
+
+func TestValidateWebsite_TooLongIsInvalid(t *testing.T) {
+	v := "https://" + strings.Repeat("a", 2038) + ".io" // 8 + 2038 + 3 = 2049 characters
+	want := "A website cannot be longer than 2048 characters, the given value was 2049 characters"
+	if _, err := validateWebsite(v); err != want {
+		t.Errorf("validateWebsite(2049 chars) = error %q, want %q", err, want)
+	}
+}

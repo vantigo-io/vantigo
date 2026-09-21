@@ -34,7 +34,9 @@ import (
 // SafeCustomerResponse's schema marks it optional (corpus compatibility,
 // customers foundation design D5): every response this module's own
 // handlers build always sets it, the same convention customer_type_test.go's
-// typedCustomerJSON.Type already follows for that field.
+// typedCustomerJSON.Type already follows for that field. ContactInfo
+// (invoice-ready customer design D2) decodes as a plain struct, not a
+// pointer either, for the same reason: the server always sends it now.
 type customerJSON struct {
 	Id             int32             `json:"id"`
 	CustomerNumber int64             `json:"customerNumber"`
@@ -44,6 +46,15 @@ type customerJSON struct {
 	UpdatedAt      time.Time         `json:"updatedAt"`
 	Revision       int32             `json:"revision"`
 	Identity       *legalIdentityRef `json:"identity"`
+	ContactInfo    contactInfoJSON   `json:"contactInfo"`
+}
+
+// contactInfoJSON decodes CustomerContactInfo: each of the three fields
+// nullable (invoice-ready customer design D2).
+type contactInfoJSON struct {
+	Email   *string `json:"email"`
+	Phone   *string `json:"phone"`
+	Website *string `json:"website"`
 }
 
 type legalIdentityRef struct {

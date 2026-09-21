@@ -39,6 +39,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/customers/{id}/contact-info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace a customer's contact info */
+        put: operations["putCustomersByIdContactInfo"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/customers/{id}/contacts": {
         parameters: {
             query?: never;
@@ -351,6 +368,8 @@ export interface components {
         CreateCustomerRequest: {
             /** @description When true, skips the duplicate-legal-identity conflict check entirely (customers foundation design D6) — two departments of one company kept as separate customers is legitimate. Absent or false, an identity another customer already has is a 409. */
             allowDuplicateIdentity?: boolean | null;
+            /** @description When present, the customer is created with its own contact details already set (invoice-ready customer design D2) — the same validation PUT /customers/{id}/contact-info applies, nested under contactInfo.<field>. */
+            contactInfo?: components["schemas"]["CustomerContactInfo"] | null;
             identity?: components["schemas"]["LegalIdentityRequest"] | null;
             name: string;
             status?: string | null;
@@ -390,6 +409,12 @@ export interface components {
             status?: number | null;
             title?: string | null;
             type?: string | null;
+        };
+        /** @description A customer's own contact details (invoice-ready customer design D2) — what reaches the customer itself, not one of its contacts. Each field is nullable; a blank value is stored as null. */
+        CustomerContactInfo: {
+            email?: string | null;
+            phone?: string | null;
+            website?: string | null;
         };
         CustomerContactRequest: {
             email?: string | null;
@@ -496,6 +521,17 @@ export interface components {
             source: string;
             type: string;
         };
+        /** @description PUT /customers/{id}/contact-info's own request body (invoice-ready customer design D1): a full replace of the customer's contact info — every field present or null, absent and null both meaning the field is cleared. revision is optional, as PUT /customers/{id}'s own is. */
+        PutCustomerContactInfoRequest: {
+            email?: string | null;
+            phone?: string | null;
+            /**
+             * Format: int32
+             * @description The revision the caller read the customer at (customers foundation design D5). Optional — omitted, the change applies regardless; present and stale, a 409.
+             */
+            revision?: number | null;
+            website?: string | null;
+        };
         /** @description PUT /customers/{id}/legal-identity's own request body — not LegalIdentityRequest plus an allOf, deliberately: LegalIdentityRequest is also nested (via allOf) as CreateCustomerRequest.identity/UpdateCustomerRequest.identity, and allowDuplicateIdentity belongs to this operation's body alone. Composing it onto LegalIdentityRequest would have surfaced it a second time, nested and inert, under identity on those two requests — confusing a caller into believing it took effect there. The five identity fields are repeated here rather than shared, so this stays a clean, flat generated type. */
         PutLegalIdentityRequest: {
             /** @description When true, skips the duplicate-legal-identity conflict check entirely (customers foundation design D6) — two departments of one company kept as separate customers is legitimate. Absent or false, an identity another customer already has is a 409. Only consulted when it differs from the identity already on file. */
@@ -520,6 +556,8 @@ export interface components {
             type: string;
         };
         SafeCustomerResponse: {
+            /** @description A customer's own contact details (invoice-ready customer design D2). Always present; optional here only because the recorded exchange corpus predates it. */
+            contactInfo?: components["schemas"]["CustomerContactInfo"];
             /** Format: date-time */
             createdAt: string;
             /** Format: int64 */
@@ -949,6 +987,75 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    putCustomersByIdContactInfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutCustomerContactInfoRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SafeCustomerResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
+                };
             };
         };
     };

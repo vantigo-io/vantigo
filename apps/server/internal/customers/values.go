@@ -2,6 +2,7 @@ package customers
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 	"unicode"
 	"unicode/utf16"
@@ -316,6 +317,82 @@ func validateContactRole(raw string) (string, string) {
 		return "", fmt.Sprintf("A role cannot be longer than 255 characters, the given value was %d characters", n)
 	}
 	return strings.TrimSpace(raw), ""
+}
+
+// validateEmail, validatePhone and validateWebsite are the invoice-ready
+// customer design's own value objects (docs/superpowers/specs/2026-09-21-
+// customers-invoice-ready-design.md, D2): a customer's own contact details,
+// not a contact's — validateEmailAddress/validatePhoneNumber above stay
+// ContactValueObjectTests ports for Contacts, unchanged. Unlike every
+// sibling above, none of the three treats a blank string as an error: the
+// sub-resource that calls them (contact_info.go's validateContactInfo, and
+// later the billing profile's invoiceEmail/reminderEmail, D4) treats a blank
+// field as "clear to NULL" before ever reaching here, so each function below
+// only ever validates a string already known to be non-blank.
+
+// validateEmail is D2's email rule: at most 255 UTF-16 code units; exactly
+// one '@' with a non-empty local part and a domain containing a dot; trimmed
+// but never lower-cased — unlike validateEmailAddress, a customer's own
+// address is stored as typed, not canonicalized.
+func validateEmail(raw string) (string, string) {
+	if n := utf16Length(raw); n > 255 {
+		return "", fmt.Sprintf("An email address cannot be longer than 255 characters, the given value was %d characters", n)
+	}
+	trimmed := strings.TrimSpace(raw)
+	at := strings.IndexByte(trimmed, '@')
+	domain := ""
+	if at >= 0 {
+		domain = trimmed[at+1:]
+	}
+	if at <= 0 || at != strings.LastIndexByte(trimmed, '@') || domain == "" || !strings.Contains(domain, ".") {
+		return "", fmt.Sprintf("An email address must look like name@example.com, but was '%s'", raw)
+	}
+	return trimmed, ""
+}
+
+// validatePhone is D2's phone rule: at most 30 UTF-16 code units, only
+// digits, spaces and + - ( ), and at least five digits. One message covers
+// both the character class and the digit-count floor — unlike
+// validatePhoneNumber's three-way split (character class, then digit
+// presence, as their own branches), D2 only ever has the one rule to report.
+func validatePhone(raw string) (string, string) {
+	if n := utf16Length(raw); n > 30 {
+		return "", fmt.Sprintf("A phone number cannot be longer than 30 characters, the given value was %d characters", n)
+	}
+	trimmed := strings.TrimSpace(raw)
+	digits := 0
+	allowed := true
+	for _, r := range trimmed {
+		switch {
+		case unicode.IsDigit(r):
+			digits++
+		case r == ' ' || r == '+' || r == '-' || r == '(' || r == ')':
+		default:
+			allowed = false
+		}
+	}
+	if !allowed || digits < 5 {
+		return "", fmt.Sprintf("A phone number may only contain digits, spaces and + - ( ), and needs at least five digits, but was '%s'", raw)
+	}
+	return trimmed, ""
+}
+
+// validateWebsite is D2's website rule: at most 2048 UTF-16 code units, an
+// absolute http or https URL — the same shape the timeline's sourceUrl field
+// checks inline (timeline.go's validateManualTimelineRequest). The check is
+// repeated here, not shared, because that one is inline rather than a named
+// function, and this module's wording for it is its own ("A website must
+// be...", not "SourceUrl must be...").
+func validateWebsite(raw string) (string, string) {
+	if n := utf16Length(raw); n > 2048 {
+		return "", fmt.Sprintf("A website cannot be longer than 2048 characters, the given value was %d characters", n)
+	}
+	trimmed := strings.TrimSpace(raw)
+	u, err := url.Parse(trimmed)
+	if err != nil || !u.IsAbs() || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "", fmt.Sprintf("A website must be an absolute http or https URL, but was '%s'", raw)
+	}
+	return trimmed, ""
 }
 
 // legalIdentity is a customer's normalized legal identity: the five value

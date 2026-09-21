@@ -42,6 +42,9 @@ type CustomersCustomer struct {
 	UpdatedAt      time.Time
 	Type           string
 	Revision       int32
+	Email          *string
+	Phone          *string
+	Website        *string
 }
 
 type CustomersCustomersContact struct {
