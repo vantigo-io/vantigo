@@ -121,8 +121,13 @@ included, since the right move is usually to restore it — already has the same
 `code: "duplicate_legal_identity"` and `duplicates: [{id, customerNumber, name, status}]`.
 The request may carry `allowDuplicateIdentity: true` to go ahead anyway (two departments of
 one company kept as separate customers is legitimate), so there is no unique index. An
-identity that is unchanged by the request is never checked. The caller holds
-`legal-identity-manage` by the time this runs, so naming the other customer leaks nothing.
+identity that is unchanged by the request is never checked. The 409 itself goes to every
+caller who reaches the check, but `duplicates` names the other customer only to a caller
+who holds `customers:view`: creating a customer needs `customers:create` +
+`legal-identity-manage`, and neither implies the right to read customers, so the conflict
+must not become a way to learn their names. (The first draft of this design claimed
+`legal-identity-manage` made naming the holder harmless; the whole-branch review showed it
+does not.)
 
 Similar *names* are a frontend hint only: while a name is typed in the create form, the
 form asks the list endpoint for that name and shows up to three existing customers with a
