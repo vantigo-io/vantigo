@@ -90,6 +90,15 @@ func (s *server) directoryCustomer(ctx context.Context, id int32) (*contracts.Cu
 	return s.deps.Directory.Customer(ctx, id)
 }
 
+// directoryCustomers is the customer directory's batch lookup, the one
+// customerNamesForPage (projects_list.go) uses to name a whole page of
+// projects' customers in one round trip rather than one per row. Never nil
+// for the same reason directoryCustomer above is not.
+func (s *server) directoryCustomers(ctx context.Context, ids []int32) ([]contracts.CustomerEntry, error) {
+	noteContractCall(ctx, "Directory.Customers")
+	return s.deps.Directory.Customers(ctx, ids)
+}
+
 // actualsFor and actualsForProjects are the hours another module has logged
 // against projects. deps.Actuals is optional — an installation without time
 // tracking has none — and every caller checks for nil before reaching these.

@@ -100,9 +100,10 @@ func validateGetProjectsParams(p gen.GetProjectsParams) []string {
 //
 // The two embedded lookups are batched over the whole page rather than made
 // per row: one ManagersForProjects for every project on it, one Users call
-// for every manager on it, and the customer directory asked once per
-// *distinct* customer. A list of 25 projects for one customer therefore
-// costs one directory call, not 25.
+// for every manager on it, and one Customers call for the page's distinct
+// customer ids. A list of 25 projects for one customer therefore costs one
+// directory call, not 25 — and a list of 25 projects across five customers
+// still costs exactly one.
 func (s *server) GetProjects(ctx context.Context, req gen.GetProjectsRequestObject) (gen.GetProjectsResponseObject, error) {
 	if msgs := validateGetProjectsParams(req.Params); len(msgs) > 0 {
 		return gen.GetProjects400ApplicationProblemPlusJSONResponse(
@@ -214,26 +215,41 @@ func (s *server) managersForPage(ctx context.Context, q *store.Queries, rows []s
 	return byProject, nil
 }
 
-// customerNamesForPage resolves the page's customers, once per distinct id:
-// contracts.CustomerDirectory has no batch call, and a list of one
-// customer's projects must not make one lookup per row.
+// customerNamesForPage resolves the page's customers in one directoryCustomers
+// call, over the page's distinct customer ids: a list of one customer's
+// projects must not make one lookup per row, and a list spanning several
+// customers must not make one per distinct id either. A page with no
+// customer ids at all (every project internal) skips the call entirely.
 func (s *server) customerNamesForPage(ctx context.Context, rows []store.ProjectsProject) (map[int32]*string, error) {
-	byCustomer := map[int32]*string{}
 	byProject := make(map[int32]*string, len(rows))
+
+	ids := make([]int32, 0, len(rows))
+	seen := map[int32]bool{}
+	for _, row := range rows {
+		if row.CustomerID == nil || seen[*row.CustomerID] {
+			continue
+		}
+		seen[*row.CustomerID] = true
+		ids = append(ids, *row.CustomerID)
+	}
+	if len(ids) == 0 {
+		return byProject, nil
+	}
+
+	found, err := s.directoryCustomers(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("projects: look up customers for a page: %w", err)
+	}
+	names := make(map[int32]*string, len(found))
+	for i := range found {
+		names[found[i].ID] = &found[i].Name
+	}
+
 	for _, row := range rows {
 		if row.CustomerID == nil {
 			continue
 		}
-		name, seen := byCustomer[*row.CustomerID]
-		if !seen {
-			var err error
-			name, err = s.customerName(ctx, row.CustomerID)
-			if err != nil {
-				return nil, err
-			}
-			byCustomer[*row.CustomerID] = name
-		}
-		byProject[row.ID] = name
+		byProject[row.ID] = names[*row.CustomerID]
 	}
 	return byProject, nil
 }
