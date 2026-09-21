@@ -10,8 +10,10 @@ import {
   type CustomerAddress,
   type CustomerAddressInput,
   createCustomerAddress,
+  customerAddressesQueryOptions,
   updateCustomerAddress,
 } from "../api/addresses";
+import { customerBillingProfileQueryOptions } from "../api/billing-profile";
 import { CountrySelect } from "../components/country-select";
 import { addressTypeLabel } from "../lib/address-type-label";
 import "../i18n";
@@ -135,7 +137,12 @@ export const CustomerAddressModal = ({
         : createCustomerAddress(customerId, input);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["customers", customerId, "addresses"] });
+      queryClient.invalidateQueries({ queryKey: customerAddressesQueryOptions(customerId).queryKey });
+      // The billing profile's warnings are computed from the customer's
+      // addresses (design D4), so the first invoice address added here
+      // settles `no_invoice_address` — see `CustomerAddressesSection`'s own
+      // invalidation. The customer row itself does not move (design D3).
+      queryClient.invalidateQueries({ queryKey: customerBillingProfileQueryOptions(customerId).queryKey });
       onClose();
       notifications.show({
         color: "teal",

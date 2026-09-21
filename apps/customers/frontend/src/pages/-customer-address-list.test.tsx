@@ -5,8 +5,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { CustomerResponse } from "../api/customers";
 import { stubFetch } from "../test/fetch";
 import { CustomerAddressesSection } from "./-customer-address-list";
+import { CustomerBillingCard } from "./-customer-billing-card";
 
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -56,6 +58,15 @@ describe("CustomerAddressesSection", () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [] }));
     renderSection(fetchMock, { canEdit: false });
     expect(await screen.findByText("No addresses yet")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add address" })).not.toBeInTheDocument();
+  });
+
+  it("says the addresses could not be loaded rather than claiming there are none", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 500 }));
+    renderSection(fetchMock);
+
+    expect(await screen.findByText("Could not load addresses.")).toBeInTheDocument();
+    expect(screen.queryByText("No addresses yet")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add address" })).not.toBeInTheDocument();
   });
 
@@ -253,5 +264,76 @@ describe("CustomerAddressesSection", () => {
           String(calledUrl) === "/api/v1/customers/1001/addresses/2" && calledInit?.method === "DELETE",
       ),
     ).toBe(false);
+  });
+});
+
+/**
+ * The billing profile's warnings are computed from the customer's addresses
+ * at read time (design D4), and the two sub-resources have no other
+ * connection: only an address write invalidating the profile's own query
+ * keeps `no_invoice_address` honest. Both cards sit on the Overview tab
+ * under one query client, which is what this renders.
+ */
+describe("an address write and the billing card", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const customer = {
+    id: 1001,
+    customerNumber: 5001,
+    name: "Acme",
+    status: "active",
+    type: "business",
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+    identity: null,
+    timelineSummary: { entryCount: 0, latestOccurredOn: null },
+    revision: 1,
+    contactInfo: { email: null, phone: null, website: null },
+  } as CustomerResponse;
+
+  const noInvoiceAddress = "There is no invoice address — add one so invoices have somewhere to be sent.";
+
+  it("drops the no-invoice-address warning as soon as an invoice address is added", async () => {
+    let addresses: ReturnType<typeof address>[] = [];
+    const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(url);
+      if (path === "/api/v1/customers/1001/billing-profile") {
+        return Promise.resolve(
+          jsonResponse(200, { revision: 1, warnings: addresses.length > 0 ? [] : ["no_invoice_address"] }),
+        );
+      }
+      if (path === "/api/v1/customers/1001/addresses" && init?.method === "POST") {
+        const created = address({ id: 7, line1: "Storgata 1" });
+        addresses = [created];
+        return Promise.resolve(jsonResponse(201, created));
+      }
+      if (path === "/api/v1/customers/1001/addresses") {
+        return Promise.resolve(jsonResponse(200, { data: addresses }));
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    stubFetch(fetchMock);
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(
+      <MantineProvider env="test">
+        <Notifications />
+        <ModalsProvider>
+          <QueryClientProvider client={queryClient}>
+            <CustomerBillingCard customerId={1001} customer={customer} canManageBilling />
+            <CustomerAddressesSection customerId={1001} canEdit />
+          </QueryClientProvider>
+        </ModalsProvider>
+      </MantineProvider>,
+    );
+
+    expect(await screen.findByText(noInvoiceAddress)).toBeInTheDocument();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Add address" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.type(within(dialog).getByLabelText(/^Address line 1/), "Storgata 1");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Add address" }));
+
+    await waitFor(() => expect(screen.queryByText(noInvoiceAddress)).not.toBeInTheDocument());
   });
 });
