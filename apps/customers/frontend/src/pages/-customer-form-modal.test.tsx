@@ -9,6 +9,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { stubFetch } from "../test/fetch";
 import { CustomerFormModal } from "./-customer-form-modal";
 
+/**
+ * The last PUT the form sent, as fetch saw it. Not "the last fetch": the form's
+ * debounced Brreg lookup for the name runs on its own clock, and on a slow
+ * runner it lands after the save — so the last call overall is whichever of
+ * the two lost the race, which says nothing about what was saved.
+ */
+const lastPut = (fetchMock: ReturnType<typeof vi.fn>) =>
+  fetchMock.mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === "PUT").at(-1);
+
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 const renderModal = (state: Parameters<typeof CustomerFormModal>[0]["state"], onClose = vi.fn()) => {
@@ -291,11 +300,14 @@ describe("CustomerFormModal", () => {
     await userEvent.click(screen.getByRole("button", { name: /save changes/i }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalled());
-    expect(fetchMock).toHaveBeenLastCalledWith("/api/v1/customers/1001", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Initech Latest", status: "active", revision: 4 }),
-    });
+    expect(lastPut(fetchMock)).toEqual([
+      "/api/v1/customers/1001",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Initech Latest", status: "active", revision: 4 }),
+      },
+    ]);
     expect(
       screen.queryByText("This customer was changed by someone else. Reload to see the latest version."),
     ).not.toBeInTheDocument();
@@ -354,11 +366,14 @@ describe("CustomerFormModal", () => {
     await userEvent.click(screen.getByRole("button", { name: /save anyway/i }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalled());
-    expect(fetchMock).toHaveBeenLastCalledWith("/api/v1/customers/1001", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Initech", status: "active", revision: 3, allowDuplicateIdentity: true }),
-    });
+    expect(lastPut(fetchMock)).toEqual([
+      "/api/v1/customers/1001",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Initech", status: "active", revision: 3, allowDuplicateIdentity: true }),
+      },
+    ]);
   });
 
   it("shows the duplicate alert and its anyway button even when the conflict names nobody", async () => {
@@ -415,11 +430,14 @@ describe("CustomerFormModal", () => {
     await userEvent.click(screen.getByRole("button", { name: /save anyway/i }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalled());
-    expect(fetchMock).toHaveBeenLastCalledWith("/api/v1/customers/1001", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Initech", status: "active", revision: 3, allowDuplicateIdentity: true }),
-    });
+    expect(lastPut(fetchMock)).toEqual([
+      "/api/v1/customers/1001",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Initech", status: "active", revision: 3, allowDuplicateIdentity: true }),
+      },
+    ]);
   });
 
   it("clicking a duplicate's link navigates through the router (no full page reload) and closes the modal", async () => {
