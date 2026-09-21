@@ -66,11 +66,11 @@ WHERE (
      OR c.name ILIKE $4::text
      OR c.customer_number::text ILIKE $5::text
      OR c.email ILIKE $4::text
-     OR regexp_replace(c.phone, '\s', '', 'g') ILIKE $5::text
-     OR ($6::bool AND (
+     OR ($6::bool AND regexp_replace(c.phone, '\s', '', 'g') ILIKE $5::text)
+     OR ($7::bool AND (
             c.legal_name ILIKE $4::text
          OR c.legal_id ILIKE $5::text))
-     OR ($7::bool AND EXISTS (
+     OR ($8::bool AND EXISTS (
             SELECT 1
             FROM customers.customers_contacts cc
             JOIN customers.contacts ct ON ct.id = cc.contact_id
@@ -89,6 +89,7 @@ type CountCustomersParams struct {
 	CustomerType    *string
 	Search          *string
 	SearchCompact   *string
+	SearchPhone     bool
 	SearchIdentity  bool
 	SearchContacts  bool
 }
@@ -106,13 +107,17 @@ type CountCustomersParams struct {
 // search_compact, so "923 609 016" finds a legal id stored as
 // "923609016"), the customer's own email and, compacted with its
 // whitespace stripped the same way search_compact strips the caller's, its
-// own phone (invoice-ready customer design D2 — ungated, since
-// SafeCustomerResponse.contactInfo shows both to anyone who can list at
-// all) and, only when the caller may see that data (search_identity/
-// search_contacts — customers foundation design D4), the legal name/id and
-// any linked contact's name/email: a caller lacking those permissions gets
-// exactly today's name-and-number behaviour, never an oracle for data the
-// response would withhold.
+// own phone (invoice-ready customer design D2) — gated by search_phone
+// (final review fix M2), computed in Go from the compact term carrying at
+// least three ASCII digits (searchPhoneEligible, customers.go): a short
+// numeric term like "1" or a customer-number/legal-id fragment would
+// otherwise ILIKE-match nearly every phone number's compacted form by
+// accident, so the phone branch only activates once the term looks enough
+// like an actual phone-number fragment — and, only when the caller may see
+// that data (search_identity/search_contacts — customers foundation design
+// D4), the legal name/id and any linked contact's name/email: a caller
+// lacking those permissions gets exactly today's name-and-number behaviour,
+// never an oracle for data the response would withhold.
 func (q *Queries) CountCustomers(ctx context.Context, arg CountCustomersParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countCustomers,
 		arg.Status,
@@ -120,6 +125,7 @@ func (q *Queries) CountCustomers(ctx context.Context, arg CountCustomersParams) 
 		arg.CustomerType,
 		arg.Search,
 		arg.SearchCompact,
+		arg.SearchPhone,
 		arg.SearchIdentity,
 		arg.SearchContacts,
 	)
@@ -901,11 +907,11 @@ WHERE (
      OR c.name ILIKE $4::text
      OR c.customer_number::text ILIKE $5::text
      OR c.email ILIKE $4::text
-     OR regexp_replace(c.phone, '\s', '', 'g') ILIKE $5::text
-     OR ($6::bool AND (
+     OR ($6::bool AND regexp_replace(c.phone, '\s', '', 'g') ILIKE $5::text)
+     OR ($7::bool AND (
             c.legal_name ILIKE $4::text
          OR c.legal_id ILIKE $5::text))
-     OR ($7::bool AND EXISTS (
+     OR ($8::bool AND EXISTS (
             SELECT 1
             FROM customers.customers_contacts cc
             JOIN customers.contacts ct ON ct.id = cc.contact_id
@@ -917,19 +923,19 @@ WHERE (
                 OR cc.email ILIKE $4::text)))
       )
 ORDER BY
-    CASE WHEN $8::text = 'id' AND NOT $9::bool THEN c.id END ASC,
-    CASE WHEN $8::text = 'id' AND $9::bool THEN c.id END DESC,
-    CASE WHEN $8::text = 'name' AND NOT $9::bool THEN c.name END ASC,
-    CASE WHEN $8::text = 'name' AND $9::bool THEN c.name END DESC,
-    CASE WHEN $8::text = 'customerNumber' AND NOT $9::bool THEN c.customer_number END ASC,
-    CASE WHEN $8::text = 'customerNumber' AND $9::bool THEN c.customer_number END DESC,
-    CASE WHEN $8::text = 'createdAt' AND NOT $9::bool THEN c.created_at END ASC,
-    CASE WHEN $8::text = 'createdAt' AND $9::bool THEN c.created_at END DESC,
-    CASE WHEN $8::text = 'updatedAt' AND NOT $9::bool THEN c.updated_at END ASC,
-    CASE WHEN $8::text = 'updatedAt' AND $9::bool THEN c.updated_at END DESC,
-    CASE WHEN NOT $9::bool THEN c.id END ASC,
-    CASE WHEN $9::bool THEN c.id END DESC
-LIMIT $11::int OFFSET $10::int
+    CASE WHEN $9::text = 'id' AND NOT $10::bool THEN c.id END ASC,
+    CASE WHEN $9::text = 'id' AND $10::bool THEN c.id END DESC,
+    CASE WHEN $9::text = 'name' AND NOT $10::bool THEN c.name END ASC,
+    CASE WHEN $9::text = 'name' AND $10::bool THEN c.name END DESC,
+    CASE WHEN $9::text = 'customerNumber' AND NOT $10::bool THEN c.customer_number END ASC,
+    CASE WHEN $9::text = 'customerNumber' AND $10::bool THEN c.customer_number END DESC,
+    CASE WHEN $9::text = 'createdAt' AND NOT $10::bool THEN c.created_at END ASC,
+    CASE WHEN $9::text = 'createdAt' AND $10::bool THEN c.created_at END DESC,
+    CASE WHEN $9::text = 'updatedAt' AND NOT $10::bool THEN c.updated_at END ASC,
+    CASE WHEN $9::text = 'updatedAt' AND $10::bool THEN c.updated_at END DESC,
+    CASE WHEN NOT $10::bool THEN c.id END ASC,
+    CASE WHEN $10::bool THEN c.id END DESC
+LIMIT $12::int OFFSET $11::int
 `
 
 type ListCustomersParams struct {
@@ -938,6 +944,7 @@ type ListCustomersParams struct {
 	CustomerType    *string
 	Search          *string
 	SearchCompact   *string
+	SearchPhone     bool
 	SearchIdentity  bool
 	SearchContacts  bool
 	SortBy          string
@@ -990,6 +997,7 @@ func (q *Queries) ListCustomers(ctx context.Context, arg ListCustomersParams) ([
 		arg.CustomerType,
 		arg.Search,
 		arg.SearchCompact,
+		arg.SearchPhone,
 		arg.SearchIdentity,
 		arg.SearchContacts,
 		arg.SortBy,

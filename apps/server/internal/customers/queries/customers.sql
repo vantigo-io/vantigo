@@ -194,13 +194,17 @@ RETURNING id, revision, type, legal_country, legal_id, legal_name, legal_source,
 -- search_compact, so "923 609 016" finds a legal id stored as
 -- "923609016"), the customer's own email and, compacted with its
 -- whitespace stripped the same way search_compact strips the caller's, its
--- own phone (invoice-ready customer design D2 — ungated, since
--- SafeCustomerResponse.contactInfo shows both to anyone who can list at
--- all) and, only when the caller may see that data (search_identity/
--- search_contacts — customers foundation design D4), the legal name/id and
--- any linked contact's name/email: a caller lacking those permissions gets
--- exactly today's name-and-number behaviour, never an oracle for data the
--- response would withhold.
+-- own phone (invoice-ready customer design D2) — gated by search_phone
+-- (final review fix M2), computed in Go from the compact term carrying at
+-- least three ASCII digits (searchPhoneEligible, customers.go): a short
+-- numeric term like "1" or a customer-number/legal-id fragment would
+-- otherwise ILIKE-match nearly every phone number's compacted form by
+-- accident, so the phone branch only activates once the term looks enough
+-- like an actual phone-number fragment — and, only when the caller may see
+-- that data (search_identity/search_contacts — customers foundation design
+-- D4), the legal name/id and any linked contact's name/email: a caller
+-- lacking those permissions gets exactly today's name-and-number behaviour,
+-- never an oracle for data the response would withhold.
 SELECT count(*)
 FROM customers.customers c
 WHERE (
@@ -213,7 +217,7 @@ WHERE (
      OR c.name ILIKE sqlc.narg(search)::text
      OR c.customer_number::text ILIKE sqlc.narg(search_compact)::text
      OR c.email ILIKE sqlc.narg(search)::text
-     OR regexp_replace(c.phone, '\s', '', 'g') ILIKE sqlc.narg(search_compact)::text
+     OR (@search_phone::bool AND regexp_replace(c.phone, '\s', '', 'g') ILIKE sqlc.narg(search_compact)::text)
      OR (@search_identity::bool AND (
             c.legal_name ILIKE sqlc.narg(search)::text
          OR c.legal_id ILIKE sqlc.narg(search_compact)::text))
@@ -263,7 +267,7 @@ WHERE (
      OR c.name ILIKE sqlc.narg(search)::text
      OR c.customer_number::text ILIKE sqlc.narg(search_compact)::text
      OR c.email ILIKE sqlc.narg(search)::text
-     OR regexp_replace(c.phone, '\s', '', 'g') ILIKE sqlc.narg(search_compact)::text
+     OR (@search_phone::bool AND regexp_replace(c.phone, '\s', '', 'g') ILIKE sqlc.narg(search_compact)::text)
      OR (@search_identity::bool AND (
             c.legal_name ILIKE sqlc.narg(search)::text
          OR c.legal_id ILIKE sqlc.narg(search_compact)::text))

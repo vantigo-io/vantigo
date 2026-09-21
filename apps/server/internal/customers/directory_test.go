@@ -2,6 +2,7 @@ package customers_test
 
 import (
 	"context"
+	"net/http"
 	"slices"
 	"testing"
 
@@ -539,5 +540,79 @@ func TestDirectory_BillingProfile_InvoiceAddress_PrefersPrimaryInvoiceOverPostal
 	}
 	if got.InvoiceAddress != nil {
 		t.Errorf("InvoiceAddress = %+v, want nil with no invoice or postal address", got.InvoiceAddress)
+	}
+}
+
+// TestDirectory_BillingProfile_MalformedLegacyLegalId_DerivesNothing_AndEHFWarningFires
+// pins final review fix I1: a row seeded before this module's own legal-id
+// validation existed can hold a legal_id that is not a valid Norwegian
+// organisation number (e.g. "NO 923 609 016 MVA", spaced and lettered rather
+// than the nine bare digits validateLegalIdentity would store today).
+// derivedPeppolID (billing_values.go), the one predicate both the directory
+// and billingWarnings now share, must refuse to derive a Peppol recipient
+// from it, and PUT .../billing-profile's own ehf_without_recipient warning
+// must still fire — the two must never disagree about whether a recipient
+// exists.
+func TestDirectory_BillingProfile_MalformedLegacyLegalId_DerivesNothing_AndEHFWarningFires(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	created := createCustomer(t, c, "Legacy Malformed Id AS")
+	setCustomerType(t, h, created.Id, "business")
+	setLegalIdentity(t, h, created.Id, "no", "NO 923 609 016 MVA", "Legacy Malformed Id AS")
+
+	got, err := newDirectory(t, h).BillingProfile(context.Background(), created.Id)
+	if err != nil {
+		t.Fatalf("BillingProfile: %v", err)
+	}
+	if got.PeppolID != "" {
+		t.Errorf("PeppolID = %q, want empty: a malformed legacy legal id derives nothing", got.PeppolID)
+	}
+
+	r := putBillingProfile(t, c, created.Id, map[string]any{"invoiceDelivery": "ehf"})
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+	}
+	var profile billingProfileJSON
+	r.JSON(&profile)
+	if !hasWarning(profile.Warnings, "ehf_without_recipient") {
+		t.Errorf("warnings = %v, want ehf_without_recipient (the malformed legacy id gives no recipient either)", profile.Warnings)
+	}
+}
+
+// TestDirectory_BillingProfile_NullLegalTypeLegacyRow_BothFunctionsAgree pins
+// I1's other legacy shape: legal_country/legal_id set but legal_type left
+// NULL (a row from before legal_type was populated consistently — identity.Type
+// decodes as "" for it, identityFromRow, customers.go). derivedPeppolID reads
+// the customer's own type, never identity.Type, so both the directory's
+// derived PeppolID and PUT .../billing-profile's own ehf_without_recipient
+// warning agree: before this fix, resolveBillingProfile already ignored
+// identity.Type here but billingWarnings required it, so this exact row made
+// the two disagree.
+func TestDirectory_BillingProfile_NullLegalTypeLegacyRow_BothFunctionsAgree(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	created := createCustomer(t, c, "Legacy Null Type AS")
+	setCustomerType(t, h, created.Id, "business")
+	h.Exec(t, `UPDATE customers.customers SET legal_country = $2, legal_id = $3, legal_name = $4, legal_source = 'manual', legal_type = NULL WHERE id = $1`,
+		created.Id, "no", "974760673", "Legacy Null Type AS")
+
+	got, err := newDirectory(t, h).BillingProfile(context.Background(), created.Id)
+	if err != nil {
+		t.Fatalf("BillingProfile: %v", err)
+	}
+	if got.PeppolID != "0192:974760673" {
+		t.Errorf("PeppolID = %q, want the derived 0192:974760673 (legal_type NULL must not block derivation)", got.PeppolID)
+	}
+
+	r := putBillingProfile(t, c, created.Id, map[string]any{"invoiceDelivery": "ehf"})
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+	}
+	var profile billingProfileJSON
+	r.JSON(&profile)
+	if hasWarning(profile.Warnings, "ehf_without_recipient") {
+		t.Errorf("warnings = %v, want no ehf_without_recipient (the directory can derive a recipient for this same row)", profile.Warnings)
 	}
 }

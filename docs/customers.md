@@ -303,7 +303,7 @@ time. What `GET .../billing-profile` gives instead is a computed, never-stored
 
 | Warning | Raised when |
 | --- | --- |
-| `ehf_without_recipient` | `invoiceDelivery` is `ehf`, there is no explicit `peppolId`, **and** no Norwegian business legal identity to derive one from — the identity's own `country` is `no` and its own `type` is `business` (in practice always in step with the customer's own `type`, since the customer/identity type-mismatch check elsewhere in this module never lets the two disagree on a stored row). |
+| `ehf_without_recipient` | `invoiceDelivery` is `ehf`, there is no explicit `peppolId`, **and** `derivedPeppolID` — the one predicate this check and the directory's own `PeppolID` resolution rule (`BillingProfile`, further down) now share — finds nothing to derive: the identity's own `country` must be `no`, the **customer's own** `type` (not the identity's — a legacy row can hold `legal_type` `NULL`) must be `business`, and the identity's `id` must itself pass the Norwegian organisation-number check, so a malformed or pre-validation legacy `id` derives nothing and still raises the warning. |
 | `email_without_address` | `invoiceDelivery` is `email`, there is no `invoiceEmail`, **and** no contact-info `email` either. |
 | `efaktura_for_business` | `invoiceDelivery` is `efaktura` and the customer's `type` is `business`. |
 | `no_invoice_address` | The customer has no primary `invoice` address and no primary `postal` address either — the same resolution rule addresses use throughout. |
@@ -319,7 +319,7 @@ identity's own `country`/`id`/`name` fields to a caller who cannot see them
 elsewhere. Nothing about the identity's actual content is disclosed, only a
 boolean fact already inferable from the caller's own write access.
 
-`GET` answers **200 with every field null** (plus whatever warnings an empty
+`GET` answers **200 with every field absent** (plus whatever warnings an empty
 profile still raises — at least `no_invoice_address` if there is no invoice
 address) for a customer that has none: a billing profile always exists
 conceptually, unlike the legal identity's own GET, which answers 204. 404 only
@@ -634,7 +634,7 @@ invoice email, a reminder email or a Peppol id for itself.
 | `InvoiceAddress` | The billing profile's resolved invoice address (D3's rule: primary `invoice`, else primary `postal`, else `nil`) — never a list, since a consumer only ever needs the one address to print. |
 | `InvoiceEmail` | The billing profile's own `invoiceEmail`, else the customer's own contact-info `email`, else `""`. |
 | `ReminderEmail` | The billing profile's own `reminderEmail`, else the `InvoiceEmail` just resolved above — reminders fall back to where an invoice would go, never straight to the contact-info email. |
-| `PeppolID` | The billing profile's own explicit `peppolId`, else `"0192:<legal id>"` when the identity's country is `"no"` **and the customer itself (not the identity) is of type `"business"`**, else `""`. |
+| `PeppolID` | The billing profile's own explicit `peppolId`, else `derivedPeppolID(identity, customerType)`: `"0192:<legal id>"` when the identity's country is `"no"`, **the customer itself (not the identity) is of type `"business"`**, and the identity's `id` itself passes the Norwegian organisation-number check (a malformed or pre-validation legacy `id` derives nothing), else `""`. The same predicate backs `billingWarnings`'s `ehf_without_recipient` check above, so the two can never disagree about whether a recipient exists. |
 | `PaymentTermsDays`, `Currency`, `Language`, `InvoiceDelivery`, `ReminderDelivery`, `GLN`, `BuyerReference` | The billing profile's own value, `nil`/`""` if never set — no further resolution. |
 
 **Every consumer treats `""` (a string field) or `nil` (`PaymentTermsDays`,

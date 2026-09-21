@@ -334,6 +334,43 @@ func TestPutCustomersByIdContactInfo_WithoutUpdatePermission_ReturnsForbidden(t 
 	}
 }
 
+// TestGetAndListCustomers_ContactInfoReachesAViewOnlyCaller proves M3
+// (final review fix wave): contactInfo needs nothing beyond customers:view
+// to read, both through GET /customers/{id} and the list — unlike the legal
+// identity, which is gated separately behind legal-identity-view,
+// safeCustomerResponse (customers.go) never conditions contactInfo on any
+// permission beyond the one every caller of these two operations already
+// holds.
+func TestGetAndListCustomers_ContactInfoReachesAViewOnlyCaller(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner := authenticatedClient(t, h)
+	created := createCustomer(t, owner, "View Only Contact Co")
+	r := putContactInfo(t, owner, created.Id, map[string]any{
+		"email": "hello@viewonly.co", "phone": "+47 934 89 731", "website": "https://viewonly.co",
+	})
+	if r.Status != http.StatusOK {
+		t.Fatalf("set contact info: status %d body %s, want 200", r.Status, r.Body)
+	}
+
+	viewer := h.SignIn(t, "customers:view")
+	wantSet := func(got contactInfoJSON) bool {
+		return got.Email != nil && *got.Email == "hello@viewonly.co" &&
+			got.Phone != nil && *got.Phone == "+47 934 89 731" &&
+			got.Website != nil && *got.Website == "https://viewonly.co"
+	}
+
+	got := fetchCustomerJSON(t, viewer, created.Id)
+	if !wantSet(got.ContactInfo) {
+		t.Errorf("GET contactInfo = %+v, want all three set (customers:view alone)", got.ContactInfo)
+	}
+
+	list := getList(t, viewer, "search="+url.QueryEscape("View Only Contact Co"))
+	if len(list.Data) != 1 || !wantSet(list.Data[0].ContactInfo) {
+		t.Errorf("list contactInfo = %+v, want all three set (customers:view alone)", list.Data)
+	}
+}
+
 func TestPostCustomers_WithContactInfo_CreatesIt(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -413,5 +450,40 @@ func TestGetCustomers_Search_MatchesEmailAndPhoneWithDifferentSpacing(t *testing
 	}
 	if !idsEqual(idsOf(byDifferentSpacing), target.Id) {
 		t.Errorf("search by phone (different spacing than stored): ids = %v, want [%d]", idsOf(byDifferentSpacing), target.Id)
+	}
+}
+
+// TestGetCustomers_Search_FewerThanThreeDigitsNeverMatchesByPhone pins the
+// final review fix M2 gate: a compact search term carrying fewer than three
+// ASCII digits never reaches the phone branch at all, even when the digits
+// it does carry are a genuine substring of a stored phone number — a short
+// numeric term like this would otherwise ILIKE-match almost any phone by
+// accident. The three-digit boundary itself (the existing phone-search test
+// above, matching on "+4793489731"'s ten digits) stays green.
+func TestGetCustomers_Search_FewerThanThreeDigitsNeverMatchesByPhone(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+
+	target := createCustomer(t, c, "Two Digit Phone Co")
+	r := putContactInfo(t, c, target.Id, map[string]any{"phone": "+47 934 89 731"})
+	if r.Status != http.StatusOK {
+		t.Fatalf("set contact info: status %d body %s, want 200", r.Status, r.Body)
+	}
+
+	// "89" (two digits) is a real substring of the stored, compacted phone
+	// ("4793489731") but must not match: below the three-digit floor, the
+	// phone branch never runs at all.
+	tooShort := getList(t, c, "search="+url.QueryEscape("89"))
+	if idsEqual(idsOf(tooShort), target.Id) || len(tooShort.Data) != 0 {
+		t.Errorf("search %q: ids = %v, want no match (fewer than three digits)", "89", idsOf(tooShort))
+	}
+
+	// "489" (three digits, still a real substring) clears the floor and
+	// matches, proving the previous assertion is the gate and not a typo in
+	// the phone number.
+	longEnough := getList(t, c, "search="+url.QueryEscape("489"))
+	if !idsEqual(idsOf(longEnough), target.Id) {
+		t.Errorf("search %q: ids = %v, want [%d]", "489", idsOf(longEnough), target.Id)
 	}
 }
