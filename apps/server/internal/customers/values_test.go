@@ -796,3 +796,106 @@ func TestValidateWebsite_TooLongIsInvalid(t *testing.T) {
 		t.Errorf("validateWebsite(2049 chars) = error %q, want %q", err, want)
 	}
 }
+
+// validateAddressType is D3's own enforced set: postal/invoice/delivery/
+// visiting, case-insensitive.
+func TestValidateAddressType_NormalizesAndRejects(t *testing.T) {
+	for raw, want := range map[string]string{" Postal ": "postal", "INVOICE": "invoice", "Delivery": "delivery", "visiting": "visiting"} {
+		if got, err := validateAddressType(raw); err != "" || got != want {
+			t.Errorf("validateAddressType(%q) = %q, %q, want %q, no error", raw, got, err, want)
+		}
+	}
+	if _, err := validateAddressType("  "); err != "An address type cannot be null or empty" {
+		t.Errorf("validateAddressType(blank) = error %q, want the blank message", err)
+	}
+	want := "An address type must be one of 'postal', 'invoice', 'delivery' or 'visiting', but was 'billing'"
+	if _, err := validateAddressType("billing"); err != want {
+		t.Errorf("validateAddressType(billing) = error %q, want %q", err, want)
+	}
+}
+
+func TestValidateAddress_ValidValuesNormalize(t *testing.T) {
+	label, line2, postal, city, region := "HQ", "Suite 2", "0155", "Oslo", "Oslo"
+	got, errs := validateAddress(" Invoice ", &label, " Storgata 1 ", &line2, &postal, &city, &region, " NO ")
+	if errs != nil {
+		t.Fatalf("validateAddress: unexpected errors %v", errs)
+	}
+	wantLabel, wantLine2, wantPostal, wantCity, wantRegion := "HQ", "Suite 2", "0155", "Oslo", "Oslo"
+	if got.Type != "invoice" || got.Line1 != "Storgata 1" || got.Country != "no" ||
+		deref(got.Label) != wantLabel || deref(got.Line2) != wantLine2 ||
+		deref(got.PostalCode) != wantPostal || deref(got.City) != wantCity || deref(got.Region) != wantRegion {
+		t.Errorf("validateAddress = %+v, want type=invoice line1=Storgata 1 country=no label=%q line2=%q postalCode=%q city=%q region=%q",
+			got, wantLabel, wantLine2, wantPostal, wantCity, wantRegion)
+	}
+}
+
+// TestValidateAddress_OptionalFieldsBlankOrAbsentClearToNil proves the
+// controller ruling shared with contactInfo: blank/whitespace-only and a nil
+// pointer both mean "not set", never an error on their own, for every
+// optional field.
+func TestValidateAddress_OptionalFieldsBlankOrAbsentClearToNil(t *testing.T) {
+	blank := "   "
+	got, errs := validateAddress("postal", &blank, "Storgata 1", nil, nil, nil, &blank, "se")
+	if errs != nil {
+		t.Fatalf("validateAddress: unexpected errors %v", errs)
+	}
+	if got.Label != nil || got.Line2 != nil || got.PostalCode != nil || got.City != nil || got.Region != nil {
+		t.Errorf("validateAddress optional fields = %+v, want all nil", got)
+	}
+}
+
+func TestValidateAddress_RequiredFieldsBlankOrInvalidReportAllErrors(t *testing.T) {
+	_, errs := validateAddress("bogus", nil, "", nil, nil, nil, nil, "xx")
+	keys := make([]string, 0, len(errs))
+	for k := range errs {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	want := []string{"country", "line1", "type"}
+	if !slices.Equal(keys, want) {
+		t.Errorf("validateAddress error keys = %v, want %v", keys, want)
+	}
+}
+
+func TestValidateAddress_OptionalFieldTooLongReportsItsOwnError(t *testing.T) {
+	label := strings.Repeat("a", 101)
+	_, errs := validateAddress("postal", &label, "Storgata 1", nil, nil, nil, nil, "no")
+	want := "A label cannot be longer than 100 characters, the given value was 101 characters"
+	if got := errs["label"]; len(got) != 1 || got[0] != want {
+		t.Errorf(`validateAddress errors["label"] = %v, want [%q]`, got, want)
+	}
+}
+
+// TestValidateAddress_NorwegianAddressRequiresFourDigitPostalCodeAndCity
+// pins the controller ruling's exact wording for D3's one cross-field rule.
+func TestValidateAddress_NorwegianAddressRequiresFourDigitPostalCodeAndCity(t *testing.T) {
+	_, errs := validateAddress("postal", nil, "Storgata 1", nil, nil, nil, nil, "no")
+	wantPostal := "A Norwegian address needs a four-digit postal code"
+	if got := errs["postalCode"]; len(got) != 1 || got[0] != wantPostal {
+		t.Errorf(`validateAddress (no postal/city given) errors["postalCode"] = %v, want [%q]`, got, wantPostal)
+	}
+	wantCity := "A Norwegian address needs a city"
+	if got := errs["city"]; len(got) != 1 || got[0] != wantCity {
+		t.Errorf(`validateAddress (no postal/city given) errors["city"] = %v, want [%q]`, got, wantCity)
+	}
+
+	fiveDigits := "01550"
+	city := "Oslo"
+	_, errs = validateAddress("postal", nil, "Storgata 1", nil, &fiveDigits, &city, nil, "no")
+	if got := errs["postalCode"]; len(got) != 1 || got[0] != wantPostal {
+		t.Errorf(`validateAddress (5-digit postal code) errors["postalCode"] = %v, want [%q]`, got, wantPostal)
+	}
+
+	postal := "0155"
+	_, errs = validateAddress("postal", nil, "Storgata 1", nil, &postal, &city, nil, "no")
+	if errs != nil {
+		t.Errorf("validateAddress (valid Norwegian postal code and city) = unexpected errors %v", errs)
+	}
+
+	// A non-Norwegian address needs neither: postalCode and city stay
+	// optional, the ordinary D3 rule.
+	_, errs = validateAddress("postal", nil, "Storgata 1", nil, nil, nil, nil, "se")
+	if errs != nil {
+		t.Errorf("validateAddress (non-Norwegian, no postal/city) = unexpected errors %v", errs)
+	}
+}

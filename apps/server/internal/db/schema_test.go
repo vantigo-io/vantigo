@@ -321,6 +321,7 @@ func TestCustomersBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	wantTables := []string{
 		"contacts",
 		"counters",
+		"customer_addresses",
 		"customers",
 		"customers_contacts",
 		"customers_timeline_entries",

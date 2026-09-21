@@ -11,6 +11,7 @@ sql:
       - ../db/migrations/00015_customers_timeline_actor.sql
       - ../db/migrations/00016_customers_revision.sql
       - ../db/migrations/00017_customers_contact_info.sql
+      - ../db/migrations/00018_customers_addresses.sql
     queries: queries
     gen:
       go:

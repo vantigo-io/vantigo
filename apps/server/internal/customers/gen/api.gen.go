@@ -82,6 +82,35 @@ type CreateCustomerResponse struct {
 	Id             int32 `json:"id"`
 }
 
+// CustomerAddress One of a customer's typed addresses (invoice-ready customer design D3) — postal, invoice, delivery or visiting, any number of each, at most one primary per type.
+type CustomerAddress struct {
+	City       *string   `json:"city,omitempty"`
+	Country    string    `json:"country"`
+	CreatedAt  time.Time `json:"createdAt"`
+	Id         int32     `json:"id"`
+	IsPrimary  bool      `json:"isPrimary"`
+	Label      *string   `json:"label,omitempty"`
+	Line1      string    `json:"line1"`
+	Line2      *string   `json:"line2,omitempty"`
+	PostalCode *string   `json:"postalCode,omitempty"`
+	Region     *string   `json:"region,omitempty"`
+	Type       string    `json:"type"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+}
+
+// CustomerAddressRequest POST/PUT .../addresses(/{addressId})'s own request body (invoice-ready customer design D1, D3): a full replace of one address — every field present or null. isPrimary absent means false, which for a type's first (or otherwise-only-primary) address follows D3's own rules: the first address of a type is primary whatever the request says, and false on the address that is currently the only or primary one of its type is refused.
+type CustomerAddressRequest struct {
+	City       *string `json:"city,omitempty"`
+	Country    string  `json:"country"`
+	IsPrimary  *bool   `json:"isPrimary,omitempty"`
+	Label      *string `json:"label,omitempty"`
+	Line1      string  `json:"line1"`
+	Line2      *string `json:"line2,omitempty"`
+	PostalCode *string `json:"postalCode,omitempty"`
+	Region     *string `json:"region,omitempty"`
+	Type       string  `json:"type"`
+}
+
 // CustomerConflictDuplicate defines model for CustomerConflictDuplicate.
 type CustomerConflictDuplicate struct {
 	CustomerNumber int64  `json:"customerNumber"`
@@ -191,6 +220,11 @@ type GetContactsResponse struct {
 	Contact       ContactResponse    `json:"contact"`
 	Customer      *CustomerReference `json:"customer,omitempty"`
 	CustomerCount int32              `json:"customerCount"`
+}
+
+// GetCustomerAddressesResponse defines model for GetCustomerAddressesResponse.
+type GetCustomerAddressesResponse struct {
+	Data []CustomerAddress `json:"data"`
 }
 
 // GetCustomerContactsResponse defines model for GetCustomerContactsResponse.
@@ -433,6 +467,12 @@ type PutCustomersContactsByIdJSONRequestBody = ContactRequest
 // PutCustomersByIdJSONRequestBody defines body for PutCustomersById for application/json ContentType.
 type PutCustomersByIdJSONRequestBody = UpdateCustomerRequest
 
+// PostCustomersByIdAddressesJSONRequestBody defines body for PostCustomersByIdAddresses for application/json ContentType.
+type PostCustomersByIdAddressesJSONRequestBody = CustomerAddressRequest
+
+// PutCustomersByIdAddressesByAddressIdJSONRequestBody defines body for PutCustomersByIdAddressesByAddressId for application/json ContentType.
+type PutCustomersByIdAddressesByAddressIdJSONRequestBody = CustomerAddressRequest
+
 // PutCustomersByIdContactInfoJSONRequestBody defines body for PutCustomersByIdContactInfo for application/json ContentType.
 type PutCustomersByIdContactInfoJSONRequestBody = PutCustomerContactInfoRequest
 
@@ -504,6 +544,18 @@ type ServerInterface interface {
 	// PutCustomersById Update a customer
 	// (PUT /api/v1/customers/{id})
 	PutCustomersById(w http.ResponseWriter, r *http.Request, id int32)
+	// GetCustomersByIdAddresses List a customer's addresses
+	// (GET /api/v1/customers/{id}/addresses)
+	GetCustomersByIdAddresses(w http.ResponseWriter, r *http.Request, id int32)
+	// PostCustomersByIdAddresses Add an address to a customer
+	// (POST /api/v1/customers/{id}/addresses)
+	PostCustomersByIdAddresses(w http.ResponseWriter, r *http.Request, id int32)
+	// DeleteCustomersByIdAddressesByAddressId Remove an address from a customer
+	// (DELETE /api/v1/customers/{id}/addresses/{addressId})
+	DeleteCustomersByIdAddressesByAddressId(w http.ResponseWriter, r *http.Request, id int32, addressId int32)
+	// PutCustomersByIdAddressesByAddressId Replace a customer's address
+	// (PUT /api/v1/customers/{id}/addresses/{addressId})
+	PutCustomersByIdAddressesByAddressId(w http.ResponseWriter, r *http.Request, id int32, addressId int32)
 	// PutCustomersByIdContactInfo Replace a customer's contact info
 	// (PUT /api/v1/customers/{id}/contact-info)
 	PutCustomersByIdContactInfo(w http.ResponseWriter, r *http.Request, id int32)
@@ -1149,6 +1201,128 @@ func (siw *ServerInterfaceWrapper) PutCustomersById(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutCustomersById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCustomersByIdAddresses operation middleware
+func (siw *ServerInterfaceWrapper) GetCustomersByIdAddresses(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCustomersByIdAddresses(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostCustomersByIdAddresses operation middleware
+func (siw *ServerInterfaceWrapper) PostCustomersByIdAddresses(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostCustomersByIdAddresses(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteCustomersByIdAddressesByAddressId operation middleware
+func (siw *ServerInterfaceWrapper) DeleteCustomersByIdAddressesByAddressId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "addressId" -------------
+	var addressId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "addressId", r.PathValue("addressId"), &addressId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "addressId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteCustomersByIdAddressesByAddressId(w, r, id, addressId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutCustomersByIdAddressesByAddressId operation middleware
+func (siw *ServerInterfaceWrapper) PutCustomersByIdAddressesByAddressId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "addressId" -------------
+	var addressId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "addressId", r.PathValue("addressId"), &addressId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "addressId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutCustomersByIdAddressesByAddressId(w, r, id, addressId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1824,6 +1998,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/{id}", wrapper.DeleteCustomersById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}", wrapper.GetCustomer)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}", wrapper.PutCustomersById)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/addresses", wrapper.GetCustomersByIdAddresses)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/addresses", wrapper.PostCustomersByIdAddresses)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/{id}/addresses/{addressId}", wrapper.DeleteCustomersByIdAddressesByAddressId)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/addresses/{addressId}", wrapper.PutCustomersByIdAddressesByAddressId)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/contact-info", wrapper.PutCustomersByIdContactInfo)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/contacts", wrapper.GetCustomersByIdContacts)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/contacts", wrapper.PostCustomersByIdContacts)
@@ -2896,6 +3074,274 @@ func (response PutCustomersById409ApplicationProblemPlusJSONResponse) VisitPutCu
 	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type GetCustomersByIdAddressesRequestObject struct {
+	Id int32 `json:"id"`
+}
+
+type GetCustomersByIdAddressesResponseObject interface {
+	VisitGetCustomersByIdAddressesResponse(w http.ResponseWriter) error
+}
+
+type GetCustomersByIdAddresses200JSONResponse GetCustomerAddressesResponse
+
+func (response GetCustomersByIdAddresses200JSONResponse) VisitGetCustomersByIdAddressesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdAddresses401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersByIdAddresses401JSONResponse) VisitGetCustomersByIdAddressesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdAddresses403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersByIdAddresses403JSONResponse) VisitGetCustomersByIdAddressesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdAddresses404Response struct {
+}
+
+func (response GetCustomersByIdAddresses404Response) VisitGetCustomersByIdAddressesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostCustomersByIdAddressesRequestObject struct {
+	Id   int32 `json:"id"`
+	Body *PostCustomersByIdAddressesJSONRequestBody
+}
+
+type PostCustomersByIdAddressesResponseObject interface {
+	VisitPostCustomersByIdAddressesResponse(w http.ResponseWriter) error
+}
+
+type PostCustomersByIdAddresses201ResponseHeaders struct {
+	Location *string
+}
+
+type PostCustomersByIdAddresses201JSONResponse struct {
+	Body    CustomerAddress
+	Headers PostCustomersByIdAddresses201ResponseHeaders
+}
+
+func (response PostCustomersByIdAddresses201JSONResponse) VisitPostCustomersByIdAddressesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.Location != nil {
+		w.Header().Set("Location", fmt.Sprint(*response.Headers.Location))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdAddresses400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostCustomersByIdAddresses400ApplicationProblemPlusJSONResponse) VisitPostCustomersByIdAddressesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdAddresses401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersByIdAddresses401JSONResponse) VisitPostCustomersByIdAddressesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdAddresses403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersByIdAddresses403JSONResponse) VisitPostCustomersByIdAddressesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdAddresses404Response struct {
+}
+
+func (response PostCustomersByIdAddresses404Response) VisitPostCustomersByIdAddressesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteCustomersByIdAddressesByAddressIdRequestObject struct {
+	Id        int32 `json:"id"`
+	AddressId int32 `json:"addressId"`
+}
+
+type DeleteCustomersByIdAddressesByAddressIdResponseObject interface {
+	VisitDeleteCustomersByIdAddressesByAddressIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteCustomersByIdAddressesByAddressId204Response struct {
+}
+
+func (response DeleteCustomersByIdAddressesByAddressId204Response) VisitDeleteCustomersByIdAddressesByAddressIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteCustomersByIdAddressesByAddressId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteCustomersByIdAddressesByAddressId401JSONResponse) VisitDeleteCustomersByIdAddressesByAddressIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomersByIdAddressesByAddressId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteCustomersByIdAddressesByAddressId403JSONResponse) VisitDeleteCustomersByIdAddressesByAddressIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomersByIdAddressesByAddressId404Response struct {
+}
+
+func (response DeleteCustomersByIdAddressesByAddressId404Response) VisitDeleteCustomersByIdAddressesByAddressIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutCustomersByIdAddressesByAddressIdRequestObject struct {
+	Id        int32 `json:"id"`
+	AddressId int32 `json:"addressId"`
+	Body      *PutCustomersByIdAddressesByAddressIdJSONRequestBody
+}
+
+type PutCustomersByIdAddressesByAddressIdResponseObject interface {
+	VisitPutCustomersByIdAddressesByAddressIdResponse(w http.ResponseWriter) error
+}
+
+type PutCustomersByIdAddressesByAddressId200JSONResponse CustomerAddress
+
+func (response PutCustomersByIdAddressesByAddressId200JSONResponse) VisitPutCustomersByIdAddressesByAddressIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdAddressesByAddressId400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutCustomersByIdAddressesByAddressId400ApplicationProblemPlusJSONResponse) VisitPutCustomersByIdAddressesByAddressIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdAddressesByAddressId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCustomersByIdAddressesByAddressId401JSONResponse) VisitPutCustomersByIdAddressesByAddressIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdAddressesByAddressId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCustomersByIdAddressesByAddressId403JSONResponse) VisitPutCustomersByIdAddressesByAddressIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdAddressesByAddressId404Response struct {
+}
+
+func (response PutCustomersByIdAddressesByAddressId404Response) VisitPutCustomersByIdAddressesByAddressIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
 }
 
 type PutCustomersByIdContactInfoRequestObject struct {
@@ -4019,6 +4465,18 @@ type StrictServerInterface interface {
 	// PutCustomersById Update a customer
 	// (PUT /api/v1/customers/{id})
 	PutCustomersById(ctx context.Context, request PutCustomersByIdRequestObject) (PutCustomersByIdResponseObject, error)
+	// GetCustomersByIdAddresses List a customer's addresses
+	// (GET /api/v1/customers/{id}/addresses)
+	GetCustomersByIdAddresses(ctx context.Context, request GetCustomersByIdAddressesRequestObject) (GetCustomersByIdAddressesResponseObject, error)
+	// PostCustomersByIdAddresses Add an address to a customer
+	// (POST /api/v1/customers/{id}/addresses)
+	PostCustomersByIdAddresses(ctx context.Context, request PostCustomersByIdAddressesRequestObject) (PostCustomersByIdAddressesResponseObject, error)
+	// DeleteCustomersByIdAddressesByAddressId Remove an address from a customer
+	// (DELETE /api/v1/customers/{id}/addresses/{addressId})
+	DeleteCustomersByIdAddressesByAddressId(ctx context.Context, request DeleteCustomersByIdAddressesByAddressIdRequestObject) (DeleteCustomersByIdAddressesByAddressIdResponseObject, error)
+	// PutCustomersByIdAddressesByAddressId Replace a customer's address
+	// (PUT /api/v1/customers/{id}/addresses/{addressId})
+	PutCustomersByIdAddressesByAddressId(ctx context.Context, request PutCustomersByIdAddressesByAddressIdRequestObject) (PutCustomersByIdAddressesByAddressIdResponseObject, error)
 	// PutCustomersByIdContactInfo Replace a customer's contact info
 	// (PUT /api/v1/customers/{id}/contact-info)
 	PutCustomersByIdContactInfo(ctx context.Context, request PutCustomersByIdContactInfoRequestObject) (PutCustomersByIdContactInfoResponseObject, error)
@@ -4534,6 +4992,126 @@ func (sh *strictHandler) PutCustomersById(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutCustomersByIdResponseObject); ok {
 		if err := validResponse.VisitPutCustomersByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCustomersByIdAddresses operation middleware
+func (sh *strictHandler) GetCustomersByIdAddresses(w http.ResponseWriter, r *http.Request, id int32) {
+	var request GetCustomersByIdAddressesRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCustomersByIdAddresses(ctx, request.(GetCustomersByIdAddressesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCustomersByIdAddresses")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCustomersByIdAddressesResponseObject); ok {
+		if err := validResponse.VisitGetCustomersByIdAddressesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostCustomersByIdAddresses operation middleware
+func (sh *strictHandler) PostCustomersByIdAddresses(w http.ResponseWriter, r *http.Request, id int32) {
+	var request PostCustomersByIdAddressesRequestObject
+
+	request.Id = id
+
+	var body PostCustomersByIdAddressesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostCustomersByIdAddresses(ctx, request.(PostCustomersByIdAddressesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostCustomersByIdAddresses")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostCustomersByIdAddressesResponseObject); ok {
+		if err := validResponse.VisitPostCustomersByIdAddressesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteCustomersByIdAddressesByAddressId operation middleware
+func (sh *strictHandler) DeleteCustomersByIdAddressesByAddressId(w http.ResponseWriter, r *http.Request, id int32, addressId int32) {
+	var request DeleteCustomersByIdAddressesByAddressIdRequestObject
+
+	request.Id = id
+	request.AddressId = addressId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteCustomersByIdAddressesByAddressId(ctx, request.(DeleteCustomersByIdAddressesByAddressIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteCustomersByIdAddressesByAddressId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteCustomersByIdAddressesByAddressIdResponseObject); ok {
+		if err := validResponse.VisitDeleteCustomersByIdAddressesByAddressIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutCustomersByIdAddressesByAddressId operation middleware
+func (sh *strictHandler) PutCustomersByIdAddressesByAddressId(w http.ResponseWriter, r *http.Request, id int32, addressId int32) {
+	var request PutCustomersByIdAddressesByAddressIdRequestObject
+
+	request.Id = id
+	request.AddressId = addressId
+
+	var body PutCustomersByIdAddressesByAddressIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutCustomersByIdAddressesByAddressId(ctx, request.(PutCustomersByIdAddressesByAddressIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutCustomersByIdAddressesByAddressId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutCustomersByIdAddressesByAddressIdResponseObject); ok {
+		if err := validResponse.VisitPutCustomersByIdAddressesByAddressIdResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
