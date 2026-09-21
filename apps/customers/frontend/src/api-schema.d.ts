@@ -349,6 +349,8 @@ export interface components {
             suffix?: string | null;
         };
         CreateCustomerRequest: {
+            /** @description When true, skips the duplicate-legal-identity conflict check entirely (customers foundation design D6) — two departments of one company kept as separate customers is legitimate. Absent or false, an identity another customer already has is a 409. */
+            allowDuplicateIdentity?: boolean | null;
             identity?: components["schemas"]["LegalIdentityRequest"] | null;
             name: string;
             status?: string | null;
@@ -481,6 +483,8 @@ export interface components {
             totalCount: number;
         };
         LegalIdentityRequest: {
+            /** @description When true, skips the duplicate-legal-identity conflict check entirely (customers foundation design D6) — two departments of one company kept as separate customers is legitimate. Absent or false, an identity another customer already has is a 409. Only consulted when it differs from the identity already on file. */
+            allowDuplicateIdentity?: boolean | null;
             country: string;
             id: string;
             name: string;
@@ -599,6 +603,8 @@ export interface components {
             summary?: string | null;
         };
         UpdateCustomerRequest: {
+            /** @description When true, skips the duplicate-legal-identity conflict check entirely (customers foundation design D6) — two departments of one company kept as separate customers is legitimate. Absent or false, an identity another customer already has is a 409. Only consulted when the request's identity differs from the one already on file. */
+            allowDuplicateIdentity?: boolean | null;
             identity?: components["schemas"]["LegalIdentityRequest"] | null;
             name: string;
             /**
@@ -764,6 +770,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
                 };
             };
         };
@@ -1263,6 +1278,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
+                };
             };
         };
     };

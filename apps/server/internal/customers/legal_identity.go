@@ -65,6 +65,17 @@ func (s *server) GetCustomersByIdLegalIdentity(ctx context.Context, req gen.GetC
 // PutCustomersById's own identity-replacement path (identityEqual,
 // recordCustomerUpdated, timeline_events.go): resubmitting the identity
 // unchanged records no event and leaves updated_at alone.
+//
+// The duplicate-legal-identity check (customers foundation design D6) runs
+// last, immediately before the write, inside the same transaction — after
+// the type-mismatch 400 above, since an invalid pairing is worth reporting
+// before a conflict with someone else's identity is. It is skipped when the
+// request's (country, id) matches what the row already has
+// (identityCountryAndIDEqual, duplicates.go — a bare name/source/type edit
+// is never a conflict with itself) or when the request carries
+// allowDuplicateIdentity: true. Unlike changed, which is what the timeline
+// event and updated_at gate on, the duplicate check never looks at
+// name/source/type at all.
 func (s *server) PutCustomersByIdLegalIdentity(ctx context.Context, req gen.PutCustomersByIdLegalIdentityRequestObject) (gen.PutCustomersByIdLegalIdentityResponseObject, error) {
 	body := gen.LegalIdentityRequest{}
 	if req.Body != nil {
@@ -95,6 +106,9 @@ func (s *server) PutCustomersByIdLegalIdentity(ctx context.Context, req gen.PutC
 	after := &parsed
 	changed := !identityEqual(before, after)
 
+	allowDuplicateIdentity := body.AllowDuplicateIdentity != nil && *body.AllowDuplicateIdentity
+	needsDuplicateCheck := !identityCountryAndIDEqual(before, after) && !allowDuplicateIdentity
+
 	now := s.deps.Clock()
 	updatedAt := existing.UpdatedAt
 	if changed {
@@ -115,8 +129,23 @@ func (s *server) PutCustomersByIdLegalIdentity(ctx context.Context, req gen.PutC
 	}
 
 	legalCountry, legalID, legalName, legalSource, legalType := legalColumns(after)
+	var conflict *gen.CustomerConflictProblem
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
+		// The duplicate check runs last, immediately before the write: a
+		// conflict aborts the transaction via errDuplicateIdentity before
+		// UpdateCustomer ever runs, so a refused replace leaves the row (and
+		// its revision) untouched.
+		if needsDuplicateCheck {
+			problem, err := s.duplicateIdentityProblem(ctx, txq, *after, req.Id)
+			if err != nil {
+				return err
+			}
+			if problem != nil {
+				conflict = problem
+				return errDuplicateIdentity
+			}
+		}
 		// ExpectedRevision is always nil here: the legal-identity sub-resource
 		// stays an unconditional write, not a revision-guarded one (customers
 		// foundation design D5) — every call bumps the row's revision by one,
@@ -133,6 +162,9 @@ func (s *server) PutCustomersByIdLegalIdentity(ctx context.Context, req gen.PutC
 		}
 		return recordCustomerUpdated(ctx, txq, now, req.Id, existing.Name, before, existing.Name, after, act.Kind, act.Display, act.UserID)
 	})
+	if errors.Is(err, errDuplicateIdentity) {
+		return gen.PutCustomersByIdLegalIdentity409ApplicationProblemPlusJSONResponse(*conflict), nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("customers: replace legal identity: %w", err)
 	}

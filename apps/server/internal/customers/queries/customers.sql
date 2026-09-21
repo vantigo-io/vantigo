@@ -29,6 +29,25 @@ SELECT id, customer_number, name, status, legal_country, legal_id, legal_name, l
 FROM customers.customers
 WHERE id = @id;
 
+-- name: CustomersByLegalIdentity :many
+-- CustomersByLegalIdentity is the duplicate-legal-identity conflict check
+-- (customers foundation design D6): any customer — of any status, archived
+-- included, since the right move for one is usually to restore it rather
+-- than create a second — already holding (@country, @legal_id), other than
+-- @exclude_id itself. Country and id are compared as stored, i.e. already
+-- normalised by validateLegalIdentity (lower-cased country, stripped
+-- Norwegian org number), so this is a plain equality, not another ILIKE.
+-- Ordered by id and capped at 5: the conflict body only ever names a
+-- handful of holders (CustomerConflictProblem.duplicates), never every one.
+-- No unique index backs this — the design deliberately allows a race
+-- between two simultaneous creates; allowDuplicateIdentity is how a caller
+-- who knows better goes ahead anyway.
+SELECT id, customer_number, name, status
+FROM customers.customers
+WHERE legal_country = @country::text AND legal_id = @legal_id::text AND id <> @exclude_id::int
+ORDER BY id
+LIMIT 5;
+
 -- name: UpdateCustomer :one
 -- UpdateCustomer applies PUT /customers/{id}'s validated fields
 -- (UpdateCustomerEndpoint.cs:88-109): name, status, and the legal identity

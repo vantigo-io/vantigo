@@ -319,11 +319,18 @@ func TestCreateCustomer_WithValidLegalSource_PersistsNormalizedSource(t *testing
 	h := newHarness(t)
 	c := authenticatedClient(t, h)
 
-	for _, source := range []string{"brreg", "Manual"} {
+	// Each iteration creates its own customer, so each needs its own valid
+	// org number (customers foundation design D6) — the same identity twice
+	// would now be a 409, and that is not what this test is about.
+	for _, tc := range []struct{ source, orgNumber string }{
+		{"brreg", "923609016"},
+		{"Manual", "810000007"},
+	} {
+		source := tc.source
 		r := c.Do(http.MethodPost, "/api/v1/customers", map[string]any{
 			"name": "Sourced",
 			"identity": map[string]any{
-				"country": "no", "type": "business", "id": "923609016", "name": "Sourced AS", "source": source,
+				"country": "no", "type": "business", "id": tc.orgNumber, "name": "Sourced AS", "source": source,
 			},
 		})
 		if r.Status != http.StatusCreated {

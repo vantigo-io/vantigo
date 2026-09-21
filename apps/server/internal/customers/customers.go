@@ -286,6 +286,16 @@ func (s *server) GetCustomers(ctx context.Context, req gen.GetCustomersRequestOb
 // so customers.yaml now declares it and oapi-codegen generates
 // PostCustomers201ResponseHeaders for it, rather than a hand-written
 // response type.
+//
+// (3) Once validation passes, an identity is checked for a
+// duplicate-legal-identity conflict (customers foundation design D6): 409
+// unless the request carries allowDuplicateIdentity: true. There is no
+// "unchanged" exemption on create — every create is a fresh identity by
+// definition — so the check simply runs whenever identity is present and
+// not overridden. It runs inside the write's own transaction
+// (duplicates.go), and before NextCounterValue: aborting the transaction on
+// a conflict must not have burned a customer number a refused create never
+// uses.
 func (s *server) PostCustomers(ctx context.Context, req gen.PostCustomersRequestObject) (gen.PostCustomersResponseObject, error) {
 	body := gen.CreateCustomerRequest{}
 	if req.Body != nil {
@@ -354,10 +364,28 @@ func (s *server) PostCustomers(ctx context.Context, req gen.PostCustomersRequest
 		return nil, fmt.Errorf("customers: resolve actor: %w", err)
 	}
 
+	allowDuplicateIdentity := body.AllowDuplicateIdentity != nil && *body.AllowDuplicateIdentity
+
 	legalCountry, legalID, legalName, legalSource, legalType := legalColumns(identity)
 	var created store.CustomersCustomer
+	var conflict *gen.CustomerConflictProblem
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
+		// The duplicate check (customers foundation design D6) runs first,
+		// inside this transaction, and before NextCounterValue: a conflict
+		// aborts the transaction via errDuplicateIdentity, so no number is
+		// ever allocated for a create that gets refused. excludeID is 0 —
+		// there is no existing row to exclude on a create.
+		if identity != nil && !allowDuplicateIdentity {
+			problem, err := s.duplicateIdentityProblem(ctx, txq, *identity, 0)
+			if err != nil {
+				return err
+			}
+			if problem != nil {
+				conflict = problem
+				return errDuplicateIdentity
+			}
+		}
 		number, err := txq.NextCounterValue(ctx, "customer-number")
 		if err != nil {
 			return err
@@ -379,6 +407,9 @@ func (s *server) PostCustomers(ctx context.Context, req gen.PostCustomersRequest
 		}
 		return recordCustomerCreated(ctx, txq, now, created.ID, name, identity, act.Kind, act.Display, act.UserID)
 	})
+	if errors.Is(err, errDuplicateIdentity) {
+		return gen.PostCustomers409ApplicationProblemPlusJSONResponse(*conflict), nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("customers: create customer: %w", err)
 	}
@@ -428,7 +459,18 @@ func (s *server) GetCustomer(ctx context.Context, req gen.GetCustomerRequestObje
 // missing id answers 400 (validation wins), an invalid identity against a
 // missing id answers 404 (existence wins), identity supplied without
 // legal-identity-manage against a missing id answers 403 (the permission
-// gate wins over both), and a stale revision wins over an invalid identity.
+// gate wins over both), and a stale revision wins over an invalid identity;
+// (6) only once the identity itself has been accepted does the
+// duplicate-legal-identity check (customers foundation design D6) run,
+// immediately before the write, and only when the request's (country, id)
+// differs from the row's own (identityCountryAndIDEqual, duplicates.go) —
+// resubmitting the same identity, even with a new name/source/type, is
+// never a conflict with itself — and the request does not carry
+// allowDuplicateIdentity: true. Like PostCustomers, it runs inside the
+// write's own transaction and aborts it on a conflict, so a stale revision
+// still wins over a duplicate identity (checked first) and a genuine no-op
+// request never reaches the check at all (it returns 200 before opening a
+// transaction).
 //
 // When the request omits identity, the persisted identity is left
 // unchanged: UpdateCustomerEndpoint.cs:71 seeds customerIdentity from
@@ -507,6 +549,13 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 		afterIdentity = &parsed
 	}
 
+	// needsDuplicateCheck (customers foundation design D6): true only when
+	// the request actually proposes a different (country, id) than the row
+	// already has (never on a bare name/source/type edit, and never with no
+	// identity at all) and the caller has not opted out.
+	allowDuplicateIdentity := body.AllowDuplicateIdentity != nil && *body.AllowDuplicateIdentity
+	needsDuplicateCheck := afterIdentity != nil && !identityCountryAndIDEqual(beforeIdentity, afterIdentity) && !allowDuplicateIdentity
+
 	finalStatus := existing.Status
 	if hasStatus {
 		finalStatus = status
@@ -543,8 +592,22 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 
 	legalCountry, legalID, legalName, legalSource, legalType := legalColumns(afterIdentity)
 	var updated store.CustomersCustomer
+	var conflict *gen.CustomerConflictProblem
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
+		// The duplicate check runs first, inside this transaction, so a
+		// conflict aborts the transaction via errDuplicateIdentity before
+		// UpdateCustomer ever runs — no revision bump, no timeline event.
+		if needsDuplicateCheck {
+			problem, err := s.duplicateIdentityProblem(ctx, txq, *afterIdentity, req.Id)
+			if err != nil {
+				return err
+			}
+			if problem != nil {
+				conflict = problem
+				return errDuplicateIdentity
+			}
+		}
 		var err error
 		updated, err = txq.UpdateCustomer(ctx, store.UpdateCustomerParams{
 			ID: req.Id, Name: name, Status: finalStatus,
@@ -567,6 +630,8 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 		return nil
 	})
 	switch {
+	case errors.Is(err, errDuplicateIdentity):
+		return gen.PutCustomersById409ApplicationProblemPlusJSONResponse(*conflict), nil
 	case errors.Is(err, pgx.ErrNoRows):
 		// The guarded UPDATE's WHERE clause matched no row: a concurrent
 		// writer moved the revision between our read above and this write.
