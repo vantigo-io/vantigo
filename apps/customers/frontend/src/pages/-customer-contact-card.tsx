@@ -239,13 +239,22 @@ const CustomerContactInfoModal = ({
   const reload = async () => {
     setReloading(true);
     try {
-      const fresh = await queryClient.fetchQuery({ ...customerQueryOptions(customer.id), staleTime: 0 });
+      // One fetch of the customer, not two: invalidating ["customers"] first
+      // refetches every active observer under that prefix — including this
+      // card's own useSuspenseQuery(customerQueryOptions(customer.id)), which
+      // is always mounted above this modal — so the fresh row can be read
+      // straight back out of the cache instead of also fetching it directly.
+      // The explicit fetchQuery is a fallback only, for the unlikely case
+      // nothing left that query active.
+      await queryClient.invalidateQueries({ queryKey: ["customers"] });
+      const fresh =
+        queryClient.getQueryData<CustomerResponse>(customerQueryOptions(customer.id).queryKey) ??
+        (await queryClient.fetchQuery({ ...customerQueryOptions(customer.id), staleTime: 0 }));
       form.setValues(contactInfoValues(fresh));
       form.resetDirty();
       form.clearErrors();
       setRevision(fresh.revision);
       setConflict(false);
-      queryClient.invalidateQueries({ queryKey: ["customers"] });
     } finally {
       setReloading(false);
     }

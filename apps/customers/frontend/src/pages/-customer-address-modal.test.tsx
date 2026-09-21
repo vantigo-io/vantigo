@@ -3,6 +3,7 @@ import { Notifications } from "@mantine/notifications";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { setLanguagePreference } from "@vantigo/frontend-shell";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { stubFetch } from "../test/fetch";
 import { type AddressModalState, CustomerAddressModal } from "./-customer-address-modal";
@@ -46,7 +47,10 @@ const renderModal = (
 };
 
 describe("CustomerAddressModal", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setLanguagePreference("auto");
+  });
 
   it("offers the four address types", async () => {
     renderModal({ mode: "add" });
@@ -63,14 +67,14 @@ describe("CustomerAddressModal", () => {
 
   it("forces the primary checkbox on and disabled when it is the only address of its type", () => {
     renderModal({ mode: "add" }, []);
-    const checkbox = screen.getByRole("checkbox", { name: "Primary Invoice address" });
+    const checkbox = screen.getByRole("checkbox", { name: "Primary invoice address" });
     expect(checkbox).toBeChecked();
     expect(checkbox).toBeDisabled();
   });
 
   it("leaves the primary checkbox free when another address of the type already exists", () => {
     renderModal({ mode: "add" }, [address({ id: 9, isPrimary: true })]);
-    const checkbox = screen.getByRole("checkbox", { name: "Primary Invoice address" });
+    const checkbox = screen.getByRole("checkbox", { name: "Primary invoice address" });
     expect(checkbox).not.toBeChecked();
     expect(checkbox).not.toBeDisabled();
   });
@@ -78,7 +82,7 @@ describe("CustomerAddressModal", () => {
   it("forces the primary checkbox on when editing the address that is currently primary", () => {
     const primary = address({ id: 1, isPrimary: true });
     renderModal({ mode: "edit", address: primary }, [primary, address({ id: 2, isPrimary: false })]);
-    const checkbox = screen.getByRole("checkbox", { name: "Primary Invoice address" });
+    const checkbox = screen.getByRole("checkbox", { name: "Primary invoice address" });
     expect(checkbox).toBeChecked();
     expect(checkbox).toBeDisabled();
   });
@@ -86,9 +90,17 @@ describe("CustomerAddressModal", () => {
   it("leaves the primary checkbox free when editing a non-primary address alongside a primary one", () => {
     const nonPrimary = address({ id: 2, isPrimary: false });
     renderModal({ mode: "edit", address: nonPrimary }, [address({ id: 1, isPrimary: true }), nonPrimary]);
-    const checkbox = screen.getByRole("checkbox", { name: "Primary Invoice address" });
+    const checkbox = screen.getByRole("checkbox", { name: "Primary invoice address" });
     expect(checkbox).not.toBeChecked();
     expect(checkbox).not.toBeDisabled();
+  });
+
+  it("lower-cases the interpolated type in Norwegian, matching deleteAddressConfirm's own call site", async () => {
+    // Without lower-casing, addressTypeLabel's nb "Faktura" would render
+    // "Primær Fakturaadresse" — a mid-sentence capital.
+    setLanguagePreference("nb");
+    renderModal({ mode: "add" }, []);
+    expect(await screen.findByRole("checkbox", { name: "Primær fakturaadresse" })).toBeInTheDocument();
   });
 
   it("POSTs the full new address on add", async () => {
