@@ -50,7 +50,9 @@ func (s *server) GetIdentityBootstrapStatus(ctx context.Context, _ gen.GetIdenti
 	if err != nil {
 		return nil, fmt.Errorf("identity: bootstrap status: %w", err)
 	}
-	return gen.GetIdentityBootstrapStatus200JSONResponse{Available: !consumed}, nil
+	return gen.GetIdentityBootstrapStatus200JSONResponse{
+		Available: !consumed && s.deps.Config.BootstrapOwnerEmail == "",
+	}, nil
 }
 
 // PostIdentityBootstrap creates the installation's first Owner and signs
@@ -69,6 +71,11 @@ func (s *server) GetIdentityBootstrapStatus(ctx context.Context, _ gen.GetIdenti
 // failure, a deadlock or a unique violation; each is the same 409. It is
 // tried once: a retry would only find bootstrap consumed.
 func (s *server) PostIdentityBootstrap(ctx context.Context, req gen.PostIdentityBootstrapRequestObject) (gen.PostIdentityBootstrapResponseObject, error) {
+	// With BOOTSTRAP_OWNER_EMAIL the Owner is seated by invitation; the
+	// anonymous form would hand the installation to its first visitor.
+	if s.deps.Config.BootstrapOwnerEmail != "" {
+		return bootstrapUnavailable(), nil
+	}
 	var body gen.BootstrapRequest
 	if req.Body != nil {
 		body = *req.Body
@@ -288,7 +295,8 @@ func builtInRoleID(name string) uuid.UUID {
 // Then, while bootstrap is still available, it logs a warning: with no
 // secret guarding /setup, the first visitor to complete it becomes the
 // installation's administrator, and the operator should be the one to do
-// so before anyone else can reach the address.
+// so before anyone else can reach the address. With BOOTSTRAP_OWNER_EMAIL
+// set it invites that address instead (inviteBootstrapOwner).
 func RunStartup(ctx context.Context, d module.Deps) error {
 	q := store.New(d.Pool)
 	if err := verifyBuiltInRoles(ctx, q); err != nil {
@@ -298,9 +306,71 @@ func RunStartup(ctx context.Context, d module.Deps) error {
 	if err != nil {
 		return fmt.Errorf("identity: bootstrap status: %w", err)
 	}
-	if !consumed {
+	switch {
+	case consumed:
+		return nil
+	case d.Config.BootstrapOwnerEmail == "":
 		d.Logger.WarnContext(ctx, bootstrapOpenNotice)
+		return nil
+	default:
+		return inviteBootstrapOwner(ctx, d)
 	}
+}
+
+// inviteBootstrapOwner mails BOOTSTRAP_OWNER_EMAIL an Owner invitation while
+// the installation has no Owner and no invitation that can still be accepted.
+// It runs on every start of every serving replica, so the decision is made
+// under the owner lock: a concurrent start waits, then finds the invitation
+// pending and sends nothing.
+//
+// A failed send is logged and does not stop startup. deliverInvitation has
+// revoked the invitation by then, so the next start tries again; refusing to
+// boot would turn an SMTP outage into a crash loop.
+func inviteBootstrapOwner(ctx context.Context, d module.Deps) error {
+	email := d.Config.BootstrapOwnerEmail
+	now := d.Clock()
+
+	var inv store.IdentityInvitation
+	var token string
+	issued := false
+	err := db.WithTx(ctx, d.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		q := store.New(tx)
+		if err := lockOwners(ctx, q); err != nil {
+			return err
+		}
+		consumed, err := q.BootstrapConsumed(ctx)
+		if err != nil || consumed {
+			return err
+		}
+		pending, err := q.CountPendingOwnerInvitations(ctx, now)
+		if err != nil || pending > 0 {
+			return err
+		}
+		if _, taken, err := emailTaken(ctx, q, email); err != nil {
+			return err
+		} else if taken {
+			d.Logger.WarnContext(ctx, "BOOTSTRAP_OWNER_EMAIL already belongs to an account that is not an Owner; no invitation was sent")
+			return nil
+		}
+		inv, token, err = issueInvitation(ctx, q, d.Config.InvitationLifetime, store.InsertInvitationParams{
+			Email:           email,
+			NormalizedEmail: normalizeEmail(email),
+			Role:            RoleOwner,
+		}, now)
+		issued = err == nil
+		return err
+	})
+	if err != nil {
+		return fmt.Errorf("identity: bootstrap owner invitation: %w", err)
+	}
+	if !issued {
+		return nil
+	}
+	if err := deliverInvitation(ctx, store.New(d.Pool), d, inv, token); err != nil {
+		d.Logger.ErrorContext(ctx, "the bootstrap owner invitation could not be sent; the next start tries again", "error", err)
+		return nil
+	}
+	d.Logger.InfoContext(ctx, "bootstrap owner invitation sent")
 	return nil
 }
 

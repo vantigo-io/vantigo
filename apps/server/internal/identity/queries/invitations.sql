@@ -50,3 +50,11 @@ SELECT * FROM identity.invitations WHERE token_hash = @token_hash FOR UPDATE;
 
 -- name: MarkInvitationAccepted :exec
 UPDATE identity.invitations SET accepted_at = @now::timestamptz WHERE id = @id;
+
+-- name: CountPendingOwnerInvitations :one
+-- CountPendingOwnerInvitations is how many Owner invitations can still be
+-- accepted at @now: BOOTSTRAP_OWNER_EMAIL's startup step issues one only when
+-- there is none, and the management status reports "invited" while there is.
+SELECT count(*)::int
+FROM identity.invitations
+WHERE role = 'Owner' AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > @now::timestamptz;
