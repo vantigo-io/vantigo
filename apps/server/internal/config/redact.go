@@ -23,10 +23,11 @@ const (
 // never recurses back into Format. A nested sub-configuration still has
 // its own Format, which fmt calls for the field.
 type (
-	redactedConfig     Config
-	redactedMailConfig MailConfig
-	redactedOIDCConfig OIDCConfig
-	redactedSCIMConfig SCIMConfig
+	redactedConfig           Config
+	redactedMailConfig       MailConfig
+	redactedOIDCConfig       OIDCConfig
+	redactedSCIMConfig       SCIMConfig
+	redactedManagementConfig ManagementConfig
 )
 
 // redacted is c with the application secret and any password in the
@@ -125,6 +126,25 @@ func (s SCIMConfig) redacted() redactedSCIMConfig {
 	v := redactedSCIMConfig(s)
 	v.Token = redact(v.Token)
 	v.PreviousToken = redact(v.PreviousToken)
+	return v
+}
+
+// Format prints m for every verb with the bearer token replaced.
+func (m ManagementConfig) Format(f fmt.State, verb rune) {
+	_, _ = fmt.Fprintf(f, fmt.FormatString(f, verb), m.redacted())
+}
+
+// LogValue is m as Format prints it with %+v.
+func (m ManagementConfig) LogValue() slog.Value { return slog.StringValue(fmt.Sprintf("%+v", m)) }
+
+// MarshalJSON encodes m with the token redacted; see Config.MarshalJSON.
+func (m ManagementConfig) MarshalJSON() ([]byte, error) {
+	return json.Marshal(m.redacted())
+}
+
+func (m ManagementConfig) redacted() redactedManagementConfig {
+	v := redactedManagementConfig(m)
+	v.Token = redact(v.Token)
 	return v
 }
 
