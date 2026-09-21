@@ -156,8 +156,10 @@ func (d *directory) BillingProfile(ctx context.Context, id int32) (*contracts.Cu
 //     InvoiceEmail just resolved above — reminders fall back to where an
 //     invoice would go, never straight to the contact-info email.
 //   - PeppolID: the billing profile's own explicit peppolId, else
-//     "0192:<legal id>" when the identity's country is "no" and the
-//     customer itself (not the identity) is of type "business", else "".
+//     derivedPeppolID(identity, customerType) (billing_values.go, final
+//     review fix I1 — the one predicate billingWarnings's ehf_without_
+//     recipient check now shares, so the two can never disagree about
+//     whether a recipient exists), else "".
 func resolveBillingProfile(id int32, customerNumber int64, name, customerType string, archived bool,
 	identity *legalIdentity, contactEmail *string, profile billingProfile, invoiceAddress *contracts.CustomerAddressEntry,
 ) *contracts.CustomerBillingProfile {
@@ -171,8 +173,8 @@ func resolveBillingProfile(id int32, customerNumber int64, name, customerType st
 	}
 
 	peppolID := deref(profile.PeppolID)
-	if peppolID == "" && identity != nil && identity.Country == "no" && customerType == "business" {
-		peppolID = "0192:" + identity.ID
+	if peppolID == "" {
+		peppolID = derivedPeppolID(identity, customerType)
 	}
 
 	var legalCountry, legalID, legalName string

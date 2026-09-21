@@ -445,7 +445,7 @@ export interface components {
             /** Format: int32 */
             id: number;
         };
-        /** @description One of a customer's typed addresses (invoice-ready customer design D3) — postal, invoice, delivery or visiting, any number of each, at most one primary per type. */
+        /** @description One of a customer's typed addresses (invoice-ready customer design D3) — postal, invoice, delivery or visiting, any number of each, at most one primary per type. city/label/line2/postalCode/region are optional — unset, the response simply omits the key rather than sending it as null. */
         CustomerAddress: {
             city?: string | null;
             country: string;
@@ -475,7 +475,7 @@ export interface components {
             region?: string | null;
             type: string;
         };
-        /** @description A customer's billing profile (invoice-ready customer design D1, D4): payment terms, currency, document language, delivery methods and the identifiers used to send it invoices — every field nullable, meaning "not decided here, whoever invoices uses its own default". warnings is computed at read time from the profile plus the customer's type, legal identity, contact email and addresses — never stored — in a fixed order: ehf_without_recipient, email_without_address, efaktura_for_business, no_invoice_address. */
+        /** @description A customer's billing profile (invoice-ready customer design D1, D4): payment terms, currency, document language, delivery methods and the identifiers used to send it invoices — every field optional, meaning "not decided here, whoever invoices uses its own default"; unset, a field is simply absent from the response rather than sent as null. warnings is computed at read time from the profile plus the customer's type, legal identity, contact email and addresses — never stored — in a fixed order: ehf_without_recipient, email_without_address, efaktura_for_business, no_invoice_address. */
         CustomerBillingProfile: {
             buyerReference?: string | null;
             currency?: string | null;
@@ -511,7 +511,7 @@ export interface components {
             title?: string | null;
             type?: string | null;
         };
-        /** @description A customer's own contact details (invoice-ready customer design D2) — what reaches the customer itself, not one of its contacts. Each field is nullable; a blank value is stored as null. */
+        /** @description A customer's own contact details (invoice-ready customer design D2) — what reaches the customer itself, not one of its contacts. Each field is optional; a blank value is stored as null, but the response never sends null back — a field with none is simply absent. */
         CustomerContactInfo: {
             email?: string | null;
             phone?: string | null;

@@ -51,6 +51,14 @@ func billingProfileResponse(p billingProfile, revision int32, warnings []string)
 // "ehf" (customers:billing-manage) and reading the warning back, and GET
 // .../billing-profile never exposes the identity's own fields (country/id/
 // name) to a caller who cannot see them elsewhere.
+//
+// ehf_without_recipient fires exactly when derivedPeppolID (billing_values.go,
+// final review fix I1) finds nothing to derive: the same predicate
+// resolveBillingProfile (directory.go) uses, so a stored row can never make
+// the directory and this warning disagree about whether a recipient exists
+// — before this fix, this check read identity.Type while the directory read
+// the customer's own type, which a legacy row with legal_type NULL (or a
+// malformed legal_id) could make answer oppositely.
 func billingWarnings(profile billingProfile, customerType string, identity *legalIdentity, contactEmail *string, hasInvoiceAddress bool) []string {
 	warnings := []string{}
 
@@ -59,8 +67,7 @@ func billingWarnings(profile billingProfile, customerType string, identity *lega
 		delivery = *profile.InvoiceDelivery
 	}
 
-	norwegianBusinessIdentity := identity != nil && identity.Country == "no" && identity.Type == "business"
-	if delivery == "ehf" && profile.PeppolID == nil && !norwegianBusinessIdentity {
+	if delivery == "ehf" && profile.PeppolID == nil && derivedPeppolID(identity, customerType) == "" {
 		warnings = append(warnings, "ehf_without_recipient")
 	}
 	if delivery == "email" && profile.InvoiceEmail == nil && contactEmail == nil {
@@ -78,9 +85,10 @@ func billingWarnings(profile billingProfile, customerType string, identity *lega
 // GetCustomersByIdBillingProfile Get a customer's billing profile
 // (GET /api/v1/customers/{id}/billing-profile)
 //
-// 200 with every field null (and whatever warnings the empty profile still
-// raises — no_invoice_address at least, D4's controller ruling) for a
-// customer that has none: a billing profile always exists conceptually,
+// 200 with every field absent — the wire omits an unset field, it never
+// sends null — and whatever warnings the empty profile still raises
+// (no_invoice_address at least, D4's controller ruling) for a customer that
+// has none: a billing profile always exists conceptually,
 // unlike the legal identity's own GET, which answers 204. 404 when the
 // customer itself does not exist.
 func (s *server) GetCustomersByIdBillingProfile(ctx context.Context, req gen.GetCustomersByIdBillingProfileRequestObject) (gen.GetCustomersByIdBillingProfileResponseObject, error) {

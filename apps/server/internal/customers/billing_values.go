@@ -78,6 +78,29 @@ func billingProfileFromRow(invoiceEmail, reminderEmail *string, paymentTermsDays
 	}
 }
 
+// derivedPeppolID is the EHF recipient this module can derive from the
+// customer's own legal identity, "" when there is none (final review fix
+// wave, finding I1): the one predicate both directory.go's
+// resolveBillingProfile and billing_profile.go's billingWarnings now share,
+// so a stored row can never make the two disagree about whether a recipient
+// exists. "0192:" + identity.ID only when identity is set, its country is
+// "no", customerType — the customer's own type, not identity.Type, which a
+// legacy row can hold NULL while the customer itself is still "business" —
+// is "business", and identity.ID itself passes validNorwegianOrgNumber
+// (values.go): a row written before this module validated legal ids at all
+// can hold something like "NO 923 609 016 MVA", and handing that to
+// Invoices as "0192:NO 923 609 016 MVA" would be worse than deriving
+// nothing.
+func derivedPeppolID(identity *legalIdentity, customerType string) string {
+	if identity == nil || identity.Country != "no" || customerType != "business" {
+		return ""
+	}
+	if !validNorwegianOrgNumber(identity.ID) {
+		return ""
+	}
+	return "0192:" + identity.ID
+}
+
 // currencyPattern is an ISO-4217 alphabetic code's shape: three letters,
 // nothing else — the set of actually-assigned codes is not checked, the same
 // shape-only rule internal/projects/values.go's own currencyPattern applies

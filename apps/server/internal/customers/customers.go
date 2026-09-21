@@ -195,6 +195,26 @@ func likePattern(search string) string {
 	return "%" + likeReplacer.Replace(search) + "%"
 }
 
+// searchPhoneEligible is search_phone's own gate (final review fix M2): a
+// term short on digits — "1", or a customer-number/legal-id fragment like
+// "10" — would otherwise ILIKE-match nearly every phone number's compacted
+// form by accident, so the phone branch of CountCustomers/ListCustomers only
+// activates once the compact search term carries at least three ASCII
+// digits, comfortably clearing a genuine phone-number fragment ("922 12" →
+// "92212") while a short, non-phone term never reaches it.
+func searchPhoneEligible(compact string) bool {
+	digits := 0
+	for _, r := range compact {
+		if r >= '0' && r <= '9' {
+			digits++
+			if digits >= 3 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // validateGetCustomersParams is GetCustomersEndpoint.Validate
 // (GetCustomersEndpoint.cs:112-145): every check runs regardless of the
 // others, and every failure's message is collected, to be joined with a
@@ -245,6 +265,7 @@ func (s *server) GetCustomers(ctx context.Context, req gen.GetCustomersRequestOb
 	}
 	includeArchived := req.Params.IncludeArchived != nil && *req.Params.IncludeArchived
 	var search, searchCompact *string
+	var searchPhone bool
 	if req.Params.Search != nil {
 		if trimmed := strings.TrimSpace(*req.Params.Search); trimmed != "" {
 			p := likePattern(trimmed)
@@ -253,8 +274,12 @@ func (s *server) GetCustomers(ctx context.Context, req gen.GetCustomersRequestOb
 			// way a person actually types them: "923 609 016" finds a legal
 			// id stored, with no spaces, as "923609016" (customers
 			// foundation design D4).
-			cp := likePattern(stripWhitespace(trimmed))
+			compact := stripWhitespace(trimmed)
+			cp := likePattern(compact)
 			searchCompact = &cp
+			// search_phone gates the phone branch on the same compact term
+			// (final review fix M2): searchPhoneEligible above.
+			searchPhone = searchPhoneEligible(compact)
 		}
 	}
 	descending := req.Params.SortDirection != nil && *req.Params.SortDirection == "desc"
@@ -286,6 +311,7 @@ func (s *server) GetCustomers(ctx context.Context, req gen.GetCustomersRequestOb
 	total, err := q.CountCustomers(ctx, store.CountCustomersParams{
 		IncludeArchived: includeArchived, Status: req.Params.Status, CustomerType: req.Params.Type,
 		Search: search, SearchCompact: searchCompact, SearchIdentity: searchIdentity, SearchContacts: searchContacts,
+		SearchPhone: searchPhone,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("customers: count customers: %w", err)
@@ -295,7 +321,8 @@ func (s *server) GetCustomers(ctx context.Context, req gen.GetCustomersRequestOb
 	list, err := q.ListCustomers(ctx, store.ListCustomersParams{
 		IncludeArchived: includeArchived, Status: req.Params.Status, CustomerType: req.Params.Type,
 		Search: search, SearchCompact: searchCompact, SearchIdentity: searchIdentity, SearchContacts: searchContacts,
-		SortBy: sortBy, Descending: descending, PageSize: pageSize, RowOffset: offset,
+		SearchPhone: searchPhone,
+		SortBy:      sortBy, Descending: descending, PageSize: pageSize, RowOffset: offset,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("customers: list customers: %w", err)

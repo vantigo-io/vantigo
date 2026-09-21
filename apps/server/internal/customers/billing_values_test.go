@@ -318,6 +318,54 @@ func TestBillingProfileEqual(t *testing.T) {
 	}
 }
 
+// TestDerivedPeppolID_EveryConditionRequired pins derivedPeppolID (final
+// review fix I1): an identity, a Norwegian country, a business *customer*
+// type (not the identity's own type) and a legal id that itself passes
+// validNorwegianOrgNumber must all hold, or nothing is derived.
+func TestDerivedPeppolID_EveryConditionRequired(t *testing.T) {
+	valid := &legalIdentity{Country: "no", Type: "business", ID: "923609016", Name: "Acme AS", Source: "manual"}
+	if got := derivedPeppolID(valid, "business"); got != "0192:923609016" {
+		t.Errorf("derivedPeppolID(valid, business) = %q, want 0192:923609016", got)
+	}
+	if got := derivedPeppolID(nil, "business"); got != "" {
+		t.Errorf("derivedPeppolID(nil, business) = %q, want empty", got)
+	}
+	notNorwegian := &legalIdentity{Country: "se", Type: "business", ID: "5560360793", Name: "Acme AB", Source: "manual"}
+	if got := derivedPeppolID(notNorwegian, "business"); got != "" {
+		t.Errorf("derivedPeppolID(non-NO identity, business) = %q, want empty", got)
+	}
+	if got := derivedPeppolID(valid, "person"); got != "" {
+		t.Errorf("derivedPeppolID(valid, person) = %q, want empty (customer type, not identity type, decides)", got)
+	}
+}
+
+// TestDerivedPeppolID_MalformedLegacyIdDerivesNothing pins the exact
+// scenario I1's finding names: a row stored before this module validated
+// legal ids at all can hold something like "NO 923 609 016 MVA" — not the
+// nine bare digits validateLegalIdentity would produce today. derivedPeppolID
+// must refuse to derive from it, rather than handing Invoices a garbage
+// "0192:NO 923 609 016 MVA".
+func TestDerivedPeppolID_MalformedLegacyIdDerivesNothing(t *testing.T) {
+	malformed := &legalIdentity{Country: "no", Type: "business", ID: "NO 923 609 016 MVA", Name: "Legacy AS", Source: "manual"}
+	if got := derivedPeppolID(malformed, "business"); got != "" {
+		t.Errorf("derivedPeppolID(malformed legacy id) = %q, want empty", got)
+	}
+}
+
+// TestDerivedPeppolID_IgnoresIdentityTypeUsesCustomerType pins I1's other
+// legacy shape: a row with legal_type left NULL (identity.Type == "") while
+// legal_country/legal_id are set and the customer's own type is "business".
+// derivedPeppolID reads customerType, never identity.Type, so it still
+// derives — the same row that, before this fix, made billingWarnings (which
+// read identity.Type) disagree with the directory (which already read
+// customerType).
+func TestDerivedPeppolID_IgnoresIdentityTypeUsesCustomerType(t *testing.T) {
+	nullType := &legalIdentity{Country: "no", Type: "", ID: "974760673", Name: "Legacy No Type AS", Source: "manual"}
+	if got := derivedPeppolID(nullType, "business"); got != "0192:974760673" {
+		t.Errorf("derivedPeppolID(identity.Type empty, customerType business) = %q, want 0192:974760673", got)
+	}
+}
+
 func TestBillingWarnings_FixedOrder(t *testing.T) {
 	// A profile that raises all four warnings at once must report them in
 	// the brief's fixed order: ehf_without_recipient, email_without_address,
