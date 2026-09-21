@@ -697,11 +697,19 @@ func (*fakeDirectory) Customer(context.Context, int32) (*contracts.CustomerEntry
 	return nil, nil
 }
 
+func (*fakeDirectory) Customers(context.Context, []int32) ([]contracts.CustomerEntry, error) {
+	return nil, nil
+}
+
 func (*fakeDirectory) Contact(context.Context, int32) (*contracts.ContactEntry, error) {
 	return nil, nil
 }
 
 func (*fakeDirectory) ContactsByEmail(context.Context, string) ([]contracts.ContactMatch, error) {
+	return nil, nil
+}
+
+func (*fakeDirectory) BillingProfile(context.Context, int32) (*contracts.CustomerBillingProfile, error) {
 	return nil, nil
 }
 

@@ -30,8 +30,10 @@ func newHarness(t *testing.T, opts ...modtest.Option) *modtest.Harness {
 // EnergyApiFactory.cs's FakeCustomerDirectory (energy inventory §7 line
 // 430): customers 1001 and 1002 exist, everything else does not. Only
 // Customer is ever called by this task's operations (Create/Switch supply
-// period); Contact and ContactsByEmail are implemented to satisfy the
-// interface and are never exercised here.
+// period); Contact, ContactsByEmail and BillingProfile are implemented to
+// satisfy the interface and are never exercised here. Customers (the batch
+// lookup) answers from the same two customers as Customer, for a future
+// caller that needs several at once without a second fake.
 type fakeDirectory struct{}
 
 var _ contracts.CustomerDirectory = fakeDirectory{}
@@ -43,10 +45,27 @@ func (fakeDirectory) Customer(_ context.Context, id int32) (*contracts.CustomerE
 	return nil, nil
 }
 
+func (fakeDirectory) Customers(_ context.Context, ids []int32) ([]contracts.CustomerEntry, error) {
+	entries := []contracts.CustomerEntry{}
+	for _, id := range ids {
+		if id == 1001 || id == 1002 {
+			entries = append(entries, contracts.CustomerEntry{ID: id, Name: "Test customer"})
+		}
+	}
+	return entries, nil
+}
+
 func (fakeDirectory) Contact(context.Context, int32) (*contracts.ContactEntry, error) {
 	return nil, nil
 }
 
 func (fakeDirectory) ContactsByEmail(context.Context, string) ([]contracts.ContactMatch, error) {
+	return nil, nil
+}
+
+func (fakeDirectory) BillingProfile(_ context.Context, id int32) (*contracts.CustomerBillingProfile, error) {
+	if id == 1001 || id == 1002 {
+		return &contracts.CustomerBillingProfile{ID: id, Name: "Test customer"}, nil
+	}
 	return nil, nil
 }

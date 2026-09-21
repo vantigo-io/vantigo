@@ -464,3 +464,37 @@ LEFT JOIN customers.customers_contacts cc
       AND (m.canonical OR lower(btrim(cc.email)) = @email::text)
 GROUP BY m.id
 ORDER BY m.id;
+
+-- name: DirectoryCustomers :many
+-- DirectoryCustomers is contracts.CustomerDirectory.Customers' rows: every
+-- customer of any status, archived included, whose id is in @ids — the
+-- batch twin of DirectoryCustomer above, for a caller naming a whole page of
+-- customers in one round trip instead of one per row. A duplicate id in @ids
+-- matches the same row more than once in the WHERE clause but the row itself
+-- only exists once, so the result never repeats a customer; an id nobody has
+-- is simply absent, not an error. Ordered by id, not by @ids' own order, so
+-- two callers asking for the same set always see it the same way.
+SELECT id, name, status = 'archived' AS archived
+FROM customers.customers
+WHERE id = ANY(@ids::int[])
+ORDER BY id;
+
+-- name: DirectoryBillingProfile :one
+-- DirectoryBillingProfile is contracts.CustomerDirectory.BillingProfile's
+-- customer row (invoice-ready customer design D5): identity (all five
+-- columns, so identityFromRow's all-or-none invariant holds the same way it
+-- does everywhere else this module reads it), contact email and the ten
+-- billing columns GetCustomerBillingProfile itself selects, plus
+-- customer_number and status — what resolveBillingProfile (directory.go)
+-- needs to fill in every field of contracts.CustomerBillingProfile except
+-- the resolved invoice address, which is DirectoryInvoiceAddress's own
+-- query (queries/addresses.sql), a second round trip rather than a join:
+-- at most one row either way, and a join would return no row at all for a
+-- customer with no address, which pgx.ErrNoRows already means "no such
+-- customer" for the :one shape this query needs.
+SELECT id, customer_number, name, type, status = 'archived' AS archived,
+       legal_country, legal_id, legal_name, legal_source, legal_type, email,
+       invoice_email, reminder_email, payment_terms_days, currency, language,
+       invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference
+FROM customers.customers
+WHERE id = @id;

@@ -129,11 +129,28 @@ func (fakeCustomers) Customer(_ context.Context, id int32) (*contracts.CustomerE
 	return nil, nil
 }
 
+func (fakeCustomers) Customers(_ context.Context, ids []int32) ([]contracts.CustomerEntry, error) {
+	entries := []contracts.CustomerEntry{}
+	for _, id := range ids {
+		if id == customerKraftVerket {
+			entries = append(entries, contracts.CustomerEntry{ID: id, Name: customerKraftVerketName})
+		}
+	}
+	return entries, nil
+}
+
 func (fakeCustomers) Contact(context.Context, int32) (*contracts.ContactEntry, error) {
 	return nil, nil
 }
 
 func (fakeCustomers) ContactsByEmail(context.Context, string) ([]contracts.ContactMatch, error) {
+	return nil, nil
+}
+
+func (fakeCustomers) BillingProfile(_ context.Context, id int32) (*contracts.CustomerBillingProfile, error) {
+	if id == customerKraftVerket {
+		return &contracts.CustomerBillingProfile{ID: id, Name: customerKraftVerketName}, nil
+	}
 	return nil, nil
 }
 

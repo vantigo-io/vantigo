@@ -192,8 +192,12 @@ const (
 // fakeDirectory is contracts.CustomerDirectory over three customers.
 // Everything else does not exist, which is what makes the unknown-customer
 // validation rule testable without composing customers beside this module.
-// Contact and ContactsByEmail satisfy the interface and are never exercised
-// here: projects never resolves a contact.
+// Contact, ContactsByEmail and BillingProfile satisfy the interface and are
+// never exercised here: projects never resolves a contact or a billing
+// profile. Customers (the batch lookup the list page uses,
+// customerNamesForPage/projects_list.go) answers from the same three
+// customers as Customer, in ascending-id order, the same order
+// contracts.CustomerDirectory.Customers promises.
 type fakeDirectory struct{}
 
 var _ contracts.CustomerDirectory = fakeDirectory{}
@@ -211,11 +215,33 @@ func (fakeDirectory) Customer(_ context.Context, id int32) (*contracts.CustomerE
 	}
 }
 
+func (fakeDirectory) Customers(_ context.Context, ids []int32) ([]contracts.CustomerEntry, error) {
+	known := map[int32]contracts.CustomerEntry{
+		customerKraftVerket: {ID: customerKraftVerket, Name: customerKraftVerketName},
+		customerAcme:        {ID: customerAcme, Name: customerAcmeName},
+		customerArchived:    {ID: customerArchived, Name: customerArchivedName, Archived: true},
+	}
+	seen := map[int32]bool{}
+	entries := []contracts.CustomerEntry{}
+	for _, id := range ids {
+		if entry, ok := known[id]; ok && !seen[id] {
+			seen[id] = true
+			entries = append(entries, entry)
+		}
+	}
+	slices.SortFunc(entries, func(a, b contracts.CustomerEntry) int { return int(a.ID - b.ID) })
+	return entries, nil
+}
+
 func (fakeDirectory) Contact(context.Context, int32) (*contracts.ContactEntry, error) {
 	return nil, nil
 }
 
 func (fakeDirectory) ContactsByEmail(context.Context, string) ([]contracts.ContactMatch, error) {
+	return nil, nil
+}
+
+func (fakeDirectory) BillingProfile(context.Context, int32) (*contracts.CustomerBillingProfile, error) {
 	return nil, nil
 }
 

@@ -382,6 +382,80 @@ func (q *Queries) CustomersByLegalIdentity(ctx context.Context, arg CustomersByL
 	return items, nil
 }
 
+const directoryBillingProfile = `-- name: DirectoryBillingProfile :one
+SELECT id, customer_number, name, type, status = 'archived' AS archived,
+       legal_country, legal_id, legal_name, legal_source, legal_type, email,
+       invoice_email, reminder_email, payment_terms_days, currency, language,
+       invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference
+FROM customers.customers
+WHERE id = $1
+`
+
+type DirectoryBillingProfileRow struct {
+	ID               int32
+	CustomerNumber   int64
+	Name             string
+	Type             string
+	Archived         bool
+	LegalCountry     *string
+	LegalID          *string
+	LegalName        *string
+	LegalSource      *string
+	LegalType        *string
+	Email            *string
+	InvoiceEmail     *string
+	ReminderEmail    *string
+	PaymentTermsDays *int32
+	Currency         *string
+	Language         *string
+	InvoiceDelivery  *string
+	ReminderDelivery *string
+	PeppolID         *string
+	Gln              *string
+	BuyerReference   *string
+}
+
+// DirectoryBillingProfile is contracts.CustomerDirectory.BillingProfile's
+// customer row (invoice-ready customer design D5): identity (all five
+// columns, so identityFromRow's all-or-none invariant holds the same way it
+// does everywhere else this module reads it), contact email and the ten
+// billing columns GetCustomerBillingProfile itself selects, plus
+// customer_number and status — what resolveBillingProfile (directory.go)
+// needs to fill in every field of contracts.CustomerBillingProfile except
+// the resolved invoice address, which is DirectoryInvoiceAddress's own
+// query (queries/addresses.sql), a second round trip rather than a join:
+// at most one row either way, and a join would return no row at all for a
+// customer with no address, which pgx.ErrNoRows already means "no such
+// customer" for the :one shape this query needs.
+func (q *Queries) DirectoryBillingProfile(ctx context.Context, id int32) (DirectoryBillingProfileRow, error) {
+	row := q.db.QueryRow(ctx, directoryBillingProfile, id)
+	var i DirectoryBillingProfileRow
+	err := row.Scan(
+		&i.ID,
+		&i.CustomerNumber,
+		&i.Name,
+		&i.Type,
+		&i.Archived,
+		&i.LegalCountry,
+		&i.LegalID,
+		&i.LegalName,
+		&i.LegalSource,
+		&i.LegalType,
+		&i.Email,
+		&i.InvoiceEmail,
+		&i.ReminderEmail,
+		&i.PaymentTermsDays,
+		&i.Currency,
+		&i.Language,
+		&i.InvoiceDelivery,
+		&i.ReminderDelivery,
+		&i.PeppolID,
+		&i.Gln,
+		&i.BuyerReference,
+	)
+	return i, err
+}
+
 const directoryContact = `-- name: DirectoryContact :one
 SELECT id, first_name, last_name, email
 FROM customers.contacts
@@ -495,6 +569,47 @@ func (q *Queries) DirectoryCustomer(ctx context.Context, id int32) (DirectoryCus
 	var i DirectoryCustomerRow
 	err := row.Scan(&i.ID, &i.Name, &i.Archived)
 	return i, err
+}
+
+const directoryCustomers = `-- name: DirectoryCustomers :many
+SELECT id, name, status = 'archived' AS archived
+FROM customers.customers
+WHERE id = ANY($1::int[])
+ORDER BY id
+`
+
+type DirectoryCustomersRow struct {
+	ID       int32
+	Name     string
+	Archived bool
+}
+
+// DirectoryCustomers is contracts.CustomerDirectory.Customers' rows: every
+// customer of any status, archived included, whose id is in @ids — the
+// batch twin of DirectoryCustomer above, for a caller naming a whole page of
+// customers in one round trip instead of one per row. A duplicate id in @ids
+// matches the same row more than once in the WHERE clause but the row itself
+// only exists once, so the result never repeats a customer; an id nobody has
+// is simply absent, not an error. Ordered by id, not by @ids' own order, so
+// two callers asking for the same set always see it the same way.
+func (q *Queries) DirectoryCustomers(ctx context.Context, ids []int32) ([]DirectoryCustomersRow, error) {
+	rows, err := q.db.Query(ctx, directoryCustomers, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DirectoryCustomersRow
+	for rows.Next() {
+		var i DirectoryCustomersRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.Archived); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getCustomer = `-- name: GetCustomer :one

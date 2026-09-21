@@ -86,6 +86,49 @@ func (q *Queries) DeleteCustomerAddress(ctx context.Context, arg DeleteCustomerA
 	return err
 }
 
+const directoryInvoiceAddress = `-- name: DirectoryInvoiceAddress :one
+SELECT label, line1, line2, postal_code, city, region, country
+FROM customers.customer_addresses
+WHERE customer_id = $1 AND is_primary AND type IN ('invoice', 'postal')
+ORDER BY CASE type WHEN 'invoice' THEN 0 WHEN 'postal' THEN 1 END
+LIMIT 1
+`
+
+type DirectoryInvoiceAddressRow struct {
+	Label      *string
+	Line1      string
+	Line2      *string
+	PostalCode *string
+	City       *string
+	Region     *string
+	Country    string
+}
+
+// DirectoryInvoiceAddress is contracts.CustomerDirectory.BillingProfile's own
+// read of "the invoice address" (invoice-ready customer design D3, D5): the
+// same resolution order CustomerHasInvoiceAddress checks the existence of —
+// primary invoice, else primary postal — returned as the row itself rather
+// than a boolean. At most one primary per (customer, type) can ever exist
+// (D3's partial unique index), so ordering by type priority and taking the
+// first row is a priority pick between at most two candidates, never an
+// arbitrary one among many; no rows means the customer has neither, and the
+// caller (directory.go) reads that the same way pgx.ErrNoRows reads
+// everywhere else here — "none", not "failed".
+func (q *Queries) DirectoryInvoiceAddress(ctx context.Context, customerID int32) (DirectoryInvoiceAddressRow, error) {
+	row := q.db.QueryRow(ctx, directoryInvoiceAddress, customerID)
+	var i DirectoryInvoiceAddressRow
+	err := row.Scan(
+		&i.Label,
+		&i.Line1,
+		&i.Line2,
+		&i.PostalCode,
+		&i.City,
+		&i.Region,
+		&i.Country,
+	)
+	return i, err
+}
+
 const getCustomerAddress = `-- name: GetCustomerAddress :one
 SELECT id, customer_id, type, label, line1, line2, postal_code, city, region, country, is_primary, created_at, updated_at
 FROM customers.customer_addresses
