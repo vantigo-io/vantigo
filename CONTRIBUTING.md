@@ -420,8 +420,9 @@ Seven business modules mount on that platform, each serving its own contract and
 owning its own schema:
 
 - `internal/customers` → `/api/v1/customers/*` from `openapi/customers.yaml`:
-  customers, contacts, customer-contact associations, legal identity, the
-  customer timeline and the Brønnøysundregisteret (Brreg) lookup.
+  customers, contacts, customer-contact associations, legal identity, contact
+  info, typed addresses, a billing profile, the customer timeline and the
+  Brønnøysundregisteret (Brreg) lookup.
 - `internal/products` → `/api/v1/products/*` from `openapi/products.yaml`:
   products, variants, prices, categories and tax categories.
 - `internal/energy` → `/api/v1/energy/*` from `openapi/energy.yaml`: metering
