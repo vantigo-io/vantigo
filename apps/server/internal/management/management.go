@@ -2,7 +2,9 @@
 // polls (MANAGEMENT_PORT, MANAGEMENT_TOKEN). It is deliberately not part of
 // the public handler: it has no host filter, so that it can be reached by
 // Service name or pod address, and it is never routed from the internet. The
-// bearer token is its only protection; publish the port nowhere.
+// bearer token is its only protection; publish the port nowhere. An empty
+// configured token disables the endpoint — every request is then rejected —
+// rather than leaving it open.
 //
 // It imports no module: what it reports arrives as function values.
 package management
@@ -83,17 +85,29 @@ func Handler(o Options) http.Handler {
 	)
 }
 
-// bearer admits only "Authorization: Bearer <token>". Digests are compared,
-// in constant time, so neither the token's length nor its contents leak, and
-// RequestLog, which logs only the method, path, status and duration, never
-// the header, keeps the token out of the log line too.
+// bearer admits only "Authorization: Bearer <token>" for a non-empty,
+// configured token. Digests are compared in constant time, so neither the
+// token's length nor its contents leak, and RequestLog, which logs only the
+// method, path, status and duration, never the header, keeps the token out
+// of the log line too.
+//
+// An empty configured token and an empty presented credential are each
+// rejected outright, before any digest comparison: without this, a caller
+// presenting "Bearer " (the prefix with no credential) against an empty
+// configured token would hash to the same sha256("") on both sides and
+// authenticate. Config validation requires MANAGEMENT_TOKEN to be at least
+// 32 characters, so an empty token should never reach here in practice — but
+// this listener has no host filter, the token is its only protection, and it
+// must fail closed on its own rather than lean on that upstream check.
 func bearer(token string) func(http.Handler) http.Handler {
 	expected := sha256.Sum256([]byte(token))
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			presented, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 			digest := sha256.Sum256([]byte(presented))
-			if !ok || subtle.ConstantTimeCompare(digest[:], expected[:]) != 1 {
+			authenticated := ok && token != "" && presented != "" &&
+				subtle.ConstantTimeCompare(digest[:], expected[:]) == 1
+			if !authenticated {
 				w.Header().Set("WWW-Authenticate", "Bearer")
 				httpx.WriteProblem(w, r, http.StatusUnauthorized, "A valid bearer token is required.")
 				return

@@ -17,10 +17,16 @@ import (
 
 var token = strings.Repeat("t", 32)
 
-func handler(o management.Options) http.Handler {
+// handler builds a test handler with the shared test token, unless
+// tokenOverride is given — which lets a test configure an empty token, the
+// one value the default token constant can never stand in for.
+func handler(o management.Options, tokenOverride ...string) http.Handler {
 	o.Logger = slog.New(slog.DiscardHandler)
 	o.Version = "1.4.2"
 	o.Token = token
+	if len(tokenOverride) > 0 {
+		o.Token = tokenOverride[0]
+	}
 	if o.Installation == nil {
 		o.Installation = func(context.Context) (management.Installation, error) {
 			return management.Installation{Bootstrap: "invited", Users: 12, ActiveUsers: 9}, nil
@@ -85,6 +91,42 @@ func TestStatus_RequiresTheBearerToken(t *testing.T) {
 		res := get(t, h, "/management/status", authorization, "")
 		if res.StatusCode != http.StatusUnauthorized || res.Header.Get("WWW-Authenticate") != "Bearer" {
 			t.Errorf("%s: status %d, WWW-Authenticate %q", name, res.StatusCode, res.Header.Get("WWW-Authenticate"))
+		}
+	}
+}
+
+func TestStatus_AnEmptyConfiguredTokenRejectsEverything(t *testing.T) {
+	// Config validation requires MANAGEMENT_TOKEN to be at least 32
+	// characters, so this is unreachable through normal configuration — but
+	// this listener has no host filter and the token is its only defence,
+	// so bearer must fail closed on its own rather than trust that upstream
+	// check. In particular, "Bearer " (the prefix with an empty credential)
+	// must never authenticate just because both sides hash to the same
+	// digest of "".
+	h := handler(management.Options{}, "")
+	for name, authorization := range map[string]string{
+		"missing":          "",
+		"bearer empty":     "Bearer ",
+		"bearer non-empty": "Bearer x",
+	} {
+		res := get(t, h, "/management/status", authorization, "")
+		if res.StatusCode != http.StatusUnauthorized || res.Header.Get("WWW-Authenticate") != "Bearer" {
+			t.Errorf("%s: status %d, WWW-Authenticate %q", name, res.StatusCode, res.Header.Get("WWW-Authenticate"))
+		}
+	}
+}
+
+func TestStatus_AnUnknownPathStillRequiresTheToken(t *testing.T) {
+	// bearer wraps the mux, so an unauthenticated or wrongly authenticated
+	// caller gets 401 for a path that does not exist too: it must not learn
+	// which routes this listener serves.
+	h := handler(management.Options{})
+	for _, path := range []string{"/management/other", "/api/v1/identity/session"} {
+		for name, authorization := range map[string]string{"missing": "", "wrong": "Bearer " + strings.Repeat("x", 32)} {
+			res := get(t, h, path, authorization, "")
+			if res.StatusCode != http.StatusUnauthorized {
+				t.Errorf("%s %s: status %d, want 401", name, path, res.StatusCode)
+			}
 		}
 	}
 }
