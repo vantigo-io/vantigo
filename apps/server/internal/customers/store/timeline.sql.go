@@ -9,13 +9,14 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const getActiveTimelineEntry = `-- name: GetActiveTimelineEntry :one
 SELECT id, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
        source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-       created_at, updated_at, deleted_at
+       created_at, updated_at, deleted_at, actor_user_id
 FROM customers.customers_timeline_entries
 WHERE id = $1 AND customer_id = $2 AND state = 'active'
 `
@@ -52,6 +53,7 @@ func (q *Queries) GetActiveTimelineEntry(ctx context.Context, arg GetActiveTimel
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.ActorUserID,
 	)
 	return i, err
 }
@@ -59,7 +61,7 @@ func (q *Queries) GetActiveTimelineEntry(ctx context.Context, arg GetActiveTimel
 const getTimelineEntry = `-- name: GetTimelineEntry :one
 SELECT id, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
        source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-       created_at, updated_at, deleted_at
+       created_at, updated_at, deleted_at, actor_user_id
 FROM customers.customers_timeline_entries
 WHERE id = $1 AND customer_id = $2
 `
@@ -96,6 +98,7 @@ func (q *Queries) GetTimelineEntry(ctx context.Context, arg GetTimelineEntryPara
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.ActorUserID,
 	)
 	return i, err
 }
@@ -105,41 +108,44 @@ WITH entry AS (
     INSERT INTO customers.customers_timeline_entries (
         customer_id, provenance, producer, event_type, occurred_on, occurred_at,
         summary, note, source_url, payload_version, current_revision, state, actor_kind, actor_display,
-        created_at, updated_at
+        actor_user_id, created_at, updated_at
     ) VALUES (
         $1::int, 'manual', 'customers.api', $2::text, $3::date, $4,
-        $5::text, $6::text, $7, 1, 1, 'active', 'unattributed', 'Unattributed',
-        $8::timestamptz, $8::timestamptz
+        $5::text, $6::text, $7, 1, 1, 'active', $8::text, $9::text,
+        $10, $11::timestamptz, $11::timestamptz
     )
     RETURNING id, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
               source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-              created_at, updated_at, deleted_at
+              created_at, updated_at, deleted_at, actor_user_id
 ), inserted_revision AS (
     INSERT INTO customers.customers_timeline_entries_revisions (
         customer_timeline_entry_id, revision_number, customer_id, provenance, producer, event_type,
         occurred_on, occurred_at, summary, note, source_url, payload_json, payload_version, current_revision,
-        state, actor_kind, actor_display, created_at, updated_at
+        state, actor_kind, actor_display, actor_user_id, created_at, updated_at
     )
     SELECT id, 1, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
            source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-           created_at, updated_at
+           actor_user_id, created_at, updated_at
     FROM entry
 )
 SELECT id, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
        source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-       created_at, updated_at, deleted_at
+       created_at, updated_at, deleted_at, actor_user_id
 FROM entry
 `
 
 type InsertManualTimelineEntryParams struct {
-	CustomerID int32
-	EventType  string
-	OccurredOn pgtype.Date
-	OccurredAt *time.Time
-	Summary    string
-	Note       string
-	SourceUrl  *string
-	Now        time.Time
+	CustomerID   int32
+	EventType    string
+	OccurredOn   pgtype.Date
+	OccurredAt   *time.Time
+	Summary      string
+	Note         string
+	SourceUrl    *string
+	ActorKind    string
+	ActorDisplay string
+	ActorUserID  *uuid.UUID
+	Now          time.Time
 }
 
 type InsertManualTimelineEntryRow struct {
@@ -162,16 +168,20 @@ type InsertManualTimelineEntryRow struct {
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 	DeletedAt       *time.Time
+	ActorUserID     *uuid.UUID
 }
 
 // InsertManualTimelineEntry is TimelineEndpoints.Create's write
 // (TimelineEndpoints.cs:144-167, CreateManualEntry :306-329): a manual entry
-// always starts at CurrentRevision 1, State active, actor unattributed, with
-// its first revision row appended in the same statement — the same
-// entry-then-revision CTE shape as InsertGeneratedTimelineEvent
-// (timeline_events.go), duplicated here rather than shared because the two
-// write entirely different constant columns (provenance/producer/actor) and
-// take a client-supplied note/sourceUrl that generated events never carry.
+// always starts at CurrentRevision 1, State active, with its first revision
+// row appended in the same statement — the same entry-then-revision CTE
+// shape as InsertGeneratedTimelineEvent (timeline_events.go), duplicated
+// here rather than shared because the two write entirely different constant
+// columns (provenance/producer) and take a client-supplied note/sourceUrl
+// that generated events never carry. actor_kind/actor_display/actor_user_id
+// are the caller's resolved actor (server.actorFor, customers foundation
+// design D1) — manualFallbackActor's 'unattributed'/'Unattributed'/NULL when
+// there is no user principal to attribute the write to.
 func (q *Queries) InsertManualTimelineEntry(ctx context.Context, arg InsertManualTimelineEntryParams) (InsertManualTimelineEntryRow, error) {
 	row := q.db.QueryRow(ctx, insertManualTimelineEntry,
 		arg.CustomerID,
@@ -181,6 +191,9 @@ func (q *Queries) InsertManualTimelineEntry(ctx context.Context, arg InsertManua
 		arg.Summary,
 		arg.Note,
 		arg.SourceUrl,
+		arg.ActorKind,
+		arg.ActorDisplay,
+		arg.ActorUserID,
 		arg.Now,
 	)
 	var i InsertManualTimelineEntryRow
@@ -204,6 +217,7 @@ func (q *Queries) InsertManualTimelineEntry(ctx context.Context, arg InsertManua
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.ActorUserID,
 	)
 	return i, err
 }
@@ -212,12 +226,12 @@ const insertTimelineRevision = `-- name: InsertTimelineRevision :exec
 INSERT INTO customers.customers_timeline_entries_revisions (
     customer_timeline_entry_id, revision_number, customer_id, provenance, producer, event_type,
     occurred_on, occurred_at, summary, note, source_url, payload_json, payload_version, current_revision,
-    state, actor_kind, actor_display, created_at, updated_at, deleted_at
+    state, actor_kind, actor_display, actor_user_id, created_at, updated_at, deleted_at
 ) VALUES (
     $1::int, $2::int, $3::int, $4::text, $5::text, $6::text,
     $7::date, $8, $9::text, $10, $11, $12, $13::int,
-    $14::int, $15::text, $16::text, $17::text, $18::timestamptz,
-    $19::timestamptz, $20
+    $14::int, $15::text, $16::text, $17::text, $18, $19::timestamptz,
+    $20::timestamptz, $21
 )
 `
 
@@ -239,6 +253,7 @@ type InsertTimelineRevisionParams struct {
 	State           string
 	ActorKind       string
 	ActorDisplay    string
+	ActorUserID     *uuid.UUID
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 	DeletedAt       *time.Time
@@ -255,6 +270,12 @@ type InsertTimelineRevisionParams struct {
 // guarded UPDATE never gets here at all), but the constraint stands as the
 // belt-and-suspenders backstop .NET's own comment describes, not a chain
 // this code relies on for correctness.
+//
+// actor_kind/actor_display/actor_user_id are the actor of *this* revision —
+// the caller resolved for the write that produced it — not copied from the
+// entry row (customers foundation design D1: an edit or delete by somebody
+// else than the entry's original author shows up in the history under their
+// own name, even though the entry row itself keeps its original author).
 func (q *Queries) InsertTimelineRevision(ctx context.Context, arg InsertTimelineRevisionParams) error {
 	_, err := q.db.Exec(ctx, insertTimelineRevision,
 		arg.EntryID,
@@ -274,6 +295,7 @@ func (q *Queries) InsertTimelineRevision(ctx context.Context, arg InsertTimeline
 		arg.State,
 		arg.ActorKind,
 		arg.ActorDisplay,
+		arg.ActorUserID,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 		arg.DeletedAt,
@@ -284,7 +306,7 @@ func (q *Queries) InsertTimelineRevision(ctx context.Context, arg InsertTimeline
 const listTimelineEntries = `-- name: ListTimelineEntries :many
 SELECT id, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
        source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-       created_at, updated_at, deleted_at
+       created_at, updated_at, deleted_at, actor_user_id
 FROM customers.customers_timeline_entries
 WHERE customer_id = $1::int
   AND state = 'active'
@@ -380,6 +402,7 @@ func (q *Queries) ListTimelineEntries(ctx context.Context, arg ListTimelineEntri
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.ActorUserID,
 		); err != nil {
 			return nil, err
 		}
@@ -394,7 +417,7 @@ func (q *Queries) ListTimelineEntries(ctx context.Context, arg ListTimelineEntri
 const listTimelineRevisions = `-- name: ListTimelineRevisions :many
 SELECT id, customer_timeline_entry_id, revision_number, customer_id, provenance, producer, event_type,
        occurred_on, occurred_at, summary, note, source_url, payload_json, payload_version, current_revision,
-       state, actor_kind, actor_display, created_at, updated_at, deleted_at
+       state, actor_kind, actor_display, created_at, updated_at, deleted_at, actor_user_id
 FROM customers.customers_timeline_entries_revisions
 WHERE customer_timeline_entry_id = $1
 ORDER BY revision_number
@@ -434,6 +457,7 @@ func (q *Queries) ListTimelineRevisions(ctx context.Context, entryID int32) ([]C
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.ActorUserID,
 		); err != nil {
 			return nil, err
 		}
@@ -451,7 +475,7 @@ SET state = 'deleted', deleted_at = $1::timestamptz, updated_at = $1::timestampt
 WHERE id = $3 AND customer_id = $4 AND current_revision = $5::int
 RETURNING id, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
           source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-          created_at, updated_at, deleted_at
+          created_at, updated_at, deleted_at, actor_user_id
 `
 
 type SetTimelineEntryDeletedParams struct {
@@ -494,6 +518,7 @@ func (q *Queries) SetTimelineEntryDeleted(ctx context.Context, arg SetTimelineEn
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.ActorUserID,
 	)
 	return i, err
 }
@@ -511,7 +536,7 @@ SET event_type = $1::text,
 WHERE id = $9 AND customer_id = $10 AND current_revision = $11::int
 RETURNING id, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
           source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-          created_at, updated_at, deleted_at
+          created_at, updated_at, deleted_at, actor_user_id
 `
 
 type UpdateManualTimelineEntryParams struct {
@@ -576,6 +601,7 @@ func (q *Queries) UpdateManualTimelineEntry(ctx context.Context, arg UpdateManua
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.ActorUserID,
 	)
 	return i, err
 }

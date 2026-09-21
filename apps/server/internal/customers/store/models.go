@@ -7,6 +7,7 @@ package store
 import (
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -72,6 +73,7 @@ type CustomersCustomersTimelineEntriesRevision struct {
 	CreatedAt               time.Time
 	UpdatedAt               time.Time
 	DeletedAt               *time.Time
+	ActorUserID             *uuid.UUID
 }
 
 type CustomersCustomersTimelineEntry struct {
@@ -94,4 +96,5 @@ type CustomersCustomersTimelineEntry struct {
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 	DeletedAt       *time.Time
+	ActorUserID     *uuid.UUID
 }

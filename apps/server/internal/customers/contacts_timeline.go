@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
 )
 
@@ -33,7 +35,7 @@ func contactDisplayName(firstName string, middleName *string, lastName string) s
 // the shared shape of every contact-association generated event — summary
 // "{action}: {displayName} (#{contactId})" and a payload of the contact's
 // name parts plus the association's role/phone/email.
-func recordContactEvent(ctx context.Context, q *store.Queries, now time.Time, customerID int32, eventType, action string, contact store.CustomersContact, role string, phone, email *string) error {
+func recordContactEvent(ctx context.Context, q *store.Queries, now time.Time, customerID int32, eventType, action string, contact store.CustomersContact, role string, phone, email *string, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
 	displayName := contactDisplayName(contact.FirstName, contact.MiddleName, contact.LastName)
 	summary := fmt.Sprintf("%s: %s (#%d)", action, displayName, contact.ID)
 	payload := map[string]any{
@@ -47,29 +49,29 @@ func recordContactEvent(ctx context.Context, q *store.Queries, now time.Time, cu
 		"phone":       phone,
 		"email":       email,
 	}
-	return recordGeneratedEvent(ctx, q, customerID, now, eventType, summary, payload, 1)
+	return recordGeneratedEvent(ctx, q, customerID, now, eventType, summary, payload, 1, actorKind, actorDisplay, actorUserID)
 }
 
 // recordContactAttached is RecordContactAttached (SV/CustomerTimelineRecorder.cs:87-88).
-func recordContactAttached(ctx context.Context, q *store.Queries, now time.Time, customerID int32, contact store.CustomersContact, role string, phone, email *string) error {
-	return recordContactEvent(ctx, q, now, customerID, "customer.contact_attached", "Contact linked", contact, role, phone, email)
+func recordContactAttached(ctx context.Context, q *store.Queries, now time.Time, customerID int32, contact store.CustomersContact, role string, phone, email *string, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	return recordContactEvent(ctx, q, now, customerID, "customer.contact_attached", "Contact linked", contact, role, phone, email, actorKind, actorDisplay, actorUserID)
 }
 
 // recordContactRelationshipUpdated is RecordContactRelationshipUpdated
 // (SV/CustomerTimelineRecorder.cs:90-91): only called when role, phone or
 // email actually changed.
-func recordContactRelationshipUpdated(ctx context.Context, q *store.Queries, now time.Time, customerID int32, contact store.CustomersContact, role string, phone, email *string) error {
-	return recordContactEvent(ctx, q, now, customerID, "customer.contact_relationship_updated", "Contact relationship updated", contact, role, phone, email)
+func recordContactRelationshipUpdated(ctx context.Context, q *store.Queries, now time.Time, customerID int32, contact store.CustomersContact, role string, phone, email *string, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	return recordContactEvent(ctx, q, now, customerID, "customer.contact_relationship_updated", "Contact relationship updated", contact, role, phone, email, actorKind, actorDisplay, actorUserID)
 }
 
 // recordContactDetached is RecordContactDetached (SV/CustomerTimelineRecorder.cs:93-94).
-func recordContactDetached(ctx context.Context, q *store.Queries, now time.Time, customerID int32, contact store.CustomersContact, role string, phone, email *string) error {
-	return recordContactEvent(ctx, q, now, customerID, "customer.contact_detached", "Contact unlinked", contact, role, phone, email)
+func recordContactDetached(ctx context.Context, q *store.Queries, now time.Time, customerID int32, contact store.CustomersContact, role string, phone, email *string, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	return recordContactEvent(ctx, q, now, customerID, "customer.contact_detached", "Contact unlinked", contact, role, phone, email, actorKind, actorDisplay, actorUserID)
 }
 
 // recordContactRemoved is RecordContactRemoved (SV/CustomerTimelineRecorder.cs:96-97),
 // called once per association DeleteContact cascades over, before the
 // contact row itself is deleted.
-func recordContactRemoved(ctx context.Context, q *store.Queries, now time.Time, customerID int32, contact store.CustomersContact, role string, phone, email *string) error {
-	return recordContactEvent(ctx, q, now, customerID, "customer.contact_removed", "Contact removed", contact, role, phone, email)
+func recordContactRemoved(ctx context.Context, q *store.Queries, now time.Time, customerID int32, contact store.CustomersContact, role string, phone, email *string, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	return recordContactEvent(ctx, q, now, customerID, "customer.contact_removed", "Contact removed", contact, role, phone, email, actorKind, actorDisplay, actorUserID)
 }

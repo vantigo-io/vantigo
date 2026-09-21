@@ -9,6 +9,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -481,24 +482,24 @@ WITH entry AS (
     INSERT INTO customers.customers_timeline_entries (
         customer_id, provenance, producer, event_type, occurred_on, occurred_at,
         summary, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-        created_at, updated_at
+        actor_user_id, created_at, updated_at
     ) VALUES (
         $1::int, 'generated', 'customers.api', $2::text, $3::date, $4::timestamptz,
-        $5::text, $6::jsonb, $7::int, 1, 'active', 'system', 'System',
-        $4::timestamptz, $4::timestamptz
+        $5::text, $6::jsonb, $7::int, 1, 'active', $8::text, $9::text,
+        $10, $4::timestamptz, $4::timestamptz
     )
     RETURNING id, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
               source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-              created_at, updated_at
+              created_at, updated_at, actor_user_id
 )
 INSERT INTO customers.customers_timeline_entries_revisions (
     customer_timeline_entry_id, revision_number, customer_id, provenance, producer, event_type,
     occurred_on, occurred_at, summary, note, source_url, payload_json, payload_version, current_revision,
-    state, actor_kind, actor_display, created_at, updated_at
+    state, actor_kind, actor_display, actor_user_id, created_at, updated_at
 )
 SELECT id, 1, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
        source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-       created_at, updated_at
+       actor_user_id, created_at, updated_at
 FROM entry
 `
 
@@ -510,14 +511,21 @@ type InsertGeneratedTimelineEventParams struct {
 	Summary        string
 	PayloadJson    []byte
 	PayloadVersion int32
+	ActorKind      string
+	ActorDisplay   string
+	ActorUserID    *uuid.UUID
 }
 
 // InsertGeneratedTimelineEvent is CustomerTimelineRecorder.Add
 // (SV/CustomerTimelineRecorder.cs:127-160): every generated event is
 // written with its first, and since generated entries are never mutated
 // afterward (inventory §2.4), only revision, in one statement.
-// provenance/producer/actor_kind/actor_display/current_revision/state are
-// the recorder's fixed constants, never caller-supplied.
+// provenance/producer/current_revision/state are the recorder's fixed
+// constants, never caller-supplied; actor_kind/actor_display/actor_user_id
+// are the acting user the caller resolved (server.actorFor, customers
+// foundation design D1) — generatedFallbackActor's
+// 'system'/'System'/NULL when there is no user principal to attribute the
+// event to.
 func (q *Queries) InsertGeneratedTimelineEvent(ctx context.Context, arg InsertGeneratedTimelineEventParams) error {
 	_, err := q.db.Exec(ctx, insertGeneratedTimelineEvent,
 		arg.CustomerID,
@@ -527,6 +535,9 @@ func (q *Queries) InsertGeneratedTimelineEvent(ctx context.Context, arg InsertGe
 		arg.Summary,
 		arg.PayloadJson,
 		arg.PayloadVersion,
+		arg.ActorKind,
+		arg.ActorDisplay,
+		arg.ActorUserID,
 	)
 	return err
 }

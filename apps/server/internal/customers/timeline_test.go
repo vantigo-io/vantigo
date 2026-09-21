@@ -121,14 +121,18 @@ func TestPutTimelineEntry_InvalidBodyAgainstMissingEntry_Returns400(t *testing.T
 func TestManualTimelineEntry_CanBeEditedAndSoftDeletedWithHistory(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	c := authenticatedClient(t, h)
+	c, userID := authenticatedClientWithID(t, h)
+	wantDisplay := userDisplayName(t, h, userID)
 	customer := createCustomer(t, c, "Timeline Entry Co")
 
 	created := createManualEntry(t, c, customer.Id, map[string]any{
 		"eventType": "note", "occurredOn": "2026-07-27", "note": "First note", "sourceUrl": "https://example.test/source",
 	})
-	if created.ActorKind != "unattributed" {
-		t.Errorf("ActorKind = %q, want unattributed", created.ActorKind)
+	if created.ActorKind != "user" {
+		t.Errorf("ActorKind = %q, want user", created.ActorKind)
+	}
+	if str(created.ActorDisplay) != wantDisplay {
+		t.Errorf("ActorDisplay = %q, want %q (the signed-in caller)", str(created.ActorDisplay), wantDisplay)
 	}
 	if created.CurrentRevision != 1 {
 		t.Errorf("CurrentRevision = %d, want 1", created.CurrentRevision)
@@ -166,8 +170,8 @@ func TestManualTimelineEntry_CanBeEditedAndSoftDeletedWithHistory(t *testing.T) 
 	if str(got.Note) != "Updated note" || str(got.Summary) != "Updated note" {
 		t.Errorf("Note/Summary = %q/%q, want \"Updated note\" both", str(got.Note), str(got.Summary))
 	}
-	if got.ActorKind != "unattributed" || got.CurrentRevision != 2 {
-		t.Errorf("ActorKind/CurrentRevision = %q/%d, want unattributed/2", got.ActorKind, got.CurrentRevision)
+	if got.ActorKind != "user" || got.CurrentRevision != 2 {
+		t.Errorf("ActorKind/CurrentRevision = %q/%d, want user/2", got.ActorKind, got.CurrentRevision)
 	}
 	if got.OccurredAt == nil || !got.OccurredAt.Equal(wantAt) {
 		t.Errorf("OccurredAt = %v, want %v", got.OccurredAt, wantAt)
@@ -224,8 +228,8 @@ func TestManualTimelineEntry_CanBeEditedAndSoftDeletedWithHistory(t *testing.T) 
 		if rev.Action != wantActions[i] {
 			t.Errorf("revision[%d].Action = %q, want %q", i, rev.Action, wantActions[i])
 		}
-		if rev.ActorDisplayName != "Unattributed" {
-			t.Errorf("revision[%d].ActorDisplayName = %q, want Unattributed", i, rev.ActorDisplayName)
+		if rev.ActorDisplayName != wantDisplay {
+			t.Errorf("revision[%d].ActorDisplayName = %q, want %q (the one caller who created, updated and deleted this entry)", i, rev.ActorDisplayName, wantDisplay)
 		}
 		if rev.ChangedAt.IsZero() {
 			t.Errorf("revision[%d].ChangedAt zero, want set", i)
@@ -233,6 +237,120 @@ func TestManualTimelineEntry_CanBeEditedAndSoftDeletedWithHistory(t *testing.T) 
 	}
 	if revList.Data[len(revList.Data)-1].State != "deleted" {
 		t.Errorf("last revision State = %q, want deleted", revList.Data[len(revList.Data)-1].State)
+	}
+}
+
+// TestPostTimelineEntry_PersistsTheActorUserID proves a manual entry's
+// actor_user_id column, not just its response actorKind/actorDisplay, names
+// the caller who wrote it (customers foundation design D1) — the response
+// alone cannot tell a real per-user id apart from a coincidentally matching
+// display name.
+func TestPostTimelineEntry_PersistsTheActorUserID(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, userID := authenticatedClientWithID(t, h)
+	customer := createCustomer(t, c, "Timeline Actor Persistence Co")
+
+	created := createManual(t, c, customer.Id, "2026-07-27", "note")
+
+	got := modtest.One[string](t, h, `SELECT actor_user_id::text FROM customers.customers_timeline_entries WHERE id = $1`, created.Id)
+	if got != userID.String() {
+		t.Errorf("actor_user_id = %s, want %s (the signed-in caller)", got, userID)
+	}
+}
+
+// TestTimelineEntry_RevisionsAttributeEachWriterSeparately proves D1's
+// second half: the entry row keeps its original author, but each revision
+// carries the actor of *that* revision — an edit or delete by somebody else
+// than the entry's creator shows up in the history under their own name.
+func TestTimelineEntry_RevisionsAttributeEachWriterSeparately(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	author, authorID := authenticatedClientWithID(t, h)
+	authorName := userDisplayName(t, h, authorID)
+	customer := createCustomer(t, author, "Timeline Multi Writer Co")
+	created := createManual(t, author, customer.Id, "2026-07-27", "written by author")
+
+	editor, editorID := authenticatedClientWithID(t, h)
+	editorName := userDisplayName(t, h, editorID)
+
+	update := editor.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/timeline/%d", customer.Id, created.Id), map[string]any{
+		"eventType": "note", "occurredOn": "2026-07-27", "note": "edited by editor", "expectedRevision": 1,
+	})
+	if update.Status != http.StatusOK {
+		t.Fatalf("update by second user: status %d body %s, want 200", update.Status, update.Body)
+	}
+	var updated timelineEntryJSON
+	update.JSON(&updated)
+	// The entry itself keeps its original author, unaffected by who edited it.
+	if str(updated.ActorDisplay) != authorName {
+		t.Errorf("entry ActorDisplay after update = %q, want %q (the original author, unchanged)", str(updated.ActorDisplay), authorName)
+	}
+
+	deleted := editor.Do(http.MethodDelete, fmt.Sprintf("/api/v1/customers/%d/timeline/%d?expectedRevision=2", customer.Id, created.Id), nil)
+	if deleted.Status != http.StatusNoContent {
+		t.Fatalf("delete by second user: status %d body %s, want 204", deleted.Status, deleted.Body)
+	}
+
+	revisions := author.Do(http.MethodGet, fmt.Sprintf("/api/v1/customers/%d/timeline/%d/revisions", customer.Id, created.Id), nil)
+	var revList timelineRevisionListJSON
+	revisions.JSON(&revList)
+	if len(revList.Data) != 3 {
+		t.Fatalf("revisions count = %d, want 3", len(revList.Data))
+	}
+	wantActors := []string{authorName, editorName, editorName}
+	for i, rev := range revList.Data {
+		if rev.ActorDisplayName != wantActors[i] {
+			t.Errorf("revision[%d].ActorDisplayName = %q, want %q", i, rev.ActorDisplayName, wantActors[i])
+		}
+	}
+}
+
+// TestGeneratedTimelineEvents_CarryTheActingUser proves every generated
+// customer.* event names the signed-in caller whose action produced it
+// (customers foundation design D1), while provenance/producer stay exactly
+// what they were before D1 — generated, customers.api.
+func TestGeneratedTimelineEvents_CarryTheActingUser(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, userID := authenticatedClientWithID(t, h)
+	wantDisplay := userDisplayName(t, h, userID)
+
+	customer := createCustomer(t, c, "Timeline Generated Actor Co")
+	contact := createContact(t, c, map[string]any{"firstName": "Generated", "lastName": "Actor"})
+	if r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d", customer.Id), map[string]any{"name": "Timeline Generated Actor Co Renamed"}); r.Status != http.StatusOK {
+		t.Fatalf("rename customer: status %d body %s, want 200", r.Status, r.Body)
+	}
+	attachContact(t, c, customer.Id, contact.Id, "CEO")
+	if r := c.Do(http.MethodDelete, fmt.Sprintf("/api/v1/customers/%d", customer.Id), nil); r.Status != http.StatusNoContent {
+		t.Fatalf("archive customer: status %d body %s, want 204", r.Status, r.Body)
+	}
+
+	feed := c.Do(http.MethodGet, fmt.Sprintf("/api/v1/customers/%d/timeline?limit=100", customer.Id), nil)
+	var feedList timelineListJSON
+	feed.JSON(&feedList)
+
+	want := []string{"customer.created", "customer.updated", "customer.contact_attached", "customer.status_changed"}
+	seen := map[string]bool{}
+	for _, e := range feedList.Data {
+		if e.Provenance != "generated" {
+			continue
+		}
+		seen[e.EventType] = true
+		if e.Producer != "customers.api" {
+			t.Errorf("%s: Producer = %q, want customers.api", e.EventType, e.Producer)
+		}
+		if e.ActorKind != "user" {
+			t.Errorf("%s: ActorKind = %q, want user", e.EventType, e.ActorKind)
+		}
+		if str(e.ActorDisplay) != wantDisplay {
+			t.Errorf("%s: ActorDisplay = %q, want %q", e.EventType, str(e.ActorDisplay), wantDisplay)
+		}
+	}
+	for _, w := range want {
+		if !seen[w] {
+			t.Errorf("feed missing generated event type %q, got %v", w, feedList.Data)
+		}
 	}
 }
 

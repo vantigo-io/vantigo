@@ -309,9 +309,17 @@ func (s *server) PostCustomers(ctx context.Context, req gen.PostCustomersRequest
 	}
 
 	now := s.deps.Clock()
+	// Resolved before the transaction opens: the directory lookup
+	// actorFor can make is an out-of-process call (customers foundation
+	// design D1, actor.go).
+	act, err := s.actorFor(ctx, generatedFallbackActor)
+	if err != nil {
+		return nil, fmt.Errorf("customers: resolve actor: %w", err)
+	}
+
 	legalCountry, legalID, legalName, legalSource, legalType := legalColumns(identity)
 	var created store.CustomersCustomer
-	err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
 		number, err := txq.NextCounterValue(ctx, "customer-number")
 		if err != nil {
@@ -332,7 +340,7 @@ func (s *server) PostCustomers(ctx context.Context, req gen.PostCustomersRequest
 		if err != nil {
 			return err
 		}
-		return recordCustomerCreated(ctx, txq, now, created.ID, name, identity)
+		return recordCustomerCreated(ctx, txq, now, created.ID, name, identity, act.Kind, act.Display, act.UserID)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("customers: create customer: %w", err)
@@ -461,6 +469,19 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 		updatedAt = now
 	}
 
+	// Resolved before the transaction opens, and only when a generated event
+	// will actually be written: an update that changes neither the customer
+	// nor its status records nothing, and must not pay for a directory
+	// lookup it will not use (customers foundation design D1, actor.go).
+	var act actor
+	if changed || statusChanged {
+		var err error
+		act, err = s.actorFor(ctx, generatedFallbackActor)
+		if err != nil {
+			return nil, fmt.Errorf("customers: resolve actor: %w", err)
+		}
+	}
+
 	legalCountry, legalID, legalName, legalSource, legalType := legalColumns(afterIdentity)
 	var updated store.CustomersCustomer
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
@@ -475,12 +496,12 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 			return err
 		}
 		if changed {
-			if err := recordCustomerUpdated(ctx, txq, now, req.Id, existing.Name, beforeIdentity, name, afterIdentity); err != nil {
+			if err := recordCustomerUpdated(ctx, txq, now, req.Id, existing.Name, beforeIdentity, name, afterIdentity, act.Kind, act.Display, act.UserID); err != nil {
 				return err
 			}
 		}
 		if statusChanged {
-			if err := recordCustomerStatusChanged(ctx, txq, now, req.Id, existing.Status, finalStatus); err != nil {
+			if err := recordCustomerStatusChanged(ctx, txq, now, req.Id, existing.Status, finalStatus, act.Kind, act.Display, act.UserID); err != nil {
 				return err
 			}
 		}
@@ -518,13 +539,21 @@ func (s *server) DeleteCustomersById(ctx context.Context, req gen.DeleteCustomer
 		return gen.DeleteCustomersById204Response{}, nil
 	}
 
+	// Resolved before the transaction opens: DeleteCustomersById always
+	// records a status-changed event once it reaches here (the archived
+	// no-op returned above), so the actor is always needed.
+	act, err := s.actorFor(ctx, generatedFallbackActor)
+	if err != nil {
+		return nil, fmt.Errorf("customers: resolve actor: %w", err)
+	}
+
 	now := s.deps.Clock()
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
 		if _, err := txq.SetCustomerStatus(ctx, store.SetCustomerStatusParams{ID: req.Id, Status: "archived", Now: now}); err != nil {
 			return err
 		}
-		return recordCustomerStatusChanged(ctx, txq, now, req.Id, existing.Status, "archived")
+		return recordCustomerStatusChanged(ctx, txq, now, req.Id, existing.Status, "archived", act.Kind, act.Display, act.UserID)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("customers: archive customer: %w", err)

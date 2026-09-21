@@ -8,6 +8,7 @@ sql:
     schema:
       - ../db/migrations/00003_customers_baseline.sql
       - ../db/migrations/00007_customers_type.sql
+      - ../db/migrations/00015_customers_timeline_actor.sql
     queries: queries
     gen:
       go:
