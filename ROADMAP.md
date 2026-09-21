@@ -20,6 +20,129 @@ likely Orders (`OrderPlaced` → Communications sends confirmation, Warehouse
 reserves stock). If a module is ever extracted, the outbox dispatcher targets a
 transport instead of in-process handlers; event contracts stay unchanged.
 
+## Customers
+
+Customers is the hub Energy, Projects, Time, Expenses and (eventually) Invoices all
+hang off — a project has a `customerId`, a supply period has a customer, an invoice
+will too — not a sales pipeline of its own. Research and priorities are in
+[`docs/superpowers/research/2026-09-21-customers-module-next.md`](docs/superpowers/research/2026-09-21-customers-module-next.md),
+comparing this module against the Nordic ERP/accounting field (Tripletex, PowerOffice,
+Visma, Fiken, Fortnox, e-conomic) and international CRM/PSA tools (HubSpot, Pipedrive,
+Attio, Odoo, Business Central, Productive).
+
+### Phase 1 — Foundation (done)
+
+Decided in
+[`docs/superpowers/specs/2026-09-21-customers-foundation-design.md`](docs/superpowers/specs/2026-09-21-customers-foundation-design.md).
+Closed the gaps that would otherwise be built upon, adding no new customer data: timeline
+entries — manual ones, each of their revisions, and the generated events a user's action
+causes — now name who wrote them, snapshotted from the user directory at write time; the customer row gained `revision`, an optimistic-concurrency
+token an update or a type change may carry and get refused (409) against; a legal
+identity another customer already has — archived included — is a 409 a caller can
+overrule with `allowDuplicateIdentity: true`, since there is no unique index; legal
+identities are now validated where a rule actually exists (ISO 3166-1 alpha-2 for
+`country`, Norwegian organisasjonsnummer mod-11 for `no` + `business`, a Norwegian
+person's id deliberately left unvalidated pending the GDPR question in phase 6); and
+the customer list now searches by customer number and — permission-gated, so search is
+never an oracle for data the response would withhold — legal name/id and contact
+name/email, filters by status and type, sorts by more than id/name, and can show
+archived customers with a restore path. `disabled` stays a label that blocks nothing
+yet, on purpose: Projects already accepts a project against an archived customer, so
+inventing a blocking rule for `disabled` ahead of Invoices would contradict that
+standing decision. See [`docs/customers.md`](docs/customers.md).
+
+*Unblocks:* every later phase below, and a customer list, duplicate guard and timeline
+worth building the invoice-ready customer on top of.
+
+### Phase 2 — The invoice-ready customer (align with Invoices)
+
+Addresses (invoice/postal, delivery, visiting — table stakes in every Nordic system
+compared). Customer-level contact info: email, phone, website, with an **invoice
+email** and a **reminder email** kept separate from the general contact address, since
+Norwegian eFaktura/EHF and dunning correspondence route differently. A billing
+profile: payment terms (days), currency, document language, invoice delivery method,
+reminder delivery method, a Peppol participant id/GLN, and a default buyer reference
+("deres referanse"). A Peppol capability lookup (SML DNS → SMP → BIS Billing 3.0
+support) that sets the delivery method to EHF automatically, the way every Nordic
+competitor surveyed but Fortnox does. `contracts.CustomerDirectory` grows a
+billing-profile read for Invoices and a batch `Customers(ids)` lookup (Projects'
+project list does one directory call per distinct customer today).
+
+*Unblocks:* Invoices — today a customer cannot be invoiced: there is nowhere to send
+it and no terms to put on it.
+
+### Phase 3 — Brreg in full
+
+Take the fuller Brreg record — org form, NACE code, employee count, addresses,
+MVA-registration, website, bankruptcy/dissolution flags, parent entity — instead of
+today's `legalId`/`legalName` pair, with registry-sourced fields read-only and their
+provenance shown, manual override explicit. A "Refresh from Brreg" button, then a
+scheduled refresh from Brreg's incremental update feed
+(`/api/oppdateringer/enheter`). Refreshed changes are written as `registry.change`
+timeline events — the event type already exists, unused, today — and
+bankruptcy/dissolution/name-change surfaces in `/stats/attention`, also already a
+stub.
+
+*Unblocks:* registry data worth relying on instead of a name and a number typed once,
+and the first real content behind two endpoints this module already declares.
+
+### Phase 4 — Light CRM
+
+An owner/account manager (single user) and a "my customers" filter. Tags, then
+customer groups that can carry defaults (payment terms, later the customer-group
+prices Products phase 4 already plans for). Typed contact roles with a primary
+contact (billing, project, decision maker), replacing today's free-text `role` —
+answers "who gets the invoice" and "who approves", the way Business Central's and
+Salesforce's contact-role models do. Follow-ups: a timeline entry that can carry a
+follow-up date and assignee, feeding `/stats/attention` and a "my follow-ups" view —
+no task engine beyond that. Attachments on a customer and its timeline entries
+(contracts, NDAs), once the storage module has a model for it.
+
+*Unblocks:* answering "who owns this relationship and what happens next" without
+building a deals pipeline.
+
+### Phase 5 — Customer 360
+
+An overview panel per customer — open projects, unbilled hours and expenses, invoiced
+revenue and outstanding once Invoices exists, last activity — host-composed from
+module contracts the same way the Energy and Projects tabs already are. Other
+modules writing to the customer timeline (project created/closed, invoice sent, supply
+period started), riding on the domain-events outbox deferred until Orders (see
+[Platform](#platform)). A customer default bill rate, slotted into the chain Projects
+and Time already resolve rates through (billing line → project → **customer** →
+person).
+
+*Unblocks:* the reason the customer page is meant to be the hub, not just a card.
+
+### Phase 6 — Data operations and compliance
+
+CSV import (create and update, with error-row re-run) and export, for onboarding away
+from Tripletex/Fiken/PowerOffice. Merging duplicate customers — moving contacts,
+timeline entries, and re-pointing whatever other modules hold a customer id, through a
+contract — far cheaper to build now, before invoices reference customers, and a
+differentiator in the Norwegian field: of the systems compared only SuperOffice documents
+a merge, and Tripletex states customers cannot be merged at all. GDPR handling for person customers: data export and scheduled
+anonymisation that leaves bookkeeping retention intact — and, as phase 1 already
+insists, never a fødselsnummer field.
+
+*Unblocks:* clean onboarding and offboarding, and a merge path that only gets more
+expensive the longer it waits.
+
+### Later
+
+Parent company (`parentId`, seedable from Brreg's `overordnetEnhet`) · customer-is-also-supplier
+(once purchasing/supplier invoices arrive) · custom fields · credit check integration
+(Proff/Creditsafe) · credit limit and credit hold (needs receivables to mean anything)
+· per-customer dunning settings (belongs with Invoices' own dunning) · a customer
+portal (after Invoices) · saved list views.
+
+**Deliberately not planned inside Customers:** a sales pipeline or quotes (its own
+module, if ever), email/calendar sync, marketing automation and a consent centre,
+lead/health scoring, account teams, and territories. A Norwegian B2B e-invoicing
+mandate has been discussed for 2027-01-01, but that date is indicative — sourced from
+advisory-firm summaries, not a published regulation — and nothing here is scheduled
+against it.
+
 ## Energy
 
 ### Phase 1 — Core metering model (done)
