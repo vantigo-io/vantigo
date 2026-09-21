@@ -1004,3 +1004,53 @@ func TestLoad_CommunicationsAIConfigured(t *testing.T) {
 		t.Errorf("error = %q, want a non-0/1 flag value rejected", msg)
 	}
 }
+
+func TestLoad_BootstrapOwnerEmail(t *testing.T) {
+	if cfg := mustLoad(t, validEnv()); cfg.BootstrapOwnerEmail != "" {
+		t.Errorf("BootstrapOwnerEmail = %q, want empty by default", cfg.BootstrapOwnerEmail)
+	}
+	cfg := mustLoad(t, with(validEnv(), "BOOTSTRAP_OWNER_EMAIL", "  owner@customer.example  "))
+	if cfg.BootstrapOwnerEmail != "owner@customer.example" {
+		t.Errorf("BootstrapOwnerEmail = %q, want it trimmed", cfg.BootstrapOwnerEmail)
+	}
+	for _, bad := range []string{"not-an-address", "Owner <owner@customer.example>"} {
+		if msg := loadError(t, with(validEnv(), "BOOTSTRAP_OWNER_EMAIL", bad)); !strings.Contains(msg, "BOOTSTRAP_OWNER_EMAIL: must be a plain email address") {
+			t.Errorf("%q: error = %q", bad, msg)
+		}
+	}
+}
+
+func TestLoad_Management_DisabledByDefault(t *testing.T) {
+	if cfg := mustLoad(t, validEnv()); cfg.Management != nil {
+		t.Errorf("Management = %+v, want nil", cfg.Management)
+	}
+}
+
+func TestLoad_Management(t *testing.T) {
+	token := strings.Repeat("t", 32)
+	cfg := mustLoad(t, with(validEnv(), "MANAGEMENT_PORT", "9090", "MANAGEMENT_TOKEN", token))
+	if cfg.Management == nil || cfg.Management.Port != 9090 || cfg.Management.Token != token {
+		t.Errorf("Management = %+v", cfg.Management)
+	}
+
+	cases := []struct {
+		pairs []string
+		want  string
+	}{
+		{[]string{"MANAGEMENT_PORT", "9090"}, "MANAGEMENT_TOKEN: is required when MANAGEMENT_PORT is set"},
+		{[]string{"MANAGEMENT_TOKEN", token}, "MANAGEMENT_PORT: is required when MANAGEMENT_TOKEN is set"},
+		{[]string{"MANAGEMENT_PORT", "0", "MANAGEMENT_TOKEN", token}, "MANAGEMENT_PORT: must be an integer from 1 to 65535"},
+		{[]string{"MANAGEMENT_PORT", "8080", "MANAGEMENT_TOKEN", token}, "MANAGEMENT_PORT: must differ from PORT"},
+		{[]string{"MANAGEMENT_PORT", "9090", "MANAGEMENT_TOKEN", "short"}, "MANAGEMENT_TOKEN: must be at least 32 characters"},
+		{[]string{"MANAGEMENT_PORT", "9090", "MANAGEMENT_TOKEN", strings.Repeat("t", 31) + " "}, "MANAGEMENT_TOKEN: must not contain whitespace"},
+	}
+	for _, tc := range cases {
+		msg := loadError(t, with(validEnv(), tc.pairs...))
+		if !strings.Contains(msg, tc.want) {
+			t.Errorf("%v: error = %q, want %q", tc.pairs[:1], msg, tc.want)
+		}
+		if strings.Contains(msg, token) {
+			t.Errorf("the error echoes the token: %q", msg)
+		}
+	}
+}

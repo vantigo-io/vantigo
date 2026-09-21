@@ -89,6 +89,15 @@ type SCIMConfig struct {
 	PreviousTokenExpiresAt time.Time
 }
 
+// ManagementConfig enables the management listener: a second, private HTTP
+// listener a control plane polls. A nil *ManagementConfig on Config means it
+// is disabled. It is bearer-authenticated and has no host filter, so it must
+// never be published or routed from the internet.
+type ManagementConfig struct {
+	Port  int
+	Token string
+}
+
 // Config is the validated process configuration. Load populates every field;
 // there is no partial state.
 type Config struct {
@@ -127,6 +136,15 @@ type Config struct {
 	Mail MailConfig
 	OIDC *OIDCConfig
 	SCIM *SCIMConfig
+
+	// BootstrapOwnerEmail, when set, replaces the anonymous /setup bootstrap:
+	// POST /identity/bootstrap is disabled and, while no Owner exists, startup
+	// mails an Owner invitation to this address (BOOTSTRAP_OWNER_EMAIL).
+	BootstrapOwnerEmail string
+
+	// Management is the private management listener (MANAGEMENT_PORT and
+	// MANAGEMENT_TOKEN, set together). Nil disables it.
+	Management *ManagementConfig
 
 	TrustedProxyCIDRs []netip.Prefix
 
@@ -309,6 +327,9 @@ func Load(env map[string]string) (*Config, error) {
 	c.Mail = mailConfig(&p, env, c)
 	c.OIDC = oidc(&p, env)
 	c.SCIM = scim(&p, env)
+
+	c.BootstrapOwnerEmail = bootstrapOwnerEmail(&p, env)
+	c.Management = management(&p, env, c)
 
 	c.TrustedProxyCIDRs = trustedProxyCIDRs(&p, env, c)
 
@@ -966,6 +987,50 @@ func scim(p *problems, env map[string]string) *SCIMConfig {
 
 func containsWhitespace(v string) bool {
 	return strings.IndexFunc(v, unicode.IsSpace) >= 0
+}
+
+// bootstrapOwnerEmail is optional; the display-name form is refused so the
+// value is exactly what the invitation is addressed to.
+func bootstrapOwnerEmail(p *problems, env map[string]string) string {
+	v := strings.TrimSpace(env["BOOTSTRAP_OWNER_EMAIL"])
+	if v == "" {
+		return ""
+	}
+	if a, err := mail.ParseAddress(v); err != nil || a.Address != v {
+		p.add("BOOTSTRAP_OWNER_EMAIL", "must be a plain email address such as owner@example.com")
+		return ""
+	}
+	return v
+}
+
+// management resolves the management listener. The two variables are one
+// switch: both set enables it, neither disables it, one alone is a mistake.
+func management(p *problems, env map[string]string, c *Config) *ManagementConfig {
+	port, token := env["MANAGEMENT_PORT"], env["MANAGEMENT_TOKEN"]
+	switch {
+	case port == "" && token == "":
+		return nil
+	case token == "":
+		p.add("MANAGEMENT_TOKEN", "is required when MANAGEMENT_PORT is set")
+		return nil
+	case port == "":
+		p.add("MANAGEMENT_PORT", "is required when MANAGEMENT_TOKEN is set")
+		return nil
+	}
+
+	m := &ManagementConfig{Port: integer(p, env, "MANAGEMENT_PORT", 0, 1, 65535)}
+	if m.Port != 0 && m.Port == c.Port {
+		p.add("MANAGEMENT_PORT", "must differ from PORT")
+	}
+	switch {
+	case containsWhitespace(token):
+		p.add("MANAGEMENT_TOKEN", "must not contain whitespace")
+	case len(token) < 32:
+		p.add("MANAGEMENT_TOKEN", "must be at least 32 characters")
+	default:
+		m.Token = token
+	}
+	return m
 }
 
 // trustedProxyCIDRs parses TRUSTED_PROXY_CIDRS, the peers whose

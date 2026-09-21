@@ -190,3 +190,24 @@ func TestRedactDatabaseURL(t *testing.T) {
 		}
 	}
 }
+
+func TestManagementTokenIsRedacted(t *testing.T) {
+	token := strings.Repeat("t", 32)
+	cfg := mustLoad(t, with(validEnv(), "MANAGEMENT_PORT", "9090", "MANAGEMENT_TOKEN", token))
+	encoded, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, out := range map[string]string{
+		"%+v":  fmt.Sprintf("%+v", cfg),
+		"%v":   fmt.Sprintf("%v", cfg.Management),
+		"json": string(encoded),
+	} {
+		if strings.Contains(out, token) {
+			t.Errorf("%s leaks the management token: %s", name, out)
+		}
+	}
+	if !strings.Contains(fmt.Sprintf("%+v", *cfg.Management), "9090") {
+		t.Error("the port is not a secret and must stay visible")
+	}
+}
