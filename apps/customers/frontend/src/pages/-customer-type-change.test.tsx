@@ -12,7 +12,7 @@ import { routeTree } from "../test/route-tree";
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
-const customer = (type: "business" | "person") => ({
+const customer = (type: "business" | "person", overrides: { revision?: number } = {}) => ({
   id: 1001,
   name: "Equinor",
   status: "active",
@@ -21,6 +21,7 @@ const customer = (type: "business" | "person") => ({
   updatedAt: "2026-07-01T10:00:00Z",
   identity: null,
   timelineSummary: { entryCount: 0, latestOccurredOn: null },
+  ...overrides,
 });
 
 const renderCustomer = async () => {
@@ -82,6 +83,71 @@ describe("changing a customer's type", () => {
       }),
     );
     expect(await screen.findByText("Private")).toBeInTheDocument();
+  });
+
+  it("sends the customer's revision along with the type change", async () => {
+    let current = customer("business", { revision: 2 });
+    const fetchMock = stubFetch((url: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(url);
+      if (path === "/api/v1/customers/1001/type" && init?.method === "PUT") {
+        current = customer("person", { revision: 3 });
+        return Promise.resolve(jsonResponse(200, current));
+      }
+      if (path === "/api/v1/customers/1001") return Promise.resolve(jsonResponse(200, current));
+      if (path === "/api/v1/customers/1001/legal-identity") return Promise.resolve(new Response(null, { status: 204 }));
+      if (path.includes("/timeline")) return Promise.resolve(jsonResponse(200, { data: [], nextCursor: null }));
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+
+    await renderCustomer();
+    await userEvent.click(screen.getByRole("button", { name: /change type/i }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: /change to private/i }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/1001/type", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "person", revision: 2 }),
+      }),
+    );
+  });
+
+  it("shows a revision-conflict message and refetches the customer on a stale type change", async () => {
+    const initial = customer("business", { revision: 2 });
+    const latest = customer("business", { revision: 3 });
+    let putCalls = 0;
+    const fetchMock = stubFetch((url: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(url);
+      if (path === "/api/v1/customers/1001/type" && init?.method === "PUT") {
+        putCalls += 1;
+        return Promise.resolve(
+          jsonResponse(409, {
+            title: "Customer revision conflict",
+            detail: "The customer was changed by someone else.",
+            status: 409,
+          }),
+        );
+      }
+      if (path === "/api/v1/customers/1001") return Promise.resolve(jsonResponse(200, putCalls > 0 ? latest : initial));
+      if (path === "/api/v1/customers/1001/legal-identity") return Promise.resolve(new Response(null, { status: 204 }));
+      if (path.includes("/timeline")) return Promise.resolve(jsonResponse(200, { data: [], nextCursor: null }));
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+
+    await renderCustomer();
+    const getCallsBefore = fetchMock.actualCalls.filter(([url]) => String(url) === "/api/v1/customers/1001").length;
+    await userEvent.click(screen.getByRole("button", { name: /change type/i }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: /change to private/i }));
+
+    expect(
+      await screen.findByText("This customer was changed by someone else. Reload to see the latest version."),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      const getCallsAfter = fetchMock.actualCalls.filter(([url]) => String(url) === "/api/v1/customers/1001").length;
+      expect(getCallsAfter).toBeGreaterThan(getCallsBefore);
+    });
   });
 
   it("does nothing when the confirmation is cancelled", async () => {

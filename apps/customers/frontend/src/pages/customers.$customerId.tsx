@@ -7,6 +7,7 @@ import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { type ReactNode, useState } from "react";
 
 import {
+  ApiConflictError,
   type CustomerResponse,
   type CustomerType,
   changeCustomerType,
@@ -134,7 +135,7 @@ const useCustomerTypeChange = (customer: CustomerResponse) => {
   const from = customerTypeLabel(t, customer.type).toLocaleLowerCase();
   const to = customerTypeLabel(t, target).toLocaleLowerCase();
   const mutation = useMutation({
-    mutationFn: () => changeCustomerType(customer.id, target),
+    mutationFn: () => changeCustomerType(customer.id, target, customer.revision),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       notifications.show({
@@ -144,6 +145,17 @@ const useCustomerTypeChange = (customer: CustomerResponse) => {
       });
     },
     onError: (error) => {
+      if (error instanceof ApiConflictError && !error.code) {
+        // D5's revision conflict: nothing to fix but look at the latest
+        // version, so the customer query is refetched rather than shown a
+        // field-level error the type-change dialog has no field for. The
+        // broad ["customers"] prefix (as onSuccess above also invalidates)
+        // matches this detail query regardless of whether the route's
+        // customerId param arrives as a number or a string.
+        queryClient.invalidateQueries({ queryKey: ["customers"] });
+        notifications.show({ color: "yellow", title: t("customerChangedTitle"), message: t("customerChangedMessage") });
+        return;
+      }
       notifications.show({ color: "red", title: t("customerTypeCouldNotBeChanged"), message: error.message });
     },
   });

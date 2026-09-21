@@ -263,6 +263,15 @@ const en = {
   statusAllOpen: "All open",
   customerNumberColumn: "Number",
   createdColumn: "Created",
+  customerChangedTitle: "Customer changed",
+  customerChangedMessage: "This customer was changed by someone else. Reload to see the latest version.",
+  customerChangesNotSaved: "Your changes have not been saved.",
+  reload: "Reload",
+  duplicateIdentityTitle: "Legal identity already in use",
+  duplicateIdentityMessage: "Another customer already has this legal identity:",
+  saveAnyway: "Save anyway",
+  createAnyway: "Create anyway",
+  similarCustomersTitle: "Existing customers with a similar name",
 } as const;
 
 const nb = {
@@ -528,6 +537,15 @@ const nb = {
   statusAllOpen: "Alle åpne",
   customerNumberColumn: "Nummer",
   createdColumn: "Opprettet",
+  customerChangedTitle: "Kunden er endret",
+  customerChangedMessage: "Denne kunden ble endret av noen andre. Last inn på nytt for å se siste versjon.",
+  customerChangesNotSaved: "Endringene dine er ikke lagret.",
+  reload: "Last inn på nytt",
+  duplicateIdentityTitle: "Juridisk identitet er allerede i bruk",
+  duplicateIdentityMessage: "En annen kunde har allerede denne juridiske identiteten:",
+  saveAnyway: "Lagre likevel",
+  createAnyway: "Opprett likevel",
+  similarCustomersTitle: "Eksisterende kunder med lignende navn",
 } as const;
 
 export const customersCatalog = { en, nb } satisfies CatalogResources;

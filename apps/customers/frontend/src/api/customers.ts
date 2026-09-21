@@ -1,7 +1,7 @@
 import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 import { NotFoundError, request } from "./request";
 
-export { ApiValidationError, NotFoundError } from "./request";
+export { ApiConflictError, ApiValidationError, NotFoundError } from "./request";
 
 export interface LegalIdentityResponse {
   country: string;
@@ -164,6 +164,10 @@ export interface CustomerInput {
   name: string;
   identity?: LegalIdentityInput;
   status?: string;
+  /** The row's revision, so a write against a stale read is refused rather than silently overwriting a concurrent change (design D5). Omitted when the caller has no revision to compare (create). */
+  revision?: number;
+  /** Goes ahead even though the identity is already used by another customer (design D6). */
+  allowDuplicateIdentity?: boolean;
 }
 
 /** The type is chosen on create only; afterwards it changes through changeCustomerType. */
@@ -191,11 +195,11 @@ export async function updateCustomer(id: number, input: CustomerInput): Promise<
  * Sets whether the customer is a business or a private person. Deliberately not
  * part of updateCustomer: a legal identity of the old type is removed with it.
  */
-export async function changeCustomerType(id: number, type: CustomerType): Promise<CustomerResponse> {
+export async function changeCustomerType(id: number, type: CustomerType, revision?: number): Promise<CustomerResponse> {
   return request<CustomerResponse>(`/api/v1/customers/${id}/type`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ type }),
+    body: JSON.stringify({ type, revision }),
   });
 }
 

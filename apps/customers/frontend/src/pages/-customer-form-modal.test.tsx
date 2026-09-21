@@ -39,11 +39,25 @@ describe("CustomerFormModal", () => {
     });
   });
   it("creates a private customer without ever looking the name up", async () => {
-    const fetchMock = vi.fn((url: RequestInfo | URL) =>
-      String(url) === "/api/v1/customers"
-        ? Promise.resolve(jsonResponse(201, { id: 1002 }))
-        : Promise.resolve(jsonResponse(200, { data: [{ legalId: "923609016", legalName: "KARI NORDMANN" }] })),
-    );
+    const fetchMock = vi.fn((url: RequestInfo | URL) => {
+      const path = String(url);
+      if (path === "/api/v1/customers") return Promise.resolve(jsonResponse(201, { id: 1002 }));
+      if (path.includes("/lookup/brreg"))
+        return Promise.resolve(jsonResponse(200, { data: [{ legalId: "923609016", legalName: "KARI NORDMANN" }] }));
+      return Promise.resolve(
+        jsonResponse(200, {
+          data: [],
+          pagination: {
+            page: 1,
+            pageSize: 3,
+            totalCount: 0,
+            totalPages: 0,
+            hasNextPage: false,
+            hasPreviousPage: false,
+          },
+        }),
+      );
+    });
     stubFetch(fetchMock);
     const { onClose } = renderModal({ mode: "create" });
     await userEvent.click(screen.getByRole("radio", { name: /private/i }));
@@ -59,11 +73,25 @@ describe("CustomerFormModal", () => {
     });
   });
   it("drops a picked business identity when switching to private", async () => {
-    const fetchMock = vi.fn((url: RequestInfo | URL) =>
-      String(url) === "/api/v1/customers"
-        ? Promise.resolve(jsonResponse(201, { id: 1003 }))
-        : Promise.resolve(jsonResponse(200, { data: [{ legalId: "923609016", legalName: "EQUINOR ASA" }] })),
-    );
+    const fetchMock = vi.fn((url: RequestInfo | URL) => {
+      const path = String(url);
+      if (path === "/api/v1/customers") return Promise.resolve(jsonResponse(201, { id: 1003 }));
+      if (path.includes("/lookup/brreg"))
+        return Promise.resolve(jsonResponse(200, { data: [{ legalId: "923609016", legalName: "EQUINOR ASA" }] }));
+      return Promise.resolve(
+        jsonResponse(200, {
+          data: [],
+          pagination: {
+            page: 1,
+            pageSize: 3,
+            totalCount: 0,
+            totalPages: 0,
+            hasNextPage: false,
+            hasPreviousPage: false,
+          },
+        }),
+      );
+    });
     stubFetch(fetchMock);
     const { onClose } = renderModal({ mode: "create" });
     await userEvent.type(screen.getByLabelText(/name/i), "Equinor");
@@ -116,5 +144,243 @@ describe("CustomerFormModal", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: "Initrode", status: "active" }),
     });
+  });
+  it("sends the customer's revision along with an update", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        id: 1001,
+        name: "Initrode",
+        status: "active",
+        timelineSummary: { entryCount: 0, latestOccurredOn: null },
+      }),
+    );
+    stubFetch(fetchMock);
+    const { onClose } = renderModal({
+      mode: "edit",
+      customer: {
+        id: 1001,
+        customerNumber: 5001,
+        name: "Initech",
+        status: "active",
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+        type: "business",
+        identity: null,
+        timelineSummary: { entryCount: 0, latestOccurredOn: null },
+        revision: 3,
+      },
+    });
+    await userEvent.click(screen.getByRole("button", { name: /save changes/i }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/1001", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Initech", status: "active", revision: 3 }),
+    });
+  });
+
+  it("shows a revision-conflict alert and discards the typed changes on Reload", async () => {
+    const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(url);
+      if (path === "/api/v1/customers/1001" && init?.method === "PUT") {
+        return Promise.resolve(
+          jsonResponse(409, {
+            title: "Customer revision conflict",
+            detail: "The customer was changed by someone else.",
+            status: 409,
+          }),
+        );
+      }
+      if (path === "/api/v1/customers/1001") {
+        return Promise.resolve(
+          jsonResponse(200, {
+            id: 1001,
+            customerNumber: 5001,
+            name: "Initech Latest",
+            status: "active",
+            type: "business",
+            identity: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-02-01T00:00:00Z",
+            timelineSummary: { entryCount: 0, latestOccurredOn: null },
+            revision: 4,
+          }),
+        );
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    stubFetch(fetchMock);
+    renderModal({
+      mode: "edit",
+      customer: {
+        id: 1001,
+        customerNumber: 5001,
+        name: "Initech",
+        status: "active",
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+        type: "business",
+        identity: null,
+        timelineSummary: { entryCount: 0, latestOccurredOn: null },
+        revision: 3,
+      },
+    });
+    const input = screen.getByLabelText(/name/i);
+    await userEvent.clear(input);
+    await userEvent.type(input, "My Own Edit");
+    await userEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    expect(
+      await screen.findByText("This customer was changed by someone else. Reload to see the latest version."),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/your changes have not been saved/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /reload/i }));
+
+    expect(await screen.findByLabelText(/name/i)).toHaveValue("Initech Latest");
+    expect(
+      screen.queryByText("This customer was changed by someone else. Reload to see the latest version."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows a duplicate-identity conflict on update and resubmits with allowDuplicateIdentity on Save anyway", async () => {
+    let attempts = 0;
+    const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(url);
+      if (path === "/api/v1/customers/1001" && init?.method === "PUT") {
+        attempts += 1;
+        if (attempts === 1) {
+          return Promise.resolve(
+            jsonResponse(409, {
+              title: "Duplicate legal identity",
+              code: "duplicate_legal_identity",
+              detail: "Another customer already has this legal identity.",
+              status: 409,
+              duplicates: [{ id: 2002, customerNumber: 6002, name: "Acme Holding AS", status: "active" }],
+            }),
+          );
+        }
+        return Promise.resolve(
+          jsonResponse(200, {
+            id: 1001,
+            name: "Initech",
+            status: "active",
+            timelineSummary: { entryCount: 0, latestOccurredOn: null },
+          }),
+        );
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    stubFetch(fetchMock);
+    const { onClose } = renderModal({
+      mode: "edit",
+      customer: {
+        id: 1001,
+        customerNumber: 5001,
+        name: "Initech",
+        status: "active",
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+        type: "business",
+        identity: null,
+        timelineSummary: { entryCount: 0, latestOccurredOn: null },
+        revision: 3,
+      },
+    });
+    await userEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    expect(await screen.findByText("Acme Holding AS")).toBeInTheDocument();
+    expect(screen.getByText("#6002")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /acme holding as/i })).toHaveAttribute("href", "/customers/2002");
+
+    await userEvent.click(screen.getByRole("button", { name: /save anyway/i }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(fetchMock).toHaveBeenLastCalledWith("/api/v1/customers/1001", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Initech", status: "active", revision: 3, allowDuplicateIdentity: true }),
+    });
+  });
+
+  it("shows a duplicate-identity conflict on create and resubmits with allowDuplicateIdentity on Create anyway", async () => {
+    let attempts = 0;
+    const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(url);
+      if (path === "/api/v1/customers" && init?.method === "POST") {
+        attempts += 1;
+        if (attempts === 1) {
+          return Promise.resolve(
+            jsonResponse(409, {
+              title: "Duplicate legal identity",
+              code: "duplicate_legal_identity",
+              detail: "Another customer already has this legal identity.",
+              status: 409,
+              duplicates: [{ id: 3003, customerNumber: 7003, name: "Kari Nordmann", status: "archived" }],
+            }),
+          );
+        }
+        return Promise.resolve(jsonResponse(201, { id: 3010 }));
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    stubFetch(fetchMock);
+    const { onClose } = renderModal({ mode: "create" });
+    await userEvent.click(screen.getByRole("radio", { name: /private/i }));
+    await userEvent.type(screen.getByLabelText(/name/i), "Kari Nordmann");
+    await userEvent.click(screen.getByRole("button", { name: /create customer/i }));
+
+    expect(await screen.findByText("Kari Nordmann")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /create anyway/i }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    const posts = fetchMock.mock.calls.filter(([, init]) => init?.method === "POST");
+    expect(posts.at(-1)).toEqual([
+      "/api/v1/customers",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Kari Nordmann", status: "active", type: "person", allowDuplicateIdentity: true }),
+      },
+    ]);
+  });
+
+  it("hints at existing customers with a similar name while creating (debounced, 3+ characters)", async () => {
+    const fetchMock = vi.fn((url: RequestInfo | URL) => {
+      const path = String(url);
+      if (path.startsWith("/api/v1/customers?")) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            data: [
+              { id: 9001, customerNumber: 8001, name: "Acme Holding", status: "active" },
+              { id: 9002, customerNumber: 8002, name: "Widgets Inc", status: "active" },
+            ],
+            pagination: {
+              page: 1,
+              pageSize: 3,
+              totalCount: 2,
+              totalPages: 1,
+              hasNextPage: false,
+              hasPreviousPage: false,
+            },
+          }),
+        );
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    stubFetch(fetchMock);
+    renderModal({ mode: "create" });
+    await userEvent.click(screen.getByRole("radio", { name: /private/i }));
+
+    await userEvent.type(screen.getByLabelText(/name/i), "Ac");
+    expect(screen.queryByText("Acme Holding")).not.toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText(/name/i), "me");
+
+    expect(await screen.findByText("Acme Holding", {}, { timeout: 3000 })).toBeInTheDocument();
+    // The API search also matches contacts and org numbers; only the name match renders.
+    expect(screen.queryByText("Widgets Inc")).not.toBeInTheDocument();
+    const call = fetchMock.mock.calls.find(([url]) => String(url).includes("search=Acme"));
+    expect(call).toBeDefined();
   });
 });
