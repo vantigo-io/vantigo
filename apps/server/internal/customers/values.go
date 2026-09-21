@@ -90,19 +90,62 @@ func identityTypeMismatch(customerType string, identity *legalIdentity) string {
 }
 
 // validateCountryCode is CountryCode's Validate and constructor
-// (DM/Customers/Common/CountryCode.cs): only non-blank is required — no
-// ISO-3166 shape check exists in .NET, so none exists here either.
+// (DM/Customers/Common/CountryCode.cs), extended by customers foundation
+// design D2: non-blank, and — unlike .NET, which had no ISO-3166 shape
+// check — must be an assigned ISO 3166-1 alpha-2 code (iso3166Alpha2,
+// countries.go), case-insensitive, trimmed and lowercased. The "but was
+// '{v}'" message quotes the raw, unnormalized value, as every other
+// enforced-set validator in this file does.
 func validateCountryCode(raw string) (string, string) {
 	if strings.TrimSpace(raw) == "" {
 		return "", "A country code cannot be null or empty"
 	}
-	return strings.ToLower(strings.TrimSpace(raw)), ""
+	lower := strings.ToLower(strings.TrimSpace(raw))
+	if _, ok := iso3166Alpha2[lower]; !ok {
+		return "", fmt.Sprintf("A country code must be an ISO 3166-1 alpha-2 code, but was '%s'", raw)
+	}
+	return lower, ""
+}
+
+// validNorwegianOrgNumber is the Brreg organisasjonsnummer mod-11 check
+// customers foundation design D2 adds: digits must already be free of
+// whitespace (validateLegalIdentity strips it before calling this). Exactly
+// nine ASCII digits, the last of which is the mod-11 check digit computed
+// over the first eight using weights 3 2 7 6 5 4 3 2. A remainder that
+// would produce check digit 10 is invalid outright — nine digits have no
+// way to encode a two-digit check value — regardless of what the ninth
+// digit actually is.
+func validNorwegianOrgNumber(digits string) bool {
+	if len(digits) != 9 {
+		return false
+	}
+	for _, r := range digits {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	weights := [8]int{3, 2, 7, 6, 5, 4, 3, 2}
+	sum := 0
+	for i, w := range weights {
+		sum += int(digits[i]-'0') * w
+	}
+	check := 0
+	if r := sum % 11; r != 0 {
+		check = 11 - r
+		if check == 10 {
+			return false
+		}
+	}
+	return int(digits[8]-'0') == check
 }
 
 // validateLegalID is LegalId's Validate and constructor
 // (DM/Customers/Common/LegalId.cs): non-blank, at most 50 UTF-16 code
-// units, trimmed and lowercased. Not format- or checksum-validated, e.g. no
-// Norwegian organisasjonsnummer check, regardless of source.
+// units, trimmed and lowercased. Not format- or checksum-validated here —
+// customers foundation design D2's Norwegian organisasjonsnummer check
+// lives in validateLegalIdentity instead, since it only applies once the
+// country and type are both known, never inside this generic, source-blind
+// validator.
 func validateLegalID(raw string) (string, string) {
 	if strings.TrimSpace(raw) == "" {
 		return "", "A legal id cannot be null or empty"
@@ -291,7 +334,14 @@ type legalIdentity struct {
 // (DM/Customers/ValueObjects/LegalIdentity.cs:18-72): every field is
 // validated independently and every error reported together, keyed
 // "country"/"type"/"id"/"name"/"source" — never short-circuited on the
-// first failure.
+// first failure. Customers foundation design D2 adds one cross-field rule on
+// top: when the normalised country is "no" and the normalised type is
+// "business", id must be a Norwegian organisasjonsnummer, checked (and, on
+// success, stored as) here rather than in validateLegalID — this is the one
+// place both values are already known good. Every other combination,
+// including "no" with type "person" (deliberately not treated as a
+// fødselsnummer field — that is P5's GDPR call to make, not this one's),
+// keeps validateLegalID's plain non-blank/length rule.
 func validateLegalIdentity(country, legalType, id, name, source string) (legalIdentity, map[string][]string) {
 	errs := map[string][]string{}
 
@@ -316,8 +366,30 @@ func validateLegalIdentity(country, legalType, id, name, source string) (legalId
 		errs["source"] = []string{err}
 	}
 
+	if errs["country"] == nil && errs["type"] == nil && errs["id"] == nil && c == "no" && t == "business" {
+		digits := stripWhitespace(i)
+		if !validNorwegianOrgNumber(digits) {
+			errs["id"] = []string{fmt.Sprintf("A Norwegian organisation number must be nine digits with a valid check digit, but was '%s'", id)}
+		} else {
+			i = digits
+		}
+	}
+
 	if len(errs) > 0 {
 		return legalIdentity{}, errs
 	}
 	return legalIdentity{Country: c, Type: t, ID: i, Name: n, Source: s}, nil
+}
+
+// stripWhitespace removes every Unicode whitespace rune, not merely leading
+// and trailing ones: an organisasjonsnummer copied from a form is often
+// grouped in threes ("974 760 673"), and every space in it is noise, not
+// structure.
+func stripWhitespace(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, s)
 }

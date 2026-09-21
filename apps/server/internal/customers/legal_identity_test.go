@@ -64,7 +64,7 @@ func TestUpdateCustomer_WithoutIdentity_RemovesExistingIdentity(t *testing.T) {
 	r := c.Do(http.MethodPost, "/api/v1/customers", map[string]any{
 		"name": "Removable",
 		"identity": map[string]any{
-			"country": "no", "type": "business", "id": "912345670", "name": "Removable AS", "source": "manual",
+			"country": "no", "type": "business", "id": "912345610", "name": "Removable AS", "source": "manual",
 		},
 	})
 	if r.Status != http.StatusCreated {
@@ -337,6 +337,30 @@ func TestPutCustomersByIdLegalIdentity_WithBlankFields_ReturnsExactValidationMes
 		if got := problem.Errors[field]; len(got) != 1 || got[0] != msgs[0] {
 			t.Errorf("errors[%q] = %v, want %v", field, got, msgs)
 		}
+	}
+}
+
+// Not a port: customers foundation design D2's Norwegian organisation-number
+// rule, exercised through this operation's bare field keys ("id", not
+// "identity.id" — the test above's comment explains why) the same way that
+// test exercises the generic per-field messages.
+func TestPutCustomersByIdLegalIdentity_WithInvalidNorwegianOrgNumber_ReturnsBadRequestWithFieldError(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	created := createCustomer(t, c, "Invalid Org Number Co")
+
+	r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/legal-identity", created.Id), map[string]any{
+		"country": "no", "type": "business", "id": "123456789", "name": "Acme AS", "source": "manual",
+	})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	want := "A Norwegian organisation number must be nine digits with a valid check digit, but was '123456789'"
+	if got := problem.Errors["id"]; len(got) != 1 || got[0] != want {
+		t.Errorf("errors[\"id\"] = %v, want [%q]", got, want)
 	}
 }
 

@@ -34,7 +34,7 @@ func TestStats_ReturnsGlobalCounts_WithIdentityFiguresForPermittedCaller(t *test
 
 	c.Do(http.MethodPost, "/api/v1/customers", map[string]any{
 		"name":     "Stats Business",
-		"identity": map[string]any{"country": "no", "type": "business", "id": "913456789", "name": "Stats AS", "source": "manual"},
+		"identity": map[string]any{"country": "no", "type": "business", "id": "913456785", "name": "Stats AS", "source": "manual"},
 	})
 	c.Do(http.MethodPost, "/api/v1/customers", map[string]any{
 		"name":     "Stats Person",

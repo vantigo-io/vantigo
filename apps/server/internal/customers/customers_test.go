@@ -181,6 +181,34 @@ func TestCreateCustomer_WithInvalidLegalId_ReturnsBadRequestWithFieldError(t *te
 	}
 }
 
+// Not a port: customers foundation design D2's Norwegian organisation-number
+// rule, exercised through PostCustomers's nested-identity error keying
+// (errs["identity."+field], customers.go) the same way the blank/too-long
+// case above exercises validateLegalID's generic rule. "123456789" passes
+// that generic rule (nine digits, well under the length cap) but fails the
+// mod-11 check digit only country "no" and type "business" together trigger.
+func TestCreateCustomer_WithInvalidNorwegianOrgNumber_ReturnsBadRequestWithFieldError(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+
+	r := c.Do(http.MethodPost, "/api/v1/customers", map[string]any{
+		"name": "Acme",
+		"identity": map[string]any{
+			"country": "no", "type": "business", "id": "123456789", "name": "Acme AS", "source": "manual",
+		},
+	})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	want := "A Norwegian organisation number must be nine digits with a valid check digit, but was '123456789'"
+	if got := problem.Errors["identity.id"]; len(got) != 1 || got[0] != want {
+		t.Errorf("errors[\"identity.id\"] = %v, want [%q]", got, want)
+	}
+}
+
 // Ported from Integration/CustomersEndpointsTests.cs.
 // CreateCustomer_WithEmptyName_ReturnsBadRequestWithFieldError.
 func TestCreateCustomer_WithEmptyName_ReturnsBadRequestWithFieldError(t *testing.T) {
@@ -563,6 +591,34 @@ func TestUpdateCustomer_OmittedIdentityPreservesExisting(t *testing.T) {
 	}
 }
 
+// TestUpdateCustomer_OmittedIdentityNeverRevalidatesAStoredInvalidOne pins
+// customers foundation design D2's explicit carve-out: "Validation applies
+// to writes only. Rows already stored are not re-validated, and a PUT that
+// leaves the identity unchanged (identity omitted) never trips over an old
+// value." The only way to get such a row under the new rule is to predate
+// it — the API itself now refuses to create one — so this seeds it directly
+// with SQL, the way legal_identity_test.go's file doc comment describes for
+// pre-Task-8 rows.
+func TestUpdateCustomer_OmittedIdentityNeverRevalidatesAStoredInvalidOne(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	created := createCustomer(t, c, "Legacy Invalid Identity Co")
+
+	h.Exec(t, `UPDATE customers.customers SET legal_country = 'no', legal_id = '123456789', legal_name = 'Legacy AS', legal_source = 'manual', legal_type = 'business' WHERE id = $1`,
+		created.Id)
+
+	r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d", created.Id), map[string]any{"name": "Legacy Invalid Identity Co Renamed"})
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200 (an omitted identity is never re-validated)", r.Status, r.Body)
+	}
+	var updated customerJSON
+	r.JSON(&updated)
+	if updated.Identity == nil || updated.Identity.Id != "123456789" {
+		t.Errorf("Identity = %+v, want the stored invalid identity preserved untouched", updated.Identity)
+	}
+}
+
 // TestCreateCustomer_CustomerNumberSurvivesADeletedHighNumberedCustomer pins
 // the counters upsert (NextCounterValue, customers inventory §3/§4): the
 // next customer_number always continues from the persisted counter row,
@@ -629,7 +685,7 @@ func TestGetCustomers_RepresentsCustomersIdenticallyToGetCustomer(t *testing.T) 
 	r := c.Do(http.MethodPost, "/api/v1/customers", map[string]any{
 		"name": "Globex",
 		"identity": map[string]any{
-			"country": "no", "type": "business", "id": "912345678", "name": "Globex AS", "source": "manual",
+			"country": "no", "type": "business", "id": "912345629", "name": "Globex AS", "source": "manual",
 		},
 	})
 	var created createdCustomerJSON
@@ -766,12 +822,12 @@ func TestGetCustomers_Search_MatchesNameOnly(t *testing.T) {
 	c.Do(http.MethodPost, "/api/v1/customers", map[string]any{
 		"name": "Searchable",
 		"identity": map[string]any{
-			"country": "no", "type": "business", "id": "998877665", "name": "Umbrella Norge AS", "source": "manual",
+			"country": "no", "type": "business", "id": "998877660", "name": "Umbrella Norge AS", "source": "manual",
 		},
 	})
 
 	byLegalName := c.Do(http.MethodGet, "/api/v1/customers?search="+url.QueryEscape("umbrella norge"), nil)
-	byLegalID := c.Do(http.MethodGet, "/api/v1/customers?search=998877665", nil)
+	byLegalID := c.Do(http.MethodGet, "/api/v1/customers?search=998877660", nil)
 	noMatch := c.Do(http.MethodGet, "/api/v1/customers?search=no-such-customer", nil)
 
 	var byName, byID, none customerListJSON
