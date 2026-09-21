@@ -950,3 +950,56 @@ func TestServe_WorkerModeHasNoManagementListener(t *testing.T) {
 		t.Error("worker mode must not open the management listener")
 	}
 }
+
+// TestServe_AManagementBindFailureStartsNoWorkers is the bite for review fix
+// round 1: cfg.Management and WorkersInProcess are independent, so in api
+// mode with WORKERS_IN_PROCESS=1 and MANAGEMENT_PORT set, a management bind
+// failure (the port is taken) must return before any worker is started —
+// otherwise the deferred cancelWorkers/closePool sequence would close the
+// pool out from under a worker that was never told to stop, the exact hazard
+// closePool's own doc comment and serveUntilDone's early-failure branch
+// exist to prevent for the main listener. serve is called directly, not via
+// startServeEnv, because startServeEnv's startup wait (waitReady) would never
+// resolve — the process never gets a chance to serve /health/ready when the
+// management bind fails first. No t.Parallel(): listenManagement is a
+// swapped package variable.
+func TestServe_AManagementBindFailureStartsNoWorkers(t *testing.T) {
+	original := listenManagement
+	listenManagement = func(int) (net.Listener, error) { return nil, errors.New("address already in use") }
+	t.Cleanup(func() { listenManagement = original })
+
+	_, databaseURL := testdb.Migrated(t)
+	cfg, err := config.Load(map[string]string{
+		"DATABASE_URL":       databaseURL,
+		"APP_URL":            "http://localhost:8080",
+		"SHUTDOWN_TIMEOUT":   "10s",
+		"APP_SECRET":         testAppSecret,
+		"SMTP_HOST":          "smtp.example.invalid",
+		"SMTP_FROM":          "noreply@example.invalid",
+		"WORKERS_IN_PROCESS": "1",
+		"MANAGEMENT_PORT":    "9090",
+		"MANAGEMENT_TOKEN":   strings.Repeat("m", 32),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w := newRecordingWorker("fake")
+	start := time.Now()
+	code := serve(context.Background(), slog.New(slog.DiscardHandler), cfg, ln, modeAPI, fakeWorkerModule(w))
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Errorf("serve took %s to return after a management bind failure, want promptly", elapsed)
+	}
+	if code != 1 {
+		t.Errorf("exit %d, want 1: the management listener failed to bind", code)
+	}
+	select {
+	case <-w.started:
+		t.Error("the fake worker started despite the management listener failing to bind")
+	default:
+	}
+}
