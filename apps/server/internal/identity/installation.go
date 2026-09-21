@@ -1,0 +1,59 @@
+package identity
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/vantigo-io/vantigo/server/internal/identity/store"
+	"github.com/vantigo-io/vantigo/server/internal/module"
+)
+
+// The bootstrap states the management endpoint reports.
+const (
+	BootstrapPending   = "pending"   // no Owner, and no invitation that can be accepted
+	BootstrapInvited   = "invited"   // an Owner invitation is waiting to be accepted
+	BootstrapCompleted = "completed" // an Owner exists
+)
+
+// InstallationStatus is what a control plane needs to know about identity.
+type InstallationStatus struct {
+	Bootstrap string
+	// Users is every account. ActiveUsers is the accounts that can sign in:
+	// not disabled and not locked out, the same count the Owner's system
+	// status shows. It says nothing about how recently anyone signed in.
+	Users       int
+	ActiveUsers int
+}
+
+// ReadInstallationStatus reads the status outside any request: it needs no
+// session and no *server.
+func ReadInstallationStatus(ctx context.Context, d module.Deps) (InstallationStatus, error) {
+	q := store.New(d.Pool)
+	now := d.Clock()
+
+	consumed, err := q.BootstrapConsumed(ctx)
+	if err != nil {
+		return InstallationStatus{}, fmt.Errorf("identity: installation status: %w", err)
+	}
+	st := InstallationStatus{Bootstrap: BootstrapCompleted}
+	if !consumed {
+		pending, err := q.CountPendingOwnerInvitations(ctx, now)
+		if err != nil {
+			return InstallationStatus{}, fmt.Errorf("identity: installation status: %w", err)
+		}
+		st.Bootstrap = BootstrapPending
+		if pending > 0 {
+			st.Bootstrap = BootstrapInvited
+		}
+	}
+
+	counts, err := q.GetOwnerSystemStatusCounts(ctx, store.GetOwnerSystemStatusCountsParams{
+		Now:         now,
+		ScimEnabled: d.Config.SCIM != nil,
+	})
+	if err != nil {
+		return InstallationStatus{}, fmt.Errorf("identity: installation status: %w", err)
+	}
+	st.Users, st.ActiveUsers = int(counts.Total), int(counts.Active)
+	return st, nil
+}
