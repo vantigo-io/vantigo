@@ -69,6 +69,7 @@ describe("changing a customer's type", () => {
       if (path === "/api/v1/customers/1001/legal-identity") return Promise.resolve(new Response(null, { status: 204 }));
       if (path === "/api/v1/customers/1001/billing-profile")
         return Promise.resolve(jsonResponse(200, emptyBillingProfile));
+      if (path === "/api/v1/customers/1001/addresses") return Promise.resolve(jsonResponse(200, { data: [] }));
       if (path.includes("/timeline")) return Promise.resolve(jsonResponse(200, { data: [], nextCursor: null }));
       return Promise.resolve(new Response(null, { status: 404 }));
     });
@@ -106,6 +107,7 @@ describe("changing a customer's type", () => {
       if (path === "/api/v1/customers/1001/legal-identity") return Promise.resolve(new Response(null, { status: 204 }));
       if (path === "/api/v1/customers/1001/billing-profile")
         return Promise.resolve(jsonResponse(200, emptyBillingProfile));
+      if (path === "/api/v1/customers/1001/addresses") return Promise.resolve(jsonResponse(200, { data: [] }));
       if (path.includes("/timeline")) return Promise.resolve(jsonResponse(200, { data: [], nextCursor: null }));
       return Promise.resolve(new Response(null, { status: 404 }));
     });
@@ -144,6 +146,7 @@ describe("changing a customer's type", () => {
       if (path === "/api/v1/customers/1001/legal-identity") return Promise.resolve(new Response(null, { status: 204 }));
       if (path === "/api/v1/customers/1001/billing-profile")
         return Promise.resolve(jsonResponse(200, emptyBillingProfile));
+      if (path === "/api/v1/customers/1001/addresses") return Promise.resolve(jsonResponse(200, { data: [] }));
       if (path.includes("/timeline")) return Promise.resolve(jsonResponse(200, { data: [], nextCursor: null }));
       return Promise.resolve(new Response(null, { status: 404 }));
     });
@@ -170,6 +173,7 @@ describe("changing a customer's type", () => {
       if (path === "/api/v1/customers/1001/legal-identity") return Promise.resolve(new Response(null, { status: 204 }));
       if (path === "/api/v1/customers/1001/billing-profile")
         return Promise.resolve(jsonResponse(200, emptyBillingProfile));
+      if (path === "/api/v1/customers/1001/addresses") return Promise.resolve(jsonResponse(200, { data: [] }));
       if (path.includes("/timeline")) return Promise.resolve(jsonResponse(200, { data: [], nextCursor: null }));
       return Promise.resolve(new Response(null, { status: 404 }));
     });

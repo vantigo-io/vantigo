@@ -152,6 +152,7 @@ describe("customer contacts card", () => {
     stubFetch({
       "GET /api/v1/customers/2002": () => jsonResponse(200, customer),
       "GET /api/v1/customers/2002/billing-profile": () => jsonResponse(200, emptyBillingProfile),
+      "GET /api/v1/customers/2002/addresses": () => jsonResponse(200, { data: [] }),
       "GET /api/v1/customers/2002/contacts": () =>
         jsonResponse(200, {
           data: [
@@ -178,6 +179,7 @@ describe("customer contacts card", () => {
     stubFetch({
       "GET /api/v1/customers/2002": () => jsonResponse(200, customer),
       "GET /api/v1/customers/2002/billing-profile": () => jsonResponse(200, emptyBillingProfile),
+      "GET /api/v1/customers/2002/addresses": () => jsonResponse(200, { data: [] }),
       "GET /api/v1/customers/2002/contacts": () => jsonResponse(200, { data: [] }),
     });
 
@@ -199,6 +201,7 @@ describe("customer contacts card", () => {
     stubFetch({
       "GET /api/v1/customers/2002": () => jsonResponse(200, customer),
       "GET /api/v1/customers/2002/billing-profile": () => jsonResponse(200, emptyBillingProfile),
+      "GET /api/v1/customers/2002/addresses": () => jsonResponse(200, { data: [] }),
       "GET /api/v1/customers/2002/contacts": () => jsonResponse(200, { data: [] }),
       "GET /api/v1/customers/contacts": () =>
         jsonResponse(
@@ -241,6 +244,7 @@ describe("customer contacts card", () => {
     stubFetch({
       "GET /api/v1/customers/2002": () => jsonResponse(200, customer),
       "GET /api/v1/customers/2002/billing-profile": () => jsonResponse(200, emptyBillingProfile),
+      "GET /api/v1/customers/2002/addresses": () => jsonResponse(200, { data: [] }),
       "GET /api/v1/customers/2002/contacts": () => jsonResponse(200, { data: [] }),
       "GET /api/v1/customers/contacts": () => jsonResponse(200, paginated([])),
       "POST /api/v1/customers/contacts": createSpy,
