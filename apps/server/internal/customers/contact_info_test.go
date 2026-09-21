@@ -123,6 +123,30 @@ func TestPutCustomersByIdContactInfo_InvalidEmail_ReturnsBadRequest(t *testing.T
 	}
 }
 
+// TestPutCustomersByIdContactInfo_EmbeddedSpaceInEmail_ReturnsBadRequest is
+// review fix round 1's HTTP-level case: an email with a space embedded in
+// the local part passed validateEmail's original inline shape check and was
+// stored unchanged (values_test.go carries the unit-level proof); this pins
+// the whole request/response path answers 400 under "email" now that
+// validateEmail shares hasValidEmailShape with validateEmailAddress.
+func TestPutCustomersByIdContactInfo_EmbeddedSpaceInEmail_ReturnsBadRequest(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	created := createCustomer(t, c, "Spaced Email Co")
+
+	r := putContactInfo(t, c, created.Id, map[string]any{"email": "an ders@vantigo.io"})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	want := "An email address must look like name@example.com, but was 'an ders@vantigo.io'"
+	if msgs := problem.Errors["email"]; len(msgs) != 1 || msgs[0] != want {
+		t.Errorf("errors[email] = %v, want [%q]", msgs, want)
+	}
+}
+
 func TestPutCustomersByIdContactInfo_InvalidPhone_ReturnsBadRequest(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)

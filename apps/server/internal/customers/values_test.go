@@ -588,6 +588,18 @@ func TestValidateEmailAddress_InvalidShapeFails(t *testing.T) {
 	}
 }
 
+// Not a port: hasValidEmailShape's whitespace check widened from "no space"
+// to "no Unicode whitespace" in review fix round 1 — no
+// ContactValueObjectTests case exercised a tab, so this pins the widened
+// behaviour reaches validateEmailAddress too, not only D2's validateEmail
+// below.
+func TestValidateEmailAddress_EmbeddedTabIsInvalid(t *testing.T) {
+	const want = "An email address must have the shape 'name@domain.tld'"
+	if _, err := validateEmailAddress("an\tders@vantigo.io"); err != want {
+		t.Errorf("validateEmailAddress(tab) = error %q, want %q", err, want)
+	}
+}
+
 // Ported from Domain/Contacts/Common/ContactValueObjectTests.cs.
 // NamePartTests.TryCreate_WithTooLongValue_Fails.
 func TestValidateNamePart_TooLongIsInvalid(t *testing.T) {
@@ -702,12 +714,17 @@ func TestIdentityTypeMismatch(t *testing.T) {
 
 // TestValidateEmail_ValidValuesSucceedWithoutLowercasing pins D2's departure
 // from validateEmailAddress: the local part's casing is kept as given, only
-// whitespace is trimmed.
+// whitespace is trimmed. Includes the ordinary shapes review fix round 1
+// asked to keep passing once the shape check moved to hasValidEmailShape:
+// a plus-tag, a subdomain, and a dash in the domain.
 func TestValidateEmail_ValidValuesSucceedWithoutLowercasing(t *testing.T) {
 	cases := map[string]string{
-		"anders@vantigo.io":   "anders@vantigo.io",
-		"  Anders@Vantigo.IO": "Anders@Vantigo.IO",
-		"a@b.co":              "a@b.co",
+		"anders@vantigo.io":          "anders@vantigo.io",
+		"  Anders@Vantigo.IO":        "Anders@Vantigo.IO",
+		"a@b.co":                     "a@b.co",
+		"anders+invoices@vantigo.io": "anders+invoices@vantigo.io", // plus-tag
+		"anders@mail.vantigo.io":     "anders@mail.vantigo.io",     // subdomain
+		"anders@vanti-go.io":         "anders@vanti-go.io",         // dash in domain
 	}
 	for v, want := range cases {
 		if got, err := validateEmail(v); err != "" || got != want {
@@ -716,8 +733,23 @@ func TestValidateEmail_ValidValuesSucceedWithoutLowercasing(t *testing.T) {
 	}
 }
 
+// TestValidateEmail_InvalidShapeFails is review fix round 1: validateEmail's
+// original inline shape check ("exactly one '@', a non-empty local part, a
+// domain containing a dot") missed embedded whitespace and a leading/
+// trailing dot on the domain — an input like "an ders@vantigo.io" or
+// "anders@vanti go.io" passed and was stored unchanged. validateEmail now
+// shares hasValidEmailShape with validateEmailAddress (one shape rule for
+// the module), so every case below is rejected the same way a contact's
+// email already was.
 func TestValidateEmail_InvalidShapeFails(t *testing.T) {
-	for _, v := range []string{"no-at-sign", "@vantigo.io", "anders@", "anders@vantigo", "anders@@vantigo.io"} {
+	for _, v := range []string{
+		"no-at-sign", "@vantigo.io", "anders@", "anders@vantigo", "anders@@vantigo.io",
+		"an ders@vantigo.io",  // embedded space, local part
+		"anders@vanti go.io",  // embedded space, domain
+		"an\tders@vantigo.io", // embedded tab
+		"a@.io",               // dot immediately after '@' (leading dot on the domain)
+		"a@vantigo.",          // trailing dot on the domain
+	} {
 		want := fmt.Sprintf("An email address must look like name@example.com, but was '%s'", v)
 		if _, err := validateEmail(v); err != want {
 			t.Errorf("validateEmail(%q) = error %q, want %q", v, err, want)
