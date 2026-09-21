@@ -12,22 +12,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const countPendingOwnerInvitations = `-- name: CountPendingOwnerInvitations :one
-SELECT count(*)::int
-FROM identity.invitations
-WHERE role = 'Owner' AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > $1::timestamptz
-`
-
-// CountPendingOwnerInvitations is how many Owner invitations can still be
-// accepted at @now: BOOTSTRAP_OWNER_EMAIL's startup step issues one only when
-// there is none, and the management status reports "invited" while there is.
-func (q *Queries) CountPendingOwnerInvitations(ctx context.Context, now time.Time) (int32, error) {
-	row := q.db.QueryRow(ctx, countPendingOwnerInvitations, now)
-	var column_1 int32
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
 const countPendingOwnerInvitationsForEmail = `-- name: CountPendingOwnerInvitationsForEmail :one
 SELECT count(*)::int
 FROM identity.invitations
@@ -41,7 +25,9 @@ type CountPendingOwnerInvitationsForEmailParams struct {
 
 // CountPendingOwnerInvitationsForEmail is how many Owner invitations to
 // @normalized_email can still be accepted at @now. BOOTSTRAP_OWNER_EMAIL's
-// startup step issues one to the configured address only when this is 0.
+// startup step issues one to the configured address only when this is 0, and
+// the management status reports "invited" only when it is above 0 for that
+// same configured address.
 func (q *Queries) CountPendingOwnerInvitationsForEmail(ctx context.Context, arg CountPendingOwnerInvitationsForEmailParams) (int32, error) {
 	row := q.db.QueryRow(ctx, countPendingOwnerInvitationsForEmail, arg.NormalizedEmail, arg.Now)
 	var column_1 int32
