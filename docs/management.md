@@ -60,6 +60,11 @@ the control plane's namespace).
 
 Rotating the token means restarting the process with a new value.
 
+If the management listener itself fails after startup — the port it bound
+stops accepting, for instance — the failure is logged and the instance
+keeps serving the public listener regardless: a control plane sees
+connection refused against an otherwise healthy pod, not a crash.
+
 ## Seating the first Owner without `/setup`
 
 Pair the listener with `BOOTSTRAP_OWNER_EMAIL`. The anonymous `/setup` flow is
@@ -78,16 +83,27 @@ A pending invitation to the current address is not sent again while it is
 still valid — restarting does not resend it. If it expires before anyone
 uses it, the next start issues a fresh one (a new token; the old one is no
 longer accepted). If `BOOTSTRAP_OWNER_EMAIL` names an address some account
-already holds, no invitation is sent — a warning is logged instead, since
-that account is not necessarily the Owner. If the mail send itself fails,
-the invitation is revoked and the failure is logged without startup
-stopping; the next start retries. A pending invitation cannot be forced to
-resend before it expires other than by correcting the address, since
-`/setup` and the owner-invitation management endpoints are both closed
-while `BOOTSTRAP_OWNER_EMAIL` is set and no Owner exists.
+already holds, no invitation is ever issued: `/setup` stays closed and
+`bootstrap` stays `pending`, the warning is logged at every start, not just
+the first, and the only recovery is pointing the variable at a different
+address. If the mail send itself fails, the invitation is revoked and the
+failure is logged without startup stopping; the next start retries. A
+pending invitation cannot be forced to resend before it expires other than
+by correcting the address, since `/setup` and the owner-invitation
+management endpoints are both closed while `BOOTSTRAP_OWNER_EMAIL` is set
+and no Owner exists. To get a fresh invitation before that one expires —
+mail lost in transit, or a process killed between issuing and sending — set
+`BOOTSTRAP_OWNER_EMAIL` to another address you control, restart (this
+revokes the pending invitation), set it back to the intended address, and
+restart again; a plain restart does not resend.
+
+While no Owner exists, every start attempts the invitation mail before the
+process starts answering requests: with an unreachable SMTP relay, that
+shows up as a slow start, not as a mail error anywhere in the response
+path.
 
 Whichever path seats it — `/setup` or an accepted invitation — the
-installation's first Owner always receives both `Owner` and `SystemAdmin`,
-and the same bootstrap marker is written either way. This also closes a
-previous gap where an installation whose only (invited) Owner was later
-removed counted as un-bootstrapped again.
+installation's first Owner always receives both `Owner` and `SystemAdmin`
+and writes the same bootstrap marker, so an installation whose first Owner
+was seated by invitation is bootstrapped exactly as one set up through
+`/setup`.

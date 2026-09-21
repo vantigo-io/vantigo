@@ -93,9 +93,7 @@ exactly as `/setup` would create it.
 
 The installation's first Owner holds `Owner` and `SystemAdmin`, and the bootstrap
 marker is written, **however that account is created** — `/setup`'s anonymous form
-and an accepted Owner invitation reach the same outcome. This also closes a
-previous gap where an installation whose only (invited) Owner was later removed
-counted as un-bootstrapped again.
+and an accepted Owner invitation reach the same outcome.
 
 Owners invite `User` or `Owner` accounts from `/settings`. Invitation tokens are
 opaque and stored only as hashes. `INVITATION_LIFETIME` defaults to `168h` (seven
