@@ -315,6 +315,7 @@ linters:
             - "**/internal/management/**"
             - "**/internal/netguard/**"
             - "**/internal/openapi/**"
+            - "**/internal/peppol/**"
             - "**/internal/ratelimit/**"
             - "**/internal/secrets/**"
             - "**/internal/security/**"
