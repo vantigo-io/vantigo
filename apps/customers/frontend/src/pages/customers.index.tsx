@@ -6,13 +6,23 @@ import {
   Card,
   Group,
   Pagination,
+  Select,
   SimpleGrid,
   Stack,
   Table,
   Text,
   TextInput,
+  UnstyledButton,
 } from "@mantine/core";
-import { IconAlertCircle, IconPencil, IconPlus, IconSearch } from "@tabler/icons-react";
+import {
+  IconAlertCircle,
+  IconChevronDown,
+  IconChevronUp,
+  IconPencil,
+  IconPlus,
+  IconSearch,
+  IconSelector,
+} from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
@@ -25,28 +35,99 @@ import {
 } from "@vantigo/frontend-shell";
 import { useState } from "react";
 
-import { customerStatsQueryOptions, customersQueryOptions } from "../api/customers";
+import {
+  type CustomerStatusFilter,
+  type CustomersListSearch,
+  type CustomerType,
+  customerStatsQueryOptions,
+  customersListParams,
+  customersQueryOptions,
+} from "../api/customers";
 import "../i18n";
 import { CustomerFormModal, type CustomerModalState } from "./-customer-form-modal";
 
-const PAGE_SIZE = 25;
+type SortColumn = NonNullable<CustomersListSearch["sortBy"]>;
+type SortDirection = NonNullable<CustomersListSearch["sortDirection"]>;
 
-interface CustomersSearch {
-  page: number;
-  search: string;
+interface CustomersSearch extends CustomersListSearch {
   /** Arrive with the create form open (Spotlight's quick action). Only ever present when true. */
   create?: boolean;
 }
 
+// Sentinel for the Select's own "no filter" entry: the search state itself
+// carries no filter as `undefined`, but a Mantine Select needs a real string
+// among its `data` to show "All open"/"All" as a selectable row rather than
+// only reachable through the small clear button.
+const ALL_STATUSES = "";
+const ALL_TYPES = "";
+
+const STATUS_FILTERS: CustomerStatusFilter[] = ["active", "disabled", "archived"];
+const TYPE_FILTERS: CustomerType[] = ["business", "person"];
+
+const isStatusFilter = (value: string): value is CustomerStatusFilter => (STATUS_FILTERS as string[]).includes(value);
+const isTypeFilter = (value: string): value is CustomerType => (TYPE_FILTERS as string[]).includes(value);
+
+interface SortableHeaderProps {
+  column: SortColumn;
+  label: string;
+  sortBy?: SortColumn;
+  sortDirection?: SortDirection;
+  onSort: (column: SortColumn) => void;
+}
+
+/**
+ * A column header that is also the control for sorting by it: `aria-sort`
+ * lives on the `<th>` itself (the WAI-ARIA-documented place for it), and the
+ * chevron inside the button shows the direction to a sighted user. No sibling
+ * page had one of these yet, so this is the pattern for the next one.
+ */
+const SortableHeader = ({ column, label, sortBy, sortDirection, onSort }: SortableHeaderProps) => {
+  const active = sortBy === column;
+  const ariaSort = !active ? "none" : sortDirection === "desc" ? "descending" : "ascending";
+  const Icon = !active ? IconSelector : sortDirection === "desc" ? IconChevronDown : IconChevronUp;
+  return (
+    <Table.Th aria-sort={ariaSort}>
+      <UnstyledButton
+        type="button"
+        onClick={() => onSort(column)}
+        style={{ display: "flex", alignItems: "center", gap: 4 }}
+      >
+        <Text fw={700} size="sm">
+          {label}
+        </Text>
+        <Icon size={14} />
+      </UnstyledButton>
+    </Table.Th>
+  );
+};
+
 export const CustomersPage = () => {
   const { t, formatters } = useI18n("customers");
-  const { page, search, create } = useSearch({ strict: false }) as CustomersSearch;
+  const { page, search, status, type, sortBy, sortDirection, create } = useSearch({ strict: false }) as CustomersSearch;
   const navigate = useNavigate() as (options: unknown) => void;
+
+  // The filter/sort half of the URL, kept apart from `create`: typing in the
+  // search box or turning a page must never resurrect a consumed create
+  // intent, but must never drop a filter either (see useDebouncedListSearch
+  // below and the Local vs CI note on losing `status` while typing).
+  const listSearch: CustomersListSearch = { page, search, status, type, sortBy, sortDirection };
 
   const { searchInput, setSearchInput, onPageChange } = useDebouncedListSearch({
     currentSearch: search,
-    onNavigate: (next, options) => navigate({ search: next, ...options }),
+    onNavigate: (next, options) => navigate({ search: { ...listSearch, ...next }, ...options }),
   });
+  const filterBy = (next: Partial<Pick<CustomersListSearch, "status" | "type">>) =>
+    navigate({ search: { ...listSearch, ...next, page: 1 } });
+  const toggleSort = (column: SortColumn) => {
+    const next: Pick<CustomersListSearch, "sortBy" | "sortDirection"> =
+      sortBy !== column
+        ? { sortBy: column, sortDirection: "asc" }
+        : sortDirection === "asc"
+          ? { sortBy: column, sortDirection: "desc" }
+          : { sortBy: undefined, sortDirection: undefined };
+    navigate({ search: { ...listSearch, ...next, page: 1 } });
+  };
+
   const [modalState, setModalState] = useState<CustomerModalState | null>(null);
   // Open the create form when `create` arrives in the URL, once per arrival:
   // state adjusted during render from the previous render's value, the way
@@ -60,22 +141,20 @@ export const CustomersPage = () => {
   const closeModal = () => {
     setModalState(null);
     // The intent is consumed: closing the form must not reopen it on refresh or back.
-    if (create) navigate({ search: { page, search }, replace: true });
+    if (create) navigate({ search: listSearch, replace: true });
   };
 
-  const { data, isPending, isError, error } = useQuery(
-    customersQueryOptions({
-      page,
-      pageSize: PAGE_SIZE,
-      search: search || undefined,
-    }),
-  );
+  const { data, isPending, isError, error } = useQuery(customersQueryOptions(customersListParams(listSearch)));
   const { data: stats } = useQuery(customerStatsQueryOptions());
 
   // Identity-derived figures are null when this account lacks the legal-identity
   // view permission; hide the related cards and table columns entirely in that case.
   const showIdentity = stats?.businessCount != null;
   const formatCount = (value: number | null | undefined) => (value == null ? "—" : formatters.formatNumber(value));
+  const statusLabel = (value: CustomerStatusFilter) =>
+    value === "active" ? t("statusActive") : value === "disabled" ? t("statusDisabled") : t("statusArchived");
+  const typeLabel = (value: CustomerType) =>
+    value === "business" ? t("customerTypeBusiness") : t("customerTypePerson");
 
   return (
     <Stack gap="lg">
@@ -116,13 +195,37 @@ export const CustomersPage = () => {
 
       <Card withBorder padding="lg" radius="md">
         <Stack gap="md">
-          <TextInput
-            placeholder={t("searchCustomers")}
-            leftSection={<IconSearch size={16} />}
-            value={searchInput}
-            onChange={(event) => setSearchInput(event.currentTarget.value)}
-            maw={400}
-          />
+          <Group align="end" wrap="wrap">
+            <TextInput
+              placeholder={t("searchCustomers")}
+              leftSection={<IconSearch size={16} />}
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.currentTarget.value)}
+              maw={400}
+            />
+            <Select
+              label={t("status")}
+              w={160}
+              allowDeselect={false}
+              data={[
+                { value: ALL_STATUSES, label: t("statusAllOpen") },
+                ...STATUS_FILTERS.map((value) => ({ value, label: statusLabel(value) })),
+              ]}
+              value={status ?? ALL_STATUSES}
+              onChange={(value) => filterBy({ status: value && isStatusFilter(value) ? value : undefined })}
+            />
+            <Select
+              label={t("customerType")}
+              w={160}
+              allowDeselect={false}
+              data={[
+                { value: ALL_TYPES, label: t("all") },
+                ...TYPE_FILTERS.map((value) => ({ value, label: typeLabel(value) })),
+              ]}
+              value={type ?? ALL_TYPES}
+              onChange={(value) => filterBy({ type: value && isTypeFilter(value) ? value : undefined })}
+            />
+          </Group>
 
           {isError && (
             <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedLoadCustomers")}>
@@ -134,12 +237,24 @@ export const CustomersPage = () => {
 
           {data && (
             <>
-              <Table.ScrollContainer minWidth={showIdentity ? 920 : 720}>
+              <Table.ScrollContainer minWidth={showIdentity ? 1040 : 840}>
                 <Table striped highlightOnHover>
                   <Table.Thead>
                     <Table.Tr>
-                      <Table.Th>{t("id")}</Table.Th>
-                      <Table.Th>{t("name")}</Table.Th>
+                      <SortableHeader
+                        column="customerNumber"
+                        label={t("customerNumberColumn")}
+                        sortBy={sortBy}
+                        sortDirection={sortDirection}
+                        onSort={toggleSort}
+                      />
+                      <SortableHeader
+                        column="name"
+                        label={t("name")}
+                        sortBy={sortBy}
+                        sortDirection={sortDirection}
+                        onSort={toggleSort}
+                      />
                       <Table.Th>{t("status")}</Table.Th>
                       <Table.Th>{t("customerType")}</Table.Th>
                       {showIdentity && (
@@ -148,6 +263,13 @@ export const CustomersPage = () => {
                           <Table.Th>{t("legalId")}</Table.Th>
                         </>
                       )}
+                      <SortableHeader
+                        column="createdAt"
+                        label={t("createdColumn")}
+                        sortBy={sortBy}
+                        sortDirection={sortDirection}
+                        onSort={toggleSort}
+                      />
                       <Table.Th w={48} aria-label={t("actions")} />
                     </Table.Tr>
                   </Table.Thead>
@@ -162,7 +284,7 @@ export const CustomersPage = () => {
                           })
                         }
                       >
-                        <Table.Td>{customer.id}</Table.Td>
+                        <Table.Td>{customer.customerNumber}</Table.Td>
                         <Table.Td>{customer.name}</Table.Td>
                         <Table.Td>
                           <Badge variant="light" color={customer.status === "active" ? "teal" : "gray"}>
@@ -200,6 +322,7 @@ export const CustomersPage = () => {
                             </Table.Td>
                           </>
                         )}
+                        <Table.Td>{formatters.formatDate(customer.createdAt)}</Table.Td>
                         <Table.Td onClick={(event) => event.stopPropagation()}>
                           <ActionIcon
                             variant="subtle"

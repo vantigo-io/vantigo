@@ -22,6 +22,8 @@ export type CustomerType = "business" | "person";
 
 export interface CustomerResponse {
   id: number;
+  /** The customer-facing number (KVEM1000-CU style), shown in the list in place of the database id. */
+  customerNumber: number;
   name: string;
   status: string;
   type: CustomerType;
@@ -30,6 +32,8 @@ export interface CustomerResponse {
   /** Null when the customer has no legal identity or the caller lacks permission to view it. */
   identity: CustomerIdentitySummary | null;
   timelineSummary: { entryCount: number; latestOccurredOn: string | null };
+  /** The row's optimistic-concurrency token (design D5). Absent only for corpus responses that predate it. */
+  revision?: number;
 }
 
 export interface CustomerStatsResponse {
@@ -57,11 +61,16 @@ export interface PaginatedResponse<T> {
   pagination: PaginationMetadata;
 }
 
+/** Naming a status shows exactly that status: `archived` needs no separate "include archived" flag. */
+export type CustomerStatusFilter = "active" | "disabled" | "archived";
+
 export interface CustomersQueryParams {
   page?: number;
   pageSize?: number;
   search?: string;
-  sortBy?: "id" | "name";
+  status?: CustomerStatusFilter;
+  type?: CustomerType;
+  sortBy?: "id" | "name" | "customerNumber" | "createdAt" | "updatedAt";
   sortDirection?: "asc" | "desc";
 }
 
@@ -73,6 +82,8 @@ async function fetchCustomers(
   if (params.page) searchParams.set("page", String(params.page));
   if (params.pageSize) searchParams.set("pageSize", String(params.pageSize));
   if (params.search) searchParams.set("search", params.search);
+  if (params.status) searchParams.set("status", params.status);
+  if (params.type) searchParams.set("type", params.type);
   if (params.sortBy) searchParams.set("sortBy", params.sortBy);
   if (params.sortDirection) searchParams.set("sortDirection", params.sortDirection);
 
@@ -86,6 +97,34 @@ export const customersQueryOptions = (params: CustomersQueryParams) =>
     queryFn: ({ signal }) => fetchCustomers(params, signal),
     placeholderData: keepPreviousData,
   });
+
+/** The page's own view of its search-derived state: what the list URL carries. */
+export interface CustomersListSearch {
+  page: number;
+  search: string;
+  status?: CustomerStatusFilter;
+  type?: CustomerType;
+  sortBy?: CustomersQueryParams["sortBy"];
+  sortDirection?: CustomersQueryParams["sortDirection"];
+}
+
+export const CUSTOMERS_PAGE_SIZE = 25;
+
+/**
+ * Turns the list page's URL search state into `CustomersQueryParams`, the one
+ * place that mapping happens. The host route's loader and the page component
+ * both call this on the same search value, so their query keys always match
+ * and the loader's prefetch is never wasted on a second fetch.
+ */
+export const customersListParams = (search: CustomersListSearch): CustomersQueryParams => ({
+  page: search.page,
+  pageSize: CUSTOMERS_PAGE_SIZE,
+  search: search.search || undefined,
+  status: search.status,
+  type: search.type,
+  sortBy: search.sortBy,
+  sortDirection: search.sortDirection,
+});
 
 export const customerStatsQueryOptions = () =>
   queryOptions({
