@@ -116,7 +116,11 @@ func registryDateDisplay(t *time.Time) string {
 func diffRegistryRecords(before *registryRecord, legalName string, after registryRecord) []registryChange {
 	if before == nil {
 		var changes []registryChange
-		if after.Name != legalName {
+		// Trimmed on both sides, matching stats.go's own rename rule (fix round
+		// 2, minors): the attention list and the timeline must agree about what
+		// counts as a different name, and a legal name stored with a stray
+		// trailing space is not a rename by anybody's reading.
+		if strings.TrimSpace(after.Name) != strings.TrimSpace(legalName) {
 			changes = append(changes, registryChange{Field: "name", From: legalName, To: after.Name})
 		}
 		if deletedOn := registryDateDisplay(after.DeletedOn); deletedOn != "" {

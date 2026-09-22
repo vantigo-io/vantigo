@@ -101,11 +101,18 @@ type registryAddress struct {
 // worker owns that column, nothing in delivery A reads or writes it, and a
 // field this file never fills would only invite a future reader to believe
 // it means something.
+//
+// BankruptOn and LiquidationOn are stored and read back but never diffed
+// (registry_diff.go) and never sent on the wire: they exist so a bankruptcy's
+// attention item is dated the day the company went bankrupt rather than the
+// day we last asked (design D4, fix round 2 I3), and the flag beside each of
+// them is what a refresh reports — saying "bankruptOn changed" in the same
+// breath as "bankrupt changed" would report one fact twice.
 type registryRecord struct {
 	OrganisationNumber, Name, OrganisationFormCode, OrganisationForm, IndustryCode, Industry string
 	Employees                                                                                *int32
 	VATRegistered, Bankrupt, UnderLiquidation, UnderForcedLiquidation                        bool
-	DeletedOn, FoundedOn                                                                     *time.Time
+	DeletedOn, FoundedOn, BankruptOn, LiquidationOn                                          *time.Time
 	Website, Email, Phone, Mobile, ParentOrganisationNumber                                  string
 	BusinessAddress, PostalAddress                                                           *registryAddress
 	FetchedAt                                                                                time.Time
@@ -150,6 +157,8 @@ func registryRecordFrom(e brregEntityRecord, now time.Time) registryRecord {
 		UnderForcedLiquidation:   e.UnderForcedLiquidation,
 		DeletedOn:                e.DeletedOn,
 		FoundedOn:                e.FoundedOn,
+		BankruptOn:               e.BankruptOn,
+		LiquidationOn:            e.LiquidationOn,
 		Website:                  truncateUTF16(e.Website, registryWebsiteMax),
 		Email:                    truncateUTF16(e.Email, registryEmailMax),
 		Phone:                    truncateUTF16(e.Phone, registryPhoneMax),
@@ -170,6 +179,13 @@ func registryRecordFrom(e brregEntityRecord, now time.Time) registryRecord {
 // its deletion would be noise, and losing them would throw away the last
 // picture anyone has of it. With no record on file there is nothing to carry
 // over, and the zero values (no employees, every flag false) stand.
+//
+// A SlettetEnhet body with no slettedato at all is dated the day of the fetch
+// (fix round 2, minors): the respons_klasse is the load-bearing fact — this
+// company is struck from the register — and a record carrying that fact with
+// no date would be reported as no change whatsoever and raise no attention
+// item, which is the one outcome that must not happen. The fetch date is the
+// best anyone here knows.
 func deletedRegistryRecordFrom(before *registryRecord, e brregEntityRecord, now time.Time) registryRecord {
 	rec := registryRecord{}
 	if before != nil {
@@ -178,6 +194,10 @@ func deletedRegistryRecordFrom(before *registryRecord, e brregEntityRecord, now 
 	rec.OrganisationNumber = truncateUTF16(e.OrganisationNumber, registryOrganisationNumberMax)
 	rec.Name = truncateUTF16(e.Name, registryNameMax)
 	rec.DeletedOn = e.DeletedOn
+	if rec.DeletedOn == nil {
+		day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+		rec.DeletedOn = &day
+	}
 	rec.FetchedAt = now
 	return rec
 }
@@ -268,6 +288,8 @@ func registryRecordFromRow(row store.CustomersCustomerRegistryRecord) (registryR
 		UnderForcedLiquidation:   row.UnderForcedLiquidation,
 		DeletedOn:                registryDateFromColumn(row.DeletedOn),
 		FoundedOn:                registryDateFromColumn(row.FoundedOn),
+		BankruptOn:               registryDateFromColumn(row.BankruptOn),
+		LiquidationOn:            registryDateFromColumn(row.LiquidationOn),
 		Website:                  deref(row.Website),
 		Email:                    deref(row.Email),
 		Phone:                    deref(row.Phone),
@@ -304,6 +326,8 @@ func registryUpsertParams(customerID int32, rec registryRecord) (store.UpsertCus
 		UnderForcedLiquidation:   rec.UnderForcedLiquidation,
 		DeletedOn:                registryDateColumn(rec.DeletedOn),
 		FoundedOn:                registryDateColumn(rec.FoundedOn),
+		BankruptOn:               registryDateColumn(rec.BankruptOn),
+		LiquidationOn:            registryDateColumn(rec.LiquidationOn),
 		Website:                  registryOptional(rec.Website),
 		Email:                    registryOptional(rec.Email),
 		Phone:                    registryOptional(rec.Phone),
@@ -445,9 +469,14 @@ func registryErrorKind(err error) string {
 	case errors.Is(err, errBrregUnavailable):
 		return "registry_unavailable"
 	default:
-		return "database"
+		return registryErrorKindDatabase
 	}
 }
+
+// registryErrorKindDatabase is the one kind whose own error text is safe to
+// log beside it (logRegistryFetchFailure): it is this module's own wrapped
+// error, carrying neither an organisation number nor a URL.
+const registryErrorKindDatabase = "database"
 
 // registryRefreshUnavailableResponse is the 502 a refresh answers when the
 // registry itself could not be reached (design D2: "502 when Brreg cannot be
@@ -475,6 +504,18 @@ func noRegistryIdentityConflict() gen.CustomerConflictProblem {
 	return gen.CustomerConflictProblem{Title: &title, Detail: &detail, Code: &code, Status: &status}
 }
 
+// registryHookTimeout is how long a create or an identity PUT may wait on the
+// registry (fix round 2, I1): one attempt's worth, not BRREG_TIMEOUT's fifteen
+// seconds. The record is a bonus on those two requests — the write has already
+// committed — so a registry that is slow must cost a moment, not the
+// perceptible pause before a 201, and the Refresh button is the retry. The
+// refresh endpoint keeps the full BRREG_TIMEOUT: someone is waiting for that
+// answer on purpose.
+//
+// A var, not a const, only so a test can shorten it (export_test.go's
+// SetRegistryHookTimeout); nothing at runtime writes it.
+var registryHookTimeout = brregAttemptTimeout
+
 // fetchAndStoreRegistryRecord is the create/legal-identity-PUT hook (design
 // D2): one fetch, stored, with whatever it changed recorded on the timeline,
 // for a customer whose identity was just picked from — or pointed at — the
@@ -483,13 +524,65 @@ func noRegistryIdentityConflict() gen.CustomerConflictProblem {
 // fail its request for it: the customer exists, the record is simply absent,
 // and the Registry card offers a Refresh.
 //
-// It is not separately bounded: (*brregClient).entity already wraps ctx in
-// Config.BrregTimeout (brreg_entity.go), so a slow registry delays the
-// create by at most that and a second timeout here would only shadow the
-// first with a less informative error.
+// It runs on context.WithoutCancel with its own registryHookTimeout deadline
+// rather than on the request's context (fix round 2, I1): the write is
+// committed, so a client that hangs up must not abort the fetch that follows
+// it, and the deadline that does bound it is one attempt's worth rather than
+// the whole BRREG_TIMEOUT budget the refresh endpoint spends.
 func (s *server) fetchAndStoreRegistryRecord(ctx context.Context, customerID int32, orgnr, legalName string, act actor) error {
-	_, err := s.refreshRegistryRecord(ctx, customerID, orgnr, legalName, act)
+	hookCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), registryHookTimeout)
+	defer cancel()
+	_, err := s.refreshRegistryRecord(hookCtx, customerID, orgnr, legalName, act)
 	return err
+}
+
+// logRegistryFetchFailure is the one warning the two write hooks answer a
+// failed fetch with (design D2: logged and dropped, never returned). The kind
+// alone is logged, for peppolErrorKind's reason — the error can carry the
+// organisation number and the URL it was built from, and neither belongs in a
+// log line next to the customer id that caused it — except for a "database"
+// kind, which is this module's own wrapped error and carries neither, and
+// whose text is the only thing that would say what actually broke.
+func (s *server) logRegistryFetchFailure(ctx context.Context, customerID int32, err error) {
+	kind := registryErrorKind(err)
+	if kind == registryErrorKindDatabase {
+		s.deps.Logger.WarnContext(ctx, "customers: registry record fetch failed",
+			"customerId", customerID, "errorKind", kind, "error", err.Error())
+		return
+	}
+	s.deps.Logger.WarnContext(ctx, "customers: registry record fetch failed", "customerId", customerID, "errorKind", kind)
+}
+
+// invalidateRegistryRecord deletes a stored record that is no longer this
+// customer's company's (fix round 2, C2), called from inside every
+// transaction that writes the legal identity — PutCustomersById,
+// PutCustomersByIdLegalIdentity, DeleteCustomersByIdLegalIdentity and
+// PutCustomersByIdType — once that handler has established the identity
+// actually changed, and after the write that holds the customer row's own
+// lock.
+//
+// The rule is the organisation number, not the identity: pointing a customer
+// at a different company leaves the old company's record on file, where a
+// refresh would answer 409 forever (there is nothing to look up for a person,
+// or the new number never matches the stored row) while the stale row keeps
+// raising attention items about a company this customer is not. The same
+// number reached a different way — a manual identity re-picked from Brreg, a
+// name-only edit — keeps the record: it is still a record of this company.
+//
+// A locked read is fine here: the caller already holds the customer row.
+// A missing row is not an error, and neither is a customer that never had one.
+func invalidateRegistryRecord(ctx context.Context, q *store.Queries, customerID int32, after *legalIdentity, customerType string) error {
+	row, err := q.GetCustomerRegistryRecordForUpdate(ctx, customerID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if row.OrganisationNumber == registryOrganisationNumber(after, customerType) {
+		return nil
+	}
+	return q.DeleteCustomerRegistryRecord(ctx, customerID)
 }
 
 // refreshRegistryRecord is one fetch-and-store, the whole of it: the network
@@ -637,7 +730,8 @@ func lockedRegistryRecord(ctx context.Context, q *store.Queries, customerID int3
 // learning whether one exists.
 func (s *server) GetCustomersByIdRegistryRecord(ctx context.Context, req gen.GetCustomersByIdRegistryRecordRequestObject) (gen.GetCustomersByIdRegistryRecordResponseObject, error) {
 	q := store.New(s.deps.Pool)
-	if _, err := q.GetCustomer(ctx, req.Id); errors.Is(err, pgx.ErrNoRows) {
+	existing, err := q.GetCustomer(ctx, req.Id)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return gen.GetCustomersByIdRegistryRecord404Response{}, nil
 	} else if err != nil {
 		return nil, fmt.Errorf("customers: get customer: %w", err)
@@ -654,6 +748,14 @@ func (s *server) GetCustomersByIdRegistryRecord(ctx context.Context, req gen.Get
 	if err != nil {
 		return nil, fmt.Errorf("customers: get customer registry record: %w", err)
 	}
+	// A record is only this customer's while it is still the company its legal
+	// identity names (fix round 2, C2): an identity change deletes a record it
+	// no longer matches, and this guard is the belt to that braces — a row that
+	// slipped through a race, or a write path added later, answers the same 204
+	// "nothing to show" rather than another company's details.
+	if row.OrganisationNumber != deref(existing.LegalID) {
+		return gen.GetCustomersByIdRegistryRecord204Response{}, nil
+	}
 	rec, err := registryRecordFromRow(row)
 	if err != nil {
 		return nil, err
@@ -664,12 +766,15 @@ func (s *server) GetCustomersByIdRegistryRecord(ctx context.Context, req gen.Get
 // PostCustomersByIdRegistryRefresh Re-read this customer's registry record
 // (POST /api/v1/customers/{id}/registry-refresh)
 //
-// Ordering (design D2's controller ruling): 404 → the identity check, 409
-// when there is no Norwegian organisation number to look up → the timeline
-// actor, resolved before the network call because actorFor's directory
-// lookup is itself an out-of-process call → the fetch, outside any
-// transaction → 502 on failure, with nothing stored → the transaction that
-// stores what the registry said and records what differed.
+// Ordering (design D2's controller ruling, plus fix round 2's throttle): 404
+// → the identity check, 409 when there is no Norwegian organisation number to
+// look up → the throttle, which answers the stored record for a click inside
+// registryRefreshMinInterval of the last fetch and makes no call at all → the
+// timeline actor, resolved before the network call because actorFor's
+// directory lookup is itself an out-of-process call, and only once a write can
+// actually happen → the fetch, outside any transaction → 502 on failure, with
+// nothing stored → the transaction that stores what the registry said and
+// records what differed.
 //
 // Unlike the create hook above, this one reports every failure it meets: a
 // user who clicked Refresh is waiting for the answer.
@@ -687,6 +792,14 @@ func (s *server) PostCustomersByIdRegistryRefresh(ctx context.Context, req gen.P
 	orgnr := registryOrganisationNumber(identity, existing.Type)
 	if orgnr == "" {
 		return gen.PostCustomersByIdRegistryRefresh409ApplicationProblemPlusJSONResponse(noRegistryIdentityConflict()), nil
+	}
+
+	throttled, err := s.throttledRegistryRefresh(ctx, q, req.Id, orgnr)
+	if err != nil {
+		return nil, err
+	}
+	if throttled != nil {
+		return *throttled, nil
 	}
 
 	act, err := s.actorFor(ctx, generatedFallbackActor)
@@ -718,4 +831,55 @@ func (s *server) PostCustomersByIdRegistryRefresh(ctx context.Context, req gen.P
 		resp.Record = &record
 	}
 	return gen.PostCustomersByIdRegistryRefresh200JSONResponse(resp), nil
+}
+
+// registryRefreshMinInterval is how long a stored record stands before a
+// second click is allowed to spend another outbound request on it (fix round
+// 2, I2). The endpoint is one GET per click on an open API whose 429 is not
+// retryable and would surface as a 502, and a registry record does not change
+// twice a minute — so a refresh inside the window answers what is already on
+// file, unchanged, rather than asking again.
+const registryRefreshMinInterval = 60 * time.Second
+
+// throttledRegistryRefresh is that window: the stored record read unlocked
+// (this path writes nothing), and a ready 200 when it is younger than
+// registryRefreshMinInterval — the record as it stands, no changes, and the
+// status the stored row itself implies. nil means "go ahead and fetch".
+//
+// Three cases deliberately fall through to a real fetch. No record at all:
+// there is nothing to answer with, which is also why a removal (which deletes
+// the row) is never throttled — the click after a 410 asks the registry again,
+// as it should. A record whose organisation number is not the customer's any
+// more: it is another company's and must not be handed back (C2's guard).
+// And of course a record older than the window.
+func (s *server) throttledRegistryRefresh(ctx context.Context, q *store.Queries, customerID int32, orgnr string) (*gen.PostCustomersByIdRegistryRefresh200JSONResponse, error) {
+	row, err := q.GetCustomerRegistryRecord(ctx, customerID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("customers: get customer registry record: %w", err)
+	}
+	if row.OrganisationNumber != orgnr {
+		return nil, nil
+	}
+	if s.deps.Clock().Sub(row.FetchedAt) >= registryRefreshMinInterval {
+		return nil, nil
+	}
+
+	rec, err := registryRecordFromRow(row)
+	if err != nil {
+		return nil, err
+	}
+	status := registryStatusFound
+	if rec.DeletedOn != nil {
+		status = registryStatusDeleted
+	}
+	record := registryRecordResponse(rec)
+	resp := gen.PostCustomersByIdRegistryRefresh200JSONResponse(gen.CustomerRegistryRefreshResponse{
+		Status:  status,
+		Changes: registryChangeResponses(nil),
+		Record:  &record,
+	})
+	return &resp, nil
 }

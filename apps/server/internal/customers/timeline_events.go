@@ -407,6 +407,12 @@ func recordCustomerAddressRemoved(ctx context.Context, q *store.Queries, now tim
 // showing "3 changes" and the timeline entry behind it never disagree. The
 // keys are omitted rather than sent null for an empty side, the wire
 // convention the whole module follows.
+//
+// The values stay in the payload, readable with timeline-view alone (fix
+// round 2, I4's stated decision): the registry record is open data (NLOD 2.0)
+// about a public entity, the customer.created event already carries the
+// identity snapshot, and the Peppol event's omission of the participant id is
+// about a *derived* capability signal rather than a public fact.
 func registryChangePayload(changes []registryChange) map[string]any {
 	encoded := make([]map[string]any, 0, len(changes))
 	for _, c := range changes {

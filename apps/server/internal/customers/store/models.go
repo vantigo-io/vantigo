@@ -107,6 +107,8 @@ type CustomersCustomerRegistryRecord struct {
 	PostalAddress            []byte
 	FetchedAt                time.Time
 	RegistryUpdatedHint      *time.Time
+	BankruptOn               pgtype.Date
+	LiquidationOn            pgtype.Date
 }
 
 type CustomersCustomersContact struct {

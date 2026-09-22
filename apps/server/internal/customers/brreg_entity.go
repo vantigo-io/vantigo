@@ -3,6 +3,7 @@ package customers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -19,7 +20,7 @@ import (
 // organisation number a caller already has (from a pick, or from the
 // customer's own legal identity).
 //
-// entity has three defined outcomes, not two, because the registry itself
+// entity has four defined outcomes, not two, because the registry itself
 // does not answer "found or not": an organisation can be deleted (struck
 // from the register but still on file) or removed (struck from *open data*
 // entirely — the record itself is gone, only the fact that it once existed
@@ -77,11 +78,17 @@ type brregAddress struct {
 // false) — distinct from a registered headcount of zero, which the registry
 // does not appear to send but this type would still represent correctly as
 // a non-nil pointer to 0 rather than collapsing it into "unknown".
+// BankruptOn and LiquidationOn are when each of those two flags became true
+// (konkursdato, underAvviklingDato) — nil when the registry sends the flag
+// without a date, which it does. The flag is the load-bearing fact; the date
+// is what the dashboard's attention item is dated by, so that a bankruptcy
+// from years ago does not read as having happened on the day it was last
+// fetched (design D4, fix round 2).
 type brregEntityRecord struct {
 	OrganisationNumber, Name, OrganisationFormCode, OrganisationForm, IndustryCode, Industry string
 	Employees                                                                                *int32
 	VATRegistered, Bankrupt, UnderLiquidation, UnderForcedLiquidation                        bool
-	DeletedOn, FoundedOn                                                                     *time.Time
+	DeletedOn, FoundedOn, BankruptOn, LiquidationOn                                          *time.Time
 	Website, Email, Phone, Mobile, ParentOrganisationNumber                                  string
 	BusinessAddress, PostalAddress                                                           *brregAddress
 }
@@ -157,7 +164,9 @@ type brregEntityWire struct {
 	AntallAnsatte                             *int32            `json:"antallAnsatte"`
 	RegistrertIMvaregisteret                  bool              `json:"registrertIMvaregisteret"`
 	Konkurs                                   bool              `json:"konkurs"`
+	Konkursdato                               string            `json:"konkursdato"`
 	UnderAvvikling                            bool              `json:"underAvvikling"`
+	UnderAvviklingDato                        string            `json:"underAvviklingDato"`
 	UnderTvangsavviklingEllerTvangsopplosning bool              `json:"underTvangsavviklingEllerTvangsopplosning"`
 	Slettedato                                string            `json:"slettedato"`
 	Stiftelsesdato                            string            `json:"stiftelsesdato"`
@@ -229,6 +238,17 @@ func brregEntityRecordFrom(wire brregEntityWire) (brregEntityRecord, error) {
 	if err != nil {
 		return brregEntityRecord{}, err
 	}
+	// Both status dates are as optional as the flags beside them are
+	// unconditional: the registry sends konkurs/underAvvikling on every
+	// entity and their dates only when it has them.
+	bankruptOn, err := parseBrregDate(wire.Konkursdato)
+	if err != nil {
+		return brregEntityRecord{}, err
+	}
+	liquidationOn, err := parseBrregDate(wire.UnderAvviklingDato)
+	if err != nil {
+		return brregEntityRecord{}, err
+	}
 
 	var employees *int32
 	if wire.HarRegistrertAntallAnsatte && wire.AntallAnsatte != nil {
@@ -261,6 +281,8 @@ func brregEntityRecordFrom(wire brregEntityWire) (brregEntityRecord, error) {
 		UnderForcedLiquidation:   wire.UnderTvangsavviklingEllerTvangsopplosning,
 		DeletedOn:                deletedOn,
 		FoundedOn:                foundedOn,
+		BankruptOn:               bankruptOn,
+		LiquidationOn:            liquidationOn,
 		Website:                  strings.TrimSpace(wire.Hjemmeside),
 		Email:                    strings.TrimSpace(wire.Epostadresse),
 		Phone:                    strings.TrimSpace(wire.Telefon),
@@ -335,16 +357,25 @@ func validateBrregEntityContentType(contentType string) error {
 	return nil
 }
 
+// errBrregEntityBody marks the two body failures that are terminal rather
+// than retryable (fix round 2, minors): a response past
+// brregEntityMaxBodyBytes, and a body that could not be read to the end. A
+// registry answering a megabyte of nonsense will answer the same megabyte on
+// the next three attempts too, so retrying spends the budget a genuine outage
+// needs on an answer that cannot improve — the same reasoning a 404 and a 410
+// are never retried on.
+var errBrregEntityBody = errors.New("brreg: entity response body could not be used")
+
 // entity fetches the Enhetsregisteret record for orgnr, bounded overall by
 // c.timeout and per attempt by brregAttemptTimeout, retrying a transport
 // error or a retryable status (isRetryableStatus) with c.backoff's delay
 // between attempts — the same policy c.lookup uses for the search. A 404 or
 // 410 is never retried: both are definite answers about this organisation
-// number, not something one more attempt could improve on. Once every
-// attempt is exhausted, or a non-retryable status/content-type/decode
-// failure ends the loop early, the returned error wraps
-// errBrregUnavailable, exactly as lookup's does; the outcome value is
-// meaningless whenever error is non-nil.
+// number, not something one more attempt could improve on, and neither is an
+// unusable body (errBrregEntityBody). Once every attempt is exhausted, or a
+// non-retryable status/content-type/decode failure ends the loop early, the
+// returned error wraps errBrregUnavailable, exactly as lookup's does; the
+// outcome value is meaningless whenever error is non-nil.
 func (c *brregClient) entity(ctx context.Context, orgnr string) (brregEntityRecord, brregEntityOutcome, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
@@ -360,6 +391,9 @@ func (c *brregClient) entity(ctx context.Context, orgnr string) (brregEntityReco
 		}
 		status, contentType, body, err := c.entityAttempt(ctx, path)
 		if err != nil {
+			if errors.Is(err, errBrregEntityBody) {
+				return brregEntityRecord{}, brregEntityUnknown, fmt.Errorf("%w: %w", errBrregUnavailable, err)
+			}
 			lastErr = err
 			continue
 		}
@@ -393,6 +427,16 @@ func (c *brregClient) entity(ctx context.Context, orgnr string) (brregEntityReco
 		if perr != nil {
 			return brregEntityRecord{}, brregEntityUnknown, fmt.Errorf("%w: %w", errBrregUnavailable, perr)
 		}
+		// The one thing a response must agree with the request about (fix
+		// round 2, minors): a body about some other organisation — a misrouted
+		// proxy, a cache serving the wrong key — must never be stored as this
+		// customer's record, so it is terminal rather than retried, the same as
+		// a body that will not decode. (The 410 above carries no record to
+		// store, so nothing there needs checking.)
+		if rec.OrganisationNumber != orgnr {
+			return brregEntityRecord{}, brregEntityUnknown, fmt.Errorf("%w: brreg answered for organisation number %q, asked for %q",
+				errBrregUnavailable, rec.OrganisationNumber, orgnr)
+		}
 		return rec, outcome, nil
 	}
 	return brregEntityRecord{}, brregEntityUnknown, fmt.Errorf("%w: %w", errBrregUnavailable, lastErr)
@@ -422,10 +466,10 @@ func (c *brregClient) entityAttempt(ctx context.Context, path string) (status in
 
 	data, err := io.ReadAll(io.LimitReader(resp.Body, brregEntityMaxBodyBytes+1))
 	if err != nil {
-		return 0, "", nil, err
+		return 0, "", nil, fmt.Errorf("%w: %w", errBrregEntityBody, err)
 	}
 	if len(data) > brregEntityMaxBodyBytes {
-		return 0, "", nil, fmt.Errorf("brreg entity response exceeded %d bytes", brregEntityMaxBodyBytes)
+		return 0, "", nil, fmt.Errorf("%w: brreg entity response exceeded %d bytes", errBrregEntityBody, brregEntityMaxBodyBytes)
 	}
 	return resp.StatusCode, resp.Header.Get("Content-Type"), data, nil
 }

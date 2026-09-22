@@ -223,6 +223,12 @@ func getAttention(t *testing.T, c *modtest.Client) []attentionItemJSON {
 // through a fake Brreg transport the way registry_test.go's end-to-end
 // coverage of the refresh itself already does. deletedOn is "" for no
 // deletion.
+//
+// organisation_number is read from the customer's own legal_id rather than
+// written as a literal: a record only counts while it is still the company the
+// identity names (fix round 2, C2), so a row with some other number is
+// invisible to the attention list by design — which is its own test, in
+// registry_test.go, not an accident every test here should inherit.
 func insertRegistryRecord(t *testing.T, h *modtest.Harness, customerID int32, recordName string, bankrupt, underLiquidation, underForcedLiquidation bool, deletedOn string, fetchedAt time.Time) {
 	t.Helper()
 	var deleted pgtype.Date
@@ -236,7 +242,7 @@ func insertRegistryRecord(t *testing.T, h *modtest.Harness, customerID int32, re
 	h.Exec(t, `
 		INSERT INTO customers.customer_registry_records
 			(customer_id, organisation_number, name, vat_registered, bankrupt, under_liquidation, under_forced_liquidation, deleted_on, fetched_at)
-		VALUES ($1, '923609016', $2, false, $3, $4, $5, $6, $7)`,
+		VALUES ($1, (SELECT legal_id FROM customers.customers WHERE id = $1), $2, false, $3, $4, $5, $6, $7)`,
 		customerID, recordName, bankrupt, underLiquidation, underForcedLiquidation, deleted, fetchedAt)
 }
 
@@ -268,13 +274,16 @@ func TestGetCustomersStatsAttention_ComputesTheFourTypes(t *testing.T) {
 		t.Fatalf("items = %+v, want exactly 4 (the customer with no record contributes nothing)", items)
 	}
 
+	// The order is by occurredAt, and for the deleted one that is its deletion
+	// date (2026-09-21) rather than its fetch (fix round 2, I3), which puts it
+	// below the rename this test fetched an hour earlier but has no date for.
 	want := []struct {
 		id, typ, title, entityID string
 	}{
 		{fmt.Sprintf("registryBankrupt/%d", bankrupt.Id), "registryBankrupt", "Bankrupt Co", fmt.Sprintf("%d", bankrupt.Id)},
 		{fmt.Sprintf("registryLiquidation/%d", liquidation.Id), "registryLiquidation", "Liquidation Co", fmt.Sprintf("%d", liquidation.Id)},
-		{fmt.Sprintf("registryDeleted/%d", deleted.Id), "registryDeleted", "Deleted Co", fmt.Sprintf("%d", deleted.Id)},
 		{fmt.Sprintf("registryRenamed/%d", renamed.Id), "registryRenamed", "Renamed Co", fmt.Sprintf("%d", renamed.Id)},
+		{fmt.Sprintf("registryDeleted/%d", deleted.Id), "registryDeleted", "Deleted Co", fmt.Sprintf("%d", deleted.Id)},
 	}
 	for i, w := range want {
 		if items[i].Id != w.id || items[i].Type != w.typ || items[i].Title != w.title || items[i].EntityId != w.entityID {

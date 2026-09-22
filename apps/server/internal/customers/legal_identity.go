@@ -179,6 +179,14 @@ func (s *server) PutCustomersByIdLegalIdentity(ctx context.Context, req gen.PutC
 		}); err != nil {
 			return err
 		}
+		// The record on file was fetched for the identity this call just
+		// replaced (fix round 2, C2): if it is a different company's now, it
+		// goes, in the same transaction as the write that made it wrong. The
+		// UPDATE above holds the customer row's lock, which is the lock the
+		// refresh takes first, so this cannot interleave with a fetch.
+		if err := invalidateRegistryRecord(ctx, txq, req.Id, after, existing.Type); err != nil {
+			return err
+		}
 		return recordCustomerUpdated(ctx, txq, now, req.Id, existing.Name, before, existing.Name, after, act.Kind, act.Display, act.UserID)
 	})
 	if errors.Is(err, errDuplicateIdentity) {
@@ -201,7 +209,7 @@ func (s *server) PutCustomersByIdLegalIdentity(ctx context.Context, req gen.PutC
 	// makes no network call either, exactly as it writes no row and no event.
 	if orgnr := brregPickOrganisationNumber(after, existing.Type); orgnr != "" {
 		if err := s.fetchAndStoreRegistryRecord(ctx, req.Id, orgnr, after.Name, act); err != nil {
-			s.deps.Logger.WarnContext(ctx, "customers: registry record fetch failed", "customerId", req.Id, "errorKind", registryErrorKind(err))
+			s.logRegistryFetchFailure(ctx, req.Id, err)
 		}
 	}
 
@@ -248,6 +256,13 @@ func (s *server) DeleteCustomersByIdLegalIdentity(ctx context.Context, req gen.D
 			LegalCountry: nil, LegalID: nil, LegalName: nil, LegalSource: nil, LegalType: nil,
 			UpdatedAt: now,
 		}); err != nil {
+			return err
+		}
+		// A customer with no legal identity has no company for a registry
+		// record to be about (fix round 2, C2): the row goes with the identity,
+		// or a refresh would answer 409 forever while the record it cannot
+		// refresh kept raising attention items.
+		if err := invalidateRegistryRecord(ctx, txq, req.Id, nil, existing.Type); err != nil {
 			return err
 		}
 		return recordCustomerUpdated(ctx, txq, now, req.Id, existing.Name, before, existing.Name, nil, act.Kind, act.Display, act.UserID)
