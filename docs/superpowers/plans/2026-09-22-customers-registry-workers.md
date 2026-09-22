@@ -56,7 +56,93 @@
 
 **Files:**
 - Create: `apps/server/internal/customers/brreg_feed.go`, `apps/server/internal/customers/brreg_feed_test.go`
-- Read first (do not change): `apps/server/internal/customers/brreg_entity.go` (the shape this file copies), `brreg.go:131-212` (`brregRetryAttempts`, `brregAttemptTimeout`, `waitBackoff`, `isSuccessStatus`, `isRetryableStatus`, `errBrregUnavailable`), `registry_test.go:88-143` (`registryTransport`, `registryEntityResponse`)
+- Modify: `apps/server/internal/customers/brreg_entity.go` (Step 0: two helpers both reads share)
+- Read first (do not change): `apps/server/internal/customers/brreg_entity.go` (the shape this file copies), `brreg.go:131-212` (`brregRetryAttempts`, `brregAttemptTimeout`, `waitBackoff`, `isSuccessStatus`, `isRetryableStatus`, `errBrregUnavailable`), `registry_test.go:93-111` (`registryTransport`), `:30-35` (`registryEntityResponse`)
+
+- [ ] **Step 0: Share the content-type check and the capped body read (behaviour-preserving)**
+
+The feed read needs both of the things `entityAttempt` already does — parse and check a `Content-Type`, and read a body up to a cap with a *terminal* error for "too big" or "could not read" — and a second copy of either would be two places to fix. Extract them **first**, with the entity's own tests as the guard, before a line of feed code exists.
+
+Run the entity tests and note the count:
+
+```bash
+cd /home/anders/projects/vantigo/vantigo/apps/server && mise exec -- go test -count=1 -run 'TestEntity|TestBrreg' ./internal/customers/
+```
+
+In `brreg_entity.go`, rename `errBrregEntityBody` to `errBrregBody` (its three uses are all in that file — no test names it) and replace `validateBrregEntityContentType` with:
+
+```go
+// errBrregBody marks the two body failures that are terminal rather than
+// retryable (fix round 2, minors), for every one of this module's Brreg reads:
+// a response past its cap, and a body that could not be read to the end. A
+// registry answering a megabyte of nonsense will answer the same megabyte on
+// the next three attempts too, so retrying spends the budget a genuine outage
+// needs on an answer that cannot improve — the same reasoning a 404 and a 410
+// are never retried on.
+var errBrregBody = errors.New("brreg: response body could not be used")
+
+// validateBrregContentType requires contentType to parse
+// (mime.ParseMediaType) to one of accepted, naming what it actually got when
+// it does not — a 406's problem body, an HTML error page from a misbehaving
+// proxy — rather than handing it to json.Unmarshal to fail on its own, less
+// informative terms.
+//
+// accepted is an explicit list, deliberately not a "+json suffix" rule: this
+// module's own tests pin application/problem+json as a REFUSAL for the entity
+// read (TestEntity_WrongMediaTypeIsAnError), because a problem document is
+// exactly the shape a failure arrives in and must never be decoded as a
+// record. what names the read in the message ("entity", "update feed").
+func validateBrregContentType(what, contentType string, accepted ...string) error {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err == nil {
+		for _, want := range accepted {
+			if mediaType == want {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("brreg %s response had content type %q, want %s", what, contentType, strings.Join(accepted, " or "))
+}
+
+// readBrregBody reads resp's body up to max+1 bytes — one byte past the cap, so
+// a body exactly at the limit is still accepted and one over it is refused
+// rather than silently truncated into something that happens to parse (the same
+// idiom internal/peppol/smp.go uses for its own response cap). Both failures
+// wrap errBrregBody, which is what marks them terminal rather than retryable.
+func readBrregBody(what string, resp *http.Response, max int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(resp.Body, max+1))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errBrregBody, err)
+	}
+	if int64(len(data)) > max {
+		return nil, fmt.Errorf("%w: brreg %s response exceeded %d bytes", errBrregBody, what, max)
+	}
+	return data, nil
+}
+```
+
+`entity`'s call site becomes `validateBrregContentType("entity", contentType, brregEntityMediaType, "application/json")` and `entityAttempt`'s body read becomes
+
+```go
+	data, err := readBrregBody("entity", resp, brregEntityMaxBodyBytes)
+	if err != nil {
+		return 0, "", nil, err
+	}
+	return resp.StatusCode, resp.Header.Get("Content-Type"), data, nil
+```
+
+Both messages come out byte-identical to today's (`brreg entity response had content type %q, want <v2 type> or application/json`, `brreg entity response exceeded 1048576 bytes`), which is why the existing tests are the guard. `entityAttempt` keeps its own `http.NewRequestWithContext`/`Accept`/`Do` — only the two shared mechanics move.
+
+While in that file, fix the header line it invalidates: "This file is the module's **second and last** Enhetsregisteret operation" becomes "This file is the module's **second** Enhetsregisteret operation" — `brreg_feed.go` is the third, and a comment claiming to be the last is exactly the kind of thing a reader trusts.
+
+Re-run the same command: identical count, all green. If anything moved, the extraction is wrong — fix the extraction, never the test. Commit this step on its own:
+
+```bash
+cd /home/anders/projects/vantigo/vantigo
+printf '%s\n\n%s\n' 'refactor(customers): both Brreg reads check a content type and cap a body the same way' 'Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>' > /tmp/msg-task1a
+git add apps/server/internal/customers/brreg_entity.go
+git commit -F /tmp/msg-task1a -- apps/server/internal/customers/brreg_entity.go
+```
 
 **Interfaces:**
 - Consumes: `*brregClient` (`brreg.go:219-245`, built by `newServer`), `c.timeout`, `c.backoff`, `c.client`.
@@ -94,16 +180,18 @@ func (c *brregClient) updates(ctx context.Context, cursor feedCursor) (feedPage,
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `apps/server/internal/customers/brreg_feed_test.go`. It is in package `customers_test` and reuses `registryTransport`/`registryEntityResponse` from `registry_test.go`, plus one transport of its own that records the full URL (path *and* query — the cursor is in the query string, which `registryTransport` deliberately drops):
+Create `apps/server/internal/customers/brreg_feed_test.go`, in package `customers_test`. It reuses `jsonResponse` and `zeroBackoff` from `brreg_test.go` and adds one transport of its own: `registryTransport` (`registry_test.go:93-111`) records only `r.URL.Path`, and the cursor these tests are about lives in the query string.
 
 ```go
 package customers_test
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/customers"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
@@ -138,23 +226,19 @@ func (f *feedTransport) requests() []string {
 	return append([]string(nil), f.urls...)
 }
 
-// jsonFeedResponse is a feed response under the content type the live API
-// answers with (plain application/json, not the entity endpoint's pinned v2
-// media type — the feed negotiates nothing).
-func jsonFeedResponse(status int, body string) *http.Response {
-	return jsonResponse(status, body)
-}
-
 // feedPageBody is one recorded page: three entries, ascending
 // oppdateringsid with the registry's own gaps, one of each interesting
-// endringstype.
+// endringstype. The bodies here answer plain application/json — the live feed's
+// own content type, not the entity endpoint's pinned v2 media type, since the
+// feed negotiates nothing — which is exactly what brreg_test.go's jsonResponse
+// already writes, so these tests use it directly.
 const feedPageBody = `{
 	"_embedded": {"oppdaterteEnheter": [
-		{"oppdateringsid": 25255241, "dato": "2026-09-21T04:05:11.193Z", "organisasjonsnummer": "929745760", "endringstype": "Endring",
+		{"oppdateringsid": 25255241, "dato": "2026-09-14T04:05:11.193Z", "organisasjonsnummer": "929745760", "endringstype": "Endring",
 		 "_links": {"enhet": {"href": "https://data.brreg.no/enhetsregisteret/api/enheter/929745760"}}},
-		{"oppdateringsid": 25255244, "dato": "2026-09-21T04:06:02.001Z", "organisasjonsnummer": "923609016", "endringstype": "Ny",
+		{"oppdateringsid": 25255244, "dato": "2026-09-14T04:06:02.001Z", "organisasjonsnummer": "923609016", "endringstype": "Ny",
 		 "_links": {"enhet": {"href": "https://data.brreg.no/enhetsregisteret/api/enheter/923609016"}}},
-		{"oppdateringsid": 25255250, "dato": "2026-09-21T04:07:44.500Z", "organisasjonsnummer": "974760673", "endringstype": "Fjernet"}
+		{"oppdateringsid": 25255250, "dato": "2026-09-14T04:07:44.500Z", "organisasjonsnummer": "974760673", "endringstype": "Fjernet"}
 	]},
 	"_links": {"self": {"href": "https://data.brreg.no/enhetsregisteret/api/oppdateringer/enheter?oppdateringsid=25255241&size=1000"}},
 	"page": {"size": 1000, "totalElements": 3, "totalPages": 1, "number": 0}
@@ -217,7 +301,7 @@ Now the tests, appended to `brreg_feed_test.go`:
 func TestBrregFeed_AsksByDateUntilThereIsACursor(t *testing.T) {
 	t.Parallel()
 	transport := &feedTransport{respond: func(string) (*http.Response, error) {
-		return jsonFeedResponse(http.StatusOK, emptyFeedBody), nil
+		return jsonResponse(http.StatusOK, emptyFeedBody), nil
 	}}
 	h := newFeedHarness(t, transport)
 
@@ -242,7 +326,7 @@ func TestBrregFeed_AsksByDateUntilThereIsACursor(t *testing.T) {
 func TestBrregFeed_AsksByCursorOnceThereIsOne(t *testing.T) {
 	t.Parallel()
 	transport := &feedTransport{respond: func(string) (*http.Response, error) {
-		return jsonFeedResponse(http.StatusOK, feedPageBody), nil
+		return jsonResponse(http.StatusOK, feedPageBody), nil
 	}}
 	h := newFeedHarness(t, transport)
 
@@ -261,8 +345,8 @@ func TestBrregFeed_AsksByCursorOnceThereIsOne(t *testing.T) {
 	if entries[0].UpdateID != 25255241 || entries[0].OrganisationNumber != "929745760" || entries[0].ChangeType != "Endring" {
 		t.Errorf("entries[0] = %+v, want 25255241/929745760/Endring", entries[0])
 	}
-	if got := entries[0].Date.UTC(); !got.Equal(time.Date(2026, 9, 21, 4, 5, 11, 193000000, time.UTC)) {
-		t.Errorf("entries[0].Date = %v, want 2026-09-21T04:05:11.193Z", got)
+	if got := entries[0].Date.UTC(); !got.Equal(time.Date(2026, 9, 14, 4, 5, 11, 193000000, time.UTC)) {
+		t.Errorf("entries[0].Date = %v, want 2026-09-14T04:05:11.193Z", got)
 	}
 	if entries[1].ChangeType != "Ny" || entries[2].ChangeType != "Fjernet" {
 		t.Errorf("change types = %q/%q, want Ny/Fjernet", entries[1].ChangeType, entries[2].ChangeType)
@@ -278,7 +362,7 @@ func TestBrregFeed_AsksByCursorOnceThereIsOne(t *testing.T) {
 func TestBrregFeed_TheCursorWinsOverTheDate(t *testing.T) {
 	t.Parallel()
 	transport := &feedTransport{respond: func(string) (*http.Response, error) {
-		return jsonFeedResponse(http.StatusOK, emptyFeedBody), nil
+		return jsonResponse(http.StatusOK, emptyFeedBody), nil
 	}}
 	h := newFeedHarness(t, transport)
 
@@ -302,9 +386,9 @@ func TestBrregFeed_RetriesAServerErrorAndThenSucceeds(t *testing.T) {
 	transport := &feedTransport{respond: func(string) (*http.Response, error) {
 		n++
 		if n == 1 {
-			return jsonFeedResponse(http.StatusInternalServerError, `{}`), nil
+			return jsonResponse(http.StatusInternalServerError, `{}`), nil
 		}
-		return jsonFeedResponse(http.StatusOK, feedPageBody), nil
+		return jsonResponse(http.StatusOK, feedPageBody), nil
 	}}
 	h := newFeedHarness(t, transport)
 
@@ -325,8 +409,8 @@ func TestBrregFeed_RetriesAServerErrorAndThenSucceeds(t *testing.T) {
 func TestBrregFeed_ReportsEveryUnusableAnswerAsUnavailable(t *testing.T) {
 	t.Parallel()
 	oversized := `{"_embedded":{"oppdaterteEnheter":[` +
-		strings.Repeat(`{"oppdateringsid":1,"dato":"2026-09-21T04:05:11.193Z","organisasjonsnummer":"923609016","endringstype":"Ny"},`, 40000) +
-		`{"oppdateringsid":2,"dato":"2026-09-21T04:05:11.193Z","organisasjonsnummer":"923609016","endringstype":"Ny"}]}}`
+		strings.Repeat(`{"oppdateringsid":1,"dato":"2026-09-14T04:05:11.193Z","organisasjonsnummer":"923609016","endringstype":"Ny"},`, 40000) +
+		`{"oppdateringsid":2,"dato":"2026-09-14T04:05:11.193Z","organisasjonsnummer":"923609016","endringstype":"Ny"}]}}`
 
 	cases := []struct {
 		name        string
@@ -345,7 +429,7 @@ func TestBrregFeed_ReportsEveryUnusableAnswerAsUnavailable(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			transport := &feedTransport{respond: func(string) (*http.Response, error) {
-				resp := jsonFeedResponse(tc.status, tc.body)
+				resp := jsonResponse(tc.status, tc.body)
 				if tc.contentType != "" {
 					resp.Header.Set("Content-Type", tc.contentType)
 				}
@@ -378,8 +462,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"mime"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -387,7 +469,7 @@ import (
 	"time"
 )
 
-// This file is the Brreg client's third and last operation (registry workers
+// This file is the Brreg client's third operation (registry workers
 // design D1): Enhetsregisteret's incremental update feed, which answers "which
 // entities changed" so the feed worker never has to ask about entities that
 // did not.
@@ -502,26 +584,11 @@ type brregFeedEntryWire struct {
 	ChangeType         string `json:"endringstype"`
 }
 
-// errBrregFeedBody marks the two body failures that are terminal rather than
-// retryable, exactly as errBrregEntityBody does for the entity read: a
-// response past brregFeedMaxBodyBytes, and a body that could not be read to
-// the end. A registry answering four megabytes of nonsense will answer the
-// same four megabytes next attempt too.
-var errBrregFeedBody = errors.New("brreg: update feed response body could not be used")
-
-// validateBrregFeedContentType requires a JSON content type. The live feed
-// answers application/json; a HAL-flavoured "+json" subtype is accepted too,
-// since the body IS HAL (it carries _links and page) and a registry that one
-// day labels it as such would still be sending exactly what this file decodes.
-// Anything else — an HTML error page from a proxy — is named in the error
-// rather than handed to json.Unmarshal.
-func validateBrregFeedContentType(contentType string) error {
-	mediaType, _, err := mime.ParseMediaType(contentType)
-	if err != nil || (mediaType != "application/json" && !strings.HasSuffix(mediaType, "+json")) {
-		return fmt.Errorf("brreg update feed response had content type %q, want application/json", contentType)
-	}
-	return nil
-}
+// brregFeedRead is what this read is called in an error message
+// (validateBrregContentType and readBrregBody, brreg_entity.go), so the two
+// reads' failures are distinguishable in a log without either of them owning a
+// second copy of the mechanics.
+const brregFeedRead = "update feed"
 
 // parseBrregFeedPage decodes one page. A malformed dato is a malformed body,
 // not a dropped entry: the date is what the hint is written from (design D2),
@@ -572,7 +639,7 @@ func (c *brregClient) updates(ctx context.Context, cursor feedCursor) (feedPage,
 		}
 		status, contentType, body, err := c.feedAttempt(ctx, path)
 		if err != nil {
-			if errors.Is(err, errBrregFeedBody) {
+			if errors.Is(err, errBrregBody) {
 				return feedPage{}, fmt.Errorf("%w: %w", errBrregUnavailable, err)
 			}
 			lastErr = err
@@ -588,7 +655,7 @@ func (c *brregClient) updates(ctx context.Context, cursor feedCursor) (feedPage,
 			// improve it, and it is still "the feed could not be read".
 			return feedPage{}, fmt.Errorf("%w: brreg responded %d", errBrregUnavailable, status)
 		}
-		if err := validateBrregFeedContentType(contentType); err != nil {
+		if err := validateBrregContentType(brregFeedRead, contentType, "application/json"); err != nil {
 			return feedPage{}, fmt.Errorf("%w: %w", errBrregUnavailable, err)
 		}
 		page, perr := parseBrregFeedPage(body)
@@ -601,10 +668,9 @@ func (c *brregClient) updates(ctx context.Context, cursor feedCursor) (feedPage,
 }
 
 // feedAttempt performs one GET for path, bounded by brregAttemptTimeout,
-// asking for application/json and reading the body up to
-// brregFeedMaxBodyBytes+1 bytes — one byte past the cap, so a body exactly at
-// the limit is accepted and one over it is refused rather than silently
-// truncated into something that happens to parse (entityAttempt's own idiom).
+// asking for application/json. The capped read is readBrregBody's
+// (brreg_entity.go), shared with the entity read: this function owns only the
+// request this operation makes.
 func (c *brregClient) feedAttempt(ctx context.Context, path string) (status int, contentType string, body []byte, err error) {
 	attemptCtx, cancel := context.WithTimeout(ctx, brregAttemptTimeout)
 	defer cancel()
@@ -621,12 +687,9 @@ func (c *brregClient) feedAttempt(ctx context.Context, path string) (status int,
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	data, err := io.ReadAll(io.LimitReader(resp.Body, brregFeedMaxBodyBytes+1))
+	data, err := readBrregBody(brregFeedRead, resp, brregFeedMaxBodyBytes)
 	if err != nil {
-		return 0, "", nil, fmt.Errorf("%w: %w", errBrregFeedBody, err)
-	}
-	if len(data) > brregFeedMaxBodyBytes {
-		return 0, "", nil, fmt.Errorf("%w: brreg update feed response exceeded %d bytes", errBrregFeedBody, brregFeedMaxBodyBytes)
+		return 0, "", nil, err
 	}
 	return resp.StatusCode, resp.Header.Get("Content-Type"), data, nil
 }
@@ -715,12 +778,23 @@ Create `apps/server/internal/db/migrations/00023_customers_registry_feed.sql`:
 -- path, and both are here because the only report this delivery gives an
 -- operator is a log line, and these two rows answer "is it running" and "how
 -- far behind is it" from psql alone.
+--
+-- backfill_after_id is the sweep's OWN position, and it is not decoration
+-- (design D3): the backfill takes the 25 lowest-id customers that have no
+-- registry record, and a customer whose organisation number the register does
+-- not know never gets one — so without a position, those 25 rows are the same
+-- 25 rows every cycle, forever, and customer 26 onwards is never looked at. The
+-- sweep therefore remembers the last id it attempted and continues past it,
+-- starting over at 0 when a batch comes back short. A number nobody can resolve
+-- then costs one request per full pass instead of one per cycle, and nobody
+-- starves.
 CREATE TABLE customers.registry_feed_cursor (
-    id              smallint     PRIMARY KEY CHECK (id = 1),
-    next_update_id  bigint,
-    started_at      timestamptz  NOT NULL,
-    last_polled_at  timestamptz,
-    last_update_at  timestamptz
+    id                smallint     PRIMARY KEY CHECK (id = 1),
+    next_update_id    bigint,
+    started_at        timestamptz  NOT NULL,
+    last_polled_at    timestamptz,
+    last_update_at    timestamptz,
+    backfill_after_id integer      NOT NULL DEFAULT 0
 );
 
 -- +goose Down
@@ -749,7 +823,7 @@ ON CONFLICT (id) DO NOTHING;
 -- GetRegistryFeedCursor is where to resume from. Read under the worker's
 -- advisory lease and nowhere else, so it needs no lock of its own: the lease
 -- is what makes one replica at a time the only reader and writer of this row.
-SELECT id, next_update_id, started_at, last_polled_at, last_update_at
+SELECT id, next_update_id, started_at, last_polled_at, last_update_at, backfill_after_id
 FROM customers.registry_feed_cursor
 WHERE id = 1;
 
@@ -833,14 +907,26 @@ WHERE r.registry_updated_hint IS NOT NULL
   AND c.legal_country = 'no'
   AND r.organisation_number = c.legal_id
 ORDER BY r.registry_updated_hint, r.customer_id
-LIMIT @row_limit;
+LIMIT @row_limit::int;
 
 -- name: CustomersWithoutRegistryRecord :many
 -- CustomersWithoutRegistryRecord is the sweep's second half — the backfill
 -- (design D3): Norwegian business customers that have no record at all,
 -- because they were created before delivery A existed or because their first
--- fetch failed. Lowest id first, so the order is stable and a large
--- installation drains front to back rather than re-reading the same few rows.
+-- fetch failed.
+--
+-- @after_id is what keeps it from starving (the migration's own comment on
+-- backfill_after_id): a customer whose organisation number the register does
+-- not know never gets a record, so "the 25 lowest ids with no record" would be
+-- the same 25 rows on every cycle and the 26th would never be reached. The
+-- sweep walks past its last attempt instead and starts over at 0 when a batch
+-- comes back short.
+--
+-- The nine-digit predicate is the other half of that: a legacy legal_id like
+-- 'NO 923 609 016 MVA' can never be looked up, and leaving it in the candidate
+-- set would spend one of the 25 places on it each pass. It is a shape check
+-- only — the check digit is Go's (registryOrganisationNumber), which is also
+-- why the worker re-asks rather than trusting this predicate.
 --
 -- A backfilled record goes through the ordinary first-fetch diff, so a
 -- hand-typed name that differs from the registry's raises registryRenamed
@@ -853,9 +939,19 @@ WHERE r.customer_id IS NULL
   AND c.status <> 'archived'
   AND c.type = 'business'
   AND c.legal_country = 'no'
-  AND c.legal_id IS NOT NULL
+  AND c.legal_id ~ '^[0-9]{9}$'
+  AND c.id > @after_id
 ORDER BY c.id
-LIMIT @row_limit;
+LIMIT @row_limit::int;
+
+-- name: SetRegistryBackfillPosition :exec
+-- SetRegistryBackfillPosition stores where the backfill got to, so the next
+-- cycle continues instead of re-reading the same page (design D3): the last id
+-- it attempted after a full batch, or 0 after a short one — a short batch means
+-- the end of the installation, and the next pass starts from the front.
+UPDATE customers.registry_feed_cursor
+SET backfill_after_id = @after_id
+WHERE id = 1;
 ```
 
 Then generate, from `apps/server`:
@@ -863,7 +959,16 @@ Then generate, from `apps/server`:
 ```bash
 cd /home/anders/projects/vantigo/vantigo/apps/server && mise exec -- go generate ./... && mise exec -- go generate ./... && git status --short
 ```
-Expected: `store/registry_feed.sql.go` appears on the first run and the second run adds nothing new. Confirm the generated parameter types: `CustomersByOrganisationNumbersParams` is not generated (a single `[]string` argument), `StaleRegistryRecordsParams` does not exist either (a single `RowLimit int32` argument), `SetRegistryUpdatedHintParams{Hint time.Time; CustomerID int32}` and `AdvanceRegistryFeedCursorParams{NextUpdateID *int64; LastUpdateAt time.Time; LastPolledAt time.Time}` do. **Read the generated file and use whatever it actually produced** — if sqlc named or shaped a parameter differently, the worker below follows sqlc, not this plan.
+Expected: `store/registry_feed.sql.go` appears on the first run and the second run adds nothing new.
+
+**Then open `apps/server/internal/customers/store/registry_feed.sql.go` and read it before writing a line of the worker.** Every `LIMIT @row_limit::int` and `@hint::timestamptz` cast above exists to make sqlc produce a concrete Go type rather than `interface{}` (the module's own convention — `queries/timeline.sql`'s `LIMIT @take::int`, `queries/customers.sql`'s `LIMIT @page_size::int`), but what it actually produced is what the worker must call. In particular check:
+
+- whether a one-parameter query took a bare argument or a `…Params` struct (expected bare: `StaleRegistryRecords(ctx, 50)`, `CustomersWithoutRegistryRecord(ctx, …)`, `CustomersByOrganisationNumbers(ctx, []string{…})`, `TouchRegistryFeedCursor(ctx, now)`, `EnsureRegistryFeedCursor(ctx, now)`);
+- the exact integer width of each limit (`int32` from `::int`) — the worker's constants are untyped so they fit either way, but `int32(remaining)` in Task 4 must match;
+- whether `next_update_id` came back as `*int64` (so the advance takes `&next`) or as something else;
+- the spelling of each returned column (`LegalID` vs `LegalId`, `CustomerID` vs `ID`).
+
+Where sqlc disagrees with the worker code in this plan, **follow sqlc** and adjust the call, not the query.
 
 - [ ] **Step 3: Write the failing worker tests**
 
@@ -888,6 +993,41 @@ import (
 // driven through RunCycle against the DB harness with a fake transport serving
 // pages recorded from the live API. Nothing here opens a socket and nothing
 // waits on a real interval: a cycle is a method call.
+//
+// **The clock is the thing to get right here.** modtest.Start is
+// 2026-09-12T12:00:00Z, and that is where a create hook's fetched_at lands. A
+// feed entry is therefore dated AFTER it (feedEntryDate, feedEntryDateLater)
+// and every test that runs a cycle over a matched customer advances the clock
+// by afterTheFeed first — so a hint is newer than the record it lands on and
+// older than the refresh that answers it, which is production's own ordering
+// and the only ordering in which "hint > fetched_at means stale" says anything.
+// Dating a fixture in 2026-09-21 instead, with the clock left at Start, makes
+// every hint newer than every fetch forever: the failed-refresh test would pass
+// without a worker and the successful-refresh assertion could never hold.
+//
+// The advance is two hours, not two weeks, because the harness's session idle
+// timeout is 8h and its absolute session lifetime 24h — every test here reads
+// its result back through the API afterwards.
+
+const (
+	// The two moments the fixtures' entries are published at, between
+	// modtest.Start and Start+afterTheFeed.
+	feedEntryDate      = "2026-09-12T12:30:00.000Z"
+	feedEntryDateLater = "2026-09-12T13:00:00.000Z"
+	// afterTheFeed is how far a test moves the clock before running a cycle.
+	afterTheFeed = 2 * time.Hour
+)
+
+// mustParseFeedDate is a fixture date as the instant the worker stored, for an
+// assertion that compares the two.
+func mustParseFeedDate(t *testing.T, value string) time.Time {
+	t.Helper()
+	at, err := time.Parse("2006-01-02T15:04:05.000Z", value)
+	if err != nil {
+		t.Fatalf("parse the fixture date %q: %v", value, err)
+	}
+	return at.UTC()
+}
 
 // feedPageOf renders one feed page body for the given entries, in the shape
 // the live API answers with (an entry's _links are omitted — this module never
@@ -984,14 +1124,26 @@ func cursorRow(t *testing.T, h *modtest.Harness) (nextUpdateID *int64, lastUpdat
 	return nextUpdateID, lastUpdateAt, lastPolledAt
 }
 
-// registryHint is the stored hint for a customer, nil when there is none.
+// backfillPosition is where the sweep's backfill got to (design D3).
+func backfillPosition(t *testing.T, h *modtest.Harness) int32 {
+	t.Helper()
+	return modtest.One[int32](t, h, `SELECT backfill_after_id FROM customers.registry_feed_cursor WHERE id = 1`)
+}
+
+// registryHint is the stored hint for a customer, nil when there is none — and
+// nil, not a failed test, when there is no record row at all: modtest.One
+// fatals on zero rows, so the aggregate is what makes "no record yet" an answer
+// this helper can return rather than a fixture error.
 func registryHint(t *testing.T, h *modtest.Harness, customerID int32) *time.Time {
 	t.Helper()
 	return modtest.One[*time.Time](t, h,
-		`SELECT registry_updated_hint FROM customers.customer_registry_records WHERE customer_id = $1`, customerID)
+		`SELECT max(registry_updated_hint) FROM customers.customer_registry_records WHERE customer_id = $1`, customerID)
 }
 
-// registryFetchedAt is the stored fetched_at for a customer.
+// registryFetchedAt is the stored fetched_at for a customer. Unlike
+// registryHint it fatals when there is no record: every caller has already
+// established that there is one, and "no row" there would be the test's own
+// setup being wrong.
 func registryFetchedAt(t *testing.T, h *modtest.Harness, customerID int32) time.Time {
 	t.Helper()
 	return modtest.One[time.Time](t, h,
@@ -1012,7 +1164,7 @@ func TestRegistryFeedWorker_BootstrapsByDateThenByCursor(t *testing.T) {
 	t.Parallel()
 	transport := newRegistryWorkerTransport(
 		entityBodies(map[string]*http.Response{}),
-		feedPageOf(feedEntryOf(25255241, "2026-09-21T04:05:11.193Z", "929745760", "Endring")),
+		feedPageOf(feedEntryOf(25255241, feedEntryDate, "929745760", "Endring")),
 		feedPageOf(),
 	)
 	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
@@ -1030,8 +1182,8 @@ func TestRegistryFeedWorker_BootstrapsByDateThenByCursor(t *testing.T) {
 	if next == nil || *next != 25255242 {
 		t.Errorf("next_update_id = %v, want 25255242 (the last id plus one)", next)
 	}
-	if lastUpdate == nil || !lastUpdate.UTC().Equal(time.Date(2026, 9, 21, 4, 5, 11, 193000000, time.UTC)) {
-		t.Errorf("last_update_at = %v, want the last entry's dato", lastUpdate)
+	if lastUpdate == nil || !lastUpdate.UTC().Equal(mustParseFeedDate(t, feedEntryDate)) {
+		t.Errorf("last_update_at = %v, want the last entry's dato %s", lastUpdate, feedEntryDate)
 	}
 	if lastPolled == nil {
 		t.Error("last_polled_at is NULL after a cycle that read the feed")
@@ -1055,18 +1207,28 @@ func TestRegistryFeedWorker_BootstrapsByDateThenByCursor(t *testing.T) {
 func TestRegistryFeedWorker_RefreshesAMatchedCustomerAndIgnoresTheRest(t *testing.T) {
 	t.Parallel()
 	transport := newRegistryWorkerTransport(
+		// The create hook stores the record first, from the body the register
+		// held then; the cycle's own read is the one that differs, which is what
+		// makes the event below evidence of a refresh rather than of the create.
 		entityBodies(map[string]*http.Response{
-			"923609016": registryEntityResponse(http.StatusOK, movedEquinorRegistryBody),
+			"923609016": registryEntityResponse(http.StatusOK, equinorRegistryBody),
 		}),
 		feedPageOf(
-			feedEntryOf(100, "2026-09-21T04:05:00.000Z", "929745760", "Endring"),
-			feedEntryOf(101, "2026-09-21T04:06:00.000Z", "923609016", "Endring"),
+			feedEntryOf(100, feedEntryDate, "929745760", "Endring"),
+			feedEntryOf(101, feedEntryDateLater, "923609016", "Endring"),
 		),
 		feedPageOf(),
 	)
 	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
 	c := authenticatedClient(t, h)
 	created := createBrregPick(t, c, "EQUINOR ASA", "923609016")
+	if n := len(fetchRegistryEvents(t, c, created.Id)); n != 0 {
+		t.Fatalf("registry.change events after the create = %d, want 0 (the pick's name matched)", n)
+	}
+	transport.entity = entityBodies(map[string]*http.Response{
+		"923609016": registryEntityResponse(http.StatusOK, movedEquinorRegistryBody),
+	})
+	h.Advance(afterTheFeed)
 
 	w := customers.NewRegistryFeedWorker(h.Deps())
 	if _, err := w.RunCycle(context.Background()); err != nil {
@@ -1084,7 +1246,14 @@ func TestRegistryFeedWorker_RefreshesAMatchedCustomerAndIgnoresTheRest(t *testin
 	if n := registryRowCount(t, h, created.Id); n != 1 {
 		t.Fatalf("registry rows = %d, want 1", n)
 	}
-	// movedEquinorRegistryBody differs from the create hook's body in two
+	// The hint the worker wrote before refreshing: the matched customer's own
+	// entry, and nothing for the unmatched one (which has no record to hint at
+	// in the first place).
+	hint := registryHint(t, h, created.Id)
+	if hint == nil || !hint.UTC().Equal(mustParseFeedDate(t, feedEntryDateLater)) {
+		t.Errorf("hint = %v, want the matched entry's own date %s", hint, feedEntryDateLater)
+	}
+	// movedEquinorRegistryBody differs from what the create stored in two
 	// fields, so the refresh actually happened and was diffed.
 	events := fetchRegistryEvents(t, c, created.Id)
 	if len(events) == 0 {
@@ -1107,8 +1276,8 @@ func TestRegistryFeedWorker_OneCustomerWithTwoEntriesIsRefreshedOnce(t *testing.
 			"923609016": registryEntityResponse(http.StatusOK, movedEquinorRegistryBody),
 		}),
 		feedPageOf(
-			feedEntryOf(200, "2026-09-21T04:05:00.000Z", "923609016", "Endring"),
-			feedEntryOf(201, "2026-09-21T09:30:00.000Z", "923609016", "Endring"),
+			feedEntryOf(200, feedEntryDate, "923609016", "Endring"),
+			feedEntryOf(201, feedEntryDateLater, "923609016", "Endring"),
 		),
 		feedPageOf(),
 	)
@@ -1116,6 +1285,7 @@ func TestRegistryFeedWorker_OneCustomerWithTwoEntriesIsRefreshedOnce(t *testing.
 	c := authenticatedClient(t, h)
 	created := createBrregPick(t, c, "EQUINOR ASA", "923609016")
 	before := len(entityRequests(transport))
+	h.Advance(afterTheFeed)
 
 	w := customers.NewRegistryFeedWorker(h.Deps())
 	if _, err := w.RunCycle(context.Background()); err != nil {
@@ -1124,9 +1294,18 @@ func TestRegistryFeedWorker_OneCustomerWithTwoEntriesIsRefreshedOnce(t *testing.
 	if got := len(entityRequests(transport)) - before; got != 1 {
 		t.Errorf("entity reads during the cycle = %d, want exactly 1 for a customer named twice on one page", got)
 	}
-	// The hint written before the refresh is the NEWEST of the customer's
-	// entries, and the successful refresh leaves fetched_at at or past it.
-	if fetched, hint := registryFetchedAt(t, h, created.Id), registryHint(t, h, created.Id); hint != nil && fetched.Before(*hint) {
+	// The hint written before the refresh is the NEWEST of the customer's two
+	// entries — never the first one seen, and never absent.
+	hint := registryHint(t, h, created.Id)
+	if hint == nil {
+		t.Fatal("no hint was written for a customer the page named twice")
+	}
+	if !hint.UTC().Equal(mustParseFeedDate(t, feedEntryDateLater)) {
+		t.Errorf("hint = %v, want the newer of the two entries (%s)", hint.UTC(), feedEntryDateLater)
+	}
+	// And the successful refresh leaves fetched_at at or past it, which is what
+	// makes the record NOT stale — the property the sweep's own select turns on.
+	if fetched := registryFetchedAt(t, h, created.Id); fetched.Before(*hint) {
 		t.Errorf("fetched_at %v is before the hint %v after a successful refresh", fetched, *hint)
 	}
 }
@@ -1139,7 +1318,7 @@ func TestRegistryFeedWorker_AFailedFeedRequestLeavesTheCursorAlone(t *testing.T)
 	t.Parallel()
 	transport := newRegistryWorkerTransport(
 		entityBodies(map[string]*http.Response{}),
-		feedPageOf(feedEntryOf(300, "2026-09-21T04:05:00.000Z", "929745760", "Endring")),
+		feedPageOf(feedEntryOf(300, feedEntryDate, "929745760", "Endring")),
 	)
 	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
 	w := customers.NewRegistryFeedWorker(h.Deps())
@@ -1175,7 +1354,7 @@ func TestRegistryFeedWorker_AShortPageEndsTheCycle(t *testing.T) {
 	t.Parallel()
 	transport := newRegistryWorkerTransport(
 		entityBodies(map[string]*http.Response{}),
-		feedPageOf(feedEntryOf(400, "2026-09-21T04:05:00.000Z", "929745760", "Endring")),
+		feedPageOf(feedEntryOf(400, feedEntryDate, "929745760", "Endring")),
 	)
 	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
 	w := customers.NewRegistryFeedWorker(h.Deps())
@@ -1204,7 +1383,7 @@ func TestRegistryFeedWorker_ThePageBudgetEndsTheCycleToo(t *testing.T) {
 		}
 		id++
 		return jsonResponse(http.StatusOK, feedPageOf(
-			feedEntryOf(id, "2026-09-21T04:05:00.000Z", "929745760", "Endring"))), nil
+			feedEntryOf(id, feedEntryDate, "929745760", "Endring"))), nil
 	}
 	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
 	w := customers.NewRegistryFeedWorker(h.Deps())
@@ -1226,7 +1405,7 @@ func TestRegistryFeedWorker_FjernetDeletesTheRecordWithOneEvent(t *testing.T) {
 		entityBodies(map[string]*http.Response{
 			"923609016": registryEntityResponse(http.StatusGone, removedRegistryBody),
 		}),
-		feedPageOf(feedEntryOf(600, "2026-09-21T04:05:00.000Z", "923609016", "Fjernet")),
+		feedPageOf(feedEntryOf(600, feedEntryDate, "923609016", "Fjernet")),
 		feedPageOf(),
 	)
 	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
@@ -1242,6 +1421,7 @@ func TestRegistryFeedWorker_FjernetDeletesTheRecordWithOneEvent(t *testing.T) {
 	transport.entity = entityBodies(map[string]*http.Response{
 		"923609016": registryEntityResponse(http.StatusGone, removedRegistryBody),
 	})
+	h.Advance(afterTheFeed)
 
 	w := customers.NewRegistryFeedWorker(h.Deps())
 	if _, err := w.RunCycle(context.Background()); err != nil {
@@ -1250,15 +1430,18 @@ func TestRegistryFeedWorker_FjernetDeletesTheRecordWithOneEvent(t *testing.T) {
 	if n := registryRowCount(t, h, created.Id); n != 0 {
 		t.Errorf("registry rows = %d, want 0: a 410 deletes the copy", n)
 	}
+	// recordRegistryRemoved's summary is a fixed literal, not built from the
+	// diff (timeline_events.go): "removedFromOpenData" is the payload's field
+	// name and never appears in the sentence.
 	events := fetchRegistryEvents(t, c, created.Id)
 	var removed int
 	for _, e := range events {
-		if strings.Contains(str(e.Summary), "removedFromOpenData") {
+		if str(e.Summary) == "Registry record removed from open data" {
 			removed++
 		}
 	}
 	if removed != 1 {
-		t.Errorf("removal events = %d, want exactly 1", removed)
+		t.Errorf("removal events = %d, want exactly 1; summaries = %v", removed, events)
 	}
 }
 
@@ -1273,7 +1456,7 @@ func TestRegistryFeedWorker_AFailedRefreshLeavesTheHintForTheSweep(t *testing.T)
 		entityBodies(map[string]*http.Response{
 			"923609016": registryEntityResponse(http.StatusOK, equinorRegistryBody),
 		}),
-		feedPageOf(feedEntryOf(700, "2026-09-21T04:05:00.000Z", "923609016", "Endring")),
+		feedPageOf(feedEntryOf(700, feedEntryDate, "923609016", "Endring")),
 		feedPageOf(),
 	)
 	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
@@ -1284,17 +1467,21 @@ func TestRegistryFeedWorker_AFailedRefreshLeavesTheHintForTheSweep(t *testing.T)
 	transport.entity = func(string) (*http.Response, error) {
 		return jsonResponse(http.StatusInternalServerError, `{}`), nil
 	}
+	h.Advance(afterTheFeed)
 	w := customers.NewRegistryFeedWorker(h.Deps())
 	if _, err := w.RunCycle(context.Background()); err != nil {
 		t.Fatalf("RunCycle: %v", err)
 	}
 	hint, fetched := registryHint(t, h, created.Id), registryFetchedAt(t, h, created.Id)
-	if hint == nil || !hint.After(fetched) {
-		t.Fatalf("hint = %v, fetched_at = %v; want hint > fetched_at after a failed refresh", hint, fetched)
+	if hint == nil {
+		t.Fatal("no hint was written: a failed refresh must still leave the feed's report on the row")
+	}
+	if !hint.After(fetched) {
+		t.Fatalf("hint = %v, fetched_at = %v; want hint > fetched_at, the definition of stale", hint.UTC(), fetched)
 	}
 
 	// The registry comes back, and the next cycle's sweep — which reads no feed
-	// entry for this customer at all — refreshes it.
+	// entry for this customer at all (the second page is empty) — refreshes it.
 	transport.entity = entityBodies(map[string]*http.Response{
 		"923609016": registryEntityResponse(http.StatusOK, movedEquinorRegistryBody),
 	})
@@ -1302,8 +1489,8 @@ func TestRegistryFeedWorker_AFailedRefreshLeavesTheHintForTheSweep(t *testing.T)
 	if _, err := w.RunCycle(context.Background()); err != nil {
 		t.Fatalf("second RunCycle: %v", err)
 	}
-	if hint, fetched := registryHint(t, h, created.Id), registryFetchedAt(t, h, created.Id); hint != nil && fetched.Before(*hint) {
-		t.Errorf("still stale after the sweep: fetched_at %v, hint %v", fetched, *hint)
+	if fetched := registryFetchedAt(t, h, created.Id); fetched.Before(*hint) {
+		t.Errorf("still stale after the sweep: fetched_at %v, hint %v", fetched, hint.UTC())
 	}
 }
 
@@ -1322,10 +1509,10 @@ func TestRegistryFeedWorker_TheBackfillPicksUpACustomerWithNoRecord(t *testing.T
 	)
 	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
 	c := authenticatedClient(t, h)
-	// A manual identity: no create hook fetches for it (design D2), so this
-	// customer has no record until the backfill finds it.
-	created := createCustomerWithIdentity(t, c, "Equinor, typed by hand", "no", "923609016",
-		map[string]any{"source": "manual"})
+	// createCustomerWithIdentity's identity is source "manual" already, and no
+	// create hook fetches for a manual pick (design D2) — so this customer has
+	// no record at all until the backfill finds it.
+	created := createCustomerWithIdentity(t, c, "Equinor, typed by hand", "no", "923609016")
 	if n := registryRowCount(t, h, created.Id); n != 0 {
 		t.Fatalf("registry rows before the sweep = %d, want 0", n)
 	}
@@ -1344,10 +1531,19 @@ func TestRegistryFeedWorker_TheBackfillPicksUpACustomerWithNoRecord(t *testing.T
 	}
 }
 
-// TestRegistryFeedWorker_TheBackfillStopsAtItsBatch pins the bound the
-// backfill needs to be safe on a large installation: a few hundred an hour,
-// not every customer at once the first time the worker ever runs.
-func TestRegistryFeedWorker_TheBackfillStopsAtItsBatch(t *testing.T) {
+// TestRegistryFeedWorker_TheBackfillWalksPastItsBatchAndStartsOver pins both
+// halves of design D3's backfill: the batch BOUND (a few dozen a cycle, not
+// every customer at once the first time the worker ever runs) and the fact that
+// it walks.
+//
+// The walking is the part a reasonable implementer leaves out, and leaving it
+// out is a silent, permanent starvation: these 30 customers all answer 404, as
+// a customer whose typed organisation number the register does not know always
+// will, so nothing ever gets a record and "the 25 lowest ids with no record" is
+// the same 25 rows on every cycle for the rest of the installation's life.
+// Customer 26 is then never read, ever — and nothing fails, which is why it has
+// its own test rather than a line in another one.
+func TestRegistryFeedWorker_TheBackfillWalksPastItsBatchAndStartsOver(t *testing.T) {
 	t.Parallel()
 	transport := newRegistryWorkerTransport(
 		func(string) (*http.Response, error) {
@@ -1356,24 +1552,59 @@ func TestRegistryFeedWorker_TheBackfillStopsAtItsBatch(t *testing.T) {
 		feedPageOf(),
 	)
 	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
-	// 26 Norwegian business customers with valid organisation numbers and no
-	// record: the batch is 25, so exactly one is left for the next cycle.
-	for i := 0; i < 26; i++ {
-		id := insertCustomer(t, h, fmt.Sprintf("Backfill %d", i), "active")
+	// 30 Norwegian business customers with valid organisation numbers and no
+	// record. The batch is 25, so the first cycle takes 25, the second takes the
+	// remaining 5 and — being short — resets, and the third starts over.
+	ids := make([]int32, 0, len(validOrgNumbers))
+	for i, orgnr := range validOrgNumbers {
+		name := fmt.Sprintf("Backfill %d", i)
+		id := insertCustomer(t, h, name, "active")
 		h.Exec(t, `UPDATE customers.customers
 			SET legal_country = 'no', legal_type = 'business', legal_source = 'manual',
 			    legal_id = $2, legal_name = $3
-			WHERE id = $1`, id, validOrgNumbers[i], fmt.Sprintf("Backfill %d", i))
+			WHERE id = $1`, id, orgnr, name)
+		ids = append(ids, id)
 	}
 
+	// A 404 stores nothing, so the entity reads are the only evidence of what
+	// the sweep attempted — and which numbers they name is the evidence of
+	// where it attempted it.
+	reads := func() []string { return entityRequests(transport) }
 	w := customers.NewRegistryFeedWorker(h.Deps())
+
 	if _, err := w.RunCycle(context.Background()); err != nil {
-		t.Fatalf("RunCycle: %v", err)
+		t.Fatalf("first RunCycle: %v", err)
 	}
-	// A 404 stores nothing, so the count of entity reads is the only evidence
-	// of how many the sweep actually attempted.
-	if got := len(entityRequests(transport)); got != 25 {
-		t.Errorf("entity reads = %d, want the 25-customer backfill batch", got)
+	if got := len(reads()); got != 25 {
+		t.Fatalf("entity reads after cycle 1 = %d, want the 25-customer backfill batch", got)
+	}
+	if got := backfillPosition(t, h); got != ids[24] {
+		t.Errorf("backfill_after_id = %d after a full batch, want the 25th customer's id %d", got, ids[24])
+	}
+
+	if _, err := w.RunCycle(context.Background()); err != nil {
+		t.Fatalf("second RunCycle: %v", err)
+	}
+	second := reads()[25:]
+	if len(second) != 5 {
+		t.Fatalf("entity reads during cycle 2 = %d, want the remaining 5", len(second))
+	}
+	// The five it had not reached yet, not the same first 25 again.
+	for i, uri := range second {
+		if !strings.HasSuffix(uri, "/"+validOrgNumbers[25+i]) {
+			t.Errorf("cycle 2's read %d = %s, want the customer after the 25th (%s)", i, uri, validOrgNumbers[25+i])
+		}
+	}
+	if got := backfillPosition(t, h); got != 0 {
+		t.Errorf("backfill_after_id = %d after a short batch, want 0 so the next pass starts over", got)
+	}
+
+	if _, err := w.RunCycle(context.Background()); err != nil {
+		t.Fatalf("third RunCycle: %v", err)
+	}
+	third := reads()[30:]
+	if len(third) != 25 || !strings.HasSuffix(third[0], "/"+validOrgNumbers[0]) {
+		t.Errorf("cycle 3 read %d entities starting at %v, want 25 starting over at the first customer", len(third), third[:1])
 	}
 }
 
@@ -1456,12 +1687,13 @@ func TestRegistryFeedWorker_RunStopsWithItsContext(t *testing.T) {
 		entityBodies(map[string]*http.Response{
 			"923609016": registryEntityResponse(http.StatusOK, movedEquinorRegistryBody),
 		}),
-		feedPageOf(feedEntryOf(800, "2026-09-21T04:05:00.000Z", "923609016", "Endring")),
+		feedPageOf(feedEntryOf(800, feedEntryDate, "923609016", "Endring")),
 		feedPageOf(),
 	)
 	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
 	c := authenticatedClient(t, h)
 	created := createBrregPick(t, c, "EQUINOR ASA", "923609016")
+	h.Advance(afterTheFeed)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -1488,46 +1720,75 @@ func TestRegistryFeedWorker_RunStopsWithItsContext(t *testing.T) {
 }
 ```
 
-`validOrgNumbers` is the one fixture this file adds that is not derivable: 26 organisation numbers that pass `validNorwegianOrgNumber` (the MOD-11 check in `values.go`). They go in as literals, never computed at test time from the validator — a fixture derived from the code under test agrees with it even when it is wrong. Add to `registry_feed_worker_test.go`:
+`validOrgNumbers` is the one fixture this file adds that is not derivable: 30 organisation numbers that pass `validNorwegianOrgNumber` (the MOD-11 check in `values.go`). They go in as literals, never computed at test time from the validator — a fixture derived from the code under test agrees with it even when it is wrong. Add to `registry_feed_worker_test.go`:
 
 ```go
-// validOrgNumbers are 26 organisation numbers that pass the register's own
+// validOrgNumbers are 30 organisation numbers that pass the register's own
 // MOD-11 check digit (values.go's validNorwegianOrgNumber), written out as
 // literals rather than computed here: a fixture derived from the validator
 // under test would agree with it even when it is wrong.
 var validOrgNumbers = []string{
 	"923609016", "974760673", "912660680", "929745760", "981276957",
-	"998989684", "919115502", "915635857", "995339663", "988925519",
-	"976389387", "914994552", "983974724", "948007029", "961329310",
-	"918983388", "980430021", "983887457", "984851006", "992919119",
-	"917127970", "914797262", "915442552", "989757481", "996171209",
-	"920434934",
+	"998989698", "919115505", "915635857", "995339668", "988925519",
+	"976389387", "914994551", "983974724", "948007029", "961329310",
+	"918983384", "980430022", "983887457", "984851006", "992919116",
+	"917127972", "914797268", "915442552", "989757482", "996171205",
+	"920434932", "910000004", "911234564", "912469131", "913703707",
 }
 ```
-Verify the slice before relying on it, with a throwaway test in the same package that asserts every entry passes `validNorwegianOrgNumber` — run it once, confirm green, then delete it (it is a fixture check, not a behaviour):
+Every one of these passes the check digit (weights `3 2 7 6 5 4 3 2` over the first eight digits, check = `11 − (sum mod 11)`, `11 → 0`, `10 → invalid`), and they are all distinct. Twelve numbers in an earlier draft of this fixture did **not** pass, which is exactly why the guard below is part of the file and not a one-off:
 
 ```go
+// TestValidOrgNumbersFixture guards the fixture above, not the code: a batch
+// test that silently seeded customers the module considers unrefreshable would
+// pass while asserting nothing, since registryOrganisationNumber skips them and
+// the worker would make no request for any of them. Cheap, and it is what gives
+// ValidNorwegianOrgNumberForTest its caller.
 func TestValidOrgNumbersFixture(t *testing.T) {
+	t.Parallel()
+	if len(validOrgNumbers) != 30 {
+		t.Fatalf("validOrgNumbers has %d entries, want 30 (the backfill batch of 25, plus five more to walk into)", len(validOrgNumbers))
+	}
+	seen := map[string]bool{}
 	for _, n := range validOrgNumbers {
 		if !customers.ValidNorwegianOrgNumberForTest(n) {
 			t.Errorf("%s does not pass the check digit: replace it in the fixture", n)
 		}
+		if seen[n] {
+			t.Errorf("%s appears twice: the batch test needs 30 distinct customers", n)
+		}
+		seen[n] = true
 	}
 }
 ```
-with `func ValidNorwegianOrgNumberForTest(s string) bool { return validNorwegianOrgNumber(s) }` added to `export_test.go` and kept (the Task 4 worker tests need the same fixture). If any number fails, replace it with one that passes — the numbers above are real registered entities, but check them rather than trust them.
+with this in `export_test.go`:
+
+```go
+// ValidNorwegianOrgNumberForTest is values.go's check-digit rule, exported for
+// the one thing an external test cannot otherwise do: prove that a fixture of
+// organisation numbers is one this module will actually act on
+// (TestValidOrgNumbersFixture).
+func ValidNorwegianOrgNumberForTest(s string) bool { return validNorwegianOrgNumber(s) }
+```
+
+Run that test first, before the batch tests that depend on the slice:
+
+```bash
+cd /home/anders/projects/vantigo/vantigo/apps/server && mise exec -- go test -count=1 -run 'TestValidOrgNumbersFixture' ./internal/customers/
+```
+It keeps its place in the file afterwards — it is the fixture's guard, not scaffolding.
+
+**Two more tests belong in this file**, written out under Step 8 because each one exists to make a specific falsification go red and reads best beside it: `TestRegistryFeedWorker_AdvancesPastAPageOneRefreshCouldNotFinish` and `TestRegistryFeedWorker_AFailedSecondPageKeepsTheFirstPagesCursor`, plus the `brregEntityRegistryBody` fixture the first one needs. Copy all three in now, so this step's test run covers them.
 
 - [ ] **Step 4: Add the test seams to `export_test.go`**
 
 ```go
-// RegistryFeedLeaseKeyForTest and PeppolRecheckLeaseKeyForTest are the two
-// advisory-lease keys, exported so a test can take the same lock from a second
-// connection and prove a cycle skips (design D5) — communications'
-// RetentionLeaseKeyForTest is the same seam for the same reason.
-const (
-	RegistryFeedLeaseKeyForTest   = registryFeedLeaseKey
-	PeppolRecheckLeaseKeyForTest  = peppolRecheckLeaseKey
-)
+// RegistryFeedLeaseKeyForTest is the feed worker's advisory-lease key, exported
+// so a test can take the same lock from a second connection and prove a cycle
+// skips (design D5) — communications' RetentionLeaseKeyForTest is the same seam
+// for the same reason. The Peppol worker's key joins it in Task 4, with the
+// worker it names.
+const RegistryFeedLeaseKeyForTest = registryFeedLeaseKey
 
 // SetRegistryFeedPageSize shrinks the feed's page size for the length of one
 // test and answers the function that puts the real one back. Proving that the
@@ -1776,9 +2037,13 @@ func (w *RegistryFeedWorker) ensureCursor(ctx context.Context) error {
 // whole retry mechanism. A failure of the SELECTs themselves is returned: that
 // is the database, not the registry.
 //
-// The sweep never touches the cursor. It is not reading the feed, so it has no
-// position to advance, and advancing one on its behalf would claim pages nobody
-// read.
+// The sweep never touches the FEED cursor — it is not reading the feed, so it
+// has no feed position to advance, and advancing one on its behalf would claim
+// pages nobody read. It does keep its own position, backfill_after_id, for the
+// reason the migration's comment gives: without one, a customer the register
+// cannot resolve pins the backfill to the same 25 rows forever. Reading that
+// position means the cursor row has to exist, which is why RunCycle calls
+// ensureCursor ahead of this and why anything driving Sweep on its own must too.
 func (w *RegistryFeedWorker) Sweep(ctx context.Context) (int, error) {
 	q := store.New(w.deps.Pool)
 
@@ -1796,20 +2061,46 @@ func (w *RegistryFeedWorker) Sweep(ctx context.Context) (int, error) {
 		}
 	}
 
-	missing, err := q.CustomersWithoutRegistryRecord(ctx, registryFeedBackfillBatch)
+	cursor, err := q.GetRegistryFeedCursor(ctx)
+	if err != nil {
+		return refreshed, fmt.Errorf("customers: read the registry feed cursor: %w", err)
+	}
+	missing, err := q.CustomersWithoutRegistryRecord(ctx, store.CustomersWithoutRegistryRecordParams{
+		AfterID: cursor.BackfillAfterID, RowLimit: registryFeedBackfillBatch,
+	})
 	if err != nil {
 		return refreshed, fmt.Errorf("customers: select customers without a registry record: %w", err)
 	}
+	attempted := 0
 	for _, row := range missing {
 		if ctx.Err() != nil {
-			return refreshed, nil
+			// Stop, but keep the ground already covered: the position below is
+			// written for what was actually attempted, never for what was not.
+			break
 		}
+		attempted++
 		if w.refresh(ctx, row.ID, row.Type, row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType) {
 			refreshed++
 		}
 	}
+	// A full batch leaves the position at the last id attempted, so the next
+	// cycle continues; a short one means the end of the installation, and 0
+	// starts the next pass from the front. A cancelled cycle that attempted
+	// nothing leaves the position exactly where it was.
+	if attempted > 0 {
+		var next int32 // 0: there is nothing after this batch, so start over
+		if attempted < len(missing) || len(missing) == registryFeedBackfillBatch {
+			// More to come — either this cycle stopped early, or the batch was
+			// full and there may well be a 26th customer behind it.
+			next = missing[attempted-1].ID
+		}
+		if err := q.SetRegistryBackfillPosition(ctx, next); err != nil {
+			return refreshed, fmt.Errorf("customers: store the registry backfill position: %w", err)
+		}
+	}
 	w.logger().Debug("registry sweep finished", "worker", registryFeedWorkerName,
-		"stale", len(stale), "backfill", len(missing), "refreshed", refreshed)
+		"stale", len(stale), "backfill", attempted, "refreshed", refreshed,
+		"backfillFrom", cursor.BackfillAfterID)
 	return refreshed, nil
 }
 
@@ -1988,15 +2279,131 @@ Two notes for the implementer:
 ```bash
 cd /home/anders/projects/vantigo/vantigo/apps/server && mise exec -- go test -count=1 -run 'TestRegistryFeedWorker|TestValidOrgNumbersFixture' ./internal/customers/ && mise exec -- go test -count=1 ./internal/customers/ ./internal/db/
 ```
-Expected: PASS. Delete `TestValidOrgNumbersFixture` once it is green (keep `ValidNorwegianOrgNumberForTest`, Task 4 uses it).
+Expected: PASS. `TestValidOrgNumbersFixture` stays in the file.
 
 - [ ] **Step 8: Prove the tests can fail**
 
-Four guards, one at a time, each restored before the next:
-1. `next := highest + 1` → `next := highest` — `TestRegistryFeedWorker_BootstrapsByDateThenByCursor` goes red on the cursor value and the second request's URL.
-2. Move the `SetRegistryUpdatedHint` call below the `w.refresh(...)` call — `TestRegistryFeedWorker_AFailedRefreshLeavesTheHintForTheSweep` goes red.
-3. In `ReadFeed`, move the `AdvanceRegistryFeedCursor` write ahead of `handlePage` (advance, then process) — `TestRegistryFeedWorker_AFailedFeedRequestLeavesTheCursorAlone` goes red.
-4. Drop the `newest` map and refresh once per entry — `TestRegistryFeedWorker_OneCustomerWithTwoEntriesIsRefreshedOnce` goes red.
+Six guards, one at a time, each restored before the next. Each names the test that must go red — run exactly that test, see it fail, restore, see it pass:
+
+1. `next := highest + 1` → `next := highest` — `..._BootstrapsByDateThenByCursor` goes red on both the stored cursor and the second request's URL.
+2. Drop the `newest` map and refresh once per entry — `..._OneCustomerWithTwoEntriesIsRefreshedOnce` goes red on the request count; keep the map but take the *first* date instead of the newest and it goes red on the hint instead.
+3. Make the hint write conditional on the refresh succeeding (move `SetRegistryUpdatedHint` after `w.refresh` and only run it when that returned true) — `..._AFailedRefreshLeavesTheHintForTheSweep` goes red, because there is then no hint at all and the sweep never retries. Hoisting the write into `refreshRegistryRecord`'s own transaction is red for the same reason: that transaction is never opened when the network call fails.
+4. Move `AdvanceRegistryFeedCursor` out of `handlePage` to the end of `ReadFeed`, after the loop — `..._AFailedSecondPageKeepsTheFirstPagesCursor` goes red, because the cycle then ends on the failing request with nothing written.
+5. Make the advance conditional on every refresh succeeding (`if refreshed == len(matched)`) — `..._AdvancesPastAPageOneRefreshCouldNotFinish` goes red, and the page is re-read forever.
+6. Drop the backfill's position: remove `AfterID` from the query's parameters (and `c.id > @after_id` from the SQL) — `..._TheBackfillWalksPastItsBatchAndStartsOver` goes red on cycle 2, which reads the same first 25 customers again. Keeping the position but never resetting it to 0 on a short batch is red on cycle 3 instead, which reads nothing at all.
+
+Guards 4 and 5 are what the two tests below exist for. Add them to `registry_feed_worker_test.go` in Step 3 (they are listed here so the property and its falsification read together):
+
+```go
+// TestRegistryFeedWorker_AdvancesPastAPageOneRefreshCouldNotFinish pins the
+// division of labour between the cursor and the hint (design D1, D2): the
+// cursor records which feed ENTRIES have been accounted for, not which
+// refreshes succeeded. A cursor held back until every refresh on the page
+// worked would re-read that page — and re-refresh everyone else on it — on
+// every cycle for as long as one company stayed unreachable. The hint is what
+// remembers the one that failed, and the sweep is what retries it.
+func TestRegistryFeedWorker_AdvancesPastAPageOneRefreshCouldNotFinish(t *testing.T) {
+	t.Parallel()
+	transport := newRegistryWorkerTransport(
+		entityBodies(map[string]*http.Response{
+			"923609016": registryEntityResponse(http.StatusOK, equinorRegistryBody),
+			"974760673": registryEntityResponse(http.StatusOK, brregEntityRegistryBody),
+		}),
+		feedPageOf(
+			feedEntryOf(900, feedEntryDate, "923609016", "Endring"),
+			feedEntryOf(901, feedEntryDate, "974760673", "Endring"),
+		),
+		feedPageOf(),
+	)
+	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
+	c := authenticatedClient(t, h)
+	first := createBrregPick(t, c, "EQUINOR ASA", "923609016")
+	second := createBrregPick(t, c, "REGISTERENHETEN I BRØNNØYSUND", "974760673")
+
+	// The second customer's entity read now fails; the first's still works.
+	transport.entity = func(uri string) (*http.Response, error) {
+		if strings.HasSuffix(uri, "/974760673") {
+			return jsonResponse(http.StatusInternalServerError, `{}`), nil
+		}
+		return registryEntityResponse(http.StatusOK, movedEquinorRegistryBody), nil
+	}
+	h.Advance(afterTheFeed)
+
+	if _, err := customers.NewRegistryFeedWorker(h.Deps()).RunCycle(context.Background()); err != nil {
+		t.Fatalf("RunCycle: %v", err)
+	}
+	next, _, _ := cursorRow(t, h)
+	if next == nil || *next != 902 {
+		t.Errorf("next_update_id = %v, want 902: the page was accounted for even though one refresh failed", next)
+	}
+	// The one that worked is current; the one that failed is stale, and stale is
+	// what the next cycle's sweep reads.
+	if fetched, hint := registryFetchedAt(t, h, first.Id), registryHint(t, h, first.Id); hint == nil || fetched.Before(*hint) {
+		t.Errorf("the successful customer is stale: fetched_at %v, hint %v", fetched, hint)
+	}
+	if fetched, hint := registryFetchedAt(t, h, second.Id), registryHint(t, h, second.Id); hint == nil || !hint.After(fetched) {
+		t.Errorf("the failed customer is not stale: fetched_at %v, hint %v", fetched, hint)
+	}
+}
+
+// TestRegistryFeedWorker_AFailedSecondPageKeepsTheFirstPagesCursor pins that
+// the cursor is written PER PAGE, not per cycle: a cycle that reads three pages
+// and fails on the fourth must keep the three, or an installation whose feed is
+// flaky enough to fail mid-cycle never advances at all — it re-reads the same
+// pages every fifteen minutes forever.
+//
+// The page size is 1 through the test seam, so the first entry is a full page
+// and the loop asks for a second one, which fails.
+func TestRegistryFeedWorker_AFailedSecondPageKeepsTheFirstPagesCursor(t *testing.T) {
+	restore := customers.SetRegistryFeedPageSize(1)
+	defer restore()
+
+	var asked int
+	transport := newRegistryWorkerTransport(entityBodies(map[string]*http.Response{}))
+	transport.feed.respond = func(uri string) (*http.Response, error) {
+		if !strings.HasPrefix(uri, "/enhetsregisteret/api/oppdateringer/enheter") {
+			return registryEntityResponse(http.StatusNotFound, ``), nil
+		}
+		asked++
+		if asked == 1 {
+			return jsonResponse(http.StatusOK, feedPageOf(
+				feedEntryOf(1000, feedEntryDate, "929745760", "Endring"))), nil
+		}
+		return jsonResponse(http.StatusInternalServerError, `{}`), nil
+	}
+	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
+
+	if _, err := customers.NewRegistryFeedWorker(h.Deps()).RunCycle(context.Background()); err == nil {
+		t.Fatal("RunCycle reported success although the second page's request failed")
+	}
+	next, lastUpdate, _ := cursorRow(t, h)
+	if next == nil || *next != 1001 {
+		t.Errorf("next_update_id = %v, want 1001: the first page was processed and is not read again", next)
+	}
+	if lastUpdate == nil || !lastUpdate.UTC().Equal(mustParseFeedDate(t, feedEntryDate)) {
+		t.Errorf("last_update_at = %v, want the first page's own entry date", lastUpdate)
+	}
+}
+```
+`brregEntityRegistryBody` is the second company's entity body — add it beside the other fixtures in this file (the Brønnøysund register's own entry, the body `-customer-registry-card.test.tsx` already uses on the frontend side):
+
+```go
+// brregEntityRegistryBody is 974760673's own record, for a test that needs two
+// different companies on one feed page.
+const brregEntityRegistryBody = `{
+	"organisasjonsnummer": "974760673",
+	"navn": "REGISTERENHETEN I BRØNNØYSUND",
+	"organisasjonsform": {"kode": "ORGL", "beskrivelse": "Organisasjonsledd"},
+	"naeringskode1": {"kode": "84.110", "beskrivelse": "Generell offentlig administrasjon"},
+	"harRegistrertAntallAnsatte": true,
+	"antallAnsatte": 487,
+	"registrertIMvaregisteret": true,
+	"overordnetEnhet": "912660680",
+	"konkurs": false,
+	"underAvvikling": false,
+	"underTvangsavviklingEllerTvangsopplosning": false
+}`
+```
 
 - [ ] **Step 9: Vet, lint, commit**
 
@@ -2014,7 +2421,7 @@ git show --stat HEAD && git status --short
 ### Task 3: Configuration, and the worker actually starting (D7)
 
 **Files:**
-- Modify: `apps/server/internal/config/config.go` (five variables), `apps/server/internal/config/config_test.go`, `apps/server/internal/customers/module.go` (the `Workers` field), `apps/server/internal/customers/module_test.go`, `apps/server/internal/customers/registry_feed_worker.go` (`Interval()` reads its config), `deploy/compose/vantigo.env.example`
+- Modify: `apps/server/internal/config/config.go` (five variables), `apps/server/internal/config/config_test.go`, `apps/server/internal/customers/module.go` (the `Workers` field), `apps/server/internal/customers/module_test.go`, `apps/server/internal/customers/registry_feed_worker.go` (`Interval()` reads its config), `apps/server/cmd/vantigo/main_test.go` (the serve fixture's defaults), `deploy/compose/vantigo.env.example`
 - Read first (do not change): `config.go:340-365` (the load order), `config.go:596-602` (`communicationsRetention`, the precedent), `config.go:640-680` (`integer`/`duration`/`boolean`/`flag`), `internal/communications/module.go:79-103` (how a module declares workers)
 
 **Interfaces:**
@@ -2287,7 +2694,38 @@ func (w *RegistryFeedWorker) Interval() time.Duration {
 }
 ```
 
-- [ ] **Step 5: Document the variables for an operator**
+- [ ] **Step 5: Keep the serve tests off the real registry**
+
+`apps/server/cmd/vantigo/main_test.go`'s `startServeEnv` boots a real installation with every module composed, `WORKERS_IN_PROCESS` at its default of 1 and **no `Deps.HTTPTransport`** — so the moment the customers module contributes a worker, every `api`- and `worker`-mode serve test starts a cycle that reaches `https://data.brreg.no` for real. Turn both workers off in that fixture's defaults (`envMap`, alongside `DATABASE_URL` and friends — the per-test `env` overrides are applied after it, so a test that wants one can still ask):
+
+```go
+	envMap := map[string]string{
+		"DATABASE_URL":     databaseURL,
+		"APP_URL":          "http://localhost:8080",
+		"SHUTDOWN_TIMEOUT": "10s",
+		"APP_SECRET":       testAppSecret,
+		"SMTP_HOST":        "smtp.example.invalid",
+		"SMTP_FROM":        "noreply@example.invalid",
+		// These tests are about the commands and their modes, not about any
+		// module's background work: they compose every module for real, with no
+		// Deps.HTTPTransport and no fake Peppol lookup, so a customers worker
+		// started here would poll data.brreg.no and the live Peppol network from
+		// a unit test. The customers module's own tests cover registration and
+		// the switches (TestModule_ContributesItsWorkers); a serve test that
+		// genuinely wants a worker passes fakeWorkerModule, as they already do.
+		"CUSTOMERS_REGISTRY_FEED_ENABLED":  "0",
+		"CUSTOMERS_PEPPOL_RECHECK_ENABLED": "0",
+	}
+```
+
+Then run those tests as part of this task:
+
+```bash
+cd /home/anders/projects/vantigo/vantigo/apps/server && mise exec -- go test -count=1 ./cmd/vantigo/
+```
+Expected: PASS, and no test takes noticeably longer than before (a real outbound request would show up as exactly that).
+
+- [ ] **Step 6: Document the variables for an operator**
 
 In `deploy/compose/vantigo.env.example`, add a block directly after the `# --- Customers: Peppol lookup ---` block (so the customers settings stay together) — the commented-out form every other variable there takes:
 
@@ -2321,25 +2759,25 @@ In `deploy/compose/vantigo.env.example`, add a block directly after the `# --- C
 
 `README.md` needs no change: its command table already says "every enabled module's background workers", which now includes these. `CONTRIBUTING.md` does name today's workers and is Task 6's.
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [ ] **Step 7: Run the tests to verify they pass**
 
 ```bash
-cd /home/anders/projects/vantigo/vantigo/apps/server && mise exec -- go test -count=1 ./internal/config/ ./internal/customers/ ./internal/module/
+cd /home/anders/projects/vantigo/vantigo/apps/server && mise exec -- go test -count=1 ./internal/config/ ./internal/customers/ ./internal/module/ ./cmd/vantigo/
 ```
 Expected: PASS.
 
-- [ ] **Step 7: Prove the tests can fail**
+- [ ] **Step 8: Prove the tests can fail**
 
 Set `Workers: nil` in `Module()` and confirm `TestModule_ContributesItsWorkers` goes red; restore. Change the `CustomersRegistryFeedEnabled` default to `false` and confirm `TestLoad_CustomersRegistryWorkers` goes red; restore. Drop the `if d.Config.CustomersRegistryFeedEnabled` guard and confirm `TestModule_TheFeedWorkerCanBeTurnedOff` goes red; restore.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo/apps/server && mise exec -- go vet ./... && mise exec -- golangci-lint run ./internal/config/... ./internal/customers/...
 cd /home/anders/projects/vantigo/vantigo
 printf '%s\n\n%s\n' 'feat(customers): an installation can say how often the registry workers run, or that they do not' 'Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>' > /tmp/msg-task3
-git add apps/server/internal/config/config.go apps/server/internal/config/config_test.go apps/server/internal/customers/module.go apps/server/internal/customers/module_test.go apps/server/internal/customers/registry_feed_worker.go deploy/compose/vantigo.env.example
-git commit -F /tmp/msg-task3 -- apps/server/internal/config/config.go apps/server/internal/config/config_test.go apps/server/internal/customers/module.go apps/server/internal/customers/module_test.go apps/server/internal/customers/registry_feed_worker.go deploy/compose/vantigo.env.example
+git add apps/server/internal/config/config.go apps/server/internal/config/config_test.go apps/server/internal/customers/module.go apps/server/internal/customers/module_test.go apps/server/internal/customers/registry_feed_worker.go apps/server/cmd/vantigo/main_test.go deploy/compose/vantigo.env.example
+git commit -F /tmp/msg-task3 -- apps/server/internal/config/config.go apps/server/internal/config/config_test.go apps/server/internal/customers/module.go apps/server/internal/customers/module_test.go apps/server/internal/customers/registry_feed_worker.go apps/server/cmd/vantigo/main_test.go deploy/compose/vantigo.env.example
 git show --stat HEAD && git status --short
 ```
 
@@ -2561,7 +2999,7 @@ JOIN customers.customer_peppol_lookups l ON l.customer_id = c.id
 WHERE c.status <> 'archived'
   AND l.checked_at < @checked_before::timestamptz
 ORDER BY l.checked_at, c.id
-LIMIT @row_limit;
+LIMIT @row_limit::int;
 
 -- name: EhfCustomersWithoutPeppolLookup :many
 -- EhfCustomersWithoutPeppolLookup is the second candidate set (design D6): a
@@ -2578,10 +3016,10 @@ WHERE l.customer_id IS NULL
   AND c.status <> 'archived'
   AND c.invoice_delivery = 'ehf'
 ORDER BY c.id
-LIMIT @row_limit;
+LIMIT @row_limit::int;
 ```
 
-Generate and read what sqlc produced (`AgedPeppolLookupsParams{CheckedBefore time.Time; RowLimit int32}`, `EhfCustomersWithoutPeppolLookup` taking a bare `int32`):
+Generate, then **read `store/peppol_recheck.sql.go` before writing the worker**, exactly as Task 2's Step 2 says: the expectation is `AgedPeppolLookupsParams{CheckedBefore time.Time; RowLimit int32}` and `EhfCustomersWithoutPeppolLookup(ctx, int32)`, and if sqlc produced a different width or shape then `int32(remaining)` in Step 5 and the row field names both follow sqlc rather than this plan.
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo/apps/server && mise exec -- go generate ./... && mise exec -- go generate ./... && git status --short
@@ -2610,11 +3048,13 @@ import (
 // Deps.PeppolLookup. No test here resolves a name or opens a socket.
 
 // peppolCheckedAt is the stored lookup's checked_at, or nil when the customer
-// has never been checked.
+// has never been checked. The aggregate is what makes "never checked" an answer
+// rather than a fixture error: modtest.One fatals on zero rows, and "there is no
+// row yet" is precisely the state half of these tests start from.
 func peppolCheckedAt(t *testing.T, h *modtest.Harness, customerID int32) *time.Time {
 	t.Helper()
 	return modtest.One[*time.Time](t, h,
-		`SELECT checked_at FROM customers.customer_peppol_lookups WHERE customer_id = $1`, customerID)
+		`SELECT max(checked_at) FROM customers.customer_peppol_lookups WHERE customer_id = $1`, customerID)
 }
 
 // agePeppolLookup backdates a stored lookup, which is how a test makes a row
@@ -2906,45 +3346,99 @@ func TestPeppolRecheckWorker_RunStopsWithItsContext(t *testing.T) {
 	}
 }
 
-// TestPeppolRecheckWorker_IsNotStartedWithoutTheLookupItself pins design D6's
-// dependency: "effective only with PEPPOL_LOOKUP_ENABLED=1" has to mean the
-// worker is never handed to the runner, not that it starts and finds a nil
-// seam.
-func TestPeppolRecheckWorker_IsNotStartedWithoutTheLookupItself(t *testing.T) {
+Registering a second worker changes what Task 3's module tests must assert, so **replace** Task 3's `TestModule_ContributesItsWorkers`, `TestModule_TheFeedWorkerCanBeTurnedOff` and their `want` lists with one table over every switch combination — a test that only checked `len == 0` for "feed off" would now pass for the wrong reason:
+
+```go
+// TestModule_ContributesItsWorkers proves the background workers this module
+// owns are reachable the way production starts them — through Module().Workers,
+// which module.Workers collects for cmd/vantigo's runner — and not only through
+// the constructors the worker tests call directly.
+//
+// It is an EXACT-SET assertion per configuration, and deliberately one table
+// rather than a test per worker. A worker fully implemented, fully tested and
+// never registered is the failure this guards: communications learned that one
+// the hard way (its own TestModule_ContributesItsWorkers says so), and **adding
+// a worker to this module means adding its name here.** The switch rows are the
+// other half: "off" has to mean the runner is never handed the thing that would
+// make a scheduled outbound request, and a row asserting only "fewer workers"
+// would not notice the wrong one disappearing.
+func TestModule_ContributesItsWorkers(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t, modtest.WithEnv("PEPPOL_LOOKUP_ENABLED", "0"))
-	for _, w := range module.Workers(h.Deps(), customers.Module()) {
-		if w.Name() == "customers-peppol-recheck" {
-			t.Error("the re-check worker was started with PEPPOL_LOOKUP_ENABLED=0")
-		}
+	cases := []struct {
+		name string
+		env  map[string]string
+		want []string
+	}{
+		{name: "the default installation runs both", want: []string{"customers-peppol-recheck", "customers-registry-feed"}},
+		{
+			name: "the feed worker turned off leaves the re-check worker",
+			env:  map[string]string{"CUSTOMERS_REGISTRY_FEED_ENABLED": "0"},
+			want: []string{"customers-peppol-recheck"},
+		},
+		{
+			name: "the re-check worker turned off leaves the feed worker",
+			env:  map[string]string{"CUSTOMERS_PEPPOL_RECHECK_ENABLED": "0"},
+			want: []string{"customers-registry-feed"},
+		},
+		{
+			// Design D6: the re-check worker is effective only alongside the
+			// lookup it uses, and "not effective" means never started.
+			name: "the Peppol lookup turned off takes the re-check worker with it",
+			env:  map[string]string{"PEPPOL_LOOKUP_ENABLED": "0"},
+			want: []string{"customers-registry-feed"},
+		},
+		{
+			name: "both turned off leaves none",
+			env: map[string]string{
+				"CUSTOMERS_REGISTRY_FEED_ENABLED":   "0",
+				"CUSTOMERS_PEPPOL_RECHECK_ENABLED":  "0",
+			},
+			want: nil,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			opts := make([]modtest.Option, 0, len(tc.env))
+			for k, v := range tc.env {
+				opts = append(opts, modtest.WithEnv(k, v))
+			}
+			h := newHarness(t, opts...)
+
+			var names []string
+			for _, w := range module.Workers(h.Deps(), customers.Module()) {
+				names = append(names, w.Name())
+				if w.Interval() <= 0 {
+					t.Errorf("worker %s has interval %v, want a positive poll interval", w.Name(), w.Interval())
+				}
+			}
+			slices.Sort(names)
+			if !slices.Equal(names, tc.want) {
+				t.Errorf("workers = %v, want exactly %v", names, tc.want)
+			}
+		})
 	}
 }
 ```
-(the last test needs `"github.com/vantigo-io/vantigo/server/internal/module"` imported in this file.)
 
-Update the exact set in `module_test.go`:
-
-```go
-	want := []string{"customers-peppol-recheck", "customers-registry-feed"}
-```
-
-and add one case there for the second switch:
+Task 3's `TestModule_TheFeedWorkerPollCadenceIsConfigured` stays as it is; add its twin for the second worker:
 
 ```go
-// TestModule_ThePeppolRecheckWorkerCanBeTurnedOff is design D7's second
-// switch, checked the same way the first one is: off means never started.
-func TestModule_ThePeppolRecheckWorkerCanBeTurnedOff(t *testing.T) {
+// TestModule_ThePeppolRecheckCadenceIsConfigured pins that the second worker's
+// runner-facing cadence is the operator's too.
+func TestModule_ThePeppolRecheckCadenceIsConfigured(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t, modtest.WithEnv("CUSTOMERS_PEPPOL_RECHECK_ENABLED", "0"))
-	var names []string
-	for _, w := range module.Workers(h.Deps(), customers.Module()) {
-		names = append(names, w.Name())
+	if got := customers.NewPeppolRecheckWorker(newHarness(t).Deps()).Interval(); got != 24*time.Hour {
+		t.Errorf("Interval = %v, want the 24h default", got)
 	}
-	if !slices.Equal(names, []string{"customers-registry-feed"}) {
-		t.Errorf("workers = %v, want only the feed worker", names)
+	tuned := newHarness(t, modtest.WithEnv("CUSTOMERS_PEPPOL_RECHECK_POLL", "6h"))
+	if got := customers.NewPeppolRecheckWorker(tuned.Deps()).Interval(); got != 6*time.Hour {
+		t.Errorf("Interval = %v, want the configured 6h", got)
 	}
 }
 ```
+
+The `peppol_recheck_worker_test.go` cases above need no `module` import; the worker-set assertions all live in `module_test.go`, which already imports `module`, `modtest`, `slices` and `time` after Task 3.
 
 - [ ] **Step 4: Run the tests to verify they fail**
 
@@ -3692,8 +4186,14 @@ One cycle, in order:
    their record without anyone clicking, a few hundred an hour, so a large
    installation is caught up within a day. A backfilled record goes through the
    ordinary first-fetch diff, so a hand-typed name that differs from the registry's
-   raises `registryRenamed` exactly as a click would. A sweep refresh that fails is
-   logged and left for the next cycle, and a sweep never touches the cursor.
+   raises `registryRenamed` exactly as a click would. The backfill walks: it keeps its
+   own position on the cursor row (`backfill_after_id`) and takes the next 25
+   customers after it, resetting to the front when a batch comes back short, and it
+   only considers organisation numbers that are nine digits. Both are there because a
+   customer whose number the register does not know never gets a record — without a
+   position, those 25 rows would be the same 25 rows on every cycle and the 26th
+   customer would never be read at all. A sweep refresh that fails is logged and left
+   for the next cycle, and a sweep never touches the feed cursor.
 2. **The feed**, in pages of 1000, at most **20** pages per cycle (so a week's
    backlog — about 21 000 entries — clears in two cycles), each response capped at
    4 MiB. With no stored cursor the first request is `?dato=<started_at>`: the feed
@@ -3722,10 +4222,11 @@ nothing. The 60-second click throttle is the HTTP handler's and does not apply: 
 worker only asks when the feed or the sweep says there is a reason.
 
 The cursor lives on `customers.registry_feed_cursor` (migration `00023`), one row:
-`next_update_id`, `started_at`, `last_polled_at` and `last_update_at` (the `dato` of
-the last entry processed). Nothing reads the last two — they are there because the
-only report this delivery gives an operator is a log line, and those two columns
-answer "is it running" and "how far behind is it" from `psql` alone. A cycle's
+`next_update_id`, `started_at`, `last_update_at` (the `dato` of the last entry
+processed), `last_polled_at`, and `backfill_after_id` — the sweep's own position,
+described above. Nothing reads `last_polled_at` or `last_update_at`: they are there
+because the only report this delivery gives an operator is a log line, and those two
+columns answer "is it running" and "how far behind is it" from `psql` alone. A cycle's
 outcome is one log line per page (entries seen, matched, refreshed, the new cursor)
 plus one for the sweep.
 
@@ -3987,6 +4488,20 @@ should look at:
 6. **`CustomerRegistryAddress.countryCode` left `required`** — the delivery A leftover
    the spec names. The server now omits it instead of sending `""`; the frontend
    normaliser maps absent to `""`, so nothing downstream changed.
+7. **The backfill walks, on its own cursor column** (`backfill_after_id`, plus a
+   nine-digit predicate on `legal_id`). D3 as first written took the 25 lowest-id
+   customers with no record every cycle, which starves: a customer whose organisation
+   number the register does not know never gets a record, so those 25 rows would be the
+   same 25 forever and the 26th customer would never be read. The spec's D3 was updated
+   to match, and the behaviour has its own test.
+8. **Both Brreg reads now share one content-type check and one capped body read**
+   (`validateBrregContentType`, `readBrregBody` in `brreg_entity.go`), extracted in a
+   behaviour-preserving commit before the feed code existed. The allow-list is explicit
+   rather than a `+json` suffix rule, because this module's own tests pin
+   `application/problem+json` as a refusal for the entity read.
+9. **`cmd/vantigo`'s serve fixture turns both workers off.** Those tests compose every
+   module for real with no `Deps.HTTPTransport`, so a registered worker would poll
+   data.brreg.no and the live Peppol network from a unit test.
 
 End the body with the attribution line `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
 
