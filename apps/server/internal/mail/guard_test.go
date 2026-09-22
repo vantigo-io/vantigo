@@ -34,7 +34,11 @@ func mustAddr(t *testing.T, s string) netip.Addr {
 // by apps/communications/backend/Communications.Module/Services/SmtpDestinationGuard.cs's
 // IsDisallowedDestination: loopback, private (RFC1918 and fc00::/7),
 // link-local (including the 169.254.169.254 cloud metadata address), CGNAT
-// 100.64/10, 0.0.0.0/8 and unspecified addresses.
+// 100.64/10, 0.0.0.0/8 and unspecified addresses. The two NAT64 cases pin
+// internal/netguard's embedded-IPv4 and local-use-/48 handling at the mail
+// level too: disallowedDestination delegates to netguard.Disallowed, but
+// nothing here proved it until these were added, so a regression there
+// could have shipped a hole in the SMTP guard unnoticed.
 func TestDestinationGuard_RejectsDisallowedLiterals(t *testing.T) {
 	t.Parallel()
 	cases := []string{
@@ -58,6 +62,8 @@ func TestDestinationGuard_RejectsDisallowedLiterals(t *testing.T) {
 		"255.255.255.255", // reserved/broadcast
 		"fe80::1",         // link-local (v6)
 		"ff02::1",         // multicast (v6)
+		"64:ff9b::a00:1",  // NAT64 well-known prefix, embedding private 10.0.0.1
+		"64:ff9b:1::1",    // RFC 8215 local-use NAT64 /48, refused outright (no fixed offset to decode)
 	}
 	for _, host := range cases {
 		host := host

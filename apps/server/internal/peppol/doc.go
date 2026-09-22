@@ -34,12 +34,14 @@
 // organisation numbers a tenant is asking about.
 //
 // The SMP base URL is third-party data — it arrives in a DNS record published
-// by whoever runs the participant's SMP — so it is validated before use
-// (https, no userinfo, port 443) and fetched through a transport that dials
-// via internal/netguard, which refuses private, loopback, link-local, CGNAT
-// and metadata addresses and connects to the very address it checked. A
-// hostile or compromised SMP record must not turn this lookup into a probe of
-// the network the server runs in.
+// by whoever runs the participant's SMP — so it is validated in full before
+// use: it must parse, be https, name a host, carry no userinfo, use port 443
+// or none, and carry neither a query (a bare "?" counts) nor a fragment
+// (smp.go). It is then fetched through a transport that dials via
+// internal/netguard, which refuses private, loopback, link-local, CGNAT and
+// metadata addresses and connects to the very address it checked. A hostile
+// or compromised SMP record must not turn this lookup into a probe of the
+// network the server runs in.
 //
 // The package is pure network plumbing: no database, no HTTP contract, no
 // module. Callers (Customers today, Invoices later) hold a *Client built from

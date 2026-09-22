@@ -475,8 +475,11 @@ const defaultPeppolSMLZone = "participant.sml.prod.tech.peppol.org"
 
 // plausibleHostname is PEPPOL_SML_ZONE's own shape check (design D5's
 // controller ruling): non-empty, no "://" (a caller pasted a URL, not a
-// zone), and none of the characters ("/", any whitespace) that cannot be
-// part of a DNS name. It does not attempt to validate the zone is a real,
+// zone), none of the characters ("/", ":", any whitespace) that cannot be
+// part of a DNS name — ":" specifically catches a caller who pasted a
+// host:port, the shape PEPPOL_DNS_SERVER takes, not a zone — and no empty
+// label (a leading or trailing ".", or two consecutive ones), which a real
+// zone never has. It does not attempt to validate the zone is a real,
 // resolvable one — that is what a lookup itself finds out, and failing
 // there (an upstream 502) is the honest way to report it, not a startup
 // refusal for a zone this process never resolves until asked to.
@@ -484,7 +487,15 @@ func plausibleHostname(v string) bool {
 	if v == "" || strings.Contains(v, "://") {
 		return false
 	}
-	return !strings.ContainsAny(v, "/ \t\n\r")
+	if strings.ContainsAny(v, "/: \t\n\r") {
+		return false
+	}
+	for _, label := range strings.Split(v, ".") {
+		if label == "" {
+			return false
+		}
+	}
+	return true
 }
 
 // peppolLookup resolves the customers module's Peppol lookup configuration

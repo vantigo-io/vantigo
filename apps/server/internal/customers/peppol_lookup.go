@@ -13,6 +13,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
 	"github.com/vantigo-io/vantigo/server/internal/db"
+	"github.com/vantigo-io/vantigo/server/internal/netguard"
 	"github.com/vantigo-io/vantigo/server/internal/peppol"
 )
 
@@ -116,6 +117,26 @@ func resolvedPeppolLookup(stored *store.CustomersCustomerPeppolLookup, participa
 	return &resp
 }
 
+// peppolErrorKind classifies a failed s.peppolLookup call into a small,
+// fixed set of kinds for the warning log below, rather than logging
+// err.Error() itself: peppol.Client.Lookup's own doc comment says a failure
+// error is "we could not find out" and nothing more, but its message can
+// still carry the participant identifier (an org number) — a caller's
+// mistake reported by validParticipant, say — which does not belong in a
+// log line next to the customer id that requested it.
+func peppolErrorKind(err error) string {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return "timeout"
+	case errors.Is(err, context.Canceled):
+		return "canceled"
+	case errors.Is(err, netguard.ErrDisallowed):
+		return "disallowed_destination"
+	default:
+		return "network"
+	}
+}
+
 // peppolLookupUnavailableResponse is the 502 POST .../peppol-lookup answers
 // when the network call itself failed (design D3: "An upstream failure is
 // 502, as Brreg's lookup") — shaped exactly like brregUnavailableResponse,
@@ -173,10 +194,9 @@ func (s *server) PostCustomersByIdPeppolLookup(ctx context.Context, req gen.Post
 	identity := identityFromRow(row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType)
 
 	participant, derived := lookupParticipant(profile, identity, row.Type)
-	now := s.deps.Clock()
 	if participant == "" {
 		return gen.PostCustomersByIdPeppolLookup200JSONResponse(
-			customerPeppolLookupResponse(peppolStatusNoIdentifier, false, false, "", true, nil, now),
+			customerPeppolLookupResponse(peppolStatusNoIdentifier, false, false, "", true, nil, s.deps.Clock()),
 		), nil
 	}
 
@@ -200,9 +220,13 @@ func (s *server) PostCustomersByIdPeppolLookup(ctx context.Context, req gen.Post
 	}
 	result, err := s.peppolLookup(lookupCtx, participant)
 	if err != nil {
-		s.deps.Logger.WarnContext(ctx, "customers: peppol lookup failed", "customerId", req.Id, "error", err.Error())
+		s.deps.Logger.WarnContext(ctx, "customers: peppol lookup failed", "customerId", req.Id, "errorKind", peppolErrorKind(err))
 		return peppolLookupUnavailableResponse(), nil
 	}
+	// Read once the network call has returned, not before it was made: the
+	// call itself takes real time, and checkedAt is supposed to say when the
+	// answer was obtained, not when it was asked for.
+	now := s.deps.Clock()
 
 	status := peppolResultStatus(result)
 	var smpHost *string

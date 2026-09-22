@@ -542,7 +542,7 @@ Four more configure the Peppol lookup (`POST .../peppol-lookup`,
 [`docs/customers.md`](docs/customers.md#peppol-lookup)) — whether a customer can
 receive an EHF invoice:
 
-- `PEPPOL_LOOKUP_ENABLED` (default `true`) — `false` answers the operation 503
+- `PEPPOL_LOOKUP_ENABLED` (default `1`) — `0` answers the operation 503
   instead of ever reaching the network.
 - `PEPPOL_SML_ZONE` (default `participant.sml.prod.tech.peppol.org`) — the SML
   zone a participant identifier is hashed into; the test network's own zone is
@@ -557,8 +557,10 @@ contract-validating client, so a response that does not match the module's YAML
 fails the test that produced it, and the package gates on operation coverage —
 every operation in the contract must have been exercised by at least one
 successful exchange, with no allow-list, so a newly added operation without a
-passing test fails the whole package. No test touches the network; the Brreg
-and Peppol clients dial a fake transport.
+passing test fails the whole package. No test touches the network: the Brreg
+client dials a fake transport, and the Peppol client is not even built in
+customers' tests — `modtest.WithPeppolLookup` replaces the whole lookup
+function seam instead.
 
 ## Frontend development
 
