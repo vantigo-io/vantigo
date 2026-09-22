@@ -74,6 +74,23 @@ ON CONFLICT (customer_id) DO UPDATE SET
     postal_address             = EXCLUDED.postal_address,
     fetched_at                 = EXCLUDED.fetched_at;
 
+-- name: RegistryAttentionCandidates :many
+-- RegistryAttentionCandidates is /stats/attention's own read (design D4):
+-- every non-archived customer that has a stored registry record, with just
+-- enough of both rows for attentionItemsFrom (stats.go) to compute the four
+-- rules in Go rather than as CASE WHEN chains — bankruptcy suppressing the
+-- liquidation item, and any status item suppressing a rename, read more
+-- clearly as a Go precedence than as SQL. legal_name is nullable (no legal
+-- identity at all, or one whose name was never set), which is exactly the
+-- "no rename item" case; record's own name is never null (the column is
+-- NOT NULL).
+SELECT c.id AS customer_id, c.name AS name, c.legal_name AS legal_name,
+       r.name AS record_name, r.bankrupt, r.under_liquidation, r.under_forced_liquidation,
+       r.deleted_on, r.fetched_at
+FROM customers.customer_registry_records r
+JOIN customers.customers c ON c.id = r.customer_id
+WHERE c.status <> 'archived';
+
 -- name: DeleteCustomerRegistryRecord :exec
 -- DeleteCustomerRegistryRecord is what a 410 from the registry means
 -- (design D2): the entity is gone from open data entirely, so the copy goes

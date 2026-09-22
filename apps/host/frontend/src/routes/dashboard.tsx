@@ -339,14 +339,25 @@ const projectAttentionTitleKeys: Record<string, string> = {
   milestoneOverdue: "dashboard.projectMilestoneOverdue",
 };
 
+// The four registry facts a customer's stored Brreg record can surface
+// (Brreg in full design D4): server-built titles, like the four project
+// signals above, carrying the customer's own name rather than the
+// registry's.
+const customerAttentionTitleKeys: Record<string, string> = {
+  registryBankrupt: "dashboard.customerRegistryBankrupt",
+  registryLiquidation: "dashboard.customerRegistryLiquidation",
+  registryDeleted: "dashboard.customerRegistryDeleted",
+  registryRenamed: "dashboard.customerRegistryRenamed",
+};
+
 /**
  * The catalog key that names an item, or undefined for an item whose own
  * `title` the server already wrote. Time's titles are built from data rather
  * than from a catalog, so they arrive in English; naming them again here is
- * what puts them in the reader's language. The four project-economy types are
- * server-built too (a project or a milestone name), so they take the same
- * treatment, this time with the name filled into the sentence rather than a
- * date.
+ * what puts them in the reader's language. The four project-economy types and
+ * the four customer-registry types are server-built too (a project's, a
+ * milestone's or a customer's own name), so they take the same treatment,
+ * this time with the name filled into the sentence rather than a date.
  */
 export const attentionTitleKey = (item: { module: ModuleKey; type: string; count?: number; entityId?: string }) => {
   if (item.module === "time") {
@@ -355,6 +366,7 @@ export const attentionTitleKey = (item: { module: ModuleKey; type: string; count
     return undefined;
   }
   if (item.module === "projects") return projectAttentionTitleKeys[item.type];
+  if (item.module === "customers") return customerAttentionTitleKeys[item.type];
   if (item.module === "expenses") {
     // A rejected unit is an expense or a whole trip, and the two are called
     // different things. The link already keys on the `claim/` prefix; so does
@@ -394,12 +406,15 @@ export const attentionTitle = (
 ) => {
   const key = attentionTitleKey(item);
   if (!key) return item.title;
-  // Projects' and expenses' titles are both server-built from data (a
-  // project's, a milestone's or an expense's own name, or nothing at all for
-  // the payroll item), not from a catalog, so both name the item and — for
-  // expenses — the count the server sent, if any. Time's is the odd one out:
-  // its entityId carries the week the title is about, not a name.
-  if (item.module === "projects" || item.module === "expenses") return t(key, { name: item.title, count: item.count });
+  // Projects', expenses' and customers' titles are all server-built from
+  // data (a project's, a milestone's, an expense's or a customer's own
+  // name, or nothing at all for the payroll item), not from a catalog, so
+  // each names the item and — for expenses — the count the server sent, if
+  // any. Time's is the odd one out: its entityId carries the week the title
+  // is about, not a name.
+  if (item.module === "projects" || item.module === "expenses" || item.module === "customers") {
+    return t(key, { name: item.title, count: item.count });
+  }
   return t(key, { date: formatDate(attentionWeek(item.entityId), { dateStyle: "medium", timeZone: "UTC" }) });
 };
 

@@ -5,6 +5,10 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
 // This file ports Integration/CustomerStatsAndStatusTests.cs (customers
@@ -190,23 +194,201 @@ func TestUpdatingWithInvalidStatus_ReturnsValidationProblem(t *testing.T) {
 // direct coverage — module.Compose's coverage gate requires every
 // implemented operation be exercised by a contract-validated exchange.
 
-// TestGetCustomersStatsAttention_IsAlwaysEmpty pins the stub
-// (CustomerStatsEndpoints.cs:111-112, inventory §8.5): always `[]`,
-// regardless of what data exists.
-func TestGetCustomersStatsAttention_IsAlwaysEmpty(t *testing.T) {
-	t.Parallel()
-	h := newHarness(t)
-	c := authenticatedClient(t, h)
-	createCustomer(t, c, "Attention Probe")
+// attentionItemJSON is CustomerStatsAttentionItem's five fields.
+type attentionItemJSON struct {
+	Id         string    `json:"id"`
+	Type       string    `json:"type"`
+	Title      string    `json:"title"`
+	OccurredAt time.Time `json:"occurredAt"`
+	EntityId   string    `json:"entityId"`
+}
 
+// getAttention reads GET .../stats/attention and decodes it, failing the
+// test on anything but 200.
+func getAttention(t *testing.T, c *modtest.Client) []attentionItemJSON {
+	t.Helper()
 	r := c.Do(http.MethodGet, "/api/v1/customers/stats/attention", nil)
 	if r.Status != http.StatusOK {
 		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
 	}
-	var items []map[string]any
+	var items []attentionItemJSON
 	r.JSON(&items)
-	if len(items) != 0 {
-		t.Errorf("items = %v, want an empty array", items)
+	return items
+}
+
+// insertRegistryRecord writes a customer_registry_records row directly
+// (Brreg in full design D4, task 3): the four attention types only need the
+// three status flags, an optional deletion date and the record's own name,
+// so the HTTP tests below build the row straight rather than driving it
+// through a fake Brreg transport the way registry_test.go's end-to-end
+// coverage of the refresh itself already does. deletedOn is "" for no
+// deletion.
+func insertRegistryRecord(t *testing.T, h *modtest.Harness, customerID int32, recordName string, bankrupt, underLiquidation, underForcedLiquidation bool, deletedOn string, fetchedAt time.Time) {
+	t.Helper()
+	var deleted pgtype.Date
+	if deletedOn != "" {
+		d, err := time.Parse("2006-01-02", deletedOn)
+		if err != nil {
+			t.Fatalf("insertRegistryRecord: bad deletedOn %q: %v", deletedOn, err)
+		}
+		deleted = pgtype.Date{Time: d, Valid: true}
+	}
+	h.Exec(t, `
+		INSERT INTO customers.customer_registry_records
+			(customer_id, organisation_number, name, vat_registered, bankrupt, under_liquidation, under_forced_liquidation, deleted_on, fetched_at)
+		VALUES ($1, '923609016', $2, false, $3, $4, $5, $6, $7)`,
+		customerID, recordName, bankrupt, underLiquidation, underForcedLiquidation, deleted, fetchedAt)
+}
+
+// TestGetCustomersStatsAttention_ComputesTheFourTypes drives the endpoint
+// end to end (design D4, task 3): a customer with no record at all yields
+// nothing, one of each of the four types appears with the customer's own
+// name as title (never the registry's) and the customer id as entityId,
+// and the whole list is ordered newest fetch first.
+func TestGetCustomersStatsAttention_ComputesTheFourTypes(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+
+	createCustomer(t, c, "No Record At All")
+
+	bankrupt := createCustomerWithIdentity(t, c, "Bankrupt Co", "no", "111111111")
+	liquidation := createCustomerWithIdentity(t, c, "Liquidation Co", "no", "222222222")
+	deleted := createCustomerWithIdentity(t, c, "Deleted Co", "no", "333333333")
+	renamed := createCustomerWithIdentity(t, c, "Renamed Co", "no", "444444444")
+
+	base := time.Date(2026, 9, 22, 8, 0, 0, 0, time.UTC)
+	insertRegistryRecord(t, h, bankrupt.Id, "Bankrupt Co", true, false, false, "", base.Add(3*time.Hour))
+	insertRegistryRecord(t, h, liquidation.Id, "Liquidation Co", false, true, false, "", base.Add(2*time.Hour))
+	insertRegistryRecord(t, h, deleted.Id, "Deleted Co", false, false, false, "2026-09-21", base.Add(1*time.Hour))
+	insertRegistryRecord(t, h, renamed.Id, "Renamed Co AS", false, false, false, "", base)
+
+	items := getAttention(t, c)
+	if len(items) != 4 {
+		t.Fatalf("items = %+v, want exactly 4 (the customer with no record contributes nothing)", items)
+	}
+
+	want := []struct {
+		id, typ, title, entityID string
+	}{
+		{fmt.Sprintf("registryBankrupt/%d", bankrupt.Id), "registryBankrupt", "Bankrupt Co", fmt.Sprintf("%d", bankrupt.Id)},
+		{fmt.Sprintf("registryLiquidation/%d", liquidation.Id), "registryLiquidation", "Liquidation Co", fmt.Sprintf("%d", liquidation.Id)},
+		{fmt.Sprintf("registryDeleted/%d", deleted.Id), "registryDeleted", "Deleted Co", fmt.Sprintf("%d", deleted.Id)},
+		{fmt.Sprintf("registryRenamed/%d", renamed.Id), "registryRenamed", "Renamed Co", fmt.Sprintf("%d", renamed.Id)},
+	}
+	for i, w := range want {
+		if items[i].Id != w.id || items[i].Type != w.typ || items[i].Title != w.title || items[i].EntityId != w.entityID {
+			t.Errorf("items[%d] = %+v, want id=%s type=%s title=%s entityId=%s", i, items[i], w.id, w.typ, w.title, w.entityID)
+		}
+	}
+}
+
+// TestGetCustomersStatsAttention_BankruptcySuppressesLiquidation pins the
+// controller ruling: one item per customer, bankruptcy wins over
+// liquidation when a record carries both flags.
+func TestGetCustomersStatsAttention_BankruptcySuppressesLiquidation(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	created := createCustomerWithIdentity(t, c, "Doubly Troubled AS", "no", "555555555")
+	insertRegistryRecord(t, h, created.Id, "Doubly Troubled AS", true, true, true, "", time.Now())
+
+	items := getAttention(t, c)
+	if len(items) != 1 || items[0].Type != "registryBankrupt" {
+		t.Fatalf("items = %+v, want exactly one registryBankrupt item", items)
+	}
+}
+
+// TestGetCustomersStatsAttention_AnyStatusItemSuppressesRenamed pins the
+// other half of the same ruling: a customer that is both bankrupt and
+// renamed reports only the bankruptcy, its more useful single sentence.
+func TestGetCustomersStatsAttention_AnyStatusItemSuppressesRenamed(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	created := createCustomerWithIdentity(t, c, "Also Renamed AS", "no", "666666666")
+	insertRegistryRecord(t, h, created.Id, "A Completely Different Name AS", true, false, false, "", time.Now())
+
+	items := getAttention(t, c)
+	if len(items) != 1 || items[0].Type != "registryBankrupt" {
+		t.Fatalf("items = %+v, want exactly one registryBankrupt item, not registryRenamed", items)
+	}
+}
+
+// TestGetCustomersStatsAttention_ExcludesArchivedCustomers pins the
+// join's own filter: an archived customer's record is still on file (a
+// refresh never runs for one, but nothing deletes the row either), yet it
+// must never reach the dashboard.
+func TestGetCustomersStatsAttention_ExcludesArchivedCustomers(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	created := createCustomerWithIdentity(t, c, "Archived Bankrupt AS", "no", "777777777")
+	insertRegistryRecord(t, h, created.Id, "Archived Bankrupt AS", true, false, false, "", time.Now())
+
+	del := c.Do(http.MethodDelete, fmt.Sprintf("/api/v1/customers/%d", created.Id), nil)
+	if del.Status != http.StatusNoContent {
+		t.Fatalf("archive: status %d body %s, want 204", del.Status, del.Body)
+	}
+
+	if items := getAttention(t, c); len(items) != 0 {
+		t.Errorf("items = %+v, want none for an archived customer", items)
+	}
+}
+
+// TestGetCustomersStatsAttention_ArchivingClearsEverything pins the "no
+// dismiss state" design (D4): the list is computed live from the stored
+// record against the current customer, so archiving a bankrupt customer
+// clears its item exactly the way TestGetCustomersStatsAttention_ExcludesArchivedCustomers
+// shows for one created already archived — this test instead watches the
+// same item disappear across the transition.
+func TestGetCustomersStatsAttention_ArchivingClearsEverything(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	created := createCustomerWithIdentity(t, c, "About To Be Archived AS", "no", "888888888")
+	insertRegistryRecord(t, h, created.Id, "About To Be Archived AS", true, false, false, "", time.Now())
+
+	if items := getAttention(t, c); len(items) != 1 {
+		t.Fatalf("items = %+v, want one item before archiving", items)
+	}
+
+	del := c.Do(http.MethodDelete, fmt.Sprintf("/api/v1/customers/%d", created.Id), nil)
+	if del.Status != http.StatusNoContent {
+		t.Fatalf("archive: status %d body %s, want 204", del.Status, del.Body)
+	}
+
+	if items := getAttention(t, c); len(items) != 0 {
+		t.Errorf("items = %+v, want none after archiving", items)
+	}
+}
+
+// TestGetCustomersStatsAttention_RenameClearsWhenLegalIdentityIsUpdated
+// pins registryRenamed's own clearing condition, the one of the four that
+// is not "archive the customer": a PUT .../legal-identity that adopts the
+// registry's name makes the two equal again, and the item disappears with
+// no other write.
+func TestGetCustomersStatsAttention_RenameClearsWhenLegalIdentityIsUpdated(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	created := createCustomerWithIdentity(t, c, "Old Name AS", "no", "999999999")
+	insertRegistryRecord(t, h, created.Id, "New Name AS", false, false, false, "", time.Now())
+
+	items := getAttention(t, c)
+	if len(items) != 1 || items[0].Type != "registryRenamed" {
+		t.Fatalf("items = %+v, want exactly one registryRenamed item", items)
+	}
+
+	update := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/legal-identity", created.Id), map[string]any{
+		"country": "no", "type": "business", "id": "999999999", "name": "New Name AS", "source": "manual",
+	})
+	if update.Status != http.StatusOK {
+		t.Fatalf("PUT legal-identity: status %d body %s, want 200", update.Status, update.Body)
+	}
+
+	if items := getAttention(t, c); len(items) != 0 {
+		t.Errorf("items = %+v, want none once the legal name matches the registry's", items)
 	}
 }
 

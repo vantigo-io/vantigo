@@ -3,6 +3,8 @@ package customers
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
@@ -48,14 +50,82 @@ func (s *server) GetCustomersStats(ctx context.Context, _ gen.GetCustomersStatsR
 	return gen.GetCustomersStats200JSONResponse(resp), nil
 }
 
+// The four attention types design D4 defines, each computed from the stored
+// registry record against the current customer rather than from events —
+// which is what lets the list clear itself the moment the underlying fact
+// does, with no "dismiss" action anywhere.
+const (
+	attentionRegistryBankrupt    = "registryBankrupt"
+	attentionRegistryLiquidation = "registryLiquidation"
+	attentionRegistryDeleted     = "registryDeleted"
+	attentionRegistryRenamed     = "registryRenamed"
+)
+
 // GetCustomersStatsAttention Get customer dashboard attention items
 // (GET /api/v1/customers/stats/attention)
 //
-// A stub in .NET too (CustomerStatsEndpoints.cs:111-112, inventory §8.5):
-// always an empty array, since no dashboard "attention items" feature
-// exists behind this operation yet.
-func (s *server) GetCustomersStatsAttention(context.Context, gen.GetCustomersStatsAttentionRequestObject) (gen.GetCustomersStatsAttentionResponseObject, error) {
-	return gen.GetCustomersStatsAttention200JSONResponse([]gen.CustomerStatsAttentionItem{}), nil
+// No longer .NET's stub (CustomerStatsEndpoints.cs:111-112, inventory
+// §8.5's "always an empty array"): design D4 gives this operation a real
+// feature, new to the port. One query reads every non-archived customer
+// with a stored registry record; attentionItemsFrom does the actual work,
+// pure and table-tested on its own (stats_internal_test.go), so this
+// handler is only the plumbing between the two.
+func (s *server) GetCustomersStatsAttention(ctx context.Context, _ gen.GetCustomersStatsAttentionRequestObject) (gen.GetCustomersStatsAttentionResponseObject, error) {
+	q := store.New(s.deps.Pool)
+	rows, err := q.RegistryAttentionCandidates(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("customers: stats attention: %w", err)
+	}
+	return gen.GetCustomersStatsAttention200JSONResponse(attentionItemsFrom(rows)), nil
+}
+
+// attentionItemsFrom is GetCustomersStatsAttention's pure half: one item per
+// customer at most (registryAttentionType's precedence), ordered newest
+// fetch first, ties broken by id — the dashboard reads a list, not a
+// timeline, so "what changed most recently" is the useful order and a
+// stable tiebreaker keeps repeated calls from reshuffling ties.
+func attentionItemsFrom(rows []store.RegistryAttentionCandidatesRow) []gen.CustomerStatsAttentionItem {
+	items := make([]gen.CustomerStatsAttentionItem, 0, len(rows))
+	for _, r := range rows {
+		typ, ok := registryAttentionType(r)
+		if !ok {
+			continue
+		}
+		id := strconv.FormatInt(int64(r.CustomerID), 10)
+		items = append(items, gen.CustomerStatsAttentionItem{
+			Id: typ + "/" + id, Type: typ, Title: r.Name, OccurredAt: r.FetchedAt, EntityId: id,
+		})
+	}
+	slices.SortStableFunc(items, func(a, b gen.CustomerStatsAttentionItem) int {
+		if c := b.OccurredAt.Compare(a.OccurredAt); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Id, b.Id)
+	})
+	return items
+}
+
+// registryAttentionType is one row's attention type, and whether it has
+// one at all (design D4, controller ruling): deleted beats bankrupt beats
+// liquidation beats renamed — a struck-off company's most useful single
+// sentence is that it is deleted, whatever else is also true of it. A
+// rename only surfaces once none of the three status flags do, and only
+// when the customer has a legal name to compare against at all (a nil
+// LegalName means no legal identity, or one whose name was never set —
+// either way there is nothing to call a rename).
+func registryAttentionType(r store.RegistryAttentionCandidatesRow) (string, bool) {
+	switch {
+	case r.DeletedOn.Valid:
+		return attentionRegistryDeleted, true
+	case r.Bankrupt:
+		return attentionRegistryBankrupt, true
+	case r.UnderLiquidation || r.UnderForcedLiquidation:
+		return attentionRegistryLiquidation, true
+	case r.LegalName != nil && strings.TrimSpace(r.RecordName) != strings.TrimSpace(*r.LegalName):
+		return attentionRegistryRenamed, true
+	default:
+		return "", false
+	}
 }
 
 // GetCustomersStatsSummary Get customer dashboard summary
