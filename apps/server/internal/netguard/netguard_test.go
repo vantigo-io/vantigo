@@ -62,6 +62,8 @@ func TestDisallowed_RejectsForbiddenRanges(t *testing.T) {
 		"2001::1",            // Teredo 2001::/32 - refused outright, embedding is obfuscated
 		"64:ff9b::7f00:1",    // NAT64, embedding loopback 127.0.0.1
 		"64:ff9b::e000:1",    // NAT64, embedding multicast 224.0.0.1
+		"64:ff9b::",          // NAT64, embedding 0.0.0.0 ("::" alone is already caught as unspecified)
+		"2002::",             // 6to4, embedding 0.0.0.0
 	}
 	for _, host := range cases {
 		host := host
