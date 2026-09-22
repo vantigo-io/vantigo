@@ -68,10 +68,36 @@ func TestDiffRegistryRecords_FirstFetchComparesOnlyTheLegalName(t *testing.T) {
 	}
 }
 
+// TestDiffRegistryRecords_FirstFetchReportsADeletedEntity pins the second
+// half of the first-fetch comparison: a company that is already struck from
+// the register when it is first read is news, whether or not its name
+// matches, and the two are reported in the full diff's own field order.
+func TestDiffRegistryRecords_FirstFetchReportsADeletedEntity(t *testing.T) {
+	t.Parallel()
+	after := equinorRecord(t)
+	after.DeletedOn = registryDate(t, "2026-09-21")
+
+	changes := diffRegistryRecords(nil, "EQUINOR ASA", after)
+	want := []registryChange{{Field: "deletedOn", To: "2026-09-21"}}
+	if !sameRegistryChanges(changes, want) {
+		t.Errorf("changes = %+v, want %+v", changes, want)
+	}
+
+	changes = diffRegistryRecords(nil, "Equinor", after)
+	want = []registryChange{
+		{Field: "name", From: "Equinor", To: "EQUINOR ASA"},
+		{Field: "deletedOn", To: "2026-09-21"},
+	}
+	if !sameRegistryChanges(changes, want) {
+		t.Errorf("changes = %+v, want %+v (name first, then deletedOn)", changes, want)
+	}
+}
+
 // TestDiffRegistryRecords_FirstFetchIgnoresEveryOtherField proves the
-// first-fetch comparison really is name-only: a record full of values has
-// nothing to have changed *from*, so reporting them all as changes would
-// bury the one thing a person cares about under sixteen lines of noise.
+// first-fetch comparison really is those two fields and no more: a record
+// full of values has nothing to have changed *from*, so reporting them all
+// as changes would bury the ones a person cares about under sixteen lines of
+// noise.
 func TestDiffRegistryRecords_FirstFetchIgnoresEveryOtherField(t *testing.T) {
 	t.Parallel()
 	after := equinorRecord(t)

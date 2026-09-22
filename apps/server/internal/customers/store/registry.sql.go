@@ -81,12 +81,17 @@ FOR UPDATE
 `
 
 // GetCustomerRegistryRecordForUpdate is the read a refresh makes inside the
-// transaction that also writes the row (design D2, D4): the FOR UPDATE lock,
-// the same shape GetCustomerPeppolLookupForUpdate gives peppol_lookup.go,
-// serializes two concurrent refreshes of the same customer so neither
-// diffs against a before-state the other has already overtaken.
-// pgx.ErrNoRows means "first fetch ever" — the handler then compares the
-// registry's name with the legal identity's, and nothing else.
+// transaction that also writes the row (design D2, D4), after that
+// transaction has already taken LockCustomer on the customer itself.
+//
+// The customer lock is what actually serializes two refreshes of the same
+// customer; this FOR UPDATE only holds the record row across the diff and
+// the write that follows it. It could not serialize a first refresh on its
+// own: with no row yet there is nothing to lock, so two concurrent first
+// fetches would each diff against "nothing on file" and each record their
+// own event. pgx.ErrNoRows is exactly that first-fetch case — the handler
+// then compares the registry's name and deletion date against the legal
+// identity's name, and nothing else.
 func (q *Queries) GetCustomerRegistryRecordForUpdate(ctx context.Context, customerID int32) (CustomersCustomerRegistryRecord, error) {
 	row := q.db.QueryRow(ctx, getCustomerRegistryRecordForUpdate, customerID)
 	var i CustomersCustomerRegistryRecord

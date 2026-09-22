@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf16"
+	"unicode/utf8"
 
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
@@ -704,6 +706,204 @@ func TestRegistryRefresh_RemovedFromOpenData_DeletesTheRecord(t *testing.T) {
 	assertRegistryPayload(t, entries[0], want)
 }
 
+// TestRegistryRefresh_RemovedTwice_RecordsOneEvent pins the removal's own
+// idempotence (fix round 1): the click that actually removed the record
+// records it; a second click, with nothing left on file, still answers
+// removed but writes no duplicate entry about a disappearance already on the
+// timeline.
+func TestRegistryRefresh_RemovedTwice_RecordsOneEvent(t *testing.T) {
+	t.Parallel()
+	var removed bool
+	transport := &registryTransport{respond: func(string) (*http.Response, error) {
+		if removed {
+			return registryEntityResponse(http.StatusGone, removedRegistryBody), nil
+		}
+		return registryEntityResponse(http.StatusOK, equinorRegistryBody), nil
+	}}
+	h := newRegistryHarness(t, transport)
+	c := authenticatedClient(t, h)
+	created := createCustomerWithIdentity(t, c, "EQUINOR ASA", "no", "923609016")
+
+	if r := postRegistryRefresh(t, c, created.Id); r.Status != http.StatusOK {
+		t.Fatalf("first refresh: status %d body %s, want 200", r.Status, r.Body)
+	}
+	removed = true
+	if r := postRegistryRefresh(t, c, created.Id); r.Status != http.StatusOK {
+		t.Fatalf("second refresh: status %d body %s, want 200", r.Status, r.Body)
+	}
+
+	r := postRegistryRefresh(t, c, created.Id)
+	if r.Status != http.StatusOK {
+		t.Fatalf("third refresh: status %d body %s, want 200", r.Status, r.Body)
+	}
+	var got registryRefreshJSON
+	r.JSON(&got)
+	if got.Status != "removed" || got.Record != nil || len(got.Changes) != 0 {
+		t.Errorf("refresh = %+v, want removed with no record and no changes", got)
+	}
+	if entries := fetchRegistryEvents(t, c, created.Id); len(entries) != 1 {
+		t.Errorf("timeline events = %d, want 1 (only the click that removed the record)", len(entries))
+	}
+}
+
+// TestRegistryRefresh_RemovedWithNothingOnFile_RecordsNothing is the same
+// rule on a customer whose record was never fetched: the registry says the
+// entity left open data, there is nothing to delete, and nothing happened
+// that this customer's timeline should claim did.
+func TestRegistryRefresh_RemovedWithNothingOnFile_RecordsNothing(t *testing.T) {
+	t.Parallel()
+	h := newRegistryHarness(t, registryStatus(http.StatusGone, removedRegistryBody))
+	c := authenticatedClient(t, h)
+	created := createCustomerWithIdentity(t, c, "Never Fetched Co", "no", "923609016")
+
+	r := postRegistryRefresh(t, c, created.Id)
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+	}
+	var got registryRefreshJSON
+	r.JSON(&got)
+	if got.Status != "removed" || got.Record != nil || len(got.Changes) != 0 {
+		t.Errorf("refresh = %+v, want removed with no record and no changes", got)
+	}
+	if n := registryRowCount(t, h, created.Id); n != 0 {
+		t.Errorf("registry rows = %d, want 0", n)
+	}
+	if entries := fetchRegistryEvents(t, c, created.Id); len(entries) != 0 {
+		t.Errorf("timeline events = %d, want 0", len(entries))
+	}
+}
+
+// TestCreateCustomer_WithBrregPickOfADeletedEntity_ReportsTheDeletion pins
+// the other half of the first-fetch comparison (fix round 1): picking a
+// company that has already been struck from the register stores the deletion
+// *and* says so on the timeline, rather than filing it silently.
+func TestCreateCustomer_WithBrregPickOfADeletedEntity_ReportsTheDeletion(t *testing.T) {
+	t.Parallel()
+	h := newRegistryHarness(t, registryBody(deletedRegistryBody))
+	c := authenticatedClient(t, h)
+
+	created := createBrregPick(t, c, "EQUINOR ASA", "923609016")
+
+	rec := fetchRegistryRecord(t, c, created.Id)
+	if str(rec.DeletedOn) != "2026-09-21" {
+		t.Errorf("DeletedOn = %v, want 2026-09-21", rec.DeletedOn)
+	}
+	entries := fetchRegistryEvents(t, c, created.Id)
+	if len(entries) != 1 {
+		t.Fatalf("timeline events = %d, want 1", len(entries))
+	}
+	if str(entries[0].Summary) != "Registry record updated: deletedOn" {
+		t.Errorf("summary = %q, want the deletion named", str(entries[0].Summary))
+	}
+	assertRegistryPayload(t, entries[0], []registryChangeJSON{{Field: "deletedOn", To: ptr("2026-09-21")}})
+}
+
+// TestRegistryRefresh_RestoredEntity_ClearsTheDeletion is the reverse: an
+// entity that is found alive again clears deletedOn and reports that it did,
+// so a record wrongly marked deleted never sticks.
+func TestRegistryRefresh_RestoredEntity_ClearsTheDeletion(t *testing.T) {
+	t.Parallel()
+	h := newRegistryHarness(t, registrySequence(deletedRegistryBody, equinorRegistryBody))
+	c := authenticatedClient(t, h)
+	created := createCustomerWithIdentity(t, c, "EQUINOR ASA", "no", "923609016")
+
+	if r := postRegistryRefresh(t, c, created.Id); r.Status != http.StatusOK {
+		t.Fatalf("first refresh: status %d body %s, want 200", r.Status, r.Body)
+	}
+
+	r := postRegistryRefresh(t, c, created.Id)
+	if r.Status != http.StatusOK {
+		t.Fatalf("second refresh: status %d body %s, want 200", r.Status, r.Body)
+	}
+	var got registryRefreshJSON
+	r.JSON(&got)
+	if got.Status != "found" {
+		t.Errorf("status = %q, want found", got.Status)
+	}
+	want := []registryChangeJSON{
+		{Field: "organisationForm", To: ptr("Allmennaksjeselskap")},
+		{Field: "industryCode", To: ptr("06.100")},
+		{Field: "employees", To: ptr("21272")},
+		{Field: "vatRegistered", From: ptr("false"), To: ptr("true")},
+		{Field: "deletedOn", From: ptr("2026-09-21")},
+		{Field: "website", To: ptr("www.equinor.com")},
+		{Field: "businessAddress", To: ptr("Forusbeen 50, 4035 STAVANGER, NO")},
+		{Field: "postalAddress", To: ptr("Postboks 8500, 4035 STAVANGER, NO")},
+	}
+	if !sameChanges(got.Changes, want) {
+		t.Errorf("changes = %+v, want %+v", got.Changes, want)
+	}
+	rec := fetchRegistryRecord(t, c, created.Id)
+	if rec.DeletedOn != nil {
+		t.Errorf("DeletedOn = %v, want nil (the entity is alive again)", rec.DeletedOn)
+	}
+}
+
+// TestPutLegalIdentity_Unchanged_FetchesNothing pins the no-op rule reaching
+// the registry too: a resubmit of exactly the identity already stored writes
+// nothing and, since it returns before the transaction ever opens, makes no
+// network call either.
+func TestPutLegalIdentity_Unchanged_FetchesNothing(t *testing.T) {
+	t.Parallel()
+	transport := registryBody(equinorRegistryBody)
+	h := newRegistryHarness(t, transport)
+	c := authenticatedClient(t, h)
+	created := createCustomer(t, c, "Resubmit Identity Co")
+	identity := map[string]any{
+		"country": "no", "type": "business", "id": "923609016", "name": "EQUINOR ASA", "source": "brreg",
+	}
+
+	if r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/legal-identity", created.Id), identity); r.Status != http.StatusOK {
+		t.Fatalf("first put: status %d body %s, want 200", r.Status, r.Body)
+	}
+	if n := len(transport.requests()); n != 1 {
+		t.Fatalf("requests after the first put = %d, want 1", n)
+	}
+
+	if r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/legal-identity", created.Id), identity); r.Status != http.StatusOK {
+		t.Fatalf("resubmit: status %d body %s, want 200", r.Status, r.Body)
+	}
+	if n := len(transport.requests()); n != 1 {
+		t.Errorf("requests = %d, want still 1 (an unchanged identity fetches nothing)", n)
+	}
+}
+
+// TestRegistryRefresh_EmptyAddressLines_RoundTripAsAnEmptyArray pins the
+// stored address shape: an address the registry sends with no street lines
+// at all is still an address, and its lines come back as an empty array
+// rather than null.
+func TestRegistryRefresh_EmptyAddressLines_RoundTripAsAnEmptyArray(t *testing.T) {
+	t.Parallel()
+	body := `{
+		"organisasjonsnummer": "923609016",
+		"navn": "EQUINOR ASA",
+		"organisasjonsform": {"kode": "ASA", "beskrivelse": "Allmennaksjeselskap"},
+		"harRegistrertAntallAnsatte": false,
+		"registrertIMvaregisteret": false,
+		"forretningsadresse": {"landkode": "NO", "adresse": []},
+		"konkurs": false,
+		"underAvvikling": false,
+		"underTvangsavviklingEllerTvangsopplosning": false
+	}`
+	h := newRegistryHarness(t, registryBody(body))
+	c := authenticatedClient(t, h)
+	created := createCustomerWithIdentity(t, c, "EQUINOR ASA", "no", "923609016")
+
+	if r := postRegistryRefresh(t, c, created.Id); r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+	}
+	rec := fetchRegistryRecord(t, c, created.Id)
+	if rec.BusinessAddress == nil {
+		t.Fatalf("BusinessAddress = nil, want an address with no lines")
+	}
+	if rec.BusinessAddress.Lines == nil {
+		t.Errorf("Lines = null, want an empty array")
+	}
+	if len(rec.BusinessAddress.Lines) != 0 || rec.BusinessAddress.CountryCode != "NO" {
+		t.Errorf("BusinessAddress = %+v, want no lines and country NO", rec.BusinessAddress)
+	}
+}
+
 // TestRegistryRefresh_UnknownOrganisationNumber_StoresNothing pins the 404
 // outcome: the registry does not know this number, which is worth telling
 // the caller and nothing else — no record, no event.
@@ -894,6 +1094,79 @@ func TestRegistryRefresh_TruncatesOverlongText(t *testing.T) {
 	}
 	if !strings.HasPrefix(longName, rec.Name) {
 		t.Errorf("name = %q, want a prefix of what the registry sent", rec.Name)
+	}
+}
+
+// TestRegistryRefresh_TruncatesSurrogatePairsByUTF16Units pins what
+// "truncated to the column" actually counts: UTF-16 code units, the same
+// unit truncateUTF16 uses everywhere else in this module (timeline.go). An
+// emoji is two units, so 400 of them are cut at 255 units — 127 whole emoji
+// and one half of a pair, which decodes to a replacement character rather
+// than invalid UTF-8 the database would refuse.
+func TestRegistryRefresh_TruncatesSurrogatePairsByUTF16Units(t *testing.T) {
+	t.Parallel()
+	emojiName := strings.Repeat("🙂", 400)
+	body := fmt.Sprintf(`{
+		"organisasjonsnummer": "923609016",
+		"navn": %q,
+		"organisasjonsform": {"kode": "ASA", "beskrivelse": "Allmennaksjeselskap"},
+		"harRegistrertAntallAnsatte": false,
+		"registrertIMvaregisteret": false,
+		"konkurs": false,
+		"underAvvikling": false,
+		"underTvangsavviklingEllerTvangsopplosning": false
+	}`, emojiName)
+	h := newRegistryHarness(t, registryBody(body))
+	c := authenticatedClient(t, h)
+	created := createCustomerWithIdentity(t, c, "Emoji Name Co", "no", "923609016")
+
+	if r := postRegistryRefresh(t, c, created.Id); r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+	}
+	rec := fetchRegistryRecord(t, c, created.Id)
+	if n := len(utf16.Encode([]rune(rec.Name))); n != 255 {
+		t.Errorf("name length = %d UTF-16 units, want 255", n)
+	}
+	runes := []rune(rec.Name)
+	if len(runes) != 128 {
+		t.Fatalf("name = %d runes, want 128 (127 whole emoji plus the split pair)", len(runes))
+	}
+	if string(runes[:127]) != strings.Repeat("🙂", 127) {
+		t.Errorf("name = %q, want the first 127 emoji intact", rec.Name)
+	}
+	if !utf8.ValidString(rec.Name) {
+		t.Errorf("name = %q, want valid UTF-8", rec.Name)
+	}
+}
+
+// TestRegistryRefresh_TruncatesAShortColumnToo pins the same rule on one of
+// the short columns: telefon is varchar(30), and a registry body carrying
+// more than that is stored truncated rather than answered with a 500 from a
+// database-level "value too long".
+func TestRegistryRefresh_TruncatesAShortColumnToo(t *testing.T) {
+	t.Parallel()
+	longPhone := strings.Repeat("9", 40)
+	body := fmt.Sprintf(`{
+		"organisasjonsnummer": "923609016",
+		"navn": "EQUINOR ASA",
+		"organisasjonsform": {"kode": "ASA", "beskrivelse": "Allmennaksjeselskap"},
+		"harRegistrertAntallAnsatte": false,
+		"registrertIMvaregisteret": false,
+		"telefon": %q,
+		"konkurs": false,
+		"underAvvikling": false,
+		"underTvangsavviklingEllerTvangsopplosning": false
+	}`, longPhone)
+	h := newRegistryHarness(t, registryBody(body))
+	c := authenticatedClient(t, h)
+	created := createCustomerWithIdentity(t, c, "EQUINOR ASA", "no", "923609016")
+
+	if r := postRegistryRefresh(t, c, created.Id); r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+	}
+	rec := fetchRegistryRecord(t, c, created.Id)
+	if str(rec.Phone) != strings.Repeat("9", 30) {
+		t.Errorf("phone = %q, want 30 nines (truncated to the column)", str(rec.Phone))
 	}
 }
 
