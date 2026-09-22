@@ -1,0 +1,463 @@
+package customers
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+
+	"github.com/vantigo-io/vantigo/server/internal/customers/store"
+	"github.com/vantigo-io/vantigo/server/internal/module"
+	"github.com/vantigo-io/vantigo/server/internal/worker"
+)
+
+// This file is the feed worker (registry workers design D1–D5): the thing that
+// keeps a registry record current without anyone clicking Refresh.
+//
+// The three things about it a reasonable implementer would get wrong, all
+// pinned by tests:
+//
+//  1. **The cursor is written AFTER a page is processed, and the id stored is
+//     the page's last id PLUS ONE.** oppdateringsid is inclusive ("from and
+//     including" — the registry's own docs), so storing the last id itself
+//     re-reads that entry every cycle forever. Writing the cursor before the
+//     page is processed is worse: those entities changed, this installation
+//     skipped them, and nothing will ever say so again. A feed request that
+//     fails must therefore leave the cursor exactly where it was, while a
+//     *refresh* that fails must not — the hint below is what remembers that.
+//  2. **The hint is written before the refresh, in its own statement.** A
+//     successful refresh leaves fetched_at >= registry_updated_hint; a failed
+//     one leaves hint > fetched_at, which is the single definition of stale and
+//     the only reason the sweep ever finds it again (design D2, D3). Writing
+//     the hint after the refresh, or inside its transaction, would make a
+//     failed refresh indistinguishable from one that never happened.
+//  3. **Every entry counts, including Ukjent, and none of them is the
+//     authority.** The feed says *that* something changed, never what: the
+//     entity is re-read whole through delivery A's own refresh path, which is
+//     where a 410 becomes a deletion and a SlettetEnhet body becomes a
+//     deletion date. A worker that mapped endringstype onto an outcome itself
+//     would be a second, divergent copy of that ruling.
+//
+// The advisory lease (D5) is communications/retention.go's underLease,
+// reproduced rather than shared: the two are the only users, and a shared
+// helper would be a third module boundary to design for no benefit.
+
+const (
+	// registryFeedWorkerName is what the runner logs this worker as. It follows
+	// the <module>-<worker> spelling communications' three workers established
+	// (communications-outbox, communications-retention,
+	// communications-attachment-cleanup) rather than the design doc's dotted
+	// "customers.registry-feed": an operator greps one set of worker names, and
+	// two spellings in one log would be the first thing to explain.
+	registryFeedWorkerName = "customers-registry-feed"
+
+	// registryFeedLeaseKey is the ASCII string "CUSTREG1" read as a big-endian
+	// 64-bit value (design D5). Postgres advisory locks are per-database, so
+	// this key shares one space with every other advisory-lock user in the
+	// installation — which is why it is a recognisable constant rather than a
+	// small number, and why the one-argument pg_try_advisory_lock(bigint)
+	// overload is used rather than the two-argument one identity and energy
+	// take for their own row-scoped locks.
+	registryFeedLeaseKey int64 = 0x4355535452454731
+
+	// registryFeedPageBudget is how many pages one cycle reads before stopping
+	// (design D1). At registryFeedPageSize entries a page that is 20 000
+	// entries a cycle — a week's churn of the whole register clears in two
+	// cycles — while a worker that fell a month behind still never holds its
+	// lease for an hour.
+	registryFeedPageBudget = 20
+
+	// registryFeedStaleBatch and registryFeedBackfillBatch bound the sweep
+	// (design D3): up to 50 records whose refresh has not caught up with their
+	// hint, and up to 25 customers that have no record at all. The second is
+	// smaller on purpose — it is unbounded work the first time a worker ever
+	// runs on an old installation, and a few hundred an hour catches a large
+	// one up within a day without ever looking like an outage to the registry.
+	registryFeedStaleBatch    = 50
+	registryFeedBackfillBatch = 25
+
+	// defaultRegistryFeedPoll is the cadence a worker built from a Deps with no
+	// Config falls back on — the same value config.go defaults
+	// CUSTOMERS_REGISTRY_FEED_POLL to, repeated here so a worker built from a
+	// bare module.Deps is still well-defined rather than spinning.
+	defaultRegistryFeedPoll = 15 * time.Minute
+)
+
+// RegistryFeedWorker reads Brreg's incremental update feed and re-reads the
+// entities this installation is a customer of. It implements worker.Worker, so
+// module.Workers hands it to cmd/vantigo's runner in worker mode and in api
+// mode when WORKERS_IN_PROCESS=1.
+type RegistryFeedWorker struct {
+	deps module.Deps
+	// srv is the module's own operations, built exactly as mount builds them:
+	// the worker refreshes through refreshRegistryRecord — the same
+	// network-then-transaction path a click takes, with the same Brreg client
+	// from the same Deps.HTTPTransport seam — rather than reimplementing the
+	// four outcomes beside it.
+	srv *server
+}
+
+var _ worker.Worker = (*RegistryFeedWorker)(nil)
+
+// NewRegistryFeedWorker builds the worker over d.
+func NewRegistryFeedWorker(d module.Deps) *RegistryFeedWorker {
+	return &RegistryFeedWorker{deps: d, srv: newServer(d)}
+}
+
+// Name identifies this worker in the runner's logs.
+func (w *RegistryFeedWorker) Name() string { return registryFeedWorkerName }
+
+// Interval is the poll cadence between cycles, 15 minutes. The feed is one
+// small request per poll, so the cadence is about how soon a change is noticed,
+// not about load. Task 3 makes it configurable
+// (CUSTOMERS_REGISTRY_FEED_POLL); until that setting exists there is one
+// cadence and this is it.
+func (w *RegistryFeedWorker) Interval() time.Duration {
+	return defaultRegistryFeedPoll
+}
+
+// Run is the worker loop: run a cycle, sleep the poll interval, repeat until
+// ctx is done. The interval is computed once, before the loop, as the retention
+// worker computes it. A failing cycle is logged and the loop continues — the
+// loop never dies, which is the property the runner depends on since it never
+// restarts a worker.
+func (w *RegistryFeedWorker) Run(ctx context.Context) error {
+	ticker := time.NewTicker(w.Interval())
+	defer ticker.Stop()
+	for {
+		if _, err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
+			w.logger().Error("registry feed cycle failed", "worker", registryFeedWorkerName, "error", err)
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+		}
+	}
+}
+
+// RunCycle is one cycle under the advisory lease, reporting whether it ran:
+// the sweep first, then the feed. false means another replica holds the lease
+// and this one skipped, which is a normal, logged outcome and not an error.
+//
+// The sweep runs first because it is the half that only ever RETRIES work the
+// feed has already accounted for (design D3): ordering it ahead means a cycle
+// whose feed request fails still caught up whatever was outstanding, and a
+// cycle that ends early leaves the cursor where the last fully processed page
+// put it either way.
+func (w *RegistryFeedWorker) RunCycle(ctx context.Context) (bool, error) {
+	return w.underLease(ctx, func(ctx context.Context) error {
+		if err := w.ensureCursor(ctx); err != nil {
+			return err
+		}
+		if _, err := w.Sweep(ctx); err != nil {
+			return err
+		}
+		_, err := w.ReadFeed(ctx)
+		return err
+	})
+}
+
+// underLease is design D5's non-blocking, installation-wide lease, the same
+// shape communications' retention worker takes (retention.go's own underLease,
+// whose comment explains the session scope and the WithoutCancel release in
+// full). Reproduced rather than shared: this worker and the Peppol re-check
+// worker beside it are the only two users in this module, and a shared helper
+// would be a third module boundary to design.
+func (w *RegistryFeedWorker) underLease(ctx context.Context, action func(context.Context) error) (bool, error) {
+	conn, err := w.deps.Pool.Acquire(ctx)
+	if err != nil {
+		return false, fmt.Errorf("customers: acquire a connection for the registry feed lease: %w", err)
+	}
+	defer conn.Release()
+
+	var acquired bool
+	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, registryFeedLeaseKey).Scan(&acquired); err != nil {
+		return false, fmt.Errorf("customers: take the registry feed lease: %w", err)
+	}
+	if !acquired {
+		w.logger().Debug("the customers registry feed lease is held by another replica; skipping this cycle",
+			"worker", registryFeedWorkerName)
+		return false, nil
+	}
+	defer func() {
+		release := context.WithoutCancel(ctx)
+		if _, err := conn.Exec(release, `SELECT pg_advisory_unlock($1)`, registryFeedLeaseKey); err != nil {
+			// A session that still holds the lease must never go back into the
+			// pool: every later cycle in this process would draw it, find the
+			// lock held by its own session, and skip silently forever. Closing
+			// the connection makes Release destroy it.
+			w.logger().Error("releasing the registry feed lease failed; discarding the connection",
+				"worker", registryFeedWorkerName, "error", err)
+			_ = conn.Conn().Close(release)
+		}
+	}()
+	return true, action(ctx)
+}
+
+// ensureCursor plants the cursor row the first time this installation runs a
+// cycle, stamping the moment it joined the feed (design D1). Idempotent, and
+// deliberately not an upsert: started_at must never move.
+func (w *RegistryFeedWorker) ensureCursor(ctx context.Context) error {
+	if err := store.New(w.deps.Pool).EnsureRegistryFeedCursor(ctx, w.now()); err != nil {
+		return fmt.Errorf("customers: ensure the registry feed cursor: %w", err)
+	}
+	return nil
+}
+
+// Sweep is design D3: up to registryFeedStaleBatch records whose refresh has
+// not caught up with their hint (oldest hint first), then up to
+// registryFeedBackfillBatch Norwegian business customers with no record at all
+// (lowest id first). It answers how many refreshes succeeded.
+//
+// A refresh that fails here is logged and left for the next cycle — never
+// returned: one unreachable company must not stop the sweep from catching up
+// on the other 74, and a stale row is still stale next cycle, which is the
+// whole retry mechanism. A failure of the SELECTs themselves is returned: that
+// is the database, not the registry.
+//
+// The sweep never touches the FEED cursor — it is not reading the feed, so it
+// has no feed position to advance, and advancing one on its behalf would claim
+// pages nobody read. It does keep its own position, backfill_after_id, for the
+// reason the migration's comment gives: without one, a customer the register
+// cannot resolve pins the backfill to the same 25 rows forever. Reading that
+// position means the cursor row has to exist, which is why RunCycle calls
+// ensureCursor ahead of this and why anything driving Sweep on its own must too.
+func (w *RegistryFeedWorker) Sweep(ctx context.Context) (int, error) {
+	q := store.New(w.deps.Pool)
+
+	stale, err := q.StaleRegistryRecords(ctx, registryFeedStaleBatch)
+	if err != nil {
+		return 0, fmt.Errorf("customers: select stale registry records: %w", err)
+	}
+	refreshed := 0
+	for _, row := range stale {
+		if ctx.Err() != nil {
+			return refreshed, nil
+		}
+		if w.refresh(ctx, row.CustomerID, row.Type, row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType) {
+			refreshed++
+		}
+	}
+
+	cursor, err := q.GetRegistryFeedCursor(ctx)
+	if err != nil {
+		return refreshed, fmt.Errorf("customers: read the registry feed cursor: %w", err)
+	}
+	missing, err := q.CustomersWithoutRegistryRecord(ctx, store.CustomersWithoutRegistryRecordParams{
+		AfterID: cursor.BackfillAfterID, RowLimit: registryFeedBackfillBatch,
+	})
+	if err != nil {
+		return refreshed, fmt.Errorf("customers: select customers without a registry record: %w", err)
+	}
+	attempted := 0
+	for _, row := range missing {
+		if ctx.Err() != nil {
+			// Stop, but keep the ground already covered: the position below is
+			// written for what was actually attempted, never for what was not.
+			break
+		}
+		attempted++
+		if w.refresh(ctx, row.ID, row.Type, row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType) {
+			refreshed++
+		}
+	}
+	// A full batch leaves the position at the last id attempted, so the next
+	// cycle continues; a short one means the end of the installation, and 0
+	// starts the next pass from the front. A cancelled cycle that attempted
+	// nothing leaves the position exactly where it was.
+	switch {
+	case len(missing) == 0 && cursor.BackfillAfterID != 0:
+		// Nothing after the position: either the previous batch reached the end
+		// of the installation, or everything behind it has a record now. Either
+		// way the position has to go back to 0, or the pass is over and nothing
+		// ever starts another one — a full batch of 25 unresolvable customers
+		// followed by an empty batch would otherwise park the backfill there
+		// permanently, which is the same starvation the position exists to
+		// prevent, one cycle later.
+		if err := q.SetRegistryBackfillPosition(ctx, 0); err != nil {
+			return refreshed, fmt.Errorf("customers: store the registry backfill position: %w", err)
+		}
+	case attempted > 0:
+		var next int32 // 0: there is nothing after this batch, so start over
+		if attempted < len(missing) || len(missing) == registryFeedBackfillBatch {
+			// More to come — either this cycle stopped early, or the batch was
+			// full and there may well be a 26th customer behind it.
+			next = missing[attempted-1].ID
+		}
+		if err := q.SetRegistryBackfillPosition(ctx, next); err != nil {
+			return refreshed, fmt.Errorf("customers: store the registry backfill position: %w", err)
+		}
+	}
+	w.logger().Debug("registry sweep finished", "worker", registryFeedWorkerName,
+		"stale", len(stale), "backfill", attempted, "refreshed", refreshed,
+		"backfillFrom", cursor.BackfillAfterID)
+	return refreshed, nil
+}
+
+// ReadFeed reads pages from the stored cursor until a page comes back short or
+// the page budget is spent, answering how many pages it processed (design D1).
+//
+// A feed request that fails ends the cycle with the cursor untouched and the
+// error returned, so the next cycle re-reads the same page. Everything a page
+// costs — the hint, the refresh — happens before its cursor is written, so a
+// page is either fully accounted for or read again.
+func (w *RegistryFeedWorker) ReadFeed(ctx context.Context) (int, error) {
+	q := store.New(w.deps.Pool)
+	pages := 0
+	for ; pages < registryFeedPageBudget; pages++ {
+		if ctx.Err() != nil {
+			return pages, nil
+		}
+		cursor, err := q.GetRegistryFeedCursor(ctx)
+		if err != nil {
+			return pages, fmt.Errorf("customers: read the registry feed cursor: %w", err)
+		}
+		page, err := w.srv.brreg.updates(ctx, feedCursor{
+			UpdateID: cursor.NextUpdateID,
+			Since:    cursor.StartedAt,
+			Size:     registryFeedPageSize,
+		})
+		if err != nil {
+			return pages, fmt.Errorf("customers: read the registry update feed: %w", err)
+		}
+		if len(page.Entries) == 0 {
+			// Nothing to process and no position to claim: only the fact that
+			// this installation is still asking.
+			if err := q.TouchRegistryFeedCursor(ctx, w.now()); err != nil {
+				return pages, fmt.Errorf("customers: record the registry feed poll: %w", err)
+			}
+			return pages, nil
+		}
+		if err := w.handlePage(ctx, q, page); err != nil {
+			return pages, err
+		}
+		if len(page.Entries) < registryFeedPageSize {
+			// A short page means the feed is caught up; one more request would
+			// only ask the registry to say so again.
+			return pages + 1, nil
+		}
+	}
+	w.logger().Debug("registry feed page budget spent; the backlog continues next cycle",
+		"worker", registryFeedWorkerName, "pages", pages)
+	return pages, nil
+}
+
+// handlePage is one page: intersect it with this installation, write each
+// matched customer's hint, refresh it, and only then advance the cursor.
+//
+// A customer named several times on one page is refreshed ONCE, with the newest
+// of its entries as the hint (design D1, D2): the entity is re-read whole
+// whatever the reason, so three requests would spend three requests to learn
+// one thing, and the oldest of three timestamps would understate how current
+// the record then is.
+func (w *RegistryFeedWorker) handlePage(ctx context.Context, q *store.Queries, page feedPage) error {
+	newest := make(map[string]time.Time, len(page.Entries))
+	numbers := make([]string, 0, len(page.Entries))
+	var highest int64
+	for _, entry := range page.Entries {
+		if entry.UpdateID > highest {
+			// The feed is documented as monotonic ascending, so this is the last
+			// entry's id in practice; taking the maximum explicitly means a page
+			// that ever arrives out of order still cannot move the cursor
+			// backwards over entries already processed.
+			highest = entry.UpdateID
+		}
+		if entry.OrganisationNumber == "" {
+			continue
+		}
+		if at, seen := newest[entry.OrganisationNumber]; !seen || entry.Date.After(at) {
+			if !seen {
+				numbers = append(numbers, entry.OrganisationNumber)
+			}
+			newest[entry.OrganisationNumber] = entry.Date
+		}
+	}
+
+	matched, err := q.CustomersByOrganisationNumbers(ctx, numbers)
+	if err != nil {
+		return fmt.Errorf("customers: match a registry feed page: %w", err)
+	}
+	refreshed := 0
+	for _, row := range matched {
+		if ctx.Err() != nil {
+			// Stop without advancing the cursor: this page is only partly
+			// accounted for, so the next cycle must read it again.
+			return nil
+		}
+		hint, ok := newest[deref(row.LegalID)]
+		if !ok {
+			continue
+		}
+		// Written BEFORE the refresh and in its own statement (design D2): a
+		// refresh that fails must leave hint > fetched_at, which is what the
+		// sweep retries on. A customer with no record row has nowhere to keep a
+		// hint, and this statement touching no row is exactly right for it.
+		if err := q.SetRegistryUpdatedHint(ctx, store.SetRegistryUpdatedHintParams{
+			CustomerID: row.ID, Hint: hint,
+		}); err != nil {
+			return fmt.Errorf("customers: write a registry updated hint: %w", err)
+		}
+		if w.refresh(ctx, row.ID, row.Type, row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType) {
+			refreshed++
+		}
+	}
+
+	last := page.Entries[len(page.Entries)-1].Date
+	next := highest + 1 // oppdateringsid is INCLUSIVE: see this file's header.
+	if err := q.AdvanceRegistryFeedCursor(ctx, store.AdvanceRegistryFeedCursorParams{
+		NextUpdateID: &next, LastUpdateAt: last, LastPolledAt: w.now(),
+	}); err != nil {
+		return fmt.Errorf("customers: advance the registry feed cursor: %w", err)
+	}
+	w.logger().Info("registry feed page processed", "worker", registryFeedWorkerName,
+		"entries", len(page.Entries), "matched", len(matched), "refreshed", refreshed, "nextUpdateId", next)
+	return nil
+}
+
+// refresh is one customer re-read through delivery A's own path with the system
+// actor (design D4), reporting whether it succeeded. A failure is logged by
+// kind — never the error text, which can carry the organisation number and the
+// URL it was built from — and swallowed: the caller has more customers to get
+// through, and the hint (or the missing record) is what remembers this one.
+//
+// A customer whose identity cannot be looked up at all — a legacy legal_id that
+// is not an organisation number — is skipped silently: registryOrganisationNumber
+// is the one rule for that, shared with the refresh endpoint's own 409.
+func (w *RegistryFeedWorker) refresh(ctx context.Context, customerID int32, customerType string, legalCountry, legalID, legalName, legalSource, legalType *string) bool {
+	identity := identityFromRow(legalCountry, legalID, legalName, legalSource, legalType)
+	orgnr := registryOrganisationNumber(identity, customerType)
+	if orgnr == "" {
+		return false
+	}
+	if _, err := w.srv.refreshRegistryRecord(ctx, customerID, orgnr, identity.Name, generatedFallbackActor); err != nil {
+		if errors.Is(err, errCustomerNotFound) || errors.Is(err, pgx.ErrNoRows) {
+			// Archived or gone between the select and here: nothing to refresh
+			// and nothing wrong.
+			return false
+		}
+		w.logger().Warn("customers: registry record refresh failed",
+			"worker", registryFeedWorkerName, "customerId", customerID, "errorKind", registryErrorKind(err))
+		return false
+	}
+	return true
+}
+
+// now is the worker's clock, so tests control time exactly as they do for the
+// handlers.
+func (w *RegistryFeedWorker) now() time.Time {
+	if w.deps.Clock != nil {
+		return w.deps.Clock().UTC()
+	}
+	return time.Now().UTC()
+}
+
+func (w *RegistryFeedWorker) logger() *slog.Logger {
+	if w.deps.Logger != nil {
+		return w.deps.Logger
+	}
+	return slog.Default()
+}
