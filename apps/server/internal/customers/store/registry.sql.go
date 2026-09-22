@@ -123,6 +123,66 @@ func (q *Queries) GetCustomerRegistryRecordForUpdate(ctx context.Context, custom
 	return i, err
 }
 
+const registryAttentionCandidates = `-- name: RegistryAttentionCandidates :many
+SELECT c.id AS customer_id, c.name AS name, c.legal_name AS legal_name,
+       r.name AS record_name, r.bankrupt, r.under_liquidation, r.under_forced_liquidation,
+       r.deleted_on, r.fetched_at
+FROM customers.customer_registry_records r
+JOIN customers.customers c ON c.id = r.customer_id
+WHERE c.status <> 'archived'
+`
+
+type RegistryAttentionCandidatesRow struct {
+	CustomerID             int32
+	Name                   string
+	LegalName              *string
+	RecordName             string
+	Bankrupt               bool
+	UnderLiquidation       bool
+	UnderForcedLiquidation bool
+	DeletedOn              pgtype.Date
+	FetchedAt              time.Time
+}
+
+// RegistryAttentionCandidates is /stats/attention's own read (design D4):
+// every non-archived customer that has a stored registry record, with just
+// enough of both rows for attentionItemsFrom (stats.go) to compute the four
+// rules in Go rather than as CASE WHEN chains — bankruptcy suppressing the
+// liquidation item, and any status item suppressing a rename, read more
+// clearly as a Go precedence than as SQL. legal_name is nullable (no legal
+// identity at all, or one whose name was never set), which is exactly the
+// "no rename item" case; record's own name is never null (the column is
+// NOT NULL).
+func (q *Queries) RegistryAttentionCandidates(ctx context.Context) ([]RegistryAttentionCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, registryAttentionCandidates)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RegistryAttentionCandidatesRow
+	for rows.Next() {
+		var i RegistryAttentionCandidatesRow
+		if err := rows.Scan(
+			&i.CustomerID,
+			&i.Name,
+			&i.LegalName,
+			&i.RecordName,
+			&i.Bankrupt,
+			&i.UnderLiquidation,
+			&i.UnderForcedLiquidation,
+			&i.DeletedOn,
+			&i.FetchedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upsertCustomerRegistryRecord = `-- name: UpsertCustomerRegistryRecord :exec
 INSERT INTO customers.customer_registry_records (
     customer_id, organisation_number, name, organisation_form_code, organisation_form,

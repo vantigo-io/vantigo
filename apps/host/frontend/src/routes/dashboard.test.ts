@@ -175,6 +175,60 @@ describe("the dashboard's attention links", () => {
     }
   });
 
+  // The four registry facts a stored Brreg record can surface (Brreg in
+  // full design D4): server-built titles carrying the customer's own name,
+  // the same treatment as the four project-economy signals above.
+  it("names the four registry signals from a catalog, carrying the customer's own name", () => {
+    expect(attentionTitleKey({ module: "customers", type: "registryBankrupt" })).toBe(
+      "dashboard.customerRegistryBankrupt",
+    );
+    expect(attentionTitleKey({ module: "customers", type: "registryLiquidation" })).toBe(
+      "dashboard.customerRegistryLiquidation",
+    );
+    expect(attentionTitleKey({ module: "customers", type: "registryDeleted" })).toBe(
+      "dashboard.customerRegistryDeleted",
+    );
+    expect(attentionTitleKey({ module: "customers", type: "registryRenamed" })).toBe(
+      "dashboard.customerRegistryRenamed",
+    );
+    expect(attentionTitleKey({ module: "customers", type: "customerIdle" })).toBeUndefined();
+
+    const t = (key: string, values?: Record<string, unknown>) => `${key}:${values?.name}`;
+    expect(
+      attentionTitle(
+        { module: "customers", type: "registryBankrupt", entityId: "42", title: "Acme AS" },
+        t,
+        formatInLosAngeles,
+      ),
+    ).toBe("dashboard.customerRegistryBankrupt:Acme AS");
+    expect(
+      attentionTitle(
+        { module: "customers", type: "registryRenamed", entityId: "42", title: "Acme AS" },
+        t,
+        formatInLosAngeles,
+      ),
+    ).toBe("dashboard.customerRegistryRenamed:Acme AS");
+  });
+
+  it("leaves an unknown customers item's title exactly as the server wrote it", () => {
+    const item = { module: "customers" as const, type: "customerIdle", entityId: "42", title: "Acme AS" };
+    expect(attentionTitle(item, () => "never", formatInLosAngeles)).toBe("Acme AS");
+  });
+
+  it("has all four registry titles in English and Norwegian", () => {
+    for (const key of [
+      "dashboard.customerRegistryBankrupt",
+      "dashboard.customerRegistryLiquidation",
+      "dashboard.customerRegistryDeleted",
+      "dashboard.customerRegistryRenamed",
+    ]) {
+      for (const lng of ["en", "nb"]) {
+        expect(i18n.t(key, { ns: "host", lng, name: "Acme AS" })).not.toBe(key);
+        expect(i18n.t(key, { ns: "host", lng, name: "Acme AS" })).toContain("Acme AS");
+      }
+    }
+  });
+
   // Ready milestones are a state, not a delta: most active projects have
   // none, so a standing "0 ready to invoice" would be a permanent fixture
   // rather than something worth reading — the same reasoning as Time's
