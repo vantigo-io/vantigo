@@ -2,13 +2,16 @@
 // private, loopback, link-local (including the 169.254.169.254 cloud
 // metadata address), carrier-grade-NAT, unique-local, multicast, and
 // otherwise non-routable or reserved ranges — including the IPv6 forms that
-// merely carry an IPv4 address inside them (IPv4-mapped ::ffff:/96, NAT64,
-// 6to4, the deprecated IPv4-compatible ::/96), classified by the embedded
-// address, and Teredo, whose embedding is obfuscated rather than plain and
-// so is refused outright. internal/mail's SMTP destination guard delegates
-// its address classification here, so there is exactly one list of
-// forbidden ranges rather than several that could drift apart as new
-// outbound clients (an SMP HTTP client among them) are added.
+// plainly carry an IPv4 address inside them at a fixed offset (IPv4-mapped
+// ::ffff:/96, the NAT64 well-known prefix 64:ff9b::/96, 6to4 2002::/16, the
+// deprecated IPv4-compatible ::/96), classified by that embedded address.
+// The local-use NAT64 range 64:ff9b:1::/48 and Teredo 2001::/32 are refused
+// outright instead, since neither embeds an IPv4 address at a fixed,
+// decodable offset; NAT64 under any other, operator-assigned prefix is not
+// detected at all. internal/mail's SMTP destination guard delegates its
+// address classification here, so there is exactly one list of forbidden
+// ranges rather than several that could drift apart as new outbound
+// clients (an SMP HTTP client among them) are added.
 package netguard
 
 import (
@@ -19,7 +22,7 @@ import (
 	"net/netip"
 )
 
-// ErrDisallowed wraps the destination DialContext refuses to dial: every
+// ErrDisallowed wraps the destination DialContext refuses to dial: ANY
 // resolved address was disallowed, an empty host, or resolution returned no
 // addresses at all. It does NOT wrap a malformed address (net.SplitHostPort
 // failed) or a resolution failure (the resolver itself returned an error)
@@ -43,12 +46,17 @@ type Resolver interface {
 //
 // It unwraps an IPv4-mapped IPv6 address first, so ::ffff:10.0.0.1 is
 // classified exactly like 10.0.0.1, and it likewise sees through the other
-// IPv6 forms that embed an IPv4 address (NAT64, 6to4, the deprecated
-// IPv4-compatible ::/96): the embedded address is extracted and classified
+// IPv6 forms that plainly embed an IPv4 address at a fixed offset — the
+// NAT64 well-known prefix 64:ff9b::/96, 6to4 2002::/16, and the deprecated
+// IPv4-compatible ::/96 — extracting and classifying that embedded address
 // by the same table, so a translation gateway cannot be used to reach a
 // forbidden IPv4 destination that a plain IPv6 route would never reach.
-// Multicast is refused for IPv4 too (224.0.0.0/4), deliberately stricter
-// than the .NET SmtpDestinationGuard this table otherwise mirrors
+// The local-use NAT64 range 64:ff9b:1::/48 (RFC 8215) is refused outright
+// instead, since the embedding position within it is operator-assigned
+// rather than fixed; NAT64 under any other, operator-assigned prefix is
+// not detected at all. Multicast is refused for IPv4 too (224.0.0.0/4),
+// deliberately stricter than the .NET SmtpDestinationGuard this table
+// otherwise mirrors
 // (apps/communications/backend/Communications.Module/Services/SmtpDestinationGuard.cs),
 // which let that range through — no SMTP or SMP server lives there.
 //
@@ -73,6 +81,13 @@ func Disallowed(addr netip.Addr) bool {
 	return disallowedIPv6(candidate.As16())
 }
 
+// disallowedIPv4 is deliberately self-sufficient: it includes loopback
+// (127.0.0.0/8) and multicast (224.0.0.0/4) even though, for a native IPv4
+// address (or an IPv4-mapped ::ffff:/96 one), Disallowed's own
+// IsLoopback/IsMulticast check already catches those before this function
+// is ever reached. The IPv6 forms that embed an IPv4 address at a fixed
+// offset (NAT64, 6to4, IPv4-compatible ::/96) skip that outer check
+// entirely, so this table has to stand on its own for them too.
 func disallowedIPv4(b [4]byte) bool {
 	switch {
 	case b[0] == 0: // 0.0.0.0/8 - "this network"
@@ -81,6 +96,8 @@ func disallowedIPv4(b [4]byte) bool {
 		return true
 	case b[0] == 100 && b[1] >= 64 && b[1] <= 127: // 100.64.0.0/10 - carrier-grade NAT
 		return true
+	case b[0] == 127: // 127.0.0.0/8 - loopback
+		return true
 	case b[0] == 169 && b[1] == 254: // 169.254.0.0/16 - RFC3927 link-local, incl. the 169.254.169.254 cloud metadata address
 		return true
 	case b[0] == 172 && b[1] >= 16 && b[1] <= 31: // 172.16.0.0/12 - RFC1918
@@ -88,6 +105,8 @@ func disallowedIPv4(b [4]byte) bool {
 	case b[0] == 192 && b[1] == 0 && b[2] == 0: // 192.0.0.0/24 - IETF protocol assignments
 		return true
 	case b[0] == 192 && b[1] == 168: // 192.168.0.0/16 - RFC1918
+		return true
+	case b[0] >= 224 && b[0] <= 239: // 224.0.0.0/4 - multicast
 		return true
 	case b[0] >= 240: // 240.0.0.0/4 - reserved, plus 255.255.255.255
 		return true
@@ -122,7 +141,7 @@ func disallowedIPv6(b [16]byte) bool {
 		return true
 	}
 	if embedded, ok := embeddedIPv4(b); ok {
-		return disallowedEmbeddedIPv4(embedded)
+		return disallowedIPv4(embedded)
 	}
 	return false
 }
@@ -156,22 +175,6 @@ func embeddedIPv4(b [16]byte) (embedded [4]byte, ok bool) {
 	default:
 		return [4]byte{}, false
 	}
-}
-
-// disallowedEmbeddedIPv4 classifies an IPv4 address embedded in one of the
-// plain-embedding IPv6 forms by the same table disallowedIPv4 uses, plus
-// the two IPv4 ranges that a native (or IPv4-mapped ::ffff:/96) address
-// only trips via netip's IsLoopback/IsMulticast before disallowedIPv4 is
-// ever reached, and so would otherwise slip through an embedded form:
-// loopback 127.0.0.0/8 and multicast 224.0.0.0/4.
-func disallowedEmbeddedIPv4(b [4]byte) bool {
-	if b[0] == 127 { // 127.0.0.0/8 - loopback
-		return true
-	}
-	if b[0] >= 224 && b[0] <= 239 { // 224.0.0.0/4 - multicast
-		return true
-	}
-	return disallowedIPv4(b)
 }
 
 // DialContext wraps dial with the address guard: it splits address into
