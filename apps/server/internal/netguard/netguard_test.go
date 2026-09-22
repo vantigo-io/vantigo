@@ -411,28 +411,56 @@ func TestDialContext_RefusesZonedLinkLocalLiteral(t *testing.T) {
 }
 
 // TestDialContext_PropagatesCancellationToResolverAndDial proves the
-// caller's context — including its cancellation — reaches both the
-// resolver and the dial func, rather than DialContext substituting a fresh
-// one at either step.
+// caller's context reaches the resolver unchanged, and that a caller who has
+// already given up is answered with its own cancellation before any address
+// is dialled — the dial loop checks the context between attempts rather than
+// walking every address of a destination nobody is waiting for.
 func TestDialContext_PropagatesCancellationToResolverAndDial(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	resolver := &fakeResolver{addrs: []netip.Addr{mustAddr(t, "203.0.113.5")}}
+	resolver := &fakeResolver{addrs: []netip.Addr{mustAddr(t, "203.0.113.5"), mustAddr(t, "203.0.113.6")}}
 
-	var dialCtx context.Context
-	dial := func(ctx context.Context, _ string, _ string) (net.Conn, error) {
-		dialCtx = ctx
+	dialled := 0
+	dial := func(context.Context, string, string) (net.Conn, error) {
+		dialled++
 		return fakeConn{}, nil
 	}
 
-	_, _ = DialContext(resolver, dial)(ctx, "tcp", "mail.example.test:25")
+	_, err := DialContext(resolver, dial)(ctx, "tcp", "mail.example.test:25")
 
 	if resolver.ctx == nil || resolver.ctx.Err() != context.Canceled {
 		t.Fatalf("resolver context = %v, want a context already Canceled", resolver.ctx)
 	}
-	if dialCtx == nil || dialCtx.Err() != context.Canceled {
-		t.Fatalf("dial context = %v, want a context already Canceled", dialCtx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("DialContext() error = %v, want context.Canceled", err)
+	}
+	if dialled != 0 {
+		t.Fatalf("dial func called %d times for a cancelled context, want 0", dialled)
+	}
+}
+
+// TestDialContext_StopsDiallingOnceTheCallerGivesUp proves the check between
+// attempts is real: a context cancelled by the first dial's failure stops the
+// loop before the second address is tried.
+func TestDialContext_StopsDiallingOnceTheCallerGivesUp(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	resolver := &fakeResolver{addrs: []netip.Addr{mustAddr(t, "203.0.113.5"), mustAddr(t, "203.0.113.6")}}
+
+	dialled := 0
+	dial := func(context.Context, string, string) (net.Conn, error) {
+		dialled++
+		cancel()
+		return nil, errors.New("refused")
+	}
+
+	_, err := DialContext(resolver, dial)(ctx, "tcp", "mail.example.test:25")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("DialContext() error = %v, want context.Canceled", err)
+	}
+	if dialled != 1 {
+		t.Fatalf("dial func called %d times, want 1 (the loop must stop once the context is done)", dialled)
 	}
 }

@@ -581,8 +581,8 @@ nothing stored, no network call made.
 **How the network is asked.** Discovery is NAPTR-only: the participant
 identifier's value is lower-cased, SHA-256 hashed, base32-encoded (trailing
 `=` stripped) and turned into a DNS name under the configured SML zone
-(`<hash>.iso6523-actorid-upis.<zone>`). There are three outcomes at the DNS
-step, never two: **NXDOMAIN, or NOERROR with no NAPTR records, is the
+(`<hash>.iso6523-actorid-upis.<zone>`). There are two outcomes at the DNS
+step, and neither is ever collapsed into the other: **NXDOMAIN, or NOERROR with no NAPTR records, is the
 definitive negative** — the SML publishes a name only for a registered
 participant, so a name with no NAPTR records has no SMP behind it either,
 and the two are never distinguished from each other; **SERVFAIL, REFUSED or
@@ -676,8 +676,9 @@ asked" above. Point `PEPPOL_DNS_SERVER` at a plain recursive resolver.
 
 **The frontend.** The Billing card's Peppol row gets a **Check EHF** action
 (gated on `canManageBilling`, i.e. `customers:billing-manage`) that asks the
-network again; the last answer is shown in words with its date ("Can receive
-EHF invoices — checked 21 Sep 2026", "Not registered in Peppol", "Registered
+network again; the last answer is shown in words with its date and time ("Can receive
+EHF invoices — checked 21 Sep 2026, 14:05", plus a dimmed "Looked up 0192:…"
+line naming the identifier the answer is about when the caller may see it, "Not registered in Peppol", "Registered
 in Peppol, but not for invoices"). The `ehf_available` warning renders as an
 offer with its own **Use EHF** button — an ordinary billing-profile `PUT`
 with `invoiceDelivery: "ehf"` and the current `revision` — never a silent
@@ -839,10 +840,12 @@ been in since the foundation.
   conflict on save follows the same Reload pattern the contact-info modal and
   `CustomerFormModal` already use: the modal re-seeds itself and the revision the
   next save sends, rather than leaving a write behind a button that would keep
-  failing. Beneath the Peppol ID row, `CustomerPeppolStatus`
+  failing. Inside the Peppol ID row, `CustomerPeppolStatus`
   (`-customer-peppol-status.tsx`, [Peppol lookup](#peppol-lookup)) adds a
-  **Check EHF** action gated the same way, the last answer in words with its
-  date, and — on the `ehf_available` offer — a **Use EHF** button that goes
+  **Check EHF** action gated the same way and the last answer in words with its
+  date and time; the `ehf_available` offer is its own component,
+  `CustomerEhfOffer`, rendered at the top of the card beside the warnings, with
+  a **Use EHF** button that goes
   through the same revision-guarded `PUT` and Reload pattern as the edit
   modal, never a silent switch. A 503 (the feature disabled) hides the
   action until the page is reloaded, rather than asking again on every

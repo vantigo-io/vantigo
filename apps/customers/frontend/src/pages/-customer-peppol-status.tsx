@@ -85,7 +85,7 @@ export const CustomerPeppolStatus = ({
   customerId: number;
   profile: CustomerBillingProfile;
   /** The customer's legal identity id, from which the server derives a participant when the profile names none (design D3) — null when unset or withheld. */
-  identityId?: string | null;
+  identityId: string | null;
   canManageBilling?: boolean;
 }) => {
   const { t, formatters } = useI18n("customers");

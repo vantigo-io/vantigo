@@ -137,8 +137,10 @@ On the Billing card: a **Check EHF** action (with `canManageBilling`) beside the
 row; the last answer in words with its date ("Can receive EHF invoices — checked 21 Sep
 2026", "Not registered in Peppol", "Registered, but not for invoices"); the two new
 warnings explained; **Use EHF** on the `ehf_available` offer; 502 → "The Peppol network
-could not be reached. Try again."; 503 → the action disappears for the session with a
-one-line note. The lookup mutation refreshes the billing-profile query only.
+could not be reached. Try again."; 503 → the action disappears until the page is reloaded, with a
+one-line note. The lookup mutation refreshes the billing-profile query, and the
+customer's timeline query only when the answer changed (the server records an event
+only then) — never the customer row.
 
 ## Out of scope
 
