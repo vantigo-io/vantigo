@@ -102,6 +102,9 @@ ON CONFLICT (customer_id) DO UPDATE SET
 -- own (registryAttentionType, table-tested). With legal_name NULL the rename
 -- term is NULL, so the row is excluded unless a flag or a deletion date says
 -- otherwise — which is the Go rule for a customer with no legal name already.
+-- btrim strips ASCII spaces where Go's strings.TrimSpace strips all Unicode
+-- whitespace, so this term can only let through more rows than Go will
+-- report, never fewer — the safe side for a pre-filter.
 SELECT c.id AS customer_id, c.name AS name, c.legal_name AS legal_name,
        r.name AS record_name, r.bankrupt, r.under_liquidation, r.under_forced_liquidation,
        r.deleted_on, r.bankrupt_on, r.liquidation_on, r.fetched_at
