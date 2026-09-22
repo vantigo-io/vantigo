@@ -124,7 +124,8 @@ purpose (design D4) — a background worker asking again periodically, on the sa
 raises, is this delivery's job.
 
 *Unblocks:* registry data worth relying on instead of a name and a number typed once,
-and the first real content behind two endpoints this module already declared.
+and more behind the one endpoint (`/stats/attention`) and the one event type
+(`registry.change`) this module already declared.
 
 ### Phase 4 — Light CRM
 
