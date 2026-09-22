@@ -100,21 +100,29 @@ func registryDateDisplay(t *time.Time) string {
 // case.
 //
 // The first fetch is deliberately not a sixteen-field diff against zero
-// values: there is nothing to have changed *from*, so the only comparison
-// worth making is the registry's name against the name the user asserted
-// when they picked the company — and when those agree, which they do for
-// every ordinary Brreg pick, the fetch is silent. That is why a create's own
-// after-commit fetch normally writes no timeline event at all.
+// values: there is nothing to have changed *from*, so almost nothing is
+// worth reporting. Two things are. The registry's name against the name the
+// user asserted when they picked the company — and when those agree, which
+// they do for every ordinary Brreg pick, that half is silent, which is why a
+// create's own after-commit fetch normally writes no timeline event at all.
+// And the deletion date: picking a company that has already been struck from
+// the register is exactly the kind of thing the person doing the picking
+// needs told, and storing that silently would leave the timeline claiming
+// nothing happened on the day it was found out.
 //
-// The order is this function's own, fixed: the summary reads the field names
-// off it, so two refreshes that changed the same fields always produce the
-// same sentence.
+// The order is this function's own, fixed — and the first-fetch pair follows
+// the same order the full comparison below puts them in (name, then
+// deletedOn), so the summary reads the same way whichever branch built it.
 func diffRegistryRecords(before *registryRecord, legalName string, after registryRecord) []registryChange {
 	if before == nil {
-		if after.Name == legalName {
-			return nil
+		var changes []registryChange
+		if after.Name != legalName {
+			changes = append(changes, registryChange{Field: "name", From: legalName, To: after.Name})
 		}
-		return []registryChange{{Field: "name", From: legalName, To: after.Name}}
+		if deletedOn := registryDateDisplay(after.DeletedOn); deletedOn != "" {
+			changes = append(changes, registryChange{Field: "deletedOn", To: deletedOn})
+		}
+		return changes
 	}
 
 	var changes []registryChange

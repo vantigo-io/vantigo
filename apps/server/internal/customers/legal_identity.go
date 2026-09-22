@@ -195,6 +195,10 @@ func (s *server) PutCustomersByIdLegalIdentity(ctx context.Context, req gen.PutC
 	// is enriched when a person asks, through the refresh endpoint — and its
 	// failure is logged and dropped: the identity is already replaced, and a
 	// registry outage must not turn a successful save into an error.
+	//
+	// A resubmit of the identity already stored never reaches here: the no-op
+	// rule above returns before the transaction opens, so an unchanged PUT
+	// makes no network call either, exactly as it writes no row and no event.
 	if orgnr := brregPickOrganisationNumber(after, existing.Type); orgnr != "" {
 		if err := s.fetchAndStoreRegistryRecord(ctx, req.Id, orgnr, after.Name, act); err != nil {
 			s.deps.Logger.WarnContext(ctx, "customers: registry record fetch failed", "customerId", req.Id, "errorKind", registryErrorKind(err))

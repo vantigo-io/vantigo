@@ -495,9 +495,19 @@ func (s *server) fetchAndStoreRegistryRecord(ctx context.Context, customerID int
 // refreshRegistryRecord is one fetch-and-store, the whole of it: the network
 // call first, outside any transaction (design D2's controller ruling —
 // customers foundation design D1's rule that no out-of-process call happens
-// under a lock), then one transaction that reads the record on file FOR
-// UPDATE, writes what the registry said and records at most one
+// under a lock), then one transaction that locks the customer, reads the
+// record on file, writes what the registry said and records at most one
 // registry.change event for what differed.
+//
+// The customer row is locked first (LockCustomer's FOR NO KEY UPDATE, the
+// same lock every address write takes — queries/addresses.sql), because the
+// record's own FOR UPDATE cannot serialize the case that needs it most: on a
+// first fetch there is no record row to lock, so two refreshes racing each
+// other would both see "nothing on file", both diff against the legal name
+// and both write their own event. Locking the customer makes refreshes of
+// one customer queue behind each other, so the second one diffs against what
+// the first actually stored. It is never held across the network call — that
+// has already returned by the time this transaction opens.
 //
 // A failed network call returns the error with nothing stored and nothing
 // recorded: the record on file, however old, is a better answer than none.
@@ -524,6 +534,16 @@ func (s *server) refreshRegistryRecord(ctx context.Context, customerID int32, or
 	var result registryRefreshResult
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
+		if _, err := txq.LockCustomer(ctx, customerID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				// The customer went away between this request's own 404 check
+				// and here. A customer is archived, never hard-deleted, so this
+				// is all but unreachable — but a refresh must answer the same
+				// 404 the address writes do rather than a 500.
+				return errCustomerNotFound
+			}
+			return err
+		}
 		before, err := lockedRegistryRecord(ctx, txq, customerID)
 		if err != nil {
 			return err
@@ -534,6 +554,17 @@ func (s *server) refreshRegistryRecord(ctx context.Context, customerID int32, or
 			// the only thing kept is the fact that it left, and when. There is
 			// no record to return and no before/after to diff — the one change
 			// reported is the removal itself.
+			//
+			// With nothing on file there is nothing to remove and nothing to
+			// report: the status still says "removed", so the caller learns
+			// what the registry answered, but the timeline stays quiet. That is
+			// what keeps a second click (or a first refresh of a customer whose
+			// record was never fetched) from writing a duplicate entry about a
+			// disappearance that had already happened.
+			if before == nil {
+				result = registryRefreshResult{Status: registryStatusRemoved}
+				return nil
+			}
 			if err := txq.DeleteCustomerRegistryRecord(ctx, customerID); err != nil {
 				return err
 			}
@@ -667,6 +698,12 @@ func (s *server) PostCustomersByIdRegistryRefresh(ctx context.Context, req gen.P
 	if errors.Is(err, errBrregUnavailable) {
 		s.deps.Logger.WarnContext(ctx, "customers: registry refresh failed", "customerId", req.Id, "errorKind", registryErrorKind(err))
 		return registryRefreshUnavailableResponse(), nil
+	}
+	if errors.Is(err, errCustomerNotFound) {
+		// The customer disappeared under the transaction's own lock (see
+		// refreshRegistryRecord): the same 404 the read above would have given
+		// a moment earlier.
+		return gen.PostCustomersByIdRegistryRefresh404Response{}, nil
 	}
 	if err != nil {
 		return nil, err
