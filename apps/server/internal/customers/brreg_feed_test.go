@@ -12,7 +12,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
-// This file is the Brreg client's second read (registry workers design D1):
+// This file is the Brreg client's third operation (registry workers design D1):
 // GET /enhetsregisteret/api/oppdateringer/enheter, the incremental update
 // feed the feed worker walks. Every body here was recorded from the live API
 // on 2026-09-22 and trimmed to the fields this module reads; no test opens a
@@ -27,6 +27,13 @@ type feedTransport struct {
 	respond func(url string) (*http.Response, error)
 }
 
+// RoundTrip calls respond unlocked, after f.mu has recorded the request: a
+// single (*brregClient).updates call drives its retries one attempt at a
+// time from one goroutine, so a test's own closure state (a plain counter,
+// say) needs no locking of its own as long as only one updates call is in
+// flight against this transport at once — the case every test in this file
+// is in, t.Parallel() notwithstanding, since that parallelism is across
+// tests, each with its own transport.
 func (f *feedTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	f.mu.Lock()
 	f.urls = append(f.urls, r.URL.RequestURI())
@@ -153,6 +160,27 @@ func TestBrregFeed_TheCursorWinsOverTheDate(t *testing.T) {
 	got := transport.requests()
 	if len(got) != 1 || strings.Contains(got[0], "dato=") || !strings.Contains(got[0], "oppdateringsid=42") {
 		t.Errorf("request = %v, want oppdateringsid=42 and no dato", got)
+	}
+}
+
+// TestBrregFeed_ZeroSizeDefaultsToRegistryFeedPageSize pins feedCursor.path's
+// fallback: a caller that passes 0 (the zero value, not an explicit choice)
+// gets registryFeedPageSize on the wire, not a literal size=0 the registry
+// would either reject or misread as "no page size given".
+func TestBrregFeed_ZeroSizeDefaultsToRegistryFeedPageSize(t *testing.T) {
+	t.Parallel()
+	transport := &feedTransport{respond: func(string) (*http.Response, error) {
+		return jsonResponse(http.StatusOK, emptyFeedBody), nil
+	}}
+	h := newFeedHarness(t, transport)
+
+	cursor := int64(1)
+	if _, err := customers.FeedPageForTest(context.Background(), h.Deps(), &cursor, time.Time{}, 0); err != nil {
+		t.Fatalf("updates: %v", err)
+	}
+	want := "/enhetsregisteret/api/oppdateringer/enheter?oppdateringsid=1&size=1000"
+	if got := transport.requests(); len(got) != 1 || got[0] != want {
+		t.Errorf("requests = %v, want exactly [%s]", got, want)
 	}
 }
 
