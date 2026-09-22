@@ -30,7 +30,14 @@ interface BillingFormValues {
   buyerReference: string;
 }
 
-const valuesFromProfile = (profile: CustomerBillingProfile): BillingFormValues => ({
+/**
+ * Exported so `-customer-peppol-status.tsx`'s Use EHF button can build its
+ * PUT body the same way this modal's own save does — the ten fields go
+ * exactly as they are, `invoiceDelivery` overridden to "ehf" by the caller
+ * (design D4, D6).
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export const valuesFromProfile = (profile: CustomerBillingProfile): BillingFormValues => ({
   invoiceEmail: profile.invoiceEmail ?? "",
   reminderEmail: profile.reminderEmail ?? "",
   paymentTermsDays: profile.paymentTermsDays ?? "",
@@ -52,7 +59,9 @@ const numeric = (value: number | string): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-const toInput = (values: BillingFormValues, revision: number): CustomerBillingProfileInput => ({
+/** Exported for the same reason `valuesFromProfile` is (design D6). */
+// eslint-disable-next-line react-refresh/only-export-components
+export const toInput = (values: BillingFormValues, revision: number): CustomerBillingProfileInput => ({
   invoiceEmail: values.invoiceEmail.trim() || null,
   reminderEmail: values.reminderEmail.trim() || null,
   paymentTermsDays: numeric(values.paymentTermsDays),

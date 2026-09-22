@@ -4,6 +4,7 @@ import { stubFetch } from "../test/fetch";
 import {
   ApiConflictError,
   ApiValidationError,
+  checkPeppol,
   customerBillingProfileQueryOptions,
   updateBillingProfile,
 } from "./billing-profile";
@@ -23,7 +24,17 @@ const profile = {
   gln: null,
   buyerReference: null,
   revision: 3,
+  peppolLookup: null,
   warnings: [],
+};
+
+const registeredLookup = {
+  status: "registered",
+  canReceiveInvoice: true,
+  canReceiveCreditNote: true,
+  checkedAt: "2026-09-21T10:00:00Z",
+  participantId: "0192:923609016",
+  smpHost: "smp.example.test",
 };
 
 describe("customerBillingProfileQueryOptions", () => {
@@ -75,6 +86,126 @@ describe("customerBillingProfileQueryOptions", () => {
     queryClient.invalidateQueries({ queryKey: ["customers"] });
 
     expect(queryClient.getQueryState(customerBillingProfileQueryOptions(1001).queryKey)?.isInvalidated).toBe(true);
+  });
+
+  it("literally reflects the server's body for a customer never checked (no peppolLookup key at all)", async () => {
+    // design D3: peppolLookup is only ever present once a lookup was made
+    // for the current participant — absent, not null, when there has never
+    // been one.
+    stubFetch(vi.fn().mockResolvedValue(jsonResponse(200, { revision: 3, warnings: [] })));
+
+    const options = customerBillingProfileQueryOptions(1001);
+    const result = await (options.queryFn as (context: unknown) => Promise<unknown>)({ signal: undefined });
+
+    expect(result).toEqual(profile);
+  });
+
+  it("normalises a stored peppolLookup, participantId and smpHost included", async () => {
+    stubFetch(
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(200, { revision: 3, warnings: ["ehf_available"], peppolLookup: registeredLookup }),
+        ),
+    );
+
+    const options = customerBillingProfileQueryOptions(1001);
+    const result = await (options.queryFn as (context: unknown) => Promise<unknown>)({ signal: undefined });
+
+    expect(result).toEqual({ ...profile, warnings: ["ehf_available"], peppolLookup: registeredLookup });
+  });
+
+  it("normalises participantId to null when the server withholds it (design D3: no legal-identity-view permission)", async () => {
+    const withheld = {
+      status: "registered",
+      canReceiveInvoice: true,
+      canReceiveCreditNote: true,
+      checkedAt: "2026-09-21T10:00:00Z",
+      smpHost: "smp.example.test",
+    };
+    stubFetch(vi.fn().mockResolvedValue(jsonResponse(200, { revision: 3, warnings: [], peppolLookup: withheld })));
+
+    const options = customerBillingProfileQueryOptions(1001);
+    const result = await (options.queryFn as (context: unknown) => Promise<unknown>)({ signal: undefined });
+
+    expect((result as { peppolLookup: { participantId: string | null } }).peppolLookup.participantId).toBeNull();
+  });
+
+  it("normalises smpHost to null when the server leaves it out", async () => {
+    const noHost = {
+      status: "registered",
+      canReceiveInvoice: true,
+      canReceiveCreditNote: true,
+      checkedAt: "2026-09-21T10:00:00Z",
+      participantId: "0192:923609016",
+    };
+    stubFetch(vi.fn().mockResolvedValue(jsonResponse(200, { revision: 3, warnings: [], peppolLookup: noHost })));
+
+    const options = customerBillingProfileQueryOptions(1001);
+    const result = await (options.queryFn as (context: unknown) => Promise<unknown>)({ signal: undefined });
+
+    expect((result as { peppolLookup: { smpHost: string | null } }).peppolLookup.smpHost).toBeNull();
+  });
+});
+
+describe("checkPeppol", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("POSTs the peppol-lookup action and returns the normalised answer", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, registeredLookup));
+    stubFetch(fetchMock);
+
+    const result = await checkPeppol(1001);
+
+    expect(result).toEqual(registeredLookup);
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/1001/peppol-lookup", { method: "POST" });
+  });
+
+  it("normalises a no_identifier answer, which never carries participantId or smpHost", async () => {
+    stubFetch(
+      vi.fn().mockResolvedValue(
+        jsonResponse(200, {
+          status: "no_identifier",
+          canReceiveInvoice: false,
+          canReceiveCreditNote: false,
+          checkedAt: "2026-09-21T10:00:00Z",
+        }),
+      ),
+    );
+
+    const result = await checkPeppol(1001);
+
+    expect(result.participantId).toBeNull();
+    expect(result.smpHost).toBeNull();
+    expect(result.status).toBe("no_identifier");
+  });
+
+  it("throws the generic ApiError shape on a 502, distinguishable by status", async () => {
+    stubFetch(
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(502, { title: "Peppol lookup unavailable", status: 502, detail: "Could not reach Peppol." }),
+        ),
+    );
+
+    const error = await checkPeppol(1001).catch((e: unknown) => e);
+
+    expect((error as { status?: number }).status).toBe(502);
+  });
+
+  it("throws the generic ApiError shape on a 503, distinguishable by status", async () => {
+    stubFetch(
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(503, { title: "Peppol lookup disabled", status: 503, detail: "Peppol lookup is disabled." }),
+        ),
+    );
+
+    const error = await checkPeppol(1001).catch((e: unknown) => e);
+
+    expect((error as { status?: number }).status).toBe(503);
   });
 });
 
