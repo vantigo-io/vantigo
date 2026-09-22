@@ -18,6 +18,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
+	"github.com/vantigo-io/vantigo/server/internal/peppol"
 	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 	"github.com/vantigo-io/vantigo/server/internal/secrets"
 	"github.com/vantigo-io/vantigo/server/internal/storage"
@@ -122,6 +123,21 @@ type Deps struct {
 	// the same seam HTTPTransport and SMTPVerify give an outbound
 	// dependency a module cannot let a test touch for real.
 	ObjectStore storage.ObjectStore
+	// PeppolLookup is the function a module's own Peppol capability check
+	// (customers' POST .../peppol-lookup, so far the only one) calls to ask
+	// the Peppol network whether a participant identifier can receive an
+	// EHF invoice. nil in production, meaning the module builds its own
+	// *peppol.Client from Config (PeppolSMLZone, PeppolDNSServer,
+	// PeppolTimeout) the same way newServer builds the Brreg client from
+	// Config and HTTPTransport — but only when Config.PeppolLookupEnabled;
+	// disabled, this seam is never even consulted, so a test that disables
+	// the feature and still sets a fake here can assert the fake was never
+	// called. A test harness sets it to a fake so a lookup's three outcomes
+	// (registered, not registered, upstream failure) are exercised
+	// deterministically, without a live Peppol network or the real client's
+	// own DNS/SMP round trip — the same shape SMTPVerify gives an outbound
+	// dependency a module cannot let a test touch for real.
+	PeppolLookup func(ctx context.Context, participant string) (peppol.Result, error)
 }
 
 // Module is one business module: its name (the path segment it mounts under,

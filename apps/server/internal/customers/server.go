@@ -6,14 +6,16 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
 	"github.com/vantigo-io/vantigo/server/internal/module"
+	"github.com/vantigo-io/vantigo/server/internal/peppol"
 )
 
 // server implements gen.StrictServerInterface, the module's contract
 // operations. Each area implements its operations as methods in its own
 // file.
 type server struct {
-	deps  module.Deps
-	brreg *brregClient
+	deps         module.Deps
+	brreg        *brregClient
+	peppolLookup func(ctx context.Context, participant string) (peppol.Result, error)
 }
 
 var _ gen.StrictServerInterface = (*server)(nil)
@@ -22,8 +24,43 @@ var _ gen.StrictServerInterface = (*server)(nil)
 // once, here, from config and d.HTTPTransport/d.HTTPBackoff (nil in
 // production, a fake/zero-delay in every test — brreg.go, customers
 // inventory §5).
+//
+// s.peppolLookup is resolved once here too (peppol lookup design D3, D5):
+// nil whenever Config.PeppolLookupEnabled is false — the seam is never even
+// read in that case, so a test that sets both a fake Deps.PeppolLookup and
+// PEPPOL_LOOKUP_ENABLED=0 can assert the fake was never called — otherwise
+// d.PeppolLookup itself when a test harness set one (modtest.WithPeppolLookup),
+// or, in production, a real *peppol.Client's Lookup built from
+// Config.PeppolSMLZone/PeppolDNSServer/PeppolTimeout and d.HTTPTransport,
+// the same seam Brreg's own client dials through.
 func newServer(d module.Deps) *server {
-	return &server{deps: d, brreg: newBrregClient(d.Config.BrregBaseURL, d.Config.BrregTimeout, d.HTTPTransport, d.HTTPBackoff)}
+	var lookup func(ctx context.Context, participant string) (peppol.Result, error)
+	if d.Config.PeppolLookupEnabled {
+		lookup = d.PeppolLookup
+		if lookup == nil {
+			lookup = peppol.NewClient(peppol.Options{
+				Zone:          d.Config.PeppolSMLZone,
+				DNSServers:    peppolDNSServers(d.Config.PeppolDNSServer),
+				Timeout:       d.Config.PeppolTimeout,
+				HTTPTransport: d.HTTPTransport,
+			}).Lookup
+		}
+	}
+	return &server{
+		deps:         d,
+		brreg:        newBrregClient(d.Config.BrregBaseURL, d.Config.BrregTimeout, d.HTTPTransport, d.HTTPBackoff),
+		peppolLookup: lookup,
+	}
+}
+
+// peppolDNSServers is peppol.Options.DNSServers from Config.PeppolDNSServer:
+// nil (meaning the server's own name servers) when it is unset, else the
+// one configured resolver.
+func peppolDNSServers(server string) []string {
+	if server == "" {
+		return nil
+	}
+	return []string{server}
 }
 
 // customersView is the permission that admits the module's read operations

@@ -26,22 +26,25 @@ import (
 // customers:view, the same as every other sub-resource's GET.
 
 // billingProfileResponse is CustomerBillingProfile.FromDomain: p's ten
-// fields, revision and warnings assembled from wherever the caller computed
-// them — GET and PUT both call this once they have all three.
-func billingProfileResponse(p billingProfile, revision int32, warnings []string) gen.CustomerBillingProfile {
+// fields, revision, warnings and the resolved Peppol lookup (peppol lookup
+// design D3, nil when none or stale) assembled from wherever the caller
+// computed them — GET and PUT both call this once they have all four.
+func billingProfileResponse(p billingProfile, revision int32, warnings []string, lookup *gen.CustomerPeppolLookup) gen.CustomerBillingProfile {
 	return gen.CustomerBillingProfile{
 		InvoiceEmail: p.InvoiceEmail, ReminderEmail: p.ReminderEmail, PaymentTermsDays: p.PaymentTermsDays,
 		Currency: p.Currency, Language: p.Language, InvoiceDelivery: p.InvoiceDelivery, ReminderDelivery: p.ReminderDelivery,
 		PeppolId: p.PeppolID, Gln: p.Gln, BuyerReference: p.BuyerReference,
-		Revision: revision, Warnings: warnings,
+		Revision: revision, Warnings: warnings, PeppolLookup: lookup,
 	}
 }
 
 // billingWarnings is GET .../billing-profile's computed warnings
-// (invoice-ready customer design D4): recomputed from profile plus whatever
-// else decides whether a delivery method can actually be used — never
-// stored — in the fixed order the controller ruling pins: ehf_without_
-// recipient, email_without_address, efaktura_for_business, no_invoice_address.
+// (invoice-ready customer design D4, extended by can-this-customer-receive-
+// EHF design D4): recomputed from profile plus whatever else decides
+// whether a delivery method can actually be used — never stored — in the
+// fixed order the controller ruling pins: ehf_without_recipient,
+// email_without_address, efaktura_for_business, no_invoice_address,
+// ehf_recipient_not_registered, ehf_available.
 //
 // identity is read for the ehf_without_recipient check even when the caller
 // lacks customers:legal-identity-view (this sub-resource's own read gate is
@@ -59,7 +62,16 @@ func billingProfileResponse(p billingProfile, revision int32, warnings []string)
 // — before this fix, this check read identity.Type while the directory read
 // the customer's own type, which a legacy row with legal_type NULL (or a
 // malformed legal_id) could make answer oppositely.
-func billingWarnings(profile billingProfile, customerType string, identity *legalIdentity, contactEmail *string, hasInvoiceAddress bool) []string {
+//
+// lookup is the caller's already-resolved, non-stale Peppol answer
+// (peppol_lookup.go's resolvedPeppolLookup — nil when none was ever made or
+// the stored one no longer matches the participant that would be looked up
+// now): ehf_recipient_not_registered fires when delivery is "ehf" and
+// lookup says not_registered, or registered without canReceiveInvoice;
+// ehf_available — the offer, not a problem — fires when lookup says
+// registered with canReceiveInvoice and delivery is anything but "ehf"
+// (unset counts as "anything but ehf").
+func billingWarnings(profile billingProfile, customerType string, identity *legalIdentity, contactEmail *string, hasInvoiceAddress bool, lookup *gen.CustomerPeppolLookup) []string {
 	warnings := []string{}
 
 	delivery := ""
@@ -78,6 +90,12 @@ func billingWarnings(profile billingProfile, customerType string, identity *lega
 	}
 	if !hasInvoiceAddress {
 		warnings = append(warnings, "no_invoice_address")
+	}
+	if delivery == "ehf" && lookup != nil && (lookup.Status == peppolStatusNotRegistered || (lookup.Status == peppolStatusRegistered && !lookup.CanReceiveInvoice)) {
+		warnings = append(warnings, "ehf_recipient_not_registered")
+	}
+	if delivery != "ehf" && lookup != nil && lookup.Status == peppolStatusRegistered && lookup.CanReceiveInvoice {
+		warnings = append(warnings, "ehf_available")
 	}
 	return warnings
 }
@@ -110,8 +128,33 @@ func (s *server) GetCustomersByIdBillingProfile(ctx context.Context, req gen.Get
 		return nil, fmt.Errorf("customers: customer has invoice address: %w", err)
 	}
 
-	warnings := billingWarnings(profile, row.Type, identity, row.Email, hasInvoiceAddress)
-	return gen.GetCustomersByIdBillingProfile200JSONResponse(billingProfileResponse(profile, row.Revision, warnings)), nil
+	lookup, err := s.resolvedPeppolLookupFor(ctx, q, req.Id, profile, identity, row.Type)
+	if err != nil {
+		return nil, fmt.Errorf("customers: resolve peppol lookup: %w", err)
+	}
+
+	warnings := billingWarnings(profile, row.Type, identity, row.Email, hasInvoiceAddress, lookup)
+	return gen.GetCustomersByIdBillingProfile200JSONResponse(billingProfileResponse(profile, row.Revision, warnings, lookup)), nil
+}
+
+// resolvedPeppolLookupFor is GET/PUT .../billing-profile's shared step
+// (can-this-customer-receive-EHF design D3, D4): decide the participant
+// profile/identity/customerType would be looked up under, resolve the
+// withholding permission (customers:legal-identity-view — never a gate
+// here, only response-shaping, the same as every other legalIdentityView
+// check in this module), and read the stored answer for that exact
+// participant, nil when there is none or it is stale.
+func (s *server) resolvedPeppolLookupFor(ctx context.Context, q *store.Queries, customerID int32, profile billingProfile, identity *legalIdentity, customerType string) (*gen.CustomerPeppolLookup, error) {
+	participant, derived := lookupParticipant(profile, identity, customerType)
+	if participant == "" {
+		return nil, nil
+	}
+	showParticipantID := !derived || s.hasPermission(ctx, legalIdentityView)
+	stored, err := fetchStoredPeppolLookup(ctx, q, customerID)
+	if err != nil {
+		return nil, err
+	}
+	return resolvedPeppolLookup(stored, participant, showParticipantID), nil
 }
 
 // PutCustomersByIdBillingProfile Replace a customer's billing profile
@@ -165,8 +208,12 @@ func (s *server) PutCustomersByIdBillingProfile(ctx context.Context, req gen.Put
 	}
 
 	if billingProfileEqual(before, after) {
-		warnings := billingWarnings(before, existing.Type, identity, existing.Email, hasInvoiceAddress)
-		return gen.PutCustomersByIdBillingProfile200JSONResponse(billingProfileResponse(before, existing.Revision, warnings)), nil
+		lookup, err := s.resolvedPeppolLookupFor(ctx, q, req.Id, before, identity, existing.Type)
+		if err != nil {
+			return nil, fmt.Errorf("customers: resolve peppol lookup: %w", err)
+		}
+		warnings := billingWarnings(before, existing.Type, identity, existing.Email, hasInvoiceAddress, lookup)
+		return gen.PutCustomersByIdBillingProfile200JSONResponse(billingProfileResponse(before, existing.Revision, warnings, lookup)), nil
 	}
 
 	now := s.deps.Clock()
@@ -214,6 +261,10 @@ func (s *server) PutCustomersByIdBillingProfile(ctx context.Context, req gen.Put
 		return nil, fmt.Errorf("customers: update customer billing profile: %w", err)
 	}
 
-	warnings := billingWarnings(after, updated.Type, identity, updated.Email, hasInvoiceAddress)
-	return gen.PutCustomersByIdBillingProfile200JSONResponse(billingProfileResponse(after, updated.Revision, warnings)), nil
+	lookup, err := s.resolvedPeppolLookupFor(ctx, q, req.Id, after, identity, updated.Type)
+	if err != nil {
+		return nil, fmt.Errorf("customers: resolve peppol lookup: %w", err)
+	}
+	warnings := billingWarnings(after, updated.Type, identity, updated.Email, hasInvoiceAddress, lookup)
+	return gen.PutCustomersByIdBillingProfile200JSONResponse(billingProfileResponse(after, updated.Revision, warnings, lookup)), nil
 }

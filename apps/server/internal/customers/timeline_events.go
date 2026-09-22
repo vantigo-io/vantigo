@@ -298,6 +298,40 @@ func addressSummary(verb, display string) string {
 	return truncateUTF16(fmt.Sprintf("Address %s: %s", verb, display), 500)
 }
 
+// peppolLookupSummary is recordCustomerPeppolLookup's fixed-literal summary
+// per status (can-this-customer-receive-EHF design D3's controller ruling):
+// three constants, never built from interpolated data, so they stay far
+// below customers_timeline_entries.summary's 500-unit limit without
+// truncateUTF16's help (addressSummary, above, needs it; this never will).
+func peppolLookupSummary(status string, canReceiveInvoice bool) string {
+	switch {
+	case status == peppolStatusRegistered && canReceiveInvoice:
+		return "Peppol lookup: can receive EHF invoices"
+	case status == peppolStatusRegistered:
+		return "Peppol lookup: registered, but not for invoices"
+	default:
+		return "Peppol lookup: not registered"
+	}
+}
+
+// recordCustomerPeppolLookup is POST .../peppol-lookup's own generated event
+// (can-this-customer-receive-EHF design D3): no .NET ancestor, since Peppol
+// lookup is new to this port. Only called once the handler has already
+// confirmed the status or either capability changed from the stored answer
+// (peppol_lookup.go's own no-op rule — a first lookup counts as changed).
+// The payload deliberately omits the participant id: the timeline is
+// readable with customers:timeline-view alone, which does not imply
+// customers:legal-identity-view, and a derived participant id is that
+// permission's to show (server.go's legalIdentityView, peppol_lookup.go's
+// own withholding rule).
+func recordCustomerPeppolLookup(ctx context.Context, q *store.Queries, now time.Time, customerID int32, status string, canReceiveInvoice, canReceiveCreditNote bool, smpHost, previousStatus *string, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	payload := map[string]any{
+		"status": status, "canReceiveInvoice": canReceiveInvoice, "canReceiveCreditNote": canReceiveCreditNote,
+		"smpHost": smpHost, "previousStatus": previousStatus,
+	}
+	return recordGeneratedEvent(ctx, q, customerID, now, "customer.peppol_lookup", peppolLookupSummary(status, canReceiveInvoice), payload, 1, actorKind, actorDisplay, actorUserID)
+}
+
 // recordCustomerAddressAdded is PostCustomersByIdAddresses's own generated
 // event (invoice-ready customer design D3): no .NET ancestor. The payload
 // always carries addressId, type, label and a one-line display rendering

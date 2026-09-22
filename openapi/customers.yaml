@@ -220,7 +220,7 @@ components:
                 - country
             type: object
         CustomerBillingProfile:
-            description: "A customer's billing profile (invoice-ready customer design D1, D4): payment terms, currency, document language, delivery methods and the identifiers used to send it invoices — every field optional, meaning \"not decided here, whoever invoices uses its own default\"; unset, a field is simply absent from the response rather than sent as null. warnings is computed at read time from the profile plus the customer's type, legal identity, contact email and addresses — never stored — in a fixed order: ehf_without_recipient, email_without_address, efaktura_for_business, no_invoice_address."
+            description: "A customer's billing profile (invoice-ready customer design D1, D4): payment terms, currency, document language, delivery methods and the identifiers used to send it invoices — every field optional, meaning \"not decided here, whoever invoices uses its own default\"; unset, a field is simply absent from the response rather than sent as null. warnings is computed at read time from the profile plus the customer's type, legal identity, contact email and addresses — never stored — in a fixed order: ehf_without_recipient, email_without_address, efaktura_for_business, no_invoice_address, ehf_recipient_not_registered, ehf_available (can-this-customer-receive-EHF design D4). peppolLookup is the last Peppol lookup on record (POST .../peppol-lookup), present only when it was made for the participant this profile would look up now — a stale answer (the org number or peppolId changed since) is omitted."
             properties:
                 buyerReference:
                     nullable: true
@@ -247,6 +247,8 @@ components:
                 peppolId:
                     nullable: true
                     type: string
+                peppolLookup:
+                    $ref: '#/components/schemas/CustomerPeppolLookup'
                 reminderDelivery:
                     nullable: true
                     type: string
@@ -351,6 +353,30 @@ components:
             required:
                 - contact
                 - role
+            type: object
+        CustomerPeppolLookup:
+            description: "The last (or freshly checked, from POST /customers/{id}/peppol-lookup) answer the Peppol network gave about whether this customer can receive an EHF invoice (can-this-customer-receive-EHF design D3): status is 'registered', 'not_registered' or 'no_identifier' (no Peppol participant id could be derived and none is set, so nothing was looked up). participantId is present only when it is either an explicit peppolId or the caller holds customers:legal-identity-view (a derived id is that permission's to show); smpHost is always present when known. checkedAt is always present, even for no_identifier (the moment the check was made, nothing stored)."
+            properties:
+                canReceiveCreditNote:
+                    type: boolean
+                canReceiveInvoice:
+                    type: boolean
+                checkedAt:
+                    format: date-time
+                    type: string
+                participantId:
+                    nullable: true
+                    type: string
+                smpHost:
+                    nullable: true
+                    type: string
+                status:
+                    type: string
+            required:
+                - status
+                - canReceiveInvoice
+                - canReceiveCreditNote
+                - checkedAt
             type: object
         CustomerReference:
             properties:
@@ -1792,6 +1818,54 @@ paths:
             tags:
                 - Customers
             x-vantigo-access: permission:customers:legal-identity-manage+customers:legal-identity-view
+    /api/v1/customers/{id}/peppol-lookup:
+        post:
+            description: "Asks the Peppol network whether this customer can receive an EHF invoice, for the customer's explicit billing-profile peppolId if set, else the participant id derived from its legal identity (can-this-customer-receive-EHF design D3). 200 with status 'no_identifier' and nothing stored when neither exists — no network call is made. A successful check is remembered on the billing profile and, when the answer changed, recorded on the customer's timeline; it never touches the customer row's own revision. 502 when the Peppol network could not be reached (the last good answer, if any, stands); 503 when the feature is disabled on this installation."
+            operationId: postCustomersByIdPeppolLookup
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerPeppolLookup'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "502":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Gateway
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Service Unavailable
+            summary: Ask Peppol whether this customer can receive EHF invoices
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:billing-manage+customers:view
     /api/v1/customers/{id}/type:
         put:
             description: Sets whether the customer is a business or a private person. Rarely the right action for a customer with history, which is why it is not part of PUT /customers/{id}. A legal identity of the previous type is removed in the same change, since a business identity from Brreg makes no sense on a person and vice versa; contacts, timeline and everything else stay. Resubmitting the current type changes nothing.

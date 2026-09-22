@@ -165,6 +165,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/customers/{id}/peppol-lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask Peppol whether this customer can receive EHF invoices
+         * @description Asks the Peppol network whether this customer can receive an EHF invoice, for the customer's explicit billing-profile peppolId if set, else the participant id derived from its legal identity (can-this-customer-receive-EHF design D3). 200 with status 'no_identifier' and nothing stored when neither exists — no network call is made. A successful check is remembered on the billing profile and, when the answer changed, recorded on the customer's timeline; it never touches the customer row's own revision. 502 when the Peppol network could not be reached (the last good answer, if any, stands); 503 when the feature is disabled on this installation.
+         */
+        post: operations["postCustomersByIdPeppolLookup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/customers/{id}/type": {
         parameters: {
             query?: never;
@@ -475,7 +495,7 @@ export interface components {
             region?: string | null;
             type: string;
         };
-        /** @description A customer's billing profile (invoice-ready customer design D1, D4): payment terms, currency, document language, delivery methods and the identifiers used to send it invoices — every field optional, meaning "not decided here, whoever invoices uses its own default"; unset, a field is simply absent from the response rather than sent as null. warnings is computed at read time from the profile plus the customer's type, legal identity, contact email and addresses — never stored — in a fixed order: ehf_without_recipient, email_without_address, efaktura_for_business, no_invoice_address. */
+        /** @description A customer's billing profile (invoice-ready customer design D1, D4): payment terms, currency, document language, delivery methods and the identifiers used to send it invoices — every field optional, meaning "not decided here, whoever invoices uses its own default"; unset, a field is simply absent from the response rather than sent as null. warnings is computed at read time from the profile plus the customer's type, legal identity, contact email and addresses — never stored — in a fixed order: ehf_without_recipient, email_without_address, efaktura_for_business, no_invoice_address, ehf_recipient_not_registered, ehf_available (can-this-customer-receive-EHF design D4). peppolLookup is the last Peppol lookup on record (POST .../peppol-lookup), present only when it was made for the participant this profile would look up now — a stale answer (the org number or peppolId changed since) is omitted. */
         CustomerBillingProfile: {
             buyerReference?: string | null;
             currency?: string | null;
@@ -486,6 +506,7 @@ export interface components {
             /** Format: int32 */
             paymentTermsDays?: number | null;
             peppolId?: string | null;
+            peppolLookup?: components["schemas"]["CustomerPeppolLookup"];
             reminderDelivery?: string | null;
             reminderEmail?: string | null;
             /** Format: int32 */
@@ -527,6 +548,16 @@ export interface components {
             email?: string | null;
             phone?: string | null;
             role: string;
+        };
+        /** @description The last (or freshly checked, from POST /customers/{id}/peppol-lookup) answer the Peppol network gave about whether this customer can receive an EHF invoice (can-this-customer-receive-EHF design D3): status is 'registered', 'not_registered' or 'no_identifier' (no Peppol participant id could be derived and none is set, so nothing was looked up). participantId is present only when it is either an explicit peppolId or the caller holds customers:legal-identity-view (a derived id is that permission's to show); smpHost is always present when known. checkedAt is always present, even for no_identifier (the moment the check was made, nothing stored). */
+        CustomerPeppolLookup: {
+            canReceiveCreditNote: boolean;
+            canReceiveInvoice: boolean;
+            /** Format: date-time */
+            checkedAt: string;
+            participantId?: string | null;
+            smpHost?: string | null;
+            status: string;
         };
         CustomerReference: {
             /** Format: int64 */
@@ -1902,6 +1933,71 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    postCustomersByIdPeppolLookup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerPeppolLookup"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
             };
         };
     };
