@@ -122,9 +122,11 @@ func (r *Resolver) LookupNAPTR(ctx context.Context, host string) ([]NAPTR, bool,
 			}
 			lastErr = fmt.Errorf("peppol: NAPTR lookup for %s via %s: %w", host, server, err)
 			// A context that is already done will not let the next attempt do
-			// anything but fail the same way, only slower.
+			// anything but fail the same way, only slower. Its own error is what
+			// happened (a cancellation, or the whole lookup's budget running
+			// out), so it is what the caller is told.
 			if ctx.Err() != nil {
-				return nil, false, lastErr
+				return nil, false, fmt.Errorf("peppol: NAPTR lookup for %s stopped: %w", host, ctx.Err())
 			}
 		}
 	}
@@ -270,6 +272,8 @@ func exchangeUDP(ctx context.Context, server string, query []byte) ([]byte, erro
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
+	stopWatching := closeOnCancel(ctx, conn)
+	defer stopWatching()
 	if err := setDeadline(ctx, conn); err != nil {
 		return nil, err
 	}
@@ -298,6 +302,8 @@ func exchangeTCP(ctx context.Context, server string, query []byte) ([]byte, erro
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
+	stopWatching := closeOnCancel(ctx, conn)
+	defer stopWatching()
 	if err := setDeadline(ctx, conn); err != nil {
 		return nil, err
 	}
@@ -321,6 +327,39 @@ func exchangeTCP(ctx context.Context, server string, query []byte) ([]byte, erro
 		return nil, err
 	}
 	return answer, nil
+}
+
+// closeOnCancel closes conn as soon as ctx is cancelled, and returns a function
+// that stops the watcher and waits for it to finish. A connection deadline can
+// only express a deadline, so a context that is CANCELLED rather than expired —
+// the HTTP handler's request was abandoned, the caller gave up — would otherwise
+// go unnoticed until the attempt's own deadline, seconds later. Closing the
+// connection makes the blocked read return at once.
+//
+// The returned function must be deferred before the conn.Close that the caller
+// also defers, so that the watcher is always joined before the connection is
+// closed underneath it and no goroutine outlives the exchange.
+func closeOnCancel(ctx context.Context, conn net.Conn) func() {
+	finished := make(chan struct{})
+	stop := make(chan struct{})
+	go func() {
+		defer close(finished)
+		select {
+		case <-ctx.Done():
+			// Only a CANCELLATION is closed on. An expired deadline is already
+			// the connection's own (setDeadline put it there), and letting the
+			// read fail that way keeps the honest "i/o timeout" in the error
+			// instead of replacing it with "use of closed network connection".
+			if errors.Is(ctx.Err(), context.Canceled) {
+				_ = conn.Close()
+			}
+		case <-stop:
+		}
+	}()
+	return func() {
+		close(stop)
+		<-finished
+	}
 }
 
 // setDeadline puts the attempt context's deadline on the connection, so a

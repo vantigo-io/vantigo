@@ -517,6 +517,34 @@ func TestLookupNAPTR_ContextDeadlineBoundsTheWholeLookup(t *testing.T) {
 	}
 }
 
+// TestLookupNAPTR_CancelledContextReturnsPromptly: a cancelled lookup — the
+// user navigated away, the HTTP handler's request was abandoned — must not sit
+// on a socket until the attempt's own deadline. The connection's deadline cannot
+// see a cancellation (only a deadline), so the exchange watches ctx.Done()
+// itself.
+func TestLookupNAPTR_CancelledContextReturnsPromptly(t *testing.T) {
+	t.Parallel()
+	stub := newStubDNS(t, func([]byte, string) [][]byte { return nil })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+	defer cancel()
+
+	// The production per-attempt timeout (3s) is deliberately left in place: the
+	// cancellation, not the deadline, is what must end this.
+	resolver := &Resolver{Servers: []string{stub.addr}}
+	start := time.Now()
+	if _, _, err := resolver.LookupNAPTR(ctx, "someone.example.test"); err == nil {
+		t.Fatal("LookupNAPTR succeeded on a cancelled context")
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("LookupNAPTR took %v after a cancellation at 50ms, want it to return promptly rather than at the 3s attempt deadline", elapsed)
+	}
+}
+
 // TestLookupNAPTR_TriesEveryServerInOrder: a resolver list is a fallback list.
 func TestLookupNAPTR_TriesEveryServerInOrder(t *testing.T) {
 	t.Parallel()

@@ -52,50 +52,82 @@ const (
 	maxSMPBody = 1 << 20
 )
 
-// ErrSMPURL is every base URL this package refuses to fetch. The URL comes out
+// errSMPURL is every base URL this package refuses to fetch. The URL comes out
 // of a DNS record published by whoever runs the participant's SMP, so it is
 // third-party input: the specification says SMP access is plain https on port
 // 443, and anything else is either a mistake or an attempt to aim this
 // server's HTTP client somewhere it should not go.
-var ErrSMPURL = errors.New("peppol: unusable SMP base URL")
+var errSMPURL = errors.New("peppol: unusable SMP base URL")
 
 // smpRequestURL is the one request this package makes of an SMP: the
 // ServiceGroup of a participant, as
 //
 //	<base>/iso6523-actorid-upis%3A%3A<value>
 //
-// The base URL is validated first (see ErrSMPURL): it must parse, be https,
-// carry no userinfo, name a host, use port 443 or none, and carry no query or
-// fragment. Trailing slashes are trimmed because the base may or may not end
-// in one — both were seen live, and ELMA answers 400 to the "//" that would
-// otherwise result.
+// The base URL is validated first (see errSMPURL): it must parse, be https,
+// carry no userinfo, name a host, use port 443 or none, and carry neither a
+// query nor a fragment. A bare "?" counts as a query even though it carries
+// none (url.URL records it as ForceQuery and renders it back), because
+// everything after it would otherwise land in the query string. A bare "#" is
+// the one exception and is simply dropped: parsing leaves nothing of an empty
+// fragment to refuse, and a fragment is never sent to a server anyway — what
+// mattered about it was the trailing slash it hid, and the trimming below sees
+// that.
+//
+// Both the validation and the trimming happen on the PARSED url, never on the
+// string, and the target is built by setting Path/RawPath on a copy of it
+// rather than by parsing a concatenation. Doing either on the string is how a
+// base URL gets to smuggle syntax past the policy: "https://smp.example.test/?"
+// would turn the request into "GET /?/iso6523-actorid-upis%3A%3A…", with the
+// participant identifier in the query string and the path reduced to "/", and
+// "https://smp.example.test/#" hides its trailing slash behind the "#" so that
+// trimming the string cannot see it and the request becomes the "//" ELMA
+// answers 400 to. Either way the SMP would answer about the wrong thing, and a
+// 404 to a mangled target would read as a definitive "not registered" — a
+// malformed base URL must never be able to produce that.
+//
+// Trailing slashes are trimmed because the base may or may not end in one: both
+// were seen live.
 func smpRequestURL(base, participant string) (*url.URL, error) {
-	parsed, err := url.Parse(strings.TrimRight(base, "/"))
+	parsed, err := url.Parse(base)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %q could not be parsed: %w", ErrSMPURL, base, err)
+		return nil, fmt.Errorf("%w: %q could not be parsed: %w", errSMPURL, base, err)
 	}
 	switch {
 	case parsed.Scheme != "https":
-		return nil, fmt.Errorf("%w: %q is not https", ErrSMPURL, base)
+		return nil, fmt.Errorf("%w: %q is not https", errSMPURL, base)
 	case parsed.Host == "":
-		return nil, fmt.Errorf("%w: %q names no host", ErrSMPURL, base)
+		return nil, fmt.Errorf("%w: %q names no host", errSMPURL, base)
 	case parsed.User != nil:
-		return nil, fmt.Errorf("%w: %q carries userinfo", ErrSMPURL, base)
+		return nil, fmt.Errorf("%w: %q carries userinfo", errSMPURL, base)
 	case parsed.Port() != "" && parsed.Port() != "443":
-		return nil, fmt.Errorf("%w: %q uses port %s, and SMP access is https on 443", ErrSMPURL, base, parsed.Port())
-	case parsed.RawQuery != "" || parsed.Fragment != "":
-		return nil, fmt.Errorf("%w: %q carries a query or a fragment", ErrSMPURL, base)
+		return nil, fmt.Errorf("%w: %q uses port %s, and SMP access is https on 443", errSMPURL, base, parsed.Port())
+	case parsed.RawQuery != "" || parsed.ForceQuery:
+		return nil, fmt.Errorf("%w: %q carries a query", errSMPURL, base)
+	case parsed.Fragment != "":
+		return nil, fmt.Errorf("%w: %q carries a fragment", errSMPURL, base)
+	case parsed.Opaque != "":
+		return nil, fmt.Errorf("%w: %q is an opaque URL", errSMPURL, base)
 	}
 
-	// The escaped identifier is spliced in as a raw path rather than assigned
-	// to Path, so that the colons stay percent-encoded on the wire: url.URL
-	// would otherwise re-encode Path with ":" left bare, which is legal in a
-	// URL but is not what the SMPs accept.
-	target, err := url.Parse(parsed.String() + "/" + escapeIdentifier(Scheme+"::"+participant))
-	if err != nil {
-		return nil, fmt.Errorf("%w: %q could not be turned into a request URL: %w", ErrSMPURL, base, err)
+	// Path and RawPath are set together and kept consistent — RawPath unescapes
+	// to exactly Path — because that is the only way EscapedPath() returns the
+	// raw form: assigning Path alone would make url.URL re-encode it with the
+	// colons left bare, which is legal in a URL but is not what the SMPs accept.
+	identifier := Scheme + "::" + participant
+	target := *parsed
+	target.Path = strings.TrimRight(parsed.Path, "/") + "/" + identifier
+	target.RawPath = strings.TrimRight(parsed.EscapedPath(), "/") + "/" + escapeIdentifier(identifier)
+	target.RawQuery, target.ForceQuery = "", false
+	target.Fragment, target.RawFragment = "", ""
+
+	// EscapedPath falls back to escaping Path whenever RawPath is not a valid
+	// encoding of it, so this asserts the pair really is consistent rather than
+	// trusting that it is.
+	if target.EscapedPath() != target.RawPath {
+		return nil, fmt.Errorf("%w: %q and the participant %q do not make a usable request path", errSMPURL, base, participant)
 	}
-	return target, nil
+	return &target, nil
 }
 
 // escapeIdentifier percent-encodes a Peppol identifier for use as one path
