@@ -14,6 +14,7 @@ import {
 } from "../lib/billing-labels";
 import { validNorwegianOrgNumber } from "../lib/norwegian-org-number";
 import { CustomerBillingModal } from "./-customer-billing-modal";
+import { CustomerPeppolStatus } from "./-customer-peppol-status";
 import "../i18n";
 
 /**
@@ -92,7 +93,12 @@ export const CustomerBillingCard = ({
             </Button>
           </Stack>
         ) : (
-          <BillingFields customer={customer} profile={profile} />
+          <BillingFields
+            customer={customer}
+            profile={profile}
+            customerId={customerId}
+            canManageBilling={canManageBilling}
+          />
         )}
       </Stack>
 
@@ -138,7 +144,17 @@ const BillingRow = ({ label, value, hint }: { label: string; value: ReactNode; h
  * whenever the viewer may not see it, and a derived recipient built from a
  * guess would be worse than none.
  */
-const BillingFields = ({ customer, profile }: { customer: CustomerResponse; profile: CustomerBillingProfile }) => {
+const BillingFields = ({
+  customer,
+  profile,
+  customerId,
+  canManageBilling,
+}: {
+  customer: CustomerResponse;
+  profile: CustomerBillingProfile;
+  customerId: number;
+  canManageBilling?: boolean;
+}) => {
   const { t } = useI18n("customers");
   const notSet = (
     <Text size="sm" c="dimmed">
@@ -204,6 +220,7 @@ const BillingFields = ({ customer, profile }: { customer: CustomerResponse; prof
         }
       />
       <BillingRow label={t("billingPeppolId")} value={value(profile.peppolId)} hint={peppolHint} />
+      <CustomerPeppolStatus customerId={customerId} profile={profile} canManageBilling={canManageBilling} />
       <BillingRow label={t("billingGln")} value={value(profile.gln)} />
       <BillingRow label={t("billingBuyerReference")} value={value(profile.buyerReference)} />
     </Stack>

@@ -12,6 +12,26 @@ export type InvoiceDeliveryMethod = "email" | "ehf" | "efaktura" | "paper";
 /** Reminders cannot travel as EHF or eFaktura (design D4) — a narrower set than invoiceDelivery's own. */
 export type ReminderDeliveryMethod = "email" | "paper";
 
+/** The three answers `POST .../peppol-lookup` can give (design D3). */
+export type PeppolLookupStatus = "registered" | "not_registered" | "no_identifier";
+
+/**
+ * The last (or freshly checked) answer the Peppol network gave about
+ * whether this customer can receive an EHF invoice (design D3).
+ * `participantId` is null both when nothing was looked up and when the
+ * server withholds a derived id from a caller without
+ * `customers:legal-identity-view` — the two are indistinguishable here,
+ * the same way an unset billing field and a withheld one already are.
+ */
+export interface CustomerPeppolLookup {
+  status: PeppolLookupStatus;
+  canReceiveInvoice: boolean;
+  canReceiveCreditNote: boolean;
+  checkedAt: string;
+  participantId: string | null;
+  smpHost: string | null;
+}
+
 /**
  * A customer's billing profile (design D1, D4): every field nullable,
  * meaning "not decided here — whoever invoices uses its own default". Unlike
@@ -33,6 +53,13 @@ export interface CustomerBillingProfile {
   gln: string | null;
   buyerReference: string | null;
   revision: number;
+  /**
+   * The last Peppol lookup on record for the participant this profile
+   * would look up right now (design D3) — null both when never checked and
+   * when the stored answer has gone stale (the org number or peppolId
+   * changed since).
+   */
+  peppolLookup: CustomerPeppolLookup | null;
   /** Machine-readable codes the UI explains — an unknown code is ignored (design D4). */
   warnings: string[];
 }
@@ -47,7 +74,31 @@ export interface CustomerBillingProfile {
  * "not decided, the invoicing default applies"), so this shape is mapped to
  * the full one at the boundary and nothing downstream has to know.
  */
-type RawCustomerBillingProfile = Partial<Omit<CustomerBillingProfile, "revision">> & { revision: number };
+/**
+ * `CustomerPeppolLookup` as it actually arrives nested inside the profile
+ * (or POST .../peppol-lookup's own 200 body): `participantId` and `smpHost`
+ * are each `omitempty` on the wire, same reason the profile's own optional
+ * fields are.
+ */
+type RawCustomerPeppolLookup = Omit<CustomerPeppolLookup, "participantId" | "smpHost"> &
+  Partial<Pick<CustomerPeppolLookup, "participantId" | "smpHost">>;
+
+const normalizePeppolLookupFields = (raw: RawCustomerPeppolLookup): CustomerPeppolLookup => ({
+  status: raw.status,
+  canReceiveInvoice: raw.canReceiveInvoice,
+  canReceiveCreditNote: raw.canReceiveCreditNote,
+  checkedAt: raw.checkedAt,
+  participantId: raw.participantId ?? null,
+  smpHost: raw.smpHost ?? null,
+});
+
+const normalizePeppolLookup = (raw?: RawCustomerPeppolLookup): CustomerPeppolLookup | null =>
+  raw ? normalizePeppolLookupFields(raw) : null;
+
+type RawCustomerBillingProfile = Partial<Omit<CustomerBillingProfile, "revision" | "peppolLookup">> & {
+  revision: number;
+  peppolLookup?: RawCustomerPeppolLookup;
+};
 
 const normalizeBillingProfile = (raw: RawCustomerBillingProfile): CustomerBillingProfile => ({
   invoiceEmail: raw.invoiceEmail ?? null,
@@ -61,6 +112,7 @@ const normalizeBillingProfile = (raw: RawCustomerBillingProfile): CustomerBillin
   gln: raw.gln ?? null,
   buyerReference: raw.buyerReference ?? null,
   revision: raw.revision,
+  peppolLookup: normalizePeppolLookup(raw.peppolLookup),
   warnings: raw.warnings ?? [],
 });
 
@@ -108,4 +160,19 @@ export const updateBillingProfile = async (customerId: number, input: CustomerBi
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
     }),
+  );
+
+/**
+ * Asks the Peppol network whether this customer can receive an EHF invoice
+ * right now (design D3) — always the user's own click, nothing here is ever
+ * called on a schedule or in the background. `no_identifier` and a failed
+ * lookup (502) store nothing server-side, so the caller cannot rely on a
+ * follow-up GET of the billing profile to show this answer; it must be read
+ * straight off this return value. A successful, stored answer (`registered`
+ * or `not_registered`) is best re-read from the billing-profile GET instead,
+ * since that is also where the warnings it feeds into are recomputed.
+ */
+export const checkPeppol = async (customerId: number): Promise<CustomerPeppolLookup> =>
+  normalizePeppolLookupFields(
+    await request<RawCustomerPeppolLookup>(`/api/v1/customers/${customerId}/peppol-lookup`, { method: "POST" }),
   );

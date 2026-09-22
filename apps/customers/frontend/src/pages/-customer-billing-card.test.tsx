@@ -211,6 +211,36 @@ describe("CustomerBillingCard", () => {
     expect(screen.queryByText("something_new")).not.toBeInTheDocument();
   });
 
+  it("explains ehf_recipient_not_registered in the yellow warnings list (design D4)", async () => {
+    renderCard({ ...emptyProfile, warnings: ["ehf_recipient_not_registered"] });
+
+    expect(
+      await screen.findByText(
+        "Delivery is set to EHF, but the last Peppol check says this customer cannot receive EHF invoices.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the Peppol/EHF status block under the Peppol ID row, wired to this customer", async () => {
+    // The detailed behaviour (Check EHF, Use EHF, every status and error) is
+    // covered by -customer-peppol-status.test.tsx; this only proves the
+    // card actually mounts it with the right customerId and profile.
+    renderCard({
+      ...emptyProfile,
+      peppolLookup: {
+        status: "registered",
+        canReceiveInvoice: true,
+        canReceiveCreditNote: true,
+        checkedAt: "2026-09-21T10:00:00Z",
+        participantId: "0192:923609016",
+        smpHost: null,
+      },
+    });
+
+    expect(await screen.findByRole("button", { name: "Check EHF" })).toBeInTheDocument();
+    expect(screen.getByText(/^Can receive EHF invoices — checked /)).toBeInTheDocument();
+  });
+
   it("hints that invoices resolve to the contact email when invoiceEmail is unset", async () => {
     renderCard(emptyProfile, { contactInfo: { email: "hello@acme.test", phone: null, website: null } });
     expect(await screen.findByText("Invoices go to hello@acme.test")).toBeInTheDocument();
