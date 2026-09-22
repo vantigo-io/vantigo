@@ -176,6 +176,9 @@ type RegistryAttentionCandidatesRow struct {
 // own (registryAttentionType, table-tested). With legal_name NULL the rename
 // term is NULL, so the row is excluded unless a flag or a deletion date says
 // otherwise — which is the Go rule for a customer with no legal name already.
+// btrim strips ASCII spaces where Go's strings.TrimSpace strips all Unicode
+// whitespace, so this term can only let through more rows than Go will
+// report, never fewer — the safe side for a pre-filter.
 func (q *Queries) RegistryAttentionCandidates(ctx context.Context) ([]RegistryAttentionCandidatesRow, error) {
 	rows, err := q.db.Query(ctx, registryAttentionCandidates)
 	if err != nil {
