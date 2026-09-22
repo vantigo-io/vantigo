@@ -294,23 +294,14 @@ describe("CustomerPeppolStatus", () => {
   });
 
   it("explains the ehf_available offer with a Use EHF action, and hides it once EHF is switched on", async () => {
+    // The body is captured and asserted after the interaction, never inside
+    // the mock: an expectation that throws in there would surface as a failed
+    // request rather than as the mismatch it is.
+    let sentBody: unknown;
     const fetchMock = vi.fn().mockImplementation((url: RequestInfo | URL, init?: RequestInit) => {
       const path = String(url);
       if (path === "/api/v1/customers/1001/billing-profile" && init?.method === "PUT") {
-        const sent = JSON.parse(String(init.body));
-        expect(sent).toEqual({
-          invoiceEmail: null,
-          reminderEmail: null,
-          paymentTermsDays: null,
-          currency: null,
-          language: null,
-          invoiceDelivery: "ehf",
-          reminderDelivery: null,
-          peppolId: "0192:923609016",
-          gln: null,
-          buyerReference: null,
-          revision: 3,
-        });
+        sentBody = JSON.parse(String(init.body));
         return Promise.resolve(
           jsonResponse(200, {
             ...emptyProfile,
@@ -337,6 +328,19 @@ describe("CustomerPeppolStatus", () => {
 
     await waitFor(() => expect(queryClient.getQueryData<{ revision: number }>(["customers", 1001])?.revision).toBe(4));
     expect(screen.queryByText("This customer can receive EHF invoices")).not.toBeInTheDocument();
+    expect(sentBody).toEqual({
+      invoiceEmail: null,
+      reminderEmail: null,
+      paymentTermsDays: null,
+      currency: null,
+      language: null,
+      invoiceDelivery: "ehf",
+      reminderDelivery: null,
+      peppolId: "0192:923609016",
+      gln: null,
+      buyerReference: null,
+      revision: 3,
+    });
   });
 
   it("shows the delivery-A conflict wording on a 409, and Reload carries the fresh revision into the next PUT", async () => {
@@ -401,6 +405,242 @@ describe("CustomerPeppolStatus", () => {
       expect(puts.length).toBe(2);
       expect(JSON.parse(String((puts.at(-1) as [string, RequestInit])[1].body)).revision).toBe(4);
     });
+  });
+
+  it("forgets a failed reload, so an old 'Could not reload' does not haunt the next conflict", async () => {
+    let billingGets = 0;
+    const fetchMock = vi.fn().mockImplementation((url: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(url);
+      if (path === "/api/v1/customers/1001/billing-profile" && init?.method === "PUT") {
+        return Promise.resolve(
+          jsonResponse(409, {
+            title: "Customer revision conflict",
+            detail: "The customer was changed by someone else.",
+            status: 409,
+          }),
+        );
+      }
+      if (path === "/api/v1/customers/1001/billing-profile") {
+        billingGets += 1;
+        // The reload's own fetch (the second GET) fails; the card keeps the
+        // data it already had.
+        if (billingGets === 2) return Promise.resolve(jsonResponse(500, { title: "Boom", status: 500 }));
+        return Promise.resolve(
+          jsonResponse(200, { ...emptyProfile, warnings: ["ehf_available"], peppolLookup: registeredWithInvoice }),
+        );
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    renderStatus(fetchMock);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Use EHF" }));
+    await screen.findByText("This customer was changed by someone else. Reload to see the latest version.");
+
+    await userEvent.click(screen.getByRole("button", { name: /reload/i }));
+    expect(await screen.findByText("Could not reload. Try again.")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Use EHF" }));
+
+    // The new conflict is the new conflict: the failure of a reload nobody
+    // asked for yet must not be part of it.
+    await waitFor(() => {
+      expect(
+        screen.getByText("This customer was changed by someone else. Reload to see the latest version."),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("Could not reload. Try again.")).not.toBeInTheDocument();
+    });
+  });
+
+  it("drops the no-identifier note once the profile has a Peppol ID to look up", async () => {
+    let billingGets = 0;
+    const fetchMock = vi.fn().mockImplementation((url: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(url);
+      if (path === "/api/v1/customers/1001/peppol-lookup" && init?.method === "POST") {
+        return Promise.resolve(
+          jsonResponse(200, {
+            status: "no_identifier",
+            canReceiveInvoice: false,
+            canReceiveCreditNote: false,
+            checkedAt: "2026-09-21T10:00:00Z",
+          }),
+        );
+      }
+      if (path === "/api/v1/customers/1001/billing-profile") {
+        billingGets += 1;
+        // Somebody fills the Peppol ID in — the note's reason is gone.
+        return Promise.resolve(jsonResponse(200, billingGets === 1 ? neverCheckedProfile : emptyProfile));
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    const { queryClient } = renderStatus(fetchMock);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Check EHF" }));
+    expect(
+      await screen.findByText("Nothing to look up — no Peppol ID or Norwegian organisation number"),
+    ).toBeInTheDocument();
+
+    await queryClient.invalidateQueries({ queryKey: ["customers", 1001, "billing-profile"] });
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText("Nothing to look up — no Peppol ID or Norwegian organisation number"),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it("refreshes the timeline when the answer changed, and never the customer itself", async () => {
+    const fetchMock = vi.fn().mockImplementation((url: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(url);
+      if (path === "/api/v1/customers/1001/peppol-lookup" && init?.method === "POST") {
+        return Promise.resolve(jsonResponse(200, registeredWithInvoice));
+      }
+      if (path === "/api/v1/customers/1001/billing-profile") {
+        return Promise.resolve(
+          jsonResponse(200, {
+            ...emptyProfile,
+            peppolLookup: { ...registeredWithInvoice, status: "not_registered", canReceiveInvoice: false },
+          }),
+        );
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    queryClient.setQueryData(["customers", 1001, "timeline", {}], { entries: [] });
+    queryClient.setQueryData(["customers", 1001], { id: 1001, revision: 3 });
+    renderStatus(fetchMock, { queryClient });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Check EHF" }));
+
+    // The server records `customer.peppol_lookup` when the answer moved, so
+    // the timeline on this very page is stale until it is asked again.
+    await waitFor(() =>
+      expect(queryClient.getQueryState(["customers", 1001, "timeline", {}])?.isInvalidated).toBe(true),
+    );
+    // The customer row is untouched by a lookup (design D3): its revision did
+    // not move, so nothing that reads it needs refetching.
+    expect(queryClient.getQueryState(["customers", 1001])?.isInvalidated).toBe(false);
+  });
+
+  it("leaves the timeline alone when the answer did not change", async () => {
+    const fetchMock = vi.fn().mockImplementation((url: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(url);
+      if (path === "/api/v1/customers/1001/peppol-lookup" && init?.method === "POST") {
+        return Promise.resolve(jsonResponse(200, registeredWithInvoice));
+      }
+      if (path === "/api/v1/customers/1001/billing-profile") {
+        return Promise.resolve(jsonResponse(200, { ...emptyProfile, peppolLookup: registeredWithInvoice }));
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    queryClient.setQueryData(["customers", 1001, "timeline", {}], { entries: [] });
+    renderStatus(fetchMock, { queryClient });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Check EHF" }));
+
+    // The profile refetch proves the success path ran; re-checking the same
+    // answer records no timeline event, so nothing to refresh.
+    await waitFor(() => expect(callsTo(fetchMock, "/api/v1/customers/1001/billing-profile").length).toBe(2));
+    expect(queryClient.getQueryState(["customers", 1001, "timeline", {}])?.isInvalidated).toBe(false);
+  });
+
+  it("keeps the action pending until the refetched answer has landed", async () => {
+    let resolveSecondGet!: (value: Response) => void;
+    const secondGet = new Promise<Response>((resolve) => {
+      resolveSecondGet = resolve;
+    });
+    let billingGets = 0;
+    const fetchMock = vi.fn().mockImplementation((url: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(url);
+      if (path === "/api/v1/customers/1001/peppol-lookup" && init?.method === "POST") {
+        return Promise.resolve(jsonResponse(200, registeredWithInvoice));
+      }
+      if (path === "/api/v1/customers/1001/billing-profile") {
+        billingGets += 1;
+        return billingGets === 1 ? Promise.resolve(jsonResponse(200, neverCheckedProfile)) : secondGet;
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    renderStatus(fetchMock);
+
+    const button = await screen.findByRole("button", { name: "Check EHF" });
+    await userEvent.click(button);
+
+    // The POST has answered and the refetch is in flight: the answer on screen
+    // is still the old one, so the action must still read as working.
+    await waitFor(() => expect(callsTo(fetchMock, "/api/v1/customers/1001/billing-profile").length).toBe(2));
+    expect(button).toBeDisabled();
+
+    resolveSecondGet(jsonResponse(200, { ...emptyProfile, peppolLookup: registeredWithInvoice }));
+
+    await screen.findByText(`Can receive EHF invoices — checked ${checkedOn(registeredWithInvoice.checkedAt)}`);
+    expect(button).not.toBeDisabled();
+  });
+
+  it("shows a 400's field error inside the offer", async () => {
+    const fetchMock = vi.fn().mockImplementation((url: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(url);
+      if (path === "/api/v1/customers/1001/billing-profile" && init?.method === "PUT") {
+        return Promise.resolve(
+          jsonResponse(400, {
+            title: "Invalid billing profile",
+            status: 400,
+            errors: { invoiceDelivery: ["EHF needs a Peppol ID"] },
+          }),
+        );
+      }
+      if (path === "/api/v1/customers/1001/billing-profile") {
+        return Promise.resolve(
+          jsonResponse(200, { ...emptyProfile, warnings: ["ehf_available"], peppolLookup: registeredWithInvoice }),
+        );
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    renderStatus(fetchMock);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Use EHF" }));
+
+    // Beside the action that caused it, inside the offer — not as a toast that
+    // scrolls away from the button it belongs to.
+    const offer = await screen.findByRole("alert");
+    expect(await within(offer).findByText("EHF needs a Peppol ID")).toBeInTheDocument();
+  });
+
+  it("reports a Check EHF that failed for some other reason as a toast", async () => {
+    const fetchMock = vi.fn().mockImplementation((url: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(url);
+      if (path === "/api/v1/customers/1001/peppol-lookup" && init?.method === "POST") {
+        return Promise.resolve(jsonResponse(500, { title: "Something went wrong", status: 500, detail: "Boom." }));
+      }
+      if (path === "/api/v1/customers/1001/billing-profile")
+        return Promise.resolve(jsonResponse(200, neverCheckedProfile));
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    renderStatus(fetchMock);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Check EHF" }));
+
+    expect(await screen.findByText("Could not check whether this customer can receive EHF")).toBeInTheDocument();
+  });
+
+  it("reports a Use EHF that failed for some other reason as a toast", async () => {
+    const fetchMock = vi.fn().mockImplementation((url: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(url);
+      if (path === "/api/v1/customers/1001/billing-profile" && init?.method === "PUT") {
+        return Promise.resolve(jsonResponse(500, { title: "Something went wrong", status: 500, detail: "Boom." }));
+      }
+      if (path === "/api/v1/customers/1001/billing-profile") {
+        return Promise.resolve(
+          jsonResponse(200, { ...emptyProfile, warnings: ["ehf_available"], peppolLookup: registeredWithInvoice }),
+        );
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    renderStatus(fetchMock);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Use EHF" }));
+
+    expect(await screen.findByText("Could not switch to EHF")).toBeInTheDocument();
   });
 });
 
