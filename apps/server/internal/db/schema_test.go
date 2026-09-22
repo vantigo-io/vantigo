@@ -323,6 +323,7 @@ func TestCustomersBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"counters",
 		"customer_addresses",
 		"customer_peppol_lookups",
+		"customer_registry_records",
 		"customers",
 		"customers_contacts",
 		"customers_timeline_entries",

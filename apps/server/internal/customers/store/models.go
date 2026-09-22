@@ -83,6 +83,32 @@ type CustomersCustomerPeppolLookup struct {
 	CheckedAt            time.Time
 }
 
+type CustomersCustomerRegistryRecord struct {
+	CustomerID               int32
+	OrganisationNumber       string
+	Name                     string
+	OrganisationFormCode     *string
+	OrganisationForm         *string
+	IndustryCode             *string
+	Industry                 *string
+	Employees                *int32
+	VatRegistered            bool
+	Bankrupt                 bool
+	UnderLiquidation         bool
+	UnderForcedLiquidation   bool
+	DeletedOn                pgtype.Date
+	FoundedOn                pgtype.Date
+	Website                  *string
+	Email                    *string
+	Phone                    *string
+	Mobile                   *string
+	ParentOrganisationNumber *string
+	BusinessAddress          []byte
+	PostalAddress            []byte
+	FetchedAt                time.Time
+	RegistryUpdatedHint      *time.Time
+}
+
 type CustomersCustomersContact struct {
 	CustomerID int32
 	ContactID  int32

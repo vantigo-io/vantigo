@@ -314,19 +314,21 @@ WHERE customer_id = @customer_id AND state = 'active';
 -- (SV/CustomerTimelineRecorder.cs:127-160): every generated event is
 -- written with its first, and since generated entries are never mutated
 -- afterward (inventory §2.4), only revision, in one statement.
--- provenance/producer/current_revision/state are the recorder's fixed
--- constants, never caller-supplied; actor_kind/actor_display/actor_user_id
--- are the acting user the caller resolved (server.actorFor, customers
--- foundation design D1) — generatedFallbackActor's
--- 'system'/'System'/NULL when there is no user principal to attribute the
--- event to.
+-- provenance/current_revision/state are the recorder's fixed constants,
+-- never caller-supplied; actor_kind/actor_display/actor_user_id are the
+-- acting user the caller resolved (server.actorFor, customers foundation
+-- design D1) — generatedFallbackActor's 'system'/'System'/NULL when there is
+-- no user principal to attribute the event to. producer is the one column a
+-- caller chooses: 'customers.api' for everything this module's own
+-- endpoints do to a customer, 'customers.brreg' for what the registry says
+-- (Brreg in full design D4, timeline_events.go's two constants).
 WITH entry AS (
     INSERT INTO customers.customers_timeline_entries (
         customer_id, provenance, producer, event_type, occurred_on, occurred_at,
         summary, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
         actor_user_id, created_at, updated_at
     ) VALUES (
-        @customer_id::int, 'generated', 'customers.api', @event_type::text, @occurred_on::date, @now::timestamptz,
+        @customer_id::int, 'generated', @producer::text, @event_type::text, @occurred_on::date, @now::timestamptz,
         @summary::text, @payload_json::jsonb, @payload_version::int, 1, 'active', @actor_kind::text, @actor_display::text,
         @actor_user_id, @now::timestamptz, @now::timestamptz
     )

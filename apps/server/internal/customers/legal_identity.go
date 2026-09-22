@@ -188,6 +188,19 @@ func (s *server) PutCustomersByIdLegalIdentity(ctx context.Context, req gen.PutC
 		return nil, fmt.Errorf("customers: replace legal identity: %w", err)
 	}
 
+	// The same after-commit registry fetch PostCustomers makes for a Brreg
+	// pick (Brreg in full design D2): pointing a customer at a different
+	// entity makes the record on file the wrong company's, so the new one is
+	// read straight away. It runs only for source brreg — a manual identity
+	// is enriched when a person asks, through the refresh endpoint — and its
+	// failure is logged and dropped: the identity is already replaced, and a
+	// registry outage must not turn a successful save into an error.
+	if orgnr := brregPickOrganisationNumber(after, existing.Type); orgnr != "" {
+		if err := s.fetchAndStoreRegistryRecord(ctx, req.Id, orgnr, after.Name, act); err != nil {
+			s.deps.Logger.WarnContext(ctx, "customers: registry record fetch failed", "customerId", req.Id, "errorKind", registryErrorKind(err))
+		}
+	}
+
 	return gen.PutCustomersByIdLegalIdentity200JSONResponse(legalIdentityResponse(parsed)), nil
 }
 

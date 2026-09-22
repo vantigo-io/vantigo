@@ -187,6 +187,7 @@ var KnownServeMuxConflicts = []string{
 	"GET /api/v1/customers/contacts/{id} ⟷ GET /api/v1/customers/{id}/billing-profile",
 	"GET /api/v1/customers/contacts/{id} ⟷ GET /api/v1/customers/{id}/contacts",
 	"GET /api/v1/customers/contacts/{id} ⟷ GET /api/v1/customers/{id}/legal-identity",
+	"GET /api/v1/customers/contacts/{id} ⟷ GET /api/v1/customers/{id}/registry-record",
 	"GET /api/v1/customers/contacts/{id} ⟷ GET /api/v1/customers/{id}/timeline",
 	"GET /api/v1/customers/contacts/{id}/customers ⟷ GET /api/v1/customers/{id}/timeline/{entryId}",
 	"GET /api/v1/products/categories/{id} ⟷ GET /api/v1/products/{id}/variants",

@@ -831,9 +831,9 @@ WITH entry AS (
         summary, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
         actor_user_id, created_at, updated_at
     ) VALUES (
-        $1::int, 'generated', 'customers.api', $2::text, $3::date, $4::timestamptz,
-        $5::text, $6::jsonb, $7::int, 1, 'active', $8::text, $9::text,
-        $10, $4::timestamptz, $4::timestamptz
+        $1::int, 'generated', $2::text, $3::text, $4::date, $5::timestamptz,
+        $6::text, $7::jsonb, $8::int, 1, 'active', $9::text, $10::text,
+        $11, $5::timestamptz, $5::timestamptz
     )
     RETURNING id, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
               source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
@@ -852,6 +852,7 @@ FROM entry
 
 type InsertGeneratedTimelineEventParams struct {
 	CustomerID     int32
+	Producer       string
 	EventType      string
 	OccurredOn     pgtype.Date
 	Now            time.Time
@@ -867,15 +868,18 @@ type InsertGeneratedTimelineEventParams struct {
 // (SV/CustomerTimelineRecorder.cs:127-160): every generated event is
 // written with its first, and since generated entries are never mutated
 // afterward (inventory §2.4), only revision, in one statement.
-// provenance/producer/current_revision/state are the recorder's fixed
-// constants, never caller-supplied; actor_kind/actor_display/actor_user_id
-// are the acting user the caller resolved (server.actorFor, customers
-// foundation design D1) — generatedFallbackActor's
-// 'system'/'System'/NULL when there is no user principal to attribute the
-// event to.
+// provenance/current_revision/state are the recorder's fixed constants,
+// never caller-supplied; actor_kind/actor_display/actor_user_id are the
+// acting user the caller resolved (server.actorFor, customers foundation
+// design D1) — generatedFallbackActor's 'system'/'System'/NULL when there is
+// no user principal to attribute the event to. producer is the one column a
+// caller chooses: 'customers.api' for everything this module's own
+// endpoints do to a customer, 'customers.brreg' for what the registry says
+// (Brreg in full design D4, timeline_events.go's two constants).
 func (q *Queries) InsertGeneratedTimelineEvent(ctx context.Context, arg InsertGeneratedTimelineEventParams) error {
 	_, err := q.db.Exec(ctx, insertGeneratedTimelineEvent,
 		arg.CustomerID,
+		arg.Producer,
 		arg.EventType,
 		arg.OccurredOn,
 		arg.Now,

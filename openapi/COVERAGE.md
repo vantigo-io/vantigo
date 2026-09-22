@@ -43,7 +43,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/identity/account` (putIdentityAccount)
 - `PUT /api/v1/identity/scim/v2/Users/{id}` (putIdentityScimV2UsersById)
 
-## customers (12 uncovered)
+## customers (14 uncovered)
 
 - `DELETE /api/v1/customers/{id}/addresses/{addressId}` (deleteCustomersByIdAddressesByAddressId)
 - `GET /api/v1/customers/stats/attention` (getCustomersStatsAttention)
@@ -51,8 +51,10 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `GET /api/v1/customers/stats/timeseries` (getCustomersStatsTimeseries)
 - `GET /api/v1/customers/{id}/addresses` (getCustomersByIdAddresses)
 - `GET /api/v1/customers/{id}/billing-profile` (getCustomersByIdBillingProfile)
+- `GET /api/v1/customers/{id}/registry-record` (getCustomersByIdRegistryRecord)
 - `POST /api/v1/customers/{id}/addresses` (postCustomersByIdAddresses)
 - `POST /api/v1/customers/{id}/peppol-lookup` (postCustomersByIdPeppolLookup)
+- `POST /api/v1/customers/{id}/registry-refresh` (postCustomersByIdRegistryRefresh)
 - `PUT /api/v1/customers/{id}/addresses/{addressId}` (putCustomersByIdAddressesByAddressId)
 - `PUT /api/v1/customers/{id}/billing-profile` (putCustomersByIdBillingProfile)
 - `PUT /api/v1/customers/{id}/contact-info` (putCustomersByIdContactInfo)
@@ -216,4 +218,4 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/expenses/rates/{id}` (putExpensesRatesById)
 - `PUT /api/v1/expenses/settings` (putExpensesSettings)
 
-Total: 190 of 325 operations have no recorded exchange.
+Total: 192 of 327 operations have no recorded exchange.
