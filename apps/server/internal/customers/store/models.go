@@ -166,3 +166,12 @@ type CustomersCustomersTimelineEntry struct {
 	DeletedAt       *time.Time
 	ActorUserID     *uuid.UUID
 }
+
+type CustomersRegistryFeedCursor struct {
+	ID              int16
+	NextUpdateID    *int64
+	StartedAt       time.Time
+	LastPolledAt    *time.Time
+	LastUpdateAt    *time.Time
+	BackfillAfterID int32
+}

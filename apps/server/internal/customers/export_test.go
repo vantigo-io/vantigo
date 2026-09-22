@@ -45,3 +45,29 @@ type FeedEntryForTest struct {
 	OrganisationNumber string
 	ChangeType         string
 }
+
+// RegistryFeedLeaseKeyForTest is the feed worker's advisory-lease key, exported
+// so a test can take the same lock from a second connection and prove a cycle
+// skips (design D5) — communications' RetentionLeaseKeyForTest is the same seam
+// for the same reason. The Peppol worker's key joins it in Task 4, with the
+// worker it names.
+const RegistryFeedLeaseKeyForTest = registryFeedLeaseKey
+
+// SetRegistryFeedPageSize shrinks the feed's page size for the length of one
+// test and answers the function that puts the real one back. Proving that the
+// page budget bounds a cycle otherwise means serving twenty full pages of a
+// thousand entries each; with a page size of 1 the same property is one entry
+// per page. The test that uses it does not run in parallel, because the page
+// size is the package's — SetRegistryHookTimeout is the same seam for the same
+// reason.
+func SetRegistryFeedPageSize(n int) func() {
+	previous := registryFeedPageSize
+	registryFeedPageSize = n
+	return func() { registryFeedPageSize = previous }
+}
+
+// ValidNorwegianOrgNumberForTest is values.go's check-digit rule, exported for
+// the one thing an external test cannot otherwise do: prove that a fixture of
+// organisation numbers is one this module will actually act on
+// (TestValidOrgNumbersFixture).
+func ValidNorwegianOrgNumberForTest(s string) bool { return validNorwegianOrgNumber(s) }

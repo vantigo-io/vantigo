@@ -328,6 +328,7 @@ func TestCustomersBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"customers_contacts",
 		"customers_timeline_entries",
 		"customers_timeline_entries_revisions",
+		"registry_feed_cursor",
 	}
 	rows, err := pool.Query(ctx, `SELECT table_name FROM information_schema.tables WHERE table_schema = 'customers' ORDER BY table_name`)
 	if err != nil {
