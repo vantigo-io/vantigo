@@ -336,9 +336,10 @@ func exchangeTCP(ctx context.Context, server string, query []byte) ([]byte, erro
 // go unnoticed until the attempt's own deadline, seconds later. Closing the
 // connection makes the blocked read return at once.
 //
-// The returned function must be deferred before the conn.Close that the caller
-// also defers, so that the watcher is always joined before the connection is
-// closed underneath it and no goroutine outlives the exchange.
+// The returned function must be deferred AFTER the caller's own conn.Close,
+// so that, LIFO, it runs FIRST: the watcher is always joined before the
+// connection is closed underneath it, and no goroutine outlives the
+// exchange.
 func closeOnCancel(ctx context.Context, conn net.Conn) func() {
 	finished := make(chan struct{})
 	stop := make(chan struct{})

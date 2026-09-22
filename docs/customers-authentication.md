@@ -247,7 +247,10 @@ SMTP destinations are resolved and checked before the socket opens: private,
 loopback, link-local, carrier-grade-NAT and cloud-metadata addresses are refused,
 and the connection is made to the address that was checked rather than a fresh
 lookup. See [transport security](transport-security.md) for the rule and its escape
-hatch.
+hatch. A destination reached only through DNS64 on the local-use prefix
+`64:ff9b:1::/48` is refused outright (there is no single fixed offset to decode
+an embedded address from); a resolver on the well-known `64:ff9b::/96` prefix
+works as normal.
 
 This is identity's application mail. Communications' per-channel mailbox credentials
 are a different thing entirely — configured through the Communications API and
@@ -349,11 +352,21 @@ summary. Booleans are strict `0`/`1` switches — anything else fails startup.
 | `STORAGE_FS_ALLOW_INSECURE_ROOT` | Relax the root permission check (development only) | `0` |
 | `BRREG_BASE_URL` | Brønnøysundregisteret origin | `https://data.brreg.no` |
 | `BRREG_TIMEOUT` | Budget for one lookup, retries included | `15s` |
-| `PEPPOL_LOOKUP_ENABLED` | On/off switch for the Peppol EHF-capability lookup | `true` |
-| `PEPPOL_SML_ZONE` | SML zone a participant identifier is hashed into | `participant.sml.prod.tech.peppol.org` |
-| `PEPPOL_DNS_SERVER` | `host:port` of a resolver to use instead of `/etc/resolv.conf` | unset |
+| `PEPPOL_LOOKUP_ENABLED` | On/off switch for the Peppol EHF-capability lookup | `1` |
+| `PEPPOL_SML_ZONE` | SML zone a participant identifier is hashed into; must be a plain hostname — no scheme, path or whitespace | `participant.sml.prod.tech.peppol.org` |
+| `PEPPOL_DNS_SERVER` | `host:port` of a resolver to use instead of `/etc/resolv.conf`; the port is required and must be numeric | unset |
 | `PEPPOL_TIMEOUT` | Budget for one lookup end to end (DNS and SMP together) | `10s` |
 | `APP_TITLE`, `APP_LOGO_URL`, `APP_SUPPORT_EMAIL`, `APP_SUPPORT_PHONE`, `APP_SUPPORT_URL` | SPA branding | unset |
+
+The Peppol lookup treats NXDOMAIN and NOERROR-with-no-NAPTR-records as the same
+definitive "not registered" answer (`docs/customers.md#peppol-lookup`), since
+the SML publishes a name only for a registered participant. That makes the
+resolver named by `PEPPOL_DNS_SERVER` matter: one that answers NODATA instead
+of forwarding the authoritative NXDOMAIN — or that silently drops an
+unfamiliar record type such as NAPTR rather than passing it through — would
+turn a genuinely registered participant into a silent false negative, with
+nothing in the answer to tell the two apart. Point `PEPPOL_DNS_SERVER` at a
+plain recursive resolver, not one that synthesizes or filters answers.
 
 ### Management listener
 

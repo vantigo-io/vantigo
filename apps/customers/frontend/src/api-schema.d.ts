@@ -176,7 +176,7 @@ export interface paths {
         put?: never;
         /**
          * Ask Peppol whether this customer can receive EHF invoices
-         * @description Asks the Peppol network whether this customer can receive an EHF invoice, for the customer's explicit billing-profile peppolId if set, else the participant id derived from its legal identity (can-this-customer-receive-EHF design D3). 200 with status 'no_identifier' and nothing stored when neither exists — no network call is made. A successful check is remembered on the billing profile and, when the answer changed, recorded on the customer's timeline; it never touches the customer row's own revision. 502 when the Peppol network could not be reached (the last good answer, if any, stands); 503 when the feature is disabled on this installation.
+         * @description Asks the Peppol network whether this customer can receive an EHF invoice, for the customer's explicit billing-profile peppolId if set, else the participant id derived from its legal identity (can-this-customer-receive-EHF design D3). 200 with status 'no_identifier' and nothing stored when neither exists — no network call is made. A successful check is remembered in its own table and surfaced on the billing profile as peppolLookup; the customer row's revision is untouched. When the answer changed, it is also recorded on the customer's timeline. 502 when the Peppol network could not be reached (the last good answer, if any, stands); 503 when the feature is disabled on this installation.
          */
         post: operations["postCustomersByIdPeppolLookup"];
         delete?: never;

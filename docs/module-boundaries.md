@@ -17,9 +17,10 @@ Communications' outbox is the working example.
    import platform packages (`internal/config`, `internal/db`, `internal/httpx`,
    `internal/module`, `internal/contracts`, `internal/peppol` — the Peppol
    SML/SMP lookup, shared with the future Invoices module — `internal/netguard`
-   — the one table of addresses every outbound client dials through, shared by
-   `internal/mail`'s SMTP guard and `internal/peppol`'s SMP client — …) and its
-   own subpackages, never another module's.
+   — the shared table of addresses the guarded outbound clients refuse to
+   dial (today `internal/mail`'s SMTP guard and `internal/peppol`'s SMP
+   client; Brreg, OIDC and the AI client use `http.DefaultTransport`) — …)
+   and its own subpackages, never another module's.
 2. **The platform imports no module.** `internal/module` and `internal/contracts` —
    the platform modules mount through — may not import any business module, so the
    composition machinery never depends on what it composes.

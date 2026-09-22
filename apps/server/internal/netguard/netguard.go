@@ -181,11 +181,20 @@ func embeddedIPv4(b [16]byte) (embedded [4]byte, ok bool) {
 // host and port, resolves host (a literal IP is checked without a lookup),
 // and refuses the destination — without ever calling dial — when
 // resolution fails, resolves to nothing, or any resolved address is
-// disallowed. Otherwise it dials net.JoinHostPort of the first resolved
-// address, never the hostname again, so the connection goes to the exact
-// address that was checked. That is what defeats a DNS-rebinding attack: a
-// DNS answer that changes between the check and the connect cannot smuggle
-// a disallowed destination past the guard.
+// disallowed. Otherwise it dials net.JoinHostPort of each resolved address,
+// in order, never the hostname again, until one connects, so every
+// connection attempt goes to an address that was checked. That is what
+// defeats a DNS-rebinding attack: a DNS answer that changes between the
+// check and the connect cannot smuggle a disallowed destination past the
+// guard.
+//
+// Trying every address (rather than only addrs[0]) matters for a dual-stack
+// destination whose first family the dial itself cannot reach — no route,
+// a firewall — even though the guard already passed both: the connection
+// still succeeds over the next address instead of failing outright. If
+// every address fails, the LAST dial error is returned, since the last
+// address tried is the one that decided the destination as a whole is
+// unreachable.
 func DialContext(resolver Resolver, dial func(ctx context.Context, network, addr string) (net.Conn, error)) func(ctx context.Context, network, address string) (net.Conn, error) {
 	return func(ctx context.Context, network, address string) (net.Conn, error) {
 		host, port, err := net.SplitHostPort(address)
@@ -212,7 +221,15 @@ func DialContext(resolver Resolver, dial func(ctx context.Context, network, addr
 			}
 		}
 
-		return dial(ctx, network, net.JoinHostPort(addrs[0].String(), port))
+		var lastErr error
+		for _, addr := range addrs {
+			conn, err := dial(ctx, network, net.JoinHostPort(addr.String(), port))
+			if err == nil {
+				return conn, nil
+			}
+			lastErr = err
+		}
+		return nil, lastErr
 	}
 }
 

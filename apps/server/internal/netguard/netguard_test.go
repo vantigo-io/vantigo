@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"slices"
 	"testing"
 )
 
@@ -165,6 +166,77 @@ func TestDialContext_DialsPublicAddress(t *testing.T) {
 	}
 	if dialedAddr != "203.0.113.5:25" {
 		t.Fatalf("dialed addr = %q, want 203.0.113.5:25", dialedAddr)
+	}
+}
+
+// TestDialContext_FirstAddressRefusedDialsSecond proves DialContext tries
+// every checked address in order rather than only addrs[0]: a dual-stack
+// destination whose first family a dial refuses (a firewall, an unreachable
+// route — not the guard, which already passed both) still connects over the
+// next one.
+func TestDialContext_FirstAddressRefusedDialsSecond(t *testing.T) {
+	t.Parallel()
+	resolver := &fakeResolver{addrs: []netip.Addr{
+		mustAddr(t, "2001:db8::1"),
+		mustAddr(t, "203.0.113.5"),
+	}}
+
+	firstErr := errors.New("connection refused")
+	var dialed []string
+	dial := func(_ context.Context, _ string, addr string) (net.Conn, error) {
+		dialed = append(dialed, addr)
+		if addr == "[2001:db8::1]:25" {
+			return nil, firstErr
+		}
+		return fakeConn{}, nil
+	}
+
+	conn, err := DialContext(resolver, dial)(context.Background(), "tcp", "mail.example.test:25")
+	if err != nil {
+		t.Fatalf("DialContext() = %v, want nil (the second address succeeded)", err)
+	}
+	if conn == nil {
+		t.Fatalf("DialContext() conn = nil, want the second dial's connection")
+	}
+	if want := []string{"[2001:db8::1]:25", "203.0.113.5:25"}; !slices.Equal(dialed, want) {
+		t.Fatalf("dialed = %v, want %v (both addresses tried, in order)", dialed, want)
+	}
+}
+
+// TestDialContext_AllAddressesFail_ReturnsLastError proves that when every
+// resolved address refuses the dial, DialContext returns the LAST error, not
+// the first: the last address is the one that decides whether the
+// destination as a whole is reachable.
+func TestDialContext_AllAddressesFail_ReturnsLastError(t *testing.T) {
+	t.Parallel()
+	resolver := &fakeResolver{addrs: []netip.Addr{
+		mustAddr(t, "203.0.113.5"),
+		mustAddr(t, "203.0.113.6"),
+	}}
+
+	firstErr := errors.New("first address refused")
+	lastErr := errors.New("last address refused")
+	var dialed []string
+	dial := func(_ context.Context, _ string, addr string) (net.Conn, error) {
+		dialed = append(dialed, addr)
+		if addr == "203.0.113.5:25" {
+			return nil, firstErr
+		}
+		return nil, lastErr
+	}
+
+	conn, err := DialContext(resolver, dial)(context.Background(), "tcp", "mail.example.test:25")
+	if conn != nil {
+		t.Fatalf("DialContext() conn = %v, want nil", conn)
+	}
+	if !errors.Is(err, lastErr) {
+		t.Fatalf("DialContext() = %v, want the LAST dial error %v", err, lastErr)
+	}
+	if errors.Is(err, firstErr) {
+		t.Fatalf("DialContext() = %v, want it not to be the first dial error", err)
+	}
+	if want := []string{"203.0.113.5:25", "203.0.113.6:25"}; !slices.Equal(dialed, want) {
+		t.Fatalf("dialed = %v, want %v (every address tried, in order)", dialed, want)
 	}
 }
 

@@ -923,7 +923,15 @@ func TestLoad_PeppolSMLZone(t *testing.T) {
 	if cfg := mustLoad(t, with(validEnv(), "PEPPOL_SML_ZONE", "participant.sml.test.tech.peppol.org")); cfg.PeppolSMLZone != "participant.sml.test.tech.peppol.org" {
 		t.Errorf("PeppolSMLZone = %q, want the test network's own zone", cfg.PeppolSMLZone)
 	}
-	for _, bad := range []string{"https://participant.sml.prod.tech.peppol.org", "participant.sml.prod.tech.peppol.org/path", "has a space"} {
+	for _, bad := range []string{
+		"https://participant.sml.prod.tech.peppol.org",
+		"participant.sml.prod.tech.peppol.org/path",
+		"has a space",
+		"participant.sml.prod.tech.peppol.org:8080", // a caller pasted host:port, not a zone
+		".participant.sml.prod.tech.peppol.org",     // leading dot: an empty label
+		"participant.sml.prod.tech.peppol.org.",     // trailing dot: an empty label
+		"participant..sml.prod.tech.peppol.org",     // consecutive dots: an empty label
+	} {
 		if msg := loadError(t, with(validEnv(), "PEPPOL_SML_ZONE", bad)); !strings.Contains(msg, "PEPPOL_SML_ZONE: must be a plain hostname, with no scheme, path or whitespace") {
 			t.Errorf("PEPPOL_SML_ZONE=%q: error = %q", bad, msg)
 		}
@@ -936,6 +944,9 @@ func TestLoad_PeppolDNSServer(t *testing.T) {
 	}
 	if cfg := mustLoad(t, with(validEnv(), "PEPPOL_DNS_SERVER", "127.0.0.1:53")); cfg.PeppolDNSServer != "127.0.0.1:53" {
 		t.Errorf("PeppolDNSServer = %q, want 127.0.0.1:53", cfg.PeppolDNSServer)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "PEPPOL_DNS_SERVER", "[::1]:53")); cfg.PeppolDNSServer != "[::1]:53" {
+		t.Errorf("PeppolDNSServer = %q, want [::1]:53 (a bracketed IPv6 literal)", cfg.PeppolDNSServer)
 	}
 	for _, bad := range []string{"127.0.0.1", "127.0.0.1:", "127.0.0.1:dns", "not-host-port-at-all"} {
 		if msg := loadError(t, with(validEnv(), "PEPPOL_DNS_SERVER", bad)); !strings.Contains(msg, "PEPPOL_DNS_SERVER:") {

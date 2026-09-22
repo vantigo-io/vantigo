@@ -581,31 +581,47 @@ nothing stored, no network call made.
 **How the network is asked.** Discovery is NAPTR-only: the participant
 identifier's value is lower-cased, SHA-256 hashed, base32-encoded (trailing
 `=` stripped) and turned into a DNS name under the configured SML zone
-(`<hash>.iso6523-actorid-upis.<zone>`). A NAPTR record with flags `U`,
-service `Meta:SMP` and a regexp carrying the SMP's base URL names the
-participant's Service Metadata Publisher; one unauthenticated `GET` of that
-SMP's `ServiceGroup` then lists the document types the participant has
-registered, compared as the **full identifier string, exactly** — never a
-prefix, substring or the PINT wildcard — against the Peppol BIS Billing 3.0
-invoice and credit-note ids (`internal/peppol`, package doc comment and
-`smp.go` for the two live edge cases — a reminder-only receiver and a
-participant with order/response profiles only — that make anything looser
-wrong). There are three outcomes at the DNS step, never two: **NXDOMAIN** is
-a definitive "not registered"; **SERVFAIL, REFUSED or a timeout** is a
-technical failure, retryable, never reported as "not registered"; and NAPTR
-records with none carrying `U` + `Meta:SMP` mean the participant is
-registered with no SMP service — able to receive nothing.
+(`<hash>.iso6523-actorid-upis.<zone>`). There are three outcomes at the DNS
+step, never two: **NXDOMAIN, or NOERROR with no NAPTR records, is the
+definitive negative** — the SML publishes a name only for a registered
+participant, so a name with no NAPTR records has no SMP behind it either,
+and the two are never distinguished from each other; **SERVFAIL, REFUSED or
+a timeout** is a technical failure, retryable, never reported as "not
+registered". (A resolver that answers NODATA instead of forwarding the
+authoritative NXDOMAIN would turn a registered participant into a silent
+false negative — see "Configuration" below.)
+
+A NAPTR record with flags `U`, service `Meta:SMP` and a regexp carrying the
+SMP's base URL names the participant's Service Metadata Publisher. When the
+name exists but none of its records carry `U` + `Meta:SMP`, the participant
+is registered with no SMP service — able to receive nothing, and no SMP
+request is made. Otherwise, one unauthenticated `GET` of that SMP's
+`ServiceGroup` lists the document types the participant has registered,
+compared as the **full identifier string, exactly** — never a prefix,
+substring or the PINT wildcard — against the Peppol BIS Billing 3.0 invoice
+and credit-note ids (`internal/peppol`, package doc comment and `smp.go` for
+the two live edge cases — a reminder-only receiver and a participant with
+order/response profiles only — that make anything looser wrong).
 
 **The outbound guard.** The SMP base URL comes out of a DNS record a third
-party published, so it is validated (`https`, no userinfo, port 443) and
-fetched through `internal/netguard` — the one table of addresses the server
-will not dial, shared with `internal/mail`'s own SMTP guard: private,
-loopback, link-local (the `169.254.169.254` cloud metadata address
-included), carrier-grade-NAT, unique-local and the IPv6 forms that plainly
-embed one of those addresses (NAT64, 6to4, the deprecated IPv4-compatible
-`::/96`). The connection dials the very address that was checked, which is
-what defeats DNS rebinding; no proxy is used, no redirect is ever followed,
-and the SMP's response body is capped at 1 MiB.
+party published, so it is validated in full before any request is made: it
+must parse, be `https`, name a host, carry no userinfo, use port 443 or
+none, and carry neither a query (a bare `?` counts, even though it carries
+nothing) nor a fragment. It is then fetched through `internal/netguard` —
+the shared table of addresses the guarded outbound clients refuse to dial
+(today `internal/mail`'s SMTP guard and this SMP client) — refusing
+private, loopback, link-local (the `169.254.169.254` cloud metadata address
+included), carrier-grade-NAT, unique-local, multicast, `0.0.0.0/8`,
+`192.0.0.0/24`, `240.0.0.0/4`, `fec0::/10` (deprecated IPv6 site-local),
+Teredo (`2001::/32`) and the local-use NAT64 range (`64:ff9b:1::/48`)
+outright, plus the IPv6 forms that plainly embed one of those addresses at a
+fixed offset (the well-known NAT64 prefix `64:ff9b::/96`, 6to4, the
+deprecated IPv4-compatible `::/96`), classified by that embedded address.
+The connection dials the very address that was checked, which is what
+defeats DNS rebinding — trying every resolved address in order if the first
+does not connect, since the guard already passed all of them; no proxy is
+used, no redirect is ever followed, and the SMP's response body is capped at
+1 MiB.
 
 **Where the answer lives.** The result is stored in its own table,
 `customers.customer_peppol_lookups` — one row per customer (participant id,
@@ -642,17 +658,21 @@ show.
 **502 vs 503.** An upstream failure — the DNS query or the SMP request
 itself could not complete — answers **502**, the same shape Brreg's own
 lookup uses; nothing is stored, and the last good answer (if any) stands.
-The feature switched off (`PEPPOL_LOOKUP_ENABLED=false`) answers **503**
+The feature switched off (`PEPPOL_LOOKUP_ENABLED=0`) answers **503**
 instead, before any network call would have been attempted.
 
 **Configuration**, all read once at startup by `internal/config`:
 
 | Variable | Default | |
 | --- | --- | --- |
-| `PEPPOL_LOOKUP_ENABLED` | `true` | `false` → the operation answers 503 and the UI hides the action after the first 503 |
+| `PEPPOL_LOOKUP_ENABLED` | `1` | `0` → the operation answers 503 and the UI hides the action after the first 503, until the page is reloaded |
 | `PEPPOL_SML_ZONE` | `participant.sml.prod.tech.peppol.org` | the test network is `participant.sml.test.tech.peppol.org` |
 | `PEPPOL_DNS_SERVER` | *(empty → the server's own name servers, `/etc/resolv.conf`)* | `host:port` of a resolver to use instead |
 | `PEPPOL_TIMEOUT` | `10s` | one lookup end to end (DNS and the SMP request together) |
+
+A resolver that answers NODATA instead of NXDOMAIN for a name nobody
+registered would produce silent false negatives — see "How the network is
+asked" above. Point `PEPPOL_DNS_SERVER` at a plain recursive resolver.
 
 **The frontend.** The Billing card's Peppol row gets a **Check EHF** action
 (gated on `canManageBilling`, i.e. `customers:billing-manage`) that asks the
@@ -665,8 +685,8 @@ switch: unlike Tripletex and Fiken, nothing here changes `invoiceDelivery`
 without a click, and no lookup ever runs automatically (not on create, not
 on a Brreg pick, not on a schedule — every lookup is a person's click, so a
 network failure never blocks a save). A 502 shows "The Peppol network could
-not be reached. Try again."; a 503 makes the action disappear for the rest
-of the browser session with a one-line note, so the app does not keep asking
+not be reached. Try again."; a 503 makes the action disappear, with a
+one-line note, until the page is reloaded, so the app does not keep asking
 an installation that has the feature switched off.
 
 ## Permissions
@@ -825,8 +845,8 @@ been in since the foundation.
   date, and — on the `ehf_available` offer — a **Use EHF** button that goes
   through the same revision-guarded `PUT` and Reload pattern as the edit
   modal, never a silent switch. A 503 (the feature disabled) hides the
-  action for the rest of the browser session rather than asking again on
-  every mount.
+  action until the page is reloaded, rather than asking again on every
+  mount.
 - **Form** (create/edit modal) — sends `revision` on every edit, so a stale write is
   caught by the backend's 409 rather than silently overwriting a concurrent change;
   a 409 revision conflict tells the user the customer changed underneath them and

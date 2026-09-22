@@ -90,7 +90,7 @@ guard type and delegates. Redirects are not followed. The response body is cappe
   nothing to look up: **200** with `status: "no_identifier"`.
 - Outcomes: `registered` (with `canReceiveInvoice`, `canReceiveCreditNote`),
   `not_registered`, `no_identifier`. An upstream failure is **502** (as Brreg's lookup);
-  the feature switched off (`PEPPOL_LOOKUP_ENABLED=false`) is **503**. A failure stores
+  the feature switched off (`PEPPOL_LOOKUP_ENABLED=0`) is **503**. A failure stores
   nothing — the last good answer stands.
 - The answer is stored in a new table `customers.customer_peppol_lookups` (one row per
   customer: participant id, status, the two capabilities, SMP host, checked-at). **It is
@@ -122,7 +122,7 @@ schedule: every lookup is a person's click, so a network failure never blocks a 
 
 | Variable | Default | |
 | --- | --- | --- |
-| `PEPPOL_LOOKUP_ENABLED` | `true` | `false` → the operation answers 503 and the UI hides the action after the first 503 |
+| `PEPPOL_LOOKUP_ENABLED` | `1` | `0` → the operation answers 503 and the UI hides the action after the first 503 |
 | `PEPPOL_SML_ZONE` | `participant.sml.prod.tech.peppol.org` | the test network is `participant.sml.test.tech.peppol.org` |
 | `PEPPOL_DNS_SERVER` | *(empty → `/etc/resolv.conf`)* | `host:port` of a resolver to use instead |
 | `PEPPOL_TIMEOUT` | `10s` | one lookup end to end (DNS 3 s per attempt inside it) |

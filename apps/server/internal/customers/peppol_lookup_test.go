@@ -147,6 +147,35 @@ func TestPostCustomersByIdPeppolLookup_Registered_StoresAndReturnsBothCapabiliti
 	}
 }
 
+// TestPostCustomersByIdPeppolLookup_CheckedAtCapturedAfterNetworkCall proves
+// checkedAt is the clock read once the network call returns, not the clock
+// read before it was made: the fake lookup advances the harness clock while
+// it runs, and the returned checkedAt must reflect that — a network call
+// that takes real time must not be timestamped as though it were
+// instantaneous at the start.
+func TestPostCustomersByIdPeppolLookup_CheckedAtCapturedAfterNetworkCall(t *testing.T) {
+	t.Parallel()
+	var h *modtest.Harness
+	lookup := func(context.Context, string) (peppol.Result, error) {
+		h.Advance(time.Hour)
+		return peppol.Result{Registered: true, CanReceiveInvoice: true, CanReceiveCreditNote: true}, nil
+	}
+	h = newHarness(t, modtest.WithPeppolLookup(lookup))
+	c := authenticatedClient(t, h)
+	created := createNorwegianBusiness(t, c, "Checked At After Network Co", "923609016")
+
+	before := h.Now()
+	r := postPeppolLookup(t, c, created.Id)
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+	}
+	var got peppolLookupJSON
+	r.JSON(&got)
+	if !got.CheckedAt.After(before) {
+		t.Errorf("CheckedAt = %v, want after %v — the lookup advanced the clock by an hour before returning", got.CheckedAt, before)
+	}
+}
+
 // TestPostCustomersByIdPeppolLookup_RegisteredWithoutInvoiceCapability pins
 // "registered, but not for invoices" — both the wire status/capabilities and
 // its own distinct timeline summary.

@@ -149,6 +149,28 @@ func (s *stubDNS) count(transport string) int {
 	return n
 }
 
+// pollUntilCount waits for stub's count(transport) to reach want, instead of
+// asserting it the instant LookupNAPTR returns: a UDP datagram (or, for the
+// TCP goroutine, the Accept that has not yet run) confirms nothing about
+// whether the stub's own bookkeeping goroutine has recorded it yet, so an
+// immediate exact assert here is racing that goroutine's own scheduling, not
+// the resolver. It still fails exactly like an exact assert would: past
+// want, or once the deadline passes short of it.
+func pollUntilCount(t *testing.T, stub *stubDNS, transport string, want int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		n := stub.count(transport)
+		if n == want {
+			return
+		}
+		if n > want || time.Now().After(deadline) {
+			t.Fatalf("the stub saw %d %s queries, want %d", n, transport, want)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 // reply describes the answer a test wants the stub to send. The zero value is
 // a NOERROR response echoing the query's question with no answers.
 type reply struct {
@@ -465,12 +487,8 @@ func TestLookupNAPTR_TruncatedReplyRetriesOverTCP(t *testing.T) {
 	if !found || len(records) != 2 {
 		t.Fatalf("found = %v, records = %+v, want the two records TCP carried", found, records)
 	}
-	if n := stub.count("tcp"); n != 1 {
-		t.Errorf("the stub saw %d TCP queries, want 1", n)
-	}
-	if n := stub.count("udp"); n != 1 {
-		t.Errorf("the stub saw %d UDP queries, want 1 — the UDP attempt must not be repeated once TCP answered", n)
-	}
+	pollUntilCount(t, stub, "tcp", 1)
+	pollUntilCount(t, stub, "udp", 1) // the UDP attempt must not be repeated once TCP answered
 }
 
 // TestLookupNAPTR_SilentServerTimesOut uses an injected short per-attempt
@@ -492,9 +510,7 @@ func TestLookupNAPTR_SilentServerTimesOut(t *testing.T) {
 	if elapsed := time.Since(start); elapsed > 5*time.Second {
 		t.Errorf("the lookup took %v, want it bounded by two 50ms attempts", elapsed)
 	}
-	if n := stub.count("udp"); n != 2 {
-		t.Errorf("the stub saw %d queries, want 2 attempts", n)
-	}
+	pollUntilCount(t, stub, "udp", 2)
 }
 
 // TestLookupNAPTR_ContextDeadlineBoundsTheWholeLookup: Client.Lookup gives the
