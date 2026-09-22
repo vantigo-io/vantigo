@@ -185,7 +185,10 @@ func registryRecordFrom(e brregEntityRecord, now time.Time) registryRecord {
 // company is struck from the register — and a record carrying that fact with
 // no date would be reported as no change whatsoever and raise no attention
 // item, which is the one outcome that must not happen. The fetch date is the
-// best anyone here knows.
+// best anyone here knows — and it stands in once: a later undated body keeps
+// the date already on file, because deletedOn is a diffed field and the
+// attention item's occurredAt, and re-stamping it would write a false
+// registry.change every day and re-float a settled deletion on every click.
 func deletedRegistryRecordFrom(before *registryRecord, e brregEntityRecord, now time.Time) registryRecord {
 	rec := registryRecord{}
 	if before != nil {
@@ -193,8 +196,10 @@ func deletedRegistryRecordFrom(before *registryRecord, e brregEntityRecord, now 
 	}
 	rec.OrganisationNumber = truncateUTF16(e.OrganisationNumber, registryOrganisationNumberMax)
 	rec.Name = truncateUTF16(e.Name, registryNameMax)
-	rec.DeletedOn = e.DeletedOn
-	if rec.DeletedOn == nil {
+	switch {
+	case e.DeletedOn != nil:
+		rec.DeletedOn = e.DeletedOn
+	case rec.DeletedOn == nil:
 		day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 		rec.DeletedOn = &day
 	}

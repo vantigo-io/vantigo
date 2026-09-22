@@ -1665,6 +1665,43 @@ func TestRegistryRefresh_DeletedEntityWithNoDate_IsDatedTheFetch(t *testing.T) {
 	}
 }
 
+// TestRegistryRefresh_DeletedEntityWithNoDate_KeepsTheDateOnFile is the
+// other half of the stand-in date: it stands in once. A later refresh that
+// again carries no slettedato must keep the date already stored, not re-stamp
+// its own fetch day — deletedOn is a diffed field and the attention item's
+// occurredAt, so re-stamping would write a false registry.change every day
+// and re-float a settled deletion to the top of the list on every click.
+func TestRegistryRefresh_DeletedEntityWithNoDate_KeepsTheDateOnFile(t *testing.T) {
+	t.Parallel()
+	h := newRegistryHarness(t, registryBody(undatedDeletedRegistryBody))
+	c := authenticatedClient(t, h)
+	created := createCustomerWithIdentity(t, c, "EQUINOR ASA", "no", "923609016")
+
+	if r := postRegistryRefresh(t, c, created.Id); r.Status != http.StatusOK {
+		t.Fatalf("first refresh: status %d body %s, want 200", r.Status, r.Body)
+	}
+	firstDay := h.Now().UTC().Format("2006-01-02")
+
+	h.Advance(24 * time.Hour)
+	c = authenticatedClient(t, h) // a day outlives the session; sign in again
+	r := postRegistryRefresh(t, c, created.Id)
+	if r.Status != http.StatusOK {
+		t.Fatalf("second refresh: status %d body %s, want 200", r.Status, r.Body)
+	}
+	var got registryRefreshJSON
+	r.JSON(&got)
+	if got.Status != "deleted" || got.Record == nil || str(got.Record.DeletedOn) != firstDay {
+		t.Errorf("second refresh = %+v, want deleted still dated %s", got, firstDay)
+	}
+	if len(got.Changes) != 0 {
+		t.Errorf("changes = %+v, want none (the stand-in date stands in once)", got.Changes)
+	}
+	items := getAttention(t, c)
+	if len(items) != 1 || items[0].OccurredAt.UTC().Format("2006-01-02") != firstDay {
+		t.Errorf("items = %+v, want one item still dated %s", items, firstDay)
+	}
+}
+
 // TestRegistryRefresh_AnswerAboutAnotherOrganisation_Returns502 pins the
 // organisation-number check where a user can see it (fix round 2, minors): a
 // body about a different company never becomes this customer's record, and the
