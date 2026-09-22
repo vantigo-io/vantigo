@@ -2,16 +2,20 @@ package peppol
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // The SMP is reached over real TLS in these tests: an httptest.NewTLSServer,
@@ -144,11 +148,22 @@ func smpTransport(t *testing.T, handler http.HandlerFunc) (http.RoundTripper, *s
 	return transport, recorder
 }
 
-// smpServer is smpTransport with a Client wrapped around it.
-func smpServer(t *testing.T, handler http.HandlerFunc) (*Client, *smpRecorder) {
+// smpClient is smpTransport with a Client wrapped around it, built from opts
+// (Zone defaults to the production one, HTTPTransport is the stub's).
+func smpClient(t *testing.T, opts Options, handler http.HandlerFunc) (*Client, *smpRecorder) {
 	t.Helper()
 	transport, recorder := smpTransport(t, handler)
-	return NewClient(Options{Zone: prodZone, HTTPTransport: transport}), recorder
+	if opts.Zone == "" {
+		opts.Zone = prodZone
+	}
+	opts.HTTPTransport = transport
+	return NewClient(opts), recorder
+}
+
+// smpServer is smpClient with default options.
+func smpServer(t *testing.T, handler http.HandlerFunc) (*Client, *smpRecorder) {
+	t.Helper()
+	return smpClient(t, Options{}, handler)
 }
 
 // serviceGroupHandler answers every request with the ServiceGroup of a
@@ -168,28 +183,32 @@ func TestFetchDocumentTypes_RequestShape(t *testing.T) {
 	t.Parallel()
 	client, recorder := smpServer(t, serviceGroupHandler("0192:923609016", everyDocumentType()))
 
-	target, err := smpRequestURL(testBase+"/", "0192:923609016")
-	if err != nil {
-		t.Fatalf("smpRequestURL: %v", err)
-	}
-	if _, _, err := client.fetchDocumentTypes(context.Background(), target); err != nil {
-		t.Fatalf("fetchDocumentTypes: %v", err)
-	}
-	recorded := recorder.lastRequest(t)
-
-	// The path is the escaped participant identifier, with every colon percent
-	// encoded: ELMA answers 400 to a doubled slash and the identifier's colons
-	// are not optional to escape.
-	if want := "/iso6523-actorid-upis%3A%3A0192%3A923609016"; recorded.RequestURI != want {
-		t.Errorf("request URI = %q, want %q", recorded.RequestURI, want)
-	}
-	if recorded.Method != http.MethodGet {
-		t.Errorf("method = %s, want GET", recorded.Method)
-	}
-	// ELMA answers 406 to "Accept: application/xml", and Go sends no Accept of
-	// its own — so this request must not grow one.
-	if accept, ok := recorded.Header["Accept"]; ok {
-		t.Errorf("the request sent Accept: %v, want no Accept header at all", accept)
+	// Every base that passes the policy must produce the SAME request target,
+	// on the wire and not merely in the *url.URL: the participant identifier
+	// belongs in the path, and a base with a stray slash or an empty fragment
+	// must not push it into a query string or produce the "//" ELMA answers 400
+	// to. A 404 to a mangled target would read as "not registered".
+	const want = "/iso6523-actorid-upis%3A%3A0192%3A923609016"
+	for _, base := range []string{testBase, testBase + "/", testBase + "//", testBase + "///", testBase + "/#"} {
+		target, err := smpRequestURL(base, "0192:923609016")
+		if err != nil {
+			t.Fatalf("smpRequestURL(%q): %v", base, err)
+		}
+		if _, _, err := client.fetchDocumentTypes(context.Background(), target); err != nil {
+			t.Fatalf("fetchDocumentTypes for base %q: %v", base, err)
+		}
+		recorded := recorder.lastRequest(t)
+		if recorded.RequestURI != want {
+			t.Errorf("base %q issued the request URI %q, want %q", base, recorded.RequestURI, want)
+		}
+		if recorded.Method != http.MethodGet {
+			t.Errorf("method = %s, want GET", recorded.Method)
+		}
+		// ELMA answers 406 to "Accept: application/xml", and Go sends no Accept
+		// of its own — so this request must not grow one.
+		if accept, ok := recorded.Header["Accept"]; ok {
+			t.Errorf("the request sent Accept: %v, want no Accept header at all", accept)
+		}
 	}
 }
 
@@ -210,6 +229,13 @@ func TestSMPRequestURL_Path(t *testing.T) {
 		{"https://smp.example.test:443", "0192:923609016", "/iso6523-actorid-upis%3A%3A0192%3A923609016"},
 		{"https://smp.example.test", "0192:9236#016", "/iso6523-actorid-upis%3A%3A0192%3A9236%23016"},
 		{"https://smp.example.test", "0192:92 36", "/iso6523-actorid-upis%3A%3A0192%3A92%2036"},
+		// The slashes are trimmed from the PARSED path, so a base that hides one
+		// behind an empty fragment is normalised like any other.
+		{"https://smp.example.test//", "0192:923609016", "/iso6523-actorid-upis%3A%3A0192%3A923609016"},
+		{"https://smp.example.test/#", "0192:923609016", "/iso6523-actorid-upis%3A%3A0192%3A923609016"},
+		{"https://smp.example.test//#", "0192:923609016", "/iso6523-actorid-upis%3A%3A0192%3A923609016"},
+		{"https://smp.example.test/smp//", "0088:123abc", "/smp/iso6523-actorid-upis%3A%3A0088%3A123abc"},
+		{"https://smp.example.test/smp/#", "0088:123abc", "/smp/iso6523-actorid-upis%3A%3A0088%3A123abc"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.base+" "+tc.participant, func(t *testing.T) {
@@ -221,8 +247,16 @@ func TestSMPRequestURL_Path(t *testing.T) {
 			if got.EscapedPath() != tc.wantPath {
 				t.Errorf("escaped path = %q, want %q", got.EscapedPath(), tc.wantPath)
 			}
-			if got.RawQuery != "" || got.Fragment != "" {
-				t.Errorf("URL %q carries a query or fragment", got)
+			// RequestURI is what goes on the wire: it catches an identifier that
+			// ended up in a query string rather than in the path.
+			if got.RequestURI() != tc.wantPath {
+				t.Errorf("request URI = %q, want %q", got.RequestURI(), tc.wantPath)
+			}
+			if got.RawQuery != "" || got.ForceQuery {
+				t.Errorf("URL %q carries a query", got)
+			}
+			if got.Fragment != "" || got.RawFragment != "" {
+				t.Errorf("URL %q carries a fragment", got)
 			}
 		})
 	}
@@ -250,6 +284,12 @@ func TestSMPRequestURL_Policy(t *testing.T) {
 		{"userinfo", "https://user@smp.example.test/"},
 		{"userinfo with a password", "https://user:secret@smp.example.test/"},
 		{"a query string", "https://smp.example.test/?redirect=1"},
+		// A bare "?" carries no query but sets ForceQuery, and url.URL renders it
+		// back as "/?" — concatenating a path onto that would put the participant
+		// identifier in the query string and leave the path as "/".
+		{"a forced empty query", "https://smp.example.test/?"},
+		{"a forced empty query with an empty fragment", "https://smp.example.test/?#"},
+		{"a forced empty query on a path", "https://smp.example.test/smp?"},
 		{"a fragment", "https://smp.example.test/#anchor"},
 		{"a control character", "https://smp.example.test/\x00"},
 	}
@@ -260,8 +300,8 @@ func TestSMPRequestURL_Policy(t *testing.T) {
 			if err == nil {
 				t.Fatalf("smpRequestURL(%q) = %q, want an error", tc.base, got)
 			}
-			if !errors.Is(err, ErrSMPURL) {
-				t.Errorf("error %q is not ErrSMPURL", err)
+			if !errors.Is(err, errSMPURL) {
+				t.Errorf("error %q is not errSMPURL", err)
 			}
 		})
 	}
@@ -271,16 +311,48 @@ func TestSMPRequestURL_Policy(t *testing.T) {
 // address guard safe to use: netguard dials the IP literal it checked, and
 // http.Transport still derives the TLS ServerName from the URL's host, so a
 // certificate issued to somebody else is rejected. If this ever stopped
-// holding, every guarded request would be one DNS answer away from talking
-// TLS to the wrong server.
+// holding, every guarded request would be one DNS answer away from talking TLS
+// to the wrong server.
+//
+// It runs against the PRODUCTION transport — guardedTransport's own
+// configuration, with a fake netguard resolver mapping the name to a public
+// address and the inner dialler sending the connection to the test server — so
+// that a future TLSClientConfig with an InsecureSkipVerify or a fixed
+// ServerName in it would fail this test rather than pass it. The only thing
+// added on top is the test server's certificate as a root, because it is
+// self-signed.
 func TestFetchDocumentTypes_TLSVerifiesTheURLHost(t *testing.T) {
 	t.Parallel()
-	client, _ := smpServer(t, serviceGroupHandler("0192:923609016", everyDocumentType()))
+	server := httptest.NewTLSServer(serviceGroupHandler("0192:923609016", everyDocumentType()))
+	t.Cleanup(server.Close)
 
-	// The dialler sends both requests to the same test server; only the URL's
-	// host differs, and the httptest certificate covers "example.com" alone.
+	resolver := &fakeNetResolver{addrs: []netip.Addr{netip.MustParseAddr("203.0.113.5")}}
+	transport := guardedTransport(resolver, func(ctx context.Context, network, address string) (net.Conn, error) {
+		// The guard resolved the name and is dialling the address it checked;
+		// the test server is where that connection actually goes.
+		if !strings.HasPrefix(address, "203.0.113.5:") {
+			t.Errorf("the guarded transport dialled %q, want the address the resolver returned", address)
+		}
+		return (&net.Dialer{}).DialContext(ctx, network, server.Listener.Addr().String())
+	}).Clone()
+	tlsConfig := transport.TLSClientConfig
+	if tlsConfig == nil {
+		tlsConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	}
+	roots := x509.NewCertPool()
+	roots.AddCert(server.Certificate())
+	tlsConfig.RootCAs = roots
+	transport.TLSClientConfig = tlsConfig
+
+	client := NewClient(Options{Zone: prodZone, HTTPTransport: transport})
+
+	// Both requests go to the same test server; only the URL's host differs, and
+	// the httptest certificate covers "example.com" alone.
 	if _, _, err := client.fetchDocumentTypes(context.Background(), mustRequestURL(t, testBase, "0192:923609016")); err != nil {
 		t.Fatalf("fetchDocumentTypes against the certificate's own host: %v", err)
+	}
+	if !resolver.wasCalled() {
+		t.Error("the request did not go through netguard's resolver")
 	}
 
 	_, _, err := client.fetchDocumentTypes(context.Background(), mustRequestURL(t, "https://smp.example.test", "0192:923609016"))
@@ -289,6 +361,40 @@ func TestFetchDocumentTypes_TLSVerifiesTheURLHost(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "certificate") {
 		t.Errorf("error %q does not look like a certificate failure", err)
+	}
+}
+
+// TestFetchDocumentTypes_BodyReadIsBounded: the transport's handshake and
+// response-header timeouts do not cover the body, so an SMP that answers its
+// headers promptly and then drips the body would hold this goroutine for as
+// long as it liked. http.Client.Timeout is the floor that stops it, and it is a
+// floor INDEPENDENT of the context — hence the background context here.
+//
+// The Client.Timeout is short in this test only because waiting out the 10s
+// default would be silly; that the default really is 10s when Options.Timeout
+// is unset is pinned by TestNewClient_DefaultTimeout.
+func TestFetchDocumentTypes_BodyReadIsBounded(t *testing.T) {
+	t.Parallel()
+	client, _ := smpClient(t, Options{Timeout: 200 * time.Millisecond}, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		w.Header().Set("Content-Length", "1000000")
+		w.WriteHeader(http.StatusOK)
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		<-r.Context().Done() // the body never arrives
+	})
+
+	start := time.Now()
+	_, _, err := client.fetchDocumentTypes(context.Background(), mustRequestURL(t, testBase, "0192:923609016"))
+	if err == nil {
+		t.Fatal("fetchDocumentTypes read a body that never finished")
+	}
+	if !strings.Contains(err.Error(), "could not be read") {
+		t.Errorf("error %q does not name the failed body read", err)
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Errorf("the read took %v, want it bounded by the client's 200ms timeout", elapsed)
 	}
 }
 

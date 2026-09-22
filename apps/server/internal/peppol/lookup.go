@@ -20,6 +20,19 @@ const (
 	tlsHandshakeTimeout   = 5 * time.Second
 	responseHeaderTimeout = 10 * time.Second
 
+	// defaultTimeout is what an unset Options.Timeout means. It is a real
+	// number rather than "no bound" because the HTTP client's own Timeout is set
+	// from it, and that is the only thing bounding the SMP body read: the
+	// transport's timeouts cover the dial, the handshake and the response
+	// headers and stop there, so an SMP that answers its headers and then drips
+	// the body one byte at a time would otherwise hold a goroutine for as long
+	// as it liked. 10s matches PEPPOL_TIMEOUT's own default in internal/config.
+	defaultTimeout = 10 * time.Second
+
+	// maxResponseHeaderBytes caps the response headers, the one part of an
+	// answer that is read before the body cap can apply.
+	maxResponseHeaderBytes = 64 << 10
+
 	// maxParticipantLength is a sanity bound on an identifier value. A real one
 	// is around fifteen characters; this only keeps something absurd out of a
 	// DNS name and a URL path.
@@ -36,9 +49,11 @@ const (
 //
 // DNSServers, when empty, means the server's own name servers
 // (/etc/resolv.conf). Timeout bounds one Lookup end to end, DNS and SMP
-// together. HTTPTransport replaces the guarded default transport; it is the
-// test seam (and the one the Customers module's harness uses), not something an
-// operator configures.
+// together, and defaults to defaultTimeout (10s) when it is zero or negative —
+// it is never "no bound", because it is also the HTTP client's own timeout and
+// so the only thing bounding the SMP body read. HTTPTransport replaces the
+// guarded default transport; it is the test seam (and the one the Customers
+// module's harness uses), not something an operator configures.
 type Options struct {
 	Zone          string
 	DNSServers    []string
@@ -81,14 +96,22 @@ type Result struct {
 func NewClient(opts Options) *Client {
 	transport := opts.HTTPTransport
 	if transport == nil {
-		transport = guardedTransport(net.DefaultResolver)
+		transport = guardedTransport(net.DefaultResolver, (&net.Dialer{Timeout: dialTimeout}).DialContext)
+	}
+	timeout := opts.Timeout
+	if timeout <= 0 {
+		timeout = defaultTimeout
 	}
 	return &Client{
 		zone:     opts.Zone,
-		timeout:  opts.Timeout,
+		timeout:  timeout,
 		resolver: &Resolver{Servers: opts.DNSServers},
 		http: &http.Client{
 			Transport: transport,
+			// The same timeout again, on the client rather than the context: a
+			// caller that reaches fetchDocumentTypes with a context that has no
+			// deadline still gets the body read bounded. See defaultTimeout.
+			Timeout: timeout,
 			// Redirects are never followed. The base URL is third-party data
 			// that has just been through the policy in smp.go; following a
 			// redirect would hand the next request to a host that policy never
@@ -114,13 +137,14 @@ func NewClient(opts Options) *Client {
 // guard being safe: http.Transport derives the TLS ServerName from the URL's
 // host, not from the address it dialled, so a certificate issued to somebody
 // else is rejected even though the connection went to an IP literal.
-func guardedTransport(resolver netguard.Resolver) *http.Transport {
+func guardedTransport(resolver netguard.Resolver, dial func(ctx context.Context, network, address string) (net.Conn, error)) *http.Transport {
 	return &http.Transport{
-		Proxy:                 nil,
-		DialContext:           netguard.DialContext(resolver, (&net.Dialer{Timeout: dialTimeout}).DialContext),
-		ForceAttemptHTTP2:     true,
-		TLSHandshakeTimeout:   tlsHandshakeTimeout,
-		ResponseHeaderTimeout: responseHeaderTimeout,
+		Proxy:                  nil,
+		DialContext:            netguard.DialContext(resolver, dial),
+		ForceAttemptHTTP2:      true,
+		TLSHandshakeTimeout:    tlsHandshakeTimeout,
+		ResponseHeaderTimeout:  responseHeaderTimeout,
+		MaxResponseHeaderBytes: maxResponseHeaderBytes,
 	}
 }
 
@@ -145,11 +169,10 @@ func (c *Client) Lookup(ctx context.Context, participant string) (Result, error)
 		return Result{}, err
 	}
 
-	if c.timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, c.timeout)
-		defer cancel()
-	}
+	// c.timeout is never zero (NewClient defaults it), so this is unconditional:
+	// one lookup's DNS and SMP steps share one budget.
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
 
 	records, found, err := c.resolver.LookupNAPTR(ctx, ParticipantHost(c.zone, participant))
 	if err != nil {

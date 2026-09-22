@@ -3,9 +3,11 @@ package peppol
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"net/netip"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -280,13 +282,26 @@ func TestLookup_TimeoutBoundsTheWholeLookup(t *testing.T) {
 }
 
 // fakeNetResolver hands the guarded transport a canned DNS answer, so the
-// default transport can be tested without touching real DNS.
+// default transport can be tested without touching real DNS. It records that it
+// was consulted, which is how a test proves the request really went through the
+// guard rather than around it.
 type fakeNetResolver struct {
-	addrs []netip.Addr
+	addrs  []netip.Addr
+	mu     sync.Mutex
+	called bool
 }
 
 func (r *fakeNetResolver) LookupNetIP(context.Context, string, string) ([]netip.Addr, error) {
+	r.mu.Lock()
+	r.called = true
+	r.mu.Unlock()
 	return r.addrs, nil
+}
+
+func (r *fakeNetResolver) wasCalled() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.called
 }
 
 // TestGuardedTransport_RefusesAPrivateAddress is the reason the default
@@ -299,7 +314,13 @@ func TestGuardedTransport_RefusesAPrivateAddress(t *testing.T) {
 	for _, address := range []string{"127.0.0.1", "10.0.0.5", "169.254.169.254", "::1"} {
 		t.Run(address, func(t *testing.T) {
 			t.Parallel()
-			transport := guardedTransport(&fakeNetResolver{addrs: []netip.Addr{netip.MustParseAddr(address)}})
+			dialled := false
+			transport := guardedTransport(
+				&fakeNetResolver{addrs: []netip.Addr{netip.MustParseAddr(address)}},
+				func(context.Context, string, string) (net.Conn, error) {
+					dialled = true
+					return nil, errors.New("the dialler should never be reached")
+				})
 			client := &http.Client{Transport: transport}
 
 			request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://smp.example.test/", nil)
@@ -313,6 +334,9 @@ func TestGuardedTransport_RefusesAPrivateAddress(t *testing.T) {
 			}
 			if !errors.Is(err, netguard.ErrDisallowed) {
 				t.Errorf("error %q is not netguard.ErrDisallowed", err)
+			}
+			if dialled {
+				t.Error("the guard called the dialler for an address it had already refused")
 			}
 		})
 	}
@@ -339,11 +363,63 @@ func TestNewClient_DefaultTransport(t *testing.T) {
 	if transport.TLSHandshakeTimeout == 0 || transport.ResponseHeaderTimeout == 0 {
 		t.Error("the default transport has no handshake or response-header timeout")
 	}
+	if transport.MaxResponseHeaderBytes == 0 {
+		t.Error("the default transport puts no bound on the response headers")
+	}
+	if transport.TLSClientConfig != nil {
+		t.Errorf("the default transport carries a TLS config (%+v), want the defaults so the URL's host is verified", transport.TLSClientConfig)
+	}
 	if client.http.CheckRedirect == nil {
 		t.Fatal("the client follows redirects")
 	}
 	if err := client.http.CheckRedirect(nil, nil); !errors.Is(err, http.ErrUseLastResponse) {
 		t.Errorf("CheckRedirect returned %v, want http.ErrUseLastResponse", err)
+	}
+}
+
+// TestNewClient_DefaultTimeout: an unset Options.Timeout is 10s, not "no
+// bound". It has to be a real number rather than zero because the HTTP client's
+// own Timeout is set from it: that is the only thing bounding the SMP body read
+// (the transport's timeouts cover the handshake and the response headers and
+// stop there), and an SMP dripping a body would otherwise hold the goroutine
+// for as long as it pleased.
+func TestNewClient_DefaultTimeout(t *testing.T) {
+	t.Parallel()
+	unset := NewClient(Options{Zone: prodZone})
+	if unset.timeout != defaultTimeout {
+		t.Errorf("timeout = %v, want the %v default", unset.timeout, defaultTimeout)
+	}
+	if unset.http.Timeout != defaultTimeout {
+		t.Errorf("the HTTP client's timeout = %v, want the %v default", unset.http.Timeout, defaultTimeout)
+	}
+
+	explicit := NewClient(Options{Zone: prodZone, Timeout: 3 * time.Second})
+	if explicit.timeout != 3*time.Second || explicit.http.Timeout != 3*time.Second {
+		t.Errorf("timeout = %v and HTTP client timeout = %v, want both 3s", explicit.timeout, explicit.http.Timeout)
+	}
+}
+
+// TestLookup_RegisteredWithoutTheBillingDocumentTypes is IBM Norge and Dell AS:
+// in the network, answering 200, and registered for order and response profiles
+// only. Registered, and unable to receive an EHF invoice.
+func TestLookup_RegisteredWithoutTheBillingDocumentTypes(t *testing.T) {
+	t.Parallel()
+	dns := newStubDNS(t, answersWith(t, reply{answers: smpNAPTR(testBase)}))
+	orderProfiles := []string{
+		orderDocumentType,
+		"busdox-docid-qns::urn:oasis:names:specification:ubl:schema:xsd:ApplicationResponse-2::ApplicationResponse##urn:fdc:peppol.eu:poacc:trns:mlr:3::2.1",
+		reminderDocumentType,
+		wildcardInvoiceDocumentType,
+	}
+	client, _ := lookupClient(t, dns, serviceGroupHandler("0192:923609016", orderProfiles))
+
+	got, err := client.Lookup(context.Background(), "0192:923609016")
+	if err != nil {
+		t.Fatalf("Lookup: %v", err)
+	}
+	want := Result{Registered: true, SMPHost: "example.com"}
+	if got != want {
+		t.Errorf("Lookup:\n got %+v\nwant %+v", got, want)
 	}
 }
 

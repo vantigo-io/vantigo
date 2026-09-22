@@ -1,6 +1,9 @@
 package peppol
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // The two vectors below were verified against the live SML on 2026-09-21
 // (design spec "What the network looks like"): a lookup of
@@ -88,9 +91,13 @@ func TestParticipantHost_HashesOnlyTheValue(t *testing.T) {
 // stripped (a padded label is not a legal DNS label at all).
 func TestParticipantHost_LabelIsUnpaddedBase32(t *testing.T) {
 	t.Parallel()
-	label := ParticipantHost("example.test", "0192:974760673")[:52]
+	host := ParticipantHost("example.test", "0192:974760673")
+	label, rest, found := strings.Cut(host, ".")
+	if !found || rest != Scheme+".example.test" {
+		t.Fatalf("host %q is not <label>.%s.example.test", host, Scheme)
+	}
 	if len(label) != 52 {
-		t.Fatalf("label %q is %d characters, want 52", label, len(label))
+		t.Fatalf("label %q is %d characters, want 52 (a 32-byte digest in base32, unpadded)", label, len(label))
 	}
 	for i, r := range label {
 		if (r < 'A' || r > 'Z') && (r < '2' || r > '7') {
