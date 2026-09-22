@@ -14,7 +14,7 @@ import {
 } from "../lib/billing-labels";
 import { validNorwegianOrgNumber } from "../lib/norwegian-org-number";
 import { CustomerBillingModal } from "./-customer-billing-modal";
-import { CustomerPeppolStatus } from "./-customer-peppol-status";
+import { CustomerEhfOffer, CustomerPeppolStatus } from "./-customer-peppol-status";
 import "../i18n";
 
 /**
@@ -81,6 +81,11 @@ export const CustomerBillingCard = ({
           </Alert>
         )}
 
+        {/* The one code that is not a warning but an offer (design D4): teal,
+            beside the yellow list rather than in it, and card-wide like it —
+            switching to EHF changes the profile, not just the Peppol row. */}
+        {profile && <CustomerEhfOffer customerId={customerId} profile={profile} canManageBilling={canManageBilling} />}
+
         {isPending ? (
           <ContentSkeleton rows={4} rowHeight={24} />
         ) : isError ? (
@@ -114,8 +119,23 @@ export const CustomerBillingCard = ({
   );
 };
 
-/** One row of the read-only definition list: a label, its value (or "not set"), and an optional resolution hint. */
-const BillingRow = ({ label, value, hint }: { label: string; value: ReactNode; hint?: string | null }) => (
+/**
+ * One row of the read-only definition list: a label, its value (or "not
+ * set"), an optional resolution hint, and — for the Peppol ID row — whatever
+ * else belongs beside that value: the Peppol answer and its Check EHF action
+ * (design D6), which are about the participant this row names.
+ */
+const BillingRow = ({
+  label,
+  value,
+  hint,
+  extra,
+}: {
+  label: string;
+  value: ReactNode;
+  hint?: string | null;
+  extra?: ReactNode;
+}) => (
   <Group justify="space-between" align="flex-start" wrap="nowrap">
     <Text size="sm" c="dimmed" miw={140}>
       {label}
@@ -127,6 +147,7 @@ const BillingRow = ({ label, value, hint }: { label: string; value: ReactNode; h
           {hint}
         </Text>
       )}
+      {extra}
     </Stack>
   </Group>
 );
@@ -219,8 +240,12 @@ const BillingFields = ({
           )
         }
       />
-      <BillingRow label={t("billingPeppolId")} value={value(profile.peppolId)} hint={peppolHint} />
-      <CustomerPeppolStatus customerId={customerId} profile={profile} canManageBilling={canManageBilling} />
+      <BillingRow
+        label={t("billingPeppolId")}
+        value={value(profile.peppolId)}
+        hint={peppolHint}
+        extra={<CustomerPeppolStatus customerId={customerId} profile={profile} canManageBilling={canManageBilling} />}
+      />
       <BillingRow label={t("billingGln")} value={value(profile.gln)} />
       <BillingRow label={t("billingBuyerReference")} value={value(profile.buyerReference)} />
     </Stack>
