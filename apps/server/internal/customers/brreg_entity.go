@@ -395,7 +395,7 @@ func readBrregBody(what string, resp *http.Response, max int64) ([]byte, error) 
 // between attempts — the same policy c.lookup uses for the search. A 404 or
 // 410 is never retried: both are definite answers about this organisation
 // number, not something one more attempt could improve on, and neither is an
-// unusable body (errBrregEntityBody). Once every attempt is exhausted, or a
+// unusable body (errBrregBody). Once every attempt is exhausted, or a
 // non-retryable status/content-type/decode failure ends the loop early, the
 // returned error wraps errBrregUnavailable, exactly as lookup's does; the
 // outcome value is meaningless whenever error is non-nil.
@@ -466,11 +466,8 @@ func (c *brregClient) entity(ctx context.Context, orgnr string) (brregEntityReco
 }
 
 // entityAttempt performs one GET for path, bounded by brregAttemptTimeout,
-// asking for brregEntityMediaType and reading the body up to
-// brregEntityMaxBodyBytes+1 bytes — one byte past the cap, so a body
-// exactly at the limit is still accepted and one over it is refused rather
-// than silently truncated into something that happens to parse (the same
-// idiom internal/peppol/smp.go uses for its own response cap).
+// asking for brregEntityMediaType; the capped body read is readBrregBody's
+// own rule (this file, above).
 func (c *brregClient) entityAttempt(ctx context.Context, path string) (status int, contentType string, body []byte, err error) {
 	attemptCtx, cancel := context.WithTimeout(ctx, brregAttemptTimeout)
 	defer cancel()

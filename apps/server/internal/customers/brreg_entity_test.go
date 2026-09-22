@@ -843,3 +843,51 @@ func TestEntity_RequestPathIsEnhetsregisteretEnheterOrgnr(t *testing.T) {
 		t.Errorf("path = %q, want %q", got, want)
 	}
 }
+
+// TestFeedUpdates_FailuresWrapErrBrregUnavailable is (*brregClient).updates'
+// own guard (brreg_feed.go), placed in this file rather than
+// brreg_feed_test.go because only this file's package (customers, not
+// customers_test) can see errBrregUnavailable directly and assert
+// errors.Is against it, instead of only "some error came back" — a mutation
+// that returned a bare, unwrapped error for one of these three failure kinds
+// would still fail brreg_feed_test.go's own
+// TestBrregFeed_ReportsEveryUnusableAnswerAsUnavailable (it only checks
+// err != nil) but must fail here. entityServer is reused as-is: nothing
+// about it is entity-specific, it is just a *brregClient wired to a local
+// httptest.Server.
+func TestFeedUpdates_FailuresWrapErrBrregUnavailable(t *testing.T) {
+	t.Parallel()
+	oversizedFeedBody := strings.Repeat("a", brregFeedMaxBodyBytes+1)
+	cases := []struct {
+		name        string
+		status      int
+		contentType string
+		body        string
+	}{
+		{name: "a non-2xx status, exhausted", status: http.StatusInternalServerError, body: "{}"},
+		{name: "a content type the feed does not answer with", status: http.StatusOK, contentType: "text/html", body: "<html>gateway</html>"},
+		{name: "a body past the cap", status: http.StatusOK, body: oversizedFeedBody},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			c := entityServer(t, func(w http.ResponseWriter, r *http.Request) {
+				contentType := tc.contentType
+				if contentType == "" {
+					contentType = "application/json"
+				}
+				w.Header().Set("Content-Type", contentType)
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.body))
+			})
+			cursor := int64(1)
+			_, err := c.updates(t.Context(), feedCursor{UpdateID: &cursor})
+			if err == nil {
+				t.Fatalf("updates() error = nil, want an error for %s", tc.name)
+			}
+			if !errors.Is(err, errBrregUnavailable) {
+				t.Errorf("error = %v, want it to wrap errBrregUnavailable", err)
+			}
+		})
+	}
+}
