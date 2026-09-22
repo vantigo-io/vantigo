@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// This file is the module's second and last Enhetsregisteret operation:
+// This file is the module's second Enhetsregisteret operation:
 // where brreg.go's lookup searches for candidates by name or organisation
 // number, (*brregClient).entity fetches one entity's full record — the
 // registry's complete view of a single organisation, keyed by the
@@ -341,30 +341,53 @@ func parseRemovedEntity(body []byte) (brregEntityRecord, error) {
 	return brregEntityRecord{DeletedOn: deletedOn}, nil
 }
 
-// validateBrregEntityContentType requires the response's Content-Type to
-// parse (mime.ParseMediaType) to either the pinned v2 media type or plain
-// application/json — the registry's search endpoint (brreg.go) has always
-// answered application/json even though this module only ever asked it for
-// entities under the v2 type, so both are accepted here too. Anything else
-// — a 406's problem body, an HTML error page from a misbehaving proxy — is
-// named in the returned error rather than handed to json.Unmarshal to fail
-// on its own, less informative terms.
-func validateBrregEntityContentType(contentType string) error {
-	mediaType, _, err := mime.ParseMediaType(contentType)
-	if err != nil || (mediaType != brregEntityMediaType && mediaType != "application/json") {
-		return fmt.Errorf("brreg entity response had content type %q, want %s or application/json", contentType, brregEntityMediaType)
-	}
-	return nil
-}
-
-// errBrregEntityBody marks the two body failures that are terminal rather
-// than retryable (fix round 2, minors): a response past
-// brregEntityMaxBodyBytes, and a body that could not be read to the end. A
+// errBrregBody marks the two body failures that are terminal rather than
+// retryable (fix round 2, minors), for every one of this module's Brreg reads:
+// a response past its cap, and a body that could not be read to the end. A
 // registry answering a megabyte of nonsense will answer the same megabyte on
 // the next three attempts too, so retrying spends the budget a genuine outage
 // needs on an answer that cannot improve — the same reasoning a 404 and a 410
 // are never retried on.
-var errBrregEntityBody = errors.New("brreg: entity response body could not be used")
+var errBrregBody = errors.New("brreg: response body could not be used")
+
+// validateBrregContentType requires contentType to parse
+// (mime.ParseMediaType) to one of accepted, naming what it actually got when
+// it does not — a 406's problem body, an HTML error page from a misbehaving
+// proxy — rather than handing it to json.Unmarshal to fail on its own, less
+// informative terms.
+//
+// accepted is an explicit list, deliberately not a "+json suffix" rule: this
+// module's own tests pin application/problem+json as a REFUSAL for the entity
+// read (TestEntity_WrongMediaTypeIsAnError), because a problem document is
+// exactly the shape a failure arrives in and must never be decoded as a
+// record. what names the read in the message ("entity", "update feed").
+func validateBrregContentType(what, contentType string, accepted ...string) error {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err == nil {
+		for _, want := range accepted {
+			if mediaType == want {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("brreg %s response had content type %q, want %s", what, contentType, strings.Join(accepted, " or "))
+}
+
+// readBrregBody reads resp's body up to max+1 bytes — one byte past the cap, so
+// a body exactly at the limit is still accepted and one over it is refused
+// rather than silently truncated into something that happens to parse (the same
+// idiom internal/peppol/smp.go uses for its own response cap). Both failures
+// wrap errBrregBody, which is what marks them terminal rather than retryable.
+func readBrregBody(what string, resp *http.Response, max int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(resp.Body, max+1))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errBrregBody, err)
+	}
+	if int64(len(data)) > max {
+		return nil, fmt.Errorf("%w: brreg %s response exceeded %d bytes", errBrregBody, what, max)
+	}
+	return data, nil
+}
 
 // entity fetches the Enhetsregisteret record for orgnr, bounded overall by
 // c.timeout and per attempt by brregAttemptTimeout, retrying a transport
@@ -391,7 +414,7 @@ func (c *brregClient) entity(ctx context.Context, orgnr string) (brregEntityReco
 		}
 		status, contentType, body, err := c.entityAttempt(ctx, path)
 		if err != nil {
-			if errors.Is(err, errBrregEntityBody) {
+			if errors.Is(err, errBrregBody) {
 				return brregEntityRecord{}, brregEntityUnknown, fmt.Errorf("%w: %w", errBrregUnavailable, err)
 			}
 			lastErr = err
@@ -417,7 +440,7 @@ func (c *brregClient) entity(ctx context.Context, orgnr string) (brregEntityReco
 		// alike (a 406, say) — must carry a body this module can trust before
 		// it is decoded, so the content type is checked here, once, ahead of
 		// both the success and failure branches below.
-		if err := validateBrregEntityContentType(contentType); err != nil {
+		if err := validateBrregContentType("entity", contentType, brregEntityMediaType, "application/json"); err != nil {
 			return brregEntityRecord{}, brregEntityUnknown, fmt.Errorf("%w: %w", errBrregUnavailable, err)
 		}
 		if !isSuccessStatus(status) {
@@ -464,12 +487,9 @@ func (c *brregClient) entityAttempt(ctx context.Context, path string) (status in
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	data, err := io.ReadAll(io.LimitReader(resp.Body, brregEntityMaxBodyBytes+1))
+	data, err := readBrregBody("entity", resp, brregEntityMaxBodyBytes)
 	if err != nil {
-		return 0, "", nil, fmt.Errorf("%w: %w", errBrregEntityBody, err)
-	}
-	if len(data) > brregEntityMaxBodyBytes {
-		return 0, "", nil, fmt.Errorf("%w: brreg entity response exceeded %d bytes", errBrregEntityBody, brregEntityMaxBodyBytes)
+		return 0, "", nil, err
 	}
 	return resp.StatusCode, resp.Header.Get("Content-Type"), data, nil
 }

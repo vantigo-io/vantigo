@@ -639,7 +639,7 @@ func TestEntity_WrongMediaTypeIsAnError(t *testing.T) {
 
 // TestEntity_HTMLContentTypeIsAnError is TestEntity_WrongMediaTypeIsAnError's
 // other named example (this file's doc comment on
-// validateBrregEntityContentType): a 200 whose Content-Type is text/html —
+// validateBrregContentType): a 200 whose Content-Type is text/html —
 // the shape a misbehaving proxy's error page would carry — is refused the
 // same way a wrong-typed 406 is, naming the content type it actually got.
 func TestEntity_HTMLContentTypeIsAnError(t *testing.T) {
@@ -660,7 +660,7 @@ func TestEntity_HTMLContentTypeIsAnError(t *testing.T) {
 }
 
 // TestEntity_JSONContentTypeWithCharsetIsAccepted proves
-// validateBrregEntityContentType's use of mime.ParseMediaType, not a plain
+// validateBrregContentType's use of mime.ParseMediaType, not a plain
 // string comparison: "application/json; charset=utf-8" still parses to the
 // bare media type "application/json", which this operation already accepts
 // alongside the pinned v2 type.
