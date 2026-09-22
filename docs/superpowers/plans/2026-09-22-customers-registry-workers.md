@@ -56,7 +56,7 @@
 
 **Files:**
 - Create: `apps/server/internal/customers/brreg_feed.go`, `apps/server/internal/customers/brreg_feed_test.go`
-- Modify: `apps/server/internal/customers/brreg_entity.go` (Step 0: two helpers both reads share)
+- Modify: `apps/server/internal/customers/brreg_entity.go` (Step 0: two helpers both reads share) and `brreg_entity_test.go` (two doc comments naming the old helper)
 - Read first (do not change): `apps/server/internal/customers/brreg_entity.go` (the shape this file copies), `brreg.go:131-212` (`brregRetryAttempts`, `brregAttemptTimeout`, `waitBackoff`, `isSuccessStatus`, `isRetryableStatus`, `errBrregUnavailable`), `registry_test.go:93-111` (`registryTransport`), `:30-35` (`registryEntityResponse`)
 
 - [ ] **Step 0: Share the content-type check and the capped body read (behaviour-preserving)**
@@ -133,15 +133,18 @@ func readBrregBody(what string, resp *http.Response, max int64) ([]byte, error) 
 
 Both messages come out byte-identical to today's (`brreg entity response had content type %q, want <v2 type> or application/json`, `brreg entity response exceeded 1048576 bytes`), which is why the existing tests are the guard. `entityAttempt` keeps its own `http.NewRequestWithContext`/`Accept`/`Do` — only the two shared mechanics move.
 
-While in that file, fix the header line it invalidates: "This file is the module's **second and last** Enhetsregisteret operation" becomes "This file is the module's **second** Enhetsregisteret operation" — `brreg_feed.go` is the third, and a comment claiming to be the last is exactly the kind of thing a reader trusts.
+Three comments this step invalidates, all of which a reader would trust:
+
+- `brreg_entity.go`'s own header, "This file is the module's **second and last** Enhetsregisteret operation" → "This file is the module's **second** Enhetsregisteret operation" (`brreg_feed.go` is the third);
+- `brreg_entity_test.go:642` and `:663`, which name `validateBrregEntityContentType` in `TestEntity_HTMLContentTypeIsAnError`'s and `TestEntity_JSONContentTypeWithCharsetIsAccepted`'s doc comments → `validateBrregContentType`. Both tests keep their bodies and must stay green; only the name in the prose changes.
 
 Re-run the same command: identical count, all green. If anything moved, the extraction is wrong — fix the extraction, never the test. Commit this step on its own:
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo
 printf '%s\n\n%s\n' 'refactor(customers): both Brreg reads check a content type and cap a body the same way' 'Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>' > /tmp/msg-task1a
-git add apps/server/internal/customers/brreg_entity.go
-git commit -F /tmp/msg-task1a -- apps/server/internal/customers/brreg_entity.go
+git add apps/server/internal/customers/brreg_entity.go apps/server/internal/customers/brreg_entity_test.go
+git commit -F /tmp/msg-task1a -- apps/server/internal/customers/brreg_entity.go apps/server/internal/customers/brreg_entity_test.go
 ```
 
 **Interfaces:**
@@ -963,9 +966,9 @@ Expected: `store/registry_feed.sql.go` appears on the first run and the second r
 
 **Then open `apps/server/internal/customers/store/registry_feed.sql.go` and read it before writing a line of the worker.** Every `LIMIT @row_limit::int` and `@hint::timestamptz` cast above exists to make sqlc produce a concrete Go type rather than `interface{}` (the module's own convention — `queries/timeline.sql`'s `LIMIT @take::int`, `queries/customers.sql`'s `LIMIT @page_size::int`), but what it actually produced is what the worker must call. In particular check:
 
-- whether a one-parameter query took a bare argument or a `…Params` struct (expected bare: `StaleRegistryRecords(ctx, 50)`, `CustomersWithoutRegistryRecord(ctx, …)`, `CustomersByOrganisationNumbers(ctx, []string{…})`, `TouchRegistryFeedCursor(ctx, now)`, `EnsureRegistryFeedCursor(ctx, now)`);
-- the exact integer width of each limit (`int32` from `::int`) — the worker's constants are untyped so they fit either way, but `int32(remaining)` in Task 4 must match;
-- whether `next_update_id` came back as `*int64` (so the advance takes `&next`) or as something else;
+- which queries took a bare argument and which a `…Params` struct. Expected bare (one parameter each): `StaleRegistryRecords(ctx, 50)`, `CustomersByOrganisationNumbers(ctx, []string{…})`, `TouchRegistryFeedCursor(ctx, now)`, `EnsureRegistryFeedCursor(ctx, now)`, `SetRegistryBackfillPosition(ctx, 0)`. Expected as a struct: `CustomersWithoutRegistryRecordParams{AfterID, RowLimit}` (two parameters — `@after_id` and `@row_limit`), `SetRegistryUpdatedHintParams{Hint, CustomerID}`, `AdvanceRegistryFeedCursorParams{NextUpdateID, LastUpdateAt, LastPolledAt}`;
+- the exact integer width of each limit (`int32` from `::int`) and of `backfill_after_id`/`@after_id` (`int32` from the `integer` column) — the worker's constants are untyped so they fit either way, but `missing[…].ID`, `SetRegistryBackfillPosition(ctx, 0)` and `int32(remaining)` in Task 4 must match;
+- whether `next_update_id` came back as `*int64` (so the advance takes `&next`) or as something else, and whether `GetRegistryFeedCursorRow` spells the new column `BackfillAfterID`;
 - the spelling of each returned column (`LegalID` vs `LegalId`, `CustomerID` vs `ID`).
 
 Where sqlc disagrees with the worker code in this plan, **follow sqlc** and adjust the call, not the query.
@@ -1077,18 +1080,39 @@ func (w *registryWorkerTransport) RoundTrip(r *http.Request) (*http.Response, er
 
 func (w *registryWorkerTransport) requests() []string { return w.feed.requests() }
 
+// entityAnswer is one canned entity response, as a status and a body rather
+// than as a built *http.Response.
+type entityAnswer struct {
+	status int
+	body   string
+}
+
 // entityBodies answers the entity read by organisation number, so one test can
 // have one company change and another be removed.
-func entityBodies(byOrgNumber map[string]*http.Response) func(string) (*http.Response, error) {
+//
+// It takes statuses and bodies, and BUILDS A FRESH RESPONSE PER REQUEST, which
+// is the whole reason this type exists: an *http.Response's Body is a reader,
+// and the tests here deliberately read one company twice (a create hook stores
+// the record, then a cycle re-reads it). A map of pre-built responses would hand
+// the second read a body already drained to EOF — an empty body, decoded as an
+// entity with no organisation number, which entity() then refuses for
+// disagreeing with the request. registry_test.go's registryBody and
+// registrySequence (`:114-143`) construct inside their closure for exactly this
+// reason; so does this.
+func entityBodies(byOrgNumber map[string]entityAnswer) func(string) (*http.Response, error) {
 	return func(uri string) (*http.Response, error) {
-		for orgnr, resp := range byOrgNumber {
+		for orgnr, answer := range byOrgNumber {
 			if strings.HasSuffix(uri, "/enhetsregisteret/api/enheter/"+orgnr) {
-				return resp, nil
+				return registryEntityResponse(answer.status, answer.body), nil
 			}
 		}
 		return registryEntityResponse(http.StatusNotFound, ``), nil
 	}
 }
+
+// found and gone are entityAnswer's two spellings at a test's call site.
+func found(body string) entityAnswer { return entityAnswer{status: http.StatusOK, body: body} }
+func gone(body string) entityAnswer  { return entityAnswer{status: http.StatusGone, body: body} }
 
 // feedRequests is every feed request the worker made, in order — never "the
 // last request": a cycle makes several and the cursor on each is the point.
@@ -1163,7 +1187,7 @@ The cases, all in the same file:
 func TestRegistryFeedWorker_BootstrapsByDateThenByCursor(t *testing.T) {
 	t.Parallel()
 	transport := newRegistryWorkerTransport(
-		entityBodies(map[string]*http.Response{}),
+		entityBodies(map[string]entityAnswer{}),
 		feedPageOf(feedEntryOf(25255241, feedEntryDate, "929745760", "Endring")),
 		feedPageOf(),
 	)
@@ -1210,8 +1234,8 @@ func TestRegistryFeedWorker_RefreshesAMatchedCustomerAndIgnoresTheRest(t *testin
 		// The create hook stores the record first, from the body the register
 		// held then; the cycle's own read is the one that differs, which is what
 		// makes the event below evidence of a refresh rather than of the create.
-		entityBodies(map[string]*http.Response{
-			"923609016": registryEntityResponse(http.StatusOK, equinorRegistryBody),
+		entityBodies(map[string]entityAnswer{
+			"923609016": found(equinorRegistryBody),
 		}),
 		feedPageOf(
 			feedEntryOf(100, feedEntryDate, "929745760", "Endring"),
@@ -1225,8 +1249,8 @@ func TestRegistryFeedWorker_RefreshesAMatchedCustomerAndIgnoresTheRest(t *testin
 	if n := len(fetchRegistryEvents(t, c, created.Id)); n != 0 {
 		t.Fatalf("registry.change events after the create = %d, want 0 (the pick's name matched)", n)
 	}
-	transport.entity = entityBodies(map[string]*http.Response{
-		"923609016": registryEntityResponse(http.StatusOK, movedEquinorRegistryBody),
+	transport.entity = entityBodies(map[string]entityAnswer{
+		"923609016": found(movedEquinorRegistryBody),
 	})
 	h.Advance(afterTheFeed)
 
@@ -1272,8 +1296,8 @@ func TestRegistryFeedWorker_RefreshesAMatchedCustomerAndIgnoresTheRest(t *testin
 func TestRegistryFeedWorker_OneCustomerWithTwoEntriesIsRefreshedOnce(t *testing.T) {
 	t.Parallel()
 	transport := newRegistryWorkerTransport(
-		entityBodies(map[string]*http.Response{
-			"923609016": registryEntityResponse(http.StatusOK, movedEquinorRegistryBody),
+		entityBodies(map[string]entityAnswer{
+			"923609016": found(movedEquinorRegistryBody),
 		}),
 		feedPageOf(
 			feedEntryOf(200, feedEntryDate, "923609016", "Endring"),
@@ -1317,7 +1341,7 @@ func TestRegistryFeedWorker_OneCustomerWithTwoEntriesIsRefreshedOnce(t *testing.
 func TestRegistryFeedWorker_AFailedFeedRequestLeavesTheCursorAlone(t *testing.T) {
 	t.Parallel()
 	transport := newRegistryWorkerTransport(
-		entityBodies(map[string]*http.Response{}),
+		entityBodies(map[string]entityAnswer{}),
 		feedPageOf(feedEntryOf(300, feedEntryDate, "929745760", "Endring")),
 	)
 	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
@@ -1353,7 +1377,7 @@ func TestRegistryFeedWorker_AFailedFeedRequestLeavesTheCursorAlone(t *testing.T)
 func TestRegistryFeedWorker_AShortPageEndsTheCycle(t *testing.T) {
 	t.Parallel()
 	transport := newRegistryWorkerTransport(
-		entityBodies(map[string]*http.Response{}),
+		entityBodies(map[string]entityAnswer{}),
 		feedPageOf(feedEntryOf(400, feedEntryDate, "929745760", "Endring")),
 	)
 	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
@@ -1376,7 +1400,7 @@ func TestRegistryFeedWorker_ThePageBudgetEndsTheCycleToo(t *testing.T) {
 	defer restore()
 
 	var id int64 = 500
-	transport := newRegistryWorkerTransport(entityBodies(map[string]*http.Response{}))
+	transport := newRegistryWorkerTransport(entityBodies(map[string]entityAnswer{}))
 	transport.feed.respond = func(uri string) (*http.Response, error) {
 		if !strings.HasPrefix(uri, "/enhetsregisteret/api/oppdateringer/enheter") {
 			return registryEntityResponse(http.StatusNotFound, ``), nil
@@ -1402,24 +1426,23 @@ func TestRegistryFeedWorker_ThePageBudgetEndsTheCycleToo(t *testing.T) {
 func TestRegistryFeedWorker_FjernetDeletesTheRecordWithOneEvent(t *testing.T) {
 	t.Parallel()
 	transport := newRegistryWorkerTransport(
-		entityBodies(map[string]*http.Response{
-			"923609016": registryEntityResponse(http.StatusGone, removedRegistryBody),
+		// The create hook reads the entity first and stores the record, so there
+		// is a copy for the cycle to remove; the register loses the entity
+		// between the two reads.
+		entityBodies(map[string]entityAnswer{
+			"923609016": found(equinorRegistryBody),
 		}),
 		feedPageOf(feedEntryOf(600, feedEntryDate, "923609016", "Fjernet")),
 		feedPageOf(),
 	)
 	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
 	c := authenticatedClient(t, h)
-	// The create hook stores the record first, so there is a copy to remove.
-	transport.entity = entityBodies(map[string]*http.Response{
-		"923609016": registryEntityResponse(http.StatusOK, equinorRegistryBody),
-	})
 	created := createBrregPick(t, c, "EQUINOR ASA", "923609016")
 	if n := registryRowCount(t, h, created.Id); n != 1 {
 		t.Fatalf("registry rows after create = %d, want 1", n)
 	}
-	transport.entity = entityBodies(map[string]*http.Response{
-		"923609016": registryEntityResponse(http.StatusGone, removedRegistryBody),
+	transport.entity = entityBodies(map[string]entityAnswer{
+		"923609016": gone(removedRegistryBody),
 	})
 	h.Advance(afterTheFeed)
 
@@ -1453,8 +1476,8 @@ func TestRegistryFeedWorker_FjernetDeletesTheRecordWithOneEvent(t *testing.T) {
 func TestRegistryFeedWorker_AFailedRefreshLeavesTheHintForTheSweep(t *testing.T) {
 	t.Parallel()
 	transport := newRegistryWorkerTransport(
-		entityBodies(map[string]*http.Response{
-			"923609016": registryEntityResponse(http.StatusOK, equinorRegistryBody),
+		entityBodies(map[string]entityAnswer{
+			"923609016": found(equinorRegistryBody),
 		}),
 		feedPageOf(feedEntryOf(700, feedEntryDate, "923609016", "Endring")),
 		feedPageOf(),
@@ -1482,8 +1505,8 @@ func TestRegistryFeedWorker_AFailedRefreshLeavesTheHintForTheSweep(t *testing.T)
 
 	// The registry comes back, and the next cycle's sweep — which reads no feed
 	// entry for this customer at all (the second page is empty) — refreshes it.
-	transport.entity = entityBodies(map[string]*http.Response{
-		"923609016": registryEntityResponse(http.StatusOK, movedEquinorRegistryBody),
+	transport.entity = entityBodies(map[string]entityAnswer{
+		"923609016": found(movedEquinorRegistryBody),
 	})
 	h.Advance(time.Minute)
 	if _, err := w.RunCycle(context.Background()); err != nil {
@@ -1502,8 +1525,8 @@ func TestRegistryFeedWorker_AFailedRefreshLeavesTheHintForTheSweep(t *testing.T)
 func TestRegistryFeedWorker_TheBackfillPicksUpACustomerWithNoRecord(t *testing.T) {
 	t.Parallel()
 	transport := newRegistryWorkerTransport(
-		entityBodies(map[string]*http.Response{
-			"923609016": registryEntityResponse(http.StatusOK, equinorRegistryBody),
+		entityBodies(map[string]entityAnswer{
+			"923609016": found(equinorRegistryBody),
 		}),
 		feedPageOf(),
 	)
@@ -1608,13 +1631,65 @@ func TestRegistryFeedWorker_TheBackfillWalksPastItsBatchAndStartsOver(t *testing
 	}
 }
 
+// TestRegistryFeedWorker_TheBackfillStartsOverAfterAnEmptyBatch is the boundary
+// the test above steps over: EXACTLY one batch of candidates, all unresolvable.
+// The first cycle takes all 25 and — the batch being full — leaves the position
+// at the 25th, because there might be a 26th customer. There is not, so the
+// second cycle's batch is empty; if an empty batch left the position alone, it
+// would stay at the 25th forever and those 25 customers would never be attempted
+// again. The reset is what makes the third cycle try them.
+func TestRegistryFeedWorker_TheBackfillStartsOverAfterAnEmptyBatch(t *testing.T) {
+	t.Parallel()
+	transport := newRegistryWorkerTransport(
+		func(string) (*http.Response, error) {
+			return registryEntityResponse(http.StatusNotFound, ``), nil
+		},
+		feedPageOf(),
+	)
+	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
+	var last int32
+	for i := 0; i < 25; i++ {
+		name := fmt.Sprintf("Exactly %d", i)
+		last = insertCustomer(t, h, name, "active")
+		h.Exec(t, `UPDATE customers.customers
+			SET legal_country = 'no', legal_type = 'business', legal_source = 'manual',
+			    legal_id = $2, legal_name = $3
+			WHERE id = $1`, last, validOrgNumbers[i], name)
+	}
+
+	w := customers.NewRegistryFeedWorker(h.Deps())
+	if _, err := w.RunCycle(context.Background()); err != nil {
+		t.Fatalf("first RunCycle: %v", err)
+	}
+	if got, n := backfillPosition(t, h), len(entityRequests(transport)); got != last || n != 25 {
+		t.Fatalf("after cycle 1: position %d, reads %d; want %d and 25", got, n, last)
+	}
+
+	if _, err := w.RunCycle(context.Background()); err != nil {
+		t.Fatalf("second RunCycle: %v", err)
+	}
+	if n := len(entityRequests(transport)); n != 25 {
+		t.Errorf("reads after cycle 2 = %d, want still 25: there was nothing after the position", n)
+	}
+	if got := backfillPosition(t, h); got != 0 {
+		t.Fatalf("position = %d after an empty batch, want 0 — otherwise the backfill is parked there for good", got)
+	}
+
+	if _, err := w.RunCycle(context.Background()); err != nil {
+		t.Fatalf("third RunCycle: %v", err)
+	}
+	if n := len(entityRequests(transport)); n != 50 {
+		t.Errorf("reads after cycle 3 = %d, want 50: the reset made the same 25 candidates eligible again", n)
+	}
+}
+
 // TestRegistryFeedWorker_SkipsTheCycleWhenTheLeaseIsHeld is design D5 through
 // this worker: a second replica logs and skips rather than reading the same
 // pages and advancing the same cursor. Modelled on communications'
 // TestRetentionWorker_SkipsTheCycleWhenTheLeaseIsHeld.
 func TestRegistryFeedWorker_SkipsTheCycleWhenTheLeaseIsHeld(t *testing.T) {
 	t.Parallel()
-	transport := newRegistryWorkerTransport(entityBodies(map[string]*http.Response{}), feedPageOf())
+	transport := newRegistryWorkerTransport(entityBodies(map[string]entityAnswer{}), feedPageOf())
 	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
 
 	ctx := context.Background()
@@ -1661,7 +1736,7 @@ func TestRegistryFeedWorker_SkipsTheCycleWhenTheLeaseIsHeld(t *testing.T) {
 // silently skip.
 func TestRegistryFeedWorker_ReleasesTheLeaseAfterEveryCycle(t *testing.T) {
 	t.Parallel()
-	transport := newRegistryWorkerTransport(entityBodies(map[string]*http.Response{}), feedPageOf())
+	transport := newRegistryWorkerTransport(entityBodies(map[string]entityAnswer{}), feedPageOf())
 	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
 	w := customers.NewRegistryFeedWorker(h.Deps())
 	for i := 0; i < 3; i++ {
@@ -1684,8 +1759,8 @@ func TestRegistryFeedWorker_ReleasesTheLeaseAfterEveryCycle(t *testing.T) {
 func TestRegistryFeedWorker_RunStopsWithItsContext(t *testing.T) {
 	t.Parallel()
 	transport := newRegistryWorkerTransport(
-		entityBodies(map[string]*http.Response{
-			"923609016": registryEntityResponse(http.StatusOK, movedEquinorRegistryBody),
+		entityBodies(map[string]entityAnswer{
+			"923609016": found(movedEquinorRegistryBody),
 		}),
 		feedPageOf(feedEntryOf(800, feedEntryDate, "923609016", "Endring")),
 		feedPageOf(),
@@ -2087,7 +2162,19 @@ func (w *RegistryFeedWorker) Sweep(ctx context.Context) (int, error) {
 	// cycle continues; a short one means the end of the installation, and 0
 	// starts the next pass from the front. A cancelled cycle that attempted
 	// nothing leaves the position exactly where it was.
-	if attempted > 0 {
+	switch {
+	case len(missing) == 0 && cursor.BackfillAfterID != 0:
+		// Nothing after the position: either the previous batch reached the end
+		// of the installation, or everything behind it has a record now. Either
+		// way the position has to go back to 0, or the pass is over and nothing
+		// ever starts another one — a full batch of 25 unresolvable customers
+		// followed by an empty batch would otherwise park the backfill there
+		// permanently, which is the same starvation the position exists to
+		// prevent, one cycle later.
+		if err := q.SetRegistryBackfillPosition(ctx, 0); err != nil {
+			return refreshed, fmt.Errorf("customers: store the registry backfill position: %w", err)
+		}
+	case attempted > 0:
 		var next int32 // 0: there is nothing after this batch, so start over
 		if attempted < len(missing) || len(missing) == registryFeedBackfillBatch {
 			// More to come — either this cycle stopped early, or the batch was
@@ -2283,7 +2370,7 @@ Expected: PASS. `TestValidOrgNumbersFixture` stays in the file.
 
 - [ ] **Step 8: Prove the tests can fail**
 
-Six guards, one at a time, each restored before the next. Each names the test that must go red — run exactly that test, see it fail, restore, see it pass:
+Seven guards, one at a time, each restored before the next. Each names the test that must go red — run exactly that test, see it fail, restore, see it pass:
 
 1. `next := highest + 1` → `next := highest` — `..._BootstrapsByDateThenByCursor` goes red on both the stored cursor and the second request's URL.
 2. Drop the `newest` map and refresh once per entry — `..._OneCustomerWithTwoEntriesIsRefreshedOnce` goes red on the request count; keep the map but take the *first* date instead of the newest and it goes red on the hint instead.
@@ -2291,6 +2378,7 @@ Six guards, one at a time, each restored before the next. Each names the test th
 4. Move `AdvanceRegistryFeedCursor` out of `handlePage` to the end of `ReadFeed`, after the loop — `..._AFailedSecondPageKeepsTheFirstPagesCursor` goes red, because the cycle then ends on the failing request with nothing written.
 5. Make the advance conditional on every refresh succeeding (`if refreshed == len(matched)`) — `..._AdvancesPastAPageOneRefreshCouldNotFinish` goes red, and the page is re-read forever.
 6. Drop the backfill's position: remove `AfterID` from the query's parameters (and `c.id > @after_id` from the SQL) — `..._TheBackfillWalksPastItsBatchAndStartsOver` goes red on cycle 2, which reads the same first 25 customers again. Keeping the position but never resetting it to 0 on a short batch is red on cycle 3 instead, which reads nothing at all.
+7. Delete the `len(missing) == 0 && cursor.BackfillAfterID != 0` arm of `Sweep`'s switch — `..._TheBackfillStartsOverAfterAnEmptyBatch` goes red on cycle 3, which reads nothing because the position is parked past the last candidate.
 
 Guards 4 and 5 are what the two tests below exist for. Add them to `registry_feed_worker_test.go` in Step 3 (they are listed here so the property and its falsification read together):
 
@@ -2305,9 +2393,9 @@ Guards 4 and 5 are what the two tests below exist for. Add them to `registry_fee
 func TestRegistryFeedWorker_AdvancesPastAPageOneRefreshCouldNotFinish(t *testing.T) {
 	t.Parallel()
 	transport := newRegistryWorkerTransport(
-		entityBodies(map[string]*http.Response{
-			"923609016": registryEntityResponse(http.StatusOK, equinorRegistryBody),
-			"974760673": registryEntityResponse(http.StatusOK, brregEntityRegistryBody),
+		entityBodies(map[string]entityAnswer{
+			"923609016": found(equinorRegistryBody),
+			"974760673": found(brregEntityRegistryBody),
 		}),
 		feedPageOf(
 			feedEntryOf(900, feedEntryDate, "923609016", "Endring"),
@@ -2359,7 +2447,7 @@ func TestRegistryFeedWorker_AFailedSecondPageKeepsTheFirstPagesCursor(t *testing
 	defer restore()
 
 	var asked int
-	transport := newRegistryWorkerTransport(entityBodies(map[string]*http.Response{}))
+	transport := newRegistryWorkerTransport(entityBodies(map[string]entityAnswer{}))
 	transport.feed.respond = func(uri string) (*http.Response, error) {
 		if !strings.HasPrefix(uri, "/enhetsregisteret/api/oppdateringer/enheter") {
 			return registryEntityResponse(http.StatusNotFound, ``), nil
@@ -3390,8 +3478,8 @@ func TestModule_ContributesItsWorkers(t *testing.T) {
 		{
 			name: "both turned off leaves none",
 			env: map[string]string{
-				"CUSTOMERS_REGISTRY_FEED_ENABLED":   "0",
-				"CUSTOMERS_PEPPOL_RECHECK_ENABLED":  "0",
+				"CUSTOMERS_REGISTRY_FEED_ENABLED":  "0",
+				"CUSTOMERS_PEPPOL_RECHECK_ENABLED": "0",
 			},
 			want: nil,
 		},
