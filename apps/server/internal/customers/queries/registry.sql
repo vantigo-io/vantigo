@@ -5,7 +5,8 @@
 SELECT customer_id, organisation_number, name, organisation_form_code, organisation_form,
        industry_code, industry, employees, vat_registered, bankrupt, under_liquidation,
        under_forced_liquidation, deleted_on, founded_on, website, email, phone, mobile,
-       parent_organisation_number, business_address, postal_address, fetched_at, registry_updated_hint
+       parent_organisation_number, business_address, postal_address, fetched_at,
+       registry_updated_hint, bankrupt_on, liquidation_on
 FROM customers.customer_registry_records
 WHERE customer_id = @customer_id;
 
@@ -25,7 +26,8 @@ WHERE customer_id = @customer_id;
 SELECT customer_id, organisation_number, name, organisation_form_code, organisation_form,
        industry_code, industry, employees, vat_registered, bankrupt, under_liquidation,
        under_forced_liquidation, deleted_on, founded_on, website, email, phone, mobile,
-       parent_organisation_number, business_address, postal_address, fetched_at, registry_updated_hint
+       parent_organisation_number, business_address, postal_address, fetched_at,
+       registry_updated_hint, bankrupt_on, liquidation_on
 FROM customers.customer_registry_records
 WHERE customer_id = @customer_id
 FOR UPDATE;
@@ -43,12 +45,14 @@ FOR UPDATE;
 INSERT INTO customers.customer_registry_records (
     customer_id, organisation_number, name, organisation_form_code, organisation_form,
     industry_code, industry, employees, vat_registered, bankrupt, under_liquidation,
-    under_forced_liquidation, deleted_on, founded_on, website, email, phone, mobile,
+    under_forced_liquidation, deleted_on, bankrupt_on, liquidation_on, founded_on,
+    website, email, phone, mobile,
     parent_organisation_number, business_address, postal_address, fetched_at
 ) VALUES (
     @customer_id, @organisation_number, @name, @organisation_form_code, @organisation_form,
     @industry_code, @industry, @employees, @vat_registered, @bankrupt, @under_liquidation,
-    @under_forced_liquidation, @deleted_on, @founded_on, @website, @email, @phone, @mobile,
+    @under_forced_liquidation, @deleted_on, @bankrupt_on, @liquidation_on, @founded_on,
+    @website, @email, @phone, @mobile,
     @parent_organisation_number, @business_address, @postal_address, @fetched_at::timestamptz
 )
 ON CONFLICT (customer_id) DO UPDATE SET
@@ -64,6 +68,8 @@ ON CONFLICT (customer_id) DO UPDATE SET
     under_liquidation          = EXCLUDED.under_liquidation,
     under_forced_liquidation   = EXCLUDED.under_forced_liquidation,
     deleted_on                 = EXCLUDED.deleted_on,
+    bankrupt_on                = EXCLUDED.bankrupt_on,
+    liquidation_on             = EXCLUDED.liquidation_on,
     founded_on                 = EXCLUDED.founded_on,
     website                    = EXCLUDED.website,
     email                      = EXCLUDED.email,
@@ -84,12 +90,27 @@ ON CONFLICT (customer_id) DO UPDATE SET
 -- identity at all, or one whose name was never set), which is exactly the
 -- "no rename item" case; record's own name is never null (the column is
 -- NOT NULL).
+--
+-- The record must still be *this* company's: an identity change deletes a
+-- record that no longer matches (registry.go's invalidateRegistryRecord), and
+-- this equality is the belt to that braces — a row that somehow outlived the
+-- identity it was fetched for is never reported as anything.
+--
+-- The last predicate is a pre-filter, not the rule: it keeps the rows that
+-- cannot produce an item out of Go's hands instead of reading every stored
+-- record, and the precedence between the four types stays attentionItemsFrom's
+-- own (registryAttentionType, table-tested). With legal_name NULL the rename
+-- term is NULL, so the row is excluded unless a flag or a deletion date says
+-- otherwise — which is the Go rule for a customer with no legal name already.
 SELECT c.id AS customer_id, c.name AS name, c.legal_name AS legal_name,
        r.name AS record_name, r.bankrupt, r.under_liquidation, r.under_forced_liquidation,
-       r.deleted_on, r.fetched_at
+       r.deleted_on, r.bankrupt_on, r.liquidation_on, r.fetched_at
 FROM customers.customer_registry_records r
 JOIN customers.customers c ON c.id = r.customer_id
-WHERE c.status <> 'archived';
+WHERE c.status <> 'archived'
+  AND r.organisation_number = c.legal_id
+  AND (r.deleted_on IS NOT NULL OR r.bankrupt OR r.under_liquidation
+       OR r.under_forced_liquidation OR btrim(r.name) <> btrim(c.legal_name));
 
 -- name: DeleteCustomerRegistryRecord :exec
 -- DeleteCustomerRegistryRecord is what a 410 from the registry means

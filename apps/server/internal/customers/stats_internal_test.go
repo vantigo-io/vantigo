@@ -17,24 +17,49 @@ import (
 // neither a harness nor a database.
 
 func attentionRow(customerID int32, name string, legalName *string, recordName string, bankrupt, underLiquidation, underForcedLiquidation bool, deletedOn *string, fetchedAt time.Time) store.RegistryAttentionCandidatesRow {
-	d := pgtype.Date{}
-	if deletedOn != nil {
-		parsed, err := time.Parse("2006-01-02", *deletedOn)
-		if err != nil {
-			panic(err)
-		}
-		d = pgtype.Date{Time: parsed, Valid: true}
-	}
 	return store.RegistryAttentionCandidatesRow{
 		CustomerID: customerID, Name: name, LegalName: legalName, RecordName: recordName,
 		Bankrupt: bankrupt, UnderLiquidation: underLiquidation, UnderForcedLiquidation: underForcedLiquidation,
-		DeletedOn: d, FetchedAt: fetchedAt,
+		DeletedOn: attentionDate(deletedOn), FetchedAt: fetchedAt,
 	}
+}
+
+// attentionDate is one of the record's nullable dates as its column: nil for
+// "the registry sent none", which is what makes the item fall back to
+// fetchedAt.
+func attentionDate(day *string) pgtype.Date {
+	if day == nil {
+		return pgtype.Date{}
+	}
+	parsed, err := time.Parse("2006-01-02", *day)
+	if err != nil {
+		panic(err)
+	}
+	return pgtype.Date{Time: parsed, Valid: true}
+}
+
+// dated is attentionRow plus the two status dates the registry sends beside
+// the flags (fix round 2, I3): when the company went bankrupt, when it went
+// into liquidation.
+func dated(row store.RegistryAttentionCandidatesRow, bankruptOn, liquidationOn *string) store.RegistryAttentionCandidatesRow {
+	row.BankruptOn = attentionDate(bankruptOn)
+	row.LiquidationOn = attentionDate(liquidationOn)
+	return row
 }
 
 func strPtr(s string) *string { return &s }
 
 var attentionFetchedAt = time.Date(2026, 9, 22, 8, 0, 0, 0, time.UTC)
+
+// attentionDay is a registry date as the instant an item carries: midnight
+// UTC of that day, the way registryDayOr renders it.
+func attentionDay(day string) time.Time {
+	parsed, err := time.Parse("2006-01-02", day)
+	if err != nil {
+		panic(err)
+	}
+	return parsed
+}
 
 // TestAttentionItemsFrom_OneItemPerRule pins each of the four types on its
 // own, the shape of the item it produces (id, title, occurredAt, entityId),
@@ -65,9 +90,30 @@ func TestAttentionItemsFrom_OneItemPerRule(t *testing.T) {
 			want: &gen.CustomerStatsAttentionItem{Id: "registryLiquidation/9", Type: "registryLiquidation", Title: "Acme AS", OccurredAt: attentionFetchedAt, EntityId: "9"},
 		},
 		{
+			// occurredAt is the deletion date itself, not the fetch (I3): the day
+			// the company was struck from the register is what the dashboard's
+			// "3 days ago" should be about.
 			name: "deleted",
 			row:  attentionRow(10, "Acme AS", strPtr("Acme AS"), "Acme AS", false, false, false, strPtr("2026-09-21"), attentionFetchedAt),
-			want: &gen.CustomerStatsAttentionItem{Id: "registryDeleted/10", Type: "registryDeleted", Title: "Acme AS", OccurredAt: attentionFetchedAt, EntityId: "10"},
+			want: &gen.CustomerStatsAttentionItem{Id: "registryDeleted/10", Type: "registryDeleted", Title: "Acme AS", OccurredAt: attentionDay("2026-09-21"), EntityId: "10"},
+		},
+		{
+			name: "bankrupt, dated",
+			row:  dated(attentionRow(16, "Acme AS", strPtr("Acme AS"), "Acme AS", true, false, false, nil, attentionFetchedAt), strPtr("2019-03-04"), nil),
+			want: &gen.CustomerStatsAttentionItem{Id: "registryBankrupt/16", Type: "registryBankrupt", Title: "Acme AS", OccurredAt: attentionDay("2019-03-04"), EntityId: "16"},
+		},
+		{
+			name: "under liquidation, dated",
+			row:  dated(attentionRow(17, "Acme AS", strPtr("Acme AS"), "Acme AS", false, true, false, nil, attentionFetchedAt), nil, strPtr("2018-11-30")),
+			want: &gen.CustomerStatsAttentionItem{Id: "registryLiquidation/17", Type: "registryLiquidation", Title: "Acme AS", OccurredAt: attentionDay("2018-11-30"), EntityId: "17"},
+		},
+		{
+			// A rename has no date in the registry at all, so the fetch time
+			// stands — and a bankruptcy date on the same row is not borrowed for
+			// it.
+			name: "renamed takes the fetch time",
+			row:  dated(attentionRow(18, "Acme AS", strPtr("Acme Holding AS"), "Acme AS", false, false, false, nil, attentionFetchedAt), strPtr("2019-03-04"), nil),
+			want: &gen.CustomerStatsAttentionItem{Id: "registryRenamed/18", Type: "registryRenamed", Title: "Acme AS", OccurredAt: attentionFetchedAt, EntityId: "18"},
 		},
 		{
 			name: "renamed",
@@ -153,6 +199,30 @@ func TestAttentionItemsFrom_Precedence(t *testing.T) {
 				t.Errorf("Type = %q, want %q", got[0].Type, tc.want)
 			}
 		})
+	}
+}
+
+// TestAttentionItemsFrom_OldBankruptcySortsBelowAFreshRename is I3's own
+// point: a bankruptcy from 2019 belongs at the bottom of the list however
+// recently it was last fetched, and a rename noticed today belongs above it.
+// Dating both by fetched_at — as this did before — re-floated the 2019
+// bankruptcy to the top on every single refresh.
+func TestAttentionItemsFrom_OldBankruptcySortsBelowAFreshRename(t *testing.T) {
+	t.Parallel()
+	rows := []store.RegistryAttentionCandidatesRow{
+		dated(attentionRow(40, "Old Bankruptcy AS", strPtr("Old Bankruptcy AS"), "Old Bankruptcy AS", true, false, false, nil, attentionFetchedAt),
+			strPtr("2019-03-04"), nil),
+		attentionRow(41, "Freshly Renamed AS", strPtr("Freshly Renamed AS"), "Renamed Again AS", false, false, false, nil, attentionFetchedAt),
+	}
+	got := attentionItemsFrom(rows)
+	if len(got) != 2 {
+		t.Fatalf("len(got) = %d, want 2", len(got))
+	}
+	if got[0].Id != "registryRenamed/41" || got[1].Id != "registryBankrupt/40" {
+		t.Errorf("order = %q, %q, want the rename first and the 2019 bankruptcy last", got[0].Id, got[1].Id)
+	}
+	if !got[1].OccurredAt.Equal(attentionDay("2019-03-04")) {
+		t.Errorf("bankruptcy occurredAt = %v, want 2019-03-04", got[1].OccurredAt)
 	}
 }
 

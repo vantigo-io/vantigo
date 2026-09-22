@@ -285,7 +285,7 @@ components:
                 - status
             type: object
         CustomerConflictProblem:
-            description: ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). code and duplicates are populated only by the duplicate-legal-identity conflict; a revision conflict carries neither.
+            description: ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity conflict. A revision conflict carries neither.
             properties:
                 code:
                     nullable: true
@@ -515,7 +515,7 @@ components:
                 - changes
             type: object
         CustomerStatsAttentionItem:
-            description: 'One thing the dashboard wants a human to look at. The shape is the dashboard''s, shared by every module''s /stats/attention. Four types, one per customer at most (a struck-off company reports only registryDeleted, its most useful single sentence), computed from the stored registry record against the current customer rather than from events, so the list needs no "dismiss" state: registryBankrupt when the record''s bankrupt flag is set; registryLiquidation when underLiquidation or underForcedLiquidation is set and the customer is not also bankrupt; registryDeleted when the record carries a deletion date, regardless of the other flags; registryRenamed when the record''s name differs (trimmed, case-sensitive) from the legal identity''s name and none of the other three apply. id is ''<type>/<customerId>''; title is the customer''s own name, not the registry''s; occurredAt is when the record was last fetched; entityId is the customer id. An item clears once the customer is archived (registryBankrupt, registryLiquidation, registryDeleted) or the legal identity''s name is updated to match the registry''s (registryRenamed).'
+            description: 'One thing the dashboard wants a human to look at. The shape is the dashboard''s, shared by every module''s /stats/attention. Four types, one per customer at most (a struck-off company reports only registryDeleted, its most useful single sentence), computed from the stored registry record against the current customer rather than from events, so the list needs no "dismiss" state: registryBankrupt when the record''s bankrupt flag is set; registryLiquidation when underLiquidation or underForcedLiquidation is set and the customer is not also bankrupt; registryDeleted when the record carries a deletion date, regardless of the other flags; registryRenamed when the record''s name differs (trimmed, case-sensitive) from the legal identity''s name and none of the other three apply. id is ''<type>/<customerId>''; title is the customer''s own name, not the registry''s; occurredAt is the day the thing itself happened — the registry''s bankruptcy, liquidation or deletion date — falling back to when the record was last fetched when the registry gives no date, and always the fetch time for registryRenamed, which has no date; entityId is the customer id. An item clears once the customer is archived, once a later refresh stores the flag as false (or, for registryDeleted, a 410 deletes the row entirely), once the customer''s identity is changed away from that company, or — for registryRenamed — once the legal identity''s name is updated to match the registry''s.'
             properties:
                 entityId:
                     type: string
@@ -2028,7 +2028,7 @@ paths:
             x-vantigo-access: permission:customers:view
     /api/v1/customers/{id}/registry-refresh:
         post:
-            description: "Re-reads Enhetsregisteret for a customer whose legal identity is a Norwegian business with a valid organisation number — any source, so a manually entered number can be enriched too (Brreg in full design D2). The record lives in its own table, so a refresh never bumps the customer row's revision, and what differed from the record on file is written to the timeline as a single registry.change event. 409 with code 'no_registry_identity' when the customer has no such identity; 502 when the registry could not be reached, in which case nothing is stored and the record on file stands. A registry answer is never a failure: a struck-off entity answers 200 'deleted', one removed from open data 200 'removed' (its stored record is deleted), and an organisation number the registry does not know 200 'unknown' with nothing stored."
+            description: "Re-reads Enhetsregisteret for a customer whose legal identity is a Norwegian business with a valid organisation number — any source, so a manually entered number can be enriched too (Brreg in full design D2). The record lives in its own table, so a refresh never bumps the customer row's revision, and what differed from the record on file is written to the timeline as a single registry.change event. 409 with code 'no_registry_identity' when the customer has no such identity; 502 when the registry could not be reached, in which case nothing is stored and the record on file stands. A registry answer is never a failure: a struck-off entity answers 200 'deleted', one removed from open data 200 'removed' (its stored record is deleted), and an organisation number the registry does not know 200 'unknown' with nothing stored. Throttled to one outbound call per customer per 60 seconds: a refresh within 60 seconds of the record's own fetchedAt answers the stored record with an empty changes list and makes no call at all."
             operationId: postCustomersByIdRegistryRefresh
             parameters:
                 - in: path
@@ -2073,7 +2073,7 @@ paths:
             summary: Re-read this customer's registry record
             tags:
                 - Customers
-            x-vantigo-access: permission:customers:legal-identity-manage+customers:view
+            x-vantigo-access: permission:customers:legal-identity-manage+customers:legal-identity-view
     /api/v1/customers/{id}/type:
         put:
             description: Sets whether the customer is a business or a private person. Rarely the right action for a customer with history, which is why it is not part of PUT /customers/{id}. A legal identity of the previous type is removed in the same change, since a business identity from Brreg makes no sense on a person and vice versa; contacts, timeline and everything else stay. Resubmitting the current type changes nothing.

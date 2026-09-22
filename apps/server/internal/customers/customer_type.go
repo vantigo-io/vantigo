@@ -100,6 +100,14 @@ func (s *server) PutCustomersByIdType(ctx context.Context, req gen.PutCustomersB
 			return err
 		}
 		if !identityEqual(before, after) {
+			// The identity of the previous type is gone, so the registry record
+			// fetched for it is nobody's record any more (fix round 2, C2) — a
+			// private person has no organisation number to refresh, and the stale
+			// row would keep raising attention items about a company this customer
+			// no longer claims to be.
+			if err := invalidateRegistryRecord(ctx, txq, req.Id, after, customerType); err != nil {
+				return err
+			}
 			return recordCustomerUpdated(ctx, txq, now, req.Id, existing.Name, before, existing.Name, after, act.Kind, act.Display, act.UserID)
 		}
 		return nil

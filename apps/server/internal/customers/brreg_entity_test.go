@@ -409,6 +409,105 @@ func TestEntity_StatusFlagsMapDirectly(t *testing.T) {
 	}
 }
 
+// TestEntity_StatusDatesMapFromKonkursdatoAndUnderAvviklingDato pins the two
+// dates the registry sends beside the flags (fix round 2, I3): when a company
+// went bankrupt and when it went into liquidation, which is what the
+// dashboard's attention item is dated by — a 2019 bankruptcy must not read as
+// having happened on the day it was last fetched. Both are optional, exactly
+// as stiftelsesdato is.
+func TestEntity_StatusDatesMapFromKonkursdatoAndUnderAvviklingDato(t *testing.T) {
+	t.Parallel()
+	body := `{
+		"organisasjonsnummer": "111111111",
+		"navn": "KONKURS AS",
+		"organisasjonsform": {"kode": "AS", "beskrivelse": "Aksjeselskap"},
+		"harRegistrertAntallAnsatte": false,
+		"registrertIMvaregisteret": false,
+		"konkurs": true,
+		"konkursdato": "2019-03-04",
+		"underAvvikling": true,
+		"underAvviklingDato": "2018-11-30",
+		"underTvangsavviklingEllerTvangsopplosning": false
+	}`
+	c := entityServer(t, func(w http.ResponseWriter, r *http.Request) {
+		jsonEntityResponse(w, http.StatusOK, "", body)
+	})
+	rec, outcome := mustEntity(t, c, "111111111")
+	if outcome != brregEntityFound {
+		t.Fatalf("outcome = %v, want brregEntityFound", outcome)
+	}
+	if rec.BankruptOn == nil || !rec.BankruptOn.Equal(mustDate(t, "2019-03-04")) {
+		t.Errorf("BankruptOn = %v, want 2019-03-04", rec.BankruptOn)
+	}
+	if rec.LiquidationOn == nil || !rec.LiquidationOn.Equal(mustDate(t, "2018-11-30")) {
+		t.Errorf("LiquidationOn = %v, want 2018-11-30", rec.LiquidationOn)
+	}
+}
+
+// TestEntity_StatusDatesAreOptional is the other half: the flags are the
+// load-bearing facts, and a body carrying them without a date leaves both
+// dates nil rather than failing.
+func TestEntity_StatusDatesAreOptional(t *testing.T) {
+	t.Parallel()
+	c := entityServer(t, func(w http.ResponseWriter, r *http.Request) {
+		jsonEntityResponse(w, http.StatusOK, "", equinorEntityBody)
+	})
+	rec, _ := mustEntity(t, c, "923609016")
+	if rec.BankruptOn != nil || rec.LiquidationOn != nil {
+		t.Errorf("BankruptOn/LiquidationOn = %v/%v, want nil/nil", rec.BankruptOn, rec.LiquidationOn)
+	}
+}
+
+// TestEntity_OversizedBodyIsNotRetried pins the oversized body as a terminal
+// failure (fix round 2, minors): a registry answering a megabyte of nonsense
+// will answer the same megabyte three more times, so the retry budget a
+// genuine outage needs is not spent on it. The body-read failure beside it is
+// terminal for the same reason.
+func TestEntity_OversizedBodyIsNotRetried(t *testing.T) {
+	t.Parallel()
+	var attempts atomic.Int32
+	oversized := strings.Repeat("a", brregEntityMaxBodyBytes+1)
+	c := entityServer(t, func(w http.ResponseWriter, r *http.Request) {
+		attempts.Add(1)
+		jsonEntityResponse(w, http.StatusOK, "", oversized)
+	})
+	_, _, err := c.entity(t.Context(), "923609016")
+	if err == nil {
+		t.Fatal("entity() error = nil, want an error for an oversized body")
+	}
+	if !errors.Is(err, errBrregUnavailable) {
+		t.Errorf("error = %v, want it to wrap errBrregUnavailable", err)
+	}
+	if got := attempts.Load(); got != 1 {
+		t.Errorf("attempts = %d, want exactly 1 (an oversized body is never retried)", got)
+	}
+}
+
+// TestEntity_OrganisationNumberMismatchIsAnError pins the one thing a
+// response must agree with the request about (fix round 2, minors): the
+// organisation number asked for. A body about a different company — a
+// misrouted proxy, a cache serving the wrong key — must never be stored as
+// this customer's record, so it is a terminal error, the same shape a
+// malformed body is.
+func TestEntity_OrganisationNumberMismatchIsAnError(t *testing.T) {
+	t.Parallel()
+	var attempts atomic.Int32
+	c := entityServer(t, func(w http.ResponseWriter, r *http.Request) {
+		attempts.Add(1)
+		jsonEntityResponse(w, http.StatusOK, "", equinorEntityBody)
+	})
+	_, _, err := c.entity(t.Context(), "974760673")
+	if err == nil {
+		t.Fatal("entity() error = nil, want an error for a body about another organisation")
+	}
+	if !errors.Is(err, errBrregUnavailable) {
+		t.Errorf("error = %v, want it to wrap errBrregUnavailable", err)
+	}
+	if got := attempts.Load(); got != 1 {
+		t.Errorf("attempts = %d, want exactly 1 (a mismatch is not something a retry fixes)", got)
+	}
+}
+
 // TestEntity_DeletedEntityIsA200Body pins the registry's own quirk: a
 // deleted entity is HTTP 200 with respons_klasse "SlettetEnhet", branched on
 // the body, not the status. Only Name/OrganisationNumber/DeletedOn are

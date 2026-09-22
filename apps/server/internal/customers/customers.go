@@ -532,7 +532,7 @@ func (s *server) PostCustomers(ctx context.Context, req gen.PostCustomersRequest
 	// Registry card offers a Refresh for the record that is not there yet.
 	if orgnr := brregPickOrganisationNumber(identity, customerType); orgnr != "" {
 		if err := s.fetchAndStoreRegistryRecord(ctx, created.ID, orgnr, identity.Name, act); err != nil {
-			s.deps.Logger.WarnContext(ctx, "customers: registry record fetch failed", "customerId", created.ID, "errorKind", registryErrorKind(err))
+			s.logRegistryFetchFailure(ctx, created.ID, err)
 		}
 	}
 
@@ -682,7 +682,13 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 	if hasStatus {
 		finalStatus = status
 	}
-	changed := existing.Name != name || !identityEqual(beforeIdentity, afterIdentity)
+	// identityChanged is its own condition, not just part of changed: it is
+	// what decides whether the registry record on file is still this
+	// customer's company's, and whether a Brreg pick made here is worth a
+	// fetch (Brreg in full design D2, fix round 2 C2). A bare rename changes
+	// neither.
+	identityChanged := !identityEqual(beforeIdentity, afterIdentity)
+	changed := existing.Name != name || identityChanged
 	statusChanged := finalStatus != existing.Status
 
 	// No-op rule (customers foundation design D5): a request that leaves the
@@ -745,6 +751,15 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 		if err != nil {
 			return err
 		}
+		// A new identity makes the record on file the old company's (fix round
+		// 2, C2): it goes in the same transaction as the write, under the
+		// customer-row lock the guarded UPDATE above already holds — the same
+		// lock a refresh takes first, so the two can never interleave.
+		if identityChanged {
+			if err := invalidateRegistryRecord(ctx, txq, req.Id, afterIdentity, existing.Type); err != nil {
+				return err
+			}
+		}
 		if changed {
 			if err := recordCustomerUpdated(ctx, txq, now, req.Id, existing.Name, beforeIdentity, name, afterIdentity, act.Kind, act.Display, act.UserID); err != nil {
 				return err
@@ -777,6 +792,22 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 		return gen.PutCustomersById409ApplicationProblemPlusJSONResponse(customerRevisionConflict(existing.Revision, fresh.Revision)), nil
 	case err != nil:
 		return nil, fmt.Errorf("customers: update customer: %w", err)
+	}
+
+	// The same after-commit fetch the create and PUT .../legal-identity make
+	// (Brreg in full design D2, fix round 2 C2): this operation's body carries
+	// an identity too — it is the edit modal's own Brreg picker path — so a
+	// pick made here reads the new company's record straight away rather than
+	// leaving the customer with none until somebody clicks Refresh. Only for a
+	// changed, brreg-sourced Norwegian business identity, and its failure is
+	// logged and dropped for the reason the create's is: the update has
+	// already succeeded.
+	if identityChanged {
+		if orgnr := brregPickOrganisationNumber(afterIdentity, existing.Type); orgnr != "" {
+			if err := s.fetchAndStoreRegistryRecord(ctx, req.Id, orgnr, afterIdentity.Name, act); err != nil {
+				s.logRegistryFetchFailure(ctx, req.Id, err)
+			}
+		}
 	}
 
 	summary, err := q.CustomerTimelineSummary(ctx, req.Id)

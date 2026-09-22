@@ -15,6 +15,7 @@ sql:
       - ../db/migrations/00019_customers_billing_profile.sql
       - ../db/migrations/00020_customers_peppol_lookup.sql
       - ../db/migrations/00021_customers_registry_records.sql
+      - ../db/migrations/00022_customers_registry_status_dates.sql
     queries: queries
     gen:
       go:

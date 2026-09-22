@@ -55,6 +55,7 @@ New table `customers.customer_registry_records`, one row per customer (PK
 | `vat_registered boolean` | `registrertIMvaregisteret` |
 | `bankrupt boolean`, `under_liquidation boolean`, `under_forced_liquidation boolean` | the three flags |
 | `deleted_on date` | `slettedato` |
+| `bankrupt_on date`, `liquidation_on date` (both NULL-able, migration `00022`) | `konkursdato`, `underAvviklingDato` — stored and read back, never diffed and never on the API record; they date the attention items (D4) |
 | `founded_on date` | `stiftelsesdato` |
 | `website varchar(2048)`, `email varchar(255)`, `phone varchar(30)`, `mobile varchar(30)` | as named |
 | `parent_organisation_number varchar(9)` | `overordnetEnhet` |
@@ -75,12 +76,29 @@ pick. A name change is reported (D4), not silently written over the identity.
   exists, the record is simply absent, nothing is recorded for a transient failure, and
   the card shows "Registry record not fetched yet" with a Refresh action. (A user who
   just picked a company must not be told the create failed because Brreg blinked.)
-  The fetch runs after the create's transaction has committed and before the response —
-  bounded by `BRREG_TIMEOUT` — so a slow registry delays the create by at most that.
+  The fetch runs after the create's transaction has committed and before the response,
+  on a context detached from the request's and bounded by **one attempt (4 s)** rather
+  than the whole `BRREG_TIMEOUT` — the record is a bonus on a write that already
+  succeeded, so a registry that has stopped answering costs a moment, not a
+  perceptible pause, and the Refresh button is the retry.
+- **On `PUT /customers/{id}` carrying an identity** (the edit modal's own Brreg picker
+  path): the same after-commit fetch, under the same conditions as the two above.
+- **An identity change deletes a record that no longer matches it**: in every handler
+  that writes the identity (`PUT /customers/{id}`, `PUT …/legal-identity`,
+  `DELETE …/legal-identity`, `PUT …/type`), inside that write's own transaction, when
+  the stored record's `organisation_number` is not the new identity's. Otherwise a
+  refresh answers 409 forever while the old company's row keeps raising attention
+  items. The same number reached another way (manual → brreg, a name-only edit) keeps
+  the record.
 - **`POST /customers/{id}/registry-refresh`** (`customers:legal-identity-manage` +
-  `customers:view`): re-reads the record for a customer whose identity is a Norwegian
-  business with a valid organisation number (any source — a manual identity with a
-  valid number can be enriched too). 200 with the record and a `changes` list; 404; 409
+  `customers:legal-identity-view` — it returns the whole record and every `from`/`to`,
+  which is exactly what the GET withholds without that permission, so it follows
+  `PUT …/legal-identity`'s own pair): re-reads the record for a customer whose identity
+  is a Norwegian business with a valid organisation number (any source — a manual
+  identity with a valid number can be enriched too). Throttled to **one outbound call
+  per customer per 60 seconds**: a click inside that window answers the stored record
+  with an empty `changes` list and makes no request at all (one GET per click on an
+  open API whose 429 is not retryable). 200 with the record and a `changes` list; 404; 409
   `no_registry_identity` when the customer has no such identity; 502 when Brreg cannot be
   reached (as the lookup); 200 with `status: "deleted"` for a `SlettetEnhet`, and `status:
   "removed"` for a 410 — in which case the stored record is **deleted** (Brreg's terms)
@@ -125,8 +143,15 @@ line). `fetched_at` moving is not a change.
 | `registryDeleted` | a `SlettetEnhet` (or removed from open data) |
 | `registryRenamed` | `name` differs from the legal identity's `legal_name` |
 
-An item stays on the list until the customer is archived (bankrupt/liquidation/deleted) or
-the legal identity's name is updated to the registry's (`registryRenamed`) — the list is
+`occurredAt` is **the day the thing happened**, not the day it was noticed (projects'
+own rule): `deleted_on`, `bankrupt_on` and `liquidation_on` for the three status items,
+each falling back to `fetched_at` when the registry sent no date, and `fetched_at` for
+`registryRenamed`, which has no date at all.
+
+An item stays on the list until the customer is archived, a later refresh stores the
+flag as false (or, for `registryDeleted`, a 410 deletes the row), the identity is
+changed away from that company, or — for `registryRenamed` — the legal identity's name
+is updated to the registry's — the list is
 computed from the stored record and the current customer, not from events, so it is
 idempotent and needs no "dismiss" state. The host already links a customers item to
 `/customers/{entityId}`; the host catalog gets the four sentences (en + nb).

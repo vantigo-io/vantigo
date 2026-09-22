@@ -11,6 +11,7 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
+	"github.com/vantigo-io/vantigo/server/internal/customers"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
@@ -353,6 +354,54 @@ func TestCreateCustomer_WithBrregPick_SurvivesARegistryFailure(t *testing.T) {
 	}
 }
 
+// TestCreateCustomer_WithBrregPick_IsNotDelayedByASlowRegistry pins I1: the
+// create's own hook is bounded by one attempt's worth of patience
+// (registryHookTimeout), not by the whole BRREG_TIMEOUT budget the refresh
+// endpoint spends, so a registry that has stopped answering costs the create a
+// moment rather than a perceptible pause before its 201 — and the Refresh
+// button is the retry for the record that is not there.
+//
+// The deadline is shortened through the package's own seam rather than waited
+// out, which is also why this test does not run in parallel: the deadline
+// belongs to the package, not to one harness.
+func TestCreateCustomer_WithBrregPick_IsNotDelayedByASlowRegistry(t *testing.T) {
+	restore := customers.SetRegistryHookTimeout(50 * time.Millisecond)
+	t.Cleanup(restore)
+
+	// A transport that answers nothing at all until the context it was handed
+	// gives up: the only thing that ends this request is the hook's deadline.
+	h := newRegistryHarness(t, contextBlockingTransport{})
+	c := authenticatedClient(t, h)
+
+	start := time.Now()
+	created := createBrregPick(t, c, "Slow Registry Co", "923609016")
+	elapsed := time.Since(start)
+
+	if elapsed > 2*time.Second {
+		t.Errorf("create took %v, want well under the 4s one attempt would allow (the hook's own deadline is what bounds it)", elapsed)
+	}
+	if n := registryRowCount(t, h, created.Id); n != 0 {
+		t.Errorf("registry rows = %d, want 0 (nothing was fetched)", n)
+	}
+	logs := h.Logs()
+	if !strings.Contains(logs, "customers: registry record fetch failed") {
+		t.Errorf("logs = %s, want the dropped failure logged", logs)
+	}
+	if !strings.Contains(logs, `"errorKind":"timeout"`) {
+		t.Errorf("logs = %s, want an errorKind naming the timeout", logs)
+	}
+}
+
+// contextBlockingTransport answers no request: every round trip waits for the
+// context it was given to be done and then reports why. It is how a registry
+// that has stopped responding is stood in for without any test sleeping.
+type contextBlockingTransport struct{}
+
+func (contextBlockingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	<-r.Context().Done()
+	return nil, r.Context().Err()
+}
+
 // TestCreateCustomer_WithManualIdentity_FetchesNothing pins the source rule:
 // a Norwegian organisation number typed in by hand is not a Brreg pick, so
 // the create makes no request at all. (The refresh endpoint enriches it when
@@ -623,6 +672,10 @@ func TestRegistryRefresh_DeletedEntity_StoresTheDeletionAndKeepsTheRest(t *testi
 		t.Fatalf("first refresh: status %d body %s, want 200", r.Status, r.Body)
 	}
 
+	// Past the 60-second throttle window (registryRefreshMinInterval): inside
+	// it a second click answers the stored record without asking the registry,
+	// which is the very next test's subject rather than this one's.
+	h.Advance(time.Hour)
 	r := postRegistryRefresh(t, c, created.Id)
 	if r.Status != http.StatusOK {
 		t.Fatalf("second refresh: status %d body %s, want 200", r.Status, r.Body)
@@ -673,6 +726,7 @@ func TestRegistryRefresh_RemovedFromOpenData_DeletesTheRecord(t *testing.T) {
 	}
 
 	removed = true
+	h.Advance(time.Hour) // past the throttle window, so the click really asks
 	r := postRegistryRefresh(t, c, created.Id)
 	if r.Status != http.StatusOK {
 		t.Fatalf("second refresh: status %d body %s, want 200", r.Status, r.Body)
@@ -728,10 +782,13 @@ func TestRegistryRefresh_RemovedTwice_RecordsOneEvent(t *testing.T) {
 		t.Fatalf("first refresh: status %d body %s, want 200", r.Status, r.Body)
 	}
 	removed = true
+	h.Advance(time.Hour) // past the throttle window, so the click really asks
 	if r := postRegistryRefresh(t, c, created.Id); r.Status != http.StatusOK {
 		t.Fatalf("second refresh: status %d body %s, want 200", r.Status, r.Body)
 	}
 
+	// No advance needed for the third: the removal deleted the row, so there is
+	// no fetchedAt left to throttle against.
 	r := postRegistryRefresh(t, c, created.Id)
 	if r.Status != http.StatusOK {
 		t.Fatalf("third refresh: status %d body %s, want 200", r.Status, r.Body)
@@ -811,6 +868,7 @@ func TestRegistryRefresh_RestoredEntity_ClearsTheDeletion(t *testing.T) {
 		t.Fatalf("first refresh: status %d body %s, want 200", r.Status, r.Body)
 	}
 
+	h.Advance(time.Hour) // past the throttle window, so the click really asks
 	r := postRegistryRefresh(t, c, created.Id)
 	if r.Status != http.StatusOK {
 		t.Fatalf("second refresh: status %d body %s, want 200", r.Status, r.Body)
@@ -1037,8 +1095,8 @@ func TestRegistryRefresh_UpstreamFailure_Returns502AndKeepsTheRecord(t *testing.
 }
 
 // TestRegistryRefresh_WithoutLegalIdentityManage_ReturnsForbidden pins the
-// access rule (customers:legal-identity-manage+customers:view), enforced by
-// the router from x-vantigo-access.
+// access rule (customers:legal-identity-manage+customers:legal-identity-view),
+// enforced by the router from x-vantigo-access.
 func TestRegistryRefresh_WithoutLegalIdentityManage_ReturnsForbidden(t *testing.T) {
 	t.Parallel()
 	h := newRegistryHarness(t, registryBody(equinorRegistryBody))
@@ -1048,6 +1106,28 @@ func TestRegistryRefresh_WithoutLegalIdentityManage_ReturnsForbidden(t *testing.
 	viewer := h.SignIn(t, "customers:view", "customers:legal-identity-view")
 	if r := postRegistryRefresh(t, viewer, created.Id); r.Status != http.StatusForbidden {
 		t.Errorf("status %d body %s, want 403", r.Status, r.Body)
+	}
+}
+
+// TestRegistryRefresh_WithoutLegalIdentityView_ReturnsForbidden is the other
+// half of that rule (fix round 2, C1): the refresh hands back the whole
+// record and every from/to, so it is gated on the very permission the GET
+// withholds the record without — a caller who may write the identity but not
+// read it must not be able to read the registry's copy of it through a
+// Refresh. Follows PUT .../legal-identity's own manage+view precedent.
+func TestRegistryRefresh_WithoutLegalIdentityView_ReturnsForbidden(t *testing.T) {
+	t.Parallel()
+	transport := registryBody(equinorRegistryBody)
+	h := newRegistryHarness(t, transport)
+	owner := authenticatedClient(t, h)
+	created := createCustomerWithIdentity(t, owner, "EQUINOR ASA", "no", "923609016")
+
+	writer := h.SignIn(t, "customers:view", "customers:legal-identity-manage")
+	if r := postRegistryRefresh(t, writer, created.Id); r.Status != http.StatusForbidden {
+		t.Errorf("status %d body %s, want 403", r.Status, r.Body)
+	}
+	if reqs := transport.requests(); len(reqs) != 0 {
+		t.Errorf("requests = %v, want none (the router refuses before the handler runs)", reqs)
 	}
 }
 
@@ -1167,6 +1247,440 @@ func TestRegistryRefresh_TruncatesAShortColumnToo(t *testing.T) {
 	rec := fetchRegistryRecord(t, c, created.Id)
 	if str(rec.Phone) != strings.Repeat("9", 30) {
 		t.Errorf("phone = %q, want 30 nines (truncated to the column)", str(rec.Phone))
+	}
+}
+
+// brregSelfRegistryBody is a second, different company (Registerenheten i
+// Brønnøysund, 974760673): what a customer's record must become once its
+// identity is pointed at another entity, and what it must never be while the
+// identity still names Equinor.
+const brregSelfRegistryBody = `{
+	"organisasjonsnummer": "974760673",
+	"navn": "REGISTERENHETEN I BRØNNØYSUND",
+	"organisasjonsform": {"kode": "ORGL", "beskrivelse": "Organisasjonsledd"},
+	"harRegistrertAntallAnsatte": true,
+	"antallAnsatte": 487,
+	"registrertIMvaregisteret": false,
+	"konkurs": false,
+	"underAvvikling": false,
+	"underTvangsavviklingEllerTvangsopplosning": false
+}`
+
+// bankruptEquinorRegistryBody is equinorRegistryBody with two flags flipped
+// and the dates the registry sends beside them: the same entity, years after
+// it went under, so a diff against the healthy body names the two flags and
+// nothing else.
+const bankruptEquinorRegistryBody = `{
+	"organisasjonsnummer": "923609016",
+	"navn": "EQUINOR ASA",
+	"organisasjonsform": {"kode": "ASA", "beskrivelse": "Allmennaksjeselskap"},
+	"naeringskode1": {"kode": "06.100", "beskrivelse": "Utvinning av råolje"},
+	"harRegistrertAntallAnsatte": true,
+	"antallAnsatte": 21272,
+	"registrertIMvaregisteret": true,
+	"stiftelsesdato": "1972-06-14",
+	"hjemmeside": "www.equinor.com",
+	"forretningsadresse": {"landkode": "NO", "postnummer": "4035", "poststed": "STAVANGER", "adresse": ["Forusbeen 50"], "kommune": "STAVANGER"},
+	"postadresse": {"landkode": "NO", "postnummer": "4035", "poststed": "STAVANGER", "adresse": ["Postboks 8500"], "kommune": "STAVANGER"},
+	"konkurs": true,
+	"konkursdato": "2019-03-04",
+	"underAvvikling": true,
+	"underAvviklingDato": "2018-11-30",
+	"underTvangsavviklingEllerTvangsopplosning": false
+}`
+
+// undatedDeletedRegistryBody is a SlettetEnhet with no slettedato at all: the
+// respons_klasse is the fact, and the date is missing.
+const undatedDeletedRegistryBody = `{
+	"respons_klasse": "SlettetEnhet",
+	"organisasjonsnummer": "923609016",
+	"navn": "EQUINOR ASA"
+}`
+
+// registryByOrgNumber answers each organisation number with its own body,
+// keyed by the last path segment — what a test needs once one customer's
+// identity moves from one company to another.
+func registryByOrgNumber(bodies map[string]string) *registryTransport {
+	return &registryTransport{respond: func(path string) (*http.Response, error) {
+		orgnr := path[strings.LastIndex(path, "/")+1:]
+		body, ok := bodies[orgnr]
+		if !ok {
+			return registryEntityResponse(http.StatusNotFound, ""), nil
+		}
+		return registryEntityResponse(http.StatusOK, body), nil
+	}}
+}
+
+// putCustomerIdentity is PUT /customers/{id} carrying a Brreg-picked identity
+// — the edit modal's own picker path, as opposed to the dedicated
+// legal-identity endpoint.
+func putCustomerIdentity(t *testing.T, c *modtest.Client, id int32, name, orgNumber, identityName, source string) *modtest.Response {
+	t.Helper()
+	return c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d", id), map[string]any{
+		"name": name,
+		"identity": map[string]any{
+			"country": "no", "type": "business", "id": orgNumber, "name": identityName, "source": source,
+		},
+	})
+}
+
+// TestUpdateCustomer_WithANewBrregPick_ReplacesTheRecord pins both halves of
+// fix round 2's C2 on the edit modal's own path: a PUT /customers/{id} that
+// points the customer at another company deletes the record fetched for the
+// old one (in the same transaction as the write) and fetches the new one
+// after the commit, exactly as PUT .../legal-identity already did.
+func TestUpdateCustomer_WithANewBrregPick_ReplacesTheRecord(t *testing.T) {
+	t.Parallel()
+	transport := registryByOrgNumber(map[string]string{
+		"923609016": equinorRegistryBody,
+		"974760673": brregSelfRegistryBody,
+	})
+	h := newRegistryHarness(t, transport)
+	c := authenticatedClient(t, h)
+	created := createBrregPick(t, c, "EQUINOR ASA", "923609016")
+	if rec := fetchRegistryRecord(t, c, created.Id); rec.Name != "EQUINOR ASA" {
+		t.Fatalf("record name = %q, want EQUINOR ASA before the identity moves", rec.Name)
+	}
+
+	r := putCustomerIdentity(t, c, created.Id, "Renamed Customer", "974760673", "REGISTERENHETEN I BRØNNØYSUND", "brreg")
+	if r.Status != http.StatusOK {
+		t.Fatalf("put customer: status %d body %s, want 200", r.Status, r.Body)
+	}
+
+	rec := fetchRegistryRecord(t, c, created.Id)
+	if rec.OrganisationNumber != "974760673" || rec.Name != "REGISTERENHETEN I BRØNNØYSUND" {
+		t.Errorf("record = %+v, want the new company's", rec)
+	}
+	if n := registryRowCount(t, h, created.Id); n != 1 {
+		t.Errorf("registry rows = %d, want exactly 1 (the old company's row is gone, not kept beside)", n)
+	}
+	if reqs := transport.requests(); len(reqs) != 2 {
+		t.Errorf("requests = %v, want two (the create's and the update's)", reqs)
+	}
+}
+
+// TestUpdateCustomer_WithAManuallyTypedIdentity_DeletesTheRecord is the half
+// of C2 no later fetch can cover for: the new identity is typed in by hand, so
+// no hook fetches anything, and the only thing standing between the customer
+// and another company's record on file is the delete inside the identity's own
+// transaction.
+func TestUpdateCustomer_WithAManuallyTypedIdentity_DeletesTheRecord(t *testing.T) {
+	t.Parallel()
+	transport := registryBody(equinorRegistryBody)
+	h := newRegistryHarness(t, transport)
+	c := authenticatedClient(t, h)
+	created := createBrregPick(t, c, "EQUINOR ASA", "923609016")
+	if n := registryRowCount(t, h, created.Id); n != 1 {
+		t.Fatalf("registry rows = %d, want 1 before the identity moves", n)
+	}
+
+	r := putCustomerIdentity(t, c, created.Id, "Somebody Else AS", "974760673", "SOMEBODY ELSE AS", "manual")
+	if r.Status != http.StatusOK {
+		t.Fatalf("put customer: status %d body %s, want 200", r.Status, r.Body)
+	}
+
+	if n := registryRowCount(t, h, created.Id); n != 0 {
+		t.Errorf("registry rows = %d, want 0 (the old company's record is deleted, not left behind)", n)
+	}
+	if r := getRegistryRecord(t, c, created.Id); r.Status != http.StatusNoContent {
+		t.Errorf("get registry record: status %d body %s, want 204", r.Status, r.Body)
+	}
+	if n := len(transport.requests()); n != 1 {
+		t.Errorf("requests = %d, want still 1 (a manually typed identity is not a pick)", n)
+	}
+}
+
+// TestUpdateCustomer_WithoutTouchingTheIdentity_KeepsTheRecord is the other
+// side of that rule: a rename is not an identity change, so the record stands
+// and nothing is fetched.
+func TestUpdateCustomer_WithoutTouchingTheIdentity_KeepsTheRecord(t *testing.T) {
+	t.Parallel()
+	transport := registryBody(equinorRegistryBody)
+	h := newRegistryHarness(t, transport)
+	c := authenticatedClient(t, h)
+	created := createBrregPick(t, c, "EQUINOR ASA", "923609016")
+
+	r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d", created.Id), map[string]any{"name": "Equinor, our name for them"})
+	if r.Status != http.StatusOK {
+		t.Fatalf("put customer: status %d body %s, want 200", r.Status, r.Body)
+	}
+
+	if rec := fetchRegistryRecord(t, c, created.Id); rec.Name != "EQUINOR ASA" {
+		t.Errorf("record = %+v, want the record kept", rec)
+	}
+	if n := len(transport.requests()); n != 1 {
+		t.Errorf("requests = %d, want still 1 (a rename asks the registry nothing)", n)
+	}
+}
+
+// TestUpdateCustomer_WithTheSameOrganisationNumber_KeepsTheRecord pins the
+// rule's exact hinge: the organisation number, not the identity. Editing the
+// identity's own name (or its source) leaves the record where it is, because
+// it is still a record of the same company.
+func TestUpdateCustomer_WithTheSameOrganisationNumber_KeepsTheRecord(t *testing.T) {
+	t.Parallel()
+	transport := registryBody(equinorRegistryBody)
+	h := newRegistryHarness(t, transport)
+	c := authenticatedClient(t, h)
+	created := createBrregPick(t, c, "EQUINOR ASA", "923609016")
+	first := fetchRegistryRecord(t, c, created.Id)
+
+	r := putCustomerIdentity(t, c, created.Id, "EQUINOR ASA", "923609016", "Equinor ASA (Statoil)", "brreg")
+	if r.Status != http.StatusOK {
+		t.Fatalf("put customer: status %d body %s, want 200", r.Status, r.Body)
+	}
+
+	rec := fetchRegistryRecord(t, c, created.Id)
+	if rec.OrganisationNumber != "923609016" || !rec.FetchedAt.Equal(first.FetchedAt) {
+		t.Errorf("record = %+v, want the same row untouched (%+v)", rec, first)
+	}
+}
+
+// TestDeleteLegalIdentity_RemovesTheRecord pins C2 on the delete: with no
+// identity there is no company the record could be about, so it goes — and
+// the attention item it was raising goes with it, even though the record said
+// the company was bankrupt.
+func TestDeleteLegalIdentity_RemovesTheRecord(t *testing.T) {
+	t.Parallel()
+	h := newRegistryHarness(t, registryBody(bankruptEquinorRegistryBody))
+	c := authenticatedClient(t, h)
+	created := createBrregPick(t, c, "EQUINOR ASA", "923609016")
+	if items := getAttention(t, c); len(items) != 1 {
+		t.Fatalf("items = %+v, want one bankruptcy item before the identity is removed", items)
+	}
+
+	r := c.Do(http.MethodDelete, fmt.Sprintf("/api/v1/customers/%d/legal-identity", created.Id), nil)
+	if r.Status != http.StatusNoContent {
+		t.Fatalf("delete legal identity: status %d body %s, want 204", r.Status, r.Body)
+	}
+
+	if n := registryRowCount(t, h, created.Id); n != 0 {
+		t.Errorf("registry rows = %d, want 0", n)
+	}
+	if r := getRegistryRecord(t, c, created.Id); r.Status != http.StatusNoContent {
+		t.Errorf("get registry record: status %d body %s, want 204", r.Status, r.Body)
+	}
+	if items := getAttention(t, c); len(items) != 0 {
+		t.Errorf("items = %+v, want none once the identity is gone", items)
+	}
+}
+
+// TestPutCustomerType_ToPerson_RemovesTheRecord pins C2 on the type change: a
+// private person has no organisation number, the business identity is removed
+// in the same transaction, and the record fetched for it must not outlive it.
+func TestPutCustomerType_ToPerson_RemovesTheRecord(t *testing.T) {
+	t.Parallel()
+	h := newRegistryHarness(t, registryBody(equinorRegistryBody))
+	c := authenticatedClient(t, h)
+	created := createBrregPick(t, c, "EQUINOR ASA", "923609016")
+	if n := registryRowCount(t, h, created.Id); n != 1 {
+		t.Fatalf("registry rows = %d, want 1 before the type change", n)
+	}
+
+	r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/type", created.Id), map[string]any{"type": "person"})
+	if r.Status != http.StatusOK {
+		t.Fatalf("put type: status %d body %s, want 200", r.Status, r.Body)
+	}
+
+	if n := registryRowCount(t, h, created.Id); n != 0 {
+		t.Errorf("registry rows = %d, want 0 (a person has no registry record)", n)
+	}
+	if r := getRegistryRecord(t, c, created.Id); r.Status != http.StatusNoContent {
+		t.Errorf("get registry record: status %d body %s, want 204", r.Status, r.Body)
+	}
+}
+
+// TestGetRegistryRecord_ForAnotherCompanysRecord_Returns204 pins C2's
+// read-side guard on its own, against a row written straight to the database:
+// whatever put it there — a race, a write path added later — a record whose
+// organisation number is not the customer's is never shown and never raises an
+// attention item.
+func TestGetRegistryRecord_ForAnotherCompanysRecord_Returns204(t *testing.T) {
+	t.Parallel()
+	h := newRegistryHarness(t, registryBody(equinorRegistryBody))
+	c := authenticatedClient(t, h)
+	created := createCustomerWithIdentity(t, c, "EQUINOR ASA", "no", "923609016")
+	h.Exec(t, `
+		INSERT INTO customers.customer_registry_records
+			(customer_id, organisation_number, name, vat_registered, bankrupt, under_liquidation, under_forced_liquidation, fetched_at)
+		VALUES ($1, '974760673', 'SOMEBODY ELSE AS', false, true, false, false, $2)`, created.Id, h.Now())
+
+	if r := getRegistryRecord(t, c, created.Id); r.Status != http.StatusNoContent {
+		t.Errorf("get registry record: status %d body %s, want 204", r.Status, r.Body)
+	}
+	if items := getAttention(t, c); len(items) != 0 {
+		t.Errorf("items = %+v, want none for another company's record", items)
+	}
+}
+
+// TestRegistryRefresh_WithinTheThrottleWindow_AnswersTheStoredRecord pins I2:
+// the endpoint is one outbound GET per click on an open API whose 429 is not
+// retryable, so a second click within registryRefreshMinInterval answers what
+// is already on file — no request, no changes, no event — and a click past the
+// window asks again.
+func TestRegistryRefresh_WithinTheThrottleWindow_AnswersTheStoredRecord(t *testing.T) {
+	t.Parallel()
+	transport := registrySequence(equinorRegistryBody, movedEquinorRegistryBody)
+	h := newRegistryHarness(t, transport)
+	c := authenticatedClient(t, h)
+	created := createCustomerWithIdentity(t, c, "EQUINOR ASA", "no", "923609016")
+
+	if r := postRegistryRefresh(t, c, created.Id); r.Status != http.StatusOK {
+		t.Fatalf("first refresh: status %d body %s, want 200", r.Status, r.Body)
+	}
+	first := fetchRegistryRecord(t, c, created.Id)
+
+	h.Advance(59 * time.Second)
+	r := postRegistryRefresh(t, c, created.Id)
+	if r.Status != http.StatusOK {
+		t.Fatalf("second refresh: status %d body %s, want 200", r.Status, r.Body)
+	}
+	var got registryRefreshJSON
+	r.JSON(&got)
+	if got.Status != "found" || len(got.Changes) != 0 {
+		t.Errorf("refresh = %+v, want found with no changes", got)
+	}
+	if got.Record == nil || !got.Record.FetchedAt.Equal(first.FetchedAt) {
+		t.Errorf("record = %+v, want the stored record with its own fetchedAt %v", got.Record, first.FetchedAt)
+	}
+	if n := len(transport.requests()); n != 1 {
+		t.Fatalf("requests = %d, want still 1 (a click inside the window asks nothing)", n)
+	}
+	if entries := fetchRegistryEvents(t, c, created.Id); len(entries) != 0 {
+		t.Errorf("timeline events = %d, want 0", len(entries))
+	}
+
+	// One second later the window has passed, and the click reaches the
+	// registry — which by now has moved the headcount and the address.
+	h.Advance(2 * time.Second)
+	if r := postRegistryRefresh(t, c, created.Id); r.Status != http.StatusOK {
+		t.Fatalf("third refresh: status %d body %s, want 200", r.Status, r.Body)
+	}
+	if n := len(transport.requests()); n != 2 {
+		t.Errorf("requests = %d, want 2 (past the window the click really asks)", n)
+	}
+	if rec := fetchRegistryRecord(t, c, created.Id); rec.Employees == nil || *rec.Employees != 21000 {
+		t.Errorf("Employees = %v, want 21000 (the fetch past the window stored the new record)", rec.Employees)
+	}
+}
+
+// TestRegistryRefresh_ThrottledDeletedRecord_AnswersDeleted pins the status a
+// throttled answer carries: it is the stored row's own, so a record with a
+// deletion date answers "deleted" rather than "found" — the same thing a real
+// fetch would have said a moment earlier.
+func TestRegistryRefresh_ThrottledDeletedRecord_AnswersDeleted(t *testing.T) {
+	t.Parallel()
+	transport := registryBody(deletedRegistryBody)
+	h := newRegistryHarness(t, transport)
+	c := authenticatedClient(t, h)
+	created := createCustomerWithIdentity(t, c, "EQUINOR ASA", "no", "923609016")
+
+	if r := postRegistryRefresh(t, c, created.Id); r.Status != http.StatusOK {
+		t.Fatalf("first refresh: status %d body %s, want 200", r.Status, r.Body)
+	}
+
+	r := postRegistryRefresh(t, c, created.Id)
+	if r.Status != http.StatusOK {
+		t.Fatalf("second refresh: status %d body %s, want 200", r.Status, r.Body)
+	}
+	var got registryRefreshJSON
+	r.JSON(&got)
+	if got.Status != "deleted" || got.Record == nil || str(got.Record.DeletedOn) != "2026-09-21" {
+		t.Errorf("refresh = %+v, want deleted with the stored record", got)
+	}
+	if n := len(transport.requests()); n != 1 {
+		t.Errorf("requests = %d, want 1", n)
+	}
+}
+
+// TestRegistryRefresh_StoresTheStatusDates pins I3's storage half: the two
+// dates the registry sends beside its flags reach the row, and the attention
+// item is dated by them rather than by the fetch. Neither date is diffed or
+// sent on the wire — the flags beside them are what a refresh reports.
+func TestRegistryRefresh_StoresTheStatusDates(t *testing.T) {
+	t.Parallel()
+	h := newRegistryHarness(t, registrySequence(equinorRegistryBody, bankruptEquinorRegistryBody))
+	c := authenticatedClient(t, h)
+	created := createCustomerWithIdentity(t, c, "EQUINOR ASA", "no", "923609016")
+
+	if r := postRegistryRefresh(t, c, created.Id); r.Status != http.StatusOK {
+		t.Fatalf("first refresh: status %d body %s, want 200", r.Status, r.Body)
+	}
+	h.Advance(time.Hour) // past the throttle window
+	r := postRegistryRefresh(t, c, created.Id)
+	if r.Status != http.StatusOK {
+		t.Fatalf("second refresh: status %d body %s, want 200", r.Status, r.Body)
+	}
+	var got registryRefreshJSON
+	r.JSON(&got)
+	want := []registryChangeJSON{
+		{Field: "bankrupt", From: ptr("false"), To: ptr("true")},
+		{Field: "underLiquidation", From: ptr("false"), To: ptr("true")},
+	}
+	if !sameChanges(got.Changes, want) {
+		t.Errorf("changes = %+v, want %+v (the flags, never the dates)", got.Changes, want)
+	}
+
+	stored := modtest.One[string](t, h,
+		`SELECT bankrupt_on::text || ' ' || liquidation_on::text FROM customers.customer_registry_records WHERE customer_id = $1`, created.Id)
+	if stored != "2019-03-04 2018-11-30" {
+		t.Errorf("bankrupt_on/liquidation_on = %q, want \"2019-03-04 2018-11-30\"", stored)
+	}
+
+	items := getAttention(t, c)
+	if len(items) != 1 || items[0].Type != "registryBankrupt" {
+		t.Fatalf("items = %+v, want one registryBankrupt item", items)
+	}
+	if want := "2019-03-04T00:00:00Z"; items[0].OccurredAt.UTC().Format(time.RFC3339) != want {
+		t.Errorf("occurredAt = %v, want %s (the day it happened, not the fetch)", items[0].OccurredAt, want)
+	}
+}
+
+// TestRegistryRefresh_DeletedEntityWithNoDate_IsDatedTheFetch pins the
+// undated SlettetEnhet (fix round 2, minors): the respons_klasse is the
+// load-bearing fact, so the record is stored as deleted with the fetch date
+// standing in — a deletion stored with no date at all would be reported as no
+// change and raise no attention item, the one outcome that must not happen.
+func TestRegistryRefresh_DeletedEntityWithNoDate_IsDatedTheFetch(t *testing.T) {
+	t.Parallel()
+	h := newRegistryHarness(t, registryBody(undatedDeletedRegistryBody))
+	c := authenticatedClient(t, h)
+	created := createCustomerWithIdentity(t, c, "EQUINOR ASA", "no", "923609016")
+
+	r := postRegistryRefresh(t, c, created.Id)
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+	}
+	var got registryRefreshJSON
+	r.JSON(&got)
+	today := h.Now().UTC().Format("2006-01-02")
+	if got.Status != "deleted" || got.Record == nil || str(got.Record.DeletedOn) != today {
+		t.Errorf("refresh = %+v, want deleted dated %s", got, today)
+	}
+	if want := []registryChangeJSON{{Field: "deletedOn", To: ptr(today)}}; !sameChanges(got.Changes, want) {
+		t.Errorf("changes = %+v, want %+v", got.Changes, want)
+	}
+	if items := getAttention(t, c); len(items) != 1 || items[0].Type != "registryDeleted" {
+		t.Errorf("items = %+v, want one registryDeleted item", items)
+	}
+}
+
+// TestRegistryRefresh_AnswerAboutAnotherOrganisation_Returns502 pins the
+// organisation-number check where a user can see it (fix round 2, minors): a
+// body about a different company never becomes this customer's record, and the
+// refresh reports it as the registry being unusable rather than storing it.
+func TestRegistryRefresh_AnswerAboutAnotherOrganisation_Returns502(t *testing.T) {
+	t.Parallel()
+	h := newRegistryHarness(t, registryBody(brregSelfRegistryBody))
+	c := authenticatedClient(t, h)
+	created := createCustomerWithIdentity(t, c, "EQUINOR ASA", "no", "923609016")
+
+	r := postRegistryRefresh(t, c, created.Id)
+	if r.Status != http.StatusBadGateway {
+		t.Fatalf("status %d body %s, want 502", r.Status, r.Body)
+	}
+	if n := registryRowCount(t, h, created.Id); n != 0 {
+		t.Errorf("registry rows = %d, want 0 (another company's record is never stored)", n)
 	}
 }
 

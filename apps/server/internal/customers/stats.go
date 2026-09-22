@@ -6,6 +6,9 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
@@ -93,7 +96,7 @@ func attentionItemsFrom(rows []store.RegistryAttentionCandidatesRow) []gen.Custo
 		}
 		id := strconv.FormatInt(int64(r.CustomerID), 10)
 		items = append(items, gen.CustomerStatsAttentionItem{
-			Id: typ + "/" + id, Type: typ, Title: r.Name, OccurredAt: r.FetchedAt, EntityId: id,
+			Id: typ + "/" + id, Type: typ, Title: r.Name, OccurredAt: attentionOccurredAt(typ, r), EntityId: id,
 		})
 	}
 	slices.SortStableFunc(items, func(a, b gen.CustomerStatsAttentionItem) int {
@@ -103,6 +106,41 @@ func attentionItemsFrom(rows []store.RegistryAttentionCandidatesRow) []gen.Custo
 		return strings.Compare(a.Id, b.Id)
 	})
 	return items
+}
+
+// attentionOccurredAt is the day the thing itself happened, not the moment we
+// noticed it (fix round 2, I3 — projects' own rule, projects/stats.go): the
+// dashboard sorts its merged list by occurredAt and prints it as "3 days ago",
+// so dating a 2019 bankruptcy by the last refresh would re-float it to the top
+// of everybody's list every time anyone clicked Refresh.
+//
+// Each of the three status items takes the registry's own date for it, falling
+// back to the fetch time when the registry sends the flag without a date (it
+// does, and a missing date must not read as the epoch). A rename has no date
+// at all — the registry says what an entity is called, never since when — so
+// for that one the fetch time is the honest answer: the day we first could
+// have known.
+func attentionOccurredAt(typ string, r store.RegistryAttentionCandidatesRow) time.Time {
+	switch typ {
+	case attentionRegistryDeleted:
+		return registryDayOr(r.DeletedOn, r.FetchedAt)
+	case attentionRegistryBankrupt:
+		return registryDayOr(r.BankruptOn, r.FetchedAt)
+	case attentionRegistryLiquidation:
+		return registryDayOr(r.LiquidationOn, r.FetchedAt)
+	default:
+		return r.FetchedAt
+	}
+}
+
+// registryDayOr is one of the record's dates as an instant: midnight UTC of
+// that day, the same way deleted_on already reaches the API (registry.go's
+// registryDateResponse), or fallback when the column is NULL.
+func registryDayOr(d pgtype.Date, fallback time.Time) time.Time {
+	if !d.Valid {
+		return fallback
+	}
+	return time.Date(d.Time.Year(), d.Time.Month(), d.Time.Day(), 0, 0, 0, 0, time.UTC)
 }
 
 // registryAttentionType is one row's attention type, and whether it has
