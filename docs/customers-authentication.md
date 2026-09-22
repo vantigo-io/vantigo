@@ -349,6 +349,10 @@ summary. Booleans are strict `0`/`1` switches — anything else fails startup.
 | `STORAGE_FS_ALLOW_INSECURE_ROOT` | Relax the root permission check (development only) | `0` |
 | `BRREG_BASE_URL` | Brønnøysundregisteret origin | `https://data.brreg.no` |
 | `BRREG_TIMEOUT` | Budget for one lookup, retries included | `15s` |
+| `PEPPOL_LOOKUP_ENABLED` | On/off switch for the Peppol EHF-capability lookup | `true` |
+| `PEPPOL_SML_ZONE` | SML zone a participant identifier is hashed into | `participant.sml.prod.tech.peppol.org` |
+| `PEPPOL_DNS_SERVER` | `host:port` of a resolver to use instead of `/etc/resolv.conf` | unset |
+| `PEPPOL_TIMEOUT` | Budget for one lookup end to end (DNS and SMP together) | `10s` |
 | `APP_TITLE`, `APP_LOGO_URL`, `APP_SUPPORT_EMAIL`, `APP_SUPPORT_PHONE`, `APP_SUPPORT_URL` | SPA branding | unset |
 
 ### Management listener
