@@ -1,20 +1,23 @@
 import { ActionIcon, Badge, Button, Group, Stack, Text } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
-import { IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
+import { IconBuildingBank, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   ADDRESS_TYPE_ORDER,
   type CustomerAddress,
+  type CustomerAddressType,
   customerAddressesQueryOptions,
   deleteCustomerAddress,
   makeAddressPrimary,
 } from "../api/addresses";
 import { customerBillingProfileQueryOptions } from "../api/billing-profile";
+import type { CustomerRegistryAddress, CustomerRegistryRecord } from "../api/registry";
 import { addressTypeLabel } from "../lib/address-type-label";
 import { countryDisplayName } from "../lib/country-display";
+import { registryAddressValues } from "../lib/registry-address";
 import { type AddressModalState, CustomerAddressModal } from "./-customer-address-modal";
 import "../i18n";
 
@@ -26,8 +29,22 @@ import "../i18n";
  * loader only ensures the customer itself, the way its sibling Overview
  * data (the Contacts card) is not prefetched either — so this loads with a
  * skeleton like that sibling.
+ *
+ * `registryRecord` is the registry's view of the customer (design D1), handed
+ * down by the Overview tab, which already holds that query for the Registry
+ * card — null when there is none, or when the viewer may not see it. It is
+ * only ever *offered* here (design D3): an address on file may deliberately
+ * differ from the register, so nothing is written without a click.
  */
-export const CustomerAddressesSection = ({ customerId, canEdit }: { customerId: number; canEdit?: boolean }) => {
+export const CustomerAddressesSection = ({
+  customerId,
+  canEdit,
+  registryRecord,
+}: {
+  customerId: number;
+  canEdit?: boolean;
+  registryRecord?: CustomerRegistryRecord | null;
+}) => {
   const { t, locale } = useI18n("customers");
   const queryClient = useQueryClient();
   const { data, isPending, isError, refetch } = useQuery(customerAddressesQueryOptions(customerId));
@@ -94,6 +111,29 @@ export const CustomerAddressesSection = ({ customerId, canEdit }: { customerId: 
     type,
     items: addresses.filter((address) => address.type === type),
   })).filter((group) => group.items.length > 0);
+
+  // The registry's business address becomes a visiting address and its postal
+  // address a postal one (design D3). An offer stands only while the customer
+  // has no address of that type: once it has one, the registry's is either
+  // already on file or a deliberate difference, and neither is an invitation
+  // to add a second. Withheld while the list is still loading or has failed —
+  // an empty `addresses` then says nothing about what the customer has.
+  const offers = [
+    {
+      type: "visiting" as CustomerAddressType,
+      label: t("useRegistryBusinessAddress"),
+      address: registryRecord?.businessAddress,
+    },
+    {
+      type: "postal" as CustomerAddressType,
+      label: t("useRegistryPostalAddress"),
+      address: registryRecord?.postalAddress,
+    },
+  ].filter(
+    (offer): offer is { type: CustomerAddressType; label: string; address: CustomerRegistryAddress } =>
+      !!offer.address && !addresses.some((address) => address.type === offer.type),
+  );
+  const showOffers = canEdit && !isPending && !isError && offers.length > 0;
 
   return (
     <Stack gap="xs">
@@ -206,6 +246,24 @@ export const CustomerAddressesSection = ({ customerId, canEdit }: { customerId: 
             </Stack>
           ))}
         </Stack>
+      )}
+
+      {showOffers && (
+        <Group gap="xs">
+          {offers.map((offer) => (
+            <Button
+              key={offer.type}
+              variant="subtle"
+              size="compact-xs"
+              leftSection={<IconBuildingBank size={14} />}
+              onClick={() =>
+                setModalState({ mode: "add", initialValues: registryAddressValues(offer.address, offer.type) })
+              }
+            >
+              {offer.label}
+            </Button>
+          ))}
+        </Group>
       )}
 
       <CustomerAddressModal

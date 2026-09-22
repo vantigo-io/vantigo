@@ -7,9 +7,12 @@ import { hasPermissions } from "../../navigation";
 
 /**
  * The customer page's Overview tab: the package's own contact/addresses,
- * billing, contacts and timeline cards, plus `canEdit` and `canManageBilling`
- * (design D6), which this route computes from the caller's
- * `customers:update` and `customers:billing-manage` permissions the same way
+ * billing, registry, contacts and timeline cards, plus `canEdit` and
+ * `canManageBilling` (design D6) and the two legal-identity capabilities the
+ * Registry card sits behind (Brreg in full design D5) — `canViewIdentity`
+ * decides whether the card and the registry's offered addresses appear at all,
+ * `canManageIdentity` whether Refresh and "Update legal name" do. This route
+ * computes all four from the caller's permissions the same way
  * `-customer-detail-layout.tsx` computes `canArchive`/`canRestore` and
  * `-customer-projects-tab.tsx` computes `canCreate` — the host reads
  * permissions, the package never fetches them itself.
@@ -34,6 +37,8 @@ export const CustomerOverviewTab = () => {
       customerId={customerId}
       canEdit={hasPermissions(authorization.data?.permissions, ["customers:update"])}
       canManageBilling={hasPermissions(authorization.data?.permissions, ["customers:billing-manage"])}
+      canViewIdentity={hasPermissions(authorization.data?.permissions, ["customers:legal-identity-view"])}
+      canManageIdentity={hasPermissions(authorization.data?.permissions, ["customers:legal-identity-manage"])}
     />
   );
 };

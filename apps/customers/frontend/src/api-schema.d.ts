@@ -654,6 +654,7 @@ export interface components {
             record?: components["schemas"]["CustomerRegistryRecord"];
             status: string;
         };
+        /** @description One thing the dashboard wants a human to look at. The shape is the dashboard's, shared by every module's /stats/attention. Four types, one per customer at most (a struck-off company reports only registryDeleted, its most useful single sentence), computed from the stored registry record against the current customer rather than from events, so the list needs no "dismiss" state: registryBankrupt when the record's bankrupt flag is set; registryLiquidation when underLiquidation or underForcedLiquidation is set and the customer is not also bankrupt; registryDeleted when the record carries a deletion date, regardless of the other flags; registryRenamed when the record's name differs (trimmed, case-sensitive) from the legal identity's name and none of the other three apply. id is '<type>/<customerId>'; title is the customer's own name, not the registry's; occurredAt is when the record was last fetched; entityId is the customer id. An item clears once the customer is archived (registryBankrupt, registryLiquidation, registryDeleted) or the legal identity's name is updated to match the registry's (registryRenamed). */
         CustomerStatsAttentionItem: {
             entityId: string;
             id: string;
