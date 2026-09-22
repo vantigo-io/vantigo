@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from "@tanstack/react-router";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { stubFetch } from "../test/fetch";
 import { CustomerRegistryCard } from "./-customer-registry-card";
 import { CustomerOverview } from "./customers.$customerId";
@@ -128,8 +128,6 @@ const lastIdentityPut = (fetchMock: ReturnType<typeof vi.fn>) =>
     .at(-1);
 
 describe("CustomerRegistryCard", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   it("titles the card with a heading, as its siblings on the tab do", async () => {
     renderCard(registryFetch(fullRecordBody));
     expect(await screen.findByRole("heading", { name: "Registry", level: 3 })).toBeInTheDocument();
@@ -212,6 +210,23 @@ describe("CustomerRegistryCard", () => {
     expect(screen.queryByRole("button", { name: "Refresh" })).not.toBeInTheDocument();
   });
 
+  // Task 2 review: mounted together with Refresh itself, not only once there
+  // is something to announce, so a screen reader already has the region and a
+  // click's own outcome is announced rather than merely drawn.
+  it("mounts the status region as soon as Refresh is offered, before any click", async () => {
+    renderCard(registryFetch(null));
+
+    expect(await screen.findByRole("button", { name: "Refresh" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toBeInTheDocument();
+  });
+
+  it("mounts no status region for a caller Refresh is withheld from, with nothing yet to announce", async () => {
+    renderCard(registryFetch(null), { canManageIdentity: false });
+
+    await screen.findByText("Registry record not fetched yet");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
   it("says the record could not be loaded rather than claiming there is none", async () => {
     const fetchMock = registryFetch(null, (path) =>
       path === "/api/v1/customers/1001/registry-record" ? Promise.resolve(new Response(null, { status: 500 })) : null,
@@ -276,6 +291,28 @@ describe("CustomerRegistryCard", () => {
     expect(screen.queryByText("2 changes — see the timeline")).not.toBeInTheDocument();
   });
 
+  // Task 10 review: each click answers for itself (`onMutate` above), so a
+  // second, empty-handed Refresh must clear what the first one left behind
+  // rather than leaving a stale "N changes" line under a fresh reading.
+  it("a second Refresh clears the previous 'N changes' line", async () => {
+    let changes: { field: string; from?: string; to?: string }[] = [{ field: "employees", from: "480", to: "487" }];
+    const fetchMock = registryFetch(fullRecordBody, (path, init) =>
+      path === "/api/v1/customers/1001/registry-refresh" && init?.method === "POST"
+        ? Promise.resolve(jsonResponse(200, { status: "found", record: fullRecordBody, changes }))
+        : null,
+    );
+    const queryClient = renderCard(fetchMock);
+    queryClient.setQueryData(["customers", 1001, "timeline"], { data: [], nextCursor: null });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Refresh" }));
+    expect(await screen.findByText("1 change — see the timeline")).toBeInTheDocument();
+
+    changes = [];
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    await waitFor(() => expect(screen.queryByText(/see the timeline/)).not.toBeInTheDocument());
+  });
+
   it("says nothing about changes when a refresh found none", async () => {
     const fetchMock = registryFetch(fullRecordBody, (path, init) =>
       path === "/api/v1/customers/1001/registry-refresh" && init?.method === "POST"
@@ -285,9 +322,14 @@ describe("CustomerRegistryCard", () => {
     const queryClient = renderCard(fetchMock);
     queryClient.setQueryData(["customers", 1001, "timeline"], { data: [], nextCursor: null });
 
+    const getsBefore = recordGets(fetchMock).length;
     await userEvent.click(await screen.findByRole("button", { name: "Refresh" }));
 
-    await waitFor(() => expect(refreshPosts(fetchMock)).toHaveLength(1));
+    // Waits for the record's own refetch (task 9 review), not just the POST:
+    // the absence this asserts is only settled once the card has read back
+    // what the refresh actually stored, the same thing every other assertion
+    // in this file about "what's on screen after a refresh" waits for.
+    await waitFor(() => expect(recordGets(fetchMock).length).toBeGreaterThan(getsBefore));
     expect(screen.queryByText(/see the timeline/)).not.toBeInTheDocument();
     expect(queryClient.getQueryState(["customers", 1001, "timeline"])?.isInvalidated).toBe(false);
   });
@@ -321,6 +363,11 @@ describe("CustomerRegistryCard", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Refresh" }));
 
     expect(await screen.findByText("Removed from the register")).toBeInTheDocument();
+    // The inline note says why there is nothing below (task 4 review); the
+    // generic "not fetched yet" line — which would say the wrong thing, this
+    // was fetched, it was removed — is suppressed while it stands.
+    expect(screen.getByText("This entity is no longer in the register's open data")).toBeInTheDocument();
+    expect(screen.queryByText("Registry record not fetched yet")).not.toBeInTheDocument();
   });
 
   it("explains the 409 that means this customer has no organisation number to look up", async () => {
@@ -359,11 +406,13 @@ describe("CustomerRegistryCard", () => {
     expect(screen.getByText("Organisasjonsledd")).toBeInTheDocument();
   });
 
-  it("reports a name the register does not share with the legal identity", async () => {
+  it("reports a name the register does not share with the legal identity, naming both sides", async () => {
     renderCard(registryFetch({ ...fullRecordBody, name: "REGISTERENHETEN I BRØNNØYSUND AS" }));
 
     expect(
-      await screen.findByText("The register calls this company REGISTERENHETEN I BRØNNØYSUND AS"),
+      await screen.findByText(
+        "The register calls this company REGISTERENHETEN I BRØNNØYSUND AS; the legal name here is REGISTERENHETEN I BRØNNØYSUND",
+      ),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Update legal name" })).toBeInTheDocument();
   });
@@ -376,13 +425,26 @@ describe("CustomerRegistryCard", () => {
     expect(screen.queryByRole("button", { name: "Update legal name" })).not.toBeInTheDocument();
   });
 
+  // The comparison and the write both trim (task 3 review): a record name
+  // that only differs from the legal name by surrounding whitespace is not a
+  // real difference, and the notice never renders for one.
+  it("says nothing about the name when the only difference is surrounding whitespace", async () => {
+    renderCard(registryFetch({ ...fullRecordBody, name: `  ${identityBody.name}  ` }));
+
+    await screen.findByText("Organisasjonsledd");
+    expect(screen.queryByText(/The register calls this company/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Update legal name" })).not.toBeInTheDocument();
+  });
+
   it("reports the name difference without offering the change to a caller who may not make it", async () => {
     renderCard(registryFetch({ ...fullRecordBody, name: "REGISTERENHETEN I BRØNNØYSUND AS" }), {
       canManageIdentity: false,
     });
 
     expect(
-      await screen.findByText("The register calls this company REGISTERENHETEN I BRØNNØYSUND AS"),
+      await screen.findByText(
+        "The register calls this company REGISTERENHETEN I BRØNNØYSUND AS; the legal name here is REGISTERENHETEN I BRØNNØYSUND",
+      ),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Update legal name" })).not.toBeInTheDocument();
   });
@@ -413,6 +475,50 @@ describe("CustomerRegistryCard", () => {
     await waitFor(() => expect(queryClient.getQueryState(["customers", 1001])?.isInvalidated).toBe(true));
   });
 
+  // The write is trimmed even when the on-screen text carries the record's
+  // untrimmed name (task 3 review): a leading/trailing space in the register's
+  // own field must never reach the identity the server's own rule trims.
+  it("Update legal name sends the registry's name trimmed, whatever whitespace the record itself carries", async () => {
+    const renamed = { ...fullRecordBody, name: `  ${identityBody.name} AS  ` };
+    const fetchMock = registryFetch(renamed, (path, init) =>
+      path === "/api/v1/customers/1001/legal-identity" && init?.method === "PUT"
+        ? Promise.resolve(jsonResponse(200, { ...identityBody, name: `${identityBody.name} AS` }))
+        : null,
+    );
+    renderCard(fetchMock);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Update legal name" }));
+
+    await waitFor(() => expect(lastIdentityPut(fetchMock)).toBeTruthy());
+    const [, init] = lastIdentityPut(fetchMock) as [string, RequestInit];
+    expect(JSON.parse(String(init.body)).name).toBe(`${identityBody.name} AS`);
+  });
+
+  // Task 10 review: the identity GET the write's own invalidation triggers is
+  // what actually closes the notice — the mutation's own success handler never
+  // seeds it, per this package's rule against seeding a form from
+  // `invalidateQueries`'s resolution.
+  it("the rename notice disappears once the refetched identity carries the new name", async () => {
+    const renamed = { ...fullRecordBody, name: "REGISTERENHETEN I BRØNNØYSUND AS" };
+    let identityName = identityBody.name;
+    const fetchMock = registryFetch(renamed, (path, init) => {
+      if (path === "/api/v1/customers/1001/legal-identity" && init?.method === "PUT") {
+        identityName = "REGISTERENHETEN I BRØNNØYSUND AS";
+        return Promise.resolve(jsonResponse(200, { ...identityBody, name: identityName }));
+      }
+      if (path === "/api/v1/customers/1001/legal-identity" && init?.method === undefined) {
+        return Promise.resolve(jsonResponse(200, { ...identityBody, name: identityName }));
+      }
+      return null;
+    });
+    renderCard(fetchMock);
+
+    expect(await screen.findByRole("button", { name: "Update legal name" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Update legal name" }));
+
+    await waitFor(() => expect(screen.queryByText(/The register calls this company/)).not.toBeInTheDocument());
+  });
+
   it("says the legal name could not be updated when the write fails", async () => {
     const renamed = { ...fullRecordBody, name: "REGISTERENHETEN I BRØNNØYSUND AS" };
     const fetchMock = registryFetch(renamed, (path, init) =>
@@ -429,6 +535,46 @@ describe("CustomerRegistryCard", () => {
 });
 
 /**
+ * `foundedOn` and `deletedOn` are date-only strings with no time of their own
+ * (task 1 review) — read in the reader's local zone rather than as UTC, a
+ * reading west of Greenwich can land on the previous calendar day, exactly
+ * the failure mode `dashboard.test.ts`'s own `formatInLosAngeles` stands in
+ * for. That test injects a formatter into a pure function; this card's dates
+ * go through `useI18n`'s own `formatters.formatDate`, which is not
+ * injectable, so the reader's zone here is the process's own `TZ` — changed
+ * for the one test that needs it and restored immediately after.
+ */
+// This package's tsconfig carries no Node types (it never otherwise needs
+// them); declared locally rather than pulling in @types/node for one global.
+declare const process: { env: Record<string, string | undefined> };
+
+describe("date-only registry fields, read by a reader west of Greenwich", () => {
+  const originalTZ = process.env.TZ;
+
+  beforeEach(() => {
+    process.env.TZ = "America/Los_Angeles";
+  });
+
+  afterEach(() => {
+    process.env.TZ = originalTZ;
+  });
+
+  it("reads a deletion on 1 August as 1 August, not the 31st of July", async () => {
+    renderCard(registryFetch({ ...fullRecordBody, deletedOn: "2026-08-01" }));
+
+    expect(await screen.findByText("Deleted Aug 1, 2026")).toBeInTheDocument();
+    expect(screen.queryByText(/Jul 31, 2026/)).not.toBeInTheDocument();
+  });
+
+  it("reads founded-on as the registry's own date, not the previous day", async () => {
+    renderCard(registryFetch(fullRecordBody));
+
+    expect(await screen.findByText("Aug 9, 1995")).toBeInTheDocument();
+    expect(screen.queryByText("Aug 8, 1995")).not.toBeInTheDocument();
+  });
+});
+
+/**
  * Where the card is actually mounted (design D5): the Overview tab shows it
  * only for a caller with `customers:legal-identity-view` and only for a
  * customer whose legal identity is a Norwegian business — the registry this
@@ -437,11 +583,6 @@ describe("CustomerRegistryCard", () => {
  * fetch of its own.
  */
 describe("the Overview tab's Registry card", () => {
-  afterEach(() => {
-    cleanup();
-    vi.unstubAllGlobals();
-  });
-
   const customerBody = (overrides: Record<string, unknown> = {}) => ({
     id: 1001,
     customerNumber: 5001,
@@ -536,5 +677,16 @@ describe("the Overview tab's Registry card", () => {
     await renderOverview(foreign, { canViewIdentity: true, canManageIdentity: true });
     expect(screen.queryByRole("heading", { name: "Registry" })).not.toBeInTheDocument();
     expect(recordGets(foreign)).toHaveLength(0);
+  });
+
+  // Task 7 review: the customer's own `type` and its identity's own `type`
+  // can disagree, and the record repeats the identity's organisation number,
+  // not the customer's type — so it is the identity's own type that decides.
+  it("leaves the card out when the identity itself is not a business, even though the customer is", async () => {
+    const fetchMock = overviewFetch(customerBody({ identity: { country: "no", type: "person", id: "01010112345" } }));
+    await renderOverview(fetchMock, { canViewIdentity: true, canManageIdentity: true });
+
+    expect(screen.queryByRole("heading", { name: "Registry" })).not.toBeInTheDocument();
+    expect(recordGets(fetchMock)).toHaveLength(0);
   });
 });

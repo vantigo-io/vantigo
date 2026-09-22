@@ -340,8 +340,16 @@ export const CustomerOverview = ({
   // Enhetsregisteret answers for Norwegian businesses and nothing else, and
   // the record repeats the legal identity's organisation number — so for any
   // other customer, or any caller without that permission, the record is not
-  // even asked for: the GET would answer 204 whatever the reason.
-  const showRegistry = Boolean(canViewIdentity && customer.type === "business" && customer.identity?.country === "no");
+  // even asked for: the GET would answer 204 whatever the reason. The
+  // identity's own `type` is checked too, not just the customer's: the two
+  // can disagree (a customer mid change-of-type, say), and it is the identity
+  // whose organisation number this record would repeat.
+  const showRegistry = Boolean(
+    canViewIdentity &&
+      customer.type === "business" &&
+      customer.identity?.type === "business" &&
+      customer.identity?.country === "no",
+  );
   const { data: registryRecord } = useQuery({
     ...customerRegistryRecordQueryOptions(customerId),
     enabled: showRegistry,
