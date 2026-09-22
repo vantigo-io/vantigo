@@ -61,6 +61,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/openapi/contracttest"
+	"github.com/vantigo-io/vantigo/server/internal/peppol"
 	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 	"github.com/vantigo-io/vantigo/server/internal/secrets"
 	"github.com/vantigo-io/vantigo/server/internal/server"
@@ -114,19 +115,20 @@ type Harness struct {
 // configuration from, the modules it composes beside identity, and the
 // Recorder its clients validate through.
 type setup struct {
-	env         map[string]string
-	modules     []module.Module
-	recorder    *contracttest.Recorder
-	transport   http.RoundTripper
-	backoff     func(int) time.Duration
-	directory   contracts.CustomerDirectory
-	products    contracts.ProductCatalog
-	projects    contracts.ProjectDirectory
-	actuals     contracts.ProjectActuals
-	expenses    contracts.ProjectExpenses
-	smtpVerify  func(ctx context.Context, cfg config.MailConfig) error
-	smtpSend    func(ctx context.Context, cfg config.MailConfig, msg mail.Outbound) error
-	objectStore storage.ObjectStore
+	env          map[string]string
+	modules      []module.Module
+	recorder     *contracttest.Recorder
+	transport    http.RoundTripper
+	backoff      func(int) time.Duration
+	directory    contracts.CustomerDirectory
+	products     contracts.ProductCatalog
+	projects     contracts.ProjectDirectory
+	actuals      contracts.ProjectActuals
+	expenses     contracts.ProjectExpenses
+	smtpVerify   func(ctx context.Context, cfg config.MailConfig) error
+	smtpSend     func(ctx context.Context, cfg config.MailConfig, msg mail.Outbound) error
+	objectStore  storage.ObjectStore
+	peppolLookup func(ctx context.Context, participant string) (peppol.Result, error)
 }
 
 // Option adjusts a harness before it is built.
@@ -270,6 +272,22 @@ func WithObjectStore(store storage.ObjectStore) Option {
 	return func(s *setup) { s.objectStore = store }
 }
 
+// WithPeppolLookup sets the function Deps.PeppolLookup carries, for a
+// module whose own Peppol capability check (customers' POST
+// .../peppol-lookup) must exercise a lookup's outcomes — registered, not
+// registered, upstream failure — deterministically, without a live Peppol
+// network: fn stands in for a *peppol.Client's own Lookup, typically a
+// function that records the participant it was asked about and returns a
+// fixed peppol.Result or error. Unset, a module falls back to building its
+// own *peppol.Client from configuration, the same production path a harness
+// configured with PEPPOL_LOOKUP_ENABLED and friends (WithEnv) exercises for
+// real — except that path still resolves real DNS and SMP, so a test that
+// wants the disabled (503) path uses WithEnv alone and a test that wants a
+// successful or failed lookup uses this instead.
+func WithPeppolLookup(fn func(ctx context.Context, participant string) (peppol.Result, error)) Option {
+	return func(s *setup) { s.peppolLookup = fn }
+}
+
 // WithEnv sets one additional environment variable a harness loads its
 // configuration from, merged over the harness's own defaults (APP_ENV,
 // DATABASE_URL, ...). For a setting modtest itself has no dedicated Option
@@ -390,6 +408,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		SMTPVerify:    s.smtpVerify,
 		SMTPSend:      s.smtpSend,
 		ObjectStore:   s.objectStore,
+		PeppolLookup:  s.peppolLookup,
 	}
 	access := identity.NewAccess(h.deps)
 	h.deps.Access = access

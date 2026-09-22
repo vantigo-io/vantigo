@@ -375,7 +375,7 @@ func TestBillingWarnings_FixedOrder(t *testing.T) {
 	// checked); this test only pins that no_invoice_address is always last
 	// when it fires alongside one of the other three.
 	ehf := "ehf"
-	got := billingWarnings(billingProfile{InvoiceDelivery: &ehf}, "business", nil, nil, false)
+	got := billingWarnings(billingProfile{InvoiceDelivery: &ehf}, "business", nil, nil, false, nil)
 	want := []string{"ehf_without_recipient", "no_invoice_address"}
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Errorf("billingWarnings = %v, want %v", got, want)
@@ -387,7 +387,7 @@ func TestBillingWarnings_EHFWithoutRecipient(t *testing.T) {
 	profile := billingProfile{InvoiceDelivery: &ehf}
 
 	// No peppolId, no Norwegian business identity: the warning fires.
-	got := billingWarnings(profile, "business", nil, nil, true)
+	got := billingWarnings(profile, "business", nil, nil, true, nil)
 	if !contains(got, "ehf_without_recipient") {
 		t.Errorf("warnings = %v, want ehf_without_recipient", got)
 	}
@@ -395,14 +395,14 @@ func TestBillingWarnings_EHFWithoutRecipient(t *testing.T) {
 	// A peppolId set clears it, identity absent.
 	peppol := "0192:923609016"
 	withPeppol := billingProfile{InvoiceDelivery: &ehf, PeppolID: &peppol}
-	got = billingWarnings(withPeppol, "business", nil, nil, true)
+	got = billingWarnings(withPeppol, "business", nil, nil, true, nil)
 	if contains(got, "ehf_without_recipient") {
 		t.Errorf("warnings = %v, want no ehf_without_recipient (peppolId set)", got)
 	}
 
 	// A Norwegian business legal identity clears it even without a peppolId.
 	identity := &legalIdentity{Country: "no", Type: "business", ID: "923609016", Name: "Acme AS", Source: "manual"}
-	got = billingWarnings(profile, "business", identity, nil, true)
+	got = billingWarnings(profile, "business", identity, nil, true, nil)
 	if contains(got, "ehf_without_recipient") {
 		t.Errorf("warnings = %v, want no ehf_without_recipient (NO business identity)", got)
 	}
@@ -410,7 +410,7 @@ func TestBillingWarnings_EHFWithoutRecipient(t *testing.T) {
 	// A Norwegian *person* identity does not derive a recipient: the warning
 	// still fires.
 	personIdentity := &legalIdentity{Country: "no", Type: "person", ID: "010170-12345", Name: "Kari Nordmann", Source: "manual"}
-	got = billingWarnings(profile, "person", personIdentity, nil, true)
+	got = billingWarnings(profile, "person", personIdentity, nil, true, nil)
 	if !contains(got, "ehf_without_recipient") {
 		t.Errorf("warnings = %v, want ehf_without_recipient (NO person identity does not count)", got)
 	}
@@ -420,7 +420,7 @@ func TestBillingWarnings_EmailWithoutAddress(t *testing.T) {
 	email := "email"
 	profile := billingProfile{InvoiceDelivery: &email}
 
-	got := billingWarnings(profile, "business", nil, nil, true)
+	got := billingWarnings(profile, "business", nil, nil, true, nil)
 	if !contains(got, "email_without_address") {
 		t.Errorf("warnings = %v, want email_without_address", got)
 	}
@@ -428,14 +428,14 @@ func TestBillingWarnings_EmailWithoutAddress(t *testing.T) {
 	// invoiceEmail set on the profile satisfies it.
 	invoiceEmail := "invoice@example.com"
 	withInvoiceEmail := billingProfile{InvoiceDelivery: &email, InvoiceEmail: &invoiceEmail}
-	got = billingWarnings(withInvoiceEmail, "business", nil, nil, true)
+	got = billingWarnings(withInvoiceEmail, "business", nil, nil, true, nil)
 	if contains(got, "email_without_address") {
 		t.Errorf("warnings = %v, want no email_without_address (invoiceEmail set)", got)
 	}
 
 	// The contact-info email alone also satisfies it.
 	contactEmail := "contact@example.com"
-	got = billingWarnings(profile, "business", nil, &contactEmail, true)
+	got = billingWarnings(profile, "business", nil, &contactEmail, true, nil)
 	if contains(got, "email_without_address") {
 		t.Errorf("warnings = %v, want no email_without_address (contact email set)", got)
 	}
@@ -445,23 +445,23 @@ func TestBillingWarnings_EfakturaForBusiness(t *testing.T) {
 	efaktura := "efaktura"
 	profile := billingProfile{InvoiceDelivery: &efaktura}
 
-	got := billingWarnings(profile, "business", nil, nil, true)
+	got := billingWarnings(profile, "business", nil, nil, true, nil)
 	if !contains(got, "efaktura_for_business") {
 		t.Errorf("warnings = %v, want efaktura_for_business", got)
 	}
 
-	got = billingWarnings(profile, "person", nil, nil, true)
+	got = billingWarnings(profile, "person", nil, nil, true, nil)
 	if contains(got, "efaktura_for_business") {
 		t.Errorf("warnings = %v, want no efaktura_for_business for a person customer", got)
 	}
 }
 
 func TestBillingWarnings_NoInvoiceAddress(t *testing.T) {
-	got := billingWarnings(billingProfile{}, "business", nil, nil, false)
+	got := billingWarnings(billingProfile{}, "business", nil, nil, false, nil)
 	if !contains(got, "no_invoice_address") {
 		t.Errorf("warnings = %v, want no_invoice_address", got)
 	}
-	got = billingWarnings(billingProfile{}, "business", nil, nil, true)
+	got = billingWarnings(billingProfile{}, "business", nil, nil, true, nil)
 	if contains(got, "no_invoice_address") {
 		t.Errorf("warnings = %v, want no no_invoice_address (has one)", got)
 	}
@@ -470,7 +470,7 @@ func TestBillingWarnings_NoInvoiceAddress(t *testing.T) {
 // TestBillingWarnings_EmptyProfileReturnsAnEmptyNonNilSlice proves the JSON
 // response encodes warnings as [] rather than null when nothing fires.
 func TestBillingWarnings_EmptyProfileReturnsAnEmptyNonNilSlice(t *testing.T) {
-	got := billingWarnings(billingProfile{}, "business", nil, nil, true)
+	got := billingWarnings(billingProfile{}, "business", nil, nil, true, nil)
 	if got == nil {
 		t.Fatal("warnings = nil, want a non-nil empty slice")
 	}

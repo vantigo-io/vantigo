@@ -111,20 +111,23 @@ type CustomerAddressRequest struct {
 	Type       string  `json:"type"`
 }
 
-// CustomerBillingProfile A customer's billing profile (invoice-ready customer design D1, D4): payment terms, currency, document language, delivery methods and the identifiers used to send it invoices — every field optional, meaning "not decided here, whoever invoices uses its own default"; unset, a field is simply absent from the response rather than sent as null. warnings is computed at read time from the profile plus the customer's type, legal identity, contact email and addresses — never stored — in a fixed order: ehf_without_recipient, email_without_address, efaktura_for_business, no_invoice_address.
+// CustomerBillingProfile A customer's billing profile (invoice-ready customer design D1, D4): payment terms, currency, document language, delivery methods and the identifiers used to send it invoices — every field optional, meaning "not decided here, whoever invoices uses its own default"; unset, a field is simply absent from the response rather than sent as null. warnings is computed at read time from the profile plus the customer's type, legal identity, contact email and addresses — never stored — in a fixed order: ehf_without_recipient, email_without_address, efaktura_for_business, no_invoice_address, ehf_recipient_not_registered, ehf_available (can-this-customer-receive-EHF design D4). peppolLookup is the last Peppol lookup on record (POST .../peppol-lookup), present only when it was made for the participant this profile would look up now — a stale answer (the org number or peppolId changed since) is omitted.
 type CustomerBillingProfile struct {
-	BuyerReference   *string  `json:"buyerReference,omitempty"`
-	Currency         *string  `json:"currency,omitempty"`
-	Gln              *string  `json:"gln,omitempty"`
-	InvoiceDelivery  *string  `json:"invoiceDelivery,omitempty"`
-	InvoiceEmail     *string  `json:"invoiceEmail,omitempty"`
-	Language         *string  `json:"language,omitempty"`
-	PaymentTermsDays *int32   `json:"paymentTermsDays,omitempty"`
-	PeppolId         *string  `json:"peppolId,omitempty"`
-	ReminderDelivery *string  `json:"reminderDelivery,omitempty"`
-	ReminderEmail    *string  `json:"reminderEmail,omitempty"`
-	Revision         int32    `json:"revision"`
-	Warnings         []string `json:"warnings"`
+	BuyerReference   *string `json:"buyerReference,omitempty"`
+	Currency         *string `json:"currency,omitempty"`
+	Gln              *string `json:"gln,omitempty"`
+	InvoiceDelivery  *string `json:"invoiceDelivery,omitempty"`
+	InvoiceEmail     *string `json:"invoiceEmail,omitempty"`
+	Language         *string `json:"language,omitempty"`
+	PaymentTermsDays *int32  `json:"paymentTermsDays,omitempty"`
+	PeppolId         *string `json:"peppolId,omitempty"`
+
+	// PeppolLookup The last (or freshly checked, from POST /customers/{id}/peppol-lookup) answer the Peppol network gave about whether this customer can receive an EHF invoice (can-this-customer-receive-EHF design D3): status is 'registered', 'not_registered' or 'no_identifier' (no Peppol participant id could be derived and none is set, so nothing was looked up). participantId is present only when it is either an explicit peppolId or the caller holds customers:legal-identity-view (a derived id is that permission's to show); smpHost is always present when known. checkedAt is always present, even for no_identifier (the moment the check was made, nothing stored).
+	PeppolLookup     *CustomerPeppolLookup `json:"peppolLookup,omitempty"`
+	ReminderDelivery *string               `json:"reminderDelivery,omitempty"`
+	ReminderEmail    *string               `json:"reminderEmail,omitempty"`
+	Revision         int32                 `json:"revision"`
+	Warnings         []string              `json:"warnings"`
 }
 
 // CustomerConflictDuplicate defines model for CustomerConflictDuplicate.
@@ -166,6 +169,16 @@ type CustomerContactResponse struct {
 	Email   *string         `json:"email,omitempty"`
 	Phone   *string         `json:"phone,omitempty"`
 	Role    string          `json:"role"`
+}
+
+// CustomerPeppolLookup The last (or freshly checked, from POST /customers/{id}/peppol-lookup) answer the Peppol network gave about whether this customer can receive an EHF invoice (can-this-customer-receive-EHF design D3): status is 'registered', 'not_registered' or 'no_identifier' (no Peppol participant id could be derived and none is set, so nothing was looked up). participantId is present only when it is either an explicit peppolId or the caller holds customers:legal-identity-view (a derived id is that permission's to show); smpHost is always present when known. checkedAt is always present, even for no_identifier (the moment the check was made, nothing stored).
+type CustomerPeppolLookup struct {
+	CanReceiveCreditNote bool      `json:"canReceiveCreditNote"`
+	CanReceiveInvoice    bool      `json:"canReceiveInvoice"`
+	CheckedAt            time.Time `json:"checkedAt"`
+	ParticipantId        *string   `json:"participantId,omitempty"`
+	SmpHost              *string   `json:"smpHost,omitempty"`
+	Status               string    `json:"status"`
 }
 
 // CustomerReference defines model for CustomerReference.
@@ -622,6 +635,9 @@ type ServerInterface interface {
 	// PutCustomersByIdLegalIdentity Replace a customer's legal identity
 	// (PUT /api/v1/customers/{id}/legal-identity)
 	PutCustomersByIdLegalIdentity(w http.ResponseWriter, r *http.Request, id int32)
+	// PostCustomersByIdPeppolLookup Ask Peppol whether this customer can receive EHF invoices
+	// (POST /api/v1/customers/{id}/peppol-lookup)
+	PostCustomersByIdPeppolLookup(w http.ResponseWriter, r *http.Request, id int32)
 	// GetCustomersByIdTimeline List a customer's timeline
 	// (GET /api/v1/customers/{id}/timeline)
 	GetCustomersByIdTimeline(w http.ResponseWriter, r *http.Request, id int32, params GetCustomersByIdTimelineParams)
@@ -1652,6 +1668,32 @@ func (siw *ServerInterfaceWrapper) PutCustomersByIdLegalIdentity(w http.Response
 	handler.ServeHTTP(w, r)
 }
 
+// PostCustomersByIdPeppolLookup operation middleware
+func (siw *ServerInterfaceWrapper) PostCustomersByIdPeppolLookup(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostCustomersByIdPeppolLookup(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetCustomersByIdTimeline operation middleware
 func (siw *ServerInterfaceWrapper) GetCustomersByIdTimeline(w http.ResponseWriter, r *http.Request) {
 
@@ -2106,6 +2148,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/{id}/legal-identity", wrapper.DeleteCustomersByIdLegalIdentity)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/legal-identity", wrapper.GetCustomersByIdLegalIdentity)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/legal-identity", wrapper.PutCustomersByIdLegalIdentity)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/peppol-lookup", wrapper.PostCustomersByIdPeppolLookup)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/type", wrapper.PutCustomersByIdType)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/timeline", wrapper.GetCustomersByIdTimeline)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/timeline", wrapper.PostCustomersByIdTimeline)
@@ -4149,6 +4192,92 @@ func (response PutCustomersByIdLegalIdentity409ApplicationProblemPlusJSONRespons
 	return err
 }
 
+type PostCustomersByIdPeppolLookupRequestObject struct {
+	Id int32 `json:"id"`
+}
+
+type PostCustomersByIdPeppolLookupResponseObject interface {
+	VisitPostCustomersByIdPeppolLookupResponse(w http.ResponseWriter) error
+}
+
+type PostCustomersByIdPeppolLookup200JSONResponse CustomerPeppolLookup
+
+func (response PostCustomersByIdPeppolLookup200JSONResponse) VisitPostCustomersByIdPeppolLookupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdPeppolLookup401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersByIdPeppolLookup401JSONResponse) VisitPostCustomersByIdPeppolLookupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdPeppolLookup403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersByIdPeppolLookup403JSONResponse) VisitPostCustomersByIdPeppolLookupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdPeppolLookup404Response struct {
+}
+
+func (response PostCustomersByIdPeppolLookup404Response) VisitPostCustomersByIdPeppolLookupResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostCustomersByIdPeppolLookup502ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PostCustomersByIdPeppolLookup502ApplicationProblemPlusJSONResponse) VisitPostCustomersByIdPeppolLookupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdPeppolLookup503ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PostCustomersByIdPeppolLookup503ApplicationProblemPlusJSONResponse) VisitPostCustomersByIdPeppolLookupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCustomersByIdTimelineRequestObject struct {
 	Id     int32 `json:"id"`
 	Params GetCustomersByIdTimelineParams
@@ -4748,6 +4877,9 @@ type StrictServerInterface interface {
 	// PutCustomersByIdLegalIdentity Replace a customer's legal identity
 	// (PUT /api/v1/customers/{id}/legal-identity)
 	PutCustomersByIdLegalIdentity(ctx context.Context, request PutCustomersByIdLegalIdentityRequestObject) (PutCustomersByIdLegalIdentityResponseObject, error)
+	// PostCustomersByIdPeppolLookup Ask Peppol whether this customer can receive EHF invoices
+	// (POST /api/v1/customers/{id}/peppol-lookup)
+	PostCustomersByIdPeppolLookup(ctx context.Context, request PostCustomersByIdPeppolLookupRequestObject) (PostCustomersByIdPeppolLookupResponseObject, error)
 	// GetCustomersByIdTimeline List a customer's timeline
 	// (GET /api/v1/customers/{id}/timeline)
 	GetCustomersByIdTimeline(ctx context.Context, request GetCustomersByIdTimelineRequestObject) (GetCustomersByIdTimelineResponseObject, error)
@@ -5656,6 +5788,32 @@ func (sh *strictHandler) PutCustomersByIdLegalIdentity(w http.ResponseWriter, r 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutCustomersByIdLegalIdentityResponseObject); ok {
 		if err := validResponse.VisitPutCustomersByIdLegalIdentityResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostCustomersByIdPeppolLookup operation middleware
+func (sh *strictHandler) PostCustomersByIdPeppolLookup(w http.ResponseWriter, r *http.Request, id int32) {
+	var request PostCustomersByIdPeppolLookupRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostCustomersByIdPeppolLookup(ctx, request.(PostCustomersByIdPeppolLookupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostCustomersByIdPeppolLookup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostCustomersByIdPeppolLookupResponseObject); ok {
+		if err := validResponse.VisitPostCustomersByIdPeppolLookupResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

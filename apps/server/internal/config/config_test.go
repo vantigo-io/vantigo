@@ -901,6 +901,64 @@ func TestLoad_BrregTimeout(t *testing.T) {
 	}
 }
 
+func TestLoad_PeppolLookupEnabled(t *testing.T) {
+	if cfg := mustLoad(t, validEnv()); !cfg.PeppolLookupEnabled {
+		t.Errorf("PeppolLookupEnabled = %v, want true by default", cfg.PeppolLookupEnabled)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "PEPPOL_LOOKUP_ENABLED", "0")); cfg.PeppolLookupEnabled {
+		t.Errorf("PeppolLookupEnabled = %v, want false", cfg.PeppolLookupEnabled)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "PEPPOL_LOOKUP_ENABLED", "1")); !cfg.PeppolLookupEnabled {
+		t.Errorf("PeppolLookupEnabled = %v, want true", cfg.PeppolLookupEnabled)
+	}
+	if msg := loadError(t, with(validEnv(), "PEPPOL_LOOKUP_ENABLED", "yes")); !strings.Contains(msg, `PEPPOL_LOOKUP_ENABLED: must be "0" or "1"`) {
+		t.Errorf("error = %q", msg)
+	}
+}
+
+func TestLoad_PeppolSMLZone(t *testing.T) {
+	if cfg := mustLoad(t, validEnv()); cfg.PeppolSMLZone != "participant.sml.prod.tech.peppol.org" {
+		t.Errorf("PeppolSMLZone = %q, want the production zone by default", cfg.PeppolSMLZone)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "PEPPOL_SML_ZONE", "participant.sml.test.tech.peppol.org")); cfg.PeppolSMLZone != "participant.sml.test.tech.peppol.org" {
+		t.Errorf("PeppolSMLZone = %q, want the test network's own zone", cfg.PeppolSMLZone)
+	}
+	for _, bad := range []string{"https://participant.sml.prod.tech.peppol.org", "participant.sml.prod.tech.peppol.org/path", "has a space"} {
+		if msg := loadError(t, with(validEnv(), "PEPPOL_SML_ZONE", bad)); !strings.Contains(msg, "PEPPOL_SML_ZONE: must be a plain hostname, with no scheme, path or whitespace") {
+			t.Errorf("PEPPOL_SML_ZONE=%q: error = %q", bad, msg)
+		}
+	}
+}
+
+func TestLoad_PeppolDNSServer(t *testing.T) {
+	if cfg := mustLoad(t, validEnv()); cfg.PeppolDNSServer != "" {
+		t.Errorf("PeppolDNSServer = %q, want empty by default (the server's own resolvers)", cfg.PeppolDNSServer)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "PEPPOL_DNS_SERVER", "127.0.0.1:53")); cfg.PeppolDNSServer != "127.0.0.1:53" {
+		t.Errorf("PeppolDNSServer = %q, want 127.0.0.1:53", cfg.PeppolDNSServer)
+	}
+	for _, bad := range []string{"127.0.0.1", "127.0.0.1:", "127.0.0.1:dns", "not-host-port-at-all"} {
+		if msg := loadError(t, with(validEnv(), "PEPPOL_DNS_SERVER", bad)); !strings.Contains(msg, "PEPPOL_DNS_SERVER:") {
+			t.Errorf("PEPPOL_DNS_SERVER=%q: error = %q, want a PEPPOL_DNS_SERVER problem", bad, msg)
+		}
+	}
+}
+
+func TestLoad_PeppolTimeout(t *testing.T) {
+	if cfg := mustLoad(t, validEnv()); cfg.PeppolTimeout != 10*time.Second {
+		t.Errorf("PeppolTimeout = %v, want 10s by default", cfg.PeppolTimeout)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "PEPPOL_TIMEOUT", "3s")); cfg.PeppolTimeout != 3*time.Second {
+		t.Errorf("PeppolTimeout = %v, want 3s", cfg.PeppolTimeout)
+	}
+	if msg := loadError(t, with(validEnv(), "PEPPOL_TIMEOUT", "0s")); !strings.Contains(msg, "PEPPOL_TIMEOUT: must be a positive duration") {
+		t.Errorf("error = %q, want a positive-duration problem for 0s", msg)
+	}
+	if msg := loadError(t, with(validEnv(), "PEPPOL_TIMEOUT", "not-a-duration")); !strings.Contains(msg, "PEPPOL_TIMEOUT: must be a positive duration") {
+		t.Errorf("error = %q", msg)
+	}
+}
+
 func TestLoad_ObjectStorageUnconfigured(t *testing.T) {
 	cfg := mustLoad(t, validEnv())
 	if cfg.StorageProvider != "" || cfg.StorageFSRoot != "" || cfg.StorageFSAllowInsecureRoot {

@@ -73,6 +73,16 @@ type CustomersCustomerAddress struct {
 	UpdatedAt  time.Time
 }
 
+type CustomersCustomerPeppolLookup struct {
+	CustomerID           int32
+	ParticipantID        string
+	Status               string
+	CanReceiveInvoice    bool
+	CanReceiveCreditNote bool
+	SmpHost              *string
+	CheckedAt            time.Time
+}
+
 type CustomersCustomersContact struct {
 	CustomerID int32
 	ContactID  int32

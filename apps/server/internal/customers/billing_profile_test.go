@@ -24,18 +24,19 @@ import (
 // new to this sub-resource, the computed warnings.
 
 type billingProfileJSON struct {
-	InvoiceEmail     *string  `json:"invoiceEmail"`
-	ReminderEmail    *string  `json:"reminderEmail"`
-	PaymentTermsDays *int32   `json:"paymentTermsDays"`
-	Currency         *string  `json:"currency"`
-	Language         *string  `json:"language"`
-	InvoiceDelivery  *string  `json:"invoiceDelivery"`
-	ReminderDelivery *string  `json:"reminderDelivery"`
-	PeppolId         *string  `json:"peppolId"`
-	Gln              *string  `json:"gln"`
-	BuyerReference   *string  `json:"buyerReference"`
-	Revision         int32    `json:"revision"`
-	Warnings         []string `json:"warnings"`
+	InvoiceEmail     *string           `json:"invoiceEmail"`
+	ReminderEmail    *string           `json:"reminderEmail"`
+	PaymentTermsDays *int32            `json:"paymentTermsDays"`
+	Currency         *string           `json:"currency"`
+	Language         *string           `json:"language"`
+	InvoiceDelivery  *string           `json:"invoiceDelivery"`
+	ReminderDelivery *string           `json:"reminderDelivery"`
+	PeppolId         *string           `json:"peppolId"`
+	Gln              *string           `json:"gln"`
+	BuyerReference   *string           `json:"buyerReference"`
+	Revision         int32             `json:"revision"`
+	Warnings         []string          `json:"warnings"`
+	PeppolLookup     *peppolLookupJSON `json:"peppolLookup"`
 }
 
 func getBillingProfile(t *testing.T, c *modtest.Client, id int32) *modtest.Response {

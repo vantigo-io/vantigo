@@ -9,6 +9,7 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"net"
 	"net/mail"
 	"net/netip"
 	"net/url"
@@ -169,6 +170,26 @@ type Config struct {
 	// BrregTimeout bounds one lookup end to end, retries included
 	// (BRREG_TIMEOUT); .NET's total-request timeout.
 	BrregTimeout time.Duration
+
+	// PeppolLookupEnabled is the on/off switch for the customers module's
+	// Peppol lookup (PEPPOL_LOOKUP_ENABLED, can-this-customer-receive-EHF
+	// design D3, D5), default on. false answers the operation 503 without
+	// ever consulting Deps.PeppolLookup or building the real client.
+	PeppolLookupEnabled bool
+	// PeppolSMLZone is the SML zone a lookup hashes a participant identifier
+	// into (PEPPOL_SML_ZONE, internal/peppol.Options.Zone's own doc: "a
+	// hard-coded default in this package would be a second place for it to
+	// be wrong"), default the production network
+	// (participant.sml.prod.tech.peppol.org); the test network is
+	// participant.sml.test.tech.peppol.org.
+	PeppolSMLZone string
+	// PeppolDNSServer is the host:port of a resolver the Peppol client uses
+	// instead of the server's own name servers (PEPPOL_DNS_SERVER), empty by
+	// default (meaning /etc/resolv.conf).
+	PeppolDNSServer string
+	// PeppolTimeout bounds one Peppol lookup end to end, DNS and SMP together
+	// (PEPPOL_TIMEOUT), default 10s.
+	PeppolTimeout time.Duration
 
 	// StorageProvider selects the internal/storage backend: "" (unset,
 	// STORAGE_PROVIDER) or "fs". When unset, internal/storage.New still
@@ -339,6 +360,8 @@ func Load(env map[string]string) (*Config, error) {
 	c.BrregBaseURL = brregBaseURL(&p, env)
 	c.BrregTimeout = duration(&p, env, "BRREG_TIMEOUT", 15*time.Second)
 
+	peppolLookup(&p, env, c)
+
 	objectStorage(&p, env, c)
 	communicationsAttachments(&p, env, c)
 	communicationsRetention(&p, env, c)
@@ -442,6 +465,75 @@ func brregBaseURL(p *problems, env map[string]string) string {
 		return defaultBrregBaseURL
 	}
 	return strings.TrimSuffix(v, "/")
+}
+
+// defaultPeppolSMLZone is the production Peppol network's SML zone
+// (can-this-customer-receive-EHF design D5); the test network's own zone
+// (participant.sml.test.tech.peppol.org) is never a default here — an
+// operator who wants it sets PEPPOL_SML_ZONE explicitly.
+const defaultPeppolSMLZone = "participant.sml.prod.tech.peppol.org"
+
+// plausibleHostname is PEPPOL_SML_ZONE's own shape check (design D5's
+// controller ruling): non-empty, no "://" (a caller pasted a URL, not a
+// zone), and none of the characters ("/", any whitespace) that cannot be
+// part of a DNS name. It does not attempt to validate the zone is a real,
+// resolvable one — that is what a lookup itself finds out, and failing
+// there (an upstream 502) is the honest way to report it, not a startup
+// refusal for a zone this process never resolves until asked to.
+func plausibleHostname(v string) bool {
+	if v == "" || strings.Contains(v, "://") {
+		return false
+	}
+	return !strings.ContainsAny(v, "/ \t\n\r")
+}
+
+// peppolLookup resolves the customers module's Peppol lookup configuration
+// (PEPPOL_LOOKUP_ENABLED, PEPPOL_SML_ZONE, PEPPOL_DNS_SERVER, PEPPOL_TIMEOUT
+// — can-this-customer-receive-EHF design D3, D5): the on/off switch, the SML
+// zone a lookup hashes a participant identifier into, an optional resolver
+// override, and the per-lookup timeout. Mirrors brregBaseURL/BrregTimeout's
+// own shape: every problem reported, defaults substituted so Load can keep
+// validating the rest of the environment.
+func peppolLookup(p *problems, env map[string]string, c *Config) {
+	c.PeppolLookupEnabled = boolean(p, env, "PEPPOL_LOOKUP_ENABLED", true)
+
+	c.PeppolSMLZone = strings.TrimSpace(env["PEPPOL_SML_ZONE"])
+	switch {
+	case c.PeppolSMLZone == "":
+		c.PeppolSMLZone = defaultPeppolSMLZone
+	case !plausibleHostname(c.PeppolSMLZone):
+		p.add("PEPPOL_SML_ZONE", "must be a plain hostname, with no scheme, path or whitespace")
+		c.PeppolSMLZone = defaultPeppolSMLZone
+	}
+
+	if v := env["PEPPOL_DNS_SERVER"]; v != "" {
+		host, port, err := net.SplitHostPort(v)
+		switch {
+		case err != nil || host == "":
+			p.add("PEPPOL_DNS_SERVER", "must be host:port")
+		case !isNumericPort(port):
+			p.add("PEPPOL_DNS_SERVER", "must be host:port with a numeric port")
+		default:
+			c.PeppolDNSServer = v
+		}
+	}
+
+	c.PeppolTimeout = duration(p, env, "PEPPOL_TIMEOUT", 10*time.Second)
+}
+
+// isNumericPort reports whether port is all ASCII digits, at least one:
+// net.SplitHostPort already rejects a value with no colon, but accepts
+// "host:" or "host:abc" alike, leaving the port itself unchecked.
+func isNumericPort(port string) bool {
+	if port == "" {
+		return false
+	}
+	for _, r := range port {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // objectStorage resolves STORAGE_PROVIDER, STORAGE_FS_ROOT and
