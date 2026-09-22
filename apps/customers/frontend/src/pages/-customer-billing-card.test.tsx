@@ -216,7 +216,7 @@ describe("CustomerBillingCard", () => {
 
     expect(
       await screen.findByText(
-        "Delivery is set to EHF, but the last Peppol check says this customer cannot receive EHF invoices.",
+        "EHF is the invoice delivery method, but the last Peppol check says this customer cannot receive EHF invoices.",
       ),
     ).toBeInTheDocument();
   });

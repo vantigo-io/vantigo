@@ -65,16 +65,6 @@ export interface CustomerBillingProfile {
 }
 
 /**
- * The profile as it actually arrives. The server encodes an unset optional
- * field by leaving it out (`omitempty` on every nullable field of
- * `CustomerBillingProfile` in `apps/server/internal/customers/gen/api.gen.go`),
- * so a customer that has decided nothing answers exactly
- * `{"revision":3,"warnings":["no_invoice_address"]}` — and Go marshals a nil
- * `warnings` slice as null. Absent and null mean the same thing here (D4:
- * "not decided, the invoicing default applies"), so this shape is mapped to
- * the full one at the boundary and nothing downstream has to know.
- */
-/**
  * `CustomerPeppolLookup` as it actually arrives nested inside the profile
  * (or POST .../peppol-lookup's own 200 body): `participantId` and `smpHost`
  * are each `omitempty` on the wire, same reason the profile's own optional
@@ -95,6 +85,16 @@ const normalizePeppolLookupFields = (raw: RawCustomerPeppolLookup): CustomerPepp
 const normalizePeppolLookup = (raw?: RawCustomerPeppolLookup): CustomerPeppolLookup | null =>
   raw ? normalizePeppolLookupFields(raw) : null;
 
+/**
+ * The profile as it actually arrives. The server encodes an unset optional
+ * field by leaving it out (`omitempty` on every nullable field of
+ * `CustomerBillingProfile` in `apps/server/internal/customers/gen/api.gen.go`),
+ * so a customer that has decided nothing answers exactly
+ * `{"revision":3,"warnings":["no_invoice_address"]}` — and Go marshals a nil
+ * `warnings` slice as null. Absent and null mean the same thing here (D4:
+ * "not decided, the invoicing default applies"), so this shape is mapped to
+ * the full one at the boundary and nothing downstream has to know.
+ */
 type RawCustomerBillingProfile = Partial<Omit<CustomerBillingProfile, "revision" | "peppolLookup">> & {
   revision: number;
   peppolLookup?: RawCustomerPeppolLookup;

@@ -104,7 +104,7 @@ describe("CustomerPeppolStatus", () => {
 
     const expectedDate = formatDate(registeredWithInvoice.checkedAt);
     expect(await screen.findByText(`Can receive EHF invoices — checked ${expectedDate}`)).toBeInTheDocument();
-    expect(screen.getByText("via smp.example.test")).toBeInTheDocument();
+    expect(screen.getByText("via SMP smp.example.test")).toBeInTheDocument();
   });
 
   it("shows 'Registered in Peppol, but not for invoices' when registered without invoice capability", async () => {
@@ -216,7 +216,7 @@ describe("CustomerPeppolStatus", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Check EHF" }));
 
     expect(
-      await screen.findByText("There is no Peppol id or Norwegian organisation number to look up"),
+      await screen.findByText("Nothing to look up — no Peppol ID or Norwegian organisation number"),
     ).toBeInTheDocument();
     expect(callsTo(fetchMock, "/api/v1/customers/1001/billing-profile")).toHaveLength(1);
   });
