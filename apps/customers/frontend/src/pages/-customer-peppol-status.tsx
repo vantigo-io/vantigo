@@ -79,10 +79,13 @@ const answerMessage = (
 export const CustomerPeppolStatus = ({
   customerId,
   profile,
+  identityId,
   canManageBilling,
 }: {
   customerId: number;
   profile: CustomerBillingProfile;
+  /** The customer's legal identity id, from which the server derives a participant when the profile names none (design D3) — null when unset or withheld. */
+  identityId?: string | null;
   canManageBilling?: boolean;
 }) => {
   const { t, formatters } = useI18n("customers");
@@ -90,28 +93,45 @@ export const CustomerPeppolStatus = ({
   const billingProfileKey = customerBillingProfileQueryOptions(customerId).queryKey;
 
   const [disabled, setDisabled] = useState(peppolLookupDisabledForSession);
-  const [networkError, setNetworkError] = useState(false);
-  // `no_identifier` stores nothing server-side (design D3), so the profile's
-  // own `peppolLookup` never reflects it — the only place that answer is
-  // ever seen is this mutation's own 200 body, held here until the next
-  // attempt.
-  const [noIdentifier, setNoIdentifier] = useState(false);
+  // The two answers that store nothing server-side (design D3): a
+  // `no_identifier` and a failed lookup are only ever seen in this mutation's
+  // own reply, so they are held here — but *against the participant they were
+  // about*. Fill the Peppol ID in and "nothing to look up" is no longer true;
+  // a note that outlived its reason would contradict the row right above it.
+  const [note, setNote] = useState<{ kind: "no_identifier" | "network_error"; participant: string } | null>(null);
+  // What the server would look up right now: the explicit id if there is one,
+  // else whatever it would derive from the legal identity.
+  const participant = `${profile.peppolId ?? ""}|${identityId ?? ""}`;
 
   const checkMutation = useMutation({
     mutationFn: () => checkPeppol(customerId),
-    onMutate: () => {
-      setNetworkError(false);
-      setNoIdentifier(false);
-    },
+    onMutate: () => setNote(null),
     onSuccess: (result) => {
       if (result.status === "no_identifier") {
-        setNoIdentifier(true);
+        setNote({ kind: "no_identifier", participant });
         return;
       }
       // The stored answer and the warnings it feeds both live on the GET —
       // simplest and correct to ask for it again rather than reconstruct
-      // either from this POST's own body.
-      queryClient.invalidateQueries({ queryKey: billingProfileKey });
+      // either from this POST's own body. Returned, not fired and forgotten,
+      // so the action stays pending until the fresh answer is on screen.
+      const refreshed = queryClient.invalidateQueries({ queryKey: billingProfileKey });
+      const previous = profile.peppolLookup;
+      // The server records a `customer.peppol_lookup` event only when the
+      // answer moved (design D3), and the timeline is on this same page — so
+      // when it moved, that query is stale too. Never `["customers", id]`
+      // itself: a lookup does not touch the customer row, so its revision and
+      // everything keyed on it are still good.
+      const changed =
+        !previous ||
+        previous.status !== result.status ||
+        previous.canReceiveInvoice !== result.canReceiveInvoice ||
+        previous.canReceiveCreditNote !== result.canReceiveCreditNote;
+      if (!changed) return refreshed;
+      return Promise.all([
+        refreshed,
+        queryClient.invalidateQueries({ queryKey: ["customers", customerId, "timeline"] }),
+      ]);
     },
     onError: (error) => {
       const status = (error as { status?: number }).status;
@@ -121,7 +141,7 @@ export const CustomerPeppolStatus = ({
         return;
       }
       if (status === 502) {
-        setNetworkError(true);
+        setNote({ kind: "network_error", participant });
         return;
       }
       notifications.show({
@@ -139,7 +159,10 @@ export const CustomerPeppolStatus = ({
     ? answerMessage(t, lookup, formatters.formatDate(lookup.checkedAt, { dateStyle: "medium", timeStyle: "short" }))
     : null;
   const showAction = canManageBilling && !disabled;
-  const hasNote = disabled || noIdentifier || networkError;
+  // A note only stands while the participant it was about is still the one
+  // that would be looked up.
+  const visibleNote = note?.participant === participant ? note.kind : null;
+  const hasNote = disabled || visibleNote !== null;
 
   // Never checked, nothing to say and nothing to click: no empty stack under
   // the row's own value and hint.
@@ -181,12 +204,12 @@ export const CustomerPeppolStatus = ({
               {t("peppolLookupDisabled")}
             </Text>
           )}
-          {noIdentifier && (
+          {visibleNote === "no_identifier" && (
             <Text size="xs" c="dimmed">
               {t("peppolNoIdentifier")}
             </Text>
           )}
-          {networkError && (
+          {visibleNote === "network_error" && (
             <Text size="xs" c="red">
               {t("peppolNetworkError")}
             </Text>
@@ -239,6 +262,10 @@ export const CustomerEhfOffer = ({
     onMutate: () => {
       setConflict(false);
       setFieldError(null);
+      // A reload that failed belonged to the *previous* conflict; the modals
+      // forget theirs as they open, and this offer's own moment of opening is
+      // the click that can conflict again.
+      reload.forget();
     },
     onSuccess: (saved) => {
       // Same pattern as `CustomerBillingModal`'s own save: the 200 body

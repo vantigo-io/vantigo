@@ -244,7 +244,14 @@ const BillingFields = ({
         label={t("billingPeppolId")}
         value={value(profile.peppolId)}
         hint={peppolHint}
-        extra={<CustomerPeppolStatus customerId={customerId} profile={profile} canManageBilling={canManageBilling} />}
+        extra={
+          <CustomerPeppolStatus
+            customerId={customerId}
+            profile={profile}
+            identityId={customer.identity?.id ?? null}
+            canManageBilling={canManageBilling}
+          />
+        }
       />
       <BillingRow label={t("billingGln")} value={value(profile.gln)} />
       <BillingRow label={t("billingBuyerReference")} value={value(profile.buyerReference)} />
