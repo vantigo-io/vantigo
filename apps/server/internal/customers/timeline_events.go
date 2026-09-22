@@ -55,16 +55,37 @@ func identityEqual(a, b *legalIdentity) bool {
 	return *a == *b
 }
 
+// generatedProducerAPI and generatedProducerBrreg are the two producers a
+// generated entry can name: what this module's own endpoints did to a
+// customer, and what Enhetsregisteret says about it (Brreg in full design
+// D4). The distinction is worth a column because a registry.change event
+// describes the world changing, not a person acting — the actor on it is
+// whoever clicked Refresh (or the system, once delivery B's worker does the
+// clicking), which is a different claim from "this user edited the
+// customer".
+const (
+	generatedProducerAPI   = "customers.api"
+	generatedProducerBrreg = "customers.brreg"
+)
+
 // recordGeneratedEvent inserts one generated timeline entry and its single
-// revision. now's UTC calendar date becomes the entry's occurred_on, and
-// now itself its occurred_at, created_at and updated_at, as .NET's recorder
-// stamps every field from one captured DateTimeOffset.UtcNow
+// revision, produced by this module's own API (generatedProducerAPI) —
+// every event in this file but the two registry ones at the bottom, which
+// call recordGeneratedEventFrom with their own producer.
+func recordGeneratedEvent(ctx context.Context, q *store.Queries, customerID int32, now time.Time, eventType, summary string, payload any, payloadVersion int32, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	return recordGeneratedEventFrom(ctx, q, customerID, now, generatedProducerAPI, eventType, summary, payload, payloadVersion, actorKind, actorDisplay, actorUserID)
+}
+
+// recordGeneratedEventFrom is recordGeneratedEvent for a caller that names
+// its own producer. now's UTC calendar date becomes the entry's occurred_on,
+// and now itself its occurred_at, created_at and updated_at, as .NET's
+// recorder stamps every field from one captured DateTimeOffset.UtcNow
 // (SV/CustomerTimelineRecorder.cs:132-133). actorKind/actorDisplay/actorUserID
 // are the acting user's resolved actor (server.actorFor, customers
 // foundation design D1) — every caller resolves it once, before opening the
 // transaction this function runs inside, and threads it down to here rather
 // than this function resolving it itself.
-func recordGeneratedEvent(ctx context.Context, q *store.Queries, customerID int32, now time.Time, eventType, summary string, payload any, payloadVersion int32, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+func recordGeneratedEventFrom(ctx context.Context, q *store.Queries, customerID int32, now time.Time, producer, eventType, summary string, payload any, payloadVersion int32, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("customers: encode timeline payload: %w", err)
@@ -73,6 +94,7 @@ func recordGeneratedEvent(ctx context.Context, q *store.Queries, customerID int3
 	occurredOn := pgtype.Date{Time: time.Date(utc.Year(), utc.Month(), utc.Day(), 0, 0, 0, 0, time.UTC), Valid: true}
 	return q.InsertGeneratedTimelineEvent(ctx, store.InsertGeneratedTimelineEventParams{
 		CustomerID:     customerID,
+		Producer:       producer,
 		EventType:      eventType,
 		OccurredOn:     occurredOn,
 		Now:            now,
@@ -377,4 +399,49 @@ func recordCustomerAddressRemoved(ctx context.Context, q *store.Queries, now tim
 		"type": addr.Type, "label": addr.Label, "display": display,
 	}
 	return recordGeneratedEvent(ctx, q, customerID, now, "customer.address_removed", addressSummary("removed", display), payload, 1, actorKind, actorDisplay, actorUserID)
+}
+
+// registryChangePayload is the payload both registry events carry: the list
+// of differences, each with the field's name and whichever of from/to was
+// not empty — the same objects the refresh response returns, so a card
+// showing "3 changes" and the timeline entry behind it never disagree. The
+// keys are omitted rather than sent null for an empty side, the wire
+// convention the whole module follows.
+func registryChangePayload(changes []registryChange) map[string]any {
+	encoded := make([]map[string]any, 0, len(changes))
+	for _, c := range changes {
+		change := map[string]any{"field": c.Field}
+		if c.From != "" {
+			change["from"] = c.From
+		}
+		if c.To != "" {
+			change["to"] = c.To
+		}
+		encoded = append(encoded, change)
+	}
+	return map[string]any{"changes": encoded}
+}
+
+// recordRegistryChange is a refresh's own generated event (Brreg in full
+// design D4): the registry.change type, which has existed as a manual entry
+// type since the port (timeline.go's manualTimelineEventTypes) and now has a
+// producer as well — customers.brreg, since what it describes is the world
+// changing rather than this module's API being called. Only called once the
+// handler has confirmed something actually differed (registry.go's own rule,
+// and diffRegistryRecords's first-fetch rule before it), so changes is never
+// empty here.
+func recordRegistryChange(ctx context.Context, q *store.Queries, now time.Time, customerID int32, changes []registryChange, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	return recordGeneratedEventFrom(ctx, q, customerID, now, generatedProducerBrreg, "registry.change",
+		registryChangeSummary(changes), registryChangePayload(changes), 1, actorKind, actorDisplay, actorUserID)
+}
+
+// recordRegistryRemoved is the same event for the one difference a removal
+// makes (design D2): the entity is gone from open data, its stored record
+// deleted in the same transaction, and this entry is all that is left of it.
+// Its summary is a fixed literal, not built from the changes, because there
+// is only ever the one change and "Registry record updated: removedFromOpenData"
+// would read like a field edit rather than a disappearance.
+func recordRegistryRemoved(ctx context.Context, q *store.Queries, now time.Time, customerID int32, changes []registryChange, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	return recordGeneratedEventFrom(ctx, q, customerID, now, generatedProducerBrreg, "registry.change",
+		"Registry record removed from open data", registryChangePayload(changes), 1, actorKind, actorDisplay, actorUserID)
 }

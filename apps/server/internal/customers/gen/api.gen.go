@@ -188,6 +188,60 @@ type CustomerReference struct {
 	Name           string `json:"name"`
 }
 
+// CustomerRegistryAddress One of the two addresses the registry holds for an entity (Brreg in full design D1): lines is the registry's own free-form address array — one or more street lines, never a single string — and postalCode/municipality are simply absent on a foreign address, whose own postal district is part of city instead ("81-336 GDYNIA"). countryCode is ISO 3166-1 alpha-2, empty only when the registry sent none. This is what the registry says, not an address on file: a refresh never writes to the customer's own addresses (design D3).
+type CustomerRegistryAddress struct {
+	City         *string  `json:"city,omitempty"`
+	CountryCode  string   `json:"countryCode"`
+	Lines        []string `json:"lines"`
+	Municipality *string  `json:"municipality,omitempty"`
+	PostalCode   *string  `json:"postalCode,omitempty"`
+}
+
+// CustomerRegistryChange One field the last refresh found different (Brreg in full design D4): field is the record's own field name ("name", "employees", "businessAddress", …), or "removedFromOpenData" when the registry answered 410. from and to are the two values rendered as text — a number for employees, 'true'/'false' for a flag, an ISO date for deletedOn, a one-line rendering for an address — and either is absent when that side was empty (a field that was not set before, or is not set now).
+type CustomerRegistryChange struct {
+	Field string  `json:"field"`
+	From  *string `json:"from,omitempty"`
+	To    *string `json:"to,omitempty"`
+}
+
+// CustomerRegistryRecord What Enhetsregisteret says about this customer, as of fetchedAt (Brreg in full design D1): the registry's own view, kept beside the customer and never edited by hand — the customer's name and legal identity stay what the user asserted, and a difference between the two is reported on the timeline rather than written over them. Present only for a customer whose legal identity is a Norwegian business with a valid organisation number, and only once a fetch has actually happened. deletedOn is set for an entity struck from the register; an entity removed from open data altogether has no record at all.
+type CustomerRegistryRecord struct {
+	Bankrupt bool `json:"bankrupt"`
+
+	// BusinessAddress One of the two addresses the registry holds for an entity (Brreg in full design D1): lines is the registry's own free-form address array — one or more street lines, never a single string — and postalCode/municipality are simply absent on a foreign address, whose own postal district is part of city instead ("81-336 GDYNIA"). countryCode is ISO 3166-1 alpha-2, empty only when the registry sent none. This is what the registry says, not an address on file: a refresh never writes to the customer's own addresses (design D3).
+	BusinessAddress          *CustomerRegistryAddress `json:"businessAddress,omitempty"`
+	DeletedOn                *openapi_types.Date      `json:"deletedOn,omitempty"`
+	Email                    *string                  `json:"email,omitempty"`
+	Employees                *int32                   `json:"employees,omitempty"`
+	FetchedAt                time.Time                `json:"fetchedAt"`
+	FoundedOn                *openapi_types.Date      `json:"foundedOn,omitempty"`
+	Industry                 *string                  `json:"industry,omitempty"`
+	IndustryCode             *string                  `json:"industryCode,omitempty"`
+	Mobile                   *string                  `json:"mobile,omitempty"`
+	Name                     string                   `json:"name"`
+	OrganisationForm         *string                  `json:"organisationForm,omitempty"`
+	OrganisationFormCode     *string                  `json:"organisationFormCode,omitempty"`
+	OrganisationNumber       string                   `json:"organisationNumber"`
+	ParentOrganisationNumber *string                  `json:"parentOrganisationNumber,omitempty"`
+	Phone                    *string                  `json:"phone,omitempty"`
+
+	// PostalAddress One of the two addresses the registry holds for an entity (Brreg in full design D1): lines is the registry's own free-form address array — one or more street lines, never a single string — and postalCode/municipality are simply absent on a foreign address, whose own postal district is part of city instead ("81-336 GDYNIA"). countryCode is ISO 3166-1 alpha-2, empty only when the registry sent none. This is what the registry says, not an address on file: a refresh never writes to the customer's own addresses (design D3).
+	PostalAddress          *CustomerRegistryAddress `json:"postalAddress,omitempty"`
+	UnderForcedLiquidation bool                     `json:"underForcedLiquidation"`
+	UnderLiquidation       bool                     `json:"underLiquidation"`
+	VatRegistered          bool                     `json:"vatRegistered"`
+	Website                *string                  `json:"website,omitempty"`
+}
+
+// CustomerRegistryRefreshResponse What one POST /customers/{id}/registry-refresh found (Brreg in full design D2, D4). status is 'found' (an ordinary live entity), 'deleted' (struck from the register — the record is kept, with deletedOn set), 'removed' (gone from open data entirely — the stored record is deleted and only the timeline keeps the fact) or 'unknown' (the registry does not know this organisation number, and nothing is stored — worth a look at the identity). record is the stored record after the write, present for found and deleted only. changes lists what differed from the record on file, empty when nothing did; the very first fetch compares only the registry's name with the legal identity's.
+type CustomerRegistryRefreshResponse struct {
+	Changes []CustomerRegistryChange `json:"changes"`
+
+	// Record What Enhetsregisteret says about this customer, as of fetchedAt (Brreg in full design D1): the registry's own view, kept beside the customer and never edited by hand — the customer's name and legal identity stay what the user asserted, and a difference between the two is reported on the timeline rather than written over them. Present only for a customer whose legal identity is a Norwegian business with a valid organisation number, and only once a fetch has actually happened. deletedOn is set for an entity struck from the register; an entity removed from open data altogether has no record at all.
+	Record *CustomerRegistryRecord `json:"record,omitempty"`
+	Status string                  `json:"status"`
+}
+
 // CustomerStatsAttentionItem defines model for CustomerStatsAttentionItem.
 type CustomerStatsAttentionItem struct {
 	EntityId   string    `json:"entityId"`
@@ -638,6 +692,12 @@ type ServerInterface interface {
 	// PostCustomersByIdPeppolLookup Ask Peppol whether this customer can receive EHF invoices
 	// (POST /api/v1/customers/{id}/peppol-lookup)
 	PostCustomersByIdPeppolLookup(w http.ResponseWriter, r *http.Request, id int32)
+	// GetCustomersByIdRegistryRecord Get what the registry says about this customer
+	// (GET /api/v1/customers/{id}/registry-record)
+	GetCustomersByIdRegistryRecord(w http.ResponseWriter, r *http.Request, id int32)
+	// PostCustomersByIdRegistryRefresh Re-read this customer's registry record
+	// (POST /api/v1/customers/{id}/registry-refresh)
+	PostCustomersByIdRegistryRefresh(w http.ResponseWriter, r *http.Request, id int32)
 	// GetCustomersByIdTimeline List a customer's timeline
 	// (GET /api/v1/customers/{id}/timeline)
 	GetCustomersByIdTimeline(w http.ResponseWriter, r *http.Request, id int32, params GetCustomersByIdTimelineParams)
@@ -1694,6 +1754,58 @@ func (siw *ServerInterfaceWrapper) PostCustomersByIdPeppolLookup(w http.Response
 	handler.ServeHTTP(w, r)
 }
 
+// GetCustomersByIdRegistryRecord operation middleware
+func (siw *ServerInterfaceWrapper) GetCustomersByIdRegistryRecord(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCustomersByIdRegistryRecord(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostCustomersByIdRegistryRefresh operation middleware
+func (siw *ServerInterfaceWrapper) PostCustomersByIdRegistryRefresh(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostCustomersByIdRegistryRefresh(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetCustomersByIdTimeline operation middleware
 func (siw *ServerInterfaceWrapper) GetCustomersByIdTimeline(w http.ResponseWriter, r *http.Request) {
 
@@ -2149,6 +2261,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/legal-identity", wrapper.GetCustomersByIdLegalIdentity)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/legal-identity", wrapper.PutCustomersByIdLegalIdentity)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/peppol-lookup", wrapper.PostCustomersByIdPeppolLookup)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/registry-record", wrapper.GetCustomersByIdRegistryRecord)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/registry-refresh", wrapper.PostCustomersByIdRegistryRefresh)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/type", wrapper.PutCustomersByIdType)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/timeline", wrapper.GetCustomersByIdTimeline)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/timeline", wrapper.PostCustomersByIdTimeline)
@@ -4278,6 +4392,158 @@ func (response PostCustomersByIdPeppolLookup503ApplicationProblemPlusJSONRespons
 	return err
 }
 
+type GetCustomersByIdRegistryRecordRequestObject struct {
+	Id int32 `json:"id"`
+}
+
+type GetCustomersByIdRegistryRecordResponseObject interface {
+	VisitGetCustomersByIdRegistryRecordResponse(w http.ResponseWriter) error
+}
+
+type GetCustomersByIdRegistryRecord200JSONResponse CustomerRegistryRecord
+
+func (response GetCustomersByIdRegistryRecord200JSONResponse) VisitGetCustomersByIdRegistryRecordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdRegistryRecord204Response struct {
+}
+
+func (response GetCustomersByIdRegistryRecord204Response) VisitGetCustomersByIdRegistryRecordResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type GetCustomersByIdRegistryRecord401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersByIdRegistryRecord401JSONResponse) VisitGetCustomersByIdRegistryRecordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdRegistryRecord403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersByIdRegistryRecord403JSONResponse) VisitGetCustomersByIdRegistryRecordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdRegistryRecord404Response struct {
+}
+
+func (response GetCustomersByIdRegistryRecord404Response) VisitGetCustomersByIdRegistryRecordResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostCustomersByIdRegistryRefreshRequestObject struct {
+	Id int32 `json:"id"`
+}
+
+type PostCustomersByIdRegistryRefreshResponseObject interface {
+	VisitPostCustomersByIdRegistryRefreshResponse(w http.ResponseWriter) error
+}
+
+type PostCustomersByIdRegistryRefresh200JSONResponse CustomerRegistryRefreshResponse
+
+func (response PostCustomersByIdRegistryRefresh200JSONResponse) VisitPostCustomersByIdRegistryRefreshResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdRegistryRefresh401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersByIdRegistryRefresh401JSONResponse) VisitPostCustomersByIdRegistryRefreshResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdRegistryRefresh403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersByIdRegistryRefresh403JSONResponse) VisitPostCustomersByIdRegistryRefreshResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdRegistryRefresh404Response struct {
+}
+
+func (response PostCustomersByIdRegistryRefresh404Response) VisitPostCustomersByIdRegistryRefreshResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostCustomersByIdRegistryRefresh409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PostCustomersByIdRegistryRefresh409ApplicationProblemPlusJSONResponse) VisitPostCustomersByIdRegistryRefreshResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdRegistryRefresh502ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PostCustomersByIdRegistryRefresh502ApplicationProblemPlusJSONResponse) VisitPostCustomersByIdRegistryRefreshResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCustomersByIdTimelineRequestObject struct {
 	Id     int32 `json:"id"`
 	Params GetCustomersByIdTimelineParams
@@ -4880,6 +5146,12 @@ type StrictServerInterface interface {
 	// PostCustomersByIdPeppolLookup Ask Peppol whether this customer can receive EHF invoices
 	// (POST /api/v1/customers/{id}/peppol-lookup)
 	PostCustomersByIdPeppolLookup(ctx context.Context, request PostCustomersByIdPeppolLookupRequestObject) (PostCustomersByIdPeppolLookupResponseObject, error)
+	// GetCustomersByIdRegistryRecord Get what the registry says about this customer
+	// (GET /api/v1/customers/{id}/registry-record)
+	GetCustomersByIdRegistryRecord(ctx context.Context, request GetCustomersByIdRegistryRecordRequestObject) (GetCustomersByIdRegistryRecordResponseObject, error)
+	// PostCustomersByIdRegistryRefresh Re-read this customer's registry record
+	// (POST /api/v1/customers/{id}/registry-refresh)
+	PostCustomersByIdRegistryRefresh(ctx context.Context, request PostCustomersByIdRegistryRefreshRequestObject) (PostCustomersByIdRegistryRefreshResponseObject, error)
 	// GetCustomersByIdTimeline List a customer's timeline
 	// (GET /api/v1/customers/{id}/timeline)
 	GetCustomersByIdTimeline(ctx context.Context, request GetCustomersByIdTimelineRequestObject) (GetCustomersByIdTimelineResponseObject, error)
@@ -5814,6 +6086,58 @@ func (sh *strictHandler) PostCustomersByIdPeppolLookup(w http.ResponseWriter, r 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostCustomersByIdPeppolLookupResponseObject); ok {
 		if err := validResponse.VisitPostCustomersByIdPeppolLookupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCustomersByIdRegistryRecord operation middleware
+func (sh *strictHandler) GetCustomersByIdRegistryRecord(w http.ResponseWriter, r *http.Request, id int32) {
+	var request GetCustomersByIdRegistryRecordRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCustomersByIdRegistryRecord(ctx, request.(GetCustomersByIdRegistryRecordRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCustomersByIdRegistryRecord")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCustomersByIdRegistryRecordResponseObject); ok {
+		if err := validResponse.VisitGetCustomersByIdRegistryRecordResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostCustomersByIdRegistryRefresh operation middleware
+func (sh *strictHandler) PostCustomersByIdRegistryRefresh(w http.ResponseWriter, r *http.Request, id int32) {
+	var request PostCustomersByIdRegistryRefreshRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostCustomersByIdRegistryRefresh(ctx, request.(PostCustomersByIdRegistryRefreshRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostCustomersByIdRegistryRefresh")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostCustomersByIdRegistryRefreshResponseObject); ok {
+		if err := validResponse.VisitPostCustomersByIdRegistryRefreshResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

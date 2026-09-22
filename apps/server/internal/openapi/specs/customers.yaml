@@ -393,6 +393,127 @@ components:
                 - customerNumber
                 - name
             type: object
+        CustomerRegistryAddress:
+            description: "One of the two addresses the registry holds for an entity (Brreg in full design D1): lines is the registry's own free-form address array — one or more street lines, never a single string — and postalCode/municipality are simply absent on a foreign address, whose own postal district is part of city instead (\"81-336 GDYNIA\"). countryCode is ISO 3166-1 alpha-2, empty only when the registry sent none. This is what the registry says, not an address on file: a refresh never writes to the customer's own addresses (design D3)."
+            properties:
+                city:
+                    nullable: true
+                    type: string
+                countryCode:
+                    type: string
+                lines:
+                    items:
+                        type: string
+                    type: array
+                municipality:
+                    nullable: true
+                    type: string
+                postalCode:
+                    nullable: true
+                    type: string
+            required:
+                - lines
+                - countryCode
+            type: object
+        CustomerRegistryChange:
+            description: "One field the last refresh found different (Brreg in full design D4): field is the record's own field name (\"name\", \"employees\", \"businessAddress\", …), or \"removedFromOpenData\" when the registry answered 410. from and to are the two values rendered as text — a number for employees, 'true'/'false' for a flag, an ISO date for deletedOn, a one-line rendering for an address — and either is absent when that side was empty (a field that was not set before, or is not set now)."
+            properties:
+                field:
+                    type: string
+                from:
+                    nullable: true
+                    type: string
+                to:
+                    nullable: true
+                    type: string
+            required:
+                - field
+            type: object
+        CustomerRegistryRecord:
+            description: "What Enhetsregisteret says about this customer, as of fetchedAt (Brreg in full design D1): the registry's own view, kept beside the customer and never edited by hand — the customer's name and legal identity stay what the user asserted, and a difference between the two is reported on the timeline rather than written over them. Present only for a customer whose legal identity is a Norwegian business with a valid organisation number, and only once a fetch has actually happened. deletedOn is set for an entity struck from the register; an entity removed from open data altogether has no record at all."
+            properties:
+                bankrupt:
+                    type: boolean
+                businessAddress:
+                    $ref: '#/components/schemas/CustomerRegistryAddress'
+                deletedOn:
+                    format: date
+                    nullable: true
+                    type: string
+                email:
+                    nullable: true
+                    type: string
+                employees:
+                    format: int32
+                    nullable: true
+                    type: integer
+                fetchedAt:
+                    format: date-time
+                    type: string
+                foundedOn:
+                    format: date
+                    nullable: true
+                    type: string
+                industry:
+                    nullable: true
+                    type: string
+                industryCode:
+                    nullable: true
+                    type: string
+                mobile:
+                    nullable: true
+                    type: string
+                name:
+                    type: string
+                organisationForm:
+                    nullable: true
+                    type: string
+                organisationFormCode:
+                    nullable: true
+                    type: string
+                organisationNumber:
+                    type: string
+                parentOrganisationNumber:
+                    nullable: true
+                    type: string
+                phone:
+                    nullable: true
+                    type: string
+                postalAddress:
+                    $ref: '#/components/schemas/CustomerRegistryAddress'
+                underForcedLiquidation:
+                    type: boolean
+                underLiquidation:
+                    type: boolean
+                vatRegistered:
+                    type: boolean
+                website:
+                    nullable: true
+                    type: string
+            required:
+                - organisationNumber
+                - name
+                - vatRegistered
+                - bankrupt
+                - underLiquidation
+                - underForcedLiquidation
+                - fetchedAt
+            type: object
+        CustomerRegistryRefreshResponse:
+            description: "What one POST /customers/{id}/registry-refresh found (Brreg in full design D2, D4). status is 'found' (an ordinary live entity), 'deleted' (struck from the register — the record is kept, with deletedOn set), 'removed' (gone from open data entirely — the stored record is deleted and only the timeline keeps the fact) or 'unknown' (the registry does not know this organisation number, and nothing is stored — worth a look at the identity). record is the stored record after the write, present for found and deleted only. changes lists what differed from the record on file, empty when nothing did; the very first fetch compares only the registry's name with the legal identity's."
+            properties:
+                changes:
+                    items:
+                        $ref: '#/components/schemas/CustomerRegistryChange'
+                    type: array
+                record:
+                    $ref: '#/components/schemas/CustomerRegistryRecord'
+                status:
+                    type: string
+            required:
+                - status
+                - changes
+            type: object
         CustomerStatsAttentionItem:
             properties:
                 entityId:
@@ -1866,6 +1987,92 @@ paths:
             tags:
                 - Customers
             x-vantigo-access: permission:customers:billing-manage+customers:view
+    /api/v1/customers/{id}/registry-record:
+        get:
+            description: "What Enhetsregisteret says about this customer, as last fetched (Brreg in full design D1, D2). 204 with no body when no record has ever been fetched — and equally when the caller lacks customers:legal-identity-view, since the record repeats the legal identity's organisation number and is that permission's to show; the two cases are deliberately indistinguishable, as the legal-identity GET's own \"nothing to show\" is. 404 when the customer does not exist."
+            operationId: getCustomersByIdRegistryRecord
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerRegistryRecord'
+                    description: OK
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: Get what the registry says about this customer
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:view
+    /api/v1/customers/{id}/registry-refresh:
+        post:
+            description: "Re-reads Enhetsregisteret for a customer whose legal identity is a Norwegian business with a valid organisation number — any source, so a manually entered number can be enriched too (Brreg in full design D2). The record lives in its own table, so a refresh never bumps the customer row's revision, and what differed from the record on file is written to the timeline as a single registry.change event. 409 with code 'no_registry_identity' when the customer has no such identity; 502 when the registry could not be reached, in which case nothing is stored and the record on file stands. A registry answer is never a failure: a struck-off entity answers 200 'deleted', one removed from open data 200 'removed' (its stored record is deleted), and an organisation number the registry does not know 200 'unknown' with nothing stored."
+            operationId: postCustomersByIdRegistryRefresh
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerRegistryRefreshResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: Conflict
+                "502":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Gateway
+            summary: Re-read this customer's registry record
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:legal-identity-manage+customers:view
     /api/v1/customers/{id}/type:
         put:
             description: Sets whether the customer is a business or a private person. Rarely the right action for a customer with history, which is why it is not part of PUT /customers/{id}. A legal identity of the previous type is removed in the same change, since a business identity from Brreg makes no sense on a person and vice versa; contacts, timeline and everything else stay. Resubmitting the current type changes nothing.

@@ -185,6 +185,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/customers/{id}/registry-record": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get what the registry says about this customer
+         * @description What Enhetsregisteret says about this customer, as last fetched (Brreg in full design D1, D2). 204 with no body when no record has ever been fetched — and equally when the caller lacks customers:legal-identity-view, since the record repeats the legal identity's organisation number and is that permission's to show; the two cases are deliberately indistinguishable, as the legal-identity GET's own "nothing to show" is. 404 when the customer does not exist.
+         */
+        get: operations["getCustomersByIdRegistryRecord"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/customers/{id}/registry-refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-read this customer's registry record
+         * @description Re-reads Enhetsregisteret for a customer whose legal identity is a Norwegian business with a valid organisation number — any source, so a manually entered number can be enriched too (Brreg in full design D2). The record lives in its own table, so a refresh never bumps the customer row's revision, and what differed from the record on file is written to the timeline as a single registry.change event. 409 with code 'no_registry_identity' when the customer has no such identity; 502 when the registry could not be reached, in which case nothing is stored and the record on file stands. A registry answer is never a failure: a struck-off entity answers 200 'deleted', one removed from open data 200 'removed' (its stored record is deleted), and an organisation number the registry does not know 200 'unknown' with nothing stored.
+         */
+        post: operations["postCustomersByIdRegistryRefresh"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/customers/{id}/type": {
         parameters: {
             query?: never;
@@ -565,6 +605,54 @@ export interface components {
             /** Format: int32 */
             id: number;
             name: string;
+        };
+        /** @description One of the two addresses the registry holds for an entity (Brreg in full design D1): lines is the registry's own free-form address array — one or more street lines, never a single string — and postalCode/municipality are simply absent on a foreign address, whose own postal district is part of city instead ("81-336 GDYNIA"). countryCode is ISO 3166-1 alpha-2, empty only when the registry sent none. This is what the registry says, not an address on file: a refresh never writes to the customer's own addresses (design D3). */
+        CustomerRegistryAddress: {
+            city?: string | null;
+            countryCode: string;
+            lines: string[];
+            municipality?: string | null;
+            postalCode?: string | null;
+        };
+        /** @description One field the last refresh found different (Brreg in full design D4): field is the record's own field name ("name", "employees", "businessAddress", …), or "removedFromOpenData" when the registry answered 410. from and to are the two values rendered as text — a number for employees, 'true'/'false' for a flag, an ISO date for deletedOn, a one-line rendering for an address — and either is absent when that side was empty (a field that was not set before, or is not set now). */
+        CustomerRegistryChange: {
+            field: string;
+            from?: string | null;
+            to?: string | null;
+        };
+        /** @description What Enhetsregisteret says about this customer, as of fetchedAt (Brreg in full design D1): the registry's own view, kept beside the customer and never edited by hand — the customer's name and legal identity stay what the user asserted, and a difference between the two is reported on the timeline rather than written over them. Present only for a customer whose legal identity is a Norwegian business with a valid organisation number, and only once a fetch has actually happened. deletedOn is set for an entity struck from the register; an entity removed from open data altogether has no record at all. */
+        CustomerRegistryRecord: {
+            bankrupt: boolean;
+            businessAddress?: components["schemas"]["CustomerRegistryAddress"];
+            /** Format: date */
+            deletedOn?: string | null;
+            email?: string | null;
+            /** Format: int32 */
+            employees?: number | null;
+            /** Format: date-time */
+            fetchedAt: string;
+            /** Format: date */
+            foundedOn?: string | null;
+            industry?: string | null;
+            industryCode?: string | null;
+            mobile?: string | null;
+            name: string;
+            organisationForm?: string | null;
+            organisationFormCode?: string | null;
+            organisationNumber: string;
+            parentOrganisationNumber?: string | null;
+            phone?: string | null;
+            postalAddress?: components["schemas"]["CustomerRegistryAddress"];
+            underForcedLiquidation: boolean;
+            underLiquidation: boolean;
+            vatRegistered: boolean;
+            website?: string | null;
+        };
+        /** @description What one POST /customers/{id}/registry-refresh found (Brreg in full design D2, D4). status is 'found' (an ordinary live entity), 'deleted' (struck from the register — the record is kept, with deletedOn set), 'removed' (gone from open data entirely — the stored record is deleted and only the timeline keeps the fact) or 'unknown' (the registry does not know this organisation number, and nothing is stored — worth a look at the identity). record is the stored record after the write, present for found and deleted only. changes lists what differed from the record on file, empty when nothing did; the very first fetch compares only the registry's name with the legal identity's. */
+        CustomerRegistryRefreshResponse: {
+            changes: components["schemas"]["CustomerRegistryChange"][];
+            record?: components["schemas"]["CustomerRegistryRecord"];
+            status: string;
         };
         CustomerStatsAttentionItem: {
             entityId: string;
@@ -1992,6 +2080,125 @@ export interface operations {
             };
             /** @description Service Unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getCustomersByIdRegistryRecord: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerRegistryRecord"];
+                };
+            };
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postCustomersByIdRegistryRefresh: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerRegistryRefreshResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };

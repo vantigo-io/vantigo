@@ -523,6 +523,19 @@ func (s *server) PostCustomers(ctx context.Context, req gen.PostCustomersRequest
 		return nil, fmt.Errorf("customers: create customer: %w", err)
 	}
 
+	// The registry fetch for a Brreg pick (Brreg in full design D2), after
+	// the transaction has committed and before the response is built: the
+	// customer already exists, so a registry that blinks costs the record,
+	// never the create. The error is logged and dropped for exactly that
+	// reason — a user who just picked a company from the registry must not
+	// be told their create failed because the registry was slow — and the
+	// Registry card offers a Refresh for the record that is not there yet.
+	if orgnr := brregPickOrganisationNumber(identity, customerType); orgnr != "" {
+		if err := s.fetchAndStoreRegistryRecord(ctx, created.ID, orgnr, identity.Name, act); err != nil {
+			s.deps.Logger.WarnContext(ctx, "customers: registry record fetch failed", "customerId", created.ID, "errorKind", registryErrorKind(err))
+		}
+	}
+
 	location := fmt.Sprintf("%s/api/v1/customers/%d", s.deps.Config.BasePath, created.ID)
 	return gen.PostCustomers201JSONResponse{
 		Body:    gen.CreateCustomerResponse{Id: created.ID, CustomerNumber: created.CustomerNumber},
