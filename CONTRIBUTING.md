@@ -422,7 +422,8 @@ owning its own schema:
 - `internal/customers` → `/api/v1/customers/*` from `openapi/customers.yaml`:
   customers, contacts, customer-contact associations, legal identity, contact
   info, typed addresses, a billing profile, the customer timeline, the
-  Brønnøysundregisteret (Brreg) lookup and a Peppol EHF-capability lookup
+  Brønnøysundregisteret (Brreg) lookup, the customer's own registry record kept
+  beside it and refreshed on a click, and a Peppol EHF-capability lookup
   (`internal/peppol`, shared with the future Invoices module).
 - `internal/products` → `/api/v1/products/*` from `openapi/products.yaml`:
   products, variants, prices, categories and tax categories.

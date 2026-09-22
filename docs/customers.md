@@ -393,9 +393,12 @@ Manual event types: `note`, `interaction.call`, `interaction.meeting`,
 **revision** — a full point-in-time snapshot — guarded by three overlapping
 concurrency checks (a manual comparison before the write, the guarded `UPDATE`'s own
 `WHERE`, and a unique index on entry+revision number as backstop), all answering the
-same "Timeline revision conflict" problem. `registry.change` exists as a manual type
-today; nothing produces it automatically yet — that is
-[ROADMAP phase 3](../ROADMAP.md#customers)'s job.
+same "Timeline revision conflict" problem. `registry.change` has existed as a manual
+type since the port and stays one — a person can still write one by hand — but a
+registry refresh now also produces it automatically, with `provenance: generated`
+and `producer: customers.brreg` rather than through this manual-entry endpoint; see
+[Registry record](#registry-record). The two are told apart by `provenance`, never
+by `eventType`.
 
 ### Authorship
 
@@ -551,13 +554,241 @@ Brønnøysundregisteret's open Enhetsregisteret API by `legalId` (exact) or `sea
 (name, ≥ 2 characters after trimming; `legalId` wins if both are given). It returns,
 for each of up to 10 matches, only **`legalId` and `legalName`** — nothing else Brreg
 exposes (org form, addresses, NACE code, employee count, bankruptcy flags, …) is
-fetched or stored. The lookup is **one-shot**: there is no refresh, no stored
-provenance beyond `legal_source: "brreg"`, and editing a customer's name afterwards
-does not re-touch the identity. A retried, bounded HTTP call (3 retries, exponential
-backoff with jitter, ~4s per attempt) answers **502 "Lookup service unavailable"** on
-any exhausted or unretryable failure, a non-2xx upstream status, or a 2xx response
-whose body will not decode. [ROADMAP phase 3](../ROADMAP.md#customers) is where the
-full record, provenance and a refresh land.
+fetched or stored. The lookup itself is **one-shot**: there is no refresh, no stored provenance beyond
+`legal_source: "brreg"`, and editing a customer's name afterwards does not re-touch
+the identity. A retried, bounded HTTP call (3 retries, exponential backoff with
+jitter, ~4s per attempt) answers **502 "Lookup service unavailable"** on any
+exhausted or unretryable failure, a non-2xx upstream status, or a 2xx response whose
+body will not decode. What happens to a picked company afterwards — the full record,
+its provenance, and a refresh — is [Registry record](#registry-record), below.
+
+## Registry record
+
+Phase 3 delivery A ("Brreg in full",
+[design](superpowers/specs/2026-09-22-customers-brreg-full-design.md)): the fuller
+Enhetsregisteret record for a Norwegian business customer, kept beside the customer,
+re-read on a click, its differences written to the timeline and the notable ones
+surfaced on the dashboard. Delivery A does not touch the address book or the billing
+profile — see [What comes next](#what-comes-next) for delivery B.
+
+### What is kept
+
+`customers.customer_registry_records` (migration `00021`), one row per customer,
+`customer_id` the primary key, `ON DELETE CASCADE`: `organisation_number`, `name`
+(both `NOT NULL`), `organisation_form_code`/`organisation_form`,
+`industry_code`/`industry` (the registry's `naeringskode1` — only the first of up to
+three codes an entity can carry is kept), `employees` (`NULL` when the registry has
+not registered a headcount at all — distinct from a registered headcount of zero),
+`vat_registered`/`bankrupt`/`under_liquidation`/`under_forced_liquidation` (all
+`NOT NULL` booleans), `deleted_on`/`founded_on` (dates), `website`/`email`/`phone`/
+`mobile`, `parent_organisation_number`, `business_address`/`postal_address` (each
+`jsonb`, shaped `{lines[], postalCode, city, municipality, countryCode}`, or SQL
+`NULL` — never a JSON `null` — when the registry has none), and `fetched_at`. A
+`registry_updated_hint` column already exists on the table but is untouched by
+anything in delivery A: it is delivery B's, filled from Brreg's update feed and read
+by nothing here.
+
+**Why a table of its own, not columns on the customer.** The customer row is what
+the user owns — its name, its status, the legal identity they asserted. The registry
+row is a fact about the world with a timestamp, kept verbatim and never edited by
+hand. Writing it must never bump `customers.revision` and conflict somebody's open
+form, the same reasoning `customer_peppol_lookups` already follows. Where the
+registry disagrees with the legal identity's own name, the difference is *reported*
+(a `registry.change` timeline event, below) rather than written over it — the legal
+identity keeps the name it was given at the time of the pick until a person accepts
+the registry's.
+
+### When it is fetched
+
+Three triggers, all going through the same fetch-and-store
+(`(*server).fetchAndStoreRegistryRecord` / `refreshRegistryRecord`,
+`apps/server/internal/customers/registry.go`):
+
+- **On create with a Brreg pick** — `identity.source = "brreg"`, country `no`,
+  customer type `business` — the record is fetched *after* the create's own
+  transaction has committed, and its error is logged and dropped, never returned to
+  the caller: the customer already exists, and a user who just picked a company must
+  not be told the create failed because the registry blinked. The Registry card
+  shows "not fetched yet" with a Refresh action for that case.
+- **On `PUT .../legal-identity` with `source: "brreg"`** — pointing a customer at a
+  different entity makes the record on file the wrong company's, so the new one is
+  read the same way, after commit, failure logged and dropped. A resubmit of the
+  identity already stored is a no-op and never reaches the fetch (the same no-op
+  rule that writes no row and no event for that PUT).
+- **`POST /customers/{id}/registry-refresh`** — a person's click (or, once delivery
+  B ships, its worker). Unlike the two hooks above, a refresh reports every failure:
+  a 502 on an unreachable registry, a 409 `no_registry_identity` when the customer
+  has no Norwegian organisation number to look up — **any source**, so a manually
+  typed, valid organisation number can be enriched here even though it was never
+  fetched automatically.
+
+Neither hook is separately time-bounded: the Brreg client's own `entity` call is
+already wrapped in `BRREG_TIMEOUT`, so a slow registry delays a create or a
+legal-identity PUT by at most that, once, not twice.
+
+### The three registry outcomes
+
+The registry itself does not answer "found or not" — `brreg_entity.go` gives
+`(*brregClient).entity` three outcomes, and a refresh answers with four (the fourth
+being "nothing to look up" at all, the 409 above):
+
+| Outcome | Registry's answer | Stored | Reported |
+| --- | --- | --- | --- |
+| **found** | An ordinary live entity | Upserted in full | Diffed against the record on file (or the legal name, first fetch) |
+| **deleted** | HTTP **200** with a reduced body, `respons_klasse: "SlettetEnhet"` — a live one never carries that field, so it is what tells the two apart, not the status code | Upserted: only `name`, `organisation_number` and `deleted_on` come from the response, everything else (industry, headcount, addresses…) is carried over from the record already on file — a struck-off company keeps the last picture anyone had of it rather than reporting every other field as "changed to nothing" in the same breath | Diffed the same way; `status: "deleted"` |
+| **removed** | HTTP **410 Gone** — struck from *open data* entirely, not just the register | The stored row is **deleted** (`DeleteCustomerRegistryRecord`) — Brreg's own terms, a copy has no business outliving the thing it copied | One event, `{field: "removedFromOpenData", to: <date>}`, but **only when a row existed to remove** — a first refresh that lands straight on 410, or a second click after the row is already gone, changes nothing and writes nothing, so a disappearance is never reported twice |
+| **unknown** | Plain **404**, empty body (also what a sub-entity's own organisation number answers) | Nothing | Nothing — `status: "unknown"`; the identity is what needs a person's look, not the record |
+
+A registry answer is never treated as a failure: only a 5xx/timeout/transport error
+(wrapped as `errBrregUnavailable`) is, and only that becomes the refresh's 502 — with
+nothing stored and the record on file, however old, left standing.
+
+### The diff and the `registry.change` event
+
+After a **found** or **deleted** fetch, the new record is compared with the one on
+file (`diffRegistryRecords`, `registry_diff.go`). Compared, field by field: name,
+organisation form, industry code, employees, VAT registration, the three status
+flags (bankrupt, under liquidation, under forced liquidation), deletion date,
+website, email, phone, mobile, parent organisation number, and both addresses — each
+address as **one rendered line** ("Forusbeen 50, 4035 STAVANGER, NO": street lines,
+then post code and city, then country), not field by field. **Municipality is
+deliberately left out of that line** — it repeats the city on almost every Norwegian
+address and is absent on every foreign one, so including it would read "…,
+STAVANGER, STAVANGER, NO" on nearly every business address in the country.
+`fetched_at` moving is never a change.
+
+**The very first fetch for a customer** does not diff sixteen fields against zero
+values — there is nothing to have changed *from*. It compares exactly two things,
+in this order: the registry's name against the legal identity's own name (silent
+when they agree, which they do for an ordinary Brreg pick — so a create's own
+after-commit fetch normally writes no event at all), and the registry's deletion
+date, if it has one (picking a company already struck from the register is exactly
+what the person doing the picking needs told).
+
+Whatever differed is written as **one** `registry.change` timeline event
+(`recordRegistryChange`, `timeline_events.go`): `provenance: generated`,
+`producer: customers.brreg` (the module's second producer beside `customers.api` —
+a registry event describes the world changing, not this module's own API being
+called), actor the user who clicked Refresh, or `system` once delivery B's worker
+does the clicking instead. The payload is `{changes: [{field, from, to}, …]}` — the
+same shape the refresh's own HTTP response carries, so a card reading "3 changes"
+and the timeline entry behind it never disagree; either side of `from`/`to` is
+omitted when that side was empty. `registry.change` **stays a type a person can
+also write by hand** through the ordinary manual-timeline endpoint (it has been in
+`manualTimelineEventTypes` since the port); the two are told apart by `provenance`,
+not by `eventType` — `?provenance=generated&eventType=registry.change` on the
+timeline read finds only the automatic ones. A removal's event is a fixed-literal
+summary ("Registry record removed from open data"), since there is only ever the
+one change and reusing the field-name summary would read like an ordinary edit
+rather than a disappearance.
+
+### Refreshes of one customer queue
+
+A refresh's network call happens first, outside any transaction (no out-of-process
+call under a lock). Storing the answer then locks the **customer** row
+(`LockCustomer`, `FOR NO KEY UPDATE` — the same lock every address write takes), not
+just the registry-record row: on a first fetch there is no record row yet to lock,
+so two refreshes racing each other would otherwise both see "nothing on file," both
+diff against the legal name, and both write their own event. Locking the customer
+instead makes a second refresh of the same customer wait for the first to finish, so
+it diffs against what the first one actually stored.
+
+### Attention items
+
+`GET /stats/attention` — a stub since the port, always an empty array — now answers
+for real (`attentionItemsFrom`, `stats.go`), computed from every non-archived
+customer's stored registry record against its current row, **never from events**:
+the list is idempotent by construction and needs no "dismiss" state, because it
+clears itself the moment the underlying fact does.
+
+Four types, **at most one per customer**, in this fixed precedence (a struck-off
+company's single most useful sentence is that it is deleted, whatever else is also
+true of it):
+
+| Type | Raised when | Clears when |
+| --- | --- | --- |
+| `registryDeleted` | The stored record carries a deletion date, regardless of the other three flags | The customer is archived |
+| `registryBankrupt` | `bankrupt` is set (and the record carries no deletion date) | The customer is archived |
+| `registryLiquidation` | `underLiquidation` or `underForcedLiquidation` is set (and neither of the above applies) | The customer is archived |
+| `registryRenamed` | The record's `name` differs (trimmed, case-sensitive) from the legal identity's own name (and none of the above applies; a customer with no legal name at all — no identity, or one whose name was never set — never raises this one) | The legal identity's name is updated to match the registry's (the card's "Update legal name") |
+
+Each item's `id` is `"<type>/<customerId>"`, `title` is the **customer's own name**
+(never the registry's), `occurredAt` is when the record was last fetched, and
+`entityId` is the customer id — the host already links a `customers` attention item
+to `/customers/{entityId}`, so no new wiring was needed there. Items are ordered
+newest-fetched first, ties broken by `id`. The endpoint stays gated on plain
+`customers:view` — an item never carries the organisation number or anything else
+that `customers:legal-identity-view` would otherwise be needed to see, only the
+customer's own name and the fact that it needs a look.
+
+The dashboard's own four sentences (`apps/host/frontend/src/catalogs/dashboard.ts`):
+"{{name}} is registered as bankrupt", "{{name}} is under liquidation", "{{name}} has
+been deleted from the register", "{{name}} has changed its name in the register" —
+in both English and Norwegian.
+
+The record is deliberately **not** used to validate the billing profile (no
+"registry says VAT-registered but billing profile doesn't reflect it" warning, say)
+— that is Invoices' call, later.
+
+### `GET /customers/{id}/registry-record`
+
+Gated on plain `customers:view`, but **the whole record is withheld** — 204, no
+body — for a caller without `customers:legal-identity-view`, exactly the way the
+legal-identity endpoint's own "nothing to show" is: the record repeats the identity's
+organisation number, so it is that permission's to show. 404 when the customer does
+not exist; otherwise 204 for "never fetched" and 200 with the record — the **two
+204s are deliberately indistinguishable**, since a caller who may not see the record
+has no business learning whether one exists at all.
+
+### `POST /customers/{id}/registry-refresh`
+
+`customers:legal-identity-manage` + `customers:view`. Check order: 404 the customer
+→ 409 `no_registry_identity` when there is no Norwegian organisation number to look
+up → resolve the timeline actor (an out-of-process directory lookup, done before the
+network call) → the fetch, outside any transaction → 502 on an unreachable registry
+→ the transaction that stores the answer and records what differed. 200 always
+carries `status` (`found`/`deleted`/`removed`/`unknown`), `changes` (possibly empty),
+and `record` when there is one to return (found and deleted only — a removal has
+nothing left to show, an unknown organisation number was never anyone's record).
+
+### The frontend
+
+The **Registry** card (`-customer-registry-card.tsx`), on the Overview tab, shown
+only for a caller with `customers:legal-identity-view` (the same condition that
+would otherwise leave the GET answering 204): the record's fields
+(`-customer-registry-fields.tsx` — organisation form, industry code and
+description together, employee count, VAT registration always shown (its "no" is a
+fact in itself, unlike every other field, which is left out entirely rather than
+shown as "not set" when the registry has nothing for it), founded-on, website/
+email/phone/mobile as live links, the parent's organisation number as bare text (it
+may belong to no customer here, and a dead link is worse than none), both
+addresses), a "From Brønnøysundregistrene, fetched {date, time}" line, and status
+badges in red — Bankrupt, Under liquidation, Under forced liquidation, Deleted (with
+its date) — plus a same-session "Removed" badge after a 410 refresh. **Refresh**
+(gated on `canManageIdentity`, i.e. `customers:legal-identity-manage`) shows the last
+click's own result inline once — "N changes — see the timeline" (dismissible) — and,
+for the other three outcomes, a note: unknown organisation number, no registry
+identity to look up (the 409), or the registry unreachable (the 502); a `removed`
+result adds the "Removed" badge above instead of a note. A found registry name that
+disagrees with the legal identity's own opens
+a yellow notice with **"Update legal name"** (`canManageIdentity` again): an ordinary
+`PUT .../legal-identity` with the registry's name and everything else — country,
+type, id, source — unchanged.
+
+**The address offers.** The Contact & addresses card's address list
+(`-customer-address-list.tsx`) reads the same registry record and, when it has a
+business and/or postal address, shows an **"Use registry address"** button per
+address as a subtle inline action — never an address written on its own. A click
+prefills the ordinary add-address modal (`registryAddressValues`,
+`lib/registry-address.ts`: the registry's free-form line array becomes the form's
+two lines, first line to line 1, the rest joined into line 2) at type `visiting`
+(business address) or `postal` (postal address); a second click through the
+ordinary address endpoint is what actually saves it, applying delivery A's own
+first-address-of-a-type-is-primary rule like any other add. **They stay offers, on
+purpose**: an address on file may deliberately differ from the registry's (an
+invoice address agreed with the customer over the phone, say), and a refresh must
+never silently move where mail goes — only a person's own click does that, and only
+for the one address they chose.
 
 ## Peppol lookup
 
@@ -725,6 +956,14 @@ Two permissions combine to widen list search beyond name/number:
 `customers:contacts-view` and `customers:associations-view` together unlock
 contact name/email — see [The list endpoint and search](#the-list-endpoint-and-search).
 
+No new permission key was added for [Registry record](#registry-record): reading
+`GET .../registry-record` is withheld to 204 without `customers:legal-identity-view`
+(the same rule the legal-identity GET's own "nothing to show" follows), and
+`POST .../registry-refresh` — like a Brreg pick's `identity.source: "brreg"` writes
+— needs `customers:legal-identity-manage` alongside `customers:view`. The dashboard's
+`GET /stats/attention` stays on plain `customers:view`: an item never carries the
+organisation number, only the customer's own name.
+
 ## `contracts.CustomerDirectory`
 
 The one sanctioned way another module reads customer data — an in-process, read-only
@@ -874,7 +1113,7 @@ been in since the foundation.
 ## API
 
 Every operation is under `/api/v1/customers`, authenticated with the shared identity
-session cookie. 38 operations in total, each exercised by the module's own
+session cookie. 40 operations in total, each exercised by the module's own
 contract-validated test coverage gate — every operation in `openapi/customers.yaml`
 must be exercised by at least one successful exchange, with no allow-list.
 
@@ -894,6 +1133,8 @@ must be exercised by at least one successful exchange, with no allow-list.
 | `GET /{id}/billing-profile` | `customers:view` |
 | `PUT /{id}/billing-profile` | `customers:billing-manage` + `customers:view` |
 | `POST /{id}/peppol-lookup` | `customers:billing-manage` + `customers:view` |
+| `GET /{id}/registry-record` | `customers:view` (withheld to 204 without `customers:legal-identity-view`) |
+| `POST /{id}/registry-refresh` | `customers:legal-identity-manage` + `customers:view` |
 | `GET /{id}/contacts`, `GET /contacts/{id}/customers` | `customers:associations-view` + `customers:contacts-view` |
 | `POST /{id}/contacts` (attach) | `customers:associations-manage` + `customers:contacts-view` |
 | `PUT /{id}/contacts/{contactId}` | `customers:associations-manage` + `customers:contacts-view` |
@@ -907,8 +1148,9 @@ must be exercised by at least one successful exchange, with no allow-list.
 | `GET /lookup/brreg` | `customers:lookup-view` |
 | `GET /stats`, `/stats/attention`, `/stats/summary`, `/stats/timeseries` | `customers:view` |
 
-`/stats/attention` is a stub today — always an empty array, since no "attention items"
-feature exists behind it yet ([ROADMAP phase 3](../ROADMAP.md#customers)).
+`/stats/attention` is no longer a stub: it answers the four [registry attention
+items](#attention-items), computed live from the stored registry record against
+each customer, not stored or cached.
 
 ## What comes next
 
@@ -934,13 +1176,24 @@ plain fields a person can fill in by hand, and the billing profile's
 `ehf_without_recipient` warning already told them when EHF had no recipient
 to send to.
 
-Past delivery B, the remaining gaps are exactly what
+**Phase 3 delivery A** — [Registry record](#registry-record) — has since landed on
+top of delivery B: the fuller Enhetsregisteret record beside the customer, a
+Refresh a person can click, `registry.change` producing its first automatic events,
+and `/stats/attention` answering for real instead of an empty stub. Every fetch in
+this delivery is still a person's action (a Brreg pick, a Brreg-sourced
+legal-identity PUT, or a Refresh click) — nothing here reads the registry on a
+schedule yet.
+
+**Phase 3 delivery B**, not yet built, is exactly that schedule: Brreg's
+incremental update feed (`GET /oppdateringer/enheter`, cursor `oppdateringsid`)
+driving the same fetch-and-store this delivery built, filling the
+`registry_updated_hint` column delivery A's own migration (`00021`) already
+carries but leaves untouched, plus scheduled re-checks of Peppol registration on
+the same `ehf_available`/`ehf_recipient_not_registered` warnings a manual check
+already raises. Past that, the remaining gaps are exactly what
 [ROADMAP.md's Customers section](../ROADMAP.md#customers) is built around —
-scheduled re-checks of Peppol registration (phase 3, beside the Brreg refresh
-worker — every lookup today is still a person's click, never a schedule),
-Brreg returning only two fields (phase 3), `/stats/attention` permanently
-empty (phase 3), `ContactsByEmail` still unused in production, no CSV
-import/export, no merge (phase 6) — itself drawn from
+`ContactsByEmail` still unused in production, no CSV import/export, no merge
+(phase 6) — itself drawn from
 [`docs/superpowers/research/2026-09-21-customers-module-next.md`](superpowers/research/2026-09-21-customers-module-next.md),
 which also compares this module against the Nordic ERP/accounting and international
 CRM/PSA fields it was benchmarked against.
