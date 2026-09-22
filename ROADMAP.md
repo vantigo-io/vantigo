@@ -95,22 +95,36 @@ reach that customer.
 
 ### Phase 3 — Brreg in full
 
-Take the fuller Brreg record — org form, NACE code, employee count, addresses,
-MVA-registration, website, bankruptcy/dissolution flags, parent entity — instead of
-today's `legalId`/`legalName` pair, with registry-sourced fields read-only and their
-provenance shown, manual override explicit. A "Refresh from Brreg" button, then a
-scheduled refresh from Brreg's incremental update feed
-(`/api/oppdateringer/enheter`). Refreshed changes are written as `registry.change`
-timeline events — the event type already exists, unused, today — and
-bankruptcy/dissolution/name-change surfaces in `/stats/attention`, also already a
-stub. Beside it, **scheduled re-checks of Peppol registration**: today's
+Decided in
+[`docs/superpowers/specs/2026-09-22-customers-brreg-full-design.md`](docs/superpowers/specs/2026-09-22-customers-brreg-full-design.md),
+split into two deliveries.
+
+**Delivery A (done)** — the fuller Brreg record: org form, NACE code, employee
+count, addresses, MVA-registration, website, bankruptcy/dissolution flags, parent
+entity, instead of the earlier `legalId`/`legalName` pair alone — kept beside the
+customer (`customers.customer_registry_records`), never on it, so a fetch never
+bumps `revision`. Fetched on a Brreg pick (create or a Brreg-sourced legal-identity
+PUT) and re-read on a **Refresh** click (`POST .../registry-refresh`); a struck-off
+entity (`SlettetEnhet`) and one removed from open data (410) are both real answers,
+not failures, the second deleting the copy on file. What differs from the record on
+file is written as a `registry.change` timeline event — the event type existed,
+unused, since the port, and now has its first producer (`customers.brreg`) — and
+bankruptcy/dissolution/deletion/a name change surface on `/stats/attention`, also no
+longer a stub. Addresses from the record are offered to the address book, never
+written to it. See [`docs/customers.md`](docs/customers.md#registry-record).
+
+**Delivery B**, not yet built — a scheduled refresh from Brreg's incremental update
+feed (`GET /oppdateringer/enheter`, cursor `oppdateringsid`), driving the same
+fetch-and-store delivery A built and filling `registry_updated_hint`, the column
+delivery A's own migration already carries but leaves untouched. Beside it,
+**scheduled re-checks of Peppol registration**: today's
 [Peppol lookup](docs/customers.md#peppol-lookup) is only ever a person's click, on
 purpose (design D4) — a background worker asking again periodically, on the same
 `ehf_available`/`ehf_recipient_not_registered` warnings a manual check already
-raises, is this phase's job.
+raises, is this delivery's job.
 
 *Unblocks:* registry data worth relying on instead of a name and a number typed once,
-and the first real content behind two endpoints this module already declares.
+and the first real content behind two endpoints this module already declared.
 
 ### Phase 4 — Light CRM
 
