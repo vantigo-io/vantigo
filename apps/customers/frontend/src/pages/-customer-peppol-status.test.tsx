@@ -1,16 +1,19 @@
 import { MantineProvider } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { formatDate } from "@vantigo/frontend-shell";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { customerBillingProfileQueryOptions } from "../api/billing-profile";
 import { stubFetch } from "../test/fetch";
-import { CustomerPeppolStatus } from "./-customer-peppol-status";
+import { CustomerEhfOffer, CustomerPeppolStatus, resetPeppolLookupDisabledForSession } from "./-customer-peppol-status";
 
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+
+/** The answer line's date, formatted exactly as the block formats it — date and time, so a same-day re-check reads as new. */
+const checkedOn = (checkedAt: string) => formatDate(checkedAt, { dateStyle: "medium", timeStyle: "short" });
 
 const emptyProfile = {
   invoiceEmail: null,
@@ -55,16 +58,21 @@ const callsTo = (fetchMock: ReturnType<typeof vi.fn>, path: string, method?: str
   );
 
 /**
- * Renders `CustomerPeppolStatus` behind a live `useQuery` on the same key
- * the real `CustomerBillingCard` uses, the way it is actually mounted — a
- * refetch triggered by the mutation's own invalidation must reach the
- * component through this observer, not through a prop the test edits by
- * hand.
+ * Renders both halves of the Peppol/EHF surface behind a live `useQuery` on
+ * the same key the real `CustomerBillingCard` uses, in the same order the card
+ * mounts them (the offer at the top, the answer inside the Peppol ID row) — a
+ * refetch triggered by a mutation's own invalidation must reach them through
+ * this observer, not through a prop the test edits by hand.
  */
 const Harness = ({ canManageBilling = true }: { canManageBilling?: boolean }) => {
   const { data } = useQuery(customerBillingProfileQueryOptions(1001));
   if (!data) return null;
-  return <CustomerPeppolStatus customerId={1001} profile={data} canManageBilling={canManageBilling} />;
+  return (
+    <>
+      <CustomerEhfOffer customerId={1001} profile={data} canManageBilling={canManageBilling} />
+      <CustomerPeppolStatus customerId={1001} profile={data} canManageBilling={canManageBilling} />
+    </>
+  );
 };
 
 const renderStatus = (
@@ -74,18 +82,27 @@ const renderStatus = (
   stubFetch(fetchMock);
   const client =
     queryClient ?? new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  render(
+  const { container } = render(
     <MantineProvider env="test">
       <Notifications />
       <QueryClientProvider client={client}>
-        <Harness canManageBilling={canManageBilling} />
+        {/* A mount point of the test's own: "the block rendered nothing at
+            all" has to be assertable without Mantine's injected <style> tags
+            counting as content. */}
+        <div id="peppol-mount">
+          <Harness canManageBilling={canManageBilling} />
+        </div>
       </QueryClientProvider>
     </MantineProvider>,
   );
-  return { fetchMock, queryClient: client };
+  return { fetchMock, queryClient: client, mount: container.querySelector("#peppol-mount") as HTMLElement };
 };
 
 describe("CustomerPeppolStatus", () => {
+  // The 503 note below is remembered for the whole session on purpose
+  // (module-level, not component state), which means it also outlives the
+  // test that sets it — every test here starts from "not disabled".
+  beforeEach(resetPeppolLookupDisabledForSession);
   afterEach(() => vi.unstubAllGlobals());
 
   it("shows nothing but the action when the customer was never checked", async () => {
@@ -96,14 +113,16 @@ describe("CustomerPeppolStatus", () => {
     expect(screen.queryByText(/checked/i)).not.toBeInTheDocument();
   });
 
-  it("shows 'Can receive EHF invoices' with the date and the SMP host for registered + canReceiveInvoice", async () => {
+  it("shows 'Can receive EHF invoices' with the date and time, the identifier and the SMP host", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(jsonResponse(200, { ...emptyProfile, peppolLookup: registeredWithInvoice }));
     renderStatus(fetchMock);
 
-    const expectedDate = formatDate(registeredWithInvoice.checkedAt);
-    expect(await screen.findByText(`Can receive EHF invoices — checked ${expectedDate}`)).toBeInTheDocument();
+    expect(
+      await screen.findByText(`Can receive EHF invoices — checked ${checkedOn(registeredWithInvoice.checkedAt)}`),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Looked up 0192:923609016")).toBeInTheDocument();
     expect(screen.getByText("via SMP smp.example.test")).toBeInTheDocument();
   });
 
@@ -116,9 +135,10 @@ describe("CustomerPeppolStatus", () => {
     );
     renderStatus(fetchMock);
 
-    const expectedDate = formatDate(registeredWithInvoice.checkedAt);
     expect(
-      await screen.findByText(`Registered in Peppol, but not for invoices — checked ${expectedDate}`),
+      await screen.findByText(
+        `Registered in Peppol, but not for invoices — checked ${checkedOn(registeredWithInvoice.checkedAt)}`,
+      ),
     ).toBeInTheDocument();
   });
 
@@ -136,8 +156,25 @@ describe("CustomerPeppolStatus", () => {
     );
     renderStatus(fetchMock);
 
-    const expectedDate = formatDate(registeredWithInvoice.checkedAt);
-    expect(await screen.findByText(`Not registered in Peppol — checked ${expectedDate}`)).toBeInTheDocument();
+    expect(
+      await screen.findByText(`Not registered in Peppol — checked ${checkedOn(registeredWithInvoice.checkedAt)}`),
+    ).toBeInTheDocument();
+  });
+
+  it("claims nothing about a status this version does not know", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        ...emptyProfile,
+        peppolLookup: { ...registeredWithInvoice, status: "something_new", canReceiveInvoice: false },
+      }),
+    );
+    renderStatus(fetchMock);
+
+    // The action is still there, so the block rendered — it simply says
+    // nothing about an answer it cannot put into words (never "not registered").
+    expect(await screen.findByRole("button", { name: "Check EHF" })).toBeInTheDocument();
+    expect(screen.queryByText(/registered/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/checked/i)).not.toBeInTheDocument();
   });
 
   it("reads a stored answer whose participantId the server withheld (no legal-identity-view permission)", async () => {
@@ -146,15 +183,23 @@ describe("CustomerPeppolStatus", () => {
       .mockResolvedValue(jsonResponse(200, { ...emptyProfile, peppolLookup: registeredWithheldParticipant }));
     renderStatus(fetchMock);
 
-    const expectedDate = formatDate(registeredWithInvoice.checkedAt);
-    expect(await screen.findByText(`Can receive EHF invoices — checked ${expectedDate}`)).toBeInTheDocument();
+    expect(
+      await screen.findByText(`Can receive EHF invoices — checked ${checkedOn(registeredWithInvoice.checkedAt)}`),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Looked up/)).not.toBeInTheDocument();
   });
 
   it("shows no Check EHF action without canManageBilling", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, neverCheckedProfile));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(200, { ...emptyProfile, peppolLookup: registeredWithInvoice }));
     renderStatus(fetchMock, { canManageBilling: false });
 
-    await waitFor(() => expect(callsTo(fetchMock, "/api/v1/customers/1001/billing-profile").length).toBe(1));
+    // A fixture with a stored answer, so there is something to wait for
+    // before concluding the button is absent rather than merely not drawn yet.
+    expect(
+      await screen.findByText(`Can receive EHF invoices — checked ${checkedOn(registeredWithInvoice.checkedAt)}`),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Check EHF" })).not.toBeInTheDocument();
   });
 
@@ -188,8 +233,9 @@ describe("CustomerPeppolStatus", () => {
 
     resolvePost(jsonResponse(200, registeredWithInvoice));
 
-    const expectedDate = formatDate(registeredWithInvoice.checkedAt);
-    expect(await screen.findByText(`Can receive EHF invoices — checked ${expectedDate}`)).toBeInTheDocument();
+    expect(
+      await screen.findByText(`Can receive EHF invoices — checked ${checkedOn(registeredWithInvoice.checkedAt)}`),
+    ).toBeInTheDocument();
     expect(callsTo(fetchMock, "/api/v1/customers/1001/peppol-lookup", "POST")).toHaveLength(1);
     expect(callsTo(fetchMock, "/api/v1/customers/1001/billing-profile")).toHaveLength(2);
   });
@@ -238,7 +284,11 @@ describe("CustomerPeppolStatus", () => {
     const button = await screen.findByRole("button", { name: "Check EHF" });
     await userEvent.click(button);
 
-    expect(await screen.findByText("The Peppol network could not be reached. Try again.")).toBeInTheDocument();
+    await screen.findByText("The Peppol network could not be reached. Try again.");
+    // Announced, not just drawn: the note lives in the block's live region.
+    expect(
+      within(screen.getByRole("status")).getByText("The Peppol network could not be reached. Try again."),
+    ).toBeInTheDocument();
     expect(button).toBeInTheDocument();
     expect(button).not.toBeDisabled();
   });
@@ -355,12 +405,13 @@ describe("CustomerPeppolStatus", () => {
 });
 
 describe("CustomerPeppolStatus — 503 disables the action for the rest of the session", () => {
+  beforeEach(resetPeppolLookupDisabledForSession);
   afterEach(() => vi.unstubAllGlobals());
 
-  // Last in the file deliberately: the flag this sets is module-level (not
-  // component state), on purpose — the installation setting it reflects
-  // does not change per customer or per mount, so a fresh card must not
-  // offer the action back. That also means it outlives this test.
+  // The flag this sets is module-level (not component state), on purpose —
+  // the installation setting it reflects does not change per customer or per
+  // mount, so a fresh card must not offer the action back. That also means it
+  // outlives this test, which is why every test here resets it first.
   it("hides Check EHF and shows a dimmed note after a 503, even for a freshly mounted card", async () => {
     const fetchMock = vi.fn().mockImplementation((url: RequestInfo | URL, init?: RequestInit) => {
       const path = String(url);
@@ -382,12 +433,15 @@ describe("CustomerPeppolStatus — 503 disables the action for the rest of the s
 
     // A fresh mount (e.g. navigating to a different customer's page) must
     // not ask the server again — the flag it set is for the session, not
-    // this one component instance.
+    // this one component instance. The first render is unmounted first, so
+    // what follows can only be satisfied by the second one.
+    cleanup();
     const fetchMock2 = vi.fn().mockResolvedValue(jsonResponse(200, neverCheckedProfile));
-    renderStatus(fetchMock2);
+    const { mount } = renderStatus(fetchMock2);
 
     await waitFor(() => expect(callsTo(fetchMock2, "/api/v1/customers/1001/billing-profile").length).toBe(1));
-    expect(screen.getAllByText("Peppol lookup is switched off on this installation").length).toBeGreaterThan(0);
+    expect(await within(mount).findByText("Peppol lookup is switched off on this installation")).toBeInTheDocument();
+    expect(within(mount).queryByRole("button", { name: "Check EHF" })).not.toBeInTheDocument();
     expect(callsTo(fetchMock2, "/api/v1/customers/1001/peppol-lookup", "POST")).toHaveLength(0);
   });
 });

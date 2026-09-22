@@ -14,6 +14,7 @@ import {
   updateBillingProfile,
 } from "../api/billing-profile";
 import { invalidateCustomersExcept, syncCustomerRevision } from "../api/customers";
+import { EHF_AVAILABLE_CODE } from "../lib/billing-labels";
 import { useCustomerReload } from "../lib/customer-reload";
 import { toInput, valuesFromProfile } from "./-customer-billing-modal";
 import "../i18n";
@@ -29,35 +30,51 @@ import "../i18n";
  */
 let peppolLookupDisabledForSession = false;
 
-/** The last stored answer in words, with its date already formatted by the caller (design D6's controller ruling). */
+/** Test seam only: the flag above deliberately outlives a mount, so a test file resets it between mounts. */
+// eslint-disable-next-line react-refresh/only-export-components
+export const resetPeppolLookupDisabledForSession = () => {
+  peppolLookupDisabledForSession = false;
+};
+
+/**
+ * The last stored answer in words, with its date already formatted by the
+ * caller (design D6's controller ruling) — or nothing at all for a status
+ * this version has no words for. `no_identifier` is never stored (design D3),
+ * so a `peppolLookup` read off the profile is always "registered" or
+ * "not_registered"; should that ever change, saying nothing is the only
+ * honest option, since the one thing this must never do is claim "not
+ * registered" about an answer it did not understand.
+ */
 const answerMessage = (
   t: (key: string, options?: Record<string, unknown>) => string,
   lookup: CustomerPeppolLookup,
   date: string,
-): string => {
+): string | null => {
   if (lookup.status === "registered") {
     return lookup.canReceiveInvoice
       ? t("peppolCheckedRegisteredInvoice", { date })
       : t("peppolCheckedRegisteredNoInvoice", { date });
   }
-  // `no_identifier` is never stored (design D3), so a `peppolLookup` read
-  // off the profile is always "registered" or "not_registered" — this is
-  // reachable only if that ever changes, and simply says the least it can.
-  return t("peppolCheckedNotRegistered", { date });
+  if (lookup.status === "not_registered") return t("peppolCheckedNotRegistered", { date });
+  return null;
 };
 
 /**
- * The Billing card's Peppol/EHF block (design D3, D4, D6), rendered under
- * the Peppol ID row: the last stored answer in words with its date, a Check
- * EHF action that asks the network again, and — when the last answer says
- * the customer can receive EHF invoices but delivery is not `ehf` yet — the
- * `ehf_available` offer with its own Use EHF action. Split out of
- * `-customer-billing-card.tsx` to keep that file under the repo's
- * line-count guidance. `profile` is the same one the card already fetched;
- * this component reads no query of its own for it, so every mutation below
- * that changes it goes through the query cache (`setQueryData` or
- * `invalidateQueries`) rather than local state, and the card's own
- * `useQuery` is what carries the update back down here as a fresh prop.
+ * The Peppol/EHF answer as it sits in the Billing card's Peppol ID row
+ * (design D3, D4, D6): the last stored answer in words with its date and
+ * time, which identifier it was about and through which SMP, a Check EHF
+ * action that asks the network again, and the notes an answer that stored
+ * nothing leaves behind. It lives in that row's right-hand side because it is
+ * about that row's value — the participant the server would look up. The
+ * `ehf_available` offer the answer can produce is `CustomerEhfOffer` below,
+ * rendered at the top of the card instead.
+ *
+ * Split out of `-customer-billing-card.tsx` to keep that file under the
+ * repo's line-count guidance. `profile` is the same one the card already
+ * fetched; this component reads no query of its own for it, so every mutation
+ * below that changes it goes through the query cache (`setQueryData` or
+ * `invalidateQueries`) rather than local state, and the card's own `useQuery`
+ * is what carries the update back down here as a fresh prop.
  */
 export const CustomerPeppolStatus = ({
   customerId,
@@ -115,6 +132,94 @@ export const CustomerPeppolStatus = ({
     },
   });
 
+  const lookup = profile.peppolLookup;
+  // Date *and* time: two checks on the same day would otherwise read as the
+  // same answer, and the whole point of the action is to see it move.
+  const answer = lookup
+    ? answerMessage(t, lookup, formatters.formatDate(lookup.checkedAt, { dateStyle: "medium", timeStyle: "short" }))
+    : null;
+  const showAction = canManageBilling && !disabled;
+  const hasNote = disabled || noIdentifier || networkError;
+
+  // Never checked, nothing to say and nothing to click: no empty stack under
+  // the row's own value and hint.
+  if (!answer && !lookup?.participantId && !lookup?.smpHost && !showAction && !hasNote) return null;
+
+  return (
+    <Stack gap={2} align="flex-end">
+      {answer && (
+        <Text size="xs" c="dimmed">
+          {answer}
+        </Text>
+      )}
+      {/* Which identifier the answer is actually about — withheld from a
+          caller without `customers:legal-identity-view` when it was derived
+          (design D3), and then simply not said. */}
+      {lookup?.participantId && (
+        <Text size="xs" c="dimmed">
+          {t("peppolLookedUp", { id: lookup.participantId })}
+        </Text>
+      )}
+      {lookup?.smpHost && (
+        <Text size="xs" c="dimmed">
+          {t("peppolViaHost", { host: lookup.smpHost })}
+        </Text>
+      )}
+      {showAction && (
+        <Button size="xs" variant="light" loading={checkMutation.isPending} onClick={() => checkMutation.mutate()}>
+          {t("peppolCheckAction")}
+        </Button>
+      )}
+      {/* The outcomes that store nothing, so nothing above them changes: a
+          live region, mounted with the action rather than only once it has
+          something in it, so a click's result is announced and not merely
+          drawn. Without the action there is nothing that could fill it. */}
+      {(showAction || hasNote) && (
+        <Stack gap={2} align="flex-end" role="status">
+          {disabled && (
+            <Text size="xs" c="dimmed">
+              {t("peppolLookupDisabled")}
+            </Text>
+          )}
+          {noIdentifier && (
+            <Text size="xs" c="dimmed">
+              {t("peppolNoIdentifier")}
+            </Text>
+          )}
+          {networkError && (
+            <Text size="xs" c="red">
+              {t("peppolNetworkError")}
+            </Text>
+          )}
+        </Stack>
+      )}
+    </Stack>
+  );
+};
+
+/**
+ * The `ehf_available` offer (design D4): the last Peppol answer says this
+ * customer can receive EHF invoices and delivery is not `ehf` yet. Not a
+ * problem but an offer, so it is teal and carries its own Use EHF action —
+ * and it belongs at the top of the Billing card beside the yellow warnings,
+ * where the card's other card-wide statements are, rather than inside the
+ * Peppol ID row that only holds the answer behind it. The 409 that Use EHF
+ * can hit is delivery A's own surface, unchanged: a yellow "Customer changed"
+ * alert with a Reload, not a red line inside the teal offer.
+ */
+export const CustomerEhfOffer = ({
+  customerId,
+  profile,
+  canManageBilling,
+}: {
+  customerId: number;
+  profile: CustomerBillingProfile;
+  canManageBilling?: boolean;
+}) => {
+  const { t } = useI18n("customers");
+  const queryClient = useQueryClient();
+  const billingProfileKey = customerBillingProfileQueryOptions(customerId).queryKey;
+
   const [conflict, setConflict] = useState(false);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const reload = useCustomerReload({
@@ -160,81 +265,44 @@ export const CustomerPeppolStatus = ({
     },
   });
 
-  const lookup = profile.peppolLookup;
-  const ehfAvailable = profile.warnings.includes("ehf_available");
+  if (!profile.warnings.includes(EHF_AVAILABLE_CODE)) return null;
 
   return (
-    <Stack gap={4}>
-      {lookup && (
-        <Stack gap={2}>
-          <Text size="xs" c="dimmed">
-            {answerMessage(t, lookup, formatters.formatDate(lookup.checkedAt))}
-          </Text>
-          {lookup.smpHost && (
-            <Text size="xs" c="dimmed">
-              {t("peppolViaHost", { host: lookup.smpHost })}
-            </Text>
-          )}
-        </Stack>
-      )}
-
-      {canManageBilling && !disabled && (
-        <Group gap="xs">
-          <Button size="xs" variant="light" loading={checkMutation.isPending} onClick={() => checkMutation.mutate()}>
-            {t("peppolCheckAction")}
-          </Button>
-        </Group>
-      )}
-      {disabled && (
-        <Text size="xs" c="dimmed">
-          {t("peppolLookupDisabled")}
-        </Text>
-      )}
-      {noIdentifier && (
-        <Text size="xs" c="dimmed">
-          {t("peppolNoIdentifier")}
-        </Text>
-      )}
-      {networkError && (
-        <Text size="xs" c="red">
-          {t("peppolNetworkError")}
-        </Text>
-      )}
-
-      {ehfAvailable && (
-        <Alert color="teal" icon={<IconCircleCheck size={16} />} title={t("peppolAvailableTitle")}>
+    <>
+      {conflict && (
+        <Alert color="yellow" title={t("customerChangedTitle")}>
           <Stack gap="xs">
-            {conflict && (
-              <Stack gap={4}>
-                <Text size="sm">{t("customerChangedMessage")}</Text>
-                <Text size="sm">{t("customerChangesNotSaved")}</Text>
-                {reload.failed && (
-                  <Text size="sm" c="red">
-                    {t("couldNotReload")}
-                  </Text>
-                )}
-                <Group justify="flex-end">
-                  <Button size="xs" variant="light" color="yellow" loading={reload.reloading} onClick={reload.reload}>
-                    {t("reload")}
-                  </Button>
-                </Group>
-              </Stack>
-            )}
-            {fieldError && (
+            <Text size="sm">{t("customerChangedMessage")}</Text>
+            <Text size="sm">{t("customerChangesNotSaved")}</Text>
+            {reload.failed && (
               <Text size="sm" c="red">
-                {fieldError}
+                {t("couldNotReload")}
               </Text>
             )}
-            {canManageBilling && (
-              <Group justify="flex-end">
-                <Button size="xs" loading={useEhfMutation.isPending} onClick={() => useEhfMutation.mutate()}>
-                  {t("peppolUseEhfAction")}
-                </Button>
-              </Group>
-            )}
+            <Group justify="flex-end">
+              <Button size="xs" variant="light" color="yellow" loading={reload.reloading} onClick={reload.reload}>
+                {t("reload")}
+              </Button>
+            </Group>
           </Stack>
         </Alert>
       )}
-    </Stack>
+      <Alert color="teal" icon={<IconCircleCheck size={16} />} title={t("peppolAvailableTitle")}>
+        <Stack gap="xs">
+          {fieldError && (
+            <Text size="sm" c="red">
+              {fieldError}
+            </Text>
+          )}
+          {canManageBilling && (
+            <Group justify="flex-end">
+              <Button size="xs" loading={useEhfMutation.isPending} onClick={() => useEhfMutation.mutate()}>
+                {t("peppolUseEhfAction")}
+              </Button>
+            </Group>
+          )}
+        </Stack>
+      </Alert>
+    </>
   );
 };

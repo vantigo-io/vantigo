@@ -221,10 +221,11 @@ describe("CustomerBillingCard", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the Peppol/EHF status block under the Peppol ID row, wired to this customer", async () => {
+  it("renders the Peppol/EHF answer and its action inside the Peppol ID row, wired to this customer", async () => {
     // The detailed behaviour (Check EHF, Use EHF, every status and error) is
     // covered by -customer-peppol-status.test.tsx; this only proves the
-    // card actually mounts it with the right customerId and profile.
+    // card actually mounts it with the right customerId and profile, in the
+    // row whose value the answer is about.
     renderCard({
       ...emptyProfile,
       peppolLookup: {
@@ -237,8 +238,40 @@ describe("CustomerBillingCard", () => {
       },
     });
 
-    expect(await screen.findByRole("button", { name: "Check EHF" })).toBeInTheDocument();
-    expect(screen.getByText(/^Can receive EHF invoices — checked /)).toBeInTheDocument();
+    const peppolRow = (await screen.findByText("Peppol ID")).closest("div") as HTMLElement;
+    expect(within(peppolRow).getByRole("button", { name: "Check EHF" })).toBeInTheDocument();
+    expect(within(peppolRow).getByText(/^Can receive EHF invoices — checked /)).toBeInTheDocument();
+  });
+
+  it("leaves nothing behind in the Peppol ID row when there is no answer and nothing to click", async () => {
+    renderCard(emptyProfile, {}, false);
+
+    const peppolRow = (await screen.findByText("Peppol ID")).closest("div") as HTMLElement;
+    // The row's right-hand side holds its value and nothing else: never
+    // checked and no Check EHF to offer means not even an empty stack.
+    expect((peppolRow.lastElementChild as HTMLElement).childElementCount).toBe(1);
+  });
+
+  it("puts the ehf_available offer at the top of the card, beside the warnings", async () => {
+    renderCard({
+      ...emptyProfile,
+      warnings: ["ehf_available", "no_invoice_address"],
+      peppolLookup: {
+        status: "registered",
+        canReceiveInvoice: true,
+        canReceiveCreditNote: true,
+        checkedAt: "2026-09-21T10:00:00Z",
+        participantId: "0192:923609016",
+        smpHost: null,
+      },
+    });
+
+    // An offer, not a problem (design D4): its own teal alert, above the
+    // fields rather than buried in the middle of them.
+    const offer = await screen.findByText("This customer can receive EHF invoices");
+    const peppolRow = screen.getByText("Peppol ID");
+    expect(offer.compareDocumentPosition(peppolRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByText(/ehf_available/)).not.toBeInTheDocument();
   });
 
   it("hints that invoices resolve to the contact email when invoiceEmail is unset", async () => {
