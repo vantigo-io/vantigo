@@ -67,6 +67,9 @@ export const CustomerRegistryCard = ({
       setNote(null);
     },
     onSuccess: (result) => {
+      // "found" and "deleted" leave no note: the record itself, refetched
+      // below, already says what changed. A status a future build adds and
+      // this one has no words for falls through the same way, silently.
       if (result.status === "unknown") setNote("unknown");
       if (result.status === "removed") setNote("removed");
       if (result.changes.length > 0) setChangeCount(result.changes.length);
@@ -129,7 +132,10 @@ export const CustomerRegistryCard = ({
           )}
         </Group>
 
-        {record && identity && record.name !== identity.name && (
+        {/* Compared trimmed, the same rule the server's own write applies
+            (design D4): leading/trailing whitespace on either side is not a
+            difference worth a notice, and never anything worth writing. */}
+        {record && identity && record.name.trim() !== identity.name.trim() && (
           <RegistryRenameNotice
             customerId={customerId}
             identity={identity}
@@ -160,14 +166,21 @@ export const CustomerRegistryCard = ({
               })}
             </Text>
           </Stack>
-        ) : (
+        ) : note === "removed" ? null : (
+          // A removed entity's own note (below) already says why there is
+          // nothing here — this line would otherwise repeat "not fetched yet"
+          // right beside it, which is not the reason.
           <Text size="sm" c="dimmed">
             {t("registryNotFetched")}
           </Text>
         )}
 
-        {/* What the last click found, announced rather than merely drawn. */}
-        {(changeCount !== null || note !== null) && (
+        {/* What the last click found, announced rather than merely drawn.
+            Mounted whenever Refresh itself is offered — not only once there is
+            something to say — so a screen reader already has the region and a
+            click's result is announced rather than merely drawn (the same
+            choice `-customer-peppol-status.tsx` makes for its own action). */}
+        {(canManageIdentity || changeCount !== null || note !== null) && (
           <Stack gap="xs" role="status">
             {changeCount !== null && (
               <Group gap="xs">
@@ -178,6 +191,11 @@ export const CustomerRegistryCard = ({
             {note === "unknown" && (
               <Text size="sm" c="dimmed">
                 {t("registryUnknownOrganisation")}
+              </Text>
+            )}
+            {note === "removed" && (
+              <Text size="sm" c="dimmed">
+                {t("registryRemovedNote")}
               </Text>
             )}
             {note === "no_identity" && (
@@ -215,7 +233,14 @@ const statusBadges = (
     badges.push({ key: "forced-liquidation", label: t("registryBadgeUnderForcedLiquidation") });
   }
   if (record.deletedOn) {
-    badges.push({ key: "deleted", label: t("registryBadgeDeleted", { date: formatDate(record.deletedOn) }) });
+    // A date-only value, read as UTC (see `-customer-registry-fields.tsx`'s
+    // `foundedOn`): otherwise a deletion on 1 August reads 31 July west of it.
+    badges.push({
+      key: "deleted",
+      label: t("registryBadgeDeleted", {
+        date: formatDate(record.deletedOn, { dateStyle: "medium", timeZone: "UTC" }),
+      }),
+    });
   }
   return badges;
 };
@@ -246,7 +271,10 @@ const RegistryRenameNotice = ({
         country: identity.country,
         type: identity.type,
         id: identity.id,
-        name: registryName,
+        // Trimmed the same way the comparison above is: the server's own
+        // write trims the name, and sending it untrimmed would put the two
+        // right back out of step the moment this write is read again.
+        name: registryName.trim(),
         source: identity.source,
       }),
     onSuccess: (saved) => {
@@ -272,7 +300,7 @@ const RegistryRenameNotice = ({
   return (
     <Alert color="yellow" title={t("registryNameDiffersTitle")}>
       <Stack gap="xs">
-        <Text size="sm">{t("registryNameDiffers", { name: registryName })}</Text>
+        <Text size="sm">{t("registryNameDiffers", { registryName, legalName: identity.name })}</Text>
         {canManageIdentity && (
           <Group justify="flex-end">
             <Button size="xs" variant="light" color="yellow" loading={rename.isPending} onClick={() => rename.mutate()}>

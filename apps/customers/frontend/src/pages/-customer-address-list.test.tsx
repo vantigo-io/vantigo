@@ -4,7 +4,7 @@ import { Notifications } from "@mantine/notifications";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { CustomerResponse } from "../api/customers";
 import type { CustomerRegistryRecord } from "../api/registry";
 import { stubFetch } from "../test/fetch";
@@ -49,8 +49,6 @@ const renderSection = (
 };
 
 describe("CustomerAddressesSection", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   it("shows the empty state with an add action when canEdit and there are no addresses", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [] }));
     renderSection(fetchMock);
@@ -288,8 +286,6 @@ describe("CustomerAddressesSection", () => {
  * already holds that query.
  */
 describe("the registry's addresses, offered beside the customer's own", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   const registryRecord = (overrides: Partial<CustomerRegistryRecord> = {}): CustomerRegistryRecord => ({
     organisationNumber: "974760673",
     name: "REGISTERENHETEN I BRØNNØYSUND",
@@ -415,6 +411,36 @@ describe("the registry's addresses, offered beside the customer's own", () => {
     });
   });
 
+  // Task 10 review: the offer's own withdrawal rule ("once the customer has
+  // an address of that type") already covers this — the addresses query the
+  // modal invalidates on save is what the offer itself reads — but nothing
+  // exercised it end to end from a registry offer's own click through to it
+  // disappearing.
+  it("the offer disappears once accepted — the GET after the POST returns the new address", async () => {
+    let addresses: ReturnType<typeof address>[] = [];
+    const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(url);
+      if (path === "/api/v1/customers/1001/addresses" && init?.method === "POST") {
+        const created = address({ id: 7, type: "visiting", line1: "Havnegata 48" });
+        addresses = [created];
+        return Promise.resolve(jsonResponse(201, created));
+      }
+      if (path === "/api/v1/customers/1001/addresses") return Promise.resolve(jsonResponse(200, { data: addresses }));
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    renderSection(fetchMock, { registryRecord: registryRecord() });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Use the registry's business address" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Add address" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Use the registry's business address" })).not.toBeInTheDocument(),
+    );
+    // Only the type just filled is withdrawn — the postal offer stands.
+    expect(screen.getByRole("button", { name: "Use the registry's postal address" })).toBeInTheDocument();
+  });
+
   it("keeps every line of the postal address, the first one as line 1 and the rest as line 2", async () => {
     const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
       const path = String(url);
@@ -483,8 +509,6 @@ describe("the registry's addresses, offered beside the customer's own", () => {
  * under one query client, which is what this renders.
  */
 describe("an address write and the billing card", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   const customer = {
     id: 1001,
     customerNumber: 5001,

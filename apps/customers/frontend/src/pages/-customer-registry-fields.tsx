@@ -33,8 +33,11 @@ const RegistryAddress = ({ address }: { address: CustomerRegistryAddress }) => {
   const postal = [address.postalCode, address.city].filter(Boolean).join(" ");
   return (
     <Stack gap={0} align="flex-end">
-      {address.lines.map((line) => (
-        <Text key={line} size="sm">
+      {/* Read-only and never reordered, so the index is a stable key — the
+          registry's own `lines` array can repeat a line, which `line` itself
+          cannot be a key for. */}
+      {address.lines.map((line, index) => (
+        <Text key={index} size="sm">
           {line}
         </Text>
       ))}
@@ -95,7 +98,12 @@ export const CustomerRegistryFields = ({ record }: { record: CustomerRegistryRec
       {record.foundedOn && (
         <RegistryRow
           label={t("registryFoundedOn")}
-          value={<Text size="sm">{formatters.formatDate(record.foundedOn)}</Text>}
+          // A date-only value has no time of its own: read in the reader's
+          // local zone it can drift a calendar day either way, so it is read
+          // as UTC instead — the same fix `-customer-timeline.tsx` applies.
+          value={
+            <Text size="sm">{formatters.formatDate(record.foundedOn, { dateStyle: "medium", timeZone: "UTC" })}</Text>
+          }
         />
       )}
       {record.website && (
