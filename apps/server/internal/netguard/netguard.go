@@ -223,6 +223,12 @@ func DialContext(resolver Resolver, dial func(ctx context.Context, network, addr
 
 		var lastErr error
 		for _, addr := range addrs {
+			// A caller that gave up is not made to wait for the rest of the
+			// list: the dial func would fail fast on a done context anyway,
+			// but this keeps that true for any dial func.
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
 			conn, err := dial(ctx, network, net.JoinHostPort(addr.String(), port))
 			if err == nil {
 				return conn, nil

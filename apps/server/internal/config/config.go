@@ -513,7 +513,7 @@ func peppolLookup(p *problems, env map[string]string, c *Config) {
 	case c.PeppolSMLZone == "":
 		c.PeppolSMLZone = defaultPeppolSMLZone
 	case !plausibleHostname(c.PeppolSMLZone):
-		p.add("PEPPOL_SML_ZONE", "must be a plain hostname, with no scheme, path or whitespace")
+		p.add("PEPPOL_SML_ZONE", "must be a plain hostname: no scheme, port, path, whitespace or empty label")
 		c.PeppolSMLZone = defaultPeppolSMLZone
 	}
 

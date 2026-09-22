@@ -932,7 +932,7 @@ func TestLoad_PeppolSMLZone(t *testing.T) {
 		"participant.sml.prod.tech.peppol.org.",     // trailing dot: an empty label
 		"participant..sml.prod.tech.peppol.org",     // consecutive dots: an empty label
 	} {
-		if msg := loadError(t, with(validEnv(), "PEPPOL_SML_ZONE", bad)); !strings.Contains(msg, "PEPPOL_SML_ZONE: must be a plain hostname, with no scheme, path or whitespace") {
+		if msg := loadError(t, with(validEnv(), "PEPPOL_SML_ZONE", bad)); !strings.Contains(msg, "PEPPOL_SML_ZONE: must be a plain hostname: no scheme, port, path, whitespace or empty label") {
 			t.Errorf("PEPPOL_SML_ZONE=%q: error = %q", bad, msg)
 		}
 	}

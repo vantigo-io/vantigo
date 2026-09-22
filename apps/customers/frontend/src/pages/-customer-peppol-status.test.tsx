@@ -70,7 +70,7 @@ const Harness = ({ canManageBilling = true }: { canManageBilling?: boolean }) =>
   return (
     <>
       <CustomerEhfOffer customerId={1001} profile={data} canManageBilling={canManageBilling} />
-      <CustomerPeppolStatus customerId={1001} profile={data} canManageBilling={canManageBilling} />
+      <CustomerPeppolStatus customerId={1001} profile={data} identityId={null} canManageBilling={canManageBilling} />
     </>
   );
 };
