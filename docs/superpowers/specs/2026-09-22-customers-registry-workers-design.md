@@ -32,7 +32,7 @@ the billing warnings stop going stale.
 
 ### D1 — One unfiltered scan, one exact cursor
 
-The worker `customers.registry-feed` reads the whole feed from a stored cursor, in pages,
+The worker `customers-registry-feed` (named as communications' workers are, `<module>-<worker>`) reads the whole feed from a stored cursor, in pages,
 and intersects each page with this installation's customers locally. It does **not** use
 the `organisasjonsnummer` filter: chunked filtered requests have no safe cursor (an update
 for chunk A's numbers published between A's request and chunk B's would sit below the id
@@ -43,7 +43,9 @@ just processed, plus one. The cost is the whole register's churn, ~5 600 entries
 Cursor row: new table `customers.registry_feed_cursor` (migration `00023`), one row
 (`id smallint PRIMARY KEY CHECK (id = 1)`): `next_update_id bigint NULL`, `started_at
 timestamptz NOT NULL`, `last_polled_at timestamptz NULL`, `last_update_at timestamptz
-NULL` (the `dato` of the last processed entry). With `next_update_id` NULL the request is
+NULL` (the `dato` of the last processed entry). A cycle whose page is empty records the
+poll (`last_polled_at`) without moving the position; the two timestamps are for an
+operator's `psql`, nothing reads them. With `next_update_id` NULL the request is
 `?dato=<started_at>` (the feed is joined from the moment the worker first ran — never
 from the beginning of time; the sweep in D3 covers what came before); once a page has
 been processed it is `?oppdateringsid=<next_update_id>`. `size` is 1000; a cycle reads at
@@ -70,7 +72,9 @@ keep a hint: the refresh is attempted, and if it fails the entity is picked up a
 the sweep's backfill (D3), not by the hint.
 
 The record's API shape gains `registryUpdatedHint` (`date-time`, optional — omitted
-while NULL). The Registry card shows one line when the hint is newer than `fetchedAt`:
+while NULL); a refresh carries the stored hint onto the record it answers with, since
+`UpsertCustomerRegistryRecord` never writes the column and the card must not lose the
+line between a click and the next GET. The Registry card shows one line when the hint is newer than `fetchedAt`:
 "The registry reported a change on {date}; this record is from {date}." with the existing
 Refresh beside it. `CustomerRegistryAddress.countryCode` becomes optional in the same
 contract change (delivery A's leftover: it was `required` but could be `""`); the
@@ -115,12 +119,15 @@ committed (the cursor is written after the page, atomically with nothing else).
 
 ### D6 — Peppol re-checks
 
-The worker `customers.peppol-recheck`, running only when `PEPPOL_LOOKUP_ENABLED=1` and
-its own switch is on, each cycle takes the lease and re-asks the network for up to
+The worker `customers-peppol-recheck`, registered only when `PEPPOL_LOOKUP_ENABLED=1` and
+its own switch is on ("off" means no scheduled outbound request and a startup log that
+names what actually runs — the same for the feed worker's switch), each cycle takes the lease and re-asks the network for up to
 **100** customers: non-archived, with a stored lookup whose `checked_at` is older than
 the re-check age **and** whose `participant_id` still equals the participant the billing
 profile resolves to today (a lookup for a participant that changed is already stale by
-identity and is not this worker's to refresh), oldest `checked_at` first — **plus**
+identity and is not this worker's to refresh — a rule that lives in Go, `lookupParticipant`,
+so the batch is selected in SQL and filtered in Go, and a cycle may re-check fewer than
+the batch size), oldest `checked_at` first — **plus**
 customers whose `invoice_delivery` is `ehf` and who have no stored lookup at all (the
 customer whose invoices are already going to Peppol is the one whose registration must
 not be assumed). Each is the handler's own lookup-and-store, extracted into
