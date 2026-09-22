@@ -54,7 +54,7 @@ standing decision. See [`docs/customers.md`](docs/customers.md).
 *Unblocks:* every later phase below, and a customer list, duplicate guard and timeline
 worth building the invoice-ready customer on top of.
 
-### Phase 2 — The invoice-ready customer (align with Invoices)
+### Phase 2 — The invoice-ready customer (align with Invoices) (done)
 
 Decided in
 [`docs/superpowers/specs/2026-09-21-customers-invoice-ready-design.md`](docs/superpowers/specs/2026-09-21-customers-invoice-ready-design.md),
@@ -74,17 +74,24 @@ grew a `BillingProfile` read (every field resolved once, for Invoices) and a bat
 `Customers(ids)` lookup — Projects' project list now makes one directory call per
 page instead of one per distinct customer. See [`docs/customers.md`](docs/customers.md).
 
-**Delivery B (remaining)** — a Peppol capability lookup (SML DNS → SMP → BIS
-Billing 3.0 support) that sets the invoice delivery method to EHF automatically,
-the way every Nordic competitor surveyed but Fortnox does. Delivery A did not wait
-for it: `peppolId` and `invoiceDelivery` are plain fields a person can already fill
-in by hand, and the billing profile's `ehf_without_recipient` warning already
-flags a customer set to `ehf` with no Peppol id to send to.
+**Delivery B (done)** — decided in
+[`docs/superpowers/specs/2026-09-21-customers-peppol-lookup-design.md`](docs/superpowers/specs/2026-09-21-customers-peppol-lookup-design.md):
+a Peppol capability lookup (SML DNS → SMP → BIS Billing 3.0 support), asked on a
+person's click (`POST .../peppol-lookup`) and remembered on its own table, off the
+customer row. It deliberately does **not** set the invoice delivery method to EHF
+automatically the way every Nordic competitor surveyed but Fortnox does — the
+billing card offers **Use EHF** instead of switching silently, so nobody's billing
+decision changes without a click. Delivery A did not wait for it: `peppolId` and
+`invoiceDelivery` were, and remain, plain fields a person can fill in by hand, and
+the billing profile's `ehf_without_recipient` warning already flagged a customer
+set to `ehf` with no Peppol id to send to; two new warnings
+(`ehf_recipient_not_registered`, `ehf_available`) now read the stored lookup
+answer too. See [`docs/customers.md`](docs/customers.md#peppol-lookup).
 
 *Unblocks:* Invoices can now read a resolved billing profile through the
 directory — delivery A gave a customer somewhere to send an invoice and terms to
-put on it; delivery B is what makes EHF fill itself in instead of being typed by
-hand.
+put on it; delivery B tells a person, with one click, whether EHF will actually
+reach that customer.
 
 ### Phase 3 — Brreg in full
 
@@ -96,7 +103,11 @@ scheduled refresh from Brreg's incremental update feed
 (`/api/oppdateringer/enheter`). Refreshed changes are written as `registry.change`
 timeline events — the event type already exists, unused, today — and
 bankruptcy/dissolution/name-change surfaces in `/stats/attention`, also already a
-stub.
+stub. Beside it, **scheduled re-checks of Peppol registration**: today's
+[Peppol lookup](docs/customers.md#peppol-lookup) is only ever a person's click, on
+purpose (design D4) — a background worker asking again periodically, on the same
+`ehf_available`/`ehf_recipient_not_registered` warnings a manual check already
+raises, is this phase's job.
 
 *Unblocks:* registry data worth relying on instead of a name and a number typed once,
 and the first real content behind two endpoints this module already declares.

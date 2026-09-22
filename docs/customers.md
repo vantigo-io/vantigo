@@ -307,6 +307,13 @@ time. What `GET .../billing-profile` gives instead is a computed, never-stored
 | `email_without_address` | `invoiceDelivery` is `email`, there is no `invoiceEmail`, **and** no contact-info `email` either. |
 | `efaktura_for_business` | `invoiceDelivery` is `efaktura` and the customer's `type` is `business`. |
 | `no_invoice_address` | The customer has no primary `invoice` address and no primary `postal` address either — the same resolution rule addresses use throughout. |
+| `ehf_recipient_not_registered` | `invoiceDelivery` is `ehf` **and** the last [Peppol lookup](#peppol-lookup) on record for the participant this profile would look up now says `not_registered`, or `registered` without `canReceiveInvoice`. |
+| `ehf_available` | Not a problem — an offer. The last Peppol lookup on record says `registered` with `canReceiveInvoice`, and `invoiceDelivery` is anything but `ehf` (unset counts as "anything but `ehf`"). |
+
+Both of the last two read `peppolLookup` (below) rather than making a network
+call of their own: `GET`/`PUT .../billing-profile` never touch the Peppol
+network — only `POST .../peppol-lookup` does — so a lookup is always a
+person's click, never a side effect of reading or saving the profile.
 
 The `ehf_without_recipient` check reads the customer's legal identity **even when
 the caller lacks `customers:legal-identity-view`** — this sub-resource's own read
@@ -324,6 +331,11 @@ profile still raises — at least `no_invoice_address` if there is no invoice
 address) for a customer that has none: a billing profile always exists
 conceptually, unlike the legal identity's own GET, which answers 204. 404 only
 when the customer itself does not exist.
+
+`GET`/`PUT` both also carry an optional `peppolLookup` — the last answer
+`POST .../peppol-lookup` recorded, present only when it is still the answer
+for the participant this profile would look up *now*. See [Peppol
+lookup](#peppol-lookup).
 
 `PUT /customers/{id}/billing-profile` needs `customers:billing-manage` **and**
 `customers:view` — a caller who could not otherwise see the customer cannot manage
@@ -349,9 +361,13 @@ Generated event types: `customer.created`, `customer.updated`, `customer.type_ch
 `customer.contact_relationship_updated`, `customer.contact_detached`,
 `customer.contact_removed`, `customer.contact_info_updated`,
 `customer.billing_profile_updated`, `customer.address_added`,
-`customer.address_updated`, `customer.address_removed`. These are immutable — there
-is no edit or delete endpoint for a generated entry.
+`customer.address_updated`, `customer.address_removed`, `customer.peppol_lookup`.
+These are immutable — there is no edit or delete endpoint for a generated entry.
 
+- `customer.peppol_lookup` (see [Peppol lookup](#peppol-lookup)) is recorded only
+  when a check's status or either capability changed from the stored answer —
+  re-checking to the same answer is quiet — and its payload never carries the
+  participant id.
 - `customer.contact_info_updated` and `customer.billing_profile_updated` each carry
   a `before`/`after` snapshot of every field the sub-resource owns, plus a `changes`
   map of only the fields that actually moved — the same shape `customer.updated`
@@ -543,6 +559,116 @@ any exhausted or unretryable failure, a non-2xx upstream status, or a 2xx respon
 whose body will not decode. [ROADMAP phase 3](../ROADMAP.md#customers) is where the
 full record, provenance and a refresh land.
 
+## Peppol lookup
+
+`POST /api/v1/customers/{id}/peppol-lookup` (`customers:billing-manage` +
+`customers:view` — the people who act on the answer) asks the Peppol network
+itself whether this customer is a registered receiver of Peppol BIS Billing
+3.0 (EHF), and remembers the answer. Decided in
+[the design](superpowers/specs/2026-09-21-customers-peppol-lookup-design.md)
+as delivery **B** of the invoice-ready customer (delivery A is
+[above](#contact-info-addresses-and-the-billing-profile)); the design's own
+"What the network looks like" section is the verified detail this section
+only summarises.
+
+**What is asked, and of whom.** The participant looked up is the billing
+profile's explicit `peppolId` when set, else `derivedPeppolID` — `0192:` plus
+the legal id, when the identity's country is `no`, the customer's own `type`
+is `business`, and the id passes the Norwegian organisation-number check —
+else there is nothing to look up: **200** with `status: "no_identifier"` and
+nothing stored, no network call made.
+
+**How the network is asked.** Discovery is NAPTR-only: the participant
+identifier's value is lower-cased, SHA-256 hashed, base32-encoded (trailing
+`=` stripped) and turned into a DNS name under the configured SML zone
+(`<hash>.iso6523-actorid-upis.<zone>`). A NAPTR record with flags `U`,
+service `Meta:SMP` and a regexp carrying the SMP's base URL names the
+participant's Service Metadata Publisher; one unauthenticated `GET` of that
+SMP's `ServiceGroup` then lists the document types the participant has
+registered, compared as the **full identifier string, exactly** — never a
+prefix, substring or the PINT wildcard — against the Peppol BIS Billing 3.0
+invoice and credit-note ids (`internal/peppol`, package doc comment and
+`smp.go` for the two live edge cases — a reminder-only receiver and a
+participant with order/response profiles only — that make anything looser
+wrong). There are three outcomes at the DNS step, never two: **NXDOMAIN** is
+a definitive "not registered"; **SERVFAIL, REFUSED or a timeout** is a
+technical failure, retryable, never reported as "not registered"; and NAPTR
+records with none carrying `U` + `Meta:SMP` mean the participant is
+registered with no SMP service — able to receive nothing.
+
+**The outbound guard.** The SMP base URL comes out of a DNS record a third
+party published, so it is validated (`https`, no userinfo, port 443) and
+fetched through `internal/netguard` — the one table of addresses the server
+will not dial, shared with `internal/mail`'s own SMTP guard: private,
+loopback, link-local (the `169.254.169.254` cloud metadata address
+included), carrier-grade-NAT, unique-local and the IPv6 forms that plainly
+embed one of those addresses (NAT64, 6to4, the deprecated IPv4-compatible
+`::/96`). The connection dials the very address that was checked, which is
+what defeats DNS rebinding; no proxy is used, no redirect is ever followed,
+and the SMP's response body is capped at 1 MiB.
+
+**Where the answer lives.** The result is stored in its own table,
+`customers.customer_peppol_lookups` — one row per customer (participant id,
+status, the two capabilities, SMP host, checked-at) — deliberately **not** a
+column on `customers.customers`: recording an answer must never bump
+`revision` and conflict somebody's open form. `GET`/`PUT
+.../billing-profile` surface it as an optional `peppolLookup` object, but it
+is **stale-dropped**: whenever the stored row's participant id no longer
+equals the one that would be looked up now (the org number or an explicit
+`peppolId` changed since), it is treated exactly as if no lookup had ever
+been made — in the response and in the two warnings below alike.
+
+**Withholding.** `participantId` is omitted from both the `POST` response
+and the resolved `peppolLookup` whenever it was *derived* from the legal
+identity and the caller lacks `customers:legal-identity-view` — the
+organisation number is that permission's to show. An explicit `peppolId` is
+already visible in the profile, so it is never withheld.
+
+**Warnings.** Two new codes on `GET .../billing-profile`'s computed
+`warnings`, read from the stored answer and never from a fresh network call:
+`ehf_recipient_not_registered` (delivery is `ehf` and the last lookup says
+`not_registered`, or `registered` without `canReceiveInvoice`) and
+`ehf_available` — an offer, not a problem — (the last lookup says
+`registered` with `canReceiveInvoice` and delivery is anything but `ehf`).
+See [Billing profile](#billing-profile) for the full, ordered table.
+
+**The timeline event.** A lookup records `customer.peppol_lookup` only when
+the *status or either capability changed* from the stored answer, so
+re-checking the same answer is quiet. Its payload deliberately omits the
+participant id: `customers:timeline-view` does not imply
+`customers:legal-identity-view`, and a derived id is that permission's to
+show.
+
+**502 vs 503.** An upstream failure — the DNS query or the SMP request
+itself could not complete — answers **502**, the same shape Brreg's own
+lookup uses; nothing is stored, and the last good answer (if any) stands.
+The feature switched off (`PEPPOL_LOOKUP_ENABLED=false`) answers **503**
+instead, before any network call would have been attempted.
+
+**Configuration**, all read once at startup by `internal/config`:
+
+| Variable | Default | |
+| --- | --- | --- |
+| `PEPPOL_LOOKUP_ENABLED` | `true` | `false` → the operation answers 503 and the UI hides the action after the first 503 |
+| `PEPPOL_SML_ZONE` | `participant.sml.prod.tech.peppol.org` | the test network is `participant.sml.test.tech.peppol.org` |
+| `PEPPOL_DNS_SERVER` | *(empty → the server's own name servers, `/etc/resolv.conf`)* | `host:port` of a resolver to use instead |
+| `PEPPOL_TIMEOUT` | `10s` | one lookup end to end (DNS and the SMP request together) |
+
+**The frontend.** The Billing card's Peppol row gets a **Check EHF** action
+(gated on `canManageBilling`, i.e. `customers:billing-manage`) that asks the
+network again; the last answer is shown in words with its date ("Can receive
+EHF invoices — checked 21 Sep 2026", "Not registered in Peppol", "Registered
+in Peppol, but not for invoices"). The `ehf_available` warning renders as an
+offer with its own **Use EHF** button — an ordinary billing-profile `PUT`
+with `invoiceDelivery: "ehf"` and the current `revision` — never a silent
+switch: unlike Tripletex and Fiken, nothing here changes `invoiceDelivery`
+without a click, and no lookup ever runs automatically (not on create, not
+on a Brreg pick, not on a schedule — every lookup is a person's click, so a
+network failure never blocks a save). A 502 shows "The Peppol network could
+not be reached. Try again."; a 503 makes the action disappear for the rest
+of the browser session with a one-line note, so the app does not keep asking
+an installation that has the feature switched off.
+
 ## Permissions
 
 Fourteen keys, category-grouped, every one delegable. Only `view`, `create` and
@@ -693,7 +819,14 @@ been in since the foundation.
   conflict on save follows the same Reload pattern the contact-info modal and
   `CustomerFormModal` already use: the modal re-seeds itself and the revision the
   next save sends, rather than leaving a write behind a button that would keep
-  failing.
+  failing. Beneath the Peppol ID row, `CustomerPeppolStatus`
+  (`-customer-peppol-status.tsx`, [Peppol lookup](#peppol-lookup)) adds a
+  **Check EHF** action gated the same way, the last answer in words with its
+  date, and — on the `ehf_available` offer — a **Use EHF** button that goes
+  through the same revision-guarded `PUT` and Reload pattern as the edit
+  modal, never a silent switch. A 503 (the feature disabled) hides the
+  action for the rest of the browser session rather than asking again on
+  every mount.
 - **Form** (create/edit modal) — sends `revision` on every edit, so a stale write is
   caught by the backend's 409 rather than silently overwriting a concurrent change;
   a 409 revision conflict tells the user the customer changed underneath them and
@@ -718,7 +851,7 @@ been in since the foundation.
 ## API
 
 Every operation is under `/api/v1/customers`, authenticated with the shared identity
-session cookie. 37 operations in total, each exercised by the module's own
+session cookie. 38 operations in total, each exercised by the module's own
 contract-validated test coverage gate — every operation in `openapi/customers.yaml`
 must be exercised by at least one successful exchange, with no allow-list.
 
@@ -737,6 +870,7 @@ must be exercised by at least one successful exchange, with no allow-list.
 | `PUT /{id}/addresses/{addressId}`, `DELETE /{id}/addresses/{addressId}` | `customers:update` + `customers:view` |
 | `GET /{id}/billing-profile` | `customers:view` |
 | `PUT /{id}/billing-profile` | `customers:billing-manage` + `customers:view` |
+| `POST /{id}/peppol-lookup` | `customers:billing-manage` + `customers:view` |
 | `GET /{id}/contacts`, `GET /contacts/{id}/customers` | `customers:associations-view` + `customers:contacts-view` |
 | `POST /{id}/contacts` (attach) | `customers:associations-manage` + `customers:contacts-view` |
 | `PUT /{id}/contacts/{contactId}` | `customers:associations-manage` + `customers:contacts-view` |
@@ -764,20 +898,26 @@ ids and resolve a billing profile in one call. A customer still cannot be invoic
 by this module alone, though — that is Invoices' job once it exists, reading
 through the directory this branch built for it.
 
-**Delivery B** (its own spec, own PR, already scoped in the design) is the one
-piece deliberately left out here: a Peppol capability lookup (SML DNS → SMP → BIS
-Billing 3.0 support) that sets a customer's `invoiceDelivery` to `ehf`
-automatically, the way every Nordic competitor surveyed but Fortnox does. Nothing
-in this branch waits for it — `peppolId` and `invoiceDelivery` are plain fields a
-person can fill in by hand meanwhile, and the billing profile's
-`ehf_without_recipient` warning already tells them when EHF has no recipient to
-send to.
+**Delivery B** — [the Peppol lookup](#peppol-lookup) — has since landed on top
+of delivery A: SML DNS → SMP → BIS Billing 3.0 support, asked on a person's
+click and remembered. It deliberately does **not** set a customer's
+`invoiceDelivery` to `ehf` automatically the way every Nordic competitor
+surveyed but Fortnox does — Tripletex and Fiken switch the delivery method
+silently, and this module chose an offer (`ehf_available`, a **Use EHF**
+button) over a silent write instead, so a customer's own billing decision
+never changes without someone clicking to make it. Nothing waited for it
+while it was outstanding: `peppolId` and `invoiceDelivery` were, and remain,
+plain fields a person can fill in by hand, and the billing profile's
+`ehf_without_recipient` warning already told them when EHF had no recipient
+to send to.
 
 Past delivery B, the remaining gaps are exactly what
 [ROADMAP.md's Customers section](../ROADMAP.md#customers) is built around —
-Brreg returning only two fields (phase 3), `/stats/attention` permanently empty
-(phase 3), `ContactsByEmail` still unused in production, no CSV import/export, no
-merge (phase 6) — itself drawn from
+scheduled re-checks of Peppol registration (phase 3, beside the Brreg refresh
+worker — every lookup today is still a person's click, never a schedule),
+Brreg returning only two fields (phase 3), `/stats/attention` permanently
+empty (phase 3), `ContactsByEmail` still unused in production, no CSV
+import/export, no merge (phase 6) — itself drawn from
 [`docs/superpowers/research/2026-09-21-customers-module-next.md`](superpowers/research/2026-09-21-customers-module-next.md),
 which also compares this module against the Nordic ERP/accounting and international
 CRM/PSA fields it was benchmarked against.

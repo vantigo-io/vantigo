@@ -421,8 +421,9 @@ owning its own schema:
 
 - `internal/customers` → `/api/v1/customers/*` from `openapi/customers.yaml`:
   customers, contacts, customer-contact associations, legal identity, contact
-  info, typed addresses, a billing profile, the customer timeline and the
-  Brønnøysundregisteret (Brreg) lookup.
+  info, typed addresses, a billing profile, the customer timeline, the
+  Brønnøysundregisteret (Brreg) lookup and a Peppol EHF-capability lookup
+  (`internal/peppol`, shared with the future Invoices module).
 - `internal/products` → `/api/v1/products/*` from `openapi/products.yaml`:
   products, variants, prices, categories and tax categories.
 - `internal/energy` → `/api/v1/energy/*` from `openapi/energy.yaml`: metering
@@ -537,13 +538,27 @@ Two settings configure the Brreg lookup:
   retries included. Within it a failed GET is retried up to 3 times with a 4 s
   per-attempt timeout and a jittered backoff. An upstream failure answers 502.
 
+Four more configure the Peppol lookup (`POST .../peppol-lookup`,
+[`docs/customers.md`](docs/customers.md#peppol-lookup)) — whether a customer can
+receive an EHF invoice:
+
+- `PEPPOL_LOOKUP_ENABLED` (default `true`) — `false` answers the operation 503
+  instead of ever reaching the network.
+- `PEPPOL_SML_ZONE` (default `participant.sml.prod.tech.peppol.org`) — the SML
+  zone a participant identifier is hashed into; the test network's own zone is
+  `participant.sml.test.tech.peppol.org`.
+- `PEPPOL_DNS_SERVER` (default unset, meaning the server's own name servers from
+  `/etc/resolv.conf`) — `host:port` of a resolver to use instead.
+- `PEPPOL_TIMEOUT` (default `10s`) — the budget for one lookup end to end, the
+  NAPTR query and the SMP request together.
+
 Each module's tests work like identity's: every HTTP exchange runs through a
 contract-validating client, so a response that does not match the module's YAML
 fails the test that produced it, and the package gates on operation coverage —
 every operation in the contract must have been exercised by at least one
 successful exchange, with no allow-list, so a newly added operation without a
 passing test fails the whole package. No test touches the network; the Brreg
-client dials a fake transport.
+and Peppol clients dial a fake transport.
 
 ## Frontend development
 
