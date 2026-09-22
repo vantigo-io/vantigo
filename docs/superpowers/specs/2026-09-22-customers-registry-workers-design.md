@@ -43,7 +43,8 @@ just processed, plus one. The cost is the whole register's churn, ~5 600 entries
 Cursor row: new table `customers.registry_feed_cursor` (migration `00023`), one row
 (`id smallint PRIMARY KEY CHECK (id = 1)`): `next_update_id bigint NULL`, `started_at
 timestamptz NOT NULL`, `last_polled_at timestamptz NULL`, `last_update_at timestamptz
-NULL` (the `dato` of the last processed entry). A cycle whose page is empty records the
+NULL` (the `dato` of the last processed entry), `backfill_after_id integer NOT NULL
+DEFAULT 0` (the sweep's own position, D3). A cycle whose page is empty records the
 poll (`last_polled_at`) without moving the position; the two timestamps are for an
 operator's `psql`, nothing reads them. With `next_update_id` NULL the request is
 `?dato=<started_at>` (the feed is joined from the moment the worker first ran — never
@@ -87,7 +88,13 @@ fetched_at`, oldest hint first) and up to **25** Norwegian business customers th
 **no record at all** (non-archived, valid organisation number, lowest id first). The
 second half is the backfill: customers created before delivery A, and picks whose fetch
 failed, get their record without anyone clicking — a few hundred an hour, so a large
-installation is caught up within a day. A backfilled record goes through the ordinary
+installation is caught up within a day. The backfill keeps its own position on the
+cursor row (`backfill_after_id`, taking customers with `id >` it and only organisation
+numbers that are nine digits), because a customer whose number the register does not
+know never gets a record: without a position those 25 rows would be the same 25 rows on
+every cycle and the 26th customer would never be read at all. A full batch leaves the
+position at the last id attempted and a short one resets it to 0, so an unresolvable
+number costs one request per full pass rather than one per cycle. A backfilled record goes through the ordinary
 first-fetch diff (name and deletion date against the legal identity), so a hand-typed
 name that differs from the registry's raises `registryRenamed` exactly as a click would.
 A sweep refresh that fails is logged and left for the next cycle; a sweep never advances
