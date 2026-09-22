@@ -108,9 +108,10 @@ const (
 	brregEntityRemoved
 	// brregEntityUnknown is a plain 404: no entity ever existed at this
 	// organisation number, or it is a sub-entity's number (the design doc:
-	// "A sub-entity's number on /enheter: 404"). It is also the zero value
-	// returned alongside a non-nil error, where the outcome itself carries
-	// no meaning — callers must check the error first.
+	// "A sub-entity's number on /enheter: 404"). It doubles as the sentinel
+	// returned alongside a non-nil error (not the type's zero value — that is
+	// brregEntityFound) — callers must check the error first, since the
+	// outcome carries no meaning there.
 	brregEntityUnknown
 )
 

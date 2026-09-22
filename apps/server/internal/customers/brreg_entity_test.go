@@ -91,40 +91,14 @@ const equinorEntityBody = `{
 	"erIKonsern": true
 }`
 
-// brregSelfEntityBody is the second full record the brief pins: a parent
-// organisation number, an email and a phone, 487 employees, VAT false, and
-// no postadresse at all — the counterpart to Equinor's postadresse, proving
-// an absent optional address decodes to a nil *brregAddress rather than a
-// zero-valued one.
-const brregSelfEntityBody = `{
-	"organisasjonsnummer": "974760673",
-	"navn": "BRØNNØYSUNDREGISTRENE",
-	"organisasjonsform": {"kode": "ORGL", "beskrivelse": "Organisasjonsledd"},
-	"naeringskode1": {"kode": "84.110", "beskrivelse": "Generell offentlig administrasjon"},
-	"harRegistrertAntallAnsatte": true,
-	"antallAnsatte": 487,
-	"registrertIMvaregisteret": false,
-	"overordnetEnhet": "912660680",
-	"hjemmeside": "www.brreg.no",
-	"epostadresse": "post@brreg.no",
-	"telefon": "75008000",
-	"mobil": "90758800",
-	"forretningsadresse": {
-		"land": "Norge",
-		"landkode": "NO",
-		"postnummer": "8910",
-		"poststed": "BRØNNØYSUND",
-		"adresse": ["Havnegata 48"],
-		"kommune": "BRØNNØYSUND",
-		"kommunenummer": "1813"
-	},
-	"konkurs": false,
-	"underAvvikling": false,
-	"underTvangsavviklingEllerTvangsopplosning": false,
-	"erIKonsern": false,
-	"registrertIForetaksregisteret": false,
-	"registrertIFrivillighetsregisteret": false
-}`
+// brregSelfEntityBody is the verified live body for Registerenheten i
+// Brønnøysund (org 974760673), quoted verbatim (fix round 1: the first
+// version of this fixture had invented epostadresse/telefon values and an
+// unverified mobil that the live registry does not send). Its own
+// respons_klasse is "Enhet", not "SlettetEnhet" — present, but not the
+// deleted marker — which doubles as coverage that a present-but-different
+// respons_klasse is still an ordinary found entity.
+const brregSelfEntityBody = `{"organisasjonsnummer":"974760673","navn":"REGISTERENHETEN I BRØNNØYSUND","organisasjonsform":{"kode":"ORGL","beskrivelse":"Organisasjonsledd"},"hjemmeside":"www.brreg.no","postadresse":{"land":"Norge","landkode":"NO","postnummer":"8910","poststed":"BRØNNØYSUND","adresse":["Postboks 900"],"kommune":"BRØNNØY","kommunenummer":"1813"},"registreringsdatoEnhetsregisteret":"1995-08-09","registrertIMvaregisteret":false,"naeringskode1":{"kode":"84.110","beskrivelse":"Generell offentlig administrasjon"},"antallAnsatte":487,"harRegistrertAntallAnsatte":true,"overordnetEnhet":"912660680","epostadresse":"firmapost@brreg.no","telefon":"75 00 75 09","forretningsadresse":{"land":"Norge","landkode":"NO","postnummer":"8900","poststed":"BRØNNØYSUND","adresse":["Havnegata 48"],"kommune":"BRØNNØY","kommunenummer":"1813"},"institusjonellSektorkode":{"kode":"6100","beskrivelse":"Statsforvaltningen"},"registrertIForetaksregisteret":false,"registrertIStiftelsesregisteret":false,"registrertIFrivillighetsregisteret":false,"konkurs":false,"underAvvikling":false,"underTvangsavviklingEllerTvangsopplosning":false,"maalform":"Bokmål","aktivitet":["Registeretat."],"registrertIPartiregisteret":false,"paategninger":[],"erIKonsern":false,"respons_klasse":"Enhet"}`
 
 // slettetEnhetBody is a deleted entity: HTTP 200, respons_klasse
 // "SlettetEnhet", and the reduced field set the research found — only
@@ -220,12 +194,12 @@ func TestEntity_FullRecordEveryField(t *testing.T) {
 			},
 		},
 		{
-			name:  "Brønnøysundregistrene",
+			name:  "RegisterenhetenIBronnoysund",
 			orgnr: "974760673",
 			body:  brregSelfEntityBody,
 			want: brregEntityRecord{
 				OrganisationNumber:       "974760673",
-				Name:                     "BRØNNØYSUNDREGISTRENE",
+				Name:                     "REGISTERENHETEN I BRØNNØYSUND",
 				OrganisationFormCode:     "ORGL",
 				OrganisationForm:         "Organisasjonsledd",
 				IndustryCode:             "84.110",
@@ -233,18 +207,23 @@ func TestEntity_FullRecordEveryField(t *testing.T) {
 				Employees:                intPtr32(487),
 				VATRegistered:            false,
 				Website:                  "www.brreg.no",
-				Email:                    "post@brreg.no",
-				Phone:                    "75008000",
-				Mobile:                   "90758800",
+				Email:                    "firmapost@brreg.no",
+				Phone:                    "75 00 75 09",
 				ParentOrganisationNumber: "912660680",
 				BusinessAddress: &brregAddress{
 					Lines:        []string{"Havnegata 48"},
-					PostalCode:   "8910",
+					PostalCode:   "8900",
 					City:         "BRØNNØYSUND",
-					Municipality: "BRØNNØYSUND",
+					Municipality: "BRØNNØY",
 					CountryCode:  "NO",
 				},
-				PostalAddress: nil,
+				PostalAddress: &brregAddress{
+					Lines:        []string{"Postboks 900"},
+					PostalCode:   "8910",
+					City:         "BRØNNØYSUND",
+					Municipality: "BRØNNØY",
+					CountryCode:  "NO",
+				},
 			},
 		},
 	}
@@ -299,6 +278,32 @@ func TestEntity_ForeignAddressHasNoPostalCodeOrMunicipality(t *testing.T) {
 	}
 	if rec.Employees != nil {
 		t.Errorf("Employees = %v, want nil (harRegistrertAntallAnsatte is false)", *rec.Employees)
+	}
+}
+
+// TestEntity_MobileMapsFromMobilField pins the Mobile field on its own
+// (fix round 1: neither live fixture carries a "mobil" — the verified
+// Registerenheten i Brønnøysund body has none — so this is a small
+// synthetic body dedicated to proving that field's mapping is still wired).
+func TestEntity_MobileMapsFromMobilField(t *testing.T) {
+	t.Parallel()
+	body := `{
+		"organisasjonsnummer": "923609016",
+		"navn": "EQUINOR ASA",
+		"organisasjonsform": {"kode": "ASA", "beskrivelse": "Allmennaksjeselskap"},
+		"harRegistrertAntallAnsatte": false,
+		"registrertIMvaregisteret": true,
+		"mobil": "90758800"
+	}`
+	c := entityServer(t, func(w http.ResponseWriter, r *http.Request) {
+		jsonEntityResponse(w, http.StatusOK, "", body)
+	})
+	rec, outcome := mustEntity(t, c, "923609016")
+	if outcome != brregEntityFound {
+		t.Fatalf("outcome = %v, want brregEntityFound", outcome)
+	}
+	if rec.Mobile != "90758800" {
+		t.Errorf("Mobile = %q, want %q", rec.Mobile, "90758800")
 	}
 }
 
@@ -533,6 +538,47 @@ func TestEntity_WrongMediaTypeIsAnError(t *testing.T) {
 	}
 }
 
+// TestEntity_HTMLContentTypeIsAnError is TestEntity_WrongMediaTypeIsAnError's
+// other named example (this file's doc comment on
+// validateBrregEntityContentType): a 200 whose Content-Type is text/html —
+// the shape a misbehaving proxy's error page would carry — is refused the
+// same way a wrong-typed 406 is, naming the content type it actually got.
+func TestEntity_HTMLContentTypeIsAnError(t *testing.T) {
+	t.Parallel()
+	c := entityServer(t, func(w http.ResponseWriter, r *http.Request) {
+		jsonEntityResponse(w, http.StatusOK, "text/html", "<html><body>not json</body></html>")
+	})
+	_, _, err := c.entity(t.Context(), "923609016")
+	if err == nil {
+		t.Fatal("entity() error = nil, want an error for a 200 with Content-Type text/html")
+	}
+	if !strings.Contains(err.Error(), "text/html") {
+		t.Errorf("error = %v, want it to name the content type actually received", err)
+	}
+	if !errors.Is(err, errBrregUnavailable) {
+		t.Errorf("error = %v, want it to wrap errBrregUnavailable", err)
+	}
+}
+
+// TestEntity_JSONContentTypeWithCharsetIsAccepted proves
+// validateBrregEntityContentType's use of mime.ParseMediaType, not a plain
+// string comparison: "application/json; charset=utf-8" still parses to the
+// bare media type "application/json", which this operation already accepts
+// alongside the pinned v2 type.
+func TestEntity_JSONContentTypeWithCharsetIsAccepted(t *testing.T) {
+	t.Parallel()
+	c := entityServer(t, func(w http.ResponseWriter, r *http.Request) {
+		jsonEntityResponse(w, http.StatusOK, "application/json; charset=utf-8", equinorEntityBody)
+	})
+	rec, outcome := mustEntity(t, c, "923609016")
+	if outcome != brregEntityFound {
+		t.Fatalf("outcome = %v, want brregEntityFound", outcome)
+	}
+	if rec.Name != "EQUINOR ASA" {
+		t.Errorf("Name = %q, want EQUINOR ASA", rec.Name)
+	}
+}
+
 // TestEntity_OversizedBodyIsAnError proves the end-to-end behaviour a caller
 // actually sees for a 2 MiB body: an error, wrapping errBrregUnavailable.
 // It does not by itself pin *how* the cap is enforced — entityAttempt's own
@@ -630,6 +676,9 @@ func TestEntity_MalformedDateIsAnError(t *testing.T) {
 	_, _, err := c.entity(t.Context(), "923609016")
 	if err == nil {
 		t.Fatal("entity() error = nil, want an error for a malformed date")
+	}
+	if !errors.Is(err, errBrregUnavailable) {
+		t.Errorf("error = %v, want it to wrap errBrregUnavailable", err)
 	}
 }
 
