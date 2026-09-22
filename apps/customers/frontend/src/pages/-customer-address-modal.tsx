@@ -18,7 +18,17 @@ import { CountrySelect } from "../components/country-select";
 import { addressTypeLabel } from "../lib/address-type-label";
 import "../i18n";
 
-export type AddressModalState = { mode: "add" } | { mode: "edit"; address: CustomerAddress } | null;
+/**
+ * `initialValues` opens Add with something already in the fields — the
+ * registry's own business or postal address (design D3), which is reviewed and
+ * saved through the ordinary POST like anything typed by hand. It rides on the
+ * state rather than being a prop of its own so that the values and the open
+ * transition that seeds the form from them can never disagree.
+ */
+export type AddressModalState =
+  | { mode: "add"; initialValues?: Partial<AddressFormValues> }
+  | { mode: "edit"; address: CustomerAddress }
+  | null;
 
 interface AddressFormValues {
   type: string;
@@ -93,7 +103,9 @@ export const CustomerAddressModal = ({
   // first render, when `state` already opens the modal directly).
   useEffect(() => {
     if (state) {
-      form.setValues(state.mode === "edit" ? valuesFromAddress(state.address) : emptyValues);
+      form.setValues(
+        state.mode === "edit" ? valuesFromAddress(state.address) : { ...emptyValues, ...state.initialValues },
+      );
       form.resetDirty();
       form.clearErrors();
     }

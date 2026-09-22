@@ -9,7 +9,7 @@ import {
   IconPencil,
   IconUser,
 } from "@tabler/icons-react";
-import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { type ReactNode, useState } from "react";
 
@@ -24,6 +24,7 @@ import {
   syncCustomerRevision,
   updateCustomer,
 } from "../api/customers";
+import { customerRegistryRecordQueryOptions } from "../api/registry";
 import {
   CopyableBadge,
   LegalCountryBadge,
@@ -36,6 +37,7 @@ import { CustomerBillingCard } from "./-customer-billing-card";
 import { CustomerContactCard } from "./-customer-contact-card";
 import { CustomerContactsCard } from "./-customer-contacts-card";
 import { CustomerFormModal, type CustomerModalState } from "./-customer-form-modal";
+import { CustomerRegistryCard } from "./-customer-registry-card";
 import { CustomerTimeline } from "./-customer-timeline";
 import "../i18n";
 
@@ -314,20 +316,40 @@ const useRestoreCustomer = (customer: CustomerResponse) => {
  * itself is fetched once here and passed to `CustomerBillingCard`, which
  * needs its `contactInfo`, `type` and `identity` for the resolved-recipient
  * hints, rather than that card issuing a query of its own.
+ *
+ * `canViewIdentity`/`canManageIdentity` (Brreg in full design D5) are the
+ * host's `customers:legal-identity-view`/`-manage` checks, the two doors the
+ * Registry card sits behind. The registry record is fetched here rather than
+ * inside that card because the addresses section below offers the registry's
+ * own addresses (design D3) and both read the one query.
  */
 export const CustomerOverview = ({
   customerId,
   canEdit,
   canManageBilling,
+  canViewIdentity,
+  canManageIdentity,
 }: {
   customerId: number;
   canEdit?: boolean;
   canManageBilling?: boolean;
+  canViewIdentity?: boolean;
+  canManageIdentity?: boolean;
 }) => {
   const { data: customer } = useSuspenseQuery(customerQueryOptions(customerId));
+  // Enhetsregisteret answers for Norwegian businesses and nothing else, and
+  // the record repeats the legal identity's organisation number — so for any
+  // other customer, or any caller without that permission, the record is not
+  // even asked for: the GET would answer 204 whatever the reason.
+  const showRegistry = Boolean(canViewIdentity && customer.type === "business" && customer.identity?.country === "no");
+  const { data: registryRecord } = useQuery({
+    ...customerRegistryRecordQueryOptions(customerId),
+    enabled: showRegistry,
+  });
   return (
     <Stack gap="lg">
-      <CustomerContactCard customerId={customerId} canEdit={canEdit} />
+      <CustomerContactCard customerId={customerId} canEdit={canEdit} registryRecord={registryRecord ?? null} />
+      {showRegistry && <CustomerRegistryCard customerId={customerId} canManageIdentity={canManageIdentity} />}
       <CustomerBillingCard customerId={customerId} customer={customer} canManageBilling={canManageBilling} />
       <CustomerContactsCard customerId={customerId} />
       <CustomerTimeline customerId={customerId} />

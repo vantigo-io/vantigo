@@ -6,6 +6,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CustomerResponse } from "../api/customers";
+import type { CustomerRegistryRecord } from "../api/registry";
 import { stubFetch } from "../test/fetch";
 import { CustomerAddressesSection } from "./-customer-address-list";
 import { CustomerBillingCard } from "./-customer-billing-card";
@@ -29,7 +30,10 @@ const address = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-const renderSection = (fetchMock: ReturnType<typeof vi.fn>, { canEdit = true }: { canEdit?: boolean } = {}) => {
+const renderSection = (
+  fetchMock: ReturnType<typeof vi.fn>,
+  { canEdit = true, registryRecord = null }: { canEdit?: boolean; registryRecord?: CustomerRegistryRecord | null } = {},
+) => {
   stubFetch(fetchMock);
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   render(
@@ -37,7 +41,7 @@ const renderSection = (fetchMock: ReturnType<typeof vi.fn>, { canEdit = true }: 
       <Notifications />
       <ModalsProvider>
         <QueryClientProvider client={queryClient}>
-          <CustomerAddressesSection customerId={1001} canEdit={canEdit} />
+          <CustomerAddressesSection customerId={1001} canEdit={canEdit} registryRecord={registryRecord} />
         </QueryClientProvider>
       </ModalsProvider>
     </MantineProvider>,
@@ -273,6 +277,201 @@ describe("CustomerAddressesSection", () => {
           String(calledUrl) === "/api/v1/customers/1001/addresses/2" && calledInit?.method === "DELETE",
       ),
     ).toBe(false);
+  });
+});
+
+/**
+ * The registry's two addresses are offered, never imposed (design D3): an
+ * address on file may deliberately differ from the register, so the record
+ * only puts a prefilled add-address modal one click away, and the ordinary
+ * POST does the rest. The record comes down from the Overview tab, which
+ * already holds that query.
+ */
+describe("the registry's addresses, offered beside the customer's own", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const registryRecord = (overrides: Partial<CustomerRegistryRecord> = {}): CustomerRegistryRecord => ({
+    organisationNumber: "974760673",
+    name: "REGISTERENHETEN I BRØNNØYSUND",
+    organisationFormCode: null,
+    organisationForm: null,
+    industryCode: null,
+    industry: null,
+    employees: null,
+    vatRegistered: true,
+    bankrupt: false,
+    underLiquidation: false,
+    underForcedLiquidation: false,
+    deletedOn: null,
+    foundedOn: null,
+    website: null,
+    email: null,
+    phone: null,
+    mobile: null,
+    parentOrganisationNumber: null,
+    businessAddress: {
+      lines: ["Havnegata 48"],
+      postalCode: "8900",
+      city: "BRØNNØYSUND",
+      municipality: "BRØNNØY",
+      countryCode: "NO",
+    },
+    postalAddress: {
+      lines: ["Postboks 900", "Sentrum"],
+      postalCode: "8910",
+      city: "BRØNNØYSUND",
+      municipality: "BRØNNØY",
+      countryCode: "NO",
+    },
+    fetchedAt: "2026-09-22T09:00:00Z",
+    ...overrides,
+  });
+
+  const lastAddressPost = (fetchMock: ReturnType<typeof vi.fn>) =>
+    fetchMock.mock.calls
+      .filter(
+        ([url, init]) =>
+          String(url) === "/api/v1/customers/1001/addresses" && (init as RequestInit | undefined)?.method === "POST",
+      )
+      .at(-1);
+
+  it("offers both of the registry's addresses when the customer has neither", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [] }));
+    renderSection(fetchMock, { registryRecord: registryRecord() });
+
+    expect(await screen.findByRole("button", { name: "Use the registry's business address" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Use the registry's postal address" })).toBeInTheDocument();
+  });
+
+  it("offers nothing when there is no record — nothing fetched, or a viewer who may not see it", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [] }));
+    renderSection(fetchMock, { registryRecord: null });
+
+    expect(await screen.findByText("No addresses yet")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Use the registry/ })).not.toBeInTheDocument();
+  });
+
+  it("offers only the address the registry actually holds", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [] }));
+    renderSection(fetchMock, { registryRecord: registryRecord({ postalAddress: null }) });
+
+    expect(await screen.findByRole("button", { name: "Use the registry's business address" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Use the registry's postal address" })).not.toBeInTheDocument();
+  });
+
+  it("withdraws an offer once the customer has an address of that type", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(200, { data: [address({ id: 9, type: "visiting", line1: "Osloveien 1" })] }));
+    renderSection(fetchMock, { registryRecord: registryRecord() });
+
+    expect(await screen.findByRole("button", { name: "Use the registry's postal address" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Use the registry's business address" })).not.toBeInTheDocument();
+  });
+
+  it("offers nothing to a caller who may not add an address", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [] }));
+    renderSection(fetchMock, { canEdit: false, registryRecord: registryRecord() });
+
+    expect(await screen.findByText("No addresses yet")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Use the registry/ })).not.toBeInTheDocument();
+  });
+
+  it("opens the business address prefilled as a visiting address, and saves it through the ordinary POST", async () => {
+    const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(url);
+      if (path === "/api/v1/customers/1001/addresses" && init?.method === "POST") {
+        return Promise.resolve(jsonResponse(201, address({ id: 7, type: "visiting", line1: "Havnegata 48" })));
+      }
+      if (path === "/api/v1/customers/1001/addresses") return Promise.resolve(jsonResponse(200, { data: [] }));
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    renderSection(fetchMock, { registryRecord: registryRecord() });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Use the registry's business address" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText(/^Address line 1/)).toHaveValue("Havnegata 48");
+    expect(within(dialog).getByLabelText("Postal code")).toHaveValue("8900");
+    expect(within(dialog).getByLabelText("City")).toHaveValue("BRØNNØYSUND");
+    expect(within(dialog).getByRole("combobox", { name: "Address type" })).toHaveValue("Visiting");
+    expect(within(dialog).getByRole("combobox", { name: "Country" })).toHaveValue("Norway");
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Add address" }));
+
+    await waitFor(() => expect(lastAddressPost(fetchMock)).toBeTruthy());
+    const [, init] = lastAddressPost(fetchMock) as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({
+      type: "visiting",
+      // The registry's own name for the entity is not a label the user chose.
+      label: null,
+      line1: "Havnegata 48",
+      line2: null,
+      postalCode: "8900",
+      city: "BRØNNØYSUND",
+      region: null,
+      country: "no",
+      isPrimary: true,
+    });
+  });
+
+  it("keeps every line of the postal address, the first one as line 1 and the rest as line 2", async () => {
+    const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(url);
+      if (path === "/api/v1/customers/1001/addresses" && init?.method === "POST") {
+        return Promise.resolve(jsonResponse(201, address({ id: 8, type: "postal", line1: "Postboks 900" })));
+      }
+      if (path === "/api/v1/customers/1001/addresses") return Promise.resolve(jsonResponse(200, { data: [] }));
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    renderSection(fetchMock, {
+      registryRecord: registryRecord({
+        postalAddress: {
+          lines: ["Postboks 900", "Sentrum", "Bygg 2"],
+          postalCode: "8910",
+          city: "BRØNNØYSUND",
+          municipality: null,
+          countryCode: "NO",
+        },
+      }),
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Use the registry's postal address" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Add address" }));
+
+    await waitFor(() => expect(lastAddressPost(fetchMock)).toBeTruthy());
+    const [, init] = lastAddressPost(fetchMock) as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      type: "postal",
+      line1: "Postboks 900",
+      line2: "Sentrum, Bygg 2",
+    });
+  });
+
+  it("falls back to Norway only when the registry named no country at all", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [] }));
+    renderSection(fetchMock, {
+      registryRecord: registryRecord({
+        businessAddress: {
+          lines: ["ul. Budowniczych 12"],
+          postalCode: null,
+          city: "81-336 GDYNIA",
+          municipality: null,
+          countryCode: "PL",
+        },
+        postalAddress: { lines: ["Storgata 1"], postalCode: null, city: null, municipality: null, countryCode: "" },
+      }),
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Use the registry's business address" }));
+    let dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("combobox", { name: "Country" })).toHaveValue("Poland");
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await userEvent.click(screen.getByRole("button", { name: "Use the registry's postal address" }));
+    dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("combobox", { name: "Country" })).toHaveValue("Norway");
   });
 });
 

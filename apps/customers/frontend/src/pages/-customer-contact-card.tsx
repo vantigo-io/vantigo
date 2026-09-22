@@ -15,6 +15,7 @@ import {
   syncCustomerRevision,
   updateContactInfo,
 } from "../api/customers";
+import type { CustomerRegistryRecord } from "../api/registry";
 import { useCustomerReload } from "../lib/customer-reload";
 import { CustomerAddressesSection } from "./-customer-address-list";
 import "../i18n";
@@ -28,9 +29,19 @@ import "../i18n";
  * Contact info rides on the customer row (design D2), already fetched by
  * `CustomerDetailHeader` under the same query key, so this card reads it
  * off that cache rather than issuing a query of its own; addresses are a
- * sub-resource (design D1) with their own query.
+ * sub-resource (design D1) with their own query. `registryRecord` only
+ * travels through to the addresses section, which offers the registry's own
+ * two addresses (Brreg in full design D3) — this card never reads it.
  */
-export const CustomerContactCard = ({ customerId, canEdit }: { customerId: number; canEdit?: boolean }) => {
+export const CustomerContactCard = ({
+  customerId,
+  canEdit,
+  registryRecord,
+}: {
+  customerId: number;
+  canEdit?: boolean;
+  registryRecord?: CustomerRegistryRecord | null;
+}) => {
   const { t } = useI18n("customers");
   const { data: customer } = useSuspenseQuery(customerQueryOptions(customerId));
   const [contactModalOpened, setContactModalOpened] = useState(false);
@@ -55,7 +66,7 @@ export const CustomerContactCard = ({ customerId, canEdit }: { customerId: numbe
 
         <Divider />
 
-        <CustomerAddressesSection customerId={customerId} canEdit={canEdit} />
+        <CustomerAddressesSection customerId={customerId} canEdit={canEdit} registryRecord={registryRecord} />
       </Stack>
 
       <CustomerContactInfoModal
