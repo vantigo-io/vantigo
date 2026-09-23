@@ -183,6 +183,7 @@ func TestOperationIDsAreUniqueAcrossModules(t *testing.T) {
 // import module itself without an import cycle.
 var KnownServeMuxConflicts = []string{
 	"DELETE /api/v1/customers/contacts/{id} ⟷ DELETE /api/v1/customers/{id}/legal-identity",
+	"DELETE /api/v1/customers/tags/{tagId} ⟷ DELETE /api/v1/customers/{id}/legal-identity",
 	"GET /api/v1/customers/contacts/{id} ⟷ GET /api/v1/customers/{id}/addresses",
 	"GET /api/v1/customers/contacts/{id} ⟷ GET /api/v1/customers/{id}/billing-profile",
 	"GET /api/v1/customers/contacts/{id} ⟷ GET /api/v1/customers/{id}/contacts",
@@ -210,7 +211,14 @@ var KnownServeMuxConflicts = []string{
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/contact-info",
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/legal-identity",
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/owner",
+	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/tags",
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/type",
+	"PUT /api/v1/customers/tags/{tagId} ⟷ PUT /api/v1/customers/{id}/billing-profile",
+	"PUT /api/v1/customers/tags/{tagId} ⟷ PUT /api/v1/customers/{id}/contact-info",
+	"PUT /api/v1/customers/tags/{tagId} ⟷ PUT /api/v1/customers/{id}/legal-identity",
+	"PUT /api/v1/customers/tags/{tagId} ⟷ PUT /api/v1/customers/{id}/owner",
+	"PUT /api/v1/customers/tags/{tagId} ⟷ PUT /api/v1/customers/{id}/tags",
+	"PUT /api/v1/customers/tags/{tagId} ⟷ PUT /api/v1/customers/{id}/type",
 	"PUT /api/v1/projects/milestones/{milestoneId} ⟷ PUT /api/v1/projects/{id}/status",
 	"PUT /api/v1/projects/milestones/{milestoneId}/position ⟷ PUT /api/v1/projects/{id}/billing-lines/{lineId}",
 	"PUT /api/v1/projects/milestones/{milestoneId}/position ⟷ PUT /api/v1/projects/{id}/roles/{userId}",

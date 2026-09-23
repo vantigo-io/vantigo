@@ -2256,6 +2256,53 @@ paths:
             tags:
                 - Customers
             x-vantigo-access: permission:customers:legal-identity-manage+customers:legal-identity-view
+    /api/v1/customers/{id}/tags:
+        put:
+            operationId: putCustomersByIdTags
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PutCustomerTagsRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerTagsResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: Replace a customer's tags
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:update+customers:view
     /api/v1/customers/{id}/type:
         put:
             description: Sets whether the customer is a business or a private person. Rarely the right action for a customer with history, which is why it is not part of PUT /customers/{id}. A legal identity of the previous type is removed in the same change, since a business identity from Brreg makes no sense on a person and vice versa; contacts, timeline and everything else stay. Resubmitting the current type changes nothing.
@@ -3091,5 +3138,159 @@ paths:
             tags:
                 - Customers
             x-vantigo-access: permission:customers:view
+    /api/v1/customers/tags:
+        get:
+            operationId: getCustomersTags
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/CustomerTagSummary'
+                                type: array
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: List every tag
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:view
+        post:
+            operationId: postCustomersTags
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CustomerTagRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerTagSummary'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: Conflict — a tag with this name already exists (code tag_exists).
+            summary: Create a tag
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:update
+    /api/v1/customers/tags/{tagId}:
+        delete:
+            operationId: deleteCustomersTagsByTagId
+            parameters:
+                - in: path
+                  name: tagId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: Delete a tag and remove it from every customer
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:update
+        put:
+            operationId: putCustomersTagsByTagId
+            parameters:
+                - in: path
+                  name: tagId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CustomerTagRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerTagSummary'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: Conflict — another tag already has this name (code tag_exists).
+            summary: Rename or recolour a tag
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:update
 servers:
     - url: /

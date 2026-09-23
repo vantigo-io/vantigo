@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf16"
@@ -607,4 +608,48 @@ func validateAddress(req gen.CustomerAddressRequest) (validatedAddress, map[stri
 		return validatedAddress{}, errs
 	}
 	return validatedAddress{Type: t, Label: lbl, Line1: l1, Line2: l2, PostalCode: pc, City: ct, Region: rg, Country: c}, nil
+}
+
+// tagColors is the colour vocabulary a tag may use (owner and tags design
+// D2): Mantine's own named colours, which is what the UI paints a chip with.
+// Validating against the UI's palette in the API is deliberate and is the
+// whole point of the rule — the alternative is every consumer sanitising
+// whatever arrived, and a chip painted with a value a stylesheet does not know
+// is an invisible chip. black and white are deliberately absent: a chip needs
+// contrast against both themes.
+var tagColors = []string{"gray", "red", "pink", "grape", "violet", "indigo", "blue", "cyan", "teal", "green", "lime", "yellow", "orange"}
+
+// validateTagName is the tag name rule: non-blank, at most 100 UTF-16 code
+// units, trimmed but case-preserved — validateFriendlyName's own shape with
+// 100 instead of 255. Case is preserved even though uniqueness ignores it
+// (migration 00024's lower(name) index): 'VIP' is how someone wrote it and is
+// how it should read back, while 'vip' is not a second tag.
+func validateTagName(raw string) (string, string) {
+	if strings.TrimSpace(raw) == "" {
+		return "", "A tag name cannot be null or empty"
+	}
+	if n := utf16Length(raw); n > 100 {
+		return "", fmt.Sprintf("A tag name cannot be longer than 100 characters, the given value was %d characters", n)
+	}
+	return strings.TrimSpace(raw), ""
+}
+
+// validateTagColor is the colour rule. Case-sensitive, like every other value
+// rule here that names a closed set of lowercase tokens: a query parameter or
+// an enum token is never normalized in this module, only rejected.
+//
+// The message is built from tagColors rather than written out as a literal —
+// the one enforced-set validator in this file that does, because it is the one
+// set that will grow: a palette is a UI decision, and the day a colour is
+// added, a hand-written sentence is a second place to forget.
+func validateTagColor(raw string) (string, string) {
+	if slices.Contains(tagColors, raw) {
+		return raw, ""
+	}
+	quoted := make([]string, 0, len(tagColors))
+	for _, c := range tagColors {
+		quoted = append(quoted, "'"+c+"'")
+	}
+	return "", fmt.Sprintf("A tag colour must be one of %s or %s, but was '%s'",
+		strings.Join(quoted[:len(quoted)-1], ", "), quoted[len(quoted)-1], raw)
 }

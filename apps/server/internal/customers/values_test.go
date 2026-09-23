@@ -963,3 +963,58 @@ func TestValidateAddress_NorwegianRuleAppliesRegardlessOfCountryCasing(t *testin
 		t.Errorf(`validateAddress (country "NO") errors["city"] = %v, want [%q]`, got, wantCity)
 	}
 }
+
+// TestValidateTagName is the tag name rule (owner and tags design D2): 1-100
+// UTF-16 units, trimmed, case preserved — validateFriendlyName's own shape,
+// with 100 instead of 255.
+func TestValidateTagName(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		in      string
+		want    string
+		wantErr string
+	}{
+		{name: "an ordinary name", in: "VIP", want: "VIP"},
+		{name: "case is preserved", in: "vip", want: "vip"},
+		{name: "surrounding space is trimmed", in: "  Prospect  ", want: "Prospect"},
+		{name: "blank is refused", in: "   ", wantErr: "A tag name cannot be null or empty"},
+		{name: "empty is refused", in: "", wantErr: "A tag name cannot be null or empty"},
+		{
+			name:    "past 100 UTF-16 units is refused, counted in UTF-16",
+			in:      strings.Repeat("😀", 51), // 51 emoji = 102 UTF-16 units
+			wantErr: "A tag name cannot be longer than 100 characters, the given value was 102 characters",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := validateTagName(tc.in)
+			if got != tc.want || err != tc.wantErr {
+				t.Errorf("validateTagName(%q) = (%q, %q), want (%q, %q)", tc.in, got, err, tc.want, tc.wantErr)
+			}
+		})
+	}
+}
+
+// TestValidateTagColor is the colour rule (owner and tags design D2): one of
+// Mantine's named colours, so the UI never has to sanitise what the API
+// stored. Every accepted value is listed, because the point of the rule is the
+// exact set.
+func TestValidateTagColor(t *testing.T) {
+	t.Parallel()
+	for _, ok := range []string{"gray", "red", "pink", "grape", "violet", "indigo", "blue", "cyan", "teal", "green", "lime", "yellow", "orange"} {
+		if got, err := validateTagColor(ok); got != ok || err != "" {
+			t.Errorf("validateTagColor(%q) = (%q, %q), want it accepted", ok, got, err)
+		}
+	}
+	want := "A tag colour must be one of 'gray', 'red', 'pink', 'grape', 'violet', 'indigo', 'blue', 'cyan', 'teal', 'green', 'lime', 'yellow' or 'orange', but was '#ff0000'"
+	if _, err := validateTagColor("#ff0000"); err != want {
+		t.Errorf("validateTagColor(#ff0000) error = %q, want %q", err, want)
+	}
+	// Case-sensitive, like every other value rule in this file that names a
+	// closed set of lowercase tokens.
+	if _, err := validateTagColor("Red"); err == "" {
+		t.Error("validateTagColor(Red) was accepted, want it refused: the set is lowercase")
+	}
+}

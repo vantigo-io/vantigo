@@ -43,23 +43,28 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/identity/account` (putIdentityAccount)
 - `PUT /api/v1/identity/scim/v2/Users/{id}` (putIdentityScimV2UsersById)
 
-## customers (16 uncovered)
+## customers (21 uncovered)
 
+- `DELETE /api/v1/customers/tags/{tagId}` (deleteCustomersTagsByTagId)
 - `DELETE /api/v1/customers/{id}/addresses/{addressId}` (deleteCustomersByIdAddressesByAddressId)
 - `GET /api/v1/customers/assignable-users` (getCustomersAssignableUsers)
 - `GET /api/v1/customers/stats/attention` (getCustomersStatsAttention)
 - `GET /api/v1/customers/stats/summary` (getCustomersStatsSummary)
 - `GET /api/v1/customers/stats/timeseries` (getCustomersStatsTimeseries)
+- `GET /api/v1/customers/tags` (getCustomersTags)
 - `GET /api/v1/customers/{id}/addresses` (getCustomersByIdAddresses)
 - `GET /api/v1/customers/{id}/billing-profile` (getCustomersByIdBillingProfile)
 - `GET /api/v1/customers/{id}/registry-record` (getCustomersByIdRegistryRecord)
+- `POST /api/v1/customers/tags` (postCustomersTags)
 - `POST /api/v1/customers/{id}/addresses` (postCustomersByIdAddresses)
 - `POST /api/v1/customers/{id}/peppol-lookup` (postCustomersByIdPeppolLookup)
 - `POST /api/v1/customers/{id}/registry-refresh` (postCustomersByIdRegistryRefresh)
+- `PUT /api/v1/customers/tags/{tagId}` (putCustomersTagsByTagId)
 - `PUT /api/v1/customers/{id}/addresses/{addressId}` (putCustomersByIdAddressesByAddressId)
 - `PUT /api/v1/customers/{id}/billing-profile` (putCustomersByIdBillingProfile)
 - `PUT /api/v1/customers/{id}/contact-info` (putCustomersByIdContactInfo)
 - `PUT /api/v1/customers/{id}/owner` (putCustomersByIdOwner)
+- `PUT /api/v1/customers/{id}/tags` (putCustomersByIdTags)
 - `PUT /api/v1/customers/{id}/type` (putCustomersByIdType)
 
 ## products (7 uncovered)
@@ -220,4 +225,4 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/expenses/rates/{id}` (putExpensesRatesById)
 - `PUT /api/v1/expenses/settings` (putExpensesSettings)
 
-Total: 194 of 329 operations have no recorded exchange.
+Total: 199 of 334 operations have no recorded exchange.
