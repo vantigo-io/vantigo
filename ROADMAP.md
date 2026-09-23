@@ -161,15 +161,32 @@ timeline events, `customer.owner_changed` and `customer.tags_changed`, each
 recorded only when the value actually changed. See
 [`docs/customers.md#owner-and-tags`](docs/customers.md#owner-and-tags).
 
-**Still ahead in this phase:** typed contact roles with a primary contact,
-replacing today's free-text `role`; follow-ups (a timeline entry's own date and
+**Delivery B (done)** — decided in
+[`docs/superpowers/specs/2026-09-23-customers-contact-roles-design.md`](docs/superpowers/specs/2026-09-23-customers-contact-roles-design.md):
+the association's free-text `role` is a `title` and stays one (migration `00025`
+renames the column; the wire keeps answering `role`, because the recorded
+exchange corpus sends and reads it), and three typed roles — `billing`,
+`project`, `decision_maker` — live in `customers.customer_contact_roles` with
+exactly one primary contact per role, on the addresses' own invariant: the first
+holder is primary whatever the request said, `primary: true` demotes the
+incumbent, clearing the only or primary holder's flag is refused, and losing a
+role promotes the longest-standing remaining holder. The roles ride on the
+association's four existing endpoints and its two existing permissions — no new
+paths, no new key — and a promotion caused by somebody else's write is recorded
+on the promoted contact with the user who caused it. See
+[`docs/customers.md#contacts-and-associations`](docs/customers.md#contacts-and-associations).
+
+**Still ahead in this phase:** follow-ups (a timeline entry's own date and
 assignee, feeding `/stats/attention` and a "my follow-ups" view); customer groups
 that can carry defaults; attachments on a customer and its timeline entries, once
 the storage module has a model for it. Also left for later on purpose: the tag
 vocabulary is **unpaged** (`GET /customers/tags` answers all of it, and both the
 picker and the Manage tags modal want the whole list), which is a bet that a
 vocabulary stays in the tens or low hundreds — paging it is an additive contract
-change the day an installation proves otherwise.
+change the day an installation proves otherwise; the same bet is made for the
+role vocabulary, which is deliberately **three** values — a wider list
+(technical, executive sponsor) is a value change rather than a migration, and
+the free-text title carries everything else today.
 
 *Unblocks:* answering "who owns this relationship and what happens next" without
 building a deals pipeline.

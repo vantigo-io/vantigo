@@ -34,10 +34,12 @@ a dependency of it.
   validation](#legal-identity-and-its-validation).
 - **Contact** — a person: first/last name, optional middle name, prefix, suffix,
   phone and email. A contact is not owned by any one customer.
-- **Customer–contact association** — the many-to-many link, carrying `role` (free
-  text, e.g. "Billing", "Decision maker") and a phone/email that **override** the
-  contact's own for this relationship only. There is no primary-contact flag yet —
-  ROADMAP phase 4.
+- **Customer–contact association** — the many-to-many link, carrying `title`
+  (free text, e.g. "CEO" — what this person is called at this customer, nullable)
+  and a phone/email that **override** the contact's own for this relationship
+  only. The typed roles that answer "who gets the invoice" live beside it, one
+  row per role in `customers.customer_contact_roles`, with exactly one primary
+  contact per role. See [Contacts and associations](#contacts-and-associations).
 - **Contact info** *(on the customer itself, not to be confused with a Contact
   above)* — `email varchar(255)`, `phone varchar(30)`, `website varchar(2048)` on
   `customers.customers` itself, all nullable: what reaches the customer, not one of
@@ -144,15 +146,147 @@ instead).
 ## Contacts and associations
 
 A contact is a person record independent of any customer; the many-to-many
-association is what links one to a customer, carrying `role` and an optional
+association is what links one to a customer, carrying a `title` and an optional
 phone/email that overrides the contact's own for that relationship. Deleting a
-contact removes every association it has, each recorded as a `customer.contact_removed`
-event against the customer it was attached to, all inside one transaction with a
-row lock on the contact.
+contact removes every association it has, each recorded as a
+`customer.contact_removed` event against the customer it was attached to, all
+inside one transaction with a row lock on the contact.
 
-Ten operations in total: list/create/get/update/delete a contact, list a contact's
-customers, list a customer's contacts, attach/update/detach an association. See the
-[API](#api) table for exactly which permission gates which.
+Ten operations in total: list/create/get/update/delete a contact, list a
+contact's customers, list a customer's contacts, attach/update/detach an
+association. See the [API](#api) table for exactly which permission gates which.
+
+### The title, and why `role` is still on the wire
+
+`customers.customers_contacts.title` is free text and nullable. It was called
+`role` until migration `00025` renamed it, and the rename is the whole of the
+change: every value the column held was a job title (`CEO`, `CTO`), which
+answers "who is this person" and never "who gets the invoice".
+
+The **contract keeps `role`**, and that is deliberate rather than legacy debt.
+In a request it is an optional, deprecated alias of `title`, and `title` wins
+when both are sent; in a response it is required and answers the title or `""`.
+The recorded exchange corpus — frozen evidence from the retired .NET suites —
+sends `{"contactId": N, "role": "CEO"}` and reads `role` back, so a contract
+that dropped it would be a contract this codebase can no longer prove itself
+against. `title` and `roles` are additive and optional in the yaml for the same
+reason, even though the server always answers `roles`.
+
+A request with **neither a title nor at least one role** is refused (400, field
+`title`, `A contact needs a title or at least one role`): an association that
+says nothing about the person is not worth having. On an update, "at least one
+role" counts the roles the association keeps — `roles` omitted means "leave them
+alone", so changing only a phone number on an association with three roles is
+not suddenly a request that says nothing.
+
+### Typed roles, and one primary per role
+
+`customers.customer_contact_roles(customer_id, contact_id, role, is_primary,
+created_at)` holds one row per role a contact has at a customer. The vocabulary
+is three values, defined in Go and nowhere else:
+
+| role | answers |
+| --- | --- |
+| `billing` | who gets the invoice (and the reminder) |
+| `project` | who is spoken to day to day |
+| `decision_maker` | who approves |
+
+Not a yaml `enum:` (a contract enum answers a 400 this module cannot word) and
+not a database `CHECK` (which would turn a widened list from a value change into
+a migration — the same reasoning migration `00024` gives for a tag's colour).
+A role outside the three is a 400 on `roles`: `A contact role must be one of
+'billing', 'project' or 'decision_maker', but was '…'`. A role named twice in
+one request is a 400 on `roles` too: two contradictory primary flags for one
+role is not something to resolve silently.
+
+**The primary rule is the addresses' primary rule, verbatim**, with
+`(customer_id, role)` where addresses have `(customer_id, type)` — see
+[Addresses](#addresses) for the mechanism, because it is the same mechanism and
+not a second one:
+
+1. **The application layer, as the mechanism.** Every write that touches roles —
+   attach, update, detach, and the contact delete — locks the customer row
+   `FOR NO KEY UPDATE` first (`LockCustomer`) and does everything else inside
+   that transaction. Within it, **demote happens before promote, and delete
+   happens before promote.**
+2. **The database, as the last word.** The partial unique index
+   `ux_customer_contact_roles_primary` on `(customer_id, role) WHERE is_primary`
+   (migration `00025`) enforces the invariant if the ordering above were ever
+   wrong. It is the backstop, not the mechanism.
+
+The rest of the invariant's shape: the **first** contact given a role is its
+primary whatever the request says. `primary: true` on another contact demotes the
+current one in the same transaction. An **explicit** `primary: false` on the
+contact that is the only or the primary holder is **refused** (400, field
+`roles`) — there is always a primary while anyone holds the role. A contact
+**losing** a role it was primary for is not refused the way clearing the flag
+is: it promotes the **longest-standing** remaining holder (`created_at`, then
+`contact_id`), which is why `created_at` is never rewritten by a demotion or a
+promotion — seniority in a role is what decides succession. Detaching a
+contact, and deleting one (whose cascade removes the association and its role
+rows), run that same promotion for every role the contact was primary for.
+
+Two checks decide that refusal, not one: a request that would clear the only or
+primary holder's flag is refused before the update handler's no-op shortcut can
+run at all — against the read taken before any lock, so a client is never told
+its `primary: false` was applied when it changes nothing else — and `applyRoles`
+refuses the same way again under the customer row's lock, against what the lock
+actually found; that second check is the **authoritative** one, the first exists
+only so the shortcut above it cannot let a refusal through unnoticed.
+
+The contact delete is the one write here that locks more than one customer row:
+it locks every customer the contact is attached to, in ascending `customer_id`
+order (which is why `ListAssociationsForContact` has an `ORDER BY`), so two
+concurrent deletes of two contacts sharing two customers cannot deadlock with
+each other. It can still deadlock with a concurrent **attach**, which takes the
+customer row's lock before the contact row's while the delete takes them the
+other way round — the delete cannot reverse its order, because reading the
+contact's associations is what tells it which customers to lock. Both writes
+therefore retry a serialization failure or deadlock up to three times
+(`contactRoleWriteAttempts`), the same treatment the tag set replace gets for the
+same kind of cycle. Reading is not the same as locking, either: the delete reads
+the contact's associations once before any customer row is locked, only to learn
+which customers to lock, and that read is thrown away; the read that actually
+decides what gets recorded and who gets promoted happens a second time, under
+every one of those locks, which is the only read here that can be trusted — the
+first is additive, not authoritative.
+
+Roles ride on the association's **own** endpoints; there are no new paths.
+`POST /customers/{id}/contacts` takes `roles` as the roles to give (none when
+omitted), `PUT /customers/{id}/contacts/{contactId}` takes it as the **complete**
+set to hold — omitted means unchanged, and unchanged is resolved against the set
+the customer row's lock finds at write time, not the one read earlier to shape
+validation, so a concurrent write in the window between the two is not silently
+discarded; `[]` means none — and both list shapes answer `roles` in the fixed
+order `billing, project, decision_maker`.
+
+Inside a `roles` array, **`primary` is three-valued**, and the three values are
+three different instructions:
+
+| `primary` | on a role the contact already holds | on a role it does not hold yet |
+| --- | --- | --- |
+| omitted | leave the flag exactly as it is | the first-holder rule: primary if nobody holds the role, otherwise not |
+| `true` | become the primary, demoting whoever holds it | become the primary, demoting whoever holds it |
+| `false` | **refused** if this contact is the primary holder; otherwise stays non-primary | join as a plain member — unless nobody holds the role, in which case the first-holder rule still makes it primary |
+
+The omitted case is what makes "the complete set of roles" a writable field at
+all. A client rebuilding the set from a checkbox group states which roles it
+wants, not who should be primary for each; reading an omitted flag as `false`
+would turn "also give this contact billing" into "and stop being the primary
+project contact" — and because clearing a primary flag is *refused* rather than
+applied, the request would fail for something it never said. So an omitted flag
+asks for nothing, and only an explicit `false` is the refusal.
+
+The association endpoints' existing permissions cover roles — a role is part of
+the association — so this delivery adds no permission key.
+`GET /customers/{id}/contacts` keeps its contact-name order: "the primary
+billing contact" is found by scanning the list, which is what the UI does. A
+directory accessor (`CustomerDirectory.PrimaryContact`) is one added method the
+day Invoices asks for it, and not before.
+
+**Association writes touch no `revision`.** `customers_contacts` and
+`customer_contact_roles` are off the customer row, exactly as addresses and tags
+are, so no write here takes a revision, accepts one or bumps one.
 
 ## Contact info, addresses and the billing profile
 
@@ -503,6 +637,23 @@ These are immutable — there is no edit or delete endpoint for a generated entr
   characters on its own, and an untruncated insert would fail at the database with
   a "value too long" error on an otherwise valid request. The payload's own
   `display` field is **never** truncated — only the summary column is.
+- The four contact events (`customer.contact_attached`,
+  `customer.contact_relationship_updated`, `customer.contact_detached`,
+  `customer.contact_removed`) carry `title` and `roles` (`[{role, primary}]`,
+  never null) beside the `role` key they have always had, which is the same value
+  as `title` and stays because entries already written speak it.
+  `customer.contact_relationship_updated` is recorded only when the title, the
+  phone, the email, the role set or a primary flag actually changed, and its
+  summary names which: `Now the primary billing contact: …` when the contact
+  became a role's primary, `Roles updated: …` when the set moved without a new
+  primary, and the older `Contact relationship updated: …` when only the title,
+  phone or email did. A **promotion** caused by somebody else's write — a contact
+  that dropped a role it was primary for, a detach, a deleted contact — is
+  recorded on the *promoted* contact as a `customer.contact_relationship_updated`
+  with the `Now the primary … contact` summary and **the acting user who caused
+  it**: a person did this, indirectly, and the timeline's job is to say who.
+  Typed contact roles add no new event type, so nothing new was needed in
+  `-customer-timeline.tsx`'s `typeKey`.
 
 Manual event types: `note`, `interaction.call`, `interaction.meeting`,
 `interaction.email`, `registry.change`, `other`. A manual entry carries an
@@ -1532,6 +1683,21 @@ been in since the foundation.
   on the header. Contact info rides on the customer row already fetched for the
   header, so the card reads it off that cache; addresses are their own sub-resource
   with their own query.
+- **Contacts card** (typed contact roles design D5, `-customer-contacts-card.tsx`) —
+  and its mirror, the contact page's customers card
+  (`contacts.$contactId.tsx`): both show the association's title under the
+  name and its role badges (`ContactRoleBadges`) beside it, a star on the
+  primary one whose `aria-label` spells out "Primary billing contact" so the
+  star is not the only carrier of the fact. The attach and edit modals share
+  one `ConnectionFields` (`-connection.tsx`): a title input and a checkbox per
+  role, each with a Primary switch enabled only while its box is ticked, and
+  **on and disabled** for a role the contact already holds as primary — with the
+  reason shown as a tooltip: "Already the only holder" where the page can tell
+  (the customer's contacts card holds every association at that customer, so it
+  scans them for another holder), and "the primary holder stays primary — make
+  another contact primary instead" where it cannot (the contact page lists the
+  customers a contact is attached to, not the other contacts at each one).
+  Saving sends `title` and the complete `roles`.
 - **Billing card** (design D6) — the billing profile shown read-only, with each
   computed warning explained in words rather than shown as its raw code, and an
   edit modal behind a `canManageBilling` capability prop sourced the same way
@@ -1665,11 +1831,25 @@ owner per customer, named through `contracts.UserDirectory` and never stored as 
 foreign key, filterable as `me`/`none`/a user id; a case-insensitively unique tag
 vocabulary a customer's set is replaced against; and the two generated events,
 `customer.owner_changed` and `customer.tags_changed`, that record either. No
-permission key was added. Still ahead in the phase: typed contact roles with a
-primary contact, replacing today's free-text `role`; a follow-up date and assignee
-on a timeline entry, feeding `/stats/attention` and a "my follow-ups" view; customer
-groups that carry defaults; and attachments on a customer and its timeline entries,
-once the storage module has a model for it.
+permission key was added.
+
+**Phase 4 delivery B** — [Contacts and associations](#contacts-and-associations) —
+has since landed on top of it: the association's free-text `role` is a `title`
+and stays one (migration `00025` renames the column; the wire keeps answering
+`role`, because the recorded exchange corpus sends and reads it), and three
+typed roles — `billing`, `project`, `decision_maker` — live in
+`customers.customer_contact_roles` with exactly one primary contact per role,
+on the addresses' own invariant. The roles ride on the association's four
+existing endpoints and its two existing permissions — no new paths, no new key
+— and a promotion caused by somebody else's write is recorded on the promoted
+contact with the user who caused it. Still ahead in the phase: a follow-up date
+and assignee on a timeline entry, feeding `/stats/attention` and a "my
+follow-ups" view; customer groups that carry defaults; and attachments on a
+customer and its timeline entries, once the storage module has a model for it.
+The role vocabulary is deliberately **three** values, the same "unpaged, on
+purpose" bet the tag vocabulary makes — a wider list (technical, executive
+sponsor) is a value change rather than a migration, and the free-text title
+carries everything else today.
 
 Past that, the remaining gaps are exactly
 what [ROADMAP.md's Customers section](../ROADMAP.md#customers) is built around —
