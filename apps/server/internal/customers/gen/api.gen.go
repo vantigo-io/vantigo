@@ -25,10 +25,6 @@ type AttachCustomerContactRequest struct {
 	Email     *string `json:"email,omitempty"`
 	Phone     *string `json:"phone,omitempty"`
 
-	// Role Deprecated alias of title, kept because the recorded exchange corpus sends it. title wins when both are given.
-	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	Role *string `json:"role,omitempty"`
-
 	// Roles The typed roles to give the contact (typed contact roles design D3). Omitted means none.
 	Roles *[]CustomerContactRoleRequest `json:"roles,omitempty"`
 
@@ -176,10 +172,6 @@ type CustomerContactRequest struct {
 	Email *string `json:"email,omitempty"`
 	Phone *string `json:"phone,omitempty"`
 
-	// Role Deprecated alias of title, kept because the recorded exchange corpus sends it. title wins when both are given.
-	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	Role *string `json:"role,omitempty"`
-
 	// Roles The complete set of typed roles the contact is to hold for this customer (typed contact roles design D3). Omitted leaves the roles unchanged; an empty array clears them. A role listed without a primary keeps the primary flag it already has, so replacing the set is not an accidental demotion.
 	Roles *[]CustomerContactRoleRequest `json:"roles,omitempty"`
 
@@ -193,13 +185,10 @@ type CustomerContactResponse struct {
 	Email   *string         `json:"email,omitempty"`
 	Phone   *string         `json:"phone,omitempty"`
 
-	// Role The association's title, or "" when it has none. Kept required and kept under this name because the recorded exchange corpus predates title; new clients read title.
-	Role string `json:"role"`
-
 	// Roles Every typed role this contact holds for this customer, in the fixed order billing, project, decision_maker (typed contact roles design D3). Always present on responses from this version on — an empty array when the contact holds none — and optional here only because the recorded exchange corpus predates it.
 	Roles *[]CustomerContactRole `json:"roles,omitempty"`
 
-	// Title What this person is called at this customer (typed contact roles design D1). Absent when the association has no title; role answers "" in that case.
+	// Title What this person is called at this customer (typed contact roles design D1). Absent when the association has no title; the roles then say who the person is.
 	Title *string `json:"title,omitempty"`
 }
 
@@ -362,13 +351,10 @@ type GetContactCustomersContactCustomerResponse struct {
 	Email    *string                              `json:"email,omitempty"`
 	Phone    *string                              `json:"phone,omitempty"`
 
-	// Role The association's title, or "" when it has none. Kept required and kept under this name because the recorded exchange corpus predates title; new clients read title.
-	Role string `json:"role"`
-
 	// Roles Every typed role this contact holds for this customer, in the fixed order billing, project, decision_maker (typed contact roles design D3). Always present on responses from this version on — an empty array when the contact holds none — and optional here only because the recorded exchange corpus predates it.
 	Roles *[]CustomerContactRole `json:"roles,omitempty"`
 
-	// Title What this person is called at this customer (typed contact roles design D1). Absent when the association has no title; role answers "" in that case.
+	// Title What this person is called at this customer (typed contact roles design D1). Absent when the association has no title; the roles then say who the person is.
 	Title *string `json:"title,omitempty"`
 }
 

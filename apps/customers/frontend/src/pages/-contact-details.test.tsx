@@ -102,7 +102,7 @@ describe("contact details page", () => {
           data: [
             {
               customer: { id: 2002, name: "Refsdal Holding" },
-              role: "CEO",
+              title: "CEO",
               phone: null,
               email: "anders@refsdalholding.no",
             },
@@ -122,7 +122,7 @@ describe("contact details page", () => {
 
   it("attaches the contact to a customer found through the search", async () => {
     const attachSpy = vi.fn<(init?: RequestInit) => Response>(() =>
-      jsonResponse(200, { contact: anders, role: "CEO", phone: null, email: null }),
+      jsonResponse(200, { contact: anders, title: "CEO", phone: null, email: null }),
     );
 
     stubFetch({
@@ -163,7 +163,6 @@ describe("contact details page", () => {
           data: [
             {
               customer: { id: 2002, customerNumber: 42, name: "Refsdal Holding" },
-              role: "CEO",
               title: "CEO",
               roles: [{ role: "decision_maker", primary: true }],
               phone: null,
@@ -192,7 +191,6 @@ describe("contact details page", () => {
           data: [
             {
               customer: { id: 2002, name: "Refsdal Holding" },
-              role: "CEO",
               title: "CEO",
               roles: [{ role: "billing", primary: true }],
               phone: null,

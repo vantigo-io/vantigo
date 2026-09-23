@@ -119,7 +119,7 @@ func TestAttachContact_RacesDeleteContact_OnTheSameContactRow(t *testing.T) {
 
 	attach := func() *modtest.Response {
 		return c.Do(http.MethodPost, fmt.Sprintf("/api/v1/customers/%d/contacts", customer.Id), map[string]any{
-			"contactId": contact.Id, "role": "CEO",
+			"contactId": contact.Id, "title": "CEO",
 		})
 	}
 	del := func() *modtest.Response {

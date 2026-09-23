@@ -11,11 +11,6 @@ components:
                 phone:
                     nullable: true
                     type: string
-                role:
-                    deprecated: true
-                    description: Deprecated alias of title, kept because the recorded exchange corpus sends it. title wins when both are given.
-                    nullable: true
-                    type: string
                 roles:
                     description: The typed roles to give the contact (typed contact roles design D3). Omitted means none.
                     items:
@@ -356,11 +351,6 @@ components:
                 phone:
                     nullable: true
                     type: string
-                role:
-                    deprecated: true
-                    description: Deprecated alias of title, kept because the recorded exchange corpus sends it. title wins when both are given.
-                    nullable: true
-                    type: string
                 roles:
                     description: The complete set of typed roles the contact is to hold for this customer (typed contact roles design D3). Omitted leaves the roles unchanged; an empty array clears them. A role listed without a primary keeps the primary flag it already has, so replacing the set is not an accidental demotion.
                     items:
@@ -381,21 +371,17 @@ components:
                 phone:
                     nullable: true
                     type: string
-                role:
-                    description: The association's title, or "" when it has none. Kept required and kept under this name because the recorded exchange corpus predates title; new clients read title.
-                    type: string
                 roles:
                     description: Every typed role this contact holds for this customer, in the fixed order billing, project, decision_maker (typed contact roles design D3). Always present on responses from this version on — an empty array when the contact holds none — and optional here only because the recorded exchange corpus predates it.
                     items:
                         $ref: '#/components/schemas/CustomerContactRole'
                     type: array
                 title:
-                    description: What this person is called at this customer (typed contact roles design D1). Absent when the association has no title; role answers "" in that case.
+                    description: What this person is called at this customer (typed contact roles design D1). Absent when the association has no title; the roles then say who the person is.
                     nullable: true
                     type: string
             required:
                 - contact
-                - role
             type: object
         CustomerContactRole:
             description: One typed role a contact holds for a customer (typed contact roles design D2). role is 'billing' (who gets the invoice and the reminder), 'project' (who is spoken to day to day) or 'decision_maker' (who approves). primary marks the one contact that holds the role for this customer — there is always exactly one while anyone holds the role at all.
@@ -728,21 +714,17 @@ components:
                 phone:
                     nullable: true
                     type: string
-                role:
-                    description: The association's title, or "" when it has none. Kept required and kept under this name because the recorded exchange corpus predates title; new clients read title.
-                    type: string
                 roles:
                     description: Every typed role this contact holds for this customer, in the fixed order billing, project, decision_maker (typed contact roles design D3). Always present on responses from this version on — an empty array when the contact holds none — and optional here only because the recorded exchange corpus predates it.
                     items:
                         $ref: '#/components/schemas/CustomerContactRole'
                     type: array
                 title:
-                    description: What this person is called at this customer (typed contact roles design D1). Absent when the association has no title; role answers "" in that case.
+                    description: What this person is called at this customer (typed contact roles design D1). Absent when the association has no title; the roles then say who the person is.
                     nullable: true
                     type: string
             required:
                 - customer
-                - role
             type: object
         GetContactCustomersCustomerReference:
             properties:
@@ -2766,7 +2748,7 @@ paths:
             summary: Search users assignable as a customer's owner
             tags:
                 - Customers
-            x-vantigo-access: permission:customers:update
+            x-vantigo-access: permission:customers:view
     /api/v1/customers/contacts:
         get:
             operationId: getCustomersContacts

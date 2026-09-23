@@ -537,11 +537,6 @@ export interface components {
             contactId: number;
             email?: string | null;
             phone?: string | null;
-            /**
-             * @deprecated
-             * @description Deprecated alias of title, kept because the recorded exchange corpus sends it. title wins when both are given.
-             */
-            role?: string | null;
             /** @description The typed roles to give the contact (typed contact roles design D3). Omitted means none. */
             roles?: components["schemas"]["CustomerContactRoleRequest"][];
             /** @description What this person is called at this customer — a job title, free text (typed contact roles design D1). At most 255 characters, trimmed. A request with neither a title nor at least one role is refused with a field error on title. */
@@ -682,11 +677,6 @@ export interface components {
         CustomerContactRequest: {
             email?: string | null;
             phone?: string | null;
-            /**
-             * @deprecated
-             * @description Deprecated alias of title, kept because the recorded exchange corpus sends it. title wins when both are given.
-             */
-            role?: string | null;
             /** @description The complete set of typed roles the contact is to hold for this customer (typed contact roles design D3). Omitted leaves the roles unchanged; an empty array clears them. A role listed without a primary keeps the primary flag it already has, so replacing the set is not an accidental demotion. */
             roles?: components["schemas"]["CustomerContactRoleRequest"][];
             /** @description What this person is called at this customer — a job title, free text (typed contact roles design D1). At most 255 characters, trimmed. A request that would leave the association with neither a title nor a role is refused with a field error on title. */
@@ -696,11 +686,9 @@ export interface components {
             contact: components["schemas"]["ContactResponse"];
             email?: string | null;
             phone?: string | null;
-            /** @description The association's title, or "" when it has none. Kept required and kept under this name because the recorded exchange corpus predates title; new clients read title. */
-            role: string;
             /** @description Every typed role this contact holds for this customer, in the fixed order billing, project, decision_maker (typed contact roles design D3). Always present on responses from this version on — an empty array when the contact holds none — and optional here only because the recorded exchange corpus predates it. */
             roles?: components["schemas"]["CustomerContactRole"][];
-            /** @description What this person is called at this customer (typed contact roles design D1). Absent when the association has no title; role answers "" in that case. */
+            /** @description What this person is called at this customer (typed contact roles design D1). Absent when the association has no title; the roles then say who the person is. */
             title?: string | null;
         };
         /** @description One typed role a contact holds for a customer (typed contact roles design D2). role is 'billing' (who gets the invoice and the reminder), 'project' (who is spoken to day to day) or 'decision_maker' (who approves). primary marks the one contact that holds the role for this customer — there is always exactly one while anyone holds the role at all. */
@@ -849,11 +837,9 @@ export interface components {
             customer: components["schemas"]["GetContactCustomersCustomerReference"];
             email?: string | null;
             phone?: string | null;
-            /** @description The association's title, or "" when it has none. Kept required and kept under this name because the recorded exchange corpus predates title; new clients read title. */
-            role: string;
             /** @description Every typed role this contact holds for this customer, in the fixed order billing, project, decision_maker (typed contact roles design D3). Always present on responses from this version on — an empty array when the contact holds none — and optional here only because the recorded exchange corpus predates it. */
             roles?: components["schemas"]["CustomerContactRole"][];
-            /** @description What this person is called at this customer (typed contact roles design D1). Absent when the association has no title; role answers "" in that case. */
+            /** @description What this person is called at this customer (typed contact roles design D1). Absent when the association has no title; the roles then say who the person is. */
             title?: string | null;
         };
         GetContactCustomersCustomerReference: {

@@ -50,7 +50,7 @@ type contactListJSON struct {
 
 type customerContactJSON struct {
 	Contact contactJSON `json:"contact"`
-	Role    string      `json:"role"`
+	Title   *string     `json:"title"`
 	Phone   *string     `json:"phone"`
 	Email   *string     `json:"email"`
 }
@@ -61,7 +61,7 @@ type customerContactListJSON struct {
 
 type contactCustomerJSON struct {
 	Customer contactCustomerReferenceJSON `json:"customer"`
-	Role     string                       `json:"role"`
+	Title    *string                      `json:"title"`
 	Phone    *string                      `json:"phone"`
 	Email    *string                      `json:"email"`
 }
@@ -93,12 +93,12 @@ func createContact(t *testing.T, c *modtest.Client, body map[string]any) contact
 	return contact
 }
 
-// attachContact attaches contactID to customerID with role, failing the test
+// attachContact attaches contactID to customerID with title, failing the test
 // on anything but 200.
-func attachContact(t *testing.T, c *modtest.Client, customerID, contactID int32, role string) {
+func attachContact(t *testing.T, c *modtest.Client, customerID, contactID int32, title string) {
 	t.Helper()
 	r := c.Do(http.MethodPost, fmt.Sprintf("/api/v1/customers/%d/contacts", customerID), map[string]any{
-		"contactId": contactID, "role": role,
+		"contactId": contactID, "title": title,
 	})
 	if r.Status != http.StatusOK {
 		t.Fatalf("attach contact %d to customer %d: status %d body %s, want 200", contactID, customerID, r.Status, r.Body)
@@ -436,7 +436,7 @@ func TestAttachContact_ReturnsAssociationWithContact(t *testing.T) {
 	customer := createCustomer(t, c, "Attach Co")
 
 	r := c.Do(http.MethodPost, fmt.Sprintf("/api/v1/customers/%d/contacts", customer.Id), map[string]any{
-		"contactId": contact.Id, "role": "CEO", "email": "attach@attachco.no",
+		"contactId": contact.Id, "title": "CEO", "email": "attach@attachco.no",
 	})
 	if r.Status != http.StatusOK {
 		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
@@ -446,8 +446,8 @@ func TestAttachContact_ReturnsAssociationWithContact(t *testing.T) {
 	if association.Contact.Id != contact.Id {
 		t.Errorf("Contact.Id = %d, want %d", association.Contact.Id, contact.Id)
 	}
-	if association.Role != "CEO" {
-		t.Errorf("Role = %q, want CEO", association.Role)
+	if str(association.Title) != "CEO" {
+		t.Errorf("Title = %q, want CEO", str(association.Title))
 	}
 	if str(association.Email) != "attach@attachco.no" {
 		t.Errorf("Email = %q, want attach@attachco.no", str(association.Email))
@@ -468,7 +468,7 @@ func TestAttachContact_Twice_ReturnsConflict(t *testing.T) {
 	attachContact(t, c, customer.Id, contact.Id, "CEO")
 
 	r := c.Do(http.MethodPost, fmt.Sprintf("/api/v1/customers/%d/contacts", customer.Id), map[string]any{
-		"contactId": contact.Id, "role": "CTO",
+		"contactId": contact.Id, "title": "CTO",
 	})
 	if r.Status != http.StatusConflict {
 		t.Fatalf("status %d body %s, want 409", r.Status, r.Body)
@@ -506,7 +506,7 @@ func TestAttachContact_WithUnknownCustomerOrContact_ReturnsNotFound(t *testing.T
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			r := c.Do(http.MethodPost, fmt.Sprintf("/api/v1/customers/%d/contacts", tc.customerID), map[string]any{
-				"contactId": tc.contactID, "role": "CEO",
+				"contactId": tc.contactID, "title": "CEO",
 			})
 			if r.Status != http.StatusNotFound {
 				t.Errorf("status %d body %s, want 404", r.Status, r.Body)
@@ -525,14 +525,14 @@ func TestAttachContact_WithInvalidConnection_ReportsFieldErrors(t *testing.T) {
 	customer := createCustomer(t, c, "Invalid Connection Co")
 
 	r := c.Do(http.MethodPost, fmt.Sprintf("/api/v1/customers/%d/contacts", customer.Id), map[string]any{
-		"contactId": contact.Id, "role": "", "email": "not-an-email",
+		"contactId": contact.Id, "title": "", "email": "not-an-email",
 	})
 	if r.Status != http.StatusBadRequest {
 		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
 	}
 	var problem validationProblemJSON
 	r.JSON(&problem)
-	want := []string{"email", "role"}
+	want := []string{"email", "title"}
 	got := make([]string, 0, len(problem.Errors))
 	for k := range problem.Errors {
 		got = append(got, k)
@@ -578,7 +578,7 @@ func TestAttachContact_InvalidConnectionAgainstUnknownCustomer_Returns400(t *tes
 	c := authenticatedClient(t, h)
 
 	r := c.Do(http.MethodPost, "/api/v1/customers/999999/contacts", map[string]any{
-		"contactId": 999998, "role": "", // also nonexistent, but validation must win
+		"contactId": 999998, "title": "", // also nonexistent, but validation must win
 	})
 	if r.Status != http.StatusBadRequest {
 		t.Errorf("status %d body %s, want 400 (validation must run before the existence check)", r.Status, r.Body)
@@ -607,8 +607,8 @@ func TestGetCustomerContacts_ReturnsAssociationsSortedByContactName(t *testing.T
 	if list.Data[0].Contact.FirstName != "Alpha" || list.Data[1].Contact.FirstName != "Bravo" {
 		t.Errorf("order = %q, %q, want Alpha, Bravo", list.Data[0].Contact.FirstName, list.Data[1].Contact.FirstName)
 	}
-	if list.Data[0].Role != "CEO" {
-		t.Errorf("Data[0].Role = %q, want CEO", list.Data[0].Role)
+	if str(list.Data[0].Title) != "CEO" {
+		t.Errorf("Data[0].Title = %q, want CEO", str(list.Data[0].Title))
 	}
 	if str(list.Data[0].Contact.Phone) != "+47 11 22 33 44" {
 		t.Errorf("Data[0].Contact.Phone = %q, want \"+47 11 22 33 44\"", str(list.Data[0].Contact.Phone))
@@ -639,15 +639,15 @@ func TestUpdateCustomerContact_ReplacesConnectionFields(t *testing.T) {
 	attachContact(t, c, customer.Id, contact.Id, "CEO")
 
 	r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/contacts/%d", customer.Id, contact.Id), map[string]any{
-		"role": "Chairman", "phone": "+47 55 66 77 88",
+		"title": "Chairman", "phone": "+47 55 66 77 88",
 	})
 	if r.Status != http.StatusOK {
 		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
 	}
 	var updated customerContactJSON
 	r.JSON(&updated)
-	if updated.Role != "Chairman" {
-		t.Errorf("Role = %q, want Chairman", updated.Role)
+	if str(updated.Title) != "Chairman" {
+		t.Errorf("Title = %q, want Chairman", str(updated.Title))
 	}
 	if str(updated.Phone) != "+47 55 66 77 88" {
 		t.Errorf("Phone = %q, want \"+47 55 66 77 88\"", str(updated.Phone))
@@ -665,7 +665,7 @@ func TestUpdateCustomerContact_WhenAssociationDoesNotExist_ReturnsNotFound(t *te
 	c := authenticatedClient(t, h)
 	customer := createCustomer(t, c, "No Association Co")
 
-	r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/contacts/999999", customer.Id), map[string]any{"role": "CEO"})
+	r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/contacts/999999", customer.Id), map[string]any{"title": "CEO"})
 	if r.Status != http.StatusNotFound {
 		t.Errorf("status %d body %s, want 404", r.Status, r.Body)
 	}
@@ -685,7 +685,7 @@ func TestUpdateCustomerContact_InvalidConnectionAgainstUnknownAssociation_Return
 	customer := createCustomer(t, c, "Ordering Co")
 
 	r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/contacts/999999", customer.Id), map[string]any{
-		"role": "", // also invalid, but existence must win
+		"title": "", // also invalid, but existence must win
 	})
 	if r.Status != http.StatusNotFound {
 		t.Errorf("status %d body %s, want 404 (the existence check must run before validation)", r.Status, r.Body)
@@ -746,7 +746,7 @@ func TestGetContactCustomers_ReturnsAssociationsSortedByCustomerName(t *testing.
 
 	attachContact(t, c, bravoCustomer.Id, contact.Id, "CTO")
 	attachResponse := c.Do(http.MethodPost, fmt.Sprintf("/api/v1/customers/%d/contacts", alphaCustomer.Id), map[string]any{
-		"contactId": contact.Id, "role": "CEO", "phone": "+47 99 00 11 22",
+		"contactId": contact.Id, "title": "CEO", "phone": "+47 99 00 11 22",
 	})
 	if attachResponse.Status != http.StatusOK {
 		t.Fatalf("attach: status %d body %s, want 200", attachResponse.Status, attachResponse.Body)
@@ -761,8 +761,8 @@ func TestGetContactCustomers_ReturnsAssociationsSortedByCustomerName(t *testing.
 	if list.Data[0].Customer.Name != "Manysided Alpha AS" || list.Data[1].Customer.Name != "Manysided Bravo AS" {
 		t.Errorf("order = %q, %q, want Manysided Alpha AS, Manysided Bravo AS", list.Data[0].Customer.Name, list.Data[1].Customer.Name)
 	}
-	if list.Data[0].Role != "CEO" {
-		t.Errorf("Data[0].Role = %q, want CEO", list.Data[0].Role)
+	if str(list.Data[0].Title) != "CEO" {
+		t.Errorf("Data[0].Title = %q, want CEO", str(list.Data[0].Title))
 	}
 	if str(list.Data[0].Phone) != "+47 99 00 11 22" {
 		t.Errorf("Data[0].Phone = %q, want \"+47 99 00 11 22\"", str(list.Data[0].Phone))
@@ -865,7 +865,7 @@ func TestAttachContact_RecordsTimelineEvent(t *testing.T) {
 	customer := createCustomer(t, c, "Timeline Attach Co")
 
 	r := c.Do(http.MethodPost, fmt.Sprintf("/api/v1/customers/%d/contacts", customer.Id), map[string]any{
-		"contactId": contact.Id, "role": "CEO", "phone": "+47 11 22 33 44",
+		"contactId": contact.Id, "title": "CEO", "phone": "+47 11 22 33 44",
 	})
 	if r.Status != http.StatusOK {
 		t.Fatalf("attach: status %d body %s, want 200", r.Status, r.Body)
@@ -876,8 +876,8 @@ func TestAttachContact_RecordsTimelineEvent(t *testing.T) {
 	if event.Summary != wantSummary {
 		t.Errorf("Summary = %q, want %q", event.Summary, wantSummary)
 	}
-	if event.PayloadVersion != 1 {
-		t.Errorf("PayloadVersion = %d, want 1", event.PayloadVersion)
+	if event.PayloadVersion != 2 {
+		t.Errorf("PayloadVersion = %d, want 2 (the role key left the payload, follow-ups design D5)", event.PayloadVersion)
 	}
 	wantPayload := map[string]any{
 		"customerId":  float64(customer.Id),
@@ -886,7 +886,6 @@ func TestAttachContact_RecordsTimelineEvent(t *testing.T) {
 		"firstName":   "Timeline",
 		"middleName":  "Middleman",
 		"lastName":    "Attachsen",
-		"role":        "CEO",
 		"title":       "CEO",
 		"roles":       []any{},
 		"phone":       "+47 11 22 33 44",
@@ -899,7 +898,7 @@ func TestAttachContact_RecordsTimelineEvent(t *testing.T) {
 
 // TestUpdateCustomerContact_RecordsRelationshipUpdatedEvent pins
 // customer.contact_relationship_updated's summary, payload_version and
-// payload for an update that actually changes role/phone/email.
+// payload for an update that actually changes title/phone/email.
 func TestUpdateCustomerContact_RecordsRelationshipUpdatedEvent(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -909,7 +908,7 @@ func TestUpdateCustomerContact_RecordsRelationshipUpdatedEvent(t *testing.T) {
 	attachContact(t, c, customer.Id, contact.Id, "CEO")
 
 	r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/contacts/%d", customer.Id, contact.Id), map[string]any{
-		"role": "Chairman", "email": "chair@timeline.co",
+		"title": "Chairman", "email": "chair@timeline.co",
 	})
 	if r.Status != http.StatusOK {
 		t.Fatalf("update: status %d body %s, want 200", r.Status, r.Body)
@@ -920,8 +919,8 @@ func TestUpdateCustomerContact_RecordsRelationshipUpdatedEvent(t *testing.T) {
 	if event.Summary != wantSummary {
 		t.Errorf("Summary = %q, want %q", event.Summary, wantSummary)
 	}
-	if event.PayloadVersion != 1 {
-		t.Errorf("PayloadVersion = %d, want 1", event.PayloadVersion)
+	if event.PayloadVersion != 2 {
+		t.Errorf("PayloadVersion = %d, want 2 (the role key left the payload, follow-ups design D5)", event.PayloadVersion)
 	}
 	wantPayload := map[string]any{
 		"customerId":  float64(customer.Id),
@@ -930,7 +929,6 @@ func TestUpdateCustomerContact_RecordsRelationshipUpdatedEvent(t *testing.T) {
 		"firstName":   "Timeline",
 		"middleName":  nil,
 		"lastName":    "Updatesen",
-		"role":        "Chairman",
 		"title":       "Chairman",
 		"roles":       []any{},
 		"phone":       nil,
@@ -943,7 +941,7 @@ func TestUpdateCustomerContact_RecordsRelationshipUpdatedEvent(t *testing.T) {
 
 // TestUpdateCustomerContact_NoChange_RecordsNoEvent pins the no-op
 // suppression UpdateCustomerContactEndpoint.cs:43-49 requires (customers
-// inventory §2.4): resubmitting the same role/phone/email records nothing,
+// inventory §2.4): resubmitting the same title/phone/email records nothing,
 // unlike TestUpdateCustomerContact_RecordsRelationshipUpdatedEvent above.
 func TestUpdateCustomerContact_NoChange_RecordsNoEvent(t *testing.T) {
 	t.Parallel()
@@ -954,7 +952,7 @@ func TestUpdateCustomerContact_NoChange_RecordsNoEvent(t *testing.T) {
 	attachContact(t, c, customer.Id, contact.Id, "CEO")
 
 	r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/contacts/%d", customer.Id, contact.Id), map[string]any{
-		"role": "CEO", // identical to the attach above: no phone, no email either time
+		"title": "CEO", // identical to the attach above: no phone, no email either time
 	})
 	if r.Status != http.StatusOK {
 		t.Fatalf("update: status %d body %s, want 200", r.Status, r.Body)
@@ -985,13 +983,13 @@ func TestDetachContact_RecordsTimelineEvent(t *testing.T) {
 	if event.Summary != wantSummary {
 		t.Errorf("Summary = %q, want %q", event.Summary, wantSummary)
 	}
-	if event.PayloadVersion != 1 {
-		t.Errorf("PayloadVersion = %d, want 1", event.PayloadVersion)
+	if event.PayloadVersion != 2 {
+		t.Errorf("PayloadVersion = %d, want 2 (the role key left the payload, follow-ups design D5)", event.PayloadVersion)
 	}
 	wantPayload := map[string]any{
 		"customerId": float64(customer.Id), "contactId": float64(contact.Id),
 		"displayName": "Timeline Detachsen", "firstName": "Timeline", "middleName": nil, "lastName": "Detachsen",
-		"role": "CTO", "title": "CTO", "roles": []any{}, "phone": nil, "email": nil,
+		"title": "CTO", "roles": []any{}, "phone": nil, "email": nil,
 	}
 	if !reflect.DeepEqual(event.Payload, wantPayload) {
 		t.Errorf("Payload = %+v, want %+v", event.Payload, wantPayload)
@@ -1019,13 +1017,13 @@ func TestDeleteContact_RecordsRemovedTimelineEvent(t *testing.T) {
 	if event.Summary != wantSummary {
 		t.Errorf("Summary = %q, want %q", event.Summary, wantSummary)
 	}
-	if event.PayloadVersion != 1 {
-		t.Errorf("PayloadVersion = %d, want 1", event.PayloadVersion)
+	if event.PayloadVersion != 2 {
+		t.Errorf("PayloadVersion = %d, want 2 (the role key left the payload, follow-ups design D5)", event.PayloadVersion)
 	}
 	wantPayload := map[string]any{
 		"customerId": float64(customer.Id), "contactId": float64(contact.Id),
 		"displayName": "Timeline Removesen", "firstName": "Timeline", "middleName": nil, "lastName": "Removesen",
-		"role": "Custodian", "title": "Custodian", "roles": []any{}, "phone": nil, "email": nil,
+		"title": "Custodian", "roles": []any{}, "phone": nil, "email": nil,
 	}
 	if !reflect.DeepEqual(event.Payload, wantPayload) {
 		t.Errorf("Payload = %+v, want %+v", event.Payload, wantPayload)

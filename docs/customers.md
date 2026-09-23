@@ -157,21 +157,17 @@ Ten operations in total: list/create/get/update/delete a contact, list a
 contact's customers, list a customer's contacts, attach/update/detach an
 association. See the [API](#api) table for exactly which permission gates which.
 
-### The title, and why `role` is still on the wire
+### The title
 
 `customers.customers_contacts.title` is free text and nullable. It was called
-`role` until migration `00025` renamed it, and the rename is the whole of the
-change: every value the column held was a job title (`CEO`, `CTO`), which
-answers "who is this person" and never "who gets the invoice".
-
-The **contract keeps `role`**, and that is deliberate rather than legacy debt.
-In a request it is an optional, deprecated alias of `title`, and `title` wins
-when both are sent; in a response it is required and answers the title or `""`.
-The recorded exchange corpus — frozen evidence from the retired .NET suites —
-sends `{"contactId": N, "role": "CEO"}` and reads `role` back, so a contract
-that dropped it would be a contract this codebase can no longer prove itself
-against. `title` and `roles` are additive and optional in the yaml for the same
-reason, even though the server always answers `roles`.
+`role` until migration `00025` renamed it, and it was answered under that name on
+the wire for one delivery longer; the deprecated `role` alias was **removed** with
+phase 4 delivery C, while nothing was live, so `title` is now the only name the
+contract has. The frozen exchange corpus still sends `{"contactId": N, "role":
+"CEO"}` and still validates, because no schema here sets
+`additionalProperties: false` — an unknown key is ignored. A request that sends
+only `role` therefore names no title at all, and with no roles either it is
+refused by the rule below.
 
 A request with **neither a title nor at least one role** is refused (400, field
 `title`, `A contact needs a title or at least one role`): an association that
@@ -276,7 +272,8 @@ order `billing, project, decision_maker`.
 
 **`roles` is the only field on that PUT an omission leaves alone.** The PUT is a
 full replace of the association, so an omitted `title`, `phone` or `email` clears
-it: now that `role` is no longer required, `PUT /customers/{id}/contacts/{contactId}`
+it: now that the free text is no longer the only thing an association can say,
+`PUT /customers/{id}/contacts/{contactId}`
 with `{}` against an association that holds a role is a valid request — the kept
 roles satisfy the title-or-role rule — and it answers 200 with the title, phone
 and email gone, plus a `customer.contact_relationship_updated` event recording
@@ -554,9 +551,12 @@ because each is a decision rather than a side effect:
   error on `ownerUserId` otherwise (`User <id> does not exist`, `User <id> is
   disabled and cannot own a customer`). `GET /customers/assignable-users` is the
   picker's own search — the directory's active users, at most twenty (`limit`,
-  when given, must be between 1 and 20) — and it sits behind `customers:update`,
-  because who a customer *could* be given to is only useful to whoever may give
-  it.
+  when given, must be between 1 and 20) — and it sits behind `customers:view`.
+  It was `customers:update` until phase 4 delivery C: a timeline writer picking a
+  follow-up's assignee holds `customers:timeline-manage` and need not hold
+  `customers:update`, and the display names of active users are what every
+  timeline *reader* already sees on every entry as its author, so there was
+  nothing here for the stricter key to protect.
 
 The list filters on `ownerId`, which takes a user id, the literal `me`, or
 `none`. `me` is resolved from the session, never from anything the request says
@@ -663,8 +663,9 @@ These are immutable — there is no edit or delete endpoint for a generated entr
 - The four contact events (`customer.contact_attached`,
   `customer.contact_relationship_updated`, `customer.contact_detached`,
   `customer.contact_removed`) carry `title` and `roles` (`[{role, primary}]`,
-  never null) beside the `role` key they have always had, which is the same value
-  as `title` and stays because entries already written speak it.
+  never null). Payload version **2** dropped the older `role` key, which held the
+  same value as `title`; entries written before the bump keep it, which is what
+  the version is for.
   `customer.contact_relationship_updated` is recorded only when the title, the
   phone, the email, the role set or a primary flag actually changed, and its
   summary names which: `Now the primary billing contact: …` when the contact

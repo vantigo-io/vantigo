@@ -336,10 +336,14 @@ func (s *server) PutCustomersByIdOwner(ctx context.Context, req gen.PutCustomers
 // The reason contracts.UserDirectory exists (its own doc comment, and
 // projects' GetProjectsByIdAssignableUsers before this): the only user listing
 // identity offers needs the authorization-management policy, so without this a
-// salesperson who is not an administrator could not pick a colleague. It sits
-// behind customers:update rather than customers:view because it is the
-// writer's search: who a customer COULD be given to is only useful to whoever
-// may give it.
+// salesperson who is not an administrator could not pick a colleague.
+//
+// It sat behind customers:update until follow-ups design D1 moved it to
+// customers:view. The reason is the new caller: a timeline writer picking a
+// follow-up's assignee holds customers:timeline-manage and need not hold
+// customers:update at all, and what this operation answers — the display names
+// of active users — is what every timeline READER already sees on every entry
+// as its author. There was nothing here for customers:update to protect.
 //
 // Unlike projects' version there is nothing to exclude — a customer has one
 // owner, not a team, so the current owner is a legitimate result and the

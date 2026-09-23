@@ -498,8 +498,8 @@ func TestGeneratedTimelineEvents_CoverCustomerAndContactAssociationLifecycle(t *
 	customer := createCustomer(t, c, "Timeline Generated Co")
 	contact := createContact(t, c, map[string]any{"firstName": "Timeline", "lastName": "Generated"})
 	c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d", customer.Id), map[string]any{"name": "Timeline updated"})
-	c.Do(http.MethodPost, fmt.Sprintf("/api/v1/customers/%d/contacts", customer.Id), map[string]any{"contactId": contact.Id, "role": "CEO"})
-	c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/contacts/%d", customer.Id, contact.Id), map[string]any{"role": "CTO"})
+	c.Do(http.MethodPost, fmt.Sprintf("/api/v1/customers/%d/contacts", customer.Id), map[string]any{"contactId": contact.Id, "title": "CEO"})
+	c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/contacts/%d", customer.Id, contact.Id), map[string]any{"title": "CTO"})
 	c.Do(http.MethodDelete, fmt.Sprintf("/api/v1/customers/%d/contacts/%d", customer.Id, contact.Id), nil)
 
 	feed := c.Do(http.MethodGet, fmt.Sprintf("/api/v1/customers/%d/timeline?limit=100", customer.Id), nil)
@@ -702,7 +702,7 @@ func TestSemanticallyUnchangedCustomerAndRelationshipUpdatesDoNotCreateEvents(t 
 	if customerUpdate.Status != http.StatusOK {
 		t.Fatalf("noop customer update: status %d, want 200", customerUpdate.Status)
 	}
-	relationshipUpdate := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/contacts/%d", customer.Id, contact.Id), map[string]any{"role": "CEO"})
+	relationshipUpdate := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/contacts/%d", customer.Id, contact.Id), map[string]any{"title": "CEO"})
 	if relationshipUpdate.Status != http.StatusOK {
 		t.Fatalf("noop relationship update: status %d, want 200", relationshipUpdate.Status)
 	}
