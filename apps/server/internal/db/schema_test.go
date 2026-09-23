@@ -323,6 +323,7 @@ func TestCustomersBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"counters",
 		"customer_addresses",
 		"customer_contact_roles",
+		"customer_groups",
 		"customer_peppol_lookups",
 		"customer_registry_records",
 		"customer_tags",
@@ -515,6 +516,71 @@ func TestCustomersBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	// not the migration's own literal text.
 	if !strings.Contains(tagNameIndexDef, "UNIQUE") || !strings.Contains(tagNameIndexDef, "lower((name)") {
 		t.Errorf("ux_customers_tags_name_lower = %q, want a UNIQUE index on lower(name)", tagNameIndexDef)
+	}
+
+	// A group is a vocabulary word too (customer groups design D1), so its
+	// uniqueness is the tag vocabulary's own: an expression index on
+	// lower(name), read through pg_indexes because indexColumns cannot see an
+	// expression. Same cast normalisation as the tags' index above.
+	var groupNameIndexDef string
+	if err := pool.QueryRow(ctx, `SELECT indexdef FROM pg_indexes
+	                              WHERE schemaname = 'customers' AND indexname = 'ux_customers_groups_name_lower'`).Scan(&groupNameIndexDef); err != nil {
+		t.Fatalf("read ux_customers_groups_name_lower definition: %v", err)
+	}
+	if !strings.Contains(groupNameIndexDef, "UNIQUE") || !strings.Contains(groupNameIndexDef, "lower((name)") {
+		t.Errorf("ux_customers_groups_name_lower = %q, want a UNIQUE index on lower(name)", groupNameIndexDef)
+	}
+
+	// The membership's foreign key is RESTRICT, and that is the design rather
+	// than a default (design D2): a group with members is never deleted, and
+	// the database is what makes that true even for a writer that raced the
+	// handler's own member count. 'r' is RESTRICT; 'a' (NO ACTION), 'c'
+	// (CASCADE) and 'n' (SET NULL) would each be a different promise — SET NULL
+	// in particular would silently change every member's effective payment term
+	// with no record on any customer.
+	var groupDeleteRule string
+	if err := pool.QueryRow(ctx, `
+		SELECT confdeltype FROM pg_constraint c
+		JOIN pg_class t ON t.oid = c.conrelid
+		JOIN pg_namespace n ON n.oid = t.relnamespace
+		WHERE n.nspname = 'customers' AND t.relname = 'customers' AND c.contype = 'f'
+		  AND c.conname = 'customers_group_id_fkey'`).Scan(&groupDeleteRule); err != nil {
+		t.Fatalf("query the group foreign key: %v", err)
+	}
+	if groupDeleteRule != "r" {
+		t.Errorf("customers.group_id delete rule = %q, want %q (ON DELETE RESTRICT)", groupDeleteRule, "r")
+	}
+
+	// ix_customers_group is PARTIAL, for migration 00024's own reason restated:
+	// groupId=none is answered by IS NULL and never by an index lookup on a
+	// value, so indexing the unassigned majority would be bytes spent on rows
+	// this index can never serve. The predicate is the load-bearing half, and
+	// indexColumns cannot see one.
+	var groupIndexDef string
+	if err := pool.QueryRow(ctx, `SELECT indexdef FROM pg_indexes
+	                              WHERE schemaname = 'customers' AND indexname = 'ix_customers_group'`).Scan(&groupIndexDef); err != nil {
+		t.Fatalf("read ix_customers_group definition: %v", err)
+	}
+	if strings.Contains(groupIndexDef, "UNIQUE") || !strings.Contains(groupIndexDef, "WHERE (group_id IS NOT NULL)") {
+		t.Errorf("ix_customers_group = %q, want a non-unique PARTIAL index on group_id IS NOT NULL", groupIndexDef)
+	}
+
+	// The CHECK is on the column, not only in Go: 0-365 is the billing
+	// profile's own payment-terms rule (validatePaymentTermsDays,
+	// billing_values.go), and a default outside it would be inherited by every
+	// member of the group. The handler's field error is the message a caller
+	// reads; this is the floor under it.
+	var groupTermsChecks int
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*) FROM pg_constraint c
+		JOIN pg_class t ON t.oid = c.conrelid
+		JOIN pg_namespace n ON n.oid = t.relnamespace
+		WHERE n.nspname = 'customers' AND t.relname = 'customer_groups' AND c.contype = 'c'
+		  AND pg_get_constraintdef(c.oid) LIKE '%default_payment_terms_days%'`).Scan(&groupTermsChecks); err != nil {
+		t.Fatalf("count the group payment-terms check: %v", err)
+	}
+	if groupTermsChecks != 1 {
+		t.Errorf("default_payment_terms_days CHECK constraints = %d, want 1", groupTermsChecks)
 	}
 
 	var tenantIDColumns int

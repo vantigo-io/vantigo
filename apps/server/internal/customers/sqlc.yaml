@@ -20,6 +20,7 @@ sql:
       - ../db/migrations/00024_customers_owner_tags.sql
       - ../db/migrations/00025_customers_contact_roles.sql
       - ../db/migrations/00026_customers_timeline_follow_up.sql
+      - ../db/migrations/00027_customers_groups.sql
     queries: queries
     gen:
       go:
