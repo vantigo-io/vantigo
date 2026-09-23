@@ -3,7 +3,7 @@ import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { EmptyState, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
 import { useId, useState } from "react";
 import {
   type CustomerGroupSummary,
@@ -48,18 +48,39 @@ export const ManageGroupsModal = ({
   onGroupDeleted?: (groupId: string) => void;
 }) => {
   const { t } = useI18n("customers");
-  const { data: groups } = useQuery({ ...customerGroupsQueryOptions(), enabled: opened });
+  const { data: groups, isPending, isError, refetch } = useQuery({ ...customerGroupsQueryOptions(), enabled: opened });
   const [editing, setEditing] = useState<CustomerGroupSummary | null>(null);
   const [deleting, setDeleting] = useState<CustomerGroupSummary | null>(null);
+  // This component stays mounted while the modal is closed, so an edit or a
+  // delete left half-done would greet the next opening — seeded from a snapshot
+  // of the list that may be long stale by then. Closing lets go of both.
+  const close = () => {
+    setEditing(null);
+    setDeleting(null);
+    onClose();
+  };
   // Prefixes the ids that tie a disabled delete to the sentence saying why, so
   // two mounted modals never share one.
   const reasonIdPrefix = useId();
   const blockedReasonId = (group: CustomerGroupSummary) => `${reasonIdPrefix}-blocked-${group.id}`;
 
   return (
-    <Modal opened={opened} onClose={onClose} title={t("manageGroups")} centered>
+    <Modal opened={opened} onClose={close} title={t("manageGroups")} centered>
       <Stack>
-        {(groups ?? []).length === 0 && <EmptyState size="sm" title={t("noGroupsYet")} />}
+        {isPending ? (
+          <ContentSkeleton rows={2} rowHeight={32} />
+        ) : isError ? (
+          // A failed load is not an empty vocabulary: "No groups yet" would
+          // invite creating a name that already exists. The address list's shape.
+          <Stack align="center" py="md">
+            <Text c="red">{t("failedLoadGroups")}</Text>
+            <Button variant="light" onClick={() => refetch()}>
+              {t("tryAgain")}
+            </Button>
+          </Stack>
+        ) : (
+          groups.length === 0 && <EmptyState size="sm" title={t("noGroupsYet")} />
+        )}
         {(groups ?? []).length > 0 && (
           <Table>
             <Table.Tbody>
@@ -208,6 +229,10 @@ const GroupForm = ({ group, onDone }: { group: CustomerGroupSummary | null; onDo
         form.setErrors({ name: t("groupNameTaken") });
         return;
       }
+      // Anything else (a 404 for a group deleted in another tab, above all)
+      // means the list this form was opened from is out of date: it is read
+      // again, so the row stops offering what the server just refused.
+      queryClient.invalidateQueries({ queryKey: customerGroupsQueryOptions().queryKey });
       notifications.show({ color: "red", title: t("groupCouldNotBeSaved"), message: error.message });
     },
   });
@@ -215,12 +240,10 @@ const GroupForm = ({ group, onDone }: { group: CustomerGroupSummary | null; onDo
   return (
     <form
       onSubmit={form.onSubmit((values) => {
+        // One condition, one message: at most three digits rules out signs,
+        // decimals and words, and the range caps what three digits allow.
         const days = values.days.trim();
-        if (days !== "" && !/^\d{1,3}$/.test(days)) {
-          form.setErrors({ days: t("groupDefaultPaymentTermsInvalid") });
-          return;
-        }
-        if (days !== "" && Number(days) > 365) {
+        if (days !== "" && (!/^\d{1,3}$/.test(days) || Number(days) > 365)) {
           form.setErrors({ days: t("groupDefaultPaymentTermsInvalid") });
           return;
         }
@@ -228,7 +251,7 @@ const GroupForm = ({ group, onDone }: { group: CustomerGroupSummary | null; onDo
       })}
     >
       <Stack gap="xs">
-        <TextInput label={t("groupName")} {...form.getInputProps("name")} />
+        <TextInput label={t("groupName")} data-autofocus {...form.getInputProps("name")} />
         <TextInput
           label={t("groupDefaultPaymentTerms")}
           placeholder={t("groupNoDefault")}
@@ -276,8 +299,14 @@ const DeleteGroupConfirmation = ({
       onDone();
       notifications.show({ color: "teal", title: t("groupDeleted"), message: t("groupDeletedMessage") });
     },
-    onError: (error) =>
-      notifications.show({ color: "red", title: t("groupCouldNotBeDeleted"), message: error.message }),
+    onError: (error) => {
+      // A 409 group_in_use (a customer moved in since the list loaded) or a 404
+      // (deleted in another tab): either way the row's count and its enabled
+      // delete are stale, and the next click would fail the same way. The list
+      // is read again so the row says what the server just did.
+      queryClient.invalidateQueries({ queryKey: customerGroupsQueryOptions().queryKey });
+      notifications.show({ color: "red", title: t("groupCouldNotBeDeleted"), message: error.message });
+    },
   });
 
   return (

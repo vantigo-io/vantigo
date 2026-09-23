@@ -159,12 +159,18 @@ export const CustomersPage = ({ canEdit }: { canEdit?: boolean }) => {
   }, [tagId, tags]);
   const [manageGroupsOpened, setManageGroupsOpened] = useState(false);
   const { data: groups } = useQuery(customerGroupsQueryOptions());
-  // Deliberately NO effect dropping a `groupId` the vocabulary does not know,
-  // unlike the Tag filter's above: `none` (the customers in no group) is a
-  // legitimate value the vocabulary will never contain, so that repair would
-  // throw the No-group filter away on every render. A deleted group cannot
-  // still have members to filter by, and `onGroupDeleted` below lets go of the
-  // one deletion this page does see.
+  // The Tag filter's repair above, for the same dead end: a `groupId` no group
+  // answers leaves the Group filter blank (the Select renders nothing for a
+  // value none of its options describes) over an empty table. `none` — the
+  // customers in no group — is the one value the vocabulary never holds, so it
+  // is exempt, or the No-group filter would be thrown away as soon as the
+  // vocabulary landed. Gated on the vocabulary having loaded, as the tags are.
+  useEffect(() => {
+    if (!groupId || groupId === "none" || groups === undefined) return;
+    if (!groups.some((group) => group.id === groupId)) filterBy({ groupId: undefined });
+    // `filterBy` is new every render, as above; the URL state it reads is `groupId`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupId, groups]);
   const toggleSort = (column: SortColumn) => {
     const next: Pick<CustomersListSearch, "sortBy" | "sortDirection"> =
       sortBy !== column

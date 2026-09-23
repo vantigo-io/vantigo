@@ -1,4 +1,4 @@
-import { keepPreviousData, queryOptions } from "@tanstack/react-query";
+import { queryOptions } from "@tanstack/react-query";
 import { type CustomerResponse, normalizeCustomer } from "./customers";
 import { request } from "./request";
 
@@ -40,7 +40,6 @@ export const customerGroupsQueryOptions = () =>
     queryKey: ["customers", "groups"],
     queryFn: async ({ signal }) =>
       (await request<RawCustomerGroupSummary[]>("/api/v1/customers/groups", { signal })).map(normalizeGroupSummary),
-    placeholderData: keepPreviousData,
   });
 
 /**
