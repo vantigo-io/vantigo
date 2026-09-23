@@ -107,6 +107,16 @@ const (
 	associationsView = "customers:associations-view"
 )
 
+// timelineView is the permission that decides whether /stats/attention's
+// follow-up items are included (follow-ups design D2). Like legalIdentityView
+// it is response-shaping, never a gate — that endpoint admits a caller on
+// customers:view and never answers 403 here — and it exists for the same
+// reason: a follow-up item names a timeline entry, customers:timeline-view is
+// sensitive (module.go), and the dashboard must not be a way around the
+// timeline's own door. Every operation that ANSWERS timeline data is gated on
+// this key by module.Router instead, from x-vantigo-access.
+const timelineView = "customers:timeline-view"
+
 // hasPermission reports whether the signed-in caller holds key, evaluated
 // the same way module.Router evaluates x-vantigo-access. Any failure,
 // infrastructure errors included, reads as false. hasPermission itself never

@@ -690,8 +690,9 @@ func (s *server) PostCustomersByIdTimeline(ctx context.Context, req gen.PostCust
 
 	// The assignee is checked against the directory here — before any database
 	// access, let alone a transaction (actor.go's rule, and the same place
-	// PutCustomersByIdOwner checks its own candidate).
-	if fieldErrs, err := s.resolveFollowUpAssignee(ctx, parsed.FollowUp); err != nil {
+	// PutCustomersByIdOwner checks its own candidate). There is no stored
+	// assignee to compare against on a create, so every named one is new.
+	if fieldErrs, err := s.resolveFollowUpAssignee(ctx, parsed.FollowUp, nil); err != nil {
 		return nil, err
 	} else if fieldErrs != nil {
 		return gen.PostCustomersByIdTimeline400ApplicationProblemPlusJSONResponse(
@@ -823,8 +824,11 @@ func (s *server) PutCustomersByIdTimelineByEntryId(ctx context.Context, req gen.
 
 	// The assignee is checked only once the entry itself has been accepted:
 	// a request aimed at an immutable entry or a stale revision must hear
-	// THAT, not a field error about a user it was never going to write.
-	if fieldErrs, err := s.resolveFollowUpAssignee(ctx, parsed.FollowUp); err != nil {
+	// THAT, not a field error about a user it was never going to write. The
+	// entry's own assignee goes in as `stored`, so re-sending the one already
+	// there is never re-validated — a note edit must not fail because the
+	// colleague holding the follow-up has since been disabled.
+	if fieldErrs, err := s.resolveFollowUpAssignee(ctx, parsed.FollowUp, entry.FollowUpAssigneeUserID); err != nil {
 		return nil, err
 	} else if fieldErrs != nil {
 		return gen.PutCustomersByIdTimelineByEntryId400ApplicationProblemPlusJSONResponse(
