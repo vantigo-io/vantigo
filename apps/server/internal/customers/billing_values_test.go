@@ -173,11 +173,11 @@ func TestValidateGLN_StripsWhitespaceAndReportsRawOnError(t *testing.T) {
 func TestValidatePaymentTermsDays_RangeIsZeroTo365(t *testing.T) {
 	errs := map[string][]string{}
 	zero := int32(0)
-	if got := validatePaymentTermsDays(&zero, errs); got == nil || *got != 0 {
+	if got := validatePaymentTermsDays(&zero, "paymentTermsDays", errs); got == nil || *got != 0 {
 		t.Errorf("got %v, want 0", got)
 	}
 	max := int32(365)
-	if got := validatePaymentTermsDays(&max, errs); got == nil || *got != 365 {
+	if got := validatePaymentTermsDays(&max, "paymentTermsDays", errs); got == nil || *got != 365 {
 		t.Errorf("got %v, want 365", got)
 	}
 	if len(errs) != 0 {
@@ -186,7 +186,7 @@ func TestValidatePaymentTermsDays_RangeIsZeroTo365(t *testing.T) {
 
 	tooHigh := int32(366)
 	errs = map[string][]string{}
-	if got := validatePaymentTermsDays(&tooHigh, errs); got != nil {
+	if got := validatePaymentTermsDays(&tooHigh, "paymentTermsDays", errs); got != nil {
 		t.Errorf("got %v, want nil", got)
 	}
 	want := "Payment terms must be between 0 and 365 days, but was 366"
@@ -196,7 +196,7 @@ func TestValidatePaymentTermsDays_RangeIsZeroTo365(t *testing.T) {
 
 	negative := int32(-1)
 	errs = map[string][]string{}
-	if got := validatePaymentTermsDays(&negative, errs); got != nil {
+	if got := validatePaymentTermsDays(&negative, "paymentTermsDays", errs); got != nil {
 		t.Errorf("got %v, want nil", got)
 	}
 	want = "Payment terms must be between 0 and 365 days, but was -1"

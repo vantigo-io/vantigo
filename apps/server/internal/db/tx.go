@@ -117,9 +117,27 @@ func IsForeignKeyViolation(err error, constraints ...string) bool {
 	return isConstraintViolation(err, "23503", constraints)
 }
 
-// isConstraintViolation is the matching both exported checks above do, shared
-// rather than written twice: the rules are identical and only the SQLSTATE
-// differs, so a change to how a name is matched must land in one place.
+// IsRestrictViolation reports whether err is a PostgreSQL restrict_violation
+// (23001) against any of constraints, matched exactly as the two checks above
+// match their own.
+//
+// It is not IsForeignKeyViolation under another name, and the difference is
+// one a caller cannot see in its schema at a glance: a foreign key declared ON
+// DELETE RESTRICT is checked immediately and reports 23001 when the referenced
+// row is deleted, whereas the default NO ACTION (and an insert or update on the
+// referencing side, whatever the action) reports 23503. A caller that deletes
+// the parent of a RESTRICT key — customers' DELETE /customers/groups/{groupId}
+// against customers_group_id_fkey — matches this one; matching 23503 there
+// would compile, pass every test that never races, and turn the one race the
+// key exists to stop into a 500.
+func IsRestrictViolation(err error, constraints ...string) bool {
+	return isConstraintViolation(err, "23001", constraints)
+}
+
+// isConstraintViolation is the matching every exported check above does,
+// shared rather than written three times: the rules are identical and only the
+// SQLSTATE differs, so a change to how a name is matched must land in one
+// place.
 func isConstraintViolation(err error, code string, constraints []string) bool {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) || pgErr.Code != code {
