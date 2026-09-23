@@ -56,6 +56,7 @@ type CustomersCustomer struct {
 	Gln              *string
 	BuyerReference   *string
 	OwnerUserID      *uuid.UUID
+	GroupID          *uuid.UUID
 }
 
 type CustomersCustomerAddress struct {
@@ -80,6 +81,14 @@ type CustomersCustomerContactRole struct {
 	Role       string
 	IsPrimary  bool
 	CreatedAt  time.Time
+}
+
+type CustomersCustomerGroup struct {
+	ID                      uuid.UUID
+	Name                    string
+	DefaultPaymentTermsDays *int32
+	CreatedAt               time.Time
+	UpdatedAt               time.Time
 }
 
 type CustomersCustomerPeppolLookup struct {
