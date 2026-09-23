@@ -26,7 +26,7 @@
 - **No directory call ever runs inside a transaction or under a lock** (`actor.go`'s rule, `owner.go`'s doc comment). The assignee is validated against `contracts.UserDirectory` **before** `db.WithTx` opens; assignee display names are resolved **after** a write commits, in one batched `Users(ids)` call per response, never one per row.
 - **Dates are strict and UTC.** `followUp.dueOn` is parsed with `parseISODate` (`timeline.go`) — a four-digit-year `yyyy-MM-dd` and nothing looser — and **may be in the future**, unlike `occurredOn`. "Today" is always `civilDate(s.deps.Clock())`, midnight UTC. An attention item's `occurredAt` is its `dueOn` at midnight UTC.
 - **The attention list is caller-dependent, and that is new for this module.** `GetCustomersStatsAttention` reads the principal from the context with `contracts.PrincipalFrom(ctx)`, as time's and expenses' items do; the two follow-up types only ever report follow-ups **assigned to the caller or unassigned**. Everything else about `/stats/attention` is unchanged: computed from state on every call, no dismiss state, gated on plain `customers:view`.
-- **Never assert "the last fetch"** in a frontend test — debounced pickers run on their own clock and CI is slow. Filter by method and URL instead. Two different call lists exist and they are not interchangeable: a **per-route `vi.fn` spy** handed to `stubFetch`'s handler map has `spy.mock.calls`, where element `[0]` is the `RequestInit` (the handler's only argument); the value **`stubFetch` itself returns** (`src/test/fetch.ts`) is not a `vi.fn` wrapper and has no `.mock` — it carries plain `calls` (everything, session bootstrap included) and `actualCalls` (everything but the bootstrap) arrays of `[input, init]` pairs. Use `spy.mock.calls[0][0]` for a spied route and `returned.actualCalls.find(([url, init]) => …)` for anything else.
+- **Never assert "the last fetch"** in a frontend test — debounced pickers run on their own clock and CI is slow. Filter by method and URL instead. Two different call lists exist and they are not interchangeable: a **per-route `vi.fn` spy** you wrote yourself and call from the handler has `spy.mock.calls`, whose element `[0]` is whatever you passed it; the value **`stubFetch` itself returns** (`src/test/fetch.ts`) carries `calls` (everything, session bootstrap included) and `actualCalls` (everything but the bootstrap), each an array of `[input, init]` pairs — those two are what this plan's tests read. Use `returned.actualCalls.find(([url, init]) => …)`, never a positional index and never "the last call".
 - A Mantine `Select`/`MultiSelect` is queried as `getByRole("combobox", { name })`, never as a textbox; a plain `TextInput` is a textbox; a `Checkbox` is `getByRole("checkbox", { name })`; a `Switch` renders `<input type="checkbox" role="switch">` in Mantine 9.5, so it is `getByRole("switch", { name })`. Mantine popovers/modals/selects need `<MantineProvider>` (the existing tests already wrap in one). `DateInput` is a textbox.
 - **Both catalogs** (`en` and `nb`) get every new string: `apps/customers/frontend/src/i18n.ts` for the package, `apps/host/frontend/src/catalogs/navigation.ts` and `catalogs/dashboard.ts` for the host. `mise exec -- bun run translations:check` and `mise exec -- bun run i18n:test` must pass.
 - After any `openapi/*.yaml`, `queries/*.sql` or migration change: `cd apps/server && mise exec -- go generate ./...` (a second run must show no new diff), then from the repo root `mise exec -- bun run gen:client` for a yaml change. Commit every generated file (`apps/server/internal/openapi/specs/customers.yaml`, `internal/customers/gen/api.gen.go`, `internal/customers/store/*.go`, each changed `api-schema.d.ts`). This delivery adds three operations, so `openapi/COVERAGE.md` **does** move: regenerate it with `go run ./internal/openapi/cmd/contract coverage -corpus ../../openapi/testdata/exchanges -out ../../openapi/COVERAGE.md` from `apps/server`.
@@ -150,6 +150,23 @@ func TestAssociationRequests_TitleIsTheOnlyNameForTheFreeText(t *testing.T) {
 		"contactId": roleOnly.Id, "roles": []any{map[string]any{"role": "billing"}}})
 	if roles.Title != nil {
 		t.Errorf("title = %v, want null: the request gave none", roles.Title)
+	}
+
+	// Carried over from the test this replaces: the server ALWAYS answers
+	// `roles` as an array, never null, on every item of the list — a promise
+	// that is optional in the yaml only because the corpus predates the field,
+	// and one the `role` removal must not have disturbed.
+	list := listCustomerContacts(t, c, customer.Id)
+	if len(list.Data) != 2 {
+		t.Fatalf("len(data) = %d, want 2", len(list.Data))
+	}
+	for _, item := range list.Data {
+		if item.Roles == nil {
+			t.Errorf("contact %d: roles is null, want an empty array (the server always answers it)", item.Contact.Id)
+		}
+	}
+	if n := h.Count(t, `SELECT count(*) FROM customers.customer_contact_roles WHERE customer_id = $1`, customer.Id); n != 1 {
+		t.Errorf("role rows = %d, want 1: only the second attach gave a typed role", n)
 	}
 }
 ```
@@ -454,7 +471,7 @@ func recordContactEvent(ctx context.Context, q *store.Queries, now time.Time, cu
 
 - [ ] **Step 5: Mechanically retire `role` from `contacts_test.go`**
 
-Twenty-three sites, in file order. Each is an exact replacement.
+About twenty-six sites, in file order — the exact count depends on how the four payload maps are counted, so treat the list below as the anchors and `grep -n 'role\|Role' contacts_test.go` as the authority: nothing named `role` may remain in this file except a typed role's own code inside a `roles` array. Each entry below is an exact replacement.
 
 Lines 51-56 and 62-67, the two JSON structs — `Role string` becomes `Title *string`, because that is the field the server answers now:
 
@@ -533,7 +550,7 @@ Lines ~449, ~610, ~649, ~764, the four response assertions — each reads the po
 	}
 ```
 
-Lines ~885, ~930, ~990, ~1024, the four expected payloads — delete the `"role"` entry from each and bump the two `PayloadVersion` assertions (lines ~879 and ~923) to `2`:
+Lines ~885, ~930, ~990, ~1024, the four expected payloads — delete the `"role"` entry from each and bump **all four** `PayloadVersion` assertions to `2`. There are four, not two: `grep -n 'PayloadVersion !=' contacts_test.go` reports lines **879, 923, 988 and 1022** (attached, relationship-updated, detached and removed), and every one of them reads the same event recorder, so all four move together:
 
 ```go
 	if event.PayloadVersion != 2 {
@@ -642,7 +659,7 @@ type RawContactCustomerResponse = Omit<ContactCustomerResponse, "roles"> & {
 };
 ```
 
-And `titleOf` (lines ~120-128) is deleted; the two normalisers read `title` directly:
+And `titleOf` (lines ~120-128) is deleted; the two normalisers read `title` directly. Both are currently **module-private** (`const normalizeCustomerContact = …` at line ~130, `const normalizeContactCustomer = …` at line ~136); this step **exports** them, because Step 8's test calls `normalizeCustomerContact` directly and the boundary rule it pins has no other seam — `normalizeContactRoles` beside them is already exported for exactly that reason:
 
 ```ts
 export const normalizeCustomerContact = (raw: RawCustomerContactResponse): CustomerContactResponse => ({
@@ -657,7 +674,7 @@ export const normalizeContactCustomer = (raw: RawContactCustomerResponse): Conta
   roles: normalizeContactRoles(raw.roles),
 });
 ```
-(Match the two normalisers' existing names and the exact spread they already use — `grep -n 'normalizeCustomerContact\|normalizeContactCustomer' api/contacts.ts` first. `raw.title ?? null` rather than a bare spread because the property is optional on the wire type and `undefined` is not `null`.)
+(Keep the exact spread each one already uses — `grep -n 'normalizeCustomerContact\|normalizeContactCustomer' api/contacts.ts` first. `raw.title ?? null` rather than a bare spread because the property is optional on the wire type and `undefined` is not `null`. Adding `export` breaks nothing: the four in-file call sites at lines ~185, ~210, ~223 and ~229 are unchanged.)
 
 - [ ] **Step 8: The frontend tests**
 
@@ -667,7 +684,23 @@ In `apps/customers/frontend/src/api/contacts.test.ts` and `apps/customers/fronte
 cd /home/anders/projects/vantigo/vantigo/apps/customers/frontend
 grep -n 'role:' src/api/contacts.test.ts src/pages/-contacts.test.tsx
 ```
-For each hit that is the association's free text (not a `roles: [{ role: "billing" }]` element), delete `role: "…"` and make sure the fixture has `title: "…"` with the same value. Where a test's *name* or comment says "the corpus shape" or "role falls back to title", rewrite it — the fallback is gone. Add one test to `contacts.test.ts` that pins the new boundary rule:
+For each hit that is the association's free text (not a `roles: [{ role: "billing" }]` element), delete `role: "…"` and make sure the fixture has `title: "…"` with the same value. Where a test's *name* or comment says "the corpus shape" or "role falls back to title", rewrite it — the fallback is gone.
+
+Add `normalizeCustomerContact` to `contacts.test.ts`'s import list — the list is sorted, and `normalizeContactRoles` sorts **before** `normalizeCustomerContact` (`…Contact…` vs `…Customer…`, 'o' before 'u'):
+
+```ts
+import {
+  attachCustomerContact,
+  createContact,
+  customerContactsQueryOptions,
+  deleteContact,
+  detachCustomerContact,
+  normalizeContactRoles,
+  normalizeCustomerContact,
+  updateCustomerContact,
+} from "./contacts";
+```
+then add one test that pins the new boundary rule:
 
 ```ts
 it("reads the title straight off the wire and turns an absent one into null", () => {
@@ -782,7 +815,7 @@ In `apps/server/internal/db/schema_test.go`, inside `TestCustomersBaseline_Appli
 ```go
 	applyUpDownUp(t, url, 3) // 00003_customers_baseline.sql
 ```
-stays exactly as it is — `applyUpDownUp(t, url, N)` runs **every** migration up, down to `N-1` and up again, so `00026` is already covered by it and this line must not change. (Read `applyUpDownUp` at line 274 and confirm this before moving on; if it instead applies only up to `N`, then the follow-up columns are not reachable here and the assertions below belong in a new `TestCustomersFollowUp_AppliesAndIsIdempotent` with `applyUpDownUp(t, url, 26)` — decide from the code and say which in the report.)
+stays exactly as it is. `applyUpDownUp(t, url, N)` (line 274) runs **every** migration up, rolls back to `N-1`, and runs up again — `N` names the migration whose `Down` is exercised, not a ceiling — so `00026` is applied by this test as it stands and the assertions below can see its columns. This line must not change.
 
 Then, immediately after the `customers_contacts.title` assertion (the block ending `want \"YES\" and 0`), add:
 
@@ -1336,7 +1369,9 @@ Every change here is **additive**: four new schemas, one new optional property o
 
 - [ ] **Step 1: Add the three timeline follow-up schemas**
 
-In `openapi/customers.yaml`, the schema block is sorted by key, so these three go **after** `SafeTimelineSummary`'s block ends (line 1082) and **before** `TimelineListResponse` (line 1083). Indentation is eight spaces for the schema name, twelve for `properties`.
+In `openapi/customers.yaml`, put these three **after** `SafeTimelineSummary`'s block ends (line 1082) and **before** `TimelineListResponse` (line 1083). Indentation is eight spaces for the schema name, twelve for `properties`.
+
+The schema block is **not** sorted — `CustomerTypeRequest` sits between `CreateCustomerRequest` and `CreateCustomerResponse`, and `CustomerStatsAttentionItem` after `CustomerTagsResponse` — so there is no ordering rule to satisfy and nothing will move a misplaced block for you. Place each addition beside the schemas it belongs with, as this plan does, and leave the rest of the file alone.
 
 ```yaml
         TimelineFollowUp:
@@ -1664,7 +1699,7 @@ mise exec -- go generate ./... && mise exec -- go generate ./... && git status -
 cd /home/anders/projects/vantigo/vantigo && mise exec -- bun run gen:client && git status --short
 ```
 
-Then `git diff apps/server/internal/openapi/specs/customers.yaml` and check the **placement** of everything added: generation rewrites that file in its own order, so if a schema or a path landed somewhere else there, move it in `openapi/customers.yaml` to match and regenerate until the source and the generated copy read the same. (The paths section of this file is not alphabetically sorted — `tags` precedes `type` precedes `timeline` today — so "next to its neighbours" is the rule, and the generated file is the arbiter.)
+`apps/server/internal/openapi/specs/customers.yaml` is a **byte copy** — `generate.go`'s first directive is `rm -f internal/openapi/specs/*.yaml && cp ../../openapi/*.yaml internal/openapi/specs/`, nothing more — so it reorders nothing and there is no "move it to match" step. `git diff` on it should show exactly the diff you made to `openapi/customers.yaml`, and anything else means the copy was stale before you started. Neither the schema block nor the paths block of that file is sorted (`tags` precedes `type` precedes `timeline` today), so where each addition sits is decided here and nowhere else.
 
 Then read `apps/server/internal/customers/gen/api.gen.go` and confirm each type named in **Interfaces** above. Three things to check specifically, because the plan's later Go is written against them:
 - `TimelineFollowUp.Assignee` is `*TimelineFollowUpAssignee` and `TimelineFollowUp.DueOn` is a bare `openapi_types.Date` (required), not a pointer;
@@ -1716,7 +1751,8 @@ This task shares Task 3's commit: the contract is staged and the package does no
 
 **Files:**
 - Create: `apps/server/internal/customers/follow_ups.go`, `apps/server/internal/customers/follow_ups_test.go`, `apps/server/internal/customers/follow_ups_concurrency_test.go`
-- Modify: `apps/server/internal/customers/timeline.go`, `apps/server/internal/customers/stats.go`, `apps/server/internal/customers/harness_test.go` (one fixture), `apps/server/internal/customers/timeline_test.go` (the entry JSON gains the follow-up)
+- Modify: `apps/server/internal/customers/timeline.go`, `apps/server/internal/customers/stats.go`
+- Deliberately **not** modified: `harness_test.go` (no fixture needs a follow-up; `follow_ups_test.go` brings its own) and `timeline_test.go` (its `timelineEntryJSON` does not declare `followUp` and `encoding/json` simply ignores the field — widening a .NET port would blur what it ports)
 - Read first (do not change): `apps/server/internal/customers/owner.go:92-189` (`decorate`/`decorateKnowing`/`owner` — the batched-directory-call and unknown-user pattern this task copies), `apps/server/internal/customers/customers.go:294-370` (`GetCustomers`' parameter validation and the `ownerId=me` resolution this task copies), `apps/server/internal/customers/timeline_concurrency_test.go:1-60` (the forced-race pattern), `apps/server/internal/customers/stats_internal_test.go` (what `attentionItemsFrom` is already held to)
 
 **Interfaces:**
@@ -2023,10 +2059,22 @@ func TestPutTimeline_ReplacesTheFollowUpAndClearingItClearsDone(t *testing.T) {
 		t.Errorf("follow_up_done_at = %v, want NULL: clearing a follow-up clears its done state", doneAt)
 	}
 
-	// An explicit null is the same instruction, and says it out loud.
-	again := putEntryWithFollowUp(t, c, customer.Id, entry.Id, cleared.CurrentRevision, nil)
+	// An explicit null is the same instruction, and says it out loud. It cannot
+	// go through putEntryWithFollowUp, which omits the KEY for a nil map — and
+	// "the key is absent" and "the key is null" are exactly the two forms this
+	// assertion exists to prove are one instruction. So this one builds the body
+	// itself, with a literal JSON null on the wire.
+	r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/timeline/%d", customer.Id, entry.Id), map[string]any{
+		"eventType": "note", "occurredOn": "2020-01-01", "note": "edited again",
+		"expectedRevision": cleared.CurrentRevision, "followUp": nil,
+	})
+	if r.Status != http.StatusOK {
+		t.Fatalf("explicit null followUp: status %d body %s, want 200", r.Status, r.Body)
+	}
+	var again followUpEntryJSON
+	r.JSON(&again)
 	if again.FollowUp != nil {
-		t.Errorf("followUp = %+v, want absent", again.FollowUp)
+		t.Errorf("followUp = %+v, want absent after an explicit null", again.FollowUp)
 	}
 }
 
@@ -2460,7 +2508,7 @@ func TestGetFollowUps_EveryFilterAndThePageBoundary(t *testing.T) {
 		want  []int32
 	}{
 		{"state=overdue is a subset of open", url.Values{"state": {"overdue"}}, []int32{overdue.Id}},
-		{"state=done, where an archived customer's follow-up survives", url.Values{"state": {"done"}}, []int32{archivedDone.Id, done.Id}},
+		{"state=done, where an archived customer's follow-up survives", url.Values{"state": {"done"}}, []int32{done.Id, archivedDone.Id}},
 		{"state=all, where an archived customer's OPEN one does not", url.Values{"state": {"all"}}, []int32{done.Id, overdue.Id, future.Id}},
 		{"assignee=none", url.Values{"assignee": {"none"}}, []int32{unassigned.Id}},
 		{"assignee=<uuid>", url.Values{"assignee": {other.String()}}, []int32{theirs.Id}},
@@ -2474,12 +2522,10 @@ func TestGetFollowUps_EveryFilterAndThePageBoundary(t *testing.T) {
 			}
 		})
 	}
+	// archivedOpen is created and never expected anywhere: state=open and
+	// state=all both exclude it, which the two cases above assert by its
+	// absence.
 	_ = archivedOpen
-
-	// state=done orders by dueOn then entry id, and the two done rows share a
-	// dueOn only by accident, so the case above pins the order it actually
-	// produces; if it fails on the order rather than the membership, read the
-	// dueOn values before changing the query.
 
 	// Paging: one row per page, and the metadata that lets a control render.
 	first := listFollowUps(t, c, url.Values{"state": {"all"}, "pageSize": {"1"}})
@@ -2590,7 +2636,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -3389,9 +3434,9 @@ func (s *server) GetCustomersStatsAttention(ctx context.Context, _ gen.GetCustom
 ```
 `stats.go` gains `github.com/google/uuid` and `github.com/vantigo-io/vantigo/server/internal/contracts` to its imports.
 
-- [ ] **Step 9: One harness fixture, and the whole suite**
+- [ ] **Step 9: The whole suite**
 
-`harness_test.go`'s `associate` is untouched. What does need a line is `timeline_test.go`'s `timelineEntryJSON`: leave it alone (a field it does not declare is simply ignored by `encoding/json`), and instead add one assertion to the existing `TestManualTimelineEntry_CanBeEditedAndSoftDeletedWithHistory` — no, do **not**: that test is a .NET port and widening it would blur what it ports. The follow-up's own coverage is `follow_ups_test.go`, entirely.
+No existing test file changes. `harness_test.go`'s fixtures need nothing (`follow_ups_test.go` brings its own), and `timeline_test.go`'s `timelineEntryJSON` does not declare `followUp`, which `encoding/json` simply ignores — the follow-up's coverage is `follow_ups_test.go`, entirely.
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo/apps/server
@@ -3559,7 +3604,25 @@ const entry = (overrides: Partial<TimelineEntry> = {}): TimelineEntry => ({
 });
 ```
 
-and four new cases (put them in their own `describe("the timeline's follow-ups", …)` at the end of the file):
+Its `renderTimeline` helper also changes **here, in this step** — every case that existed before this delivery exercises the Add button and the actions menu, so the shared helper renders a manager and the one reader case renders directly:
+
+```tsx
+const renderTimeline = async (fetchMock: ReturnType<typeof vi.fn>) => {
+  stubFetch(fetchMock);
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <MantineProvider>
+      <QueryClientProvider client={queryClient}>
+        <CustomerTimeline customerId={42} canManageTimeline />
+      </QueryClientProvider>
+    </MantineProvider>,
+  );
+  await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+  return queryClient;
+};
+```
+
+and six new cases (put them in their own `describe("the timeline's follow-ups", …)` at the end of the file; Step 10's fourth mutation adds a seventh, for the overdue boundary). Note that `renderTimeline` above takes no capability argument on purpose: the reader case below calls `render` itself, **without** `canManageTimeline`, so "the prop was forgotten" and "the prop was withheld" cannot be confused for one another.
 
 ```tsx
 describe("the timeline's follow-ups", () => {
@@ -3598,12 +3661,20 @@ describe("the timeline's follow-ups", () => {
     });
     await renderTimeline(fetchMock);
 
-    // Overdue: the date, the assignee's name, and the word that says it is late.
-    const overdue = await screen.findByText(/overdue/i);
-    expect(overdue).toBeInTheDocument();
-    expect(screen.getByText(/Kari Nordmann/)).toBeInTheDocument();
-    // Done: the date it was ticked, and no "overdue" on that line.
-    expect(screen.getByText(/done/i)).toBeInTheDocument();
+    // The open, overdue line: the "Follow up <date>" wording, the assignee's
+    // name, the word that says it is late, and red.
+    const openLine = await screen.findByText(/Follow up /);
+    expect(openLine).toHaveTextContent(/Kari Nordmann/);
+    expect(openLine).toHaveTextContent(/overdue/);
+
+    // The done line is matched by ITS OWN wording ("Followed up …"), never by
+    // /done/i: the Mark done BUTTON on the other row matches that too, so a
+    // /done/i assertion would pass with the done line missing entirely.
+    const doneLine = screen.getByText(/Followed up /);
+    expect(doneLine).not.toHaveTextContent(/overdue/);
+    expect(doneLine).toHaveStyle({ textDecoration: "line-through" });
+    // And it offers Reopen rather than Mark done.
+    expect(screen.getByRole("button", { name: /reopen/i })).toBeInTheDocument();
   });
 
   it("marks a follow-up done through the entry's own path and refreshes the feed", async () => {
@@ -3637,6 +3708,47 @@ describe("the timeline's follow-ups", () => {
     });
   });
 
+  it("reopens a done follow-up through the same path with DELETE", async () => {
+    const reopen = vi.fn(() => Promise.resolve(json(withFollowUp({ dueOn: "2020-01-02", assignee: null, doneAt: null }))));
+    let ticked = true;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/follow-up/done")) {
+        ticked = false;
+        return reopen(input, init);
+      }
+      if (url.includes("/timeline?")) {
+        return Promise.resolve(
+          json({
+            data: [withFollowUp({ dueOn: "2020-01-02", assignee: null, doneAt: ticked ? "2020-01-04T09:00:00Z" : null })],
+            nextCursor: null,
+          }),
+        );
+      }
+      return Promise.resolve(json({ data: [] }));
+    });
+    const stub = stubFetch(fetchMock);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MantineProvider>
+        <QueryClientProvider client={queryClient}>
+          <CustomerTimeline customerId={42} canManageTimeline />
+        </QueryClientProvider>
+      </MantineProvider>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: /reopen/i }));
+
+    await waitFor(() => {
+      const call = stub.actualCalls.find(
+        ([url, init]) => String(url).endsWith("/api/v1/customers/42/timeline/7/follow-up/done") && init?.method === "DELETE",
+      );
+      expect(call).toBeDefined();
+    });
+    // The refresh re-reads, and the line is open again: "Follow up …", no strike.
+    expect(await screen.findByText(/Follow up /)).toBeInTheDocument();
+    expect(screen.queryByText(/Followed up /)).not.toBeInTheDocument();
+  });
+
   it("hides every timeline control from a reader who cannot manage the timeline", async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       if (String(input).includes("/timeline?")) {
@@ -3644,12 +3756,90 @@ describe("the timeline's follow-ups", () => {
       }
       return Promise.resolve(json({ data: [] }));
     });
-    await renderTimeline(fetchMock); // renders without canManageTimeline
+    // Rendered HERE rather than through renderTimeline, and deliberately with
+    // no canManageTimeline at all: the shared helper passes it, so this is the
+    // one place the withheld case is exercised.
+    stubFetch(fetchMock);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MantineProvider>
+        <QueryClientProvider client={queryClient}>
+          <CustomerTimeline customerId={42} />
+        </QueryClientProvider>
+      </MantineProvider>,
+    );
 
     await screen.findByText("Original note");
     expect(screen.queryByRole("button", { name: /add event/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /mark done/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /actions for note/i })).not.toBeInTheDocument();
+    // The follow-up itself is still readable — only the control is gone.
+    expect(screen.getByText(/Follow up /)).toBeInTheDocument();
+  });
+
+  it("shows each revision's own follow-up, so a ticked revision names who ticked it and when", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/revisions")) {
+        return Promise.resolve(
+          json({
+            data: [
+              {
+                revision: 1,
+                action: "create",
+                eventType: "note",
+                occurredOn: "2026-07-20",
+                occurredAt: null,
+                note: "Original note",
+                sourceUrl: null,
+                changedAt: "2026-07-20T08:00:00Z",
+                actorKind: "user",
+                actorDisplayName: "Kari Nordmann",
+                followUp: { dueOn: "2026-08-01" },
+              },
+              {
+                revision: 2,
+                action: "update",
+                eventType: "note",
+                occurredOn: "2026-07-20",
+                occurredAt: null,
+                note: "Original note",
+                sourceUrl: null,
+                changedAt: "2026-07-22T09:30:00Z",
+                actorKind: "user",
+                actorDisplayName: "Ola Nordmann",
+                followUp: { dueOn: "2026-08-01", doneAt: "2026-07-22T09:30:00Z" },
+              },
+            ],
+          }),
+        );
+      }
+      if (url.includes("/timeline?")) {
+        return Promise.resolve(json({ data: [withFollowUp({ dueOn: "2026-08-01", assignee: null, doneAt: "2026-07-22T09:30:00Z" })], nextCursor: null }));
+      }
+      return Promise.resolve(json({ data: [] }));
+    });
+    await renderTimeline(fetchMock);
+    await userEvent.click(await waitFor(actionsButton));
+    await userEvent.click(await screen.findByText("Revision history"));
+    const dialog = await screen.findByRole("dialog", { name: "Revision history" });
+
+    // Revision 1 carried an open follow-up; revision 2 is the one that ticked
+    // it, and the panel's own actor and changed-at line beside it is what
+    // answers "who ticked it and when" (follow-ups design D4) without a doneBy
+    // field on the contract.
+    expect(await within(dialog).findByText(/Follow up /)).toBeInTheDocument();
+    const ticked = within(dialog).getByText(/Followed up /);
+    // Each revision is its own Accordion.Panel, which Mantine renders as a
+    // region — so the panel holding the "Followed up" line is the panel whose
+    // actor line names who ticked it. (If this version emits another role,
+    // read the markup once and assert on the panel element it does emit; the
+    // requirement is that the two read together, not that it is a region.)
+    const panel = ticked.closest("[role='region']");
+    expect(panel).toHaveTextContent(/Ola Nordmann/);
+    // …and not revision 1's author, which is the whole point of reading the two
+    // together rather than anywhere on the page.
+    expect(panel).not.toHaveTextContent(/Kari Nordmann/);
   });
 
   it("sends the follow-up the form collected, and clears it when the section is emptied", async () => {
@@ -4170,7 +4360,43 @@ and the section itself:
 ```
 `Divider` joins the `@mantine/core` import and `UserPicker` the component imports.
 
-- [ ] **Step 6: Pass the capability down from the page**
+- [ ] **Step 6: The follow-up per revision, which is where "who ticked it" lives**
+
+`RevisionPanel` (lines ~623-667) shows each revision's action and actor and its note. Design D4 asks for the follow-up fields per revision, and design D1's response shape has no `doneBy` — so the two together are what answer "who ticked it and when": the revision that *set* `doneAt` is the tick, and the panel already names that revision's actor. Make it name the time too, and add the follow-up line.
+
+`const { t } = useI18n("customers");` becomes `const { t, formatters } = useI18n("customers");`, and the panel body's `Stack` becomes:
+
+```tsx
+                <Stack gap="xs">
+                  <Text size="sm">
+                    {revision.action} · {actorLabel(revision.actorKind, revision.actorDisplayName, t)} ·{" "}
+                    {formatters.formatDate(revision.changedAt, { dateStyle: "medium", timeStyle: "short" })}
+                  </Text>
+                  {revision.followUp && (
+                    <Text size="sm" c={revision.followUp.doneAt ? "dimmed" : undefined}>
+                      {revision.followUp.doneAt
+                        ? t("followUpDoneOn", {
+                            date: formatters.formatDate(`${revision.followUp.doneAt.slice(0, 10)}T00:00:00Z`, {
+                              dateStyle: "medium",
+                              timeZone: "UTC",
+                            }),
+                          })
+                        : t("followUpDue", {
+                            date: formatters.formatDate(`${revision.followUp.dueOn}T00:00:00Z`, {
+                              dateStyle: "medium",
+                              timeZone: "UTC",
+                            }),
+                          })}
+                      {revision.followUp.assignee ? ` · ${revision.followUp.assignee.displayName}` : ""}
+                    </Text>
+                  )}
+                  <Text>{revision.note || t("noDescription")}</Text>
+                </Stack>
+```
+
+The `changedAt` addition is what turns "who" into "who and when", and it is safe for the existing revision test: that one asserts `within(dialog).getByText(/Unattributed/)`, a partial regex on the same `Text`, which still matches with a timestamp appended. The follow-up line is **not** struck through here the way the entry line is — a revision is a record, not a live item, so "grey" is the whole of the styling it needs.
+
+- [ ] **Step 7: Pass the capability down from the page**
 
 In `apps/customers/frontend/src/pages/customers.$customerId.tsx`, `CustomerOverview` takes one more prop and hands it on:
 
@@ -4204,7 +4430,7 @@ Add to the component's doc comment:
  * 403. It also gates the new Done/Reopen control on a follow-up.
 ```
 
-- [ ] **Step 7: Both catalogs**
+- [ ] **Step 8: Both catalogs**
 
 In `apps/customers/frontend/src/i18n.ts`, add to `en` (beside the other timeline keys, after `sourceUrl`) and the mirrored entries to `nb`:
 
@@ -4242,7 +4468,7 @@ In `apps/customers/frontend/src/i18n.ts`, add to `en` (beside the other timeline
 ```
 (Task 6 adds the Follow-ups **page**'s own strings to the same two objects; keep these two groups separate so each task's diff reads on its own.)
 
-- [ ] **Step 8: Run the frontend and commit**
+- [ ] **Step 9: Run the frontend and commit**
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo
@@ -4251,9 +4477,7 @@ mise exec -- bun run translations:check && mise exec -- bun run i18n:test
 bunx biome check apps/customers/frontend/src
 mise run frontend:check
 ```
-Expected: PASS, the existing `-customer-relationship-card.test.tsx` included — `OwnerPicker`'s props did not change, so its call site and its tests are untouched, which is the whole reason the wrapper exists.
-
-If `-customer-timeline.test.tsx`'s **existing** cases fail on a missing Add button or a missing actions menu, that is this task's own change reaching them: those tests render `CustomerTimeline` without `canManageTimeline`. Add the prop to `renderTimeline`'s call — `<CustomerTimeline customerId={42} canManageTimeline />` — so the old cases keep testing what they tested, and leave the new "hides every timeline control" case rendering without it by calling `render` directly.
+Expected: PASS, the existing `-customer-relationship-card.test.tsx` included — `OwnerPicker`'s props did not change, so its call site and its tests are untouched, which is the whole reason the wrapper exists. Every pre-existing `-customer-timeline.test.tsx` case also passes unchanged, because Step 1 already put `canManageTimeline` into the shared `renderTimeline`; if one of them still fails on a missing Add button or actions menu, that helper edit was missed.
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo
@@ -4263,14 +4487,15 @@ git commit -F /tmp/msg-followups-task5 -- $(git diff --cached --name-only)
 git show --stat HEAD && git status --short
 ```
 
-- [ ] **Step 9: Show the new tests can fail**
+- [ ] **Step 10: Show the new tests can fail**
 
-Three mutations, by hand:
-1. Delete `followUp: normalizeFollowUp(raw.followUp)` from `normalizeTimelineEntry` and run the timeline tests — expect the "shows an overdue follow-up" case to find no `/overdue/i` text. Restore, green.
-2. Change `{canManageTimeline && (` on the Done/Reopen button to `{true && (` and run "hides every timeline control from a reader" — expect it to find a `/mark done/i` button it should not. Restore, green.
-3. Change `followUp.dueOn < utcToday()` to `<=` in `isOverdue` and run the follow-up display case — expect a due-today follow-up to read as overdue. (If the fixture's dates make this pass anyway, add a fixture whose `dueOn` is `utcToday()` and assert it does **not** say overdue; that is a gap worth closing rather than a mutation worth skipping.) Restore, green.
+Four mutations, by hand:
+1. Delete the follow-up `<Text>` from `RevisionPanel` and run the revision case — expect `Unable to find an element with the text: /Followed up /`. Restore, green.
+2. Delete `followUp: normalizeFollowUp(raw.followUp)` from `normalizeTimelineEntry` and run the timeline tests — expect the "shows an overdue follow-up" case to find no `/Follow up /` text. Restore, green.
+3. Change `{canManageTimeline && (` on the Done/Reopen button to `{true && (` and run "hides every timeline control from a reader" — expect it to find a `/mark done/i` button it should not. Restore, green.
+4. Change `followUp.dueOn < utcToday()` to `<=` in `isOverdue` and run the follow-up display case — expect a due-today follow-up to read as overdue. (The fixture dates above are all in 2020, so this mutation cannot be caught by them: **add** a case whose `dueOn` is `utcToday()` and assert its line does **not** say overdue. That is a gap to close, not a mutation to skip.) Restore, green.
 
-Note all three in the report.
+Note all four in the report.
 
 ---
 
@@ -4294,18 +4519,28 @@ Note all three in the report.
 ```tsx
 import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { stubFetch } from "../test/fetch";
 import { FollowUpsPage } from "./follow-ups";
 
-const navigate = vi.fn();
-const search = { page: 1, assignee: "me", state: "open" };
-vi.mock("@tanstack/react-router", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@tanstack/react-router")>();
-  return { ...actual, useNavigate: () => navigate, useSearch: () => search, Link: ({ children }: { children: unknown }) => children };
-});
+// vi.hoisted, because vi.mock's factory is hoisted above every import and a
+// plain `const` declared here would not exist when it runs — the pattern
+// `-customers.index.test.tsx` already uses for the same router. The whole module
+// is replaced rather than spread over the real one: the real `Link` needs a
+// router context this test has no reason to build.
+const router = vi.hoisted(() => ({
+  search: { page: 1, assignee: "me", state: "open" } as Record<string, unknown>,
+  navigate: vi.fn(),
+}));
+
+vi.mock("@tanstack/react-router", () => ({
+  useSearch: () => router.search,
+  useNavigate: () => router.navigate,
+  Link: ({ children }: { children: ReactNode }) => <a href="#stub">{children}</a>,
+}));
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -4341,11 +4576,10 @@ const renderPage = (fetchMock: ReturnType<typeof vi.fn>, canManageTimeline = tru
 };
 
 afterEach(() => {
+  cleanup();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
-  search.page = 1;
-  search.assignee = "me";
-  search.state = "open";
+  router.search = { page: 1, assignee: "me", state: "open" };
 });
 
 describe("the Follow-ups page", () => {
@@ -4370,15 +4604,14 @@ describe("the Follow-ups page", () => {
     await userEvent.click(await screen.findByRole("option", { name: /overdue/i }));
 
     await waitFor(() => {
-      expect(navigate).toHaveBeenCalledWith(
+      expect(router.navigate).toHaveBeenCalledWith(
         expect.objectContaining({ search: expect.objectContaining({ state: "overdue", page: 1 }) }),
       );
     });
   });
 
   it("reads the filters back out of the URL when the URL is what changed", async () => {
-    search.assignee = "none";
-    search.state = "done";
+    router.search = { page: 1, assignee: "none", state: "done" };
     const stub = renderPage(vi.fn(() => Promise.resolve(json(page([])))));
 
     await waitFor(() => {
@@ -4389,7 +4622,7 @@ describe("the Follow-ups page", () => {
     });
   });
 
-  it("ticks a row done through the entry's own path, and hides the tick from a reader", async () => {
+  it("ticks a row done through the entry's own path", async () => {
     const stub = renderPage(
       vi.fn((input: RequestInfo | URL) => {
         if (String(input).includes("/follow-up/done")) return Promise.resolve(json(row()));
@@ -4403,10 +4636,15 @@ describe("the Follow-ups page", () => {
       );
       expect(call).toBeDefined();
     });
+  });
 
-    vi.unstubAllGlobals();
+  // Its own `it`, not a second render inside the one above: two renders in one
+  // test leave two copies of the table in the document, and `queryByRole` then
+  // finds the first render's button and the assertion passes for the wrong
+  // reason. `afterEach`'s cleanup() is what makes one render per test true.
+  it("hides the tick from a reader who cannot manage the timeline", async () => {
     renderPage(vi.fn(() => Promise.resolve(json(page([row()])))), false);
-    expect(await screen.findAllByText("Alpha Co")).not.toHaveLength(0);
+    expect(await screen.findByText("Alpha Co")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /mark done/i })).not.toBeInTheDocument();
   });
 });
@@ -4419,8 +4657,11 @@ import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { Route as FollowUpsRoute } from "./follow-ups";
+// Sorted the way biome sorts: "-follow-ups-page" before "follow-ups" ('-' sorts
+// before 'f'), and the side-effect i18n import last, which is where
+// `customer-overview-route.test.tsx` already puts its own.
 import { FollowUpsTab } from "./-follow-ups-page";
+import { Route as FollowUpsRoute } from "./follow-ups";
 import "../../i18n";
 
 vi.mock("@tanstack/react-query", async (importOriginal) => {
@@ -4520,16 +4761,29 @@ and, in the title describe block:
   it("names the two follow-up signals with the customer's own name", () => {
     expect(attentionTitleKey({ module: "customers", type: "followUpOverdue" })).toBe("dashboard.customerFollowUpOverdue");
     expect(attentionTitleKey({ module: "customers", type: "followUpDue" })).toBe("dashboard.customerFollowUpDue");
+    // The local stub `t` this file already uses for the four registry cases
+    // (`(key, values) => \`${key}:${values?.name}\``), not the real catalog:
+    // what is under test is that the right KEY is looked up with the customer's
+    // name, and asserting a translated sentence would make this test fail the
+    // day somebody rewords the Norwegian.
+    const t = (key: string, values?: Record<string, unknown>) => `${key}:${values?.name}`;
     expect(
       attentionTitle(
-        { module: "customers", type: "followUpOverdue", title: "Alpha Co", entityId: "42" },
-        i18n.t,
-        () => "",
+        { module: "customers", type: "followUpOverdue", entityId: "42", title: "Alpha Co" },
+        t,
+        formatInLosAngeles,
       ),
-    ).toBe("Follow-up overdue for Alpha Co");
+    ).toBe("dashboard.customerFollowUpOverdue:Alpha Co");
+    expect(
+      attentionTitle(
+        { module: "customers", type: "followUpDue", entityId: "42", title: "Alpha Co" },
+        t,
+        formatInLosAngeles,
+      ),
+    ).toBe("dashboard.customerFollowUpDue:Alpha Co");
   });
 ```
-Match `attentionTitle`'s real signature — `grep -n 'export const attentionTitle' -A 6 routes/dashboard.tsx` — and the way the existing customer-registry title case in this file calls it.
+`formatInLosAngeles` is this file's existing date-formatter stub, declared at line ~104 **inside** the attention `describe`, and the registry cases at lines ~196-210 pass it as `attentionTitle`'s third argument. Because it is block-scoped, put these assertions in that same `describe` — folding them into the existing registry `it` is fine, and the point is the stub `t`, not the block boundary. The file does import `i18n` at line 1 for other purposes; do not reach for it here.
 
 In `apps/host/frontend/src/routes/customers/customer-overview-route.test.tsx`, add a fifth capability to the mock and two cases:
 
@@ -5027,7 +5281,6 @@ Add to `apps/customers/frontend/src/i18n.ts`, `en` then `nb`:
   noFollowUps: "No follow-ups here.",
   couldNotLoadFollowUps: "Could not load follow-ups",
   dueOn: "Due",
-  customer: "Customer",
 ```
 ```ts
   followUps: "Oppfølginger",
@@ -5044,9 +5297,8 @@ Add to `apps/customers/frontend/src/i18n.ts`, `en` then `nb`:
   noFollowUps: "Ingen oppfølginger her.",
   couldNotLoadFollowUps: "Kunne ikke laste oppfølginger",
   dueOn: "Frist",
-  customer: "Kunde",
 ```
-Before adding each, `grep -n '^  customer:' src/i18n.ts` and friends: `customer`, `actions`, `description` and `noAdditionalDetails` may already exist, and a duplicate key is a silent overwrite. Reuse what is there and add only what is not.
+`customer`, `actions`, `description` and `noAdditionalDetails` are **already** in both catalogs and the page reuses them as they are — they are deliberately not in the listing above, because a duplicate key in the same object literal is a silent overwrite rather than an error. Before adding the block, `grep -n '^  dueOn:\|^  followUp' src/i18n.ts` to confirm none of the new keys collides either; if one does, the page reuses the existing key instead of redefining it.
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo
@@ -5152,7 +5404,11 @@ follow-up they can see is done is not done.
 
 A tick that **changes** something is still a revision of the entry:
 `current_revision` bumps and a revision row records who ticked it, which is the
-reason it is a revision at all rather than a quiet column write. 404 when the
+reason it is a revision at all rather than a quiet column write — and it is where
+"who ticked this, and when" is answered. There is no `doneBy` on the wire: the
+revision that set `doneAt` **is** the tick, so the revision history's own actor
+and timestamp beside it say who and when, and the entry's own response stays the
+three fields `followUp` has. 404 when the
 entry carries no follow-up (the thing addressed does not exist); 409 `Timeline
 entry is immutable` when the entry is generated, deleted or voided — the same
 problem shape the entry's own PUT and DELETE answer.
@@ -5194,6 +5450,16 @@ A manual entry can also carry a **follow-up** — a due date, an assignee and a
 done stamp — which rides on this same create/update under the same
 `expectedRevision`, and on two paths of its own that do not. See
 [Follow-ups](#follow-ups). A generated entry never carries one.
+```
+
+And at the end of `### Authorship`'s bullet list, after the "Rows written before this branch" bullet, add:
+
+```markdown
+- A revision also carries the **follow-up as it stood** at that revision, which is
+  what answers "who ticked this follow-up, and when": the revision that set
+  `doneAt` is the tick, and that revision's own actor and `changedAt` name the
+  person and the moment. There is deliberately no `doneBy` on the entry — the
+  history already holds it, and one place is better than two that can disagree.
 ```
 
 - [ ] **Step 3: Two rows in §Attention items**
@@ -5399,7 +5665,7 @@ Write `/tmp/pr-followups.md` first. It covers:
   1. **Idempotent means "no-op", not "write again".** A second tick answers 200 with the entry and writes nothing — no column change, no revision row, no actor resolved. The alternative (re-stamping `follow_up_done_at` and appending a revision every time) would fill a history with entries recording that nothing happened.
   2. **An omitted `followUp` on a PUT clears it**, because that PUT is already a full replace (`occurredAt` and `sourceUrl` behave the same), which is what made `null` and omitted the same instruction and avoided a three-valued field.
   3. `TimelineFollowUpAssignee` is its **own schema** rather than a reuse of `CustomerOwner`, whose three fields are identical: an owner is accountable for a relationship, an assignee is expected to do one thing by one date, and a shared schema would have made the two impossible to document apart. Reusing it would also have renamed a generated Go type that `owner.go` uses throughout.
-  4. **The response has no `doneBy`.** Design D4 says the entry line shows "who ticked it and when", but design D1 fixes the response shape as `{dueOn, assignee?, doneAt?}`. D1 won: the "who" is in the revision history, which D4 also requires to show the follow-up per revision, and adding a field the spec did not authorise to the contract would have been the bigger liberty. **Flagged for the user's verdict.**
+  4. **"Who ticked it and when" is answered by the revision panel, not by a `doneBy` field.** D4 asked for it on the entry line; D1 fixes the response shape as `{dueOn, assignee?, doneAt?}`. The revision that set `doneAt` **is** the tick, so the panel showing each revision's follow-up beside its existing actor — now with its `changedAt` — says who and when without adding a field the contract does not have. D4's sentence in the spec was amended to say so.
   5. **Offset paging, not a keyset cursor**, for `GET /customers/follow-ups`: the design asks for `page`/`pageSize` by name, the frontend's Pagination control needs a total page count, and `GET /customers` and `GET /customers/contacts` both answer that shape already. The timeline's own feed stays keyset because an infinite scroll has no page numbers.
   6. **Both done paths answer `TimelineResponse` and carry `customers:timeline-view`** alongside `-manage`, rather than answering 204 on `-manage` alone like the entry DELETE: a tick from a list has to be able to update the row's `currentRevision` in place, or the next edit 409s on a revision the client never saw move.
   7. `KnownServeMuxConflicts` needed **no** new pin — state whether the test agreed, and if it did not, which pairs were added.
@@ -5434,7 +5700,7 @@ Checked against the spec, section by section:
 - **D1 — a follow-up is part of a manual timeline entry.** The three columns on both tables, migration `00026`: Task 2. `followUp` on POST and PUT, `dueOn` strict and future-allowed, the assignee validated against the directory (field error on `followUp.assigneeUserId`, worded as the owner's), an assignee disabled afterwards keeping it, clearing also clearing done: Tasks 3 (contract) and 4 (Steps 4 and 7), pinned by `TestPostTimeline_CarriesAFollowUpAndAcceptsAFutureDate`, `TestPostTimeline_RefusesAMalformedDueDateAndAnUnusableAssignee`, `TestPutTimeline_ReplacesTheFollowUpAndClearingItClearsDone` and `TestFollowUp_AnAssigneeDisabledOrForgottenAfterwardsKeepsIt`. The two done paths, idempotent, no expected revision, each real change a revision with the ticker's name, 409 for a non-manual/non-active entry and 404 for one with no follow-up: Task 4 Steps 5 and 10, pinned by `TestFollowUpDone_IsIdempotentAndEachRealChangeIsARevision`, `TestFollowUpDone_RefusesWhatHasNoFollowUpAndWhatIsNotManual` and `TestFollowUpDone_ConcurrentTicks_BothSucceedAndOnlyOneRevisionIsWritten`. `followUp` on the entry and revision responses, assignee names from one batched directory call outside any transaction, `Unknown user` for a vanished id: Task 4 Steps 4 and 7. The permissions, and the `assignable-users` relaxation to `customers:view`: Task 3 Step 5/Step 6 and Task 1 Steps 3-4, pinned by `TestFollowUpDone_NeedsTimelineManage`, `TestGetFollowUps_NeedsBothDoors` and `TestGetAssignableUsers_NeedsOnlyCustomersView`.
 - **D2 — due and overdue follow-ups are attention.** Two types, computed from state, open follow-ups on non-archived customers assigned to the caller or unassigned, the UTC split, the item's id/entityId/title/occurredAt shape, the caller read from the context: Task 4 Steps 6 and 8, pinned by `TestStatsAttention_ReportsTheCallersAndUnassignedFollowUpsOnly` including the stranger's view. The host catalog's two sentences in en and nb, and the title key mapping: Task 6 Step 7, pinned in `dashboard.test.ts`. `attentionHref` needed no change and the plan says why.
 - **D3 — a Follow-ups page.** The operation with its permissions, paging, three filters, ordering, row shape and 200-unit note, and the archived rule: Tasks 3 Step 6 and 4 Step 6, pinned by `TestGetFollowUps_DefaultsToMyOpenOnes`, `TestGetFollowUps_EveryFilterAndThePageBoundary`, `TestGetFollowUps_CutsTheNoteAtTwoHundredUTF16Units` and `TestGetFollowUps_RefusesAnUnusableQuery`. The nav entry, the route with its search params, rows linking to the customer, the per-row Done tick, and `canManageTimeline` on both the page and the customer page's timeline: Task 6, pinned by `follow-ups.test.tsx`, `follow-ups-route.test.tsx`, `apps.test.ts` and `customer-overview-route.test.tsx`.
-- **D4 — the timeline card.** The Follow-up section with a `DateInput` that allows a future date and a `UserPicker` fed by the same assignable-users search with the current assignee kept in the options; the follow-up line, red and "overdue" when past, grey and struck through when done; the Done/Reopen control behind `canManageTimeline`; the revisions view showing the follow-up per revision: Task 5 Steps 3, 4 and 5, pinned by the four cases in "the timeline's follow-ups" and by `TestTimelineRevisions_CarryTheFollowUpPerRevision` on the server side. **One deviation, flagged in the PR:** the entry line does not name *who* ticked it, because D1's response shape has no `doneBy`; the revision panel is where the "who" lives.
+- **D4 — the timeline card.** The Follow-up section with a `DateInput` that allows a future date and a `UserPicker` fed by the same assignable-users search with the current assignee kept in the options; the follow-up line, red and "overdue" when past, grey and struck through when done; the Done/Reopen control behind `canManageTimeline`: Task 5 Steps 3, 4 and 5. The revisions view showing the follow-up per revision, which is also where "who ticked it and when" is answered (the revision that set `doneAt` is the tick, beside that revision's own actor and `changedAt`): Task 5 Step 6. Pinned by the six cases in "the timeline's follow-ups" — including the Reopen case and the revision-panel case — and by `TestTimelineRevisions_CarryTheFollowUpPerRevision` on the server side. D1's response shape stands unchanged (no `doneBy`), and D4's sentence in the spec was amended to say where the "who" comes from.
 - **D5 — the contract break.** `role` removed from all four schemas, `validateContactRole` and the alias handling gone, the payload version bumped with `role` dropped from new payloads, the frontend's `titleOf` gone, the corpus not edited and its test green, the docs section replaced: Task 1 in full, pinned by `TestAssociationRequests_TitleIsTheOnlyNameForTheFreeText` and by `TestRecordedExchangesMatchTheContract`.
 - **D6 — the code-scanning alerts.** Deliberately absent: another agent is committing them on this branch, and Task 8 Step 6 checks the commit is there before the PR is opened.
 - **Testing section.** Every case it names has a test, listed above. The one it names that this plan places differently: "the assignable-users relaxation" is tested in `owner_test.go` (where that endpoint's other tests are) rather than in `follow_ups_test.go`.
