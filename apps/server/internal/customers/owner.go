@@ -104,8 +104,8 @@ func (s *server) decorate(ctx context.Context, q *store.Queries, rows ...custome
 // three. known is nil for every other caller, and for a PUT that CLEARS the
 // owner, which resolves nobody.
 //
-// It is deliberately not folded into decorate's own signature: eight of the
-// nine callers have nothing to pass, and a nil first argument at each of them
+// It is deliberately not folded into decorate's own signature: nine of the
+// ten callers have nothing to pass, and a nil first argument at each of them
 // would be noise standing in for the one place this matters. Everything
 // decorate's own doc comment says still holds, the pool-backed q included.
 func (s *server) decorateKnowing(ctx context.Context, q *store.Queries, known *contracts.UserEntry, rows ...customerRow) (customerDecoration, error) {

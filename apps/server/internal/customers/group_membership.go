@@ -43,10 +43,10 @@ import (
 // shape.
 
 // groupMembershipReadAttempts is how many times PutCustomersByIdGroup reads
-// the customer and its membership, looking for a consistent pair, before a
-// request without a revision gives up with the revision conflict. Three
-// attempts because one retry covers the ordinary case of a single concurrent
-// write. A customer that moves under every one of three attempts is changing
+// the customer and its membership, looking for a consistent pair its guarded
+// write can land on, before a request without a revision gives up with the
+// revision conflict. Three attempts because one retry covers the ordinary case
+// of a single concurrent write. A customer that moves under every one of three attempts is changing
 // faster than any answer about it would stay true.
 const groupMembershipReadAttempts = 3
 
@@ -83,15 +83,35 @@ func (s *server) PutCustomersByIdGroup(ctx context.Context, req gen.PutCustomers
 	// "expected_revision IS NULL OR …" says the same). Refusing it would break
 	// that rule, and the owner endpoint would succeed in the same race. So both
 	// reads run again, and the handler proceeds with the first consistent
-	// pair. The retries are bounded at groupMembershipReadAttempts. A customer
-	// still changing under every attempt answers the same 409, which is the
-	// honest answer: this customer keeps changing, try again.
+	// pair.
+	//
+	// The same holds for the window after the pair, between the reads and the
+	// write. A request without a revision still writes GUARDED, with the
+	// revision its own reads agreed on, so a move landing in that window makes
+	// the write match no row and the handler starts again from the reads. That
+	// is what keeps the event honest: its before is always the group the row
+	// really had when the write landed, and a concurrent move to the very group
+	// the caller asked for is found by the no-op check on the next pass rather
+	// than recorded as a change from a group the customer had already left.
+	//
+	// Both kinds of retry share one budget, groupMembershipReadAttempts. A
+	// customer still changing under every attempt answers the same 409, which
+	// is the honest answer: this customer keeps changing, try again. That
+	// exhaustion branch is deliberately untested: reaching it needs the
+	// customer moved under every one of three attempts, which no lock gate can
+	// do without a trigger or a loop racing the handler, and the branch is the
+	// same one-line refusal the tested revision-supplied cases answer.
 	q := store.New(s.deps.Pool)
-	var existing store.GetCustomerRow
-	var current store.CustomerGroupMembershipRow
+	respond := func(row customerRow) (gen.PutCustomersByIdGroupResponseObject, error) {
+		dec, err := s.decorate(ctx, q, row)
+		if err != nil {
+			return nil, err
+		}
+		return gen.PutCustomersByIdGroup200JSONResponse(safeCustomerResponse(row, s.hasPermission(ctx, legalIdentityView), dec)), nil
+	}
+	var act *actor
 	for attempt := 1; ; attempt++ {
-		var err error
-		existing, err = q.GetCustomer(ctx, req.Id)
+		existing, err := q.GetCustomer(ctx, req.Id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return gen.PutCustomersByIdGroup404Response{}, nil
 		}
@@ -114,7 +134,7 @@ func (s *server) PutCustomersByIdGroup(ctx context.Context, req gen.PutCustomers
 		// otherwise, fix the QUERY, not this handler: uuidPtrEqual and deref
 		// below both take pointers, and a "" that means "no group" would be a
 		// second spelling of the nil the column already has.
-		current, err = q.CustomerGroupMembership(ctx, req.Id)
+		current, err := q.CustomerGroupMembership(ctx, req.Id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return gen.PutCustomersByIdGroup404Response{}, nil
 		}
@@ -122,112 +142,127 @@ func (s *server) PutCustomersByIdGroup(ctx context.Context, req gen.PutCustomers
 			return nil, fmt.Errorf("customers: read customer group membership: %w", err)
 		}
 
-		if current.Revision == existing.Revision {
-			break
+		if current.Revision != existing.Revision {
+			if body.Revision != nil {
+				return gen.PutCustomersByIdGroup409ApplicationProblemPlusJSONResponse(customerRevisionConflict(existing.Revision, current.Revision)), nil
+			}
+			if attempt == groupMembershipReadAttempts {
+				// The detail says "since revision N was read" about a revision
+				// the caller never sent. That is accepted: it sent none, and N is
+				// the one this handler read on its behalf.
+				return gen.PutCustomersByIdGroup409ApplicationProblemPlusJSONResponse(customerRevisionConflict(existing.Revision, current.Revision)), nil
+			}
+			continue
 		}
-		if body.Revision != nil || attempt == groupMembershipReadAttempts {
-			return gen.PutCustomersByIdGroup409ApplicationProblemPlusJSONResponse(customerRevisionConflict(existing.Revision, current.Revision)), nil
+
+		before, after := current.GroupID, body.GroupId
+		if uuidPtrEqual(before, after) {
+			// The same group, nil included: nothing written, no revision bump, no
+			// event, and no actor resolved (customers foundation design D5). The
+			// response is still the whole customer, decorated — which is why the
+			// no-op is answered here rather than as a 304 or an empty body.
+			summary, err := q.CustomerTimelineSummary(ctx, req.Id)
+			if err != nil {
+				return nil, fmt.Errorf("customers: timeline summary: %w", err)
+			}
+			return respond(fromCustomerRow(existing, summary))
 		}
-	}
 
-	includeIdentity := s.hasPermission(ctx, legalIdentityView)
-	before, after := current.GroupID, body.GroupId
-
-	respond := func(row customerRow) (gen.PutCustomersByIdGroupResponseObject, error) {
-		dec, err := s.decorate(ctx, q, row)
-		if err != nil {
-			return nil, err
+		var afterSnapshot *groupSnapshot
+		if after != nil {
+			group, err := q.GetCustomerGroup(ctx, *after)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return gen.PutCustomersByIdGroup400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
+					"Invalid customer group", map[string][]string{"groupId": {groupNotFound(*after)}})), nil
+			}
+			if err != nil {
+				return nil, fmt.Errorf("customers: resolve customer group: %w", err)
+			}
+			afterSnapshot = &groupSnapshot{GroupID: group.ID, Name: group.Name}
 		}
-		return gen.PutCustomersByIdGroup200JSONResponse(safeCustomerResponse(row, includeIdentity, dec)), nil
-	}
 
-	if uuidPtrEqual(before, after) {
-		// The same group, nil included: nothing written, no revision bump, no
-		// event, and no actor resolved (customers foundation design D5). The
-		// response is still the whole customer, decorated — which is why the
-		// no-op is answered here rather than as a 304 or an empty body.
+		var beforeSnapshot *groupSnapshot
+		if before != nil {
+			// The name comes from the join this handler already made, not from a
+			// second read: the group cannot have been deleted while this customer
+			// belonged to it (the foreign key's RESTRICT, design D2), so the name
+			// read a moment ago is the name to snapshot.
+			beforeSnapshot = &groupSnapshot{GroupID: *before, Name: deref(current.GroupName)}
+		}
+
+		// Resolved before the transaction opens, only once however many
+		// attempts follow, and only here: by this point the handler records
+		// customer.group_changed if its write lands (the no-op returned above),
+		// so the actor is needed (customers foundation design D1).
+		if act == nil {
+			resolved, err := s.actorFor(ctx, generatedFallbackActor)
+			if err != nil {
+				return nil, fmt.Errorf("customers: resolve actor: %w", err)
+			}
+			act = &resolved
+		}
+
+		// The caller's revision when it sent one (equal to existing.Revision by
+		// now), else the one the consistent pair agreed on — see the comment at
+		// the top of the loop.
+		guard := body.Revision
+		if guard == nil {
+			guard = &existing.Revision
+		}
+		now := s.deps.Clock()
+		var updated store.SetCustomerGroupRow
+		err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+			txq := store.New(tx)
+			var err error
+			updated, err = txq.SetCustomerGroup(ctx, store.SetCustomerGroupParams{
+				ID: req.Id, GroupID: after, UpdatedAt: now, ExpectedRevision: guard,
+			})
+			if err != nil {
+				return err
+			}
+			return recordCustomerGroupChanged(ctx, txq, now, req.Id, beforeSnapshot, afterSnapshot, act.Kind, act.Display, act.UserID)
+		})
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			// The guarded UPDATE matched no row: a concurrent writer moved the
+			// revision between the reads above and this write. Without a
+			// revision of the caller's, and with attempts left, that is one more
+			// pass from the reads. Otherwise it is answered by re-reading and
+			// reporting the row's now-current revision — the same race
+			// PutCustomersByIdOwner's own guarded write answers, in the same
+			// words and with no code. For a request without a revision this is
+			// the exhaustion refusal, and its detail names a revision the caller
+			// never sent, for the reason given at the other exhaustion above.
+			if body.Revision == nil && attempt < groupMembershipReadAttempts {
+				continue
+			}
+			fresh, ferr := q.GetCustomer(ctx, req.Id)
+			if errors.Is(ferr, pgx.ErrNoRows) {
+				return gen.PutCustomersByIdGroup404Response{}, nil
+			}
+			if ferr != nil {
+				return nil, fmt.Errorf("customers: re-read customer after conflict: %w", ferr)
+			}
+			return gen.PutCustomersByIdGroup409ApplicationProblemPlusJSONResponse(customerRevisionConflict(existing.Revision, fresh.Revision)), nil
+		case db.IsForeignKeyViolation(err, customersGroupFK):
+			// The group was deleted between the resolve above and this write —
+			// the one window the resolve cannot close, since nothing here locks
+			// the vocabulary. Design D2 makes it narrow: only an EMPTY group can
+			// be deleted, so the TARGET group must have had no members a moment
+			// ago (the customer's own current group, if any, is irrelevant).
+			// Answered as the field error the resolve itself would have given a
+			// moment later, exactly as PutCustomersByIdTags answers its own late
+			// foreign-key violation.
+			return gen.PutCustomersByIdGroup400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
+				"Invalid customer group", map[string][]string{"groupId": {groupNotFound(*after)}})), nil
+		case err != nil:
+			return nil, fmt.Errorf("customers: set customer group: %w", err)
+		}
+
 		summary, err := q.CustomerTimelineSummary(ctx, req.Id)
 		if err != nil {
 			return nil, fmt.Errorf("customers: timeline summary: %w", err)
 		}
-		return respond(fromCustomerRow(existing, summary))
+		return respond(fromSetCustomerGroupRow(updated, summary))
 	}
-
-	var afterSnapshot *groupSnapshot
-	if after != nil {
-		group, err := q.GetCustomerGroup(ctx, *after)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return gen.PutCustomersByIdGroup400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
-				"Invalid customer group", map[string][]string{"groupId": {groupNotFound(*after)}})), nil
-		}
-		if err != nil {
-			return nil, fmt.Errorf("customers: resolve customer group: %w", err)
-		}
-		afterSnapshot = &groupSnapshot{GroupID: group.ID, Name: group.Name}
-	}
-
-	var beforeSnapshot *groupSnapshot
-	if before != nil {
-		// The name comes from the join this handler already made, not from a
-		// second read: the group cannot have been deleted while this customer
-		// belonged to it (the foreign key's RESTRICT, design D2), so the name
-		// read a moment ago is the name to snapshot.
-		beforeSnapshot = &groupSnapshot{GroupID: *before, Name: deref(current.GroupName)}
-	}
-
-	now := s.deps.Clock()
-	// Resolved before the transaction opens, and only here: by this point the
-	// handler always records customer.group_changed (the no-op returned above),
-	// so the actor is always needed (customers foundation design D1).
-	act, err := s.actorFor(ctx, generatedFallbackActor)
-	if err != nil {
-		return nil, fmt.Errorf("customers: resolve actor: %w", err)
-	}
-
-	var updated store.SetCustomerGroupRow
-	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		txq := store.New(tx)
-		var err error
-		updated, err = txq.SetCustomerGroup(ctx, store.SetCustomerGroupParams{
-			ID: req.Id, GroupID: after, UpdatedAt: now, ExpectedRevision: body.Revision,
-		})
-		if err != nil {
-			return err
-		}
-		return recordCustomerGroupChanged(ctx, txq, now, req.Id, beforeSnapshot, afterSnapshot, act.Kind, act.Display, act.UserID)
-	})
-	switch {
-	case errors.Is(err, pgx.ErrNoRows):
-		// The guarded UPDATE matched no row: a concurrent writer moved the
-		// revision between the read above and this write, answered by re-reading
-		// and reporting the row's now-current revision — the same race
-		// PutCustomersByIdOwner's own guarded write answers, in the same words
-		// and with no code.
-		fresh, ferr := q.GetCustomer(ctx, req.Id)
-		if errors.Is(ferr, pgx.ErrNoRows) {
-			return gen.PutCustomersByIdGroup404Response{}, nil
-		}
-		if ferr != nil {
-			return nil, fmt.Errorf("customers: re-read customer after conflict: %w", ferr)
-		}
-		return gen.PutCustomersByIdGroup409ApplicationProblemPlusJSONResponse(customerRevisionConflict(existing.Revision, fresh.Revision)), nil
-	case db.IsForeignKeyViolation(err, customersGroupFK):
-		// The group was deleted between the resolve above and this write — the
-		// one window the resolve cannot close, since nothing here locks the
-		// vocabulary (and design D2 makes it narrow: only an EMPTY group can be
-		// deleted, so the TARGET group must have had no members a moment ago —
-		// the customer's own current group, if any, is irrelevant). Answered as the field error the resolve itself would
-		// have given a moment later, exactly as PutCustomersByIdTags answers its
-		// own late foreign-key violation.
-		return gen.PutCustomersByIdGroup400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
-			"Invalid customer group", map[string][]string{"groupId": {groupNotFound(*after)}})), nil
-	case err != nil:
-		return nil, fmt.Errorf("customers: set customer group: %w", err)
-	}
-
-	summary, err := q.CustomerTimelineSummary(ctx, req.Id)
-	if err != nil {
-		return nil, fmt.Errorf("customers: timeline summary: %w", err)
-	}
-	return respond(fromSetCustomerGroupRow(updated, summary))
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -274,6 +275,122 @@ func TestPutCustomersByIdGroup_AMoveBetweenTheTwoReads(t *testing.T) {
 		moved := fetchTimelineEvent(t, h, customer.Id, "customer.group_changed")
 		if moved.Summary != "Moved from Wholesale to Key accounts" {
 			t.Errorf("summary = %q, want %q: before is the group the consistent read saw", moved.Summary, "Moved from Wholesale to Key accounts")
+		}
+	})
+}
+
+// TestDeleteCustomerGroup_AMemberArrivingAfterTheCountIsStillRefused pins the
+// DELETE's backstop: the window between CountCustomerGroupMembers and
+// DeleteCustomerGroup, which the foreign key's RESTRICT closes. The count reads
+// only customers.customers, so gateGroupTable (ACCESS EXCLUSIVE on
+// customers.customer_groups) lets it through and queues the DELETE. While the
+// DELETE waits, the gate moves a customer into the group and commits, so the
+// count said "empty" and the DELETE finds a member. The answer must be the
+// refusal the count would have given had it run a moment later — 409
+// group_in_use naming the one customer — and the group must still exist.
+// Matching the wrong SQLSTATE in the delete's backstop turns this into a 500,
+// which the status assertion catches.
+//
+// Not parallel: awaitLockWaiters counts lock waiters across the whole database.
+func TestDeleteCustomerGroup_AMemberArrivingAfterTheCountIsStillRefused(t *testing.T) {
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	retail := createGroup(t, c, map[string]any{"name": "Retail", "defaultPaymentTermsDays": 30})
+	customer := createCustomer(t, c, "Late Member Co")
+
+	gate := gateGroupTable(t, h)
+	r := betweenTheReads(t, h, gate, func() *modtest.Response {
+		return c.Do(http.MethodDelete, "/api/v1/customers/groups/"+retail.Id, nil)
+	}, moveCustomerSQL, retail.Id, customer.Id)
+
+	if r.Status != http.StatusConflict {
+		t.Fatalf("status %d body %s, want 409 (not a 500 from the restrict violation)", r.Status, r.Body)
+	}
+	var problem conflictProblemJSON
+	r.JSON(&problem)
+	if problem.Code == nil || *problem.Code != "group_in_use" || problem.Detail == nil || !strings.Contains(*problem.Detail, "1 customer. Move it") {
+		t.Errorf("conflict = code %v detail %v, want group_in_use naming one customer", problem.Code, problem.Detail)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM customers.customer_groups WHERE id = $1`, retail.Id); n != 1 {
+		t.Errorf("groups with Retail's id = %d, want 1: the refused delete removed nothing", n)
+	}
+}
+
+// TestPutCustomersByIdGroup_AMoveBeforeAnUnguardedWrite pins the window AFTER
+// the consistent pair: a PUT without a revision has read the customer and its
+// group, agreed on them, and is about to write when a concurrent move lands.
+// The gate is the customer ROW (gateCustomerLock's shape): both reads are plain
+// SELECTs and pass it, SetCustomerGroup queues on it, and the gate moves the
+// customer and commits. The handler guards even an unguarded request's write
+// with the revision its own reads agreed on, so the write matches no row and
+// the handler starts again from the reads. Both subtests catch a handler that
+// writes unguarded instead: its write would land over the move, recording a
+// before the row no longer had.
+//
+// Not parallel, and the subtests are not either: awaitLockWaiters counts
+// across the database.
+func TestPutCustomersByIdGroup_AMoveBeforeAnUnguardedWrite(t *testing.T) {
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	retail := createGroup(t, c, map[string]any{"name": "Retail"})
+	key := createGroup(t, c, map[string]any{"name": "Key accounts"})
+	other := createGroup(t, c, map[string]any{"name": "Wholesale"})
+
+	// startInRetail is a customer in Retail at revision 2, and the answer to
+	// moving it into Key accounts without a revision while the gate moves it
+	// into moveTo.
+	startInRetail := func(t *testing.T, name, moveTo string) (int32, *modtest.Response) {
+		t.Helper()
+		customer := createCustomer(t, c, name)
+		if r := putCustomerGroup(t, c, customer.Id, map[string]any{"groupId": retail.Id}); r.Status != http.StatusOK {
+			t.Fatalf("set the starting group: status %d body %s", r.Status, r.Body)
+		}
+		ctx := context.Background()
+		gate, err := h.Pool().Begin(ctx)
+		if err != nil {
+			t.Fatalf("gate: begin: %v", err)
+		}
+		t.Cleanup(func() { _ = gate.Rollback(ctx) })
+		if _, err := gate.Exec(ctx, `SELECT 1 FROM customers.customers WHERE id = $1 FOR UPDATE`, customer.Id); err != nil {
+			t.Fatalf("gate: lock the customer row: %v", err)
+		}
+		return customer.Id, betweenTheReads(t, h, gate, func() *modtest.Response {
+			return putCustomerGroup(t, c, customer.Id, map[string]any{"groupId": key.Id})
+		}, moveCustomerSQL, moveTo, customer.Id)
+	}
+
+	t.Run("a move to the same group is a no-op", func(t *testing.T) {
+		id, r := startInRetail(t, "Same Target Co", key.Id)
+
+		if r.Status != http.StatusOK {
+			t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+		}
+		var answered customerJSON
+		r.JSON(&answered)
+		// Revision 3 is the gate's move; the request found the customer already
+		// where it asked for it and wrote nothing.
+		if answered.Group == nil || answered.Group.Id != key.Id || answered.Revision != 3 {
+			t.Errorf("answered group %+v revision %d, want Key accounts at revision 3", answered.Group, answered.Revision)
+		}
+		if n := countTimelineEvents(t, h, id, "customer.group_changed"); n != 1 {
+			t.Errorf("customer.group_changed events = %d, want 1: only the starting move, not a change from a group the row had left", n)
+		}
+	})
+
+	t.Run("a move elsewhere is the before the event records", func(t *testing.T) {
+		id, r := startInRetail(t, "Other Target Co", other.Id)
+
+		if r.Status != http.StatusOK {
+			t.Fatalf("status %d body %s, want 200: an omitted revision still applies", r.Status, r.Body)
+		}
+		var answered customerJSON
+		r.JSON(&answered)
+		if answered.Group == nil || answered.Group.Id != key.Id || answered.Revision != 4 {
+			t.Errorf("answered group %+v revision %d, want Key accounts at revision 4", answered.Group, answered.Revision)
+		}
+		moved := fetchTimelineEvent(t, h, id, "customer.group_changed")
+		if moved.Summary != "Moved from Wholesale to Key accounts" {
+			t.Errorf("summary = %q, want %q: before is the group the row really had", moved.Summary, "Moved from Wholesale to Key accounts")
 		}
 	})
 }

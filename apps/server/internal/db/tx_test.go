@@ -248,7 +248,8 @@ func TestIsForeignKeyViolation(t *testing.T) {
 // IsForeignKeyViolation: it accepts 23001 and only 23001, because the two
 // SQLSTATEs come from the same foreign key depending on its ON DELETE action,
 // and a caller that matched the wrong one would never see its own race. The
-// real 23001 is provoked where it matters, in internal/customers' group delete.
+// real 23001 is provoked where it matters, by internal/customers'
+// TestDeleteCustomerGroup_AMemberArrivingAfterTheCountIsStillRefused.
 func TestIsRestrictViolation(t *testing.T) {
 	err := fmt.Errorf("delete group: %w", &pgconn.PgError{Code: "23001", ConstraintName: "customers_group_id_fkey"})
 

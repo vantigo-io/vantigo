@@ -24,6 +24,20 @@ import (
 // money arrives, and the person who may rename a customer is not thereby
 // the person who may give it 90 days' credit. Reading it needs only
 // customers:view, the same as every other sub-resource's GET.
+//
+// customers:billing-manage guards only the customer's OWN override. Since
+// customer groups (design D2) a customer whose profile leaves paymentTermsDays
+// unset inherits its group's default, and both halves of that are
+// customers:update writes: choosing a customer's group, and editing a group's
+// default. So a customers:update holder decides a customer's EFFECTIVE payment
+// term whenever the customer's own profile leaves it unset — create a group
+// with a 90-day default, move the customer in — and one edit to a group's
+// default moves the effective term of every such member at once. That is a
+// deliberate trade-off (a group's default is installation policy, the tag
+// vocabulary's permission), not an oversight. If it is ever unwanted, the change
+// is to require customers:billing-manage as well on a group create or update
+// that sets or changes defaultPaymentTermsDays, and on a membership PUT whose
+// before or after group carries a default: a per-request check, with no new key.
 
 // billingProfileResponse is CustomerBillingProfile.FromDomain: p's ten
 // fields, revision, warnings, the resolved Peppol lookup (peppol lookup
