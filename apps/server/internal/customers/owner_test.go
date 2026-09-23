@@ -544,8 +544,8 @@ func TestOwnerPermissions(t *testing.T) {
 // The search answers display names of active users, which every customer
 // READER already sees (follow-ups design D1 relaxed it from customers:update
 // for exactly that reason), so customers:view is the door. A caller with some
-// other module's permission and nothing of this one's is still refused — the
-// router's own 403, not the handler's.
+// other permission of this module and not customers:view is still refused —
+// the router's own 403, not the handler's.
 func TestGetAssignableUsers_NeedsOnlyCustomersView(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)

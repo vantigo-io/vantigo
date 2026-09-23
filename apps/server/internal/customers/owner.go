@@ -342,8 +342,9 @@ func (s *server) PutCustomersByIdOwner(ctx context.Context, req gen.PutCustomers
 // customers:view. The reason is the new caller: a timeline writer picking a
 // follow-up's assignee holds customers:timeline-manage and need not hold
 // customers:update at all, and what this operation answers — the display names
-// of active users — is what every timeline READER already sees on every entry
-// as its author. There was nothing here for customers:update to protect.
+// of active users — is what every customer READER (customers:view) already
+// sees, as the owner on every customer it reads. There was nothing here for
+// customers:update to protect.
 //
 // Unlike projects' version there is nothing to exclude — a customer has one
 // owner, not a team, so the current owner is a legitimate result and the
