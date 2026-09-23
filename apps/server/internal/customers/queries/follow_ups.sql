@@ -68,6 +68,16 @@ RETURNING id, customer_id, provenance, producer, event_type, occurred_on, occurr
 --
 -- The ordering is the design's (due date, then entry id) so repeated calls
 -- cannot reshuffle ties, even though the handler sorts the merged list itself.
+-- Here it does a second job: with the LIMIT below, ascending due date is what
+-- decides WHICH twenty come back.
+--
+-- The LIMIT is 20 because the dashboard's card is a short list, not an inbox:
+-- an installation with three hundred neglected follow-ups must not make this
+-- endpoint answer three hundred items, and the Follow-ups page is where the
+-- whole backlog is read. The twenty reported are the MOST OVERDUE, because
+-- that is the half of a long list worth naming — note that the host's card
+-- then merges every module's items NEWEST occurredAt first, so among the
+-- twenty a follow-up due today shows above one ten days overdue.
 SELECT e.id AS entry_id, e.customer_id, c.name AS customer_name, e.follow_up_on
 FROM customers.customers_timeline_entries e
 JOIN customers.customers c ON c.id = e.customer_id
@@ -76,7 +86,8 @@ WHERE e.provenance = 'manual' AND e.state = 'active'
   AND e.follow_up_on <= @today::date
   AND c.status <> 'archived'
   AND (e.follow_up_assignee_user_id IS NULL OR e.follow_up_assignee_user_id = sqlc.narg(caller_id)::uuid)
-ORDER BY e.follow_up_on, e.id;
+ORDER BY e.follow_up_on, e.id
+LIMIT 20;
 
 -- name: CountCustomerFollowUps :one
 -- CountCustomerFollowUps is the total GET /customers/follow-ups paginates over
@@ -91,7 +102,10 @@ ORDER BY e.follow_up_on, e.id;
 -- every follow-up whatever its state. The archived rule rides on the same
 -- parameter: archived customers' follow-ups are excluded UNLESS the caller
 -- asked for done ones, because a done follow-up is a record of work finished
--- and an archived customer's finished work is still finished.
+-- and an archived customer's finished work is still finished — or for 'all',
+-- which has to be the superset of the other three or its name is a lie: a state
+-- filter that hides rows every other value would show is a filter nobody can
+-- use to find what they know is there.
 SELECT count(*)
 FROM customers.customers_timeline_entries e
 JOIN customers.customers c ON c.id = e.customer_id
@@ -101,7 +115,7 @@ WHERE e.provenance = 'manual' AND e.state = 'active'
        OR (@follow_up_state::text = 'done' AND e.follow_up_done_at IS NOT NULL)
        OR (@follow_up_state::text = 'open' AND e.follow_up_done_at IS NULL)
        OR (@follow_up_state::text = 'overdue' AND e.follow_up_done_at IS NULL AND e.follow_up_on < @today::date))
-  AND (@follow_up_state::text = 'done' OR c.status <> 'archived')
+  AND (@follow_up_state::text IN ('done', 'all') OR c.status <> 'archived')
   AND (NOT @assignee_none::bool OR e.follow_up_assignee_user_id IS NULL)
   AND (sqlc.narg(assignee_id)::uuid IS NULL OR e.follow_up_assignee_user_id = sqlc.narg(assignee_id)::uuid)
   AND (sqlc.narg(customer_id)::int IS NULL OR e.customer_id = sqlc.narg(customer_id)::int);
@@ -133,7 +147,7 @@ WHERE e.provenance = 'manual' AND e.state = 'active'
        OR (@follow_up_state::text = 'done' AND e.follow_up_done_at IS NOT NULL)
        OR (@follow_up_state::text = 'open' AND e.follow_up_done_at IS NULL)
        OR (@follow_up_state::text = 'overdue' AND e.follow_up_done_at IS NULL AND e.follow_up_on < @today::date))
-  AND (@follow_up_state::text = 'done' OR c.status <> 'archived')
+  AND (@follow_up_state::text IN ('done', 'all') OR c.status <> 'archived')
   AND (NOT @assignee_none::bool OR e.follow_up_assignee_user_id IS NULL)
   AND (sqlc.narg(assignee_id)::uuid IS NULL OR e.follow_up_assignee_user_id = sqlc.narg(assignee_id)::uuid)
   AND (sqlc.narg(customer_id)::int IS NULL OR e.customer_id = sqlc.narg(customer_id)::int)

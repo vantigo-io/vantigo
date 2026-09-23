@@ -91,6 +91,14 @@ const (
 // (module.go) — so a caller who cannot open the timeline must not be handed its
 // entry ids by the dashboard instead. Absent that permission the query is not
 // even run: the items are not merely withheld, they are never read.
+//
+// The follow-up half is capped at twenty by the query itself (its LIMIT, and
+// the comment there says why): the twenty most overdue are what a dashboard
+// card can usefully name, and a backlog of three hundred is read on the
+// Follow-ups page instead. The registry half needs no such cap — it is at most
+// one item per customer whose registry record says something is wrong — and
+// sortAttentionItems below still orders the merged list by date, not by which
+// half an item came from.
 func (s *server) GetCustomersStatsAttention(ctx context.Context, _ gen.GetCustomersStatsAttentionRequestObject) (gen.GetCustomersStatsAttentionResponseObject, error) {
 	q := store.New(s.deps.Pool)
 	registryRows, err := q.RegistryAttentionCandidates(ctx)

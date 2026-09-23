@@ -659,6 +659,50 @@ func TestStatsAttention_ReportsTheCallersAndUnassignedFollowUpsOnly(t *testing.T
 	}
 }
 
+// TestStatsAttention_CapsTheFollowUpHalfAtTheTwentyMostOverdue is the cap the
+// query itself applies. The dashboard's card is a short list, not an inbox, so
+// the server reports the twenty MOST OVERDUE open follow-ups this caller may
+// see and no more; the five nearest due dates fall off the end, which is the
+// useful direction — what has been waiting longest is what wants naming.
+func TestStatsAttention_CapsTheFollowUpHalfAtTheTwentyMostOverdue(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, caller := authenticatedClientWithID(t, h)
+	customer := createCustomer(t, c, "Backlog Co")
+
+	// 25 overdue follow-ups, one per day, the oldest 25 days back — five more
+	// than the cap, each with a due date of its own so "which twenty" is a
+	// question with exactly one answer.
+	entries := make(map[string]int32, 25)
+	for offset := -25; offset <= -1; offset++ {
+		due := day(h, offset)
+		entry := createWithFollowUp(t, c, customer.Id, day(h, -30), "due "+due,
+			map[string]any{"dueOn": due, "assigneeUserId": caller})
+		entries[due] = entry.Id
+	}
+
+	items := getAttention(t, c)
+	if len(items) != 20 {
+		t.Fatalf("len(items) = %d, want 20 (the cap on the follow-up half)", len(items))
+	}
+	reported := map[string]bool{}
+	for _, item := range items {
+		reported[item.Id] = true
+	}
+	for offset := -25; offset <= -6; offset++ {
+		id := fmt.Sprintf("followUpOverdue/%d", entries[day(h, offset)])
+		if !reported[id] {
+			t.Errorf("items = %+v, want %q (among the twenty most overdue)", items, id)
+		}
+	}
+	for offset := -5; offset <= -1; offset++ {
+		id := fmt.Sprintf("followUpOverdue/%d", entries[day(h, offset)])
+		if reported[id] {
+			t.Errorf("items = %+v, want no %q (one of the five nearest due dates)", items, id)
+		}
+	}
+}
+
 // TestGetFollowUps_DefaultsToMyOpenOnes is design D3's defaults, its ordering
 // and its row shape, all read off one request.
 func TestGetFollowUps_DefaultsToMyOpenOnes(t *testing.T) {
@@ -755,7 +799,7 @@ func TestGetFollowUps_EveryFilterAndThePageBoundary(t *testing.T) {
 		{"state=open, the default, spelled out", url.Values{"state": {"open"}}, []int32{overdue.Id, future.Id}},
 		{"state=overdue is a subset of open", url.Values{"state": {"overdue"}}, []int32{overdue.Id}},
 		{"state=done, where an archived customer's follow-up survives", url.Values{"state": {"done"}}, []int32{done.Id, archivedDone.Id}},
-		{"state=all, where an archived customer's OPEN one does not", url.Values{"state": {"all"}}, []int32{done.Id, overdue.Id, future.Id}},
+		{"state=all is a superset of every other state, archived included", url.Values{"state": {"all"}}, []int32{done.Id, overdue.Id, archivedOpen.Id, archivedDone.Id, future.Id}},
 		{"assignee=none", url.Values{"assignee": {"none"}}, []int32{unassigned.Id}},
 		{"assignee=<uuid>", url.Values{"assignee": {other.String()}}, []int32{theirs.Id}},
 		{"customerId narrows to one customer", url.Values{"customerId": {fmt.Sprint(alpha.Id)}}, []int32{overdue.Id, future.Id}},
@@ -768,15 +812,14 @@ func TestGetFollowUps_EveryFilterAndThePageBoundary(t *testing.T) {
 			}
 		})
 	}
-	// archivedOpen is created and never expected anywhere: state=open and
-	// state=all both exclude it, which the two cases above assert by its
-	// absence.
-	_ = archivedOpen
+	// archivedOpen is expected under state=all and nowhere else: state=open
+	// hides an archived customer's open follow-up, state=all is the escape
+	// hatch that shows everything, and both cases above say so.
 
 	// Paging: one row per page, and the metadata that lets a control render.
 	first := listFollowUps(t, c, url.Values{"state": {"all"}, "pageSize": {"1"}})
-	if len(first.Data) != 1 || first.Pagination.TotalCount != 3 || first.Pagination.TotalPages != 3 {
-		t.Errorf("page 1 = %+v / %+v, want 1 row of 3 across 3 pages", first.Data, first.Pagination)
+	if len(first.Data) != 1 || first.Pagination.TotalCount != 5 || first.Pagination.TotalPages != 5 {
+		t.Errorf("page 1 = %+v / %+v, want 1 row of 5 across 5 pages", first.Data, first.Pagination)
 	}
 	second := listFollowUps(t, c, url.Values{"state": {"all"}, "pageSize": {"1"}, "page": {"2"}})
 	if len(second.Data) != 1 || second.Data[0].EntryId == first.Data[0].EntryId {

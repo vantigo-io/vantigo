@@ -61,7 +61,14 @@ var ErrTooLarge = errors.New("secrets: plaintext too large")
 // 1 + nonceSize + len(plaintext) + the GCM tag — is a sum of known small
 // terms that cannot overflow an int on any architecture Go supports,
 // whatever produced the plaintext.
-const maxPlaintextBytes = 64 << 20
+//
+// It is a var rather than a const for exactly one reason: the test that proves
+// the boundary has to seal a plaintext of precisely this size, and 64 MiB in,
+// 64 MiB sealed and 64 MiB opened is a quarter of a gigabyte for a test about
+// an off-by-one — more than a small CI runner should be asked for. The test
+// lowers it and restores it under t.Cleanup (and must therefore not be
+// parallel). Nothing outside that test ever writes to it.
+var maxPlaintextBytes = 64 << 20
 
 // hkdfSalt fixes the HKDF salt used to derive every purpose's key. It is
 // not secret; it exists only to separate this derivation from any other use

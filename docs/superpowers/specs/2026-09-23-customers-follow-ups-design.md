@@ -55,6 +55,13 @@ the two sentences (en + nb): "Follow-up overdue for {{name}}" / "Follow-up due t
 {{name}}". This is the first customers attention item that depends on the caller; the
 endpoint reads the principal from the context as time's and expenses' items do.
 
+The follow-up half is **capped at twenty**: the twenty most overdue open follow-ups the
+caller may see, because the dashboard's card is a short list and the Follow-ups page is
+where a whole backlog is read. The host's card then merges every module's items
+**newest `occurredAt` first**, so among the reported twenty a follow-up due today shows
+above one ten days overdue — the cap picks the worst twenty, the card orders them by
+date like everything else on it.
+
 ### D3 — A Follow-ups page
 
 `GET /customers/follow-ups` (`customers:timeline-view` + `customers:view`), paginated
@@ -62,7 +69,8 @@ endpoint reads the principal from the context as time's and expenses' items do.
 `state=open|overdue|done|all` (default `open`; `overdue` ⊂ `open`), optional `customerId`;
 sorted `dueOn` ascending then entry id; each row `{entryId, customerId, customerName,
 eventType, occurredOn, note (first 200 UTF-16 units), followUp}`. Archived customers'
-follow-ups are excluded unless `state=done`.
+follow-ups are excluded unless `state=done` or `state=all` — `all` has to be the superset
+of the other three values or its name is a lie.
 
 Host: a **Follow-ups** nav entry under Customers (`/customers/follow-ups`, requires
 `customers:timeline-view`), a route rendering the package's `FollowUpsPage` with the two

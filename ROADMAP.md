@@ -204,7 +204,13 @@ vocabulary stays in the tens or low hundreds — paging it is an additive contra
 change the day an installation proves otherwise; the same bet is made for the
 role vocabulary, which is deliberately **three** values — a wider list
 (technical, executive sponsor) is a value change rather than a migration, and
-the free-text title carries everything else today.
+the free-text title carries everything else today. And follow-up
+**reassignment**: an assignee who is disabled or removed keeps their follow-ups,
+which then sit on nobody's attention list and behind nobody's page filter
+(`GET /customers/follow-ups?assignee=<uuid>` is the only way to them), so this
+phase's own leftover is a bucket for an inactive assignee's follow-ups, or a
+reassign path — the day an installation has enough of them for that to be worth
+a path rather than an edit of each entry.
 
 *Unblocks:* answering "who owns this relationship and what happens next" without
 building a deals pipeline.
