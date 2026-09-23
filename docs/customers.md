@@ -1847,6 +1847,64 @@ Peppol network could not be reached. Try again."; a 503 makes the action
 disappear, with a one-line note, until the page is reloaded, so the app does
 not keep asking an installation that has the feature switched off.
 
+## Customer 360
+
+`GET /api/v1/customers/{id}/overview` (`customers:view`) answers, in one call, what
+is going on with one customer across the modules that know: its projects, the work
+approved on them and not yet billed, the expenses ready to invoice, and when anything
+last happened. It is the first place this module reads another module's data, and it
+reads it the way every consumer does — through `Deps.Projects`
+(`contracts.ProjectDirectory`), `Deps.Actuals` (`contracts.ProjectActuals`, from
+time) and `Deps.Expenses` (`contracts.ProjectExpenses`), composed server-side in
+`overview.go` rather than joined in the browser, because no module endpoint takes a
+customer id for hours or expenses and the two batch contracts already take exactly
+the list of project ids a customer has. It holds no transaction and writes nothing;
+each contract is asked at most once, in one batch. Decided in
+[`docs/superpowers/specs/2026-09-23-customers-360-design.md`](superpowers/specs/2026-09-23-customers-360-design.md).
+
+**Sections are shaped, never refused.** Every section but `lastActivity` is absent
+when its module is off or it is not for this caller, and the response never says
+which — the panel simply shows fewer tiles:
+
+| Section | Present when | Figures |
+| --- | --- | --- |
+| `projects` | the projects module is on and the caller holds `projects:access` | `openCount`, `totalCount`, `truncated`, and `open`: the open (`active`) projects, newest work first then by id, **at most ten** |
+| `work` | `projects` is present and the time module is on | `unbilledHoursHundredths`, `approvedHoursHundredths`, `submittedHoursHundredths`, `draftHoursHundredths`, `lastWorkOn`, and `unbilledAmounts` **only for** `projects:view-financials` or `projects:manage-all` |
+| `expenses` | `projects` is present, the expenses module is on, **and** the caller holds `projects:view-financials` or `projects:manage-all` | `readyCount`, `readyAmounts`, `lastExpenseOn` |
+| `lastActivity` | always | `timelineOn`, `workOn`, `expenseOn` — each absent when unknown, or when its section is |
+
+**Which projects.** For `projects:view-all` or `projects:manage-all`, every one of
+the customer's projects; otherwise only those the caller holds a role on — the
+projects list endpoint's own rule, restated as `ProjectsForUser` ∩
+`ProjectsForCustomer` instead of a call per project. Every count, and every figure
+below, is over that visible set.
+
+**Unbilled** is `Approved − Invoiced` from the actuals contract, per project, summed:
+approved work includes invoiced work, and `ActualsTotals.Invoiced` is the part of it
+already billed ([docs/time.md](time.md#what-time-reports-to-other-modules)). Hours
+are hundredths and subtract exactly; they are *every* approved hour on the customer's
+projects, because the contract's buckets are not split by billability — an approved
+non-billable hour on a customer project counts as unbilled here, and carries no
+amount. The amount is each project's bill amount in **its own currency** (the
+request is quoted in it), so a project with no currency adds hours only; the two
+published amounts are each rounded on their own, so the difference can be a cent
+from the unbilled work rounded once. **Ready** is the expenses contract's own "ready
+to invoice": approved, billable, priced, not yet invoiced, never a per diem day.
+Money is per currency, by ISO code, **never added across currencies**, and a
+currency with nothing in it is left out; it is computed in exact decimals and becomes
+a JSON number only at the end. Cost never appears — the panel is about the customer,
+not the margin.
+
+**The caps.** `ProjectsForCustomer` answers at most `contracts.MaxActualsRequests`
+(2 000) projects, the oldest by id — the batch both providers take in one call — and
+`truncated` is true when the customer reached it; the counts are then over those
+2 000. The open rows stop at ten; the Projects tab lists every project.
+
+**Errors.** A customer that does not exist is a bare 404; an archived one answers
+normally, because its page still shows it. A contract that fails fails the whole
+request (500) rather than dropping its section: absent must only ever mean "not for
+you, or not installed".
+
 ## Permissions
 
 Fourteen keys, category-grouped, every one delegable. Only `view`, `create` and
@@ -2038,6 +2096,14 @@ of its caller: Products phase 4's customer-group prices are the intended reader.
   an overview tab (relationship card, contact & addresses card, billing card, contacts
   card, timeline); other modules add their own tabs (Energy, Projects) the same way
   the host composes any module's tabs onto a customer.
+  The host puts a **Customer 360** panel at the top of the overview tab
+  (`apps/host/frontend/src/routes/customers/-customer-360-panel.tsx`), above this
+  package's cards: **Open projects**, **Unbilled hours**, **Expenses ready to
+  invoice** and **Last activity** tiles, one per section the
+  [overview](#customer-360) answered, and under them the open projects, each linking
+  to its project. It is the host's rather than this package's because it links
+  across modules; it takes no props from the host but the customer id, and an error
+  hides the panel, never the page.
   **Archive and Restore** are gated on the host's permission check rather than a
   local one — the header takes `canArchive`/`canRestore` props and never fetches
   permissions itself: Archive needs `customers:delete` and goes through the shared
@@ -2172,7 +2238,7 @@ of its caller: Products phase 4's customer-group prices are the intended reader.
 ## API
 
 Every operation is under `/api/v1/customers`, authenticated with the shared identity
-session cookie. 55 operations in total, each exercised by the module's own
+session cookie. 56 operations in total, each exercised by the module's own
 contract-validated test coverage gate — every operation in `openapi/customers.yaml`
 must be exercised by at least one successful exchange, with no allow-list.
 
@@ -2202,6 +2268,7 @@ must be exercised by at least one successful exchange, with no allow-list.
 | `PUT /tags/{tagId}`, `DELETE /tags/{tagId}` | `customers:update` |
 | `POST /{id}/peppol-lookup` | `customers:billing-manage` + `customers:view` |
 | `GET /{id}/registry-record` | `customers:view` (withheld to 204 without `customers:legal-identity-view`) |
+| `GET /{id}/overview` | `customers:view` (each section further shaped by `projects:*` keys — see [Customer 360](#customer-360)) |
 | `POST /{id}/registry-refresh` | `customers:legal-identity-manage` + `customers:legal-identity-view` |
 | `GET /{id}/contacts`, `GET /contacts/{id}/customers` | `customers:associations-view` + `customers:contacts-view` |
 | `POST /{id}/contacts` (attach) | `customers:associations-manage` + `customers:contacts-view` |
@@ -2311,6 +2378,17 @@ which makes `customers:update` the key that steers an inherited term (see
 
 Still ahead in the phase: attachments on a customer and its timeline entries,
 once the storage module has a model for it.
+
+**Phase 5 delivery A** — [Customer 360](#customer-360) — has since landed: one
+endpoint, `GET /customers/{id}/overview`, composed server-side from the project
+directory and the time and expenses batch contracts, and a host-owned panel at the
+top of the customer page. It needed two additive contract changes —
+`ProjectDirectory.ProjectsForCustomer` and `ActualsTotals.Invoiced`, the part of
+approved already billed — and no permission key: every section is shaped by the
+projects module's own keys. Still ahead in phase 5: the customer default bill rate
+in the rate chain (delivery B), other modules writing to the customer timeline (on
+the outbox deferred until Orders), and invoiced revenue and outstanding once
+Invoices exists.
 
 Past that, the remaining gaps are exactly
 what [ROADMAP.md's Customers section](../ROADMAP.md#customers) is built around —
