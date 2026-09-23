@@ -7,7 +7,7 @@
 -- shuffles between reads; an unknown code (there is none today — the
 -- vocabulary is validated in Go — but a widened list is a value change, not a
 -- migration) sorts last by name rather than vanishing.
-SELECT role, is_primary, created_at
+SELECT role, is_primary
 FROM customers.customer_contact_roles
 WHERE customer_id = @customer_id AND contact_id = @contact_id
 ORDER BY

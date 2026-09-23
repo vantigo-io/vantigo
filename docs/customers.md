@@ -150,7 +150,8 @@ association is what links one to a customer, carrying a `title` and an optional
 phone/email that overrides the contact's own for that relationship. Deleting a
 contact removes every association it has, each recorded as a
 `customer.contact_removed` event against the customer it was attached to, all
-inside one transaction with a row lock on the contact.
+inside one transaction with a row lock on the contact and on every customer it is
+attached to.
 
 Ten operations in total: list/create/get/update/delete a contact, list a
 contact's customers, list a customer's contacts, attach/update/detach an
@@ -251,6 +252,19 @@ decides what gets recorded and who gets promoted happens a second time, under
 every one of those locks, which is the only read here that can be trusted — the
 first is additive, not authoritative.
 
+**That breadth has a cost, and it is inherent.** Every one of those
+`FOR NO KEY UPDATE` locks is held for the whole transaction, so deleting a
+contact shared by hundreds of customers stalls every other write to all of those
+customers' roles, addresses and tags until it commits. It cannot be narrowed to
+one customer at a time: each removed association's roles have to be *read* under
+its own customer's lock — that is what the second read above is — and the
+promotions they cause are decided from that read, so releasing a lock before the
+transaction ends would put the decision back on a snapshot nothing is holding
+still. Deleting a contact is a rare, deliberate act on a record attached to a
+handful of customers in practice; if that ever stops being true, the answer is to
+detach first and delete a contact that is attached to nothing, not to loosen the
+lock.
+
 Roles ride on the association's **own** endpoints; there are no new paths.
 `POST /customers/{id}/contacts` takes `roles` as the roles to give (none when
 omitted), `PUT /customers/{id}/contacts/{contactId}` takes it as the **complete**
@@ -259,6 +273,15 @@ the customer row's lock finds at write time, not the one read earlier to shape
 validation, so a concurrent write in the window between the two is not silently
 discarded; `[]` means none — and both list shapes answer `roles` in the fixed
 order `billing, project, decision_maker`.
+
+**`roles` is the only field on that PUT an omission leaves alone.** The PUT is a
+full replace of the association, so an omitted `title`, `phone` or `email` clears
+it: now that `role` is no longer required, `PUT /customers/{id}/contacts/{contactId}`
+with `{}` against an association that holds a role is a valid request — the kept
+roles satisfy the title-or-role rule — and it answers 200 with the title, phone
+and email gone, plus a `customer.contact_relationship_updated` event recording
+them as cleared. A client that means to change one field sends the others back
+(the UI's edit modal seeds itself from the association it read, so it does).
 
 Inside a `roles` array, **`primary` is three-valued**, and the three values are
 three different instructions:
@@ -1691,10 +1714,13 @@ been in since the foundation.
   star is not the only carrier of the fact. The attach and edit modals share
   one `ConnectionFields` (`-connection.tsx`): a title input and a checkbox per
   role, each with a Primary switch enabled only while its box is ticked, and
-  **on and disabled** for a role the contact already holds as primary — with the
-  reason shown as a tooltip: "Already the only holder" where the page can tell
+  **on and disabled** for a role the contact holds as primary WHILE that role's
+  box stays ticked — unticking the box is what asks to drop the role
+  altogether, so the switch does not keep reporting on with a reason that no
+  longer applies. The reason is shown both as the switch's inline description
+  and as a tooltip: "Already the only holder" where the page can tell
   (the customer's contacts card holds every association at that customer, so it
-  scans them for another holder), and "the primary holder stays primary — make
+  scans them for another holder), and "The primary holder stays primary — make
   another contact primary instead" where it cannot (the contact page lists the
   customers a contact is attached to, not the other contacts at each one).
   Saving sends `title` and the complete `roles`.

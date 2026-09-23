@@ -654,3 +654,73 @@ func TestUpdateCustomerContact_AReplaceKeepsARetainedRolesSeniority(t *testing.T
 		t.Errorf("billing's created_at = %s, want it later than project's %s", added, before)
 	}
 }
+
+// TestUpdateCustomerContact_AnEmptyBodyClearsTheFieldsAndKeepsTheRoles pins the
+// one corner where `roles` being the only "omitted = unchanged" field on this
+// endpoint becomes visible: PUT is a REPLACE of the whole association, so a body
+// that mentions neither title nor phone nor email clears all three, and it is
+// only accepted at all because the roles the association keeps satisfy the
+// title-or-role rule (design D1, D3). Before `role` stopped being required this
+// request could not be written; now it can, and the answer is a stripped
+// association rather than a 400 — deliberate, and easy to mistake for a bug the
+// first time a client sends a partial body, which is why it has a test and a
+// sentence in docs/customers.md.
+func TestUpdateCustomerContact_AnEmptyBodyClearsTheFieldsAndKeepsTheRoles(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	customer := createCustomer(t, c, "Replace Semantics Co")
+	contact := createContact(t, c, map[string]any{"firstName": "Replaced", "lastName": "Wholesen"})
+	attachWithRoles(t, c, customer.Id, map[string]any{"contactId": contact.Id, "title": "CEO",
+		"phone": "+47 900 00 001", "email": "ceo@replace.co",
+		"roles": []any{map[string]any{"role": "project"}}})
+
+	r := putAssociation(t, c, customer.Id, contact.Id, map[string]any{})
+	if r.Status != http.StatusOK {
+		t.Fatalf("empty-body update: status %d body %s, want 200 (the kept roles satisfy the title-or-role rule)", r.Status, r.Body)
+	}
+	var answered roledContactJSON
+	r.JSON(&answered)
+	if answered.Title != nil || answered.Phone != nil || answered.Email != nil {
+		t.Errorf("answered title/phone/email = %v/%v/%v, want all three cleared", answered.Title, answered.Phone, answered.Email)
+	}
+	if answered.Role != "" {
+		t.Errorf("answered role = %q, want \"\" (the deprecated alias answers the title or empty)", answered.Role)
+	}
+	if !reflect.DeepEqual(answered.Roles, []contactRoleJSON{{Role: "project", Primary: true}}) {
+		t.Errorf("answered roles = %+v, want project/primary kept — roles is the only field an omission leaves alone", answered.Roles)
+	}
+
+	if n := h.Count(t, `SELECT count(*) FROM customers.customers_contacts
+	                    WHERE customer_id = $1 AND contact_id = $2
+	                      AND title IS NULL AND phone IS NULL AND email IS NULL`, customer.Id, contact.Id); n != 1 {
+		t.Errorf("stored rows with all three cleared = %d, want 1", n)
+	}
+	if got := rolesOf(t, h, customer.Id, contact.Id); !reflect.DeepEqual(got, []contactRoleJSON{{Role: "project", Primary: true}}) {
+		t.Errorf("stored roles = %+v, want project/primary untouched", got)
+	}
+
+	// The clearing is a change, so it is recorded — with the cleared fields, not
+	// the ones it replaced, and under the plain wording, because no role moved.
+	event := fetchTimelineEvent(t, h, customer.Id, "customer.contact_relationship_updated")
+	wantSummary := fmt.Sprintf("Contact relationship updated: Replaced Wholesen (#%d)", contact.Id)
+	if event.Summary != wantSummary {
+		t.Errorf("summary = %q, want %q", event.Summary, wantSummary)
+	}
+	wantPayload := map[string]any{
+		"customerId":  float64(customer.Id),
+		"contactId":   float64(contact.Id),
+		"displayName": "Replaced Wholesen",
+		"firstName":   "Replaced",
+		"middleName":  nil,
+		"lastName":    "Wholesen",
+		"role":        "",
+		"title":       nil,
+		"roles":       []any{map[string]any{"role": "project", "primary": true}},
+		"phone":       nil,
+		"email":       nil,
+	}
+	if !reflect.DeepEqual(event.Payload, wantPayload) {
+		t.Errorf("payload = %+v, want %+v", event.Payload, wantPayload)
+	}
+}
