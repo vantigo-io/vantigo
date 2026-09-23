@@ -22,9 +22,9 @@ import (
 
 // putCustomerGroup PUTs /customers/{id}/group with the given body. The
 // vocabulary's own tests (groups_test.go) deliberately do NOT use it — they set
-// the column directly, because this operation did not exist in their task — but
-// every test from here on does, this file's, group_concurrency_test.go's and
-// Task 4's alike.
+// the column directly, so they stay independent of the membership endpoint —
+// but every test of the membership and of what it feeds does: this file's,
+// group_concurrency_test.go's and the billing profile's alike.
 func putCustomerGroup(t *testing.T, c *modtest.Client, id int32, body map[string]any) *modtest.Response {
 	t.Helper()
 	return c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/group", id), body)

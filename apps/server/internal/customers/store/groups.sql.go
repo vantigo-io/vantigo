@@ -143,7 +143,8 @@ DELETE FROM customers.customer_groups WHERE id = $1
 // DeleteCustomerGroup is DELETE /customers/groups/{groupId} for an EMPTY group.
 // Nothing cascades: the membership column's foreign key is RESTRICT, so a group
 // somebody moved a customer into between the count above and this statement
-// raises a foreign-key violation instead of quietly detaching its members. The
+// raises a restrict_violation (23001 on PostgreSQL 18+, 23503 before it)
+// instead of quietly detaching its members, and the handler matches both. The
 // affected row count is how the handler tells 204 from 404.
 func (q *Queries) DeleteCustomerGroup(ctx context.Context, id uuid.UUID) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteCustomerGroup, id)
@@ -234,8 +235,10 @@ type ListCustomerGroupsRow struct {
 // vocabulary's own reasons (queries/tags.sql): the delete confirmation and the
 // group picker read the one list, a vocabulary is tens of rows rather than
 // thousands, and a correlated count per row over an indexed column costs
-// nothing worth a second round trip. id is the tie-break so two groups that
-// differ only in trailing punctuation still order deterministically.
+// nothing worth a second round trip. id after the name is defensive only:
+// ux_customers_groups_name_lower already makes two equal names impossible, so
+// it never decides an order today, and it is there so the order stays total if
+// that index ever changes.
 func (q *Queries) ListCustomerGroups(ctx context.Context) ([]ListCustomerGroupsRow, error) {
 	rows, err := q.db.Query(ctx, listCustomerGroups)
 	if err != nil {

@@ -731,7 +731,7 @@ export interface components {
             /** Format: int32 */
             paymentTermsDays?: number | null;
         };
-        /** @description A customer's billing profile (invoice-ready customer design D1, D4): payment terms, currency, document language, delivery methods and the identifiers used to send it invoices — every field optional, meaning "not decided here, whoever invoices uses its own default"; unset, a field is simply absent from the response rather than sent as null. warnings is computed at read time from the profile plus the customer's type, legal identity, contact email and addresses — never stored — in a fixed order: ehf_without_recipient, email_without_address, efaktura_for_business, no_invoice_address, ehf_recipient_not_registered, ehf_available (can-this-customer-receive-EHF design D4). peppolLookup is the last Peppol lookup on record (POST .../peppol-lookup), present only when it was made for the participant this profile would look up now — a stale answer (the org number or peppolId changed since) is omitted. */
+        /** @description A customer's billing profile (invoice-ready customer design D1, D4): payment terms, currency, document language, delivery methods and the identifiers used to send it invoices — every field optional, meaning "not decided here, whoever invoices uses its own default"; unset, a field is simply absent from the response rather than sent as null. warnings is computed at read time from the profile plus the customer's type, legal identity, contact email and addresses — never stored — in a fixed order: ehf_without_recipient, email_without_address, efaktura_for_business, no_invoice_address, ehf_recipient_not_registered, ehf_available (can-this-customer-receive-EHF design D4). peppolLookup is the last Peppol lookup on record (POST .../peppol-lookup), present only when it was made for the participant this profile would look up now — a stale answer (the org number or peppolId changed since) is omitted. groupDefault is the customer's group and the payment term that group would give it (customer groups design D4), computed at read time and absent for a customer in no group; the profile's own paymentTermsDays, when set, overrides it. */
         CustomerBillingProfile: {
             buyerReference?: string | null;
             currency?: string | null;
@@ -1067,13 +1067,13 @@ export interface components {
             revision?: number | null;
             website?: string | null;
         };
-        /** @description PUT /customers/{id}/group's own request body (customer groups design D3): the customer is put into groupId, or taken out of every group when it is absent or null. The group must exist; an unknown id is a field error on groupId. revision is optional, as PUT /customers/{id}/owner's own is — omitted, the change applies regardless; present and stale, a 409. Only this sub-resource sets a customer's group: POST /customers and PUT /customers/{id} do not take one. */
+        /** @description PUT /customers/{id}/group's own request body (customer groups design D3): the customer is put into groupId, or taken out of every group when it is absent or null. The group must exist; an unknown id is a field error on groupId. revision is optional, as PUT /customers/{id}/owner's own is — omitted, the customer is read again whenever it changes under the request and the change then applies, with a 409 only for a customer that never settles; present and stale, a 409. Only this sub-resource sets a customer's group: POST /customers and PUT /customers/{id} do not take one. */
         PutCustomerGroupRequest: {
             /** Format: uuid */
             groupId?: string | null;
             /**
              * Format: int32
-             * @description The revision the caller read the customer at (customers foundation design D5). Optional — omitted, the change applies regardless; present and stale, a 409.
+             * @description The revision the caller read the customer at (customers foundation design D5). Optional — omitted, the change applies whatever the revision is, the customer being read again whenever it changes under the request (a customer still changing after three reads answers 409); present and stale, a 409.
              */
             revision?: number | null;
         };

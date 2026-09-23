@@ -14,10 +14,12 @@
 -- What it does NOT copy from tags: no colour and no description. A group is a
 -- policy object — its name and its default are installation policy — not a
 -- label, and nothing on it is decoration. created_at/updated_at are here and
--- not on customers.tags because this row IS edited over time in a way somebody
--- may have to account for later ("when did our Retail terms change?"); the
--- module answers that from these columns rather than from a timeline it
--- deliberately does not write (design D2).
+-- not on customers.tags because this row IS edited over time in a way that
+-- matters to every member. They say when the group was created and when it was
+-- last edited, and no more: a rename moves updated_at as much as a new default
+-- does, only the latest edit is kept, and the old value is gone. The module
+-- keeps no history of a group's default anywhere, since the timeline it would
+-- belong on is deliberately not written for vocabulary edits (design D2).
 --
 -- default_payment_terms_days is NULL for "this group decides nothing", and
 -- CHECKed 0-365 — the billing profile's own rule (validatePaymentTermsDays,

@@ -93,13 +93,19 @@ func groupInUseConflict(members int64) gen.CustomerConflictProblem {
 
 // customersGroupFK is the foreign key customers.customers.group_id carries
 // (migration 00027, named by PostgreSQL's own convention). Named here because
-// the delete matches it BY NAME rather than catching any violation: this is the
-// one that means "somebody moved a customer into the group after I counted",
-// and any other constraint failure is a bug the caller must hear about as a
-// 500. Matched as a restrict_violation (23001), not a foreign_key_violation
-// (23503): ON DELETE RESTRICT reports the former when the referenced row is
-// deleted, so a 23503 check here would never fire and the race it exists for
-// would surface as a 500 (db.IsRestrictViolation says why the two differ).
+// both sides of the race it closes match it BY NAME rather than catching any
+// violation, and any other constraint failure is a bug the caller must hear
+// about as a 500. It has two uses, one per side:
+//
+//   - The delete (below): "somebody moved a customer into the group after I
+//     counted". ON DELETE RESTRICT reports that as a restrict_violation (23001)
+//     on PostgreSQL 18+ and as a foreign_key_violation (23503) before it, so the
+//     delete matches both — on a parent delete either code can only mean this
+//     race (db.IsRestrictViolation says why the two differ; products'
+//     isRestrictConflict matches both for the same reason).
+//   - The membership PUT (group_membership.go): "the group was deleted before
+//     my write". An update on the referencing side always reports 23503, so
+//     that side matches IsForeignKeyViolation alone.
 const customersGroupFK = "customers_group_id_fkey"
 
 // validateGroupRequest is POST/PUT /customers/groups' shared validator: both
@@ -226,8 +232,9 @@ func (s *server) PutCustomersGroupsByGroupId(ctx context.Context, req gen.PutCus
 // Two statements, in this order and for this reason (design D2): the member
 // count, so a refusal can say what has to be moved, then the delete. The FK's
 // RESTRICT is not a second opinion but the backstop for the window between
-// them — a customer moved into the group in that moment raises 23001 on
-// customers_group_id_fkey, which is answered as the same 409 by counting again,
+// them — a customer moved into the group in that moment raises a restrict
+// violation on customers_group_id_fkey (23001 on PostgreSQL 18+, 23503 before;
+// see customersGroupFK), which is answered as the same 409 by counting again,
 // exactly as PutCustomersByIdTags maps its own late foreign-key violation back
 // to the field error the resolve would have given a moment later.
 //
@@ -250,7 +257,7 @@ func (s *server) DeleteCustomersGroupsByGroupId(ctx context.Context, req gen.Del
 	}
 
 	rows, err := q.DeleteCustomerGroup(ctx, req.GroupId)
-	if db.IsRestrictViolation(err, customersGroupFK) {
+	if db.IsRestrictViolation(err, customersGroupFK) || db.IsForeignKeyViolation(err, customersGroupFK) {
 		// Somebody moved a customer into the group between the count and this
 		// statement. Count again and answer the refusal the count itself would
 		// have given: the caller asked to delete a group that has members, which

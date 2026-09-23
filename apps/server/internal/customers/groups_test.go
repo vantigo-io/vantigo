@@ -25,12 +25,13 @@ import (
 
 // setCustomerGroup puts a customer in a group (or takes it out, with a nil
 // groupID) through the column migration 00027 added. The vocabulary's own
-// delete rule needs members before it can refuse a delete, and PUT
-// /customers/{id}/group is the NEXT task's endpoint — calling it here would be
-// a request no operation in customers.yaml matches, which the package's own
-// contract recorder reports as an error on top of the 404. This is the fixture
-// shortcut harness_test.go's setDisplayName/disableUser already take for
-// identity's own columns.
+// delete rule needs members before it can refuse a delete, and setting the
+// column directly keeps these tests independent of PUT /customers/{id}/group:
+// a vocabulary test that fails here fails for a vocabulary reason, never for a
+// membership one (and it writes no customer.group_changed event, which the
+// quiet-vocabulary test below relies on). This is the fixture shortcut
+// harness_test.go's setDisplayName/disableUser already take for identity's own
+// columns.
 // groupID is a group's id as the API answered it (a string) or nil to take the
 // customer out of every group; the ::uuid cast is what lets an untyped nil and a
 // string both reach a uuid column through the same statement.
@@ -288,11 +289,12 @@ func TestCustomerGroups_DeleteRefusesAGroupInUse(t *testing.T) {
 // that carries more weight than a colour.
 //
 // The membership is set through the column rather than through PUT
-// /customers/{id}/group (setCustomerGroup above), which is what the next task
-// adds. So this test says exactly what it checks and no more: a vocabulary
-// write records NOTHING — not "nothing beyond the membership's own event",
-// which is group_membership_test.go's to prove once that endpoint exists. The
-// customer's timeline holds its one customer.created entry before and after.
+// /customers/{id}/group (setCustomerGroup above), so no membership event is on
+// the timeline to begin with. This test therefore says exactly what it checks
+// and no more: a vocabulary write records NOTHING — not "nothing beyond the
+// membership's own event", which group_membership_test.go proves for the
+// endpoint. The customer's timeline holds its one customer.created entry before
+// and after.
 func TestCustomerGroups_VocabularyWritesRecordNoTimelineEvent(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)

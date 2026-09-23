@@ -5,8 +5,10 @@
 -- vocabulary's own reasons (queries/tags.sql): the delete confirmation and the
 -- group picker read the one list, a vocabulary is tens of rows rather than
 -- thousands, and a correlated count per row over an indexed column costs
--- nothing worth a second round trip. id is the tie-break so two groups that
--- differ only in trailing punctuation still order deterministically.
+-- nothing worth a second round trip. id after the name is defensive only:
+-- ux_customers_groups_name_lower already makes two equal names impossible, so
+-- it never decides an order today, and it is there so the order stays total if
+-- that index ever changes.
 SELECT g.id, g.name, g.default_payment_terms_days,
        (SELECT count(*) FROM customers.customers c WHERE c.group_id = g.id) AS customer_count
 FROM customers.customer_groups g
@@ -63,7 +65,8 @@ SELECT count(*) FROM customers.customers WHERE group_id = @group_id;
 -- DeleteCustomerGroup is DELETE /customers/groups/{groupId} for an EMPTY group.
 -- Nothing cascades: the membership column's foreign key is RESTRICT, so a group
 -- somebody moved a customer into between the count above and this statement
--- raises a foreign-key violation instead of quietly detaching its members. The
+-- raises a restrict_violation (23001 on PostgreSQL 18+, 23503 before it)
+-- instead of quietly detaching its members, and the handler matches both. The
 -- affected row count is how the handler tells 204 from 404.
 DELETE FROM customers.customer_groups WHERE id = @id;
 
