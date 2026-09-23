@@ -49,6 +49,7 @@ projects consumer ignores it. It is what makes "unbilled" a figure rather than a
   visibility rule, restated with two directory calls instead of one per project.
   Counts are over the visible set, and the response says so once in the description.
 - `work?: {unbilledHoursHundredths, unbilledAmounts?: [{currency, amount}],
+  unpricedHoursHundredths (billable hours with no rate in the project's currency, across every bucket — final review I2),
   approvedHoursHundredths, submittedHoursHundredths, draftHoursHundredths,
   lastWorkOn?}` — from `ActualsForProjects` over the visible projects (each request
   quoted in its project's currency; a project with none contributes hours only).
