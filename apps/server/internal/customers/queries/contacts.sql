@@ -130,7 +130,7 @@ WHERE cc.contact_id = ANY(@contact_ids::int[]);
 -- listing, sorted by the contact's name (GetCustomerContactsEndpoint.cs:29-36).
 SELECT c.id, c.first_name, c.last_name, c.middle_name, c.prefix, c.suffix,
        c.phone AS contact_phone, c.email AS contact_email,
-       cc.role, cc.phone AS association_phone, cc.email AS association_email
+       cc.title, cc.phone AS association_phone, cc.email AS association_email
 FROM customers.customers_contacts cc
 JOIN customers.contacts c ON c.id = cc.contact_id
 WHERE cc.customer_id = @customer_id
@@ -139,7 +139,7 @@ ORDER BY c.first_name, c.last_name, c.id;
 -- name: ListCustomerAssociationsForContact :many
 -- ListCustomerAssociationsForContact is GetContactCustomersEndpoint's
 -- listing, sorted by the customer's name (GetContactCustomersEndpoint.cs:29-33).
-SELECT cu.id, cu.customer_number, cu.name, cc.role, cc.phone, cc.email
+SELECT cu.id, cu.customer_number, cu.name, cc.title, cc.phone, cc.email
 FROM customers.customers_contacts cc
 JOIN customers.customers cu ON cu.id = cc.customer_id
 WHERE cc.contact_id = @contact_id
@@ -156,15 +156,15 @@ SELECT EXISTS (
 -- name: InsertAssociation :exec
 -- InsertAssociation creates the customer-contact row
 -- (AttachCustomerContactEndpoint.cs:61-62).
-INSERT INTO customers.customers_contacts (customer_id, contact_id, role, phone, email)
-VALUES (@customer_id, @contact_id, @role, @phone, @email);
+INSERT INTO customers.customers_contacts (customer_id, contact_id, title, phone, email)
+VALUES (@customer_id, @contact_id, @title, @phone, @email);
 
 -- name: GetAssociationWithContact :one
 -- GetAssociationWithContact is UpdateCustomerContactEndpoint's and
 -- DetachCustomerContactEndpoint's shared lookup; the contact's own fields are
 -- included since both callers need them for their response or their
 -- timeline event.
-SELECT cc.role, cc.phone AS association_phone, cc.email AS association_email,
+SELECT cc.title, cc.phone AS association_phone, cc.email AS association_email,
        c.id, c.first_name, c.last_name, c.middle_name, c.prefix, c.suffix,
        c.phone AS contact_phone, c.email AS contact_email, c.created_at
 FROM customers.customers_contacts cc
@@ -177,7 +177,7 @@ WHERE cc.customer_id = @customer_id AND cc.contact_id = @contact_id;
 -- timeline event is decided by comparing the row this statement replaces
 -- against the new values, not by this statement itself.
 UPDATE customers.customers_contacts
-SET role = @role, phone = @phone, email = @email
+SET title = @title, phone = @phone, email = @email
 WHERE customer_id = @customer_id AND contact_id = @contact_id;
 
 -- name: DeleteAssociation :exec
@@ -189,6 +189,14 @@ DELETE FROM customers.customers_contacts WHERE customer_id = @customer_id AND co
 -- (:29-32): every customer this contact is attached to, for the "removed"
 -- timeline event DeleteContact records against each one before the contact
 -- row (and its associations, via ON DELETE CASCADE) are deleted.
-SELECT customer_id, role, phone, email
+--
+-- Ordered by customer_id, and that is not cosmetic: DeleteContact now takes
+-- each of those customers' row locks so it can promote a new primary for
+-- every role this contact was primary for (typed contact roles design D2),
+-- and it takes them in this list's order. Locks acquired in a deterministic
+-- order across all callers is what keeps two concurrent deletes of two
+-- contacts that share two customers from deadlocking with each other.
+SELECT customer_id, title, phone, email
 FROM customers.customers_contacts
-WHERE contact_id = @contact_id;
+WHERE contact_id = @contact_id
+ORDER BY customer_id;

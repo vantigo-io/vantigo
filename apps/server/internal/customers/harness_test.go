@@ -87,7 +87,7 @@ func insertContact(t *testing.T, h *modtest.Harness, firstName, lastName string,
 // email that overrides the contact's canonical one for that relationship.
 func associate(t *testing.T, h *modtest.Harness, customerID, contactID int32, email *string) {
 	t.Helper()
-	h.Exec(t, `INSERT INTO customers.customers_contacts (customer_id, contact_id, role, email) VALUES ($1, $2, 'Primary', $3)`,
+	h.Exec(t, `INSERT INTO customers.customers_contacts (customer_id, contact_id, title, email) VALUES ($1, $2, 'Primary', $3)`,
 		customerID, contactID, email)
 }
 

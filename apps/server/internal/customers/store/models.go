@@ -74,6 +74,14 @@ type CustomersCustomerAddress struct {
 	UpdatedAt  time.Time
 }
 
+type CustomersCustomerContactRole struct {
+	CustomerID int32
+	ContactID  int32
+	Role       string
+	IsPrimary  bool
+	CreatedAt  time.Time
+}
+
 type CustomersCustomerPeppolLookup struct {
 	CustomerID           int32
 	ParticipantID        string
@@ -120,7 +128,7 @@ type CustomersCustomerTag struct {
 type CustomersCustomersContact struct {
 	CustomerID int32
 	ContactID  int32
-	Role       string
+	Title      *string
 	Phone      *string
 	Email      *string
 }

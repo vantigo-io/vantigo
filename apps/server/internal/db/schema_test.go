@@ -322,6 +322,7 @@ func TestCustomersBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"contacts",
 		"counters",
 		"customer_addresses",
+		"customer_contact_roles",
 		"customer_peppol_lookups",
 		"customer_registry_records",
 		"customer_tags",
@@ -372,6 +373,42 @@ func TestCustomersBaseline_AppliesAndIsIdempotent(t *testing.T) {
 
 	if cols := primaryKeyColumns(t, ctx, pool, "customers", "customer_tags"); !equalStrings(cols, []string{"customer_id", "tag_id"}) {
 		t.Errorf("customer_tags primary key columns = %v, want [customer_id tag_id]", cols)
+	}
+
+	if cols := primaryKeyColumns(t, ctx, pool, "customers", "customer_contact_roles"); !equalStrings(cols, []string{"customer_id", "contact_id", "role"}) {
+		t.Errorf("customer_contact_roles primary key columns = %v, want [customer_id contact_id role]", cols)
+	}
+
+	// One primary contact per customer and role (typed contact roles design
+	// D2): the same partial unique index the addresses' invariant leans on
+	// (ux_customer_addresses_primary), one table over. It is PARTIAL, so its
+	// predicate is the load-bearing half — an index on (customer_id, role)
+	// without the WHERE would forbid a second holder of a role altogether,
+	// which is the opposite of what the design says — and indexColumns above
+	// cannot see a predicate, so this reads the definition instead.
+	var rolePrimaryIndexDef string
+	if err := pool.QueryRow(ctx, `SELECT indexdef FROM pg_indexes
+	                              WHERE schemaname = 'customers' AND indexname = 'ux_customer_contact_roles_primary'`).Scan(&rolePrimaryIndexDef); err != nil {
+		t.Fatalf("read ux_customer_contact_roles_primary definition: %v", err)
+	}
+	if !strings.Contains(rolePrimaryIndexDef, "UNIQUE") || !strings.Contains(rolePrimaryIndexDef, "WHERE is_primary") {
+		t.Errorf("ux_customer_contact_roles_primary = %q, want a UNIQUE index on (customer_id, role) WHERE is_primary", rolePrimaryIndexDef)
+	}
+
+	// The association's free text is a TITLE and is nullable (design D1): an
+	// association that says who someone is through its roles alone needs no
+	// title at all, and the old NOT NULL would have forced the empty string
+	// to stand in for "none given".
+	var titleNullable, roleColumns string
+	if err := pool.QueryRow(ctx, `SELECT coalesce(max(is_nullable), 'MISSING'),
+	                                     coalesce(count(*) FILTER (WHERE column_name = 'role'), 0)::text
+	                              FROM information_schema.columns
+	                              WHERE table_schema = 'customers' AND table_name = 'customers_contacts'
+	                                AND column_name IN ('title', 'role')`).Scan(&titleNullable, &roleColumns); err != nil {
+		t.Fatalf("read customers_contacts.title: %v", err)
+	}
+	if titleNullable != "YES" || roleColumns != "0" {
+		t.Errorf("customers_contacts: title is_nullable = %q and %s column(s) named role, want \"YES\" and 0", titleNullable, roleColumns)
 	}
 
 	// A tag is a vocabulary, so 'VIP' and 'vip' are one word (owner and tags
