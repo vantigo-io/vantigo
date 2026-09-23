@@ -4,7 +4,14 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineEntry } from "../api/timeline";
-import { createTimelineEntry, deleteTimelineEntry, fetchTimeline, updateTimelineEntry } from "../api/timeline";
+import {
+  createTimelineEntry,
+  deleteTimelineEntry,
+  fetchTimeline,
+  normalizeFollowUp,
+  normalizeTimelineEntry,
+  updateTimelineEntry,
+} from "../api/timeline";
 import { stubFetch } from "../test/fetch";
 import { CustomerTimeline } from "./-customer-timeline";
 
@@ -27,6 +34,7 @@ const entry = (overrides: Partial<TimelineEntry> = {}): TimelineEntry => ({
   createdAt: "2026-07-20T00:00:00Z",
   updatedAt: "2026-07-20T00:00:00Z",
   actorKind: "user",
+  followUp: null,
   ...overrides,
 });
 
@@ -38,7 +46,7 @@ const renderTimeline = async (fetchMock: ReturnType<typeof vi.fn>) => {
   render(
     <MantineProvider>
       <QueryClientProvider client={queryClient}>
-        <CustomerTimeline customerId={42} />
+        <CustomerTimeline customerId={42} canManageTimeline />
       </QueryClientProvider>
     </MantineProvider>,
   );
@@ -130,6 +138,20 @@ describe("timeline API contract", () => {
     const deleteCall = fetchMock.mock.calls.find(([url]) => String(url).includes("expectedRevision=2"));
     expect(deleteCall?.[1].method).toBe("DELETE");
   });
+
+  // Every UI-level fixture below sets `assignee` and `doneAt` explicitly (even
+  // to null), because that is what an OPEN, ASSIGNED follow-up looks like on
+  // the wire. It never exercises the absent case the normaliser exists for:
+  // the server omits `followUp` entirely when an entry carries none, and omits
+  // `assignee`/`doneAt` within it when unassigned/open (api-schema.d.ts:
+  // TimelineFollowUp, TimelineResponse). This is the one place that shape is
+  // sent in, literally as the server sends it.
+  it("normalizes the wire's absent follow-up keys to null", () => {
+    expect(normalizeFollowUp(undefined)).toBeNull();
+    expect(normalizeFollowUp(null)).toBeNull();
+    expect(normalizeFollowUp({ dueOn: "2026-08-01" })).toEqual({ dueOn: "2026-08-01", assignee: null, doneAt: null });
+    expect(normalizeTimelineEntry({ ...entry(), followUp: undefined }).followUp).toBeNull();
+  });
 });
 
 describe("CustomerTimeline", () => {
@@ -203,11 +225,17 @@ describe("CustomerTimeline", () => {
   });
 
   it("keeps a changed edit value while the form remains open", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(json({ data: [entry()], nextCursor: null }))
-      .mockResolvedValueOnce(json(entry({ note: "User changed this note" })))
-      .mockResolvedValueOnce(json({ data: [entry({ note: "User changed this note" })], nextCursor: null }));
+    // URL/method dispatch rather than a positional queue: opening the edit
+    // form now also mounts the follow-up assignee's UserPicker, which fires
+    // its own GET as soon as the form opens — a positional queue would hand
+    // that call the response meant for the PUT (see global-constraints: never
+    // assert "the last fetch", match by URL/method instead).
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/assignable-users")) return Promise.resolve(json([]));
+      if (init?.method === "PUT") return Promise.resolve(json(entry({ note: "User changed this note" })));
+      return Promise.resolve(json({ data: [entry()], nextCursor: null }));
+    });
     await renderTimeline(fetchMock);
     await userEvent.click(await waitFor(actionsButton));
     await userEvent.click(await screen.findByText("Edit"));
@@ -216,12 +244,18 @@ describe("CustomerTimeline", () => {
     await userEvent.type(description, "User changed this note");
     expect(description).toHaveValue("User changed this note");
     await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
-    const [url, init] = fetchMock.mock.calls[1];
-    expect(url).toBe("/api/v1/customers/42/timeline/7");
-    expect(init.method).toBe("PUT");
-    expect(init.headers).toEqual({ "Content-Type": "application/json" });
-    expect(JSON.parse(init.body)).toMatchObject({
+    await waitFor(() => {
+      const putCall = fetchMock.mock.calls.find(
+        ([callUrl, callInit]) => String(callUrl) === "/api/v1/customers/42/timeline/7" && callInit?.method === "PUT",
+      );
+      expect(putCall).toBeDefined();
+    });
+    const putCall = fetchMock.mock.calls.find(
+      ([callUrl, callInit]) => String(callUrl) === "/api/v1/customers/42/timeline/7" && callInit?.method === "PUT",
+    );
+    const [, putInit] = putCall ?? [];
+    expect(putInit?.headers).toEqual({ "Content-Type": "application/json" });
+    expect(JSON.parse(String(putInit?.body))).toMatchObject({
       eventType: "note",
       note: "User changed this note",
       expectedRevision: 2,
@@ -229,13 +263,16 @@ describe("CustomerTimeline", () => {
   });
 
   it("submits a selected manual event through the create form", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(json({ data: [], nextCursor: null }))
-      .mockResolvedValueOnce(json(entry({ eventType: "interaction.meeting", note: "Meet" })))
-      .mockResolvedValueOnce(
-        json({ data: [entry({ eventType: "interaction.meeting", note: "Meet" })], nextCursor: null }),
-      );
+    // Same reason as the edit-form test above: the create form's own
+    // UserPicker fires a GET as soon as it opens, so the mock dispatches by
+    // URL/method rather than by position.
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/assignable-users")) return Promise.resolve(json([]));
+      if (url.endsWith("/api/v1/customers/42/timeline") && init?.method === "POST")
+        return Promise.resolve(json(entry({ eventType: "interaction.meeting", note: "Meet" })));
+      return Promise.resolve(json({ data: [], nextCursor: null }));
+    });
     await renderTimeline(fetchMock);
     await userEvent.click(screen.getByRole("button", { name: "Add event" }));
     const createDialog = await screen.findByRole("dialog", { name: "Add timeline event" });
@@ -248,12 +285,18 @@ describe("CustomerTimeline", () => {
     await userEvent.click(meetingOption);
     await userEvent.type(within(createDialog).getByRole("textbox", { name: "Description" }), "Meet");
     await userEvent.click(within(createDialog).getByRole("button", { name: /^Add event$/ }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
-    const [url, init] = fetchMock.mock.calls[1];
-    expect(url).toBe("/api/v1/customers/42/timeline");
-    expect(init.method).toBe("POST");
-    expect(init.headers).toEqual({ "Content-Type": "application/json" });
-    expect(JSON.parse(init.body)).toMatchObject({ eventType: "interaction.meeting", note: "Meet" });
+    await waitFor(() => {
+      const postCall = fetchMock.mock.calls.find(
+        ([callUrl, callInit]) => String(callUrl) === "/api/v1/customers/42/timeline" && callInit?.method === "POST",
+      );
+      expect(postCall).toBeDefined();
+    });
+    const postCall = fetchMock.mock.calls.find(
+      ([callUrl, callInit]) => String(callUrl) === "/api/v1/customers/42/timeline" && callInit?.method === "POST",
+    );
+    const [, postInit] = postCall ?? [];
+    expect(postInit?.headers).toEqual({ "Content-Type": "application/json" });
+    expect(JSON.parse(String(postInit?.body))).toMatchObject({ eventType: "interaction.meeting", note: "Meet" });
   });
 
   it("renders revisions returned inside the data envelope", async () => {
@@ -304,12 +347,16 @@ describe("CustomerTimeline", () => {
   });
 
   it("refreshes and provides recovery feedback for edit conflicts", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(json({ data: [entry()], nextCursor: null }))
-      .mockResolvedValueOnce(new Response(null, { status: 409 }))
-      .mockResolvedValueOnce(json({ data: [entry({ note: "Latest" })], nextCursor: null }))
-      .mockResolvedValueOnce(json({ data: [entry({ note: "Latest" })], nextCursor: null }));
+    // Same reason as the two tests above: URL/method dispatch, not a
+    // positional queue, now that the edit form's UserPicker fires its own GET.
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/assignable-users")) return Promise.resolve(json([]));
+      if (init?.method === "PUT") return Promise.resolve(new Response(null, { status: 409 }));
+      if (url.includes("/timeline?"))
+        return Promise.resolve(json({ data: [entry({ note: "Latest" })], nextCursor: null }));
+      return Promise.resolve(json({ data: [] }));
+    });
     await renderTimeline(fetchMock);
     await userEvent.click(await waitFor(actionsButton));
     await userEvent.click(await screen.findByText("Edit"));
@@ -569,5 +616,305 @@ describe("CustomerTimeline", () => {
     await userEvent.click(confirm);
     await userEvent.click(confirm);
     expect(deleteFetch.mock.calls.filter(([, init]) => init?.method === "DELETE")).toHaveLength(1);
+  });
+});
+
+describe("the timeline's follow-ups", () => {
+  // The wire shape, literally: an entry with a follow-up, as the server sends
+  // it. The boundary is what turns an absent key into null, so these fixtures
+  // never carry a key the server would not.
+  const withFollowUp = (followUp: unknown) => ({
+    id: 7,
+    provenance: "manual",
+    eventType: "note",
+    producer: "",
+    occurredOn: "2020-07-20",
+    note: "Original note",
+    currentRevision: 2,
+    state: "active",
+    actorKind: "user",
+    createdAt: "2026-07-20T00:00:00Z",
+    updatedAt: "2026-07-20T00:00:00Z",
+    ...(followUp === undefined ? {} : { followUp }),
+  });
+
+  it("shows an overdue follow-up with its assignee, and a done one struck through", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      if (String(input).includes("/timeline?")) {
+        return Promise.resolve(
+          json({
+            data: [
+              withFollowUp({
+                dueOn: "2020-01-02",
+                assignee: { userId: "u1", displayName: "Kari Nordmann", active: true },
+                doneAt: null,
+              }),
+              { ...withFollowUp({ dueOn: "2020-01-03", assignee: null, doneAt: "2020-01-04T09:00:00Z" }), id: 8 },
+            ],
+            nextCursor: null,
+          }),
+        );
+      }
+      return Promise.resolve(json({ data: [] }));
+    });
+    await renderTimeline(fetchMock);
+
+    // The open, overdue line: the "Follow up <date>" wording, the assignee's
+    // name, the word that says it is late, and red.
+    const openLine = await screen.findByText(/Follow up /);
+    expect(openLine).toHaveTextContent(/Kari Nordmann/);
+    expect(openLine).toHaveTextContent(/overdue/);
+
+    // The done line is matched by ITS OWN wording ("Followed up …"), never by
+    // /done/i: the Mark done BUTTON on the other row matches that too, so a
+    // /done/i assertion would pass with the done line missing entirely.
+    const doneLine = screen.getByText(/Followed up /);
+    expect(doneLine).not.toHaveTextContent(/overdue/);
+    expect(doneLine).toHaveStyle({ textDecoration: "line-through" });
+    // And it offers Reopen rather than Mark done.
+    expect(screen.getByRole("button", { name: /reopen/i })).toBeInTheDocument();
+  });
+
+  // The boundary `isOverdue` gets wrong with a `<=` instead of a `<`: due
+  // TODAY is still open, not yet late. Every other fixture in this describe
+  // block is pinned to 2020, so only a `dueOn` computed from the clock can
+  // catch that mutation.
+  it("does not call a follow-up due today overdue", async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      if (String(input).includes("/timeline?")) {
+        return Promise.resolve(
+          json({ data: [withFollowUp({ dueOn: today, assignee: null, doneAt: null })], nextCursor: null }),
+        );
+      }
+      return Promise.resolve(json({ data: [] }));
+    });
+    await renderTimeline(fetchMock);
+
+    const openLine = await screen.findByText(/Follow up /);
+    expect(openLine).not.toHaveTextContent(/overdue/);
+  });
+
+  it("marks a follow-up done through the entry's own path and refreshes the feed", async () => {
+    const done = vi.fn(() =>
+      Promise.resolve(json(withFollowUp({ dueOn: "2020-01-02", assignee: null, doneAt: "2020-01-05T10:00:00Z" }))),
+    );
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/follow-up/done")) return done();
+      if (url.includes("/timeline?")) {
+        return Promise.resolve(
+          json({ data: [withFollowUp({ dueOn: "2020-01-02", assignee: null, doneAt: null })], nextCursor: null }),
+        );
+      }
+      return Promise.resolve(json({ data: [] }));
+    });
+    const stub = stubFetch(fetchMock);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MantineProvider>
+        <QueryClientProvider client={queryClient}>
+          <CustomerTimeline customerId={42} canManageTimeline />
+        </QueryClientProvider>
+      </MantineProvider>,
+    );
+    await screen.findByRole("button", { name: /mark done/i });
+    await userEvent.click(screen.getByRole("button", { name: /mark done/i }));
+
+    // Never "the last fetch": find the call by method and URL.
+    await waitFor(() => {
+      const call = stub.actualCalls.find(
+        ([url, init]) =>
+          String(url).endsWith("/api/v1/customers/42/timeline/7/follow-up/done") && init?.method === "POST",
+      );
+      expect(call).toBeDefined();
+    });
+  });
+
+  it("reopens a done follow-up through the same path with DELETE", async () => {
+    const reopen = vi.fn(() =>
+      Promise.resolve(json(withFollowUp({ dueOn: "2020-01-02", assignee: null, doneAt: null }))),
+    );
+    let ticked = true;
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/follow-up/done")) {
+        ticked = false;
+        return reopen();
+      }
+      if (url.includes("/timeline?")) {
+        return Promise.resolve(
+          json({
+            data: [
+              withFollowUp({ dueOn: "2020-01-02", assignee: null, doneAt: ticked ? "2020-01-04T09:00:00Z" : null }),
+            ],
+            nextCursor: null,
+          }),
+        );
+      }
+      return Promise.resolve(json({ data: [] }));
+    });
+    const stub = stubFetch(fetchMock);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MantineProvider>
+        <QueryClientProvider client={queryClient}>
+          <CustomerTimeline customerId={42} canManageTimeline />
+        </QueryClientProvider>
+      </MantineProvider>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: /reopen/i }));
+
+    await waitFor(() => {
+      const call = stub.actualCalls.find(
+        ([url, init]) =>
+          String(url).endsWith("/api/v1/customers/42/timeline/7/follow-up/done") && init?.method === "DELETE",
+      );
+      expect(call).toBeDefined();
+    });
+    // The refresh re-reads, and the line is open again: "Follow up …", no strike.
+    expect(await screen.findByText(/Follow up /)).toBeInTheDocument();
+    expect(screen.queryByText(/Followed up /)).not.toBeInTheDocument();
+  });
+
+  it("hides every timeline control from a reader who cannot manage the timeline", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      if (String(input).includes("/timeline?")) {
+        return Promise.resolve(
+          json({ data: [withFollowUp({ dueOn: "2020-01-02", assignee: null, doneAt: null })], nextCursor: null }),
+        );
+      }
+      return Promise.resolve(json({ data: [] }));
+    });
+    // Rendered HERE rather than through renderTimeline, and deliberately with
+    // no canManageTimeline at all: the shared helper passes it, so this is the
+    // one place the withheld case is exercised.
+    stubFetch(fetchMock);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MantineProvider>
+        <QueryClientProvider client={queryClient}>
+          <CustomerTimeline customerId={42} />
+        </QueryClientProvider>
+      </MantineProvider>,
+    );
+
+    await screen.findByText("Original note");
+    expect(screen.queryByRole("button", { name: /add event/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /mark done/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /actions for note/i })).not.toBeInTheDocument();
+    // The follow-up itself is still readable — only the control is gone.
+    expect(screen.getByText(/Follow up /)).toBeInTheDocument();
+  });
+
+  it("shows each revision's own follow-up, so a ticked revision names who ticked it and when", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/revisions")) {
+        return Promise.resolve(
+          json({
+            data: [
+              {
+                revision: 1,
+                action: "create",
+                eventType: "note",
+                occurredOn: "2026-07-20",
+                occurredAt: null,
+                note: "Original note",
+                sourceUrl: null,
+                changedAt: "2026-07-20T08:00:00Z",
+                actorKind: "user",
+                actorDisplayName: "Kari Nordmann",
+                followUp: { dueOn: "2026-08-01" },
+              },
+              {
+                revision: 2,
+                action: "update",
+                eventType: "note",
+                occurredOn: "2026-07-20",
+                occurredAt: null,
+                note: "Original note",
+                sourceUrl: null,
+                changedAt: "2026-07-22T09:30:00Z",
+                actorKind: "user",
+                actorDisplayName: "Ola Nordmann",
+                followUp: { dueOn: "2026-08-01", doneAt: "2026-07-22T09:30:00Z" },
+              },
+            ],
+          }),
+        );
+      }
+      if (url.includes("/timeline?")) {
+        return Promise.resolve(
+          json({
+            data: [withFollowUp({ dueOn: "2026-08-01", assignee: null, doneAt: "2026-07-22T09:30:00Z" })],
+            nextCursor: null,
+          }),
+        );
+      }
+      return Promise.resolve(json({ data: [] }));
+    });
+    await renderTimeline(fetchMock);
+    await userEvent.click(await waitFor(actionsButton));
+    await userEvent.click(await screen.findByText("Revision history"));
+    const dialog = await screen.findByRole("dialog", { name: "Revision history" });
+
+    // Revision 1 carried an open follow-up; revision 2 is the one that ticked
+    // it, and the panel's own actor and changed-at line beside it is what
+    // answers "who ticked it and when" (follow-ups design D4) without a doneBy
+    // field on the contract.
+    expect(await within(dialog).findByText(/Follow up /)).toBeInTheDocument();
+    const ticked = within(dialog).getByText(/Followed up /);
+    // Each revision is its own Accordion.Panel, which Mantine renders as a
+    // region — so the panel holding the "Followed up" line is the panel whose
+    // actor line names who ticked it. (If this version emits another role,
+    // read the markup once and assert on the panel element it does emit; the
+    // requirement is that the two read together, not that it is a region.)
+    const panel = ticked.closest("[role='region']");
+    expect(panel).toHaveTextContent(/Ola Nordmann/);
+    // …and not revision 1's author, which is the whole point of reading the two
+    // together rather than anywhere on the page.
+    expect(panel).not.toHaveTextContent(/Kari Nordmann/);
+  });
+
+  it("sends the follow-up the form collected, and clears it when the section is emptied", async () => {
+    const created = vi.fn(() =>
+      Promise.resolve(json(withFollowUp({ dueOn: "2026-12-24", assignee: null, doneAt: null }))),
+    );
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/assignable-users"))
+        return Promise.resolve(json([{ userId: "u1", displayName: "Kari Nordmann" }]));
+      if (url.endsWith("/api/v1/customers/42/timeline") && init?.method === "POST") return created();
+      if (url.includes("/timeline?")) return Promise.resolve(json({ data: [], nextCursor: null }));
+      return Promise.resolve(json({ data: [] }));
+    });
+    const stub = stubFetch(fetchMock);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MantineProvider>
+        <QueryClientProvider client={queryClient}>
+          <CustomerTimeline customerId={42} canManageTimeline />
+        </QueryClientProvider>
+      </MantineProvider>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: /add event/i }));
+    // Scoped to the dialog, like the pre-existing create-form test just above:
+    // the header's own "Add event" button is still on screen (Mantine's Modal
+    // does not hide it from the accessibility tree), and the create form's
+    // submit button reads "Add event" too — so an unscoped query for either
+    // matches both.
+    const dialog = await screen.findByRole("dialog", { name: /add timeline event/i });
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /description/i }), "Call back");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /follow up on/i }), "2026-12-24");
+    await userEvent.click(within(dialog).getByRole("button", { name: /^add event$/i }));
+
+    await waitFor(() => {
+      const call = stub.actualCalls.find(
+        ([url, init]) => String(url).endsWith("/api/v1/customers/42/timeline") && init?.method === "POST",
+      );
+      expect(call).toBeDefined();
+      expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({ followUp: { dueOn: "2026-12-24" } });
+    });
   });
 });
