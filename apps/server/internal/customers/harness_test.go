@@ -1,6 +1,7 @@
 package customers_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/google/uuid"
@@ -88,6 +89,56 @@ func associate(t *testing.T, h *modtest.Harness, customerID, contactID int32, em
 	t.Helper()
 	h.Exec(t, `INSERT INTO customers.customers_contacts (customer_id, contact_id, role, email) VALUES ($1, $2, 'Primary', $3)`,
 		customerID, contactID, email)
+}
+
+// setDisplayName, disableUser and forgetUser are the three states
+// contracts.UserDirectory can report a customer's owner in (owner and tags
+// design D1). There is no users fake to configure: modtest composes the real
+// identity module, so Deps.Users reads identity.users and these three
+// statements are how a test shapes what it answers — the same way projects'
+// own people tests do it (internal/projects/people_test.go:96-109).
+//
+// setDisplayName exists because modtest seeds a user whose display_name is a
+// generated email address: a test that asserts the owner's name must put a
+// name there itself rather than hard-coding what modtest happens to generate.
+func setDisplayName(t *testing.T, h *modtest.Harness, userID uuid.UUID, name string) {
+	t.Helper()
+	h.Exec(t, `UPDATE identity.users SET display_name = $2 WHERE id = $1`, userID, name)
+}
+
+// disableUser flips the flag the directory reports as Active: false. An owner
+// disabled AFTER being assigned keeps the customer (design D1): nothing is
+// silently revoked, so this is the fixture for "the name is still shown, with
+// an inactive hint", not for a customer that lost its owner.
+func disableUser(t *testing.T, h *modtest.Harness, userID uuid.UUID) {
+	t.Helper()
+	h.Exec(t, `UPDATE identity.users SET is_disabled = true WHERE id = $1`, userID)
+}
+
+// seedNamedUser writes one user directly, with the display name a test wants
+// to search for. modtest's own SignInUser also mints a role and a session,
+// which the twenty-one users of the assignable-users cap test have no use for —
+// they exist only to be found by contracts.UserDirectory.SearchUsers. The
+// column list is modtest.seedUser's own (modtest.go:582), version included: it
+// is a uuid, not a counter.
+func seedNamedUser(t *testing.T, h *modtest.Harness, name string) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	email := fmt.Sprintf("owner-candidate-%s@example.test", id)
+	h.Exec(t, `INSERT INTO identity.users (id, email, normalized_email, display_name, version, created_at, updated_at)
+	           VALUES ($1, $2, upper($2), $3, $4, $5, $5)`, id, email, name, uuid.New(), h.Now())
+	return id
+}
+
+// forgetUser removes the account entirely, which is how a stored owner_user_id
+// ends up naming a user the directory returns nothing for — the case that must
+// read as "Unknown user", inactive, rather than as a 500 or a vanished owner
+// (the actorFor precedent, actor.go). There is deliberately no foreign key
+// from customers.customers to identity.users (migration 00024), which is what
+// makes this state reachable at all.
+func forgetUser(t *testing.T, h *modtest.Harness, userID uuid.UUID) {
+	t.Helper()
+	h.Exec(t, `DELETE FROM identity.users WHERE id = $1`, userID)
 }
 
 func ptr[T any](v T) *T { return &v }

@@ -209,6 +209,7 @@ var KnownServeMuxConflicts = []string{
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/billing-profile",
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/contact-info",
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/legal-identity",
+	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/owner",
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/type",
 	"PUT /api/v1/projects/milestones/{milestoneId} ⟷ PUT /api/v1/projects/{id}/status",
 	"PUT /api/v1/projects/milestones/{milestoneId}/position ⟷ PUT /api/v1/projects/{id}/billing-lines/{lineId}",

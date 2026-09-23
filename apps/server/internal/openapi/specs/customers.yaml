@@ -2069,6 +2069,59 @@ paths:
             tags:
                 - Customers
             x-vantigo-access: permission:customers:legal-identity-manage+customers:legal-identity-view
+    /api/v1/customers/{id}/owner:
+        put:
+            operationId: putCustomersByIdOwner
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PutCustomerOwnerRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SafeCustomerResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: Conflict
+            summary: Set or clear a customer's owner
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:update+customers:view
     /api/v1/customers/{id}/peppol-lookup:
         post:
             description: "Asks the Peppol network whether this customer can receive an EHF invoice, for the customer's explicit billing-profile peppolId if set, else the participant id derived from its legal identity (can-this-customer-receive-EHF design D3). 200 with status 'no_identifier' and nothing stored when neither exists — no network call is made. A successful check is remembered in its own table and surfaced on the billing profile as peppolLookup; the customer row's revision is untouched. When the answer changed, it is also recorded on the customer's timeline. 502 when the Peppol network could not be reached (the last good answer, if any, stands); 503 when the feature is disabled on this installation."
@@ -2559,6 +2612,52 @@ paths:
             tags:
                 - Customers
             x-vantigo-access: permission:customers:timeline-view
+    /api/v1/customers/assignable-users:
+        get:
+            operationId: getCustomersAssignableUsers
+            parameters:
+                - in: query
+                  name: query
+                  schema:
+                    description: Narrows the directory search by display name (and, as the directory chooses, by email). Absent or blank lists the first page of active users.
+                    type: string
+                - in: query
+                  name: limit
+                  schema:
+                    description: How many users to answer, 1-20. Defaults to 20.
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/CustomerAssignableUser'
+                                type: array
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Search users assignable as a customer's owner
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:update
     /api/v1/customers/contacts:
         get:
             operationId: getCustomersContacts
