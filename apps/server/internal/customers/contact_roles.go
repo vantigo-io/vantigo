@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -219,10 +218,19 @@ func validateCustomerContactRequest(title, role *string, roles *[]gen.CustomerCo
 }
 
 // errRolePrimaryTransitionRefused is the one role refusal that is only knowable
-// under the customer's lock, so it travels out of the transaction as a sentinel
+// under the customer's lock, so it travels out of the transaction as an error
 // the way addresses.go's errPrimaryTransitionRefused does — and it is the same
-// refusal, worded for contacts.
-var errRolePrimaryTransitionRefused = errors.New("customers: primary contact role transition refused")
+// refusal, worded for contacts. It is a TYPE rather than a sentinel because the
+// refusal has to say which role it is about, and a role carried in a field is a
+// role the handler reads with errors.As; the alternative — wrapping a sentinel
+// with the name and trimming it back out of the message — makes the message's
+// wording load-bearing for control flow, which is the kind of coupling that
+// breaks silently the first time somebody reworded it.
+type errRolePrimaryTransitionRefused struct{ Role string }
+
+func (e errRolePrimaryTransitionRefused) Error() string {
+	return fmt.Sprintf("customers: primary contact role transition refused: %s", e.Role)
+}
 
 // rolePrimaryTransitionMessage is errRolePrimaryTransitionRefused's field
 // error, keyed `roles` (design D2). It names the role, because a request
@@ -324,7 +332,7 @@ func applyRoles(ctx context.Context, txq *store.Queries, customerID, contactID i
 	// did not say.
 	for _, r := range want {
 		if wasPrimary, ok := held[r.Role]; ok && wasPrimary && r.clearsPrimary() {
-			return nil, nil, fmt.Errorf("%w: %s", errRolePrimaryTransitionRefused, r.Role)
+			return nil, nil, errRolePrimaryTransitionRefused{Role: r.Role}
 		}
 	}
 
@@ -472,10 +480,10 @@ func associationProblem(errs map[string][]string) apicommon.HttpValidationProble
 	return apicommon.ValidationProblem("Invalid contact association", errs)
 }
 
-// roleErrorsFor turns errRolePrimaryTransitionRefused back into the field error
-// the caller sees. The sentinel is wrapped with the role name (applyRoles), so
-// this reads it back out rather than making every handler format the message.
-func roleErrorsFor(err error) map[string][]string {
-	role := strings.TrimSpace(strings.TrimPrefix(err.Error(), errRolePrimaryTransitionRefused.Error()+":"))
-	return map[string][]string{"roles": {rolePrimaryTransitionMessage(role)}}
+// roleErrorsFor turns errRolePrimaryTransitionRefused into the field error the
+// caller sees. It takes the refusal itself rather than a plain error, so the
+// handlers' errors.As is the only place that has to succeed for the role name to
+// be right.
+func roleErrorsFor(refused errRolePrimaryTransitionRefused) map[string][]string {
+	return map[string][]string{"roles": {rolePrimaryTransitionMessage(refused.Role)}}
 }

@@ -255,3 +255,148 @@ func TestPartialIndexIsTheBackstop(t *testing.T) {
 		t.Fatal("a second primary billing holder was accepted, want ux_customer_contact_roles_primary to refuse it")
 	}
 }
+
+// TestDeleteContact_RacesAPromotionAtAnotherCustomer pins that
+// DeleteCustomersContactsById decides its promotions from a read taken UNDER
+// every customer row's lock, not from one taken before them. The contact row's
+// own FOR UPDATE lock does not cover customers_contacts or
+// customer_contact_roles, so a role write against one of the contact's
+// customers can commit while the delete queues for a DIFFERENT customer's row —
+// and a delete that had already read its snapshot then re-arranges roles from a
+// state that is no longer there.
+//
+// The interleaving is forced without a race, because it does not need one. The
+// contact is attached to two customers, and the delete locks them in ascending
+// customer_id order, so gating the LOWER id parks the delete after its contact
+// lock and before it ever looks at the higher one. While it waits there, a
+// perfectly ordinary PUT makes it the primary billing contact at the ungated
+// customer — which its pre-lock snapshot said it was not. Reading before the
+// locks, the delete skips the promotion that snapshot says is unnecessary and
+// leaves billing with a holder and no primary at all; reading after them, it
+// promotes the remaining holder.
+//
+// Against the pre-fix ordering (both reads above the lock loop) this fails
+// deterministically with "primary billing holders = 0".
+func TestDeleteContact_RacesAPromotionAtAnotherCustomer(t *testing.T) {
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	gated := createCustomer(t, c, "Gated Lower Id Co")
+	target := createCustomer(t, c, "Ungated Higher Id Co")
+	if gated.Id >= target.Id {
+		t.Fatalf("customer ids %d, %d: the gated one must have the lower id, since that is the one the delete locks first", gated.Id, target.Id)
+	}
+	doomed := createContact(t, c, map[string]any{"firstName": "Doomed", "lastName": "Racersen"})
+	survivor := createContact(t, c, map[string]any{"firstName": "Survivor", "lastName": "Racersen"})
+
+	// At the gated customer the doomed contact is billing's only holder, which
+	// is what gives the delete a row to queue for there at all.
+	attachWithRoles(t, c, gated.Id, map[string]any{"contactId": doomed.Id, "title": "A",
+		"roles": []any{map[string]any{"role": "billing"}}})
+	// At the ungated one the survivor takes billing first and is therefore its
+	// primary; the doomed contact joins as a plain member.
+	attachWithRoles(t, c, target.Id, map[string]any{"contactId": survivor.Id, "title": "S",
+		"roles": []any{map[string]any{"role": "billing"}}})
+	attachWithRoles(t, c, target.Id, map[string]any{"contactId": doomed.Id, "title": "D",
+		"roles": []any{map[string]any{"role": "billing"}}})
+
+	release := gateCustomerLock(t, h, gated.Id)
+
+	deleted := make(chan *modtest.Response, 1)
+	finished := make(chan struct{})
+	go func() {
+		deleted <- c.Do(http.MethodDelete, fmt.Sprintf("/api/v1/customers/contacts/%d", doomed.Id), nil)
+		close(finished)
+	}()
+	awaitLockWaiters(t, h, 1, finished)
+
+	// The delete now holds the contact row and is queued for the gated
+	// customer's. This PUT needs neither, so it commits in that window and
+	// makes the doomed contact billing's primary at the ungated customer.
+	if r := putAssociation(t, c, target.Id, doomed.Id, map[string]any{"title": "D",
+		"roles": []any{map[string]any{"role": "billing", "primary": true}}}); r.Status != http.StatusOK {
+		t.Fatalf("promote the doomed contact: status %d body %s, want 200", r.Status, r.Body)
+	}
+	if got := primaryHolderOf(t, h, target.Id, "billing"); got != doomed.Id {
+		t.Fatalf("primary billing holder before the release = %d, want %d: the window's write did not land", got, doomed.Id)
+	}
+
+	release()
+	if r := <-deleted; r.Status != http.StatusNoContent {
+		t.Fatalf("delete contact: status %d body %s, want 204", r.Status, r.Body)
+	}
+
+	if n := h.Count(t, `SELECT count(*) FROM customers.customer_contact_roles WHERE customer_id = $1 AND role = 'billing'`, target.Id); n != 1 {
+		t.Fatalf("billing role rows = %d, want exactly 1 (the survivor's)", n)
+	}
+	if n := primaryCountOf(t, h, target.Id, "billing"); n != 1 {
+		t.Errorf("primary billing holders = %d, want exactly 1: the delete gave up a primary it did not know it held", n)
+	}
+	if got := primaryHolderOf(t, h, target.Id, "billing"); got != survivor.Id {
+		t.Errorf("primary billing holder = %d, want %d", got, survivor.Id)
+	}
+}
+
+// TestUpdateCustomerContact_APrimaryTakenUnderTheLockIsRefusedThere reaches the
+// refusal applyRoles' phase 1 makes, which the update handler's pre-lock scan
+// normally answers first: the scan reads the unlocked snapshot, so a request
+// whose `primary: false` is harmless in that snapshot and is refused by the
+// time the lock is held can only be refused down there. Without this case the
+// under-lock check is dead weight as far as the tests are concerned — both
+// other refusal tests are answered by the scan.
+//
+// The window is opened with the lock gate and closed with a direct UPDATE,
+// because no endpoint can make this write while the gate holds the customer
+// row: every one of them queues behind it. The role rows reference
+// customers_contacts, not customers, so flipping is_primary needs no lock the
+// gate holds.
+func TestUpdateCustomerContact_APrimaryTakenUnderTheLockIsRefusedThere(t *testing.T) {
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	customer := createCustomer(t, c, "Under Lock Refusal Co")
+	incumbent := createContact(t, c, map[string]any{"firstName": "Incumbent", "lastName": "Lateralsen"})
+	target := createContact(t, c, map[string]any{"firstName": "Target", "lastName": "Lateralsen"})
+	attachWithRoles(t, c, customer.Id, map[string]any{"contactId": incumbent.Id, "title": "I",
+		"roles": []any{map[string]any{"role": "billing"}}})
+	attachWithRoles(t, c, customer.Id, map[string]any{"contactId": target.Id, "title": "T",
+		"roles": []any{map[string]any{"role": "billing"}}})
+
+	release := gateCustomerLock(t, h, customer.Id)
+
+	// The title moves too, so this is not the no-op that `primary: false` on a
+	// role held non-primary would otherwise be: the request opens its
+	// transaction and queues for the customer row.
+	answered := make(chan *modtest.Response, 1)
+	finished := make(chan struct{})
+	go func() {
+		answered <- putAssociation(t, c, customer.Id, target.Id, map[string]any{"title": "Retitled",
+			"roles": []any{map[string]any{"role": "billing", "primary": false}}})
+		close(finished)
+	}()
+	awaitLockWaiters(t, h, 1, finished)
+
+	// Behind the queued request's back: the target becomes billing's primary,
+	// which its own unlocked read said it was not.
+	h.Exec(t, `UPDATE customers.customer_contact_roles SET is_primary = false
+	           WHERE customer_id = $1 AND contact_id = $2 AND role = 'billing'`, customer.Id, incumbent.Id)
+	h.Exec(t, `UPDATE customers.customer_contact_roles SET is_primary = true
+	           WHERE customer_id = $1 AND contact_id = $2 AND role = 'billing'`, customer.Id, target.Id)
+
+	release()
+	r := <-answered
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400 from the check under the lock", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	want := "A contact that is the only or primary holder of the 'billing' role stays primary; make another contact primary instead"
+	if msgs := problem.Errors["roles"]; len(msgs) != 1 || msgs[0] != want {
+		t.Errorf("errors[roles] = %v, want [%q]", msgs, want)
+	}
+	// The refusal wrote nothing: not the title it also carried, and not the flag.
+	if got := modtest.One[string](t, h, `SELECT title FROM customers.customers_contacts WHERE customer_id = $1 AND contact_id = $2`, customer.Id, target.Id); got != "T" {
+		t.Errorf("title = %q, want %q (a refusal writes nothing at all)", got, "T")
+	}
+	if got := primaryHolderOf(t, h, customer.Id, "billing"); got != target.Id {
+		t.Errorf("primary billing holder = %d, want %d", got, target.Id)
+	}
+}

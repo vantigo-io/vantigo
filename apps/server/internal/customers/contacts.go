@@ -334,7 +334,8 @@ func (s *server) PutCustomersContactsById(ctx context.Context, req gen.PutCustom
 // DeleteContactEndpoint.cs:14-43: a SELECT ... FOR UPDATE lock on the
 // contact row (customers inventory §4), then the row of every customer it is
 // attached to (typed contact roles design D2, in ascending customer_id order),
-// then every association it still carries is recorded as a "removed" timeline
+// then — read under those locks, never before them — every association it
+// still carries is recorded as a "removed" timeline
 // event against that association's customer, and only then is the contact
 // (and, via ON DELETE CASCADE, its associations and their role rows) deleted
 // and a new primary promoted wherever this contact was one — all in one
@@ -356,6 +357,41 @@ func (s *server) DeleteCustomersContactsById(ctx context.Context, req gen.Delete
 			if err != nil {
 				return err
 			}
+			// Every customer this contact is attached to has to be locked
+			// before its roles are read, let alone re-arranged (typed contact
+			// roles design D2), and in the order ListAssociationsForContact
+			// answers — ascending customer_id, which the query's own ORDER BY
+			// guarantees. A deterministic order across all callers is what
+			// keeps two concurrent deletes of two contacts that share two
+			// customers from deadlocking with each other; the retry above
+			// exists for the other cycle, the one against an attach.
+			//
+			// This first read decides only WHICH rows to lock, and is thrown
+			// away: the contact row's own FOR UPDATE lock above does not cover
+			// customers_contacts or customer_contact_roles, so a role write
+			// against one of these customers can commit while this transaction
+			// queues for that customer's row — and deciding the promotions from
+			// a snapshot taken before the lock is how a role ends up with
+			// holders and no primary (this transaction thought somebody else
+			// was already its primary) or with two (it promoted a second one).
+			// The authoritative read is the one below, under every lock.
+			toLock, err := txq.ListAssociationsForContact(ctx, req.Id)
+			if err != nil {
+				return err
+			}
+			for _, a := range toLock {
+				if _, err := txq.LockCustomer(ctx, a.CustomerID); err != nil {
+					return err
+				}
+			}
+
+			// Now the authoritative read. It can differ from the read above —
+			// an association detached in the window is gone from it — but it can
+			// never name a customer that read did not, because attaching this
+			// contact anywhere takes the contact row's FOR UPDATE lock this
+			// transaction has held since its first statement: no association of
+			// this contact can appear while it runs. So every row read here is a
+			// row whose customer is locked.
 			associations, err := txq.ListAssociationsForContact(ctx, req.Id)
 			if err != nil {
 				return err
@@ -369,19 +405,6 @@ func (s *server) DeleteCustomersContactsById(ctx context.Context, req gen.Delete
 				rolesByCustomer[r.CustomerID] = append(rolesByCustomer[r.CustomerID], contactRole{Role: r.Role, Primary: r.IsPrimary})
 			}
 
-			// Every customer this contact is attached to has to be locked
-			// before its roles are re-arranged (typed contact roles design
-			// D2), and in the order ListAssociationsForContact answers —
-			// ascending customer_id, which the query's own ORDER BY
-			// guarantees. A deterministic order across all callers is what
-			// keeps two concurrent deletes of two contacts that share two
-			// customers from deadlocking with each other; the retry above
-			// exists for the other cycle, the one against an attach.
-			for _, a := range associations {
-				if _, err := txq.LockCustomer(ctx, a.CustomerID); err != nil {
-					return err
-				}
-			}
 			for _, a := range associations {
 				if err := recordContactRemoved(ctx, txq, now, a.CustomerID, contact, a.Title, rolesByCustomer[a.CustomerID],
 					a.Phone, a.Email, act.Kind, act.Display, act.UserID); err != nil {
@@ -491,9 +514,15 @@ func (s *server) GetCustomersByIdContacts(ctx context.Context, req gen.GetCustom
 	return gen.GetCustomersByIdContacts200JSONResponse{Data: data}, nil
 }
 
-// errAssociationTargetNotFound and errAlreadyAttached are PostCustomersByIdContacts'
-// two non-400 refusals, threaded out of the transaction fn as sentinel
+// errAssociationTargetNotFound and errAlreadyAttached are the association
+// writes' non-400 refusals, threaded out of the transaction fn as sentinel
 // errors so db.WithTx's own error path stays a plain "did it fail" signal.
+// errAlreadyAttached is PostCustomersByIdContacts' alone;
+// errAssociationTargetNotFound is now also the update's and the detach's,
+// because both of those decide their 404 twice — once on the unlocked read that
+// shapes validation, and again on the re-read under the customer row's lock,
+// where a concurrent detach that has committed in between turns what looked
+// like a write into the 404 it really is (typed contact roles design D2).
 var (
 	errAssociationTargetNotFound = errors.New("customers: customer or contact not found")
 	errAlreadyAttached           = errors.New("customers: contact already associated")
@@ -612,19 +641,20 @@ func (s *server) PostCustomersByIdContacts(ctx context.Context, req gen.PostCust
 			return nil
 		})
 	})
+	var refused errRolePrimaryTransitionRefused
 	switch {
 	case errors.Is(err, errAssociationTargetNotFound):
 		return gen.PostCustomersByIdContacts404Response{}, nil
 	case errors.Is(err, errAlreadyAttached):
 		detail := fmt.Sprintf("Contact %d is already associated with customer %d.", body.ContactId, req.Id)
 		return gen.PostCustomersByIdContacts409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus("Contact already associated", detail, http.StatusConflict)), nil
-	case errors.Is(err, errRolePrimaryTransitionRefused):
+	case errors.As(err, &refused):
 		// Unreachable on an attach — nothing is held yet, so no primary can be
 		// cleared — but handled rather than falling into the 500 below, because
 		// "unreachable" is a property of applyRoles' phase 1 and not of this
 		// call site, and a future change to either should surface as the 400 it
 		// is.
-		return gen.PostCustomersByIdContacts400ApplicationProblemPlusJSONResponse(associationProblem(roleErrorsFor(err))), nil
+		return gen.PostCustomersByIdContacts400ApplicationProblemPlusJSONResponse(associationProblem(roleErrorsFor(refused))), nil
 	case err != nil:
 		return nil, fmt.Errorf("customers: attach contact: %w", err)
 	}
@@ -680,19 +710,30 @@ func (s *server) PutCustomersByIdContactsByContactId(ctx context.Context, req ge
 		return gen.PutCustomersByIdContactsByContactId400ApplicationProblemPlusJSONResponse(associationProblem(errs)), nil
 	}
 
-	// An omitted `roles` is the current set, so the rest of this handler can
-	// treat "what to hold" as one thing. Every element's Primary is nil — "leave
-	// this one alone" — and not the flag copied out of currentRoles: a request
-	// that did not mention roles at all must be unable to move a primary flag,
-	// and nil is the only value of the three that guarantees that even if the
-	// set changed under us between the unlocked read and the lock.
-	want := assoc.Roles
-	if !assoc.RolesGiven {
-		want = make([]requestedRole, 0, len(currentRoles))
-		for _, r := range currentRoles {
+	// An omitted `roles` is whatever the association holds, so the rest of this
+	// handler can treat "what to hold" as one thing. Every element's Primary is
+	// nil — "leave this one alone" — and not the flag copied out of the read: a
+	// request that did not mention roles at all must be unable to move a primary
+	// flag, and nil is the only one of the three values that cannot.
+	//
+	// It is a function of the read rather than a value because it is resolved
+	// TWICE, against two different reads. Out here, against the unlocked read,
+	// for the refusal and the no-op decision that are made out here; and again
+	// inside the transaction against the read under the customer row's lock,
+	// which is the set that is actually written. Resolving it once out here and
+	// writing that would make a request that says nothing about roles drop a role
+	// a concurrent write added in the window between the two reads.
+	rolesToHold := func(held []contactRole) []requestedRole {
+		if assoc.RolesGiven {
+			return assoc.Roles
+		}
+		want := make([]requestedRole, 0, len(held))
+		for _, r := range held {
 			want = append(want, requestedRole{Role: r.Role, Primary: nil})
 		}
+		return want
 	}
+	want := rolesToHold(currentRoles)
 
 	// The refusal is decided before the no-op shortcut below, on the set the
 	// unlocked read found: a request asking to clear the primary flag of a role
@@ -727,6 +768,15 @@ func (s *server) PutCustomersByIdContactsByContactId(ctx context.Context, req ge
 		// be a directory call made for a request that writes nothing. A
 		// concurrent writer can make this answer stale, which is what
 		// last-wins on an off-the-row resource means (tags.go says the same).
+		//
+		// One case is worth spelling out, because it looks like a swallowed
+		// refusal and is not: an explicit `primary: false` on a role this
+		// contact holds and is NOT the primary of asks for nothing, so it takes
+		// this return, and a concurrent write that made the contact that role's
+		// primary in the window is answered 200 rather than refused. Nothing is
+		// written either way — the request is still a no-op — so this is the
+		// same last-wins staleness as any other field, not a demotion the
+		// invariant let through.
 		return answer, nil
 	}
 
@@ -771,7 +821,10 @@ func (s *server) PutCustomersByIdContactsByContactId(ctx context.Context, req ge
 			}); err != nil {
 				return err
 			}
-			after, promotions, err := applyRoles(ctx, txq, req.Id, req.ContactId, before, want, now)
+			// rolesToHold(before), not the `want` the unlocked read produced: for
+			// a request that gave `roles` the two are the same array, and for one
+			// that omitted it the set to keep is the one the lock found.
+			after, promotions, err := applyRoles(ctx, txq, req.Id, req.ContactId, before, rolesToHold(before), now)
 			if err != nil {
 				return err
 			}
@@ -794,11 +847,12 @@ func (s *server) PutCustomersByIdContactsByContactId(ctx context.Context, req ge
 			return recordPromotions(ctx, txq, now, req.Id, promotions, act)
 		})
 	})
+	var refused errRolePrimaryTransitionRefused
 	switch {
 	case errors.Is(err, errAssociationTargetNotFound):
 		return gen.PutCustomersByIdContactsByContactId404Response{}, nil
-	case errors.Is(err, errRolePrimaryTransitionRefused):
-		return gen.PutCustomersByIdContactsByContactId400ApplicationProblemPlusJSONResponse(associationProblem(roleErrorsFor(err))), nil
+	case errors.As(err, &refused):
+		return gen.PutCustomersByIdContactsByContactId400ApplicationProblemPlusJSONResponse(associationProblem(roleErrorsFor(refused))), nil
 	case err != nil:
 		return nil, fmt.Errorf("customers: update association: %w", err)
 	}
