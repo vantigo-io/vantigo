@@ -71,18 +71,20 @@ func uuidPtrEqual(a, b *uuid.UUID) bool {
 
 // customerDecoration is everything a SafeCustomerResponse carries that is not
 // on the customer row: the owner's display name, borrowed from identity's
-// directory for the length of one response (owner and tags design D1), and the
-// customer's tags, which live in their own table (D2). It exists so
-// safeCustomerResponse knows one shape whether it is rendering one customer or
-// a page of twenty-five, and so the two lookups happen once per response
-// rather than once per row.
+// directory for the length of one response (owner and tags design D1), the
+// customer's tags, which live in their own table (D2), and the customer's
+// group, whose name lives in the group vocabulary (customer groups design D3).
+// It exists so safeCustomerResponse knows one shape whether it is rendering one
+// customer or a page of twenty-five, and so the three lookups happen once per
+// response rather than once per row.
 type customerDecoration struct {
 	owners map[uuid.UUID]contracts.UserEntry
 	tags   map[int32][]gen.CustomerTag
+	groups map[int32]gen.CustomerGroupRef
 }
 
-// decorate resolves the owners and tags of rows in one directory call and one
-// query. q must be a pool-backed store.Queries, never a transaction's: the
+// decorate resolves the owners, tags and groups of rows in one directory call
+// and two queries. q must be a pool-backed store.Queries, never a transaction's: the
 // directory call inside is out-of-process and must not happen under a lock, so
 // every caller decorates after its write has committed.
 //
@@ -109,6 +111,7 @@ func (s *server) decorateKnowing(ctx context.Context, q *store.Queries, known *c
 	dec := customerDecoration{
 		owners: map[uuid.UUID]contracts.UserEntry{},
 		tags:   map[int32][]gen.CustomerTag{},
+		groups: map[int32]gen.CustomerGroupRef{},
 	}
 	if len(rows) == 0 {
 		return dec, nil
@@ -141,6 +144,20 @@ func (s *server) decorateKnowing(ctx context.Context, q *store.Queries, known *c
 	}
 	for _, l := range links {
 		dec.tags[l.CustomerID] = append(dec.tags[l.CustomerID], gen.CustomerTag{Id: l.ID, Name: l.Name, Color: l.Color})
+	}
+
+	// The group is one more batched query over the same customer ids (customer
+	// groups design D3), and it is a query rather than a column on every
+	// customer row's own SELECT for the tags' reason: one shape of
+	// group-on-a-response, one place it can be wrong, and five existing row
+	// types that would otherwise each have to grow a column they have no other
+	// use for. A customer in no group simply has no row here.
+	groups, err := q.CustomerGroupsForCustomers(ctx, customerIDs)
+	if err != nil {
+		return customerDecoration{}, fmt.Errorf("customers: load customer groups: %w", err)
+	}
+	for _, g := range groups {
+		dec.groups[g.CustomerID] = gen.CustomerGroupRef{Id: g.ID, Name: g.Name}
 	}
 
 	if len(userIDs) > 0 {
@@ -186,6 +203,16 @@ func (d customerDecoration) tagsFor(customerID int32) []gen.CustomerTag {
 		return tags
 	}
 	return []gen.CustomerTag{}
+}
+
+// group is one customer's group as the contract reports it, or nil when the
+// customer belongs to none — absent on the wire, never null, the idiom owner
+// beside it already follows (customer groups design D3).
+func (d customerDecoration) group(customerID int32) *gen.CustomerGroupRef {
+	if g, ok := d.groups[customerID]; ok {
+		return &g
+	}
+	return nil
 }
 
 // PutCustomersByIdOwner Set or clear a customer's owner

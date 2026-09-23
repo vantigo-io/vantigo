@@ -49,6 +49,7 @@ type customerJSON struct {
 	Identity       *legalIdentityRef `json:"identity"`
 	ContactInfo    contactInfoJSON   `json:"contactInfo"`
 	Owner          *ownerJSON        `json:"owner"`
+	Group          *groupRefJSON     `json:"group"`
 	Tags           []tagJSON         `json:"tags"`
 }
 
@@ -59,6 +60,14 @@ type ownerJSON struct {
 	UserId      string `json:"userId"`
 	DisplayName string `json:"displayName"`
 	Active      bool   `json:"active"`
+}
+
+// groupRefJSON decodes CustomerGroupRef, a pointer on customerJSON for the same
+// reason ownerJSON is one: it is genuinely absent for a customer in no group
+// (customer groups design D3), never null.
+type groupRefJSON struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
 }
 
 // tagJSON decodes CustomerTag. A plain slice, not a pointer: the server always

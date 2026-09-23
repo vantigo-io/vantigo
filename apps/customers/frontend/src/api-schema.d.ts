@@ -146,6 +146,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/customers/{id}/group": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put a customer in a group, or take it out of every group */
+        put: operations["putCustomersByIdGroup"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/customers/{id}/legal-identity": {
         parameters: {
             query?: never;
@@ -1042,6 +1059,16 @@ export interface components {
             revision?: number | null;
             website?: string | null;
         };
+        /** @description PUT /customers/{id}/group's own request body (customer groups design D3): the customer is put into groupId, or taken out of every group when it is absent or null. The group must exist; an unknown id is a field error on groupId. revision is optional, as PUT /customers/{id}/owner's own is — omitted, the change applies regardless; present and stale, a 409. Only this sub-resource sets a customer's group: POST /customers and PUT /customers/{id} do not take one. */
+        PutCustomerGroupRequest: {
+            /** Format: uuid */
+            groupId?: string | null;
+            /**
+             * Format: int32
+             * @description The revision the caller read the customer at (customers foundation design D5). Optional — omitted, the change applies regardless; present and stale, a 409.
+             */
+            revision?: number | null;
+        };
         /** @description PUT /customers/{id}/owner's own request body (owner and tags design D1): the owner is set to ownerUserId, or cleared when it is absent or null. The user must exist and be active to be assigned. revision is optional, as PUT /customers/{id}/contact-info's own is. */
         PutCustomerOwnerRequest: {
             /** Format: uuid */
@@ -1090,6 +1117,8 @@ export interface components {
             createdAt: string;
             /** Format: int64 */
             customerNumber: number;
+            /** @description The group this customer belongs to (customer groups design D3). Absent when it belongs to none — omitted, never null, like owner beside it; needs nothing beyond customers:view to read. A group's own default payment term is not here: it is read from GET /customers/groups, or already resolved on the billing profile's groupDefault. */
+            group?: components["schemas"]["CustomerGroupRef"];
             /** Format: int32 */
             id: number;
             identity?: components["schemas"]["SafeCustomerIdentity"] | null;
@@ -1282,6 +1311,7 @@ export interface operations {
                 type?: string;
                 ownerId?: string;
                 tagId?: string;
+                groupId?: string;
             };
             header?: never;
             path?: never;
@@ -2172,6 +2202,75 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    putCustomersByIdGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutCustomerGroupRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SafeCustomerResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
+                };
             };
         };
     };

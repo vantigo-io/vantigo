@@ -247,6 +247,13 @@ RETURNING id, revision, type, legal_country, legal_id, legal_name, legal_source,
 -- validation turns exactly one ownerId value into exactly one of them. tag_id
 -- is design D2's single-tag filter: a customer matches when it carries that
 -- tag, and multi-tag filtering is not built until someone asks.
+--
+-- group_none/group_id are design D3's groupId filter, and they are the
+-- owner's two halves for the owner's reason: 'none' is "in no group at all" (a
+-- NULL test, which no equality can express) and a uuid is an equality. They are
+-- never both set — the Go validation turns exactly one groupId value into
+-- exactly one of them — and an equality, not tag_id's EXISTS, because a group
+-- is single-valued like the owner rather than many-to-many like a tag.
 SELECT count(*)
 FROM customers.customers c
 WHERE (
@@ -261,6 +268,8 @@ WHERE (
         FROM customers.customer_tags cft
         WHERE cft.customer_id = c.id
           AND cft.tag_id = sqlc.narg(tag_id)::uuid))
+  AND (NOT @group_none::bool OR c.group_id IS NULL)
+  AND (sqlc.narg(group_id)::uuid IS NULL OR c.group_id = sqlc.narg(group_id)::uuid)
   AND (
         sqlc.narg(search)::text IS NULL
      OR c.name ILIKE sqlc.narg(search)::text
@@ -318,6 +327,8 @@ WHERE (
         FROM customers.customer_tags cft
         WHERE cft.customer_id = c.id
           AND cft.tag_id = sqlc.narg(tag_id)::uuid))
+  AND (NOT @group_none::bool OR c.group_id IS NULL)
+  AND (sqlc.narg(group_id)::uuid IS NULL OR c.group_id = sqlc.narg(group_id)::uuid)
   AND (
         sqlc.narg(search)::text IS NULL
      OR c.name ILIKE sqlc.narg(search)::text

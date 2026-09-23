@@ -494,6 +494,44 @@ func recordCustomerOwnerChanged(ctx context.Context, q *store.Queries, now time.
 	return recordGeneratedEvent(ctx, q, customerID, now, "customer.owner_changed", summary, payload, 1, actorKind, actorDisplay, actorUserID)
 }
 
+// groupSnapshot is customer.group_changed's before/after shape (customer groups
+// design D3): which group, and what it was called at the time. The name is
+// snapshotted for ownerSnapshot's own reason — a group renamed later must not
+// rewrite what the timeline says happened, and a group's name is edited far more
+// freely than a user's, since it is installation policy rather than a person.
+type groupSnapshot struct {
+	GroupID uuid.UUID `json:"groupId"`
+	Name    string    `json:"name"`
+}
+
+// recordCustomerGroupChanged is PutCustomersByIdGroup's own generated event
+// (design D3). Only called once the handler has confirmed the group actually
+// changed, so before and after are never equal and never both nil — which is
+// what lets the summary always name at least one group, and why there are
+// exactly three sentences rather than a rendered "x → y" that would read
+// "nobody → Retail".
+//
+// Like recordCustomerOwnerChanged there is no changes map: there is exactly one
+// field, so before/after IS the change, and the spec names this payload shape
+// exactly.
+func recordCustomerGroupChanged(ctx context.Context, q *store.Queries, now time.Time, customerID int32, before, after *groupSnapshot, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	var summary string
+	switch {
+	case before == nil:
+		summary = fmt.Sprintf("Moved to group %s", after.Name)
+	case after == nil:
+		summary = fmt.Sprintf("Removed from group %s", before.Name)
+	default:
+		summary = fmt.Sprintf("Moved from %s to %s", before.Name, after.Name)
+	}
+	payload := map[string]any{
+		"customerId": customerID,
+		"before":     before,
+		"after":      after,
+	}
+	return recordGeneratedEvent(ctx, q, customerID, now, "customer.group_changed", truncateUTF16(summary, 500), payload, 1, actorKind, actorDisplay, actorUserID)
+}
+
 // tagSnapshot is customer.tags_changed's element shape (owner and tags design
 // D2): which tag, and what it was called at the time. The name is snapshotted
 // for the same reason ownerSnapshot's is — renaming a tag later must not

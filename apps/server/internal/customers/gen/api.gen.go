@@ -494,6 +494,14 @@ type PutCustomerContactInfoRequest struct {
 	Website  *string `json:"website,omitempty"`
 }
 
+// PutCustomerGroupRequest PUT /customers/{id}/group's own request body (customer groups design D3): the customer is put into groupId, or taken out of every group when it is absent or null. The group must exist; an unknown id is a field error on groupId. revision is optional, as PUT /customers/{id}/owner's own is — omitted, the change applies regardless; present and stale, a 409. Only this sub-resource sets a customer's group: POST /customers and PUT /customers/{id} do not take one.
+type PutCustomerGroupRequest struct {
+	GroupId *openapi_types.UUID `json:"groupId,omitempty"`
+
+	// Revision The revision the caller read the customer at (customers foundation design D5). Optional — omitted, the change applies regardless; present and stale, a 409.
+	Revision *int32 `json:"revision,omitempty"`
+}
+
 // PutCustomerOwnerRequest PUT /customers/{id}/owner's own request body (owner and tags design D1): the owner is set to ownerUserId, or cleared when it is absent or null. The user must exist and be active to be assigned. revision is optional, as PUT /customers/{id}/contact-info's own is.
 type PutCustomerOwnerRequest struct {
 	OwnerUserId *openapi_types.UUID `json:"ownerUserId,omitempty"`
@@ -528,12 +536,15 @@ type SafeCustomerIdentity struct {
 // SafeCustomerResponse defines model for SafeCustomerResponse.
 type SafeCustomerResponse struct {
 	// ContactInfo A customer's own contact details (invoice-ready customer design D2). Always present; optional here only because the recorded exchange corpus predates it.
-	ContactInfo    *CustomerContactInfo  `json:"contactInfo,omitempty"`
-	CreatedAt      time.Time             `json:"createdAt"`
-	CustomerNumber int64                 `json:"customerNumber"`
-	Id             int32                 `json:"id"`
-	Identity       *SafeCustomerIdentity `json:"identity,omitempty"`
-	Name           string                `json:"name"`
+	ContactInfo    *CustomerContactInfo `json:"contactInfo,omitempty"`
+	CreatedAt      time.Time            `json:"createdAt"`
+	CustomerNumber int64                `json:"customerNumber"`
+
+	// Group The group this customer belongs to (customer groups design D3). Absent when it belongs to none — omitted, never null, like owner beside it; needs nothing beyond customers:view to read. A group's own default payment term is not here: it is read from GET /customers/groups, or already resolved on the billing profile's groupDefault.
+	Group    *CustomerGroupRef     `json:"group,omitempty"`
+	Id       int32                 `json:"id"`
+	Identity *SafeCustomerIdentity `json:"identity,omitempty"`
+	Name     string                `json:"name"`
 
 	// Owner The user accountable for this customer relationship (owner and tags design D1). Absent when the customer is unowned — omitted, never null, like every other optional field this API answers with; needs nothing beyond customers:view to read.
 	Owner *CustomerOwner `json:"owner,omitempty"`
@@ -671,6 +682,7 @@ type GetCustomersParams struct {
 	Type            *string `form:"type,omitempty" json:"type,omitempty"`
 	OwnerId         *string `form:"ownerId,omitempty" json:"ownerId,omitempty"`
 	TagId           *string `form:"tagId,omitempty" json:"tagId,omitempty"`
+	GroupId         *string `form:"groupId,omitempty" json:"groupId,omitempty"`
 }
 
 // GetCustomersAssignableUsersParams defines parameters for GetCustomersAssignableUsers.
@@ -772,6 +784,9 @@ type PostCustomersByIdContactsJSONRequestBody = AttachCustomerContactRequest
 
 // PutCustomersByIdContactsByContactIdJSONRequestBody defines body for PutCustomersByIdContactsByContactId for application/json ContentType.
 type PutCustomersByIdContactsByContactIdJSONRequestBody = CustomerContactRequest
+
+// PutCustomersByIdGroupJSONRequestBody defines body for PutCustomersByIdGroup for application/json ContentType.
+type PutCustomersByIdGroupJSONRequestBody = PutCustomerGroupRequest
 
 // PutCustomersByIdLegalIdentityJSONRequestBody defines body for PutCustomersByIdLegalIdentity for application/json ContentType.
 type PutCustomersByIdLegalIdentityJSONRequestBody = PutLegalIdentityRequest
@@ -904,6 +919,9 @@ type ServerInterface interface {
 	// PutCustomersByIdContactsByContactId Update a customer's contact association
 	// (PUT /api/v1/customers/{id}/contacts/{contactId})
 	PutCustomersByIdContactsByContactId(w http.ResponseWriter, r *http.Request, id int32, contactId int32)
+	// PutCustomersByIdGroup Put a customer in a group, or take it out of every group
+	// (PUT /api/v1/customers/{id}/group)
+	PutCustomersByIdGroup(w http.ResponseWriter, r *http.Request, id int32)
 	// DeleteCustomersByIdLegalIdentity Remove a customer's legal identity
 	// (DELETE /api/v1/customers/{id}/legal-identity)
 	DeleteCustomersByIdLegalIdentity(w http.ResponseWriter, r *http.Request, id int32)
@@ -1101,6 +1119,19 @@ func (siw *ServerInterfaceWrapper) GetCustomers(w http.ResponseWriter, r *http.R
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagId"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "groupId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "groupId", r.URL.Query(), &params.GroupId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "groupId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "groupId", Err: err})
 		}
 		return
 	}
@@ -2203,6 +2234,32 @@ func (siw *ServerInterfaceWrapper) PutCustomersByIdContactsByContactId(w http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// PutCustomersByIdGroup operation middleware
+func (siw *ServerInterfaceWrapper) PutCustomersByIdGroup(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutCustomersByIdGroup(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteCustomersByIdLegalIdentity operation middleware
 func (siw *ServerInterfaceWrapper) DeleteCustomersByIdLegalIdentity(w http.ResponseWriter, r *http.Request) {
 
@@ -2932,6 +2989,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/contacts", wrapper.PostCustomersByIdContacts)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/{id}/contacts/{contactId}", wrapper.DeleteCustomersByIdContactsByContactId)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/contacts/{contactId}", wrapper.PutCustomersByIdContactsByContactId)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/group", wrapper.PutCustomersByIdGroup)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/{id}/legal-identity", wrapper.DeleteCustomersByIdLegalIdentity)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/legal-identity", wrapper.GetCustomersByIdLegalIdentity)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/legal-identity", wrapper.PutCustomersByIdLegalIdentity)
@@ -5464,6 +5522,93 @@ func (response PutCustomersByIdContactsByContactId404Response) VisitPutCustomers
 	return nil
 }
 
+type PutCustomersByIdGroupRequestObject struct {
+	Id   int32 `json:"id"`
+	Body *PutCustomersByIdGroupJSONRequestBody
+}
+
+type PutCustomersByIdGroupResponseObject interface {
+	VisitPutCustomersByIdGroupResponse(w http.ResponseWriter) error
+}
+
+type PutCustomersByIdGroup200JSONResponse SafeCustomerResponse
+
+func (response PutCustomersByIdGroup200JSONResponse) VisitPutCustomersByIdGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdGroup400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutCustomersByIdGroup400ApplicationProblemPlusJSONResponse) VisitPutCustomersByIdGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdGroup401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCustomersByIdGroup401JSONResponse) VisitPutCustomersByIdGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdGroup403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCustomersByIdGroup403JSONResponse) VisitPutCustomersByIdGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdGroup404Response struct {
+}
+
+func (response PutCustomersByIdGroup404Response) VisitPutCustomersByIdGroupResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutCustomersByIdGroup409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PutCustomersByIdGroup409ApplicationProblemPlusJSONResponse) VisitPutCustomersByIdGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteCustomersByIdLegalIdentityRequestObject struct {
 	Id int32 `json:"id"`
 }
@@ -6833,6 +6978,9 @@ type StrictServerInterface interface {
 	// PutCustomersByIdContactsByContactId Update a customer's contact association
 	// (PUT /api/v1/customers/{id}/contacts/{contactId})
 	PutCustomersByIdContactsByContactId(ctx context.Context, request PutCustomersByIdContactsByContactIdRequestObject) (PutCustomersByIdContactsByContactIdResponseObject, error)
+	// PutCustomersByIdGroup Put a customer in a group, or take it out of every group
+	// (PUT /api/v1/customers/{id}/group)
+	PutCustomersByIdGroup(ctx context.Context, request PutCustomersByIdGroupRequestObject) (PutCustomersByIdGroupResponseObject, error)
 	// DeleteCustomersByIdLegalIdentity Remove a customer's legal identity
 	// (DELETE /api/v1/customers/{id}/legal-identity)
 	DeleteCustomersByIdLegalIdentity(ctx context.Context, request DeleteCustomersByIdLegalIdentityRequestObject) (DeleteCustomersByIdLegalIdentityResponseObject, error)
@@ -7966,6 +8114,39 @@ func (sh *strictHandler) PutCustomersByIdContactsByContactId(w http.ResponseWrit
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutCustomersByIdContactsByContactIdResponseObject); ok {
 		if err := validResponse.VisitPutCustomersByIdContactsByContactIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutCustomersByIdGroup operation middleware
+func (sh *strictHandler) PutCustomersByIdGroup(w http.ResponseWriter, r *http.Request, id int32) {
+	var request PutCustomersByIdGroupRequestObject
+
+	request.Id = id
+
+	var body PutCustomersByIdGroupJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutCustomersByIdGroup(ctx, request.(PutCustomersByIdGroupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutCustomersByIdGroup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutCustomersByIdGroupResponseObject); ok {
+		if err := validResponse.VisitPutCustomersByIdGroupResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
