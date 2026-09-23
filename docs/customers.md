@@ -685,9 +685,14 @@ it is the same stale-revision 409, since the row has by definition moved past
 what they read; if the caller supplied **none** — asking for the change to
 apply unconditionally, the owner's own rule for an omitted revision — refusing
 it outright would break that rule, so both reads run again instead, up to
-three attempts, and the handler proceeds with the first consistent pair. Only
-a customer still changing under every attempt gets the 409: the honest answer
-that it kept moving underneath the request.
+three attempts, and the handler proceeds with the first consistent pair. Even
+then the write is guarded with the revision that pair agreed on, so a move
+landing between the reads and the write sends the request back to the reads,
+within the same three attempts: the event's `before` is always the group the row
+really had, and a concurrent move to the very group asked for is found by the
+no-op check rather than recorded as a change. Only a customer still changing
+under every attempt gets the 409: the honest answer that it kept moving
+underneath the request.
 
 **Only this sub-resource sets a customer's group.** `POST /customers` and
 `PUT /customers/{id}` do not take a `groupId` — the owner's own rule.
@@ -741,6 +746,19 @@ the tag vocabulary on `customers:update` — and a customer's own override stays
 where it is, behind `customers:billing-manage`. A `customers:view` holder
 therefore learns a member's *inherited* term from the vocabulary list, which is a
 policy fact rather than a negotiated one.
+
+The write side has a consequence worth saying plainly: **`customers:update`
+decides a customer's *effective* payment term whenever the customer's own profile
+leaves it unset.** Choosing a customer's group and editing a group's default are
+both `customers:update` writes, so a holder of that key alone can create a group
+with a 90-day default and move a customer into it, and one edit to a group's
+default moves the effective term of every such member at once —
+`contracts.CustomerDirectory.BillingProfile`, which Invoices will read, answers
+the new value. `customers:billing-manage` guards only the override. That is a
+deliberate trade-off, not an oversight. If it is ever unwanted, the change is to
+require `customers:billing-manage` as well on a group create or update that sets
+or changes `defaultPaymentTermsDays`, and on a membership PUT whose before or
+after group carries a default — a per-request check, with no new key.
 
 **Not built:** group-level prices (Products phase 4 reads `CustomerEntry.Group`
 when it comes), any default beyond payment terms, bulk moves or a
@@ -1909,7 +1927,13 @@ than one customer's negotiated terms — the same reasoning that put the tag
 vocabulary on `customers:update` — and because gating one field of a
 `customers:update` endpoint behind `billing-manage` would be a per-field
 permission this module has never had. A customer's own override stays behind
-`customers:billing-manage`, where it was.
+`customers:billing-manage`, where it was — and that is **all** it guards: a
+`customers:update` holder decides a customer's *effective* payment term whenever
+the customer's own profile leaves it unset, by choosing its group or by editing
+a group's default. The trade-off is deliberate, and
+[Groups](#the-default-and-where-it-is-applied) names the change to make if it is
+ever unwanted (`customers:billing-manage` as well on default-bearing group
+writes and on moves into or out of a group that carries a default).
 
 ## `contracts.CustomerDirectory`
 
@@ -1919,7 +1943,7 @@ wired into every module's `Deps` by Compose before any module mounts:
 
 ```go
 type CustomerDirectory interface {
-    Customer(ctx, id int32) (*CustomerEntry, error)             // {ID, Name, Archived}
+    Customer(ctx, id int32) (*CustomerEntry, error)             // {ID, Name, Archived, Group}
     Customers(ctx, ids []int32) ([]CustomerEntry, error)         // batch; a missing id is simply absent
     Contact(ctx, id int32) (*ContactEntry, error)                // {ID, FirstName, LastName, Email}
     ContactsByEmail(ctx, email string) ([]ContactMatch, error)   // {ContactID, CandidateCustomerIDs}
@@ -2258,14 +2282,33 @@ typed roles — `billing`, `project`, `decision_maker` — live in
 on the addresses' own invariant. The roles ride on the association's four
 existing endpoints and its two existing permissions — no new paths, no new key
 — and a promotion caused by somebody else's write is recorded on the promoted
-contact with the user who caused it. Still ahead in the phase: a follow-up date
-and assignee on a timeline entry, feeding `/stats/attention` and a "my
-follow-ups" view; and attachments on a customer and its timeline entries, once
-the storage module has a model for it.
+contact with the user who caused it.
 The role vocabulary is deliberately **three** values, the same "unpaged, on
 purpose" bet the tag vocabulary makes — a wider list (technical, executive
 sponsor) is a value change rather than a migration, and the free-text title
 carries everything else today.
+
+**Phase 4 delivery C** — [Follow-ups](#follow-ups) — has since landed: a manual,
+active timeline entry can carry a due date, an optional assignee and a done
+stamp (migration `00026`), on the entry itself so it shares the entry's
+`current_revision` and its point-in-time history. `GET /customers/follow-ups` is
+the "what is on my plate" page, and two attention types, `followUpOverdue` and
+`followUpDue`, are the first on `/stats/attention` that depend on who is asking.
+The same delivery finished B's rename: the deprecated `role` alias is gone and
+`title` is the only name left. No permission key was added.
+
+**Phase 4 delivery D** — [Groups](#groups) — has since landed on top of it: a
+case-insensitively unique group vocabulary (migration `00027`) with a default
+payment term, a customer in at most one group through a column that shares the
+row's revision, and the one inherited value in this module —
+`resolveBillingProfile` answers the profile's own payment term, else the group's
+default. A group with members is never deleted, and `customer.group_changed`
+records every move with the names snapshotted. No permission key was added,
+which makes `customers:update` the key that steers an inherited term (see
+[Permissions](#permissions)).
+
+Still ahead in the phase: attachments on a customer and its timeline entries,
+once the storage module has a model for it.
 
 Past that, the remaining gaps are exactly
 what [ROADMAP.md's Customers section](../ROADMAP.md#customers) is built around —

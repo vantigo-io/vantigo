@@ -60,6 +60,19 @@ alternative — gating the default field behind `billing-manage` inside a
 `customers:update` endpoint — is a per-field permission this module has never
 had, and the field is the least sensitive of the ten billing fields.
 
+The write side is the consequence to state plainly (whole-branch review, accepted
+as a trade-off): **`customers:update` decides a customer's *effective* payment
+term whenever the customer's own profile leaves it unset.** Creating a group with
+a 90-day default and moving a customer into it are both `customers:update`
+writes, and one edit to a group's default moves the effective term of every such
+member at once — `CustomerDirectory.BillingProfile` answers the new value.
+`customers:billing-manage` guards only the customer's own override. This is
+deliberate: a group's default is installation policy. If it is ever unwanted, the
+change is to require `customers:billing-manage` as well on a `POST`/`PUT` that
+sets or changes `defaultPaymentTermsDays`, and on a membership `PUT` whose before
+or after group carries a default — a per-request check, not a per-field one, with
+no new key, and cheap only while nothing is live.
+
 ### D3 — Membership: `PUT /customers/{id}/group`, `group` on the response, `groupId` filter
 
 - `PUT /customers/{id}/group` (`customers:update` + `customers:view`) takes
