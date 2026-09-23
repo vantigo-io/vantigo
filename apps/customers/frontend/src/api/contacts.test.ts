@@ -7,6 +7,7 @@ import {
   deleteContact,
   detachCustomerContact,
   normalizeContactRoles,
+  normalizeCustomerContact,
   updateCustomerContact,
 } from "./contacts";
 import { ApiValidationError, NotFoundError } from "./customers";
@@ -91,10 +92,11 @@ describe("contacts api client", () => {
     });
   });
 
-  it("reads the title out of a response that only has role, the way the corpus answers", async () => {
-    // `role` is the title under its old name (design D1), so a response with no
-    // `title` key must still show one — this is what keeps the contacts card's
-    // title line working against the shape the recorded corpus answers.
+  it("reads the title and the roles off a list response", async () => {
+    // The list path's own normalisation: `title` comes straight off the wire
+    // (follow-ups design D5 left it the only name the free text has) and an
+    // absent `roles` becomes an empty array, which is what keeps the contacts
+    // card's title line and its badges working on every response.
     stubFetch(() =>
       Promise.resolve(
         new Response(
@@ -111,7 +113,7 @@ describe("contacts api client", () => {
                   phone: null,
                   email: null,
                 },
-                role: "CTO",
+                title: "CTO",
                 phone: null,
                 email: null,
               },
@@ -127,6 +129,30 @@ describe("contacts api client", () => {
     };
     expect(answered.data[0].title).toBe("CTO");
     expect(answered.data[0].roles).toEqual([]);
+  });
+
+  it("reads the title straight off the wire and turns an absent one into null", () => {
+    // The `role` alias is gone (follow-ups design D5), so there is no fallback
+    // left to get wrong: a wire body with no title means the association has
+    // none, and an extra `role` key a stale client still sends is ignored.
+    expect(
+      normalizeCustomerContact({
+        contact: { id: 1, firstName: "Kari", lastName: "Nordmann" },
+        title: null,
+        roles: [],
+        phone: null,
+        email: null,
+      } as never),
+    ).toMatchObject({ title: null, roles: [] });
+    expect(
+      normalizeCustomerContact({
+        contact: { id: 1, firstName: "Kari", lastName: "Nordmann" },
+        title: "CEO",
+        role: "IGNORED",
+        phone: null,
+        email: null,
+      } as never),
+    ).toMatchObject({ title: "CEO", roles: [] });
   });
 
   it("normalises roles: absent is empty, primary defaults to false, and the fixed order is restored", () => {
@@ -164,7 +190,6 @@ describe("contacts api client", () => {
               phone: null,
               email: null,
             },
-            role: "",
             roles: [{ role: "billing", primary: true }],
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
@@ -177,7 +202,8 @@ describe("contacts api client", () => {
       roles: [{ role: "billing", primary: true }],
     });
 
-    // role is "" and title is absent, so the title is genuinely none — not "".
+    // `title` is absent — the server omits what is unset — so the title is
+    // genuinely none rather than "".
     expect(answered.title).toBeNull();
     expect(answered.roles).toEqual([{ role: "billing", primary: true }]);
     // `actualCalls`, not `.mock.calls`: `stubFetch` (src/test/fetch.ts) returns

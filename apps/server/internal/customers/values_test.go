@@ -644,38 +644,6 @@ func TestValidateNamePart_ValidValueSucceeds(t *testing.T) {
 	}
 }
 
-// Ported from Domain/Contacts/Common/ContactValueObjectTests.cs.
-// ContactRoleTests.TryCreate_WithValidValue_TrimsAndSucceeds.
-func TestValidateContactRole_TrimsAndSucceeds(t *testing.T) {
-	got, err := validateContactRole("  CEO  ")
-	if err != "" || got != "CEO" {
-		t.Errorf("validateContactRole(%q) = %q, %q, want \"CEO\", no error", "  CEO  ", got, err)
-	}
-}
-
-// Ported from Domain/Contacts/Common/ContactValueObjectTests.cs.
-// ContactRoleTests.TryCreate_WithBlankValue_Fails. Exact message text: the
-// mutation a Task 7 review round planted here (paraphrasing this string)
-// survived because no test asserted it before.
-func TestValidateContactRole_BlankIsInvalid(t *testing.T) {
-	const want = "A role cannot be null or empty"
-	for _, v := range []string{"", "   "} {
-		if _, err := validateContactRole(v); err != want {
-			t.Errorf("validateContactRole(%q) = error %q, want %q", v, err, want)
-		}
-	}
-}
-
-// Not a port: ContactRoleTests has no too-long test in .NET, but it is a
-// real branch in ContactRole.Validate with its own exact message.
-func TestValidateContactRole_TooLongIsInvalid(t *testing.T) {
-	v := strings.Repeat("a", 256)
-	want := "A role cannot be longer than 255 characters, the given value was 256 characters"
-	if _, err := validateContactRole(v); err != want {
-		t.Errorf("validateContactRole(256 chars) = error %q, want %q", err, want)
-	}
-}
-
 // Not a port: pins the .NET divergence GetContactsEndpoint.Handler's search
 // term split must not diverge on (item 5b of the Task 7 fix round). .NET
 // splits on the ' ' character only
@@ -1052,12 +1020,14 @@ func TestValidateAssociationRole_RejectsAnythingElse(t *testing.T) {
 	}
 }
 
-// The title's rule is the role's rule that has always been there (design D1:
-// "Validation of the title is today's"), so the two share one implementation
-// and differ only in the noun their messages name — the field the caller
-// actually sent. TestValidateContactRole_* above pins the 'role' half and is
-// deliberately left untouched: the deprecated alias must keep answering
-// exactly what the recorded corpus recorded.
+// The title's rule is the rule the association's free text has always had
+// (typed contact roles design D1: "Validation of the title is today's"), now
+// under the only noun the contract still has. The deprecated `role` alias, and
+// its own three tests, went with the follow-ups delivery's approved contract
+// break (follow-ups design D5): the API is not live, so there was nobody to
+// keep an alias for. associationTitleRule stays parameterised by the noun
+// anyway — it costs a string and it is the seam any future second name would
+// use.
 func TestValidateContactTitle_MirrorsTheRoleRuleUnderItsOwnNoun(t *testing.T) {
 	if got, err := validateContactTitle("  CEO  "); err != "" || got != "CEO" {
 		t.Errorf("validateContactTitle(%q) = %q, %q, want \"CEO\", no error", "  CEO  ", got, err)

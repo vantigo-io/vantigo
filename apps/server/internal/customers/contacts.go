@@ -493,7 +493,7 @@ func (s *server) GetCustomersContactsByIdCustomers(ctx context.Context, req gen.
 	for _, r := range rows {
 		data = append(data, gen.GetContactCustomersContactCustomerResponse{
 			Customer: gen.GetContactCustomersCustomerReference{Id: r.ID, CustomerNumber: r.CustomerNumber, Name: r.Name},
-			Role:     deref(r.Title), Title: r.Title, Roles: genContactRoles(byCustomer[r.ID]),
+			Title:    r.Title, Roles: genContactRoles(byCustomer[r.ID]),
 			Phone: r.Phone, Email: r.Email,
 		})
 	}
@@ -543,7 +543,7 @@ func (s *server) GetCustomersByIdContacts(ctx context.Context, req gen.GetCustom
 				Id: r.ID, FirstName: r.FirstName, LastName: r.LastName,
 				MiddleName: r.MiddleName, Prefix: r.Prefix, Suffix: r.Suffix, Phone: r.ContactPhone, Email: r.ContactEmail,
 			},
-			Role: deref(r.Title), Title: r.Title, Roles: genContactRoles(byContact[r.ID]),
+			Title: r.Title, Roles: genContactRoles(byContact[r.ID]),
 			Phone: r.AssociationPhone, Email: r.AssociationEmail,
 		})
 	}
@@ -610,7 +610,7 @@ func (s *server) PostCustomersByIdContacts(ctx context.Context, req gen.PostCust
 		body = *req.Body
 	}
 
-	assoc, errs := validateCustomerContactRequest(body.Title, body.Role, body.Roles, body.Phone, body.Email, 0)
+	assoc, errs := validateCustomerContactRequest(body.Title, body.Roles, body.Phone, body.Email, 0)
 	if errs != nil {
 		return gen.PostCustomersByIdContacts400ApplicationProblemPlusJSONResponse(associationProblem(errs)), nil
 	}
@@ -677,7 +677,7 @@ func (s *server) PostCustomersByIdContacts(ctx context.Context, req gen.PostCust
 			}
 
 			response = gen.CustomerContactResponse{
-				Contact: contactResponse(contact), Role: deref(assoc.Title), Title: assoc.Title,
+				Contact: contactResponse(contact), Title: assoc.Title,
 				Roles: genContactRoles(roles), Phone: assoc.Phone, Email: assoc.Email,
 			}
 			return nil
@@ -747,7 +747,7 @@ func (s *server) PutCustomersByIdContactsByContactId(ctx context.Context, req ge
 	// means "leave them alone" (design D3), so the title-or-role rule must not
 	// refuse a request that only changes a phone number on an association that
 	// already has three roles.
-	assoc, errs := validateCustomerContactRequest(body.Title, body.Role, body.Roles, body.Phone, body.Email, len(currentRoles))
+	assoc, errs := validateCustomerContactRequest(body.Title, body.Roles, body.Phone, body.Email, len(currentRoles))
 	if errs != nil {
 		return gen.PutCustomersByIdContactsByContactId400ApplicationProblemPlusJSONResponse(associationProblem(errs)), nil
 	}
@@ -794,7 +794,7 @@ func (s *server) PutCustomersByIdContactsByContactId(ctx context.Context, req ge
 	}
 
 	answer := gen.PutCustomersByIdContactsByContactId200JSONResponse{
-		Contact: contactResponse(contactFromAssociationRow(existing)), Role: deref(assoc.Title), Title: assoc.Title,
+		Contact: contactResponse(contactFromAssociationRow(existing)), Title: assoc.Title,
 		Roles: genContactRoles(currentRoles), Phone: assoc.Phone, Email: assoc.Email,
 	}
 

@@ -32,10 +32,12 @@ func contactDisplayName(firstName string, middleName *string, lastName string) s
 }
 
 // recordContactEvent is AddContact (SV/CustomerTimelineRecorder.cs:99-124),
-// widened by typed contact roles design D4: the payload gains `title` (the
-// same value `role` carries, under the name the field now has) and `roles`,
-// and `role` stays exactly where it was because the recorded corpus and every
-// timeline entry already written speak it.
+// widened by typed contact roles design D4 and narrowed by follow-ups design
+// D5: the payload carries `title` and `roles`, and `role` — the same value
+// under the name the field used to have — is gone from NEW payloads. Entries
+// already written keep theirs, which is why this is a payload VERSION bump (1
+// → 2) rather than a silent change of shape: a reader that has to interpret an
+// old entry can tell which shape it is looking at.
 func recordContactEvent(ctx context.Context, q *store.Queries, now time.Time, customerID int32, eventType, action string, contact store.CustomersContact, title *string, roles []contactRole, phone, email *string, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
 	displayName := contactDisplayName(contact.FirstName, contact.MiddleName, contact.LastName)
 	summary := fmt.Sprintf("%s: %s (#%d)", action, displayName, contact.ID)
@@ -52,13 +54,12 @@ func recordContactEvent(ctx context.Context, q *store.Queries, now time.Time, cu
 		"firstName":   contact.FirstName,
 		"middleName":  contact.MiddleName,
 		"lastName":    contact.LastName,
-		"role":        deref(title),
 		"title":       title,
 		"roles":       roles,
 		"phone":       phone,
 		"email":       email,
 	}
-	return recordGeneratedEvent(ctx, q, customerID, now, eventType, truncateUTF16(summary, 500), payload, 1, actorKind, actorDisplay, actorUserID)
+	return recordGeneratedEvent(ctx, q, customerID, now, eventType, truncateUTF16(summary, 500), payload, 2, actorKind, actorDisplay, actorUserID)
 }
 
 // recordContactAttached is RecordContactAttached (SV/CustomerTimelineRecorder.cs:87-88).

@@ -16,11 +16,11 @@ import (
 // concurrency half — a forced race of two primary:true writers — is
 // contact_roles_concurrency_test.go, beside the other lock-gate files.
 //
-// The wire shapes are declared here rather than reusing contacts_test.go's
-// customerContactJSON, because that type is deliberately the SHAPE THE CORPUS
-// RECORDED (contact, role, phone, email) and one test below asserts that a
-// corpus-shaped request still answers exactly it. Widening it would erase the
-// distinction this delivery is built on.
+// customerContactJSON (contacts_test.go) is the shape the association
+// endpoints answered before typed roles; these types are the shape they answer
+// now. Both are hand-written rather than generated, so a field the server
+// stops sending shows up as a nil pointer in a test rather than as a compile
+// error — which is why the assertions below check values, never mere presence.
 
 type contactRoleJSON struct {
 	Role    string `json:"role"`
@@ -29,7 +29,6 @@ type contactRoleJSON struct {
 
 type roledContactJSON struct {
 	Contact contactJSON       `json:"contact"`
-	Role    string            `json:"role"`
 	Title   *string           `json:"title"`
 	Roles   []contactRoleJSON `json:"roles"`
 	Phone   *string           `json:"phone"`
@@ -42,7 +41,6 @@ type roledContactListJSON struct {
 
 type roledCustomerJSON struct {
 	Customer contactCustomerReferenceJSON `json:"customer"`
-	Role     string                       `json:"role"`
 	Title    *string                      `json:"title"`
 	Roles    []contactRoleJSON            `json:"roles"`
 }
@@ -327,8 +325,8 @@ func TestUpdateCustomerContact_OmittedRolesAreUnchangedAndEmptyClearsThem(t *tes
 	if !reflect.DeepEqual(updated.Roles, want) {
 		t.Errorf("roles after omitting them = %+v, want %+v", updated.Roles, want)
 	}
-	if updated.Role != "CTO" || updated.Title == nil || *updated.Title != "CTO" {
-		t.Errorf("role = %q, title = %v, want both \"CTO\"", updated.Role, updated.Title)
+	if updated.Title == nil || *updated.Title != "CTO" {
+		t.Errorf("title = %v, want \"CTO\"", updated.Title)
 	}
 
 	// An empty array clears them — and is allowed only because a title remains.
@@ -397,32 +395,61 @@ func TestAssociationRequests_RefuseAnUnknownRoleADuplicateAndAnEmptyRelationship
 	}
 }
 
-func TestAssociationRequests_TheCorpusShapeStillWorksAndTitleWins(t *testing.T) {
+// TestAssociationRequests_TitleIsTheOnlyNameForTheFreeText is the corpus-shape
+// test's successor (follow-ups design D5). `role` is no longer a property of
+// any association schema, so a body that still sends it is a body with an
+// unknown key: nothing in openapi/customers.yaml sets
+// additionalProperties: false, so it is accepted and ignored, and the
+// association ends up with no title at all — which, with no roles either, is
+// the title-or-roles refusal. That is the whole of the break, and it is worth
+// a test precisely because the frozen corpus still sends that body: the
+// corpus proves the SCHEMAS still validate it (internal/openapi's
+// TestRecordedExchangesMatchTheContract), and this proves what the HANDLER now
+// does with it.
+func TestAssociationRequests_TitleIsTheOnlyNameForTheFreeText(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	c := authenticatedClient(t, h)
-	customer := createCustomer(t, c, "Corpus Shape Co")
-	corpusContact := createContact(t, c, map[string]any{"firstName": "Corpus", "lastName": "Shapesen"})
-	bothContact := createContact(t, c, map[string]any{"firstName": "Both", "lastName": "Fieldsen"})
+	customer := createCustomer(t, c, "Title Only Co")
+	titled := createContact(t, c, map[string]any{"firstName": "Titled", "lastName": "Personsen"})
+	roleOnly := createContact(t, c, map[string]any{"firstName": "Roleonly", "lastName": "Personsen"})
 
-	// Literally the body the frozen corpus records (openapi/testdata/exchanges/
-	// customers.jsonl): contactId and role, nothing else.
-	got := attachWithRoles(t, c, customer.Id, map[string]any{"contactId": corpusContact.Id, "role": "CEO"})
-	if got.Role != "CEO" || got.Title == nil || *got.Title != "CEO" {
-		t.Errorf("role = %q, title = %v, want both \"CEO\" (role is an alias of title)", got.Role, got.Title)
+	got := attachWithRoles(t, c, customer.Id, map[string]any{"contactId": titled.Id, "title": "CEO"})
+	if got.Title == nil || *got.Title != "CEO" {
+		t.Errorf("title = %v, want \"CEO\"", got.Title)
 	}
 	if len(got.Roles) != 0 {
-		t.Errorf("roles = %+v, want an empty array: a corpus-shaped request gives no typed roles", got.Roles)
+		t.Errorf("roles = %+v, want an empty array: this request gave no typed roles", got.Roles)
 	}
 
-	// Both fields: title wins (design D1).
-	both := attachWithRoles(t, c, customer.Id, map[string]any{"contactId": bothContact.Id, "role": "ignored", "title": "CTO"})
-	if both.Role != "CTO" || both.Title == nil || *both.Title != "CTO" {
-		t.Errorf("role = %q, title = %v, want both \"CTO\"", both.Role, both.Title)
+	// The corpus's own body, unchanged: `role` is now an unknown key, so it
+	// names nothing and the request says nothing about the person.
+	r := c.Do(http.MethodPost, fmt.Sprintf("/api/v1/customers/%d/contacts", customer.Id), map[string]any{
+		"contactId": roleOnly.Id, "role": "CEO",
+	})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400: role is not a field any more", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if msgs := problem.Errors["title"]; len(msgs) != 1 || msgs[0] != "A contact needs a title or at least one role" {
+		t.Errorf("errors[title] = %v, want the title-or-roles refusal", msgs)
+	}
+	if _, ok := problem.Errors["role"]; ok {
+		t.Errorf("errors = %v, want no key \"role\": the field does not exist", problem.Errors)
 	}
 
-	// And on the list, in the shape the corpus recorded: the same four keys,
-	// with the two new ones beside them.
+	// And a role alone still needs no title — the other half of the rule.
+	roles := attachWithRoles(t, c, customer.Id, map[string]any{
+		"contactId": roleOnly.Id, "roles": []any{map[string]any{"role": "billing"}}})
+	if roles.Title != nil {
+		t.Errorf("title = %v, want null: the request gave none", roles.Title)
+	}
+
+	// Carried over from the test this replaces: the server ALWAYS answers
+	// `roles` as an array, never null, on every item of the list — a promise
+	// that is optional in the yaml only because the corpus predates the field,
+	// and one the `role` removal must not have disturbed.
 	list := listCustomerContacts(t, c, customer.Id)
 	if len(list.Data) != 2 {
 		t.Fatalf("len(data) = %d, want 2", len(list.Data))
@@ -432,8 +459,8 @@ func TestAssociationRequests_TheCorpusShapeStillWorksAndTitleWins(t *testing.T) 
 			t.Errorf("contact %d: roles is null, want an empty array (the server always answers it)", item.Contact.Id)
 		}
 	}
-	if n := h.Count(t, `SELECT count(*) FROM customers.customer_contact_roles WHERE customer_id = $1`, customer.Id); n != 0 {
-		t.Errorf("role rows = %d, want 0: a corpus-shaped request creates none", n)
+	if n := h.Count(t, `SELECT count(*) FROM customers.customer_contact_roles WHERE customer_id = $1`, customer.Id); n != 1 {
+		t.Errorf("role rows = %d, want 1: only the second attach gave a typed role", n)
 	}
 }
 
@@ -461,11 +488,11 @@ func TestGetContactCustomers_CarriesTheTitleAndTheRolesPerCustomer(t *testing.T)
 	if got := list.Data[0].Roles; !reflect.DeepEqual(got, []contactRoleJSON{{Role: "billing", Primary: true}, {Role: "decision_maker", Primary: true}}) {
 		t.Errorf("Alpha's roles = %+v, want billing then decision_maker, both primary (the fixed order, not the request's)", got)
 	}
-	if list.Data[0].Role != "CEO" {
-		t.Errorf("Alpha's role = %q, want \"CEO\"", list.Data[0].Role)
+	if list.Data[0].Title == nil || *list.Data[0].Title != "CEO" {
+		t.Errorf("Alpha's title = %v, want \"CEO\"", list.Data[0].Title)
 	}
-	if list.Data[1].Role != "" || list.Data[1].Title != nil {
-		t.Errorf("Beta's role = %q and title = %v, want \"\" and null (an association with roles and no title)", list.Data[1].Role, list.Data[1].Title)
+	if list.Data[1].Title != nil {
+		t.Errorf("Beta's title = %v, want null (an association with roles and no title)", list.Data[1].Title)
 	}
 	if n := h.Count(t, `SELECT count(*) FROM customers.customer_contact_roles WHERE contact_id = $1`, contact.Id); n != 3 {
 		t.Errorf("role rows for the contact = %d, want 3 (two at Alpha, one at Beta)", n)
@@ -660,7 +687,8 @@ func TestUpdateCustomerContact_AReplaceKeepsARetainedRolesSeniority(t *testing.T
 // endpoint becomes visible: PUT is a REPLACE of the whole association, so a body
 // that mentions neither title nor phone nor email clears all three, and it is
 // only accepted at all because the roles the association keeps satisfy the
-// title-or-role rule (design D1, D3). Before `role` stopped being required this
+// title-or-role rule (design D1, D3). Before typed roles the free text was the
+// only thing an association could say, so it was effectively required and this
 // request could not be written; now it can, and the answer is a stripped
 // association rather than a 400 — deliberate, and easy to mistake for a bug the
 // first time a client sends a partial body, which is why it has a test and a
@@ -683,9 +711,6 @@ func TestUpdateCustomerContact_AnEmptyBodyClearsTheFieldsAndKeepsTheRoles(t *tes
 	r.JSON(&answered)
 	if answered.Title != nil || answered.Phone != nil || answered.Email != nil {
 		t.Errorf("answered title/phone/email = %v/%v/%v, want all three cleared", answered.Title, answered.Phone, answered.Email)
-	}
-	if answered.Role != "" {
-		t.Errorf("answered role = %q, want \"\" (the deprecated alias answers the title or empty)", answered.Role)
 	}
 	if !reflect.DeepEqual(answered.Roles, []contactRoleJSON{{Role: "project", Primary: true}}) {
 		t.Errorf("answered roles = %+v, want project/primary kept — roles is the only field an omission leaves alone", answered.Roles)
@@ -714,7 +739,6 @@ func TestUpdateCustomerContact_AnEmptyBodyClearsTheFieldsAndKeepsTheRoles(t *tes
 		"firstName":   "Replaced",
 		"middleName":  nil,
 		"lastName":    "Wholesen",
-		"role":        "",
 		"title":       nil,
 		"roles":       []any{map[string]any{"role": "project", "primary": true}},
 		"phone":       nil,

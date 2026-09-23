@@ -77,9 +77,7 @@ const roleRank = (role: string) => {
 
 export interface CustomerContactResponse {
   contact: ContactResponse;
-  /** The association's title, or "" — kept for compatibility; read `title`. */
-  role: string;
-  /** What this person is called at this customer, or null. */
+  /** What this person is called at this customer, or null when the association has no title. */
   title: string | null;
   /** Every typed role held for this customer, in the fixed order. */
   roles: ContactRoleAssignment[];
@@ -99,7 +97,6 @@ export interface CustomerContactInput {
 
 export interface ContactCustomerResponse {
   customer: { id: number; name: string };
-  role: string;
   title: string | null;
   roles: ContactRoleAssignment[];
   /** Connection-specific phone, when it differs from the contact's own. */
@@ -108,34 +105,28 @@ export interface ContactCustomerResponse {
   email: string | null;
 }
 
-type RawCustomerContactResponse = Omit<CustomerContactResponse, "title" | "roles"> & {
-  title?: string | null;
-  roles?: RawContactRole[] | null;
-};
-type RawContactCustomerResponse = Omit<ContactCustomerResponse, "title" | "roles"> & {
-  title?: string | null;
-  roles?: RawContactRole[] | null;
-};
-
 /**
- * `title` absent falls back to `role`, which is not a guess: `role` IS the title
- * on the wire (design D1), so a response from a server or a cache that predates
- * `title` carries the title under the old name. Reading it here is what lets
- * every component downstream read `title` alone and never think about which
- * version answered — and `role: ""`, which is what the server sends for an
- * association with no title, becomes null rather than an empty string.
+ * The wire shapes, which differ from the normalised ones in one way: `roles` is
+ * optional in the contract (the recorded corpus predates it) even though the
+ * server always sends it, so the boundary fills it in. `title` needs no such
+ * treatment — it is nullable, and null is exactly what it means.
  */
-const titleOf = (raw: { title?: string | null; role: string }): string | null => raw.title ?? (raw.role || null);
+type RawCustomerContactResponse = Omit<CustomerContactResponse, "roles"> & {
+  roles?: RawContactRole[] | null;
+};
+type RawContactCustomerResponse = Omit<ContactCustomerResponse, "roles"> & {
+  roles?: RawContactRole[] | null;
+};
 
-const normalizeCustomerContact = (raw: RawCustomerContactResponse): CustomerContactResponse => ({
+export const normalizeCustomerContact = (raw: RawCustomerContactResponse): CustomerContactResponse => ({
   ...raw,
-  title: titleOf(raw),
+  title: raw.title ?? null,
   roles: normalizeContactRoles(raw.roles),
 });
 
-const normalizeContactCustomer = (raw: RawContactCustomerResponse): ContactCustomerResponse => ({
+export const normalizeContactCustomer = (raw: RawContactCustomerResponse): ContactCustomerResponse => ({
   ...raw,
-  title: titleOf(raw),
+  title: raw.title ?? null,
   roles: normalizeContactRoles(raw.roles),
 });
 

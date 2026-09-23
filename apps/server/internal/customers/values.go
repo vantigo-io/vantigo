@@ -318,12 +318,12 @@ func validateEmailAddress(raw string) (string, string) {
 }
 
 // associationTitleRule is the free text a customer–contact association
-// carries, under whichever field name the caller used (typed contact roles
-// design D1): non-blank when given, at most 255 UTF-16 code units, trimmed but
-// case-preserved. It is one function and not two because the rule is one rule —
-// only the noun the message names differs, and it names the field the caller
-// actually sent, so a client is told about the property it wrote rather than
-// about the column behind it.
+// carries (typed contact roles design D1): non-blank when given, at most 255
+// UTF-16 code units, trimmed but case-preserved. It stays parameterised by the
+// noun its message names even though `title` is now the only name the contract
+// has (the deprecated `role` alias went with follow-ups design D5, while
+// nothing was live): the noun costs a string, and it is the seam a second name
+// would use if one ever arrives.
 func associationTitleRule(noun, raw string) (string, string) {
 	if strings.TrimSpace(raw) == "" {
 		return "", fmt.Sprintf("A %s cannot be null or empty", noun)
@@ -334,20 +334,10 @@ func associationTitleRule(noun, raw string) (string, string) {
 	return strings.TrimSpace(raw), ""
 }
 
-// validateContactRole is ContactRole's Validate and constructor
-// (DM/Contacts/Common/ContactRole.cs), now the DEPRECATED `role` field's own
-// validator (typed contact roles design D1): the field is an alias of `title`,
-// and it keeps answering exactly the messages the recorded exchange corpus
-// recorded against it — a caller who has not migrated must not be told
-// something new about a field they sent unchanged.
-func validateContactRole(raw string) (string, string) {
-	return associationTitleRule("role", raw)
-}
-
-// validateContactTitle is the same rule under the field's real name (design
-// D1). Blank-when-given is still an error rather than "absent": a client that
-// sends "title": "" is saying something, and saying it wrongly, which is the
-// distinction every other optional field in this module draws by simply
+// validateContactTitle is associationTitleRule under the only name the field
+// has (design D1). Blank-when-given is an error rather than "absent": a client
+// that sends "title": "" is saying something, and saying it wrongly, which is
+// the distinction every other optional field in this module draws by simply
 // omitting the key.
 func validateContactTitle(raw string) (string, string) {
 	return associationTitleRule("title", raw)

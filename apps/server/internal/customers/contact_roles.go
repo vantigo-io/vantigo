@@ -126,10 +126,10 @@ type validatedAssociation struct {
 // failure and every error is reported together, keyed by the JSON field name —
 // the module's all-errors-at-once shape.
 //
-// title and role are the same value under two names (D1): role is the
-// deprecated alias the recorded corpus sends, title wins when both are given,
-// and each is validated under its own noun so the message names the field the
-// caller wrote. A blank string in either is an error, not an absence.
+// title is the association's free text and the only name it has (follow-ups
+// design D5 removed the deprecated `role` alias). A blank string is an error,
+// not an absence: a client that sends "title": "" is saying something, and
+// saying it wrongly.
 //
 // rolesWhenOmitted is how many roles the association already holds, and it
 // exists only for the title-or-role rule: an attach passes 0 (a new
@@ -137,22 +137,14 @@ type validatedAssociation struct {
 // `roles` omitted on an update means "leave them alone" and an association
 // that keeps three roles is not saying nothing about the person just because
 // this request did not mention them.
-func validateCustomerContactRequest(title, role *string, roles *[]gen.CustomerContactRoleRequest, phone, email *string, rolesWhenOmitted int) (validatedAssociation, map[string][]string) {
+func validateCustomerContactRequest(title *string, roles *[]gen.CustomerContactRoleRequest, phone, email *string, rolesWhenOmitted int) (validatedAssociation, map[string][]string) {
 	errs := map[string][]string{}
 
 	var parsedTitle *string
-	switch {
-	case title != nil:
+	if title != nil {
 		t, err := validateContactTitle(*title)
 		if err != "" {
 			errs["title"] = []string{err}
-		} else {
-			parsedTitle = &t
-		}
-	case role != nil:
-		t, err := validateContactRole(*role)
-		if err != "" {
-			errs["role"] = []string{err}
 		} else {
 			parsedTitle = &t
 		}

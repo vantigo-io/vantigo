@@ -539,8 +539,23 @@ func TestOwnerPermissions(t *testing.T) {
 	if r := putOwner(t, viewer, created.Id, map[string]any{"ownerUserId": nil}); r.Status != http.StatusForbidden {
 		t.Errorf("view-only PUT: status %d body %s, want 403", r.Status, r.Body)
 	}
-	if r := viewer.Do(http.MethodGet, "/api/v1/customers/assignable-users", nil); r.Status != http.StatusForbidden {
-		t.Errorf("view-only assignable-users: status %d body %s, want 403", r.Status, r.Body)
+}
+
+// The search answers display names of active users, which every customer
+// READER already sees (follow-ups design D1 relaxed it from customers:update
+// for exactly that reason), so customers:view is the door. A caller with some
+// other module's permission and nothing of this one's is still refused — the
+// router's own 403, not the handler's.
+func TestGetAssignableUsers_NeedsOnlyCustomersView(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	reader := h.SignIn(t, "customers:view")
+	if r := reader.Do(http.MethodGet, "/api/v1/customers/assignable-users", nil); r.Status != http.StatusOK {
+		t.Errorf("customers:view: status %d body %s, want 200", r.Status, r.Body)
+	}
+	outsider := h.SignIn(t, "customers:timeline-view")
+	if r := outsider.Do(http.MethodGet, "/api/v1/customers/assignable-users", nil); r.Status != http.StatusForbidden {
+		t.Errorf("timeline-view only: status %d body %s, want 403", r.Status, r.Body)
 	}
 }
 

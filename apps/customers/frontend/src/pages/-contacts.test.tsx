@@ -165,7 +165,7 @@ describe("customer contacts card", () => {
     const attachSpy = vi.fn<(init?: RequestInit) => Response>(() =>
       jsonResponse(200, {
         contact: contact(1001, "Anders", "Refsdal"),
-        role: "CEO",
+        title: "CEO",
         phone: null,
         email: null,
       }),
@@ -208,7 +208,7 @@ describe("customer contacts card", () => {
     const attachSpy = vi.fn<(init?: RequestInit) => Response>(() =>
       jsonResponse(200, {
         contact: contact(1005, "Nobody", "Matchesen"),
-        role: "Custodian",
+        title: "Custodian",
         phone: null,
         email: null,
       }),
@@ -261,7 +261,7 @@ describe("customer contacts card", () => {
     const attachSpy = vi.fn<(init?: RequestInit) => Response>(() =>
       jsonResponse(200, {
         contact: contact(1006, "Nobody", "Elsen"),
-        role: "Custodian",
+        title: "Custodian",
         phone: null,
         email: null,
       }),
@@ -447,7 +447,6 @@ describe("customer contacts card", () => {
           data: [
             {
               contact: contact(1001, "Anders", "Refsdal", { email: "anders@personal.no" }),
-              role: "CEO",
               title: "CEO",
               roles: [
                 { role: "billing", primary: true },
@@ -456,10 +455,10 @@ describe("customer contacts card", () => {
               phone: "+47 11 22 33 44",
               email: null,
             },
-            // Literally the shape the recorded corpus answers: role and
-            // nothing else. The card must render it without a title line and
-            // without badges, not crash on a missing array.
-            { contact: contact(1002, "Kari", "Nordmann"), role: "CTO", phone: null, email: null },
+            // A row with a title and no `roles` key at all — the shape a
+            // response from before typed roles has. The card must render it
+            // without badges rather than crash on a missing array.
+            { contact: contact(1002, "Kari", "Nordmann"), title: "CTO", phone: null, email: null },
           ],
         }),
     });
@@ -475,8 +474,8 @@ describe("customer contacts card", () => {
     // connection-specific phone plainly, the inherited email dimmed.
     expect(screen.getByText("+47 11 22 33 44")).toBeInTheDocument();
     expect(screen.getByText("anders@personal.no")).toBeInTheDocument();
-    // The corpus-shaped row: its title still shows (role is the title), and it
-    // has no badges of its own.
+    // The row without a `roles` key: its title still shows, and it has no
+    // badges of its own.
     expect(screen.getByText("Kari Nordmann")).toBeInTheDocument();
     expect(screen.getByText("CTO")).toBeInTheDocument();
   });
@@ -485,7 +484,6 @@ describe("customer contacts card", () => {
     const attachSpy = vi.fn<(init?: RequestInit) => Response>(() =>
       jsonResponse(200, {
         contact: contact(1001, "Anders", "Refsdal"),
-        role: "CEO",
         title: "CEO",
         roles: [{ role: "billing", primary: true }],
         phone: null,
@@ -590,7 +588,6 @@ describe("customer contacts card", () => {
           data: [
             {
               contact: contact(1001, "Anders", "Refsdal"),
-              role: "CEO",
               title: "CEO",
               roles: [{ role: "billing", primary: true }],
               phone: null,
@@ -598,7 +595,6 @@ describe("customer contacts card", () => {
             },
             {
               contact: contact(1002, "Kari", "Nordmann"),
-              role: "CTO",
               title: "CTO",
               roles: [{ role: "project", primary: true }],
               phone: null,
@@ -634,7 +630,6 @@ describe("customer contacts card", () => {
     const putSpy = vi.fn<(init?: RequestInit) => Response>(() =>
       jsonResponse(200, {
         contact: contact(1001, "Anders", "Refsdal"),
-        role: "Chairman",
         title: "Chairman",
         roles: [
           { role: "billing", primary: true },
@@ -654,7 +649,6 @@ describe("customer contacts card", () => {
           data: [
             {
               contact: contact(1001, "Anders", "Refsdal"),
-              role: "CEO",
               title: "CEO",
               roles: [{ role: "billing", primary: true }],
               phone: null,
@@ -696,7 +690,6 @@ describe("customer contacts card", () => {
     const putSpy = vi.fn<(init?: RequestInit) => Response>(() =>
       jsonResponse(200, {
         contact: contact(1001, "Anders", "Refsdal"),
-        role: "Chairman",
         title: "Chairman",
         roles: [
           { role: "billing", primary: true },
@@ -716,7 +709,6 @@ describe("customer contacts card", () => {
           data: [
             {
               contact: contact(1001, "Anders", "Refsdal"),
-              role: "CEO",
               title: "CEO",
               roles: [
                 { role: "billing", primary: true },
