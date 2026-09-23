@@ -136,7 +136,7 @@ per cycle through a Postgres advisory lease and are configured per installation
 once, and more behind the one endpoint (`/stats/attention`) and the one event type
 (`registry.change`) this module already declared.
 
-### Phase 4 — Light CRM (two deliveries done)
+### Phase 4 — Light CRM (three deliveries done)
 
 An owner/account manager (single user) and a "my customers" filter. Tags, then
 customer groups that can carry defaults (payment terms, later the customer-group
@@ -164,8 +164,9 @@ recorded only when the value actually changed. See
 **Delivery B (done)** — decided in
 [`docs/superpowers/specs/2026-09-23-customers-contact-roles-design.md`](docs/superpowers/specs/2026-09-23-customers-contact-roles-design.md):
 the association's free-text `role` is a `title` and stays one (migration `00025`
-renames the column; the wire keeps answering `role`, because the recorded
-exchange corpus sends and reads it), and three typed roles — `billing`,
+renames the column; the wire answered `role` for one delivery longer, until
+delivery C below removed the alias while nothing was live), and three typed
+roles — `billing`,
 `project`, `decision_maker` — live in `customers.customer_contact_roles` with
 exactly one primary contact per role, on the addresses' own invariant: the first
 holder is primary whatever the request said, `primary: true` demotes the
@@ -176,11 +177,28 @@ paths, no new key — and a promotion caused by somebody else's write is recorde
 on the promoted contact with the user who caused it. See
 [`docs/customers.md#contacts-and-associations`](docs/customers.md#contacts-and-associations).
 
-**Still ahead in this phase:** follow-ups (a timeline entry's own date and
-assignee, feeding `/stats/attention` and a "my follow-ups" view); customer groups
-that can carry defaults; attachments on a customer and its timeline entries, once
-the storage module has a model for it. Also left for later on purpose: the tag
-vocabulary is **unpaged** (`GET /customers/tags` answers all of it, and both the
+**Delivery C (done)** — decided in
+[`docs/superpowers/specs/2026-09-23-customers-follow-ups-design.md`](docs/superpowers/specs/2026-09-23-customers-follow-ups-design.md):
+a manual timeline entry carries a **follow-up** — a due date that may be in the
+future and an optional assignee, on the entry itself (migration `00026`) and on
+its revisions, so history stays point-in-time. Ticking it done and reopening it
+are two paths that take no `expectedRevision`, because a tick comes from a list
+and must not lose a race with an edit of the note; both are idempotent and each
+real change is still a revision naming who ticked it. Due and overdue follow-ups
+reach `/stats/attention` — the first items there that depend on who is asking,
+reporting the caller's and unassigned ones only — and `GET /customers/follow-ups`
+answers a **Follow-ups** page, defaulting to "my open ones". The timeline card
+gains the section, the line and the tick, and a new `canManageTimeline`
+capability prop stops a reader seeing controls that used to 403. The same
+delivery removed the contact association's deprecated `role` alias while nothing
+was live (`title` is the only name the contract has) and relaxed
+`GET /customers/assignable-users` to `customers:view`. See
+[`docs/customers.md#follow-ups`](docs/customers.md#follow-ups).
+
+**Still ahead in this phase:** customer groups that can carry defaults;
+attachments on a customer and its timeline entries, once the storage module has a
+model for it. Also left for later on purpose: the tag vocabulary is **unpaged**
+(`GET /customers/tags` answers all of it, and both the
 picker and the Manage tags modal want the whole list), which is a bet that a
 vocabulary stays in the tens or low hundreds — paging it is an additive contract
 change the day an installation proves otherwise; the same bet is made for the

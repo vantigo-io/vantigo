@@ -694,6 +694,11 @@ and `producer: customers.brreg` rather than through this manual-entry endpoint; 
 [Registry record](#registry-record). The two are told apart by `provenance`, never
 by `eventType`.
 
+A manual entry can also carry a **follow-up** — a due date, an assignee and a
+done stamp — which rides on this same create/update under the same
+`expectedRevision`, and on two paths of its own that do not. See
+[Follow-ups](#follow-ups). A generated entry never carries one.
+
 A generated `registry.change` payload **carries the registry's own values**, each
 changed field's `from` and `to`, readable with `customers:timeline-view` alone — a
 stated decision, not an oversight, and deliberately unlike `customer.peppol_lookup`,
@@ -723,6 +728,116 @@ every other timeline column).
 - Rows written before this branch (migration `00015_customers_timeline_actor.sql`)
   have no `actor_user_id` at all — nothing can be said about who wrote them, and they
   are left as they are, not backfilled.
+- A revision also carries the **follow-up as it stood** at that revision, which is
+  what answers "who ticked this follow-up, and when": the revision that set
+  `doneAt` is the tick, and that revision's own actor and `changedAt` name the
+  person and the moment. There is deliberately no `doneBy` on the entry — the
+  history already holds it, and one place is better than two that can disagree.
+
+## Follow-ups
+
+A **manual, active** timeline entry can carry a follow-up: a due date, optionally
+an assignee, and a stamp once it is done. An interaction ("called about the
+renewal") or a note is exactly where "call back on Friday" belongs, and a
+generated event never asks anyone to do anything — so a generated entry cannot
+carry one and no endpoint offers to give it one.
+
+It lives on the entry: `customers.customers_timeline_entries.follow_up_on`,
+`.follow_up_assignee_user_id`, `.follow_up_done_at` (migration `00026`), and the
+same three columns on `customers_timeline_entries_revisions`, so the history
+stays point-in-time — a revision taken before somebody moved the date still says
+what it said. Being on the entry is also what lets it share the entry's own
+`current_revision`: setting, replacing and clearing a follow-up is the timeline's
+existing `PUT` with three more columns and no second concurrency story.
+
+There is deliberately **no foreign key** from `follow_up_assignee_user_id` to
+`identity.users`, for migration `00024`'s own two reasons: this module may not
+read identity's schema at all (`contracts.UserDirectory` is the only sanctioned
+seam), and an assignee disabled or removed afterwards **keeps** the follow-up,
+shown inactive or as `Unknown user`. Nothing is silently reassigned.
+
+### Setting one
+
+`POST /customers/{id}/timeline` and `PUT .../timeline/{entryId}` take
+`followUp: {dueOn, assigneeUserId?}`.
+
+- `dueOn` is a strict `yyyy-MM-dd` and **may be in the future** — which is the
+  one thing it does that `occurredOn` may not, and the whole point of a
+  follow-up.
+- `assigneeUserId` must name an existing, **active** user, or the request is
+  refused with a field error on `followUp.assigneeUserId`, worded as the owner's
+  own (`User {id} does not exist` / `User {id} is disabled and cannot be given a
+  follow-up`). The check is a directory call and is made **before** the
+  transaction opens, like every other directory call in this module — and, on a
+  `PUT`, only when the id **changes**: re-sending the assignee the entry already
+  carries is never re-validated, the same division the owner's own `PUT` makes
+  between validating a change and re-rendering stored state, so an edit to the
+  note cannot fail because the colleague already holding the follow-up has since
+  been disabled — that vanished-or-disabled assignee simply keeps riding along,
+  reported as `Unknown user` if the directory no longer knows the id at all.
+  Omitting `assigneeUserId` leaves the follow-up **unassigned**, which is
+  everyone's rather than nobody's (see the attention list below).
+- On a `PUT`, an omitted or `null` `followUp` **clears** it — that PUT is a full
+  replace, as it already is for `occurredAt` and `sourceUrl` — and **clearing a
+  follow-up clears its done state**, because done-ness without a follow-up is not
+  a state this module has. Keeping the follow-up while editing the note leaves
+  the done stamp alone: editing a ticked follow-up must not un-tick it.
+
+### Ticking one
+
+`POST .../timeline/{entryId}/follow-up/done` and `DELETE .../follow-up/done` mark
+it done and reopen it. Both are **idempotent** — ticking an already-done
+follow-up answers 200 with the entry unchanged and writes nothing at all, the
+module's own no-op rule — and both answer the whole entry, so a tick from a list
+can read the fresh revision straight off the response.
+
+Neither takes an `expectedRevision`, and that is deliberate: a tick comes from a
+list, or from an entry line loaded minutes ago, and must not lose a race with
+somebody editing the note. What takes its place is the guarded `UPDATE`'s own
+`WHERE follow_up_done_at IS NULL` (respectively `IS NOT NULL`): two concurrent
+ticks serialize on the row, the loser matches no row, re-reads, and answers with
+what is now true — 200 with the entry if it is still an open, editable
+follow-up; the timeline's own 409 or 404 if a concurrent write changed *that*
+instead. Answering 409 for a simple lost tick race would be telling the caller
+that a follow-up they can see is done is not done.
+
+A tick that **changes** something is still a revision of the entry:
+`current_revision` bumps and a revision row records who ticked it, which is the
+reason it is a revision at all rather than a quiet column write — and it is where
+"who ticked this, and when" is answered. There is no `doneBy` on the wire: the
+revision that set `doneAt` **is** the tick, so the revision history's own actor
+and timestamp beside it say who and when, and the entry's own response stays the
+three fields `followUp` has. 404 when the entry carries no follow-up (the thing
+addressed does not exist); 409 `Timeline entry is immutable` when the entry is
+generated, deleted or voided — the same problem shape the entry's own PUT and
+DELETE answer.
+
+### The Follow-ups page
+
+`GET /customers/follow-ups` (`customers:timeline-view` + `customers:view`) is
+"what is on my plate": paged (`page`, `pageSize` 1–100, default 25), sorted
+`dueOn` ascending then entry id, each row `{entryId, customerId, customerName,
+eventType, occurredOn, note, followUp}` with the note cut to its first **200
+UTF-16 code units** (the same unit the entry's own 500-character summary is cut
+in).
+
+| Parameter | Values | Default |
+| --- | --- | --- |
+| `assignee` | a user id, `me` (resolved from the session, never sent) or `none` | `me` |
+| `state` | `open`, `overdue` (a subset of `open`), `done`, `all` | `open` |
+| `customerId` | one customer's follow-ups | all |
+
+Archived customers' follow-ups are excluded **unless `state=done`**: a done
+follow-up is a record of work finished, and an archived customer's finished work
+is still finished. The frontend's own page offers only `me` and `none` for
+`assignee`, the same choice the customer list's Owner filter makes — a uuid in
+the URL would narrow the rows by something the Select cannot show.
+
+### What is not built
+
+No priorities, no recurrence, no reminders by mail or notification — the
+attention list and the page **are** the reminder. No follow-up without a timeline
+entry, none on a generated event, and no bulk reassignment.
 
 ## The list endpoint and search
 
@@ -1055,9 +1170,9 @@ customer's stored registry record against its current row, **never from events**
 the list is idempotent by construction and needs no "dismiss" state, because it
 clears itself the moment the underlying fact does.
 
-Four types, **at most one per customer**, in this fixed precedence (a struck-off
-company's single most useful sentence is that it is deleted, whatever else is also
-true of it):
+Six types. Four come from the stored registry record, **at most one per
+customer**, in this fixed precedence (a struck-off company's single most useful
+sentence is that it is deleted, whatever else is also true of it):
 
 | Type | Raised when | Clears when |
 | --- | --- | --- |
@@ -1065,6 +1180,27 @@ true of it):
 | `registryBankrupt` | `bankrupt` is set (and the record carries no deletion date) | The customer is archived, a later refresh stores the flag as false, or the identity is changed away from that company |
 | `registryLiquidation` | `underLiquidation` or `underForcedLiquidation` is set (and neither of the above applies) | The customer is archived, a later refresh stores both flags as false, or the identity is changed away from that company |
 | `registryRenamed` | The record's `name` differs (trimmed, case-sensitive) from the legal identity's own name (and none of the above applies; a customer with no legal name at all — no identity, or one whose name was never set — never raises this one) | The legal identity's name is updated to match the registry's (the card's "Update legal name"), the customer is archived, or the identity is changed away from that company |
+
+Two more come from [follow-ups](#follow-ups), and they are the first items here
+that depend on **who is asking** — the endpoint reads the principal from the
+context, as time's and expenses' own items do:
+
+| Type | Raised when | Clears when |
+| --- | --- | --- |
+| `followUpOverdue` | An open follow-up on a non-archived customer, assigned to the caller **or unassigned**, whose `dueOn` is before today (UTC) | It is ticked done, reopened onto a later date, cleared, its entry is deleted, or the customer is archived |
+| `followUpDue` | The same, with `dueOn` equal to today | The same |
+
+An **unassigned** follow-up is everyone's until somebody takes it, which is why
+it reaches every caller's list; somebody else's assigned follow-up reaches
+nobody's but theirs. For these two the item's `id` is `"<type>/<entryId>"`, but
+`entityId` is still the **customer** id — the host links a `customers` attention
+item to `/customers/{entityId}`, and the customer's page is where the entry is —
+and `occurredAt` is `dueOn` at midnight UTC, so an overdue follow-up sorts by how
+overdue it is rather than by when it was noticed.
+
+The dashboard's two sentences (`apps/host/frontend/src/catalogs/dashboard.ts`):
+"Follow-up overdue for {{name}}" and "Follow-up due today for {{name}}", in both
+English and Norwegian.
 
 Each item's `id` is `"<type>/<customerId>"`, `title` is the **customer's own name**
 (never the registry's), and `entityId` is the customer id — the host already links a
@@ -1580,6 +1716,23 @@ term — and tags are classification, so both ride on the same `customers:view`/
 already uses, rather than a key of their own that every installation would have
 to remember to grant.
 
+No new permission key was added for [Follow-ups](#follow-ups) either: a
+follow-up is part of a timeline entry, so setting, replacing, ticking and
+reopening one needs `customers:timeline-manage` (paired with
+`customers:timeline-view`, the same pairing every other timeline write already
+needs), and reading one — on the entry, on a revision, or on the Follow-ups list
+— needs `customers:timeline-view` alone. `GET /customers/follow-ups` needs
+`customers:timeline-view` **and** `customers:view` besides, because each row
+also names a customer. The two follow-up items on `GET /stats/attention` are
+gated the same second way, not by plain `customers:view` alone — see above.
+
+`GET /customers/assignable-users` moved from `customers:update` to
+**`customers:view`** with this delivery (see [Owner and tags](#owner-and-tags)):
+it answers the display names of active users, which every timeline reader
+already sees on every entry as its author, and a timeline writer has to be able
+to pick a follow-up's assignee without holding `customers:update`. There was
+nothing there for the stricter key to protect.
+
 ## `contracts.CustomerDirectory`
 
 The one sanctioned way another module reads customer data — an in-process, read-only
@@ -1770,7 +1923,7 @@ been in since the foundation.
 ## API
 
 Every operation is under `/api/v1/customers`, authenticated with the shared identity
-session cookie. 47 operations in total, each exercised by the module's own
+session cookie. 50 operations in total, each exercised by the module's own
 contract-validated test coverage gate — every operation in `openapi/customers.yaml`
 must be exercised by at least one successful exchange, with no allow-list.
 
@@ -1790,7 +1943,7 @@ must be exercised by at least one successful exchange, with no allow-list.
 | `GET /{id}/billing-profile` | `customers:view` |
 | `PUT /{id}/billing-profile` | `customers:billing-manage` + `customers:view` |
 | `PUT /{id}/owner` | `customers:update` + `customers:view` |
-| `GET /assignable-users` | `customers:update` |
+| `GET /assignable-users` | `customers:view` |
 | `PUT /{id}/tags` | `customers:update` + `customers:view` |
 | `GET /tags` | `customers:view` |
 | `POST /tags` | `customers:update` |
@@ -1808,13 +1961,17 @@ must be exercised by at least one successful exchange, with no allow-list.
 | `GET /{id}/timeline`, `GET /{id}/timeline/{entryId}`, `GET /{id}/timeline/{entryId}/revisions` | `customers:timeline-view` |
 | `POST /{id}/timeline`, `PUT /{id}/timeline/{entryId}` | `customers:timeline-manage` + `customers:timeline-view` |
 | `DELETE /{id}/timeline/{entryId}` | `customers:timeline-manage` |
+| `POST /{id}/timeline/{entryId}/follow-up/done`, `DELETE /{id}/timeline/{entryId}/follow-up/done` | `customers:timeline-manage` + `customers:timeline-view` |
+| `GET /follow-ups` | `customers:timeline-view` + `customers:view` |
 | `GET /lookup/brreg` | `customers:lookup-view` |
 | `GET /stats`, `/stats/attention`, `/stats/summary`, `/stats/timeseries` | `customers:view` |
 
 `/stats/attention` is no longer a stub: it answers the four [registry attention
 items](#attention-items), computed live from the stored registry record against
 each customer, not stored or cached — plus, for a caller who also holds
-`customers:timeline-view`, the two follow-up items delivery C adds.
+`customers:timeline-view`, the two [follow-up](#follow-ups) items, computed live
+against the timeline the same way. The follow-up pair is the one part of this
+API whose answer depends on the calling user.
 
 ## What comes next
 
