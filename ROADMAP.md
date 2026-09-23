@@ -136,7 +136,7 @@ per cycle through a Postgres advisory lease and are configured per installation
 once, and more behind the one endpoint (`/stats/attention`) and the one event type
 (`registry.change`) this module already declared.
 
-### Phase 4 — Light CRM (three deliveries done)
+### Phase 4 — Light CRM (four deliveries done)
 
 An owner/account manager (single user) and a "my customers" filter. Tags, then
 customer groups that can carry defaults (payment terms, later the customer-group
@@ -195,9 +195,26 @@ was live (`title` is the only name the contract has) and relaxed
 `GET /customers/assignable-users` to `customers:view`. See
 [`docs/customers.md#follow-ups`](docs/customers.md#follow-ups).
 
-**Still ahead in this phase:** customer groups that can carry defaults;
-attachments on a customer and its timeline entries, once the storage module has a
-model for it. Also left for later on purpose: the tag vocabulary is **unpaged**
+**Delivery D (done)** — decided in
+[`docs/superpowers/specs/2026-09-23-customers-groups-design.md`](docs/superpowers/specs/2026-09-23-customers-groups-design.md):
+**customer groups that carry defaults** (migration `00027`). The vocabulary is
+the tags' — unique on `lower(name)`, unpaged, with a member count — and the
+membership is the owner's: one nullable column on the customer row, sharing its
+revision, written only through `PUT /customers/{id}/group` and recorded as
+`customer.group_changed` with the group names as they read at the time. A group's
+`defaultPaymentTermsDays` is the **third resolution tier** for a customer's
+payment term (own value, else the group's, else nothing), applied in the one
+place resolution lives, and the billing profile answers `groupDefault` so a card
+can explain an inherited term without re-deriving the rule. A group with members
+is never deleted — 409 `group_in_use`, with the count, and `ON DELETE RESTRICT`
+under it — because detaching them would change every member's effective payment
+term with no record on any customer. No new permission key, and
+`contracts.CustomerEntry.Group` is the seam Products phase 4's customer-group
+prices will read. See [`docs/customers.md#groups`](docs/customers.md#groups).
+
+**Still ahead in this phase:** attachments on a customer and its timeline
+entries, once the storage module has a model for it. Also left for later on
+purpose: the tag vocabulary is **unpaged**
 (`GET /customers/tags` answers all of it, and both the
 picker and the Manage tags modal want the whole list), which is a bet that a
 vocabulary stays in the tens or low hundreds — paging it is an additive contract
@@ -210,7 +227,11 @@ which then sit on nobody's attention list and behind nobody's page filter
 (`GET /customers/follow-ups?assignee=<uuid>` is the only way to them), so this
 phase's own leftover is a bucket for an inactive assignee's follow-ups, or a
 reassign path — the day an installation has enough of them for that to be worth
-a path rather than an edit of each entry.
+a path rather than an edit of each entry. Groups have their own: no **bulk
+move** (a group's members are moved one at a time, which is why the delete is
+refused rather than cascading), no group-level prices until Products phase 4
+reads the seam, no default beyond payment terms, and the vocabulary is unpaged
+on the same bet the tags' is.
 
 *Unblocks:* answering "who owns this relationship and what happens next" without
 building a deals pipeline.
@@ -365,8 +386,9 @@ the resolved rate for snapshotting).
 
 ### Phase 4 — Pricing depth (align with Orders)
 
-Extend `ProductPrice` with price lists, customer-group prices and quantity breaks,
-with an explicit, documented precedence order.
+Extend `ProductPrice` with price lists, customer-group prices (the group itself
+is `contracts.CustomerEntry.Group`, delivered by Customers phase 4 delivery D)
+and quantity breaks, with an explicit, documented precedence order.
 
 *Unblocks:* B2B negotiated pricing and volume discounts; designed together with
 the Orders service so order lines resolve prices the same way the catalog does.
