@@ -612,3 +612,45 @@ func TestUpdateCustomerContact_RecordsAnEventOnlyWhenSomethingMovedAndSaysWhat(t
 		t.Errorf("summary after dropping a role = %q, want %q", event.Summary, wantSummary)
 	}
 }
+
+// TestUpdateCustomerContact_AReplaceKeepsARetainedRolesSeniority pins what
+// DeleteContactRolesNotIn exists for (design D3): a set replace SUBTRACTS the
+// roles the request dropped, it does not clear the set and re-insert it, so a
+// role the association keeps keeps its created_at. That column is not cosmetic —
+// it is what "the longest-standing holder" means, so a replace that reset it
+// would silently reshuffle who inherits a primary flag later, which no
+// assertion about the answered roles could notice.
+func TestUpdateCustomerContact_AReplaceKeepsARetainedRolesSeniority(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	customer := createCustomer(t, c, "Seniority Co")
+	contact := createContact(t, c, map[string]any{"firstName": "Senior", "lastName": "Rolesen"})
+	attachWithRoles(t, c, customer.Id, map[string]any{"contactId": contact.Id, "title": "CEO",
+		"roles": []any{map[string]any{"role": "project"}}})
+
+	createdAt := func(role string) time.Time {
+		t.Helper()
+		return modtest.One[time.Time](t, h, `SELECT created_at FROM customers.customer_contact_roles
+		                                     WHERE customer_id = $1 AND contact_id = $2 AND role = $3`,
+			customer.Id, contact.Id, role)
+	}
+	before := createdAt("project")
+
+	// The clock moves, so a re-inserted row would be visibly younger rather
+	// than accidentally identical.
+	h.Advance(time.Hour)
+	if r := putAssociation(t, c, customer.Id, contact.Id, map[string]any{"title": "CEO",
+		"roles": []any{map[string]any{"role": "project"}, map[string]any{"role": "billing"}}}); r.Status != http.StatusOK {
+		t.Fatalf("add billing: status %d body %s, want 200", r.Status, r.Body)
+	}
+
+	if after := createdAt("project"); !after.Equal(before) {
+		t.Errorf("project's created_at = %s, want it unmoved at %s (a replace subtracts, it does not re-insert)", after, before)
+	}
+	// And the role the request added really did take the later clock, which is
+	// what makes the assertion above a comparison and not a tautology.
+	if added := createdAt("billing"); !added.After(before) {
+		t.Errorf("billing's created_at = %s, want it later than project's %s", added, before)
+	}
+}
