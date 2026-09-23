@@ -78,9 +78,11 @@ The entry form gains a **Follow-up** section: a due date (`DateInput`, may be fu
 an assignee picker — the owner picker generalised into a `UserPicker` fed by the same
 assignable-users search, the current assignee kept in the options. Entries with a
 follow-up show a line "Follow up {date} · {assignee}" (red and "overdue" when past, grey
-and struck through when done, with who ticked it and when) and a **Done** / **Reopen**
+and struck through when done) and a **Done** / **Reopen**
 control with `canManageTimeline`. The revisions view shows the follow-up fields per
-revision.
+revision, which is also where **who ticked it and when** is answered: the revision that
+set `doneAt` is the tick, and the panel already names that revision's actor and the
+moment it was made — so no `doneBy` is added to the response shape D1 fixes.
 
 ### D5 — The contract break: `title` only
 
