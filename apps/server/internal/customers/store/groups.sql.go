@@ -30,7 +30,7 @@ func (q *Queries) CountCustomerGroupMembers(ctx context.Context, groupID *uuid.U
 }
 
 const customerGroupMembership = `-- name: CustomerGroupMembership :one
-SELECT c.group_id, g.name AS group_name, g.default_payment_terms_days
+SELECT c.group_id, g.name AS group_name, g.default_payment_terms_days, c.revision
 FROM customers.customers c
 LEFT JOIN customers.customer_groups g ON g.id = c.group_id
 WHERE c.id = $1
@@ -40,6 +40,7 @@ type CustomerGroupMembershipRow struct {
 	GroupID                 *uuid.UUID
 	GroupName               *string
 	DefaultPaymentTermsDays *int32
+	Revision                int32
 }
 
 // CustomerGroupMembership is one customer's group, joined: the id, the name and
@@ -66,10 +67,23 @@ type CustomerGroupMembershipRow struct {
 // types it *uuid.UUID without having to infer anything from the outer join,
 // while g.id is NOT NULL on customer_groups and would depend on that inference
 // entirely. The two are the same value by the join's own condition.
+//
+// revision is the row's revision as THIS read saw it. PUT
+// /customers/{id}/group reads the customer (GetCustomer) and then this, two
+// unlocked statements, and a write landing between them would otherwise pair
+// the first read's revision with the second read's group: the handler compares
+// the two revisions and answers the revision conflict when they differ, rather
+// than a no-op 200 that reports a revision the group it shows never had. The
+// billing profile ignores it.
 func (q *Queries) CustomerGroupMembership(ctx context.Context, id int32) (CustomerGroupMembershipRow, error) {
 	row := q.db.QueryRow(ctx, customerGroupMembership, id)
 	var i CustomerGroupMembershipRow
-	err := row.Scan(&i.GroupID, &i.GroupName, &i.DefaultPaymentTermsDays)
+	err := row.Scan(
+		&i.GroupID,
+		&i.GroupName,
+		&i.DefaultPaymentTermsDays,
+		&i.Revision,
+	)
 	return i, err
 }
 

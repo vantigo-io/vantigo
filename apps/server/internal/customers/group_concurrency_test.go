@@ -1,8 +1,12 @@
 package customers_test
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"testing"
+
+	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
@@ -76,5 +80,148 @@ func TestPutCustomersByIdGroup_ConcurrentUpdatesWithSameRevision_ExactlyOneWins(
 	}
 	if n := countTimelineEvents(t, h, created.Id, "customer.group_changed"); n != 1 {
 		t.Errorf("customer.group_changed events = %d, want 1: the loser wrote nothing", n)
+	}
+}
+
+// gateGroupLock is gateTagLock (tags_concurrency_test.go) for a group: a
+// separate transaction holds FOR UPDATE on one customer_groups row, which
+// conflicts with the FOR KEY SHARE that SetCustomerGroup's foreign-key check
+// takes on the group it points the customer at. The handler's own resolve
+// (GetCustomerGroup) is a plain SELECT the lock does not hold up, so the
+// request passes it and then queues at the write. deleteAndRelease deletes the
+// group under the lock and commits, which is design D2's "only an empty group
+// can be deleted" satisfied, since the queued move has not committed. The
+// foreign-key check then finds no row.
+func gateGroupLock(t *testing.T, h *modtest.Harness, groupID uuid.UUID) (deleteAndRelease func()) {
+	t.Helper()
+	ctx := context.Background()
+	gate, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("gate: begin: %v", err)
+	}
+	t.Cleanup(func() { _ = gate.Rollback(ctx) })
+	if _, err := gate.Exec(ctx, `SELECT 1 FROM customers.customer_groups WHERE id = $1 FOR UPDATE`, groupID); err != nil {
+		t.Fatalf("gate: lock the group row: %v", err)
+	}
+	return func() {
+		if _, err := gate.Exec(ctx, `DELETE FROM customers.customer_groups WHERE id = $1`, groupID); err != nil {
+			t.Fatalf("gate: delete the group: %v", err)
+		}
+		if err := gate.Commit(ctx); err != nil {
+			t.Fatalf("gate: release: %v", err)
+		}
+	}
+}
+
+// TestPutCustomersByIdGroup_AGroupDeletedMidWriteIsAFieldError pins the late
+// foreign-key branch of PutCustomersByIdGroup. It is
+// TestPutCustomersByIdTags_ATagDeletedMidWriteIsAFieldError's twin: the group
+// exists when it is resolved and is gone by the time the UPDATE's foreign-key
+// check runs, and the answer is the same 400 on groupId the resolve would have
+// given. The customer starts IN another group on purpose, because only the
+// target has to be empty for the delete to succeed. Dropping the
+// IsForeignKeyViolation branch turns this into a 500, which the status
+// assertion catches.
+func TestPutCustomersByIdGroup_AGroupDeletedMidWriteIsAFieldError(t *testing.T) {
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	retail := createGroup(t, c, map[string]any{"name": "Retail"})
+	vanishing := createGroup(t, c, map[string]any{"name": "Vanishing"})
+	customer := createCustomer(t, c, "Vanishing Group Co")
+	if r := putCustomerGroup(t, c, customer.Id, map[string]any{"groupId": retail.Id}); r.Status != http.StatusOK {
+		t.Fatalf("set the starting group: status %d body %s", r.Status, r.Body)
+	}
+
+	deleteAndRelease := gateGroupLock(t, h, uuid.MustParse(vanishing.Id))
+
+	done := make(chan *modtest.Response, 1)
+	finished := make(chan struct{})
+	go func() {
+		done <- putCustomerGroup(t, c, customer.Id, map[string]any{"groupId": vanishing.Id, "revision": 2})
+		close(finished)
+	}()
+	awaitLockWaiters(t, h, 1, finished)
+	deleteAndRelease()
+	r := <-done
+
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400 (not a 500 from the foreign-key violation)", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	want := fmt.Sprintf("Customer group %s does not exist", vanishing.Id)
+	if got := problem.Errors["groupId"]; len(got) != 1 || got[0] != want {
+		t.Errorf("errors[groupId] = %v, want [%s]", got, want)
+	}
+	// The transaction rolled back whole: the customer is still in Retail, at
+	// the revision it had, with no event for a move that never happened.
+	got := fetchCustomerJSON(t, c, customer.Id)
+	if got.Group == nil || got.Group.Id != retail.Id || got.Revision != 2 {
+		t.Errorf("after the refusal: group %+v revision %d, want Retail at revision 2", got.Group, got.Revision)
+	}
+	if n := countTimelineEvents(t, h, customer.Id, "customer.group_changed"); n != 1 {
+		t.Errorf("customer.group_changed events = %d, want 1 (only the starting move)", n)
+	}
+}
+
+// TestPutCustomersByIdGroup_AMoveBetweenTheTwoReadsIsAConflict pins the
+// revision comparison between GetCustomer and CustomerGroupMembership. The
+// window between those two unlocked reads needs no seam to hold open. Only
+// the second read touches customers.customer_groups (its LEFT JOIN), so a
+// gate holding ACCESS EXCLUSIVE on that table lets GetCustomer through and
+// queues the membership read. While the read is queued, the gate moves the
+// customer into the very group the request names and commits. The membership
+// read then sees revision 3 and Key accounts, while GetCustomer saw revision
+// 2 and Retail. Without the comparison the no-op check would answer 200 with
+// revision 2 beside Key accounts. The test asserts a 409 instead.
+//
+// Also not parallel: awaitLockWaiters counts across the database.
+func TestPutCustomersByIdGroup_AMoveBetweenTheTwoReadsIsAConflict(t *testing.T) {
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	retail := createGroup(t, c, map[string]any{"name": "Retail"})
+	key := createGroup(t, c, map[string]any{"name": "Key accounts"})
+	customer := createCustomer(t, c, "Between Reads Co")
+	if r := putCustomerGroup(t, c, customer.Id, map[string]any{"groupId": retail.Id, "revision": 1}); r.Status != http.StatusOK {
+		t.Fatalf("set the starting group: status %d body %s", r.Status, r.Body)
+	}
+
+	ctx := context.Background()
+	gate, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("gate: begin: %v", err)
+	}
+	t.Cleanup(func() { _ = gate.Rollback(ctx) })
+	if _, err := gate.Exec(ctx, `LOCK TABLE customers.customer_groups IN ACCESS EXCLUSIVE MODE`); err != nil {
+		t.Fatalf("gate: lock customer_groups: %v", err)
+	}
+
+	done := make(chan *modtest.Response, 1)
+	finished := make(chan struct{})
+	go func() {
+		done <- putCustomerGroup(t, c, customer.Id, map[string]any{"groupId": key.Id, "revision": 2})
+		close(finished)
+	}()
+	awaitLockWaiters(t, h, 1, finished)
+	// The concurrent writer: the same move the request asks for, landing
+	// between the request's two reads.
+	if _, err := gate.Exec(ctx, `UPDATE customers.customers SET group_id = $1, revision = revision + 1 WHERE id = $2`, key.Id, customer.Id); err != nil {
+		t.Fatalf("gate: move the customer: %v", err)
+	}
+	if err := gate.Commit(ctx); err != nil {
+		t.Fatalf("gate: release: %v", err)
+	}
+	r := <-done
+
+	if r.Status != http.StatusConflict {
+		t.Fatalf("status %d body %s, want 409: the two reads saw different revisions", r.Status, r.Body)
+	}
+	var problem conflictProblemJSON
+	r.JSON(&problem)
+	if problemTitle(problem.Title) != "Customer revision conflict" || problem.Code != nil {
+		t.Errorf("conflict = title %q code %v, want the revision conflict with no code", problemTitle(problem.Title), problem.Code)
+	}
+	if n := countTimelineEvents(t, h, customer.Id, "customer.group_changed"); n != 1 {
+		t.Errorf("customer.group_changed events = %d, want 1: the request wrote nothing", n)
 	}
 }

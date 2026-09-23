@@ -273,7 +273,7 @@ func validateGetCustomersParams(p gen.GetCustomersParams) []string {
 	if p.Type != nil && *p.Type != "business" && *p.Type != "person" {
 		errs = append(errs, fmt.Sprintf("'type' must be one of 'business' or 'person', but was '%s'.", *p.Type))
 	}
-	// ownerId and tagId are checked for SHAPE here and resolved in
+	// ownerId, tagId and groupId are checked for SHAPE here and resolved in
 	// GetCustomers: 'me' needs the request's principal, which this function
 	// deliberately does not see — it is a pure parameter check, unit-tested as
 	// one, and every message it collects is joined into the one 400 detail.

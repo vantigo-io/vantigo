@@ -89,6 +89,19 @@ func (s *server) PutCustomersByIdGroup(ctx context.Context, req gen.PutCustomers
 	if err != nil {
 		return nil, fmt.Errorf("customers: read customer group membership: %w", err)
 	}
+	// The two reads above are separate unlocked statements, so a write can land
+	// between them. The owner handler has no such window, because its before
+	// comes from the same read as the revision check. Here a move that lands in
+	// between would pair GetCustomer's revision N with the N+1 group. If the
+	// caller asked for exactly that group, the no-op check below would then
+	// answer 200 with revision N beside a group revision N never had. A changed
+	// revision is therefore the revision conflict, answered in the words the
+	// guarded write's own fallback uses. It applies even when no revision was
+	// supplied, because no consistent answer can be built from two versions
+	// of the row, and a retry reads one.
+	if current.Revision != existing.Revision {
+		return gen.PutCustomersByIdGroup409ApplicationProblemPlusJSONResponse(customerRevisionConflict(existing.Revision, current.Revision)), nil
+	}
 
 	includeIdentity := s.hasPermission(ctx, legalIdentityView)
 	before, after := current.GroupID, body.GroupId
@@ -175,8 +188,8 @@ func (s *server) PutCustomersByIdGroup(ctx context.Context, req gen.PutCustomers
 		// The group was deleted between the resolve above and this write — the
 		// one window the resolve cannot close, since nothing here locks the
 		// vocabulary (and design D2 makes it narrow: only an EMPTY group can be
-		// deleted, so this is reachable only for a customer that was in no group
-		// a moment ago). Answered as the field error the resolve itself would
+		// deleted, so the TARGET group must have had no members a moment ago —
+		// the customer's own current group, if any, is irrelevant). Answered as the field error the resolve itself would
 		// have given a moment later, exactly as PutCustomersByIdTags answers its
 		// own late foreign-key violation.
 		return gen.PutCustomersByIdGroup400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
