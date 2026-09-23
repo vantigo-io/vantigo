@@ -20,6 +20,11 @@ import { hasPermissions } from "../../navigation";
  * Lives beside the route file rather than inside it, the same reason
  * `-customer-projects-tab.tsx` does: the route file may export nothing but
  * its `Route` without costing the bundle a code split.
+ *
+ * `canManageTimeline` (`customers:timeline-manage`, follow-ups design D3) is the
+ * newest of them and the one that closes a gap rather than opening one: the
+ * timeline card's Add, Edit and Delete controls were server-enforced only, so a
+ * reader saw buttons that answered 403.
  */
 export const CustomerOverviewTab = () => {
   const { customerId } = useParams({ from: "/customers/$customerId" });
@@ -39,6 +44,7 @@ export const CustomerOverviewTab = () => {
       canManageBilling={hasPermissions(authorization.data?.permissions, ["customers:billing-manage"])}
       canViewIdentity={hasPermissions(authorization.data?.permissions, ["customers:legal-identity-view"])}
       canManageIdentity={hasPermissions(authorization.data?.permissions, ["customers:legal-identity-manage"])}
+      canManageTimeline={hasPermissions(authorization.data?.permissions, ["customers:timeline-manage"])}
     />
   );
 };

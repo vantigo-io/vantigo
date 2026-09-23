@@ -28,18 +28,21 @@ vi.mock("@vantigo/customers-ui/pages/customers.$customerId", () => ({
     canManageBilling,
     canViewIdentity,
     canManageIdentity,
+    canManageTimeline,
   }: {
     customerId: number;
     canEdit?: boolean;
     canManageBilling?: boolean;
     canViewIdentity?: boolean;
     canManageIdentity?: boolean;
+    canManageTimeline?: boolean;
   }) => (
     <>
       <span data-testid="can-edit">{String(Boolean(canEdit))}</span>
       <span data-testid="can-manage-billing">{String(Boolean(canManageBilling))}</span>
       <span data-testid="can-view-identity">{String(Boolean(canViewIdentity))}</span>
       <span data-testid="can-manage-identity">{String(Boolean(canManageIdentity))}</span>
+      <span data-testid="can-manage-timeline">{String(Boolean(canManageTimeline))}</span>
     </>
   ),
 }));
@@ -143,5 +146,27 @@ describe("the customer overview tab's legal-identity capability props", () => {
 
     expect(screen.getByTestId("can-view-identity")).toHaveTextContent("false");
     expect(screen.getByTestId("can-manage-identity")).toHaveTextContent("false");
+  });
+});
+
+describe("the customer overview tab's canManageTimeline capability prop", () => {
+  it("passes canManageTimeline from customers:timeline-manage", () => {
+    vi.mocked(useQuery).mockImplementation((options) =>
+      options.queryKey[0] === "authorization"
+        ? ({ data: { permissions: ["customers:timeline-manage"] }, isPending: false } as never)
+        : ({ data: { user: { id: "user-1", roles: [] } } } as never),
+    );
+    renderTab();
+    expect(screen.getByTestId("can-manage-timeline")).toHaveTextContent("true");
+  });
+
+  it("withholds it for a caller who may only read the timeline", () => {
+    vi.mocked(useQuery).mockImplementation((options) =>
+      options.queryKey[0] === "authorization"
+        ? ({ data: { permissions: ["customers:timeline-view"] }, isPending: false } as never)
+        : ({ data: { user: { id: "user-1", roles: [] } } } as never),
+    );
+    renderTab();
+    expect(screen.getByTestId("can-manage-timeline")).toHaveTextContent("false");
   });
 });

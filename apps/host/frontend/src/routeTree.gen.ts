@@ -35,6 +35,7 @@ import { Route as CommunicationsInboxRouteImport } from './routes/communications
 import { Route as CommunicationsSuppressionsRouteImport } from './routes/communications/suppressions'
 import { Route as CustomersIndexRouteImport } from './routes/customers/index'
 import { Route as CustomersCustomerIdRouteImport } from './routes/customers/$customerId'
+import { Route as CustomersFollowUpsRouteImport } from './routes/customers/follow-ups'
 import { Route as EnergyIndexRouteImport } from './routes/energy/index'
 import { Route as ExpensesIndexRouteImport } from './routes/expenses/index'
 import { Route as ExpensesApprovalsRouteImport } from './routes/expenses/approvals'
@@ -207,6 +208,11 @@ const CustomersIndexRoute = CustomersIndexRouteImport.update({
 const CustomersCustomerIdRoute = CustomersCustomerIdRouteImport.update({
   id: '/$customerId',
   path: '/$customerId',
+  getParentRoute: () => CustomersRoute,
+} as any)
+const CustomersFollowUpsRoute = CustomersFollowUpsRouteImport.update({
+  id: '/follow-ups',
+  path: '/follow-ups',
   getParentRoute: () => CustomersRoute,
 } as any)
 const EnergyIndexRoute = EnergyIndexRouteImport.update({
@@ -453,6 +459,7 @@ export interface FileRoutesByFullPath {
   '/communications/inbox': typeof CommunicationsInboxRoute
   '/communications/suppressions': typeof CommunicationsSuppressionsRoute
   '/customers/$customerId': typeof CustomersCustomerIdRouteWithChildren
+  '/customers/follow-ups': typeof CustomersFollowUpsRoute
   '/expenses/approvals': typeof ExpensesApprovalsRoute
   '/expenses/reimbursements': typeof ExpensesReimbursementsRoute
   '/expenses/settings': typeof ExpensesSettingsRoute
@@ -512,6 +519,7 @@ export interface FileRoutesByTo {
   '/communications/channels': typeof CommunicationsChannelsRoute
   '/communications/inbox': typeof CommunicationsInboxRoute
   '/communications/suppressions': typeof CommunicationsSuppressionsRoute
+  '/customers/follow-ups': typeof CustomersFollowUpsRoute
   '/expenses/approvals': typeof ExpensesApprovalsRoute
   '/expenses/reimbursements': typeof ExpensesReimbursementsRoute
   '/expenses/settings': typeof ExpensesSettingsRoute
@@ -582,6 +590,7 @@ export interface FileRoutesById {
   '/communications/inbox': typeof CommunicationsInboxRoute
   '/communications/suppressions': typeof CommunicationsSuppressionsRoute
   '/customers/$customerId': typeof CustomersCustomerIdRouteWithChildren
+  '/customers/follow-ups': typeof CustomersFollowUpsRoute
   '/expenses/approvals': typeof ExpensesApprovalsRoute
   '/expenses/reimbursements': typeof ExpensesReimbursementsRoute
   '/expenses/settings': typeof ExpensesSettingsRoute
@@ -654,6 +663,7 @@ export interface FileRouteTypes {
     | '/communications/inbox'
     | '/communications/suppressions'
     | '/customers/$customerId'
+    | '/customers/follow-ups'
     | '/expenses/approvals'
     | '/expenses/reimbursements'
     | '/expenses/settings'
@@ -713,6 +723,7 @@ export interface FileRouteTypes {
     | '/communications/channels'
     | '/communications/inbox'
     | '/communications/suppressions'
+    | '/customers/follow-ups'
     | '/expenses/approvals'
     | '/expenses/reimbursements'
     | '/expenses/settings'
@@ -782,6 +793,7 @@ export interface FileRouteTypes {
     | '/communications/inbox'
     | '/communications/suppressions'
     | '/customers/$customerId'
+    | '/customers/follow-ups'
     | '/expenses/approvals'
     | '/expenses/reimbursements'
     | '/expenses/settings'
@@ -1034,6 +1046,13 @@ declare module '@tanstack/react-router' {
       path: '/$customerId'
       fullPath: '/customers/$customerId'
       preLoaderRoute: typeof CustomersCustomerIdRouteImport
+      parentRoute: typeof CustomersRoute
+    }
+    '/customers/follow-ups': {
+      id: '/customers/follow-ups'
+      path: '/follow-ups'
+      fullPath: '/customers/follow-ups'
+      preLoaderRoute: typeof CustomersFollowUpsRouteImport
       parentRoute: typeof CustomersRoute
     }
     '/energy/': {
@@ -1378,6 +1397,7 @@ const CustomersCustomerIdRouteWithChildren =
 
 interface CustomersRouteChildren {
   CustomersCustomerIdRoute: typeof CustomersCustomerIdRouteWithChildren
+  CustomersFollowUpsRoute: typeof CustomersFollowUpsRoute
   CustomersIndexRoute: typeof CustomersIndexRoute
   CustomersContactsContactIdRoute: typeof CustomersContactsContactIdRoute
   CustomersContactsIndexRoute: typeof CustomersContactsIndexRoute
@@ -1385,6 +1405,7 @@ interface CustomersRouteChildren {
 
 const CustomersRouteChildren: CustomersRouteChildren = {
   CustomersCustomerIdRoute: CustomersCustomerIdRouteWithChildren,
+  CustomersFollowUpsRoute: CustomersFollowUpsRoute,
   CustomersIndexRoute: CustomersIndexRoute,
   CustomersContactsContactIdRoute: CustomersContactsContactIdRoute,
   CustomersContactsIndexRoute: CustomersContactsIndexRoute,
