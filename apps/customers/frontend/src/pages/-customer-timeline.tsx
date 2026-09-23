@@ -4,6 +4,7 @@ import {
   Badge,
   Button,
   Card,
+  Divider,
   Drawer,
   Group,
   Menu,
@@ -28,6 +29,7 @@ import {
   IconDots,
   IconEdit,
   IconExternalLink,
+  IconFlag,
   IconHistory,
   IconPlus,
   IconTrash,
@@ -41,13 +43,17 @@ import {
   defaultTimelineFilters,
   deleteTimelineEntry,
   fetchTimeline,
+  markFollowUpDone,
   normalizeTimelineFilters,
+  reopenFollowUp,
   type TimelineEntry,
   type TimelineFilters,
+  type TimelineFollowUp,
   type TimelineInput,
   timelineRevisionsQueryOptions,
   updateTimelineEntry,
 } from "../api/timeline";
+import { UserPicker } from "../components/user-picker";
 import { actorLabel } from "../lib/actor-label";
 import "../i18n";
 
@@ -79,6 +85,11 @@ const typeKey: Record<string, string> = {
 const iconFor = (type: string) =>
   type.startsWith("interaction.") ? IconCalendarEvent : type === "note" ? IconEdit : IconWand;
 const utcToday = () => new Date().toISOString().slice(0, 10);
+/** Open and past its due date, in UTC — the same calendar the server compares in. */
+const isOverdue = (followUp: TimelineFollowUp) => !followUp.doneAt && followUp.dueOn < utcToday();
+/** Red while overdue, grey once done, ordinary otherwise. */
+const followUpTone = (followUp: TimelineFollowUp) =>
+  followUp.doneAt ? "dimmed" : isOverdue(followUp) ? "red" : undefined;
 const contactReference = (payload: unknown) => {
   if (!payload || typeof payload !== "object") return null;
   const record = payload as Record<string, unknown>;
@@ -168,7 +179,23 @@ const dateValue = (value: Date | string | null) =>
       : `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`
     : null;
 
-export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
+/**
+ * `canManageTimeline` comes from the host, which reads the caller's
+ * `customers:timeline-manage` permission (follow-ups design D3) — this package
+ * never fetches permissions itself. Until this delivery the server alone
+ * enforced it and a reader saw Add, Edit and Delete buttons that answered 403;
+ * now they are simply not there, and neither are the follow-up controls.
+ *
+ * It is optional and defaults to withheld, which is the safe direction: a call
+ * site that forgets it shows a read-only card rather than buttons that fail.
+ */
+export const CustomerTimeline = ({
+  customerId,
+  canManageTimeline,
+}: {
+  customerId: number;
+  canManageTimeline?: boolean;
+}) => {
   const { t, formatters } = useI18n("customers");
   const manualTypeOptions = manualTypes.map((value) => ({ value, label: t(typeKey[value]) }));
   const eventTypeOptions = [
@@ -217,6 +244,17 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
         title: error.status === 409 ? t("eventChanged") : t("couldNotDeleteEvent"),
         message: error.status === 409 ? t("timelineRefreshed") : error.message,
       });
+    },
+  });
+  const followUpMutation = useMutation({
+    mutationFn: ({ id, done }: { id: TimelineEntry["id"]; done: boolean }) =>
+      done ? markFollowUpDone(customerId, id) : reopenFollowUp(customerId, id),
+    onSuccess: refresh,
+    onError: (error: Error) => {
+      // No 409 branch: neither path takes an expectedRevision, so the only
+      // failures left are a vanished entry and the network.
+      refresh();
+      notifications.show({ color: "red", title: t("couldNotUpdateFollowUp"), message: error.message });
     },
   });
   const reset = () => {
@@ -273,17 +311,19 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
             </Text>
           </Group>
           <Group gap="xs">
-            <Button
-              size="xs"
-              variant="light"
-              leftSection={<IconPlus size={14} />}
-              onClick={() => {
-                setEditing(null);
-                setFormOpen(true);
-              }}
-            >
-              {t("addEvent")}
-            </Button>
+            {canManageTimeline && (
+              <Button
+                size="xs"
+                variant="light"
+                leftSection={<IconPlus size={14} />}
+                onClick={() => {
+                  setEditing(null);
+                  setFormOpen(true);
+                }}
+              >
+                {t("addEvent")}
+              </Button>
+            )}
             {small && (
               <Button
                 size="xs"
@@ -417,6 +457,34 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
                           {t("contactReference", { name: contact })}
                         </Text>
                       )}
+                      {entry.followUp && (
+                        <Group gap="xs" align="center">
+                          <IconFlag size={14} aria-hidden="true" />
+                          <Text
+                            size="sm"
+                            c={followUpTone(entry.followUp)}
+                            td={entry.followUp.doneAt ? "line-through" : undefined}
+                          >
+                            {entry.followUp.doneAt
+                              ? t("followUpDoneOn", { date: formatDateOnly(entry.followUp.doneAt.slice(0, 10)) })
+                              : t("followUpDue", { date: formatDateOnly(entry.followUp.dueOn) })}
+                            {entry.followUp.assignee
+                              ? ` · ${entry.followUp.assignee.displayName}${entry.followUp.assignee.active ? "" : ` (${t("inactiveUser")})`}`
+                              : ` · ${t("followUpUnassigned")}`}
+                            {isOverdue(entry.followUp) ? ` · ${t("followUpOverdue")}` : ""}
+                          </Text>
+                          {canManageTimeline && (
+                            <Button
+                              size="compact-xs"
+                              variant="subtle"
+                              loading={followUpMutation.isPending && followUpMutation.variables?.id === entry.id}
+                              onClick={() => followUpMutation.mutate({ id: entry.id, done: !entry.followUp?.doneAt })}
+                            >
+                              {entry.followUp.doneAt ? t("reopen") : t("markDone")}
+                            </Button>
+                          )}
+                        </Group>
+                      )}
                       {entry.sourceUrl && (
                         <Button
                           component="a"
@@ -432,7 +500,11 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
                         </Button>
                       )}
                     </Stack>
-                    {entry.provenance === "manual" && (
+                    {/* Revision history is a read and could in principle stay for a reader, but
+                        it lives inside this menu and a menu with one item is worse than no menu.
+                        A reader who needs the history has the API; a reader who needs it in the UI
+                        is a request this delivery has not had. */}
+                    {entry.provenance === "manual" && canManageTimeline && (
                       <Menu position="bottom-end" withinPortal>
                         <Menu.Target>
                           <ActionIcon
@@ -534,11 +606,23 @@ const TimelineForm = ({
 }) => {
   const { t } = useI18n("customers");
   const form = useForm({
-    initialValues: { eventType: "note", occurredOn: utcToday(), occurredAt: "", note: "", sourceUrl: "" },
+    initialValues: {
+      eventType: "note",
+      occurredOn: utcToday(),
+      occurredAt: "",
+      note: "",
+      sourceUrl: "",
+      followUpOn: "",
+      followUpAssigneeUserId: "",
+    },
     validate: {
       eventType: (v) => (!v ? t("typeRequired") : null),
       occurredOn: (v) => (!v ? t("dateRequired") : v > utcToday() ? t("dateFuture") : null),
       note: (v) => (!v.trim() ? t("descriptionRequired") : null),
+      // No future check here, and that is the point of a follow-up: it is the
+      // one date in this form that is allowed to be ahead of today.
+      followUpAssigneeUserId: (value, values) =>
+        value && !values.followUpOn ? t("followUpDateRequiredForAssignee") : null,
     },
   });
   useEffect(() => {
@@ -551,8 +635,18 @@ const TimelineForm = ({
             occurredAt: entry.occurredAt ? entry.occurredAt.slice(11, 16) : "",
             note: entry.note ?? "",
             sourceUrl: entry.sourceUrl ?? "",
+            followUpOn: entry.followUp?.dueOn ?? "",
+            followUpAssigneeUserId: entry.followUp?.assignee?.userId ?? "",
           }
-        : { eventType: "note", occurredOn: utcToday(), occurredAt: "", note: "", sourceUrl: "" },
+        : {
+            eventType: "note",
+            occurredOn: utcToday(),
+            occurredAt: "",
+            note: "",
+            sourceUrl: "",
+            followUpOn: "",
+            followUpAssigneeUserId: "",
+          },
     );
     form.resetDirty();
     form.clearErrors(); // Form methods are stable.
@@ -574,13 +668,17 @@ const TimelineForm = ({
       });
     },
   });
-  const submit = form.onSubmit((values) =>
+  const submit = form.onSubmit(({ followUpOn, followUpAssigneeUserId, ...values }) =>
     mutation.mutate({
       ...values,
       occurredAt: values.occurredAt
         ? new Date(`${values.occurredOn}T${values.occurredAt}:00Z`).toISOString()
         : undefined,
       sourceUrl: values.sourceUrl || undefined,
+      // No date means no follow-up, and on an update that is an instruction:
+      // this PUT is a full replace, so omitting the field clears whatever the
+      // entry had — including its done state.
+      followUp: followUpOn ? { dueOn: followUpOn, assigneeUserId: followUpAssigneeUserId || undefined } : undefined,
     }),
   );
   return (
@@ -606,6 +704,26 @@ const TimelineForm = ({
             placeholder={t("sourceUrlPlaceholder")}
             {...form.getInputProps("sourceUrl")}
           />
+          <Divider label={t("followUp")} labelPosition="left" />
+          <DateInput
+            label={t("followUpOn")}
+            description={t("followUpOnHint")}
+            valueFormat="YYYY-MM-DD"
+            clearable
+            {...form.getInputProps("followUpOn")}
+          />
+          <UserPicker
+            label={t("followUpAssignee")}
+            placeholder={t("searchOwners")}
+            clearLabel={t("clearFollowUpAssignee")}
+            value={form.values.followUpAssigneeUserId || null}
+            selected={
+              entry?.followUp?.assignee
+                ? { userId: entry.followUp.assignee.userId, displayName: entry.followUp.assignee.displayName }
+                : null
+            }
+            onChange={(value) => form.setFieldValue("followUpAssigneeUserId", value ?? "")}
+          />
           <Group justify="flex-end">
             <Button variant="default" onClick={onClose}>
               {t("cancel")}
@@ -629,7 +747,7 @@ const RevisionPanel = ({
   entry: TimelineEntry | null;
   onClose: () => void;
 }) => {
-  const { t } = useI18n("customers");
+  const { t, formatters } = useI18n("customers");
   const query = useQuery({ ...timelineRevisionsQueryOptions(customerId, entry?.id ?? 0), enabled: Boolean(entry) });
   const body = (
     <Stack>
@@ -648,8 +766,27 @@ const RevisionPanel = ({
               <Accordion.Panel>
                 <Stack gap="xs">
                   <Text size="sm">
-                    {revision.action} · {actorLabel(revision.actorKind, revision.actorDisplayName, t)}
+                    {revision.action} · {actorLabel(revision.actorKind, revision.actorDisplayName, t)} ·{" "}
+                    {formatters.formatDate(revision.changedAt, { dateStyle: "medium", timeStyle: "short" })}
                   </Text>
+                  {revision.followUp && (
+                    <Text size="sm" c={revision.followUp.doneAt ? "dimmed" : undefined}>
+                      {revision.followUp.doneAt
+                        ? t("followUpDoneOn", {
+                            date: formatters.formatDate(`${revision.followUp.doneAt.slice(0, 10)}T00:00:00Z`, {
+                              dateStyle: "medium",
+                              timeZone: "UTC",
+                            }),
+                          })
+                        : t("followUpDue", {
+                            date: formatters.formatDate(`${revision.followUp.dueOn}T00:00:00Z`, {
+                              dateStyle: "medium",
+                              timeZone: "UTC",
+                            }),
+                          })}
+                      {revision.followUp.assignee ? ` · ${revision.followUp.assignee.displayName}` : ""}
+                    </Text>
+                  )}
                   <Text>{revision.note || t("noDescription")}</Text>
                 </Stack>
               </Accordion.Panel>

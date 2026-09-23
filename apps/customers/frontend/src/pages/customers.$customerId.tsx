@@ -329,6 +329,12 @@ const useRestoreCustomer = (customer: CustomerResponse) => {
  * what a person looks for before the contact details. It is its own card
  * rather than folded into "Contact & addresses" — the spec's owner and tags
  * pairing is a distinct concern from a customer's own contact info.
+ *
+ * `canManageTimeline` (follow-ups design D3) is the host's
+ * `customers:timeline-manage` check, and it is the first capability here that
+ * closes a gap rather than adding one: the timeline card's Add, Edit and Delete
+ * controls were always server-enforced, so a reader saw buttons that answered
+ * 403. It also gates the new Done/Reopen control on a follow-up.
  */
 export const CustomerOverview = ({
   customerId,
@@ -336,12 +342,14 @@ export const CustomerOverview = ({
   canManageBilling,
   canViewIdentity,
   canManageIdentity,
+  canManageTimeline,
 }: {
   customerId: number;
   canEdit?: boolean;
   canManageBilling?: boolean;
   canViewIdentity?: boolean;
   canManageIdentity?: boolean;
+  canManageTimeline?: boolean;
 }) => {
   const { data: customer } = useSuspenseQuery(customerQueryOptions(customerId));
   // Enhetsregisteret answers for Norwegian businesses and nothing else, and
@@ -368,7 +376,7 @@ export const CustomerOverview = ({
       {showRegistry && <CustomerRegistryCard customerId={customerId} canManageIdentity={canManageIdentity} />}
       <CustomerBillingCard customerId={customerId} customer={customer} canManageBilling={canManageBilling} />
       <CustomerContactsCard customerId={customerId} />
-      <CustomerTimeline customerId={customerId} />
+      <CustomerTimeline customerId={customerId} canManageTimeline={canManageTimeline} />
     </Stack>
   );
 };
