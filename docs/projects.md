@@ -1087,7 +1087,8 @@ missing row is `(nil, nil)`, never an error.
   rather than provides). `Actuals(projectID, currency)` and `ActualsForProjects`
   (batch, capped at `contracts.MaxActualsRequests`). It performs no authorization —
   Projects has already decided who may see the project and its money — and reports
-  hours in three buckets (approved, submitted, draft) plus bill and cost amounts,
+  hours in three buckets (approved, submitted, draft) — plus `Invoiced`, the part of
+  approved already billed, which Projects' economy does not read — and bill and cost amounts,
   each counted only when logged in the currency Projects asked for. See
   [Project economy](#project-economy) and [what Time reports](time.md#what-time-reports-to-other-modules).
 - **`contracts.ProjectExpenses`** — provided by *expenses*, **nil when expenses is

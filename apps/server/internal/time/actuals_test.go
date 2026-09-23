@@ -216,6 +216,9 @@ func TestActualsBucketsEveryStatus(t *testing.T) {
 	wantBucket(t, "approved", got.Totals.Approved, 2400, "0.00", "0.00")
 	wantBucket(t, "submitted", got.Totals.Submitted, 400, "0.00", "0.00")
 	wantBucket(t, "draft", got.Totals.Draft, 300, "0.00", "0.00")
+	// Invoiced is the part of approved already billed: the one invoiced entry,
+	// and only it, while approved still carries both.
+	wantBucket(t, "invoiced", got.Totals.Invoiced, 1600, "0.00", "0.00")
 }
 
 // A project nothing was logged on answers zero totals and no lines, never an
@@ -686,6 +689,48 @@ func TestActualsTotalAddsUpTheThreeBuckets(t *testing.T) {
 		t.Fatalf("actuals: %v", err)
 	}
 	wantBucket(t, "empty total", empty.Totals.Total, 0, "0.00", "0.00")
+}
+
+// Invoiced is a part of Approved, not a bucket beside it (customer 360 design
+// D1): an invoiced entry lands in Approved exactly as before and in Invoiced
+// as well, an approved one only in Approved, and Total counts the invoiced
+// work once. The per-line totals and the batch carry the same split, because
+// a consumer reads whichever of the three it was built on.
+func TestActualsInvoicedIsThePartOfApprovedAlreadyBilled(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, user := signIn(t, h)
+	p := actualsProvider(t, h)
+
+	for _, seed := range []struct{ hours, status string }{
+		{"8.00", "approved"}, {"16.00", "invoiced"}, {"4.00", "submitted"}, {"1.00", "draft"},
+	} {
+		logEntry(t, h, user, loggedEntry{project: projectKraftVerket, date: workDay, hours: seed.hours, billable: true,
+			billRate: "100.00", billCurrency: "NOK", costRate: "40.00", costCurrency: "NOK", status: seed.status})
+	}
+
+	got, err := p.Actuals(t.Context(), contracts.ActualsRequest{ProjectID: projectKraftVerket, Currency: ptr("NOK")})
+	if err != nil {
+		t.Fatalf("actuals: %v", err)
+	}
+	wantBucket(t, "approved", got.Totals.Approved, 2400, "2400.00", "960.00")
+	wantBucket(t, "invoiced", got.Totals.Invoiced, 1600, "1600.00", "640.00")
+	wantBucket(t, "total", got.Totals.Total, 2900, "2900.00", "1160.00")
+	if len(got.Lines) != 1 {
+		t.Fatalf("lines = %d, want the one no-line entry", len(got.Lines))
+	}
+	wantBucket(t, "no-line invoiced", got.Lines[0].Totals.Invoiced, 1600, "1600.00", "640.00")
+
+	batch, err := p.ActualsForProjects(t.Context(), []contracts.ActualsRequest{
+		{ProjectID: projectKraftVerket, Currency: ptr("NOK")},
+		{ProjectID: projectInternal, Currency: ptr("NOK")},
+	})
+	if err != nil {
+		t.Fatalf("actuals for projects: %v", err)
+	}
+	wantBucket(t, "batch invoiced", batch[projectKraftVerket].Invoiced, 1600, "1600.00", "640.00")
+	wantBucket(t, "batch approved", batch[projectKraftVerket].Approved, 2400, "2400.00", "960.00")
+	wantBucket(t, "nothing invoiced", batch[projectInternal].Invoiced, 0, "0.00", "0.00")
 }
 
 // The batch: every requested project is in the result, one without entries

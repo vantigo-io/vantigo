@@ -4,8 +4,10 @@
 -- groups, so a project asked in NOK whose entries are priced in SEK ends up
 -- with unpriced hours rather than a sum in no currency.
 --
--- The grain is project, billing line, bucket (design §2 E2: approved and
--- invoiced are one bucket, rejected joins draft), bill currency and cost
+-- The grain is project, billing line, bucket (design §2 E2: rejected joins
+-- draft; approved and invoiced are one bucket in the contract, but invoiced is
+-- its own key here so Go can also report it as ActualsTotals.Invoiced, the part
+-- of Approved already billed — customer 360 design D1), bill currency and cost
 -- currency — the two currencies are separate columns, so an entry can be
 -- billed in one and cost in another and each is folded on its own.
 --
@@ -32,7 +34,8 @@
 SELECT project_id,
        billing_line_id,
        CASE
-           WHEN status IN ('approved', 'invoiced') THEN 'approved'
+           WHEN status = 'approved' THEN 'approved'
+           WHEN status = 'invoiced' THEN 'invoiced'
            WHEN status = 'submitted' THEN 'submitted'
            ELSE 'draft'
        END AS bucket,
@@ -50,7 +53,8 @@ WHERE project_id = ANY(@project_ids::integer[])
 GROUP BY project_id,
          billing_line_id,
          CASE
-             WHEN status IN ('approved', 'invoiced') THEN 'approved'
+             WHEN status = 'approved' THEN 'approved'
+             WHEN status = 'invoiced' THEN 'invoiced'
              WHEN status = 'submitted' THEN 'submitted'
              ELSE 'draft'
          END,
