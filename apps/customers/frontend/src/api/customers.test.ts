@@ -13,6 +13,7 @@ import {
   invalidateCustomersExcept,
   legalIdentityQueryOptions,
   NotFoundError,
+  normalizeCustomer as normalizeCustomerForTest,
   syncCustomerRevision,
   updateContactInfo,
   updateCustomer,
@@ -85,7 +86,7 @@ describe("updateCustomer", () => {
 
     const result = await updateCustomer(1001, { name: "Initrode" });
 
-    expect(result).toEqual(updated);
+    expect(result).toEqual({ ...updated, owner: null, tags: [] });
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/1001", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -115,7 +116,7 @@ describe("customerQueryOptions", () => {
       signal: undefined,
     });
 
-    expect(result).toEqual(customer);
+    expect(result).toEqual({ ...customer, owner: null, tags: [] });
     expect(options.queryKey).toEqual(["customers", 1001]);
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/1001", { signal: undefined });
   });
@@ -135,7 +136,12 @@ describe("customerQueryOptions", () => {
     const options = customerQueryOptions(1001);
     const result = await (options.queryFn as (context: unknown) => Promise<unknown>)({ signal: undefined });
 
-    expect(result).toEqual({ ...customer, contactInfo: { email: null, phone: "+47 934 89 731", website: null } });
+    expect(result).toEqual({
+      ...customer,
+      contactInfo: { email: null, phone: "+47 934 89 731", website: null },
+      owner: null,
+      tags: [],
+    });
   });
 
   it("throws NotFoundError on 404", async () => {
@@ -352,6 +358,8 @@ const cachedCustomer = (revision: number): CustomerResponse => ({
   identity: null,
   timelineSummary: { entryCount: 0, latestOccurredOn: null },
   revision,
+  owner: null,
+  tags: [],
 });
 
 const cachedProfile = (revision: number): CustomerBillingProfile => ({
@@ -401,6 +409,57 @@ describe("syncCustomerRevision", () => {
     syncCustomerRevision(queryClient, 1001, undefined);
 
     expect(queryClient.getQueryData(customerKey)).toMatchObject({ revision: 3 });
+  });
+});
+
+describe("customers list params and normalisation, owner and tags", () => {
+  it("normalises an absent owner to null and absent tags to an empty array", () => {
+    // Exactly the body the server sends for an unowned, untagged customer:
+    // `owner` is omitted entirely (the contract's own wording) and, for a
+    // response recorded before this delivery, so is `tags`. Both mean "none",
+    // and the boundary is the one place that is decided.
+    const raw = {
+      id: 1001,
+      customerNumber: 5001,
+      name: "Equinor",
+      status: "active",
+      type: "business" as const,
+      createdAt: "2026-06-01T10:00:00Z",
+      updatedAt: "2026-07-01T10:00:00Z",
+      identity: null,
+      timelineSummary: { entryCount: 0, latestOccurredOn: null },
+    };
+    const normalized = normalizeCustomerForTest(raw);
+    expect(normalized.owner).toBeNull();
+    expect(normalized.tags).toEqual([]);
+  });
+
+  it("keeps an owner and its tags as they arrived", () => {
+    const normalized = normalizeCustomerForTest({
+      id: 1001,
+      customerNumber: 5001,
+      name: "Equinor",
+      status: "active",
+      type: "business",
+      createdAt: "2026-06-01T10:00:00Z",
+      updatedAt: "2026-07-01T10:00:00Z",
+      identity: null,
+      timelineSummary: { entryCount: 0, latestOccurredOn: null },
+      owner: { userId: "u1", displayName: "Kari Nordmann", active: true },
+      tags: [{ id: "t1", name: "VIP" }],
+    });
+    expect(normalized.owner).toEqual({ userId: "u1", displayName: "Kari Nordmann", active: true });
+    expect(normalized.tags).toEqual([{ id: "t1", name: "VIP", color: null }]);
+  });
+
+  it("puts the two new filters on the query string and leaves them off when unset", () => {
+    expect(customersListParams({ page: 1, search: "", ownerId: "me", tagId: "t1" })).toMatchObject({
+      ownerId: "me",
+      tagId: "t1",
+    });
+    const bare = customersListParams({ page: 1, search: "" });
+    expect(bare.ownerId).toBeUndefined();
+    expect(bare.tagId).toBeUndefined();
   });
 });
 

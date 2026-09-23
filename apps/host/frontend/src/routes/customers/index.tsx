@@ -6,12 +6,23 @@ import {
   customersListParams,
   customersQueryOptions,
 } from "@vantigo/customers-ui/api/customers";
-import { CustomersPage } from "@vantigo/customers-ui/pages/customers.index";
+import { customerTagsQueryOptions } from "@vantigo/customers-ui/api/tags";
+import { CustomersListPage } from "./-customers-list";
 
 const CUSTOMER_STATUSES: readonly CustomerStatusFilter[] = ["active", "disabled", "archived"];
 const CUSTOMER_TYPES: readonly CustomerType[] = ["business", "person"];
 const SORT_FIELDS = ["id", "name", "customerNumber", "createdAt", "updatedAt"] as const;
 const SORT_DIRECTIONS = ["asc", "desc"] as const;
+const OWNER_FILTERS = ["me", "none"] as const;
+/** A tag id is a uuid; anything else is no filter rather than a 400 from the API. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ownerFilterOf = (value: unknown): string | undefined => {
+  if (typeof value !== "string") return undefined;
+  if ((OWNER_FILTERS as readonly string[]).includes(value)) return value;
+  return UUID.test(value) ? value : undefined;
+};
+const tagFilterOf = (value: unknown): string | undefined =>
+  typeof value === "string" && UUID.test(value) ? value : undefined;
 
 /** A value from a known set, or no filter at all — never an unknown value forwarded to the API. */
 const oneOf = <T extends string>(values: readonly T[], value: unknown): T | undefined =>
@@ -28,6 +39,8 @@ export const Route = createFileRoute("/customers/")({
     search: typeof search.search === "string" ? search.search : "",
     status: oneOf(CUSTOMER_STATUSES, search.status),
     type: oneOf(CUSTOMER_TYPES, search.type),
+    ownerId: ownerFilterOf(search.ownerId),
+    tagId: tagFilterOf(search.tagId),
     sortBy: oneOf(SORT_FIELDS, search.sortBy),
     sortDirection: oneOf(SORT_DIRECTIONS, search.sortDirection),
     // Present only when true: the create form opens on arrival (Spotlight's quick action).
@@ -42,6 +55,7 @@ export const Route = createFileRoute("/customers/")({
     Promise.all([
       queryClient.ensureQueryData(customersQueryOptions(deps)),
       queryClient.ensureQueryData(customerStatsQueryOptions()),
+      queryClient.ensureQueryData(customerTagsQueryOptions()),
     ]),
-  component: CustomersPage,
+  component: CustomersListPage,
 });

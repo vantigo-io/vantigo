@@ -18,6 +18,8 @@ describe("the customers list route's search params", () => {
       type: undefined,
       sortBy: undefined,
       sortDirection: undefined,
+      ownerId: undefined,
+      tagId: undefined,
     });
     expect(validate({ status: "bogus", type: "bogus", sortBy: "bogus", sortDirection: "bogus" })).toEqual({
       page: 1,
@@ -26,6 +28,8 @@ describe("the customers list route's search params", () => {
       type: undefined,
       sortBy: undefined,
       sortDirection: undefined,
+      ownerId: undefined,
+      tagId: undefined,
     });
   });
 
@@ -46,7 +50,20 @@ describe("the customers list route's search params", () => {
       type: "person",
       sortBy: "createdAt",
       sortDirection: "desc",
+      ownerId: undefined,
+      tagId: undefined,
     });
+  });
+
+  it("keeps the two ownership filters it knows and drops the rest", () => {
+    const tagId = "0191d4f8-6f1a-7c3a-9b2e-6d5f4c3b2a10";
+    expect(validate({ ownerId: "me" })).toMatchObject({ ownerId: "me", tagId: undefined });
+    expect(validate({ ownerId: "none" })).toMatchObject({ ownerId: "none" });
+    expect(validate({ ownerId: tagId })).toMatchObject({ ownerId: tagId });
+    // Neither is a filter the API accepts, so the URL never carries it: 'Me' is
+    // case-sensitive there, and a bare word is neither a uuid nor a literal.
+    expect(validate({ ownerId: "Me", tagId: "notauuid" })).toMatchObject({ ownerId: undefined, tagId: undefined });
+    expect(validate({ tagId })).toMatchObject({ tagId });
   });
 
   it("opens the create form only for the one create value it knows", () => {

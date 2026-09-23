@@ -29,48 +29,54 @@ const defaultRow = {
   identity: null,
 };
 
-const stubFetch = (rows: unknown[] = [defaultRow]) =>
-  vi.stubGlobal(
-    "fetch",
-    vi.fn().mockImplementation((input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.startsWith("/api/v1/customers/stats")) {
-        return Promise.resolve(
-          jsonResponse({
-            totalCount: 1,
-            activeCount: 1,
-            newLast30DaysCount: 0,
-            businessCount: null,
-            personCount: null,
-            missingIdentityCount: null,
-            distinctCountryCount: null,
-          }),
-        );
-      }
-      if (url.startsWith("/api/v1/customers/lookup")) {
-        return Promise.resolve(jsonResponse([]));
-      }
+const tagRows = [
+  { id: "t1", name: "VIP", color: "grape", customerCount: 2 },
+  { id: "t2", name: "Prospect", color: null, customerCount: 0 },
+];
+
+const stubFetch = (rows: unknown[] = [defaultRow]) => {
+  const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.startsWith("/api/v1/customers/stats")) {
       return Promise.resolve(
         jsonResponse({
-          data: rows,
-          pagination: {
-            page: 1,
-            pageSize: 25,
-            totalCount: rows.length,
-            totalPages: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-          },
+          totalCount: 1,
+          activeCount: 1,
+          newLast30DaysCount: 0,
+          businessCount: null,
+          personCount: null,
+          missingIdentityCount: null,
+          distinctCountryCount: null,
         }),
       );
-    }),
-  );
+    }
+    if (url.startsWith("/api/v1/customers/tags")) return Promise.resolve(jsonResponse(tagRows));
+    if (url.startsWith("/api/v1/customers/lookup")) {
+      return Promise.resolve(jsonResponse([]));
+    }
+    return Promise.resolve(
+      jsonResponse({
+        data: rows,
+        pagination: {
+          page: 1,
+          pageSize: 25,
+          totalCount: rows.length,
+          totalPages: 1,
+          hasNextPage: false,
+          hasPreviousPage: false,
+        },
+      }),
+    );
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+};
 
-const renderPage = () =>
+const renderPage = (props: { canEdit?: boolean } = {}) =>
   render(
     <MantineProvider env="test">
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <CustomersPage />
+        <CustomersPage {...props} />
       </QueryClientProvider>
     </MantineProvider>,
   );
@@ -252,5 +258,105 @@ describe("CustomersPage", () => {
     renderPage();
 
     expect(await screen.findByText("Archived")).toBeInTheDocument();
+  });
+});
+
+// ownedRow is the wire body for a customer with an owner and one tag —
+// literally what the server sends, nothing invented.
+const ownedRow = {
+  ...defaultRow,
+  owner: { userId: "u1", displayName: "Kari Nordmann", active: true },
+  tags: [{ id: "t1", name: "VIP", color: "grape" }],
+};
+
+describe("CustomersPage, owner and tags", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    router.search = { page: 1, search: "" };
+    router.navigate.mockReset();
+  });
+
+  it("shows the owner's name and the tag chips on the row", async () => {
+    stubFetch([ownedRow]);
+    renderPage();
+    await screen.findByText("Equinor");
+    expect(screen.getByText("Kari Nordmann")).toBeInTheDocument();
+    expect(screen.getByText("VIP")).toBeInTheDocument();
+  });
+
+  it("marks an owner the directory says is inactive", async () => {
+    stubFetch([{ ...ownedRow, owner: { userId: "u1", displayName: "Kari Nordmann", active: false } }]);
+    renderPage();
+    await screen.findByText("Kari Nordmann");
+    // The name is still shown — nothing is revoked (design D1) — with a hint
+    // that the account can no longer act.
+    expect(screen.getByTitle("This account is inactive")).toBeInTheDocument();
+  });
+
+  it("shows an em dash for an unowned customer", async () => {
+    stubFetch([{ ...defaultRow, owner: null, tags: [] }]);
+    renderPage();
+    await screen.findByText("Equinor");
+    expect(screen.queryByText("Kari Nordmann")).not.toBeInTheDocument();
+  });
+
+  it("drives the URL from the Owner filter and sends ownerId to the API", async () => {
+    const fetchMock = stubFetch([ownedRow]);
+    renderPage();
+    await screen.findByText("Equinor");
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Owner" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Mine" }));
+
+    expect(router.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ search: expect.objectContaining({ ownerId: "me", page: 1 }) }),
+    );
+
+    // The request is found by method and URL, never by "the last call": the
+    // stats and tags queries land on their own clocks.
+    router.search = { page: 1, search: "", ownerId: "me" };
+    cleanup();
+    renderPage();
+    await screen.findByText("Equinor");
+    const listCalls = fetchMock.mock.calls
+      .map(([url]) => String(url))
+      .filter((url) => url.startsWith("/api/v1/customers?"));
+    expect(listCalls.some((url) => url.includes("ownerId=me"))).toBe(true);
+  });
+
+  it("offers Unassigned as the other Owner filter", async () => {
+    stubFetch([ownedRow]);
+    renderPage();
+    await screen.findByText("Equinor");
+    await userEvent.click(screen.getByRole("combobox", { name: "Owner" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Unassigned" }));
+    expect(router.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ search: expect.objectContaining({ ownerId: "none", page: 1 }) }),
+    );
+  });
+
+  it("drives the URL from the Tag filter, naming the tags the installation has", async () => {
+    stubFetch([ownedRow]);
+    renderPage();
+    await screen.findByText("Equinor");
+    await userEvent.click(screen.getByRole("combobox", { name: "Tag" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Prospect" }));
+    expect(router.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ search: expect.objectContaining({ tagId: "t2", page: 1 }) }),
+    );
+  });
+
+  it("opens Manage tags only for a caller who may edit", async () => {
+    stubFetch([ownedRow]);
+    renderPage({ canEdit: true });
+    await screen.findByText("Equinor");
+    await userEvent.click(screen.getByRole("button", { name: "Manage tags" }));
+    expect(await screen.findByRole("dialog")).toHaveTextContent("Manage tags");
+
+    cleanup();
+    renderPage();
+    await screen.findByText("Equinor");
+    expect(screen.queryByRole("button", { name: "Manage tags" })).not.toBeInTheDocument();
   });
 });

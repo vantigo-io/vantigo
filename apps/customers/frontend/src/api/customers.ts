@@ -2,6 +2,7 @@ import { hashKey, keepPreviousData, type QueryClient, type QueryKey, queryOption
 import { type CustomerBillingProfile, customerBillingProfileQueryOptions } from "./billing-profile";
 import type { ApiConflictError } from "./request";
 import { NotFoundError, request } from "./request";
+import { type CustomerTag, normalizeTag } from "./tags";
 
 export { ApiConflictError, ApiValidationError, NotFoundError } from "./request";
 
@@ -21,6 +22,22 @@ export interface CustomerIdentitySummary {
 
 /** Whether a customer is a company or a private person, independent of its legal identity. */
 export type CustomerType = "business" | "person";
+
+/**
+ * The user accountable for this customer relationship (owner and tags design
+ * D1). `active` is false for an account that has been disabled since it was
+ * assigned, and for one the directory no longer knows at all — which reads as
+ * `displayName: "Unknown user"`. Either way the customer still has an owner:
+ * nothing is revoked behind the caller's back.
+ */
+export interface CustomerOwner {
+  userId: string;
+  displayName: string;
+  active: boolean;
+}
+
+/** The list's Owner filter: the caller's own customers, or the unassigned ones. */
+export type CustomerOwnerFilter = "me" | "none";
 
 /**
  * A customer's own contact details (invoice-ready customer design D2) — what
@@ -49,6 +66,10 @@ export interface CustomerResponse {
   revision?: number;
   /** Design D2. Always present on responses from this version on; absent only for corpus responses that predate it. */
   contactInfo?: CustomerContactInfo;
+  /** Design D1. Null when the customer is unowned; the wire omits the field entirely in that case. */
+  owner: CustomerOwner | null;
+  /** Design D2. Always an array — the boundary turns an omitted field into `[]`. */
+  tags: CustomerTag[];
 }
 
 export interface CustomerStatsResponse {
@@ -87,6 +108,8 @@ export interface CustomersQueryParams {
   type?: CustomerType;
   sortBy?: "id" | "name" | "customerNumber" | "createdAt" | "updatedAt";
   sortDirection?: "asc" | "desc";
+  ownerId?: string;
+  tagId?: string;
 }
 
 async function fetchCustomers(
@@ -101,6 +124,8 @@ async function fetchCustomers(
   if (params.type) searchParams.set("type", params.type);
   if (params.sortBy) searchParams.set("sortBy", params.sortBy);
   if (params.sortDirection) searchParams.set("sortDirection", params.sortDirection);
+  if (params.ownerId) searchParams.set("ownerId", params.ownerId);
+  if (params.tagId) searchParams.set("tagId", params.tagId);
 
   const query = searchParams.size > 0 ? `?${searchParams}` : "";
   const response = await request<PaginatedResponse<RawCustomerResponse>>(`/api/v1/customers${query}`, { signal });
@@ -122,6 +147,8 @@ export interface CustomersListSearch {
   type?: CustomerType;
   sortBy?: CustomersQueryParams["sortBy"];
   sortDirection?: CustomersQueryParams["sortDirection"];
+  ownerId?: CustomerOwnerFilter | string;
+  tagId?: string;
 }
 
 export const CUSTOMERS_PAGE_SIZE = 25;
@@ -140,6 +167,8 @@ export const customersListParams = (search: CustomersListSearch): CustomersQuery
   type: search.type,
   sortBy: search.sortBy,
   sortDirection: search.sortDirection,
+  ownerId: search.ownerId,
+  tagId: search.tagId,
 });
 
 export const customerStatsQueryOptions = () =>
@@ -158,9 +187,13 @@ export const customerStatsQueryOptions = () =>
  * `contactInfo` itself stays optional: it is genuinely absent on the
  * recorded responses that predate design D2.
  */
-type RawCustomerResponse = Omit<CustomerResponse, "contactInfo"> & { contactInfo?: Partial<CustomerContactInfo> };
+type RawCustomerResponse = Omit<CustomerResponse, "contactInfo" | "owner" | "tags"> & {
+  contactInfo?: Partial<CustomerContactInfo>;
+  owner?: CustomerOwner | null;
+  tags?: { id: string; name: string; color?: string | null }[];
+};
 
-const normalizeCustomer = (raw: RawCustomerResponse): CustomerResponse =>
+export const normalizeCustomer = (raw: RawCustomerResponse): CustomerResponse =>
   raw.contactInfo
     ? {
         ...raw,
@@ -169,8 +202,10 @@ const normalizeCustomer = (raw: RawCustomerResponse): CustomerResponse =>
           phone: raw.contactInfo.phone ?? null,
           website: raw.contactInfo.website ?? null,
         },
+        owner: raw.owner ?? null,
+        tags: (raw.tags ?? []).map(normalizeTag),
       }
-    : (raw as CustomerResponse);
+    : ({ ...raw, owner: raw.owner ?? null, tags: (raw.tags ?? []).map(normalizeTag) } as CustomerResponse);
 
 /** The requested resource does not exist (HTTP 404). */
 async function fetchCustomer(id: number, signal?: AbortSignal): Promise<CustomerResponse> {
