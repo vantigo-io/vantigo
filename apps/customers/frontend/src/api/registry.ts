@@ -6,6 +6,9 @@ export { ApiConflictError, NotFoundError } from "./request";
 /** The 409 a refresh answers when the customer has no Norwegian organisation number to look up (design D2). */
 export const NO_REGISTRY_IDENTITY_CODE = "no_registry_identity";
 
+/** The 409 a refresh answers when the customer was re-identified while the registry was being read (final fix wave I4): it has an identity, just not the one this call was for. */
+export const REGISTRY_IDENTITY_CHANGED_CODE = "registry_identity_changed";
+
 /**
  * One of the two addresses Enhetsregisteret holds for an entity (design D1).
  * `lines` is the registry's own free-form array — one or more street lines,

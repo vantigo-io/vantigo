@@ -417,6 +417,8 @@ const en = {
   registryUnknownOrganisation: "The register does not know this organisation number",
   registryRemovedNote: "This entity is no longer in the register's open data",
   registryNoIdentity: "There is no Norwegian organisation number on this customer to look up.",
+  registryIdentityChanged:
+    "This customer's identity changed while the registry was being read. Reload and refresh again.",
   registryUnavailable: "Brønnøysundregistrene could not be reached. Try again.",
   registryRefreshFailed: "Could not refresh the registry record",
   registryNameDiffersTitle: "The registry has another name",
@@ -845,6 +847,7 @@ const nb = {
   registryUnknownOrganisation: "Registeret kjenner ikke dette organisasjonsnummeret",
   registryRemovedNote: "Enheten finnes ikke lenger i registerets åpne data",
   registryNoIdentity: "Denne kunden har ikke et norsk organisasjonsnummer å slå opp.",
+  registryIdentityChanged: "Kundens identitet ble endret mens registeret ble lest. Last inn på nytt og oppdater igjen.",
   registryUnavailable: "Fikk ikke kontakt med Brønnøysundregistrene. Prøv igjen.",
   registryRefreshFailed: "Kunne ikke oppdatere registeropplysningene",
   registryNameDiffersTitle: "Registeret har et annet navn",

@@ -1052,14 +1052,16 @@ func TestRegistryRefresh_WithoutARegistryIdentity_Returns409(t *testing.T) {
 	}
 }
 
-// TestRegistryRefresh_WhenTheIdentityChangesUnderTheFetch_Returns409 is the
-// same conflict for the race (final fix wave I4): the organisation number is
+// TestRegistryRefresh_WhenTheIdentityChangesUnderTheFetch_Returns409 is a 409
+// of its own for the race (final fix wave I4): the organisation number is
 // resolved before the network call, so a click and a re-identification can
 // overlap, and the answer that comes back is then about a company this customer
 // is not. Storing it would be worse than useless — a record whose organisation
 // number is not the customer's legal_id is invisible through the GET, skipped by
 // both of the feed worker's sweeps, and counted as "has a record" by the
-// backfill, so the right one is never fetched.
+// backfill, so the right one is never fetched. Its code is registry_identity_changed,
+// not the no_registry_identity above: this customer has a perfectly good identity,
+// just not the one the fetch was for.
 func TestRegistryRefresh_WhenTheIdentityChangesUnderTheFetch_Returns409(t *testing.T) {
 	t.Parallel()
 	transport := &registryTransport{}
@@ -1086,8 +1088,8 @@ func TestRegistryRefresh_WhenTheIdentityChangesUnderTheFetch_Returns409(t *testi
 	}
 	var problem conflictProblemJSON
 	r.JSON(&problem)
-	if str(problem.Code) != "no_registry_identity" {
-		t.Errorf("code = %v, want no_registry_identity — the number this call was for is not the customer's any more", problem.Code)
+	if str(problem.Code) != "registry_identity_changed" {
+		t.Errorf("code = %v, want registry_identity_changed — the number this call was for is not the customer's any more", problem.Code)
 	}
 	if n := registryRowCount(t, h, created.Id); n != 0 {
 		t.Errorf("registry rows = %d, want 0", n)

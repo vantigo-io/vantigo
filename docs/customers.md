@@ -971,10 +971,10 @@ never moves backwards and a refresh is idempotent, so re-reading costs requests 
 nothing else. It is **not** a failed cycle: `RunCycle` returns no error and the Error
 line below is not logged.
 
-If Brreg ever issues an `oppdateringsid` past int32, the stored cursor cannot hold it:
-`next_update_id` is an `integer` column, the feed request built from it answers 400
-every cycle (the client refuses to retry a 400 — its own request was wrong), and the
-cursor never moves again. The *sweep* keeps working, so records the feed already
+If Brreg ever issues an `oppdateringsid` past int32, the stored cursor holds it
+(`next_update_id` is a `bigint`) but Brreg's own API rejects it as a parameter: the
+feed request built from it answers 400 every cycle (the client refuses to retry a 400 —
+its own request was wrong), and the cursor never moves again. The *sweep* keeps working, so records the feed already
 reported are still caught up and the backfill still runs; what stops is noticing new
 changes. There is no automatic recovery: an operator resets
 `customers.registry_feed_cursor` by hand — clearing `next_update_id` re-joins the feed
@@ -1006,8 +1006,8 @@ sweep (`registry sweep finished`: how many stale records and how many backfill
 customers it **attempted**, then refreshed / unknown / failed, and the position it
 started from). `refreshed` counts records actually stored: a number the register does
 not know is an answer that stores nothing, and it is counted as `unknown`, never as
-refreshed. The attempted counts are not the batch sizes: a cycle abandoned or shut down
-part-way reached fewer.
+refreshed. The attempted counts are not the batch sizes: an abandoned cycle reached fewer (a
+sweep cut short by a shutdown logs no summary at all).
 
 **`customers-peppol-recheck`** (`CUSTOMERS_PEPPOL_RECHECK_POLL`, default 24 hours,
 effective only with `PEPPOL_LOOKUP_ENABLED=1`) asks the Peppol network again, for up
