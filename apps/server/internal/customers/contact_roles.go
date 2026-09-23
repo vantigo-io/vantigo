@@ -336,15 +336,28 @@ func applyRoles(ctx context.Context, txq *store.Queries, customerID, contactID i
 		}
 	}
 
-	// Phase 2: the dropped roles leave, then each of them promotes.
-	keep := make([]string, 0, len(want))
-	for _, r := range want {
-		keep = append(keep, r.Role)
+	// Phase 2: the dropped roles leave, then each of them promotes. The DELETE
+	// only runs when there is something for it to delete — the attach (existing
+	// is nil) and the common update that leaves the set alone both drop nothing,
+	// and a statement that is known in advance to match no row is a round trip
+	// and a write lock taken for nothing.
+	dropsAnything := false
+	for _, r := range existing {
+		if !wanted[r.Role] {
+			dropsAnything = true
+			break
+		}
 	}
-	if err := txq.DeleteContactRolesNotIn(ctx, store.DeleteContactRolesNotInParams{
-		CustomerID: customerID, ContactID: contactID, Keep: keep,
-	}); err != nil {
-		return nil, nil, err
+	if dropsAnything {
+		keep := make([]string, 0, len(want))
+		for _, r := range want {
+			keep = append(keep, r.Role)
+		}
+		if err := txq.DeleteContactRolesNotIn(ctx, store.DeleteContactRolesNotInParams{
+			CustomerID: customerID, ContactID: contactID, Keep: keep,
+		}); err != nil {
+			return nil, nil, err
+		}
 	}
 	var promotions []rolePromotion
 	for _, r := range existing { // existing is already in contactRoleOrder

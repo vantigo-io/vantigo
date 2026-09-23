@@ -136,7 +136,7 @@ per cycle through a Postgres advisory lease and are configured per installation
 once, and more behind the one endpoint (`/stats/attention`) and the one event type
 (`registry.change`) this module already declared.
 
-### Phase 4 — Light CRM (first delivery done)
+### Phase 4 — Light CRM (two deliveries done)
 
 An owner/account manager (single user) and a "my customers" filter. Tags, then
 customer groups that can carry defaults (payment terms, later the customer-group

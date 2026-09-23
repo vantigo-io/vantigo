@@ -400,3 +400,69 @@ func TestUpdateCustomerContact_APrimaryTakenUnderTheLockIsRefusedThere(t *testin
 		t.Errorf("primary billing holder = %d, want %d", got, target.Id)
 	}
 }
+
+// TestDeleteContact_AVanishedCustomerIsNotReportedAsAMissingContact pins which
+// pgx.ErrNoRows DELETE /customers/contacts/{id} is allowed to call a 404. Its
+// transaction reads the contact, then locks the row of every customer the
+// contact is attached to, so an ErrNoRows can now come from either place — and
+// a customer that disappeared between the read that chose the rows and the lock
+// on one of them is not the contact being missing. Reporting it as one would
+// tell the caller the contact is gone while it is still there, and a 404 is
+// final: a client does not retry it.
+//
+// Forced the same way the promotion race above is, because the window is the
+// same one: the contact is attached to two customers, the delete locks them in
+// ascending customer_id order, so gating the LOWER id parks it after its first
+// read and before it ever looks at the higher one. The higher one is then
+// deleted outright — no endpoint does that, so it is a direct statement, as the
+// partial index's own test is — and the lock loop reaches a row that is no
+// longer there.
+//
+// The exchange is opted out of contract validation, because the contract
+// declares no 500 for this operation and is right not to: an unhandled failure
+// is not a documented answer, it is the absence of one.
+//
+// Against the pre-fix mapping (the outer `errors.Is(err, pgx.ErrNoRows)`
+// covering the whole transaction) this fails with "status 404": the contact
+// survives and the caller is told it does not exist.
+func TestDeleteContact_AVanishedCustomerIsNotReportedAsAMissingContact(t *testing.T) {
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	gated := createCustomer(t, c, "Gated Lower Id Vanish Co")
+	vanishing := createCustomer(t, c, "Vanishing Higher Id Co")
+	if gated.Id >= vanishing.Id {
+		t.Fatalf("customer ids %d, %d: the gated one must have the lower id, since that is the one the delete locks first", gated.Id, vanishing.Id)
+	}
+	contact := createContact(t, c, map[string]any{"firstName": "Vanish", "lastName": "Witnessen"})
+	attachWithRoles(t, c, gated.Id, map[string]any{"contactId": contact.Id, "title": "A",
+		"roles": []any{map[string]any{"role": "billing"}}})
+	attachWithRoles(t, c, vanishing.Id, map[string]any{"contactId": contact.Id, "title": "B",
+		"roles": []any{map[string]any{"role": "billing"}}})
+
+	release := gateCustomerLock(t, h, gated.Id)
+
+	deleted := make(chan *modtest.Response, 1)
+	finished := make(chan struct{})
+	go func() {
+		deleted <- c.Do(http.MethodDelete, fmt.Sprintf("/api/v1/customers/contacts/%d", contact.Id), nil,
+			modtest.SkipContract("a customer vanishing under the delete's lock loop is an infrastructure failure, deliberately off-contract"))
+		close(finished)
+	}()
+	awaitLockWaiters(t, h, 1, finished)
+
+	// The delete now holds the contact row and is queued for the gated
+	// customer's; the other customer's row is not locked by anyone, so it can go.
+	// Its association and role rows go with it (ON DELETE CASCADE), but the
+	// delete already read the list it will walk, so it still tries to lock this
+	// customer.
+	h.Exec(t, `DELETE FROM customers.customers WHERE id = $1`, vanishing.Id)
+
+	release()
+	r := <-deleted
+	if r.Status != http.StatusInternalServerError {
+		t.Fatalf("status %d body %s, want 500: a vanished customer is a failure to report, never the contact's own 404", r.Status, r.Body)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM customers.contacts WHERE id = $1`, contact.Id); n != 1 {
+		t.Errorf("contact rows = %d, want 1: the transaction rolled back, so the contact the caller was told about is still there", n)
+	}
+}

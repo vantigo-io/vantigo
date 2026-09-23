@@ -354,6 +354,9 @@ func (s *server) DeleteCustomersContactsById(ctx context.Context, req gen.Delete
 		return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			txq := store.New(tx)
 			contact, err := txq.GetContactForUpdate(ctx, req.Id)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return errContactNotFound
+			}
 			if err != nil {
 				return err
 			}
@@ -380,8 +383,15 @@ func (s *server) DeleteCustomersContactsById(ctx context.Context, req gen.Delete
 				return err
 			}
 			for _, a := range toLock {
+				// Wrapped with the customer it was taken for, and deliberately
+				// NOT mapped to a 404: this transaction's only "not found" is the
+				// contact above. A customer that vanished between the read and
+				// the lock is a pgx.ErrNoRows that must not be reported as a
+				// missing contact — the contact is right there, and answering 404
+				// would tell the caller to stop retrying a delete that never
+				// happened.
 				if _, err := txq.LockCustomer(ctx, a.CustomerID); err != nil {
-					return err
+					return fmt.Errorf("lock customer %d: %w", a.CustomerID, err)
 				}
 			}
 
@@ -431,7 +441,10 @@ func (s *server) DeleteCustomersContactsById(ctx context.Context, req gen.Delete
 			return nil
 		})
 	})
-	if errors.Is(err, pgx.ErrNoRows) {
+	// errContactNotFound and not pgx.ErrNoRows: the transaction above locks and
+	// re-reads several other rows, and only the contact lookup's absence is this
+	// operation's 404 (see the lock loop).
+	if errors.Is(err, errContactNotFound) {
 		return gen.DeleteCustomersContactsById404Response{}, nil
 	}
 	if err != nil {
@@ -450,13 +463,23 @@ func (s *server) GetCustomersContactsByIdCustomers(ctx context.Context, req gen.
 		return nil, fmt.Errorf("customers: get contact: %w", err)
 	}
 
-	rows, err := q.ListCustomerAssociationsForContact(ctx, req.Id)
-	if err != nil {
+	// The association list and the role rows are two statements answering one
+	// page, so they are read inside one read-only transaction: outside it, a
+	// role write committing between them shows the caller a page assembled from
+	// two instants — an association whose roles are the ones it held a moment
+	// ago, or role rows for an association that is no longer in the list.
+	var rows []store.ListCustomerAssociationsForContactRow
+	var roleRows []store.ContactRolesForContactRow
+	if err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
+		txq := store.New(tx)
+		var err error
+		if rows, err = txq.ListCustomerAssociationsForContact(ctx, req.Id); err != nil {
+			return err
+		}
+		roleRows, err = txq.ContactRolesForContact(ctx, req.Id)
+		return err
+	}); err != nil {
 		return nil, fmt.Errorf("customers: list contact customers: %w", err)
-	}
-	roleRows, err := q.ContactRolesForContact(ctx, req.Id)
-	if err != nil {
-		return nil, fmt.Errorf("customers: list contact roles: %w", err)
 	}
 	byCustomer := make(map[int32][]contactRole, len(rows))
 	for _, r := range roleRows {
@@ -484,13 +507,23 @@ func (s *server) GetCustomersByIdContacts(ctx context.Context, req gen.GetCustom
 		return nil, fmt.Errorf("customers: get customer: %w", err)
 	}
 
-	rows, err := q.ListContactAssociationsForCustomer(ctx, req.Id)
-	if err != nil {
+	// One read-only transaction over both statements, for the reason the
+	// contact's own customers list gives: two reads answering one page must see
+	// one instant, or a role write committing between them shows a contact its
+	// previous roles — or roles belonging to an association the list no longer
+	// carries.
+	var rows []store.ListContactAssociationsForCustomerRow
+	var roleRows []store.ContactRolesForCustomerRow
+	if err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
+		txq := store.New(tx)
+		var err error
+		if rows, err = txq.ListContactAssociationsForCustomer(ctx, req.Id); err != nil {
+			return err
+		}
+		roleRows, err = txq.ContactRolesForCustomer(ctx, req.Id)
+		return err
+	}); err != nil {
 		return nil, fmt.Errorf("customers: list customer contacts: %w", err)
-	}
-	roleRows, err := q.ContactRolesForCustomer(ctx, req.Id)
-	if err != nil {
-		return nil, fmt.Errorf("customers: list customer contact roles: %w", err)
 	}
 	// One query for the whole list, never one per row (design D3), grouped the
 	// way CustomerTagsForCustomers' answer is: the rows arrive in the fixed
@@ -523,9 +556,15 @@ func (s *server) GetCustomersByIdContacts(ctx context.Context, req gen.GetCustom
 // shapes validation, and again on the re-read under the customer row's lock,
 // where a concurrent detach that has committed in between turns what looked
 // like a write into the 404 it really is (typed contact roles design D2).
+// errContactNotFound is the same pattern for DELETE /customers/contacts/{id},
+// which needs its own: its transaction locks and re-reads the row of every
+// customer the contact is attached to, so a bare pgx.ErrNoRows escaping it is no
+// longer proof that the CONTACT is what is missing. Only the contact lookup maps
+// to this, and only this maps to the 404.
 var (
 	errAssociationTargetNotFound = errors.New("customers: customer or contact not found")
 	errAlreadyAttached           = errors.New("customers: contact already associated")
+	errContactNotFound           = errors.New("customers: contact not found")
 )
 
 // contactRoleWriteAttempts is how often an association write's transaction runs

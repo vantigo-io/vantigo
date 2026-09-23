@@ -11,7 +11,7 @@ import (
 )
 
 const contactRolesForAssociation = `-- name: ContactRolesForAssociation :many
-SELECT role, is_primary, created_at
+SELECT role, is_primary
 FROM customers.customer_contact_roles
 WHERE customer_id = $1 AND contact_id = $2
 ORDER BY
@@ -27,7 +27,6 @@ type ContactRolesForAssociationParams struct {
 type ContactRolesForAssociationRow struct {
 	Role      string
 	IsPrimary bool
-	CreatedAt time.Time
 }
 
 // ContactRolesForAssociation is the typed roles of ONE association (typed
@@ -47,7 +46,7 @@ func (q *Queries) ContactRolesForAssociation(ctx context.Context, arg ContactRol
 	var items []ContactRolesForAssociationRow
 	for rows.Next() {
 		var i ContactRolesForAssociationRow
-		if err := rows.Scan(&i.Role, &i.IsPrimary, &i.CreatedAt); err != nil {
+		if err := rows.Scan(&i.Role, &i.IsPrimary); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
