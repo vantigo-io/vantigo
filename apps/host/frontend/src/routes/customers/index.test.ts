@@ -59,7 +59,11 @@ describe("the customers list route's search params", () => {
     const tagId = "0191d4f8-6f1a-7c3a-9b2e-6d5f4c3b2a10";
     expect(validate({ ownerId: "me" })).toMatchObject({ ownerId: "me", tagId: undefined });
     expect(validate({ ownerId: "none" })).toMatchObject({ ownerId: "none" });
-    expect(validate({ ownerId: tagId })).toMatchObject({ ownerId: tagId });
+    // A user id is not one of them. The list's Owner filter is a two-entry
+    // Select ('Mine' and 'Unassigned'), so a uuid in the URL would reach the
+    // API as a filter the Select cannot show — it would sit there blank while
+    // the rows were narrowed by something invisible.
+    expect(validate({ ownerId: tagId })).toMatchObject({ ownerId: undefined });
     // Neither is a filter the API accepts, so the URL never carries it: 'Me' is
     // case-sensitive there, and a bare word is neither a uuid nor a literal.
     expect(validate({ ownerId: "Me", tagId: "notauuid" })).toMatchObject({ ownerId: undefined, tagId: undefined });

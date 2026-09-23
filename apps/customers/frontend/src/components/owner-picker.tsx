@@ -60,7 +60,11 @@ export const OwnerPicker = ({
       data={[...options].map(([userId, displayName]) => ({ value: userId, label: displayName }))}
       value={value}
       onChange={onChange}
-      clearButtonProps={{ "aria-label": t("clearOwner"), "aria-hidden": false }}
+      // Mantine's clear button keeps its default `aria-hidden`: it is not a
+      // control a screen-reader user needs, since clearing the Select from the
+      // keyboard is what the empty option is for. The label is still there, so
+      // a pointer test can find it.
+      clearButtonProps={{ "aria-label": t("clearOwner") }}
     />
   );
 };

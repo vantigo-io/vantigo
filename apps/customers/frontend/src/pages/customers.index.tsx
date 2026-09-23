@@ -45,6 +45,7 @@ import {
   customersQueryOptions,
 } from "../api/customers";
 import { customerTagsQueryOptions } from "../api/tags";
+import { TagBadge } from "../components/tag-badge";
 import "../i18n";
 import { CustomerFormModal, type CustomerModalState } from "./-customer-form-modal";
 import { ManageTagsModal } from "./-manage-tags-modal";
@@ -108,7 +109,7 @@ const SortableHeader = ({ column, label, sortBy, sortDirection, onSort }: Sortab
   );
 };
 
-export const CustomersPage = ({ canEdit }: { canEdit?: boolean } = {}) => {
+export const CustomersPage = ({ canEdit }: { canEdit?: boolean }) => {
   const { t, formatters } = useI18n("customers");
   const { page, search, status, type, ownerId, tagId, sortBy, sortDirection, create } = useSearch({
     strict: false,
@@ -187,7 +188,16 @@ export const CustomersPage = ({ canEdit }: { canEdit?: boolean } = {}) => {
       />
 
       <CustomerFormModal state={modalState} onClose={closeModal} />
-      <ManageTagsModal opened={manageTagsOpened} onClose={() => setManageTagsOpened(false)} />
+      <ManageTagsModal
+        opened={manageTagsOpened}
+        onClose={() => setManageTagsOpened(false)}
+        // A tag the list is filtered by can be deleted from inside that very
+        // modal: the URL has to let go of it, or the next fetch narrows the
+        // list by an id nothing carries while the Tag filter sits blank.
+        onTagDeleted={(deleted) => {
+          if (deleted === tagId) filterBy({ tagId: undefined });
+        }}
+      />
 
       {stats && (
         <SimpleGrid cols={{ base: 2, sm: 3, lg: showIdentity ? 7 : 3 }} spacing="sm">
@@ -254,13 +264,6 @@ export const CustomersPage = ({ canEdit }: { canEdit?: boolean } = {}) => {
                 label={t("tag")}
                 w={160}
                 allowDeselect={false}
-                // Tag names are arbitrary text and can match a chip already on
-                // the page (e.g. "VIP"); Mantine keeps a closed dropdown's
-                // options mounted (`display: none`) by default, which would
-                // leave two "VIP"s in the DOM for `getByText` to trip over.
-                // Unmounting on close is the one difference from the other
-                // filters here.
-                comboboxProps={{ keepMounted: false }}
                 data={[
                   { value: ALL_TAGS, label: t("all") },
                   ...(tags ?? []).map((tag) => ({ value: tag.id, label: tag.name })),
@@ -339,9 +342,7 @@ export const CustomersPage = ({ canEdit }: { canEdit?: boolean } = {}) => {
                           <Group gap="xs" wrap="wrap">
                             <Text component="span">{customer.name}</Text>
                             {customer.tags.map((tag) => (
-                              <Badge key={tag.id} variant="light" color={tag.color ?? "gray"} size="sm">
-                                {tag.name}
-                              </Badge>
+                              <TagBadge key={tag.id} tag={tag} />
                             ))}
                           </Group>
                         </Table.Td>

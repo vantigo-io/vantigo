@@ -193,19 +193,22 @@ type RawCustomerResponse = Omit<CustomerResponse, "contactInfo" | "owner" | "tag
   tags?: { id: string; name: string; color?: string | null }[];
 };
 
-export const normalizeCustomer = (raw: RawCustomerResponse): CustomerResponse =>
-  raw.contactInfo
-    ? {
-        ...raw,
-        contactInfo: {
-          email: raw.contactInfo.email ?? null,
-          phone: raw.contactInfo.phone ?? null,
-          website: raw.contactInfo.website ?? null,
-        },
-        owner: raw.owner ?? null,
-        tags: (raw.tags ?? []).map(normalizeTag),
-      }
-    : ({ ...raw, owner: raw.owner ?? null, tags: (raw.tags ?? []).map(normalizeTag) } as CustomerResponse);
+export const normalizeCustomer = ({ contactInfo, owner, tags, ...rest }: RawCustomerResponse): CustomerResponse => {
+  // The three normalised fields are destructured out, so what is left is
+  // already the rest of a `CustomerResponse` and the two arms below need no
+  // cast to say so — `contactInfo` is optional on the result, which is exactly
+  // what "absent on responses that predate design D2" means.
+  const normalized: CustomerResponse = { ...rest, owner: owner ?? null, tags: (tags ?? []).map(normalizeTag) };
+  if (!contactInfo) return normalized;
+  return {
+    ...normalized,
+    contactInfo: {
+      email: contactInfo.email ?? null,
+      phone: contactInfo.phone ?? null,
+      website: contactInfo.website ?? null,
+    },
+  };
+};
 
 /** The requested resource does not exist (HTTP 404). */
 async function fetchCustomer(id: number, signal?: AbortSignal): Promise<CustomerResponse> {
@@ -226,8 +229,9 @@ export const customerQueryOptions = (id: number) =>
 /**
  * The customer row's revision (design D5) lives in two cache entries: the
  * customer itself and its billing profile, whose revision *is* the row's
- * (design D4). Four editors — the form modal, the type change, contact info
- * and the billing profile — plus Restore all send it, so a write that gets a
+ * (design D4). Five editors — the form modal, the type change, contact info,
+ * the billing profile and the owner PUT (owner and tags design D1, the owner
+ * being a column on the row) — plus Restore all send it, so a write that gets a
  * fresh revision back writes it to both entries straight away, before its
  * own invalidations: those cost a round trip, and an editor opened inside
  * that window would otherwise seed itself from the revision the server has

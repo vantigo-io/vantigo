@@ -13,14 +13,15 @@ const CUSTOMER_STATUSES: readonly CustomerStatusFilter[] = ["active", "disabled"
 const CUSTOMER_TYPES: readonly CustomerType[] = ["business", "person"];
 const SORT_FIELDS = ["id", "name", "customerNumber", "createdAt", "updatedAt"] as const;
 const SORT_DIRECTIONS = ["asc", "desc"] as const;
+/**
+ * The Owner filter is the two literals and nothing else (owner and tags design
+ * D3). The API would also accept a user id, but the list's Select offers only
+ * 'Mine' and 'Unassigned' — a uuid in the URL narrowed the rows while leaving
+ * that Select blank, so the page said it was filtering by nothing.
+ */
 const OWNER_FILTERS = ["me", "none"] as const;
 /** A tag id is a uuid; anything else is no filter rather than a 400 from the API. */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const ownerFilterOf = (value: unknown): string | undefined => {
-  if (typeof value !== "string") return undefined;
-  if ((OWNER_FILTERS as readonly string[]).includes(value)) return value;
-  return UUID.test(value) ? value : undefined;
-};
 const tagFilterOf = (value: unknown): string | undefined =>
   typeof value === "string" && UUID.test(value) ? value : undefined;
 
@@ -39,7 +40,7 @@ export const Route = createFileRoute("/customers/")({
     search: typeof search.search === "string" ? search.search : "",
     status: oneOf(CUSTOMER_STATUSES, search.status),
     type: oneOf(CUSTOMER_TYPES, search.type),
-    ownerId: ownerFilterOf(search.ownerId),
+    ownerId: oneOf(OWNER_FILTERS, search.ownerId),
     tagId: tagFilterOf(search.tagId),
     sortBy: oneOf(SORT_FIELDS, search.sortBy),
     sortDirection: oneOf(SORT_DIRECTIONS, search.sortDirection),
