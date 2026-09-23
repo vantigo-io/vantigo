@@ -164,28 +164,16 @@ func TestPutCustomersByIdGroup_AGroupDeletedMidWriteIsAFieldError(t *testing.T) 
 	}
 }
 
-// TestPutCustomersByIdGroup_AMoveBetweenTheTwoReadsIsAConflict pins the
-// revision comparison between GetCustomer and CustomerGroupMembership. The
-// window between those two unlocked reads needs no seam to hold open. Only
-// the second read touches customers.customer_groups (its LEFT JOIN), so a
+// moveBetweenTheTwoReads holds open the window between PutCustomersByIdGroup's
+// two unlocked reads, GetCustomer and CustomerGroupMembership, with no seam.
+// Only the second read touches customers.customer_groups (its LEFT JOIN), so a
 // gate holding ACCESS EXCLUSIVE on that table lets GetCustomer through and
 // queues the membership read. While the read is queued, the gate moves the
-// customer into the very group the request names and commits. The membership
-// read then sees revision 3 and Key accounts, while GetCustomer saw revision
-// 2 and Retail. Without the comparison the no-op check would answer 200 with
-// revision 2 beside Key accounts. The test asserts a 409 instead.
-//
-// Also not parallel: awaitLockWaiters counts across the database.
-func TestPutCustomersByIdGroup_AMoveBetweenTheTwoReadsIsAConflict(t *testing.T) {
-	h := newHarness(t)
-	c := authenticatedClient(t, h)
-	retail := createGroup(t, c, map[string]any{"name": "Retail"})
-	key := createGroup(t, c, map[string]any{"name": "Key accounts"})
-	customer := createCustomer(t, c, "Between Reads Co")
-	if r := putCustomerGroup(t, c, customer.Id, map[string]any{"groupId": retail.Id, "revision": 1}); r.Status != http.StatusOK {
-		t.Fatalf("set the starting group: status %d body %s", r.Status, r.Body)
-	}
-
+// customer into moveTo with a raw UPDATE, which bumps the revision and records
+// no event, and commits. The request's first pair of reads then disagrees by
+// exactly one revision. It returns the request's response.
+func moveBetweenTheTwoReads(t *testing.T, h *modtest.Harness, c *modtest.Client, customerID int32, body map[string]any, moveTo string) *modtest.Response {
+	t.Helper()
 	ctx := context.Background()
 	gate, err := h.Pool().Begin(ctx)
 	if err != nil {
@@ -199,29 +187,93 @@ func TestPutCustomersByIdGroup_AMoveBetweenTheTwoReadsIsAConflict(t *testing.T) 
 	done := make(chan *modtest.Response, 1)
 	finished := make(chan struct{})
 	go func() {
-		done <- putCustomerGroup(t, c, customer.Id, map[string]any{"groupId": key.Id, "revision": 2})
+		done <- putCustomerGroup(t, c, customerID, body)
 		close(finished)
 	}()
 	awaitLockWaiters(t, h, 1, finished)
-	// The concurrent writer: the same move the request asks for, landing
-	// between the request's two reads.
-	if _, err := gate.Exec(ctx, `UPDATE customers.customers SET group_id = $1, revision = revision + 1 WHERE id = $2`, key.Id, customer.Id); err != nil {
+	if _, err := gate.Exec(ctx, `UPDATE customers.customers SET group_id = $1, revision = revision + 1 WHERE id = $2`, moveTo, customerID); err != nil {
 		t.Fatalf("gate: move the customer: %v", err)
 	}
 	if err := gate.Commit(ctx); err != nil {
 		t.Fatalf("gate: release: %v", err)
 	}
-	r := <-done
+	return <-done
+}
 
-	if r.Status != http.StatusConflict {
-		t.Fatalf("status %d body %s, want 409: the two reads saw different revisions", r.Status, r.Body)
-	}
-	var problem conflictProblemJSON
-	r.JSON(&problem)
-	if problemTitle(problem.Title) != "Customer revision conflict" || problem.Code != nil {
-		t.Errorf("conflict = title %q code %v, want the revision conflict with no code", problemTitle(problem.Title), problem.Code)
-	}
-	if n := countTimelineEvents(t, h, customer.Id, "customer.group_changed"); n != 1 {
-		t.Errorf("customer.group_changed events = %d, want 1: the request wrote nothing", n)
-	}
+// TestPutCustomersByIdGroup_AMoveBetweenTheTwoReads pins what
+// PutCustomersByIdGroup does when its two reads see different revisions, in
+// both of the cases the handler tells apart.
+//
+// With a revision, the row has moved past the caller's revision: the revision
+// conflict. The gate moves the customer into the very group the request names,
+// because that is the case a missing cross-check gets wrong. The no-op check
+// would answer 200 with revision 2 beside Key accounts, a group revision 2
+// never had.
+//
+// Without a revision, the caller asked for the change unconditionally, so the
+// handler reads again and proceeds with the consistent pair. The gate moves the
+// customer into a THIRD group so the request still has a real change to make.
+// The event's before must then name the group the retry read, not the one the
+// first read saw.
+//
+// Not parallel, and the subtests are not either: awaitLockWaiters counts
+// across the database.
+func TestPutCustomersByIdGroup_AMoveBetweenTheTwoReads(t *testing.T) {
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	retail := createGroup(t, c, map[string]any{"name": "Retail"})
+	key := createGroup(t, c, map[string]any{"name": "Key accounts"})
+	other := createGroup(t, c, map[string]any{"name": "Wholesale"})
+
+	t.Run("with a revision it is the revision conflict", func(t *testing.T) {
+		customer := createCustomer(t, c, "Between Reads Co")
+		if r := putCustomerGroup(t, c, customer.Id, map[string]any{"groupId": retail.Id, "revision": 1}); r.Status != http.StatusOK {
+			t.Fatalf("set the starting group: status %d body %s", r.Status, r.Body)
+		}
+
+		r := moveBetweenTheTwoReads(t, h, c, customer.Id, map[string]any{"groupId": key.Id, "revision": 2}, key.Id)
+
+		if r.Status != http.StatusConflict {
+			t.Fatalf("status %d body %s, want 409: the two reads saw different revisions", r.Status, r.Body)
+		}
+		var problem conflictProblemJSON
+		r.JSON(&problem)
+		if problemTitle(problem.Title) != "Customer revision conflict" || problem.Code != nil {
+			t.Errorf("conflict = title %q code %v, want the revision conflict with no code", problemTitle(problem.Title), problem.Code)
+		}
+		if n := countTimelineEvents(t, h, customer.Id, "customer.group_changed"); n != 1 {
+			t.Errorf("customer.group_changed events = %d, want 1: the request wrote nothing", n)
+		}
+	})
+
+	t.Run("without a revision it reads again and applies", func(t *testing.T) {
+		customer := createCustomer(t, c, "Between Reads Unconditional Co")
+		if r := putCustomerGroup(t, c, customer.Id, map[string]any{"groupId": retail.Id}); r.Status != http.StatusOK {
+			t.Fatalf("set the starting group: status %d body %s", r.Status, r.Body)
+		}
+
+		// Revision 2 in Retail, then the gate's move makes it revision 3 in
+		// Wholesale, and the request's own write makes it revision 4 in Key
+		// accounts.
+		r := moveBetweenTheTwoReads(t, h, c, customer.Id, map[string]any{"groupId": key.Id}, other.Id)
+
+		if r.Status != http.StatusOK {
+			t.Fatalf("status %d body %s, want 200: an omitted revision applies unconditionally", r.Status, r.Body)
+		}
+		var answered customerJSON
+		r.JSON(&answered)
+		if answered.Group == nil || answered.Group.Id != key.Id || answered.Revision != 4 {
+			t.Errorf("answered group %+v revision %d, want Key accounts at revision 4", answered.Group, answered.Revision)
+		}
+		if rev := h.Count(t, `SELECT revision FROM customers.customers WHERE id = $1 AND group_id = $2`, customer.Id, key.Id); rev != 4 {
+			t.Errorf("stored revision in Key accounts = %d, want 4", rev)
+		}
+		if n := countTimelineEvents(t, h, customer.Id, "customer.group_changed"); n != 2 {
+			t.Errorf("customer.group_changed events = %d, want 2: the starting move and this request's", n)
+		}
+		moved := fetchTimelineEvent(t, h, customer.Id, "customer.group_changed")
+		if moved.Summary != "Moved from Wholesale to Key accounts" {
+			t.Errorf("summary = %q, want %q: before is the group the consistent read saw", moved.Summary, "Moved from Wholesale to Key accounts")
+		}
+	})
 }
