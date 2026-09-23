@@ -105,6 +105,10 @@ type parsedManualTimeline struct {
 	OccurredAt *time.Time
 	Note       string
 	SourceURL  *string
+	// FollowUp is what happens next (follow-ups design D1), nil when the
+	// request carried none — which on a PUT means "clear it", because this
+	// request is a full replace.
+	FollowUp *parsedFollowUp
 }
 
 // validateManualTimelineRequest is TryParseManual (TimelineEndpoints.cs:366-430,
@@ -168,10 +172,12 @@ func validateManualTimelineRequest(body gen.TimelineManualTimelineRequest, now t
 		}
 	}
 
+	followUp := validateFollowUp(body.FollowUp, errs)
+
 	if len(errs) > 0 {
 		return parsedManualTimeline{}, errs
 	}
-	return parsedManualTimeline{EventType: eventType, OccurredOn: occurredOn, OccurredAt: occurredAt, Note: note, SourceURL: sourceURL}, nil
+	return parsedManualTimeline{EventType: eventType, OccurredOn: occurredOn, OccurredAt: occurredAt, Note: note, SourceURL: sourceURL, FollowUp: followUp}, nil
 }
 
 // timelineFilters is TimelineFilters (TimelineEndpoints.cs:560-578): the
@@ -417,8 +423,12 @@ func payloadElement(raw []byte) *apicommon.JsonElement {
 	return &v
 }
 
-// timelineResponse is TimelineResponse.FromDomain (TimelineEndpoints.cs:612-632).
-func timelineResponse(e store.CustomersCustomersTimelineEntry) gen.TimelineResponse {
+// timelineResponse is TimelineResponse.FromDomain (TimelineEndpoints.cs:612-632),
+// plus the entry's follow-up (follow-ups design D1). dec is the assignee names
+// this response's caller already resolved — in one directory call for a whole
+// page, never one per entry — so this function makes no call of its own and can
+// be used inside a loop.
+func timelineResponse(e store.CustomersCustomersTimelineEntry, dec followUpDecoration) gen.TimelineResponse {
 	return gen.TimelineResponse{
 		Id:              e.ID,
 		EventType:       e.EventType,
@@ -436,6 +446,7 @@ func timelineResponse(e store.CustomersCustomersTimelineEntry) gen.TimelineRespo
 		ActorDisplay:    apicommon.Ptr(e.ActorDisplay),
 		CreatedAt:       e.CreatedAt,
 		UpdatedAt:       e.UpdatedAt,
+		FollowUp:        followUpResponse(e.FollowUpOn, e.FollowUpAssigneeUserID, e.FollowUpDoneAt, dec),
 	}
 }
 
@@ -443,7 +454,13 @@ func timelineResponse(e store.CustomersCustomersTimelineEntry) gen.TimelineRespo
 // (TimelineEndpoints.cs:655-677): Action is derived purely from
 // State==Deleted / RevisionNumber==1 / else "update" — it is never stored,
 // only computed at response time (inventory oddity #6).
-func timelineRevisionResponse(r store.CustomersCustomersTimelineEntriesRevision) gen.TimelineRevisionResponse {
+//
+// The follow-up is the one it carried AT THIS REVISION (design D1): history
+// stays point-in-time, so a revision taken before somebody moved the date still
+// says what it said. The assignee's NAME is resolved now, though, not
+// snapshotted — the same thing the entry's own response does, and the reason
+// actorDisplay above IS snapshotted is that it is the only record of who acted.
+func timelineRevisionResponse(r store.CustomersCustomersTimelineEntriesRevision, dec followUpDecoration) gen.TimelineRevisionResponse {
 	action := "update"
 	switch {
 	case r.State == "deleted":
@@ -472,6 +489,7 @@ func timelineRevisionResponse(r store.CustomersCustomersTimelineEntriesRevision)
 		ActorKind:        r.ActorKind,
 		ActorDisplayName: actorDisplayName,
 		DeletedAt:        r.DeletedAt,
+		FollowUp:         followUpResponse(r.FollowUpOn, r.FollowUpAssigneeUserID, r.FollowUpDoneAt, dec),
 	}
 }
 
@@ -521,6 +539,12 @@ func insertTimelineRevisionFromEntry(ctx context.Context, q *store.Queries, e st
 		CreatedAt:       e.CreatedAt,
 		UpdatedAt:       e.UpdatedAt,
 		DeletedAt:       e.DeletedAt,
+		// The follow-up as it stood at this revision (follow-ups design D1):
+		// the snapshot is the whole point of the revision row, so it carries
+		// the follow-up the way it carries the note.
+		FollowUpOn:             e.FollowUpOn,
+		FollowUpAssigneeUserID: e.FollowUpAssigneeUserID,
+		FollowUpDoneAt:         e.FollowUpDoneAt,
 	})
 }
 
@@ -618,9 +642,13 @@ func (s *server) GetCustomersByIdTimeline(ctx context.Context, req gen.GetCustom
 		nextCursor = &c
 	}
 
+	dec, err := s.decorateFollowUpAssignees(ctx, entryAssigneeIDs(rows...))
+	if err != nil {
+		return nil, err
+	}
 	data := make([]gen.TimelineResponse, 0, len(rows))
 	for _, r := range rows {
-		data = append(data, timelineResponse(r))
+		data = append(data, timelineResponse(r, dec))
 	}
 	return gen.GetCustomersByIdTimeline200JSONResponse{Data: data, NextCursor: nextCursor}, nil
 }
@@ -660,6 +688,16 @@ func (s *server) PostCustomersByIdTimeline(ctx context.Context, req gen.PostCust
 		return gen.PostCustomersByIdTimeline400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid timeline entry", errs)), nil
 	}
 
+	// The assignee is checked against the directory here — before any database
+	// access, let alone a transaction (actor.go's rule, and the same place
+	// PutCustomersByIdOwner checks its own candidate).
+	if fieldErrs, err := s.resolveFollowUpAssignee(ctx, parsed.FollowUp); err != nil {
+		return nil, err
+	} else if fieldErrs != nil {
+		return gen.PostCustomersByIdTimeline400ApplicationProblemPlusJSONResponse(
+			apicommon.ValidationProblem("Invalid timeline entry", fieldErrs)), nil
+	}
+
 	// Resolved before any database access, let alone a transaction: the
 	// directory lookup actorFor can make is an out-of-process call
 	// (customers foundation design D1, actor.go).
@@ -687,13 +725,21 @@ func (s *server) PostCustomersByIdTimeline(ctx context.Context, req gen.PostCust
 		ActorDisplay: act.Display,
 		ActorUserID:  act.UserID,
 		Now:          now,
+
+		FollowUpOn:             followUpDateParam(parsed.FollowUp),
+		FollowUpAssigneeUserID: followUpAssigneeParam(parsed.FollowUp),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("customers: create timeline entry: %w", err)
 	}
 
+	entry := fromInsertManualRow(created)
+	dec, err := s.decorateFollowUpAssignees(ctx, entryAssigneeIDs(entry))
+	if err != nil {
+		return nil, err
+	}
 	return createdTimelineResponse{
-		body:     timelineResponse(fromInsertManualRow(created)),
+		body:     timelineResponse(entry, dec),
 		location: fmt.Sprintf("%s/api/v1/customers/%d/timeline/%d", s.deps.Config.BasePath, req.Id, created.ID),
 	}, nil
 }
@@ -713,7 +759,11 @@ func (s *server) GetCustomersByIdTimelineByEntryId(ctx context.Context, req gen.
 	if err != nil {
 		return nil, fmt.Errorf("customers: get timeline entry: %w", err)
 	}
-	return gen.GetCustomersByIdTimelineByEntryId200JSONResponse(timelineResponse(entry)), nil
+	dec, err := s.decorateFollowUpAssignees(ctx, entryAssigneeIDs(entry))
+	if err != nil {
+		return nil, err
+	}
+	return gen.GetCustomersByIdTimelineByEntryId200JSONResponse(timelineResponse(entry, dec)), nil
 }
 
 // PutCustomersByIdTimelineByEntryId Update a manual customer timeline entry
@@ -771,6 +821,16 @@ func (s *server) PutCustomersByIdTimelineByEntryId(ctx context.Context, req gen.
 			fmt.Sprintf("The timeline entry has revision %d; the supplied expectedRevision was %d.", entry.CurrentRevision, expectedRevision))), nil
 	}
 
+	// The assignee is checked only once the entry itself has been accepted:
+	// a request aimed at an immutable entry or a stale revision must hear
+	// THAT, not a field error about a user it was never going to write.
+	if fieldErrs, err := s.resolveFollowUpAssignee(ctx, parsed.FollowUp); err != nil {
+		return nil, err
+	} else if fieldErrs != nil {
+		return gen.PutCustomersByIdTimelineByEntryId400ApplicationProblemPlusJSONResponse(
+			apicommon.ValidationProblem("Invalid timeline entry", fieldErrs)), nil
+	}
+
 	// Resolved before the transaction opens (see PostCustomersByIdTimeline):
 	// this is the actor of *this* revision, who may not be the entry's
 	// original author (customers foundation design D1) — the entry row
@@ -798,6 +858,9 @@ func (s *server) PutCustomersByIdTimelineByEntryId(ctx context.Context, req gen.
 			NewRevision:      newRevision,
 			Now:              now,
 			ExpectedRevision: expectedRevision,
+
+			FollowUpOn:             followUpDateParam(parsed.FollowUp),
+			FollowUpAssigneeUserID: followUpAssigneeParam(parsed.FollowUp),
 		})
 		if err != nil {
 			return err
@@ -815,7 +878,11 @@ func (s *server) PutCustomersByIdTimelineByEntryId(ctx context.Context, req gen.
 		return nil, fmt.Errorf("customers: update timeline entry: %w", err)
 	}
 
-	return gen.PutCustomersByIdTimelineByEntryId200JSONResponse(timelineResponse(updated)), nil
+	dec, err := s.decorateFollowUpAssignees(ctx, entryAssigneeIDs(updated))
+	if err != nil {
+		return nil, err
+	}
+	return gen.PutCustomersByIdTimelineByEntryId200JSONResponse(timelineResponse(updated, dec)), nil
 }
 
 // DeleteCustomersByIdTimelineByEntryId Delete a manual customer timeline entry
@@ -907,9 +974,13 @@ func (s *server) GetCustomersByIdTimelineByEntryIdRevisions(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("customers: list timeline revisions: %w", err)
 	}
+	dec, err := s.decorateFollowUpAssignees(ctx, revisionAssigneeIDs(rows))
+	if err != nil {
+		return nil, err
+	}
 	data := make([]gen.TimelineRevisionResponse, 0, len(rows))
 	for _, r := range rows {
-		data = append(data, timelineRevisionResponse(r))
+		data = append(data, timelineRevisionResponse(r, dec))
 	}
 	return gen.GetCustomersByIdTimelineByEntryIdRevisions200JSONResponse{Data: data}, nil
 }
