@@ -136,7 +136,7 @@ per cycle through a Postgres advisory lease and are configured per installation
 once, and more behind the one endpoint (`/stats/attention`) and the one event type
 (`registry.change`) this module already declared.
 
-### Phase 4 — Light CRM
+### Phase 4 — Light CRM (first delivery done)
 
 An owner/account manager (single user) and a "my customers" filter. Tags, then
 customer groups that can carry defaults (payment terms, later the customer-group
@@ -147,6 +147,25 @@ Salesforce's contact-role models do. Follow-ups: a timeline entry that can carry
 follow-up date and assignee, feeding `/stats/attention` and a "my follow-ups" view —
 no task engine beyond that. Attachments on a customer and its timeline entries
 (contracts, NDAs), once the storage module has a model for it.
+
+**Delivery A (done)** — decided in
+[`docs/superpowers/specs/2026-09-23-customers-owner-tags-design.md`](docs/superpowers/specs/2026-09-23-customers-owner-tags-design.md):
+one owner per customer (`owner_user_id`, a single user of this installation, named
+through `contracts.UserDirectory` and never stored as a foreign key — a disabled or
+removed account keeps the customer), filterable on the list as `me` (resolved from
+the session) or `none` (unassigned); a tag vocabulary whose name is unique
+case-insensitively, so `VIP` and `vip` are the same word, with a customer's tags
+replaced as a set rather than linked one at a time. Both ride on the existing
+`customers:view`/`customers:update` split — no new permission key. Two generated
+timeline events, `customer.owner_changed` and `customer.tags_changed`, each
+recorded only when the value actually changed. See
+[`docs/customers.md#owner-and-tags`](docs/customers.md#owner-and-tags).
+
+**Still ahead in this phase:** typed contact roles with a primary contact,
+replacing today's free-text `role`; follow-ups (a timeline entry's own date and
+assignee, feeding `/stats/attention` and a "my follow-ups" view); customer groups
+that can carry defaults; attachments on a customer and its timeline entries, once
+the storage module has a model for it.
 
 *Unblocks:* answering "who owns this relationship and what happens next" without
 building a deals pipeline.
