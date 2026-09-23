@@ -179,6 +179,15 @@ describe("CustomerRegistryCard", () => {
     expect(screen.queryByText(/^The registry reported a change on /)).not.toBeInTheDocument();
   });
 
+  it("says nothing when the register's report is exactly as new as the record, not strictly newer", async () => {
+    // The boundary the ">" in isBehindTheRegistry actually guards: a hint
+    // equal to fetchedAt means the fetch that produced this record already
+    // reflects that report, not that a later one is still pending.
+    renderCard(registryFetch({ ...fullRecordBody, registryUpdatedHint: fullRecordBody.fetchedAt }));
+    expect(await screen.findByText(/^From Brønnøysundregistrene, fetched /)).toBeInTheDocument();
+    expect(screen.queryByText(/^The registry reported a change on /)).not.toBeInTheDocument();
+  });
+
   it("says nothing when the register has reported nothing", async () => {
     renderCard(registryFetch(fullRecordBody));
     expect(await screen.findByText(/^From Brønnøysundregistrene, fetched /)).toBeInTheDocument();
