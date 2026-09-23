@@ -136,7 +136,7 @@ func (q *Queries) DeleteContact(ctx context.Context, id int32) error {
 }
 
 const getAssociationWithContact = `-- name: GetAssociationWithContact :one
-SELECT cc.role, cc.phone AS association_phone, cc.email AS association_email,
+SELECT cc.title, cc.phone AS association_phone, cc.email AS association_email,
        c.id, c.first_name, c.last_name, c.middle_name, c.prefix, c.suffix,
        c.phone AS contact_phone, c.email AS contact_email, c.created_at
 FROM customers.customers_contacts cc
@@ -150,7 +150,7 @@ type GetAssociationWithContactParams struct {
 }
 
 type GetAssociationWithContactRow struct {
-	Role             string
+	Title            *string
 	AssociationPhone *string
 	AssociationEmail *string
 	ID               int32
@@ -172,7 +172,7 @@ func (q *Queries) GetAssociationWithContact(ctx context.Context, arg GetAssociat
 	row := q.db.QueryRow(ctx, getAssociationWithContact, arg.CustomerID, arg.ContactID)
 	var i GetAssociationWithContactRow
 	err := row.Scan(
-		&i.Role,
+		&i.Title,
 		&i.AssociationPhone,
 		&i.AssociationEmail,
 		&i.ID,
@@ -242,14 +242,14 @@ func (q *Queries) GetContactForUpdate(ctx context.Context, id int32) (CustomersC
 }
 
 const insertAssociation = `-- name: InsertAssociation :exec
-INSERT INTO customers.customers_contacts (customer_id, contact_id, role, phone, email)
+INSERT INTO customers.customers_contacts (customer_id, contact_id, title, phone, email)
 VALUES ($1, $2, $3, $4, $5)
 `
 
 type InsertAssociationParams struct {
 	CustomerID int32
 	ContactID  int32
-	Role       string
+	Title      *string
 	Phone      *string
 	Email      *string
 }
@@ -260,7 +260,7 @@ func (q *Queries) InsertAssociation(ctx context.Context, arg InsertAssociationPa
 	_, err := q.db.Exec(ctx, insertAssociation,
 		arg.CustomerID,
 		arg.ContactID,
-		arg.Role,
+		arg.Title,
 		arg.Phone,
 		arg.Email,
 	)
@@ -314,14 +314,15 @@ func (q *Queries) InsertContact(ctx context.Context, arg InsertContactParams) (C
 }
 
 const listAssociationsForContact = `-- name: ListAssociationsForContact :many
-SELECT customer_id, role, phone, email
+SELECT customer_id, title, phone, email
 FROM customers.customers_contacts
 WHERE contact_id = $1
+ORDER BY customer_id
 `
 
 type ListAssociationsForContactRow struct {
 	CustomerID int32
-	Role       string
+	Title      *string
 	Phone      *string
 	Email      *string
 }
@@ -330,6 +331,13 @@ type ListAssociationsForContactRow struct {
 // (:29-32): every customer this contact is attached to, for the "removed"
 // timeline event DeleteContact records against each one before the contact
 // row (and its associations, via ON DELETE CASCADE) are deleted.
+//
+// Ordered by customer_id, and that is not cosmetic: DeleteContact now takes
+// each of those customers' row locks so it can promote a new primary for
+// every role this contact was primary for (typed contact roles design D2),
+// and it takes them in this list's order. Locks acquired in a deterministic
+// order across all callers is what keeps two concurrent deletes of two
+// contacts that share two customers from deadlocking with each other.
 func (q *Queries) ListAssociationsForContact(ctx context.Context, contactID int32) ([]ListAssociationsForContactRow, error) {
 	rows, err := q.db.Query(ctx, listAssociationsForContact, contactID)
 	if err != nil {
@@ -341,7 +349,7 @@ func (q *Queries) ListAssociationsForContact(ctx context.Context, contactID int3
 		var i ListAssociationsForContactRow
 		if err := rows.Scan(
 			&i.CustomerID,
-			&i.Role,
+			&i.Title,
 			&i.Phone,
 			&i.Email,
 		); err != nil {
@@ -358,7 +366,7 @@ func (q *Queries) ListAssociationsForContact(ctx context.Context, contactID int3
 const listContactAssociationsForCustomer = `-- name: ListContactAssociationsForCustomer :many
 SELECT c.id, c.first_name, c.last_name, c.middle_name, c.prefix, c.suffix,
        c.phone AS contact_phone, c.email AS contact_email,
-       cc.role, cc.phone AS association_phone, cc.email AS association_email
+       cc.title, cc.phone AS association_phone, cc.email AS association_email
 FROM customers.customers_contacts cc
 JOIN customers.contacts c ON c.id = cc.contact_id
 WHERE cc.customer_id = $1
@@ -374,7 +382,7 @@ type ListContactAssociationsForCustomerRow struct {
 	Suffix           *string
 	ContactPhone     *string
 	ContactEmail     *string
-	Role             string
+	Title            *string
 	AssociationPhone *string
 	AssociationEmail *string
 }
@@ -399,7 +407,7 @@ func (q *Queries) ListContactAssociationsForCustomer(ctx context.Context, custom
 			&i.Suffix,
 			&i.ContactPhone,
 			&i.ContactEmail,
-			&i.Role,
+			&i.Title,
 			&i.AssociationPhone,
 			&i.AssociationEmail,
 		); err != nil {
@@ -548,7 +556,7 @@ func (q *Queries) ListContactsByName(ctx context.Context, arg ListContactsByName
 }
 
 const listCustomerAssociationsForContact = `-- name: ListCustomerAssociationsForContact :many
-SELECT cu.id, cu.customer_number, cu.name, cc.role, cc.phone, cc.email
+SELECT cu.id, cu.customer_number, cu.name, cc.title, cc.phone, cc.email
 FROM customers.customers_contacts cc
 JOIN customers.customers cu ON cu.id = cc.customer_id
 WHERE cc.contact_id = $1
@@ -559,7 +567,7 @@ type ListCustomerAssociationsForContactRow struct {
 	ID             int32
 	CustomerNumber int64
 	Name           string
-	Role           string
+	Title          *string
 	Phone          *string
 	Email          *string
 }
@@ -579,7 +587,7 @@ func (q *Queries) ListCustomerAssociationsForContact(ctx context.Context, contac
 			&i.ID,
 			&i.CustomerNumber,
 			&i.Name,
-			&i.Role,
+			&i.Title,
 			&i.Phone,
 			&i.Email,
 		); err != nil {
@@ -595,12 +603,12 @@ func (q *Queries) ListCustomerAssociationsForContact(ctx context.Context, contac
 
 const updateAssociation = `-- name: UpdateAssociation :exec
 UPDATE customers.customers_contacts
-SET role = $1, phone = $2, email = $3
+SET title = $1, phone = $2, email = $3
 WHERE customer_id = $4 AND contact_id = $5
 `
 
 type UpdateAssociationParams struct {
-	Role       string
+	Title      *string
 	Phone      *string
 	Email      *string
 	CustomerID int32
@@ -613,7 +621,7 @@ type UpdateAssociationParams struct {
 // against the new values, not by this statement itself.
 func (q *Queries) UpdateAssociation(ctx context.Context, arg UpdateAssociationParams) error {
 	_, err := q.db.Exec(ctx, updateAssociation,
-		arg.Role,
+		arg.Title,
 		arg.Phone,
 		arg.Email,
 		arg.CustomerID,

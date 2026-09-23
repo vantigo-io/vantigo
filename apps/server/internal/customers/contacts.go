@@ -385,7 +385,7 @@ func (s *server) DeleteCustomersContactsById(ctx context.Context, req gen.Delete
 			return err
 		}
 		for _, a := range associations {
-			if err := recordContactRemoved(ctx, txq, now, a.CustomerID, contact, a.Role, a.Phone, a.Email, act.Kind, act.Display, act.UserID); err != nil {
+			if err := recordContactRemoved(ctx, txq, now, a.CustomerID, contact, deref(a.Title), a.Phone, a.Email, act.Kind, act.Display, act.UserID); err != nil {
 				return err
 			}
 		}
@@ -418,7 +418,7 @@ func (s *server) GetCustomersContactsByIdCustomers(ctx context.Context, req gen.
 	for _, r := range rows {
 		data = append(data, gen.GetContactCustomersContactCustomerResponse{
 			Customer: gen.GetContactCustomersCustomerReference{Id: r.ID, CustomerNumber: r.CustomerNumber, Name: r.Name},
-			Role:     r.Role, Phone: r.Phone, Email: r.Email,
+			Role:     deref(r.Title), Phone: r.Phone, Email: r.Email,
 		})
 	}
 	return gen.GetCustomersContactsByIdCustomers200JSONResponse{Data: data}, nil
@@ -445,7 +445,7 @@ func (s *server) GetCustomersByIdContacts(ctx context.Context, req gen.GetCustom
 				Id: r.ID, FirstName: r.FirstName, LastName: r.LastName,
 				MiddleName: r.MiddleName, Prefix: r.Prefix, Suffix: r.Suffix, Phone: r.ContactPhone, Email: r.ContactEmail,
 			},
-			Role: r.Role, Phone: r.AssociationPhone, Email: r.AssociationEmail,
+			Role: deref(r.Title), Phone: r.AssociationPhone, Email: r.AssociationEmail,
 		})
 	}
 	return gen.GetCustomersByIdContacts200JSONResponse{Data: data}, nil
@@ -516,7 +516,7 @@ func (s *server) PostCustomersByIdContacts(ctx context.Context, req gen.PostCust
 		}
 
 		if err := txq.InsertAssociation(ctx, store.InsertAssociationParams{
-			CustomerID: req.Id, ContactID: body.ContactId, Role: assoc.Role, Phone: assoc.Phone, Email: assoc.Email,
+			CustomerID: req.Id, ContactID: body.ContactId, Title: &assoc.Role, Phone: assoc.Phone, Email: assoc.Email,
 		}); err != nil {
 			return err
 		}
@@ -578,7 +578,7 @@ func (s *server) PutCustomersByIdContactsByContactId(ctx context.Context, req ge
 		return gen.PutCustomersByIdContactsByContactId400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid contact association", errs)), nil
 	}
 
-	changed := existing.Role != assoc.Role || deref(existing.AssociationPhone) != deref(assoc.Phone) || deref(existing.AssociationEmail) != deref(assoc.Email)
+	changed := deref(existing.Title) != assoc.Role || deref(existing.AssociationPhone) != deref(assoc.Phone) || deref(existing.AssociationEmail) != deref(assoc.Email)
 
 	now := s.deps.Clock()
 	// Resolved before the transaction opens, and only when the relationship
@@ -597,7 +597,7 @@ func (s *server) PutCustomersByIdContactsByContactId(ctx context.Context, req ge
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
 		if err := txq.UpdateAssociation(ctx, store.UpdateAssociationParams{
-			CustomerID: req.Id, ContactID: req.ContactId, Role: assoc.Role, Phone: assoc.Phone, Email: assoc.Email,
+			CustomerID: req.Id, ContactID: req.ContactId, Title: &assoc.Role, Phone: assoc.Phone, Email: assoc.Email,
 		}); err != nil {
 			return err
 		}
@@ -644,7 +644,7 @@ func (s *server) DeleteCustomersByIdContactsByContactId(ctx context.Context, req
 		if err := txq.DeleteAssociation(ctx, store.DeleteAssociationParams{CustomerID: req.Id, ContactID: req.ContactId}); err != nil {
 			return err
 		}
-		return recordContactDetached(ctx, txq, now, req.Id, contactFromAssociationRow(existing), existing.Role, existing.AssociationPhone, existing.AssociationEmail, act.Kind, act.Display, act.UserID)
+		return recordContactDetached(ctx, txq, now, req.Id, contactFromAssociationRow(existing), deref(existing.Title), existing.AssociationPhone, existing.AssociationEmail, act.Kind, act.Display, act.UserID)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("customers: detach contact: %w", err)
