@@ -249,6 +249,58 @@ describe("customer contacts card", () => {
     expect(attachBody).toEqual({ contactId: 1005, title: "Custodian", roles: [] });
   });
 
+  it("sends the connection phone and email typed for a newly created contact, not just its own", async () => {
+    // ConnectionFields renders alongside ContactFields in the create-new branch,
+    // so there are two "Phone"/"Email" labelled inputs at once: the contact's
+    // own (ContactFields, first) and the connection-specific one (ConnectionFields,
+    // second) — this proves createAndAttach reads the second, the one
+    // attachExisting has always read.
+    const createSpy = vi.fn<(init?: RequestInit) => Response>(() =>
+      jsonResponse(201, contact(1006, "Nobody", "Elsen")),
+    );
+    const attachSpy = vi.fn<(init?: RequestInit) => Response>(() =>
+      jsonResponse(200, {
+        contact: contact(1006, "Nobody", "Elsen"),
+        role: "Custodian",
+        phone: null,
+        email: null,
+      }),
+    );
+
+    stubFetch({
+      "GET /api/v1/customers/2002": () => jsonResponse(200, customer),
+      "GET /api/v1/customers/2002/billing-profile": () => jsonResponse(200, emptyBillingProfile),
+      "GET /api/v1/customers/2002/addresses": () => jsonResponse(200, { data: [] }),
+      "GET /api/v1/customers/2002/contacts": () => jsonResponse(200, { data: [] }),
+      "GET /api/v1/customers/contacts": () => jsonResponse(200, paginated([])),
+      "POST /api/v1/customers/contacts": createSpy,
+      "POST /api/v1/customers/2002/contacts": attachSpy,
+    });
+
+    await renderRoute("/customers/2002", "Refsdal Holding");
+
+    await userEvent.click(await screen.findByRole("button", { name: /add contact/i }));
+
+    const modal = await screen.findByRole("dialog");
+    await userEvent.type(within(modal).getByLabelText(/search for a contact/i), "Nobody");
+    await userEvent.click(await screen.findByText(/no contact found/i));
+
+    await userEvent.type(within(modal).getByLabelText(/last name/i), "Elsen");
+    await userEvent.type(within(modal).getByLabelText(/^title$/i), "Custodian");
+    const connectionPhone = within(modal).getAllByLabelText(/^phone$/i)[1];
+    await userEvent.type(connectionPhone, "+47 91 23 45 67");
+    await userEvent.click(within(modal).getByRole("button", { name: /^add contact$/i }));
+
+    await waitFor(() => expect(attachSpy).toHaveBeenCalled());
+    const attachBody = JSON.parse((attachSpy.mock.calls[0][0] as RequestInit).body as string);
+    expect(attachBody).toEqual({
+      contactId: 1006,
+      title: "Custodian",
+      roles: [],
+      phone: "+47 91 23 45 67",
+    });
+  });
+
   it("shows the title under the name, a starred badge for the primary role, and the connection fallbacks", async () => {
     stubFetch({
       "GET /api/v1/customers/2002": () => jsonResponse(200, customer),
@@ -365,6 +417,33 @@ describe("customer contacts card", () => {
     expect(attachSpy).not.toHaveBeenCalled();
   });
 
+  it("clears the stale title-or-role error the moment a role is ticked", async () => {
+    stubFetch({
+      "GET /api/v1/customers/2002": () => jsonResponse(200, customer),
+      "GET /api/v1/customers/2002/billing-profile": () => jsonResponse(200, emptyBillingProfile),
+      "GET /api/v1/customers/2002/addresses": () => jsonResponse(200, { data: [] }),
+      "GET /api/v1/customers/2002/contacts": () => jsonResponse(200, { data: [] }),
+      "GET /api/v1/customers/contacts": () =>
+        jsonResponse(
+          200,
+          paginated([{ contact: contact(1001, "Anders", "Refsdal"), customerCount: 0, customer: null }]),
+        ),
+    });
+
+    await renderRoute("/customers/2002", "Refsdal Holding");
+    await userEvent.click(await screen.findByRole("button", { name: /add contact/i }));
+    const modal = await screen.findByRole("dialog");
+    await userEvent.type(within(modal).getByLabelText(/search for a contact/i), "anders");
+    await userEvent.click(await screen.findByText("Anders Refsdal"));
+    await userEvent.click(within(modal).getByRole("button", { name: /^add contact$/i }));
+
+    expect(await within(modal).findByText(/give a title or pick at least one role/i)).toBeInTheDocument();
+
+    await userEvent.click(within(modal).getByRole("checkbox", { name: "Billing" }));
+
+    expect(within(modal).queryByText(/give a title or pick at least one role/i)).not.toBeInTheDocument();
+  });
+
   it("disables the Primary switch of a role the contact is the only holder of, and says why", async () => {
     stubFetch({
       "GET /api/v1/customers/2002": () => jsonResponse(200, customer),
@@ -406,6 +485,13 @@ describe("customer contacts card", () => {
     // unticked-and-therefore-disabled, with no reason shown.
     expect(within(modal).getByRole("switch", { name: "Primary project contact" })).toBeDisabled();
     expect(within(modal).queryByText(/stays primary/i)).not.toBeInTheDocument();
+
+    // Unticking the role is a request to drop it altogether, so the switch
+    // must not keep reporting ON with "Already the only holder": that would
+    // claim the primary request survives a role no longer held.
+    await userEvent.click(within(modal).getByRole("checkbox", { name: "Billing" }));
+    expect(within(modal).getByRole("switch", { name: "Primary billing contact" })).not.toBeChecked();
+    expect(within(modal).queryByText("Already the only holder")).not.toBeInTheDocument();
   });
 
   it("sends the title and the complete role set when the connection is saved", async () => {
@@ -462,6 +548,70 @@ describe("customer contacts card", () => {
     expect(body).toEqual({
       title: "Chairman",
       roles: [{ role: "billing", primary: true }, { role: "decision_maker" }],
+    });
+  });
+
+  it("round-trips a held role outside the vocabulary instead of dropping it on save", async () => {
+    // The vocabulary is a value change on the server, not a migration (design
+    // D2), so a contact can already hold a role this frontend's catalog does
+    // not know — `executive_sponsor` here. Nothing in the UI offers a checkbox
+    // for it, so it must never be lost from a complete-set replace just because
+    // it was not re-ticked.
+    const putSpy = vi.fn<(init?: RequestInit) => Response>(() =>
+      jsonResponse(200, {
+        contact: contact(1001, "Anders", "Refsdal"),
+        role: "Chairman",
+        title: "Chairman",
+        roles: [
+          { role: "billing", primary: true },
+          { role: "executive_sponsor", primary: true },
+        ],
+        phone: null,
+        email: null,
+      }),
+    );
+
+    stubFetch({
+      "GET /api/v1/customers/2002": () => jsonResponse(200, customer),
+      "GET /api/v1/customers/2002/billing-profile": () => jsonResponse(200, emptyBillingProfile),
+      "GET /api/v1/customers/2002/addresses": () => jsonResponse(200, { data: [] }),
+      "GET /api/v1/customers/2002/contacts": () =>
+        jsonResponse(200, {
+          data: [
+            {
+              contact: contact(1001, "Anders", "Refsdal"),
+              role: "CEO",
+              title: "CEO",
+              roles: [
+                { role: "billing", primary: true },
+                { role: "executive_sponsor", primary: true },
+              ],
+              phone: null,
+              email: null,
+            },
+          ],
+        }),
+      "PUT /api/v1/customers/2002/contacts/1001": putSpy,
+    });
+
+    await renderRoute("/customers/2002", "Refsdal Holding");
+    await userEvent.click(await screen.findByRole("button", { name: "Edit connection for Anders Refsdal" }));
+
+    const modal = await screen.findByRole("dialog");
+    const title = within(modal).getByLabelText(/^title$/i);
+    await userEvent.clear(title);
+    await userEvent.type(title, "Chairman");
+    await userEvent.click(within(modal).getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(putSpy).toHaveBeenCalled());
+    const body = JSON.parse((putSpy.mock.calls[0][0] as RequestInit).body as string);
+    // billing is offered by a checkbox and is this contact's primary billing
+    // role, so it round-trips with `primary: true`; executive_sponsor has no
+    // checkbox at all, so it round-trips too, but with `primary` omitted —
+    // "unchanged" is the only thing the UI can honestly say about it.
+    expect(body).toEqual({
+      title: "Chairman",
+      roles: [{ role: "billing", primary: true }, { role: "executive_sponsor" }],
     });
   });
 });

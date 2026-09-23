@@ -446,6 +446,7 @@ const AddCustomerModal = ({ contactId, contactName, attachedCustomerIds, opened,
                 getInputProps={form.getInputProps}
                 values={form.values}
                 setFieldValue={form.setFieldValue}
+                clearFieldError={form.clearFieldError}
                 lockedPrimary={[]}
                 soleRoles={[]}
               />
