@@ -204,6 +204,19 @@ type CustomerContactRoleRequest struct {
 	Role    string `json:"role"`
 }
 
+// CustomerFollowUp One row of the Follow-ups list (follow-ups design D3) — a manual timeline entry that carries a follow-up, with just enough of the entry and of its customer to show a line and link to it. note is the entry's own note cut to its first 200 UTF-16 code units (the same unit the entry's 500-character summary is cut in), absent when the entry has none. The customer is named here rather than fetched per row: the list is read across customers, so the one thing every row needs is whose follow-up it is.
+type CustomerFollowUp struct {
+	CustomerId   int32  `json:"customerId"`
+	CustomerName string `json:"customerName"`
+	EntryId      int32  `json:"entryId"`
+	EventType    string `json:"eventType"`
+
+	// FollowUp What happens next on this timeline entry (follow-ups design D1): a due date, optionally somebody it is assigned to, and a stamp once it is done. Absent when the entry carries no follow-up, which is most entries and every generated one. dueOn is a calendar date and may be in the future — unlike occurredOn, which records something that already happened. assignee is resolved from the user directory at read time and never stored on the entry: a user the directory no longer knows is reported as "Unknown user" with active false, and an assignee disabled after being given the follow-up keeps it and is reported with active false. It is absent when the follow-up is unassigned, which design D2 reads as everyone's until somebody takes it. doneAt is absent while the follow-up is open.
+	FollowUp   TimelineFollowUp   `json:"followUp"`
+	Note       *string            `json:"note,omitempty"`
+	OccurredOn openapi_types.Date `json:"occurredOn"`
+}
+
 // CustomerOwner The single user accountable for the customer relationship (owner and tags design D1). displayName is resolved from the user directory at read time, never stored on the customer; a user the directory no longer knows is reported as "Unknown user" with active false, and an owner disabled after being assigned keeps the customer and is reported with active false. Absent when the customer is unowned.
 type CustomerOwner struct {
 	Active      bool               `json:"active"`
@@ -283,7 +296,7 @@ type CustomerRegistryRefreshResponse struct {
 	Status string                  `json:"status"`
 }
 
-// CustomerStatsAttentionItem One thing the dashboard wants a human to look at. The shape is the dashboard's, shared by every module's /stats/attention. Four types, one per customer at most (a struck-off company reports only registryDeleted, its most useful single sentence), computed from the stored registry record against the current customer rather than from events, so the list needs no "dismiss" state: registryBankrupt when the record's bankrupt flag is set; registryLiquidation when underLiquidation or underForcedLiquidation is set and the customer is not also bankrupt; registryDeleted when the record carries a deletion date, regardless of the other flags; registryRenamed when the record's name differs (trimmed, case-sensitive) from the legal identity's name and none of the other three apply. id is '<type>/<customerId>'; title is the customer's own name, not the registry's; occurredAt is the day the thing itself happened — the registry's bankruptcy, liquidation or deletion date — falling back to when the record was last fetched when the registry gives no date, and always the fetch time for registryRenamed, which has no date; entityId is the customer id. An item clears once the customer is archived, once a later refresh stores the flag as false (or, for registryDeleted, a 410 deletes the row entirely), once the customer's identity is changed away from that company, or — for registryRenamed — once the legal identity's name is updated to match the registry's.
+// CustomerStatsAttentionItem One thing the dashboard wants a human to look at. The shape is the dashboard's, shared by every module's /stats/attention. Four types, one per customer at most (a struck-off company reports only registryDeleted, its most useful single sentence), computed from the stored registry record against the current customer rather than from events, so the list needs no "dismiss" state: registryBankrupt when the record's bankrupt flag is set; registryLiquidation when underLiquidation or underForcedLiquidation is set and the customer is not also bankrupt; registryDeleted when the record carries a deletion date, regardless of the other flags; registryRenamed when the record's name differs (trimmed, case-sensitive) from the legal identity's name and none of the other three apply. id is '<type>/<customerId>'; title is the customer's own name, not the registry's; occurredAt is the day the thing itself happened — the registry's bankruptcy, liquidation or deletion date — falling back to when the record was last fetched when the registry gives no date, and always the fetch time for registryRenamed, which has no date; entityId is the customer id. An item clears once the customer is archived, once a later refresh stores the flag as false (or, for registryDeleted, a 410 deletes the row entirely), once the customer's identity is changed away from that company, or — for registryRenamed — once the legal identity's name is updated to match the registry's. Two further types come from follow-ups (follow-ups design D2) and are the first items here that depend on WHO is asking: followUpOverdue and followUpDue report open follow-ups on non-archived customers assigned to the caller or unassigned — an unassigned follow-up is everyone's until somebody takes it — with dueOn before today (UTC) and dueOn equal to today respectively. For those two, id is '<type>/<entryId>', entityId is still the CUSTOMER id (the host links a customers item to /customers/{entityId}), title is still the customer's name, and occurredAt is dueOn at midnight UTC — so an overdue follow-up sorts by how overdue it is, not by when it was noticed. Both clear when the follow-up is ticked done, reopened onto a later date, cleared, when its entry is deleted, or when the customer is archived.
 type CustomerStatsAttentionItem struct {
 	EntityId   string    `json:"entityId"`
 	Id         string    `json:"id"`
@@ -416,6 +429,12 @@ type LegalIdentityResponse struct {
 	Type    string `json:"type"`
 }
 
+// PaginatedResponseOfCustomerFollowUp defines model for PaginatedResponseOfCustomerFollowUp.
+type PaginatedResponseOfCustomerFollowUp struct {
+	Data       []CustomerFollowUp              `json:"data"`
+	Pagination externalRef0.PaginationMetadata `json:"pagination"`
+}
+
 // PaginatedResponseOfResponse defines model for PaginatedResponseOfResponse.
 type PaginatedResponseOfResponse struct {
 	Data       []GetContactsResponse           `json:"data"`
@@ -518,6 +537,26 @@ type SafeTimelineSummary struct {
 	LatestOccurredOn *openapi_types.Date `json:"latestOccurredOn,omitempty"`
 }
 
+// TimelineFollowUp What happens next on this timeline entry (follow-ups design D1): a due date, optionally somebody it is assigned to, and a stamp once it is done. Absent when the entry carries no follow-up, which is most entries and every generated one. dueOn is a calendar date and may be in the future — unlike occurredOn, which records something that already happened. assignee is resolved from the user directory at read time and never stored on the entry: a user the directory no longer knows is reported as "Unknown user" with active false, and an assignee disabled after being given the follow-up keeps it and is reported with active false. It is absent when the follow-up is unassigned, which design D2 reads as everyone's until somebody takes it. doneAt is absent while the follow-up is open.
+type TimelineFollowUp struct {
+	Assignee *TimelineFollowUpAssignee `json:"assignee,omitempty"`
+	DoneAt   *time.Time                `json:"doneAt,omitempty"`
+	DueOn    openapi_types.Date        `json:"dueOn"`
+}
+
+// TimelineFollowUpAssignee The user a follow-up is assigned to (follow-ups design D1), named through the user directory exactly as a customer's owner is — same three fields, same treatment of a disabled or forgotten account. A separate schema from CustomerOwner rather than a reuse of it: an owner is accountable for a customer relationship and an assignee is expected to do one thing by one date, and a shared schema would have made the two impossible to describe apart.
+type TimelineFollowUpAssignee struct {
+	Active      bool               `json:"active"`
+	DisplayName string             `json:"displayName"`
+	UserId      openapi_types.UUID `json:"userId"`
+}
+
+// TimelineFollowUpRequest The follow-up to set on a manual timeline entry (follow-ups design D1). dueOn is a strict yyyy-MM-dd and may be in the future. assigneeUserId must name an existing, active user — a field error on followUp.assigneeUserId otherwise — and omitting it leaves the follow-up unassigned, which is everyone's rather than nobody's. Sending the whole object as null, or omitting it, CLEARS the entry's follow-up on a PUT: the entry's PUT is a full replace, as it already is for occurredAt and sourceUrl, and clearing a follow-up clears its done state with it. doneAt cannot be set here at all — POST and DELETE .../follow-up/done are the only way in and out of that state.
+type TimelineFollowUpRequest struct {
+	AssigneeUserId *openapi_types.UUID `json:"assigneeUserId,omitempty"`
+	DueOn          *string             `json:"dueOn"`
+}
+
 // TimelineListResponse defines model for TimelineListResponse.
 type TimelineListResponse struct {
 	Data       []TimelineResponse `json:"data"`
@@ -526,32 +565,38 @@ type TimelineListResponse struct {
 
 // TimelineManualTimelineRequest defines model for TimelineManualTimelineRequest.
 type TimelineManualTimelineRequest struct {
-	EventType        *string    `json:"eventType"`
-	ExpectedRevision *int32     `json:"expectedRevision,omitempty"`
-	Note             *string    `json:"note"`
-	OccurredAt       *time.Time `json:"occurredAt,omitempty"`
-	OccurredOn       *string    `json:"occurredOn"`
-	SourceUrl        *string    `json:"sourceUrl,omitempty"`
+	EventType        *string `json:"eventType"`
+	ExpectedRevision *int32  `json:"expectedRevision,omitempty"`
+
+	// FollowUp The follow-up to set on this entry (follow-ups design D1). On a create, omitted means none. On an update, omitted or null CLEARS the entry's follow-up and its done state — this PUT is a full replace, as it already is for occurredAt and sourceUrl.
+	FollowUp   *TimelineFollowUpRequest `json:"followUp,omitempty"`
+	Note       *string                  `json:"note"`
+	OccurredAt *time.Time               `json:"occurredAt,omitempty"`
+	OccurredOn *string                  `json:"occurredOn"`
+	SourceUrl  *string                  `json:"sourceUrl,omitempty"`
 }
 
 // TimelineResponse defines model for TimelineResponse.
 type TimelineResponse struct {
-	ActorDisplay    *string                   `json:"actorDisplay,omitempty"`
-	ActorKind       string                    `json:"actorKind"`
-	CreatedAt       time.Time                 `json:"createdAt"`
-	CurrentRevision int32                     `json:"currentRevision"`
-	EventType       string                    `json:"eventType"`
-	Id              int32                     `json:"id"`
-	Note            *string                   `json:"note,omitempty"`
-	OccurredAt      *time.Time                `json:"occurredAt,omitempty"`
-	OccurredOn      openapi_types.Date        `json:"occurredOn"`
-	Payload         *externalRef0.JsonElement `json:"payload,omitempty"`
-	Producer        string                    `json:"producer"`
-	Provenance      string                    `json:"provenance"`
-	SourceUrl       *string                   `json:"sourceUrl,omitempty"`
-	State           string                    `json:"state"`
-	Summary         *string                   `json:"summary,omitempty"`
-	UpdatedAt       time.Time                 `json:"updatedAt"`
+	ActorDisplay    *string   `json:"actorDisplay,omitempty"`
+	ActorKind       string    `json:"actorKind"`
+	CreatedAt       time.Time `json:"createdAt"`
+	CurrentRevision int32     `json:"currentRevision"`
+	EventType       string    `json:"eventType"`
+
+	// FollowUp What happens next on this entry (follow-ups design D1). Absent when the entry carries none.
+	FollowUp   *TimelineFollowUp         `json:"followUp,omitempty"`
+	Id         int32                     `json:"id"`
+	Note       *string                   `json:"note,omitempty"`
+	OccurredAt *time.Time                `json:"occurredAt,omitempty"`
+	OccurredOn openapi_types.Date        `json:"occurredOn"`
+	Payload    *externalRef0.JsonElement `json:"payload,omitempty"`
+	Producer   string                    `json:"producer"`
+	Provenance string                    `json:"provenance"`
+	SourceUrl  *string                   `json:"sourceUrl,omitempty"`
+	State      string                    `json:"state"`
+	Summary    *string                   `json:"summary,omitempty"`
+	UpdatedAt  time.Time                 `json:"updatedAt"`
 }
 
 // TimelineRevisionListResponse defines model for TimelineRevisionListResponse.
@@ -561,22 +606,25 @@ type TimelineRevisionListResponse struct {
 
 // TimelineRevisionResponse defines model for TimelineRevisionResponse.
 type TimelineRevisionResponse struct {
-	Action           string                    `json:"action"`
-	ActorDisplayName string                    `json:"actorDisplayName"`
-	ActorKind        string                    `json:"actorKind"`
-	ChangedAt        time.Time                 `json:"changedAt"`
-	DeletedAt        *time.Time                `json:"deletedAt,omitempty"`
-	EventType        string                    `json:"eventType"`
-	Note             *string                   `json:"note,omitempty"`
-	OccurredAt       *time.Time                `json:"occurredAt,omitempty"`
-	OccurredOn       openapi_types.Date        `json:"occurredOn"`
-	Payload          *externalRef0.JsonElement `json:"payload,omitempty"`
-	Producer         string                    `json:"producer"`
-	Provenance       string                    `json:"provenance"`
-	Revision         int32                     `json:"revision"`
-	SourceUrl        *string                   `json:"sourceUrl,omitempty"`
-	State            string                    `json:"state"`
-	Summary          *string                   `json:"summary,omitempty"`
+	Action           string     `json:"action"`
+	ActorDisplayName string     `json:"actorDisplayName"`
+	ActorKind        string     `json:"actorKind"`
+	ChangedAt        time.Time  `json:"changedAt"`
+	DeletedAt        *time.Time `json:"deletedAt,omitempty"`
+	EventType        string     `json:"eventType"`
+
+	// FollowUp The follow-up as it stood at this revision (follow-ups design D1) — a point-in-time snapshot like every other field here, so an entry whose follow-up was later moved or cleared still shows what it said then. Absent when the entry carried none at this revision.
+	FollowUp   *TimelineFollowUp         `json:"followUp,omitempty"`
+	Note       *string                   `json:"note,omitempty"`
+	OccurredAt *time.Time                `json:"occurredAt,omitempty"`
+	OccurredOn openapi_types.Date        `json:"occurredOn"`
+	Payload    *externalRef0.JsonElement `json:"payload,omitempty"`
+	Producer   string                    `json:"producer"`
+	Provenance string                    `json:"provenance"`
+	Revision   int32                     `json:"revision"`
+	SourceUrl  *string                   `json:"sourceUrl,omitempty"`
+	State      string                    `json:"state"`
+	Summary    *string                   `json:"summary,omitempty"`
 }
 
 // UpdateCustomerRequest defines model for UpdateCustomerRequest.
@@ -618,6 +666,15 @@ type GetCustomersContactsParams struct {
 	SortBy        *string `form:"sortBy,omitempty" json:"sortBy,omitempty"`
 	SortDirection *string `form:"sortDirection,omitempty" json:"sortDirection,omitempty"`
 	Search        *string `form:"search,omitempty" json:"search,omitempty"`
+}
+
+// GetCustomersFollowUpsParams defines parameters for GetCustomersFollowUps.
+type GetCustomersFollowUpsParams struct {
+	Page       *int32  `form:"page,omitempty" json:"page,omitempty"`
+	PageSize   *int32  `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+	Assignee   *string `form:"assignee,omitempty" json:"assignee,omitempty"`
+	State      *string `form:"state,omitempty" json:"state,omitempty"`
+	CustomerId *int32  `form:"customerId,omitempty" json:"customerId,omitempty"`
 }
 
 // GetCustomersLookupBrregParams defines parameters for GetCustomersLookupBrreg.
@@ -737,6 +794,9 @@ type ServerInterface interface {
 	// GetCustomersContactsByIdCustomers List the customers a contact is associated with
 	// (GET /api/v1/customers/contacts/{id}/customers)
 	GetCustomersContactsByIdCustomers(w http.ResponseWriter, r *http.Request, id int32)
+	// GetCustomersFollowUps List follow-ups across customers
+	// (GET /api/v1/customers/follow-ups)
+	GetCustomersFollowUps(w http.ResponseWriter, r *http.Request, params GetCustomersFollowUpsParams)
 	// GetCustomersLookupBrreg Look up business entities in Brønnøysundregisteret
 	// (GET /api/v1/customers/lookup/brreg)
 	GetCustomersLookupBrreg(w http.ResponseWriter, r *http.Request, params GetCustomersLookupBrregParams)
@@ -845,6 +905,12 @@ type ServerInterface interface {
 	// PutCustomersByIdTimelineByEntryId Update a manual customer timeline entry
 	// (PUT /api/v1/customers/{id}/timeline/{entryId})
 	PutCustomersByIdTimelineByEntryId(w http.ResponseWriter, r *http.Request, id int32, entryId int32)
+	// DeleteCustomersByIdTimelineByEntryIdFollowUpDone Reopen a timeline entry's follow-up
+	// (DELETE /api/v1/customers/{id}/timeline/{entryId}/follow-up/done)
+	DeleteCustomersByIdTimelineByEntryIdFollowUpDone(w http.ResponseWriter, r *http.Request, id int32, entryId int32)
+	// PostCustomersByIdTimelineByEntryIdFollowUpDone Mark a timeline entry's follow-up done
+	// (POST /api/v1/customers/{id}/timeline/{entryId}/follow-up/done)
+	PostCustomersByIdTimelineByEntryIdFollowUpDone(w http.ResponseWriter, r *http.Request, id int32, entryId int32)
 	// GetCustomersByIdTimelineByEntryIdRevisions List timeline entry revisions
 	// (GET /api/v1/customers/{id}/timeline/{entryId}/revisions)
 	GetCustomersByIdTimelineByEntryIdRevisions(w http.ResponseWriter, r *http.Request, id int32, entryId int32)
@@ -1266,6 +1332,91 @@ func (siw *ServerInterfaceWrapper) GetCustomersContactsByIdCustomers(w http.Resp
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetCustomersContactsByIdCustomers(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCustomersFollowUps operation middleware
+func (siw *ServerInterfaceWrapper) GetCustomersFollowUps(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetCustomersFollowUpsParams
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "assignee" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "assignee", r.URL.Query(), &params.Assignee, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "assignee"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "assignee", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "customerId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "customerId", r.URL.Query(), &params.CustomerId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "customerId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "customerId", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCustomersFollowUps(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2396,6 +2547,76 @@ func (siw *ServerInterfaceWrapper) PutCustomersByIdTimelineByEntryId(w http.Resp
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteCustomersByIdTimelineByEntryIdFollowUpDone operation middleware
+func (siw *ServerInterfaceWrapper) DeleteCustomersByIdTimelineByEntryIdFollowUpDone(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", r.PathValue("entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteCustomersByIdTimelineByEntryIdFollowUpDone(w, r, id, entryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostCustomersByIdTimelineByEntryIdFollowUpDone operation middleware
+func (siw *ServerInterfaceWrapper) PostCustomersByIdTimelineByEntryIdFollowUpDone(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", r.PathValue("entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostCustomersByIdTimelineByEntryIdFollowUpDone(w, r, id, entryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetCustomersByIdTimelineByEntryIdRevisions operation middleware
 func (siw *ServerInterfaceWrapper) GetCustomersByIdTimelineByEntryIdRevisions(w http.ResponseWriter, r *http.Request) {
 
@@ -2607,6 +2828,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/{id}/timeline/{entryId}", wrapper.DeleteCustomersByIdTimelineByEntryId)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/timeline/{entryId}", wrapper.GetCustomersByIdTimelineByEntryId)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/timeline/{entryId}", wrapper.PutCustomersByIdTimelineByEntryId)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/{id}/timeline/{entryId}/follow-up/done", wrapper.DeleteCustomersByIdTimelineByEntryIdFollowUpDone)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/timeline/{entryId}/follow-up/done", wrapper.PostCustomersByIdTimelineByEntryIdFollowUpDone)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/timeline/{entryId}/revisions", wrapper.GetCustomersByIdTimelineByEntryIdRevisions)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/assignable-users", wrapper.GetCustomersAssignableUsers)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/contacts", wrapper.GetCustomersContacts)
@@ -2615,6 +2838,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/contacts/{id}", wrapper.GetContact)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/contacts/{id}", wrapper.PutCustomersContactsById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/contacts/{id}/customers", wrapper.GetCustomersContactsByIdCustomers)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/follow-ups", wrapper.GetCustomersFollowUps)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/lookup/brreg", wrapper.GetCustomersLookupBrreg)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/stats", wrapper.GetCustomersStats)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/stats/attention", wrapper.GetCustomersStatsAttention)
@@ -3225,6 +3449,70 @@ type GetCustomersContactsByIdCustomers404Response struct {
 func (response GetCustomersContactsByIdCustomers404Response) VisitGetCustomersContactsByIdCustomersResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type GetCustomersFollowUpsRequestObject struct {
+	Params GetCustomersFollowUpsParams
+}
+
+type GetCustomersFollowUpsResponseObject interface {
+	VisitGetCustomersFollowUpsResponse(w http.ResponseWriter) error
+}
+
+type GetCustomersFollowUps200JSONResponse PaginatedResponseOfCustomerFollowUp
+
+func (response GetCustomersFollowUps200JSONResponse) VisitGetCustomersFollowUpsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersFollowUps400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetCustomersFollowUps400ApplicationProblemPlusJSONResponse) VisitGetCustomersFollowUpsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersFollowUps401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersFollowUps401JSONResponse) VisitGetCustomersFollowUpsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersFollowUps403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersFollowUps403JSONResponse) VisitGetCustomersFollowUpsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetCustomersLookupBrregRequestObject struct {
@@ -5738,6 +6026,152 @@ func (response PutCustomersByIdTimelineByEntryId409ApplicationProblemPlusJSONRes
 	return err
 }
 
+type DeleteCustomersByIdTimelineByEntryIdFollowUpDoneRequestObject struct {
+	Id      int32 `json:"id"`
+	EntryId int32 `json:"entryId"`
+}
+
+type DeleteCustomersByIdTimelineByEntryIdFollowUpDoneResponseObject interface {
+	VisitDeleteCustomersByIdTimelineByEntryIdFollowUpDoneResponse(w http.ResponseWriter) error
+}
+
+type DeleteCustomersByIdTimelineByEntryIdFollowUpDone200JSONResponse TimelineResponse
+
+func (response DeleteCustomersByIdTimelineByEntryIdFollowUpDone200JSONResponse) VisitDeleteCustomersByIdTimelineByEntryIdFollowUpDoneResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomersByIdTimelineByEntryIdFollowUpDone401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteCustomersByIdTimelineByEntryIdFollowUpDone401JSONResponse) VisitDeleteCustomersByIdTimelineByEntryIdFollowUpDoneResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomersByIdTimelineByEntryIdFollowUpDone403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteCustomersByIdTimelineByEntryIdFollowUpDone403JSONResponse) VisitDeleteCustomersByIdTimelineByEntryIdFollowUpDoneResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomersByIdTimelineByEntryIdFollowUpDone404Response struct {
+}
+
+func (response DeleteCustomersByIdTimelineByEntryIdFollowUpDone404Response) VisitDeleteCustomersByIdTimelineByEntryIdFollowUpDoneResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteCustomersByIdTimelineByEntryIdFollowUpDone409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response DeleteCustomersByIdTimelineByEntryIdFollowUpDone409ApplicationProblemPlusJSONResponse) VisitDeleteCustomersByIdTimelineByEntryIdFollowUpDoneResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdTimelineByEntryIdFollowUpDoneRequestObject struct {
+	Id      int32 `json:"id"`
+	EntryId int32 `json:"entryId"`
+}
+
+type PostCustomersByIdTimelineByEntryIdFollowUpDoneResponseObject interface {
+	VisitPostCustomersByIdTimelineByEntryIdFollowUpDoneResponse(w http.ResponseWriter) error
+}
+
+type PostCustomersByIdTimelineByEntryIdFollowUpDone200JSONResponse TimelineResponse
+
+func (response PostCustomersByIdTimelineByEntryIdFollowUpDone200JSONResponse) VisitPostCustomersByIdTimelineByEntryIdFollowUpDoneResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdTimelineByEntryIdFollowUpDone401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersByIdTimelineByEntryIdFollowUpDone401JSONResponse) VisitPostCustomersByIdTimelineByEntryIdFollowUpDoneResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdTimelineByEntryIdFollowUpDone403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersByIdTimelineByEntryIdFollowUpDone403JSONResponse) VisitPostCustomersByIdTimelineByEntryIdFollowUpDoneResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdTimelineByEntryIdFollowUpDone404Response struct {
+}
+
+func (response PostCustomersByIdTimelineByEntryIdFollowUpDone404Response) VisitPostCustomersByIdTimelineByEntryIdFollowUpDoneResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostCustomersByIdTimelineByEntryIdFollowUpDone409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PostCustomersByIdTimelineByEntryIdFollowUpDone409ApplicationProblemPlusJSONResponse) VisitPostCustomersByIdTimelineByEntryIdFollowUpDoneResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCustomersByIdTimelineByEntryIdRevisionsRequestObject struct {
 	Id      int32 `json:"id"`
 	EntryId int32 `json:"entryId"`
@@ -5913,6 +6347,9 @@ type StrictServerInterface interface {
 	// GetCustomersContactsByIdCustomers List the customers a contact is associated with
 	// (GET /api/v1/customers/contacts/{id}/customers)
 	GetCustomersContactsByIdCustomers(ctx context.Context, request GetCustomersContactsByIdCustomersRequestObject) (GetCustomersContactsByIdCustomersResponseObject, error)
+	// GetCustomersFollowUps List follow-ups across customers
+	// (GET /api/v1/customers/follow-ups)
+	GetCustomersFollowUps(ctx context.Context, request GetCustomersFollowUpsRequestObject) (GetCustomersFollowUpsResponseObject, error)
 	// GetCustomersLookupBrreg Look up business entities in Brønnøysundregisteret
 	// (GET /api/v1/customers/lookup/brreg)
 	GetCustomersLookupBrreg(ctx context.Context, request GetCustomersLookupBrregRequestObject) (GetCustomersLookupBrregResponseObject, error)
@@ -6021,6 +6458,12 @@ type StrictServerInterface interface {
 	// PutCustomersByIdTimelineByEntryId Update a manual customer timeline entry
 	// (PUT /api/v1/customers/{id}/timeline/{entryId})
 	PutCustomersByIdTimelineByEntryId(ctx context.Context, request PutCustomersByIdTimelineByEntryIdRequestObject) (PutCustomersByIdTimelineByEntryIdResponseObject, error)
+	// DeleteCustomersByIdTimelineByEntryIdFollowUpDone Reopen a timeline entry's follow-up
+	// (DELETE /api/v1/customers/{id}/timeline/{entryId}/follow-up/done)
+	DeleteCustomersByIdTimelineByEntryIdFollowUpDone(ctx context.Context, request DeleteCustomersByIdTimelineByEntryIdFollowUpDoneRequestObject) (DeleteCustomersByIdTimelineByEntryIdFollowUpDoneResponseObject, error)
+	// PostCustomersByIdTimelineByEntryIdFollowUpDone Mark a timeline entry's follow-up done
+	// (POST /api/v1/customers/{id}/timeline/{entryId}/follow-up/done)
+	PostCustomersByIdTimelineByEntryIdFollowUpDone(ctx context.Context, request PostCustomersByIdTimelineByEntryIdFollowUpDoneRequestObject) (PostCustomersByIdTimelineByEntryIdFollowUpDoneResponseObject, error)
 	// GetCustomersByIdTimelineByEntryIdRevisions List timeline entry revisions
 	// (GET /api/v1/customers/{id}/timeline/{entryId}/revisions)
 	GetCustomersByIdTimelineByEntryIdRevisions(ctx context.Context, request GetCustomersByIdTimelineByEntryIdRevisionsRequestObject) (GetCustomersByIdTimelineByEntryIdRevisionsResponseObject, error)
@@ -6312,6 +6755,32 @@ func (sh *strictHandler) GetCustomersContactsByIdCustomers(w http.ResponseWriter
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetCustomersContactsByIdCustomersResponseObject); ok {
 		if err := validResponse.VisitGetCustomersContactsByIdCustomersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCustomersFollowUps operation middleware
+func (sh *strictHandler) GetCustomersFollowUps(w http.ResponseWriter, r *http.Request, params GetCustomersFollowUpsParams) {
+	var request GetCustomersFollowUpsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCustomersFollowUps(ctx, request.(GetCustomersFollowUpsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCustomersFollowUps")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCustomersFollowUpsResponseObject); ok {
+		if err := validResponse.VisitGetCustomersFollowUpsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -7347,6 +7816,60 @@ func (sh *strictHandler) PutCustomersByIdTimelineByEntryId(w http.ResponseWriter
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutCustomersByIdTimelineByEntryIdResponseObject); ok {
 		if err := validResponse.VisitPutCustomersByIdTimelineByEntryIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteCustomersByIdTimelineByEntryIdFollowUpDone operation middleware
+func (sh *strictHandler) DeleteCustomersByIdTimelineByEntryIdFollowUpDone(w http.ResponseWriter, r *http.Request, id int32, entryId int32) {
+	var request DeleteCustomersByIdTimelineByEntryIdFollowUpDoneRequestObject
+
+	request.Id = id
+	request.EntryId = entryId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteCustomersByIdTimelineByEntryIdFollowUpDone(ctx, request.(DeleteCustomersByIdTimelineByEntryIdFollowUpDoneRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteCustomersByIdTimelineByEntryIdFollowUpDone")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteCustomersByIdTimelineByEntryIdFollowUpDoneResponseObject); ok {
+		if err := validResponse.VisitDeleteCustomersByIdTimelineByEntryIdFollowUpDoneResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostCustomersByIdTimelineByEntryIdFollowUpDone operation middleware
+func (sh *strictHandler) PostCustomersByIdTimelineByEntryIdFollowUpDone(w http.ResponseWriter, r *http.Request, id int32, entryId int32) {
+	var request PostCustomersByIdTimelineByEntryIdFollowUpDoneRequestObject
+
+	request.Id = id
+	request.EntryId = entryId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostCustomersByIdTimelineByEntryIdFollowUpDone(ctx, request.(PostCustomersByIdTimelineByEntryIdFollowUpDoneRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostCustomersByIdTimelineByEntryIdFollowUpDone")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostCustomersByIdTimelineByEntryIdFollowUpDoneResponseObject); ok {
+		if err := validResponse.VisitPostCustomersByIdTimelineByEntryIdFollowUpDoneResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -319,6 +319,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/customers/{id}/timeline/{entryId}/follow-up/done": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark a timeline entry's follow-up done
+         * @description Marks the entry's follow-up done. Idempotent — ticking an already-done follow-up answers 200 and changes nothing, writing no new revision — and it deliberately takes NO expectedRevision: a tick comes from a list and must not lose a race with somebody editing the note. It is still a revision of the entry when it changes something, so currentRevision bumps and the revision history records who ticked it. 404 when the entry carries no follow-up at all; 409 when the entry is generated, deleted or voided.
+         */
+        post: operations["postCustomersByIdTimelineByEntryIdFollowUpDone"];
+        /**
+         * Reopen a timeline entry's follow-up
+         * @description Reopens a follow-up that was marked done. Idempotent — reopening an open follow-up answers 200 and changes nothing — and it takes no expectedRevision, for the same reason the POST does not. 404 when the entry carries no follow-up at all; 409 when the entry is generated, deleted or voided.
+         */
+        delete: operations["deleteCustomersByIdTimelineByEntryIdFollowUpDone"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/customers/{id}/timeline/{entryId}/revisions": {
         parameters: {
             query?: never;
@@ -399,6 +423,26 @@ export interface paths {
         };
         /** List the customers a contact is associated with */
         get: operations["getCustomersContactsByIdCustomers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/customers/follow-ups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List follow-ups across customers
+         * @description Every follow-up the caller asked for, across customers, oldest due date first and then by entry id. Defaults answer the question the page exists for: assignee=me and state=open, i.e. "what is on my plate". Archived customers' follow-ups are excluded unless state=done — a done follow-up is a record of work finished, and an archived customer's finished work is still finished.
+         */
+        get: operations["getCustomersFollowUps"];
         put?: never;
         post?: never;
         delete?: never;
@@ -701,6 +745,19 @@ export interface components {
             primary?: boolean | null;
             role: string;
         };
+        /** @description One row of the Follow-ups list (follow-ups design D3) — a manual timeline entry that carries a follow-up, with just enough of the entry and of its customer to show a line and link to it. note is the entry's own note cut to its first 200 UTF-16 code units (the same unit the entry's 500-character summary is cut in), absent when the entry has none. The customer is named here rather than fetched per row: the list is read across customers, so the one thing every row needs is whose follow-up it is. */
+        CustomerFollowUp: {
+            /** Format: int32 */
+            customerId: number;
+            customerName: string;
+            /** Format: int32 */
+            entryId: number;
+            eventType: string;
+            followUp: components["schemas"]["TimelineFollowUp"];
+            note?: string | null;
+            /** Format: date */
+            occurredOn: string;
+        };
         /** @description The single user accountable for the customer relationship (owner and tags design D1). displayName is resolved from the user directory at read time, never stored on the customer; a user the directory no longer knows is reported as "Unknown user" with active false, and an owner disabled after being assigned keeps the customer and is reported with active false. Absent when the customer is unowned. */
         CustomerOwner: {
             active: boolean;
@@ -800,7 +857,7 @@ export interface components {
         CustomerTagsResponse: {
             tags: components["schemas"]["CustomerTag"][];
         };
-        /** @description One thing the dashboard wants a human to look at. The shape is the dashboard's, shared by every module's /stats/attention. Four types, one per customer at most (a struck-off company reports only registryDeleted, its most useful single sentence), computed from the stored registry record against the current customer rather than from events, so the list needs no "dismiss" state: registryBankrupt when the record's bankrupt flag is set; registryLiquidation when underLiquidation or underForcedLiquidation is set and the customer is not also bankrupt; registryDeleted when the record carries a deletion date, regardless of the other flags; registryRenamed when the record's name differs (trimmed, case-sensitive) from the legal identity's name and none of the other three apply. id is '<type>/<customerId>'; title is the customer's own name, not the registry's; occurredAt is the day the thing itself happened — the registry's bankruptcy, liquidation or deletion date — falling back to when the record was last fetched when the registry gives no date, and always the fetch time for registryRenamed, which has no date; entityId is the customer id. An item clears once the customer is archived, once a later refresh stores the flag as false (or, for registryDeleted, a 410 deletes the row entirely), once the customer's identity is changed away from that company, or — for registryRenamed — once the legal identity's name is updated to match the registry's. */
+        /** @description One thing the dashboard wants a human to look at. The shape is the dashboard's, shared by every module's /stats/attention. Four types, one per customer at most (a struck-off company reports only registryDeleted, its most useful single sentence), computed from the stored registry record against the current customer rather than from events, so the list needs no "dismiss" state: registryBankrupt when the record's bankrupt flag is set; registryLiquidation when underLiquidation or underForcedLiquidation is set and the customer is not also bankrupt; registryDeleted when the record carries a deletion date, regardless of the other flags; registryRenamed when the record's name differs (trimmed, case-sensitive) from the legal identity's name and none of the other three apply. id is '<type>/<customerId>'; title is the customer's own name, not the registry's; occurredAt is the day the thing itself happened — the registry's bankruptcy, liquidation or deletion date — falling back to when the record was last fetched when the registry gives no date, and always the fetch time for registryRenamed, which has no date; entityId is the customer id. An item clears once the customer is archived, once a later refresh stores the flag as false (or, for registryDeleted, a 410 deletes the row entirely), once the customer's identity is changed away from that company, or — for registryRenamed — once the legal identity's name is updated to match the registry's. Two further types come from follow-ups (follow-ups design D2) and are the first items here that depend on WHO is asking: followUpOverdue and followUpDue report open follow-ups on non-archived customers assigned to the caller or unassigned — an unassigned follow-up is everyone's until somebody takes it — with dueOn before today (UTC) and dueOn equal to today respectively. For those two, id is '<type>/<entryId>', entityId is still the CUSTOMER id (the host links a customers item to /customers/{entityId}), title is still the customer's name, and occurredAt is dueOn at midnight UTC — so an overdue follow-up sorts by how overdue it is, not by when it was noticed. Both clear when the follow-up is ticked done, reopened onto a later date, cleared, when its entry is deleted, or when the customer is archived. */
         CustomerStatsAttentionItem: {
             entityId: string;
             id: string;
@@ -948,6 +1005,10 @@ export interface components {
             source: string;
             type: string;
         };
+        PaginatedResponseOfCustomerFollowUp: {
+            data: components["schemas"]["CustomerFollowUp"][];
+            pagination: components["schemas"]["PaginationMetadata"];
+        };
         PaginatedResponseOfResponse: {
             data: components["schemas"]["GetContactsResponse"][];
             pagination: components["schemas"]["PaginationMetadata"];
@@ -994,6 +1055,27 @@ export interface components {
             /** Format: date */
             latestOccurredOn?: string | null;
         };
+        /** @description What happens next on this timeline entry (follow-ups design D1): a due date, optionally somebody it is assigned to, and a stamp once it is done. Absent when the entry carries no follow-up, which is most entries and every generated one. dueOn is a calendar date and may be in the future — unlike occurredOn, which records something that already happened. assignee is resolved from the user directory at read time and never stored on the entry: a user the directory no longer knows is reported as "Unknown user" with active false, and an assignee disabled after being given the follow-up keeps it and is reported with active false. It is absent when the follow-up is unassigned, which design D2 reads as everyone's until somebody takes it. doneAt is absent while the follow-up is open. */
+        TimelineFollowUp: {
+            assignee?: components["schemas"]["TimelineFollowUpAssignee"] | null;
+            /** Format: date-time */
+            doneAt?: string | null;
+            /** Format: date */
+            dueOn: string;
+        };
+        /** @description The user a follow-up is assigned to (follow-ups design D1), named through the user directory exactly as a customer's owner is — same three fields, same treatment of a disabled or forgotten account. A separate schema from CustomerOwner rather than a reuse of it: an owner is accountable for a customer relationship and an assignee is expected to do one thing by one date, and a shared schema would have made the two impossible to describe apart. */
+        TimelineFollowUpAssignee: {
+            active: boolean;
+            displayName: string;
+            /** Format: uuid */
+            userId: string;
+        };
+        /** @description The follow-up to set on a manual timeline entry (follow-ups design D1). dueOn is a strict yyyy-MM-dd and may be in the future. assigneeUserId must name an existing, active user — a field error on followUp.assigneeUserId otherwise — and omitting it leaves the follow-up unassigned, which is everyone's rather than nobody's. Sending the whole object as null, or omitting it, CLEARS the entry's follow-up on a PUT: the entry's PUT is a full replace, as it already is for occurredAt and sourceUrl, and clearing a follow-up clears its done state with it. doneAt cannot be set here at all — POST and DELETE .../follow-up/done are the only way in and out of that state. */
+        TimelineFollowUpRequest: {
+            /** Format: uuid */
+            assigneeUserId?: string | null;
+            dueOn: string | null;
+        };
         TimelineListResponse: {
             data: components["schemas"]["TimelineResponse"][];
             nextCursor?: string | null;
@@ -1002,6 +1084,8 @@ export interface components {
             eventType: string | null;
             /** Format: int32 */
             expectedRevision?: number;
+            /** @description The follow-up to set on this entry (follow-ups design D1). On a create, omitted means none. On an update, omitted or null CLEARS the entry's follow-up and its done state — this PUT is a full replace, as it already is for occurredAt and sourceUrl. */
+            followUp?: components["schemas"]["TimelineFollowUpRequest"] | null;
             note: string | null;
             /** Format: date-time */
             occurredAt?: string | null;
@@ -1016,6 +1100,8 @@ export interface components {
             /** Format: int32 */
             currentRevision: number;
             eventType: string;
+            /** @description What happens next on this entry (follow-ups design D1). Absent when the entry carries none. */
+            followUp?: components["schemas"]["TimelineFollowUp"] | null;
             /** Format: int32 */
             id: number;
             note?: string | null;
@@ -1044,6 +1130,8 @@ export interface components {
             /** Format: date-time */
             deletedAt?: string | null;
             eventType: string;
+            /** @description The follow-up as it stood at this revision (follow-ups design D1) — a point-in-time snapshot like every other field here, so an entry whose follow-up was later moved or cleared still shows what it said then. Absent when the entry carried none at this revision. */
+            followUp?: components["schemas"]["TimelineFollowUp"] | null;
             note?: string | null;
             /** Format: date-time */
             occurredAt?: string | null;
@@ -2874,6 +2962,120 @@ export interface operations {
             };
         };
     };
+    postCustomersByIdTimelineByEntryIdFollowUpDone: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                entryId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelineResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    deleteCustomersByIdTimelineByEntryIdFollowUpDone: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                entryId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelineResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
     getCustomersByIdTimelineByEntryIdRevisions: {
         parameters: {
             query?: never;
@@ -3272,6 +3474,59 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getCustomersFollowUps: {
+        parameters: {
+            query?: {
+                page?: number;
+                pageSize?: number;
+                assignee?: string;
+                state?: string;
+                customerId?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponseOfCustomerFollowUp"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
             };
         };
     };

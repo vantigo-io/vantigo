@@ -8,9 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
 )
@@ -69,17 +71,41 @@ const (
 //
 // No longer .NET's stub (CustomerStatsEndpoints.cs:111-112, inventory
 // §8.5's "always an empty array"): design D4 gives this operation a real
-// feature, new to the port. One query reads every non-archived customer
-// with a stored registry record; attentionItemsFrom does the actual work,
-// pure and table-tested on its own (stats_internal_test.go), so this
-// handler is only the plumbing between the two.
+// feature, new to the port. Two families of item, both computed from state each
+// time this is asked — no stored list, no dismiss action: the four registry ones
+// (Brreg in full design D4), whose own work attentionItemsFrom does, pure and
+// table-tested on its own (stats_internal_test.go), and the two follow-up ones
+// (follow-ups design D2).
+//
+// The follow-up half is the first item here that depends on WHO is asking: it
+// reports open follow-ups assigned to the caller or unassigned, so the endpoint
+// now reads the principal from the context the way time's and expenses' own
+// items do. An unauthenticated caller cannot reach this (the router refuses
+// first), and if one somehow did, a nil caller answers only the unassigned
+// follow-ups — never everybody's.
 func (s *server) GetCustomersStatsAttention(ctx context.Context, _ gen.GetCustomersStatsAttentionRequestObject) (gen.GetCustomersStatsAttentionResponseObject, error) {
 	q := store.New(s.deps.Pool)
-	rows, err := q.RegistryAttentionCandidates(ctx)
+	registryRows, err := q.RegistryAttentionCandidates(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("customers: stats attention: %w", err)
 	}
-	return gen.GetCustomersStatsAttention200JSONResponse(attentionItemsFrom(rows)), nil
+
+	var caller *uuid.UUID
+	if p, ok := contracts.PrincipalFrom(ctx); ok && p.UserID != uuid.Nil {
+		id := p.UserID
+		caller = &id
+	}
+	today := civilDate(s.deps.Clock())
+	followUpRows, err := q.FollowUpAttentionCandidates(ctx, store.FollowUpAttentionCandidatesParams{
+		Today: pgtype.Date{Time: today, Valid: true}, CallerID: caller,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("customers: stats attention follow-ups: %w", err)
+	}
+
+	items := append(attentionItemsFrom(registryRows), followUpAttentionItems(followUpRows, today)...)
+	sortAttentionItems(items)
+	return gen.GetCustomersStatsAttention200JSONResponse(items), nil
 }
 
 // attentionItemsFrom is GetCustomersStatsAttention's pure half: one item per
@@ -99,13 +125,21 @@ func attentionItemsFrom(rows []store.RegistryAttentionCandidatesRow) []gen.Custo
 			Id: typ + "/" + id, Type: typ, Title: r.Name, OccurredAt: attentionOccurredAt(typ, r), EntityId: id,
 		})
 	}
+	sortAttentionItems(items)
+	return items
+}
+
+// sortAttentionItems is the order every item on this endpoint answers in,
+// whatever produced it: newest occurredAt first, ties broken by id — the
+// dashboard reads a list, not a timeline, so "what needs looking at soonest"
+// floats and a stable tiebreaker keeps repeated calls from reshuffling ties.
+func sortAttentionItems(items []gen.CustomerStatsAttentionItem) {
 	slices.SortStableFunc(items, func(a, b gen.CustomerStatsAttentionItem) int {
 		if c := b.OccurredAt.Compare(a.OccurredAt); c != 0 {
 			return c
 		}
 		return strings.Compare(a.Id, b.Id)
 	})
-	return items
 }
 
 // attentionOccurredAt is the day the thing itself happened, not the moment we
