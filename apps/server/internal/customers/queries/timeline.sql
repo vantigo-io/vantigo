@@ -5,7 +5,7 @@
 -- answer its distinct 409, not a 404, so this is unfiltered on state.
 SELECT id, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
        source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-       created_at, updated_at, deleted_at, actor_user_id
+       created_at, updated_at, deleted_at, actor_user_id, follow_up_on, follow_up_assignee_user_id, follow_up_done_at
 FROM customers.customers_timeline_entries
 WHERE id = @id AND customer_id = @customer_id;
 
@@ -16,7 +16,7 @@ WHERE id = @id AND customer_id = @customer_id;
 -- CurrentRevision > 0 is not part of that filter, only State is.
 SELECT id, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
        source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-       created_at, updated_at, deleted_at, actor_user_id
+       created_at, updated_at, deleted_at, actor_user_id, follow_up_on, follow_up_assignee_user_id, follow_up_done_at
 FROM customers.customers_timeline_entries
 WHERE id = @id AND customer_id = @customer_id AND state = 'active';
 
@@ -33,7 +33,7 @@ WHERE id = @id AND customer_id = @customer_id AND state = 'active';
 -- alone could not distinguish from "no cursor was given at all".
 SELECT id, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
        source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-       created_at, updated_at, deleted_at, actor_user_id
+       created_at, updated_at, deleted_at, actor_user_id, follow_up_on, follow_up_assignee_user_id, follow_up_done_at
 FROM customers.customers_timeline_entries
 WHERE customer_id = @customer_id::int
   AND state = 'active'
@@ -75,33 +75,41 @@ LIMIT @take::int;
 -- are the caller's resolved actor (server.actorFor, customers foundation
 -- design D1) — manualFallbackActor's 'unattributed'/'Unattributed'/NULL when
 -- there is no user principal to attribute the write to.
+--
+-- follow_up_on/follow_up_assignee_user_id are the entry's own follow-up
+-- (follow-ups design D1), NULL when the request carried none. follow_up_done_at
+-- is deliberately NOT a parameter: a follow-up cannot be created already done,
+-- and the two paths that set it are their own statements in follow_ups.sql.
 WITH entry AS (
     INSERT INTO customers.customers_timeline_entries (
         customer_id, provenance, producer, event_type, occurred_on, occurred_at,
         summary, note, source_url, payload_version, current_revision, state, actor_kind, actor_display,
-        actor_user_id, created_at, updated_at
+        actor_user_id, created_at, updated_at, follow_up_on, follow_up_assignee_user_id
     ) VALUES (
         @customer_id::int, 'manual', 'customers.api', @event_type::text, @occurred_on::date, @occurred_at,
         @summary::text, @note::text, @source_url, 1, 1, 'active', @actor_kind::text, @actor_display::text,
-        @actor_user_id, @now::timestamptz, @now::timestamptz
+        @actor_user_id, @now::timestamptz, @now::timestamptz, @follow_up_on, @follow_up_assignee_user_id
     )
     RETURNING id, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
               source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-              created_at, updated_at, deleted_at, actor_user_id
+              created_at, updated_at, deleted_at, actor_user_id, follow_up_on, follow_up_assignee_user_id,
+              follow_up_done_at
 ), inserted_revision AS (
     INSERT INTO customers.customers_timeline_entries_revisions (
         customer_timeline_entry_id, revision_number, customer_id, provenance, producer, event_type,
         occurred_on, occurred_at, summary, note, source_url, payload_json, payload_version, current_revision,
-        state, actor_kind, actor_display, actor_user_id, created_at, updated_at
+        state, actor_kind, actor_display, actor_user_id, created_at, updated_at,
+        follow_up_on, follow_up_assignee_user_id, follow_up_done_at
     )
     SELECT id, 1, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
            source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-           actor_user_id, created_at, updated_at
+           actor_user_id, created_at, updated_at, follow_up_on, follow_up_assignee_user_id, follow_up_done_at
     FROM entry
 )
 SELECT id, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
        source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-       created_at, updated_at, deleted_at, actor_user_id
+       created_at, updated_at, deleted_at, actor_user_id, follow_up_on, follow_up_assignee_user_id,
+       follow_up_done_at
 FROM entry;
 
 -- name: UpdateManualTimelineEntry :one
@@ -118,6 +126,16 @@ FROM entry;
 -- concurrent writer committed first; the caller maps that to the same 409
 -- "Timeline revision conflict" the Go-side pre-check answers, with .NET's
 -- distinct DbUpdateConcurrencyException wording.
+--
+-- The follow-up is part of the entry, so a PUT replaces it the way it replaces
+-- occurred_at and source_url: absent means cleared (follow-ups design D1).
+-- follow_up_done_at is the one column with a CASE rather than a plain
+-- assignment, and it is the design's own sentence — "clearing a follow-up also
+-- clears its done state" — expressed where it cannot be forgotten: a PUT that
+-- KEEPS the follow-up leaves the done stamp exactly as it was (editing the
+-- note of a ticked follow-up must not un-tick it), and a PUT that clears the
+-- follow-up takes the stamp with it, because done-ness without a follow-up is
+-- not a state this module has.
 UPDATE customers.customers_timeline_entries
 SET event_type = @event_type::text,
     occurred_on = @occurred_on::date,
@@ -125,12 +143,16 @@ SET event_type = @event_type::text,
     note = @note::text,
     summary = @summary::text,
     source_url = @source_url,
+    follow_up_on = @follow_up_on,
+    follow_up_assignee_user_id = @follow_up_assignee_user_id,
+    follow_up_done_at = CASE WHEN @follow_up_on::date IS NULL THEN NULL ELSE follow_up_done_at END,
     current_revision = @new_revision::int,
     updated_at = @now::timestamptz
 WHERE id = @id AND customer_id = @customer_id AND current_revision = @expected_revision::int
 RETURNING id, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
           source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-          created_at, updated_at, deleted_at, actor_user_id;
+          created_at, updated_at, deleted_at, actor_user_id, follow_up_on, follow_up_assignee_user_id,
+          follow_up_done_at;
 
 -- name: SetTimelineEntryDeleted :one
 -- SetTimelineEntryDeleted is TimelineEndpoints.Delete's guarded write
@@ -141,7 +163,8 @@ SET state = 'deleted', deleted_at = @now::timestamptz, updated_at = @now::timest
 WHERE id = @id AND customer_id = @customer_id AND current_revision = @expected_revision::int
 RETURNING id, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
           source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-          created_at, updated_at, deleted_at, actor_user_id;
+          created_at, updated_at, deleted_at, actor_user_id, follow_up_on, follow_up_assignee_user_id,
+          follow_up_done_at;
 
 -- name: InsertTimelineRevision :exec
 -- InsertTimelineRevision is AddRevision (:343-364), called after either
@@ -164,12 +187,13 @@ RETURNING id, customer_id, provenance, producer, event_type, occurred_on, occurr
 INSERT INTO customers.customers_timeline_entries_revisions (
     customer_timeline_entry_id, revision_number, customer_id, provenance, producer, event_type,
     occurred_on, occurred_at, summary, note, source_url, payload_json, payload_version, current_revision,
-    state, actor_kind, actor_display, actor_user_id, created_at, updated_at, deleted_at
+    state, actor_kind, actor_display, actor_user_id, created_at, updated_at, deleted_at,
+    follow_up_on, follow_up_assignee_user_id, follow_up_done_at
 ) VALUES (
     @entry_id::int, @revision_number::int, @customer_id::int, @provenance::text, @producer::text, @event_type::text,
     @occurred_on::date, @occurred_at, @summary::text, @note, @source_url, @payload_json, @payload_version::int,
     @current_revision::int, @state::text, @actor_kind::text, @actor_display::text, @actor_user_id, @created_at::timestamptz,
-    @updated_at::timestamptz, @deleted_at
+    @updated_at::timestamptz, @deleted_at, @follow_up_on, @follow_up_assignee_user_id, @follow_up_done_at
 );
 
 -- name: ListTimelineRevisions :many
@@ -178,7 +202,8 @@ INSERT INTO customers.customers_timeline_entries_revisions (
 -- inventory notes this endpoint never paginates).
 SELECT id, customer_timeline_entry_id, revision_number, customer_id, provenance, producer, event_type,
        occurred_on, occurred_at, summary, note, source_url, payload_json, payload_version, current_revision,
-       state, actor_kind, actor_display, created_at, updated_at, deleted_at, actor_user_id
+       state, actor_kind, actor_display, created_at, updated_at, deleted_at, actor_user_id,
+       follow_up_on, follow_up_assignee_user_id, follow_up_done_at
 FROM customers.customers_timeline_entries_revisions
 WHERE customer_timeline_entry_id = @entry_id
 ORDER BY revision_number;

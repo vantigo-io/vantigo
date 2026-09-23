@@ -411,6 +411,93 @@ func TestCustomersBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		t.Errorf("customers_contacts: title is_nullable = %q and %s column(s) named role, want \"YES\" and 0", titleNullable, roleColumns)
 	}
 
+	// A follow-up is part of the entry, and part of every revision of it
+	// (follow-ups design D1) — so history stays point-in-time: a revision that
+	// did not carry the follow-up would answer "what did this entry look like
+	// then" with today's due date. The three columns are asserted on BOTH
+	// tables in one query, because the failure mode this guards is adding them
+	// to one and forgetting the other, which nothing else here would notice.
+	var followUpColumns []string
+	followUpRows, err := pool.Query(ctx, `SELECT table_name || '.' || column_name || ':' || data_type || ':' || is_nullable
+	                                      FROM information_schema.columns
+	                                      WHERE table_schema = 'customers'
+	                                        AND table_name IN ('customers_timeline_entries', 'customers_timeline_entries_revisions')
+	                                        AND column_name LIKE 'follow_up%'
+	                                      ORDER BY table_name, column_name`)
+	if err != nil {
+		t.Fatalf("query follow-up columns: %v", err)
+	}
+	for followUpRows.Next() {
+		var s string
+		if err := followUpRows.Scan(&s); err != nil {
+			t.Fatalf("scan follow-up column: %v", err)
+		}
+		followUpColumns = append(followUpColumns, s)
+	}
+	followUpRows.Close()
+	if err := followUpRows.Err(); err != nil {
+		t.Fatalf("iterate follow-up columns: %v", err)
+	}
+	wantFollowUpColumns := []string{
+		"customers_timeline_entries.follow_up_assignee_user_id:uuid:YES",
+		"customers_timeline_entries.follow_up_done_at:timestamp with time zone:YES",
+		"customers_timeline_entries.follow_up_on:date:YES",
+		"customers_timeline_entries_revisions.follow_up_assignee_user_id:uuid:YES",
+		"customers_timeline_entries_revisions.follow_up_done_at:timestamp with time zone:YES",
+		"customers_timeline_entries_revisions.follow_up_on:date:YES",
+	}
+	if !equalStrings(followUpColumns, wantFollowUpColumns) {
+		t.Errorf("follow-up columns = %v, want %v", followUpColumns, wantFollowUpColumns)
+	}
+
+	// There is deliberately NO foreign key from
+	// follow_up_assignee_user_id to identity.users, for migration 00024's own
+	// two reasons: this module may not read identity's schema (the test below
+	// and depguard both bar it), and design D1 rules that an assignee disabled
+	// or removed afterwards KEEPS the follow-up. ON DELETE SET NULL would have
+	// silently reassigned it to nobody.
+	var assigneeForeignKeys int
+	if err := pool.QueryRow(ctx, `SELECT count(*)
+	                              FROM information_schema.key_column_usage k
+	                              JOIN information_schema.table_constraints c
+	                                ON c.constraint_name = k.constraint_name AND c.constraint_schema = k.constraint_schema
+	                              WHERE k.table_schema = 'customers'
+	                                AND k.column_name = 'follow_up_assignee_user_id'
+	                                AND c.constraint_type = 'FOREIGN KEY'`).Scan(&assigneeForeignKeys); err != nil {
+		t.Fatalf("count follow-up assignee foreign keys: %v", err)
+	}
+	if assigneeForeignKeys != 0 {
+		t.Errorf("found %d foreign key(s) on follow_up_assignee_user_id, want 0", assigneeForeignKeys)
+	}
+
+	// Both follow-up indexes are PARTIAL, and the predicate is the load-bearing
+	// half: an unpartitioned index on (follow_up_on, id) would cover every
+	// timeline entry ever written, which is overwhelmingly rows with no
+	// follow-up at all, to serve a list that only ever wants the few that have
+	// one. indexColumns cannot see a predicate, so this reads the definitions.
+	for _, name := range []string{
+		"ix_customers_timeline_entries_follow_up_open",
+		"ix_customers_timeline_entries_follow_up_assignee",
+	} {
+		var def string
+		if err := pool.QueryRow(ctx, `SELECT indexdef FROM pg_indexes WHERE schemaname = 'customers' AND indexname = $1`, name).Scan(&def); err != nil {
+			t.Fatalf("read %s definition: %v", name, err)
+		}
+		if !strings.Contains(def, "WHERE") || strings.Contains(def, "UNIQUE") {
+			t.Errorf("%s = %q, want a non-unique PARTIAL index", name, def)
+		}
+	}
+	var openIndexDef string
+	if err := pool.QueryRow(ctx, `SELECT indexdef FROM pg_indexes
+	                              WHERE schemaname = 'customers' AND indexname = 'ix_customers_timeline_entries_follow_up_open'`).Scan(&openIndexDef); err != nil {
+		t.Fatalf("read ix_customers_timeline_entries_follow_up_open definition: %v", err)
+	}
+	for _, fragment := range []string{"follow_up_on IS NOT NULL", "follow_up_done_at IS NULL", "state)::text = 'active'"} {
+		if !strings.Contains(openIndexDef, fragment) {
+			t.Errorf("ix_customers_timeline_entries_follow_up_open = %q, want it to contain %q", openIndexDef, fragment)
+		}
+	}
+
 	// A tag is a vocabulary, so 'VIP' and 'vip' are one word (owner and tags
 	// design D2): the uniqueness is on lower(name), which is an EXPRESSION
 	// index — indexColumns above joins pg_attribute on i.indkey and therefore
