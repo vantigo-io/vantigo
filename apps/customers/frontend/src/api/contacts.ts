@@ -106,15 +106,19 @@ export interface ContactCustomerResponse {
 }
 
 /**
- * The wire shapes, which differ from the normalised ones in one way: `roles` is
- * optional in the contract (the recorded corpus predates it) even though the
- * server always sends it, so the boundary fills it in. `title` needs no such
- * treatment — it is nullable, and null is exactly what it means.
+ * The wire shapes. Both fields the normalisers touch are optional here for the
+ * same reason: the server omits what is unset rather than sending null, so an
+ * association with no title has no `title` key at all, and `roles` is optional
+ * in the contract (the recorded corpus predates it) even though the server
+ * always sends it. Turning both absences into the one value the UI reads —
+ * `null` and `[]` — is the boundary's job, not a redundancy.
  */
-type RawCustomerContactResponse = Omit<CustomerContactResponse, "roles"> & {
+type RawCustomerContactResponse = Omit<CustomerContactResponse, "title" | "roles"> & {
+  title?: string | null;
   roles?: RawContactRole[] | null;
 };
-type RawContactCustomerResponse = Omit<ContactCustomerResponse, "roles"> & {
+type RawContactCustomerResponse = Omit<ContactCustomerResponse, "title" | "roles"> & {
+  title?: string | null;
   roles?: RawContactRole[] | null;
 };
 

@@ -555,8 +555,8 @@ because each is a decision rather than a side effect:
   It was `customers:update` until phase 4 delivery C: a timeline writer picking a
   follow-up's assignee holds `customers:timeline-manage` and need not hold
   `customers:update`, and the display names of active users are what every
-  timeline *reader* already sees on every entry as its author, so there was
-  nothing here for the stricter key to protect.
+  customer *reader* (`customers:view`) already sees, as the owner on every
+  customer it reads, so there was nothing here for the stricter key to protect.
 
 The list filters on `ownerId`, which takes a user id, the literal `me`, or
 `none`. `me` is resolved from the session, never from anything the request says
@@ -1862,8 +1862,9 @@ permission key was added.
 
 **Phase 4 delivery B** — [Contacts and associations](#contacts-and-associations) —
 has since landed on top of it: the association's free-text `role` is a `title`
-and stays one (migration `00025` renames the column; the wire keeps answering
-`role`, because the recorded exchange corpus sends and reads it), and three
+and stays one (migration `00025` renames the column; the wire answered `role`
+as a deprecated alias for that one delivery, and delivery C removed it while
+nothing was live, so `title` is the only name left), and three
 typed roles — `billing`, `project`, `decision_maker` — live in
 `customers.customer_contact_roles` with exactly one primary contact per role,
 on the addresses' own invariant. The roles ride on the association's four

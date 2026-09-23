@@ -122,8 +122,9 @@ func recordCustomerCreated(ctx context.Context, q *store.Queries, now time.Time,
 // recordCustomerUpdated is RecordCustomerUpdated
 // (SV/CustomerTimelineRecorder.cs:35-63): only called when the name or the
 // legal identity actually changed (UpdateCustomerEndpoint.cs:93,97-100), and
-// its payload is the only one in the module carrying PayloadVersion 2
-// (inventory §2.4).
+// its payload carries PayloadVersion 2 (inventory §2.4) — it was the only one
+// in the module that did until the four contact events were bumped to 2 by
+// follow-ups design D5, which dropped their `role` key.
 func recordCustomerUpdated(ctx context.Context, q *store.Queries, now time.Time, customerID int32, beforeName string, beforeIdentity *legalIdentity, afterName string, afterIdentity *legalIdentity, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
 	identityChanged := !identityEqual(beforeIdentity, afterIdentity)
 	changeNote := ""
