@@ -163,7 +163,8 @@ const BillingRow = ({
  * nothing from a legacy id that fails the mod-11 check, so neither does the
  * hint. No hint is shown when the identity is absent either: it is absent
  * whenever the viewer may not see it, and a derived recipient built from a
- * guess would be worse than none.
+ * guess would be worse than none — and the group's default, which is the
+ * only hint whose value the server resolved rather than this card.
  */
 const BillingFields = ({
   customer,
@@ -201,6 +202,19 @@ const BillingFields = ({
       : null;
   const peppolHint = derivedPeppolId ? t("billingEhfRecipientDerived", { id: derivedPeppolId }) : null;
 
+  // Three states, one block: nothing to say when the customer is in no group or
+  // its group decides nothing; where the term comes from when the profile
+  // decided none; and which of the two applies when it did. The rule — own value
+  // wins — is resolveBillingProfile's, and this card states it in words rather
+  // than re-deriving it.
+  const groupTerms = profile.groupDefault?.paymentTermsDays ?? null;
+  const paymentTermsHint =
+    groupTerms === null
+      ? null
+      : profile.paymentTermsDays === null
+        ? t("billingInheritsTermsFromGroup", { count: groupTerms, group: profile.groupDefault?.group.name })
+        : t("billingGroupTermsOverridden", { count: groupTerms });
+
   return (
     <Stack gap="xs">
       <BillingRow label={t("billingInvoiceEmail")} value={value(profile.invoiceEmail)} hint={invoiceEmailHint} />
@@ -214,6 +228,7 @@ const BillingFields = ({
             <Text size="sm">{t("paymentTermsDaysValue", { count: profile.paymentTermsDays })}</Text>
           )
         }
+        hint={paymentTermsHint}
       />
       <BillingRow label={t("billingCurrency")} value={value(profile.currency)} />
       <BillingRow

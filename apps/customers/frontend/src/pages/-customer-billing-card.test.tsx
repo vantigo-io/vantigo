@@ -1,7 +1,7 @@
 import { MantineProvider } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CustomerResponse } from "../api/customers";
@@ -314,5 +314,41 @@ describe("CustomerBillingCard", () => {
     renderCard(emptyProfile, {}, false);
     await screen.findByText("Peppol ID");
     expect(screen.queryByLabelText("Edit billing profile")).not.toBeInTheDocument();
+  });
+
+  it("says where an unset payment term comes from, that an own one overrides it, and nothing when the group decides nothing", async () => {
+    // Inherited: the profile decided nothing, the group gives 30.
+    renderCard({ ...emptyProfile, groupDefault: { group: { id: "g1", name: "Retail" }, paymentTermsDays: 30 } });
+    expect(await screen.findByText("Inherits 30 days from Retail")).toBeInTheDocument();
+    cleanup();
+
+    // Overridden: both present, and the card says which one applies.
+    renderCard({
+      ...emptyProfile,
+      paymentTermsDays: 14,
+      groupDefault: { group: { id: "g1", name: "Retail" }, paymentTermsDays: 30 },
+    });
+    expect(await screen.findByText("Group default 30 days — overridden here")).toBeInTheDocument();
+    cleanup();
+
+    // In a group that decides nothing: nothing to inherit and nothing to say.
+    // The block is still present on the wire, with no paymentTermsDays key at
+    // all, which is the trap.
+    renderCard({ ...emptyProfile, groupDefault: { group: { id: "g2", name: "Key accounts" } } });
+    await screen.findByText("Payment terms");
+    expect(screen.queryByText(/Inherits/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Group default/)).not.toBeInTheDocument();
+    cleanup();
+
+    // In no group: no groupDefault key at all — the file's own wire fixture,
+    // which must not throw.
+    renderCard(omittedProfile);
+    await screen.findByText("Payment terms");
+    expect(screen.queryByText(/Inherits/)).not.toBeInTheDocument();
+    cleanup();
+
+    // A group whose default is 0 days is still a real default: due on receipt.
+    renderCard({ ...emptyProfile, groupDefault: { group: { id: "g3", name: "Cash only" }, paymentTermsDays: 0 } });
+    expect(await screen.findByText("Inherits 0 days from Cash only")).toBeInTheDocument();
   });
 });

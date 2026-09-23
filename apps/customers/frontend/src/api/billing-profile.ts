@@ -1,4 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
+import type { CustomerGroupRef } from "./customers";
 import { request } from "./request";
 
 export { ApiConflictError, ApiValidationError, NotFoundError } from "./request";
@@ -33,6 +34,20 @@ export interface CustomerPeppolLookup {
 }
 
 /**
+ * What this customer's group would give it (customer groups design D4).
+ * Present whenever the customer belongs to a group; `paymentTermsDays` is null
+ * when the group carries no default of its own, which is a different thing from
+ * belonging to no group — one has nothing to inherit, the other has nowhere to
+ * inherit from. The effective term is the profile's own, else this one, else
+ * nothing: the rule the directory applies for every consumer, restated here
+ * only so the card can say which case it is in.
+ */
+export interface CustomerBillingGroupDefault {
+  group: CustomerGroupRef;
+  paymentTermsDays: number | null;
+}
+
+/**
  * A customer's billing profile (design D1, D4): every field nullable,
  * meaning "not decided here — whoever invoices uses its own default". Unlike
  * `CustomerResponse` this is always fetched through its own sub-resource
@@ -62,6 +77,8 @@ export interface CustomerBillingProfile {
   peppolLookup: CustomerPeppolLookup | null;
   /** Machine-readable codes the UI explains — an unknown code is ignored (design D4). */
   warnings: string[];
+  /** Null when the customer belongs to no group; the wire omits the field entirely in that case. */
+  groupDefault: CustomerBillingGroupDefault | null;
 }
 
 /**
@@ -95,9 +112,10 @@ const normalizePeppolLookup = (raw?: RawCustomerPeppolLookup): CustomerPeppolLoo
  * "not decided, the invoicing default applies"), so this shape is mapped to
  * the full one at the boundary and nothing downstream has to know.
  */
-type RawCustomerBillingProfile = Partial<Omit<CustomerBillingProfile, "revision" | "peppolLookup">> & {
+type RawCustomerBillingProfile = Partial<Omit<CustomerBillingProfile, "revision" | "peppolLookup" | "groupDefault">> & {
   revision: number;
   peppolLookup?: RawCustomerPeppolLookup;
+  groupDefault?: { group: CustomerGroupRef; paymentTermsDays?: number | null };
 };
 
 const normalizeBillingProfile = (raw: RawCustomerBillingProfile): CustomerBillingProfile => ({
@@ -114,6 +132,9 @@ const normalizeBillingProfile = (raw: RawCustomerBillingProfile): CustomerBillin
   revision: raw.revision,
   peppolLookup: normalizePeppolLookup(raw.peppolLookup),
   warnings: raw.warnings ?? [],
+  groupDefault: raw.groupDefault
+    ? { group: raw.groupDefault.group, paymentTermsDays: raw.groupDefault.paymentTermsDays ?? null }
+    : null,
 });
 
 async function fetchBillingProfile(customerId: number, signal?: AbortSignal): Promise<CustomerBillingProfile> {
