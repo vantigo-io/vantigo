@@ -117,9 +117,12 @@ export const apps: readonly AppDefinition[] = [
       searchStrategy: "customer-list",
     },
     {
-      // Follow-ups is offered on customers:timeline-view alone, the permission
-      // the page's own API needs; the Done tick inside it asks for
-      // customers:timeline-manage separately (follow-ups design D3).
+      // The page's API needs customers:timeline-view AND customers:view, but
+      // `requiredPermissions` is any-of (`hasPermissions`), so listing both
+      // would offer Follow-ups to a caller holding only customers:view. Only
+      // the sensitive half is listed: everyone with timeline-view has view in
+      // practice, and the narrower miss is the safe direction. The Done tick
+      // inside asks for customers:timeline-manage separately (design D3).
       label: "navigation.followUps",
       to: "/customers/follow-ups",
       icon: IconFlag,

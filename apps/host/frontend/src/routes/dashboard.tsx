@@ -360,8 +360,9 @@ const customerAttentionTitleKeys: Record<string, string> = {
  * `title` the server already wrote. Time's titles are built from data rather
  * than from a catalog, so they arrive in English; naming them again here is
  * what puts them in the reader's language. The four project-economy types and
- * the four customer-registry types are server-built too (a project's, a
- * milestone's or a customer's own name), so they take the same treatment,
+ * the six customers types (four registry signals plus the two follow-up ones)
+ * are server-built too (a project's, a milestone's or a customer's own name),
+ * so they take the same treatment,
  * this time with the name filled into the sentence rather than a date.
  */
 export const attentionTitleKey = (item: { module: ModuleKey; type: string; count?: number; entityId?: string }) => {

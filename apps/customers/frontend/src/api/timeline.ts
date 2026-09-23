@@ -69,9 +69,6 @@ export interface TimelineRevision {
   /** The follow-up as it stood at this revision (follow-ups design D1). Null when the entry carried none at this revision. */
   followUp: TimelineFollowUp | null;
 }
-export interface TimelineRevisionResponse {
-  data: TimelineRevision[];
-}
 
 /** A follow-up's assignee, named by the server from the user directory. */
 export interface TimelineAssignee {

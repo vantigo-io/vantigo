@@ -55,6 +55,7 @@ import {
 } from "../api/timeline";
 import { UserPicker } from "../components/user-picker";
 import { actorLabel } from "../lib/actor-label";
+import { formatDateOnly } from "../lib/format-date-only";
 import "../i18n";
 
 const manualTypes = [
@@ -205,10 +206,8 @@ export const CustomerTimeline = ({
       .map((value) => ({ value, label: t(typeKey[value]) })),
   ];
   const typeLabel = (type: string) => t(typeKey[type] ?? "timelineEvent");
-  const formatDateOnly = (date: string) =>
-    formatters.formatDate(`${date}T00:00:00Z`, { dateStyle: "medium", timeZone: "UTC" });
   const formatMoment = (date: string, time?: string | null) =>
-    `${formatDateOnly(date)}${time ? ` · ${formatters.formatDate(time, { timeStyle: "short", timeZone: "UTC" })} UTC` : ""}`;
+    `${formatDateOnly(formatters, date)}${time ? ` · ${formatters.formatDate(time, { timeStyle: "short", timeZone: "UTC" })} UTC` : ""}`;
   const client = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<TimelineEntry | null>(null);
@@ -251,8 +250,12 @@ export const CustomerTimeline = ({
       done ? markFollowUpDone(customerId, id) : reopenFollowUp(customerId, id),
     onSuccess: refresh,
     onError: (error: Error) => {
-      // No 409 branch: neither path takes an expectedRevision, so the only
-      // failures left are a vanished entry and the network.
+      // One message for every failure, the 409 included. Neither path takes an
+      // expectedRevision, so a 409 here never means "your copy is stale": it
+      // means the entry stopped being editable — somebody deleted or voided it
+      // — or the revision-uniqueness backstop fired. None of those is something
+      // the reader can resolve by retrying, so they all get the same answer the
+      // vanished entry and the network get: re-read, then say it did not happen.
       refresh();
       notifications.show({ color: "red", title: t("couldNotUpdateFollowUp"), message: error.message });
     },
@@ -466,14 +469,20 @@ export const CustomerTimeline = ({
                             td={entry.followUp.doneAt ? "line-through" : undefined}
                           >
                             {entry.followUp.doneAt
-                              ? t("followUpDoneOn", { date: formatDateOnly(entry.followUp.doneAt.slice(0, 10)) })
-                              : t("followUpDue", { date: formatDateOnly(entry.followUp.dueOn) })}
+                              ? t("followUpDoneOn", {
+                                  date: formatDateOnly(formatters, entry.followUp.doneAt.slice(0, 10)),
+                                })
+                              : t("followUpDue", { date: formatDateOnly(formatters, entry.followUp.dueOn) })}
                             {entry.followUp.assignee
                               ? ` · ${entry.followUp.assignee.displayName}${entry.followUp.assignee.active ? "" : ` (${t("inactiveUser")})`}`
                               : ` · ${t("followUpUnassigned")}`}
                             {isOverdue(entry.followUp) ? ` · ${t("followUpOverdue")}` : ""}
                           </Text>
-                          {canManageTimeline && (
+                          {/* Provenance as well as permission, the same pair the actions menu
+                              below checks: the server answers a tick on a generated entry with
+                              "Generated, deleted, or voided timeline entries cannot be edited",
+                              so a control there could only fail. */}
+                          {canManageTimeline && entry.provenance === "manual" && (
                             <Button
                               size="compact-xs"
                               variant="subtle"
@@ -511,7 +520,7 @@ export const CustomerTimeline = ({
                             variant="subtle"
                             aria-label={t("timelineActions", {
                               type: typeLabel(entry.eventType),
-                              date: formatDateOnly(entry.occurredOn),
+                              date: formatDateOnly(formatters, entry.occurredOn),
                               id: entry.id,
                             })}
                           >
@@ -773,17 +782,9 @@ const RevisionPanel = ({
                     <Text size="sm" c={revision.followUp.doneAt ? "dimmed" : undefined}>
                       {revision.followUp.doneAt
                         ? t("followUpDoneOn", {
-                            date: formatters.formatDate(`${revision.followUp.doneAt.slice(0, 10)}T00:00:00Z`, {
-                              dateStyle: "medium",
-                              timeZone: "UTC",
-                            }),
+                            date: formatDateOnly(formatters, revision.followUp.doneAt.slice(0, 10)),
                           })
-                        : t("followUpDue", {
-                            date: formatters.formatDate(`${revision.followUp.dueOn}T00:00:00Z`, {
-                              dateStyle: "medium",
-                              timeZone: "UTC",
-                            }),
-                          })}
+                        : t("followUpDue", { date: formatDateOnly(formatters, revision.followUp.dueOn) })}
                       {revision.followUp.assignee ? ` · ${revision.followUp.assignee.displayName}` : ""}
                     </Text>
                   )}
