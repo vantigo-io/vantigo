@@ -247,6 +247,22 @@ period started), riding on the domain-events outbox deferred until Orders (see
 and Time already resolve rates through (billing line → project → **customer** →
 person).
 
+**Delivery A (done)** — decided in
+[`docs/superpowers/specs/2026-09-23-customers-360-design.md`](docs/superpowers/specs/2026-09-23-customers-360-design.md):
+the overview panel. Not host-composed from module endpoints after all — none takes a
+customer id for hours or expenses — but **one endpoint on Customers**,
+`GET /customers/{id}/overview`, composed in Go from `ProjectDirectory`,
+`ProjectActuals` and `ProjectExpenses`, with a host-owned panel rendering it. Open
+projects, unbilled work (approved less invoiced, through the new
+`ActualsTotals.Invoiced`), expenses ready to invoice and last activity, each section
+shaped by the projects module's keys and absent rather than refused; money per
+currency and only for financial rights. See
+[`docs/customers.md#customer-360`](docs/customers.md#customer-360).
+
+**Still ahead in this phase:** the customer default bill rate in the rate chain
+(delivery B); other modules writing to the customer timeline, riding on the outbox
+deferred until Orders; invoiced revenue and outstanding, once Invoices exists.
+
 *Unblocks:* the reason the customer page is meant to be the hub, not just a card.
 
 ### Phase 6 — Data operations and compliance
