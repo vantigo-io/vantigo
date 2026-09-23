@@ -320,6 +320,7 @@ describe("the registry's addresses, offered beside the customer's own", () => {
       countryCode: "NO",
     },
     fetchedAt: "2026-09-22T09:00:00Z",
+    registryUpdatedHint: null,
     ...overrides,
   });
 

@@ -82,6 +82,7 @@ describe("customerRegistryRecordQueryOptions", () => {
       ...fullRecordBody,
       deletedOn: null,
       mobile: null,
+      registryUpdatedHint: null,
     });
   });
 
@@ -110,6 +111,7 @@ describe("customerRegistryRecordQueryOptions", () => {
       businessAddress: null,
       postalAddress: null,
       fetchedAt: "2026-09-22T09:00:00Z",
+      registryUpdatedHint: null,
     });
   });
 
@@ -139,6 +141,37 @@ describe("customerRegistryRecordQueryOptions", () => {
 
     expect(await runQuery(1001)).toBeNull();
   });
+
+  it("carries the feed's hint through, and reports its absence as null", async () => {
+    stubFetch(
+      vi.fn().mockResolvedValue(jsonResponse(200, { ...fullRecordBody, registryUpdatedHint: "2026-09-22T11:00:00Z" })),
+    );
+    const withHint = (await runQuery(1001)) as { registryUpdatedHint: string | null };
+    expect(withHint?.registryUpdatedHint).toBe("2026-09-22T11:00:00Z");
+
+    stubFetch(vi.fn().mockResolvedValue(jsonResponse(200, minimalRecordBody)));
+    const without = (await runQuery(1001)) as { registryUpdatedHint: string | null };
+    expect(without?.registryUpdatedHint).toBeNull();
+  });
+
+  it("reads an address with no countryCode as an empty one, not as undefined", async () => {
+    stubFetch(
+      vi.fn().mockResolvedValue(
+        jsonResponse(200, {
+          ...minimalRecordBody,
+          businessAddress: { lines: ["ul. Budowniczych 12"], city: "81-336 GDYNIA" },
+        }),
+      ),
+    );
+    const record = (await runQuery(1001)) as { businessAddress: unknown };
+    expect(record?.businessAddress).toEqual({
+      lines: ["ul. Budowniczych 12"],
+      postalCode: null,
+      city: "81-336 GDYNIA",
+      municipality: null,
+      countryCode: "",
+    });
+  });
 });
 
 describe("refreshRegistryRecord", () => {
@@ -158,7 +191,7 @@ describe("refreshRegistryRecord", () => {
 
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/1001/registry-refresh", { method: "POST" });
     expect(result.status).toBe("found");
-    expect(result.record).toEqual({ ...fullRecordBody, deletedOn: null, mobile: null });
+    expect(result.record).toEqual({ ...fullRecordBody, deletedOn: null, mobile: null, registryUpdatedHint: null });
     expect(result.changes).toEqual([{ field: "name", from: "REGISTERENHETEN", to: "REGISTERENHETEN I BRØNNØYSUND" }]);
   });
 

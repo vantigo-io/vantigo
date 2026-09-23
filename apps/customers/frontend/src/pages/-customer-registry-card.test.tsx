@@ -167,6 +167,35 @@ describe("CustomerRegistryCard", () => {
     expect(await screen.findByText(/^From Brønnøysundregistrene, fetched /)).toBeInTheDocument();
   });
 
+  it("says the register reported a change the record does not have yet", async () => {
+    renderCard(registryFetch({ ...fullRecordBody, registryUpdatedHint: "2026-09-23T08:00:00Z" }));
+    expect(await screen.findByText(/^The registry reported a change on /)).toBeInTheDocument();
+  });
+
+  it("says nothing when the record is at least as new as the register's report", async () => {
+    // fetchedAt is 2026-09-22T09:00:00Z: a refresh has already caught up.
+    renderCard(registryFetch({ ...fullRecordBody, registryUpdatedHint: "2026-09-22T08:00:00Z" }));
+    expect(await screen.findByText(/^From Brønnøysundregistrene, fetched /)).toBeInTheDocument();
+    expect(screen.queryByText(/^The registry reported a change on /)).not.toBeInTheDocument();
+  });
+
+  it("says nothing when the register has reported nothing", async () => {
+    renderCard(registryFetch(fullRecordBody));
+    expect(await screen.findByText(/^From Brønnøysundregistrene, fetched /)).toBeInTheDocument();
+    expect(screen.queryByText(/^The registry reported a change on /)).not.toBeInTheDocument();
+  });
+
+  it("renders a foreign address the register sent no country code for, exactly as before", async () => {
+    renderCard(
+      registryFetch({
+        ...minimalRecordBody,
+        businessAddress: { lines: ["ul. Budowniczych 12"], city: "81-336 GDYNIA" },
+      }),
+    );
+    expect(await screen.findByText("ul. Budowniczych 12")).toBeInTheDocument();
+    expect(screen.getByText("81-336 GDYNIA")).toBeInTheDocument();
+  });
+
   it("invents nothing for a record that carries only the required fields", async () => {
     renderCard(registryFetch(minimalRecordBody));
 

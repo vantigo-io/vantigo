@@ -606,10 +606,10 @@ export interface components {
             id: number;
             name: string;
         };
-        /** @description One of the two addresses the registry holds for an entity (Brreg in full design D1): lines is the registry's own free-form address array — one or more street lines, never a single string — and postalCode/municipality are simply absent on a foreign address, whose own postal district is part of city instead ("81-336 GDYNIA"). countryCode is ISO 3166-1 alpha-2, empty only when the registry sent none. This is what the registry says, not an address on file: a refresh never writes to the customer's own addresses (design D3). */
+        /** @description One of the two addresses the registry holds for an entity (Brreg in full design D1): lines is the registry's own free-form address array — one or more street lines, never a single string — and postalCode/municipality are simply absent on a foreign address, whose own postal district is part of city instead ("81-336 GDYNIA"). countryCode is ISO 3166-1 alpha-2, and absent when the registry sent none — the registry only assigns a country code to some foreign addresses, and an empty string was never a country. This is what the registry says, not an address on file: a refresh never writes to the customer's own addresses (design D3). */
         CustomerRegistryAddress: {
             city?: string | null;
-            countryCode: string;
+            countryCode?: string;
             lines: string[];
             municipality?: string | null;
             postalCode?: string | null;
@@ -620,7 +620,7 @@ export interface components {
             from?: string | null;
             to?: string | null;
         };
-        /** @description What Enhetsregisteret says about this customer, as of fetchedAt (Brreg in full design D1): the registry's own view, kept beside the customer and never edited by hand — the customer's name and legal identity stay what the user asserted, and a difference between the two is reported on the timeline rather than written over them. Present only for a customer whose legal identity is a Norwegian business with a valid organisation number, and only once a fetch has actually happened. deletedOn is set for an entity struck from the register; an entity removed from open data altogether has no record at all. */
+        /** @description What Enhetsregisteret says about this customer, as of fetchedAt (Brreg in full design D1): the registry's own view, kept beside the customer and never edited by hand — the customer's name and legal identity stay what the user asserted, and a difference between the two is reported on the timeline rather than written over them. Present only for a customer whose legal identity is a Norwegian business with a valid organisation number, and only once a fetch has actually happened. deletedOn is set for an entity struck from the register; an entity removed from open data altogether has no record at all. registryUpdatedHint is the moment Brønnøysundregistrene's own update feed said this entity changed, written by the background feed worker before it re-reads the record: while it is newer than fetchedAt the record is known to be behind the register — a refresh that failed, or one not attempted yet — and the card says so. It is absent whenever the feed has never reported a change for this customer. */
         CustomerRegistryRecord: {
             bankrupt: boolean;
             businessAddress?: components["schemas"]["CustomerRegistryAddress"];
@@ -643,6 +643,8 @@ export interface components {
             parentOrganisationNumber?: string | null;
             phone?: string | null;
             postalAddress?: components["schemas"]["CustomerRegistryAddress"];
+            /** Format: date-time */
+            registryUpdatedHint?: string | null;
             underForcedLiquidation: boolean;
             underLiquidation: boolean;
             vatRegistered: boolean;

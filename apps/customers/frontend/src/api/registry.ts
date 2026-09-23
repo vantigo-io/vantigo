@@ -20,6 +20,7 @@ export interface CustomerRegistryAddress {
   postalCode: string | null;
   city: string | null;
   municipality: string | null;
+  /** "" when the registry sent no country code — the field is absent on the wire, and the registry only assigns one to some foreign addresses. */
   countryCode: string;
 }
 
@@ -54,6 +55,14 @@ export interface CustomerRegistryRecord {
   businessAddress: CustomerRegistryAddress | null;
   postalAddress: CustomerRegistryAddress | null;
   fetchedAt: string;
+  /**
+   * When Brønnøysundregistrene's own update feed said this entity changed,
+   * written by the background feed worker before it re-reads the record. Newer
+   * than `fetchedAt` means the record is known to be behind the register — a
+   * refresh that failed, or one not attempted yet — which is the one line the
+   * card adds for it. Null whenever the feed has never reported a change.
+   */
+  registryUpdatedHint: string | null;
 }
 
 /** The four answers a refresh can give (design D2). */
@@ -91,8 +100,8 @@ export interface CustomerRegistryRefreshResult {
  * the boundary maps them to the one shape the rest of the package reads, as
  * addresses and the billing profile already do.
  */
-type RawCustomerRegistryAddress = Pick<CustomerRegistryAddress, "lines" | "countryCode"> &
-  Partial<Pick<CustomerRegistryAddress, "postalCode" | "city" | "municipality">>;
+type RawCustomerRegistryAddress = Pick<CustomerRegistryAddress, "lines"> &
+  Partial<Pick<CustomerRegistryAddress, "postalCode" | "city" | "municipality" | "countryCode">>;
 
 type RawCustomerRegistryRecord = Pick<
   CustomerRegistryRecord,
@@ -135,7 +144,7 @@ const normalizeAddress = (raw?: RawCustomerRegistryAddress): CustomerRegistryAdd
         postalCode: raw.postalCode ?? null,
         city: raw.city ?? null,
         municipality: raw.municipality ?? null,
-        countryCode: raw.countryCode,
+        countryCode: raw.countryCode ?? "",
       }
     : null;
 
@@ -161,6 +170,7 @@ const normalizeRecord = (raw: RawCustomerRegistryRecord): CustomerRegistryRecord
   businessAddress: normalizeAddress(raw.businessAddress),
   postalAddress: normalizeAddress(raw.postalAddress),
   fetchedAt: raw.fetchedAt,
+  registryUpdatedHint: raw.registryUpdatedHint ?? null,
 });
 
 /**
