@@ -154,11 +154,16 @@ func (a *actuals) ActualsForProjects(ctx context.Context, reqs []contracts.Actua
 // rationals until totals rounds them.
 type actualsSum struct {
 	approved, submitted, draft bucketSum
-	unpricedHundredths         int64
-	uncostedHundredths         int64
-	billableHundredths         int64
-	nonBillableHundredths      int64
-	last                       time.Time
+	// invoiced is the part of approved already billed. Every group added to
+	// it is added to approved as well — it is a subset reported beside the
+	// buckets, never a fourth one — so approved, and total, are what they
+	// always were.
+	invoiced              bucketSum
+	unpricedHundredths    int64
+	uncostedHundredths    int64
+	billableHundredths    int64
+	nonBillableHundredths int64
+	last                  time.Time
 }
 
 // bucketSum is one of the three buckets while it is being added up.
@@ -182,13 +187,22 @@ type bucketSum struct {
 // still costs the company.
 func (s *actualsSum) add(row store.ProjectActualGroupsRow, want *string) error {
 	bucket := &s.draft
+	var invoiced *bucketSum
 	switch row.Bucket {
 	case statusApproved:
 		bucket = &s.approved
+	case statusInvoiced:
+		// Approved as far as every bucket is concerned (design §2 E2), and
+		// the invoiced part of it besides (customer 360 design D1).
+		bucket = &s.approved
+		invoiced = &s.invoiced
 	case statusSubmitted:
 		bucket = &s.submitted
 	}
 	bucket.hundredths += row.HoursHundredths
+	if invoiced != nil {
+		invoiced.hundredths += row.HoursHundredths
+	}
 
 	s.billableHundredths += row.BillableHoursHundredths
 	s.nonBillableHundredths += row.HoursHundredths - row.BillableHoursHundredths
@@ -206,6 +220,9 @@ func (s *actualsSum) add(row store.ProjectActualGroupsRow, want *string) error {
 			return err
 		}
 		bucket.bill.Add(&bucket.bill, amount)
+		if invoiced != nil {
+			invoiced.bill.Add(&invoiced.bill, amount)
+		}
 	} else {
 		s.unpricedHundredths += row.PricedHoursHundredths
 	}
@@ -215,6 +232,9 @@ func (s *actualsSum) add(row store.ProjectActualGroupsRow, want *string) error {
 			return err
 		}
 		bucket.cost.Add(&bucket.cost, amount)
+		if invoiced != nil {
+			invoiced.cost.Add(&invoiced.cost, amount)
+		}
 	} else {
 		s.uncostedHundredths += row.CostedHoursHundredths
 	}
@@ -239,6 +259,7 @@ func (s *actualsSum) noteDate(row store.ProjectActualGroupsRow) {
 func (s *actualsSum) totals() contracts.ActualsTotals {
 	totals := contracts.ActualsTotals{
 		Approved:                   s.approved.bucket(),
+		Invoiced:                   s.invoiced.bucket(),
 		Submitted:                  s.submitted.bucket(),
 		Draft:                      s.draft.bucket(),
 		Total:                      s.total(),

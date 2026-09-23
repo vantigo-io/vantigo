@@ -92,10 +92,21 @@ type ActualsBucket struct {
 
 // ActualsTotals is everything logged against one project (or one of its
 // billing lines), in the three buckets every surface shows the split of
-// (design §2 E2), plus the figures that span all three.
+// (design §2 E2), plus the figures that span all three — and Invoiced, the
+// part of Approved that has already been billed.
 type ActualsTotals struct {
 	// Approved is work that has been approved, invoiced work included.
 	Approved ActualsBucket
+	// Invoiced is the part of Approved that has already been invoiced
+	// (customer 360 design D1). It is not a fourth bucket beside the three:
+	// every invoiced hour and amount is in Approved too, Total counts it once,
+	// and a consumer that ignores this field reads exactly what it read
+	// before. Approved less Invoiced is the work approved and not yet billed.
+	//
+	// Like every bucket it is rounded on its own, so Approved.BillAmount less
+	// Invoiced.BillAmount can be a cent away from the not-yet-invoiced work
+	// rounded once. Hours subtract exactly.
+	Invoiced ActualsBucket
 	// Submitted is work submitted and waiting for a decision.
 	Submitted ActualsBucket
 	// Draft is work nobody has been asked to accept yet: drafts, and work

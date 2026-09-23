@@ -315,6 +315,15 @@ caller to shape.
 - **The same three buckets everywhere.** `Approved` (approved and invoiced entries),
   `Submitted` and `Draft` (draft and rejected entries) — the split every surface in
   this module already shows.
+- **`Invoiced` is a part of `Approved`, not a bucket beside it.** Every invoiced
+  entry is in `Approved` exactly as it always was, and in `Invoiced` as well, so
+  `Approved − Invoiced` is the work approved and not yet billed — what the customer
+  page's [Customer 360](customers.md#customer-360) calls unbilled. `Total` counts
+  the invoiced work once, and a consumer that ignores the field (Projects' economy
+  does) reads exactly what it read before. It is rounded on its own like every
+  bucket, so the subtraction's amount can be a cent from the unbilled work rounded
+  once; its hours subtract exactly. The grouped query keeps `invoiced` as its own
+  bucket key for this, and the provider folds those groups into both.
 - **`Total` is a fourth bucket, not a sum of the other three.** Each bucket's amount
   is rounded once, on its own; `Total`'s amount is the unrounded sum of everything
   in all three buckets, rounded once. Those two roundings can land a cent apart, so
