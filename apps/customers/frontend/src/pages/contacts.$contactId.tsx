@@ -32,9 +32,18 @@ import {
   detachCustomerContact,
 } from "../api/contacts";
 import { ApiValidationError, type CustomerResponse, customersQueryOptions } from "../api/customers";
+import { ContactRoleBadges } from "../components/contact-role-badges";
 import { CopyableBadge } from "../components/legal-badges";
 import { formatContactName } from "../lib/format-contact-name";
-import { ConnectionFields, ConnectionValue, EditConnectionModal, type EditConnectionTarget } from "./-connection";
+import {
+  ConnectionFields,
+  ConnectionValue,
+  EditConnectionModal,
+  type EditConnectionTarget,
+  emptyConnectionValues,
+  toRoleInputs,
+  validateConnectionValues,
+} from "./-connection";
 import { ContactFormModal, type ContactModalState } from "./-contact-form-modal";
 import "../i18n";
 
@@ -185,7 +194,7 @@ const ContactCustomersCard = ({ contact, contactName }: { contact: ContactRespon
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>{t("customer")}</Table.Th>
-                  <Table.Th>{t("role")}</Table.Th>
+                  <Table.Th>{t("contactRoles")}</Table.Th>
                   <Table.Th>{t("email")}</Table.Th>
                   <Table.Th>{t("phone")}</Table.Th>
                   <Table.Th w={80} aria-label={t("actions")} />
@@ -211,8 +220,15 @@ const ContactCustomersCard = ({ contact, contactName }: { contact: ContactRespon
                       >
                         {association.customer.name}
                       </Anchor>
+                      {association.title && (
+                        <Text size="xs" c="dimmed">
+                          {association.title}
+                        </Text>
+                      )}
                     </Table.Td>
-                    <Table.Td>{association.role}</Table.Td>
+                    <Table.Td>
+                      <ContactRoleBadges roles={association.roles} />
+                    </Table.Td>
                     <Table.Td>
                       <ConnectionValue own={contact.email} connection={association.email} />
                     </Table.Td>
@@ -230,7 +246,13 @@ const ContactCustomersCard = ({ contact, contactName }: { contact: ContactRespon
                               customerId: association.customer.id,
                               contactId,
                               counterpartName: association.customer.name,
-                              role: association.role,
+                              title: association.title,
+                              roles: association.roles,
+                              // This page lists the contact's *customers*, not a
+                              // customer's every contact, so it cannot know who
+                              // else holds a role at any of them — the general
+                              // wording is what an empty array buys here.
+                              soleRoles: [],
                               phone: association.phone,
                               email: association.email,
                             })
@@ -296,10 +318,8 @@ const AddCustomerModal = ({ contactId, contactName, attachedCustomerIds, opened,
   const suggestions = lookup.data?.data ?? [];
 
   const form = useForm({
-    initialValues: { role: "", phone: "", email: "" },
-    validate: {
-      role: (value) => (value.trim().length === 0 ? t("roleRequired") : null),
-    },
+    initialValues: emptyConnectionValues(),
+    validate: validateConnectionValues(t),
   });
 
   const reset = () => {
@@ -317,7 +337,8 @@ const AddCustomerModal = ({ contactId, contactName, attachedCustomerIds, opened,
     mutationFn: (customer: CustomerResponse) =>
       attachCustomerContact(customer.id, {
         contactId,
-        role: form.values.role.trim(),
+        title: form.values.title.trim() || undefined,
+        roles: toRoleInputs(form.values),
         phone: form.values.phone.trim() || undefined,
         email: form.values.email.trim() || undefined,
       }),
@@ -421,7 +442,13 @@ const AddCustomerModal = ({ contactId, contactName, attachedCustomerIds, opened,
                 </Button>
               </Group>
 
-              <ConnectionFields getInputProps={form.getInputProps} />
+              <ConnectionFields
+                getInputProps={form.getInputProps}
+                values={form.values}
+                setFieldValue={form.setFieldValue}
+                lockedPrimary={[]}
+                soleRoles={[]}
+              />
 
               <Group justify="flex-end" mt="xs">
                 <Button variant="default" onClick={close}>

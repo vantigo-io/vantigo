@@ -32,8 +32,16 @@ import {
   detachCustomerContact,
 } from "../api/contacts";
 import { ApiValidationError } from "../api/customers";
+import { ContactRoleBadges } from "../components/contact-role-badges";
 import { formatContactName } from "../lib/format-contact-name";
-import { ConnectionFields, ConnectionValue, EditConnectionModal, type EditConnectionTarget } from "./-connection";
+import {
+  ConnectionFields,
+  type ConnectionFormValues,
+  ConnectionValue,
+  EditConnectionModal,
+  type EditConnectionTarget,
+  toRoleInputs,
+} from "./-connection";
 import { ContactFields, toContactInput } from "./-contact-form-modal";
 import "../i18n";
 
@@ -116,7 +124,7 @@ export const CustomerContactsCard = ({ customerId }: { customerId: number }) => 
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>{t("name")}</Table.Th>
-                  <Table.Th>{t("role")}</Table.Th>
+                  <Table.Th>{t("contactRoles")}</Table.Th>
                   <Table.Th>{t("email")}</Table.Th>
                   <Table.Th>{t("phone")}</Table.Th>
                   <Table.Th w={80} aria-label={t("actions")} />
@@ -133,8 +141,17 @@ export const CustomerContactsCard = ({ customerId }: { customerId: number }) => 
                       })
                     }
                   >
-                    <Table.Td>{formatContactName(association.contact)}</Table.Td>
-                    <Table.Td>{association.role}</Table.Td>
+                    <Table.Td>
+                      <Text size="sm">{formatContactName(association.contact)}</Text>
+                      {association.title && (
+                        <Text size="xs" c="dimmed">
+                          {association.title}
+                        </Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      <ContactRoleBadges roles={association.roles} />
+                    </Table.Td>
                     <Table.Td>
                       <ConnectionValue own={association.contact.email} connection={association.email} />
                     </Table.Td>
@@ -152,7 +169,18 @@ export const CustomerContactsCard = ({ customerId }: { customerId: number }) => 
                               customerId,
                               contactId: association.contact.id,
                               counterpartName: formatContactName(association.contact),
-                              role: association.role,
+                              title: association.title,
+                              roles: association.roles,
+                              soleRoles: association.roles
+                                .filter(
+                                  (assignment) =>
+                                    !associations.some(
+                                      (other) =>
+                                        other.contact.id !== association.contact.id &&
+                                        other.roles.some((r) => r.role === assignment.role),
+                                    ),
+                                )
+                                .map((assignment) => assignment.role),
                               phone: association.phone,
                               email: association.email,
                             })
@@ -227,12 +255,17 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
       suffix: "",
       phone: "",
       email: "",
-      role: "",
+      title: "",
+      roles: {} as Record<string, boolean>,
+      primary: {} as Record<string, boolean>,
       connectionPhone: "",
       connectionEmail: "",
     },
     validate: {
-      role: (value) => (value.trim().length === 0 ? t("roleRequired") : null),
+      title: (value, values) =>
+        value.trim().length === 0 && toRoleInputs(connectionValuesOf(values)).length === 0
+          ? t("titleOrRoleRequired")
+          : null,
       firstName: (value) => (creatingNew && !selected && value.trim().length === 0 ? t("firstNameRequired") : null),
       lastName: (value) => (creatingNew && !selected && value.trim().length === 0 ? t("lastNameRequired") : null),
     },
@@ -266,7 +299,8 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
     mutationFn: (contact: ContactResponse) =>
       attachCustomerContact(customerId, {
         contactId: contact.id,
-        role: form.values.role.trim(),
+        title: form.values.title.trim() || undefined,
+        roles: toRoleInputs(connectionValuesOf(form.values)),
         phone: form.values.connectionPhone.trim() || undefined,
         email: form.values.connectionEmail.trim() || undefined,
       }),
@@ -287,7 +321,8 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
       try {
         await attachCustomerContact(customerId, {
           contactId: contact.id,
-          role: form.values.role.trim(),
+          title: form.values.title.trim() || undefined,
+          roles: toRoleInputs(connectionValuesOf(form.values)),
         });
       } catch (error) {
         // The contact exists at this point — make that explicit so it is not
@@ -425,16 +460,13 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
 
           {showConnectionForm && (
             <>
-              {selected ? (
-                <ConnectionFields getInputProps={(path) => form.getInputProps(mapConnectionPath(path))} />
-              ) : (
-                <TextInput
-                  label={t("role")}
-                  placeholder={t("rolePlaceholder")}
-                  withAsterisk
-                  {...form.getInputProps("role")}
-                />
-              )}
+              <ConnectionFields
+                getInputProps={(path) => form.getInputProps(mapConnectionPath(path))}
+                values={connectionValuesOf(form.values)}
+                setFieldValue={(path, value) => form.setFieldValue(mapConnectionPath(path), value)}
+                lockedPrimary={[]}
+                soleRoles={[]}
+              />
               <Group justify="flex-end" mt="xs">
                 <Button variant="default" onClick={close}>
                   {t("cancel")}
@@ -455,6 +487,25 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
 const mapConnectionPath = (path: string) =>
   path === "phone" ? "connectionPhone" : path === "email" ? "connectionEmail" : path;
 
-/** Maps attach validation errors (keyed role/phone/email) onto the prefixed form paths. */
+/** Maps attach validation errors (keyed title/roles/phone/email) onto the prefixed form paths. */
 const mapConnectionErrors = (error: ApiValidationError) =>
   Object.fromEntries(Object.entries(error.fieldErrors).map(([field, message]) => [mapConnectionPath(field), message]));
+
+/**
+ * The attach form holds the contact's own fields beside the connection's, with
+ * the two clashing ones prefixed; this is the connection half of it, in the
+ * shape ConnectionFields and toRoleInputs speak.
+ */
+const connectionValuesOf = (values: {
+  title: string;
+  roles: Record<string, boolean>;
+  primary: Record<string, boolean>;
+  connectionPhone: string;
+  connectionEmail: string;
+}): ConnectionFormValues => ({
+  title: values.title,
+  roles: values.roles,
+  primary: values.primary,
+  phone: values.connectionPhone,
+  email: values.connectionEmail,
+});
