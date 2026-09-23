@@ -45,26 +45,55 @@ func billingProfileResponse(p billingProfile, revision int32, warnings []string,
 	}
 }
 
-// customerGroupDefault is GET/PUT .../billing-profile's groupDefault: one query
-// (CustomerGroupMembership, queries/groups.sql — the same one PUT
+// groupDefaultFrom is GET/PUT .../billing-profile's groupDefault: one
+// CustomerGroupMembership row (queries/groups.sql — the same query PUT
 // /customers/{id}/group reads its no-op check from) turned into the contract's
-// block, nil when the customer belongs to no group (pgx.ErrNoRows, wrapped,
-// when the customer itself is gone). The group's own default may
+// block, nil when the customer belongs to no group. The group's own default may
 // itself be absent: the block still stands, because "you are in Retail and
 // Retail decides nothing" is a different thing to show than "you are in no
 // group".
-func (s *server) customerGroupDefault(ctx context.Context, q *store.Queries, customerID int32) (*gen.CustomerBillingGroupDefault, error) {
-	row, err := q.CustomerGroupMembership(ctx, customerID)
-	if err != nil {
-		return nil, fmt.Errorf("customers: read customer group membership: %w", err)
-	}
+func groupDefaultFrom(row store.CustomerGroupMembershipRow) *gen.CustomerBillingGroupDefault {
 	if row.GroupID == nil {
-		return nil, nil
+		return nil
 	}
 	return &gen.CustomerBillingGroupDefault{
 		Group:            gen.CustomerGroupRef{Id: *row.GroupID, Name: deref(row.GroupName)},
 		PaymentTermsDays: row.DefaultPaymentTermsDays,
-	}, nil
+	}
+}
+
+// billingProfileSnapshot is GET/PUT .../billing-profile's first step: the
+// customer's billing row and its group, as ONE snapshot. They are two unlocked
+// statements (GetCustomerBillingProfile, then CustomerGroupMembership), and a
+// group move landing between them bumps the revision, so without a check the
+// response would pair the first read's revision with the second read's group.
+// The membership read carries the revision it saw; when that differs from the
+// profile's, the profile is read once more, which then answers at least the
+// membership's revision. A GET has no revision of its own to conflict with, so
+// it must simply answer a consistent pair; a PUT carrying a revision then meets
+// the re-read revision in its own 409 check, exactly as it would have had the
+// move landed before the first read. Once, not a loop: a third write inside the
+// same few milliseconds leaves at worst a group sentence fresher than the
+// revision beside it, and that revision still guards the next write.
+//
+// When the customer itself is gone at either read, the error wraps
+// pgx.ErrNoRows, which both handlers answer as 404.
+func billingProfileSnapshot(ctx context.Context, q *store.Queries, customerID int32) (store.GetCustomerBillingProfileRow, *gen.CustomerBillingGroupDefault, error) {
+	row, err := q.GetCustomerBillingProfile(ctx, customerID)
+	if err != nil {
+		return row, nil, fmt.Errorf("customers: get customer billing profile: %w", err)
+	}
+	membership, err := q.CustomerGroupMembership(ctx, customerID)
+	if err != nil {
+		return row, nil, fmt.Errorf("customers: read customer group membership: %w", err)
+	}
+	if membership.Revision != row.Revision {
+		row, err = q.GetCustomerBillingProfile(ctx, customerID)
+		if err != nil {
+			return row, nil, fmt.Errorf("customers: re-read customer billing profile: %w", err)
+		}
+	}
+	return row, groupDefaultFrom(membership), nil
 }
 
 // billingWarnings is GET .../billing-profile's computed warnings
@@ -140,12 +169,12 @@ func billingWarnings(profile billingProfile, customerType string, identity *lega
 // customer itself does not exist.
 func (s *server) GetCustomersByIdBillingProfile(ctx context.Context, req gen.GetCustomersByIdBillingProfileRequestObject) (gen.GetCustomersByIdBillingProfileResponseObject, error) {
 	q := store.New(s.deps.Pool)
-	row, err := q.GetCustomerBillingProfile(ctx, req.Id)
+	row, groupDefault, err := billingProfileSnapshot(ctx, q, req.Id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return gen.GetCustomersByIdBillingProfile404Response{}, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("customers: get customer billing profile: %w", err)
+		return nil, err
 	}
 
 	profile := billingProfileFromRow(row.InvoiceEmail, row.ReminderEmail, row.PaymentTermsDays,
@@ -160,15 +189,6 @@ func (s *server) GetCustomersByIdBillingProfile(ctx context.Context, req gen.Get
 	lookup, err := s.resolvedPeppolLookupFor(ctx, q, req.Id, profile, identity, row.Type)
 	if err != nil {
 		return nil, fmt.Errorf("customers: resolve peppol lookup: %w", err)
-	}
-
-	groupDefault, err := s.customerGroupDefault(ctx, q, req.Id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		// Deleted between the two reads.
-		return gen.GetCustomersByIdBillingProfile404Response{}, nil
-	}
-	if err != nil {
-		return nil, err
 	}
 
 	warnings := billingWarnings(profile, row.Type, identity, row.Email, hasInvoiceAddress, lookup)
@@ -223,13 +243,16 @@ func (s *server) PutCustomersByIdBillingProfile(ctx context.Context, req gen.Put
 		return gen.PutCustomersByIdBillingProfile400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid billing profile", errs)), nil
 	}
 
+	// Read on the pool, before the revision check and the no-op branch: the
+	// group is one snapshot with the row (billingProfileSnapshot), and neither
+	// branch changes it, so one read serves both of the handler's 200s.
 	q := store.New(s.deps.Pool)
-	existing, err := q.GetCustomerBillingProfile(ctx, req.Id)
+	existing, groupDefault, err := billingProfileSnapshot(ctx, q, req.Id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return gen.PutCustomersByIdBillingProfile404Response{}, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("customers: get customer billing profile: %w", err)
+		return nil, err
 	}
 
 	if body.Revision != nil && *body.Revision != existing.Revision {
@@ -243,17 +266,6 @@ func (s *server) PutCustomersByIdBillingProfile(ctx context.Context, req gen.Put
 	hasInvoiceAddress, err := q.CustomerHasInvoiceAddress(ctx, req.Id)
 	if err != nil {
 		return nil, fmt.Errorf("customers: customer has invoice address: %w", err)
-	}
-
-	// Read on the pool, before the no-op branch: neither branch changes the
-	// group, so one read serves both of the handler's 200s.
-	groupDefault, err := s.customerGroupDefault(ctx, q, req.Id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		// Deleted between the two reads.
-		return gen.PutCustomersByIdBillingProfile404Response{}, nil
-	}
-	if err != nil {
-		return nil, err
 	}
 
 	if billingProfileEqual(before, after) {
@@ -308,6 +320,25 @@ func (s *server) PutCustomersByIdBillingProfile(ctx context.Context, req gen.Put
 		return gen.PutCustomersByIdBillingProfile409ApplicationProblemPlusJSONResponse(customerRevisionConflict(existing.Revision, fresh.Revision)), nil
 	case err != nil:
 		return nil, fmt.Errorf("customers: update customer billing profile: %w", err)
+	}
+
+	// A body without a revision writes unguarded, so another write (a group
+	// move) can land between the snapshot and the UPDATE: the revision this
+	// response carries is then more than one past the snapshot's, and the group
+	// is read again so the two still describe the same row. With a revision the
+	// guarded UPDATE already refused that case above.
+	if updated.Revision != existing.Revision+1 {
+		membership, err := q.CustomerGroupMembership(ctx, req.Id)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			// Defensive and untested: deleted after this write committed. The
+			// write happened, so it is answered with the group it was made under
+			// rather than as a 404.
+		case err != nil:
+			return nil, fmt.Errorf("customers: re-read customer group membership: %w", err)
+		default:
+			groupDefault = groupDefaultFrom(membership)
+		}
 	}
 
 	lookup, err := s.resolvedPeppolLookupFor(ctx, q, req.Id, after, identity, updated.Type)
