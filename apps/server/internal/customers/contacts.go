@@ -464,13 +464,16 @@ func (s *server) GetCustomersContactsByIdCustomers(ctx context.Context, req gen.
 	}
 
 	// The association list and the role rows are two statements answering one
-	// page, so they are read inside one read-only transaction: outside it, a
-	// role write committing between them shows the caller a page assembled from
-	// two instants — an association whose roles are the ones it held a moment
-	// ago, or role rows for an association that is no longer in the list.
+	// page, so they are read inside one read-only REPEATABLE READ transaction —
+	// the level is what makes it one instant: under the default READ COMMITTED
+	// each statement takes its own snapshot and the transaction would buy
+	// nothing. Outside it, a role write committing between the two shows the
+	// caller a page assembled from two instants — an association whose roles
+	// are the ones it held a moment ago, or role rows for an association that is
+	// no longer in the list.
 	var rows []store.ListCustomerAssociationsForContactRow
 	var roleRows []store.ContactRolesForContactRow
-	if err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
+	if err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
 		var err error
 		if rows, err = txq.ListCustomerAssociationsForContact(ctx, req.Id); err != nil {
@@ -507,14 +510,14 @@ func (s *server) GetCustomersByIdContacts(ctx context.Context, req gen.GetCustom
 		return nil, fmt.Errorf("customers: get customer: %w", err)
 	}
 
-	// One read-only transaction over both statements, for the reason the
+	// One read-only REPEATABLE READ transaction over both statements, for the reason the
 	// contact's own customers list gives: two reads answering one page must see
 	// one instant, or a role write committing between them shows a contact its
 	// previous roles — or roles belonging to an association the list no longer
 	// carries.
 	var rows []store.ListContactAssociationsForCustomerRow
 	var roleRows []store.ContactRolesForCustomerRow
-	if err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
+	if err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
 		var err error
 		if rows, err = txq.ListContactAssociationsForCustomer(ctx, req.Id); err != nil {
