@@ -887,6 +887,8 @@ func TestAttachContact_RecordsTimelineEvent(t *testing.T) {
 		"middleName":  "Middleman",
 		"lastName":    "Attachsen",
 		"role":        "CEO",
+		"title":       "CEO",
+		"roles":       []any{},
 		"phone":       "+47 11 22 33 44",
 		"email":       nil,
 	}
@@ -929,6 +931,8 @@ func TestUpdateCustomerContact_RecordsRelationshipUpdatedEvent(t *testing.T) {
 		"middleName":  nil,
 		"lastName":    "Updatesen",
 		"role":        "Chairman",
+		"title":       "Chairman",
+		"roles":       []any{},
 		"phone":       nil,
 		"email":       "chair@timeline.co",
 	}
@@ -987,7 +991,7 @@ func TestDetachContact_RecordsTimelineEvent(t *testing.T) {
 	wantPayload := map[string]any{
 		"customerId": float64(customer.Id), "contactId": float64(contact.Id),
 		"displayName": "Timeline Detachsen", "firstName": "Timeline", "middleName": nil, "lastName": "Detachsen",
-		"role": "CTO", "phone": nil, "email": nil,
+		"role": "CTO", "title": "CTO", "roles": []any{}, "phone": nil, "email": nil,
 	}
 	if !reflect.DeepEqual(event.Payload, wantPayload) {
 		t.Errorf("Payload = %+v, want %+v", event.Payload, wantPayload)
@@ -1021,7 +1025,7 @@ func TestDeleteContact_RecordsRemovedTimelineEvent(t *testing.T) {
 	wantPayload := map[string]any{
 		"customerId": float64(customer.Id), "contactId": float64(contact.Id),
 		"displayName": "Timeline Removesen", "firstName": "Timeline", "middleName": nil, "lastName": "Removesen",
-		"role": "Custodian", "phone": nil, "email": nil,
+		"role": "Custodian", "title": "Custodian", "roles": []any{}, "phone": nil, "email": nil,
 	}
 	if !reflect.DeepEqual(event.Payload, wantPayload) {
 		t.Errorf("Payload = %+v, want %+v", event.Payload, wantPayload)

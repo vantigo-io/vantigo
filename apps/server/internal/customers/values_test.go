@@ -1026,3 +1026,47 @@ func TestValidateTagColor(t *testing.T) {
 		t.Error("validateTagColor(Red) was accepted, want it refused: the set is lowercase")
 	}
 }
+
+// Not a port: the typed role vocabulary is this delivery's own (typed contact
+// roles design D2), and the message is the design's verbatim — a caller who
+// mistypes a role has to be told which three words are allowed.
+func TestValidateAssociationRole_AcceptsTheThreeRolesAndTrims(t *testing.T) {
+	for raw, want := range map[string]string{
+		"billing":        "billing",
+		"  project  ":    "project",
+		"decision_maker": "decision_maker",
+	} {
+		got, err := validateAssociationRole(raw)
+		if err != "" || got != want {
+			t.Errorf("validateAssociationRole(%q) = %q, %q, want %q, no error", raw, got, err, want)
+		}
+	}
+}
+
+func TestValidateAssociationRole_RejectsAnythingElse(t *testing.T) {
+	for _, raw := range []string{"", "   ", "Billing", "BILLING", "decision-maker", "technical", "CEO"} {
+		want := fmt.Sprintf("A contact role must be one of 'billing', 'project' or 'decision_maker', but was '%s'", strings.TrimSpace(raw))
+		if _, err := validateAssociationRole(raw); err != want {
+			t.Errorf("validateAssociationRole(%q) = error %q, want %q", raw, err, want)
+		}
+	}
+}
+
+// The title's rule is the role's rule that has always been there (design D1:
+// "Validation of the title is today's"), so the two share one implementation
+// and differ only in the noun their messages name — the field the caller
+// actually sent. TestValidateContactRole_* above pins the 'role' half and is
+// deliberately left untouched: the deprecated alias must keep answering
+// exactly what the recorded corpus recorded.
+func TestValidateContactTitle_MirrorsTheRoleRuleUnderItsOwnNoun(t *testing.T) {
+	if got, err := validateContactTitle("  CEO  "); err != "" || got != "CEO" {
+		t.Errorf("validateContactTitle(%q) = %q, %q, want \"CEO\", no error", "  CEO  ", got, err)
+	}
+	if _, err := validateContactTitle("  "); err != "A title cannot be null or empty" {
+		t.Errorf("validateContactTitle(blank) = error %q, want %q", err, "A title cannot be null or empty")
+	}
+	want := "A title cannot be longer than 255 characters, the given value was 256 characters"
+	if _, err := validateContactTitle(strings.Repeat("a", 256)); err != want {
+		t.Errorf("validateContactTitle(256 chars) = error %q, want %q", err, want)
+	}
+}

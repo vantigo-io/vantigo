@@ -317,17 +317,58 @@ func validateEmailAddress(raw string) (string, string) {
 	return strings.ToLower(trimmed), ""
 }
 
-// validateContactRole is ContactRole's Validate and constructor
-// (DM/Contacts/Common/ContactRole.cs): non-blank, at most 255 UTF-16 code
-// units, trimmed but case-preserved.
-func validateContactRole(raw string) (string, string) {
+// associationTitleRule is the free text a customer–contact association
+// carries, under whichever field name the caller used (typed contact roles
+// design D1): non-blank when given, at most 255 UTF-16 code units, trimmed but
+// case-preserved. It is one function and not two because the rule is one rule —
+// only the noun the message names differs, and it names the field the caller
+// actually sent, so a client is told about the property it wrote rather than
+// about the column behind it.
+func associationTitleRule(noun, raw string) (string, string) {
 	if strings.TrimSpace(raw) == "" {
-		return "", "A role cannot be null or empty"
+		return "", fmt.Sprintf("A %s cannot be null or empty", noun)
 	}
 	if n := utf16Length(raw); n > 255 {
-		return "", fmt.Sprintf("A role cannot be longer than 255 characters, the given value was %d characters", n)
+		return "", fmt.Sprintf("A %s cannot be longer than 255 characters, the given value was %d characters", noun, n)
 	}
 	return strings.TrimSpace(raw), ""
+}
+
+// validateContactRole is ContactRole's Validate and constructor
+// (DM/Contacts/Common/ContactRole.cs), now the DEPRECATED `role` field's own
+// validator (typed contact roles design D1): the field is an alias of `title`,
+// and it keeps answering exactly the messages the recorded exchange corpus
+// recorded against it — a caller who has not migrated must not be told
+// something new about a field they sent unchanged.
+func validateContactRole(raw string) (string, string) {
+	return associationTitleRule("role", raw)
+}
+
+// validateContactTitle is the same rule under the field's real name (design
+// D1). Blank-when-given is still an error rather than "absent": a client that
+// sends "title": "" is saying something, and saying it wrongly, which is the
+// distinction every other optional field in this module draws by simply
+// omitting the key.
+func validateContactTitle(raw string) (string, string) {
+	return associationTitleRule("title", raw)
+}
+
+// validateAssociationRole is the typed role vocabulary (design D2). Three
+// values, defined in code and nowhere else: not a yaml enum (a contract enum
+// would answer a 400 the module cannot word) and not a database CHECK (which
+// would turn the design's "a wider list is a value change for later" into a
+// migration, the same reasoning 00024 gives for a tag's colour). The message
+// is the design's own, and the comparison is case-sensitive: 'Billing' is a
+// mistake, not a variant, because the value is an identifier that travels into
+// URLs and payloads rather than a name anyone types.
+func validateAssociationRole(raw string) (string, string) {
+	trimmed := strings.TrimSpace(raw)
+	for _, role := range contactRoleOrder {
+		if trimmed == role {
+			return trimmed, ""
+		}
+	}
+	return "", fmt.Sprintf("A contact role must be one of 'billing', 'project' or 'decision_maker', but was '%s'", trimmed)
 }
 
 // validateEmail, validatePhone and validateWebsite are the invoice-ready
