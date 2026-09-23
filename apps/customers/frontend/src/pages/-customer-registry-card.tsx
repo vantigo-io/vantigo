@@ -158,6 +158,23 @@ export const CustomerRegistryCard = ({
         ) : record ? (
           <Stack gap="xs">
             <CustomerRegistryFields record={record} />
+            {/* The register reported a change this record does not have yet
+                (design D2): either a background refresh failed, or the feed has
+                only just said so and the sweep has not caught up. Not dimmed,
+                unlike the provenance line below it — it is the one thing on this
+                card that is actionable, and Refresh is right there in the
+                header. Both values are instants, so both format in local time. */}
+            {isBehindTheRegistry(record) && (
+              <Text size="sm">
+                {t("registryUpdatedHintLine", {
+                  reported: formatters.formatDate(record.registryUpdatedHint as string, {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  }),
+                  fetched: formatters.formatDate(record.fetchedAt, { dateStyle: "medium", timeStyle: "short" }),
+                })}
+              </Text>
+            )}
             {/* Date and time: two refreshes on the same day would otherwise
                 read as one, and seeing the reading move is the point. */}
             <Text size="xs" c="dimmed">
@@ -244,6 +261,17 @@ const statusBadges = (
   }
   return badges;
 };
+
+/**
+ * Whether the register has reported a change this record does not have yet
+ * (design D2): the hint is written before a refresh is attempted, so a hint
+ * newer than `fetchedAt` is exactly "the last refresh did not catch up".
+ * Compared as instants, not as strings — the two values come from different
+ * writes and need not share a format.
+ */
+const isBehindTheRegistry = (record: CustomerRegistryRecord) =>
+  record.registryUpdatedHint !== null &&
+  new Date(record.registryUpdatedHint).getTime() > new Date(record.fetchedAt).getTime();
 
 /**
  * The register calls the company something else (design D4, D5). The legal
