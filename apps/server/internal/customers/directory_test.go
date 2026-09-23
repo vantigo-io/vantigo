@@ -2,6 +2,7 @@ package customers_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"slices"
 	"testing"
@@ -614,5 +615,60 @@ func TestDirectory_BillingProfile_NullLegalTypeLegacyRow_BothFunctionsAgree(t *t
 	r.JSON(&profile)
 	if hasWarning(profile.Warnings, "ehf_without_recipient") {
 		t.Errorf("warnings = %v, want no ehf_without_recipient (the directory can derive a recipient for this same row)", profile.Warnings)
+	}
+}
+
+// TestDirectory_BillingProfileAndCustomersSeeTheGroup is design D4 through the
+// real queries: the directory resolves an unset payment term from the group's
+// default, and CustomerEntry names the group so Products phase 4 can resolve a
+// group price without reading a billing profile for it.
+func TestDirectory_BillingProfileAndCustomersSeeTheGroup(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	retail := createGroup(t, c, map[string]any{"name": "Retail", "defaultPaymentTermsDays": 30})
+	inherits := createCustomer(t, c, "Inherits AS")
+	decides := createCustomer(t, c, "Decides AS")
+	for _, id := range []int32{inherits.Id, decides.Id} {
+		if r := putCustomerGroup(t, c, id, map[string]any{"groupId": retail.Id}); r.Status != http.StatusOK {
+			t.Fatalf("group customer %d: status %d body %s", id, r.Status, r.Body)
+		}
+	}
+	if r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/billing-profile", decides.Id),
+		map[string]any{"paymentTermsDays": 14}); r.Status != http.StatusOK {
+		t.Fatalf("set own terms: status %d body %s", r.Status, r.Body)
+	}
+
+	dir := newDirectory(t, h)
+	profile, err := dir.BillingProfile(context.Background(), inherits.Id)
+	if err != nil || profile == nil {
+		t.Fatalf("BillingProfile(%d) = %v, %v", inherits.Id, profile, err)
+	}
+	if profile.PaymentTermsDays == nil || *profile.PaymentTermsDays != 30 {
+		t.Errorf("PaymentTermsDays = %v, want 30 from the group", profile.PaymentTermsDays)
+	}
+	own, err := dir.BillingProfile(context.Background(), decides.Id)
+	if err != nil || own == nil {
+		t.Fatalf("BillingProfile(%d) = %v, %v", decides.Id, own, err)
+	}
+	if own.PaymentTermsDays == nil || *own.PaymentTermsDays != 14 {
+		t.Errorf("PaymentTermsDays = %v, want 14: the customer's own value wins", own.PaymentTermsDays)
+	}
+
+	entry, err := dir.Customer(context.Background(), inherits.Id)
+	if err != nil || entry == nil {
+		t.Fatalf("Customer(%d) = %v, %v", inherits.Id, entry, err)
+	}
+	if entry.Group == nil || entry.Group.Name != "Retail" || entry.Group.ID.String() != retail.Id {
+		t.Fatalf("Customer(…).Group = %+v, want Retail (%s)", entry.Group, retail.Id)
+	}
+	entries, err := dir.Customers(context.Background(), []int32{inherits.Id, decides.Id})
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("Customers(…) = %v, %v", entries, err)
+	}
+	for _, e := range entries {
+		if e.Group == nil || e.Group.ID != entry.Group.ID || e.Group.Name != "Retail" {
+			t.Errorf("Customers(…) entry %d group = %+v, want the same group the single lookup answered", e.ID, e.Group)
+		}
 	}
 }

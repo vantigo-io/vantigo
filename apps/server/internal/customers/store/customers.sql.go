@@ -444,36 +444,39 @@ func (q *Queries) CustomersByLegalIdentity(ctx context.Context, arg CustomersByL
 }
 
 const directoryBillingProfile = `-- name: DirectoryBillingProfile :one
-SELECT id, customer_number, name, type, status = 'archived' AS archived,
-       legal_country, legal_id, legal_name, legal_source, legal_type, email,
-       invoice_email, reminder_email, payment_terms_days, currency, language,
-       invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference
-FROM customers.customers
-WHERE id = $1
+SELECT c.id, c.customer_number, c.name, c.type, c.status = 'archived' AS archived,
+       c.legal_country, c.legal_id, c.legal_name, c.legal_source, c.legal_type, c.email,
+       c.invoice_email, c.reminder_email, c.payment_terms_days, c.currency, c.language,
+       c.invoice_delivery, c.reminder_delivery, c.peppol_id, c.gln, c.buyer_reference,
+       g.default_payment_terms_days AS group_default_payment_terms_days
+FROM customers.customers c
+LEFT JOIN customers.customer_groups g ON g.id = c.group_id
+WHERE c.id = $1
 `
 
 type DirectoryBillingProfileRow struct {
-	ID               int32
-	CustomerNumber   int64
-	Name             string
-	Type             string
-	Archived         bool
-	LegalCountry     *string
-	LegalID          *string
-	LegalName        *string
-	LegalSource      *string
-	LegalType        *string
-	Email            *string
-	InvoiceEmail     *string
-	ReminderEmail    *string
-	PaymentTermsDays *int32
-	Currency         *string
-	Language         *string
-	InvoiceDelivery  *string
-	ReminderDelivery *string
-	PeppolID         *string
-	Gln              *string
-	BuyerReference   *string
+	ID                           int32
+	CustomerNumber               int64
+	Name                         string
+	Type                         string
+	Archived                     bool
+	LegalCountry                 *string
+	LegalID                      *string
+	LegalName                    *string
+	LegalSource                  *string
+	LegalType                    *string
+	Email                        *string
+	InvoiceEmail                 *string
+	ReminderEmail                *string
+	PaymentTermsDays             *int32
+	Currency                     *string
+	Language                     *string
+	InvoiceDelivery              *string
+	ReminderDelivery             *string
+	PeppolID                     *string
+	Gln                          *string
+	BuyerReference               *string
+	GroupDefaultPaymentTermsDays *int32
 }
 
 // DirectoryBillingProfile is contracts.CustomerDirectory.BillingProfile's
@@ -487,7 +490,11 @@ type DirectoryBillingProfileRow struct {
 // query (queries/addresses.sql), a second round trip rather than a join:
 // at most one row either way, and a join would return no row at all for a
 // customer with no address, which pgx.ErrNoRows already means "no such
-// customer" for the :one shape this query needs.
+// customer" for the :one shape this query needs. Plus the group's default
+// payment term, which resolveBillingProfile applies as the middle tier of
+// PaymentTermsDays' resolution (customer groups design D4) — a LEFT JOIN
+// rather than a second round trip, since the group is this module's own table
+// and a customer in no group must still answer a row.
 func (q *Queries) DirectoryBillingProfile(ctx context.Context, id int32) (DirectoryBillingProfileRow, error) {
 	row := q.db.QueryRow(ctx, directoryBillingProfile, id)
 	var i DirectoryBillingProfileRow
@@ -513,6 +520,7 @@ func (q *Queries) DirectoryBillingProfile(ctx context.Context, id int32) (Direct
 		&i.PeppolID,
 		&i.Gln,
 		&i.BuyerReference,
+		&i.GroupDefaultPaymentTermsDays,
 	)
 	return i, err
 }
@@ -610,39 +618,53 @@ func (q *Queries) DirectoryContactsByEmail(ctx context.Context, email string) ([
 }
 
 const directoryCustomer = `-- name: DirectoryCustomer :one
-SELECT id, name, status = 'archived' AS archived
-FROM customers.customers
-WHERE id = $1
+SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name
+FROM customers.customers c
+LEFT JOIN customers.customer_groups g ON g.id = c.group_id
+WHERE c.id = $1
 `
 
 type DirectoryCustomerRow struct {
-	ID       int32
-	Name     string
-	Archived bool
+	ID        int32
+	Name      string
+	Archived  bool
+	GroupID   *uuid.UUID
+	GroupName *string
 }
 
 // DirectoryCustomer is contracts.CustomerDirectory.Customer's row
 // (SV/ApplicationServiceCollectionExtensions.cs:22-28): a customer of any
 // status, archived included, since a consumer holding a historical reference
-// must still be able to name it.
+// must still be able to name it. Its group comes along (customer groups
+// design D4, contracts.CustomerEntry.Group) through a LEFT JOIN, so a
+// customer in no group still answers its row, with both group columns NULL.
 func (q *Queries) DirectoryCustomer(ctx context.Context, id int32) (DirectoryCustomerRow, error) {
 	row := q.db.QueryRow(ctx, directoryCustomer, id)
 	var i DirectoryCustomerRow
-	err := row.Scan(&i.ID, &i.Name, &i.Archived)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Archived,
+		&i.GroupID,
+		&i.GroupName,
+	)
 	return i, err
 }
 
 const directoryCustomers = `-- name: DirectoryCustomers :many
-SELECT id, name, status = 'archived' AS archived
-FROM customers.customers
-WHERE id = ANY($1::int[])
-ORDER BY id
+SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name
+FROM customers.customers c
+LEFT JOIN customers.customer_groups g ON g.id = c.group_id
+WHERE c.id = ANY($1::int[])
+ORDER BY c.id
 `
 
 type DirectoryCustomersRow struct {
-	ID       int32
-	Name     string
-	Archived bool
+	ID        int32
+	Name      string
+	Archived  bool
+	GroupID   *uuid.UUID
+	GroupName *string
 }
 
 // DirectoryCustomers is contracts.CustomerDirectory.Customers' rows: every
@@ -652,7 +674,8 @@ type DirectoryCustomersRow struct {
 // matches the same row more than once in the WHERE clause but the row itself
 // only exists once, so the result never repeats a customer; an id nobody has
 // is simply absent, not an error. Ordered by id, not by @ids' own order, so
-// two callers asking for the same set always see it the same way.
+// two callers asking for the same set always see it the same way. The group
+// columns are DirectoryCustomer's own, joined the same way.
 func (q *Queries) DirectoryCustomers(ctx context.Context, ids []int32) ([]DirectoryCustomersRow, error) {
 	rows, err := q.db.Query(ctx, directoryCustomers, ids)
 	if err != nil {
@@ -662,7 +685,13 @@ func (q *Queries) DirectoryCustomers(ctx context.Context, ids []int32) ([]Direct
 	var items []DirectoryCustomersRow
 	for rows.Next() {
 		var i DirectoryCustomersRow
-		if err := rows.Scan(&i.ID, &i.Name, &i.Archived); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Archived,
+			&i.GroupID,
+			&i.GroupName,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

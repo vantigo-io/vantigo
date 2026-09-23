@@ -37,6 +37,15 @@ type billingProfileJSON struct {
 	Revision         int32             `json:"revision"`
 	Warnings         []string          `json:"warnings"`
 	PeppolLookup     *peppolLookupJSON `json:"peppolLookup"`
+	GroupDefault     *groupDefaultJSON `json:"groupDefault"`
+}
+
+// groupDefaultJSON decodes CustomerBillingGroupDefault: which group, and what
+// it would give this customer (customer groups design D4). A pointer, because
+// it is absent for a customer in no group.
+type groupDefaultJSON struct {
+	Group            groupRefJSON `json:"group"`
+	PaymentTermsDays *int32       `json:"paymentTermsDays"`
 }
 
 func getBillingProfile(t *testing.T, c *modtest.Client, id int32) *modtest.Response {
@@ -725,4 +734,90 @@ func containsAny(body []byte, substrs ...string) bool {
 		}
 	}
 	return false
+}
+
+// TestGetBillingProfile_GroupDefault is design D4's client-facing half: the
+// profile says what the customer's group would give it, so a card can explain
+// an inherited term — and can say "overridden" when the customer decided one —
+// without re-deriving anything. Present whenever the customer belongs to a
+// group, absent when it belongs to none, and its paymentTermsDays absent when
+// the group carries no default.
+func TestGetBillingProfile_GroupDefault(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	retail := createGroup(t, c, map[string]any{"name": "Retail", "defaultPaymentTermsDays": 30})
+	plain := createGroup(t, c, map[string]any{"name": "No default"})
+	member := createCustomer(t, c, "Member AS")
+	outsider := createCustomer(t, c, "Outsider AS")
+
+	if got := fetchBillingProfile(t, c, outsider.Id); got.GroupDefault != nil {
+		t.Errorf("groupDefault = %+v for a customer in no group, want it absent", got.GroupDefault)
+	}
+
+	if r := putCustomerGroup(t, c, member.Id, map[string]any{"groupId": retail.Id}); r.Status != http.StatusOK {
+		t.Fatalf("group the customer: status %d body %s", r.Status, r.Body)
+	}
+	got := fetchBillingProfile(t, c, member.Id)
+	if got.GroupDefault == nil || got.GroupDefault.Group.Name != "Retail" || got.GroupDefault.Group.Id != retail.Id {
+		t.Fatalf("groupDefault = %+v, want Retail (%s)", got.GroupDefault, retail.Id)
+	}
+	if got.GroupDefault.PaymentTermsDays == nil || *got.GroupDefault.PaymentTermsDays != 30 {
+		t.Errorf("groupDefault.paymentTermsDays = %v, want 30", got.GroupDefault.PaymentTermsDays)
+	}
+	if got.PaymentTermsDays != nil {
+		t.Errorf("paymentTermsDays = %v, want it absent: the profile's own field still means \"decided here\"",
+			got.PaymentTermsDays)
+	}
+
+	// The PUT answers it too, because the card writes the PUT's own body into
+	// its cache: without it the sentence would vanish until the next refetch.
+	r := putBillingProfile(t, c, member.Id, map[string]any{"paymentTermsDays": 14, "revision": got.Revision})
+	if r.Status != http.StatusOK {
+		t.Fatalf("set own terms: status %d body %s, want 200", r.Status, r.Body)
+	}
+	var saved billingProfileJSON
+	r.JSON(&saved)
+	if saved.GroupDefault == nil || saved.GroupDefault.PaymentTermsDays == nil || *saved.GroupDefault.PaymentTermsDays != 30 {
+		t.Errorf("the PUT's groupDefault = %+v, want the group's 30 beside the customer's own 14", saved.GroupDefault)
+	}
+	if saved.PaymentTermsDays == nil || *saved.PaymentTermsDays != 14 {
+		t.Errorf("paymentTermsDays = %v, want 14", saved.PaymentTermsDays)
+	}
+
+	// And the PUT's NO-OP path answers it: the same profile resubmitted writes
+	// nothing (customers foundation design D5) and returns through a branch of
+	// its own, which is exactly the branch a "add it where the response is
+	// built" instruction forgets. The card resubmits more often than it changes
+	// anything, so this is the common case, not the exotic one.
+	noop := putBillingProfile(t, c, member.Id, map[string]any{"paymentTermsDays": 14, "revision": saved.Revision})
+	if noop.Status != http.StatusOK {
+		t.Fatalf("resubmit the same profile: status %d body %s, want 200", noop.Status, noop.Body)
+	}
+	var unchanged billingProfileJSON
+	noop.JSON(&unchanged)
+	if unchanged.Revision != saved.Revision {
+		t.Errorf("revision = %d, want %d unchanged: a no-op writes nothing", unchanged.Revision, saved.Revision)
+	}
+	if unchanged.GroupDefault == nil || unchanged.GroupDefault.Group.Name != "Retail" {
+		t.Errorf("the no-op PUT's groupDefault = %+v, want Retail", unchanged.GroupDefault)
+	}
+
+	// A group with no default of its own: the block is present (the customer IS
+	// in a group) and carries no term, which is what "nothing to inherit" looks
+	// like — never a 0.
+	if r := putCustomerGroup(t, c, member.Id, map[string]any{"groupId": plain.Id}); r.Status != http.StatusOK {
+		t.Fatalf("move the customer: status %d body %s", r.Status, r.Body)
+	}
+	moved := fetchBillingProfile(t, c, member.Id)
+	if moved.GroupDefault == nil || moved.GroupDefault.Group.Name != "No default" {
+		t.Fatalf("groupDefault = %+v, want the group with no default", moved.GroupDefault)
+	}
+	if moved.GroupDefault.PaymentTermsDays != nil {
+		t.Errorf("groupDefault.paymentTermsDays = %v, want it absent", moved.GroupDefault.PaymentTermsDays)
+	}
+	// warnings learn nothing new from a group (design D4).
+	if len(moved.Warnings) != len(got.Warnings) {
+		t.Errorf("warnings = %v, want the same set a group-less profile raises (%v)", moved.Warnings, got.Warnings)
+	}
 }

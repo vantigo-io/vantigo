@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -41,7 +42,8 @@ func (d *directory) Customer(ctx context.Context, id int32) (*contracts.Customer
 	if err != nil {
 		return nil, fmt.Errorf("customers: directory customer: %w", err)
 	}
-	return &contracts.CustomerEntry{ID: row.ID, Name: row.Name, Archived: row.Archived}, nil
+	return &contracts.CustomerEntry{ID: row.ID, Name: row.Name, Archived: row.Archived,
+		Group: groupEntry(row.GroupID, row.GroupName)}, nil
 }
 
 // Customers looks up customers by id in one round trip, archived ones
@@ -60,9 +62,20 @@ func (d *directory) Customers(ctx context.Context, ids []int32) ([]contracts.Cus
 	}
 	entries := make([]contracts.CustomerEntry, 0, len(rows))
 	for _, row := range rows {
-		entries = append(entries, contracts.CustomerEntry{ID: row.ID, Name: row.Name, Archived: row.Archived})
+		entries = append(entries, contracts.CustomerEntry{ID: row.ID, Name: row.Name, Archived: row.Archived,
+			Group: groupEntry(row.GroupID, row.GroupName)})
 	}
 	return entries, nil
+}
+
+// groupEntry is a directory row's group, nil when the customer belongs to none.
+// Shared by Customer and Customers so the single lookup and the batch can never
+// answer differently about the same customer.
+func groupEntry(id *uuid.UUID, name *string) *contracts.CustomerGroupEntry {
+	if id == nil {
+		return nil
+	}
+	return &contracts.CustomerGroupEntry{ID: *id, Name: deref(name)}
 }
 
 // Contact looks up a contact by id.
@@ -108,7 +121,8 @@ func normalizeEmail(email string) string {
 // the customer row with billing, identity and contact columns
 // (DirectoryBillingProfile), and the resolved invoice address
 // (DirectoryInvoiceAddress) — then resolveBillingProfile, one pure function
-// that applies every resolution rule.
+// that applies every resolution rule. The first query also carries the
+// customer's group's default payment term (customer groups design D4).
 func (d *directory) BillingProfile(ctx context.Context, id int32) (*contracts.CustomerBillingProfile, error) {
 	row, err := d.q.DirectoryBillingProfile(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -138,7 +152,7 @@ func (d *directory) BillingProfile(ctx context.Context, id int32) (*contracts.Cu
 	identity := identityFromRow(row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType)
 
 	return resolveBillingProfile(row.ID, row.CustomerNumber, row.Name, row.Type, row.Archived,
-		identity, row.Email, profile, invoiceAddress), nil
+		identity, row.Email, profile, row.GroupDefaultPaymentTermsDays, invoiceAddress), nil
 }
 
 // resolveBillingProfile is contracts.CustomerDirectory.BillingProfile's one
@@ -160,8 +174,16 @@ func (d *directory) BillingProfile(ctx context.Context, id int32) (*contracts.Cu
 //     review fix I1 — the one predicate billingWarnings's ehf_without_
 //     recipient check now shares, so the two can never disagree about
 //     whether a recipient exists), else "".
+//   - PaymentTermsDays: the billing profile's own paymentTermsDays, else the
+//     customer's GROUP's default (customer groups design D4), else nil. The
+//     first field here with a THREE-level chain, and the only one that inherits
+//     from a group at all: currency, language and the delivery methods stay
+//     "not decided here" until somebody asks for a default. nil out means
+//     nobody decided, which is what every consumer already reads nil as — a
+//     group with no default of its own and no group at all are the same answer.
 func resolveBillingProfile(id int32, customerNumber int64, name, customerType string, archived bool,
-	identity *legalIdentity, contactEmail *string, profile billingProfile, invoiceAddress *contracts.CustomerAddressEntry,
+	identity *legalIdentity, contactEmail *string, profile billingProfile, groupDefaultPaymentTermsDays *int32,
+	invoiceAddress *contracts.CustomerAddressEntry,
 ) *contracts.CustomerBillingProfile {
 	invoiceEmail := deref(profile.InvoiceEmail)
 	if invoiceEmail == "" {
@@ -177,6 +199,13 @@ func resolveBillingProfile(id int32, customerNumber int64, name, customerType st
 		peppolID = derivedPeppolID(identity, customerType)
 	}
 
+	// A nil check, not a zero check: 0 days is "due on receipt", a decision the
+	// group must not override.
+	paymentTermsDays := profile.PaymentTermsDays
+	if paymentTermsDays == nil {
+		paymentTermsDays = groupDefaultPaymentTermsDays
+	}
+
 	var legalCountry, legalID, legalName string
 	if identity != nil {
 		legalCountry, legalID, legalName = identity.Country, identity.ID, identity.Name
@@ -190,7 +219,7 @@ func resolveBillingProfile(id int32, customerNumber int64, name, customerType st
 		InvoiceAddress:   invoiceAddress,
 		InvoiceEmail:     invoiceEmail,
 		ReminderEmail:    reminderEmail,
-		PaymentTermsDays: profile.PaymentTermsDays,
+		PaymentTermsDays: paymentTermsDays,
 		Currency:         deref(profile.Currency),
 		Language:         deref(profile.Language),
 		InvoiceDelivery:  deref(profile.InvoiceDelivery),
