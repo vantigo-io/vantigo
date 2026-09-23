@@ -362,20 +362,25 @@ func TestOverview_ViewAllAndManageAllSeeEveryProject(t *testing.T) {
 
 // Open rows are newest work first, then id, and there are at most ten of
 // them; the counts are not cut. A closed project's work still counts towards
-// when work last happened.
+// when work last happened — and it is the latest date on a project in the
+// middle of the id order, so only a true maximum finds it: taking the first
+// or the last date seen does not.
 func TestOverview_OpenProjectsAreNewestWorkFirstAndCutAtTen(t *testing.T) {
 	t.Parallel()
 	projects, actuals := &fakeProjects{}, &fakeActuals{}
 	h := overviewHarness(t, projects, actuals, nil)
 	id := insertCustomer(t, h, "Kraft-Verket AS", "active")
-	for pid := int32(1001); pid <= 1012; pid++ {
-		projects.add(project(pid, id, fmt.Sprintf("KVEM%d", pid), "active", nil))
+	for pid := int32(1001); pid <= 1013; pid++ {
+		status := "active"
+		if pid == 1005 {
+			status = "completed"
+		}
+		projects.add(project(pid, id, fmt.Sprintf("KVEM%d", pid), status, nil))
 	}
-	projects.add(project(1013, id, "KVEM1013", "completed", nil))
 	actuals.set(1003, contracts.ActualsTotals{LastEntryDate: ptr("2026-09-11")})
+	actuals.set(1005, contracts.ActualsTotals{LastEntryDate: ptr("2026-09-12")})
 	actuals.set(1007, contracts.ActualsTotals{LastEntryDate: ptr("2026-09-11")})
 	actuals.set(1010, contracts.ActualsTotals{LastEntryDate: ptr("2026-09-01")})
-	actuals.set(1013, contracts.ActualsTotals{LastEntryDate: ptr("2026-09-12")})
 
 	got, _ := getOverview(t, h.SignIn(t, overviewAll...), id)
 	if got.Projects.OpenCount != 12 || got.Projects.TotalCount != 13 || got.Projects.Truncated {
@@ -386,7 +391,7 @@ func TestOverview_OpenProjectsAreNewestWorkFirstAndCutAtTen(t *testing.T) {
 	for _, row := range got.Projects.Open {
 		ids = append(ids, row.ID)
 	}
-	want := []int32{1003, 1007, 1010, 1001, 1002, 1004, 1005, 1006, 1008, 1009}
+	want := []int32{1003, 1007, 1010, 1001, 1002, 1004, 1006, 1008, 1009, 1011}
 	if !slices.Equal(ids, want) {
 		t.Errorf("open rows = %v, want %v (newest work first, then id, ten at most)", ids, want)
 	}
@@ -442,7 +447,7 @@ func TestOverview_UnbilledIsApprovedLessInvoicedPerCurrency(t *testing.T) {
 	actuals.set(1002, contracts.ActualsTotals{
 		Approved: bucket(300, "300.00"), Invoiced: bucket(0, "0.00"), Draft: bucket(50, "50.00"), LastEntryDate: ptr("2026-09-11"),
 	})
-	actuals.set(1003, contracts.ActualsTotals{Approved: bucket(200, "0.00"), Invoiced: bucket(50, "0.00")})
+	actuals.set(1003, contracts.ActualsTotals{Approved: bucket(200, "0.00"), Invoiced: bucket(50, "0.00"), LastEntryDate: ptr("2026-09-09")})
 	actuals.set(1004, contracts.ActualsTotals{Approved: bucket(100, "900.00"), Invoiced: bucket(100, "900.00")})
 
 	got, _ := getOverview(t, h.SignIn(t, overviewFinancials...), id)
@@ -537,7 +542,8 @@ func TestOverview_WorkNeedsTime(t *testing.T) {
 
 // Ready to invoice is the expenses contract's own Ready* figures, per
 // currency, over the visible projects only; a currency with nothing ready is
-// left out rather than shown as zero.
+// left out rather than shown as zero. The latest expense date is on the middle
+// of three projects, so neither the first nor the last date seen is it.
 func TestOverview_ExpensesAreWhatIsReadyToInvoice(t *testing.T) {
 	t.Parallel()
 	projects, expenses := &fakeProjects{}, &fakeExpenses{}
@@ -547,6 +553,7 @@ func TestOverview_ExpensesAreWhatIsReadyToInvoice(t *testing.T) {
 	projects.add(
 		project(1001, id, "KVEM1000", "active", ptr("NOK")),
 		project(1002, id, "KVEM1001", "completed", ptr("NOK")),
+		project(1003, id, "KVEM1002", "active", ptr("NOK")),
 		project(1099, other, "ACME1000", "active", ptr("NOK")),
 	)
 	expenses.set(1001, contracts.ProjectExpenseTotals{
@@ -563,6 +570,10 @@ func TestOverview_ExpensesAreWhatIsReadyToInvoice(t *testing.T) {
 		},
 		LastEntryDate: ptr("2026-09-08"),
 	})
+	expenses.set(1003, contracts.ProjectExpenseTotals{
+		Currencies:    []contracts.CurrencyExpenses{{Currency: "NOK", ReadyCount: 0, ReadyAmount: "0.00"}},
+		LastEntryDate: ptr("2026-09-06"),
+	})
 	expenses.set(1099, contracts.ProjectExpenseTotals{
 		Currencies:    []contracts.CurrencyExpenses{{Currency: "NOK", ReadyCount: 9, ReadyAmount: "9000.00"}},
 		LastEntryDate: ptr("2026-09-12"),
@@ -578,7 +589,7 @@ func TestOverview_ExpensesAreWhatIsReadyToInvoice(t *testing.T) {
 		t.Errorf("lastExpenseOn = %v, lastActivity.expenseOn = %q; want 2026-09-08", e.LastExpenseOn, got.LastActivity["expenseOn"])
 	}
 	slices.Sort(expenses.asked)
-	if !slices.Equal(expenses.asked, []int32{1001, 1002}) {
+	if !slices.Equal(expenses.asked, []int32{1001, 1002, 1003}) {
 		t.Errorf("expenses asked about %v, want only this customer's projects", expenses.asked)
 	}
 }
