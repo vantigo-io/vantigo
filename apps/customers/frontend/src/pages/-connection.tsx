@@ -1,12 +1,19 @@
-import { Button, Group, Modal, Stack, Text, TextInput, Tooltip } from "@mantine/core";
+import { Button, Checkbox, Group, Input, Modal, Stack, Switch, Text, TextInput, Tooltip } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
+import type { ReactNode } from "react";
 import { useEffect } from "react";
-import { updateCustomerContact } from "../api/contacts";
+import {
+  CONTACT_ROLES,
+  type ContactRoleAssignment,
+  type ContactRoleInput,
+  updateCustomerContact,
+} from "../api/contacts";
 import { ApiValidationError } from "../api/customers";
 import { NoValue } from "../components/legal-badges";
+import { contactRoleLabel } from "../lib/contact-role-label";
 import "../i18n";
 
 /**
@@ -32,17 +39,131 @@ export const ConnectionValue = ({ own, connection }: { own: string | null; conne
   return <NoValue />;
 };
 
+/**
+ * The association's editable state, as the form holds it (design D5). The two
+ * `Record`s are keyed by role code: `roles` is which checkboxes are ticked,
+ * `primary` which of the ticked ones asked to be primary. Two flat maps rather
+ * than an array of objects, because that is what a checkbox group and a switch
+ * bind to without a reducer in between.
+ */
 export interface ConnectionFormValues {
-  role: string;
+  title: string;
+  roles: Record<string, boolean>;
+  primary: Record<string, boolean>;
   phone: string;
   email: string;
 }
 
-export const ConnectionFields = ({ getInputProps }: { getInputProps: (path: string) => object }) => {
+/** The empty form: no title, nothing ticked. */
+// eslint-disable-next-line react-refresh/only-export-components
+export const emptyConnectionValues = (): ConnectionFormValues => ({
+  title: "",
+  roles: {},
+  primary: {},
+  phone: "",
+  email: "",
+});
+
+/**
+ * The form's roles as the API's `roles` array (design D3: the complete set to
+ * hold), in the fixed order so the request looks the same whatever order the
+ * boxes were ticked in.
+ *
+ * `primary` is sent only when the switch is ON, and OMITTED otherwise — the API's
+ * three-valued flag, used as it is meant to be. An omitted flag says "leave this
+ * role's primary as it is, or let the first-holder rule decide if it is new",
+ * which is exactly what an untouched switch means; sending an explicit `false`
+ * instead would be the server's one refusal (`primary: false` on the primary
+ * holder), so a UI that echoed every switch would turn ticking a second role into
+ * a 400. There is deliberately no way to demote from here: the server refuses it,
+ * and the way to move a primary is to make another contact primary instead.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export const toRoleInputs = (values: ConnectionFormValues): ContactRoleInput[] =>
+  CONTACT_ROLES.filter((role) => values.roles[role]).map((role) =>
+    values.primary[role] ? { role, primary: true } : { role },
+  );
+
+/**
+ * The title-or-role rule the server enforces (design D1), checked here too so
+ * the user is told before a round trip rather than after one. The message is
+ * shown on the title, the field the server keys its own refusal to.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export const validateConnectionValues = (t: (key: string) => string) => ({
+  title: (value: string, values: ConnectionFormValues) =>
+    value.trim().length === 0 && toRoleInputs(values).length === 0 ? t("titleOrRoleRequired") : null,
+});
+
+interface ConnectionFieldsProps {
+  getInputProps: (path: string) => object;
+  values: ConnectionFormValues;
+  setFieldValue: (path: string, value: unknown) => void;
+  /**
+   * Roles this association currently holds AS primary, per the last read from
+   * the server: clearing one is refused (design D2), so its switch is on and
+   * disabled rather than offering a change that cannot happen.
+   */
+  lockedPrimary: string[];
+  /**
+   * Of those, the ones no other contact holds at all. The two cases get
+   * different reasons because only one of them is true, and the contact page
+   * cannot know which — it passes an empty array and gets the general wording.
+   */
+  soleRoles: string[];
+}
+
+export const ConnectionFields = ({
+  getInputProps,
+  values,
+  setFieldValue,
+  lockedPrimary,
+  soleRoles,
+}: ConnectionFieldsProps) => {
   const { t } = useI18n("customers");
   return (
     <>
-      <TextInput label={t("role")} placeholder={t("rolePlaceholder")} withAsterisk {...getInputProps("role")} />
+      <TextInput label={t("contactTitle")} placeholder={t("contactTitlePlaceholder")} {...getInputProps("title")} />
+      <Input.Wrapper
+        label={t("contactRoles")}
+        description={t("contactRolesDescription")}
+        error={getRolesError(getInputProps)}
+      >
+        <Stack gap="xs" mt="xs">
+          {CONTACT_ROLES.map((role) => {
+            const checked = values.roles[role] ?? false;
+            const locked = lockedPrimary.includes(role);
+            const reason = soleRoles.includes(role) ? t("roleOnlyHolder") : t("rolePrimaryStays");
+            return (
+              <Group key={role} justify="space-between" wrap="nowrap">
+                <Checkbox
+                  label={contactRoleLabel(t, role)}
+                  checked={checked}
+                  onChange={(event) => {
+                    const next = event.currentTarget.checked;
+                    setFieldValue(`roles.${role}`, next);
+                    // Unticking a role also drops its primary request, so a
+                    // re-tick does not silently carry the old one back.
+                    if (!next) setFieldValue(`primary.${role}`, false);
+                  }}
+                />
+                <Tooltip label={reason} disabled={!locked}>
+                  <Switch
+                    label={t("primaryBadge")}
+                    aria-label={t("primaryRoleFor", { role: contactRoleLabel(t, role).toLocaleLowerCase() })}
+                    labelPosition="left"
+                    size="sm"
+                    checked={locked || (values.primary[role] ?? false)}
+                    disabled={!checked || locked}
+                    description={locked ? reason : undefined}
+                    onChange={(event) => setFieldValue(`primary.${role}`, event.currentTarget.checked)}
+                  />
+                </Tooltip>
+              </Group>
+            );
+          })}
+        </Stack>
+      </Input.Wrapper>
       <Group grow>
         <TextInput label={t("phone")} description={t("connectionPhoneDescription")} {...getInputProps("phone")} />
         <TextInput label={t("email")} description={t("connectionEmailDescription")} {...getInputProps("email")} />
@@ -51,13 +172,24 @@ export const ConnectionFields = ({ getInputProps }: { getInputProps: (path: stri
   );
 };
 
+/**
+ * The server keys its role refusals to `roles`, which is a group here and not
+ * an input, so its error is read off the form and shown on the wrapper — the
+ * one place a `roles` message can land where a user will see it.
+ */
+const getRolesError = (getInputProps: (path: string) => object) =>
+  (getInputProps("roles") as { error?: ReactNode }).error;
+
 /** Identifies the association being edited plus its current values and modal title. */
 export interface EditConnectionTarget {
   customerId: number;
   contactId: number;
   /** The name of the counterpart shown in the modal title. */
   counterpartName: string;
-  role: string;
+  title: string | null;
+  roles: ContactRoleAssignment[];
+  /** Roles this contact is the ONLY holder of, for the disabled switch's reason. */
+  soleRoles: string[];
   phone: string | null;
   email: string | null;
 }
@@ -68,20 +200,21 @@ interface EditConnectionModalProps {
 }
 
 /**
- * Edits the role and connection-specific contact details of a customer-contact
- * association. Shared between the customer dashboard (editing a contact's
- * connection) and the contact dashboard (editing a customer's connection).
+ * Edits the title, roles and connection-specific contact details of a
+ * customer-contact association. Shared between the customer dashboard (editing
+ * a contact's connection) and the contact dashboard (editing a customer's
+ * connection).
  */
 export const EditConnectionModal = ({ target, onClose }: EditConnectionModalProps) => {
   const queryClient = useQueryClient();
   const { t } = useI18n("customers");
 
   const form = useForm<ConnectionFormValues>({
-    initialValues: { role: "", phone: "", email: "" },
-    validate: {
-      role: (value) => (value.trim().length === 0 ? t("roleRequired") : null),
-    },
+    initialValues: emptyConnectionValues(),
+    validate: validateConnectionValues(t),
   });
+
+  const lockedPrimary = (target?.roles ?? []).filter((r) => r.primary).map((r) => r.role);
 
   // Sync form values when the modal opens for a different association.
   // The form object is recreated each render but its methods are stable, so it is
@@ -89,7 +222,9 @@ export const EditConnectionModal = ({ target, onClose }: EditConnectionModalProp
   useEffect(() => {
     if (target) {
       form.setValues({
-        role: target.role,
+        title: target.title ?? "",
+        roles: Object.fromEntries(target.roles.map((r) => [r.role, true])),
+        primary: Object.fromEntries(target.roles.map((r) => [r.role, r.primary])),
         phone: target.phone ?? "",
         email: target.email ?? "",
       });
@@ -106,7 +241,8 @@ export const EditConnectionModal = ({ target, onClose }: EditConnectionModalProp
       }
 
       return updateCustomerContact(target.customerId, target.contactId, {
-        role: values.role.trim(),
+        title: values.title.trim() || undefined,
+        roles: toRoleInputs(values),
         phone: values.phone.trim() || undefined,
         email: values.email.trim() || undefined,
       });
@@ -142,7 +278,13 @@ export const EditConnectionModal = ({ target, onClose }: EditConnectionModalProp
     >
       <form onSubmit={form.onSubmit((values) => mutation.mutate(values))}>
         <Stack>
-          <ConnectionFields getInputProps={form.getInputProps} />
+          <ConnectionFields
+            getInputProps={form.getInputProps}
+            values={form.values}
+            setFieldValue={form.setFieldValue}
+            lockedPrimary={lockedPrimary}
+            soleRoles={target?.soleRoles ?? []}
+          />
           <Group justify="flex-end" mt="xs">
             <Button variant="default" onClick={onClose}>
               {t("cancel")}

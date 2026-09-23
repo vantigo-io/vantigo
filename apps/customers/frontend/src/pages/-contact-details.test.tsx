@@ -146,13 +146,38 @@ describe("contact details page", () => {
     await userEvent.type(within(modal).getByLabelText(/search for a customer/i), "refsdal");
     await userEvent.click(await screen.findByText("Refsdal Holding"));
 
-    await userEvent.type(within(modal).getByLabelText(/role/i), "CEO");
+    await userEvent.type(within(modal).getByLabelText(/^title$/i), "CEO");
     await userEvent.click(within(modal).getByRole("button", { name: /^add customer$/i }));
 
     await waitFor(() => expect(attachSpy).toHaveBeenCalled());
     const body = JSON.parse((attachSpy.mock.calls[0][0] as RequestInit).body as string);
-    expect(body).toEqual({ contactId: 1001, role: "CEO" });
+    expect(body).toEqual({ contactId: 1001, title: "CEO", roles: [] });
     expect(await screen.findByText("Customer added")).toBeInTheDocument();
+  });
+
+  it("shows each customer's title and role badges", async () => {
+    stubFetch({
+      "GET /api/v1/customers/contacts/1001": () => jsonResponse(200, anders),
+      "GET /api/v1/customers/contacts/1001/customers": () =>
+        jsonResponse(200, {
+          data: [
+            {
+              customer: { id: 2002, customerNumber: 42, name: "Refsdal Holding" },
+              role: "CEO",
+              title: "CEO",
+              roles: [{ role: "decision_maker", primary: true }],
+              phone: null,
+              email: null,
+            },
+          ],
+        }),
+    });
+
+    await renderRoute("/customers/contacts/1001", "Dr. Anders Refsdal");
+
+    expect(await screen.findByText("Refsdal Holding")).toBeInTheDocument();
+    expect(screen.getByText("CEO")).toBeInTheDocument();
+    expect(screen.getByLabelText("Primary decision maker contact")).toBeInTheDocument();
   });
 
   it("shows a not-found state for unknown contacts", async () => {
