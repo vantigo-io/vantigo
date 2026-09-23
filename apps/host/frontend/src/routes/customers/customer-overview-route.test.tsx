@@ -47,6 +47,10 @@ vi.mock("@vantigo/customers-ui/pages/customers.$customerId", () => ({
   ),
 }));
 
+vi.mock("./-customer-360-panel", () => ({
+  Customer360Panel: ({ customerId }: { customerId: number }) => <div data-testid="customer-360">{customerId}</div>,
+}));
+
 const renderTab = () => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -168,5 +172,23 @@ describe("the customer overview tab's canManageTimeline capability prop", () => 
     );
     renderTab();
     expect(screen.getByTestId("can-manage-timeline")).toHaveTextContent("false");
+  });
+});
+
+describe("the customer overview tab's Customer 360 panel", () => {
+  it("mounts the panel for this customer above the package's cards", () => {
+    vi.mocked(useQuery).mockImplementation((options) =>
+      options.queryKey[0] === "authorization"
+        ? ({ data: { permissions: [] }, isPending: false } as never)
+        : ({ data: { user: { id: "user-1", roles: [] } } } as never),
+    );
+    renderTab();
+
+    const panel = screen.getByTestId("customer-360");
+    expect(panel).toHaveTextContent("42");
+    // Above the cards: the panel precedes the package's first capability probe.
+    expect(
+      panel.compareDocumentPosition(screen.getByTestId("can-edit")) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });

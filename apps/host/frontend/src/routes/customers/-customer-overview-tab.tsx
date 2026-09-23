@@ -1,9 +1,11 @@
+import { Stack } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import { CustomerOverview } from "@vantigo/customers-ui/pages/customers.$customerId";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
 import { getAuthorizationMe } from "../../api/authorization";
 import { hasPermissions } from "../../navigation";
+import { Customer360Panel } from "./-customer-360-panel";
 
 /**
  * The customer page's Overview tab: the package's own contact/addresses,
@@ -25,6 +27,11 @@ import { hasPermissions } from "../../navigation";
  * newest of them and the one that closes a gap rather than opening one: the
  * timeline card's Add, Edit and Delete controls were server-enforced only, so a
  * reader saw buttons that answered 403.
+ *
+ * The **Customer 360** panel (customer 360 design D3) sits above the package's
+ * cards and is the host's own: it links across modules, and it fetches the
+ * overview itself, so it needs nothing from this route but the customer id — no
+ * capability prop, because the server already shaped the response to the caller.
  */
 export const CustomerOverviewTab = () => {
   const { customerId } = useParams({ from: "/customers/$customerId" });
@@ -38,13 +45,16 @@ export const CustomerOverviewTab = () => {
     staleTime: 300_000,
   });
   return (
-    <CustomerOverview
-      customerId={customerId}
-      canEdit={hasPermissions(authorization.data?.permissions, ["customers:update"])}
-      canManageBilling={hasPermissions(authorization.data?.permissions, ["customers:billing-manage"])}
-      canViewIdentity={hasPermissions(authorization.data?.permissions, ["customers:legal-identity-view"])}
-      canManageIdentity={hasPermissions(authorization.data?.permissions, ["customers:legal-identity-manage"])}
-      canManageTimeline={hasPermissions(authorization.data?.permissions, ["customers:timeline-manage"])}
-    />
+    <Stack gap="lg">
+      <Customer360Panel customerId={customerId} />
+      <CustomerOverview
+        customerId={customerId}
+        canEdit={hasPermissions(authorization.data?.permissions, ["customers:update"])}
+        canManageBilling={hasPermissions(authorization.data?.permissions, ["customers:billing-manage"])}
+        canViewIdentity={hasPermissions(authorization.data?.permissions, ["customers:legal-identity-view"])}
+        canManageIdentity={hasPermissions(authorization.data?.permissions, ["customers:legal-identity-manage"])}
+        canManageTimeline={hasPermissions(authorization.data?.permissions, ["customers:timeline-manage"])}
+      />
+    </Stack>
   );
 };
