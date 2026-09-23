@@ -191,6 +191,35 @@ type Config struct {
 	// (PEPPOL_TIMEOUT), default 10s.
 	PeppolTimeout time.Duration
 
+	// CustomersRegistryFeedEnabled is the on/off switch for the customers
+	// module's Brreg update-feed worker (CUSTOMERS_REGISTRY_FEED_ENABLED,
+	// registry workers design D7). Default ON: the worker is what keeps a
+	// registry record, the dashboard's attention list and the billing warnings
+	// from going quietly stale, so an installation that says nothing gets it.
+	// A 0 means the worker is never handed to the runner at all, so no
+	// scheduled request is made to Brreg.
+	CustomersRegistryFeedEnabled bool
+	// CustomersRegistryFeedPoll is how often that worker runs a cycle
+	// (CUSTOMERS_REGISTRY_FEED_POLL, default 15 minutes). The feed is one small
+	// request per poll, so this is about how soon a change is noticed rather
+	// than about load.
+	CustomersRegistryFeedPoll time.Duration
+	// CustomersPeppolRecheckEnabled is the on/off switch for the Peppol
+	// re-check worker (CUSTOMERS_PEPPOL_RECHECK_ENABLED, design D6, D7).
+	// Effective only alongside PeppolLookupEnabled: with the lookup itself off
+	// there is no network to ask, and the worker is not started either way.
+	CustomersPeppolRecheckEnabled bool
+	// CustomersPeppolRecheckPoll is how often that worker runs a cycle
+	// (CUSTOMERS_PEPPOL_RECHECK_POLL, default 24 hours). A Peppol registration
+	// is not a thing that changes hourly, and each cycle is up to a hundred
+	// network lookups.
+	CustomersPeppolRecheckPoll time.Duration
+	// CustomersPeppolRecheckAge is how old a stored lookup must be before the
+	// worker asks again (CUSTOMERS_PEPPOL_RECHECK_AGE, default 720 hours — 30
+	// days). It is deliberately a duration rather than a day count, so an
+	// installation can shorten it to something a test or a pilot can observe.
+	CustomersPeppolRecheckAge time.Duration
+
 	// StorageProvider selects the internal/storage backend: "" (unset,
 	// STORAGE_PROVIDER) or "fs". When unset, internal/storage.New still
 	// returns a store rather than failing to start; every operation on it
@@ -361,6 +390,7 @@ func Load(env map[string]string) (*Config, error) {
 	c.BrregTimeout = duration(&p, env, "BRREG_TIMEOUT", 15*time.Second)
 
 	peppolLookup(&p, env, c)
+	customersRegistryWorkers(&p, env, c)
 
 	objectStorage(&p, env, c)
 	communicationsAttachments(&p, env, c)
@@ -530,6 +560,24 @@ func peppolLookup(p *problems, env map[string]string, c *Config) {
 	}
 
 	c.PeppolTimeout = duration(p, env, "PEPPOL_TIMEOUT", 10*time.Second)
+}
+
+// customersRegistryWorkers loads the two customers background workers'
+// settings (registry workers design D7): each worker's switch and cadence, and
+// the age at which a stored Peppol lookup is asked again. Both switches default
+// on, like WORKERS_IN_PROCESS and PEPPOL_LOOKUP_ENABLED and unlike flag()'s
+// fail-safe-off switches: these workers are the delivery, not an extra.
+//
+// Page size, page budget, sweep batches and the Peppol batch are constants in
+// the workers themselves, not knobs (design D7): they bound one cycle's work
+// against a public register, and an operator who could raise them could make
+// this installation look like an attack.
+func customersRegistryWorkers(p *problems, env map[string]string, c *Config) {
+	c.CustomersRegistryFeedEnabled = boolean(p, env, "CUSTOMERS_REGISTRY_FEED_ENABLED", true)
+	c.CustomersRegistryFeedPoll = duration(p, env, "CUSTOMERS_REGISTRY_FEED_POLL", 15*time.Minute)
+	c.CustomersPeppolRecheckEnabled = boolean(p, env, "CUSTOMERS_PEPPOL_RECHECK_ENABLED", true)
+	c.CustomersPeppolRecheckPoll = duration(p, env, "CUSTOMERS_PEPPOL_RECHECK_POLL", 24*time.Hour)
+	c.CustomersPeppolRecheckAge = duration(p, env, "CUSTOMERS_PEPPOL_RECHECK_AGE", 720*time.Hour)
 }
 
 // isNumericPort reports whether port is all ASCII digits, at least one:

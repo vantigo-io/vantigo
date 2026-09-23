@@ -4,9 +4,12 @@ import (
 	"net/http"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/customers"
+	"github.com/vantigo-io/vantigo/server/internal/modtest"
+	"github.com/vantigo-io/vantigo/server/internal/module"
 )
 
 // TestModule_ComposesAndDemandsAPermission proves customers mounts through
@@ -69,3 +72,58 @@ func TestModule_DeclaresItsPermissionCatalog(t *testing.T) {
 // 29 contract operations now has a real handler; router.Err()'s "never
 // registered" check (TestModule_ComposesAndDemandsAPermission's newHarness
 // call) is what still proves every operation is routed.
+
+// TestModule_ContributesItsWorkers proves the background workers this module
+// owns are reachable the way production starts them — through Module().Workers,
+// which module.Workers collects for cmd/vantigo's runner — and not only through
+// the constructors the worker tests call directly.
+//
+// It is an EXACT-SET assertion. A worker fully implemented, fully tested and
+// never registered is the failure this guards: communications learned that one
+// the hard way (its own TestModule_ContributesItsWorkers says so), and
+// **adding a worker to this module means adding its name here.** The interval
+// check is part of the same guard — the runner logs a worker's cadence, and a
+// zero interval would make a poll loop spin.
+func TestModule_ContributesItsWorkers(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+
+	var names []string
+	for _, w := range module.Workers(h.Deps(), customers.Module()) {
+		names = append(names, w.Name())
+		if w.Interval() <= 0 {
+			t.Errorf("worker %s has interval %v, want a positive poll interval", w.Name(), w.Interval())
+		}
+	}
+	slices.Sort(names)
+	want := []string{"customers-registry-feed"}
+	if !slices.Equal(names, want) {
+		t.Errorf("workers = %v, want exactly %v", names, want)
+	}
+}
+
+// TestModule_TheFeedWorkerCanBeTurnedOff pins design D7's switch where it
+// actually has to hold: not merely as a config field, but as a worker the
+// runner is never handed. An installation that sets the switch to 0 must make
+// no outbound request to Brreg on a schedule at all, and the only way to
+// promise that is not to start the thing that would.
+func TestModule_TheFeedWorkerCanBeTurnedOff(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, modtest.WithEnv("CUSTOMERS_REGISTRY_FEED_ENABLED", "0"))
+	if got := module.Workers(h.Deps(), customers.Module()); len(got) != 0 {
+		t.Errorf("workers = %d with the feed disabled, want none", len(got))
+	}
+}
+
+// TestModule_TheFeedWorkerPollCadenceIsConfigured pins that the runner-facing
+// cadence is the operator's, not the constant's.
+func TestModule_TheFeedWorkerPollCadenceIsConfigured(t *testing.T) {
+	t.Parallel()
+	if got := customers.NewRegistryFeedWorker(newHarness(t).Deps()).Interval(); got != 15*time.Minute {
+		t.Errorf("Interval = %v, want the 15m default", got)
+	}
+	tuned := newHarness(t, modtest.WithEnv("CUSTOMERS_REGISTRY_FEED_POLL", "90s"))
+	if got := customers.NewRegistryFeedWorker(tuned.Deps()).Interval(); got != 90*time.Second {
+		t.Errorf("Interval = %v, want the configured 90s", got)
+	}
+}
