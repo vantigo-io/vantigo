@@ -312,8 +312,11 @@ time. What `GET .../billing-profile` gives instead is a computed, never-stored
 
 Both of the last two read `peppolLookup` (below) rather than making a network
 call of their own: `GET`/`PUT .../billing-profile` never touch the Peppol
-network — only `POST .../peppol-lookup` does — so a lookup is always a
-person's click, never a side effect of reading or saving the profile.
+network — only `POST .../peppol-lookup` does — so a lookup is never a side
+effect of reading or saving the profile. (Nor is every lookup a person's click
+any more: the registry workers' own schedule asks too — see
+[Registry workers](#registry-workers) — but it goes through the same
+lookup-and-store function, never through this endpoint or the profile.)
 
 The `ehf_without_recipient` check reads the customer's legal identity **even when
 the caller lacks `customers:legal-identity-view`** — this sub-resource's own read
@@ -578,7 +581,8 @@ Phase 3 delivery A ("Brreg in full",
 Enhetsregisteret record for a Norwegian business customer, kept beside the customer,
 re-read on a click, its differences written to the timeline and the notable ones
 surfaced on the dashboard. Delivery A does not touch the address book or the billing
-profile — see [What comes next](#what-comes-next) for delivery B.
+profile — delivery B keeps it current on a schedule, see
+[Registry workers](#registry-workers).
 
 ### What is kept
 
@@ -629,8 +633,10 @@ Three triggers, all going through the same fetch-and-store
   read the same way, after commit, failure logged and dropped. A resubmit of the
   identity already stored is a no-op and never reaches the fetch (the same no-op
   rule that writes no row and no event for that PUT).
-- **`POST /customers/{id}/registry-refresh`** — a person's click (or, once delivery
-  B ships, its worker). Unlike the two hooks above, a refresh reports every failure:
+- **`POST /customers/{id}/registry-refresh`** — a person's click, or the
+  `customers-registry-feed` worker calling `refreshRegistryRecord` directly
+  ([Registry workers](#registry-workers), which is not a second HTTP hop). Unlike
+  the two hooks above, a refresh reports every failure:
   a 502 on an unreachable registry, a 409 `no_registry_identity` when the customer
   has no Norwegian organisation number to look up — **any source**, so a manually
   typed, valid organisation number can be enriched here even though it was never
@@ -718,8 +724,9 @@ Whatever differed is written as **one** `registry.change` timeline event
 (`recordRegistryChange`, `timeline_events.go`): `provenance: generated`,
 `producer: customers.brreg` (the module's second producer beside `customers.api` —
 a registry event describes the world changing, not this module's own API being
-called), actor the user who clicked Refresh, or `system` once delivery B's worker
-does the clicking instead. The payload is `{changes: [{field, from, to}, …]}` — the
+called), actor the user who clicked Refresh, or `system` when the
+`customers-registry-feed` worker does the refreshing instead ([Registry
+workers](#registry-workers)). The payload is `{changes: [{field, from, to}, …]}` — the
 same shape the refresh's own HTTP response carries, so a card reading "3 changes"
 and the timeline entry behind it never disagree; either side of `from`/`to` is
 omitted when that side was empty. `registry.change` **stays a type a person can
@@ -870,6 +877,145 @@ invoice address agreed with the customer over the phone, say), and a refresh mus
 never silently move where mail goes — only a person's own click does that, and only
 for the one address they chose.
 
+### Registry workers
+
+Phase 3 delivery B ("Registry workers",
+[design](superpowers/specs/2026-09-22-customers-registry-workers-design.md)): the
+same fetch-and-store above, on a schedule instead of a click. Nothing new is shown
+to a user beyond one line on the Registry card; what changes is that the record, the
+timeline, the attention list and the billing warnings stop going stale.
+
+Two workers, registered through the module's `Workers` field, so they run wherever
+this deployment already runs workers: in `api` mode with `WORKERS_IN_PROCESS=1`, and
+in `worker` mode — **never** in `server` mode. Each takes its own session-scoped
+`pg_try_advisory_lock` (`"CUSTREG1"` and `"CUSTPEP1"` read as 64-bit values), so
+several replicas are safe: one runs the cycle, the others log at debug level and skip
+it.
+
+**`customers-registry-feed`** (`CUSTOMERS_REGISTRY_FEED_POLL`, default 15 minutes)
+reads `GET /enhetsregisteret/api/oppdateringer/enheter` — Brreg's incremental update
+feed, which says *which* entities changed, never what — from a stored cursor, and
+re-reads each matched entity whole through the Refresh path above.
+
+One cycle, in order:
+
+1. **The sweep.** Up to **50** records whose `registry_updated_hint` is newer than
+   their `fetched_at` (oldest hint first), then up to **25** non-archived Norwegian
+   business customers with a valid organisation number and **no record at all**
+   (lowest id first). The first half is the retry mechanism; the second is the
+   backfill — customers created before delivery A, and picks whose fetch failed, get
+   their record without anyone clicking, a few hundred an hour, so a large
+   installation is caught up within a day. A backfilled record goes through the
+   ordinary first-fetch diff, so a hand-typed name that differs from the registry's
+   raises `registryRenamed` exactly as a click would. The backfill walks round-robin:
+   it keeps its own position on the cursor row (`backfill_after_id`) and takes the
+   next 25 customers after it, resetting to the front (0) whenever a batch comes back
+   short or empty, and it only considers organisation numbers that are nine digits.
+   Both are there because a customer whose number the register does not know never
+   gets a record — without a position, those 25 rows would be the same 25 rows on
+   every cycle and the 26th customer would never be read at all. A sweep refresh that
+   fails is logged and left for the next cycle, and a sweep never advances the *feed*
+   cursor (`next_update_id`) — it keeps only its own backfill position on the same
+   cursor row.
+2. **The feed**, in pages of 1000, at most **20** pages per cycle (so a week's
+   backlog — about 21 000 entries — clears in two cycles), each response capped at
+   4 MiB. With no stored cursor the first request is `?dato=<started_at>`: the feed
+   is joined at the moment the worker first ran, never at the beginning of time, and
+   what came before is the sweep's business. Afterwards it is
+   `?oppdateringsid=<next_update_id>`.
+3. **Per page**: the page's organisation numbers are matched against this
+   installation's non-archived Norwegian business customers **locally** — the
+   `organisasjonsnummer` filter is deliberately not used, because chunked filtered
+   requests have no safe cursor, while the unfiltered scan's cursor is exact. Every
+   `endringstype` counts (`Ny`, `Endring`, `Sletting`, `Fjernet` and the older
+   `Ukjent` alike): the entity is re-read whole whatever the reason. Per matched
+   customer, once even when the page names it several times: write
+   `registry_updated_hint` (the newest of its entries, never moving backwards), then
+   refresh. The cursor is written only after the whole page is handled, as the
+   page's highest id **plus one** — `oppdateringsid` is inclusive.
+
+A feed request that fails ends the cycle with the cursor untouched, so the next
+cycle re-reads the same page. A *refresh* that fails does not: the hint records that
+the register has something newer, `hint > fetched_at` is the definition of stale, and
+the next cycle's sweep retries it. Every refresh is attributed to the system actor
+(`System`) with `producer: customers.brreg`, and the four outcomes keep their
+meaning — `Fjernet` in the feed becomes a 410 from the entity endpoint and the row is
+deleted with one event; `Sletting` becomes a `SlettetEnhet` body; `unknown` stores
+nothing. The 60-second click throttle (`registryRefreshMinInterval`, above) is the
+HTTP handler's own and does not apply here: the worker only asks when the feed or the
+sweep says there is a reason.
+
+A refresh's HTTP response and a refresh's row on file can differ on one column only:
+`registryUpdatedHint` is the feed worker's to write and the upsert never touches it,
+so a click's own refresh carries the row's stored hint onto the record it returns
+rather than answering with none — a successful refresh still leaves `fetchedAt` at or
+past the hint, which is what actually clears the card's line.
+
+The cursor lives on `customers.registry_feed_cursor` (migration `00023`), one row:
+`next_update_id`, `started_at`, `last_update_at` (the `dato` of the last entry
+processed), `last_polled_at`, and `backfill_after_id` — the sweep's own position,
+described above. Nothing reads `last_polled_at` or `last_update_at`: they are there
+because the only report this delivery gives an operator is a log line, and those two
+columns answer "is it running" and "how far behind is it" from `psql` alone. A cycle's
+outcome is one log line per page (entries seen, matched, refreshed, the new cursor)
+plus one for the sweep.
+
+**`customers-peppol-recheck`** (`CUSTOMERS_PEPPOL_RECHECK_POLL`, default 24 hours,
+effective only with `PEPPOL_LOOKUP_ENABLED=1`) asks the Peppol network again, for up
+to **100** customers a cycle:
+
+- customers whose `invoice_delivery` is `ehf` and who have **no stored lookup at
+  all** — the customer whose invoices are already going to Peppol is the one whose
+  registration must not be assumed. These come first, so on an installation with
+  more aged answers than the batch they are never the ones that do not fit;
+- then non-archived customers with a stored lookup older than
+  `CUSTOMERS_PEPPOL_RECHECK_AGE` (default 720h / 30 days), oldest first, **whose
+  `participant_id` still equals the participant the billing profile resolves to
+  today**. A lookup for a participant that changed is already stale by identity —
+  [the billing profile](#billing-profile) drops it from every response and every
+  warning — so it is not this worker's to refresh.
+
+The participant-equality check is Go's, not SQL's: the query behind the second set
+selects up to the batch's remaining share by age alone, and the worker itself skips
+any row whose participant has moved on. A cycle therefore asks for a batch of up to
+100 but can end up re-checking fewer — the rows it skips are still aged next cycle,
+just not this worker's business.
+
+Each is the handler's own lookup-and-store (`lookupAndStorePeppol`, shared by the
+click and the worker so there is one ruling, not two): the answer is upserted, and
+`customer.peppol_lookup` is recorded **only when it changed**, with the system actor.
+A network failure is logged by kind and leaves `checked_at` alone, so that customer
+is first in line next cycle. Nothing is ever switched on the billing profile: a
+lapsed registration surfaces through the existing `ehf_recipient_not_registered` and
+`ehf_available` warnings, and only a person changes `invoiceDelivery`.
+
+**The card's one line.** `CustomerRegistryRecord` gains an optional
+`registryUpdatedHint`, and the Registry card shows one line while it is newer than
+`fetchedAt`: "The registry reported a change on {date}; this record is from {date}.",
+with the existing **Refresh** in the card's header. That is the whole user-visible
+surface of this delivery.
+
+**Out of scope, on purpose:** `includeChanges` (the entity is re-read whole);
+sub-entities (`underenheter`); an operator "run now" or worker-status endpoint;
+rate limiting against Brreg beyond one request at a time; notifying anyone of what a
+worker found (the attention list is the notification); a Peppol attention item (the
+billing warning is where a lapsed registration belongs).
+
+**Configuration**, all read once at startup by `internal/config`:
+
+| Variable | Default | |
+| --- | --- | --- |
+| `CUSTOMERS_REGISTRY_FEED_ENABLED` | `1` | `0` → the feed worker is never handed to the runner, so no scheduled Brreg request is made |
+| `CUSTOMERS_REGISTRY_FEED_POLL` | `15m` | how often a feed cycle runs |
+| `CUSTOMERS_PEPPOL_RECHECK_ENABLED` | `1` | the re-check worker; effective only with `PEPPOL_LOOKUP_ENABLED=1` |
+| `CUSTOMERS_PEPPOL_RECHECK_POLL` | `24h` | how often a re-check cycle runs |
+| `CUSTOMERS_PEPPOL_RECHECK_AGE` | `720h` | a stored lookup older than this is asked again |
+
+`BRREG_BASE_URL` and `BRREG_TIMEOUT` are reused — a worker refresh is bounded by the
+full `BRREG_TIMEOUT`, unlike the create hook's one attempt, because nobody is
+waiting on it. Page size, page budget, the sweep batches and the Peppol batch are
+constants, not knobs: they bound one cycle's work against a public register.
+
 ## Peppol lookup
 
 `POST /api/v1/customers/{id}/peppol-lookup` (`customers:billing-manage` +
@@ -966,6 +1112,12 @@ participant id: `customers:timeline-view` does not imply
 `customers:legal-identity-view`, and a derived id is that permission's to
 show.
 
+**Who asks.** A click is no longer the only thing that asks: the
+`customers-peppol-recheck` worker re-asks for an aged answer and for a customer
+already set to `ehf` that has never been checked ([Registry workers](#registry-workers)).
+It records the same event under the same rule — only when the answer changed — with
+the system actor, and it changes nothing on the billing profile.
+
 **502 vs 503.** An upstream failure — the DNS query or the SMP request
 itself could not complete — answers **502**, the same shape Brreg's own
 lookup uses; nothing is stored, and the last good answer (if any) stands.
@@ -980,6 +1132,7 @@ instead, before any network call would have been attempted.
 | `PEPPOL_SML_ZONE` | `participant.sml.prod.tech.peppol.org` | the test network is `participant.sml.test.tech.peppol.org` |
 | `PEPPOL_DNS_SERVER` | *(empty → the server's own name servers, `/etc/resolv.conf`)* | `host:port` of a resolver to use instead |
 | `PEPPOL_TIMEOUT` | `10s` | one lookup end to end (DNS and the SMP request together) |
+| `CUSTOMERS_PEPPOL_RECHECK_ENABLED` / `_POLL` / `_AGE` | `1` / `24h` / `720h` | the background re-check worker, which asks the network again on a schedule — see [Registry workers](#registry-workers) |
 
 A resolver that answers NODATA instead of NXDOMAIN for a name nobody
 registered would produce silent false negatives — see "How the network is
@@ -994,12 +1147,15 @@ in Peppol, but not for invoices"). The `ehf_available` warning renders as an
 offer with its own **Use EHF** button — an ordinary billing-profile `PUT`
 with `invoiceDelivery: "ehf"` and the current `revision` — never a silent
 switch: unlike Tripletex and Fiken, nothing here changes `invoiceDelivery`
-without a click, and no lookup ever runs automatically (not on create, not
-on a Brreg pick, not on a schedule — every lookup is a person's click, so a
-network failure never blocks a save). A 502 shows "The Peppol network could
-not be reached. Try again."; a 503 makes the action disappear, with a
-one-line note, until the page is reloaded, so the app does not keep asking
-an installation that has the feature switched off.
+without a click, whether from this card or from the registry workers'
+schedule. No lookup from this card ever runs automatically (not on create,
+not on a Brreg pick — every lookup this button makes is a person's click, so
+a network failure never blocks a save); the `customers-peppol-recheck` worker
+asks independently, on its own schedule, and never on the strength of this
+card being open (see [Registry workers](#registry-workers)). A 502 shows "The
+Peppol network could not be reached. Try again."; a 503 makes the action
+disappear, with a one-line note, until the page is reloaded, so the app does
+not keep asking an installation that has the feature switched off.
 
 ## Permissions
 
@@ -1247,7 +1403,8 @@ through the directory this branch built for it.
 
 **Delivery B** — [the Peppol lookup](#peppol-lookup) — has since landed on top
 of delivery A: SML DNS → SMP → BIS Billing 3.0 support, asked on a person's
-click and remembered. It deliberately does **not** set a customer's
+click and remembered (Phase 3 delivery B, below, later added a schedule that
+asks again on its own). It deliberately does **not** set a customer's
 `invoiceDelivery` to `ehf` automatically the way every Nordic competitor
 surveyed but Fortnox does — Tripletex and Fiken switch the delivery method
 silently, and this module chose an offer (`ehf_available`, a **Use EHF**
@@ -1266,14 +1423,15 @@ this delivery is still a person's action (a Brreg pick, a Brreg-sourced
 legal-identity PUT, or a Refresh click) — nothing here reads the registry on a
 schedule yet.
 
-**Phase 3 delivery B**, not yet built, is exactly that schedule: Brreg's
-incremental update feed (`GET /oppdateringer/enheter`, cursor `oppdateringsid`)
-driving the same fetch-and-store this delivery built, filling the
-`registry_updated_hint` column delivery A's own migration (`00021`) already
-carries but leaves untouched, plus scheduled re-checks of Peppol registration on
-the same `ehf_available`/`ehf_recipient_not_registered` warnings a manual check
-already raises. Past that, the remaining gaps are exactly what
-[ROADMAP.md's Customers section](../ROADMAP.md#customers) is built around —
+**Phase 3 delivery B** — [Registry workers](#registry-workers) — has since landed on
+top of it: Brreg's incremental update feed driving the same fetch-and-store on a
+cursor, filling the `registry_updated_hint` column delivery A's own migration
+(`00021`) carried but left untouched, with a sweep that both retries a failed refresh
+and backfills every Norwegian business customer that never had a record; and
+scheduled Peppol re-checks on the same `ehf_available`/`ehf_recipient_not_registered`
+warnings a manual check already raises. Registry data in this module is now
+maintained rather than merely fetched once. Past that, the remaining gaps are exactly
+what [ROADMAP.md's Customers section](../ROADMAP.md#customers) is built around —
 `ContactsByEmail` still unused in production, no CSV import/export, no merge
 (phase 6) — itself drawn from
 [`docs/superpowers/research/2026-09-21-customers-module-next.md`](superpowers/research/2026-09-21-customers-module-next.md),
