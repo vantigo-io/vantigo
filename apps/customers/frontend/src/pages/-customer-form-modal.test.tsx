@@ -168,6 +168,8 @@ describe("CustomerFormModal", () => {
         type: "business",
         identity: null,
         timelineSummary: { entryCount: 0, latestOccurredOn: null },
+        owner: null,
+        tags: [],
       },
     });
     expect(screen.queryByRole("radio", { name: /business/i })).not.toBeInTheDocument();
@@ -204,6 +206,8 @@ describe("CustomerFormModal", () => {
         type: "business",
         identity: null,
         timelineSummary: { entryCount: 0, latestOccurredOn: null },
+        owner: null,
+        tags: [],
         revision: 3,
       },
     });
@@ -274,6 +278,8 @@ describe("CustomerFormModal", () => {
         type: "business",
         identity: null,
         timelineSummary: { entryCount: 0, latestOccurredOn: null },
+        owner: null,
+        tags: [],
         revision: 3,
       },
     });
@@ -354,6 +360,8 @@ describe("CustomerFormModal", () => {
         type: "business",
         identity: null,
         timelineSummary: { entryCount: 0, latestOccurredOn: null },
+        owner: null,
+        tags: [],
         revision: 3,
       },
     });
@@ -419,6 +427,8 @@ describe("CustomerFormModal", () => {
         type: "business",
         identity: null,
         timelineSummary: { entryCount: 0, latestOccurredOn: null },
+        owner: null,
+        tags: [],
         revision: 3,
       },
     });
@@ -469,6 +479,8 @@ describe("CustomerFormModal", () => {
         type: "business",
         identity: null,
         timelineSummary: { entryCount: 0, latestOccurredOn: null },
+        owner: null,
+        tags: [],
         revision: 3,
       },
     });

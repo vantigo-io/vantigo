@@ -403,6 +403,14 @@ describe("CustomerTimeline", () => {
     expect(resetUrl.searchParams.get("cursor")).toBeNull();
   });
 
+  it("offers the owner and tag events in the Event types filter", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(json({ data: [entry({ id: 1 })], nextCursor: null })));
+    await renderTimeline(fetchMock);
+    await userEvent.click(screen.getByRole("combobox", { name: "Event types" }));
+    expect(screen.getByText("Owner changed", { selector: "span" })).toBeInTheDocument();
+    expect(screen.getByText("Tags changed", { selector: "span" })).toBeInTheDocument();
+  });
+
   it("serializes the applied date range with repeated event types", async () => {
     const fetchMock = vi.fn().mockResolvedValue(json({ data: [], nextCursor: null }));
     stubFetch(fetchMock);

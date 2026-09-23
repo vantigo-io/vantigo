@@ -36,6 +36,7 @@ import {
 import { useState } from "react";
 
 import {
+  type CustomerOwnerFilter,
   type CustomerStatusFilter,
   type CustomersListSearch,
   type CustomerType,
@@ -43,8 +44,10 @@ import {
   customersListParams,
   customersQueryOptions,
 } from "../api/customers";
+import { customerTagsQueryOptions } from "../api/tags";
 import "../i18n";
 import { CustomerFormModal, type CustomerModalState } from "./-customer-form-modal";
+import { ManageTagsModal } from "./-manage-tags-modal";
 
 type SortColumn = NonNullable<CustomersListSearch["sortBy"]>;
 type SortDirection = NonNullable<CustomersListSearch["sortDirection"]>;
@@ -60,12 +63,16 @@ interface CustomersSearch extends CustomersListSearch {
 // only reachable through the small clear button.
 const ALL_STATUSES = "";
 const ALL_TYPES = "";
+const ALL_OWNERS = "";
+const ALL_TAGS = "";
 
 const STATUS_FILTERS: CustomerStatusFilter[] = ["active", "disabled", "archived"];
 const TYPE_FILTERS: CustomerType[] = ["business", "person"];
+const OWNER_FILTERS: CustomerOwnerFilter[] = ["me", "none"];
 
 const isStatusFilter = (value: string): value is CustomerStatusFilter => (STATUS_FILTERS as string[]).includes(value);
 const isTypeFilter = (value: string): value is CustomerType => (TYPE_FILTERS as string[]).includes(value);
+const isOwnerFilter = (value: string): value is CustomerOwnerFilter => (OWNER_FILTERS as string[]).includes(value);
 
 interface SortableHeaderProps {
   column: SortColumn;
@@ -101,23 +108,27 @@ const SortableHeader = ({ column, label, sortBy, sortDirection, onSort }: Sortab
   );
 };
 
-export const CustomersPage = () => {
+export const CustomersPage = ({ canEdit }: { canEdit?: boolean } = {}) => {
   const { t, formatters } = useI18n("customers");
-  const { page, search, status, type, sortBy, sortDirection, create } = useSearch({ strict: false }) as CustomersSearch;
+  const { page, search, status, type, ownerId, tagId, sortBy, sortDirection, create } = useSearch({
+    strict: false,
+  }) as CustomersSearch;
   const navigate = useNavigate() as (options: unknown) => void;
 
   // The filter/sort half of the URL, kept apart from `create`: typing in the
   // search box or turning a page must never resurrect a consumed create
   // intent, but must never drop a filter either (see useDebouncedListSearch
   // below and the Local vs CI note on losing `status` while typing).
-  const listSearch: CustomersListSearch = { page, search, status, type, sortBy, sortDirection };
+  const listSearch: CustomersListSearch = { page, search, status, type, ownerId, tagId, sortBy, sortDirection };
 
   const { searchInput, setSearchInput, onPageChange } = useDebouncedListSearch({
     currentSearch: search,
     onNavigate: (next, options) => navigate({ search: { ...listSearch, ...next }, ...options }),
   });
-  const filterBy = (next: Partial<Pick<CustomersListSearch, "status" | "type">>) =>
+  const filterBy = (next: Partial<Pick<CustomersListSearch, "status" | "type" | "ownerId" | "tagId">>) =>
     navigate({ search: { ...listSearch, ...next, page: 1 } });
+  const [manageTagsOpened, setManageTagsOpened] = useState(false);
+  const { data: tags } = useQuery(customerTagsQueryOptions());
   const toggleSort = (column: SortColumn) => {
     const next: Pick<CustomersListSearch, "sortBy" | "sortDirection"> =
       sortBy !== column
@@ -176,6 +187,7 @@ export const CustomersPage = () => {
       />
 
       <CustomerFormModal state={modalState} onClose={closeModal} />
+      <ManageTagsModal opened={manageTagsOpened} onClose={() => setManageTagsOpened(false)} />
 
       {stats && (
         <SimpleGrid cols={{ base: 2, sm: 3, lg: showIdentity ? 7 : 3 }} spacing="sm">
@@ -225,6 +237,43 @@ export const CustomersPage = () => {
               value={type ?? ALL_TYPES}
               onChange={(value) => filterBy({ type: value && isTypeFilter(value) ? value : undefined })}
             />
+            <Select
+              label={t("owner")}
+              w={160}
+              allowDeselect={false}
+              data={[
+                { value: ALL_OWNERS, label: t("all") },
+                { value: "me", label: t("ownerMine") },
+                { value: "none", label: t("ownerUnassigned") },
+              ]}
+              value={ownerId ?? ALL_OWNERS}
+              onChange={(value) => filterBy({ ownerId: value && isOwnerFilter(value) ? value : undefined })}
+            />
+            <Group gap="xs" align="end">
+              <Select
+                label={t("tag")}
+                w={160}
+                allowDeselect={false}
+                // Tag names are arbitrary text and can match a chip already on
+                // the page (e.g. "VIP"); Mantine keeps a closed dropdown's
+                // options mounted (`display: none`) by default, which would
+                // leave two "VIP"s in the DOM for `getByText` to trip over.
+                // Unmounting on close is the one difference from the other
+                // filters here.
+                comboboxProps={{ keepMounted: false }}
+                data={[
+                  { value: ALL_TAGS, label: t("all") },
+                  ...(tags ?? []).map((tag) => ({ value: tag.id, label: tag.name })),
+                ]}
+                value={tagId ?? ALL_TAGS}
+                onChange={(value) => filterBy({ tagId: value || undefined })}
+              />
+              {canEdit && (
+                <Button variant="subtle" size="sm" onClick={() => setManageTagsOpened(true)}>
+                  {t("manageTags")}
+                </Button>
+              )}
+            </Group>
           </Group>
 
           {isError && (
@@ -237,7 +286,7 @@ export const CustomersPage = () => {
 
           {data && (
             <>
-              <Table.ScrollContainer minWidth={showIdentity ? 1040 : 840}>
+              <Table.ScrollContainer minWidth={showIdentity ? 1200 : 1000}>
                 <Table striped highlightOnHover>
                   <Table.Thead>
                     <Table.Tr>
@@ -257,6 +306,7 @@ export const CustomersPage = () => {
                       />
                       <Table.Th>{t("status")}</Table.Th>
                       <Table.Th>{t("customerType")}</Table.Th>
+                      <Table.Th>{t("owner")}</Table.Th>
                       {showIdentity && (
                         <>
                           <Table.Th>{t("countryColumn")}</Table.Th>
@@ -285,7 +335,16 @@ export const CustomersPage = () => {
                         }
                       >
                         <Table.Td>{customer.customerNumber}</Table.Td>
-                        <Table.Td>{customer.name}</Table.Td>
+                        <Table.Td>
+                          <Group gap="xs" wrap="wrap">
+                            <Text component="span">{customer.name}</Text>
+                            {customer.tags.map((tag) => (
+                              <Badge key={tag.id} variant="light" color={tag.color ?? "gray"} size="sm">
+                                {tag.name}
+                              </Badge>
+                            ))}
+                          </Group>
+                        </Table.Td>
                         <Table.Td>
                           <Badge variant="light" color={customer.status === "active" ? "teal" : "gray"}>
                             {customer.status === "active"
@@ -299,6 +358,22 @@ export const CustomersPage = () => {
                           <Badge variant="light" color={customer.type === "business" ? "indigo" : "grape"}>
                             {customer.type === "business" ? t("customerTypeBusiness") : t("customerTypePerson")}
                           </Badge>
+                        </Table.Td>
+                        <Table.Td>
+                          {customer.owner ? (
+                            <Text
+                              size="sm"
+                              component="span"
+                              c={customer.owner.active ? undefined : "dimmed"}
+                              title={customer.owner.active ? undefined : t("ownerInactiveHint")}
+                            >
+                              {customer.owner.displayName}
+                            </Text>
+                          ) : (
+                            <Text c="dimmed" component="span">
+                              —
+                            </Text>
+                          )}
                         </Table.Td>
                         {showIdentity && (
                           <>
