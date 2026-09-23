@@ -251,10 +251,10 @@ describe("customer contacts card", () => {
 
   it("sends the connection phone and email typed for a newly created contact, not just its own", async () => {
     // ConnectionFields renders alongside ContactFields in the create-new branch,
-    // so there are two "Phone"/"Email" labelled inputs at once: the contact's
-    // own (ContactFields, first) and the connection-specific one (ConnectionFields,
-    // second) — this proves createAndAttach reads the second, the one
-    // attachExisting has always read.
+    // labelled "Phone at this customer"/"Email at this customer" — distinct from
+    // ContactFields' plain "Phone"/"Email" — so this proves createAndAttach reads
+    // the connection-specific pair, the one attachExisting has always read, not
+    // the contact's own.
     const createSpy = vi.fn<(init?: RequestInit) => Response>(() =>
       jsonResponse(201, contact(1006, "Nobody", "Elsen")),
     );
@@ -287,8 +287,8 @@ describe("customer contacts card", () => {
 
     await userEvent.type(within(modal).getByLabelText(/last name/i), "Elsen");
     await userEvent.type(within(modal).getByLabelText(/^title$/i), "Custodian");
-    const connectionPhone = within(modal).getAllByLabelText(/^phone$/i)[1];
-    await userEvent.type(connectionPhone, "+47 91 23 45 67");
+    await userEvent.type(within(modal).getByLabelText(/^phone at this customer$/i), "+47 91 23 45 67");
+    await userEvent.type(within(modal).getByLabelText(/^email at this customer$/i), "nobody@elsen.test");
     await userEvent.click(within(modal).getByRole("button", { name: /^add contact$/i }));
 
     await waitFor(() => expect(attachSpy).toHaveBeenCalled());
@@ -298,7 +298,98 @@ describe("customer contacts card", () => {
       title: "Custodian",
       roles: [],
       phone: "+47 91 23 45 67",
+      email: "nobody@elsen.test",
     });
+  });
+
+  it("shows a create-and-attach validation error on the field the server named, not a generic notification", async () => {
+    // The attach half of createAndAttach used to be wrapped in a plain Error
+    // before it reached onError, hiding an ApiValidationError's fields from
+    // the `instanceof` check there — so `title`/`roles` never made it back to
+    // the form. This proves the field error lands on Title, the way
+    // attachExisting's own 400 already does.
+    const createSpy = vi.fn<(init?: RequestInit) => Response>(() =>
+      jsonResponse(201, contact(1007, "Nobody", "Titleless")),
+    );
+    const attachSpy = vi.fn<(init?: RequestInit) => Response>(() =>
+      jsonResponse(400, {
+        title: "Invalid contact title",
+        status: 400,
+        errors: { title: ["Title is too long"] },
+      }),
+    );
+
+    stubFetch({
+      "GET /api/v1/customers/2002": () => jsonResponse(200, customer),
+      "GET /api/v1/customers/2002/billing-profile": () => jsonResponse(200, emptyBillingProfile),
+      "GET /api/v1/customers/2002/addresses": () => jsonResponse(200, { data: [] }),
+      "GET /api/v1/customers/2002/contacts": () => jsonResponse(200, { data: [] }),
+      "GET /api/v1/customers/contacts": () => jsonResponse(200, paginated([])),
+      "POST /api/v1/customers/contacts": createSpy,
+      "POST /api/v1/customers/2002/contacts": attachSpy,
+    });
+
+    await renderRoute("/customers/2002", "Refsdal Holding");
+
+    await userEvent.click(await screen.findByRole("button", { name: /add contact/i }));
+
+    const modal = await screen.findByRole("dialog");
+    await userEvent.type(within(modal).getByLabelText(/search for a contact/i), "Nobody");
+    await userEvent.click(await screen.findByText(/no contact found/i));
+
+    await userEvent.type(within(modal).getByLabelText(/last name/i), "Titleless");
+    await userEvent.type(within(modal).getByLabelText(/^title$/i), "Way too long a title");
+    await userEvent.click(within(modal).getByRole("button", { name: /^add contact$/i }));
+
+    await waitFor(() => expect(attachSpy).toHaveBeenCalled());
+    expect(await within(modal).findByText("Title is too long")).toBeInTheDocument();
+    // The contact was created even though the attach was refused — that must
+    // still be said out loud, not silently swallowed by the field error.
+    expect(await screen.findByText(/was created, but could not be added to the customer/i)).toBeInTheDocument();
+  });
+
+  it("clears a server-side roles error the moment a role is ticked or unticked, not only the title error", async () => {
+    // -connection.tsx only cleared the `title` field error on a role tick, so
+    // a `roles` error from the server (attachExisting already routes these
+    // through mapConnectionErrors) sat there even after the user acted on it.
+    const attachSpy = vi.fn<(init?: RequestInit) => Response>(() =>
+      jsonResponse(400, {
+        title: "Invalid contact role",
+        status: 400,
+        errors: { roles: ["That role is already primary for another contact"] },
+      }),
+    );
+
+    stubFetch({
+      "GET /api/v1/customers/2002": () => jsonResponse(200, customer),
+      "GET /api/v1/customers/2002/billing-profile": () => jsonResponse(200, emptyBillingProfile),
+      "GET /api/v1/customers/2002/addresses": () => jsonResponse(200, { data: [] }),
+      "GET /api/v1/customers/2002/contacts": () => jsonResponse(200, { data: [] }),
+      "GET /api/v1/customers/contacts": () =>
+        jsonResponse(
+          200,
+          paginated([{ contact: contact(1001, "Anders", "Refsdal"), customerCount: 0, customer: null }]),
+        ),
+      "POST /api/v1/customers/2002/contacts": attachSpy,
+    });
+
+    await renderRoute("/customers/2002", "Refsdal Holding");
+    await userEvent.click(await screen.findByRole("button", { name: /add contact/i }));
+    const modal = await screen.findByRole("dialog");
+    await userEvent.type(within(modal).getByLabelText(/search for a contact/i), "anders");
+    await userEvent.click(await screen.findByText("Anders Refsdal"));
+
+    await userEvent.type(within(modal).getByLabelText(/^title$/i), "CEO");
+    await userEvent.click(within(modal).getByRole("checkbox", { name: "Billing" }));
+    await userEvent.click(within(modal).getByRole("button", { name: /^add contact$/i }));
+
+    expect(await within(modal).findByText("That role is already primary for another contact")).toBeInTheDocument();
+
+    // Unticking the very role the server refused answers the error just as
+    // well as ticking a different one would.
+    await userEvent.click(within(modal).getByRole("checkbox", { name: "Billing" }));
+
+    expect(within(modal).queryByText("That role is already primary for another contact")).not.toBeInTheDocument();
   });
 
   it("shows the title under the name, a starred badge for the primary role, and the connection fallbacks", async () => {

@@ -327,6 +327,19 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
           email: form.values.connectionEmail.trim() || undefined,
         });
       } catch (error) {
+        if (error instanceof ApiValidationError) {
+          // The contact exists at this point but the attach was refused for a
+          // field reason — say so here (the generic wrap below would hide it
+          // from the `instanceof` check in onError), then rethrow the
+          // original so the fields get routed through mapConnectionErrors the
+          // same way attachExisting's onError does.
+          notifications.show({
+            color: "red",
+            title: t("contactCouldNotBeCreated"),
+            message: `The contact "${formatContactName(contact)}" was created, but could not be added to the customer.`,
+          });
+          throw error;
+        }
         // The contact exists at this point — make that explicit so it is not
         // silently orphaned when only the association fails.
         throw new Error(
@@ -342,7 +355,7 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
     onSuccess,
     onError: (error) => {
       if (error instanceof ApiValidationError) {
-        form.setErrors(error.fieldErrors);
+        form.setErrors(mapConnectionErrors(error));
         return;
       }
       notifications.show({ color: "red", title: t("contactCouldNotBeCreated"), message: error.message });

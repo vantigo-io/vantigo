@@ -177,7 +177,42 @@ describe("contact details page", () => {
 
     expect(await screen.findByText("Refsdal Holding")).toBeInTheDocument();
     expect(screen.getByText("CEO")).toBeInTheDocument();
-    expect(screen.getByLabelText("Primary decision maker contact")).toBeInTheDocument();
+    expect(screen.getByLabelText("Primary decision-maker contact")).toBeInTheDocument();
+  });
+
+  it("shows the general 'stays primary' reason on a held-primary role, since this page cannot see other holders", async () => {
+    // Unlike the customer dashboard's contacts card — which holds every
+    // association at that customer and can scan them for another holder —
+    // this page lists the contact's own customers, so it always passes
+    // soleRoles: [] and gets the general wording (design D5, docs/customers.md).
+    stubFetch({
+      "GET /api/v1/customers/contacts/1001": () => jsonResponse(200, anders),
+      "GET /api/v1/customers/contacts/1001/customers": () =>
+        jsonResponse(200, {
+          data: [
+            {
+              customer: { id: 2002, name: "Refsdal Holding" },
+              role: "CEO",
+              title: "CEO",
+              roles: [{ role: "billing", primary: true }],
+              phone: null,
+              email: null,
+            },
+          ],
+        }),
+    });
+
+    await renderRoute("/customers/contacts/1001", "Dr. Anders Refsdal");
+    await userEvent.click(await screen.findByRole("button", { name: "Edit connection for Refsdal Holding" }));
+
+    const modal = await screen.findByRole("dialog");
+    const billingPrimary = within(modal).getByRole("switch", { name: "Primary billing contact" });
+    expect(billingPrimary).toBeChecked();
+    expect(billingPrimary).toBeDisabled();
+    expect(
+      within(modal).getByText("The primary holder stays primary — make another contact primary instead"),
+    ).toBeInTheDocument();
+    expect(within(modal).queryByText("Already the only holder")).not.toBeInTheDocument();
   });
 
   it("shows a not-found state for unknown contacts", async () => {
