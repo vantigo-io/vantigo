@@ -1962,7 +1962,8 @@ been in since the foundation.
   allowed to be in the future) and a `UserPicker` over `GET /assignable-users` — and
   because the `PUT` is a full replace, an emptied date is an instruction: it clears
   the follow-up, its assignee and its done state, and clearing the date empties the
-  assignee field on screen so the form stops naming somebody nothing will be sent to.
+  assignee field on screen so the form stops naming somebody nothing will be sent to
+  (the picker stays disabled, with the reason shown, until a date is set).
   Editing anything else re-sends the stored assignee and date unchanged. The
   revisions panel shows each revision's own follow-up, which is where "who ticked
   this, and when" is read. All of it, plus **Add**, **Edit** and **Delete**, now sits

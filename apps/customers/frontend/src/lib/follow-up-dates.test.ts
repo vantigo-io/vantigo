@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { isOverdue, utcToday } from "./follow-up-dates";
 
@@ -29,8 +29,16 @@ describe("isOverdue", () => {
 });
 
 describe("utcToday", () => {
-  it("answers a date-only value on the UTC calendar", () => {
-    expect(utcToday()).toBe(new Date().toISOString().slice(0, 10));
-    expect(utcToday()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("answers the UTC calendar day, not the browser's", () => {
+    // 23:30 UTC on 1 January is already 2 January in Oslo: a helper that read
+    // the local date would answer "2026-01-02" for a Norwegian reader; the
+    // server's calendar says the 1st.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T23:30:00Z"));
+    expect(utcToday()).toBe("2026-01-01");
   });
 });

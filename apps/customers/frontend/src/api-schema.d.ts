@@ -440,7 +440,7 @@ export interface paths {
         };
         /**
          * List follow-ups across customers
-         * @description Every follow-up the caller asked for, across customers, oldest due date first and then by entry id. Defaults answer the question the page exists for: assignee=me and state=open, i.e. "what is on my plate". Archived customers' follow-ups are excluded unless state=done — a done follow-up is a record of work finished, and an archived customer's finished work is still finished.
+         * @description Every follow-up the caller asked for, across customers, oldest due date first and then by entry id. Defaults answer the question the page exists for: assignee=me and state=open, i.e. "what is on my plate". Archived customers' follow-ups are excluded unless state=done or state=all — a done follow-up is a record of work finished, and an archived customer's finished work is still finished.
          */
         get: operations["getCustomersFollowUps"];
         put?: never;
