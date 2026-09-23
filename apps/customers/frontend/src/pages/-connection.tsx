@@ -172,6 +172,10 @@ export const ConnectionFields = ({
                     // own, so a stale "give a title or pick a role" error must
                     // not survive the tick that just answered it.
                     if (next) clearFieldError("title");
+                    // Either direction changes the role set the server just
+                    // refused, so a stale server-side `roles` error must not
+                    // survive a tick or untick that may already have answered it.
+                    clearFieldError("roles");
                   }}
                 />
                 <Tooltip label={reason} disabled={!locked}>
@@ -192,8 +196,16 @@ export const ConnectionFields = ({
         </Stack>
       </Input.Wrapper>
       <Group grow>
-        <TextInput label={t("phone")} description={t("connectionPhoneDescription")} {...getInputProps("phone")} />
-        <TextInput label={t("email")} description={t("connectionEmailDescription")} {...getInputProps("email")} />
+        <TextInput
+          label={t("connectionPhoneLabel")}
+          description={t("connectionPhoneDescription")}
+          {...getInputProps("phone")}
+        />
+        <TextInput
+          label={t("connectionEmailLabel")}
+          description={t("connectionEmailDescription")}
+          {...getInputProps("email")}
+        />
       </Group>
     </>
   );

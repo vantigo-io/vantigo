@@ -44,9 +44,11 @@ describe("ContactRoleBadges", () => {
   it("localizes the labels and the primary sentence", async () => {
     // The nb catalog is not proved by translations:check, which only proves the
     // two catalogs have the same keys — this proves the Norwegian strings are
-    // the ones that actually render, including the interpolated role name inside
-    // the primary sentence, which is the one string a missing placeholder would
-    // break silently. setLanguagePreference is frontend-shell's own seam, used
+    // the ones that actually render, including the closed-compound primary
+    // sentence billing and decision_maker each read from their own composed
+    // catalog key (see `primaryContactLabel`) rather than an interpolated
+    // template — the unrecognised-role case below covers that template
+    // instead. setLanguagePreference is frontend-shell's own seam, used
     // exactly as legal-badges.test.tsx uses it.
     setLanguagePreference("nb");
     renderBadges([
