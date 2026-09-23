@@ -97,11 +97,6 @@ type registryAddress struct {
 // speak, so a value read back from the database and a value just fetched are
 // compared as equals rather than each against its own representation.
 //
-// registry_updated_hint is deliberately not here: delivery B's update-feed
-// worker owns that column, nothing in delivery A reads or writes it, and a
-// field this file never fills would only invite a future reader to believe
-// it means something.
-//
 // BankruptOn and LiquidationOn are stored and read back but never diffed
 // (registry_diff.go) and never sent on the wire: they exist so a bankruptcy's
 // attention item is dated the day the company went bankrupt rather than the
@@ -116,6 +111,21 @@ type registryRecord struct {
 	Website, Email, Phone, Mobile, ParentOrganisationNumber                                  string
 	BusinessAddress, PostalAddress                                                           *registryAddress
 	FetchedAt                                                                                time.Time
+
+	// RegistryUpdatedHint is what the feed worker wrote: the moment Brreg's own
+	// update feed said this entity changed (registry workers design D2). It is
+	// READ here and sent on the wire, and never written by this file — the
+	// upsert leaves the column alone on purpose, so that a refresh can neither
+	// invent a hint nor erase the one the worker left. While it is newer than
+	// FetchedAt the record is known to be behind the register, which is the
+	// single definition of stale the worker's own sweep retries on and the card's
+	// one line reports.
+	//
+	// It is deliberately not diffed (registry_diff.go): "the registry says
+	// something changed" is not itself a change to the record, and reporting it
+	// as one would put an entry on the timeline every time the feed mentioned
+	// the company, next to the entry saying what actually differed.
+	RegistryUpdatedHint *time.Time
 }
 
 // registryAddressFrom is brreg_entity.go's address translated into the
@@ -303,6 +313,7 @@ func registryRecordFromRow(row store.CustomersCustomerRegistryRecord) (registryR
 		BusinessAddress:          business,
 		PostalAddress:            postal,
 		FetchedAt:                row.FetchedAt,
+		RegistryUpdatedHint:      row.RegistryUpdatedHint,
 	}, nil
 }
 
@@ -345,9 +356,7 @@ func registryUpsertParams(customerID int32, rec registryRecord) (store.UpsertCus
 }
 
 // registryAddressResponse is one address on the wire. An empty string is
-// omitted the same way it is left out of the stored jsonb — except
-// countryCode, which the contract makes required and which therefore ships
-// as "" on the rare foreign address the registry sent no landkode for.
+// omitted the same way it is left out of the stored jsonb.
 func registryAddressResponse(a *registryAddress) *gen.CustomerRegistryAddress {
 	if a == nil {
 		return nil
@@ -361,7 +370,7 @@ func registryAddressResponse(a *registryAddress) *gen.CustomerRegistryAddress {
 		PostalCode:   registryOptional(a.PostalCode),
 		City:         registryOptional(a.City),
 		Municipality: registryOptional(a.Municipality),
-		CountryCode:  a.CountryCode,
+		CountryCode:  registryOptional(a.CountryCode),
 	}
 }
 
@@ -389,6 +398,7 @@ func registryRecordResponse(rec registryRecord) gen.CustomerRegistryRecord {
 		BusinessAddress:          registryAddressResponse(rec.BusinessAddress),
 		PostalAddress:            registryAddressResponse(rec.PostalAddress),
 		FetchedAt:                rec.FetchedAt,
+		RegistryUpdatedHint:      rec.RegistryUpdatedHint,
 	}
 }
 
@@ -676,6 +686,15 @@ func (s *server) refreshRegistryRecord(ctx context.Context, customerID int32, or
 		if outcome == brregEntityDeleted {
 			after = deletedRegistryRecordFrom(before, entity, now)
 			status = registryStatusDeleted
+		}
+		// The hint is the feed worker's column, and the upsert below leaves it
+		// alone — so the record this call ANSWERS with has to carry it over from
+		// the row on file, or a refresh would describe a record without a hint
+		// while the stored row still has one, and the card's line would vanish
+		// until the next GET put it back. (deletedRegistryRecordFrom already
+		// copies it with everything else; this makes the found case agree.)
+		if before != nil {
+			after.RegistryUpdatedHint = before.RegistryUpdatedHint
 		}
 		changes := diffRegistryRecords(before, legalName, after)
 

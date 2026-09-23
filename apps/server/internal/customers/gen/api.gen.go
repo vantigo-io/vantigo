@@ -188,10 +188,10 @@ type CustomerReference struct {
 	Name           string `json:"name"`
 }
 
-// CustomerRegistryAddress One of the two addresses the registry holds for an entity (Brreg in full design D1): lines is the registry's own free-form address array — one or more street lines, never a single string — and postalCode/municipality are simply absent on a foreign address, whose own postal district is part of city instead ("81-336 GDYNIA"). countryCode is ISO 3166-1 alpha-2, empty only when the registry sent none. This is what the registry says, not an address on file: a refresh never writes to the customer's own addresses (design D3).
+// CustomerRegistryAddress One of the two addresses the registry holds for an entity (Brreg in full design D1): lines is the registry's own free-form address array — one or more street lines, never a single string — and postalCode/municipality are simply absent on a foreign address, whose own postal district is part of city instead ("81-336 GDYNIA"). countryCode is ISO 3166-1 alpha-2, and absent when the registry sent none — the registry only assigns a country code to some foreign addresses, and an empty string was never a country. This is what the registry says, not an address on file: a refresh never writes to the customer's own addresses (design D3).
 type CustomerRegistryAddress struct {
 	City         *string  `json:"city,omitempty"`
-	CountryCode  string   `json:"countryCode"`
+	CountryCode  *string  `json:"countryCode,omitempty"`
 	Lines        []string `json:"lines"`
 	Municipality *string  `json:"municipality,omitempty"`
 	PostalCode   *string  `json:"postalCode,omitempty"`
@@ -204,11 +204,11 @@ type CustomerRegistryChange struct {
 	To    *string `json:"to,omitempty"`
 }
 
-// CustomerRegistryRecord What Enhetsregisteret says about this customer, as of fetchedAt (Brreg in full design D1): the registry's own view, kept beside the customer and never edited by hand — the customer's name and legal identity stay what the user asserted, and a difference between the two is reported on the timeline rather than written over them. Present only for a customer whose legal identity is a Norwegian business with a valid organisation number, and only once a fetch has actually happened. deletedOn is set for an entity struck from the register; an entity removed from open data altogether has no record at all.
+// CustomerRegistryRecord What Enhetsregisteret says about this customer, as of fetchedAt (Brreg in full design D1): the registry's own view, kept beside the customer and never edited by hand — the customer's name and legal identity stay what the user asserted, and a difference between the two is reported on the timeline rather than written over them. Present only for a customer whose legal identity is a Norwegian business with a valid organisation number, and only once a fetch has actually happened. deletedOn is set for an entity struck from the register; an entity removed from open data altogether has no record at all. registryUpdatedHint is the moment Brønnøysundregistrene's own update feed said this entity changed, written by the background feed worker before it re-reads the record: while it is newer than fetchedAt the record is known to be behind the register — a refresh that failed, or one not attempted yet — and the card says so. It is absent whenever the feed has never reported a change for this customer.
 type CustomerRegistryRecord struct {
 	Bankrupt bool `json:"bankrupt"`
 
-	// BusinessAddress One of the two addresses the registry holds for an entity (Brreg in full design D1): lines is the registry's own free-form address array — one or more street lines, never a single string — and postalCode/municipality are simply absent on a foreign address, whose own postal district is part of city instead ("81-336 GDYNIA"). countryCode is ISO 3166-1 alpha-2, empty only when the registry sent none. This is what the registry says, not an address on file: a refresh never writes to the customer's own addresses (design D3).
+	// BusinessAddress One of the two addresses the registry holds for an entity (Brreg in full design D1): lines is the registry's own free-form address array — one or more street lines, never a single string — and postalCode/municipality are simply absent on a foreign address, whose own postal district is part of city instead ("81-336 GDYNIA"). countryCode is ISO 3166-1 alpha-2, and absent when the registry sent none — the registry only assigns a country code to some foreign addresses, and an empty string was never a country. This is what the registry says, not an address on file: a refresh never writes to the customer's own addresses (design D3).
 	BusinessAddress          *CustomerRegistryAddress `json:"businessAddress,omitempty"`
 	DeletedOn                *openapi_types.Date      `json:"deletedOn,omitempty"`
 	Email                    *string                  `json:"email,omitempty"`
@@ -225,8 +225,9 @@ type CustomerRegistryRecord struct {
 	ParentOrganisationNumber *string                  `json:"parentOrganisationNumber,omitempty"`
 	Phone                    *string                  `json:"phone,omitempty"`
 
-	// PostalAddress One of the two addresses the registry holds for an entity (Brreg in full design D1): lines is the registry's own free-form address array — one or more street lines, never a single string — and postalCode/municipality are simply absent on a foreign address, whose own postal district is part of city instead ("81-336 GDYNIA"). countryCode is ISO 3166-1 alpha-2, empty only when the registry sent none. This is what the registry says, not an address on file: a refresh never writes to the customer's own addresses (design D3).
+	// PostalAddress One of the two addresses the registry holds for an entity (Brreg in full design D1): lines is the registry's own free-form address array — one or more street lines, never a single string — and postalCode/municipality are simply absent on a foreign address, whose own postal district is part of city instead ("81-336 GDYNIA"). countryCode is ISO 3166-1 alpha-2, and absent when the registry sent none — the registry only assigns a country code to some foreign addresses, and an empty string was never a country. This is what the registry says, not an address on file: a refresh never writes to the customer's own addresses (design D3).
 	PostalAddress          *CustomerRegistryAddress `json:"postalAddress,omitempty"`
+	RegistryUpdatedHint    *time.Time               `json:"registryUpdatedHint,omitempty"`
 	UnderForcedLiquidation bool                     `json:"underForcedLiquidation"`
 	UnderLiquidation       bool                     `json:"underLiquidation"`
 	VatRegistered          bool                     `json:"vatRegistered"`
@@ -237,7 +238,7 @@ type CustomerRegistryRecord struct {
 type CustomerRegistryRefreshResponse struct {
 	Changes []CustomerRegistryChange `json:"changes"`
 
-	// Record What Enhetsregisteret says about this customer, as of fetchedAt (Brreg in full design D1): the registry's own view, kept beside the customer and never edited by hand — the customer's name and legal identity stay what the user asserted, and a difference between the two is reported on the timeline rather than written over them. Present only for a customer whose legal identity is a Norwegian business with a valid organisation number, and only once a fetch has actually happened. deletedOn is set for an entity struck from the register; an entity removed from open data altogether has no record at all.
+	// Record What Enhetsregisteret says about this customer, as of fetchedAt (Brreg in full design D1): the registry's own view, kept beside the customer and never edited by hand — the customer's name and legal identity stay what the user asserted, and a difference between the two is reported on the timeline rather than written over them. Present only for a customer whose legal identity is a Norwegian business with a valid organisation number, and only once a fetch has actually happened. deletedOn is set for an entity struck from the register; an entity removed from open data altogether has no record at all. registryUpdatedHint is the moment Brønnøysundregistrene's own update feed said this entity changed, written by the background feed worker before it re-reads the record: while it is newer than fetchedAt the record is known to be behind the register — a refresh that failed, or one not attempted yet — and the card says so. It is absent whenever the feed has never reported a change for this customer.
 	Record *CustomerRegistryRecord `json:"record,omitempty"`
 	Status string                  `json:"status"`
 }

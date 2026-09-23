@@ -152,7 +152,7 @@ type registryAddressJSON struct {
 	PostalCode   *string  `json:"postalCode"`
 	City         *string  `json:"city"`
 	Municipality *string  `json:"municipality"`
-	CountryCode  string   `json:"countryCode"`
+	CountryCode  *string  `json:"countryCode"`
 }
 
 type registryRecordJSON struct {
@@ -177,6 +177,7 @@ type registryRecordJSON struct {
 	BusinessAddress          *registryAddressJSON `json:"businessAddress"`
 	PostalAddress            *registryAddressJSON `json:"postalAddress"`
 	FetchedAt                time.Time            `json:"fetchedAt"`
+	RegistryUpdatedHint      *time.Time           `json:"registryUpdatedHint"`
 }
 
 type registryChangeJSON struct {
@@ -302,7 +303,7 @@ func TestCreateCustomer_WithBrregPick_FetchesAndStoresTheRecord(t *testing.T) {
 	}
 	if rec.BusinessAddress == nil || strings.Join(rec.BusinessAddress.Lines, "|") != "Forusbeen 50" ||
 		str(rec.BusinessAddress.PostalCode) != "4035" || str(rec.BusinessAddress.City) != "STAVANGER" ||
-		str(rec.BusinessAddress.Municipality) != "STAVANGER" || rec.BusinessAddress.CountryCode != "NO" {
+		str(rec.BusinessAddress.Municipality) != "STAVANGER" || str(rec.BusinessAddress.CountryCode) != "NO" {
 		t.Errorf("BusinessAddress = %+v, want the Forusbeen address", rec.BusinessAddress)
 	}
 	if rec.PostalAddress == nil || strings.Join(rec.PostalAddress.Lines, "|") != "Postboks 8500" {
@@ -957,7 +958,7 @@ func TestRegistryRefresh_EmptyAddressLines_RoundTripAsAnEmptyArray(t *testing.T)
 	if rec.BusinessAddress.Lines == nil {
 		t.Errorf("Lines = null, want an empty array")
 	}
-	if len(rec.BusinessAddress.Lines) != 0 || rec.BusinessAddress.CountryCode != "NO" {
+	if len(rec.BusinessAddress.Lines) != 0 || str(rec.BusinessAddress.CountryCode) != "NO" {
 		t.Errorf("BusinessAddress = %+v, want no lines and country NO", rec.BusinessAddress)
 	}
 }
@@ -1718,6 +1719,94 @@ func TestRegistryRefresh_AnswerAboutAnotherOrganisation_Returns502(t *testing.T)
 	}
 	if n := registryRowCount(t, h, created.Id); n != 0 {
 		t.Errorf("registry rows = %d, want 0 (another company's record is never stored)", n)
+	}
+}
+
+// TestRegistryRecord_ReportsTheFeedsHint pins design D2's one visible
+// consequence on the wire: the hint the feed worker wrote is readable, so the
+// card can say the record is behind the register. A record the feed has never
+// reported on omits the field entirely rather than sending null (this module's
+// wire rule).
+func TestRegistryRecord_ReportsTheFeedsHint(t *testing.T) {
+	t.Parallel()
+	h := newRegistryHarness(t, registryBody(equinorRegistryBody))
+	c := authenticatedClient(t, h)
+	created := createBrregPick(t, c, "EQUINOR ASA", "923609016")
+
+	if rec := fetchRegistryRecord(t, c, created.Id); rec.RegistryUpdatedHint != nil {
+		t.Errorf("registryUpdatedHint = %v before any feed entry, want it absent", rec.RegistryUpdatedHint)
+	}
+	if body := string(getRegistryRecord(t, c, created.Id).Body); strings.Contains(body, "registryUpdatedHint") {
+		t.Errorf("body = %s, want no registryUpdatedHint key at all", body)
+	}
+
+	hint := h.Now().Add(time.Hour).UTC()
+	h.Exec(t, `UPDATE customers.customer_registry_records SET registry_updated_hint = $2 WHERE customer_id = $1`,
+		created.Id, hint)
+
+	rec := fetchRegistryRecord(t, c, created.Id)
+	if rec.RegistryUpdatedHint == nil || !rec.RegistryUpdatedHint.UTC().Equal(hint) {
+		t.Errorf("registryUpdatedHint = %v, want %v", rec.RegistryUpdatedHint, hint)
+	}
+}
+
+// TestRegistryRefresh_KeepsTheHintOnTheRecordItAnswersWith pins the one place
+// the two halves of this delivery meet in a response: the upsert deliberately
+// never writes registry_updated_hint (the feed worker owns that column), so a
+// refresh that answered with a record carrying no hint would be describing a
+// row that still has one — the card would then stop showing a line the very
+// next GET puts back.
+func TestRegistryRefresh_KeepsTheHintOnTheRecordItAnswersWith(t *testing.T) {
+	t.Parallel()
+	h := newRegistryHarness(t, registrySequence(equinorRegistryBody, movedEquinorRegistryBody))
+	c := authenticatedClient(t, h)
+	created := createBrregPick(t, c, "EQUINOR ASA", "923609016")
+
+	hint := h.Now().Add(time.Hour).UTC()
+	h.Exec(t, `UPDATE customers.customer_registry_records SET registry_updated_hint = $2 WHERE customer_id = $1`,
+		created.Id, hint)
+	// Past the click throttle, so the refresh actually fetches.
+	h.Advance(2 * time.Minute)
+
+	r := postRegistryRefresh(t, c, created.Id)
+	if r.Status != http.StatusOK {
+		t.Fatalf("refresh: status %d body %s, want 200", r.Status, r.Body)
+	}
+	var result registryRefreshJSON
+	r.JSON(&result)
+	if result.Record == nil || result.Record.RegistryUpdatedHint == nil || !result.Record.RegistryUpdatedHint.UTC().Equal(hint) {
+		t.Errorf("refresh record's hint = %v, want %v carried over from the stored row", result.Record, hint)
+	}
+	if got := modtest.One[*time.Time](t, h,
+		`SELECT registry_updated_hint FROM customers.customer_registry_records WHERE customer_id = $1`, created.Id); got == nil || !got.UTC().Equal(hint) {
+		t.Errorf("stored hint = %v after a refresh, want it untouched at %v", got, hint)
+	}
+}
+
+// TestRegistryRecord_OmitsAnAbsentCountryCode pins the contract relaxation:
+// the registry does not always send a landkode, and "" was never a country.
+// The field is now absent for such an address rather than an empty string.
+func TestRegistryRecord_OmitsAnAbsentCountryCode(t *testing.T) {
+	t.Parallel()
+	const noCountryCodeBody = `{
+		"organisasjonsnummer": "923609016",
+		"navn": "EQUINOR ASA",
+		"konkurs": false,
+		"underAvvikling": false,
+		"underTvangsavviklingEllerTvangsopplosning": false,
+		"registrertIMvaregisteret": false,
+		"forretningsadresse": {"poststed": "81-336 GDYNIA", "adresse": ["ul. Budowniczych 12"]}
+	}`
+	h := newRegistryHarness(t, registryBody(noCountryCodeBody))
+	c := authenticatedClient(t, h)
+	created := createBrregPick(t, c, "EQUINOR ASA", "923609016")
+
+	rec := fetchRegistryRecord(t, c, created.Id)
+	if rec.BusinessAddress == nil || rec.BusinessAddress.CountryCode != nil {
+		t.Errorf("businessAddress = %+v, want one with no countryCode", rec.BusinessAddress)
+	}
+	if str(rec.BusinessAddress.City) != "81-336 GDYNIA" {
+		t.Errorf("city = %q, want 81-336 GDYNIA", str(rec.BusinessAddress.City))
 	}
 }
 
