@@ -60,6 +60,20 @@ JOIN projects.project_roles r ON r.project_id = p.id
 WHERE r.user_id = @user_id
 ORDER BY p.code, p.id;
 
+-- name: DirectoryProjectsForCustomer :many
+-- DirectoryProjectsForCustomer is contracts.ProjectDirectory.ProjectsForCustomer's
+-- rows: every project billed to customerID, whatever its status, by id, and
+-- no more than the caller's cap (contracts.MaxActualsRequests, passed in so
+-- the number lives in one place). Id order, not code order like its
+-- neighbours: the LIMIT has to cut somewhere stable, and the oldest projects
+-- are the ones a customer page can least afford to lose. ix_projects_customer_id
+-- (00008) serves the WHERE; the casts keep both parameters non-null int32.
+SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate
+FROM projects.projects
+WHERE customer_id = @customer_id::integer
+ORDER BY id
+LIMIT @max_projects::integer;
+
 -- name: DirectoryBillingLines :many
 -- DirectoryBillingLines is contracts.ProjectDirectory.BillingLines' rows:
 -- every billing line on projectID, active and inactive, ordered by code. A

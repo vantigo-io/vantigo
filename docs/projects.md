@@ -1071,7 +1071,11 @@ missing row is `(nil, nil)`, never an error.
 - **`contracts.ProjectDirectory`** — provided by *projects*. `Project`,
   `Projects` (batch, for a list of ids), `ProjectByCode` (case-insensitive),
   `Role(projectID, userID)` (`""` means no role), `BillingLine`, `BillingLines`
-  (every line on a project, active and inactive), `ProjectsForUser`, `Task`,
+  (every line on a project, active and inactive), `ProjectsForUser`,
+  `ProjectsForCustomer` (every project billed to one customer, in any status, by id
+  ascending and at most `contracts.MaxActualsRequests` — the batch a consumer asks
+  the time and expenses providers about next; the customer page's
+  [Customer 360](customers.md#customer-360) is its reader), `Task`,
   `OpenTasksForUser` and `CanLogTime(projectID, userID)`. **Cancelled projects and
   inactive lines still resolve**, so a consumer can read old work. `ProjectEntry`
   carries `Currency` and `DefaultBillRate`, which are financial fields: only a

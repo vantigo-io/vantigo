@@ -309,6 +309,66 @@ func (q *Queries) DirectoryProjects(ctx context.Context, ids []int32) ([]Directo
 	return items, nil
 }
 
+const directoryProjectsForCustomer = `-- name: DirectoryProjectsForCustomer :many
+SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate
+FROM projects.projects
+WHERE customer_id = $1::integer
+ORDER BY id
+LIMIT $2::integer
+`
+
+type DirectoryProjectsForCustomerParams struct {
+	CustomerID  int32
+	MaxProjects int32
+}
+
+type DirectoryProjectsForCustomerRow struct {
+	ID              int32
+	Code            string
+	Name            string
+	CustomerID      *int32
+	Status          string
+	BillingType     string
+	Currency        *string
+	DefaultBillRate pgtype.Numeric
+}
+
+// DirectoryProjectsForCustomer is contracts.ProjectDirectory.ProjectsForCustomer's
+// rows: every project billed to customerID, whatever its status, by id, and
+// no more than the caller's cap (contracts.MaxActualsRequests, passed in so
+// the number lives in one place). Id order, not code order like its
+// neighbours: the LIMIT has to cut somewhere stable, and the oldest projects
+// are the ones a customer page can least afford to lose. ix_projects_customer_id
+// (00008) serves the WHERE; the casts keep both parameters non-null int32.
+func (q *Queries) DirectoryProjectsForCustomer(ctx context.Context, arg DirectoryProjectsForCustomerParams) ([]DirectoryProjectsForCustomerRow, error) {
+	rows, err := q.db.Query(ctx, directoryProjectsForCustomer, arg.CustomerID, arg.MaxProjects)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DirectoryProjectsForCustomerRow
+	for rows.Next() {
+		var i DirectoryProjectsForCustomerRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.CustomerID,
+			&i.Status,
+			&i.BillingType,
+			&i.Currency,
+			&i.DefaultBillRate,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const directoryProjectsForUser = `-- name: DirectoryProjectsForUser :many
 SELECT p.id, p.code, p.name, p.customer_id, p.status, p.billing_type, p.currency, p.default_bill_rate
 FROM projects.projects p

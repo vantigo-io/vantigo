@@ -158,6 +158,35 @@ func (d *directory) ProjectsForUser(ctx context.Context, userID uuid.UUID) ([]co
 	return entries, nil
 }
 
+// ProjectsForCustomer lists customerID's projects, whatever their status, by
+// id ascending and at most contracts.MaxActualsRequests of them (customer 360
+// design D1). The cap is the actuals batch's own because the consumer asks
+// the time and expenses providers about exactly these projects next: a list
+// neither of them would take in one call is a list that consumer would have
+// had to page anyway, and a customer with two thousand projects has a
+// portfolio, not a panel.
+func (d *directory) ProjectsForCustomer(ctx context.Context, customerID int32) ([]contracts.ProjectEntry, error) {
+	rows, err := d.q.DirectoryProjectsForCustomer(ctx, store.DirectoryProjectsForCustomerParams{
+		CustomerID:  customerID,
+		MaxProjects: contracts.MaxActualsRequests,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("projects: directory projects for customer: %w", err)
+	}
+	entries := make([]contracts.ProjectEntry, 0, len(rows))
+	for _, row := range rows {
+		entry, err := toProjectEntry(directoryProjectRow{
+			ID: row.ID, Code: row.Code, Name: row.Name, CustomerID: row.CustomerID,
+			Status: row.Status, BillingType: row.BillingType, Currency: row.Currency, DefaultBillRate: row.DefaultBillRate,
+		})
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
+}
+
 // Projects looks up every project in ids, in any status, ordered by code. An
 // id nobody has is simply absent from the result rather than an error or a
 // hole in the slice.

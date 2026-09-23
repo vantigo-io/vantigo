@@ -307,6 +307,20 @@ func (f *fakeProjects) ProjectsForUser(ctx context.Context, userID uuid.UUID) ([
 	return out, nil
 }
 
+func (f *fakeProjects) ProjectsForCustomer(ctx context.Context, customerID int32) ([]contracts.ProjectEntry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.noteLocked(ctx, "ProjectsForCustomer")
+	var out []contracts.ProjectEntry
+	for _, p := range f.projects {
+		if p.CustomerID != nil && *p.CustomerID == customerID {
+			out = append(out, p)
+		}
+	}
+	slices.SortFunc(out, func(a, b contracts.ProjectEntry) int { return int(a.ID - b.ID) })
+	return out, nil
+}
+
 func (f *fakeProjects) Projects(ctx context.Context, ids []int32) ([]contracts.ProjectEntry, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

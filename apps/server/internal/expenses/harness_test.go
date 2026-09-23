@@ -344,6 +344,19 @@ func (f *fakeProjects) ProjectsForUser(_ context.Context, userID uuid.UUID) ([]c
 	return out, nil
 }
 
+func (f *fakeProjects) ProjectsForCustomer(_ context.Context, customerID int32) ([]contracts.ProjectEntry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []contracts.ProjectEntry
+	for _, p := range f.projects {
+		if p.CustomerID != nil && *p.CustomerID == customerID {
+			out = append(out, p)
+		}
+	}
+	slices.SortFunc(out, func(a, b contracts.ProjectEntry) int { return int(a.ID - b.ID) })
+	return out, nil
+}
+
 func (f *fakeProjects) Projects(_ context.Context, ids []int32) ([]contracts.ProjectEntry, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

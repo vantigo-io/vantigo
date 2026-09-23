@@ -860,6 +860,10 @@ func (*fakeProjectDirectory) ProjectsForUser(context.Context, uuid.UUID) ([]cont
 	return nil, nil
 }
 
+func (*fakeProjectDirectory) ProjectsForCustomer(context.Context, int32) ([]contracts.ProjectEntry, error) {
+	return nil, nil
+}
+
 func (*fakeProjectDirectory) Projects(context.Context, []int32) ([]contracts.ProjectEntry, error) {
 	return nil, nil
 }

@@ -62,6 +62,11 @@ func (f *forbiddenProjects) ProjectsForUser(context.Context, uuid.UUID) ([]contr
 	return nil, nil
 }
 
+func (f *forbiddenProjects) ProjectsForCustomer(context.Context, int32) ([]contracts.ProjectEntry, error) {
+	f.deny("ProjectsForCustomer")
+	return nil, nil
+}
+
 func (f *forbiddenProjects) Projects(context.Context, []int32) ([]contracts.ProjectEntry, error) {
 	f.deny("Projects")
 	return nil, nil
