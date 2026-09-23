@@ -404,6 +404,86 @@ func TestRegistryFeedWorker_OneCustomerWithTwoEntriesIsRefreshedOnce(t *testing.
 	}
 }
 
+// TestRegistryFeedWorker_AnOlderEntryOnALaterPageDoesNotLowerTheHint pins
+// SetRegistryUpdatedHint's never-backwards clause across two pages (final fix
+// wave M7). A backlog caught up in one cycle, or a page the registry serves
+// unsorted, can name the same company twice with the older report arriving
+// second; a hint that moved backwards would make a record look FRESHER than the
+// register said it was, which is the one direction that loses a change — the
+// sweep's "hint > fetched_at" would stop being true and nothing would ever
+// re-read the entity.
+//
+// The page size is 1 through the test seam, so each entry is a full page and the
+// loop reads both.
+func TestRegistryFeedWorker_AnOlderEntryOnALaterPageDoesNotLowerTheHint(t *testing.T) {
+	restore := customers.SetRegistryFeedPageSize(1)
+	defer restore()
+
+	transport := newRegistryWorkerTransport(
+		entityBodies(map[string]entityAnswer{
+			"923609016": feedFound(equinorRegistryBody),
+		}),
+		// The newer report first, then the older one.
+		feedPageOf(feedEntryOf(1100, feedEntryDateLater, "923609016", "Endring")),
+		feedPageOf(feedEntryOf(1101, feedEntryDate, "923609016", "Endring")),
+		feedPageOf(),
+	)
+	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
+	c := authenticatedClient(t, h)
+	created := createBrregPick(t, c, "EQUINOR ASA", "923609016")
+	h.Advance(afterTheFeed)
+
+	if _, err := customers.NewRegistryFeedWorker(h.Deps()).RunCycle(context.Background()); err != nil {
+		t.Fatalf("RunCycle: %v", err)
+	}
+	hint := registryHint(t, h, created.Id)
+	if hint == nil {
+		t.Fatal("no hint was written at all")
+	}
+	if !hint.UTC().Equal(mustParseFeedDate(t, feedEntryDateLater)) {
+		t.Errorf("hint = %v, want the newer of the two reports (%s): a hint never moves backwards",
+			hint.UTC(), feedEntryDateLater)
+	}
+}
+
+// TestRegistryFeedWorker_AnArchivedCustomerIsNotMatchedOnAPage pins
+// CustomersByOrganisationNumbers's archived filter (final fix wave M7). An
+// archived customer is invoiced by nobody and shown to nobody, so a page naming
+// its company must cost no entity read at all — on an installation with years of
+// archived customers that filter is the difference between one request per
+// changed company and one per changed company that was ever a customer.
+func TestRegistryFeedWorker_AnArchivedCustomerIsNotMatchedOnAPage(t *testing.T) {
+	t.Parallel()
+	transport := newRegistryWorkerTransport(
+		entityBodies(map[string]entityAnswer{
+			"923609016": feedFound(equinorRegistryBody),
+		}),
+		feedPageOf(feedEntryOf(1200, feedEntryDate, "923609016", "Endring")),
+		feedPageOf(),
+	)
+	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
+	c := authenticatedClient(t, h)
+	created := createBrregPick(t, c, "EQUINOR ASA", "923609016")
+	h.Exec(t, `UPDATE customers.customers SET status = 'archived' WHERE id = $1`, created.Id)
+	before := len(entityRequests(transport))
+	h.Advance(afterTheFeed)
+
+	if _, err := customers.NewRegistryFeedWorker(h.Deps()).RunCycle(context.Background()); err != nil {
+		t.Fatalf("RunCycle: %v", err)
+	}
+	if got := len(entityRequests(transport)) - before; got != 0 {
+		t.Errorf("entity reads during the cycle = %d, want 0: the one customer with this number is archived", got)
+	}
+	if hint := registryHint(t, h, created.Id); hint != nil {
+		t.Errorf("hint = %v, want none: an archived customer is not on the page's match list", hint)
+	}
+	// The cursor still moves: the page was accounted for — every entry on it was
+	// considered, and none of them was this installation's.
+	if next, _, _ := cursorRow(t, h); next == nil || *next != 1201 {
+		t.Errorf("next_update_id = %v, want 1201: a page that matched nobody is still a processed page", next)
+	}
+}
+
 // TestRegistryFeedWorker_AFailedFeedRequestLeavesTheCursorAlone pins design
 // D1's failure rule. A cursor advanced past a page that was never read is a
 // silent, permanent hole in the record: those entities changed, nothing here
@@ -624,6 +704,52 @@ func TestRegistryFeedWorker_TheBackfillPicksUpACustomerWithNoRecord(t *testing.T
 	}
 }
 
+// TestRegistryFeedWorker_ARefreshWhoseCustomerWasReIdentifiedWritesNothing pins
+// the identity re-check inside refreshRegistryRecord's own transaction (final
+// fix wave I4). The organisation number is resolved BEFORE the network call —
+// it has to be, the call is made for it — and a person re-identifying the
+// customer in that window would otherwise have another company's record written
+// under its id: invisible (the GET's own guard hides a record whose number is
+// not the customer's), unrepairable (both sweeps skip it for the same reason)
+// and permanent (the backfill sees a row, so it never fetches the right one).
+//
+// The transport is the seam, because the window is exactly "the entity read":
+// the identity changes while the register is answering, which is the race as it
+// actually happens.
+func TestRegistryFeedWorker_ARefreshWhoseCustomerWasReIdentifiedWritesNothing(t *testing.T) {
+	t.Parallel()
+	transport := newRegistryWorkerTransport(nil, feedPageOf())
+	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
+	c := authenticatedClient(t, h)
+	// A manual identity, so no create hook fetches anything: this customer has no
+	// record at all until the sweep's backfill goes looking for it.
+	created := createCustomerWithIdentity(t, c, "Equinor, typed by hand", "no", "923609016")
+
+	var moved bool
+	transport.entity = func(uri string) (*http.Response, error) {
+		if !moved && strings.HasSuffix(uri, "/923609016") {
+			// The register is answering about 923609016; by the time the answer is
+			// stored, this customer is a different company.
+			moved = true
+			h.Exec(t, `UPDATE customers.customers SET legal_id = '974760673' WHERE id = $1`, created.Id)
+		}
+		return registryEntityResponse(http.StatusOK, equinorRegistryBody), nil
+	}
+
+	if ran, err := customers.NewRegistryFeedWorker(h.Deps()).RunCycle(context.Background()); err != nil || !ran {
+		t.Fatalf("RunCycle = %v, %v; want true, nil — a re-identified customer is not a failed cycle", ran, err)
+	}
+	if !moved {
+		t.Fatal("the entity was never read: this test never reached the race it is about")
+	}
+	if n := registryRowCount(t, h, created.Id); n != 0 {
+		t.Errorf("registry rows = %d, want 0: the answer was about the company this customer no longer is", n)
+	}
+	if events := fetchRegistryEvents(t, c, created.Id); len(events) != 0 {
+		t.Errorf("registry events = %+v, want none: nothing was written, so nothing is worth reporting", events)
+	}
+}
+
 // TestRegistryFeedWorker_TheBackfillWalksPastItsBatchAndStartsOver pins both
 // halves of design D3's backfill: the batch BOUND (a few dozen a cycle, not
 // every customer at once the first time the worker ever runs) and the fact that
@@ -802,6 +928,62 @@ func TestRegistryFeedWorker_ACancelledBackfillLeavesItsPositionAlone(t *testing.
 	}
 	if got := backfillPosition(t, h); got != ids[0] {
 		t.Errorf("backfill_after_id = %d after a cancelled batch, want it unchanged at %d — the four customers this cycle never attempted are next cycle's, not next pass's", got, ids[0])
+	}
+}
+
+// TestRegistryFeedWorker_ABlackHoledRegistryEndsTheCycleEarly pins the outage
+// bound (final fix wave I5). The arithmetic is the reason: a sweep is up to 75
+// refreshes, each of which spends the whole BRREG_TIMEOUT budget against a
+// registry that answers nothing — nineteen minutes of one cycle at the default
+// fifteen-second timeout, still holding the lease, after which the 15-minute
+// ticker fires and the next cycle does it again. So a cycle that has met the
+// registry's silence five times in a row stands down until the next poll, having
+// claimed no ground: the backfill position is where it was, the feed was never
+// asked, and everything is retried next cycle.
+func TestRegistryFeedWorker_ABlackHoledRegistryEndsTheCycleEarly(t *testing.T) {
+	t.Parallel()
+	transport := newRegistryWorkerTransport(
+		// Every entity read is a 503, which is exactly what a black hole behind a
+		// load balancer looks like: retryable, so each refresh also spends its whole
+		// retry budget on it.
+		func(string) (*http.Response, error) {
+			return jsonResponse(http.StatusInternalServerError, `{}`), nil
+		},
+		feedPageOf(),
+	)
+	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
+	// Ten backfill candidates, so a cycle that did not stand down would attempt
+	// all ten.
+	for i := 0; i < 10; i++ {
+		name := fmt.Sprintf("Unreachable %d", i)
+		id := insertCustomer(t, h, name, "active")
+		h.Exec(t, `UPDATE customers.customers
+			SET legal_country = 'no', legal_type = 'business', legal_source = 'manual',
+			    legal_id = $2, legal_name = $3
+			WHERE id = $1`, id, validOrgNumbers[i], name)
+	}
+
+	ran, err := customers.NewRegistryFeedWorker(h.Deps()).RunCycle(context.Background())
+	if err != nil || !ran {
+		t.Fatalf("RunCycle = %v, %v; want true, nil — an unreachable registry is not a failed cycle", ran, err)
+	}
+	// Each refresh spends its retry budget, so count the CUSTOMERS attempted, not
+	// the requests: the bound is on how many companies a dead registry costs.
+	attempted := map[string]bool{}
+	for _, uri := range entityRequests(transport) {
+		attempted[uri[strings.LastIndex(uri, "/")+1:]] = true
+	}
+	if len(attempted) != 5 {
+		t.Errorf("customers attempted = %d (%v), want the 5-refresh outage limit", len(attempted), attempted)
+	}
+	if got := backfillPosition(t, h); got != 0 {
+		t.Errorf("backfill_after_id = %d, want it untouched at 0: an abandoned batch claims no ground", got)
+	}
+	if got := feedRequests(transport); len(got) != 0 {
+		t.Errorf("feed requests = %v, want none: the feed is the same registry the sweep just gave up on", got)
+	}
+	if next, _, _ := cursorRow(t, h); next != nil {
+		t.Errorf("next_update_id = %v, want NULL: no page was read, so there is no position to claim", *next)
 	}
 }
 

@@ -127,6 +127,8 @@ LEFT JOIN customers.customer_peppol_lookups l ON l.customer_id = c.id
 WHERE l.customer_id IS NULL
   AND c.status <> 'archived'
   AND c.invoice_delivery = 'ehf'
+  AND (c.peppol_id IS NOT NULL
+       OR (c.type = 'business' AND c.legal_country = 'no' AND c.legal_id ~ '^[0-9]{9}$'))
 ORDER BY c.id
 LIMIT $1::int
 `
@@ -156,6 +158,16 @@ type EhfCustomersWithoutPeppolLookupRow struct {
 // registration has never actually been checked. That combination is the one
 // worth a network call unprompted — everyone else's EHF readiness is a
 // question nobody has asked yet, and this worker does not go looking for it.
+//
+// The last predicate is a pre-filter, not the rule (final fix wave I1,
+// CustomersWithoutRegistryRecord's own pattern): a customer set to 'ehf' with
+// no peppolId and no Norwegian organisation number resolves to no participant
+// at all, so the Go loop skips it WITHOUT writing anything — and a row that
+// nothing writes to comes back at the head of the batch every cycle forever.
+// Fifty-one of them would starve the one genuine candidate behind them, in
+// silence. Keeping them out here is the fix; lookupParticipant stays the
+// authority (it also knows the check digit, which SQL cannot judge), so this
+// can only let through more rows than the worker will ask about, never fewer.
 func (q *Queries) EhfCustomersWithoutPeppolLookup(ctx context.Context, rowLimit int32) ([]EhfCustomersWithoutPeppolLookupRow, error) {
 	rows, err := q.db.Query(ctx, ehfCustomersWithoutPeppolLookup, rowLimit)
 	if err != nil {

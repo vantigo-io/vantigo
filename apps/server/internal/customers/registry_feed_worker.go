@@ -73,9 +73,10 @@ const (
 	// registryFeedStaleBatch and registryFeedBackfillBatch bound the sweep
 	// (design D3): up to 50 records whose refresh has not caught up with their
 	// hint, and up to 25 customers that have no record at all. The second is
-	// smaller on purpose — it is unbounded work the first time a worker ever
-	// runs on an old installation, and a few hundred an hour catches a large
-	// one up within a day without ever looking like an outage to the registry.
+	// smaller on purpose — it is unbounded work the first time a worker ever runs
+	// on an old installation, and 25 per cycle is about a hundred an hour at the
+	// default poll, so a few thousand customers are caught up within a day or two
+	// without ever looking like an outage to the registry.
 	registryFeedStaleBatch    = 50
 	registryFeedBackfillBatch = 25
 
@@ -132,6 +133,16 @@ func (w *RegistryFeedWorker) Run(ctx context.Context) error {
 	defer ticker.Stop()
 	for {
 		if _, err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
+			// The raw error text is safe here, unlike a per-refresh failure's
+			// (refresh logs a KIND for that reason): a cycle only ever fails on the
+			// lease, on one of the sweep's SELECTs, or on the feed read — and none of
+			// those error texts can carry a customer's identity. The feed URL has a
+			// date and an update id in it and nothing else; a pgx *PgError formats
+			// its message and code but never its Detail, which is where Postgres puts
+			// offending values; and the one query that takes identities as arguments,
+			// CustomersByOrganisationNumbers, takes them as a []string, so pgx has no
+			// encode error to spell them into. Changing that argument to a struct or
+			// a jsonb payload would change this reasoning (final fix wave M3).
 			w.logger().Error("registry feed cycle failed", "worker", registryFeedWorkerName, "error", err)
 		}
 		select {
@@ -151,15 +162,26 @@ func (w *RegistryFeedWorker) Run(ctx context.Context) error {
 // whose feed request fails still caught up whatever was outstanding, and a
 // cycle that ends early leaves the cursor where the last fully processed page
 // put it either way.
+//
+// The outage counter is made here and shared by both halves (final fix wave
+// I5): a registry that is down is down for the whole cycle, so a sweep that gave
+// up on it must not be followed by a feed that spends the same fifteen seconds
+// per entity discovering the same thing.
 func (w *RegistryFeedWorker) RunCycle(ctx context.Context) (bool, error) {
 	return w.underLease(ctx, func(ctx context.Context) error {
 		if err := w.ensureCursor(ctx); err != nil {
 			return err
 		}
-		if _, err := w.Sweep(ctx); err != nil {
+		outage := &registryOutage{logger: w.logger()}
+		if _, err := w.Sweep(ctx, outage); err != nil {
 			return err
 		}
-		_, err := w.ReadFeed(ctx)
+		if outage.abandoned {
+			// Abandoned, not failed: the Warn has already been logged, the position
+			// and the cursor are where they were, and the next poll tries again.
+			return nil
+		}
+		_, err := w.ReadFeed(ctx, outage)
 		return err
 	})
 }
@@ -220,7 +242,9 @@ func (w *RegistryFeedWorker) ensureCursor(ctx context.Context) error {
 // returned: one unreachable company must not stop the sweep from catching up
 // on the other 74, and a stale row is still stale next cycle, which is the
 // whole retry mechanism. A failure of the SELECTs themselves is returned: that
-// is the database, not the registry.
+// is the database, not the registry. The one failure that does end the sweep is
+// the registry going quiet altogether — registryOutageLimit of them in a row,
+// with the position left where it was (final fix wave I5).
 //
 // The sweep never touches the FEED cursor — it is not reading the feed, so it
 // has no feed position to advance, and advancing one on its behalf would claim
@@ -229,25 +253,41 @@ func (w *RegistryFeedWorker) ensureCursor(ctx context.Context) error {
 // cannot resolve pins the backfill to the same 25 rows forever. Reading that
 // position means the cursor row has to exist, which is why RunCycle calls
 // ensureCursor ahead of this and why anything driving Sweep on its own must too.
-func (w *RegistryFeedWorker) Sweep(ctx context.Context) (int, error) {
+func (w *RegistryFeedWorker) Sweep(ctx context.Context, outage *registryOutage) (int, error) {
 	q := store.New(w.deps.Pool)
 
+	cursor, err := q.GetRegistryFeedCursor(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("customers: read the registry feed cursor: %w", err)
+	}
 	stale, err := q.StaleRegistryRecords(ctx, registryFeedStaleBatch)
 	if err != nil {
 		return 0, fmt.Errorf("customers: select stale registry records: %w", err)
 	}
 	var tally refreshTally
+	// staleAttempted and backfillAttempted are what the cycle's own line reports
+	// (final fix wave I2): how many refreshes this sweep actually made, not how
+	// many rows it selected — a cycle abandoned or cancelled part-way through a
+	// batch reached fewer, and a line saying 50 either way would be reporting the
+	// query rather than the work.
+	var staleAttempted, backfillAttempted int
 	for _, row := range stale {
 		if ctx.Err() != nil {
 			return tally.refreshed, nil
 		}
-		tally.add(w.refresh(ctx, row.CustomerID, row.Type, row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType))
+		staleAttempted++
+		outcome := w.refresh(ctx, row.CustomerID, row.Type, row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType)
+		tally.add(outcome)
+		if outage.record(outcome) {
+			// The registry is not answering (final fix wave I5): stop here with the
+			// backfill position untouched, exactly as a cancelled cycle does. Nothing
+			// already done needs undoing — a hint stands, and a record that was not
+			// refreshed is still stale, which is what the next cycle reads.
+			w.logSweep(staleAttempted, backfillAttempted, tally, cursor.BackfillAfterID)
+			return tally.refreshed, nil
+		}
 	}
 
-	cursor, err := q.GetRegistryFeedCursor(ctx)
-	if err != nil {
-		return tally.refreshed, fmt.Errorf("customers: read the registry feed cursor: %w", err)
-	}
 	missing, err := q.CustomersWithoutRegistryRecord(ctx, store.CustomersWithoutRegistryRecordParams{
 		AfterID: cursor.BackfillAfterID, RowLimit: registryFeedBackfillBatch,
 	})
@@ -263,7 +303,15 @@ func (w *RegistryFeedWorker) Sweep(ctx context.Context) (int, error) {
 			// position moved past customers nobody looked at costs them a pass.
 			return tally.refreshed, nil
 		}
-		tally.add(w.refresh(ctx, row.ID, row.Type, row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType))
+		backfillAttempted++
+		outcome := w.refresh(ctx, row.ID, row.Type, row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType)
+		tally.add(outcome)
+		if outage.record(outcome) {
+			// An abandoned batch claims no ground either, for the cancelled case's
+			// own reason: the customers this cycle never reached are next cycle's.
+			w.logSweep(staleAttempted, backfillAttempted, tally, cursor.BackfillAfterID)
+			return tally.refreshed, nil
+		}
 	}
 	// A full batch leaves the position at its last id, so the next cycle
 	// continues; a short one means the end of the installation, and 0 starts the
@@ -290,11 +338,21 @@ func (w *RegistryFeedWorker) Sweep(ctx context.Context) (int, error) {
 			return tally.refreshed, fmt.Errorf("customers: store the registry backfill position: %w", err)
 		}
 	}
-	w.logger().Debug("registry sweep finished", "worker", registryFeedWorkerName,
-		"stale", len(stale), "backfill", len(missing), "refreshed", tally.refreshed,
-		"unknown", tally.unknown, "failed", tally.failed,
-		"backfillFrom", cursor.BackfillAfterID)
+	w.logSweep(staleAttempted, backfillAttempted, tally, cursor.BackfillAfterID)
 	return tally.refreshed, nil
+}
+
+// logSweep is the sweep's one line per cycle, at INFO (final fix wave I2):
+// docs/customers.md promises an operator a line per cycle for the sweep beside
+// the one per page, and a Debug line is one they would have to turn the whole
+// process's logging up to see. It says what the sweep attempted of each half and
+// how those attempts came out, so "nothing happened" and "fifty attempts, fifty
+// failures" are different lines rather than both being absent.
+func (w *RegistryFeedWorker) logSweep(staleAttempted, backfillAttempted int, tally refreshTally, backfillFrom int32) {
+	w.logger().Info("registry sweep finished", "worker", registryFeedWorkerName,
+		"stale", staleAttempted, "backfill", backfillAttempted, "refreshed", tally.refreshed,
+		"unknown", tally.unknown, "failed", tally.failed,
+		"backfillFrom", backfillFrom)
 }
 
 // ReadFeed reads pages from the stored cursor until a page comes back short or
@@ -304,7 +362,7 @@ func (w *RegistryFeedWorker) Sweep(ctx context.Context) (int, error) {
 // error returned, so the next cycle re-reads the same page. Everything a page
 // costs — the hint, the refresh — happens before its cursor is written, so a
 // page is either fully accounted for or read again.
-func (w *RegistryFeedWorker) ReadFeed(ctx context.Context) (int, error) {
+func (w *RegistryFeedWorker) ReadFeed(ctx context.Context, outage *registryOutage) (int, error) {
 	q := store.New(w.deps.Pool)
 	pages := 0
 	for ; pages < registryFeedPageBudget; pages++ {
@@ -331,8 +389,15 @@ func (w *RegistryFeedWorker) ReadFeed(ctx context.Context) (int, error) {
 			}
 			return pages, nil
 		}
-		if err := w.handlePage(ctx, q, page); err != nil {
+		if err := w.handlePage(ctx, q, page, outage); err != nil {
 			return pages, err
+		}
+		if outage.abandoned {
+			// The registry stopped answering part-way through this page (final fix
+			// wave I5): handlePage left the cursor where it was, so the page is read
+			// again next cycle — hints never move backwards and a refresh is
+			// idempotent, so re-reading it costs nothing but the requests.
+			return pages, nil
 		}
 		if len(page.Entries) < registryFeedPageSize {
 			// A short page means the feed is caught up; one more request would
@@ -353,7 +418,7 @@ func (w *RegistryFeedWorker) ReadFeed(ctx context.Context) (int, error) {
 // whatever the reason, so three requests would spend three requests to learn
 // one thing, and the oldest of three timestamps would understate how current
 // the record then is.
-func (w *RegistryFeedWorker) handlePage(ctx context.Context, q *store.Queries, page feedPage) error {
+func (w *RegistryFeedWorker) handlePage(ctx context.Context, q *store.Queries, page feedPage, outage *registryOutage) error {
 	newest := make(map[string]time.Time, len(page.Entries))
 	numbers := make([]string, 0, len(page.Entries))
 	var highest int64
@@ -405,7 +470,15 @@ func (w *RegistryFeedWorker) handlePage(ctx context.Context, q *store.Queries, p
 		}); err != nil {
 			return fmt.Errorf("customers: write a registry updated hint: %w", err)
 		}
-		tally.add(w.refresh(ctx, row.ID, row.Type, row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType))
+		outcome := w.refresh(ctx, row.ID, row.Type, row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType)
+		tally.add(outcome)
+		if outage.record(outcome) {
+			// The registry is not answering (final fix wave I5). Return without
+			// advancing the cursor, exactly as the cancelled case above does: this
+			// page is only partly accounted for, and re-reading it next cycle is the
+			// one thing that cannot lose an entry.
+			return nil
+		}
 	}
 
 	last := page.Entries[len(page.Entries)-1].Date
@@ -433,10 +506,15 @@ func (w *RegistryFeedWorker) handlePage(ctx context.Context, q *store.Queries, p
 //     never knew, that is a cycle claiming to have refreshed them every fifteen
 //     minutes forever;
 //   - refreshFailed: the attempt did not complete, and refresh has already
-//     logged it by kind.
+//     logged it by kind;
+//   - refreshUnavailable: it did not complete because the REGISTRY could not be
+//     reached (errBrregUnavailable). Counted as a failure like any other in the
+//     log line, and told apart only for registryOutage below: a run of these is
+//     the one failure that says nothing about the next customer is worth trying.
 //
 // refreshSkipped is counted nowhere: nothing was attempted for a customer with
-// no organisation number to look up, and a count of it would be a count of the
+// no organisation number to look up (or for one that stopped being that company
+// mid-fetch, final fix wave I4), and a count of it would be a count of the
 // installation's legacy identities rather than of this cycle's work.
 type refreshOutcome int
 
@@ -445,6 +523,7 @@ const (
 	refreshRefreshed
 	refreshUnknown
 	refreshFailed
+	refreshUnavailable
 )
 
 // refreshTally counts the outcomes of a run of refreshes for its log line.
@@ -460,18 +539,68 @@ func (t *refreshTally) add(outcome refreshOutcome) {
 		t.refreshed++
 	case refreshUnknown:
 		t.unknown++
-	case refreshFailed:
+	case refreshFailed, refreshUnavailable:
 		t.failed++
 	case refreshSkipped:
 	}
 }
 
+// registryOutageLimit is how many refreshes in a row may answer "the registry
+// could not be reached" before the cycle gives up on it (final fix wave I5).
+//
+// The arithmetic is why it exists: a sweep is up to 75 refreshes, each bounded
+// by BRREG_TIMEOUT (15 s by default) and each spending its whole retry budget
+// against a registry that is black-holing requests — nineteen minutes of one
+// cycle, under the lease, after which the 15-minute ticker fires again
+// immediately and the next cycle does it all over. Five is enough to be sure it
+// is the registry and not one company (a 404 and an unknown number are not
+// failures at all, and a database failure is a different outcome), and it costs
+// at most a minute and a quarter before a cycle stands down until the next poll.
+const registryOutageLimit = 5
+
+// registryOutage is that count, for one whole cycle: the sweep's two loops and
+// the feed's page loop share it, because "the registry is down" is a fact about
+// the cycle and not about whichever half noticed first.
+//
+// A skip neither counts nor clears: nothing was asked, so it says nothing about
+// whether the register is answering. Any other outcome — a stored record, an
+// unknown number, a database failure — means a request completed, so the count
+// starts again.
+type registryOutage struct {
+	logger      *slog.Logger
+	consecutive int
+	abandoned   bool
+}
+
+// record folds one refresh outcome in and reports whether the cycle is to stop
+// here. The Warn is logged once, the moment the limit is reached: a line per
+// remaining customer would be the outage reported 70 times.
+func (o *registryOutage) record(outcome refreshOutcome) bool {
+	switch outcome {
+	case refreshUnavailable:
+		o.consecutive++
+	case refreshSkipped:
+		return o.abandoned
+	default:
+		o.consecutive = 0
+		return false
+	}
+	if o.consecutive >= registryOutageLimit && !o.abandoned {
+		o.abandoned = true
+		o.logger.Warn("registry unavailable, cycle abandoned",
+			"worker", registryFeedWorkerName, "consecutiveFailures", o.consecutive)
+	}
+	return o.abandoned
+}
+
 // refresh is one customer re-read through delivery A's own path with the system
 // actor (design D4), reporting which of refreshOutcome's outcomes it was. A
 // failure is logged by kind — never the error text, which can carry the
-// organisation number and the URL it was built from — and swallowed: the caller
-// has more customers to get through, and the hint (or the missing record) is
-// what remembers this one.
+// organisation number and the URL it was built from, except for a "database"
+// kind, which is this module's own wrapped error and carries neither
+// (logRegistryFetchFailure applies the same rule to the write hooks' warning) —
+// and swallowed: the caller has more customers to get through, and the hint (or
+// the missing record) is what remembers this one.
 //
 // A customer whose identity cannot be looked up at all — a legacy legal_id that
 // is not an organisation number — is skipped silently: registryOrganisationNumber
@@ -489,8 +618,31 @@ func (w *RegistryFeedWorker) refresh(ctx context.Context, customerID int32, cust
 			// and nothing wrong.
 			return refreshSkipped
 		}
-		w.logger().Warn("customers: registry record refresh failed",
-			"worker", registryFeedWorkerName, "customerId", customerID, "errorKind", registryErrorKind(err))
+		if errors.Is(err, errRegistryIdentityChanged) {
+			// Somebody re-identified this customer while the register was
+			// answering (final fix wave I4). Nothing was written and nothing
+			// failed: the company it is now has no record, so the backfill picks
+			// it up, or the feed does the next time it names it.
+			return refreshSkipped
+		}
+		if ctx.Err() != nil {
+			// The cycle is being shut down, not the registry being unreachable: no
+			// Warn (the Peppol worker's recheck applies the same guard, and an
+			// operator reading warnings must find only things that were wrong), and
+			// deliberately not an outage — the loops' own ctx checks end the cycle.
+			return refreshFailed
+		}
+		kind := registryErrorKind(err)
+		if kind == registryErrorKindDatabase {
+			w.logger().Warn("customers: registry record refresh failed",
+				"worker", registryFeedWorkerName, "customerId", customerID, "errorKind", kind, "error", err.Error())
+		} else {
+			w.logger().Warn("customers: registry record refresh failed",
+				"worker", registryFeedWorkerName, "customerId", customerID, "errorKind", kind)
+		}
+		if errors.Is(err, errBrregUnavailable) {
+			return refreshUnavailable
+		}
 		return refreshFailed
 	}
 	if result.Status == registryStatusUnknown {

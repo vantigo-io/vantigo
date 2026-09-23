@@ -161,6 +161,52 @@ func TestPeppolRecheckWorker_TheEhfShareLeavesRoomForTheAgedSet(t *testing.T) {
 	}
 }
 
+// TestPeppolRecheckWorker_UnaskableEhfCustomersDoNotStarveTheSet pins the
+// pre-filter on the EHF candidate query (final fix wave I1). A customer whose
+// invoice_delivery is 'ehf' but which resolves to no participant at all — no
+// peppolId, and a legal identity no organisation number can be derived from —
+// is nothing this worker can ask the network about: the Go loop skips it
+// without writing anything, so it comes back at the head of the batch every
+// cycle for the rest of the installation's life. Fifty-one of them ahead of one
+// genuine candidate would mean the genuine one is never asked at all, silently.
+//
+// The query therefore pre-filters on a superset of the Go rule, exactly as
+// CustomersWithoutRegistryRecord does; lookupParticipant stays the authority.
+func TestPeppolRecheckWorker_UnaskableEhfCustomersDoNotStarveTheSet(t *testing.T) {
+	t.Parallel()
+	calls := &peppolLookupCalls{}
+	h := newHarness(t, modtest.WithPeppolLookup(stubPeppolLookup(calls,
+		peppol.Result{Registered: true, CanReceiveInvoice: true, CanReceiveCreditNote: true}, nil)))
+	c := authenticatedClient(t, h)
+
+	// Fifty-one at the LOW ids — one more than the EHF share, so a query that
+	// selected them would fill the batch with nothing askable. A Swedish
+	// organisation number is the realistic shape of this: a business identity
+	// that is perfectly valid and that derivedPeppolID answers "" for.
+	for i := 0; i < 51; i++ {
+		id := insertCustomer(t, h, fmt.Sprintf("Unaskable %02d", i), "active")
+		h.Exec(t, `UPDATE customers.customers
+			SET invoice_delivery = 'ehf', type = 'business',
+			    legal_country = 'se', legal_type = 'business', legal_source = 'manual',
+			    legal_id = $2, legal_name = name
+			WHERE id = $1`, id, fmt.Sprintf("55600000%02d", i))
+	}
+	genuine := createNorwegianBusiness(t, c, "Askable AS", "923609016")
+	h.Exec(t, `UPDATE customers.customers SET invoice_delivery = 'ehf' WHERE id = $1`, genuine.Id)
+	before := len(calls.all())
+
+	if ran, err := customers.NewPeppolRecheckWorker(h.Deps()).RunCycle(context.Background()); err != nil || !ran {
+		t.Fatalf("RunCycle = %v, %v; want true, nil", ran, err)
+	}
+	asked := calls.all()[before:]
+	if len(asked) != 1 || asked[0] != "0192:923609016" {
+		t.Errorf("participants asked = %v, want exactly [0192:923609016]: the unaskable customers must not hold the batch's places", asked)
+	}
+	if at := peppolCheckedAt(t, h, genuine.Id); at == nil {
+		t.Error("the one askable ehf customer still has no stored lookup after a cycle")
+	}
+}
+
 // TestPeppolRecheckWorker_LeavesArchivedCustomersOutOfBothSets pins the one
 // filter both candidate queries share. An archived customer is invoiced by
 // nobody, so asking a public network about it every month is a request made for

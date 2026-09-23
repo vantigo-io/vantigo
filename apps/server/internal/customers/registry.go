@@ -493,6 +493,20 @@ func registryErrorKind(err error) string {
 // error, carrying neither an organisation number nor a URL.
 const registryErrorKindDatabase = "database"
 
+// errRegistryIdentityChanged is what a refresh answers when the customer it
+// locked is no longer the company the fetch was made for (final fix wave I4):
+// somebody re-identified it, or changed its type, between the organisation
+// number being resolved and the transaction opening. Nothing is written, because
+// a record filed under a number that is not the customer's legal_id is a row
+// nobody can ever see or repair — the GET's own guard hides it, both of the feed
+// worker's sweeps skip it (their organisation-number equality), and the backfill
+// counts the customer as having a record, so the right one is never fetched.
+//
+// The caller's business, not this function's: the worker counts it as skipped
+// (nothing was wrong and nothing failed), and the endpoint answers the same 409
+// a customer with no registry identity gets.
+var errRegistryIdentityChanged = errors.New("customers: the customer's legal identity changed during the registry fetch")
+
 // registryRefreshUnavailableResponse is the 502 a refresh answers when the
 // registry itself could not be reached (design D2: "502 when Brreg cannot be
 // reached, as the lookup"), worded as GetCustomersLookupBrreg's own
@@ -512,8 +526,24 @@ func registryRefreshUnavailableResponse() gen.PostCustomersByIdRegistryRefresh50
 // customerRevisionConflict), because a client can act on this one — the fix
 // is to give the customer a Norwegian organisation number.
 func noRegistryIdentityConflict() gen.CustomerConflictProblem {
+	return registryIdentityConflict("This customer has no Norwegian organisation number to look up in the registry.")
+}
+
+// registryIdentityChangedConflict is the same 409, for the refresh whose
+// customer was re-identified while the registry was answering (final fix wave
+// I4). The code is deliberately no_registry_identity again rather than a new
+// one: from a client's point of view this IS that conflict — the number this
+// refresh was for is not the customer's any more — and the fix is the same
+// click, which will now ask about whatever company it is today. Only the detail
+// differs, because "nothing to look up" would be a lie for a customer that has
+// a perfectly good organisation number.
+func registryIdentityChangedConflict() gen.CustomerConflictProblem {
+	return registryIdentityConflict("This customer's legal identity changed while the registry was being read. Please try again.")
+}
+
+// registryIdentityConflict is the shape both of those share.
+func registryIdentityConflict(detail string) gen.CustomerConflictProblem {
 	title := "No registry identity"
-	detail := "This customer has no Norwegian organisation number to look up in the registry."
 	code := "no_registry_identity"
 	status := int32(http.StatusConflict)
 	return gen.CustomerConflictProblem{Title: &title, Detail: &detail, Code: &code, Status: &status}
@@ -617,6 +647,11 @@ func invalidateRegistryRecord(ctx context.Context, q *store.Queries, customerID 
 // the first actually stored. It is never held across the network call — that
 // has already returned by the time this transaction opens.
 //
+// The lock is also where the identity is re-checked: orgnr was resolved before
+// the fetch, and a customer re-identified in that window must not have the old
+// company's record written under it (errRegistryIdentityChanged, final fix wave
+// I4). Nothing is stored in that case, and the caller decides what it means.
+//
 // A failed network call returns the error with nothing stored and nothing
 // recorded: the record on file, however old, is a better answer than none.
 // Each of the four outcomes is a real answer about a real company, never an
@@ -642,7 +677,8 @@ func (s *server) refreshRegistryRecord(ctx context.Context, customerID int32, or
 	var result registryRefreshResult
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
-		if _, err := txq.LockCustomer(ctx, customerID); err != nil {
+		locked, err := txq.LockCustomer(ctx, customerID)
+		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				// The customer went away between this request's own 404 check
 				// and here. A customer is archived, never hard-deleted, so this
@@ -651,6 +687,16 @@ func (s *server) refreshRegistryRecord(ctx context.Context, customerID int32, or
 				return errCustomerNotFound
 			}
 			return err
+		}
+		// orgnr was resolved before the network call — it had to be, the call was
+		// made for it — so the identity is re-read here, under the lock, and the
+		// answer is thrown away if it is about a company this customer no longer
+		// is (final fix wave I4, errRegistryIdentityChanged's own comment for what
+		// the alternative costs). The same rule the whole module reads a record by:
+		// registryOrganisationNumber of the row as it stands now.
+		if registryOrganisationNumber(identityFromRow(locked.LegalCountry, locked.LegalID, locked.LegalName,
+			locked.LegalSource, locked.LegalType), locked.Type) != orgnr {
+			return errRegistryIdentityChanged
 		}
 		before, err := lockedRegistryRecord(ctx, txq, customerID)
 		if err != nil {
@@ -841,6 +887,13 @@ func (s *server) PostCustomersByIdRegistryRefresh(ctx context.Context, req gen.P
 		// refreshRegistryRecord): the same 404 the read above would have given
 		// a moment earlier.
 		return gen.PostCustomersByIdRegistryRefresh404Response{}, nil
+	}
+	if errors.Is(err, errRegistryIdentityChanged) {
+		// Somebody re-identified the customer while the registry was answering
+		// (final fix wave I4): nothing was stored, and the same 409 the identity
+		// check above answers is what this is — the number this call was for is not
+		// the customer's any more.
+		return gen.PostCustomersByIdRegistryRefresh409ApplicationProblemPlusJSONResponse(registryIdentityChangedConflict()), nil
 	}
 	if err != nil {
 		return nil, err

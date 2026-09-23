@@ -62,7 +62,7 @@ const (
 	// queue, and an aged answer behind it is re-checked no sooner than the queue
 	// ends. Half each means the aged half always has fifty places, however long
 	// the other queue is, and a cycle whose EHF set is small still spends the
-	// whole batch (the aged set asks for whatever the EHF set left).
+	// whole batch (the aged set asks for whatever the EHF set did not attempt).
 	peppolRecheckEhfShare = 50
 
 	// The defaults a worker built from a Deps with no Config falls back on — the
@@ -108,6 +108,12 @@ func (w *PeppolRecheckWorker) Run(ctx context.Context) error {
 	defer ticker.Stop()
 	for {
 		if _, err := w.RunCycle(ctx); err != nil && ctx.Err() == nil {
+			// The raw error text is safe here (final fix wave M3): a cycle only fails
+			// on the lease or on one of its two candidate SELECTs, neither of which
+			// takes an identity as an argument at all — a pgx *PgError formats its
+			// message and code but never its Detail, which is where Postgres would put
+			// an offending value. A network failure never reaches this line: recheck
+			// swallows it, logged by kind.
 			w.logger().Error("peppol re-check cycle failed", "worker", peppolRecheckWorkerName, "error", err)
 		}
 		select {
@@ -144,6 +150,12 @@ func (w *PeppolRecheckWorker) RunCycle(ctx context.Context) (bool, error) {
 			return fmt.Errorf("customers: select ehf customers without a peppol lookup: %w", err)
 		}
 		checked, changed, failed, dropped := 0, 0, 0, 0
+		// attempted is what the aged set's own room is measured against (final fix
+		// wave M5): a selected row the loop skipped — a participant that resolves
+		// to nothing, a cycle cancelled part-way — cost no network call, so
+		// spending the batch on it would shrink the aged half for work that never
+		// happened.
+		attempted := 0
 		for _, row := range missing {
 			if ctx.Err() != nil {
 				return nil
@@ -155,9 +167,12 @@ func (w *PeppolRecheckWorker) RunCycle(ctx context.Context) (bool, error) {
 			if participant == "" {
 				// invoiceDelivery says ehf but nothing says who to: the billing
 				// profile's own ehf_without_recipient warning already reports that,
-				// and there is nothing to ask the network about.
+				// and there is nothing to ask the network about. The query's
+				// pre-filter keeps most of these out (queries/peppol_recheck.sql);
+				// this is the authority that decides the rest.
 				continue
 			}
+			attempted++
 			if ok, news := w.recheck(ctx, row.ID, participant); ok {
 				checked++
 				if news {
@@ -168,44 +183,42 @@ func (w *PeppolRecheckWorker) RunCycle(ctx context.Context) (bool, error) {
 			}
 		}
 
-		remaining := peppolRecheckBatch - len(missing)
-		if remaining > 0 {
-			aged, err := q.AgedPeppolLookups(ctx, store.AgedPeppolLookupsParams{
-				CheckedBefore: w.now().Add(-w.recheckAge()), RowLimit: int32(remaining),
-			})
-			if err != nil {
-				return fmt.Errorf("customers: select aged peppol lookups: %w", err)
+		// Whatever the EHF set did not spend (peppolRecheckEhfShare bounds it, so
+		// this is never less than peppolRecheckBatch - peppolRecheckEhfShare).
+		aged, err := q.AgedPeppolLookups(ctx, store.AgedPeppolLookupsParams{
+			CheckedBefore: w.now().Add(-w.recheckAge()), RowLimit: int32(peppolRecheckBatch - attempted),
+		})
+		if err != nil {
+			return fmt.Errorf("customers: select aged peppol lookups: %w", err)
+		}
+		for _, row := range aged {
+			if ctx.Err() != nil {
+				return nil
 			}
-			for _, row := range aged {
-				if ctx.Err() != nil {
-					return nil
+			profile := billingProfileFromRow(row.InvoiceEmail, row.ReminderEmail, row.PaymentTermsDays,
+				row.Currency, row.Language, row.InvoiceDelivery, row.ReminderDelivery, row.PeppolID, row.Gln, row.BuyerReference)
+			identity := identityFromRow(row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType)
+			participant, _ := lookupParticipant(profile, identity, row.Type)
+			// The participant rule (design D6, this file's header): only a lookup
+			// that is still about the participant this customer resolves to today is
+			// this worker's to refresh. The rest are not left to sit either — a row
+			// nothing reads whose checked_at never moves would hold a place in every
+			// cycle's batch for the rest of the installation's life — so they go, and
+			// the customer's next lookup is a first one, which is what it is for the
+			// participant it resolves to now.
+			if participant == "" || participant != row.ParticipantID {
+				if w.drop(ctx, row.ID) {
+					dropped++
 				}
-				profile := billingProfileFromRow(row.InvoiceEmail, row.ReminderEmail, row.PaymentTermsDays,
-					row.Currency, row.Language, row.InvoiceDelivery, row.ReminderDelivery, row.PeppolID, row.Gln, row.BuyerReference)
-				identity := identityFromRow(row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType)
-				participant, _ := lookupParticipant(profile, identity, row.Type)
-				// The participant rule (design D6, this file's header): only a
-				// lookup that is still about the participant this customer
-				// resolves to today is this worker's to refresh. The rest are not
-				// left to sit either — a row nothing reads whose checked_at never
-				// moves would hold a place in every cycle's batch for the rest of
-				// the installation's life — so they go, and the customer's next
-				// lookup is a first one, which is what it is for the participant it
-				// resolves to now.
-				if participant == "" || participant != row.ParticipantID {
-					if w.drop(ctx, row.ID) {
-						dropped++
-					}
-					continue
+				continue
+			}
+			if ok, news := w.recheck(ctx, row.ID, participant); ok {
+				checked++
+				if news {
+					changed++
 				}
-				if ok, news := w.recheck(ctx, row.ID, participant); ok {
-					checked++
-					if news {
-						changed++
-					}
-				} else {
-					failed++
-				}
+			} else {
+				failed++
 			}
 		}
 		// changed is the number worth reading of the four: a cycle that checked a

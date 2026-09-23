@@ -277,8 +277,19 @@ func (q *Queries) ListCustomerAddresses(ctx context.Context, customerID int32) (
 }
 
 const lockCustomer = `-- name: LockCustomer :one
-SELECT id FROM customers.customers WHERE id = $1 FOR NO KEY UPDATE
+SELECT id, type, legal_country, legal_id, legal_name, legal_source, legal_type
+FROM customers.customers WHERE id = $1 FOR NO KEY UPDATE
 `
+
+type LockCustomerRow struct {
+	ID           int32
+	Type         string
+	LegalCountry *string
+	LegalID      *string
+	LegalName    *string
+	LegalSource  *string
+	LegalType    *string
+}
 
 // LockCustomer is every address write's first statement (invoice-ready
 // customer design D3's controller ruling): a bare existence check that also
@@ -289,11 +300,26 @@ SELECT id FROM customers.customers WHERE id = $1 FOR NO KEY UPDATE
 // foreign key references. pgx.ErrNoRows means the customer does not exist —
 // the addresses.go handlers turn that into a 404 the same way GetCustomer's
 // callers elsewhere in this module do.
-func (q *Queries) LockCustomer(ctx context.Context, id int32) (int32, error) {
+//
+// It returns the legal identity as well as the id (final fix wave I4), for the
+// one caller that needs to know what it locked rather than only that it exists:
+// a registry refresh resolves the organisation number BEFORE its network call,
+// and re-reading the identity under this lock is how it discovers that the
+// customer became a different company in between. The address writes discard
+// the row and only take the lock, as they always did.
+func (q *Queries) LockCustomer(ctx context.Context, id int32) (LockCustomerRow, error) {
 	row := q.db.QueryRow(ctx, lockCustomer, id)
-	var id_2 int32
-	err := row.Scan(&id_2)
-	return id_2, err
+	var i LockCustomerRow
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.LegalCountry,
+		&i.LegalID,
+		&i.LegalName,
+		&i.LegalSource,
+		&i.LegalType,
+	)
+	return i, err
 }
 
 const oldestCustomerAddressOfType = `-- name: OldestCustomerAddressOfType :one

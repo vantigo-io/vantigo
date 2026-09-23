@@ -892,6 +892,16 @@ in `worker` mode — **never** in `server` mode. Each takes its own session-scop
 several replicas are safe: one runs the cycle, the others log at debug level and skip
 it.
 
+**The lease keys are per *database*, not per tenant.** Postgres advisory locks share one
+key space per database, and these two keys are fixed constants — so two tenants whose
+deployments point at the *same* database would serialise their feed workers against each
+other silently: whichever cycle starts first runs, the other logs "the lease is held by
+another replica" at debug and skips, and a tenant could go a long time without a cycle.
+The deployment model this repo documents gives each tenant its own database, where the
+keys never meet. What that means for load on Brreg is the mirror image: N tenants are N
+independent pollers, so the backfill alone is about N × 100 entity reads an hour while
+they are catching up.
+
 **`customers-registry-feed`** (`CUSTOMERS_REGISTRY_FEED_POLL`, default 15 minutes)
 reads `GET /enhetsregisteret/api/oppdateringer/enheter` — Brreg's incremental update
 feed, which says *which* entities changed, never what — from a stored cursor, and
@@ -904,8 +914,8 @@ One cycle, in order:
    business customers with a valid organisation number and **no record at all**
    (lowest id first). The first half is the retry mechanism; the second is the
    backfill — customers created before delivery A, and picks whose fetch failed, get
-   their record without anyone clicking, a few hundred an hour, so a large
-   installation is caught up within a day. A backfilled record goes through the
+   their record without anyone clicking, about a hundred an hour at the default poll,
+   so a few thousand customers are caught up within a day or two. A backfilled record goes through the
    ordinary first-fetch diff, so a hand-typed name that differs from the registry's
    raises `registryRenamed` exactly as a click would. The backfill walks round-robin:
    it keeps its own position on the cursor row (`backfill_after_id`) and takes the
@@ -918,7 +928,14 @@ One cycle, in order:
    every cycle and the 26th customer would never be read at all. A sweep refresh that
    fails is logged and left for the next cycle, and a sweep never advances the *feed*
    cursor (`next_update_id`) — it keeps only its own backfill position on the same
-   cursor row.
+   cursor row. The stale half has **no attempt counter**, unlike the backfill's
+   position: `hint > fetched_at` is the whole ledger, so a record whose refresh the
+   register can never satisfy — a number the feed reported and the entity endpoint
+   answers 404 for, which stores nothing and so never moves `fetched_at` — keeps its
+   place in every batch, at the head of it (oldest hint first). That is rare and it is
+   by design: the alternative is a cycle quietly giving up on a change nobody ever
+   picked up. It costs one request per cycle, and the record's own attention item is
+   where a person sees that the identity is the problem.
 2. **The feed**, in pages of 1000, at most **20** pages per cycle (so a week's
    backlog — about 21 000 entries — clears in two cycles), each response capped at
    4 MiB. With no stored cursor the first request is `?dato=<started_at>`: the feed
@@ -939,7 +956,31 @@ One cycle, in order:
 A feed request that fails ends the cycle with the cursor untouched, so the next
 cycle re-reads the same page. A *refresh* that fails does not: the hint records that
 the register has something newer, `hint > fetched_at` is the definition of stale, and
-the next cycle's sweep retries it. Every refresh is attributed to the system actor
+the next cycle's sweep retries it.
+
+**An abandoned cycle.** Five refreshes in a row answering "the registry could not be
+reached" (`errBrregUnavailable` — a transport failure, a 5xx after the retries, a 429,
+a body that will not parse) end the cycle on the spot, wherever it was, with one
+`WARN registry unavailable, cycle abandoned`. The arithmetic is the reason: 75 sweep
+refreshes each spending the full `BRREG_TIMEOUT` against a black hole is about
+nineteen minutes of one cycle, under the lease, after which the 15-minute ticker fires
+and the next cycle does it again. An abandoned cycle claims no ground — the backfill
+position is not written (exactly as for a cancelled cycle) and a page abandoned
+part-way does not advance the cursor, so it is simply read again next poll: a hint
+never moves backwards and a refresh is idempotent, so re-reading costs requests and
+nothing else. It is **not** a failed cycle: `RunCycle` returns no error and the Error
+line below is not logged.
+
+If Brreg ever issues an `oppdateringsid` past int32, the stored cursor cannot hold it:
+`next_update_id` is an `integer` column, the feed request built from it answers 400
+every cycle (the client refuses to retry a 400 — its own request was wrong), and the
+cursor never moves again. The *sweep* keeps working, so records the feed already
+reported are still caught up and the backfill still runs; what stops is noticing new
+changes. There is no automatic recovery: an operator resets
+`customers.registry_feed_cursor` by hand — clearing `next_update_id` re-joins the feed
+by `started_at` (the whole history since this installation joined, replayed a page
+budget at a time), and moving `started_at` forward with it joins nearer to today
+instead. Every refresh is attributed to the system actor
 (`System`) with `producer: customers.brreg`, and the four outcomes keep their
 meaning — `Fjernet` in the feed becomes a 410 from the entity endpoint and the row is
 deleted with one event; `Sletting` becomes a `SlettetEnhet` body; `unknown` stores
@@ -959,10 +1000,14 @@ processed), `last_polled_at`, and `backfill_after_id` — the sweep's own positi
 described above. Nothing reads `last_polled_at` or `last_update_at`: they are there
 because the only report this delivery gives an operator is a log line, and those two
 columns answer "is it running" and "how far behind is it" from `psql` alone. A cycle's
-outcome is one log line per page (entries seen, matched, refreshed, how many the
-register did not know, how many failed, the new cursor) plus one for the sweep.
-`refreshed` counts records actually stored: a number the register does not know is an
-answer that stores nothing, and it is counted as `unknown`, never as refreshed.
+outcome is one `INFO` line per page (entries seen, matched, refreshed, how many the
+register did not know, how many failed, the new cursor) plus one `INFO` line for the
+sweep (`registry sweep finished`: how many stale records and how many backfill
+customers it **attempted**, then refreshed / unknown / failed, and the position it
+started from). `refreshed` counts records actually stored: a number the register does
+not know is an answer that stores nothing, and it is counted as `unknown`, never as
+refreshed. The attempted counts are not the batch sizes: a cycle abandoned or shut down
+part-way reached fewer.
 
 **`customers-peppol-recheck`** (`CUSTOMERS_PEPPOL_RECHECK_POLL`, default 24 hours,
 effective only with `PEPPOL_LOOKUP_ENABLED=1`) asks the Peppol network again, for up
@@ -1021,6 +1066,18 @@ billing warning is where a lapsed registration belongs).
 | `CUSTOMERS_PEPPOL_RECHECK_ENABLED` | `1` | the re-check worker; effective only with `PEPPOL_LOOKUP_ENABLED=1` |
 | `CUSTOMERS_PEPPOL_RECHECK_POLL` | `24h` | how often a re-check cycle runs |
 | `CUSTOMERS_PEPPOL_RECHECK_AGE` | `720h` | a stored lookup older than this is asked again |
+
+**Turning the workers on for the first time on an installation that already has
+customers is a one-off flood, and there is no way to dismiss it.** The backfill fetches
+a record for every Norwegian business customer that has none, about a hundred an hour,
+and each first fetch runs the ordinary first-fetch diff — so every legacy customer whose
+registry state warrants one raises an attention item (a rename, a bankruptcy, a
+liquidation, a struck-off company) and writes a `System` timeline entry saying what
+differed. On an installation with a few thousand such customers that arrives over a day
+or two, all of it at once from a user's point of view, and the dashboard's attention list
+has no "dismiss": the items stand until somebody fixes the underlying legal name or
+archives the customer. Plan the switch-on for a day when somebody can work through them,
+or leave `CUSTOMERS_REGISTRY_FEED_ENABLED=0` until then.
 
 `BRREG_BASE_URL` and `BRREG_TIMEOUT` are reused — a worker refresh is bounded by the
 full `BRREG_TIMEOUT`, unlike the create hook's one attempt, because nobody is
