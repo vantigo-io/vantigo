@@ -156,29 +156,35 @@ type CustomersCustomersTimelineEntriesRevision struct {
 	UpdatedAt               time.Time
 	DeletedAt               *time.Time
 	ActorUserID             *uuid.UUID
+	FollowUpOn              pgtype.Date
+	FollowUpAssigneeUserID  *uuid.UUID
+	FollowUpDoneAt          *time.Time
 }
 
 type CustomersCustomersTimelineEntry struct {
-	ID              int32
-	CustomerID      int32
-	Provenance      string
-	Producer        string
-	EventType       string
-	OccurredOn      pgtype.Date
-	OccurredAt      *time.Time
-	Summary         string
-	Note            *string
-	SourceUrl       *string
-	PayloadJson     []byte
-	PayloadVersion  int32
-	CurrentRevision int32
-	State           string
-	ActorKind       string
-	ActorDisplay    string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
-	DeletedAt       *time.Time
-	ActorUserID     *uuid.UUID
+	ID                     int32
+	CustomerID             int32
+	Provenance             string
+	Producer               string
+	EventType              string
+	OccurredOn             pgtype.Date
+	OccurredAt             *time.Time
+	Summary                string
+	Note                   *string
+	SourceUrl              *string
+	PayloadJson            []byte
+	PayloadVersion         int32
+	CurrentRevision        int32
+	State                  string
+	ActorKind              string
+	ActorDisplay           string
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+	DeletedAt              *time.Time
+	ActorUserID            *uuid.UUID
+	FollowUpOn             pgtype.Date
+	FollowUpAssigneeUserID *uuid.UUID
+	FollowUpDoneAt         *time.Time
 }
 
 type CustomersRegistryFeedCursor struct {

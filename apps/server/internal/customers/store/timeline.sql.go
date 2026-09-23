@@ -16,7 +16,7 @@ import (
 const getActiveTimelineEntry = `-- name: GetActiveTimelineEntry :one
 SELECT id, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
        source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-       created_at, updated_at, deleted_at, actor_user_id
+       created_at, updated_at, deleted_at, actor_user_id, follow_up_on, follow_up_assignee_user_id, follow_up_done_at
 FROM customers.customers_timeline_entries
 WHERE id = $1 AND customer_id = $2 AND state = 'active'
 `
@@ -54,6 +54,9 @@ func (q *Queries) GetActiveTimelineEntry(ctx context.Context, arg GetActiveTimel
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.ActorUserID,
+		&i.FollowUpOn,
+		&i.FollowUpAssigneeUserID,
+		&i.FollowUpDoneAt,
 	)
 	return i, err
 }
@@ -61,7 +64,7 @@ func (q *Queries) GetActiveTimelineEntry(ctx context.Context, arg GetActiveTimel
 const getTimelineEntry = `-- name: GetTimelineEntry :one
 SELECT id, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
        source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-       created_at, updated_at, deleted_at, actor_user_id
+       created_at, updated_at, deleted_at, actor_user_id, follow_up_on, follow_up_assignee_user_id, follow_up_done_at
 FROM customers.customers_timeline_entries
 WHERE id = $1 AND customer_id = $2
 `
@@ -99,6 +102,9 @@ func (q *Queries) GetTimelineEntry(ctx context.Context, arg GetTimelineEntryPara
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.ActorUserID,
+		&i.FollowUpOn,
+		&i.FollowUpAssigneeUserID,
+		&i.FollowUpDoneAt,
 	)
 	return i, err
 }
@@ -108,67 +114,75 @@ WITH entry AS (
     INSERT INTO customers.customers_timeline_entries (
         customer_id, provenance, producer, event_type, occurred_on, occurred_at,
         summary, note, source_url, payload_version, current_revision, state, actor_kind, actor_display,
-        actor_user_id, created_at, updated_at
+        actor_user_id, created_at, updated_at, follow_up_on, follow_up_assignee_user_id
     ) VALUES (
         $1::int, 'manual', 'customers.api', $2::text, $3::date, $4,
         $5::text, $6::text, $7, 1, 1, 'active', $8::text, $9::text,
-        $10, $11::timestamptz, $11::timestamptz
+        $10, $11::timestamptz, $11::timestamptz, $12, $13
     )
     RETURNING id, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
               source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-              created_at, updated_at, deleted_at, actor_user_id
+              created_at, updated_at, deleted_at, actor_user_id, follow_up_on, follow_up_assignee_user_id,
+              follow_up_done_at
 ), inserted_revision AS (
     INSERT INTO customers.customers_timeline_entries_revisions (
         customer_timeline_entry_id, revision_number, customer_id, provenance, producer, event_type,
         occurred_on, occurred_at, summary, note, source_url, payload_json, payload_version, current_revision,
-        state, actor_kind, actor_display, actor_user_id, created_at, updated_at
+        state, actor_kind, actor_display, actor_user_id, created_at, updated_at,
+        follow_up_on, follow_up_assignee_user_id, follow_up_done_at
     )
     SELECT id, 1, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
            source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-           actor_user_id, created_at, updated_at
+           actor_user_id, created_at, updated_at, follow_up_on, follow_up_assignee_user_id, follow_up_done_at
     FROM entry
 )
 SELECT id, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
        source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-       created_at, updated_at, deleted_at, actor_user_id
+       created_at, updated_at, deleted_at, actor_user_id, follow_up_on, follow_up_assignee_user_id,
+       follow_up_done_at
 FROM entry
 `
 
 type InsertManualTimelineEntryParams struct {
-	CustomerID   int32
-	EventType    string
-	OccurredOn   pgtype.Date
-	OccurredAt   *time.Time
-	Summary      string
-	Note         string
-	SourceUrl    *string
-	ActorKind    string
-	ActorDisplay string
-	ActorUserID  *uuid.UUID
-	Now          time.Time
+	CustomerID             int32
+	EventType              string
+	OccurredOn             pgtype.Date
+	OccurredAt             *time.Time
+	Summary                string
+	Note                   string
+	SourceUrl              *string
+	ActorKind              string
+	ActorDisplay           string
+	ActorUserID            *uuid.UUID
+	Now                    time.Time
+	FollowUpOn             pgtype.Date
+	FollowUpAssigneeUserID *uuid.UUID
 }
 
 type InsertManualTimelineEntryRow struct {
-	ID              int32
-	CustomerID      int32
-	Provenance      string
-	Producer        string
-	EventType       string
-	OccurredOn      pgtype.Date
-	OccurredAt      *time.Time
-	Summary         string
-	Note            *string
-	SourceUrl       *string
-	PayloadJson     []byte
-	PayloadVersion  int32
-	CurrentRevision int32
-	State           string
-	ActorKind       string
-	ActorDisplay    string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
-	DeletedAt       *time.Time
-	ActorUserID     *uuid.UUID
+	ID                     int32
+	CustomerID             int32
+	Provenance             string
+	Producer               string
+	EventType              string
+	OccurredOn             pgtype.Date
+	OccurredAt             *time.Time
+	Summary                string
+	Note                   *string
+	SourceUrl              *string
+	PayloadJson            []byte
+	PayloadVersion         int32
+	CurrentRevision        int32
+	State                  string
+	ActorKind              string
+	ActorDisplay           string
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+	DeletedAt              *time.Time
+	ActorUserID            *uuid.UUID
+	FollowUpOn             pgtype.Date
+	FollowUpAssigneeUserID *uuid.UUID
+	FollowUpDoneAt         *time.Time
 }
 
 // InsertManualTimelineEntry is TimelineEndpoints.Create's write
@@ -182,6 +196,11 @@ type InsertManualTimelineEntryRow struct {
 // are the caller's resolved actor (server.actorFor, customers foundation
 // design D1) — manualFallbackActor's 'unattributed'/'Unattributed'/NULL when
 // there is no user principal to attribute the write to.
+//
+// follow_up_on/follow_up_assignee_user_id are the entry's own follow-up
+// (follow-ups design D1), NULL when the request carried none. follow_up_done_at
+// is deliberately NOT a parameter: a follow-up cannot be created already done,
+// and the two paths that set it are their own statements in follow_ups.sql.
 func (q *Queries) InsertManualTimelineEntry(ctx context.Context, arg InsertManualTimelineEntryParams) (InsertManualTimelineEntryRow, error) {
 	row := q.db.QueryRow(ctx, insertManualTimelineEntry,
 		arg.CustomerID,
@@ -195,6 +214,8 @@ func (q *Queries) InsertManualTimelineEntry(ctx context.Context, arg InsertManua
 		arg.ActorDisplay,
 		arg.ActorUserID,
 		arg.Now,
+		arg.FollowUpOn,
+		arg.FollowUpAssigneeUserID,
 	)
 	var i InsertManualTimelineEntryRow
 	err := row.Scan(
@@ -218,6 +239,9 @@ func (q *Queries) InsertManualTimelineEntry(ctx context.Context, arg InsertManua
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.ActorUserID,
+		&i.FollowUpOn,
+		&i.FollowUpAssigneeUserID,
+		&i.FollowUpDoneAt,
 	)
 	return i, err
 }
@@ -226,37 +250,41 @@ const insertTimelineRevision = `-- name: InsertTimelineRevision :exec
 INSERT INTO customers.customers_timeline_entries_revisions (
     customer_timeline_entry_id, revision_number, customer_id, provenance, producer, event_type,
     occurred_on, occurred_at, summary, note, source_url, payload_json, payload_version, current_revision,
-    state, actor_kind, actor_display, actor_user_id, created_at, updated_at, deleted_at
+    state, actor_kind, actor_display, actor_user_id, created_at, updated_at, deleted_at,
+    follow_up_on, follow_up_assignee_user_id, follow_up_done_at
 ) VALUES (
     $1::int, $2::int, $3::int, $4::text, $5::text, $6::text,
     $7::date, $8, $9::text, $10, $11, $12, $13::int,
     $14::int, $15::text, $16::text, $17::text, $18, $19::timestamptz,
-    $20::timestamptz, $21
+    $20::timestamptz, $21, $22, $23, $24
 )
 `
 
 type InsertTimelineRevisionParams struct {
-	EntryID         int32
-	RevisionNumber  int32
-	CustomerID      int32
-	Provenance      string
-	Producer        string
-	EventType       string
-	OccurredOn      pgtype.Date
-	OccurredAt      *time.Time
-	Summary         string
-	Note            *string
-	SourceUrl       *string
-	PayloadJson     []byte
-	PayloadVersion  int32
-	CurrentRevision int32
-	State           string
-	ActorKind       string
-	ActorDisplay    string
-	ActorUserID     *uuid.UUID
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
-	DeletedAt       *time.Time
+	EntryID                int32
+	RevisionNumber         int32
+	CustomerID             int32
+	Provenance             string
+	Producer               string
+	EventType              string
+	OccurredOn             pgtype.Date
+	OccurredAt             *time.Time
+	Summary                string
+	Note                   *string
+	SourceUrl              *string
+	PayloadJson            []byte
+	PayloadVersion         int32
+	CurrentRevision        int32
+	State                  string
+	ActorKind              string
+	ActorDisplay           string
+	ActorUserID            *uuid.UUID
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+	DeletedAt              *time.Time
+	FollowUpOn             pgtype.Date
+	FollowUpAssigneeUserID *uuid.UUID
+	FollowUpDoneAt         *time.Time
 }
 
 // InsertTimelineRevision is AddRevision (:343-364), called after either
@@ -299,6 +327,9 @@ func (q *Queries) InsertTimelineRevision(ctx context.Context, arg InsertTimeline
 		arg.CreatedAt,
 		arg.UpdatedAt,
 		arg.DeletedAt,
+		arg.FollowUpOn,
+		arg.FollowUpAssigneeUserID,
+		arg.FollowUpDoneAt,
 	)
 	return err
 }
@@ -306,7 +337,7 @@ func (q *Queries) InsertTimelineRevision(ctx context.Context, arg InsertTimeline
 const listTimelineEntries = `-- name: ListTimelineEntries :many
 SELECT id, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
        source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-       created_at, updated_at, deleted_at, actor_user_id
+       created_at, updated_at, deleted_at, actor_user_id, follow_up_on, follow_up_assignee_user_id, follow_up_done_at
 FROM customers.customers_timeline_entries
 WHERE customer_id = $1::int
   AND state = 'active'
@@ -403,6 +434,9 @@ func (q *Queries) ListTimelineEntries(ctx context.Context, arg ListTimelineEntri
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.ActorUserID,
+			&i.FollowUpOn,
+			&i.FollowUpAssigneeUserID,
+			&i.FollowUpDoneAt,
 		); err != nil {
 			return nil, err
 		}
@@ -417,7 +451,8 @@ func (q *Queries) ListTimelineEntries(ctx context.Context, arg ListTimelineEntri
 const listTimelineRevisions = `-- name: ListTimelineRevisions :many
 SELECT id, customer_timeline_entry_id, revision_number, customer_id, provenance, producer, event_type,
        occurred_on, occurred_at, summary, note, source_url, payload_json, payload_version, current_revision,
-       state, actor_kind, actor_display, created_at, updated_at, deleted_at, actor_user_id
+       state, actor_kind, actor_display, created_at, updated_at, deleted_at, actor_user_id,
+       follow_up_on, follow_up_assignee_user_id, follow_up_done_at
 FROM customers.customers_timeline_entries_revisions
 WHERE customer_timeline_entry_id = $1
 ORDER BY revision_number
@@ -458,6 +493,9 @@ func (q *Queries) ListTimelineRevisions(ctx context.Context, entryID int32) ([]C
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.ActorUserID,
+			&i.FollowUpOn,
+			&i.FollowUpAssigneeUserID,
+			&i.FollowUpDoneAt,
 		); err != nil {
 			return nil, err
 		}
@@ -475,7 +513,8 @@ SET state = 'deleted', deleted_at = $1::timestamptz, updated_at = $1::timestampt
 WHERE id = $3 AND customer_id = $4 AND current_revision = $5::int
 RETURNING id, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
           source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-          created_at, updated_at, deleted_at, actor_user_id
+          created_at, updated_at, deleted_at, actor_user_id, follow_up_on, follow_up_assignee_user_id,
+          follow_up_done_at
 `
 
 type SetTimelineEntryDeletedParams struct {
@@ -519,6 +558,9 @@ func (q *Queries) SetTimelineEntryDeleted(ctx context.Context, arg SetTimelineEn
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.ActorUserID,
+		&i.FollowUpOn,
+		&i.FollowUpAssigneeUserID,
+		&i.FollowUpDoneAt,
 	)
 	return i, err
 }
@@ -531,26 +573,32 @@ SET event_type = $1::text,
     note = $4::text,
     summary = $5::text,
     source_url = $6,
-    current_revision = $7::int,
-    updated_at = $8::timestamptz
-WHERE id = $9 AND customer_id = $10 AND current_revision = $11::int
+    follow_up_on = $7,
+    follow_up_assignee_user_id = $8,
+    follow_up_done_at = CASE WHEN $7::date IS NULL THEN NULL ELSE follow_up_done_at END,
+    current_revision = $9::int,
+    updated_at = $10::timestamptz
+WHERE id = $11 AND customer_id = $12 AND current_revision = $13::int
 RETURNING id, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
           source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
-          created_at, updated_at, deleted_at, actor_user_id
+          created_at, updated_at, deleted_at, actor_user_id, follow_up_on, follow_up_assignee_user_id,
+          follow_up_done_at
 `
 
 type UpdateManualTimelineEntryParams struct {
-	EventType        string
-	OccurredOn       pgtype.Date
-	OccurredAt       *time.Time
-	Note             string
-	Summary          string
-	SourceUrl        *string
-	NewRevision      int32
-	Now              time.Time
-	ID               int32
-	CustomerID       int32
-	ExpectedRevision int32
+	EventType              string
+	OccurredOn             pgtype.Date
+	OccurredAt             *time.Time
+	Note                   string
+	Summary                string
+	SourceUrl              *string
+	FollowUpOn             pgtype.Date
+	FollowUpAssigneeUserID *uuid.UUID
+	NewRevision            int32
+	Now                    time.Time
+	ID                     int32
+	CustomerID             int32
+	ExpectedRevision       int32
 }
 
 // UpdateManualTimelineEntry is TimelineEndpoints.Update's guarded write
@@ -566,6 +614,16 @@ type UpdateManualTimelineEntryParams struct {
 // concurrent writer committed first; the caller maps that to the same 409
 // "Timeline revision conflict" the Go-side pre-check answers, with .NET's
 // distinct DbUpdateConcurrencyException wording.
+//
+// The follow-up is part of the entry, so a PUT replaces it the way it replaces
+// occurred_at and source_url: absent means cleared (follow-ups design D1).
+// follow_up_done_at is the one column with a CASE rather than a plain
+// assignment, and it is the design's own sentence — "clearing a follow-up also
+// clears its done state" — expressed where it cannot be forgotten: a PUT that
+// KEEPS the follow-up leaves the done stamp exactly as it was (editing the
+// note of a ticked follow-up must not un-tick it), and a PUT that clears the
+// follow-up takes the stamp with it, because done-ness without a follow-up is
+// not a state this module has.
 func (q *Queries) UpdateManualTimelineEntry(ctx context.Context, arg UpdateManualTimelineEntryParams) (CustomersCustomersTimelineEntry, error) {
 	row := q.db.QueryRow(ctx, updateManualTimelineEntry,
 		arg.EventType,
@@ -574,6 +632,8 @@ func (q *Queries) UpdateManualTimelineEntry(ctx context.Context, arg UpdateManua
 		arg.Note,
 		arg.Summary,
 		arg.SourceUrl,
+		arg.FollowUpOn,
+		arg.FollowUpAssigneeUserID,
 		arg.NewRevision,
 		arg.Now,
 		arg.ID,
@@ -602,6 +662,9 @@ func (q *Queries) UpdateManualTimelineEntry(ctx context.Context, arg UpdateManua
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.ActorUserID,
+		&i.FollowUpOn,
+		&i.FollowUpAssigneeUserID,
+		&i.FollowUpDoneAt,
 	)
 	return i, err
 }
