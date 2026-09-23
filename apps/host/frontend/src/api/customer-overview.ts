@@ -91,13 +91,19 @@ export const normaliseCustomerOverview = (wire: CustomerOverviewWire): CustomerO
 /**
  * Keyed under `["customers", id]` so the customers package's broad writes —
  * those that invalidate `["customers"]` whole (the edit form, tags, archive and
- * restore, the contact card) — refresh the panel without this file knowing
- * about them. The narrow ones do NOT: timeline writes invalidate
- * `["customers", id, "timeline"]` and contact-association writes their own
- * keys, neither of which is a prefix of this one, so after a new timeline note
- * the Last activity tile catches up within `staleTime` or on the next mount.
- * Closing that needs the package to tell the host about its writes, which is a
- * new prop D3 rules out; it is a follow-up, not a re-key under `"timeline"`.
+ * restore, the contact card, and the contact page's association writes) —
+ * refresh the panel without this file knowing about them. The narrow ones do
+ * NOT: timeline writes invalidate `["customers", id, "timeline"]` and the
+ * customer page's contacts card `["customers", id, "contacts"]`, neither of
+ * which is a prefix of this one, so after a new timeline note the Last
+ * activity tile catches up within `staleTime` or on the next mount. Closing
+ * that needs the package to tell the host about its writes, which is a new
+ * prop D3 rules out; it is a follow-up, not a re-key under `"timeline"`.
+ *
+ * `retry: false` is the host's rule for every query: a failing overview (one
+ * failing contract fails the whole request, D2) would otherwise hold the
+ * skeleton for three backed-off retries, sending the same request each time,
+ * before the panel gives way.
  */
 export const customerOverviewQueryOptions = (customerId: number) =>
   queryOptions({
@@ -106,5 +112,6 @@ export const customerOverviewQueryOptions = (customerId: number) =>
       normaliseCustomerOverview(
         await request<CustomerOverviewWire>(`/api/v1/customers/${customerId}/overview`, { signal }),
       ),
+    retry: false,
     staleTime: 60_000,
   });
