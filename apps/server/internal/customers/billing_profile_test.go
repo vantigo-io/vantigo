@@ -817,7 +817,7 @@ func TestGetBillingProfile_GroupDefault(t *testing.T) {
 		t.Errorf("groupDefault.paymentTermsDays = %v, want it absent", moved.GroupDefault.PaymentTermsDays)
 	}
 	// warnings learn nothing new from a group (design D4).
-	if len(moved.Warnings) != len(got.Warnings) {
+	if !slices.Equal(moved.Warnings, got.Warnings) {
 		t.Errorf("warnings = %v, want the same set a group-less profile raises (%v)", moved.Warnings, got.Warnings)
 	}
 }

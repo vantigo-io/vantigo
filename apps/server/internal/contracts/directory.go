@@ -74,7 +74,11 @@ type CustomerBillingProfile struct {
 	InvoiceEmail string
 	// ReminderEmail is already resolved too: the billing profile's own
 	// reminderEmail, else the resolved InvoiceEmail above.
-	ReminderEmail    string
+	ReminderEmail string
+	// PaymentTermsDays is already resolved: the billing profile's own
+	// paymentTermsDays, else the customer's group's default (customer groups
+	// design D4), else nil — so nil means neither the customer nor its group
+	// decided, and a consumer never applies group logic itself.
 	PaymentTermsDays *int32
 	Currency         string
 	Language         string
@@ -119,8 +123,8 @@ type CustomerBillingProfile struct {
 //     and the caller — never the directory — decides how to resolve the
 //     ambiguity, typically by asking a person.
 //   - BillingProfile resolves every field it can, once, so no consumer ever
-//     re-derives an invoice email, a reminder email, a Peppol id or "the"
-//     invoice address itself: a caller receiving an empty string or a nil
+//     re-derives an invoice email, a reminder email, a payment term, a Peppol
+//     id or "the" invoice address itself: a caller receiving an empty string or a nil
 //     pointer back has learned that nothing was decided for that field, not
 //     that the lookup failed, and is free to apply its own default the
 //     billing profile's own GET endpoint would not presume to pick.
