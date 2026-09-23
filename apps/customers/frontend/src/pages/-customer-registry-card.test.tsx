@@ -180,10 +180,25 @@ describe("CustomerRegistryCard", () => {
   });
 
   it("says nothing when the register's report is exactly as new as the record, not strictly newer", async () => {
-    // The boundary the ">" in isBehindTheRegistry actually guards: a hint
-    // equal to fetchedAt means the fetch that produced this record already
-    // reflects that report, not that a later one is still pending.
+    // The boundary the ">" in behindSince actually guards: a hint equal to
+    // fetchedAt means the fetch that produced this record already reflects
+    // that report, not that a later one is still pending.
     renderCard(registryFetch({ ...fullRecordBody, registryUpdatedHint: fullRecordBody.fetchedAt }));
+    expect(await screen.findByText(/^From Brønnøysundregistrene, fetched /)).toBeInTheDocument();
+    expect(screen.queryByText(/^The registry reported a change on /)).not.toBeInTheDocument();
+  });
+
+  it("compares the hint and fetchedAt as instants, not as strings", async () => {
+    // "10:30+02:00" is 08:30Z — earlier than fetchedAt's 09:00Z, so the
+    // record is already caught up — but lexically greater as a string
+    // ("10" > "09"), so a string comparison would wrongly say it is behind.
+    renderCard(
+      registryFetch({
+        ...fullRecordBody,
+        fetchedAt: "2026-09-22T09:00:00Z",
+        registryUpdatedHint: "2026-09-22T10:30:00+02:00",
+      }),
+    );
     expect(await screen.findByText(/^From Brønnøysundregistrene, fetched /)).toBeInTheDocument();
     expect(screen.queryByText(/^The registry reported a change on /)).not.toBeInTheDocument();
   });
@@ -194,15 +209,19 @@ describe("CustomerRegistryCard", () => {
     expect(screen.queryByText(/^The registry reported a change on /)).not.toBeInTheDocument();
   });
 
-  it("renders a foreign address the register sent no country code for, exactly as before", async () => {
+  it("renders a foreign address the register sent no country code for, with no country line invented", async () => {
     renderCard(
       registryFetch({
         ...minimalRecordBody,
         businessAddress: { lines: ["ul. Budowniczych 12"], city: "81-336 GDYNIA" },
       }),
     );
-    expect(await screen.findByText("ul. Budowniczych 12")).toBeInTheDocument();
-    expect(screen.getByText("81-336 GDYNIA")).toBeInTheDocument();
+    const postal = await screen.findByText("81-336 GDYNIA");
+    expect(screen.getByText("ul. Budowniczych 12")).toBeInTheDocument();
+    // -customer-registry-fields.tsx renders the country only when
+    // `countryCode` is set; with none sent, the address's own Stack holds
+    // only the lines and the postal row — nothing else, no invented country.
+    expect(postal.parentElement?.textContent).toBe("ul. Budowniczych 1281-336 GDYNIA");
   });
 
   it("invents nothing for a record that carries only the required fields", async () => {
