@@ -272,8 +272,10 @@ func overviewProjectsSection(visible []contracts.ProjectEntry, truncated bool, a
 // anybody else they are never even parsed. The unpriced hours are the
 // contract's figure summed as it stands, for everybody: it is hours, and the
 // actuals contract makes surfacing it the price of showing what a project
-// will bill, since billable work without a rate in the project's currency is
-// in the unbilled hours and in no amount.
+// will bill: billable work without a rate in the project's currency is in no
+// amount, and the figure spans every bucket (invoiced included), so it
+// OVERLAPS the unbilled hours rather than sitting inside them — its approved,
+// not-yet-invoiced part is exactly what the unbilled amounts are short by.
 func overviewWork(visible []contracts.ProjectEntry, actuals map[int32]contracts.ActualsTotals, financials bool) (gen.CustomerOverviewWork, error) {
 	var work gen.CustomerOverviewWork
 	unbilled := map[string]*big.Rat{}
