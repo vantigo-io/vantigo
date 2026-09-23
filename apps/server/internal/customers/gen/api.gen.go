@@ -291,7 +291,7 @@ type CustomerOverviewProjects struct {
 	OpenCount  int32 `json:"openCount"`
 	TotalCount int32 `json:"totalCount"`
 
-	// Truncated True when the customer has at least as many projects as the project directory answers at once (2000); the counts are then over the oldest 2000.
+	// Truncated True when the customer has at least as many projects as the project directory answers at once (2000); the counts are then over the caller's visible projects among the customer's oldest 2000. It describes the customer's own list, so for a caller who sees only the projects they hold a role on, a role project past the cut is missing without this saying so for their set.
 	Truncated bool `json:"truncated"`
 }
 
@@ -318,11 +318,14 @@ type CustomerOverviewWork struct {
 	LastWorkOn               *openapi_types.Date `json:"lastWorkOn,omitempty"`
 	SubmittedHoursHundredths int64               `json:"submittedHoursHundredths"`
 
-	// UnbilledAmounts What the unbilled work is worth at the rates it was logged at, per project currency, by ISO code; a currency with nothing unbilled is left out, and work on a project without a currency carries no amount. Only for projects:view-financials or projects:manage-all.
+	// UnbilledAmounts What the unbilled work is worth at the rates it was logged at, per project currency, by ISO code; a currency with nothing unbilled is left out. Only priced billable work counts: billable work logged without a rate, or at a rate in another currency than the project's, counts in the hours and carries no amount (unpricedHoursHundredths says how much), and work on a project without a currency carries no amount at all. Only for projects:view-financials or projects:manage-all.
 	UnbilledAmounts *[]CustomerOverviewAmount `json:"unbilledAmounts,omitempty"`
 
-	// UnbilledHoursHundredths Approved work that has not been invoiced yet.
+	// UnbilledHoursHundredths Approved work that has not been invoiced yet, across the visible projects, billable or not — the time module's buckets are not split by billability, so an approved non-billable hour counts here although it will never be invoiced. unbilledAmounts counts only the priced billable part.
 	UnbilledHoursHundredths int64 `json:"unbilledHoursHundredths"`
+
+	// UnpricedHoursHundredths Billable hours logged without a bill rate, or at a rate in another currency than the project's, summed over the visible projects — the actuals contract's unpriced hours. They cover draft, submitted and approved work alike, invoiced included; the approved ones not yet invoiced are inside unbilledHoursHundredths and absent from unbilledAmounts, which is short by exactly their worth. On a project without a currency every billable hour is unpriced. Hours, not money: present whenever work is.
+	UnpricedHoursHundredths *int64 `json:"unpricedHoursHundredths,omitempty"`
 }
 
 // CustomerOwner The single user accountable for the customer relationship (owner and tags design D1). displayName is resolved from the user directory at read time, never stored on the customer; a user the directory no longer knows is reported as "Unknown user" with active false, and an owner disabled after being assigned keeps the customer and is reported with active false. Absent when the customer is unowned.
