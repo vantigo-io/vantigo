@@ -17,6 +17,10 @@
 // string is passed to AES-GCM as additional authenticated data, so a value
 // sealed under one purpose cannot be opened under another.
 //
+// Seal refuses a plaintext larger than 64 MiB (maxPlaintextBytes) with
+// ErrTooLarge, which is far above every purpose the box serves and keeps the
+// arithmetic on the output's size trivially in range.
+//
 // Open never says why it failed: a short input, an unknown key id, a wrong
 // purpose, and a tampered ciphertext all return ErrInvalid. SealString and
 // OpenString are the same operations for text contexts such as cookies,
@@ -43,6 +47,21 @@ import (
 // input, an unknown key id, a wrong purpose, or a failed authentication —
 // without saying which, so it cannot be used as an oracle.
 var ErrInvalid = errors.New("secrets: invalid")
+
+// ErrTooLarge is returned by Seal and SealString for a plaintext above
+// maxPlaintextBytes. Unlike Open's failures this one is a caller's bug, not
+// an attacker's input, so the error says how large the value was — its
+// length, never its bytes.
+var ErrTooLarge = errors.New("secrets: plaintext too large")
+
+// maxPlaintextBytes is the largest plaintext Seal will encrypt: 64 MiB.
+// Every purpose the box serves is a cookie, a TOTP secret or a small JSON
+// blob, orders of magnitude below this, so the bound refuses nothing a
+// caller legitimately does. What it buys is that Seal's output size —
+// 1 + nonceSize + len(plaintext) + the GCM tag — is a sum of known small
+// terms that cannot overflow an int on any architecture Go supports,
+// whatever produced the plaintext.
+const maxPlaintextBytes = 64 << 20
 
 // hkdfSalt fixes the HKDF salt used to derive every purpose's key. It is
 // not secret; it exists only to separate this derivation from any other use
@@ -109,8 +128,14 @@ func (b *Box) aeadFor(purpose string) (cipher.AEAD, error) {
 
 // Seal encrypts plaintext under purpose's derived key with a fresh random
 // nonce. The result is 0x01 || nonce(12) || ciphertext+tag; purpose is
-// passed to AES-GCM as additional data, so it must match on Open.
+// passed to AES-GCM as additional data, so it must match on Open. A
+// plaintext above maxPlaintextBytes is ErrTooLarge, checked before any key
+// is derived or any buffer allocated.
 func (b *Box) Seal(purpose string, plaintext []byte) ([]byte, error) {
+	if len(plaintext) > maxPlaintextBytes {
+		return nil, fmt.Errorf("%w: %d bytes, maximum %d", ErrTooLarge, len(plaintext), maxPlaintextBytes)
+	}
+
 	gcm, err := b.aeadFor(purpose)
 	if err != nil {
 		return nil, err

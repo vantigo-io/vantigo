@@ -129,6 +129,13 @@ func TestVerifyPasswordRejectsMalformedHashes(t *testing.T) {
 		"key of 65 bytes":        with(5, b64(65)),
 		"trailing field":         good + "$",
 		"memory digits overflow": with(3, "m=99999999999999999999,t=2,p=1"),
+		// Values that fit the field's own parse but not the type it is
+		// converted to for Argon2: 2^32 as memory or passes (a uint32), 2^8 as
+		// lanes (a uint8). A truncating conversion would turn each into a
+		// plausible in-range cost and run Argon2 at it.
+		"memory above uint32": with(3, "m=4294967296,t=2,p=1"),
+		"passes above uint32": with(3, "m=19456,t=4294967296,p=1"),
+		"lanes above uint8":   with(3, "m=19456,t=2,p=256"),
 	}
 	for name, hash := range cases {
 		ok, err := verifyPassword(hash, pw)

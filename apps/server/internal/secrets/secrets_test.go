@@ -159,6 +159,37 @@ func TestOpen_ShortInputFails(t *testing.T) {
 	}
 }
 
+// TestSeal_RefusesPlaintextAboveTheMaximum proves the documented bound: a
+// plaintext of maxPlaintextBytes still seals and opens, one byte more is
+// ErrTooLarge and nothing is allocated for it. The bound is what makes
+// Seal's output-size computation provably safe.
+func TestSeal_RefusesPlaintextAboveTheMaximum(t *testing.T) {
+	box, err := New(testAppSecret)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	sealed, err := box.Seal("identity/totp", make([]byte, maxPlaintextBytes))
+	if err != nil {
+		t.Fatalf("Seal(maxPlaintextBytes) = %v, want nil", err)
+	}
+	opened, err := box.Open("identity/totp", sealed)
+	if err != nil || len(opened) != maxPlaintextBytes {
+		t.Fatalf("Open(a sealed maximum) = %d bytes, %v; want %d bytes, nil", len(opened), err, maxPlaintextBytes)
+	}
+
+	over, err := box.Seal("identity/totp", make([]byte, maxPlaintextBytes+1))
+	if !errors.Is(err, ErrTooLarge) {
+		t.Errorf("Seal(maxPlaintextBytes+1) error = %v, want ErrTooLarge", err)
+	}
+	if over != nil {
+		t.Errorf("Seal(maxPlaintextBytes+1) returned %d bytes, want none", len(over))
+	}
+	if _, err := box.SealString("identity/totp", strings.Repeat("s", maxPlaintextBytes+1)); !errors.Is(err, ErrTooLarge) {
+		t.Errorf("SealString(maxPlaintextBytes+1) error = %v, want ErrTooLarge", err)
+	}
+}
+
 func TestSealStringOpenString_RoundTrip(t *testing.T) {
 	box, err := New(testAppSecret)
 	if err != nil {
