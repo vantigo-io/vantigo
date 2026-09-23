@@ -163,7 +163,17 @@ func TestOpen_ShortInputFails(t *testing.T) {
 // plaintext of maxPlaintextBytes still seals and opens, one byte more is
 // ErrTooLarge and nothing is allocated for it. The bound is what makes
 // Seal's output-size computation provably safe.
+//
+// The bound is lowered for the duration, because what is under test is the
+// boundary and not the number: at the real 64 MiB this one test allocates a
+// quarter of a gigabyte, which a small runner should not be asked for. This
+// test therefore must not call t.Parallel — no other test in the package does
+// either.
 func TestSeal_RefusesPlaintextAboveTheMaximum(t *testing.T) {
+	realMaximum := maxPlaintextBytes
+	maxPlaintextBytes = 4096
+	t.Cleanup(func() { maxPlaintextBytes = realMaximum })
+
 	box, err := New(testAppSecret)
 	if err != nil {
 		t.Fatalf("New: %v", err)

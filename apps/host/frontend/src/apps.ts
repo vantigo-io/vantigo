@@ -121,8 +121,13 @@ export const apps: readonly AppDefinition[] = [
       // `requiredPermissions` is any-of (`hasPermissions`), so listing both
       // would offer Follow-ups to a caller holding only customers:view. Only
       // the sensitive half is listed: everyone with timeline-view has view in
-      // practice, and the narrower miss is the safe direction. The Done tick
-      // inside asks for customers:timeline-manage separately (design D3).
+      // practice, and the narrower miss is the safe direction. What that costs
+      // is the other direction: a caller holding customers:timeline-view but
+      // NOT customers:view is still shown the nav entry and the link, and the
+      // list request behind the page then 403s — the page's own error state
+      // says so in words rather than showing an empty table, which is why the
+      // miss is acceptable rather than merely rare. The Done tick inside asks
+      // for customers:timeline-manage separately (design D3).
       label: "navigation.followUps",
       to: "/customers/follow-ups",
       icon: IconFlag,

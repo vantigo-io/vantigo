@@ -79,7 +79,7 @@ WHERE e.provenance = 'manual' AND e.state = 'active'
        OR ($1::text = 'done' AND e.follow_up_done_at IS NOT NULL)
        OR ($1::text = 'open' AND e.follow_up_done_at IS NULL)
        OR ($1::text = 'overdue' AND e.follow_up_done_at IS NULL AND e.follow_up_on < $2::date))
-  AND ($1::text = 'done' OR c.status <> 'archived')
+  AND ($1::text IN ('done', 'all') OR c.status <> 'archived')
   AND (NOT $3::bool OR e.follow_up_assignee_user_id IS NULL)
   AND ($4::uuid IS NULL OR e.follow_up_assignee_user_id = $4::uuid)
   AND ($5::int IS NULL OR e.customer_id = $5::int)
@@ -105,7 +105,10 @@ type CountCustomerFollowUpsParams struct {
 // every follow-up whatever its state. The archived rule rides on the same
 // parameter: archived customers' follow-ups are excluded UNLESS the caller
 // asked for done ones, because a done follow-up is a record of work finished
-// and an archived customer's finished work is still finished.
+// and an archived customer's finished work is still finished — or for 'all',
+// which has to be the superset of the other three or its name is a lie: a state
+// filter that hides rows every other value would show is a filter nobody can
+// use to find what they know is there.
 func (q *Queries) CountCustomerFollowUps(ctx context.Context, arg CountCustomerFollowUpsParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countCustomerFollowUps,
 		arg.FollowUpState,
@@ -129,6 +132,7 @@ WHERE e.provenance = 'manual' AND e.state = 'active'
   AND c.status <> 'archived'
   AND (e.follow_up_assignee_user_id IS NULL OR e.follow_up_assignee_user_id = $2::uuid)
 ORDER BY e.follow_up_on, e.id
+LIMIT 20
 `
 
 type FollowUpAttentionCandidatesParams struct {
@@ -159,6 +163,16 @@ type FollowUpAttentionCandidatesRow struct {
 //
 // The ordering is the design's (due date, then entry id) so repeated calls
 // cannot reshuffle ties, even though the handler sorts the merged list itself.
+// Here it does a second job: with the LIMIT below, ascending due date is what
+// decides WHICH twenty come back.
+//
+// The LIMIT is 20 because the dashboard's card is a short list, not an inbox:
+// an installation with three hundred neglected follow-ups must not make this
+// endpoint answer three hundred items, and the Follow-ups page is where the
+// whole backlog is read. The twenty reported are the MOST OVERDUE, because
+// that is the half of a long list worth naming — note that the host's card
+// then merges every module's items NEWEST occurredAt first, so among the
+// twenty a follow-up due today shows above one ten days overdue.
 func (q *Queries) FollowUpAttentionCandidates(ctx context.Context, arg FollowUpAttentionCandidatesParams) ([]FollowUpAttentionCandidatesRow, error) {
 	rows, err := q.db.Query(ctx, followUpAttentionCandidates, arg.Today, arg.CallerID)
 	if err != nil {
@@ -196,7 +210,7 @@ WHERE e.provenance = 'manual' AND e.state = 'active'
        OR ($1::text = 'done' AND e.follow_up_done_at IS NOT NULL)
        OR ($1::text = 'open' AND e.follow_up_done_at IS NULL)
        OR ($1::text = 'overdue' AND e.follow_up_done_at IS NULL AND e.follow_up_on < $2::date))
-  AND ($1::text = 'done' OR c.status <> 'archived')
+  AND ($1::text IN ('done', 'all') OR c.status <> 'archived')
   AND (NOT $3::bool OR e.follow_up_assignee_user_id IS NULL)
   AND ($4::uuid IS NULL OR e.follow_up_assignee_user_id = $4::uuid)
   AND ($5::int IS NULL OR e.customer_id = $5::int)
