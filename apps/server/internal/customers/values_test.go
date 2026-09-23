@@ -978,6 +978,14 @@ func TestValidateTagName(t *testing.T) {
 		{name: "an ordinary name", in: "VIP", want: "VIP"},
 		{name: "case is preserved", in: "vip", want: "vip"},
 		{name: "surrounding space is trimmed", in: "  Prospect  ", want: "Prospect"},
+		{
+			// NFC first, then the length rule: the decomposed form is five code
+			// points and four UTF-16 units once composed, and it is the composed
+			// form that is stored and compared (final fix wave M2).
+			name: "a decomposed name is composed",
+			in:   "Café",
+			want: "Café",
+		},
 		{name: "blank is refused", in: "   ", wantErr: "A tag name cannot be null or empty"},
 		{name: "empty is refused", in: "", wantErr: "A tag name cannot be null or empty"},
 		{

@@ -431,7 +431,7 @@ type PutCustomerOwnerRequest struct {
 	Revision *int32 `json:"revision,omitempty"`
 }
 
-// PutCustomerTagsRequest PUT /customers/{id}/tags's own request body (owner and tags design D2): the customer's tag set is REPLACED by tagIds. There is no revision here and none is accepted — tags are off the customer row, so they bump nothing and two concurrent replaces are last-wins, which is what replacing a set means. An empty array clears the customer's tags. An unknown id is a field error on tagIds.
+// PutCustomerTagsRequest PUT /customers/{id}/tags's own request body (owner and tags design D2): the customer's tag set is REPLACED by tagIds. There is no revision here and none is accepted — tags are off the customer row, so they bump nothing and two concurrent replaces are last-wins, which is what replacing a set means. Last-wins is a guarantee, not an accident: two replaces of one customer serialize through the customer row's own lock, so the later one's set is the set that stands. An empty array clears the customer's tags. An unknown id is a field error on tagIds.
 type PutCustomerTagsRequest struct {
 	TagIds []openapi_types.UUID `json:"tagIds"`
 }
@@ -464,7 +464,7 @@ type SafeCustomerResponse struct {
 	Identity       *SafeCustomerIdentity `json:"identity,omitempty"`
 	Name           string                `json:"name"`
 
-	// Owner The user accountable for this customer relationship (owner and tags design D1). Absent when the customer is unowned; needs nothing beyond customers:view to read.
+	// Owner The user accountable for this customer relationship (owner and tags design D1). Absent when the customer is unowned — omitted, never null, like every other optional field this API answers with; needs nothing beyond customers:view to read.
 	Owner *CustomerOwner `json:"owner,omitempty"`
 
 	// Revision The customer row's optimistic-concurrency token (customers foundation design D5). Optional here only because the recorded exchange corpus predates it — always present.

@@ -175,6 +175,50 @@ func TestCustomerTags_DuplicateNameIsAConflictIgnoringCase(t *testing.T) {
 	}
 }
 
+// TestCustomerTags_DuplicateNameIsAConflictAcrossUnicodeForms is the second
+// half of "a tag is a vocabulary word" (final fix wave M2): 'Café' typed with a
+// precomposed é and 'Café' typed with an e plus a combining acute are the same
+// word to every reader and two different byte strings to lower(name), so
+// without normalisation an installation ends up with two Café chips nobody can
+// tell apart and a filter that splits its customers between them. The server
+// normalises to NFC before it validates, which is why the second create is the
+// same 409 a repeated 'vip' gets.
+func TestCustomerTags_DuplicateNameIsAConflictAcrossUnicodeForms(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	const composed = "Café"    // é as one code point
+	const decomposed = "Café" // e + combining acute
+	created := createTag(t, c, map[string]any{"name": composed})
+
+	r := c.Do(http.MethodPost, "/api/v1/customers/tags", map[string]any{"name": decomposed})
+	if r.Status != http.StatusConflict {
+		t.Fatalf("create the decomposed form: status %d body %s, want 409", r.Status, r.Body)
+	}
+	var conflict conflictProblemJSON
+	r.JSON(&conflict)
+	if conflict.Code == nil || *conflict.Code != "tag_exists" {
+		t.Errorf("conflict code = %v, want tag_exists", conflict.Code)
+	}
+
+	// The stored name is the composed form whichever form was sent: a tag
+	// created from the decomposed one reads back as the same bytes this one
+	// did, so the UI never has to compare strings two ways.
+	other := createTag(t, c, map[string]any{"name": "Façade"})
+	r = c.Do(http.MethodPut, "/api/v1/customers/tags/"+other.Id, map[string]any{"name": "Façade"})
+	if r.Status != http.StatusOK {
+		t.Fatalf("rename to the decomposed form of its own name: status %d body %s, want 200", r.Status, r.Body)
+	}
+	var renamed tagSummaryJSON
+	r.JSON(&renamed)
+	if renamed.Name != "Façade" {
+		t.Errorf("renamed name = %q, want the composed form %q", renamed.Name, "Façade")
+	}
+	if got := listTags(t, c); len(got) != 2 || got[0].Id != created.Id || got[0].Name != composed {
+		t.Errorf("tags = %+v, want the two originals with %q stored composed", got, composed)
+	}
+}
+
 // TestCustomerTags_RefusesABadNameOrColour pins the two validation rules over
 // HTTP, keyed by the request's own field names (values_test.go carries the
 // table-driven coverage of the rules themselves).

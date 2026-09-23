@@ -200,11 +200,16 @@ const customerExists = `-- name: CustomerExists :one
 SELECT id FROM customers.customers WHERE id = $1
 `
 
-// CustomerExists is PUT /customers/{id}/tags's 404 check (owner and tags
-// design D2), and deliberately not LockCustomer (queries/addresses.sql): a
-// tag set-replace is off the customer row, so it takes no lock on it and no
-// revision — two concurrent replaces are last-wins, which is what replacing a
-// set means. pgx.ErrNoRows means the customer does not exist.
+// CustomerExists is PUT /customers/{id}/tags's 404 check before it decides
+// whether it will write at all (owner and tags design D2): a request that
+// names the set the customer already has never opens a transaction, so it
+// never reaches LockCustomer (queries/addresses.sql) — and an empty tagIds
+// against a customer that does not exist must still be a 404, which the diff
+// alone cannot tell from "this customer has no tags". The write itself does
+// take LockCustomer, as the serialization point two concurrent replaces need
+// to be last-wins rather than a primary-key violation (final fix wave C1);
+// there is still no revision here, since tags are off the customer row.
+// pgx.ErrNoRows means the customer does not exist.
 func (q *Queries) CustomerExists(ctx context.Context, id int32) (int32, error) {
 	row := q.db.QueryRow(ctx, customerExists, id)
 	var id_2 int32

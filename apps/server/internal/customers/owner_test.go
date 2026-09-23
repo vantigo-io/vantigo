@@ -149,6 +149,14 @@ func TestPutCustomersByIdOwner_RefusesAUserWhoCannotOwn(t *testing.T) {
 // design D1's explicit ruling, and the reason the check above is on the
 // WRITE alone: an account disabled later is reported inactive, and the
 // customer still has an owner. Nothing revokes it behind the caller's back.
+//
+// Its second half is why the handler orders the no-op check AHEAD of the
+// candidate's validation (final fix wave M4): resubmitting the owner the
+// customer already has is a read, so it answers 200 with that owner even once
+// the account is disabled. An implementation that validated first would tell
+// the caller their own stored state is invalid — a 400 on a request that asked
+// for no change at all — and would leave the customer's owner unrepairable
+// through the very field that reports it.
 func TestPutCustomersByIdOwner_AnOwnerDisabledAfterwardsKeepsTheCustomer(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -165,6 +173,24 @@ func TestPutCustomersByIdOwner_AnOwnerDisabledAfterwardsKeepsTheCustomer(t *test
 	got := fetchCustomerJSON(t, c, created.Id)
 	if got.Owner == nil || got.Owner.DisplayName != "Ola Nordmann" || got.Owner.Active {
 		t.Errorf("owner = %+v, want Ola Nordmann with active false", got.Owner)
+	}
+
+	r := putOwner(t, c, created.Id, map[string]any{"ownerUserId": ownerID.String()})
+	if r.Status != http.StatusOK {
+		t.Fatalf("resubmitting the now-disabled owner: status %d body %s, want 200", r.Status, r.Body)
+	}
+	var resubmitted customerJSON
+	r.JSON(&resubmitted)
+	if resubmitted.Owner == nil || resubmitted.Owner.UserId != ownerID.String() || resubmitted.Owner.Active {
+		t.Errorf("owner = %+v, want %s still there and inactive", resubmitted.Owner, ownerID)
+	}
+	// Nothing written: the revision the set left behind, and the one event that
+	// set recorded.
+	if resubmitted.Revision != got.Revision {
+		t.Errorf("revision = %d, want %d (a no-op writes nothing)", resubmitted.Revision, got.Revision)
+	}
+	if n := countTimelineEvents(t, h, created.Id, "customer.owner_changed"); n != 1 {
+		t.Errorf("customer.owner_changed events = %d, want 1 (the resubmit recorded none)", n)
 	}
 }
 
@@ -375,8 +401,9 @@ func TestGetCustomers_OwnerIdFilter(t *testing.T) {
 }
 
 // TestGetCustomersAssignableUsers pins design D1's picker endpoint: the
-// directory's active users only, narrowed by query, capped at 20, and a limit
-// outside 1-20 refused in this module's query-parameter wording.
+// directory's active users only, narrowed by query or unnarrowed when there is
+// none, capped at 20, and a limit outside 1-20 refused in this module's
+// query-parameter wording.
 func TestGetCustomersAssignableUsers(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -398,6 +425,20 @@ func TestGetCustomersAssignableUsers(t *testing.T) {
 	}
 	if len(names) != 3 || names[0] != "Searchable Kari" || names[1] != "Searchable Ola" || names[2] != "Searchable Per" {
 		t.Errorf("assignable users = %v, want [Searchable Kari Searchable Ola Searchable Per] — active only, display-name order (Nils is disabled)", names)
+	}
+
+	// No query at all, which is how the picker opens: the first page of active
+	// users, not a 400 and not an empty list waiting for someone to type (final
+	// fix wave M4). SearchUsers is given the empty string and answers everyone
+	// active, so the disabled Nils is absent here for the same reason he is
+	// absent from the search above.
+	opened := getAssignableUsers(t, c, "")
+	openedNames := make([]string, 0, len(opened))
+	for _, u := range opened {
+		openedNames = append(openedNames, u.DisplayName)
+	}
+	if len(openedNames) != 3 || openedNames[0] != "Searchable Kari" || openedNames[1] != "Searchable Ola" || openedNames[2] != "Searchable Per" {
+		t.Errorf("assignable users with no query = %v, want the three active users [Searchable Kari Searchable Ola Searchable Per]", openedNames)
 	}
 
 	// Two of three, named: a limit smaller than the dataset AND larger than one,

@@ -377,7 +377,10 @@ Central's Salesperson code). Because it is a column on the customer row, it shar
 the row's `revision`: `PUT /customers/{id}/owner` is a revision-guarded
 sub-resource write exactly like contact info's — same ordering, same guard, same
 no-op rule, same 409 — so a concurrent edit cannot lose it, and a request that
-names the owner the customer already has writes nothing at all.
+names the owner the customer already has writes nothing at all. A body of `{}`,
+or one with `ownerUserId: null`, is how the owner is **cleared**: an unowned
+customer is a real state, so clearing it is an ordinary change that bumps the
+revision and records the event like any other.
 
 The user is named through `contracts.UserDirectory` and nowhere else — the display
 name is never stored on the customer. That has three consequences worth stating,
@@ -419,12 +422,27 @@ A colour is one of Mantine's named colours (`gray red pink grape violet indigo
 blue cyan teal green lime yellow orange`) or null, validated by the server. That
 looks like a layering violation and is not: the alternative is every consumer
 sanitising whatever arrived, and a chip painted with a value no stylesheet knows
-is an invisible chip.
+is an invisible chip. A name is normalised to Unicode NFC before it is stored or
+compared, for the same reason the uniqueness ignores case: `Café` typed with a
+precomposed `é` and `Café` typed with a combining acute are one word to every
+reader. `PUT /customers/tags/{tagId}` is a full replace of both fields, so a body
+without `color` **clears** the colour rather than leaving the one the tag had.
+
+The vocabulary is **unpaged**: `GET /customers/tags` answers every tag, and both
+the picker and the Manage tags modal expect the whole list. That is a deliberate
+bet on the scale of a vocabulary — tens, or low hundreds — not an oversight. An
+installation that outgrows it gets paging as an additive contract change, the way
+every other list in this module already has it.
 
 A customer's tags are **replaced as a set** (`PUT /customers/{id}/tags`), which is
 the natural write for a multi-select. There is no `revision` and none is accepted:
 tags are off the customer row, so a tag change bumps nothing and two concurrent
-replaces are last-wins, which is what replacing a set means. The handler reads the
+replaces are last-wins, which is what replacing a set means. Last-wins is a
+guarantee rather than a hope: the replace is a delete followed by an insert, so
+its transaction takes the customer row's own `FOR NO KEY UPDATE` first and the two
+replaces run one after the other — without that lock the later one would collide
+with the earlier one's rows on the join table's primary key instead of simply
+winning. The handler reads the
 customer's current set and diffs it against the request **before** opening a
 transaction or resolving a timeline actor — a multi-select whose caller changed
 their mind sends the set the customer already has, and that is a read, not a

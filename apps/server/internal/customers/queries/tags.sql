@@ -13,15 +13,6 @@ SELECT t.id, t.name, t.color,
 FROM customers.tags t
 ORDER BY t.name, t.id;
 
--- name: GetCustomerTag :one
--- GetCustomerTag is one tag with its count, for PUT /customers/tags/{tagId}'s
--- 404 check and for the body its 200 answers. pgx.ErrNoRows means the tag
--- does not exist.
-SELECT t.id, t.name, t.color,
-       (SELECT count(*) FROM customers.customer_tags ct WHERE ct.tag_id = t.id) AS customer_count
-FROM customers.tags t
-WHERE t.id = @id;
-
 -- name: InsertCustomerTag :one
 -- InsertCustomerTag is POST /customers/tags. A unique violation on
 -- ux_customers_tags_name_lower is the duplicate name (409 tag_exists), which
@@ -39,10 +30,18 @@ RETURNING id, name, color;
 -- below does. Renaming records nothing on the customers that carry the tag
 -- (design D2: the tag is the vocabulary, not the customer), so there is no
 -- timeline write anywhere near this statement.
+--
+-- The customerCount the 200 answers comes back from this same statement
+-- (final fix wave M3). A rename must report the count the list would, and
+-- re-reading the row afterwards had a window of its own: a tag deleted
+-- between the UPDATE and that read answered 404 for a rename that had in fact
+-- happened, or a 500 if the branch was forgotten. One statement has no window
+-- and no second round trip. pgx.ErrNoRows means the tag does not exist.
 UPDATE customers.tags
 SET name = @name, color = @color
 WHERE id = @id
-RETURNING id, name, color;
+RETURNING id, name, color,
+          (SELECT count(*) FROM customers.customer_tags ct WHERE ct.tag_id = customers.tags.id) AS customer_count;
 
 -- name: DeleteCustomerTag :execrows
 -- DeleteCustomerTag is DELETE /customers/tags/{tagId}. The customer_tags

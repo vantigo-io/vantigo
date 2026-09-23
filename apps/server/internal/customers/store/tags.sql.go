@@ -120,35 +120,6 @@ func (q *Queries) DeleteCustomerTagLinks(ctx context.Context, customerID int32) 
 	return err
 }
 
-const getCustomerTag = `-- name: GetCustomerTag :one
-SELECT t.id, t.name, t.color,
-       (SELECT count(*) FROM customers.customer_tags ct WHERE ct.tag_id = t.id) AS customer_count
-FROM customers.tags t
-WHERE t.id = $1
-`
-
-type GetCustomerTagRow struct {
-	ID            uuid.UUID
-	Name          string
-	Color         *string
-	CustomerCount int64
-}
-
-// GetCustomerTag is one tag with its count, for PUT /customers/tags/{tagId}'s
-// 404 check and for the body its 200 answers. pgx.ErrNoRows means the tag
-// does not exist.
-func (q *Queries) GetCustomerTag(ctx context.Context, id uuid.UUID) (GetCustomerTagRow, error) {
-	row := q.db.QueryRow(ctx, getCustomerTag, id)
-	var i GetCustomerTagRow
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.Color,
-		&i.CustomerCount,
-	)
-	return i, err
-}
-
 const insertCustomerTag = `-- name: InsertCustomerTag :one
 INSERT INTO customers.tags (id, name, color)
 VALUES ($1, $2, $3)
@@ -243,7 +214,8 @@ const updateCustomerTagRow = `-- name: UpdateCustomerTagRow :one
 UPDATE customers.tags
 SET name = $1, color = $2
 WHERE id = $3
-RETURNING id, name, color
+RETURNING id, name, color,
+          (SELECT count(*) FROM customers.customer_tags ct WHERE ct.tag_id = customers.tags.id) AS customer_count
 `
 
 type UpdateCustomerTagRowParams struct {
@@ -252,15 +224,34 @@ type UpdateCustomerTagRowParams struct {
 	ID    uuid.UUID
 }
 
+type UpdateCustomerTagRowRow struct {
+	ID            uuid.UUID
+	Name          string
+	Color         *string
+	CustomerCount int64
+}
+
 // UpdateCustomerTagRow is PUT /customers/tags/{tagId}: a rename, a recolour,
 // or both. Named …Row rather than UpdateCustomerTag so the generated method
 // does not read as "update a customer's tag", which is what the set replace
 // below does. Renaming records nothing on the customers that carry the tag
 // (design D2: the tag is the vocabulary, not the customer), so there is no
 // timeline write anywhere near this statement.
-func (q *Queries) UpdateCustomerTagRow(ctx context.Context, arg UpdateCustomerTagRowParams) (CustomersTag, error) {
+//
+// The customerCount the 200 answers comes back from this same statement
+// (final fix wave M3). A rename must report the count the list would, and
+// re-reading the row afterwards had a window of its own: a tag deleted
+// between the UPDATE and that read answered 404 for a rename that had in fact
+// happened, or a 500 if the branch was forgotten. One statement has no window
+// and no second round trip. pgx.ErrNoRows means the tag does not exist.
+func (q *Queries) UpdateCustomerTagRow(ctx context.Context, arg UpdateCustomerTagRowParams) (UpdateCustomerTagRowRow, error) {
 	row := q.db.QueryRow(ctx, updateCustomerTagRow, arg.Name, arg.Color, arg.ID)
-	var i CustomersTag
-	err := row.Scan(&i.ID, &i.Name, &i.Color)
+	var i UpdateCustomerTagRowRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Color,
+		&i.CustomerCount,
+	)
 	return i, err
 }
