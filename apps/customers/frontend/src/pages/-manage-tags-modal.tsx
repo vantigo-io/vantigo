@@ -33,7 +33,16 @@ import "../i18n";
  * every customer row and every customer page say, and those live under other
  * keys.
  */
-export const ManageTagsModal = ({ opened, onClose }: { opened: boolean; onClose: () => void }) => {
+export const ManageTagsModal = ({
+  opened,
+  onClose,
+  onTagDeleted,
+}: {
+  opened: boolean;
+  onClose: () => void;
+  /** The id of a tag that no longer exists, for a caller holding it as a filter. */
+  onTagDeleted?: (tagId: string) => void;
+}) => {
   const { t } = useI18n("customers");
   const { data: tags } = useQuery({ ...customerTagsQueryOptions(), enabled: opened });
   const [editing, setEditing] = useState<CustomerTagSummary | null>(null);
@@ -86,8 +95,17 @@ export const ManageTagsModal = ({ opened, onClose }: { opened: boolean; onClose:
             </Table.Tbody>
           </Table>
         )}
-        <TagForm tag={editing} onDone={() => setEditing(null)} />
-        <DeleteTagConfirmation tag={deleting} onDone={() => setDeleting(null)} />
+        {/* Keyed on the tag, so picking another one remounts the form on that
+            tag's values instead of writing them over the open form's. */}
+        {editing && <TagForm key={editing.id} tag={editing} onDone={() => setEditing(null)} />}
+        {deleting && (
+          <DeleteTagConfirmation
+            key={deleting.id}
+            tag={deleting}
+            onDeleted={onTagDeleted}
+            onDone={() => setDeleting(null)}
+          />
+        )}
       </Stack>
     </Modal>
   );
@@ -106,21 +124,18 @@ interface TagFormValues {
  * create/edit branch. The colour `Select`'s own "no colour" entry is the `""`
  * sentinel the list page's filters use, for the same reason: a Mantine `Select`
  * needs a real string among its `data` to offer a row.
+ *
+ * It is rendered only for a tag (the caller keys it on that tag's id), so there
+ * is no null to defend against and the values seed themselves once, from
+ * `initialValues`.
  */
-const TagForm = ({ tag, onDone }: { tag: CustomerTagSummary | null; onDone: () => void }) => {
+const TagForm = ({ tag, onDone }: { tag: CustomerTagSummary; onDone: () => void }) => {
   const { t } = useI18n("customers");
   const queryClient = useQueryClient();
-  const form = useForm<TagFormValues>({ initialValues: { name: tag?.name ?? "", color: tag?.color ?? "" } });
-  const [seen, setSeen] = useState(tag);
-  if (tag !== seen) {
-    setSeen(tag);
-    form.setValues({ name: tag?.name ?? "", color: tag?.color ?? "" });
-    form.clearErrors();
-  }
+  const form = useForm<TagFormValues>({ initialValues: { name: tag.name, color: tag.color ?? "" } });
 
   const mutation = useMutation({
-    mutationFn: (values: TagFormValues) =>
-      updateTag(String(tag?.id), { name: values.name, color: values.color || null }),
+    mutationFn: (values: TagFormValues) => updateTag(tag.id, { name: values.name, color: values.color || null }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       onDone();
@@ -135,7 +150,6 @@ const TagForm = ({ tag, onDone }: { tag: CustomerTagSummary | null; onDone: () =
     },
   });
 
-  if (!tag) return null;
   return (
     <form onSubmit={form.onSubmit((values) => mutation.mutate(values))}>
       <Stack gap="xs">
@@ -167,20 +181,29 @@ const TagForm = ({ tag, onDone }: { tag: CustomerTagSummary | null; onDone: () =
  * do: a tag is removed from every customer carrying it (the table's cascade),
  * and `customerCount` is how many that is.
  */
-const DeleteTagConfirmation = ({ tag, onDone }: { tag: CustomerTagSummary | null; onDone: () => void }) => {
+const DeleteTagConfirmation = ({
+  tag,
+  onDeleted,
+  onDone,
+}: {
+  tag: CustomerTagSummary;
+  /** Told which tag went, so a caller filtering by it can let go (the list page's URL). */
+  onDeleted?: (tagId: string) => void;
+  onDone: () => void;
+}) => {
   const { t } = useI18n("customers");
   const queryClient = useQueryClient();
   const mutation = useMutation({
-    mutationFn: () => deleteTag(String(tag?.id)),
+    mutationFn: () => deleteTag(tag.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
+      onDeleted?.(tag.id);
       onDone();
       notifications.show({ color: "teal", title: t("tagDeleted"), message: t("tagDeletedMessage") });
     },
     onError: (error) => notifications.show({ color: "red", title: t("tagCouldNotBeDeleted"), message: error.message }),
   });
 
-  if (!tag) return null;
   return (
     <Alert color="red" title={t("deleteTag")}>
       <Stack gap="xs">

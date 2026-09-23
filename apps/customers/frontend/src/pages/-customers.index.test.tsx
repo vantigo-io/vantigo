@@ -1,6 +1,6 @@
 import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CustomersPage } from "./customers.index";
@@ -35,8 +35,9 @@ const tagRows = [
 ];
 
 const stubFetch = (rows: unknown[] = [defaultRow]) => {
-  const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+  const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    if (init?.method === "DELETE") return Promise.resolve(new Response(null, { status: 204 }));
     if (url.startsWith("/api/v1/customers/stats")) {
       return Promise.resolve(
         jsonResponse({
@@ -71,6 +72,9 @@ const stubFetch = (rows: unknown[] = [defaultRow]) => {
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 };
+
+/** The table row a cell belongs to, so an assertion about one customer says so. */
+const rowOf = (cell: HTMLElement) => cell.closest("tr") as HTMLElement;
 
 const renderPage = (props: { canEdit?: boolean } = {}) =>
   render(
@@ -280,9 +284,11 @@ describe("CustomersPage, owner and tags", () => {
   it("shows the owner's name and the tag chips on the row", async () => {
     stubFetch([ownedRow]);
     renderPage();
-    await screen.findByText("Equinor");
-    expect(screen.getByText("Kari Nordmann")).toBeInTheDocument();
-    expect(screen.getByText("VIP")).toBeInTheDocument();
+    const row = rowOf(await screen.findByText("Equinor"));
+    expect(within(row).getByText("Kari Nordmann")).toBeInTheDocument();
+    // Scoped to the row: a tag name is arbitrary text, and the Tag filter's own
+    // options carry the same names elsewhere on the page.
+    expect(within(row).getByText("VIP")).toBeInTheDocument();
   });
 
   it("marks an owner the directory says is inactive", async () => {
@@ -295,10 +301,14 @@ describe("CustomersPage, owner and tags", () => {
   });
 
   it("shows an em dash for an unowned customer", async () => {
-    stubFetch([{ ...defaultRow, owner: null, tags: [] }]);
+    // `defaultRow` is literally the wire body for a customer with no owner and
+    // no tags: the server omits both keys rather than sending null and [], and
+    // the row has to read that as "unowned" on its own.
+    stubFetch([defaultRow]);
     renderPage();
-    await screen.findByText("Equinor");
-    expect(screen.queryByText("Kari Nordmann")).not.toBeInTheDocument();
+    const row = rowOf(await screen.findByText("Equinor"));
+    expect(within(row).queryByText("Kari Nordmann")).not.toBeInTheDocument();
+    expect(within(row).getByText("—")).toBeInTheDocument();
   });
 
   it("drives the URL from the Owner filter and sends ownerId to the API", async () => {
@@ -347,6 +357,32 @@ describe("CustomersPage, owner and tags", () => {
     );
   });
 
+  it("resets to the first page when a filter changes, wherever the reader had got to", async () => {
+    // Page 3 of the unfiltered list is not page 3 of the filtered one; staying
+    // on it lands on an empty table for no reason the reader can see. Every
+    // filter goes through the one `filterBy`, so pinning it on Owner pins it.
+    stubFetch([ownedRow]);
+    router.search = { page: 3, search: "" };
+    renderPage();
+    await screen.findByText("Equinor");
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Owner" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Mine" }));
+
+    expect(router.navigate).toHaveBeenCalledWith({
+      search: {
+        page: 1,
+        search: "",
+        status: undefined,
+        type: undefined,
+        ownerId: "me",
+        tagId: undefined,
+        sortBy: undefined,
+        sortDirection: undefined,
+      },
+    });
+  });
+
   it("opens Manage tags only for a caller who may edit", async () => {
     stubFetch([ownedRow]);
     renderPage({ canEdit: true });
@@ -358,5 +394,40 @@ describe("CustomersPage, owner and tags", () => {
     renderPage();
     await screen.findByText("Equinor");
     expect(screen.queryByRole("button", { name: "Manage tags" })).not.toBeInTheDocument();
+  });
+
+  it("drops a deleted tag from the URL when the list was filtered by it", async () => {
+    // The tag is gone, so `tagId=t1` would narrow the list to nothing on the
+    // next fetch and the Tag filter would sit blank while it did.
+    stubFetch([ownedRow]);
+    router.search = { page: 1, search: "", tagId: "t1" };
+    renderPage({ canEdit: true });
+    await screen.findByText("Equinor");
+
+    await userEvent.click(screen.getByRole("button", { name: "Manage tags" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete VIP" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete tag" }));
+
+    await waitFor(() =>
+      expect(router.navigate).toHaveBeenCalledWith(
+        expect.objectContaining({ search: expect.objectContaining({ tagId: undefined, page: 1 }) }),
+      ),
+    );
+  });
+
+  it("leaves the URL alone when the deleted tag is not the one filtered by", async () => {
+    stubFetch([ownedRow]);
+    router.search = { page: 1, search: "", tagId: "t2" };
+    renderPage({ canEdit: true });
+    await screen.findByText("Equinor");
+
+    await userEvent.click(screen.getByRole("button", { name: "Manage tags" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete VIP" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete tag" }));
+
+    await waitFor(() => expect(screen.queryByText("Delete tag")).not.toBeInTheDocument());
+    expect(router.navigate).not.toHaveBeenCalled();
   });
 });

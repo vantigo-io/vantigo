@@ -6,8 +6,9 @@ import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { ApiConflictError, customerQueryOptions, syncCustomerRevision } from "../api/customers";
 import { setCustomerOwner } from "../api/owner";
-import { createTag, customerTagsQueryOptions, setCustomerTags } from "../api/tags";
+import { type CustomerTag, createTag, customerTagsQueryOptions, setCustomerTags } from "../api/tags";
 import { OwnerPicker } from "../components/owner-picker";
+import { TagBadge } from "../components/tag-badge";
 import "../i18n";
 import { useCustomerReload } from "../lib/customer-reload";
 
@@ -29,7 +30,13 @@ import { useCustomerReload } from "../lib/customer-reload";
  *    revision into every cache entry that carries it BEFORE the invalidation's
  *    refetches land, or an editor opened in that window sends the revision this
  *    save just replaced. A 409 raises the same conflict alert and Reload the
- *    other row-editing modals use (`useCustomerReload`).
+ *    other row-editing modals use (`useCustomerReload`). The revision this card
+ *    sends is read straight off the query and never copied into state: unlike a
+ *    modal, this card is mounted the whole time the other editors are saving,
+ *    and their `syncCustomerRevision` moves the cached revision under it — a
+ *    private copy would go stale into a 409 nobody caused
+ *    (`-customer-peppol-status.tsx` sends the profile's own revision the same
+ *    way).
  *  - The tags are off the row: no revision, nothing to sync, no conflict to
  *    handle — a plain invalidation of `["customers"]`, because the chips on the
  *    list and the counts in Manage tags both moved.
@@ -39,26 +46,29 @@ export const CustomerRelationshipCard = ({ customerId, canEdit }: { customerId: 
   const { data: customer } = useSuspenseQuery(customerQueryOptions(customerId));
   const queryClient = useQueryClient();
   const [conflict, setConflict] = useState(false);
-  const [revision, setRevision] = useState(customer.revision);
 
   const reload = useCustomerReload({
     customerId,
     queryKey: customerQueryOptions(customerId).queryKey,
     fetchFresh: () => queryClient.fetchQuery({ ...customerQueryOptions(customerId), staleTime: 0 }),
     revisionOf: (fresh) => fresh.revision,
-    seed: (fresh) => {
-      setRevision(fresh.revision);
-      setConflict(false);
-    },
+    // Nothing to re-seed but the banner: `fetchQuery` has already put the fresh
+    // row in this query's cache, and the revision the next save sends is read
+    // from there.
+    seed: () => setConflict(false),
   });
 
   const ownerMutation = useMutation({
-    mutationFn: (ownerUserId: string | null) => setCustomerOwner(customerId, ownerUserId, revision),
+    mutationFn: (ownerUserId: string | null) => setCustomerOwner(customerId, ownerUserId, customer.revision),
+    onMutate: () => {
+      setConflict(false);
+      // A reload that failed belonged to the PREVIOUS conflict; forgetting it
+      // here keeps its red line out of a conflict raised minutes later.
+      reload.forget();
+    },
     onSuccess: (saved) => {
       syncCustomerRevision(queryClient, customerId, saved.revision);
-      setRevision(saved.revision);
       queryClient.invalidateQueries({ queryKey: ["customers"] });
-      setConflict(false);
       notifications.show({ color: "teal", title: t("ownerUpdated"), message: t("ownerUpdatedMessage") });
     },
     onError: (error) => {
@@ -108,7 +118,7 @@ export const CustomerRelationshipCard = ({ customerId, canEdit }: { customerId: 
               <Text size="sm">{customer.owner.displayName}</Text>
               {!customer.owner.active && (
                 <Badge variant="light" color="gray" size="sm">
-                  {t("inactive")}
+                  {t("ownerInactive")}
                 </Badge>
               )}
             </Group>
@@ -133,12 +143,10 @@ export const CustomerRelationshipCard = ({ customerId, canEdit }: { customerId: 
           </Text>
           {customer.tags.length === 0 && <Text size="sm">—</Text>}
           {customer.tags.map((tag) => (
-            <Badge key={tag.id} variant="light" color={tag.color ?? "gray"} size="sm">
-              {tag.name}
-            </Badge>
+            <TagBadge key={tag.id} tag={tag} />
           ))}
         </Group>
-        {canEdit && <TagsEditor customerId={customerId} selected={customer.tags.map((tag) => tag.id)} />}
+        {canEdit && <TagsEditor customerId={customerId} tags={customer.tags} />}
       </Stack>
     </Card>
   );
@@ -153,12 +161,17 @@ export const CustomerRelationshipCard = ({ customerId, canEdit }: { customerId: 
  * Every change sends the WHOLE set, not a delta: that is what the endpoint
  * means, and it is why two people editing the same customer's tags are
  * last-wins rather than silently merged.
+ *
+ * A create the server refuses because the name is already taken (409
+ * `tag_exists`) is not an error worth showing: the vocabulary is read again and
+ * the tag holding that name is attached, which is what was asked for.
  */
-const TagsEditor = ({ customerId, selected }: { customerId: number; selected: string[] }) => {
+const TagsEditor = ({ customerId, tags }: { customerId: number; tags: CustomerTag[] }) => {
   const { t } = useI18n("customers");
   const queryClient = useQueryClient();
   const { data: vocabulary } = useQuery(customerTagsQueryOptions());
   const [search, setSearch] = useState("");
+  const selected = tags.map((tag) => tag.id);
 
   const mutation = useMutation({
     mutationFn: (tagIds: string[]) => setCustomerTags(customerId, tagIds),
@@ -172,8 +185,26 @@ const TagsEditor = ({ customerId, selected }: { customerId: number; selected: st
 
   const createAndAttach = useMutation({
     mutationFn: async (name: string) => {
-      const created = await createTag({ name, color: null });
-      return setCustomerTags(customerId, [...selected, created.id]);
+      // A Set because the name may belong to a tag the customer already
+      // carries: attaching it twice is a request the API would refuse.
+      const attach = (tagId: string) => setCustomerTags(customerId, [...new Set([...selected, tagId])]);
+      try {
+        return await attach((await createTag({ name, color: null })).id);
+      } catch (error) {
+        if (!(error instanceof ApiConflictError) || error.code !== "tag_exists") throw error;
+        // The name is taken: someone else created it, or this vocabulary was
+        // read before it existed. Either way the person asked for this customer
+        // to carry a tag by that name, so the tag that holds it is attached
+        // rather than the refusal shown — nobody caused a conflict here.
+        // Fetched, not invalidated: an invalidation resolves even when its
+        // refetch failed, which would leave nothing to look the name up in.
+        const fresh = await queryClient.fetchQuery({ ...customerTagsQueryOptions(), staleTime: 0 });
+        const existing = fresh.find((tag) => tag.name.toLowerCase() === name.toLowerCase());
+        // No such tag after all (a rename in the same second, say): the
+        // server's refusal is the honest answer.
+        if (!existing) throw error;
+        return await attach(existing.id);
+      }
     },
     onSuccess: () => {
       setSearch("");
@@ -182,10 +213,17 @@ const TagsEditor = ({ customerId, selected }: { customerId: number; selected: st
     onError: (error) => notifications.show({ color: "red", title: t("tagCouldNotBeSaved"), message: error.message }),
   });
 
+  // The customer's OWN tags seed the option list, and the vocabulary widens it.
+  // A MultiSelect renders the raw VALUE of a selected option its `data` does not
+  // describe — a uuid here — so without this the pills read as uuids until the
+  // vocabulary lands, and for good if it fails.
+  const options = new Map(tags.map((tag) => [tag.id, tag.name]));
+  for (const tag of vocabulary ?? []) options.set(tag.id, tag.name);
+
   const term = search.trim();
-  const exists = (vocabulary ?? []).some((tag) => tag.name.toLowerCase() === term.toLowerCase());
+  const exists = [...options.values()].some((name) => name.toLowerCase() === term.toLowerCase());
   const data = [
-    ...(vocabulary ?? []).map((tag) => ({ value: tag.id, label: tag.name })),
+    ...[...options].map(([id, name]) => ({ value: id, label: name })),
     // The create entry is an option rather than a button beside the input, so
     // one keyboard path does both: type, arrow down, enter.
     ...(term && !exists ? [{ value: `create:${term}`, label: t("createTagNamed", { name: term }) }] : []),
@@ -207,6 +245,9 @@ const TagsEditor = ({ customerId, selected }: { customerId: number; selected: st
           createAndAttach.mutate(creating.slice("create:".length));
           return;
         }
+        // The term has served its purpose: left behind it would keep the list
+        // narrowed to it while the pill for what was just picked is right there.
+        setSearch("");
         mutation.mutate(next);
       }}
     />

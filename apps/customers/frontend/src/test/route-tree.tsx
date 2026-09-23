@@ -123,7 +123,9 @@ const route = (path: string, component: () => ReactElement, errorComponent?: () 
 
 export const routeTree = rootRoute.addChildren([
   route("/", Dashboard),
-  route("/customers", CustomersPage),
+  // Wrapped rather than passed straight in: the page takes capability props the
+  // host computes, and this tree is the no-capabilities case.
+  route("/customers", () => <CustomersPage />),
   route("/customers/$customerId", CustomerDetailsTestPage, () => (
     <Stack align="center">
       <Title order={3}>Customer not found</Title>
