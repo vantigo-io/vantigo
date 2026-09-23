@@ -286,6 +286,57 @@ func putEntryWithFollowUp(t *testing.T, c *modtest.Client, customerID, entryID, 
 	return entry
 }
 
+// TestPutTimeline_KeepsADisabledAssigneeItIsNotChanging is design D1's "an
+// assignee disabled after being given the follow-up keeps it", read through the
+// entry's full-replace PUT: editing the note means echoing the whole follow-up
+// back, so re-sending the assignee already stored must not be re-validated —
+// otherwise a colleague being disabled would freeze every entry they hold. A
+// DIFFERENT, disabled assignee is still refused, which is what tells the two
+// apart.
+func TestPutTimeline_KeepsADisabledAssigneeItIsNotChanging(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	customer := createCustomer(t, c, "Disabled Assignee Co")
+	holder := seedNamedUser(t, h, "Holder Personsen")
+	stranger := seedNamedUser(t, h, "Stranger Personsen")
+	entry := createWithFollowUp(t, c, customer.Id, day(h, 0), "original", map[string]any{
+		"dueOn": day(h, 3), "assigneeUserId": holder,
+	})
+
+	disableUser(t, h, holder)
+	disableUser(t, h, stranger)
+
+	// The same assignee, a new note and a new date: accepted, and the assignee
+	// is still theirs — reported inactive, never dropped.
+	edited := putEntryWithFollowUp(t, c, customer.Id, entry.Id, 1, map[string]any{
+		"dueOn": day(h, 8), "assigneeUserId": holder,
+	})
+	if edited.FollowUp == nil || edited.FollowUp.Assignee == nil {
+		t.Fatalf("followUp = %+v, want the assignee kept", edited.FollowUp)
+	}
+	if edited.FollowUp.Assignee.UserId != holder || edited.FollowUp.Assignee.Active {
+		t.Errorf("assignee = %+v, want %s, inactive", edited.FollowUp.Assignee, holder)
+	}
+
+	// Handing it to somebody else who is disabled is a different request, and
+	// still refused.
+	r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/timeline/%d", customer.Id, entry.Id), map[string]any{
+		"eventType": "note", "occurredOn": "2020-01-01", "note": "reassigned",
+		"expectedRevision": edited.CurrentRevision,
+		"followUp":         map[string]any{"dueOn": day(h, 8), "assigneeUserId": stranger},
+	})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("reassign to a disabled user: status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	want := fmt.Sprintf("User %s is disabled and cannot be given a follow-up", stranger)
+	if msgs := problem.Errors["followUp.assigneeUserId"]; len(msgs) != 1 || msgs[0] != want {
+		t.Errorf("errors[followUp.assigneeUserId] = %v, want [%q]", msgs, want)
+	}
+}
+
 // TestFollowUpDone_IsIdempotentAndEachRealChangeIsARevision is design D1's own
 // sentence, split into its four claims: the first tick bumps current_revision
 // and appends a revision row naming who ticked it; the second tick answers 200
@@ -586,11 +637,25 @@ func TestStatsAttention_ReportsTheCallersAndUnassignedFollowUpsOnly(t *testing.T
 		t.Errorf("len(items) = %d, want exactly 3: overdue, due today, unassigned", len(items))
 	}
 
-	// And the same list asked by somebody else answers only the unassigned one.
-	stranger, _ := h.SignInUser(t, "customers:view")
+	// And the same list asked by somebody else — who may read the timeline —
+	// answers only the unassigned one, because the rest are not theirs.
+	stranger, _ := h.SignInUser(t, "customers:view", "customers:timeline-view")
 	strangerItems := getAttention(t, stranger)
 	if len(strangerItems) != 1 || strangerItems[0].Id != fmt.Sprintf("followUpDue/%d", unassigned.Id) {
 		t.Errorf("stranger's items = %+v, want only the unassigned follow-up", strangerItems)
+	}
+
+	// A caller who may see customers but NOT the timeline is answered no
+	// follow-up items at all: this endpoint admits customers:view, a follow-up
+	// item names a timeline entry, and customers:timeline-view is what it takes
+	// to see one — so the dashboard is not a way around that door. Not a 403:
+	// the endpoint still answers, shaped, exactly as /stats omits its
+	// identity-derived figures.
+	outsider, _ := h.SignInUser(t, "customers:view")
+	for _, item := range getAttention(t, outsider) {
+		if strings.HasPrefix(item.Type, "followUp") {
+			t.Errorf("customers:view only: item %+v, want no follow-up items at all", item)
+		}
 	}
 }
 
@@ -687,6 +752,7 @@ func TestGetFollowUps_EveryFilterAndThePageBoundary(t *testing.T) {
 		query url.Values
 		want  []int32
 	}{
+		{"state=open, the default, spelled out", url.Values{"state": {"open"}}, []int32{overdue.Id, future.Id}},
 		{"state=overdue is a subset of open", url.Values{"state": {"overdue"}}, []int32{overdue.Id}},
 		{"state=done, where an archived customer's follow-up survives", url.Values{"state": {"done"}}, []int32{done.Id, archivedDone.Id}},
 		{"state=all, where an archived customer's OPEN one does not", url.Values{"state": {"all"}}, []int32{done.Id, overdue.Id, future.Id}},

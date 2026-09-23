@@ -96,12 +96,18 @@ func validateFollowUp(body *gen.TimelineFollowUpRequest, errs map[string][]strin
 // transaction. It answers field errors to report, or nil when there is nothing
 // to say — including when there is no follow-up or no assignee at all.
 //
-// An assignee disabled AFTER being given a follow-up keeps it (design D1), so
-// this only ever runs on a follow-up a request is setting now: the same
-// division PutCustomersByIdOwner makes between validating a CHANGE and
-// re-rendering stored state.
-func (s *server) resolveFollowUpAssignee(ctx context.Context, fu *parsedFollowUp) (map[string][]string, error) {
-	if fu == nil || fu.AssigneeID == nil {
+// stored is the assignee the entry already carries (nil on a create, and nil
+// when the entry carried no follow-up), and an assignee that has not CHANGED is
+// not checked at all. That is design D1's "an assignee disabled after being
+// given the follow-up keeps it", read through a PUT that is a full replace: the
+// entry's PUT has to echo the whole follow-up back to edit the note, so
+// re-validating an unchanged assignee would make a disabled colleague's
+// follow-up impossible to edit — and refusing to store a value that is already
+// stored is a refusal that fixes nothing. Only a NEW assignee has to exist and
+// be active, which is the same division PutCustomersByIdOwner makes between
+// validating a CHANGE and re-rendering stored state.
+func (s *server) resolveFollowUpAssignee(ctx context.Context, fu *parsedFollowUp, stored *uuid.UUID) (map[string][]string, error) {
+	if fu == nil || fu.AssigneeID == nil || uuidPtrEqual(fu.AssigneeID, stored) {
 		return nil, nil
 	}
 	user, err := s.deps.Users.User(ctx, *fu.AssigneeID)

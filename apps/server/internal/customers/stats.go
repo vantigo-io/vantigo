@@ -83,27 +83,38 @@ const (
 // items do. An unauthenticated caller cannot reach this (the router refuses
 // first), and if one somehow did, a nil caller answers only the unassigned
 // follow-ups — never everybody's.
+//
+// It is also the first half of this endpoint that is response-shaped by a
+// second permission, for the same reason the identity figures above are: this
+// operation admits a caller on customers:view alone, a follow-up item names a
+// timeline entry, and customers:timeline-view is a SENSITIVE permission
+// (module.go) — so a caller who cannot open the timeline must not be handed its
+// entry ids by the dashboard instead. Absent that permission the query is not
+// even run: the items are not merely withheld, they are never read.
 func (s *server) GetCustomersStatsAttention(ctx context.Context, _ gen.GetCustomersStatsAttentionRequestObject) (gen.GetCustomersStatsAttentionResponseObject, error) {
 	q := store.New(s.deps.Pool)
 	registryRows, err := q.RegistryAttentionCandidates(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("customers: stats attention: %w", err)
 	}
+	items := attentionItemsFrom(registryRows)
 
-	var caller *uuid.UUID
-	if p, ok := contracts.PrincipalFrom(ctx); ok && p.UserID != uuid.Nil {
-		id := p.UserID
-		caller = &id
-	}
-	today := civilDate(s.deps.Clock())
-	followUpRows, err := q.FollowUpAttentionCandidates(ctx, store.FollowUpAttentionCandidatesParams{
-		Today: pgtype.Date{Time: today, Valid: true}, CallerID: caller,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("customers: stats attention follow-ups: %w", err)
+	if s.hasPermission(ctx, timelineView) {
+		var caller *uuid.UUID
+		if p, ok := contracts.PrincipalFrom(ctx); ok && p.UserID != uuid.Nil {
+			id := p.UserID
+			caller = &id
+		}
+		today := civilDate(s.deps.Clock())
+		followUpRows, err := q.FollowUpAttentionCandidates(ctx, store.FollowUpAttentionCandidatesParams{
+			Today: pgtype.Date{Time: today, Valid: true}, CallerID: caller,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("customers: stats attention follow-ups: %w", err)
+		}
+		items = append(items, followUpAttentionItems(followUpRows, today)...)
 	}
 
-	items := append(attentionItemsFrom(registryRows), followUpAttentionItems(followUpRows, today)...)
 	sortAttentionItems(items)
 	return gen.GetCustomersStatsAttention200JSONResponse(items), nil
 }
@@ -130,9 +141,13 @@ func attentionItemsFrom(rows []store.RegistryAttentionCandidatesRow) []gen.Custo
 }
 
 // sortAttentionItems is the order every item on this endpoint answers in,
-// whatever produced it: newest occurredAt first, ties broken by id — the
-// dashboard reads a list, not a timeline, so "what needs looking at soonest"
-// floats and a stable tiebreaker keeps repeated calls from reshuffling ties.
+// whatever produced it: occurredAt DESCENDING — the most recent date first —
+// with ties broken by id so repeated calls cannot reshuffle them. Descending is
+// not a claim about urgency, and for the follow-up items it is the opposite of
+// it: a follow-up due today sorts above one ten days overdue, because its date
+// is later. It is the order the host's dashboard expects from every module's
+// /stats/attention, and the host merges all of them newest-first anyway, so the
+// useful thing this function guarantees is that the order is total and stable.
 func sortAttentionItems(items []gen.CustomerStatsAttentionItem) {
 	slices.SortStableFunc(items, func(a, b gen.CustomerStatsAttentionItem) int {
 		if c := b.OccurredAt.Compare(a.OccurredAt); c != 0 {

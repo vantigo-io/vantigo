@@ -1567,7 +1567,11 @@ No new permission key was added for [Registry record](#registry-record): reading
 requires, since a refresh hands back the whole record and every `from`/`to`, which
 is exactly what that view permission gates. The dashboard's
 `GET /stats/attention` stays on plain `customers:view`: an item never carries the
-organisation number, only the customer's own name.
+organisation number, only the customer's own name. Delivery C's two follow-up
+items are the one thing on that endpoint a caller can be shown none of while
+still being shown the registry ones — a follow-up item names a timeline entry, so
+it takes `customers:timeline-view`, withheld by shaping the response exactly as
+`/stats` omits its identity-derived figures, never by a 403.
 
 No new permission key was added for [Owner and tags](#owner-and-tags) either:
 an owner is not sensitive data — it is a name, not a legal identity or a billing
@@ -1809,7 +1813,8 @@ must be exercised by at least one successful exchange, with no allow-list.
 
 `/stats/attention` is no longer a stub: it answers the four [registry attention
 items](#attention-items), computed live from the stored registry record against
-each customer, not stored or cached.
+each customer, not stored or cached — plus, for a caller who also holds
+`customers:timeline-view`, the two follow-up items delivery C adds.
 
 ## What comes next
 
