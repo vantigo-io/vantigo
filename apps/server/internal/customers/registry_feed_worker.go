@@ -236,42 +236,38 @@ func (w *RegistryFeedWorker) Sweep(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("customers: select stale registry records: %w", err)
 	}
-	refreshed := 0
+	var tally refreshTally
 	for _, row := range stale {
 		if ctx.Err() != nil {
-			return refreshed, nil
+			return tally.refreshed, nil
 		}
-		if w.refresh(ctx, row.CustomerID, row.Type, row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType) {
-			refreshed++
-		}
+		tally.add(w.refresh(ctx, row.CustomerID, row.Type, row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType))
 	}
 
 	cursor, err := q.GetRegistryFeedCursor(ctx)
 	if err != nil {
-		return refreshed, fmt.Errorf("customers: read the registry feed cursor: %w", err)
+		return tally.refreshed, fmt.Errorf("customers: read the registry feed cursor: %w", err)
 	}
 	missing, err := q.CustomersWithoutRegistryRecord(ctx, store.CustomersWithoutRegistryRecordParams{
 		AfterID: cursor.BackfillAfterID, RowLimit: registryFeedBackfillBatch,
 	})
 	if err != nil {
-		return refreshed, fmt.Errorf("customers: select customers without a registry record: %w", err)
+		return tally.refreshed, fmt.Errorf("customers: select customers without a registry record: %w", err)
 	}
-	attempted := 0
 	for _, row := range missing {
 		if ctx.Err() != nil {
-			// Stop, but keep the ground already covered: the position below is
-			// written for what was actually attempted, never for what was not.
-			break
+			// A cancelled cycle claims no ground at all: the position is not
+			// written, so the rows this batch never reached are attempted again
+			// NEXT CYCLE rather than after a whole pass of everyone else. The one
+			// row that was attempted costs one repeated request for that; a
+			// position moved past customers nobody looked at costs them a pass.
+			return tally.refreshed, nil
 		}
-		attempted++
-		if w.refresh(ctx, row.ID, row.Type, row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType) {
-			refreshed++
-		}
+		tally.add(w.refresh(ctx, row.ID, row.Type, row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType))
 	}
-	// A full batch leaves the position at the last id attempted, so the next
-	// cycle continues; a short one means the end of the installation, and 0
-	// starts the next pass from the front. A cancelled cycle that attempted
-	// nothing leaves the position exactly where it was.
+	// A full batch leaves the position at its last id, so the next cycle
+	// continues; a short one means the end of the installation, and 0 starts the
+	// next pass from the front.
 	switch {
 	case len(missing) == 0 && cursor.BackfillAfterID != 0:
 		// Nothing after the position: either the previous batch reached the end
@@ -282,23 +278,23 @@ func (w *RegistryFeedWorker) Sweep(ctx context.Context) (int, error) {
 		// permanently, which is the same starvation the position exists to
 		// prevent, one cycle later.
 		if err := q.SetRegistryBackfillPosition(ctx, 0); err != nil {
-			return refreshed, fmt.Errorf("customers: store the registry backfill position: %w", err)
+			return tally.refreshed, fmt.Errorf("customers: store the registry backfill position: %w", err)
 		}
-	case attempted > 0:
+	case len(missing) > 0:
 		var next int32 // 0: there is nothing after this batch, so start over
-		if attempted < len(missing) || len(missing) == registryFeedBackfillBatch {
-			// More to come — either this cycle stopped early, or the batch was
-			// full and there may well be a 26th customer behind it.
-			next = missing[attempted-1].ID
+		if len(missing) == registryFeedBackfillBatch {
+			// A full batch, so there may well be a 26th customer behind it.
+			next = missing[len(missing)-1].ID
 		}
 		if err := q.SetRegistryBackfillPosition(ctx, next); err != nil {
-			return refreshed, fmt.Errorf("customers: store the registry backfill position: %w", err)
+			return tally.refreshed, fmt.Errorf("customers: store the registry backfill position: %w", err)
 		}
 	}
 	w.logger().Debug("registry sweep finished", "worker", registryFeedWorkerName,
-		"stale", len(stale), "backfill", attempted, "refreshed", refreshed,
+		"stale", len(stale), "backfill", len(missing), "refreshed", tally.refreshed,
+		"unknown", tally.unknown, "failed", tally.failed,
 		"backfillFrom", cursor.BackfillAfterID)
-	return refreshed, nil
+	return tally.refreshed, nil
 }
 
 // ReadFeed reads pages from the stored cursor until a page comes back short or
@@ -364,9 +360,14 @@ func (w *RegistryFeedWorker) handlePage(ctx context.Context, q *store.Queries, p
 	for _, entry := range page.Entries {
 		if entry.UpdateID > highest {
 			// The feed is documented as monotonic ascending, so this is the last
-			// entry's id in practice; taking the maximum explicitly means a page
-			// that ever arrives out of order still cannot move the cursor
-			// backwards over entries already processed.
+			// entry's id in practice; taking the maximum explicitly means the
+			// cursor clears every entry ON THIS PAGE even if the page itself
+			// arrives unsorted, rather than stopping at whatever happens to be
+			// last. It does not make the cursor monotonic — AdvanceRegistryFeedCursor
+			// stores what this page says, whatever is there now. What keeps an
+			// older page from ever being handled is the lease (design D5): one
+			// replica reads the feed at a time, from a position it wrote itself,
+			// so a page behind the cursor is never asked for.
 			highest = entry.UpdateID
 		}
 		if entry.OrganisationNumber == "" {
@@ -384,7 +385,7 @@ func (w *RegistryFeedWorker) handlePage(ctx context.Context, q *store.Queries, p
 	if err != nil {
 		return fmt.Errorf("customers: match a registry feed page: %w", err)
 	}
-	refreshed := 0
+	var tally refreshTally
 	for _, row := range matched {
 		if ctx.Err() != nil {
 			// Stop without advancing the cursor: this page is only partly
@@ -404,9 +405,7 @@ func (w *RegistryFeedWorker) handlePage(ctx context.Context, q *store.Queries, p
 		}); err != nil {
 			return fmt.Errorf("customers: write a registry updated hint: %w", err)
 		}
-		if w.refresh(ctx, row.ID, row.Type, row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType) {
-			refreshed++
-		}
+		tally.add(w.refresh(ctx, row.ID, row.Type, row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType))
 	}
 
 	last := page.Entries[len(page.Entries)-1].Date
@@ -417,36 +416,90 @@ func (w *RegistryFeedWorker) handlePage(ctx context.Context, q *store.Queries, p
 		return fmt.Errorf("customers: advance the registry feed cursor: %w", err)
 	}
 	w.logger().Info("registry feed page processed", "worker", registryFeedWorkerName,
-		"entries", len(page.Entries), "matched", len(matched), "refreshed", refreshed, "nextUpdateId", next)
+		"entries", len(page.Entries), "matched", len(matched), "refreshed", tally.refreshed,
+		"unknown", tally.unknown, "failed", tally.failed, "nextUpdateId", next)
 	return nil
 }
 
+// refreshOutcome is what one call to refresh came to, because a cycle's log has
+// to tell three things apart:
+//
+//   - refreshRefreshed: the register answered about the company and the record
+//     on file is now what it said;
+//   - refreshUnknown: the register does not know this organisation number. A
+//     real 200 answer (registry.go's brregEntityUnknown) that stores nothing, so
+//     counting it as refreshed would report records for customers that have
+//     none — and on an installation with a few hand-typed numbers the register
+//     never knew, that is a cycle claiming to have refreshed them every fifteen
+//     minutes forever;
+//   - refreshFailed: the attempt did not complete, and refresh has already
+//     logged it by kind.
+//
+// refreshSkipped is counted nowhere: nothing was attempted for a customer with
+// no organisation number to look up, and a count of it would be a count of the
+// installation's legacy identities rather than of this cycle's work.
+type refreshOutcome int
+
+const (
+	refreshSkipped refreshOutcome = iota
+	refreshRefreshed
+	refreshUnknown
+	refreshFailed
+)
+
+// refreshTally counts the outcomes of a run of refreshes for its log line.
+type refreshTally struct {
+	refreshed int
+	unknown   int
+	failed    int
+}
+
+func (t *refreshTally) add(outcome refreshOutcome) {
+	switch outcome {
+	case refreshRefreshed:
+		t.refreshed++
+	case refreshUnknown:
+		t.unknown++
+	case refreshFailed:
+		t.failed++
+	case refreshSkipped:
+	}
+}
+
 // refresh is one customer re-read through delivery A's own path with the system
-// actor (design D4), reporting whether it succeeded. A failure is logged by
-// kind — never the error text, which can carry the organisation number and the
-// URL it was built from — and swallowed: the caller has more customers to get
-// through, and the hint (or the missing record) is what remembers this one.
+// actor (design D4), reporting which of refreshOutcome's outcomes it was. A
+// failure is logged by kind — never the error text, which can carry the
+// organisation number and the URL it was built from — and swallowed: the caller
+// has more customers to get through, and the hint (or the missing record) is
+// what remembers this one.
 //
 // A customer whose identity cannot be looked up at all — a legacy legal_id that
 // is not an organisation number — is skipped silently: registryOrganisationNumber
 // is the one rule for that, shared with the refresh endpoint's own 409.
-func (w *RegistryFeedWorker) refresh(ctx context.Context, customerID int32, customerType string, legalCountry, legalID, legalName, legalSource, legalType *string) bool {
+func (w *RegistryFeedWorker) refresh(ctx context.Context, customerID int32, customerType string, legalCountry, legalID, legalName, legalSource, legalType *string) refreshOutcome {
 	identity := identityFromRow(legalCountry, legalID, legalName, legalSource, legalType)
 	orgnr := registryOrganisationNumber(identity, customerType)
 	if orgnr == "" {
-		return false
+		return refreshSkipped
 	}
-	if _, err := w.srv.refreshRegistryRecord(ctx, customerID, orgnr, identity.Name, generatedFallbackActor); err != nil {
+	result, err := w.srv.refreshRegistryRecord(ctx, customerID, orgnr, identity.Name, generatedFallbackActor)
+	if err != nil {
 		if errors.Is(err, errCustomerNotFound) || errors.Is(err, pgx.ErrNoRows) {
 			// Archived or gone between the select and here: nothing to refresh
 			// and nothing wrong.
-			return false
+			return refreshSkipped
 		}
 		w.logger().Warn("customers: registry record refresh failed",
 			"worker", registryFeedWorkerName, "customerId", customerID, "errorKind", registryErrorKind(err))
-		return false
+		return refreshFailed
 	}
-	return true
+	if result.Status == registryStatusUnknown {
+		// The register does not know the number: an answer, and not this
+		// worker's to act on — the identity is what needs a person's attention
+		// (registry.go). Nothing was stored, so nothing was refreshed.
+		return refreshUnknown
+	}
+	return refreshRefreshed
 }
 
 // now is the worker's clock, so tests control time exactly as they do for the

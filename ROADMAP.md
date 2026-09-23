@@ -116,7 +116,7 @@ longer a stub. Addresses from the record are offered to the address book, never
 written to it. See [`docs/customers.md`](docs/customers.md#registry-record).
 
 **Delivery B (done)** — a scheduled refresh from Brreg's incremental update feed
-(`GET /oppdateringer/enheter`, exact cursor on `oppdateringsid`, one unfiltered scan
+(`GET /enhetsregisteret/api/oppdateringer/enheter`, exact cursor on `oppdateringsid`, one unfiltered scan
 matched against this installation's customers locally), driving the same
 fetch-and-store delivery A built and filling `registry_updated_hint`, the column
 delivery A's own migration already carried but left untouched. The same cycle sweeps:

@@ -988,6 +988,18 @@ func TestServe_AManagementBindFailureStartsNoWorkers(t *testing.T) {
 		"WORKERS_IN_PROCESS": "1",
 		"MANAGEMENT_PORT":    "9090",
 		"MANAGEMENT_TOKEN":   strings.Repeat("m", 32),
+		// These tests are about the commands and their modes, not about any
+		// module's background work: they compose every module for real, with no
+		// Deps.HTTPTransport and no fake Peppol lookup, so a customers worker
+		// started here would poll data.brreg.no and the live Peppol network from
+		// a unit test. The customers module's own tests cover registration and
+		// the switches (TestModule_ContributesItsWorkers); a serve test that
+		// genuinely wants a worker passes fakeWorkerModule, as they already do.
+		// Here in particular: the assertion below is that NO worker started, so
+		// depending on serve returning before module.Workers for that would be
+		// depending on the bug's absence to keep the test honest.
+		"CUSTOMERS_REGISTRY_FEED_ENABLED":  "0",
+		"CUSTOMERS_PEPPOL_RECHECK_ENABLED": "0",
 	})
 	if err != nil {
 		t.Fatal(err)

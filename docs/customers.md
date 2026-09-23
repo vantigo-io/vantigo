@@ -910,7 +910,9 @@ One cycle, in order:
    raises `registryRenamed` exactly as a click would. The backfill walks round-robin:
    it keeps its own position on the cursor row (`backfill_after_id`) and takes the
    next 25 customers after it, resetting to the front (0) whenever a batch comes back
-   short or empty, and it only considers organisation numbers that are nine digits.
+   short or empty, and it only considers organisation numbers that are nine digits. A
+   cycle cancelled part-way through a batch — a shutdown, say — writes no position at
+   all: the customers it never reached are the next *cycle's*, not the next pass's.
    Both are there because a customer whose number the register does not know never
    gets a record — without a position, those 25 rows would be the same 25 rows on
    every cycle and the 26th customer would never be read at all. A sweep refresh that
@@ -957,8 +959,10 @@ processed), `last_polled_at`, and `backfill_after_id` — the sweep's own positi
 described above. Nothing reads `last_polled_at` or `last_update_at`: they are there
 because the only report this delivery gives an operator is a log line, and those two
 columns answer "is it running" and "how far behind is it" from `psql` alone. A cycle's
-outcome is one log line per page (entries seen, matched, refreshed, the new cursor)
-plus one for the sweep.
+outcome is one log line per page (entries seen, matched, refreshed, how many the
+register did not know, how many failed, the new cursor) plus one for the sweep.
+`refreshed` counts records actually stored: a number the register does not know is an
+answer that stores nothing, and it is counted as `unknown`, never as refreshed.
 
 **`customers-peppol-recheck`** (`CUSTOMERS_PEPPOL_RECHECK_POLL`, default 24 hours,
 effective only with `PEPPOL_LOOKUP_ENABLED=1`) asks the Peppol network again, for up
@@ -967,25 +971,32 @@ to **100** customers a cycle:
 - customers whose `invoice_delivery` is `ehf` and who have **no stored lookup at
   all** — the customer whose invoices are already going to Peppol is the one whose
   registration must not be assumed. These come first, so on an installation with
-  more aged answers than the batch they are never the ones that do not fit;
+  more aged answers than the batch they are never the ones that do not fit, but they
+  take at most **50** of the hundred: an afternoon's worth of customers switched to
+  EHF must not be able to starve the aged half either;
 - then non-archived customers with a stored lookup older than
   `CUSTOMERS_PEPPOL_RECHECK_AGE` (default 720h / 30 days), oldest first, **whose
   `participant_id` still equals the participant the billing profile resolves to
-  today**. A lookup for a participant that changed is already stale by identity —
+  today**, for whatever is left of the hundred (so at least 50). A lookup for a
+  participant that changed is already stale by identity —
   [the billing profile](#billing-profile) drops it from every response and every
-  warning — so it is not this worker's to refresh.
+  warning — so it is not this worker's to refresh: **it is deleted instead**. Keeping
+  it would keep it aged forever (nothing moves its `checked_at`) and hold one of the
+  batch's places for good, and the customer's next lookup is a first one anyway for
+  the participant it resolves to now.
 
 The participant-equality check is Go's, not SQL's: the query behind the second set
-selects up to the batch's remaining share by age alone, and the worker itself skips
-any row whose participant has moved on. A cycle therefore asks for a batch of up to
-100 but can end up re-checking fewer — the rows it skips are still aged next cycle,
-just not this worker's business.
+selects by age alone, and the worker itself is what recognises a row whose participant
+has moved on. A cycle therefore asks for a batch of up to 100 but can end up asking the
+network about fewer.
 
 Each is the handler's own lookup-and-store (`lookupAndStorePeppol`, shared by the
 click and the worker so there is one ruling, not two): the answer is upserted, and
 `customer.peppol_lookup` is recorded **only when it changed**, with the system actor.
 A network failure is logged by kind and leaves `checked_at` alone, so that customer
-is first in line next cycle. Nothing is ever switched on the billing profile: a
+is first in line next cycle. The cycle's own log line reports how many were checked,
+how many answers changed, how many failed and how many stale-by-identity rows were
+dropped. Nothing is ever switched on the billing profile: a
 lapsed registration surfaces through the existing `ehf_recipient_not_registered` and
 `ehf_available` warnings, and only a person changes `invoiceDelivery`.
 
@@ -1013,8 +1024,9 @@ billing warning is where a lapsed registration belongs).
 
 `BRREG_BASE_URL` and `BRREG_TIMEOUT` are reused — a worker refresh is bounded by the
 full `BRREG_TIMEOUT`, unlike the create hook's one attempt, because nobody is
-waiting on it. Page size, page budget, the sweep batches and the Peppol batch are
-constants, not knobs: they bound one cycle's work against a public register.
+waiting on it. Page size, page budget, the sweep batches, and the Peppol batch with
+its EHF share are constants, not knobs: they bound one cycle's work against a public
+register.
 
 ## Peppol lookup
 
