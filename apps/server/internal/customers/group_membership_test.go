@@ -93,8 +93,19 @@ func TestPutCustomerGroup_SetsMovesAndClears(t *testing.T) {
 	// An omitted groupId means the same as a null one — oapi-codegen collapses
 	// the two into a nil *uuid.UUID, and clearing an already-cleared group is
 	// the no-op below rather than an error.
-	if r := putCustomerGroup(t, c, customer.Id, map[string]any{}); r.Status != http.StatusOK {
-		t.Errorf("an empty body: status %d body %s, want 200", r.Status, r.Body)
+	events := countTimelineEvents(t, h, customer.Id, "customer.group_changed")
+	empty := putCustomerGroup(t, c, customer.Id, map[string]any{})
+	if empty.Status != http.StatusOK {
+		t.Fatalf("an empty body: status %d body %s, want 200", empty.Status, empty.Body)
+	}
+	var afterEmpty customerJSON
+	empty.JSON(&afterEmpty)
+	if afterEmpty.Revision != 4 || afterEmpty.Group != nil {
+		t.Errorf("an empty body answered revision %d group %+v, want 4 and no group: it is the no-op",
+			afterEmpty.Revision, afterEmpty.Group)
+	}
+	if got := countTimelineEvents(t, h, customer.Id, "customer.group_changed"); got != events {
+		t.Errorf("customer.group_changed events = %d after an empty body, want %d", got, events)
 	}
 }
 
@@ -211,6 +222,10 @@ func TestPutCustomerGroup_RecordsTheEventWithSnapshottedNames(t *testing.T) {
 	if !ok || after["groupId"] != retail.Id || after["name"] != "Retail" {
 		t.Errorf("after = %v, want the group's id and its name at the time", assigned.Payload["after"])
 	}
+	// JSON numbers decode as float64 into map[string]any.
+	if assigned.Payload["customerId"] != float64(customer.Id) {
+		t.Errorf("customerId = %v, want %d", assigned.Payload["customerId"], customer.Id)
+	}
 
 	if r := putCustomerGroup(t, c, customer.Id, map[string]any{"groupId": key.Id}); r.Status != http.StatusOK {
 		t.Fatalf("move: status %d body %s", r.Status, r.Body)
@@ -225,8 +240,15 @@ func TestPutCustomerGroup_RecordsTheEventWithSnapshottedNames(t *testing.T) {
 		t.Errorf("summary = %q, want %q — the name at the time, not today's", moved.Summary, "Moved from Retail to Key accounts")
 	}
 	movedBefore, ok := moved.Payload["before"].(map[string]any)
-	if !ok || movedBefore["name"] != "Retail" {
-		t.Errorf("before = %v, want the name the group had when the move happened", moved.Payload["before"])
+	if !ok || movedBefore["groupId"] != retail.Id || movedBefore["name"] != "Retail" {
+		t.Errorf("before = %v, want Retail's id and the name it had when the move happened", moved.Payload["before"])
+	}
+	movedAfter, ok := moved.Payload["after"].(map[string]any)
+	if !ok || movedAfter["groupId"] != key.Id || movedAfter["name"] != "Key accounts" {
+		t.Errorf("after = %v, want Key accounts' id and name", moved.Payload["after"])
+	}
+	if moved.Payload["customerId"] != float64(customer.Id) {
+		t.Errorf("customerId = %v, want %d", moved.Payload["customerId"], customer.Id)
 	}
 
 	if r := putCustomerGroup(t, c, customer.Id, map[string]any{"groupId": nil}); r.Status != http.StatusOK {
@@ -286,7 +308,7 @@ func TestGetCustomers_GroupIdFilter(t *testing.T) {
 	c := authenticatedClient(t, h)
 	retail := createGroup(t, c, map[string]any{"name": "Retail"})
 	inGroup := createCustomer(t, c, "Filter In Group AS")
-	createCustomer(t, c, "Filter No Group AS")
+	ungrouped := createCustomer(t, c, "Filter No Group AS")
 	if r := putCustomerGroup(t, c, inGroup.Id, map[string]any{"groupId": retail.Id}); r.Status != http.StatusOK {
 		t.Fatalf("set the group: status %d body %s", r.Status, r.Body)
 	}
@@ -300,9 +322,14 @@ func TestGetCustomers_GroupIdFilter(t *testing.T) {
 			byGroup.Pagination.TotalCount)
 	}
 
+	// The harness is per test, so the ungrouped customer is the only customer in
+	// no group. Asserting that it is FOUND, rather than only that nothing found
+	// has a group, is what stops a 'none' branch that matches nothing at all
+	// from passing.
 	none := getList(t, c, "groupId=none&pageSize=100")
-	if none.Pagination.TotalCount != len(none.Data) {
-		t.Errorf("groupId=none: totalCount %d but %d rows", none.Pagination.TotalCount, len(none.Data))
+	if none.Pagination.TotalCount != 1 || len(none.Data) != 1 || none.Data[0].Id != ungrouped.Id {
+		t.Errorf("groupId=none: totalCount %d, rows %+v, want exactly the ungrouped customer",
+			none.Pagination.TotalCount, none.Data)
 	}
 	for _, row := range none.Data {
 		if row.Group != nil {

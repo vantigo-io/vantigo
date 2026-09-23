@@ -84,9 +84,10 @@ type customerDecoration struct {
 }
 
 // decorate resolves the owners, tags and groups of rows in one directory call
-// and two queries. q must be a pool-backed store.Queries, never a transaction's: the
-// directory call inside is out-of-process and must not happen under a lock, so
-// every caller decorates after its write has committed.
+// and two queries. q must be a pool-backed store.Queries, never a
+// transaction's: the directory call inside is out-of-process and must not
+// happen under a lock, so every caller decorates after its write has
+// committed.
 //
 // An empty rows is not an error and makes no calls at all — an empty list page
 // is an ordinary answer, and asking the directory about nobody is a round trip
