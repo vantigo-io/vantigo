@@ -246,10 +246,13 @@ func TestIsForeignKeyViolation(t *testing.T) {
 
 // TestIsRestrictViolation pins what separates this helper from
 // IsForeignKeyViolation: it accepts 23001 and only 23001, because the two
-// SQLSTATEs come from the same foreign key depending on its ON DELETE action,
-// and a caller that matched the wrong one would never see its own race. The
-// real 23001 is provoked where it matters, by internal/customers'
-// TestDeleteCustomerGroup_AMemberArrivingAfterTheCountIsStillRefused.
+// SQLSTATEs come from the same foreign key depending on its ON DELETE action
+// and on the server: a RESTRICT parent delete raises 23001 on PostgreSQL 18+
+// and 23503 before, so a delete path matches both, and a caller that matched
+// only the wrong one would never see its own race. The real 23001 is provoked
+// where it matters, by internal/customers'
+// TestDeleteCustomerGroup_AMemberArrivingAfterTheCountIsStillRefused — on
+// PostgreSQL 18+; an older server answers that test through the 23503 arm.
 func TestIsRestrictViolation(t *testing.T) {
 	err := fmt.Errorf("delete group: %w", &pgconn.PgError{Code: "23001", ConstraintName: "customers_group_id_fkey"})
 

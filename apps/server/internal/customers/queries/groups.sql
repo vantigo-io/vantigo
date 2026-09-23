@@ -145,7 +145,10 @@ WHERE c.id = @id;
 -- info, the owner and the billing profile are untouched, since this
 -- sub-resource never writes them. Guarded and revision-bumping exactly like
 -- UpdateCustomerOwner (queries/customers.sql): sqlc.narg(expected_revision) is
--- PutCustomerGroupRequest's optional revision, and the handler skips calling
+-- the caller's revision when the request carried one, else the revision the
+-- handler's two reads agreed on (the NULL arm is never taken from this
+-- handler — a request without a revision is guarded on what it read, and
+-- re-read on a miss), and the handler skips calling
 -- this entirely when the group did not actually change, so a resubmit of the
 -- current group writes nothing and bumps nothing (customers foundation design
 -- D5's no-op rule).

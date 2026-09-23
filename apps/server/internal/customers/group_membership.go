@@ -46,8 +46,8 @@ import (
 // the customer and its membership, looking for a consistent pair its guarded
 // write can land on, before a request without a revision gives up with the
 // revision conflict. Three attempts because one retry covers the ordinary case
-// of a single concurrent write. A customer that moves under every one of three attempts is changing
-// faster than any answer about it would stay true.
+// of a single concurrent write. A customer that moves under every one of
+// three attempts is changing faster than any answer about it would stay true.
 const groupMembershipReadAttempts = 3
 
 // groupNotFound is the field error for a groupId no group holds, worded as
@@ -79,8 +79,10 @@ func (s *server) PutCustomersByIdGroup(ctx context.Context, req gen.PutCustomers
 	// With one, the row has moved past it, so the caller's revision is stale:
 	// the revision conflict, in the words the guarded write's own fallback
 	// uses. Without one, the caller asked for the change to apply
-	// unconditionally (customers foundation design D5; the guarded write's
-	// "expected_revision IS NULL OR …" says the same). Refusing it would break
+	// unconditionally (customers foundation design D5 — "unconditionally"
+	// meaning on whatever the customer is by the time the write lands, which
+	// is why the write below is guarded on the revision the reads agreed on
+	// and re-read on a miss, never on a NULL guard). Refusing it would break
 	// that rule, and the owner endpoint would succeed in the same race. So both
 	// reads run again, and the handler proceeds with the first consistent
 	// pair.
@@ -158,7 +160,10 @@ func (s *server) PutCustomersByIdGroup(ctx context.Context, req gen.PutCustomers
 		before, after := current.GroupID, body.GroupId
 		if uuidPtrEqual(before, after) {
 			// The same group, nil included: nothing written, no revision bump, no
-			// event, and no actor resolved (customers foundation design D5). The
+			// event, and no actor resolved on a first pass (customers foundation
+			// design D5) — a no-op reached on a retry after a missed guarded
+			// write has already resolved it, harmlessly: a read-only directory
+			// call, and still nothing written. The
 			// response is still the whole customer, decorated — which is why the
 			// no-op is answered here rather than as a 304 or an empty body.
 			summary, err := q.CustomerTimelineSummary(ctx, req.Id)
