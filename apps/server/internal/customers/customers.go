@@ -103,6 +103,14 @@ func fromUpdateCustomerOwnerRow(c store.UpdateCustomerOwnerRow, ts store.Custome
 	return customerRowFrom(c.ID, c.CustomerNumber, c.Name, c.Status, c.Type, c.LegalCountry, c.LegalID, c.LegalName, c.LegalSource, c.LegalType, c.CreatedAt, c.UpdatedAt, c.Revision, c.Email, c.Phone, c.Website, c.OwnerUserID, ts)
 }
 
+// fromSetCustomerGroupRow is SetCustomerGroup's own row
+// (PutCustomersByIdGroup's write, group_membership.go). Its column list is
+// UpdateCustomerOwner's, which is why it needs no new parameter: the group
+// itself is decorated onto the response afterwards, not read from this row.
+func fromSetCustomerGroupRow(c store.SetCustomerGroupRow, ts store.CustomerTimelineSummaryRow) customerRow {
+	return customerRowFrom(c.ID, c.CustomerNumber, c.Name, c.Status, c.Type, c.LegalCountry, c.LegalID, c.LegalName, c.LegalSource, c.LegalType, c.CreatedAt, c.UpdatedAt, c.Revision, c.Email, c.Phone, c.Website, c.OwnerUserID, ts)
+}
+
 // fromListRow is store.ListCustomersRow's customerRow, the one list-query
 // shape now that ListCustomersByID/ListCustomersByName (one per sortBy
 // value) are a single ListCustomers with sort_by as a query parameter
@@ -158,9 +166,11 @@ func dateFromPgtype(d pgtype.Date) *openapi_types.Date {
 // status every list caller already sees. dec is the part of the response that
 // does not come from the customer row: the owner's display name, which lives
 // in identity's directory and is resolved per response (owner and tags design
-// D1), and the customer's tags, which live in their own table (D2). Both are
-// as ungated as contactInfo — design D4's ruling: an owner is not sensitive
-// data and tags are classification, so customers:view is the whole gate.
+// D1), the customer's tags, which live in their own table (D2), and the
+// customer's group, which lives in the module's own vocabulary table (customer
+// groups design D3). All three are as ungated as contactInfo — design D4's
+// ruling: an owner is not sensitive data and tags and groups are
+// classification, so customers:view is the whole gate.
 func safeCustomerResponse(row customerRow, includeIdentity bool, dec customerDecoration) gen.SafeCustomerResponse {
 	tags := dec.tagsFor(row.ID)
 	resp := gen.SafeCustomerResponse{
@@ -174,6 +184,7 @@ func safeCustomerResponse(row customerRow, includeIdentity bool, dec customerDec
 		Revision:       &row.Revision,
 		ContactInfo:    &gen.CustomerContactInfo{Email: row.Email, Phone: row.Phone, Website: row.Website},
 		Owner:          dec.owner(row.OwnerUserID),
+		Group:          dec.group(row.ID),
 		Tags:           &tags,
 		TimelineSummary: gen.SafeTimelineSummary{
 			EntryCount:       int32(row.EntryCount),
@@ -272,6 +283,9 @@ func validateGetCustomersParams(p gen.GetCustomersParams) []string {
 	if p.TagId != nil && !validUUIDParam(*p.TagId) {
 		errs = append(errs, fmt.Sprintf("'tagId' must be a tag id, but was '%s'.", *p.TagId))
 	}
+	if p.GroupId != nil && !validGroupFilter(*p.GroupId) {
+		errs = append(errs, fmt.Sprintf("'groupId' must be a group id or 'none', but was '%s'.", *p.GroupId))
+	}
 	return errs
 }
 
@@ -282,6 +296,14 @@ func validateGetCustomersParams(p gen.GetCustomersParams) []string {
 // silently accepted.
 func validOwnerFilter(raw string) bool {
 	return raw == "me" || raw == "none" || validUUIDParam(raw)
+}
+
+// validGroupFilter is the groupId parameter's shape (customer groups design
+// D3): a group id, or the literal 'none'. There is no 'me' to resolve, so
+// unlike ownerId this needs no session at all — and 'none' is matched
+// case-sensitively, as every other query parameter in this function is.
+func validGroupFilter(raw string) bool {
+	return raw == "none" || validUUIDParam(raw)
 }
 
 func validUUIDParam(raw string) bool {
@@ -366,6 +388,21 @@ func (s *server) GetCustomers(ctx context.Context, req gen.GetCustomersRequestOb
 			tagID = &id
 		}
 	}
+	// groupId's two forms resolve to the two SQL parameters the list queries
+	// take (design D3). No 'me' here and nothing session-dependent: a group is a
+	// bucket the installation defines, not a relationship to the caller.
+	var groupID *uuid.UUID
+	groupNone := false
+	if req.Params.GroupId != nil {
+		if *req.Params.GroupId == "none" {
+			groupNone = true
+		} else if id, err := uuid.Parse(*req.Params.GroupId); err == nil {
+			// validateGetCustomersParams already refused anything unparseable, so
+			// err is impossible here; the guard means an impossible value filters
+			// nothing rather than panicking.
+			groupID = &id
+		}
+	}
 
 	// search_identity/search_contacts gate the legal-identity and
 	// contact/association branches of search: a caller who cannot see that
@@ -392,6 +429,7 @@ func (s *server) GetCustomers(ctx context.Context, req gen.GetCustomersRequestOb
 		Search: search, SearchCompact: searchCompact, SearchIdentity: searchIdentity, SearchContacts: searchContacts,
 		SearchPhone: searchPhone,
 		OwnerNone:   ownerNone, OwnerID: ownerID, TagID: tagID,
+		GroupNone: groupNone, GroupID: groupID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("customers: count customers: %w", err)
@@ -403,6 +441,7 @@ func (s *server) GetCustomers(ctx context.Context, req gen.GetCustomersRequestOb
 		Search: search, SearchCompact: searchCompact, SearchIdentity: searchIdentity, SearchContacts: searchContacts,
 		SearchPhone: searchPhone,
 		OwnerNone:   ownerNone, OwnerID: ownerID, TagID: tagID,
+		GroupNone: groupNone, GroupID: groupID,
 		SortBy: sortBy, Descending: descending, PageSize: pageSize, RowOffset: offset,
 	})
 	if err != nil {

@@ -68,25 +68,27 @@ WHERE (
         FROM customers.customer_tags cft
         WHERE cft.customer_id = c.id
           AND cft.tag_id = $6::uuid))
+  AND (NOT $7::bool OR c.group_id IS NULL)
+  AND ($8::uuid IS NULL OR c.group_id = $8::uuid)
   AND (
-        $7::text IS NULL
-     OR c.name ILIKE $7::text
-     OR c.customer_number::text ILIKE $8::text
-     OR c.email ILIKE $7::text
-     OR ($9::bool AND regexp_replace(c.phone, '\s', '', 'g') ILIKE $8::text)
-     OR ($10::bool AND (
-            c.legal_name ILIKE $7::text
-         OR c.legal_id ILIKE $8::text))
-     OR ($11::bool AND EXISTS (
+        $9::text IS NULL
+     OR c.name ILIKE $9::text
+     OR c.customer_number::text ILIKE $10::text
+     OR c.email ILIKE $9::text
+     OR ($11::bool AND regexp_replace(c.phone, '\s', '', 'g') ILIKE $10::text)
+     OR ($12::bool AND (
+            c.legal_name ILIKE $9::text
+         OR c.legal_id ILIKE $10::text))
+     OR ($13::bool AND EXISTS (
             SELECT 1
             FROM customers.customers_contacts cc
             JOIN customers.contacts ct ON ct.id = cc.contact_id
             WHERE cc.customer_id = c.id
-              AND (ct.first_name ILIKE $7::text
-                OR ct.last_name ILIKE $7::text
-                OR (ct.first_name || ' ' || ct.last_name) ILIKE $7::text
-                OR ct.email ILIKE $7::text
-                OR cc.email ILIKE $7::text)))
+              AND (ct.first_name ILIKE $9::text
+                OR ct.last_name ILIKE $9::text
+                OR (ct.first_name || ' ' || ct.last_name) ILIKE $9::text
+                OR ct.email ILIKE $9::text
+                OR cc.email ILIKE $9::text)))
       )
 `
 
@@ -97,6 +99,8 @@ type CountCustomersParams struct {
 	OwnerNone       bool
 	OwnerID         *uuid.UUID
 	TagID           *uuid.UUID
+	GroupNone       bool
+	GroupID         *uuid.UUID
 	Search          *string
 	SearchCompact   *string
 	SearchPhone     bool
@@ -136,6 +140,13 @@ type CountCustomersParams struct {
 // validation turns exactly one ownerId value into exactly one of them. tag_id
 // is design D2's single-tag filter: a customer matches when it carries that
 // tag, and multi-tag filtering is not built until someone asks.
+//
+// group_none/group_id are design D3's groupId filter, and they are the
+// owner's two halves for the owner's reason: 'none' is "in no group at all" (a
+// NULL test, which no equality can express) and a uuid is an equality. They are
+// never both set — the Go validation turns exactly one groupId value into
+// exactly one of them — and an equality, not tag_id's EXISTS, because a group
+// is single-valued like the owner rather than many-to-many like a tag.
 func (q *Queries) CountCustomers(ctx context.Context, arg CountCustomersParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countCustomers,
 		arg.Status,
@@ -144,6 +155,8 @@ func (q *Queries) CountCustomers(ctx context.Context, arg CountCustomersParams) 
 		arg.OwnerNone,
 		arg.OwnerID,
 		arg.TagID,
+		arg.GroupNone,
+		arg.GroupID,
 		arg.Search,
 		arg.SearchCompact,
 		arg.SearchPhone,
@@ -957,40 +970,42 @@ WHERE (
         FROM customers.customer_tags cft
         WHERE cft.customer_id = c.id
           AND cft.tag_id = $6::uuid))
+  AND (NOT $7::bool OR c.group_id IS NULL)
+  AND ($8::uuid IS NULL OR c.group_id = $8::uuid)
   AND (
-        $7::text IS NULL
-     OR c.name ILIKE $7::text
-     OR c.customer_number::text ILIKE $8::text
-     OR c.email ILIKE $7::text
-     OR ($9::bool AND regexp_replace(c.phone, '\s', '', 'g') ILIKE $8::text)
-     OR ($10::bool AND (
-            c.legal_name ILIKE $7::text
-         OR c.legal_id ILIKE $8::text))
-     OR ($11::bool AND EXISTS (
+        $9::text IS NULL
+     OR c.name ILIKE $9::text
+     OR c.customer_number::text ILIKE $10::text
+     OR c.email ILIKE $9::text
+     OR ($11::bool AND regexp_replace(c.phone, '\s', '', 'g') ILIKE $10::text)
+     OR ($12::bool AND (
+            c.legal_name ILIKE $9::text
+         OR c.legal_id ILIKE $10::text))
+     OR ($13::bool AND EXISTS (
             SELECT 1
             FROM customers.customers_contacts cc
             JOIN customers.contacts ct ON ct.id = cc.contact_id
             WHERE cc.customer_id = c.id
-              AND (ct.first_name ILIKE $7::text
-                OR ct.last_name ILIKE $7::text
-                OR (ct.first_name || ' ' || ct.last_name) ILIKE $7::text
-                OR ct.email ILIKE $7::text
-                OR cc.email ILIKE $7::text)))
+              AND (ct.first_name ILIKE $9::text
+                OR ct.last_name ILIKE $9::text
+                OR (ct.first_name || ' ' || ct.last_name) ILIKE $9::text
+                OR ct.email ILIKE $9::text
+                OR cc.email ILIKE $9::text)))
       )
 ORDER BY
-    CASE WHEN $12::text = 'id' AND NOT $13::bool THEN c.id END ASC,
-    CASE WHEN $12::text = 'id' AND $13::bool THEN c.id END DESC,
-    CASE WHEN $12::text = 'name' AND NOT $13::bool THEN c.name END ASC,
-    CASE WHEN $12::text = 'name' AND $13::bool THEN c.name END DESC,
-    CASE WHEN $12::text = 'customerNumber' AND NOT $13::bool THEN c.customer_number END ASC,
-    CASE WHEN $12::text = 'customerNumber' AND $13::bool THEN c.customer_number END DESC,
-    CASE WHEN $12::text = 'createdAt' AND NOT $13::bool THEN c.created_at END ASC,
-    CASE WHEN $12::text = 'createdAt' AND $13::bool THEN c.created_at END DESC,
-    CASE WHEN $12::text = 'updatedAt' AND NOT $13::bool THEN c.updated_at END ASC,
-    CASE WHEN $12::text = 'updatedAt' AND $13::bool THEN c.updated_at END DESC,
-    CASE WHEN NOT $13::bool THEN c.id END ASC,
-    CASE WHEN $13::bool THEN c.id END DESC
-LIMIT $15::int OFFSET $14::int
+    CASE WHEN $14::text = 'id' AND NOT $15::bool THEN c.id END ASC,
+    CASE WHEN $14::text = 'id' AND $15::bool THEN c.id END DESC,
+    CASE WHEN $14::text = 'name' AND NOT $15::bool THEN c.name END ASC,
+    CASE WHEN $14::text = 'name' AND $15::bool THEN c.name END DESC,
+    CASE WHEN $14::text = 'customerNumber' AND NOT $15::bool THEN c.customer_number END ASC,
+    CASE WHEN $14::text = 'customerNumber' AND $15::bool THEN c.customer_number END DESC,
+    CASE WHEN $14::text = 'createdAt' AND NOT $15::bool THEN c.created_at END ASC,
+    CASE WHEN $14::text = 'createdAt' AND $15::bool THEN c.created_at END DESC,
+    CASE WHEN $14::text = 'updatedAt' AND NOT $15::bool THEN c.updated_at END ASC,
+    CASE WHEN $14::text = 'updatedAt' AND $15::bool THEN c.updated_at END DESC,
+    CASE WHEN NOT $15::bool THEN c.id END ASC,
+    CASE WHEN $15::bool THEN c.id END DESC
+LIMIT $17::int OFFSET $16::int
 `
 
 type ListCustomersParams struct {
@@ -1000,6 +1015,8 @@ type ListCustomersParams struct {
 	OwnerNone       bool
 	OwnerID         *uuid.UUID
 	TagID           *uuid.UUID
+	GroupNone       bool
+	GroupID         *uuid.UUID
 	Search          *string
 	SearchCompact   *string
 	SearchPhone     bool
@@ -1057,6 +1074,8 @@ func (q *Queries) ListCustomers(ctx context.Context, arg ListCustomersParams) ([
 		arg.OwnerNone,
 		arg.OwnerID,
 		arg.TagID,
+		arg.GroupNone,
+		arg.GroupID,
 		arg.Search,
 		arg.SearchCompact,
 		arg.SearchPhone,

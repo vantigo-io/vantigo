@@ -985,6 +985,19 @@ components:
                     nullable: true
                     type: string
             type: object
+        PutCustomerGroupRequest:
+            description: "PUT /customers/{id}/group's own request body (customer groups design D3): the customer is put into groupId, or taken out of every group when it is absent or null. The group must exist; an unknown id is a field error on groupId. revision is optional, as PUT /customers/{id}/owner's own is — omitted, the change applies regardless; present and stale, a 409. Only this sub-resource sets a customer's group: POST /customers and PUT /customers/{id} do not take one."
+            properties:
+                groupId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                revision:
+                    description: The revision the caller read the customer at (customers foundation design D5). Optional — omitted, the change applies regardless; present and stale, a 409.
+                    format: int32
+                    nullable: true
+                    type: integer
+            type: object
         PutCustomerOwnerRequest:
             description: "PUT /customers/{id}/owner's own request body (owner and tags design D1): the owner is set to ownerUserId, or cleared when it is absent or null. The user must exist and be active to be assigned. revision is optional, as PUT /customers/{id}/contact-info's own is."
             properties:
@@ -1094,6 +1107,10 @@ components:
                 customerNumber:
                     format: int64
                     type: integer
+                group:
+                    allOf:
+                        - $ref: '#/components/schemas/CustomerGroupRef'
+                    description: "The group this customer belongs to (customer groups design D3). Absent when it belongs to none — omitted, never null, like owner beside it; needs nothing beyond customers:view to read. A group's own default payment term is not here: it is read from GET /customers/groups, or already resolved on the billing profile's groupDefault."
                 id:
                     format: int32
                     type: integer
@@ -1450,6 +1467,11 @@ paths:
                   name: tagId
                   schema:
                     description: "A tag id. A customer matches when it carries that tag. One tag only; multi-tag filtering is not built."
+                    type: string
+                - in: query
+                  name: groupId
+                  schema:
+                    description: "A group id, or the literal 'none' (customers in no group). Case-sensitive. An id no group holds simply matches nothing."
                     type: string
             responses:
                 "200":
@@ -2139,6 +2161,59 @@ paths:
             tags:
                 - Customers
             x-vantigo-access: permission:customers:associations-manage+customers:contacts-view
+    /api/v1/customers/{id}/group:
+        put:
+            operationId: putCustomersByIdGroup
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PutCustomerGroupRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SafeCustomerResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: Conflict
+            summary: Put a customer in a group, or take it out of every group
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:update+customers:view
     /api/v1/customers/{id}/legal-identity:
         delete:
             operationId: deleteCustomersByIdLegalIdentity
