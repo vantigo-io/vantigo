@@ -56,7 +56,20 @@ describe("ContactRoleBadges", () => {
 
     expect(await screen.findByText("Faktura")).toBeInTheDocument();
     expect(screen.getByText("Beslutningstaker")).toBeInTheDocument();
-    expect(screen.getByLabelText("Primær faktura-kontakt")).toBeInTheDocument();
+    // A closed compound ("fakturakontakt"), not an interpolated
+    // "Faktura-kontakt" — see `primaryContactLabel`.
+    expect(screen.getByLabelText("Primær fakturakontakt")).toBeInTheDocument();
+  });
+
+  it("labels an unrecognised role with the generic interpolated sentence", async () => {
+    // A role outside the vocabulary has no composed catalog key (there is no
+    // way to pre-write one for a name the catalog has never seen), so it falls
+    // back to the interpolated template — the fallback `primaryContactLabel`
+    // and `contactRoleLabel` share with `addressTypeLabel`.
+    renderBadges([{ role: "executive_sponsor", primary: true }]);
+
+    expect(screen.getByText("executive_sponsor")).toBeInTheDocument();
+    expect(screen.getByLabelText("Primary executive_sponsor contact")).toBeInTheDocument();
   });
 
   it("renders no badge at all for a contact with no roles", () => {

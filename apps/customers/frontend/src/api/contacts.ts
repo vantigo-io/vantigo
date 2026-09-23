@@ -40,8 +40,6 @@ export interface ContactInput {
  */
 export const CONTACT_ROLES = ["billing", "project", "decision_maker"] as const;
 
-export type ContactRoleName = (typeof CONTACT_ROLES)[number];
-
 /** One role a contact holds for a customer, and whether it is the primary holder. */
 export interface ContactRoleAssignment {
   role: string;

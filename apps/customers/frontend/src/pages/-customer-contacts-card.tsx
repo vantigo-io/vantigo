@@ -323,6 +323,8 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
           contactId: contact.id,
           title: form.values.title.trim() || undefined,
           roles: toRoleInputs(connectionValuesOf(form.values)),
+          phone: form.values.connectionPhone.trim() || undefined,
+          email: form.values.connectionEmail.trim() || undefined,
         });
       } catch (error) {
         // The contact exists at this point — make that explicit so it is not
@@ -464,6 +466,7 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
                 getInputProps={(path) => form.getInputProps(mapConnectionPath(path))}
                 values={connectionValuesOf(form.values)}
                 setFieldValue={(path, value) => form.setFieldValue(mapConnectionPath(path), value)}
+                clearFieldError={(path) => form.clearFieldError(mapConnectionPath(path))}
                 lockedPrimary={[]}
                 soleRoles={[]}
               />

@@ -2,7 +2,7 @@ import { Badge, Group, Tooltip } from "@mantine/core";
 import { IconStarFilled } from "@tabler/icons-react";
 import { useI18n } from "@vantigo/frontend-shell";
 import type { ContactRoleAssignment } from "../api/contacts";
-import { contactRoleLabel } from "../lib/contact-role-label";
+import { contactRoleLabel, primaryContactLabel } from "../lib/contact-role-label";
 import "../i18n";
 
 /**
@@ -35,15 +35,23 @@ export const ContactRoleBadges = ({ roles }: { roles: ContactRoleAssignment[] })
             </Badge>
           );
         }
-        const primaryLabel = t("primaryRoleFor", { role: label.toLocaleLowerCase() });
+        const primaryLabel = primaryContactLabel(t, assignment.role);
         return (
           <Tooltip key={assignment.role} label={primaryLabel}>
+            {/*
+              `role="img"` is what makes the `aria-label` announcement real: a
+              bare `<div>` (Badge's rendered element) has no accessible-name
+              support under the "generic" ARIA role, so assistive tech can
+              silently drop an `aria-label` sitting on one. Treating the badge
+              as a labelled image is the same trick an icon-only button uses.
+            */}
             <Badge
               variant="light"
               color="blue"
               size="sm"
               tt="none"
               fw={500}
+              role="img"
               aria-label={primaryLabel}
               leftSection={<IconStarFilled size={10} />}
             >

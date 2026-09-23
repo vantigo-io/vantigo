@@ -116,6 +116,10 @@ const en = {
   roleBilling: "Billing",
   roleProject: "Project",
   roleDecisionMaker: "Decision maker",
+  primaryRoleForBilling: "Primary billing contact",
+  primaryRoleForProject: "Primary project contact",
+  primaryRoleForDecisionMaker: "Primary decision maker contact",
+  /** Fallback for a role the catalog does not know — see `primaryContactLabel`. */
   primaryRoleFor: "Primary {{role}} contact",
   roleOnlyHolder: "Already the only holder",
   rolePrimaryStays: "The primary holder stays primary — make another contact primary instead",
@@ -608,6 +612,10 @@ const nb = {
   roleBilling: "Faktura",
   roleProject: "Prosjekt",
   roleDecisionMaker: "Beslutningstaker",
+  primaryRoleForBilling: "Primær fakturakontakt",
+  primaryRoleForProject: "Primær prosjektkontakt",
+  primaryRoleForDecisionMaker: "Primær beslutningstakerkontakt",
+  /** Fallback for a role the catalog does not know — see `primaryContactLabel`. */
   primaryRoleFor: "Primær {{role}}-kontakt",
   roleOnlyHolder: "Allerede den eneste innehaveren",
   rolePrimaryStays: "Den primære innehaveren forblir primær — gjør en annen kontakt primær i stedet",

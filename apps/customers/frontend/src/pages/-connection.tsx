@@ -13,7 +13,7 @@ import {
 } from "../api/contacts";
 import { ApiValidationError } from "../api/customers";
 import { NoValue } from "../components/legal-badges";
-import { contactRoleLabel } from "../lib/contact-role-label";
+import { contactRoleLabel, primaryContactLabel } from "../lib/contact-role-label";
 import "../i18n";
 
 /**
@@ -77,12 +77,24 @@ export const emptyConnectionValues = (): ConnectionFormValues => ({
  * holder), so a UI that echoed every switch would turn ticking a second role into
  * a 400. There is deliberately no way to demote from here: the server refuses it,
  * and the way to move a primary is to make another contact primary instead.
+ *
+ * `values.roles` can hold a key outside `CONTACT_ROLES`: the vocabulary is a
+ * value change on the server rather than a migration (design D2), so a contact
+ * can already hold a role this frontend's catalog does not know, seeded into
+ * the form from the association's own roles. This is a complete-set replace
+ * (design D3), so silently iterating only `CONTACT_ROLES` would delete that
+ * role server-side the next time anything here is saved. It is included with
+ * `primary` always omitted — there is no checkbox or switch for it, so
+ * "unchanged" is the only honest thing the UI can say about it.
  */
 // eslint-disable-next-line react-refresh/only-export-components
-export const toRoleInputs = (values: ConnectionFormValues): ContactRoleInput[] =>
-  CONTACT_ROLES.filter((role) => values.roles[role]).map((role) =>
-    values.primary[role] ? { role, primary: true } : { role },
-  );
+export const toRoleInputs = (values: ConnectionFormValues): ContactRoleInput[] => {
+  const knownRoles = CONTACT_ROLES as readonly string[];
+  const unknownHeldRoles = Object.keys(values.roles).filter((role) => !knownRoles.includes(role));
+  return [...CONTACT_ROLES, ...unknownHeldRoles]
+    .filter((role) => values.roles[role])
+    .map((role) => (knownRoles.includes(role) && values.primary[role] ? { role, primary: true } : { role }));
+};
 
 /**
  * The title-or-role rule the server enforces (design D1), checked here too so
@@ -99,6 +111,12 @@ interface ConnectionFieldsProps {
   getInputProps: (path: string) => object;
   values: ConnectionFormValues;
   setFieldValue: (path: string, value: unknown) => void;
+  /**
+   * Clears one field's validation error — used to drop a stale
+   * `titleOrRoleRequired` off the title the moment a role tick answers it,
+   * rather than leaving it to sit until the next submit re-validates.
+   */
+  clearFieldError: (path: string) => void;
   /**
    * Roles this association currently holds AS primary, per the last read from
    * the server: clearing one is refused (design D2), so its switch is on and
@@ -117,6 +135,7 @@ export const ConnectionFields = ({
   getInputProps,
   values,
   setFieldValue,
+  clearFieldError,
   lockedPrimary,
   soleRoles,
 }: ConnectionFieldsProps) => {
@@ -132,7 +151,11 @@ export const ConnectionFields = ({
         <Stack gap="xs" mt="xs">
           {CONTACT_ROLES.map((role) => {
             const checked = values.roles[role] ?? false;
-            const locked = lockedPrimary.includes(role);
+            // Locked only while the role is actually ticked: unticking it is
+            // what asks to drop the role altogether, and a switch that stayed
+            // ON with "Already the only holder" showing would say the primary
+            // request survives a role that is no longer held — it does not.
+            const locked = checked && lockedPrimary.includes(role);
             const reason = soleRoles.includes(role) ? t("roleOnlyHolder") : t("rolePrimaryStays");
             return (
               <Group key={role} justify="space-between" wrap="nowrap">
@@ -145,12 +168,16 @@ export const ConnectionFields = ({
                     // Unticking a role also drops its primary request, so a
                     // re-tick does not silently carry the old one back.
                     if (!next) setFieldValue(`primary.${role}`, false);
+                    // Ticking a role can satisfy the title-or-role rule on its
+                    // own, so a stale "give a title or pick a role" error must
+                    // not survive the tick that just answered it.
+                    if (next) clearFieldError("title");
                   }}
                 />
                 <Tooltip label={reason} disabled={!locked}>
                   <Switch
                     label={t("primaryBadge")}
-                    aria-label={t("primaryRoleFor", { role: contactRoleLabel(t, role).toLocaleLowerCase() })}
+                    aria-label={primaryContactLabel(t, role)}
                     labelPosition="left"
                     size="sm"
                     checked={locked || (values.primary[role] ?? false)}
@@ -282,6 +309,7 @@ export const EditConnectionModal = ({ target, onClose }: EditConnectionModalProp
             getInputProps={form.getInputProps}
             values={form.values}
             setFieldValue={form.setFieldValue}
+            clearFieldError={form.clearFieldError}
             lockedPrimary={lockedPrimary}
             soleRoles={target?.soleRoles ?? []}
           />
