@@ -111,6 +111,12 @@ type CustomerAddressRequest struct {
 	Type       string  `json:"type"`
 }
 
+// CustomerAssignableUser A user who may be made a customer's owner (owner and tags design D1) — the directory's active users, capped at 20. Enough to name them in a picker and nothing more, which is all contracts.UserDirectory publishes.
+type CustomerAssignableUser struct {
+	DisplayName string             `json:"displayName"`
+	UserId      openapi_types.UUID `json:"userId"`
+}
+
 // CustomerBillingProfile A customer's billing profile (invoice-ready customer design D1, D4): payment terms, currency, document language, delivery methods and the identifiers used to send it invoices — every field optional, meaning "not decided here, whoever invoices uses its own default"; unset, a field is simply absent from the response rather than sent as null. warnings is computed at read time from the profile plus the customer's type, legal identity, contact email and addresses — never stored — in a fixed order: ehf_without_recipient, email_without_address, efaktura_for_business, no_invoice_address, ehf_recipient_not_registered, ehf_available (can-this-customer-receive-EHF design D4). peppolLookup is the last Peppol lookup on record (POST .../peppol-lookup), present only when it was made for the participant this profile would look up now — a stale answer (the org number or peppolId changed since) is omitted.
 type CustomerBillingProfile struct {
 	BuyerReference   *string `json:"buyerReference,omitempty"`
@@ -169,6 +175,13 @@ type CustomerContactResponse struct {
 	Email   *string         `json:"email,omitempty"`
 	Phone   *string         `json:"phone,omitempty"`
 	Role    string          `json:"role"`
+}
+
+// CustomerOwner The single user accountable for the customer relationship (owner and tags design D1). displayName is resolved from the user directory at read time, never stored on the customer; a user the directory no longer knows is reported as "Unknown user" with active false, and an owner disabled after being assigned keeps the customer and is reported with active false. Absent when the customer is unowned.
+type CustomerOwner struct {
+	Active      bool               `json:"active"`
+	DisplayName string             `json:"displayName"`
+	UserId      openapi_types.UUID `json:"userId"`
 }
 
 // CustomerPeppolLookup The last (or freshly checked, from POST /customers/{id}/peppol-lookup) answer the Peppol network gave about whether this customer can receive an EHF invoice (can-this-customer-receive-EHF design D3): status is 'registered', 'not_registered' or 'no_identifier' (no Peppol participant id could be derived and none is set, so nothing was looked up). participantId is present only when it is either an explicit peppolId or the caller holds customers:legal-identity-view (a derived id is that permission's to show); smpHost is always present when known. checkedAt is always present, even for no_identifier (the moment the check was made, nothing stored).
@@ -268,6 +281,32 @@ type CustomerStatsSummaryResponse struct {
 	To                        time.Time `json:"to"`
 	TotalActiveCustomers      int32     `json:"totalActiveCustomers"`
 	TotalActiveCustomersDelta int32     `json:"totalActiveCustomersDelta"`
+}
+
+// CustomerTag One tag as it appears on a customer (owner and tags design D2). color is one of Mantine's named colours (gray, red, pink, grape, violet, indigo, blue, cyan, teal, green, lime, yellow, orange) or null, validated by the server so a client never has to sanitise it.
+type CustomerTag struct {
+	Color *string            `json:"color,omitempty"`
+	Id    openapi_types.UUID `json:"id"`
+	Name  string             `json:"name"`
+}
+
+// CustomerTagRequest A tag's name and colour (owner and tags design D2). name is 1-100 characters, trimmed; a name another tag already has, ignoring case, is a 409 with code tag_exists.
+type CustomerTagRequest struct {
+	Color *string `json:"color,omitempty"`
+	Name  string  `json:"name"`
+}
+
+// CustomerTagSummary A tag in the installation's vocabulary, with how many customers carry it (owner and tags design D2, D3) — what the Manage tags modal needs in order to say what a delete will affect, on the same response that lists the tags.
+type CustomerTagSummary struct {
+	Color         *string            `json:"color,omitempty"`
+	CustomerCount int32              `json:"customerCount"`
+	Id            openapi_types.UUID `json:"id"`
+	Name          string             `json:"name"`
+}
+
+// CustomerTagsResponse A customer's tags after a set replace (owner and tags design D2), name-ascending.
+type CustomerTagsResponse struct {
+	Tags []CustomerTag `json:"tags"`
 }
 
 // CustomerTypeRequest defines model for CustomerTypeRequest.
@@ -384,6 +423,19 @@ type PutCustomerContactInfoRequest struct {
 	Website  *string `json:"website,omitempty"`
 }
 
+// PutCustomerOwnerRequest PUT /customers/{id}/owner's own request body (owner and tags design D1): the owner is set to ownerUserId, or cleared when it is absent or null. The user must exist and be active to be assigned. revision is optional, as PUT /customers/{id}/contact-info's own is.
+type PutCustomerOwnerRequest struct {
+	OwnerUserId *openapi_types.UUID `json:"ownerUserId,omitempty"`
+
+	// Revision The revision the caller read the customer at (customers foundation design D5). Optional — omitted, the change applies regardless; present and stale, a 409.
+	Revision *int32 `json:"revision,omitempty"`
+}
+
+// PutCustomerTagsRequest PUT /customers/{id}/tags's own request body (owner and tags design D2): the customer's tag set is REPLACED by tagIds. There is no revision here and none is accepted — tags are off the customer row, so they bump nothing and two concurrent replaces are last-wins, which is what replacing a set means. An empty array clears the customer's tags. An unknown id is a field error on tagIds.
+type PutCustomerTagsRequest struct {
+	TagIds []openapi_types.UUID `json:"tagIds"`
+}
+
 // PutLegalIdentityRequest PUT /customers/{id}/legal-identity's own request body — not LegalIdentityRequest plus an allOf, deliberately: LegalIdentityRequest is also nested (via allOf) as CreateCustomerRequest.identity/UpdateCustomerRequest.identity, and allowDuplicateIdentity belongs to this operation's body alone. Composing it onto LegalIdentityRequest would have surfaced it a second time, nested and inert, under identity on those two requests — confusing a caller into believing it took effect there. The five identity fields are repeated here rather than shared, so this stays a clean, flat generated type.
 type PutLegalIdentityRequest struct {
 	// AllowDuplicateIdentity When true, skips the duplicate-legal-identity conflict check entirely (customers foundation design D6) — two departments of one company kept as separate customers is legitimate. Absent or false, an identity another customer already has is a 409. Only consulted when it differs from the identity already on file.
@@ -412,9 +464,15 @@ type SafeCustomerResponse struct {
 	Identity       *SafeCustomerIdentity `json:"identity,omitempty"`
 	Name           string                `json:"name"`
 
+	// Owner The user accountable for this customer relationship (owner and tags design D1). Absent when the customer is unowned; needs nothing beyond customers:view to read.
+	Owner *CustomerOwner `json:"owner,omitempty"`
+
 	// Revision The customer row's optimistic-concurrency token (customers foundation design D5). Optional here only because the recorded exchange corpus predates it — always present.
-	Revision        *int32              `json:"revision,omitempty"`
-	Status          string              `json:"status"`
+	Revision *int32 `json:"revision,omitempty"`
+	Status   string `json:"status"`
+
+	// Tags Every tag this customer carries, name-ascending (owner and tags design D2). Always present on responses from this version on — an empty array when the customer has none — and optional here only because the recorded exchange corpus predates it.
+	Tags            *[]CustomerTag      `json:"tags,omitempty"`
 	TimelineSummary SafeTimelineSummary `json:"timelineSummary"`
 
 	// Type 'business' or 'person'. Always present; optional here only because the recorded exchange corpus predates it.
@@ -511,6 +569,8 @@ type GetCustomersParams struct {
 	Search          *string `form:"search,omitempty" json:"search,omitempty"`
 	Status          *string `form:"status,omitempty" json:"status,omitempty"`
 	Type            *string `form:"type,omitempty" json:"type,omitempty"`
+	OwnerId         *string `form:"ownerId,omitempty" json:"ownerId,omitempty"`
+	TagId           *string `form:"tagId,omitempty" json:"tagId,omitempty"`
 }
 
 // GetCustomersContactsParams defines parameters for GetCustomersContacts.
@@ -840,6 +900,32 @@ func (siw *ServerInterfaceWrapper) GetCustomers(w http.ResponseWriter, r *http.R
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "type"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "type", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "ownerId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "ownerId", r.URL.Query(), &params.OwnerId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "ownerId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ownerId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tagId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tagId", r.URL.Query(), &params.TagId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagId", Err: err})
 		}
 		return
 	}

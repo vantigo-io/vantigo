@@ -553,6 +553,12 @@ export interface components {
             revision: number;
             warnings: string[];
         };
+        /** @description A user who may be made a customer's owner (owner and tags design D1) — the directory's active users, capped at 20. Enough to name them in a picker and nothing more, which is all contracts.UserDirectory publishes. */
+        CustomerAssignableUser: {
+            displayName: string;
+            /** Format: uuid */
+            userId: string;
+        };
         CustomerConflictDuplicate: {
             /** Format: int64 */
             customerNumber: number;
@@ -588,6 +594,13 @@ export interface components {
             email?: string | null;
             phone?: string | null;
             role: string;
+        };
+        /** @description The single user accountable for the customer relationship (owner and tags design D1). displayName is resolved from the user directory at read time, never stored on the customer; a user the directory no longer knows is reported as "Unknown user" with active false, and an owner disabled after being assigned keeps the customer and is reported with active false. Absent when the customer is unowned. */
+        CustomerOwner: {
+            active: boolean;
+            displayName: string;
+            /** Format: uuid */
+            userId: string;
         };
         /** @description The last (or freshly checked, from POST /customers/{id}/peppol-lookup) answer the Peppol network gave about whether this customer can receive an EHF invoice (can-this-customer-receive-EHF design D3): status is 'registered', 'not_registered' or 'no_identifier' (no Peppol participant id could be derived and none is set, so nothing was looked up). participantId is present only when it is either an explicit peppolId or the caller holds customers:legal-identity-view (a derived id is that permission's to show); smpHost is always present when known. checkedAt is always present, even for no_identifier (the moment the check was made, nothing stored). */
         CustomerPeppolLookup: {
@@ -655,6 +668,31 @@ export interface components {
             changes: components["schemas"]["CustomerRegistryChange"][];
             record?: components["schemas"]["CustomerRegistryRecord"];
             status: string;
+        };
+        /** @description One tag as it appears on a customer (owner and tags design D2). color is one of Mantine's named colours (gray, red, pink, grape, violet, indigo, blue, cyan, teal, green, lime, yellow, orange) or null, validated by the server so a client never has to sanitise it. */
+        CustomerTag: {
+            color?: string | null;
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        /** @description A tag's name and colour (owner and tags design D2). name is 1-100 characters, trimmed; a name another tag already has, ignoring case, is a 409 with code tag_exists. */
+        CustomerTagRequest: {
+            color?: string | null;
+            name: string;
+        };
+        /** @description A tag in the installation's vocabulary, with how many customers carry it (owner and tags design D2, D3) — what the Manage tags modal needs in order to say what a delete will affect, on the same response that lists the tags. */
+        CustomerTagSummary: {
+            color?: string | null;
+            /** Format: int32 */
+            customerCount: number;
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        /** @description A customer's tags after a set replace (owner and tags design D2), name-ascending. */
+        CustomerTagsResponse: {
+            tags: components["schemas"]["CustomerTag"][];
         };
         /** @description One thing the dashboard wants a human to look at. The shape is the dashboard's, shared by every module's /stats/attention. Four types, one per customer at most (a struck-off company reports only registryDeleted, its most useful single sentence), computed from the stored registry record against the current customer rather than from events, so the list needs no "dismiss" state: registryBankrupt when the record's bankrupt flag is set; registryLiquidation when underLiquidation or underForcedLiquidation is set and the customer is not also bankrupt; registryDeleted when the record carries a deletion date, regardless of the other flags; registryRenamed when the record's name differs (trimmed, case-sensitive) from the legal identity's name and none of the other three apply. id is '<type>/<customerId>'; title is the customer's own name, not the registry's; occurredAt is the day the thing itself happened — the registry's bankruptcy, liquidation or deletion date — falling back to when the record was last fetched when the registry gives no date, and always the fetch time for registryRenamed, which has no date; entityId is the customer id. An item clears once the customer is archived, once a later refresh stores the flag as false (or, for registryDeleted, a 410 deletes the row entirely), once the customer's identity is changed away from that company, or — for registryRenamed — once the legal identity's name is updated to match the registry's. */
         CustomerStatsAttentionItem: {
@@ -777,6 +815,20 @@ export interface components {
             revision?: number | null;
             website?: string | null;
         };
+        /** @description PUT /customers/{id}/owner's own request body (owner and tags design D1): the owner is set to ownerUserId, or cleared when it is absent or null. The user must exist and be active to be assigned. revision is optional, as PUT /customers/{id}/contact-info's own is. */
+        PutCustomerOwnerRequest: {
+            /** Format: uuid */
+            ownerUserId?: string | null;
+            /**
+             * Format: int32
+             * @description The revision the caller read the customer at (customers foundation design D5). Optional — omitted, the change applies regardless; present and stale, a 409.
+             */
+            revision?: number | null;
+        };
+        /** @description PUT /customers/{id}/tags's own request body (owner and tags design D2): the customer's tag set is REPLACED by tagIds. There is no revision here and none is accepted — tags are off the customer row, so they bump nothing and two concurrent replaces are last-wins, which is what replacing a set means. An empty array clears the customer's tags. An unknown id is a field error on tagIds. */
+        PutCustomerTagsRequest: {
+            tagIds: string[];
+        };
         /** @description PUT /customers/{id}/legal-identity's own request body — not LegalIdentityRequest plus an allOf, deliberately: LegalIdentityRequest is also nested (via allOf) as CreateCustomerRequest.identity/UpdateCustomerRequest.identity, and allowDuplicateIdentity belongs to this operation's body alone. Composing it onto LegalIdentityRequest would have surfaced it a second time, nested and inert, under identity on those two requests — confusing a caller into believing it took effect there. The five identity fields are repeated here rather than shared, so this stays a clean, flat generated type. */
         PutLegalIdentityRequest: {
             /** @description When true, skips the duplicate-legal-identity conflict check entirely (customers foundation design D6) — two departments of one company kept as separate customers is legitimate. Absent or false, an identity another customer already has is a 409. Only consulted when it differs from the identity already on file. */
@@ -811,12 +863,16 @@ export interface components {
             id: number;
             identity?: components["schemas"]["SafeCustomerIdentity"] | null;
             name: string;
+            /** @description The user accountable for this customer relationship (owner and tags design D1). Absent when the customer is unowned; needs nothing beyond customers:view to read. */
+            owner?: components["schemas"]["CustomerOwner"] | null;
             /**
              * Format: int32
              * @description The customer row's optimistic-concurrency token (customers foundation design D5). Optional here only because the recorded exchange corpus predates it — always present.
              */
             revision?: number;
             status: string;
+            /** @description Every tag this customer carries, name-ascending (owner and tags design D2). Always present on responses from this version on — an empty array when the customer has none — and optional here only because the recorded exchange corpus predates it. */
+            tags?: components["schemas"]["CustomerTag"][];
             timelineSummary: components["schemas"]["SafeTimelineSummary"];
             /** @description 'business' or 'person'. Always present; optional here only because the recorded exchange corpus predates it. */
             type?: string;
@@ -966,6 +1022,8 @@ export interface operations {
                 search?: string;
                 status?: string;
                 type?: string;
+                ownerId?: string;
+                tagId?: string;
             };
             header?: never;
             path?: never;
