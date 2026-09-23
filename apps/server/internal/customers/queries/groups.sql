@@ -121,13 +121,16 @@ ORDER BY c.id;
 -- while g.id is NOT NULL on customer_groups and would depend on that inference
 -- entirely. The two are the same value by the join's own condition.
 --
--- revision is the row's revision as THIS read saw it. PUT
--- /customers/{id}/group reads the customer (GetCustomer) and then this, two
--- unlocked statements, and a write landing between them would otherwise pair
--- the first read's revision with the second read's group: the handler compares
--- the two revisions and answers the revision conflict when they differ, rather
--- than a no-op 200 that reports a revision the group it shows never had. The
--- billing profile ignores it.
+-- revision is the row's revision as THIS read saw it, and both callers use it
+-- for the same reason. Each one reads the customer row first and then this, as
+-- two unlocked statements. A write landing between them would pair the first
+-- read's revision with the second read's group, so each compares the two
+-- revisions before trusting the pair. PUT /customers/{id}/group reads both
+-- again, or answers the revision conflict when the caller sent a revision
+-- (group_membership.go). Without the comparison it could answer a no-op 200
+-- reporting a revision the group it shows never had. The billing profile's
+-- billingProfileSnapshot (billing_profile.go) re-reads the profile once, so
+-- the revision it answers belongs with the groupDefault beside it.
 SELECT c.group_id, g.name AS group_name, g.default_payment_terms_days, c.revision
 FROM customers.customers c
 LEFT JOIN customers.customer_groups g ON g.id = c.group_id
