@@ -229,6 +229,23 @@ func TestCustomerGroups_DeleteRefusesAGroupInUse(t *testing.T) {
 		setCustomerGroup(t, h, id, retail.Id)
 	}
 
+	// The count the refusal is about is the count the vocabulary reports: both
+	// the list and a PUT's answer carry it, and POST's 0-by-construction is the
+	// only place it is not read from the rows.
+	groups := listGroups(t, c)
+	if len(groups) != 1 || groups[0].CustomerCount != 2 {
+		t.Errorf("groups = %+v, want Retail with customerCount 2", groups)
+	}
+	put := c.Do(http.MethodPut, "/api/v1/customers/groups/"+retail.Id, map[string]any{"name": "Retail", "defaultPaymentTermsDays": 14})
+	if put.Status != http.StatusOK {
+		t.Fatalf("PUT Retail: status %d body %s, want 200", put.Status, put.Body)
+	}
+	var updated groupSummaryJSON
+	put.JSON(&updated)
+	if updated.CustomerCount != 2 {
+		t.Errorf("PUT's customerCount = %d, want 2: the answer is what the Manage groups modal keeps on screen", updated.CustomerCount)
+	}
+
 	r := c.Do(http.MethodDelete, "/api/v1/customers/groups/"+retail.Id, nil)
 	if r.Status != http.StatusConflict {
 		t.Fatalf("delete a group in use: status %d body %s, want 409", r.Status, r.Body)
