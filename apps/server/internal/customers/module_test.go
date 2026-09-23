@@ -78,40 +78,69 @@ func TestModule_DeclaresItsPermissionCatalog(t *testing.T) {
 // which module.Workers collects for cmd/vantigo's runner — and not only through
 // the constructors the worker tests call directly.
 //
-// It is an EXACT-SET assertion. A worker fully implemented, fully tested and
+// It is an EXACT-SET assertion per configuration, and deliberately one table
+// rather than a test per worker. A worker fully implemented, fully tested and
 // never registered is the failure this guards: communications learned that one
-// the hard way (its own TestModule_ContributesItsWorkers says so), and
-// **adding a worker to this module means adding its name here.** The interval
-// check is part of the same guard — the runner logs a worker's cadence, and a
-// zero interval would make a poll loop spin.
+// the hard way (its own TestModule_ContributesItsWorkers says so), and **adding
+// a worker to this module means adding its name here.** The switch rows are the
+// other half: "off" has to mean the runner is never handed the thing that would
+// make a scheduled outbound request, and a row asserting only "fewer workers"
+// would not notice the wrong one disappearing.
 func TestModule_ContributesItsWorkers(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t)
-
-	var names []string
-	for _, w := range module.Workers(h.Deps(), customers.Module()) {
-		names = append(names, w.Name())
-		if w.Interval() <= 0 {
-			t.Errorf("worker %s has interval %v, want a positive poll interval", w.Name(), w.Interval())
-		}
+	cases := []struct {
+		name string
+		env  map[string]string
+		want []string
+	}{
+		{name: "the default installation runs both", want: []string{"customers-peppol-recheck", "customers-registry-feed"}},
+		{
+			name: "the feed worker turned off leaves the re-check worker",
+			env:  map[string]string{"CUSTOMERS_REGISTRY_FEED_ENABLED": "0"},
+			want: []string{"customers-peppol-recheck"},
+		},
+		{
+			name: "the re-check worker turned off leaves the feed worker",
+			env:  map[string]string{"CUSTOMERS_PEPPOL_RECHECK_ENABLED": "0"},
+			want: []string{"customers-registry-feed"},
+		},
+		{
+			// Design D6: the re-check worker is effective only alongside the
+			// lookup it uses, and "not effective" means never started.
+			name: "the Peppol lookup turned off takes the re-check worker with it",
+			env:  map[string]string{"PEPPOL_LOOKUP_ENABLED": "0"},
+			want: []string{"customers-registry-feed"},
+		},
+		{
+			name: "both turned off leaves none",
+			env: map[string]string{
+				"CUSTOMERS_REGISTRY_FEED_ENABLED":  "0",
+				"CUSTOMERS_PEPPOL_RECHECK_ENABLED": "0",
+			},
+			want: nil,
+		},
 	}
-	slices.Sort(names)
-	want := []string{"customers-registry-feed"}
-	if !slices.Equal(names, want) {
-		t.Errorf("workers = %v, want exactly %v", names, want)
-	}
-}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			opts := make([]modtest.Option, 0, len(tc.env))
+			for k, v := range tc.env {
+				opts = append(opts, modtest.WithEnv(k, v))
+			}
+			h := newHarness(t, opts...)
 
-// TestModule_TheFeedWorkerCanBeTurnedOff pins design D7's switch where it
-// actually has to hold: not merely as a config field, but as a worker the
-// runner is never handed. An installation that sets the switch to 0 must make
-// no outbound request to Brreg on a schedule at all, and the only way to
-// promise that is not to start the thing that would.
-func TestModule_TheFeedWorkerCanBeTurnedOff(t *testing.T) {
-	t.Parallel()
-	h := newHarness(t, modtest.WithEnv("CUSTOMERS_REGISTRY_FEED_ENABLED", "0"))
-	if got := module.Workers(h.Deps(), customers.Module()); len(got) != 0 {
-		t.Errorf("workers = %d with the feed disabled, want none", len(got))
+			var names []string
+			for _, w := range module.Workers(h.Deps(), customers.Module()) {
+				names = append(names, w.Name())
+				if w.Interval() <= 0 {
+					t.Errorf("worker %s has interval %v, want a positive poll interval", w.Name(), w.Interval())
+				}
+			}
+			slices.Sort(names)
+			if !slices.Equal(names, tc.want) {
+				t.Errorf("workers = %v, want exactly %v", names, tc.want)
+			}
+		})
 	}
 }
 
@@ -125,5 +154,18 @@ func TestModule_TheFeedWorkerPollCadenceIsConfigured(t *testing.T) {
 	tuned := newHarness(t, modtest.WithEnv("CUSTOMERS_REGISTRY_FEED_POLL", "90s"))
 	if got := customers.NewRegistryFeedWorker(tuned.Deps()).Interval(); got != 90*time.Second {
 		t.Errorf("Interval = %v, want the configured 90s", got)
+	}
+}
+
+// TestModule_ThePeppolRecheckCadenceIsConfigured pins that the second worker's
+// runner-facing cadence is the operator's too.
+func TestModule_ThePeppolRecheckCadenceIsConfigured(t *testing.T) {
+	t.Parallel()
+	if got := customers.NewPeppolRecheckWorker(newHarness(t).Deps()).Interval(); got != 24*time.Hour {
+		t.Errorf("Interval = %v, want the 24h default", got)
+	}
+	tuned := newHarness(t, modtest.WithEnv("CUSTOMERS_PEPPOL_RECHECK_POLL", "6h"))
+	if got := customers.NewPeppolRecheckWorker(tuned.Deps()).Interval(); got != 6*time.Hour {
+		t.Errorf("Interval = %v, want the configured 6h", got)
 	}
 }
