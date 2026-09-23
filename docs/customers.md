@@ -802,6 +802,8 @@ These are immutable — there is no edit or delete endpoint for a generated entr
   rewrites the entry) is [Groups](#groups)' own generated event, recorded only
   when the group actually changed. Its summary is one of three: "Moved to group
   Retail", "Moved from Retail to Key accounts" or "Removed from group Retail".
+  It is in `-customer-timeline.tsx`'s `typeKey` ("Group changed" / "Gruppe
+  endret"), so the card labels it and the Event types filter can pick it.
 - Each address event's payload always carries `addressId`, `type`, `label` and a
   one-line `display` rendering (e.g. "Storgata 1, 0155 Oslo, NO");
   `customer.address_updated` also carries `before`/`after`/`changes`, the same shape
