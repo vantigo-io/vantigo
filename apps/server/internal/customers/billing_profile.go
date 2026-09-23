@@ -26,16 +26,45 @@ import (
 // customers:view, the same as every other sub-resource's GET.
 
 // billingProfileResponse is CustomerBillingProfile.FromDomain: p's ten
-// fields, revision, warnings and the resolved Peppol lookup (peppol lookup
-// design D3, nil when none or stale) assembled from wherever the caller
-// computed them — GET and PUT both call this once they have all four.
-func billingProfileResponse(p billingProfile, revision int32, warnings []string, lookup *gen.CustomerPeppolLookup) gen.CustomerBillingProfile {
+// fields, revision, warnings, the resolved Peppol lookup (peppol lookup
+// design D3, nil when none or stale) and the group default assembled from
+// wherever the caller computed them — GET and PUT both call this once they
+// have all five.
+//
+// groupDefault is the customer's group and the term it would give it (customer
+// groups design D4) — nil for a customer in no group. Answered by the PUT as
+// well as the GET: the card writes the PUT's own body into its cache, so a
+// profile that came back without it would lose the inherited-term sentence
+// until the next refetch.
+func billingProfileResponse(p billingProfile, revision int32, warnings []string, lookup *gen.CustomerPeppolLookup, groupDefault *gen.CustomerBillingGroupDefault) gen.CustomerBillingProfile {
 	return gen.CustomerBillingProfile{
 		InvoiceEmail: p.InvoiceEmail, ReminderEmail: p.ReminderEmail, PaymentTermsDays: p.PaymentTermsDays,
 		Currency: p.Currency, Language: p.Language, InvoiceDelivery: p.InvoiceDelivery, ReminderDelivery: p.ReminderDelivery,
 		PeppolId: p.PeppolID, Gln: p.Gln, BuyerReference: p.BuyerReference,
-		Revision: revision, Warnings: warnings, PeppolLookup: lookup,
+		Revision: revision, Warnings: warnings, PeppolLookup: lookup, GroupDefault: groupDefault,
 	}
+}
+
+// customerGroupDefault is GET/PUT .../billing-profile's groupDefault: one query
+// (CustomerGroupMembership, queries/groups.sql — the same one PUT
+// /customers/{id}/group reads its no-op check from) turned into the contract's
+// block, nil when the customer belongs to no group (pgx.ErrNoRows, wrapped,
+// when the customer itself is gone). The group's own default may
+// itself be absent: the block still stands, because "you are in Retail and
+// Retail decides nothing" is a different thing to show than "you are in no
+// group".
+func (s *server) customerGroupDefault(ctx context.Context, q *store.Queries, customerID int32) (*gen.CustomerBillingGroupDefault, error) {
+	row, err := q.CustomerGroupMembership(ctx, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("customers: read customer group membership: %w", err)
+	}
+	if row.GroupID == nil {
+		return nil, nil
+	}
+	return &gen.CustomerBillingGroupDefault{
+		Group:            gen.CustomerGroupRef{Id: *row.GroupID, Name: deref(row.GroupName)},
+		PaymentTermsDays: row.DefaultPaymentTermsDays,
+	}, nil
 }
 
 // billingWarnings is GET .../billing-profile's computed warnings
@@ -133,8 +162,17 @@ func (s *server) GetCustomersByIdBillingProfile(ctx context.Context, req gen.Get
 		return nil, fmt.Errorf("customers: resolve peppol lookup: %w", err)
 	}
 
+	groupDefault, err := s.customerGroupDefault(ctx, q, req.Id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Deleted between the two reads.
+		return gen.GetCustomersByIdBillingProfile404Response{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
 	warnings := billingWarnings(profile, row.Type, identity, row.Email, hasInvoiceAddress, lookup)
-	return gen.GetCustomersByIdBillingProfile200JSONResponse(billingProfileResponse(profile, row.Revision, warnings, lookup)), nil
+	return gen.GetCustomersByIdBillingProfile200JSONResponse(billingProfileResponse(profile, row.Revision, warnings, lookup, groupDefault)), nil
 }
 
 // resolvedPeppolLookupFor is GET/PUT .../billing-profile's shared step
@@ -207,13 +245,24 @@ func (s *server) PutCustomersByIdBillingProfile(ctx context.Context, req gen.Put
 		return nil, fmt.Errorf("customers: customer has invoice address: %w", err)
 	}
 
+	// Read on the pool, before the no-op branch: neither branch changes the
+	// group, so one read serves both of the handler's 200s.
+	groupDefault, err := s.customerGroupDefault(ctx, q, req.Id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Deleted between the two reads.
+		return gen.PutCustomersByIdBillingProfile404Response{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
 	if billingProfileEqual(before, after) {
 		lookup, err := s.resolvedPeppolLookupFor(ctx, q, req.Id, before, identity, existing.Type)
 		if err != nil {
 			return nil, fmt.Errorf("customers: resolve peppol lookup: %w", err)
 		}
 		warnings := billingWarnings(before, existing.Type, identity, existing.Email, hasInvoiceAddress, lookup)
-		return gen.PutCustomersByIdBillingProfile200JSONResponse(billingProfileResponse(before, existing.Revision, warnings, lookup)), nil
+		return gen.PutCustomersByIdBillingProfile200JSONResponse(billingProfileResponse(before, existing.Revision, warnings, lookup, groupDefault)), nil
 	}
 
 	now := s.deps.Clock()
@@ -266,5 +315,5 @@ func (s *server) PutCustomersByIdBillingProfile(ctx context.Context, req gen.Put
 		return nil, fmt.Errorf("customers: resolve peppol lookup: %w", err)
 	}
 	warnings := billingWarnings(after, updated.Type, identity, updated.Email, hasInvoiceAddress, lookup)
-	return gen.PutCustomersByIdBillingProfile200JSONResponse(billingProfileResponse(after, updated.Revision, warnings, lookup)), nil
+	return gen.PutCustomersByIdBillingProfile200JSONResponse(billingProfileResponse(after, updated.Revision, warnings, lookup, groupDefault)), nil
 }

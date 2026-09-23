@@ -122,16 +122,26 @@ type CustomerAssignableUser struct {
 	UserId      openapi_types.UUID `json:"userId"`
 }
 
+// CustomerBillingGroupDefault What this customer's group would give it (customer groups design D4). Present whenever the customer belongs to a group, so a client can say "inherits 30 days from Retail" when the profile's own paymentTermsDays is absent, and "group default 30 days, overridden" when it is present. paymentTermsDays is absent when the group carries no default of its own — nothing to inherit, never a 0. The profile's own paymentTermsDays keeps meaning "decided here": the effective value is the profile's own, else this one, else nothing, which is the rule contracts.CustomerDirectory.BillingProfile already applies for every consumer.
+type CustomerBillingGroupDefault struct {
+	// Group The group a customer belongs to (customer groups design D3): its id and its name, and nothing else — a client that needs the group's default payment term reads it from GET /customers/groups or from the billing profile's own groupDefault, where it is already resolved against the customer.
+	Group            CustomerGroupRef `json:"group"`
+	PaymentTermsDays *int32           `json:"paymentTermsDays,omitempty"`
+}
+
 // CustomerBillingProfile A customer's billing profile (invoice-ready customer design D1, D4): payment terms, currency, document language, delivery methods and the identifiers used to send it invoices — every field optional, meaning "not decided here, whoever invoices uses its own default"; unset, a field is simply absent from the response rather than sent as null. warnings is computed at read time from the profile plus the customer's type, legal identity, contact email and addresses — never stored — in a fixed order: ehf_without_recipient, email_without_address, efaktura_for_business, no_invoice_address, ehf_recipient_not_registered, ehf_available (can-this-customer-receive-EHF design D4). peppolLookup is the last Peppol lookup on record (POST .../peppol-lookup), present only when it was made for the participant this profile would look up now — a stale answer (the org number or peppolId changed since) is omitted.
 type CustomerBillingProfile struct {
-	BuyerReference   *string `json:"buyerReference,omitempty"`
-	Currency         *string `json:"currency,omitempty"`
-	Gln              *string `json:"gln,omitempty"`
-	InvoiceDelivery  *string `json:"invoiceDelivery,omitempty"`
-	InvoiceEmail     *string `json:"invoiceEmail,omitempty"`
-	Language         *string `json:"language,omitempty"`
-	PaymentTermsDays *int32  `json:"paymentTermsDays,omitempty"`
-	PeppolId         *string `json:"peppolId,omitempty"`
+	BuyerReference *string `json:"buyerReference,omitempty"`
+	Currency       *string `json:"currency,omitempty"`
+	Gln            *string `json:"gln,omitempty"`
+
+	// GroupDefault The customer's group and the payment term it would give it (customer groups design D4). Absent when the customer belongs to no group.
+	GroupDefault     *CustomerBillingGroupDefault `json:"groupDefault,omitempty"`
+	InvoiceDelivery  *string                      `json:"invoiceDelivery,omitempty"`
+	InvoiceEmail     *string                      `json:"invoiceEmail,omitempty"`
+	Language         *string                      `json:"language,omitempty"`
+	PaymentTermsDays *int32                       `json:"paymentTermsDays,omitempty"`
+	PeppolId         *string                      `json:"peppolId,omitempty"`
 
 	// PeppolLookup The last (or freshly checked, from POST /customers/{id}/peppol-lookup) answer the Peppol network gave about whether this customer can receive an EHF invoice (can-this-customer-receive-EHF design D3): status is 'registered', 'not_registered' or 'no_identifier' (no Peppol participant id could be derived and none is set, so nothing was looked up). participantId is present only when it is either an explicit peppolId or the caller holds customers:legal-identity-view (a derived id is that permission's to show); smpHost is always present when known. checkedAt is always present, even for no_identifier (the moment the check was made, nothing stored).
 	PeppolLookup     *CustomerPeppolLookup `json:"peppolLookup,omitempty"`

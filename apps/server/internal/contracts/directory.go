@@ -1,6 +1,10 @@
 package contracts
 
-import "context"
+import (
+	"context"
+
+	"github.com/google/uuid"
+)
 
 // CustomerEntry is a customer as another module may reference it: enough to
 // name it in a UI or a document, never enough to manage it — that stays
@@ -9,6 +13,20 @@ type CustomerEntry struct {
 	ID       int32
 	Name     string
 	Archived bool
+	// Group is the group the customer belongs to, nil when it belongs to none
+	// (customer groups design D4). A customer belongs to at most one.
+	Group *CustomerGroupEntry
+}
+
+// CustomerGroupEntry is the group a customer belongs to, as another module may
+// reference it: an id and a name, which is what it takes to show the group and
+// to look a group-specific decision up by. Products phase 4 (customer-group
+// prices) is the intended reader; the id is stable and this module's own, so a
+// consumer that resolves a price by group must never read a billing profile for
+// it.
+type CustomerGroupEntry struct {
+	ID   uuid.UUID
+	Name string
 }
 
 // ContactEntry is a contact as another module may reference it.

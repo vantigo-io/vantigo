@@ -487,10 +487,13 @@ ORDER BY day;
 -- DirectoryCustomer is contracts.CustomerDirectory.Customer's row
 -- (SV/ApplicationServiceCollectionExtensions.cs:22-28): a customer of any
 -- status, archived included, since a consumer holding a historical reference
--- must still be able to name it.
-SELECT id, name, status = 'archived' AS archived
-FROM customers.customers
-WHERE id = @id;
+-- must still be able to name it. Its group comes along (customer groups
+-- design D4, contracts.CustomerEntry.Group) through a LEFT JOIN, so a
+-- customer in no group still answers its row, with both group columns NULL.
+SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name
+FROM customers.customers c
+LEFT JOIN customers.customer_groups g ON g.id = c.group_id
+WHERE c.id = @id;
 
 -- name: DirectoryContact :one
 -- DirectoryContact is contracts.CustomerDirectory.Contact's row
@@ -546,11 +549,13 @@ ORDER BY m.id;
 -- matches the same row more than once in the WHERE clause but the row itself
 -- only exists once, so the result never repeats a customer; an id nobody has
 -- is simply absent, not an error. Ordered by id, not by @ids' own order, so
--- two callers asking for the same set always see it the same way.
-SELECT id, name, status = 'archived' AS archived
-FROM customers.customers
-WHERE id = ANY(@ids::int[])
-ORDER BY id;
+-- two callers asking for the same set always see it the same way. The group
+-- columns are DirectoryCustomer's own, joined the same way.
+SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name
+FROM customers.customers c
+LEFT JOIN customers.customer_groups g ON g.id = c.group_id
+WHERE c.id = ANY(@ids::int[])
+ORDER BY c.id;
 
 -- name: DirectoryBillingProfile :one
 -- DirectoryBillingProfile is contracts.CustomerDirectory.BillingProfile's
@@ -564,10 +569,16 @@ ORDER BY id;
 -- query (queries/addresses.sql), a second round trip rather than a join:
 -- at most one row either way, and a join would return no row at all for a
 -- customer with no address, which pgx.ErrNoRows already means "no such
--- customer" for the :one shape this query needs.
-SELECT id, customer_number, name, type, status = 'archived' AS archived,
-       legal_country, legal_id, legal_name, legal_source, legal_type, email,
-       invoice_email, reminder_email, payment_terms_days, currency, language,
-       invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference
-FROM customers.customers
-WHERE id = @id;
+-- customer" for the :one shape this query needs. Plus the group's default
+-- payment term, which resolveBillingProfile applies as the middle tier of
+-- PaymentTermsDays' resolution (customer groups design D4) — a LEFT JOIN
+-- rather than a second round trip, since the group is this module's own table
+-- and a customer in no group must still answer a row.
+SELECT c.id, c.customer_number, c.name, c.type, c.status = 'archived' AS archived,
+       c.legal_country, c.legal_id, c.legal_name, c.legal_source, c.legal_type, c.email,
+       c.invoice_email, c.reminder_email, c.payment_terms_days, c.currency, c.language,
+       c.invoice_delivery, c.reminder_delivery, c.peppol_id, c.gln, c.buyer_reference,
+       g.default_payment_terms_days AS group_default_payment_terms_days
+FROM customers.customers c
+LEFT JOIN customers.customer_groups g ON g.id = c.group_id
+WHERE c.id = @id;
