@@ -17,7 +17,10 @@ stops well short of a CRM on purpose.
 
 Customers depends on nobody but identity (`contracts.UserDirectory`, to name who wrote
 a timeline entry) and its own Brønnøysundregisteret (Brreg) lookup. No other module is
-a dependency of it.
+a dependency of it: the [Customer 360](#customer-360) overview reads the project
+directory, time's actuals and the project expenses when those modules are on —
+through their contracts, never their schemas — and leaves their sections out when
+they are not.
 
 ## Domain model
 
@@ -1859,7 +1862,9 @@ time) and `Deps.Expenses` (`contracts.ProjectExpenses`), composed server-side in
 `overview.go` rather than joined in the browser, because no module endpoint takes a
 customer id for hours or expenses and the two batch contracts already take exactly
 the list of project ids a customer has. It holds no transaction and writes nothing;
-each contract is asked at most once, in one batch. Decided in
+each contract method is asked at most once, and time and expenses each get every
+visible project in one batch — the project directory is asked twice only for a caller
+who sees just their role projects (the customer's projects, then theirs). Decided in
 [`docs/superpowers/specs/2026-09-23-customers-360-design.md`](superpowers/specs/2026-09-23-customers-360-design.md).
 
 **Sections are shaped, never refused.** Every section but `lastActivity` is absent
@@ -1869,7 +1874,7 @@ which — the panel simply shows fewer tiles:
 | Section | Present when | Figures |
 | --- | --- | --- |
 | `projects` | the projects module is on and the caller holds `projects:access` | `openCount`, `totalCount`, `truncated`, and `open`: the open (`active`) projects, newest work first then by id, **at most ten** |
-| `work` | `projects` is present and the time module is on | `unbilledHoursHundredths`, `approvedHoursHundredths`, `submittedHoursHundredths`, `draftHoursHundredths`, `lastWorkOn`, and `unbilledAmounts` **only for** `projects:view-financials` or `projects:manage-all` |
+| `work` | `projects` is present and the time module is on | `unbilledHoursHundredths`, `approvedHoursHundredths`, `submittedHoursHundredths`, `draftHoursHundredths`, `unpricedHoursHundredths`, `lastWorkOn`, and `unbilledAmounts` **only for** `projects:view-financials` or `projects:manage-all` |
 | `expenses` | `projects` is present, the expenses module is on, **and** the caller holds `projects:view-financials` or `projects:manage-all` | `readyCount`, `readyAmounts`, `lastExpenseOn` |
 | `lastActivity` | always | `timelineOn`, `workOn`, `expenseOn` — each absent when unknown, or when its section is |
 
@@ -1877,7 +1882,12 @@ which — the panel simply shows fewer tiles:
 the customer's projects; otherwise only those the caller holds a role on — the
 projects list endpoint's own rule, restated as `ProjectsForUser` ∩
 `ProjectsForCustomer` instead of a call per project. Every count, and every figure
-below, is over that visible set.
+below, is over that visible set. Money follows only the global half of projects' and
+expenses' own rule: both also show a project's managers their own project's money
+without `projects:view-financials`, and the overview does not, because
+`ProjectsForUser` carries no role and each money figure is one sum over every visible
+project — showing a manager theirs means reading each project's role and shaping money
+per project, which is a delivery of its own rather than a rule this one bends.
 
 **Unbilled** is `Approved − Invoiced` from the actuals contract, per project, summed:
 approved work includes invoiced work, and `ActualsTotals.Invoiced` is the part of it
@@ -1886,7 +1896,15 @@ are hundredths and subtract exactly; they are *every* approved hour on the custo
 projects, because the contract's buckets are not split by billability — an approved
 non-billable hour on a customer project counts as unbilled here, and carries no
 amount. The amount is each project's bill amount in **its own currency** (the
-request is quoted in it), so a project with no currency adds hours only; the two
+request is quoted in it), so a project with no currency adds hours only, and
+billable work logged without a rate, or at a rate in another currency than the
+project's, counts in the hours and carries no amount. `unpricedHoursHundredths` says
+how much of that there is — the actuals contract's unpriced hours summed over the
+visible projects, which the contract makes the price of showing what a project will
+bill. It is that contract's figure as it stands, across draft, submitted and
+approved work alike, so it is not a part of the unbilled hours but overlaps them:
+the unbilled ones among it are exactly what `unbilledAmounts` is short by. It is
+hours, not money, so it is there whenever `work` is. The two
 published amounts are each rounded on their own, so the difference can be a cent
 from the unbilled work rounded once. **Ready** is the expenses contract's own "ready
 to invoice": approved, billable, priced, not yet invoiced, never a per diem day.
@@ -1897,8 +1915,10 @@ not the margin.
 
 **The caps.** `ProjectsForCustomer` answers at most `contracts.MaxActualsRequests`
 (2 000) projects, the oldest by id — the batch both providers take in one call — and
-`truncated` is true when the customer reached it; the counts are then over those
-2 000. The open rows stop at ten; the Projects tab lists every project.
+`truncated` is true when the customer reached it; the counts are then over the
+visible projects among those 2 000. It describes the customer's list, not the
+caller's: for a caller who sees only their role projects, a role project past the cut
+is missing too, and nothing says so for their set. The open rows stop at ten; the Projects tab lists every project.
 
 **Errors.** A customer that does not exist is a bare 404; an archived one answers
 normally, because its page still shows it. A contract that fails fails the whole
@@ -2408,7 +2428,10 @@ host SPA in `apps/host/frontend`.
 The Go package's tests run every HTTP exchange through a contract-validating client
 and gate on operation coverage, the same pattern every other module here uses. The
 user directory (`contracts.UserDirectory`) is the real one, composed; depguard forbids
-this module from importing another module even in tests.
+this module from importing another module even in tests, so the Customer 360 tests
+hand the overview fakes of the project directory, actuals and expenses contracts
+through `modtest.WithProjects`, `WithActuals` and `WithExpenses` — and leave one out
+for the installation without that module.
 
 ```bash
 bun run --cwd apps/customers/frontend test

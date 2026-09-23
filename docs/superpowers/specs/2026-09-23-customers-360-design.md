@@ -59,8 +59,13 @@ projects consumer ignores it. It is what makes "unbilled" a figure rather than a
 - `expenses?: {readyCount, readyAmounts: [{currency, amount}], lastExpenseOn?}` —
   from `ExpensesForProjects`' `Ready*` figures (approved, billable, priced, not yet
   invoiced — the contract's own "ready to invoice"), per currency. Present when
-  Expenses is on, `projects` is present, **and** the caller has financial rights (the
-  expenses summary endpoint grants its money to nobody else).
+  Expenses is on, `projects` is present, **and** the caller has financial rights.
+  This is only the global half of the rule projects and the expenses summary grant
+  money by: both also show a project's managers their own project's money, and the
+  overview does not, because `ProjectsForUser` carries no role and each money figure
+  is one sum over the visible set — matching them needs each project's role and money
+  shaped per project, a delivery of its own (final review I1; a decision for the
+  user).
 - `lastActivity: {timelineOn?, workOn?, expenseOn?}` — the customer's own
   `timelineSummary.latestOccurredOn`, the latest `lastWorkOn`, the latest
   `lastExpenseOn`; each absent when unknown or not visible. Always present.
