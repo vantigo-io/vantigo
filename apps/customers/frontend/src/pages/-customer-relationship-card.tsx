@@ -183,6 +183,13 @@ export const CustomerRelationshipCard = ({ customerId, canEdit }: { customerId: 
  * `tag_exists`) is not an error worth showing: the vocabulary is read again and
  * the tag holding that name is attached, which is what was asked for.
  */
+// sameTagName is the server's own equality for a tag name (values.go's
+// validateTagName): NFC-normalised, then compared without regard to case. A
+// decomposed "Café" typed against a composed one on file is the same tag,
+// and the 409 recovery below must find it rather than refuse.
+const sameTagName = (a: string, b: string): boolean =>
+  a.normalize("NFC").toLowerCase() === b.normalize("NFC").toLowerCase();
+
 const TagsEditor = ({ customerId, tags }: { customerId: number; tags: CustomerTag[] }) => {
   const { t } = useI18n("customers");
   const queryClient = useQueryClient();
@@ -224,7 +231,7 @@ const TagsEditor = ({ customerId, tags }: { customerId: number; tags: CustomerTa
         // Fetched, not invalidated: an invalidation resolves even when its
         // refetch failed, which would leave nothing to look the name up in.
         const fresh = await queryClient.fetchQuery({ ...customerTagsQueryOptions(), staleTime: 0 });
-        const existing = fresh.find((tag) => tag.name.toLowerCase() === name.toLowerCase());
+        const existing = fresh.find((tag) => sameTagName(tag.name, name));
         // No such tag after all (a rename in the same second, say): the
         // server's refusal is the honest answer.
         if (!existing) throw error;
@@ -246,7 +253,7 @@ const TagsEditor = ({ customerId, tags }: { customerId: number; tags: CustomerTa
   for (const tag of vocabulary ?? []) options.set(tag.id, tag.name);
 
   const term = search.trim();
-  const exists = [...options.values()].some((name) => name.toLowerCase() === term.toLowerCase());
+  const exists = [...options.values()].some((name) => sameTagName(name, term));
   const data = [
     ...[...options].map(([id, name]) => ({ value: id, label: name })),
     // The create entry is an option rather than a button beside the input, so
