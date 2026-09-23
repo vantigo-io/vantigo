@@ -38,6 +38,7 @@ import { CustomerContactCard } from "./-customer-contact-card";
 import { CustomerContactsCard } from "./-customer-contacts-card";
 import { CustomerFormModal, type CustomerModalState } from "./-customer-form-modal";
 import { CustomerRegistryCard } from "./-customer-registry-card";
+import { CustomerRelationshipCard } from "./-customer-relationship-card";
 import { CustomerTimeline } from "./-customer-timeline";
 import "../i18n";
 
@@ -322,6 +323,12 @@ const useRestoreCustomer = (customer: CustomerResponse) => {
  * Registry card sits behind. The registry record is fetched here rather than
  * inside that card because the addresses section below offers the registry's
  * own addresses (design D3) and both read the one query.
+ *
+ * `CustomerRelationshipCard` (owner and tags design D3) is first in the
+ * stack: who owns the relationship and how the customer is classified are
+ * what a person looks for before the contact details. It is its own card
+ * rather than folded into "Contact & addresses" — the spec's owner and tags
+ * pairing is a distinct concern from a customer's own contact info.
  */
 export const CustomerOverview = ({
   customerId,
@@ -356,6 +363,7 @@ export const CustomerOverview = ({
   });
   return (
     <Stack gap="lg">
+      <CustomerRelationshipCard customerId={customerId} canEdit={canEdit} />
       <CustomerContactCard customerId={customerId} canEdit={canEdit} registryRecord={registryRecord ?? null} />
       {showRegistry && <CustomerRegistryCard customerId={customerId} canManageIdentity={canManageIdentity} />}
       <CustomerBillingCard customerId={customerId} customer={customer} canManageBilling={canManageBilling} />
