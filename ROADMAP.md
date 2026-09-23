@@ -78,8 +78,10 @@ page instead of one per distinct customer. See [`docs/customers.md`](docs/custom
 [`docs/superpowers/specs/2026-09-21-customers-peppol-lookup-design.md`](docs/superpowers/specs/2026-09-21-customers-peppol-lookup-design.md):
 a Peppol capability lookup (SML DNS → SMP → BIS Billing 3.0 support), asked on a
 person's click (`POST .../peppol-lookup`) and remembered on its own table, off the
-customer row. It deliberately does **not** set the invoice delivery method to EHF
-automatically the way every Nordic competitor surveyed but Fortnox does — the
+customer row — Phase 3 delivery B below later added a worker that asks again on a
+schedule, through the same storage, never through this endpoint. It deliberately
+does **not** set the invoice delivery method to EHF automatically the way every
+Nordic competitor surveyed but Fortnox does — the
 billing card offers **Use EHF** instead of switching silently, so nobody's billing
 decision changes without a click. Delivery A did not wait for it: `peppolId` and
 `invoiceDelivery` were, and remain, plain fields a person can fill in by hand, and
@@ -93,7 +95,7 @@ directory — delivery A gave a customer somewhere to send an invoice and terms 
 put on it; delivery B tells a person, with one click, whether EHF will actually
 reach that customer.
 
-### Phase 3 — Brreg in full
+### Phase 3 — Brreg in full (done)
 
 Decided in
 [`docs/superpowers/specs/2026-09-22-customers-brreg-full-design.md`](docs/superpowers/specs/2026-09-22-customers-brreg-full-design.md),
@@ -113,18 +115,25 @@ bankruptcy/dissolution/deletion/a name change surface on `/stats/attention`, als
 longer a stub. Addresses from the record are offered to the address book, never
 written to it. See [`docs/customers.md`](docs/customers.md#registry-record).
 
-**Delivery B**, not yet built — a scheduled refresh from Brreg's incremental update
-feed (`GET /oppdateringer/enheter`, cursor `oppdateringsid`), driving the same
+**Delivery B (done)** — a scheduled refresh from Brreg's incremental update feed
+(`GET /oppdateringer/enheter`, exact cursor on `oppdateringsid`, one unfiltered scan
+matched against this installation's customers locally), driving the same
 fetch-and-store delivery A built and filling `registry_updated_hint`, the column
-delivery A's own migration already carries but leaves untouched. Beside it,
-**scheduled re-checks of Peppol registration**: today's
-[Peppol lookup](docs/customers.md#peppol-lookup) is only ever a person's click, on
-purpose (design D4) — a background worker asking again periodically, on the same
-`ehf_available`/`ehf_recipient_not_registered` warnings a manual check already
-raises, is this delivery's job.
+delivery A's own migration already carried but left untouched. The same cycle sweeps:
+records whose last refresh failed (`hint > fetched_at` is the whole retry mechanism)
+and Norwegian business customers that never had a record at all, so an installation
+that predates delivery A catches up on its own. Beside it, **scheduled re-checks of
+Peppol registration**: the click (design D4 of the Peppol delivery) is no longer the
+only thing that asks — an aged answer, and a customer already set to `ehf` that was
+never checked, are asked again on a schedule, surfacing on the same
+`ehf_available`/`ehf_recipient_not_registered` warnings a manual check raises, and
+still never switching a customer's delivery method. Both workers elect one replica
+per cycle through a Postgres advisory lease and are configured per installation
+(`CUSTOMERS_REGISTRY_FEED_*`, `CUSTOMERS_PEPPOL_RECHECK_*`). See
+[`docs/customers.md`](docs/customers.md#registry-workers).
 
-*Unblocks:* registry data worth relying on instead of a name and a number typed once,
-and more behind the one endpoint (`/stats/attention`) and the one event type
+*Delivered:* registry data worth relying on instead of a name and a number typed
+once, and more behind the one endpoint (`/stats/attention`) and the one event type
 (`registry.change`) this module already declared.
 
 ### Phase 4 — Light CRM

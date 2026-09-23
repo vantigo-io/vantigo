@@ -511,16 +511,23 @@ started by `internal/worker.Runner`). `WORKERS_IN_PROCESS` (`0`/`1`, **default
 serving; `worker` mode always runs them and `server` mode never does,
 regardless of this setting — `server` is what a fleet of stateless replicas
 runs, and every replica racing to claim the same background job is exactly
-what `server` must not do. Communications contributes the only three today:
-outbox delivery, retention, and attachment cleanup.
+what `server` must not do. Communications contributes three — outbox
+delivery, retention, and attachment cleanup — and Customers two: the Brreg
+registry-feed worker and the Peppol re-check worker, each registered only
+when its own configuration switch is on, so the runner's startup log names
+exactly what is running.
 
-Only the retention worker takes an advisory lease, so only it runs on one
-replica at a time. The other two rely on a conditional-update claim — the
+Communications' retention worker and both of Customers' workers take an
+advisory lease, so each runs on one replica at a time. Communications' other
+two rely on a conditional-update claim — the
 `UPDATE ... WHERE <the same predicate the candidate select used>` *is* the
-lock — so every replica runs them every cycle and the database decides who
+lock — so every replica runs those every cycle and the database decides who
 wins each row. Adding an advisory lock to either would be a defect, not a
 hardening: it is not how the original behaves and the claim already provides
-the exclusion.
+the exclusion. A lease is what the three lease-holders need because they have
+no per-row claim to fall back on: a retention batch, a feed cursor and a
+network re-check are each one indivisible unit of work for the whole
+installation.
 
 The module emits four counters on an OpenTelemetry meter named
 `Vantigo.Communications`, all of them the outbox's:
