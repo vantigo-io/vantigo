@@ -494,6 +494,141 @@ components:
                 - name
                 - customerCount
             type: object
+        CustomerOverviewAmount:
+            description: One currency's amount on the customer overview. Nothing is ever converted, so money in two currencies is two entries and never a sum that is in neither.
+            properties:
+                amount:
+                    format: double
+                    type: number
+                currency:
+                    type: string
+            required:
+                - currency
+                - amount
+            type: object
+        CustomerOverviewExpenses:
+            description: "The customer's expenses that are ready to invoice (customer 360 design D2): approved, billable, priced and not yet invoiced — the expenses module's own definition — over the projects in the overview's projects section. Present only with the expenses module on and for projects:view-financials or projects:manage-all."
+            properties:
+                lastExpenseOn:
+                    format: date
+                    type: string
+                readyAmounts:
+                    description: What the ready lines bill, per currency, by ISO code; a currency with nothing ready is left out.
+                    items:
+                        $ref: '#/components/schemas/CustomerOverviewAmount'
+                    type: array
+                readyCount:
+                    format: int32
+                    type: integer
+            required:
+                - readyCount
+                - readyAmounts
+            type: object
+        CustomerOverviewLastActivity:
+            description: When anything last happened with this customer. Always present; each date is absent when it is unknown, or when the section it comes from is not in this response.
+            properties:
+                expenseOn:
+                    format: date
+                    type: string
+                timelineOn:
+                    description: The customer's own latest timeline date, as timelineSummary.latestOccurredOn reports it.
+                    format: date
+                    type: string
+                workOn:
+                    format: date
+                    type: string
+            type: object
+        CustomerOverviewProject:
+            description: One open project on the customer overview — enough to name it and link to it.
+            properties:
+                code:
+                    type: string
+                id:
+                    format: int32
+                    type: integer
+                lastWorkOn:
+                    description: The date of the latest work logged on the project, when the time module is on and anything has been logged.
+                    format: date
+                    type: string
+                name:
+                    type: string
+                status:
+                    type: string
+            required:
+                - id
+                - code
+                - name
+                - status
+            type: object
+        CustomerOverviewProjects:
+            description: "The customer's projects the caller may see (customer 360 design D2): every one of them for projects:view-all or projects:manage-all, otherwise those the caller holds a role on. Every count is over that visible set."
+            properties:
+                open:
+                    description: The open projects (status active), newest work first then by id, at most ten.
+                    items:
+                        $ref: '#/components/schemas/CustomerOverviewProject'
+                    type: array
+                openCount:
+                    description: How many of the visible projects are open. Not cut at ten.
+                    format: int32
+                    type: integer
+                totalCount:
+                    format: int32
+                    type: integer
+                truncated:
+                    description: True when the customer has at least as many projects as the project directory answers at once (2000); the counts are then over the oldest 2000.
+                    type: boolean
+            required:
+                - openCount
+                - totalCount
+                - truncated
+                - open
+            type: object
+        CustomerOverviewResponse:
+            description: "What is going on with one customer across the modules that know (customer 360 design D1, D2). Every section but lastActivity may be absent, and absent means the module is off or the section is not for this caller — the response never says which, and never answers 403 for it."
+            properties:
+                expenses:
+                    $ref: '#/components/schemas/CustomerOverviewExpenses'
+                lastActivity:
+                    $ref: '#/components/schemas/CustomerOverviewLastActivity'
+                projects:
+                    $ref: '#/components/schemas/CustomerOverviewProjects'
+                work:
+                    $ref: '#/components/schemas/CustomerOverviewWork'
+            required:
+                - lastActivity
+            type: object
+        CustomerOverviewWork:
+            description: "The work logged on the projects in the projects section (customer 360 design D2), from the time module. Hours are hundredths of an hour (1.25 h is 125) and add up exactly. Present when the time module is on and projects is present."
+            properties:
+                approvedHoursHundredths:
+                    description: Approved work, invoiced work included.
+                    format: int64
+                    type: integer
+                draftHoursHundredths:
+                    format: int64
+                    type: integer
+                lastWorkOn:
+                    format: date
+                    type: string
+                submittedHoursHundredths:
+                    format: int64
+                    type: integer
+                unbilledAmounts:
+                    description: What the unbilled work is worth at the rates it was logged at, per project currency, by ISO code; a currency with nothing unbilled is left out, and work on a project without a currency carries no amount. Only for projects:view-financials or projects:manage-all.
+                    items:
+                        $ref: '#/components/schemas/CustomerOverviewAmount'
+                    type: array
+                unbilledHoursHundredths:
+                    description: Approved work that has not been invoiced yet.
+                    format: int64
+                    type: integer
+            required:
+                - unbilledHoursHundredths
+                - approvedHoursHundredths
+                - submittedHoursHundredths
+                - draftHoursHundredths
+            type: object
         CustomerOwner:
             description: The single user accountable for the customer relationship (owner and tags design D1). displayName is resolved from the user directory at read time, never stored on the customer; a user the directory no longer knows is reported as "Unknown user" with active false, and an owner disabled after being assigned keeps the customer and is reported with active false. Absent when the customer is unowned.
             properties:
@@ -2349,6 +2484,42 @@ paths:
             tags:
                 - Customers
             x-vantigo-access: permission:customers:legal-identity-manage+customers:legal-identity-view
+    /api/v1/customers/{id}/overview:
+        get:
+            description: "What is going on with this customer across the modules that know (customer 360 design D1, D2): its open projects, the work approved on them and not yet invoiced, the expenses ready to invoice, and when anything last happened — composed server-side from the project directory, the time actuals and the project expenses contracts. Sections are shaped, never refused: projects needs the projects module and projects:access; work needs projects and the time module; unbilledAmounts and the whole expenses section need projects:view-financials or projects:manage-all, and expenses the expenses module too. Cost never appears. 404 when the customer does not exist; an archived customer answers normally."
+            operationId: getCustomersByIdOverview
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerOverviewResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: Get a customer's overview across modules
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:view
     /api/v1/customers/{id}/owner:
         put:
             operationId: putCustomersByIdOwner

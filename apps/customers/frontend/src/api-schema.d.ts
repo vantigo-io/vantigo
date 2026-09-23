@@ -182,6 +182,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/customers/{id}/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a customer's overview across modules
+         * @description What is going on with this customer across the modules that know (customer 360 design D1, D2): its open projects, the work approved on them and not yet invoiced, the expenses ready to invoice, and when anything last happened — composed server-side from the project directory, the time actuals and the project expenses contracts. Sections are shaped, never refused: projects needs the projects module and projects:access; work needs projects and the time module; unbilledAmounts and the whole expenses section need projects:view-financials or projects:manage-all, and expenses the expenses module too. Cost never appears. 404 when the customer does not exist; an archived customer answers normally.
+         */
+        get: operations["getCustomersByIdOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/customers/{id}/owner": {
         parameters: {
             query?: never;
@@ -843,6 +863,88 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
+        };
+        /** @description One currency's amount on the customer overview. Nothing is ever converted, so money in two currencies is two entries and never a sum that is in neither. */
+        CustomerOverviewAmount: {
+            /** Format: double */
+            amount: number;
+            currency: string;
+        };
+        /** @description The customer's expenses that are ready to invoice (customer 360 design D2): approved, billable, priced and not yet invoiced — the expenses module's own definition — over the projects in the overview's projects section. Present only with the expenses module on and for projects:view-financials or projects:manage-all. */
+        CustomerOverviewExpenses: {
+            /** Format: date */
+            lastExpenseOn?: string;
+            /** @description What the ready lines bill, per currency, by ISO code; a currency with nothing ready is left out. */
+            readyAmounts: components["schemas"]["CustomerOverviewAmount"][];
+            /** Format: int32 */
+            readyCount: number;
+        };
+        /** @description When anything last happened with this customer. Always present; each date is absent when it is unknown, or when the section it comes from is not in this response. */
+        CustomerOverviewLastActivity: {
+            /** Format: date */
+            expenseOn?: string;
+            /**
+             * Format: date
+             * @description The customer's own latest timeline date, as timelineSummary.latestOccurredOn reports it.
+             */
+            timelineOn?: string;
+            /** Format: date */
+            workOn?: string;
+        };
+        /** @description One open project on the customer overview — enough to name it and link to it. */
+        CustomerOverviewProject: {
+            code: string;
+            /** Format: int32 */
+            id: number;
+            /**
+             * Format: date
+             * @description The date of the latest work logged on the project, when the time module is on and anything has been logged.
+             */
+            lastWorkOn?: string;
+            name: string;
+            status: string;
+        };
+        /** @description The customer's projects the caller may see (customer 360 design D2): every one of them for projects:view-all or projects:manage-all, otherwise those the caller holds a role on. Every count is over that visible set. */
+        CustomerOverviewProjects: {
+            /** @description The open projects (status active), newest work first then by id, at most ten. */
+            open: components["schemas"]["CustomerOverviewProject"][];
+            /**
+             * Format: int32
+             * @description How many of the visible projects are open. Not cut at ten.
+             */
+            openCount: number;
+            /** Format: int32 */
+            totalCount: number;
+            /** @description True when the customer has at least as many projects as the project directory answers at once (2000); the counts are then over the oldest 2000. */
+            truncated: boolean;
+        };
+        /** @description What is going on with one customer across the modules that know (customer 360 design D1, D2). Every section but lastActivity may be absent, and absent means the module is off or the section is not for this caller — the response never says which, and never answers 403 for it. */
+        CustomerOverviewResponse: {
+            expenses?: components["schemas"]["CustomerOverviewExpenses"];
+            lastActivity: components["schemas"]["CustomerOverviewLastActivity"];
+            projects?: components["schemas"]["CustomerOverviewProjects"];
+            work?: components["schemas"]["CustomerOverviewWork"];
+        };
+        /** @description The work logged on the projects in the projects section (customer 360 design D2), from the time module. Hours are hundredths of an hour (1.25 h is 125) and add up exactly. Present when the time module is on and projects is present. */
+        CustomerOverviewWork: {
+            /**
+             * Format: int64
+             * @description Approved work, invoiced work included.
+             */
+            approvedHoursHundredths: number;
+            /** Format: int64 */
+            draftHoursHundredths: number;
+            /** Format: date */
+            lastWorkOn?: string;
+            /** Format: int64 */
+            submittedHoursHundredths: number;
+            /** @description What the unbilled work is worth at the rates it was logged at, per project currency, by ISO code; a currency with nothing unbilled is left out, and work on a project without a currency carries no amount. Only for projects:view-financials or projects:manage-all. */
+            unbilledAmounts?: components["schemas"]["CustomerOverviewAmount"][];
+            /**
+             * Format: int64
+             * @description Approved work that has not been invoiced yet.
+             */
+            unbilledHoursHundredths: number;
         };
         /** @description The single user accountable for the customer relationship (owner and tags design D1). displayName is resolved from the user directory at read time, never stored on the customer; a user the directory no longer knows is reported as "Unknown user" with active false, and an owner disabled after being assigned keeps the customer and is reported with active false. Absent when the customer is unowned. */
         CustomerOwner: {
@@ -2422,6 +2524,53 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getCustomersByIdOverview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerOverviewResponse"];
+                };
             };
             /** @description Unauthorized */
             401: {

@@ -247,6 +247,84 @@ type CustomerGroupSummary struct {
 	Name                    string             `json:"name"`
 }
 
+// CustomerOverviewAmount One currency's amount on the customer overview. Nothing is ever converted, so money in two currencies is two entries and never a sum that is in neither.
+type CustomerOverviewAmount struct {
+	Amount   float64 `json:"amount"`
+	Currency string  `json:"currency"`
+}
+
+// CustomerOverviewExpenses The customer's expenses that are ready to invoice (customer 360 design D2): approved, billable, priced and not yet invoiced — the expenses module's own definition — over the projects in the overview's projects section. Present only with the expenses module on and for projects:view-financials or projects:manage-all.
+type CustomerOverviewExpenses struct {
+	LastExpenseOn *openapi_types.Date `json:"lastExpenseOn,omitempty"`
+
+	// ReadyAmounts What the ready lines bill, per currency, by ISO code; a currency with nothing ready is left out.
+	ReadyAmounts []CustomerOverviewAmount `json:"readyAmounts"`
+	ReadyCount   int32                    `json:"readyCount"`
+}
+
+// CustomerOverviewLastActivity When anything last happened with this customer. Always present; each date is absent when it is unknown, or when the section it comes from is not in this response.
+type CustomerOverviewLastActivity struct {
+	ExpenseOn *openapi_types.Date `json:"expenseOn,omitempty"`
+
+	// TimelineOn The customer's own latest timeline date, as timelineSummary.latestOccurredOn reports it.
+	TimelineOn *openapi_types.Date `json:"timelineOn,omitempty"`
+	WorkOn     *openapi_types.Date `json:"workOn,omitempty"`
+}
+
+// CustomerOverviewProject One open project on the customer overview — enough to name it and link to it.
+type CustomerOverviewProject struct {
+	Code string `json:"code"`
+	Id   int32  `json:"id"`
+
+	// LastWorkOn The date of the latest work logged on the project, when the time module is on and anything has been logged.
+	LastWorkOn *openapi_types.Date `json:"lastWorkOn,omitempty"`
+	Name       string              `json:"name"`
+	Status     string              `json:"status"`
+}
+
+// CustomerOverviewProjects The customer's projects the caller may see (customer 360 design D2): every one of them for projects:view-all or projects:manage-all, otherwise those the caller holds a role on. Every count is over that visible set.
+type CustomerOverviewProjects struct {
+	// Open The open projects (status active), newest work first then by id, at most ten.
+	Open []CustomerOverviewProject `json:"open"`
+
+	// OpenCount How many of the visible projects are open. Not cut at ten.
+	OpenCount  int32 `json:"openCount"`
+	TotalCount int32 `json:"totalCount"`
+
+	// Truncated True when the customer has at least as many projects as the project directory answers at once (2000); the counts are then over the oldest 2000.
+	Truncated bool `json:"truncated"`
+}
+
+// CustomerOverviewResponse What is going on with one customer across the modules that know (customer 360 design D1, D2). Every section but lastActivity may be absent, and absent means the module is off or the section is not for this caller — the response never says which, and never answers 403 for it.
+type CustomerOverviewResponse struct {
+	// Expenses The customer's expenses that are ready to invoice (customer 360 design D2): approved, billable, priced and not yet invoiced — the expenses module's own definition — over the projects in the overview's projects section. Present only with the expenses module on and for projects:view-financials or projects:manage-all.
+	Expenses *CustomerOverviewExpenses `json:"expenses,omitempty"`
+
+	// LastActivity When anything last happened with this customer. Always present; each date is absent when it is unknown, or when the section it comes from is not in this response.
+	LastActivity CustomerOverviewLastActivity `json:"lastActivity"`
+
+	// Projects The customer's projects the caller may see (customer 360 design D2): every one of them for projects:view-all or projects:manage-all, otherwise those the caller holds a role on. Every count is over that visible set.
+	Projects *CustomerOverviewProjects `json:"projects,omitempty"`
+
+	// Work The work logged on the projects in the projects section (customer 360 design D2), from the time module. Hours are hundredths of an hour (1.25 h is 125) and add up exactly. Present when the time module is on and projects is present.
+	Work *CustomerOverviewWork `json:"work,omitempty"`
+}
+
+// CustomerOverviewWork The work logged on the projects in the projects section (customer 360 design D2), from the time module. Hours are hundredths of an hour (1.25 h is 125) and add up exactly. Present when the time module is on and projects is present.
+type CustomerOverviewWork struct {
+	// ApprovedHoursHundredths Approved work, invoiced work included.
+	ApprovedHoursHundredths  int64               `json:"approvedHoursHundredths"`
+	DraftHoursHundredths     int64               `json:"draftHoursHundredths"`
+	LastWorkOn               *openapi_types.Date `json:"lastWorkOn,omitempty"`
+	SubmittedHoursHundredths int64               `json:"submittedHoursHundredths"`
+
+	// UnbilledAmounts What the unbilled work is worth at the rates it was logged at, per project currency, by ISO code; a currency with nothing unbilled is left out, and work on a project without a currency carries no amount. Only for projects:view-financials or projects:manage-all.
+	UnbilledAmounts *[]CustomerOverviewAmount `json:"unbilledAmounts,omitempty"`
+
+	// UnbilledHoursHundredths Approved work that has not been invoiced yet.
+	UnbilledHoursHundredths int64 `json:"unbilledHoursHundredths"`
+}
+
 // CustomerOwner The single user accountable for the customer relationship (owner and tags design D1). displayName is resolved from the user directory at read time, never stored on the customer; a user the directory no longer knows is reported as "Unknown user" with active false, and an owner disabled after being assigned keeps the customer and is reported with active false. Absent when the customer is unowned.
 type CustomerOwner struct {
 	Active      bool               `json:"active"`
@@ -941,6 +1019,9 @@ type ServerInterface interface {
 	// PutCustomersByIdLegalIdentity Replace a customer's legal identity
 	// (PUT /api/v1/customers/{id}/legal-identity)
 	PutCustomersByIdLegalIdentity(w http.ResponseWriter, r *http.Request, id int32)
+	// GetCustomersByIdOverview Get a customer's overview across modules
+	// (GET /api/v1/customers/{id}/overview)
+	GetCustomersByIdOverview(w http.ResponseWriter, r *http.Request, id int32)
 	// PutCustomersByIdOwner Set or clear a customer's owner
 	// (PUT /api/v1/customers/{id}/owner)
 	PutCustomersByIdOwner(w http.ResponseWriter, r *http.Request, id int32)
@@ -2348,6 +2429,32 @@ func (siw *ServerInterfaceWrapper) PutCustomersByIdLegalIdentity(w http.Response
 	handler.ServeHTTP(w, r)
 }
 
+// GetCustomersByIdOverview operation middleware
+func (siw *ServerInterfaceWrapper) GetCustomersByIdOverview(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCustomersByIdOverview(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PutCustomersByIdOwner operation middleware
 func (siw *ServerInterfaceWrapper) PutCustomersByIdOwner(w http.ResponseWriter, r *http.Request) {
 
@@ -3003,6 +3110,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/{id}/legal-identity", wrapper.DeleteCustomersByIdLegalIdentity)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/legal-identity", wrapper.GetCustomersByIdLegalIdentity)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/legal-identity", wrapper.PutCustomersByIdLegalIdentity)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/overview", wrapper.GetCustomersByIdOverview)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/owner", wrapper.PutCustomersByIdOwner)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/peppol-lookup", wrapper.PostCustomersByIdPeppolLookup)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/registry-record", wrapper.GetCustomersByIdRegistryRecord)
@@ -5824,6 +5932,64 @@ func (response PutCustomersByIdLegalIdentity409ApplicationProblemPlusJSONRespons
 	return err
 }
 
+type GetCustomersByIdOverviewRequestObject struct {
+	Id int32 `json:"id"`
+}
+
+type GetCustomersByIdOverviewResponseObject interface {
+	VisitGetCustomersByIdOverviewResponse(w http.ResponseWriter) error
+}
+
+type GetCustomersByIdOverview200JSONResponse CustomerOverviewResponse
+
+func (response GetCustomersByIdOverview200JSONResponse) VisitGetCustomersByIdOverviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdOverview401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersByIdOverview401JSONResponse) VisitGetCustomersByIdOverviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdOverview403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersByIdOverview403JSONResponse) VisitGetCustomersByIdOverviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdOverview404Response struct {
+}
+
+func (response GetCustomersByIdOverview404Response) VisitGetCustomersByIdOverviewResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
 type PutCustomersByIdOwnerRequestObject struct {
 	Id   int32 `json:"id"`
 	Body *PutCustomersByIdOwnerJSONRequestBody
@@ -7000,6 +7166,9 @@ type StrictServerInterface interface {
 	// PutCustomersByIdLegalIdentity Replace a customer's legal identity
 	// (PUT /api/v1/customers/{id}/legal-identity)
 	PutCustomersByIdLegalIdentity(ctx context.Context, request PutCustomersByIdLegalIdentityRequestObject) (PutCustomersByIdLegalIdentityResponseObject, error)
+	// GetCustomersByIdOverview Get a customer's overview across modules
+	// (GET /api/v1/customers/{id}/overview)
+	GetCustomersByIdOverview(ctx context.Context, request GetCustomersByIdOverviewRequestObject) (GetCustomersByIdOverviewResponseObject, error)
 	// PutCustomersByIdOwner Set or clear a customer's owner
 	// (PUT /api/v1/customers/{id}/owner)
 	PutCustomersByIdOwner(ctx context.Context, request PutCustomersByIdOwnerRequestObject) (PutCustomersByIdOwnerResponseObject, error)
@@ -8242,6 +8411,32 @@ func (sh *strictHandler) PutCustomersByIdLegalIdentity(w http.ResponseWriter, r 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutCustomersByIdLegalIdentityResponseObject); ok {
 		if err := validResponse.VisitPutCustomersByIdLegalIdentityResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCustomersByIdOverview operation middleware
+func (sh *strictHandler) GetCustomersByIdOverview(w http.ResponseWriter, r *http.Request, id int32) {
+	var request GetCustomersByIdOverviewRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCustomersByIdOverview(ctx, request.(GetCustomersByIdOverviewRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCustomersByIdOverview")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCustomersByIdOverviewResponseObject); ok {
+		if err := validResponse.VisitGetCustomersByIdOverviewResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
