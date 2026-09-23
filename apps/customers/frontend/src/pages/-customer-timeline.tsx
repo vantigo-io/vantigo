@@ -55,6 +55,7 @@ import {
 } from "../api/timeline";
 import { UserPicker } from "../components/user-picker";
 import { actorLabel } from "../lib/actor-label";
+import { isOverdue, utcToday } from "../lib/follow-up-dates";
 import { formatDateOnly } from "../lib/format-date-only";
 import "../i18n";
 
@@ -85,9 +86,6 @@ const typeKey: Record<string, string> = {
 };
 const iconFor = (type: string) =>
   type.startsWith("interaction.") ? IconCalendarEvent : type === "note" ? IconEdit : IconWand;
-const utcToday = () => new Date().toISOString().slice(0, 10);
-/** Open and past its due date, in UTC — the same calendar the server compares in. */
-const isOverdue = (followUp: TimelineFollowUp) => !followUp.doneAt && followUp.dueOn < utcToday();
 /** Red while overdue, grey once done, ordinary otherwise. */
 const followUpTone = (followUp: TimelineFollowUp) =>
   followUp.doneAt ? "dimmed" : isOverdue(followUp) ? "red" : undefined;
@@ -628,10 +626,12 @@ const TimelineForm = ({
       eventType: (v) => (!v ? t("typeRequired") : null),
       occurredOn: (v) => (!v ? t("dateRequired") : v > utcToday() ? t("dateFuture") : null),
       note: (v) => (!v.trim() ? t("descriptionRequired") : null),
-      // No future check here, and that is the point of a follow-up: it is the
-      // one date in this form that is allowed to be ahead of today.
-      followUpAssigneeUserId: (value, values) =>
-        value && !values.followUpOn ? t("followUpDateRequiredForAssignee") : null,
+      // The follow-up date has no rule at all, and no future check, which is the
+      // point of it: it is the one date in this form allowed to be ahead of
+      // today. An assignee with no date is not refused either — a follow-up IS
+      // its date, so emptying the date clears the assignee with it (below, and
+      // again in the submit mapping) rather than asking the person to clear a
+      // field they did not touch.
     },
   });
   useEffect(() => {
@@ -684,12 +684,17 @@ const TimelineForm = ({
         ? new Date(`${values.occurredOn}T${values.occurredAt}:00Z`).toISOString()
         : undefined,
       sourceUrl: values.sourceUrl || undefined,
-      // No date means no follow-up, and on an update that is an instruction:
-      // this PUT is a full replace, so omitting the field clears whatever the
-      // entry had — including its done state.
+      // No date means no follow-up, whatever the assignee field still holds, and
+      // on an update that is an instruction: this PUT is a full replace, so
+      // omitting the field clears whatever the entry had — including its done
+      // state. With a date, the assignee goes back out as it came in, so editing
+      // the note of an assigned follow-up does not quietly unassign it.
       followUp: followUpOn ? { dueOn: followUpOn, assigneeUserId: followUpAssigneeUserId || undefined } : undefined,
     }),
   );
+  // Held rather than spread inline, because the date field's own onChange has to
+  // run as well as the form's.
+  const followUpOnProps = form.getInputProps("followUpOn");
   return (
     <Modal opened={opened} onClose={onClose} title={entry ? t("editTimelineEvent") : t("addTimelineEvent")} centered>
       <form onSubmit={submit}>
@@ -719,11 +724,26 @@ const TimelineForm = ({
             description={t("followUpOnHint")}
             valueFormat="YYYY-MM-DD"
             clearable
-            {...form.getInputProps("followUpOn")}
+            {...followUpOnProps}
+            onChange={(value) => {
+              followUpOnProps.onChange(value);
+              // Emptying the date empties the assignee with it: the submit
+              // mapping would drop them anyway, and a picker still naming
+              // somebody after the date is gone promises a follow-up that is not
+              // going to exist.
+              if (!value) form.setFieldValue("followUpAssigneeUserId", "");
+            }}
           />
           <UserPicker
             label={t("followUpAssignee")}
             placeholder={t("searchOwners")}
+            // No date, no field: a follow-up IS its date, so an assignee chosen
+            // here would have nothing to be on and the submit mapping would drop
+            // them without a word. Disabled with the reason written out is the
+            // honest version of that, and it is what makes "an assignee with no
+            // date" unreachable rather than silently ignored.
+            disabled={!form.values.followUpOn}
+            description={form.values.followUpOn ? undefined : t("followUpAssigneeNeedsDate")}
             clearLabel={t("clearFollowUpAssignee")}
             value={form.values.followUpAssigneeUserId || null}
             selected={

@@ -756,6 +756,22 @@ read identity's schema at all (`contracts.UserDirectory` is the only sanctioned
 seam), and an assignee disabled or removed afterwards **keeps** the follow-up,
 shown inactive or as `Unknown user`. Nothing is silently reassigned.
 
+What that costs is worth naming: a departed colleague's open follow-ups appear on
+**nobody's** attention list (the list reports the caller's and unassigned ones,
+and a disabled user cannot sign in to be that caller) and behind **nobody's**
+page filter (the page offers only `me` and `none`). They are still there, and
+still reachable — `GET /customers/follow-ups?assignee=<uuid>` answers them for
+any user id — but somebody has to go looking. Reassignment is not built (see
+below), so the way to move one today is to edit the entry and name a new
+assignee.
+
+Everywhere a follow-up is compared against **today** — the overdue/due-today
+split on the attention list, `state=overdue` on the page — "today" is the
+*server's* UTC calendar day (`civilDate(deps.Clock())`), never the reader's
+local one: a Norwegian reader at 00:30 on Tuesday is two hours into a day the
+server still calls Monday, so a follow-up due Monday reads as due today for
+those two hours rather than overdue.
+
 ### Setting one
 
 `POST /customers/{id}/timeline` and `PUT .../timeline/{entryId}` take
@@ -796,8 +812,8 @@ list, or from an entry line loaded minutes ago, and must not lose a race with
 somebody editing the note. What takes its place is the guarded `UPDATE`'s own
 `WHERE follow_up_done_at IS NULL` (respectively `IS NOT NULL`): two concurrent
 ticks serialize on the row, the loser matches no row, re-reads, and answers with
-what is now true — 200 with the entry if it is still an open, editable
-follow-up; the timeline's own 409 or 404 if a concurrent write changed *that*
+what is now true — 200 with the entry if the follow-up still exists on an
+editable entry; the timeline's own 409 or 404 if a concurrent write changed *that*
 instead. Answering 409 for a simple lost tick race would be telling the caller
 that a follow-up they can see is done is not done.
 
@@ -824,12 +840,15 @@ in).
 | Parameter | Values | Default |
 | --- | --- | --- |
 | `assignee` | a user id, `me` (resolved from the session, never sent) or `none` | `me` |
-| `state` | `open`, `overdue` (a subset of `open`), `done`, `all` | `open` |
+| `state` | `open`, `overdue` (a subset of `open`: `dueOn` before today, the server's UTC calendar day), `done`, `all` (the superset of the other three, archived customers included) | `open` |
 | `customerId` | one customer's follow-ups | all |
 
-Archived customers' follow-ups are excluded **unless `state=done`**: a done
-follow-up is a record of work finished, and an archived customer's finished work
-is still finished. The frontend's own page offers only `me` and `none` for
+Archived customers' follow-ups are excluded **unless `state=done` or
+`state=all`**: a done follow-up is a record of work finished, and an archived
+customer's finished work is still finished — and `all` has to be the superset of
+the other three values or its name is a lie, since a state filter that hides
+rows every other value would show is one nobody can use to find what they know
+is there. The frontend's own page offers only `me` and `none` for
 `assignee`, the same choice the customer list's Owner filter makes — a uuid in
 the URL would narrow the rows by something the Select cannot show.
 
@@ -837,7 +856,9 @@ the URL would narrow the rows by something the Select cannot show.
 
 No priorities, no recurrence, no reminders by mail or notification — the
 attention list and the page **are** the reminder. No follow-up without a timeline
-entry, none on a generated event, and no bulk reassignment.
+entry, and none on a generated event. No **reassignment** either — neither a
+bucket for an inactive assignee's follow-ups nor a reassign path, single or bulk:
+moving one means editing its entry and naming a new assignee.
 
 ## The list endpoint and search
 
@@ -1195,8 +1216,18 @@ it reaches every caller's list; somebody else's assigned follow-up reaches
 nobody's but theirs. For these two the item's `id` is `"<type>/<entryId>"`, but
 `entityId` is still the **customer** id — the host links a `customers` attention
 item to `/customers/{entityId}`, and the customer's page is where the entry is —
-and `occurredAt` is `dueOn` at midnight UTC, so an overdue follow-up sorts by how
-overdue it is rather than by when it was noticed.
+and `occurredAt` is `dueOn` at midnight UTC — the day the thing is due, not the
+moment somebody wrote it down.
+
+The follow-up half is **capped at twenty** (the `LIMIT` in
+`FollowUpAttentionCandidates`): the twenty **most overdue** open follow-ups the
+caller may see are reported, because this endpoint feeds a dashboard card and a
+backlog of three hundred is read on the Follow-ups page instead. The dashboard
+orders its card **newest-first across modules**, so among the twenty a follow-up
+due today shows above one ten days overdue — the cap picks the worst twenty, the
+card then sorts them by date like everything else on it. `overdue` here is
+measured against the server's UTC calendar day, the same "today" the page's
+`state=overdue` uses.
 
 The dashboard's two sentences (`apps/host/frontend/src/catalogs/dashboard.ts`):
 "Follow-up overdue for {{name}}" and "Follow-up due today for {{name}}", in both
@@ -1919,6 +1950,40 @@ been in since the foundation.
   for "nobody in particular" (`System`, `Unattributed`, `Unknown user`) are English
   literals, so they are mapped to catalogue keys instead of shown as stored
   (`src/lib/actor-label.ts`). A real person's name is never translated.
+  [Follow-ups](#follow-ups) added a line under the entry's own text — "Follow up
+  *date*" with the assignee's name (or "Unassigned"), turning red and saying
+  "overdue" once the date has passed, struck through and grey as "Followed up
+  *date*" once it is done — and a **Mark done**/**Reopen** button beside it on
+  *manual* entries only, since the server answers a tick on a generated one with
+  "Timeline entry is immutable". Both ticks send no `expectedRevision` (a tick
+  comes from a list and must not conflict with somebody editing the note), so every
+  failure gets one answer: re-read the feed, then say it did not happen. The add/edit
+  form grew a **Follow-up** section — a clearable date (the one date in the form
+  allowed to be in the future) and a `UserPicker` over `GET /assignable-users` — and
+  because the `PUT` is a full replace, an emptied date is an instruction: it clears
+  the follow-up, its assignee and its done state, and clearing the date empties the
+  assignee field on screen so the form stops naming somebody nothing will be sent to.
+  Editing anything else re-sends the stored assignee and date unchanged. The
+  revisions panel shows each revision's own follow-up, which is where "who ticked
+  this, and when" is read. All of it, plus **Add**, **Edit** and **Delete**, now sits
+  behind a `canManageTimeline` prop the host reads from `customers:timeline-manage` —
+  **a behaviour change for existing readers**: until this delivery the server alone
+  enforced it and a caller with `customers:timeline-view` alone saw buttons that
+  answered 403; now they are simply not there, and the card is read-only.
+- **Follow-ups page** (`/customers/follow-ups`, `pages/follow-ups.tsx`, follow-ups
+  design D3) — "what is on my plate" across every customer, oldest due date first:
+  due date (red and badged "overdue" when it has passed, badged "done" when ticked),
+  a link to the customer, the note, the assignee ("(inactive)" after a name the
+  directory no longer has), and a **Mark done** tick in an Actions column that is
+  absent — header and all — without `canManageTimeline`. Both filters (**Assigned
+  to**: me/unassigned; **State**: open/overdue/done/all) and the page number live in
+  the URL, so a filtered list is a link somebody can send, and the host route
+  validates and prefetches them through the same `followUpsListParams` the page
+  itself keys on. The nav admits anybody with `customers:timeline-view` while
+  [the endpoint](#the-follow-ups-page) also wants `customers:view` for the customer
+  names, so the error state is an `Alert` carrying the server's own sentence and a
+  **Try again**, rather than a headline that would read as a glitch worth reloading
+  for.
 
 ## API
 
