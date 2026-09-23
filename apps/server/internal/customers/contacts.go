@@ -475,7 +475,7 @@ func (s *server) PostCustomersByIdContacts(ctx context.Context, req gen.PostCust
 		body = *req.Body
 	}
 
-	assoc, errs := validateCustomerContactRequest(body.Role, body.Phone, body.Email)
+	assoc, errs := validateCustomerContactRequest(deref(body.Role), body.Phone, body.Email)
 	if errs != nil {
 		return gen.PostCustomersByIdContacts400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid contact association", errs)), nil
 	}
@@ -573,7 +573,7 @@ func (s *server) PutCustomersByIdContactsByContactId(ctx context.Context, req ge
 	if req.Body != nil {
 		body = *req.Body
 	}
-	assoc, errs := validateCustomerContactRequest(body.Role, body.Phone, body.Email)
+	assoc, errs := validateCustomerContactRequest(deref(body.Role), body.Phone, body.Email)
 	if errs != nil {
 		return gen.PutCustomersByIdContactsByContactId400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid contact association", errs)), nil
 	}
