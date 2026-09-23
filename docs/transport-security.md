@@ -29,7 +29,14 @@ means, what the plaintext options cost, and how to configure the common shapes.
   origin hands them to anyone on the network path. Cookies are set without the
   `Secure` attribute (a `Secure` cookie never reaches an http origin, so the
   attribute follows the scheme), and HSTS is never sent. Sound only when the path
-  between browser and process is one you control end to end.
+  between browser and process is one you control end to end. This is also why the
+  `Secure` attribute is computed rather than hard-coded, and why code scanning's
+  `go/cookie-secure-not-set` on `internal/identity/cookies.go` is a false positive
+  to dismiss rather than a finding to fix: the query flags a cookie write its taint
+  tracking cannot connect to any `Secure` value, so hard-coding `true` there does
+  not clear it — measured — while it would lock every plain-http installation out
+  of signing in. The attribute is pinned per scheme by
+  `TestSessionCookieAttributes`.
 - **A PostgreSQL connection without certificate verification.** libpq's default
   `sslmode` is `prefer`, which falls back to plaintext and never checks a
   certificate even over TLS; `require` encrypts but does not authenticate the server.

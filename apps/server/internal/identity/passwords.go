@@ -29,7 +29,9 @@ const (
 // The bounds verifyPassword accepts from a stored hash before it runs
 // Argon2, so a corrupted or hostile row cannot make one login spend
 // gigabytes or minutes: passes 1..10, memory 8 KiB..256 MiB, lanes 1..16,
-// and salt and key lengths of 8..64 bytes.
+// and salt and key lengths of 8..64 bytes. They are also what keeps the
+// conversion to Argon2's parameter types honest — a value inside these
+// bounds fits a uint32 or a uint8 without truncating.
 const (
 	minArgonTime, maxArgonTime           = 1, 10
 	minArgonMemoryKiB, maxArgonMemoryKiB = 8, 256 << 10
@@ -103,7 +105,7 @@ func verifyPassword(hash, pw string) (bool, error) {
 	if len(parts) != 6 || parts[0] != "" || parts[1] != "argon2id" {
 		return false, errMalformedHash
 	}
-	version, ok := phcParam(parts[2], "v", argon2.Version, argon2.Version)
+	version, ok := phcParam(parts[2], "v")
 	if !ok || version != argon2.Version {
 		return false, errMalformedHash
 	}
@@ -111,10 +113,21 @@ func verifyPassword(hash, pw string) (bool, error) {
 	if len(params) != 3 {
 		return false, errMalformedHash
 	}
-	memory, okM := phcParam(params[0], "m", minArgonMemoryKiB, maxArgonMemoryKiB)
-	passes, okT := phcParam(params[1], "t", minArgonTime, maxArgonTime)
-	threads, okP := phcParam(params[2], "p", minArgonThreads, maxArgonThreads)
+	memory, okM := phcParam(params[0], "m")
+	passes, okT := phcParam(params[1], "t")
+	threads, okP := phcParam(params[2], "p")
 	if !okM || !okT || !okP {
+		return false, errMalformedHash
+	}
+	// The bounds above, applied here rather than inside phcParam and written
+	// against the constants themselves: this is also the range check that
+	// makes each conversion below safe, and both a reader and a static
+	// analyser can see that a value which reaches Argon2 fits the parameter
+	// type it is converted to (maxArgonMemoryKiB and maxArgonTime are well
+	// inside a uint32, maxArgonThreads inside a uint8).
+	if memory < minArgonMemoryKiB || memory > maxArgonMemoryKiB ||
+		passes < minArgonTime || passes > maxArgonTime ||
+		threads < minArgonThreads || threads > maxArgonThreads {
 		return false, errMalformedHash
 	}
 	salt, err := base64.RawStdEncoding.Strict().DecodeString(parts[4])
@@ -125,20 +138,25 @@ func verifyPassword(hash, pw string) (bool, error) {
 	if err != nil || len(want) < minArgonBytes || len(want) > maxArgonBytes {
 		return false, errMalformedHash
 	}
-	// Every conversion is in range: phcParam and the length checks bounded each value.
+	// Every conversion is in range: the bounds check above and the length
+	// checks bounded each value.
 	got := argon2.IDKey([]byte(pw), salt, uint32(passes), uint32(memory), uint8(threads), uint32(len(want)))
 	return subtle.ConstantTimeCompare(got, want) == 1, nil
 }
 
-// phcParam parses one "name=value" field of a PHC string: exactly that
-// name, a decimal value with nothing after it, within [lo, hi].
-func phcParam(field, name string, lo, hi int) (int, bool) {
+// phcParam parses one "name=value" field of a PHC string: exactly that name,
+// and a decimal value with nothing after it. The value is a uint64 — every
+// PHC parameter is unsigned, and a run of digits too long for one (a hostile
+// row's "m=99999999999999999999") is a parse failure rather than a wrapped
+// number. What the value is allowed to be is the caller's business, checked
+// where the caller uses it.
+func phcParam(field, name string) (uint64, bool) {
 	digits, ok := strings.CutPrefix(field, name+"=")
 	if !ok || digits == "" || strings.TrimLeft(digits, "0123456789") != "" {
 		return 0, false
 	}
-	v, err := strconv.Atoi(digits)
-	if err != nil || v < lo || v > hi {
+	v, err := strconv.ParseUint(digits, 10, 64)
+	if err != nil {
 		return 0, false
 	}
 	return v, true

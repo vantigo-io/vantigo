@@ -68,6 +68,26 @@ func (a *Access) expiredLoginTicketCookie() *http.Cookie {
 	return c
 }
 
+// cookie is the one place identity builds a cookie, so every cookie above
+// shares these attributes. Secure follows APP_URL's scheme rather than being
+// always true: a Secure cookie is never sent to an http origin, so on an
+// installation the operator deliberately runs on plain http (docs
+// transport-security.md, "What each choice costs") a constant true would not
+// protect the session, it would make signing in impossible. https is the
+// documented deployment and the only one where a session is safe from the
+// network; http is a choice the operator makes for a path they control end to
+// end, and the attribute simply tells the truth about which one this is.
+//
+// CodeQL's go/cookie-secure-not-set reports the SetCookie in set above for
+// this function's cookies. It is a false positive, and not about the value
+// here: the query flags a cookie write that no boolean reaches at all
+// (isInsecureDefault in its own CookieWithoutSecure.qll), and its taint
+// tracking loses this field between the literal below and the loop in set —
+// the same loop reached through a response's cookies field. Hard-coding
+// Secure: true was measured against CodeQL 2.27 (CI's version) and the alert
+// is unchanged by it; writing false through a separate function instead makes
+// the query report it as an explicit insecure cookie. So there is nothing to
+// fix here, and the alert is one to dismiss with a reason.
 func (a *Access) cookie(name, value string) *http.Cookie {
 	path := a.cfg.BasePath
 	if path == "" {
