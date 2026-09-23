@@ -678,6 +678,22 @@ func validateTagName(raw string) (string, string) {
 	return strings.TrimSpace(name), ""
 }
 
+// validateGroupName is the group name's rule, which is validateTagName's under
+// its own noun (customer groups design D2): 1-100 characters after NFC
+// normalisation, trimmed. Not shared with the tags' own function despite being
+// the same three lines — the message names the thing being validated, and a
+// parameterised noun for two callers would be a seam standing in for a word.
+func validateGroupName(raw string) (string, string) {
+	name := norm.NFC.String(raw)
+	if strings.TrimSpace(name) == "" {
+		return "", "A group name cannot be null or empty"
+	}
+	if n := utf16Length(name); n > 100 {
+		return "", fmt.Sprintf("A group name cannot be longer than 100 characters, the given value was %d characters", n)
+	}
+	return strings.TrimSpace(name), ""
+}
+
 // validateTagColor is the colour rule. Case-sensitive, like every other value
 // rule here that names a closed set of lowercase tokens: a query parameter or
 // an enum token is never normalized in this module, only rejected.

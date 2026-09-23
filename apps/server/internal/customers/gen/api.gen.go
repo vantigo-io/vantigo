@@ -217,6 +217,26 @@ type CustomerFollowUp struct {
 	OccurredOn openapi_types.Date `json:"occurredOn"`
 }
 
+// CustomerGroupRef The group a customer belongs to (customer groups design D3): its id and its name, and nothing else — a client that needs the group's default payment term reads it from GET /customers/groups or from the billing profile's own groupDefault, where it is already resolved against the customer.
+type CustomerGroupRef struct {
+	Id   openapi_types.UUID `json:"id"`
+	Name string             `json:"name"`
+}
+
+// CustomerGroupRequest A customer group's name and default payment term (customer groups design D2). name is 1-100 characters, trimmed and NFC-normalised; a name another group already has, ignoring case, is a 409 with code group_exists. defaultPaymentTermsDays is 0-365 inclusive (the billing profile's own rule) and is the term every member inherits unless its own billing profile decides one. PUT is a FULL REPLACE of both fields: an omitted or null defaultPaymentTermsDays clears the group's default rather than leaving the one it had.
+type CustomerGroupRequest struct {
+	DefaultPaymentTermsDays *int32 `json:"defaultPaymentTermsDays,omitempty"`
+	Name                    string `json:"name"`
+}
+
+// CustomerGroupSummary A group in the installation's vocabulary, with how many customers belong to it (customer groups design D2) — what the Manage groups modal needs in order to say why a delete is refused, on the same response that lists the groups. Every one of the vocabulary's three answering operations (list, create, update) answers this shape, so a client has one group type to hold.
+type CustomerGroupSummary struct {
+	CustomerCount           int32              `json:"customerCount"`
+	DefaultPaymentTermsDays *int32             `json:"defaultPaymentTermsDays,omitempty"`
+	Id                      openapi_types.UUID `json:"id"`
+	Name                    string             `json:"name"`
+}
+
 // CustomerOwner The single user accountable for the customer relationship (owner and tags design D1). displayName is resolved from the user directory at read time, never stored on the customer; a user the directory no longer knows is reported as "Unknown user" with active false, and an owner disabled after being assigned keeps the customer and is reported with active false. Absent when the customer is unowned.
 type CustomerOwner struct {
 	Active      bool               `json:"active"`
@@ -720,6 +740,12 @@ type PostCustomersContactsJSONRequestBody = ContactRequest
 // PutCustomersContactsByIdJSONRequestBody defines body for PutCustomersContactsById for application/json ContentType.
 type PutCustomersContactsByIdJSONRequestBody = ContactRequest
 
+// PostCustomersGroupsJSONRequestBody defines body for PostCustomersGroups for application/json ContentType.
+type PostCustomersGroupsJSONRequestBody = CustomerGroupRequest
+
+// PutCustomersGroupsByGroupIdJSONRequestBody defines body for PutCustomersGroupsByGroupId for application/json ContentType.
+type PutCustomersGroupsByGroupIdJSONRequestBody = CustomerGroupRequest
+
 // PostCustomersTagsJSONRequestBody defines body for PostCustomersTags for application/json ContentType.
 type PostCustomersTagsJSONRequestBody = CustomerTagRequest
 
@@ -797,6 +823,18 @@ type ServerInterface interface {
 	// GetCustomersFollowUps List follow-ups across customers
 	// (GET /api/v1/customers/follow-ups)
 	GetCustomersFollowUps(w http.ResponseWriter, r *http.Request, params GetCustomersFollowUpsParams)
+	// GetCustomersGroups List every customer group
+	// (GET /api/v1/customers/groups)
+	GetCustomersGroups(w http.ResponseWriter, r *http.Request)
+	// PostCustomersGroups Create a customer group
+	// (POST /api/v1/customers/groups)
+	PostCustomersGroups(w http.ResponseWriter, r *http.Request)
+	// DeleteCustomersGroupsByGroupId Delete a customer group
+	// (DELETE /api/v1/customers/groups/{groupId})
+	DeleteCustomersGroupsByGroupId(w http.ResponseWriter, r *http.Request, groupId openapi_types.UUID)
+	// PutCustomersGroupsByGroupId Rename a customer group or change its default payment term
+	// (PUT /api/v1/customers/groups/{groupId})
+	PutCustomersGroupsByGroupId(w http.ResponseWriter, r *http.Request, groupId openapi_types.UUID)
 	// GetCustomersLookupBrreg Look up business entities in Brønnøysundregisteret
 	// (GET /api/v1/customers/lookup/brreg)
 	GetCustomersLookupBrreg(w http.ResponseWriter, r *http.Request, params GetCustomersLookupBrregParams)
@@ -1417,6 +1455,86 @@ func (siw *ServerInterfaceWrapper) GetCustomersFollowUps(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetCustomersFollowUps(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCustomersGroups operation middleware
+func (siw *ServerInterfaceWrapper) GetCustomersGroups(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCustomersGroups(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostCustomersGroups operation middleware
+func (siw *ServerInterfaceWrapper) PostCustomersGroups(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostCustomersGroups(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteCustomersGroupsByGroupId operation middleware
+func (siw *ServerInterfaceWrapper) DeleteCustomersGroupsByGroupId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "groupId" -------------
+	var groupId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "groupId", r.PathValue("groupId"), &groupId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "groupId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteCustomersGroupsByGroupId(w, r, groupId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutCustomersGroupsByGroupId operation middleware
+func (siw *ServerInterfaceWrapper) PutCustomersGroupsByGroupId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "groupId" -------------
+	var groupId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "groupId", r.PathValue("groupId"), &groupId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "groupId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutCustomersGroupsByGroupId(w, r, groupId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2839,6 +2957,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/contacts/{id}", wrapper.PutCustomersContactsById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/contacts/{id}/customers", wrapper.GetCustomersContactsByIdCustomers)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/follow-ups", wrapper.GetCustomersFollowUps)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/groups", wrapper.GetCustomersGroups)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/groups", wrapper.PostCustomersGroups)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/groups/{groupId}", wrapper.DeleteCustomersGroupsByGroupId)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/groups/{groupId}", wrapper.PutCustomersGroupsByGroupId)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/lookup/brreg", wrapper.GetCustomersLookupBrreg)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/stats", wrapper.GetCustomersStats)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/stats/attention", wrapper.GetCustomersStatsAttention)
@@ -3511,6 +3633,286 @@ func (response GetCustomersFollowUps403JSONResponse) VisitGetCustomersFollowUpsR
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersGroupsRequestObject struct {
+}
+
+type GetCustomersGroupsResponseObject interface {
+	VisitGetCustomersGroupsResponse(w http.ResponseWriter) error
+}
+
+type GetCustomersGroups200JSONResponse []CustomerGroupSummary
+
+func (response GetCustomersGroups200JSONResponse) VisitGetCustomersGroupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersGroups401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersGroups401JSONResponse) VisitGetCustomersGroupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersGroups403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersGroups403JSONResponse) VisitGetCustomersGroupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersGroupsRequestObject struct {
+	Body *PostCustomersGroupsJSONRequestBody
+}
+
+type PostCustomersGroupsResponseObject interface {
+	VisitPostCustomersGroupsResponse(w http.ResponseWriter) error
+}
+
+type PostCustomersGroups201JSONResponse CustomerGroupSummary
+
+func (response PostCustomersGroups201JSONResponse) VisitPostCustomersGroupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersGroups400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostCustomersGroups400ApplicationProblemPlusJSONResponse) VisitPostCustomersGroupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersGroups401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersGroups401JSONResponse) VisitPostCustomersGroupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersGroups403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersGroups403JSONResponse) VisitPostCustomersGroupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersGroups409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PostCustomersGroups409ApplicationProblemPlusJSONResponse) VisitPostCustomersGroupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomersGroupsByGroupIdRequestObject struct {
+	GroupId openapi_types.UUID `json:"groupId"`
+}
+
+type DeleteCustomersGroupsByGroupIdResponseObject interface {
+	VisitDeleteCustomersGroupsByGroupIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteCustomersGroupsByGroupId204Response struct {
+}
+
+func (response DeleteCustomersGroupsByGroupId204Response) VisitDeleteCustomersGroupsByGroupIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteCustomersGroupsByGroupId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteCustomersGroupsByGroupId401JSONResponse) VisitDeleteCustomersGroupsByGroupIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomersGroupsByGroupId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteCustomersGroupsByGroupId403JSONResponse) VisitDeleteCustomersGroupsByGroupIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomersGroupsByGroupId404Response struct {
+}
+
+func (response DeleteCustomersGroupsByGroupId404Response) VisitDeleteCustomersGroupsByGroupIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteCustomersGroupsByGroupId409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response DeleteCustomersGroupsByGroupId409ApplicationProblemPlusJSONResponse) VisitDeleteCustomersGroupsByGroupIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersGroupsByGroupIdRequestObject struct {
+	GroupId openapi_types.UUID `json:"groupId"`
+	Body    *PutCustomersGroupsByGroupIdJSONRequestBody
+}
+
+type PutCustomersGroupsByGroupIdResponseObject interface {
+	VisitPutCustomersGroupsByGroupIdResponse(w http.ResponseWriter) error
+}
+
+type PutCustomersGroupsByGroupId200JSONResponse CustomerGroupSummary
+
+func (response PutCustomersGroupsByGroupId200JSONResponse) VisitPutCustomersGroupsByGroupIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersGroupsByGroupId400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutCustomersGroupsByGroupId400ApplicationProblemPlusJSONResponse) VisitPutCustomersGroupsByGroupIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersGroupsByGroupId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCustomersGroupsByGroupId401JSONResponse) VisitPutCustomersGroupsByGroupIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersGroupsByGroupId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCustomersGroupsByGroupId403JSONResponse) VisitPutCustomersGroupsByGroupIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersGroupsByGroupId404Response struct {
+}
+
+func (response PutCustomersGroupsByGroupId404Response) VisitPutCustomersGroupsByGroupIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutCustomersGroupsByGroupId409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PutCustomersGroupsByGroupId409ApplicationProblemPlusJSONResponse) VisitPutCustomersGroupsByGroupIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -6350,6 +6752,18 @@ type StrictServerInterface interface {
 	// GetCustomersFollowUps List follow-ups across customers
 	// (GET /api/v1/customers/follow-ups)
 	GetCustomersFollowUps(ctx context.Context, request GetCustomersFollowUpsRequestObject) (GetCustomersFollowUpsResponseObject, error)
+	// GetCustomersGroups List every customer group
+	// (GET /api/v1/customers/groups)
+	GetCustomersGroups(ctx context.Context, request GetCustomersGroupsRequestObject) (GetCustomersGroupsResponseObject, error)
+	// PostCustomersGroups Create a customer group
+	// (POST /api/v1/customers/groups)
+	PostCustomersGroups(ctx context.Context, request PostCustomersGroupsRequestObject) (PostCustomersGroupsResponseObject, error)
+	// DeleteCustomersGroupsByGroupId Delete a customer group
+	// (DELETE /api/v1/customers/groups/{groupId})
+	DeleteCustomersGroupsByGroupId(ctx context.Context, request DeleteCustomersGroupsByGroupIdRequestObject) (DeleteCustomersGroupsByGroupIdResponseObject, error)
+	// PutCustomersGroupsByGroupId Rename a customer group or change its default payment term
+	// (PUT /api/v1/customers/groups/{groupId})
+	PutCustomersGroupsByGroupId(ctx context.Context, request PutCustomersGroupsByGroupIdRequestObject) (PutCustomersGroupsByGroupIdResponseObject, error)
 	// GetCustomersLookupBrreg Look up business entities in Brønnøysundregisteret
 	// (GET /api/v1/customers/lookup/brreg)
 	GetCustomersLookupBrreg(ctx context.Context, request GetCustomersLookupBrregRequestObject) (GetCustomersLookupBrregResponseObject, error)
@@ -6781,6 +7195,120 @@ func (sh *strictHandler) GetCustomersFollowUps(w http.ResponseWriter, r *http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetCustomersFollowUpsResponseObject); ok {
 		if err := validResponse.VisitGetCustomersFollowUpsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCustomersGroups operation middleware
+func (sh *strictHandler) GetCustomersGroups(w http.ResponseWriter, r *http.Request) {
+	var request GetCustomersGroupsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCustomersGroups(ctx, request.(GetCustomersGroupsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCustomersGroups")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCustomersGroupsResponseObject); ok {
+		if err := validResponse.VisitGetCustomersGroupsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostCustomersGroups operation middleware
+func (sh *strictHandler) PostCustomersGroups(w http.ResponseWriter, r *http.Request) {
+	var request PostCustomersGroupsRequestObject
+
+	var body PostCustomersGroupsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostCustomersGroups(ctx, request.(PostCustomersGroupsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostCustomersGroups")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostCustomersGroupsResponseObject); ok {
+		if err := validResponse.VisitPostCustomersGroupsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteCustomersGroupsByGroupId operation middleware
+func (sh *strictHandler) DeleteCustomersGroupsByGroupId(w http.ResponseWriter, r *http.Request, groupId openapi_types.UUID) {
+	var request DeleteCustomersGroupsByGroupIdRequestObject
+
+	request.GroupId = groupId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteCustomersGroupsByGroupId(ctx, request.(DeleteCustomersGroupsByGroupIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteCustomersGroupsByGroupId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteCustomersGroupsByGroupIdResponseObject); ok {
+		if err := validResponse.VisitDeleteCustomersGroupsByGroupIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutCustomersGroupsByGroupId operation middleware
+func (sh *strictHandler) PutCustomersGroupsByGroupId(w http.ResponseWriter, r *http.Request, groupId openapi_types.UUID) {
+	var request PutCustomersGroupsByGroupIdRequestObject
+
+	request.GroupId = groupId
+
+	var body PutCustomersGroupsByGroupIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutCustomersGroupsByGroupId(ctx, request.(PutCustomersGroupsByGroupIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutCustomersGroupsByGroupId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutCustomersGroupsByGroupIdResponseObject); ok {
+		if err := validResponse.VisitPutCustomersGroupsByGroupIdResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

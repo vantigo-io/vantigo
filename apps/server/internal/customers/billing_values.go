@@ -228,18 +228,24 @@ func validateGLN(raw string) (string, string) {
 	return stripped, ""
 }
 
-// validatePaymentTermsDays is D4's payment-terms rule: 0-365 inclusive,
-// absent left nil (the request never sends a "blank" integer the way a
-// string field can be blank). The message is not the "but was '%s'" shape
-// every string validator in this module uses — there is no raw string to
-// quote, only the integer itself.
-func validatePaymentTermsDays(raw *int32, errs map[string][]string) *int32 {
+// validatePaymentTermsDays is D4's payment-terms rule: 0-365 inclusive, absent
+// left nil (the request never sends a "blank" integer the way a string field
+// can be blank). The message is not the "but was '%s'" shape every string
+// validator in this module uses — there is no raw string to quote, only the
+// integer itself.
+//
+// field is the request's own name for the value, because the rule now has two
+// callers with two spellings: the billing profile's own paymentTermsDays and a
+// group's defaultPaymentTermsDays (customer groups design D2). One rule, one
+// message, keyed under whichever field the caller actually sent — a second copy
+// of "between 0 and 365" would be the thing that drifts the day the range moves.
+func validatePaymentTermsDays(raw *int32, field string, errs map[string][]string) *int32 {
 	if raw == nil {
 		return nil
 	}
 	v := *raw
 	if v < 0 || v > 365 {
-		errs["paymentTermsDays"] = []string{fmt.Sprintf("Payment terms must be between 0 and 365 days, but was %d", v)}
+		errs[field] = []string{fmt.Sprintf("Payment terms must be between 0 and 365 days, but was %d", v)}
 		return nil
 	}
 	return &v
@@ -266,7 +272,7 @@ func validateBillingProfile(req gen.PutCustomerBillingProfileRequest) (billingPr
 		PeppolID:         normalizedOrNil(req.PeppolId, "peppolId", validatePeppolID, errs),
 		Gln:              normalizedOrNil(req.Gln, "gln", validateGLN, errs),
 		BuyerReference:   validateOptionalAddressText(req.BuyerReference, "buyerReference", "A buyer reference", 100, errs),
-		PaymentTermsDays: validatePaymentTermsDays(req.PaymentTermsDays, errs),
+		PaymentTermsDays: validatePaymentTermsDays(req.PaymentTermsDays, "paymentTermsDays", errs),
 	}
 	if len(errs) > 0 {
 		return billingProfile{}, errs

@@ -243,3 +243,31 @@ func TestIsForeignKeyViolation(t *testing.T) {
 		t.Error("IsForeignKeyViolation matched a non-pgconn error")
 	}
 }
+
+// TestIsRestrictViolation pins what separates this helper from
+// IsForeignKeyViolation: it accepts 23001 and only 23001, because the two
+// SQLSTATEs come from the same foreign key depending on its ON DELETE action,
+// and a caller that matched the wrong one would never see its own race. The
+// real 23001 is provoked where it matters, in internal/customers' group delete.
+func TestIsRestrictViolation(t *testing.T) {
+	err := fmt.Errorf("delete group: %w", &pgconn.PgError{Code: "23001", ConstraintName: "customers_group_id_fkey"})
+
+	if !db.IsRestrictViolation(err, "customers_group_id_fkey") {
+		t.Errorf("IsRestrictViolation(err, %q) = false, want true", "customers_group_id_fkey")
+	}
+	if !db.IsRestrictViolation(err) {
+		t.Error("IsRestrictViolation(err) with no names = false, want true (no constraints given matches any 23001)")
+	}
+	if db.IsRestrictViolation(err, "customer_tags_tag_id_fkey") {
+		t.Error("IsRestrictViolation matched an unrelated constraint name")
+	}
+	if db.IsRestrictViolation(fmt.Errorf("wrapped: %w", &pgconn.PgError{Code: "23503", ConstraintName: "customers_group_id_fkey"})) {
+		t.Error("IsRestrictViolation matched a foreign_key_violation (23503), want 23001 only")
+	}
+	if db.IsForeignKeyViolation(err, "customers_group_id_fkey") {
+		t.Error("IsForeignKeyViolation matched a restrict_violation (23001): the two must stay distinct")
+	}
+	if db.IsRestrictViolation(errors.New("boom")) {
+		t.Error("IsRestrictViolation matched a non-pgconn error")
+	}
+}

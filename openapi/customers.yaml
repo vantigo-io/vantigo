@@ -434,6 +434,50 @@ components:
                 - occurredOn
                 - followUp
             type: object
+        CustomerGroupRef:
+            description: "The group a customer belongs to (customer groups design D3): its id and its name, and nothing else — a client that needs the group's default payment term reads it from GET /customers/groups or from the billing profile's own groupDefault, where it is already resolved against the customer."
+            properties:
+                id:
+                    format: uuid
+                    type: string
+                name:
+                    type: string
+            required:
+                - id
+                - name
+            type: object
+        CustomerGroupRequest:
+            description: "A customer group's name and default payment term (customer groups design D2). name is 1-100 characters, trimmed and NFC-normalised; a name another group already has, ignoring case, is a 409 with code group_exists. defaultPaymentTermsDays is 0-365 inclusive (the billing profile's own rule) and is the term every member inherits unless its own billing profile decides one. PUT is a FULL REPLACE of both fields: an omitted or null defaultPaymentTermsDays clears the group's default rather than leaving the one it had."
+            properties:
+                defaultPaymentTermsDays:
+                    format: int32
+                    nullable: true
+                    type: integer
+                name:
+                    type: string
+            required:
+                - name
+            type: object
+        CustomerGroupSummary:
+            description: "A group in the installation's vocabulary, with how many customers belong to it (customer groups design D2) — what the Manage groups modal needs in order to say why a delete is refused, on the same response that lists the groups. Every one of the vocabulary's three answering operations (list, create, update) answers this shape, so a client has one group type to hold."
+            properties:
+                customerCount:
+                    format: int32
+                    type: integer
+                defaultPaymentTermsDays:
+                    format: int32
+                    nullable: true
+                    type: integer
+                id:
+                    format: uuid
+                    type: string
+                name:
+                    type: string
+            required:
+                - id
+                - name
+                - customerCount
+            type: object
         CustomerOwner:
             description: The single user accountable for the customer relationship (owner and tags design D1). displayName is resolved from the user directory at read time, never stored on the customer; a user the directory no longer knows is reported as "Unknown user" with active false, and an owner disabled after being assigned keeps the customer and is reported with active false. Absent when the customer is unowned.
             properties:
@@ -3243,6 +3287,167 @@ paths:
             tags:
                 - Customers
             x-vantigo-access: permission:customers:timeline-view+customers:view
+    /api/v1/customers/groups:
+        get:
+            operationId: getCustomersGroups
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/CustomerGroupSummary'
+                                type: array
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: List every customer group
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:view
+        post:
+            operationId: postCustomersGroups
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CustomerGroupRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerGroupSummary'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: Conflict — a group with this name already exists (code group_exists).
+            summary: Create a customer group
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:update
+    /api/v1/customers/groups/{groupId}:
+        delete:
+            description: "Deletes a group that no customer belongs to. A group with members is refused with 409 group_in_use and its member count in the detail: the members are moved first (the list's groupId filter finds them), because detaching them silently would change every one of their effective payment terms with no record on any customer."
+            operationId: deleteCustomersGroupsByGroupId
+            parameters:
+                - in: path
+                  name: groupId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: Conflict — customers still belong to this group (code group_in_use).
+            summary: Delete a customer group
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:update
+        put:
+            operationId: putCustomersGroupsByGroupId
+            parameters:
+                - in: path
+                  name: groupId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CustomerGroupRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerGroupSummary'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: Conflict — a group with this name already exists (code group_exists).
+            summary: Rename a customer group or change its default payment term
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:update
     /api/v1/customers/lookup/brreg:
         get:
             operationId: getCustomersLookupBrreg
