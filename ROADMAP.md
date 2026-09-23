@@ -205,7 +205,7 @@ revision, written only through `PUT /customers/{id}/group` and recorded as
 `defaultPaymentTermsDays` is the **third resolution tier** for a customer's
 payment term (own value, else the group's, else nothing), applied in the one
 place resolution lives, and the billing profile answers `groupDefault` so a card
-can explain an inherited term without re-deriving the rule. A group with members
+can say where an inherited term comes from. A group with members
 is never deleted — 409 `group_in_use`, with the count, and `ON DELETE RESTRICT`
 under it — because detaching them would change every member's effective payment
 term with no record on any customer. No new permission key, and
