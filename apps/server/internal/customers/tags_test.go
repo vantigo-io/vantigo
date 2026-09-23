@@ -155,6 +155,21 @@ func TestCustomerTags_DuplicateNameIsAConflictIgnoringCase(t *testing.T) {
 	if r := c.Do(http.MethodPut, "/api/v1/customers/tags/"+other.Id, map[string]any{"name": "Prospect"}); r.Status != http.StatusOK {
 		t.Errorf("renaming a tag to its own name: status %d body %s, want 200", r.Status, r.Body)
 	}
+	// And the same rule with teeth: fixing the CASE of a tag's own name. The
+	// unique index compares lower(name), so 'Prospect' → 'PROSPECT' collides with
+	// the very row being updated — which the index itself excludes and a
+	// check-then-update implementation (a SELECT for an existing lower(name)
+	// without "AND id <> the row") does not. The same-name case above passes for
+	// such an implementation too whenever it compares exactly; this one cannot.
+	r = c.Do(http.MethodPut, "/api/v1/customers/tags/"+other.Id, map[string]any{"name": "PROSPECT"})
+	if r.Status != http.StatusOK {
+		t.Fatalf("a case-only rename: status %d body %s, want 200", r.Status, r.Body)
+	}
+	var recased tagSummaryJSON
+	r.JSON(&recased)
+	if recased.Id != other.Id || recased.Name != "PROSPECT" {
+		t.Errorf("recased = %+v, want the same id carrying the new casing", recased)
+	}
 	if got := listTags(t, c); len(got) != 2 {
 		t.Errorf("tags = %+v, want the original two", got)
 	}
@@ -373,12 +388,16 @@ func TestGetCustomers_TagIdFilter(t *testing.T) {
 	if len(list.Data) != 2 || list.Pagination.TotalCount != 2 {
 		t.Errorf("tagId=VIP = %d rows / totalCount %d, want 2 and 2", len(list.Data), list.Pagination.TotalCount)
 	}
-	if list = getList(t, c, "tagId="+prospect.Id+"&search="+url.QueryEscape("Tagfilter ")); len(list.Data) != 1 || list.Data[0].Name != "Tagfilter Both Co" {
-		t.Errorf("tagId=Prospect = %+v, want only Tagfilter Both Co", list.Data)
+	list = getList(t, c, "tagId="+prospect.Id+"&search="+url.QueryEscape("Tagfilter "))
+	// Fatal rather than an error, so the assertion below can index this row
+	// unconditionally: guarding it with "if the page is what I expected" is how an
+	// assertion quietly stops being one the day the page changes.
+	if len(list.Data) != 1 || list.Data[0].Name != "Tagfilter Both Co" {
+		t.Fatalf("tagId=Prospect = %+v, want only Tagfilter Both Co", list.Data)
 	}
 	// The tags ride on the list row itself, so one request answers both "which
 	// customers" and "what else are they tagged with".
-	if len(list.Data) == 1 && len(list.Data[0].Tags) != 2 {
+	if len(list.Data[0].Tags) != 2 {
 		t.Errorf("list row tags = %+v, want both tags on the row", list.Data[0].Tags)
 	}
 

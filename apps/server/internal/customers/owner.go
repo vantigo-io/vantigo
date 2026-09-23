@@ -90,6 +90,22 @@ type customerDecoration struct {
 // is an ordinary answer, and asking the directory about nobody is a round trip
 // for a map that will stay empty.
 func (s *server) decorate(ctx context.Context, q *store.Queries, rows ...customerRow) (customerDecoration, error) {
+	return s.decorateKnowing(ctx, q, nil, rows...)
+}
+
+// decorateKnowing is decorate for the one caller that has ALREADY resolved an
+// owner it is about to render: PutCustomersByIdOwner looks the new owner up to
+// decide whether it may own a customer at all, and that entry is the very entry
+// the decoration would fetch again a moment later. Passing it in makes a change
+// of owner cost two directory calls — the candidate and the actor — instead of
+// three. known is nil for every other caller, and for a PUT that CLEARS the
+// owner, which resolves nobody.
+//
+// It is deliberately not folded into decorate's own signature: eight of the
+// nine callers have nothing to pass, and a nil first argument at each of them
+// would be noise standing in for the one place this matters. Everything
+// decorate's own doc comment says still holds, the pool-backed q included.
+func (s *server) decorateKnowing(ctx context.Context, q *store.Queries, known *contracts.UserEntry, rows ...customerRow) (customerDecoration, error) {
 	dec := customerDecoration{
 		owners: map[uuid.UUID]contracts.UserEntry{},
 		tags:   map[int32][]gen.CustomerTag{},
@@ -101,6 +117,13 @@ func (s *server) decorate(ctx context.Context, q *store.Queries, rows ...custome
 	customerIDs := make([]int32, 0, len(rows))
 	userIDs := make([]uuid.UUID, 0, len(rows))
 	seen := make(map[uuid.UUID]bool, len(rows))
+	if known != nil {
+		// Seeded into both maps at once: dec.owners so the response names this
+		// user, seen so the distinct pass below does not ask the directory for an
+		// answer the caller already has.
+		dec.owners[known.ID] = *known
+		seen[known.ID] = true
+	}
 	for _, r := range rows {
 		customerIDs = append(customerIDs, r.ID)
 		if r.OwnerUserID == nil || seen[*r.OwnerUserID] {
@@ -204,8 +227,12 @@ func (s *server) PutCustomersByIdOwner(ctx context.Context, req gen.PutCustomers
 	includeIdentity := s.hasPermission(ctx, legalIdentityView)
 	before, after := existing.OwnerUserID, body.OwnerUserId
 
-	respond := func(row customerRow) (gen.PutCustomersByIdOwnerResponseObject, error) {
-		dec, err := s.decorate(ctx, q, row)
+	// newOwner, when the write below sets one, is the directory entry step (4)
+	// already resolved: handed to the decoration so the response names the owner
+	// without asking the directory a second time about the user this handler just
+	// asked about. nil on the no-op path, which resolves nobody, and on a clear.
+	respond := func(row customerRow, newOwner *contracts.UserEntry) (gen.PutCustomersByIdOwnerResponseObject, error) {
+		dec, err := s.decorateKnowing(ctx, q, newOwner, row)
 		if err != nil {
 			return nil, err
 		}
@@ -217,13 +244,14 @@ func (s *server) PutCustomersByIdOwner(ctx context.Context, req gen.PutCustomers
 		if err != nil {
 			return nil, fmt.Errorf("customers: timeline summary: %w", err)
 		}
-		return respond(fromCustomerRow(existing, summary))
+		return respond(fromCustomerRow(existing, summary), nil)
 	}
 
 	// Every directory call this handler makes happens here, before the
 	// transaction: the candidate's eligibility, and the previous owner's name
 	// for the event's before snapshot.
 	var afterSnapshot *ownerSnapshot
+	var newOwner *contracts.UserEntry
 	if after != nil {
 		user, err := s.deps.Users.User(ctx, *after)
 		if err != nil {
@@ -238,6 +266,7 @@ func (s *server) PutCustomersByIdOwner(ctx context.Context, req gen.PutCustomers
 				"Invalid owner", map[string][]string{"ownerUserId": {ownerDisabled(*after)}})), nil
 		}
 		afterSnapshot = &ownerSnapshot{UserID: user.ID, DisplayName: user.DisplayName}
+		newOwner = user
 	}
 
 	var beforeSnapshot *ownerSnapshot
@@ -298,7 +327,7 @@ func (s *server) PutCustomersByIdOwner(ctx context.Context, req gen.PutCustomers
 	if err != nil {
 		return nil, fmt.Errorf("customers: timeline summary: %w", err)
 	}
-	return respond(fromUpdateCustomerOwnerRow(updated, summary))
+	return respond(fromUpdateCustomerOwnerRow(updated, summary), newOwner)
 }
 
 // GetCustomersAssignableUsers Search users assignable as a customer's owner
