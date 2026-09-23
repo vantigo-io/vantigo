@@ -156,7 +156,7 @@ func (s *server) GetCustomersByIdOverview(ctx context.Context, req gen.GetCustom
 		if err != nil {
 			return nil, fmt.Errorf("customers: overview: expenses for projects: %w", err)
 		}
-		expenses, err := overviewExpenses(totals)
+		expenses, err := overviewExpenses(visible, totals)
 		if err != nil {
 			return nil, err
 		}
@@ -311,12 +311,20 @@ func overviewWork(visible []contracts.ProjectEntry, actuals map[int32]contracts.
 // overviewExpenses is the expenses section: the expenses contract's own
 // "ready to invoice" figures, added up per currency across the projects it
 // was asked about. Only ready lines count; a currency with nothing ready is
-// not a currency this customer has anything to invoice in.
-func overviewExpenses(totals map[int32]contracts.ProjectExpenseTotals) (gen.CustomerOverviewExpenses, error) {
+// not a currency this customer has anything to invoice in. It walks the
+// visible projects in order and looks each up, as overviewWork does, rather
+// than ranging over the map: the result is the same either way, but a walk
+// whose order Go randomises would let a test pass by luck. A project with
+// nothing recorded is absent from totals and adds nothing.
+func overviewExpenses(visible []contracts.ProjectEntry, totals map[int32]contracts.ProjectExpenseTotals) (gen.CustomerOverviewExpenses, error) {
 	ready := map[string]*big.Rat{}
 	var count int64
 	var last string
-	for _, project := range totals {
+	for _, p := range visible {
+		project, ok := totals[p.ID]
+		if !ok {
+			continue
+		}
 		if project.LastEntryDate != nil && *project.LastEntryDate > last {
 			last = *project.LastEntryDate
 		}
