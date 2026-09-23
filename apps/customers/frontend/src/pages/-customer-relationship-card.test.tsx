@@ -92,13 +92,15 @@ describe("CustomerRelationshipCard", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders an owner and tags, and em dashes when there are none", async () => {
+  it("names the owner and shows the tag chips", async () => {
     stubFetch({ customer: ownedBody });
     renderCard();
     expect(await screen.findByText("Kari Nordmann")).toBeInTheDocument();
     expect(screen.getByText("VIP")).toBeInTheDocument();
+  });
 
-    cleanup();
+  it("shows em dashes when there is no owner and no tags", async () => {
+    // `customerBody` carries neither key at all, which is what the wire sends.
     stubFetch();
     renderCard();
     await screen.findByText("Owner");
@@ -152,6 +154,42 @@ describe("CustomerRelationshipCard", () => {
     await waitFor(() => expect(putsTo(fetchMock, "/api/v1/customers/1001/owner")).toHaveLength(1));
     const [, init] = putsTo(fetchMock, "/api/v1/customers/1001/owner")[0];
     expect(JSON.parse(String((init as RequestInit).body))).toEqual({ ownerUserId: "u2", revision: 3 });
+  });
+
+  it("names the owner the PUT answered without reading the customer again", async () => {
+    // The owner PUT answers the WHOLE customer, so the fresh row is already in
+    // hand: writing it into this query's cache is what moves the Owner row
+    // without a round trip. The customer GET is made to fail from the moment the
+    // PUT has answered, so a card that still leaned on a refetch could not show
+    // the name at all — and the answered name is deliberately not the label of
+    // the option that was picked, so the text on screen can only have come from
+    // the response body.
+    let putAnswered = false;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "PUT" && url.endsWith("/owner")) {
+        putAnswered = true;
+        return Promise.resolve(
+          jsonResponse({
+            ...customerBody,
+            revision: 4,
+            owner: { userId: "u2", displayName: "Siri Haugen", active: true },
+          }),
+        );
+      }
+      if (url.startsWith("/api/v1/customers/assignable-users"))
+        return Promise.resolve(jsonResponse([{ userId: "u2", displayName: "Ola Nordmann" }]));
+      if (url === "/api/v1/customers/tags") return Promise.resolve(jsonResponse(tagRows));
+      return Promise.resolve(putAnswered ? jsonResponse({ title: "Boom" }, 500) : jsonResponse(customerBody));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderCard({ canEdit: true });
+    const picker = await screen.findByRole("combobox", { name: "Owner" });
+    await userEvent.click(picker);
+    await userEvent.click(await screen.findByRole("option", { name: "Ola Nordmann" }, { timeout: 2000 }));
+
+    expect(await screen.findByText("Siri Haugen")).toBeInTheDocument();
   });
 
   it("keeps the current owner on the list even when the search would drop them", async () => {
@@ -242,6 +280,33 @@ describe("CustomerRelationshipCard", () => {
     const [, init] = putsTo(fetchMock, "/api/v1/customers/1001/tags")[0];
     // The whole set, not a delta: VIP was already on the customer.
     expect(JSON.parse(String((init as RequestInit).body)).tagIds.sort()).toEqual(["t1", "t2"]);
+  });
+
+  it("shows the tag set the PUT answered without reading the customer again", async () => {
+    // The set replace answers the customer's tags, so the chips and the pills
+    // can move on that body alone; the customer GET fails from the moment the
+    // PUT has answered to prove no refetch is what moved them. The answered set
+    // is deliberately not the one the request named — the server's answer is
+    // what counts, and a tag renamed a second ago is exactly how they differ.
+    let putAnswered = false;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "PUT" && url.endsWith("/tags")) {
+        putAnswered = true;
+        return Promise.resolve(jsonResponse({ tags: [{ id: "t9", name: "Key account", color: "teal" }] }));
+      }
+      if (url.startsWith("/api/v1/customers/assignable-users")) return Promise.resolve(jsonResponse([]));
+      if (url === "/api/v1/customers/tags") return Promise.resolve(jsonResponse(tagRows));
+      return Promise.resolve(putAnswered ? jsonResponse({ title: "Boom" }, 500) : jsonResponse(ownedBody));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderCard({ canEdit: true });
+    const tagsInput = await screen.findByRole("combobox", { name: "Tags" });
+    await userEvent.click(tagsInput);
+    await userEvent.click(await screen.findByRole("option", { name: "Prospect" }));
+
+    await waitFor(() => expect(within(pillsOf(tagsInput)).getByText("Key account")).toBeInTheDocument());
   });
 
   it("creates a tag on the fly and then puts it on the customer", async () => {
