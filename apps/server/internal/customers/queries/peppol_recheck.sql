@@ -20,6 +20,18 @@ WHERE c.status <> 'archived'
 ORDER BY l.checked_at, c.id
 LIMIT @row_limit::int;
 
+-- name: DeleteCustomerPeppolLookup :exec
+-- DeleteCustomerPeppolLookup drops a stored answer the re-check worker found to
+-- be about a participant the customer no longer resolves to (design D6's
+-- participant rule, Task 4 review). Nothing reads such a row —
+-- resolvedPeppolLookup already treats it as never checked, in every response and
+-- every warning — and leaving it would keep it in the aged set for good: its
+-- checked_at never moves, so it occupies a slot of every cycle's batch forever.
+-- Deleting it is also what makes the customer's next lookup a first one, which
+-- is exactly what it is for the participant it now resolves to.
+DELETE FROM customers.customer_peppol_lookups
+WHERE customer_id = @customer_id;
+
 -- name: EhfCustomersWithoutPeppolLookup :many
 -- EhfCustomersWithoutPeppolLookup is the second candidate set (design D6): a
 -- customer whose invoices are already being sent to Peppol and whose

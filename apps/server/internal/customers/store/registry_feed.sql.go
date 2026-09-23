@@ -217,9 +217,13 @@ WHERE id = 1
 `
 
 // SetRegistryBackfillPosition stores where the backfill got to, so the next
-// cycle continues instead of re-reading the same page (design D3): the last id
-// it attempted after a full batch, or 0 after a short one — a short batch means
-// the end of the installation, and the next pass starts from the front.
+// cycle continues instead of re-reading the same page (design D3): the batch's
+// last id after a full batch, or 0 after a short one — a short batch means the
+// end of the installation, and the next pass starts from the front.
+//
+// A cycle cancelled part-way through its batch writes nothing here at all: the
+// position means "everything up to here has been attempted this pass", and the
+// customers such a cycle never reached are next CYCLE's, not next pass's.
 func (q *Queries) SetRegistryBackfillPosition(ctx context.Context, afterID int32) error {
 	_, err := q.db.Exec(ctx, setRegistryBackfillPosition, afterID)
 	return err

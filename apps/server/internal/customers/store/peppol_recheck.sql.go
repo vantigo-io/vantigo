@@ -100,6 +100,24 @@ func (q *Queries) AgedPeppolLookups(ctx context.Context, arg AgedPeppolLookupsPa
 	return items, nil
 }
 
+const deleteCustomerPeppolLookup = `-- name: DeleteCustomerPeppolLookup :exec
+DELETE FROM customers.customer_peppol_lookups
+WHERE customer_id = $1
+`
+
+// DeleteCustomerPeppolLookup drops a stored answer the re-check worker found to
+// be about a participant the customer no longer resolves to (design D6's
+// participant rule, Task 4 review). Nothing reads such a row —
+// resolvedPeppolLookup already treats it as never checked, in every response and
+// every warning — and leaving it would keep it in the aged set for good: its
+// checked_at never moves, so it occupies a slot of every cycle's batch forever.
+// Deleting it is also what makes the customer's next lookup a first one, which
+// is exactly what it is for the participant it now resolves to.
+func (q *Queries) DeleteCustomerPeppolLookup(ctx context.Context, customerID int32) error {
+	_, err := q.db.Exec(ctx, deleteCustomerPeppolLookup, customerID)
+	return err
+}
+
 const ehfCustomersWithoutPeppolLookup = `-- name: EhfCustomersWithoutPeppolLookup :many
 SELECT c.id, c.type, c.legal_country, c.legal_id, c.legal_name, c.legal_source, c.legal_type,
        c.invoice_email, c.reminder_email, c.payment_terms_days, c.currency, c.language,

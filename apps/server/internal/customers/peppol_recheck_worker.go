@@ -31,7 +31,8 @@ import (
 //     stale by identity — the billing profile drops it from every response and
 //     every warning — so refreshing it would update a row nothing reads, and
 //     re-stamping its checked_at would make it look current while naming the
-//     wrong participant;
+//     wrong participant. Such a row is deleted rather than skipped: skipping it
+//     leaves it aged forever, holding a place in every cycle's batch;
 //   - a customer whose invoice_delivery is already 'ehf' and who has NO stored
 //     answer at all. "Could this customer receive EHF" is a question a person
 //     asks with a click; "is the customer we are already sending EHF to
@@ -53,6 +54,16 @@ const (
 	// network, one at a time, so the batch is what keeps a large installation's
 	// nightly cycle from looking like a crawl of it.
 	peppolRecheckBatch = 100
+
+	// peppolRecheckEhfShare is how much of that batch the EHF set may take
+	// (Task 4 review). The EHF set goes first because it matters most, but
+	// "first" must not mean "all": an installation that switches two hundred
+	// customers to EHF in an afternoon would otherwise spend every cycle on that
+	// queue, and an aged answer behind it is re-checked no sooner than the queue
+	// ends. Half each means the aged half always has fifty places, however long
+	// the other queue is, and a cycle whose EHF set is small still spends the
+	// whole batch (the aged set asks for whatever the EHF set left).
+	peppolRecheckEhfShare = 50
 
 	// The defaults a worker built from a Deps with no Config falls back on — the
 	// same values config.go defaults CUSTOMERS_PEPPOL_RECHECK_POLL and
@@ -114,7 +125,10 @@ func (w *PeppolRecheckWorker) Run(ctx context.Context) error {
 // The EHF customers come first because they are the ones whose invoices are
 // already being sent somewhere nobody has verified: on an installation with
 // more aged answers than the batch, the customer that matters most must not be
-// the one that never fits.
+// the one that never fits. They take at most peppolRecheckEhfShare of the batch
+// for the mirror image of that reason — the aged set must not be the one that
+// never fits either — and the aged set then asks for whatever is left, so a
+// cycle with few EHF candidates still spends the whole batch.
 func (w *PeppolRecheckWorker) RunCycle(ctx context.Context) (bool, error) {
 	return w.underLease(ctx, func(ctx context.Context) error {
 		if w.srv.peppolLookup == nil {
@@ -125,11 +139,11 @@ func (w *PeppolRecheckWorker) RunCycle(ctx context.Context) (bool, error) {
 		}
 		q := store.New(w.deps.Pool)
 
-		missing, err := q.EhfCustomersWithoutPeppolLookup(ctx, peppolRecheckBatch)
+		missing, err := q.EhfCustomersWithoutPeppolLookup(ctx, peppolRecheckEhfShare)
 		if err != nil {
 			return fmt.Errorf("customers: select ehf customers without a peppol lookup: %w", err)
 		}
-		checked, changed, failed := 0, 0, 0
+		checked, changed, failed, dropped := 0, 0, 0, 0
 		for _, row := range missing {
 			if ctx.Err() != nil {
 				return nil
@@ -172,8 +186,16 @@ func (w *PeppolRecheckWorker) RunCycle(ctx context.Context) (bool, error) {
 				participant, _ := lookupParticipant(profile, identity, row.Type)
 				// The participant rule (design D6, this file's header): only a
 				// lookup that is still about the participant this customer
-				// resolves to today is this worker's to refresh.
+				// resolves to today is this worker's to refresh. The rest are not
+				// left to sit either — a row nothing reads whose checked_at never
+				// moves would hold a place in every cycle's batch for the rest of
+				// the installation's life — so they go, and the customer's next
+				// lookup is a first one, which is what it is for the participant it
+				// resolves to now.
 				if participant == "" || participant != row.ParticipantID {
+					if w.drop(ctx, row.ID) {
+						dropped++
+					}
 					continue
 				}
 				if ok, news := w.recheck(ctx, row.ID, participant); ok {
@@ -186,11 +208,12 @@ func (w *PeppolRecheckWorker) RunCycle(ctx context.Context) (bool, error) {
 				}
 			}
 		}
-		// changed is the number worth reading of the three: a cycle that checked a
+		// changed is the number worth reading of the four: a cycle that checked a
 		// hundred customers and moved none of their answers is the healthy case,
 		// and one that moved many is the day something happened in the register.
+		// dropped is there so a row disappearing is never a mystery.
 		w.logger().Info("peppol re-check cycle finished", "worker", peppolRecheckWorkerName,
-			"checked", checked, "changed", changed, "failed", failed)
+			"checked", checked, "changed", changed, "failed", failed, "dropped", dropped)
 		return nil
 	})
 }
@@ -239,13 +262,34 @@ func (w *PeppolRecheckWorker) underLease(ctx context.Context, action func(contex
 func (w *PeppolRecheckWorker) recheck(ctx context.Context, customerID int32, participant string) (ok, changed bool) {
 	outcome, err := w.srv.lookupAndStorePeppol(ctx, customerID, participant, generatedFallbackActor)
 	if err != nil {
-		if !errors.Is(err, errPeppolLookupUnavailable) {
+		// Not while the process is shutting down: a cancellation landing inside
+		// db.WithTx is this cycle being told to stop, not a database problem, and
+		// Run's own loop applies the same guard to the same effect — an operator
+		// reading Error lines must find only things that were actually wrong.
+		if !errors.Is(err, errPeppolLookupUnavailable) && ctx.Err() == nil {
 			w.logger().Error("customers: storing a peppol re-check failed",
 				"worker", peppolRecheckWorkerName, "customerId", customerID, "error", err.Error())
 		}
 		return false, false
 	}
 	return true, outcome.Changed
+}
+
+// drop deletes a stored answer whose participant the customer no longer
+// resolves to (design D6's participant rule), reporting whether it went. A
+// database failure is logged and swallowed for recheck's own reason — a cycle
+// that stopped at the first one would leave the rest of the batch unchecked for
+// a whole poll interval over what may be one row's problem — and the row is
+// simply dropped next cycle instead. A cancellation is not logged, as above.
+func (w *PeppolRecheckWorker) drop(ctx context.Context, customerID int32) bool {
+	if err := store.New(w.deps.Pool).DeleteCustomerPeppolLookup(ctx, customerID); err != nil {
+		if ctx.Err() == nil {
+			w.logger().Error("customers: dropping a peppol lookup whose participant changed failed",
+				"worker", peppolRecheckWorkerName, "customerId", customerID, "error", err.Error())
+		}
+		return false
+	}
+	return true
 }
 
 // recheckAge is how old a stored answer must be before it is asked again

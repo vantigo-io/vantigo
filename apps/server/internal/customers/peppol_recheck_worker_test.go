@@ -3,6 +3,7 @@ package customers_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -23,6 +24,15 @@ func peppolCheckedAt(t *testing.T, h *modtest.Harness, customerID int32) *time.T
 	t.Helper()
 	return modtest.One[*time.Time](t, h,
 		`SELECT max(checked_at) FROM customers.customer_peppol_lookups WHERE customer_id = $1`, customerID)
+}
+
+// peppolLookupRowCount is how many stored answers a customer has: one or none,
+// so it is the helper for a test about a row being dropped rather than
+// re-stamped, where peppolCheckedAt's own nil would also be the answer for a
+// customer that was never checked at all.
+func peppolLookupRowCount(t *testing.T, h *modtest.Harness, customerID int32) int {
+	t.Helper()
+	return h.Count(t, `SELECT count(*) FROM customers.customer_peppol_lookups WHERE customer_id = $1`, customerID)
 }
 
 // agePeppolLookup backdates a stored lookup, which is how a test makes a row
@@ -69,14 +79,21 @@ func TestPeppolRecheckWorker_AsksAgainForAnAgedAnswerAndNotForAFreshOne(t *testi
 	}
 }
 
-// TestPeppolRecheckWorker_LeavesALookupWhoseParticipantChanged pins design
-// D6's participant rule. A lookup made for a participant the customer no
-// longer resolves to is stale BY IDENTITY: the billing profile already drops
-// it from every response and every warning (resolvedPeppolLookup), so
-// refreshing it would spend a network call to update a row nothing reads, and
-// re-stamping its checked_at would make it look current while still naming the
-// wrong participant.
-func TestPeppolRecheckWorker_LeavesALookupWhoseParticipantChanged(t *testing.T) {
+// TestPeppolRecheckWorker_DeletesALookupWhoseParticipantChanged pins design
+// D6's participant rule and what becomes of the row it refuses to refresh. A
+// lookup made for a participant the customer no longer resolves to is stale BY
+// IDENTITY: the billing profile already drops it from every response and every
+// warning (resolvedPeppolLookup), so refreshing it would spend a network call to
+// update a row nothing reads, and re-stamping its checked_at would make it look
+// current while still naming the wrong participant.
+//
+// Leaving it in place is no better, which is why it goes: its checked_at never
+// moves, so the row is in the aged set again next cycle and every cycle after
+// that, holding one of the batch's hundred slots for the rest of the
+// installation's life. Deleting it also makes the next lookup for this customer
+// a first one, which is exactly what it is for the participant it resolves to
+// now.
+func TestPeppolRecheckWorker_DeletesALookupWhoseParticipantChanged(t *testing.T) {
 	t.Parallel()
 	calls := &peppolLookupCalls{}
 	h := newHarness(t, modtest.WithPeppolLookup(stubPeppolLookup(calls, peppol.Result{Registered: true}, nil)))
@@ -89,7 +106,6 @@ func TestPeppolRecheckWorker_LeavesALookupWhoseParticipantChanged(t *testing.T) 
 	agePeppolLookup(t, h, created.Id, h.Now().Add(-800*time.Hour))
 	// The stored row now names a participant this customer does not resolve to.
 	h.Exec(t, `UPDATE customers.customer_peppol_lookups SET participant_id = '0192:974760673' WHERE customer_id = $1`, created.Id)
-	stored := peppolCheckedAt(t, h, created.Id)
 	before := len(calls.all())
 
 	if _, err := customers.NewPeppolRecheckWorker(h.Deps()).RunCycle(context.Background()); err != nil {
@@ -98,8 +114,90 @@ func TestPeppolRecheckWorker_LeavesALookupWhoseParticipantChanged(t *testing.T) 
 	if asked := calls.all()[before:]; len(asked) != 0 {
 		t.Errorf("participants asked = %v, want none: the stored lookup is already stale by identity", asked)
 	}
-	if at := peppolCheckedAt(t, h, created.Id); at == nil || stored == nil || !at.Equal(*stored) {
-		t.Errorf("checked_at = %v, want it untouched at %v", at, stored)
+	if n := peppolLookupRowCount(t, h, created.Id); n != 0 {
+		t.Errorf("stored lookups = %d, want 0: a row for a participant that moved on is dropped, not kept aged forever", n)
+	}
+}
+
+// TestPeppolRecheckWorker_TheEhfShareLeavesRoomForTheAgedSet pins the split
+// between the two candidate sets. The EHF set comes first because it matters
+// most, but it may not take the whole batch: sixty customers set to EHF with no
+// stored answer are sixty good reasons to ask the network, and an aged answer
+// that never fits behind them is one nobody re-checks for as long as the queue
+// lasts. Half the batch is the EHF set's share, and the other half is the aged
+// set's however long that queue is.
+func TestPeppolRecheckWorker_TheEhfShareLeavesRoomForTheAgedSet(t *testing.T) {
+	t.Parallel()
+	calls := &peppolLookupCalls{}
+	h := newHarness(t, modtest.WithPeppolLookup(stubPeppolLookup(calls,
+		peppol.Result{Registered: true, CanReceiveInvoice: true, CanReceiveCreditNote: true}, nil)))
+	c := authenticatedClient(t, h)
+
+	// One aged answer, and sixty EHF customers ahead of it. The sixty are
+	// inserted with an explicit peppolId rather than a legal identity, because
+	// that is what lookupParticipant reads first and there are not sixty valid
+	// organisation numbers in this package's fixtures.
+	aged := createNorwegianBusiness(t, c, "Aged AS", "923609016")
+	if r := postPeppolLookup(t, c, aged.Id); r.Status != 200 {
+		t.Fatalf("seed the aged lookup: %d %s", r.Status, r.Body)
+	}
+	agePeppolLookup(t, h, aged.Id, h.Now().Add(-800*time.Hour))
+	for i := 0; i < 60; i++ {
+		id := insertCustomer(t, h, fmt.Sprintf("Ehf %02d", i), "active")
+		h.Exec(t, `UPDATE customers.customers SET invoice_delivery = 'ehf', peppol_id = $2 WHERE id = $1`,
+			id, fmt.Sprintf("0192:8000000%02d", i))
+	}
+	before := len(calls.all())
+
+	if ran, err := customers.NewPeppolRecheckWorker(h.Deps()).RunCycle(context.Background()); err != nil || !ran {
+		t.Fatalf("RunCycle = %v, %v; want true, nil", ran, err)
+	}
+	asked := calls.all()[before:]
+	if len(asked) != 51 {
+		t.Errorf("participants asked = %d, want 51: fifty of the sixty ehf customers plus the aged answer", len(asked))
+	}
+	if at := peppolCheckedAt(t, h, aged.Id); at == nil || !at.Equal(h.Now()) {
+		t.Errorf("the aged lookup's checked_at = %v, want the cycle's clock %v: the ehf queue must not starve it", at, h.Now())
+	}
+}
+
+// TestPeppolRecheckWorker_LeavesArchivedCustomersOutOfBothSets pins the one
+// filter both candidate queries share. An archived customer is invoiced by
+// nobody, so asking a public network about it every month is a request made for
+// no reason — and on an installation with years of archived customers it is the
+// batch spent on them instead of on the live ones.
+func TestPeppolRecheckWorker_LeavesArchivedCustomersOutOfBothSets(t *testing.T) {
+	t.Parallel()
+	calls := &peppolLookupCalls{}
+	h := newHarness(t, modtest.WithPeppolLookup(stubPeppolLookup(calls,
+		peppol.Result{Registered: true, CanReceiveInvoice: true, CanReceiveCreditNote: true}, nil)))
+	c := authenticatedClient(t, h)
+
+	// One of each set: an aged answer whose participant still matches, and an
+	// ehf customer that has never been checked. Both archived after the fact,
+	// which is the order a real installation gets there in.
+	agedRow := createNorwegianBusiness(t, c, "Aged Archived AS", "923609016")
+	if r := postPeppolLookup(t, c, agedRow.Id); r.Status != 200 {
+		t.Fatalf("seed the aged lookup: %d %s", r.Status, r.Body)
+	}
+	agePeppolLookup(t, h, agedRow.Id, h.Now().Add(-800*time.Hour))
+	ehf := createNorwegianBusiness(t, c, "Ehf Archived AS", "974760673")
+	h.Exec(t, `UPDATE customers.customers SET invoice_delivery = 'ehf' WHERE id = $1`, ehf.Id)
+	h.Exec(t, `UPDATE customers.customers SET status = 'archived' WHERE id = ANY($1)`, []int32{agedRow.Id, ehf.Id})
+	stored := peppolCheckedAt(t, h, agedRow.Id)
+	before := len(calls.all())
+
+	if ran, err := customers.NewPeppolRecheckWorker(h.Deps()).RunCycle(context.Background()); err != nil || !ran {
+		t.Fatalf("RunCycle = %v, %v; want true, nil", ran, err)
+	}
+	if asked := calls.all()[before:]; len(asked) != 0 {
+		t.Errorf("participants asked = %v, want none: both candidates are archived", asked)
+	}
+	if at := peppolCheckedAt(t, h, agedRow.Id); at == nil || stored == nil || !at.Equal(*stored) {
+		t.Errorf("the archived customer's checked_at = %v, want it untouched at %v", at, stored)
+	}
+	if n := peppolLookupRowCount(t, h, ehf.Id); n != 0 {
+		t.Errorf("stored lookups for the archived ehf customer = %d, want 0: it was never a candidate", n)
 	}
 }
 
