@@ -49,9 +49,13 @@ type FeedEntryForTest struct {
 // RegistryFeedLeaseKeyForTest is the feed worker's advisory-lease key, exported
 // so a test can take the same lock from a second connection and prove a cycle
 // skips (design D5) — communications' RetentionLeaseKeyForTest is the same seam
-// for the same reason. The Peppol worker's key joins it in Task 4, with the
-// worker it names.
+// for the same reason.
 const RegistryFeedLeaseKeyForTest = registryFeedLeaseKey
+
+// PeppolRecheckLeaseKeyForTest is this worker's advisory-lease key, exported so
+// a test can take the same lock from a second connection and prove a cycle
+// skips (design D5).
+const PeppolRecheckLeaseKeyForTest = peppolRecheckLeaseKey
 
 // SetRegistryFeedPageSize shrinks the feed's page size for the length of one
 // test and answers the function that puts the real one back. Proving that the

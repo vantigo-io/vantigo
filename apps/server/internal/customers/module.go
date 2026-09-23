@@ -62,16 +62,20 @@ func Module() module.Module {
 }
 
 // workers is this module's background work (registry workers design D7): the
-// Brreg update-feed worker. cmd/vantigo starts these through module.Workers in
-// worker mode, and in api mode when WORKERS_IN_PROCESS=1 — never in server
-// mode.
+// Brreg update-feed worker and the Peppol re-check worker. cmd/vantigo starts
+// these through module.Workers in worker mode, and in api mode when
+// WORKERS_IN_PROCESS=1 — never in server mode.
 //
 // Each worker is registered only when its own switch is on, rather than
 // registered always and skipped inside its cycle: "the feed worker is off"
 // must mean this process never makes that outbound request on a schedule, and
 // the honest way to promise that is not to hand the runner the thing that
 // would. The runner's startup log then names exactly the workers that are
-// actually running, which is what an operator reads it for.
+// actually running, which is what an operator reads it for. The re-check worker
+// has a second condition for the same reason: PEPPOL_LOOKUP_ENABLED off leaves
+// it with no network to ask (server.go's newServer sets no lookup at all), so
+// "effective only alongside the lookup" (design D6) is spelled here as never
+// started rather than started and idle.
 //
 // Both workers take an advisory lease, unlike communications' outbox and
 // cleanup workers: they have no per-row claim to fall back on — a cursor is
@@ -91,6 +95,9 @@ func workers(d module.Deps) []worker.Worker {
 	var out []worker.Worker
 	if d.Config.CustomersRegistryFeedEnabled {
 		out = append(out, NewRegistryFeedWorker(d))
+	}
+	if d.Config.PeppolLookupEnabled && d.Config.CustomersPeppolRecheckEnabled {
+		out = append(out, NewPeppolRecheckWorker(d))
 	}
 	return out
 }

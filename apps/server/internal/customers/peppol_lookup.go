@@ -137,6 +137,13 @@ func peppolErrorKind(err error) string {
 	}
 }
 
+// errPeppolLookupUnavailable is what lookupAndStorePeppol answers when the
+// NETWORK could not answer, as opposed to when the database could not store
+// what it said: the handler owes a 502 for the first and a 500 for the second,
+// and the worker logs the first and gives up on the second, so the two must be
+// told apart by something better than the shape of an error string.
+var errPeppolLookupUnavailable = errors.New("customers: peppol network unavailable")
+
 // peppolLookupUnavailableResponse is the 502 POST .../peppol-lookup answers
 // when the network call itself failed (design D3: "An upstream failure is
 // 502, as Brreg's lookup") — shaped exactly like brregUnavailableResponse,
@@ -161,6 +168,110 @@ func peppolLookupDisabledResponse() gen.PostCustomersByIdPeppolLookup503Applicat
 	))
 }
 
+// peppolLookupOutcome is one completed lookup-and-store: what the network
+// said, when, and whether that was news. Changed is what decides the timeline
+// event, and it is returned rather than kept private because the worker logs a
+// cycle's summary from it (design D6) — the click does not need it, since the
+// event is already written by the time it reads the outcome.
+type peppolLookupOutcome struct {
+	Status               string
+	CanReceiveInvoice    bool
+	CanReceiveCreditNote bool
+	SMPHost              *string
+	CheckedAt            time.Time
+	Changed              bool
+}
+
+// lookupAndStorePeppol asks the Peppol network about participant and remembers
+// the answer: the network call bounded by Config.PeppolTimeout and OUTSIDE any
+// transaction, then one transaction with a locked read of the stored row, the
+// upsert, and the customer.peppol_lookup event only when the answer changed
+// (design D3's controller ruling, unchanged).
+//
+// It is one function because there are two callers and there must be exactly
+// one ruling (registry workers design D6): POST .../peppol-lookup, where a
+// person is waiting, and the re-check worker, where nobody is. The only thing
+// the two do differently is what they do with the error — 502 versus a log
+// line and the next customer — so the error is returned and the warning is
+// logged here, once, in the shape both need.
+//
+// The caller must have decided the participant already (lookupParticipant) and
+// resolved its actor before calling: an empty participant is a caller's bug,
+// not an outcome, and actorFor is an out-of-process call that must not happen
+// inside this function's transaction.
+func (s *server) lookupAndStorePeppol(ctx context.Context, customerID int32, participant string, act actor) (peppolLookupOutcome, error) {
+	lookupCtx := ctx
+	if s.deps.Config.PeppolTimeout > 0 {
+		var cancel context.CancelFunc
+		lookupCtx, cancel = context.WithTimeout(ctx, s.deps.Config.PeppolTimeout)
+		defer cancel()
+	}
+	result, err := s.peppolLookup(lookupCtx, participant)
+	if err != nil {
+		// The kind alone, never err.Error(): peppol.Client.Lookup's message can
+		// carry the participant identifier, which is an organisation number and
+		// does not belong in a log line next to the customer id that caused it.
+		s.deps.Logger.WarnContext(ctx, "customers: peppol lookup failed", "customerId", customerID, "errorKind", peppolErrorKind(err))
+		return peppolLookupOutcome{}, fmt.Errorf("%w: %w", errPeppolLookupUnavailable, err)
+	}
+	// Read once the network call has returned, not before it was made: the call
+	// itself takes real time, and checkedAt is supposed to say when the answer
+	// was obtained, not when it was asked for.
+	now := s.deps.Clock()
+
+	status := peppolResultStatus(result)
+	var smpHost *string
+	if result.SMPHost != "" {
+		host := result.SMPHost
+		smpHost = &host
+	}
+
+	var (
+		previous    store.CustomersCustomerPeppolLookup
+		hadPrevious bool
+		changed     bool
+	)
+	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		txq := store.New(tx)
+		var perr error
+		previous, perr = txq.GetCustomerPeppolLookupForUpdate(ctx, customerID)
+		switch {
+		case errors.Is(perr, pgx.ErrNoRows):
+			changed = true
+		case perr != nil:
+			return perr
+		default:
+			hadPrevious = true
+			changed = previous.Status != status ||
+				previous.CanReceiveInvoice != result.CanReceiveInvoice ||
+				previous.CanReceiveCreditNote != result.CanReceiveCreditNote
+		}
+
+		if err := txq.UpsertCustomerPeppolLookup(ctx, store.UpsertCustomerPeppolLookupParams{
+			CustomerID: customerID, ParticipantID: participant, Status: status,
+			CanReceiveInvoice: result.CanReceiveInvoice, CanReceiveCreditNote: result.CanReceiveCreditNote,
+			SmpHost: smpHost, CheckedAt: now,
+		}); err != nil {
+			return err
+		}
+		if !changed {
+			return nil
+		}
+		var previousStatus *string
+		if hadPrevious {
+			previousStatus = &previous.Status
+		}
+		return recordCustomerPeppolLookup(ctx, txq, now, customerID, status, result.CanReceiveInvoice, result.CanReceiveCreditNote, smpHost, previousStatus, act.Kind, act.Display, act.UserID)
+	})
+	if err != nil {
+		return peppolLookupOutcome{}, fmt.Errorf("customers: record peppol lookup: %w", err)
+	}
+	return peppolLookupOutcome{
+		Status: status, CanReceiveInvoice: result.CanReceiveInvoice, CanReceiveCreditNote: result.CanReceiveCreditNote,
+		SMPHost: smpHost, CheckedAt: now, Changed: changed,
+	}, nil
+}
+
 // PostCustomersByIdPeppolLookup Ask Peppol whether this customer can
 // receive EHF invoices (POST /api/v1/customers/{id}/peppol-lookup)
 //
@@ -175,6 +286,12 @@ func peppolLookupDisabledResponse() gen.PostCustomersByIdPeppolLookup503Applicat
 // row (first lookup ever counts as "changed"), the upsert, and the
 // customer.peppol_lookup event only when the status or either capability
 // changed. The customer row itself is never touched.
+//
+// Everything from the network call onwards is lookupAndStorePeppol, shared
+// verbatim with the re-check worker (registry workers design D6): this handler
+// owns only what a person waiting deserves on top of it — the withholding
+// rule, the response, and a 502 rather than a log line when the network could
+// not answer.
 func (s *server) PostCustomersByIdPeppolLookup(ctx context.Context, req gen.PostCustomersByIdPeppolLookupRequestObject) (gen.PostCustomersByIdPeppolLookupResponseObject, error) {
 	q := store.New(s.deps.Pool)
 	row, err := q.GetCustomerBillingProfile(ctx, req.Id)
@@ -212,71 +329,17 @@ func (s *server) PostCustomersByIdPeppolLookup(ctx context.Context, req gen.Post
 		return nil, fmt.Errorf("customers: resolve actor: %w", err)
 	}
 
-	lookupCtx := ctx
-	if s.deps.Config.PeppolTimeout > 0 {
-		var cancel context.CancelFunc
-		lookupCtx, cancel = context.WithTimeout(ctx, s.deps.Config.PeppolTimeout)
-		defer cancel()
-	}
-	result, err := s.peppolLookup(lookupCtx, participant)
-	if err != nil {
-		s.deps.Logger.WarnContext(ctx, "customers: peppol lookup failed", "customerId", req.Id, "errorKind", peppolErrorKind(err))
+	outcome, err := s.lookupAndStorePeppol(ctx, req.Id, participant, act)
+	if errors.Is(err, errPeppolLookupUnavailable) {
+		// Already logged by kind inside lookupAndStorePeppol.
 		return peppolLookupUnavailableResponse(), nil
 	}
-	// Read once the network call has returned, not before it was made: the
-	// call itself takes real time, and checkedAt is supposed to say when the
-	// answer was obtained, not when it was asked for.
-	now := s.deps.Clock()
-
-	status := peppolResultStatus(result)
-	var smpHost *string
-	if result.SMPHost != "" {
-		host := result.SMPHost
-		smpHost = &host
-	}
-
-	var (
-		previous    store.CustomersCustomerPeppolLookup
-		hadPrevious bool
-		changed     bool
-	)
-	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		txq := store.New(tx)
-		var perr error
-		previous, perr = txq.GetCustomerPeppolLookupForUpdate(ctx, req.Id)
-		switch {
-		case errors.Is(perr, pgx.ErrNoRows):
-			changed = true
-		case perr != nil:
-			return perr
-		default:
-			hadPrevious = true
-			changed = previous.Status != status ||
-				previous.CanReceiveInvoice != result.CanReceiveInvoice ||
-				previous.CanReceiveCreditNote != result.CanReceiveCreditNote
-		}
-
-		if err := txq.UpsertCustomerPeppolLookup(ctx, store.UpsertCustomerPeppolLookupParams{
-			CustomerID: req.Id, ParticipantID: participant, Status: status,
-			CanReceiveInvoice: result.CanReceiveInvoice, CanReceiveCreditNote: result.CanReceiveCreditNote,
-			SmpHost: smpHost, CheckedAt: now,
-		}); err != nil {
-			return err
-		}
-		if !changed {
-			return nil
-		}
-		var previousStatus *string
-		if hadPrevious {
-			previousStatus = &previous.Status
-		}
-		return recordCustomerPeppolLookup(ctx, txq, now, req.Id, status, result.CanReceiveInvoice, result.CanReceiveCreditNote, smpHost, previousStatus, act.Kind, act.Display, act.UserID)
-	})
 	if err != nil {
-		return nil, fmt.Errorf("customers: record peppol lookup: %w", err)
+		return nil, err
 	}
 
 	return gen.PostCustomersByIdPeppolLookup200JSONResponse(
-		customerPeppolLookupResponse(status, result.CanReceiveInvoice, result.CanReceiveCreditNote, participant, showParticipantID, smpHost, now),
+		customerPeppolLookupResponse(outcome.Status, outcome.CanReceiveInvoice, outcome.CanReceiveCreditNote,
+			participant, showParticipantID, outcome.SMPHost, outcome.CheckedAt),
 	), nil
 }
