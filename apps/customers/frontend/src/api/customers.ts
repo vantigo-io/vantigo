@@ -36,6 +36,17 @@ export interface CustomerOwner {
   active: boolean;
 }
 
+/**
+ * The group a customer belongs to (customer groups design D3) — at most one.
+ * The group's own default payment term is not here: the billing card reads it
+ * from the profile's `groupDefault`, already resolved, and the Manage groups
+ * modal from the vocabulary list.
+ */
+export interface CustomerGroupRef {
+  id: string;
+  name: string;
+}
+
 /** The list's Owner filter: the caller's own customers, or the unassigned ones. */
 export type CustomerOwnerFilter = "me" | "none";
 
@@ -68,6 +79,8 @@ export interface CustomerResponse {
   contactInfo?: CustomerContactInfo;
   /** Design D1. Null when the customer is unowned; the wire omits the field entirely in that case. */
   owner: CustomerOwner | null;
+  /** Design D3. Null when the customer belongs to no group; the wire omits the field entirely in that case. */
+  group: CustomerGroupRef | null;
   /** Design D2. Always an array — the boundary turns an omitted field into `[]`. */
   tags: CustomerTag[];
 }
@@ -110,6 +123,7 @@ export interface CustomersQueryParams {
   sortDirection?: "asc" | "desc";
   ownerId?: string;
   tagId?: string;
+  groupId?: string;
 }
 
 async function fetchCustomers(
@@ -126,6 +140,7 @@ async function fetchCustomers(
   if (params.sortDirection) searchParams.set("sortDirection", params.sortDirection);
   if (params.ownerId) searchParams.set("ownerId", params.ownerId);
   if (params.tagId) searchParams.set("tagId", params.tagId);
+  if (params.groupId) searchParams.set("groupId", params.groupId);
 
   const query = searchParams.size > 0 ? `?${searchParams}` : "";
   const response = await request<PaginatedResponse<RawCustomerResponse>>(`/api/v1/customers${query}`, { signal });
@@ -155,6 +170,7 @@ export interface CustomersListSearch {
    */
   ownerId?: CustomerOwnerFilter;
   tagId?: string;
+  groupId?: string;
 }
 
 export const CUSTOMERS_PAGE_SIZE = 25;
@@ -175,6 +191,7 @@ export const customersListParams = (search: CustomersListSearch): CustomersQuery
   sortDirection: search.sortDirection,
   ownerId: search.ownerId,
   tagId: search.tagId,
+  groupId: search.groupId,
 });
 
 export const customerStatsQueryOptions = () =>
@@ -193,18 +210,30 @@ export const customerStatsQueryOptions = () =>
  * `contactInfo` itself stays optional: it is genuinely absent on the
  * recorded responses that predate design D2.
  */
-type RawCustomerResponse = Omit<CustomerResponse, "contactInfo" | "owner" | "tags"> & {
+type RawCustomerResponse = Omit<CustomerResponse, "contactInfo" | "owner" | "group" | "tags"> & {
   contactInfo?: Partial<CustomerContactInfo>;
   owner?: CustomerOwner | null;
+  group?: CustomerGroupRef | null;
   tags?: { id: string; name: string; color?: string | null }[];
 };
 
-export const normalizeCustomer = ({ contactInfo, owner, tags, ...rest }: RawCustomerResponse): CustomerResponse => {
-  // The three normalised fields are destructured out, so what is left is
+export const normalizeCustomer = ({
+  contactInfo,
+  owner,
+  group,
+  tags,
+  ...rest
+}: RawCustomerResponse): CustomerResponse => {
+  // The four normalised fields are destructured out, so what is left is
   // already the rest of a `CustomerResponse` and the two arms below need no
   // cast to say so — `contactInfo` is optional on the result, which is exactly
   // what "absent on responses that predate design D2" means.
-  const normalized: CustomerResponse = { ...rest, owner: owner ?? null, tags: (tags ?? []).map(normalizeTag) };
+  const normalized: CustomerResponse = {
+    ...rest,
+    owner: owner ?? null,
+    group: group ?? null,
+    tags: (tags ?? []).map(normalizeTag),
+  };
   if (!contactInfo) return normalized;
   return {
     ...normalized,
@@ -235,9 +264,10 @@ export const customerQueryOptions = (id: number) =>
 /**
  * The customer row's revision (design D5) lives in two cache entries: the
  * customer itself and its billing profile, whose revision *is* the row's
- * (design D4). Five editors — the form modal, the type change, contact info,
- * the billing profile and the owner PUT (owner and tags design D1, the owner
- * being a column on the row) — plus Restore all send it, so a write that gets a
+ * (design D4). Six editors — the form modal, the type change, contact info,
+ * the billing profile, the owner PUT (owner and tags design D1, the owner
+ * being a column on the row) and the group PUT (customer groups design D3, for
+ * the same reason) — plus Restore all send it, so a write that gets a
  * fresh revision back writes it to both entries straight away, before its
  * own invalidations: those cost a round trip, and an editor opened inside
  * that window would otherwise seed itself from the revision the server has

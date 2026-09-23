@@ -34,6 +34,13 @@ const tagRows = [
   { id: "t2", name: "Prospect", color: null, customerCount: 0 },
 ];
 
+// Literally the vocabulary's wire rows: Key accounts has no default, so it has
+// no defaultPaymentTermsDays key at all.
+const groupRows = [
+  { id: "g1", name: "Retail", defaultPaymentTermsDays: 30, customerCount: 2 },
+  { id: "g2", name: "Key accounts", customerCount: 0 },
+];
+
 const stubFetch = (rows: unknown[] = [defaultRow]) => {
   const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -52,6 +59,7 @@ const stubFetch = (rows: unknown[] = [defaultRow]) => {
       );
     }
     if (url.startsWith("/api/v1/customers/tags")) return Promise.resolve(jsonResponse(tagRows));
+    if (url.startsWith("/api/v1/customers/groups")) return Promise.resolve(jsonResponse(groupRows));
     if (url.startsWith("/api/v1/customers/lookup")) {
       return Promise.resolve(jsonResponse([]));
     }
@@ -380,6 +388,7 @@ describe("CustomersPage, owner and tags", () => {
         type: undefined,
         ownerId: "me",
         tagId: undefined,
+        groupId: undefined,
         sortBy: undefined,
         sortDirection: undefined,
       },
@@ -491,5 +500,49 @@ describe("CustomersPage, owner and tags", () => {
 
     await waitFor(() => expect(screen.queryByText("Delete tag")).not.toBeInTheDocument());
     expect(router.navigate).not.toHaveBeenCalled();
+  });
+
+  it("drives the URL from the Group filter, and offers No group as a filter of its own", async () => {
+    stubFetch([ownedRow]);
+    renderPage();
+    await screen.findByText("Equinor");
+    await userEvent.click(screen.getByRole("combobox", { name: "Group" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Retail" }));
+    expect(router.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ search: expect.objectContaining({ groupId: "g1", page: 1 }) }),
+    );
+
+    router.navigate.mockReset();
+    await userEvent.click(screen.getByRole("combobox", { name: "Group" }));
+    await userEvent.click(await screen.findByRole("option", { name: "No group" }));
+    expect(router.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ search: expect.objectContaining({ groupId: "none", page: 1 }) }),
+    );
+  });
+
+  it("asks the API for the group the URL names, by method and URL rather than by call order", async () => {
+    const fetchMock = stubFetch([ownedRow]);
+    router.search = { page: 1, search: "", groupId: "g1" };
+    renderPage();
+    await screen.findByText("Equinor");
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.filter(([u, init]) => String(u).includes("groupId=g1") && !(init as RequestInit)?.method),
+      ).not.toHaveLength(0),
+    );
+  });
+
+  it("opens Manage groups for a caller who may edit, and offers it to nobody else", async () => {
+    stubFetch([ownedRow]);
+    const { unmount } = renderPage({ canEdit: true });
+    await screen.findByText("Equinor");
+    await userEvent.click(screen.getByRole("button", { name: "Manage groups" }));
+    expect(await screen.findByRole("dialog")).toHaveTextContent("Manage groups");
+    unmount();
+
+    stubFetch([ownedRow]);
+    renderPage();
+    await screen.findByText("Equinor");
+    expect(screen.queryByRole("button", { name: "Manage groups" })).not.toBeInTheDocument();
   });
 });

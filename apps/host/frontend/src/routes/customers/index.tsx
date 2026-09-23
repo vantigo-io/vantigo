@@ -6,6 +6,7 @@ import {
   customersListParams,
   customersQueryOptions,
 } from "@vantigo/customers-ui/api/customers";
+import { customerGroupsQueryOptions } from "@vantigo/customers-ui/api/groups";
 import { customerTagsQueryOptions } from "@vantigo/customers-ui/api/tags";
 import { CustomersListPage } from "./-customers-list";
 
@@ -24,6 +25,14 @@ const OWNER_FILTERS = ["me", "none"] as const;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const tagFilterOf = (value: unknown): string | undefined =>
   typeof value === "string" && UUID.test(value) ? value : undefined;
+/**
+ * A group filter is a uuid or the literal 'none' (customer groups design D3) —
+ * unlike the Owner filter's two literals, because the Group Select really does
+ * offer every group by id. Anything else is no filter rather than a 400 from
+ * the API.
+ */
+const groupFilterOf = (value: unknown): string | undefined =>
+  value === "none" || (typeof value === "string" && UUID.test(value)) ? value : undefined;
 
 /** A value from a known set, or no filter at all — never an unknown value forwarded to the API. */
 const oneOf = <T extends string>(values: readonly T[], value: unknown): T | undefined =>
@@ -42,6 +51,7 @@ export const Route = createFileRoute("/customers/")({
     type: oneOf(CUSTOMER_TYPES, search.type),
     ownerId: oneOf(OWNER_FILTERS, search.ownerId),
     tagId: tagFilterOf(search.tagId),
+    groupId: groupFilterOf(search.groupId),
     sortBy: oneOf(SORT_FIELDS, search.sortBy),
     sortDirection: oneOf(SORT_DIRECTIONS, search.sortDirection),
     // Present only when true: the create form opens on arrival (Spotlight's quick action).
@@ -57,6 +67,7 @@ export const Route = createFileRoute("/customers/")({
       queryClient.ensureQueryData(customersQueryOptions(deps)),
       queryClient.ensureQueryData(customerStatsQueryOptions()),
       queryClient.ensureQueryData(customerTagsQueryOptions()),
+      queryClient.ensureQueryData(customerGroupsQueryOptions()),
     ]),
   component: CustomersListPage,
 });

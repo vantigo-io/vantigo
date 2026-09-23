@@ -44,10 +44,12 @@ import {
   customersListParams,
   customersQueryOptions,
 } from "../api/customers";
+import { customerGroupsQueryOptions } from "../api/groups";
 import { customerTagsQueryOptions } from "../api/tags";
 import { TagBadge } from "../components/tag-badge";
 import "../i18n";
 import { CustomerFormModal, type CustomerModalState } from "./-customer-form-modal";
+import { ManageGroupsModal } from "./-manage-groups-modal";
 import { ManageTagsModal } from "./-manage-tags-modal";
 
 type SortColumn = NonNullable<CustomersListSearch["sortBy"]>;
@@ -66,6 +68,7 @@ const ALL_STATUSES = "";
 const ALL_TYPES = "";
 const ALL_OWNERS = "";
 const ALL_TAGS = "";
+const ALL_GROUPS = "";
 
 const STATUS_FILTERS: CustomerStatusFilter[] = ["active", "disabled", "archived"];
 const TYPE_FILTERS: CustomerType[] = ["business", "person"];
@@ -111,7 +114,7 @@ const SortableHeader = ({ column, label, sortBy, sortDirection, onSort }: Sortab
 
 export const CustomersPage = ({ canEdit }: { canEdit?: boolean }) => {
   const { t, formatters } = useI18n("customers");
-  const { page, search, status, type, ownerId, tagId, sortBy, sortDirection, create } = useSearch({
+  const { page, search, status, type, ownerId, tagId, groupId, sortBy, sortDirection, create } = useSearch({
     strict: false,
   }) as CustomersSearch;
   const navigate = useNavigate() as (options: unknown) => void;
@@ -120,13 +123,23 @@ export const CustomersPage = ({ canEdit }: { canEdit?: boolean }) => {
   // search box or turning a page must never resurrect a consumed create
   // intent, but must never drop a filter either (see useDebouncedListSearch
   // below and the Local vs CI note on losing `status` while typing).
-  const listSearch: CustomersListSearch = { page, search, status, type, ownerId, tagId, sortBy, sortDirection };
+  const listSearch: CustomersListSearch = {
+    page,
+    search,
+    status,
+    type,
+    ownerId,
+    tagId,
+    groupId,
+    sortBy,
+    sortDirection,
+  };
 
   const { searchInput, setSearchInput, onPageChange } = useDebouncedListSearch({
     currentSearch: search,
     onNavigate: (next, options) => navigate({ search: { ...listSearch, ...next }, ...options }),
   });
-  const filterBy = (next: Partial<Pick<CustomersListSearch, "status" | "type" | "ownerId" | "tagId">>) =>
+  const filterBy = (next: Partial<Pick<CustomersListSearch, "status" | "type" | "ownerId" | "tagId" | "groupId">>) =>
     navigate({ search: { ...listSearch, ...next, page: 1 } });
   const [manageTagsOpened, setManageTagsOpened] = useState(false);
   const { data: tags } = useQuery(customerTagsQueryOptions());
@@ -144,6 +157,14 @@ export const CustomersPage = ({ canEdit }: { canEdit?: boolean }) => {
     // URL state it reads is `tagId`, which is in the list.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tagId, tags]);
+  const [manageGroupsOpened, setManageGroupsOpened] = useState(false);
+  const { data: groups } = useQuery(customerGroupsQueryOptions());
+  // Deliberately NO effect dropping a `groupId` the vocabulary does not know,
+  // unlike the Tag filter's above: `none` (the customers in no group) is a
+  // legitimate value the vocabulary will never contain, so that repair would
+  // throw the No-group filter away on every render. A deleted group cannot
+  // still have members to filter by, and `onGroupDeleted` below lets go of the
+  // one deletion this page does see.
   const toggleSort = (column: SortColumn) => {
     const next: Pick<CustomersListSearch, "sortBy" | "sortDirection"> =
       sortBy !== column
@@ -210,6 +231,15 @@ export const CustomersPage = ({ canEdit }: { canEdit?: boolean }) => {
         // list by an id nothing carries while the Tag filter sits blank.
         onTagDeleted={(deleted) => {
           if (deleted === tagId) filterBy({ tagId: undefined });
+        }}
+      />
+      <ManageGroupsModal
+        opened={manageGroupsOpened}
+        onClose={() => setManageGroupsOpened(false)}
+        // The same repair as the tags': a group the list is filtered by can be
+        // deleted from inside that very modal, and the URL has to let go of it.
+        onGroupDeleted={(deleted) => {
+          if (deleted === groupId) filterBy({ groupId: undefined });
         }}
       />
 
@@ -288,6 +318,25 @@ export const CustomersPage = ({ canEdit }: { canEdit?: boolean }) => {
               {canEdit && (
                 <Button variant="subtle" size="sm" onClick={() => setManageTagsOpened(true)}>
                   {t("manageTags")}
+                </Button>
+              )}
+            </Group>
+            <Group gap="xs" align="end">
+              <Select
+                label={t("group")}
+                w={160}
+                allowDeselect={false}
+                data={[
+                  { value: ALL_GROUPS, label: t("all") },
+                  { value: "none", label: t("noGroup") },
+                  ...(groups ?? []).map((group) => ({ value: group.id, label: group.name })),
+                ]}
+                value={groupId ?? ALL_GROUPS}
+                onChange={(value) => filterBy({ groupId: value || undefined })}
+              />
+              {canEdit && (
+                <Button variant="subtle" size="sm" onClick={() => setManageGroupsOpened(true)}>
+                  {t("manageGroups")}
                 </Button>
               )}
             </Group>

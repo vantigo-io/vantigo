@@ -1,4 +1,4 @@
-import { Alert, Badge, Button, Card, Divider, Group, MultiSelect, Stack, Text } from "@mantine/core";
+import { Alert, Badge, Button, Card, Divider, Group, MultiSelect, Select, Stack, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconUserStar } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
@@ -6,11 +6,13 @@ import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   ApiConflictError,
+  type CustomerGroupRef,
   type CustomerResponse,
   customerQueryOptions,
   invalidateCustomersExcept,
   syncCustomerRevision,
 } from "../api/customers";
+import { customerGroupsQueryOptions, setCustomerGroup } from "../api/groups";
 import { setCustomerOwner } from "../api/owner";
 import { type CustomerTag, createTag, customerTagsQueryOptions, setCustomerTags } from "../api/tags";
 import { OwnerPicker } from "../components/owner-picker";
@@ -20,20 +22,24 @@ import { useCustomerReload } from "../lib/customer-reload";
 
 /**
  * The customer page's "Relationship" card (owner and tags design D3): who owns
- * the relationship, and how the customer is classified. `canEdit` comes from
- * the host, which reads the caller's `customers:update` permission — this
- * package never fetches permissions itself.
+ * the relationship, how the customer is classified, and which group it is in
+ * (customer groups design D5) — the group is a column too, so its write is the
+ * owner's, revision and conflict alert included. `canEdit` comes from the
+ * host, which reads the caller's `customers:update` permission — this package
+ * never fetches permissions itself.
  *
- * Both values ride on the customer read this page already made (the owner is a
- * column, the tags come decorated onto the same response), so this card issues
- * no query of its own for them — only the tag VOCABULARY, which is
- * installation-wide, and the user search, which lives inside the picker.
+ * All three ride on the customer read this page already made (the owner and the
+ * group are columns, the tags come decorated onto the same response), so this
+ * card issues no query of its own for them — only the tag and group
+ * VOCABULARIES, which are installation-wide, and the user search, which lives
+ * inside the picker.
  *
- * The two writes reload differently, and deliberately:
+ * The writes reload in two ways, and deliberately:
  *
- *  - The owner is a column on the customer row, so its PUT is revision-guarded
- *    and answers the whole customer: that body goes straight into this query's
- *    cache (the Owner row moves with no round trip), `syncCustomerRevision`
+ *  - The owner is a column on the customer row (and so is the group, whose save
+ *    is a copy of the owner's), so its PUT is revision-guarded and answers the
+ *    whole customer: that body goes straight into this query's cache (the Owner
+ *    row moves with no round trip), `syncCustomerRevision`
  *    writes the fresh revision into every other cache entry that carries it
  *    BEFORE the invalidation's refetches land, or an editor opened in that
  *    window sends the revision this save just replaced, and
@@ -97,6 +103,31 @@ export const CustomerRelationshipCard = ({ customerId, canEdit }: { customerId: 
     },
   });
 
+  // The group's save is the owner's, deliberately: it is a column on the same
+  // row, so it carries the revision read off the query (never a private copy —
+  // a sibling editor's save moves it under this card), answers the whole
+  // customer, and a 409 raises the same conflict-and-Reload alert.
+  const groupMutation = useMutation({
+    mutationFn: (groupId: string | null) => setCustomerGroup(customerId, groupId, customer.revision),
+    onMutate: () => {
+      setConflict(false);
+      reload.forget();
+    },
+    onSuccess: (saved) => {
+      queryClient.setQueryData(customerKey, saved);
+      syncCustomerRevision(queryClient, customerId, saved.revision);
+      invalidateCustomersExcept(queryClient, customerKey);
+      notifications.show({ color: "teal", title: t("groupUpdated"), message: t("groupUpdatedMessage") });
+    },
+    onError: (error) => {
+      if (error instanceof ApiConflictError && !error.code) {
+        setConflict(true);
+        return;
+      }
+      notifications.show({ color: "red", title: t("groupCouldNotBeSaved"), message: error.message });
+    },
+  });
+
   return (
     <Card withBorder padding="lg" radius="md">
       <Stack gap="lg">
@@ -149,6 +180,19 @@ export const CustomerRelationshipCard = ({ customerId, canEdit }: { customerId: 
             selected={customer.owner}
             disabled={ownerMutation.isPending}
             onChange={(value) => ownerMutation.mutate(value)}
+          />
+        )}
+        <Group gap="xs" wrap="nowrap" align="center">
+          <Text size="sm" c="dimmed" miw={64}>
+            {t("group")}
+          </Text>
+          <Text size="sm">{customer.group?.name ?? "—"}</Text>
+        </Group>
+        {canEdit && (
+          <GroupSelect
+            group={customer.group}
+            disabled={groupMutation.isPending}
+            onChange={(value) => groupMutation.mutate(value)}
           />
         )}
 
@@ -282,6 +326,45 @@ const TagsEditor = ({ customerId, tags }: { customerId: number; tags: CustomerTa
         setSearch("");
         mutation.mutate(next);
       }}
+    />
+  );
+};
+
+/**
+ * The group picker: the vocabulary's names with a "No group" row, which is the
+ * `NO_GROUP` sentinel for the reason every `Select` in this package has one — a
+ * Mantine `Select` needs a real string among its `data` to offer a row at all,
+ * and "no group" is a choice a person makes rather than a cleared field.
+ *
+ * The customer's OWN group seeds the option list and the vocabulary widens it,
+ * for the tags editor's reason: a `Select` renders the raw value of a selected
+ * option its `data` does not describe, so without this the field reads as a uuid
+ * until the vocabulary lands, and for good if it fails.
+ */
+const NO_GROUP = "";
+
+const GroupSelect = ({
+  group,
+  disabled,
+  onChange,
+}: {
+  group: CustomerGroupRef | null;
+  disabled?: boolean;
+  onChange: (groupId: string | null) => void;
+}) => {
+  const { t } = useI18n("customers");
+  const { data: vocabulary } = useQuery(customerGroupsQueryOptions());
+  const options = new Map(group ? [[group.id, group.name]] : []);
+  for (const g of vocabulary ?? []) options.set(g.id, g.name);
+
+  return (
+    <Select
+      label={t("group")}
+      allowDeselect={false}
+      data={[{ value: NO_GROUP, label: t("noGroup") }, ...[...options].map(([value, label]) => ({ value, label }))]}
+      value={group?.id ?? NO_GROUP}
+      disabled={disabled}
+      onChange={(value) => onChange(value === NO_GROUP || value === null ? null : value)}
     />
   );
 };
