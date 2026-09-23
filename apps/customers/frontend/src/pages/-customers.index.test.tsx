@@ -545,4 +545,39 @@ describe("CustomersPage, owner and tags", () => {
     await screen.findByText("Equinor");
     expect(screen.queryByRole("button", { name: "Manage groups" })).not.toBeInTheDocument();
   });
+
+  it("drops a deleted group from the URL when the list was filtered by it", async () => {
+    // The group is gone, so `groupId=g2` would narrow the list by an id no
+    // customer can carry while the Group filter sat on a name nobody has.
+    stubFetch([ownedRow]);
+    router.search = { page: 1, search: "", groupId: "g2" };
+    renderPage({ canEdit: true });
+    await screen.findByText("Equinor");
+
+    await userEvent.click(screen.getByRole("button", { name: "Manage groups" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(await within(dialog).findByRole("button", { name: "Delete Key accounts" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete group" }));
+
+    await waitFor(() =>
+      expect(router.navigate).toHaveBeenCalledWith(
+        expect.objectContaining({ search: expect.objectContaining({ groupId: undefined, page: 1 }) }),
+      ),
+    );
+  });
+
+  it("leaves the URL alone when the deleted group is not the one filtered by", async () => {
+    stubFetch([ownedRow]);
+    router.search = { page: 1, search: "", groupId: "none" };
+    renderPage({ canEdit: true });
+    await screen.findByText("Equinor");
+
+    await userEvent.click(screen.getByRole("button", { name: "Manage groups" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(await within(dialog).findByRole("button", { name: "Delete Key accounts" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete group" }));
+
+    await waitFor(() => expect(screen.queryByText("Delete group")).not.toBeInTheDocument());
+    expect(router.navigate).not.toHaveBeenCalled();
+  });
 });
