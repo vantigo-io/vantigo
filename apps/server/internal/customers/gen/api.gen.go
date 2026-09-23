@@ -24,7 +24,16 @@ type AttachCustomerContactRequest struct {
 	ContactId int32   `json:"contactId"`
 	Email     *string `json:"email,omitempty"`
 	Phone     *string `json:"phone,omitempty"`
-	Role      string  `json:"role"`
+
+	// Role Deprecated alias of title, kept because the recorded exchange corpus sends it. title wins when both are given.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	Role *string `json:"role,omitempty"`
+
+	// Roles The typed roles to give the contact (typed contact roles design D3). Omitted means none.
+	Roles *[]CustomerContactRoleRequest `json:"roles,omitempty"`
+
+	// Title What this person is called at this customer — a job title, free text (typed contact roles design D1). At most 255 characters, trimmed. A request with neither a title nor at least one role is refused with a field error on title.
+	Title *string `json:"title,omitempty"`
 }
 
 // BrregLookupLookupResult defines model for BrregLookupLookupResult.
@@ -166,7 +175,16 @@ type CustomerContactInfo struct {
 type CustomerContactRequest struct {
 	Email *string `json:"email,omitempty"`
 	Phone *string `json:"phone,omitempty"`
-	Role  string  `json:"role"`
+
+	// Role Deprecated alias of title, kept because the recorded exchange corpus sends it. title wins when both are given.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	Role *string `json:"role,omitempty"`
+
+	// Roles The complete set of typed roles the contact is to hold for this customer (typed contact roles design D3). Omitted leaves the roles unchanged; an empty array clears them. A role listed without a primary keeps the primary flag it already has, so replacing the set is not an accidental demotion.
+	Roles *[]CustomerContactRoleRequest `json:"roles,omitempty"`
+
+	// Title What this person is called at this customer — a job title, free text (typed contact roles design D1). At most 255 characters, trimmed. A request that would leave the association with neither a title nor a role is refused with a field error on title.
+	Title *string `json:"title,omitempty"`
 }
 
 // CustomerContactResponse defines model for CustomerContactResponse.
@@ -174,7 +192,27 @@ type CustomerContactResponse struct {
 	Contact ContactResponse `json:"contact"`
 	Email   *string         `json:"email,omitempty"`
 	Phone   *string         `json:"phone,omitempty"`
-	Role    string          `json:"role"`
+
+	// Role The association's title, or "" when it has none. Kept required and kept under this name because the recorded exchange corpus predates title; new clients read title.
+	Role string `json:"role"`
+
+	// Roles Every typed role this contact holds for this customer, in the fixed order billing, project, decision_maker (typed contact roles design D3). Always present on responses from this version on — an empty array when the contact holds none — and optional here only because the recorded exchange corpus predates it.
+	Roles *[]CustomerContactRole `json:"roles,omitempty"`
+
+	// Title What this person is called at this customer (typed contact roles design D1). Absent when the association has no title; role answers "" in that case.
+	Title *string `json:"title,omitempty"`
+}
+
+// CustomerContactRole One typed role a contact holds for a customer (typed contact roles design D2). role is 'billing' (who gets the invoice and the reminder), 'project' (who is spoken to day to day) or 'decision_maker' (who approves). primary marks the one contact that holds the role for this customer — there is always exactly one while anyone holds the role at all.
+type CustomerContactRole struct {
+	Primary bool   `json:"primary"`
+	Role    string `json:"role"`
+}
+
+// CustomerContactRoleRequest One typed role to give a contact for a customer (typed contact roles design D2, D3). primary is three-valued, and the three values mean different things: omitted on a role the contact ALREADY holds leaves its primary flag exactly as it is, so a request that replaces the role set without meaning to move anybody does not have to echo every flag back; omitted on a role the contact does NOT yet hold follows the first-holder rule (primary if nobody holds the role, otherwise not). true demotes whoever holds the role now. An explicit false on the contact that is the only or the primary holder is refused with a field error on roles — there is always a primary while anyone holds the role.
+type CustomerContactRoleRequest struct {
+	Primary *bool  `json:"primary,omitempty"`
+	Role    string `json:"role"`
 }
 
 // CustomerOwner The single user accountable for the customer relationship (owner and tags design D1). displayName is resolved from the user directory at read time, never stored on the customer; a user the directory no longer knows is reported as "Unknown user" with active false, and an owner disabled after being assigned keeps the customer and is reported with active false. Absent when the customer is unowned.
@@ -323,7 +361,15 @@ type GetContactCustomersContactCustomerResponse struct {
 	Customer GetContactCustomersCustomerReference `json:"customer"`
 	Email    *string                              `json:"email,omitempty"`
 	Phone    *string                              `json:"phone,omitempty"`
-	Role     string                               `json:"role"`
+
+	// Role The association's title, or "" when it has none. Kept required and kept under this name because the recorded exchange corpus predates title; new clients read title.
+	Role string `json:"role"`
+
+	// Roles Every typed role this contact holds for this customer, in the fixed order billing, project, decision_maker (typed contact roles design D3). Always present on responses from this version on — an empty array when the contact holds none — and optional here only because the recorded exchange corpus predates it.
+	Roles *[]CustomerContactRole `json:"roles,omitempty"`
+
+	// Title What this person is called at this customer (typed contact roles design D1). Absent when the association has no title; role answers "" in that case.
+	Title *string `json:"title,omitempty"`
 }
 
 // GetContactCustomersCustomerReference defines model for GetContactCustomersCustomerReference.
