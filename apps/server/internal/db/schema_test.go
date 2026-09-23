@@ -324,11 +324,13 @@ func TestCustomersBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"customer_addresses",
 		"customer_peppol_lookups",
 		"customer_registry_records",
+		"customer_tags",
 		"customers",
 		"customers_contacts",
 		"customers_timeline_entries",
 		"customers_timeline_entries_revisions",
 		"registry_feed_cursor",
+		"tags",
 	}
 	rows, err := pool.Query(ctx, `SELECT table_name FROM information_schema.tables WHERE table_schema = 'customers' ORDER BY table_name`)
 	if err != nil {
@@ -366,6 +368,29 @@ func TestCustomersBaseline_AppliesAndIsIdempotent(t *testing.T) {
 
 	if cols := primaryKeyColumns(t, ctx, pool, "customers", "customers_contacts"); !equalStrings(cols, []string{"customer_id", "contact_id"}) {
 		t.Errorf("customers_contacts primary key columns = %v, want [customer_id contact_id]", cols)
+	}
+
+	if cols := primaryKeyColumns(t, ctx, pool, "customers", "customer_tags"); !equalStrings(cols, []string{"customer_id", "tag_id"}) {
+		t.Errorf("customer_tags primary key columns = %v, want [customer_id tag_id]", cols)
+	}
+
+	// A tag is a vocabulary, so 'VIP' and 'vip' are one word (owner and tags
+	// design D2): the uniqueness is on lower(name), which is an EXPRESSION
+	// index — indexColumns above joins pg_attribute on i.indkey and therefore
+	// reports nothing at all for one, so this reads the definition instead.
+	// The customers module's own 409 tag_exists test proves the behaviour;
+	// this proves the index that makes it cheap and race-proof is really there.
+	var tagNameIndexDef string
+	if err := pool.QueryRow(ctx, `SELECT indexdef FROM pg_indexes
+	                              WHERE schemaname = 'customers' AND indexname = 'ux_customers_tags_name_lower'`).Scan(&tagNameIndexDef); err != nil {
+		t.Fatalf("read ux_customers_tags_name_lower definition: %v", err)
+	}
+	// Postgres normalises a varchar column's expression index with an
+	// explicit cast (lower(name) becomes lower((name)::text) in
+	// pg_indexes.indexdef), so the substring checked here is the cast form,
+	// not the migration's own literal text.
+	if !strings.Contains(tagNameIndexDef, "UNIQUE") || !strings.Contains(tagNameIndexDef, "lower((name)") {
+		t.Errorf("ux_customers_tags_name_lower = %q, want a UNIQUE index on lower(name)", tagNameIndexDef)
 	}
 
 	var tenantIDColumns int

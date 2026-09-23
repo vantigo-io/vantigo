@@ -55,6 +55,7 @@ type CustomersCustomer struct {
 	PeppolID         *string
 	Gln              *string
 	BuyerReference   *string
+	OwnerUserID      *uuid.UUID
 }
 
 type CustomersCustomerAddress struct {
@@ -109,6 +110,11 @@ type CustomersCustomerRegistryRecord struct {
 	RegistryUpdatedHint      *time.Time
 	BankruptOn               pgtype.Date
 	LiquidationOn            pgtype.Date
+}
+
+type CustomersCustomerTag struct {
+	CustomerID int32
+	TagID      uuid.UUID
 }
 
 type CustomersCustomersContact struct {
@@ -174,4 +180,10 @@ type CustomersRegistryFeedCursor struct {
 	LastPolledAt    *time.Time
 	LastUpdateAt    *time.Time
 	BackfillAfterID int32
+}
+
+type CustomersTag struct {
+	ID    uuid.UUID
+	Name  string
+	Color *string
 }

@@ -61,25 +61,32 @@ WHERE (
      OR ($1::text IS NULL AND ($2::bool OR c.status <> 'archived'))
       )
   AND ($3::text IS NULL OR c.type = $3::text)
+  AND (NOT $4::bool OR c.owner_user_id IS NULL)
+  AND ($5::uuid IS NULL OR c.owner_user_id = $5::uuid)
+  AND ($6::uuid IS NULL OR EXISTS (
+        SELECT 1
+        FROM customers.customer_tags cft
+        WHERE cft.customer_id = c.id
+          AND cft.tag_id = $6::uuid))
   AND (
-        $4::text IS NULL
-     OR c.name ILIKE $4::text
-     OR c.customer_number::text ILIKE $5::text
-     OR c.email ILIKE $4::text
-     OR ($6::bool AND regexp_replace(c.phone, '\s', '', 'g') ILIKE $5::text)
-     OR ($7::bool AND (
-            c.legal_name ILIKE $4::text
-         OR c.legal_id ILIKE $5::text))
-     OR ($8::bool AND EXISTS (
+        $7::text IS NULL
+     OR c.name ILIKE $7::text
+     OR c.customer_number::text ILIKE $8::text
+     OR c.email ILIKE $7::text
+     OR ($9::bool AND regexp_replace(c.phone, '\s', '', 'g') ILIKE $8::text)
+     OR ($10::bool AND (
+            c.legal_name ILIKE $7::text
+         OR c.legal_id ILIKE $8::text))
+     OR ($11::bool AND EXISTS (
             SELECT 1
             FROM customers.customers_contacts cc
             JOIN customers.contacts ct ON ct.id = cc.contact_id
             WHERE cc.customer_id = c.id
-              AND (ct.first_name ILIKE $4::text
-                OR ct.last_name ILIKE $4::text
-                OR (ct.first_name || ' ' || ct.last_name) ILIKE $4::text
-                OR ct.email ILIKE $4::text
-                OR cc.email ILIKE $4::text)))
+              AND (ct.first_name ILIKE $7::text
+                OR ct.last_name ILIKE $7::text
+                OR (ct.first_name || ' ' || ct.last_name) ILIKE $7::text
+                OR ct.email ILIKE $7::text
+                OR cc.email ILIKE $7::text)))
       )
 `
 
@@ -87,6 +94,9 @@ type CountCustomersParams struct {
 	Status          *string
 	IncludeArchived bool
 	CustomerType    *string
+	OwnerNone       bool
+	OwnerID         *uuid.UUID
+	TagID           *uuid.UUID
 	Search          *string
 	SearchCompact   *string
 	SearchPhone     bool
@@ -118,11 +128,22 @@ type CountCustomersParams struct {
 // D4), the legal name/id and any linked contact's name/email: a caller
 // lacking those permissions gets exactly today's name-and-number behaviour,
 // never an oracle for data the response would withhold.
+//
+// owner_none/owner_id are the two halves of design D1's ownerId filter,
+// because they are genuinely different questions: 'none' is "no owner at all"
+// (a NULL test, which no equality can express) and a uuid — including the one
+// 'me' resolved to in Go — is an equality. They are never both set: the Go
+// validation turns exactly one ownerId value into exactly one of them. tag_id
+// is design D2's single-tag filter: a customer matches when it carries that
+// tag, and multi-tag filtering is not built until someone asks.
 func (q *Queries) CountCustomers(ctx context.Context, arg CountCustomersParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countCustomers,
 		arg.Status,
 		arg.IncludeArchived,
 		arg.CustomerType,
+		arg.OwnerNone,
+		arg.OwnerID,
+		arg.TagID,
 		arg.Search,
 		arg.SearchCompact,
 		arg.SearchPhone,
@@ -173,6 +194,22 @@ func (q *Queries) CustomerCreationBuckets(ctx context.Context, arg CustomerCreat
 		return nil, err
 	}
 	return items, nil
+}
+
+const customerExists = `-- name: CustomerExists :one
+SELECT id FROM customers.customers WHERE id = $1
+`
+
+// CustomerExists is PUT /customers/{id}/tags's 404 check (owner and tags
+// design D2), and deliberately not LockCustomer (queries/addresses.sql): a
+// tag set-replace is off the customer row, so it takes no lock on it and no
+// revision — two concurrent replaces are last-wins, which is what replacing a
+// set means. pgx.ErrNoRows means the customer does not exist.
+func (q *Queries) CustomerExists(ctx context.Context, id int32) (int32, error) {
+	row := q.db.QueryRow(ctx, customerExists, id)
+	var id_2 int32
+	err := row.Scan(&id_2)
+	return id_2, err
 }
 
 const customerIdentityFigures = `-- name: CustomerIdentityFigures :one
@@ -620,7 +657,7 @@ func (q *Queries) DirectoryCustomers(ctx context.Context, ids []int32) ([]Direct
 
 const getCustomer = `-- name: GetCustomer :one
 SELECT id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-       created_at, updated_at, type, revision, email, phone, website
+       created_at, updated_at, type, revision, email, phone, website, owner_user_id
 FROM customers.customers
 WHERE id = $1
 `
@@ -642,6 +679,7 @@ type GetCustomerRow struct {
 	Email          *string
 	Phone          *string
 	Website        *string
+	OwnerUserID    *uuid.UUID
 }
 
 // GetCustomer fetches one customer by id.
@@ -665,6 +703,7 @@ func (q *Queries) GetCustomer(ctx context.Context, id int32) (GetCustomerRow, er
 		&i.Email,
 		&i.Phone,
 		&i.Website,
+		&i.OwnerUserID,
 	)
 	return i, err
 }
@@ -895,7 +934,7 @@ func (q *Queries) InsertGeneratedTimelineEvent(ctx context.Context, arg InsertGe
 
 const listCustomers = `-- name: ListCustomers :many
 SELECT c.id, c.customer_number, c.name, c.status, c.type, c.legal_country, c.legal_id, c.legal_name, c.legal_source,
-       c.legal_type, c.created_at, c.updated_at, c.revision, c.email, c.phone, c.website,
+       c.legal_type, c.created_at, c.updated_at, c.revision, c.email, c.phone, c.website, c.owner_user_id,
        (SELECT count(*) FROM customers.customers_timeline_entries e
          WHERE e.customer_id = c.id AND e.state = 'active') AS entry_count,
        (SELECT max(e.occurred_on)::date FROM customers.customers_timeline_entries e
@@ -906,46 +945,56 @@ WHERE (
      OR ($1::text IS NULL AND ($2::bool OR c.status <> 'archived'))
       )
   AND ($3::text IS NULL OR c.type = $3::text)
+  AND (NOT $4::bool OR c.owner_user_id IS NULL)
+  AND ($5::uuid IS NULL OR c.owner_user_id = $5::uuid)
+  AND ($6::uuid IS NULL OR EXISTS (
+        SELECT 1
+        FROM customers.customer_tags cft
+        WHERE cft.customer_id = c.id
+          AND cft.tag_id = $6::uuid))
   AND (
-        $4::text IS NULL
-     OR c.name ILIKE $4::text
-     OR c.customer_number::text ILIKE $5::text
-     OR c.email ILIKE $4::text
-     OR ($6::bool AND regexp_replace(c.phone, '\s', '', 'g') ILIKE $5::text)
-     OR ($7::bool AND (
-            c.legal_name ILIKE $4::text
-         OR c.legal_id ILIKE $5::text))
-     OR ($8::bool AND EXISTS (
+        $7::text IS NULL
+     OR c.name ILIKE $7::text
+     OR c.customer_number::text ILIKE $8::text
+     OR c.email ILIKE $7::text
+     OR ($9::bool AND regexp_replace(c.phone, '\s', '', 'g') ILIKE $8::text)
+     OR ($10::bool AND (
+            c.legal_name ILIKE $7::text
+         OR c.legal_id ILIKE $8::text))
+     OR ($11::bool AND EXISTS (
             SELECT 1
             FROM customers.customers_contacts cc
             JOIN customers.contacts ct ON ct.id = cc.contact_id
             WHERE cc.customer_id = c.id
-              AND (ct.first_name ILIKE $4::text
-                OR ct.last_name ILIKE $4::text
-                OR (ct.first_name || ' ' || ct.last_name) ILIKE $4::text
-                OR ct.email ILIKE $4::text
-                OR cc.email ILIKE $4::text)))
+              AND (ct.first_name ILIKE $7::text
+                OR ct.last_name ILIKE $7::text
+                OR (ct.first_name || ' ' || ct.last_name) ILIKE $7::text
+                OR ct.email ILIKE $7::text
+                OR cc.email ILIKE $7::text)))
       )
 ORDER BY
-    CASE WHEN $9::text = 'id' AND NOT $10::bool THEN c.id END ASC,
-    CASE WHEN $9::text = 'id' AND $10::bool THEN c.id END DESC,
-    CASE WHEN $9::text = 'name' AND NOT $10::bool THEN c.name END ASC,
-    CASE WHEN $9::text = 'name' AND $10::bool THEN c.name END DESC,
-    CASE WHEN $9::text = 'customerNumber' AND NOT $10::bool THEN c.customer_number END ASC,
-    CASE WHEN $9::text = 'customerNumber' AND $10::bool THEN c.customer_number END DESC,
-    CASE WHEN $9::text = 'createdAt' AND NOT $10::bool THEN c.created_at END ASC,
-    CASE WHEN $9::text = 'createdAt' AND $10::bool THEN c.created_at END DESC,
-    CASE WHEN $9::text = 'updatedAt' AND NOT $10::bool THEN c.updated_at END ASC,
-    CASE WHEN $9::text = 'updatedAt' AND $10::bool THEN c.updated_at END DESC,
-    CASE WHEN NOT $10::bool THEN c.id END ASC,
-    CASE WHEN $10::bool THEN c.id END DESC
-LIMIT $12::int OFFSET $11::int
+    CASE WHEN $12::text = 'id' AND NOT $13::bool THEN c.id END ASC,
+    CASE WHEN $12::text = 'id' AND $13::bool THEN c.id END DESC,
+    CASE WHEN $12::text = 'name' AND NOT $13::bool THEN c.name END ASC,
+    CASE WHEN $12::text = 'name' AND $13::bool THEN c.name END DESC,
+    CASE WHEN $12::text = 'customerNumber' AND NOT $13::bool THEN c.customer_number END ASC,
+    CASE WHEN $12::text = 'customerNumber' AND $13::bool THEN c.customer_number END DESC,
+    CASE WHEN $12::text = 'createdAt' AND NOT $13::bool THEN c.created_at END ASC,
+    CASE WHEN $12::text = 'createdAt' AND $13::bool THEN c.created_at END DESC,
+    CASE WHEN $12::text = 'updatedAt' AND NOT $13::bool THEN c.updated_at END ASC,
+    CASE WHEN $12::text = 'updatedAt' AND $13::bool THEN c.updated_at END DESC,
+    CASE WHEN NOT $13::bool THEN c.id END ASC,
+    CASE WHEN $13::bool THEN c.id END DESC
+LIMIT $15::int OFFSET $14::int
 `
 
 type ListCustomersParams struct {
 	Status          *string
 	IncludeArchived bool
 	CustomerType    *string
+	OwnerNone       bool
+	OwnerID         *uuid.UUID
+	TagID           *uuid.UUID
 	Search          *string
 	SearchCompact   *string
 	SearchPhone     bool
@@ -974,6 +1023,7 @@ type ListCustomersRow struct {
 	Email            *string
 	Phone            *string
 	Website          *string
+	OwnerUserID      *uuid.UUID
 	EntryCount       int64
 	LatestOccurredOn pgtype.Date
 }
@@ -999,6 +1049,9 @@ func (q *Queries) ListCustomers(ctx context.Context, arg ListCustomersParams) ([
 		arg.Status,
 		arg.IncludeArchived,
 		arg.CustomerType,
+		arg.OwnerNone,
+		arg.OwnerID,
+		arg.TagID,
 		arg.Search,
 		arg.SearchCompact,
 		arg.SearchPhone,
@@ -1033,6 +1086,7 @@ func (q *Queries) ListCustomers(ctx context.Context, arg ListCustomersParams) ([
 			&i.Email,
 			&i.Phone,
 			&i.Website,
+			&i.OwnerUserID,
 			&i.EntryCount,
 			&i.LatestOccurredOn,
 		); err != nil {
@@ -1141,7 +1195,7 @@ SET type = $1,
 WHERE id = $8
   AND ($9::int IS NULL OR revision = $9::int)
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at, type, revision, email, phone, website
+          created_at, updated_at, type, revision, email, phone, website, owner_user_id
 `
 
 type SetCustomerTypeParams struct {
@@ -1173,6 +1227,7 @@ type SetCustomerTypeRow struct {
 	Email          *string
 	Phone          *string
 	Website        *string
+	OwnerUserID    *uuid.UUID
 }
 
 // SetCustomerType is PUT /customers/{id}/type's write: the customer type
@@ -1213,6 +1268,7 @@ func (q *Queries) SetCustomerType(ctx context.Context, arg SetCustomerTypeParams
 		&i.Email,
 		&i.Phone,
 		&i.Website,
+		&i.OwnerUserID,
 	)
 	return i, err
 }
@@ -1231,7 +1287,7 @@ SET name = $1,
 WHERE id = $9
   AND ($10::int IS NULL OR revision = $10::int)
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at, type, revision, email, phone, website
+          created_at, updated_at, type, revision, email, phone, website, owner_user_id
 `
 
 type UpdateCustomerParams struct {
@@ -1264,6 +1320,7 @@ type UpdateCustomerRow struct {
 	Email          *string
 	Phone          *string
 	Website        *string
+	OwnerUserID    *uuid.UUID
 }
 
 // UpdateCustomer applies PUT /customers/{id}'s validated fields
@@ -1312,6 +1369,7 @@ func (q *Queries) UpdateCustomer(ctx context.Context, arg UpdateCustomerParams) 
 		&i.Email,
 		&i.Phone,
 		&i.Website,
+		&i.OwnerUserID,
 	)
 	return i, err
 }
@@ -1433,7 +1491,7 @@ SET email = $1,
 WHERE id = $5
   AND ($6::int IS NULL OR revision = $6::int)
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at, type, revision, email, phone, website
+          created_at, updated_at, type, revision, email, phone, website, owner_user_id
 `
 
 type UpdateCustomerContactInfoParams struct {
@@ -1462,6 +1520,7 @@ type UpdateCustomerContactInfoRow struct {
 	Email          *string
 	Phone          *string
 	Website        *string
+	OwnerUserID    *uuid.UUID
 }
 
 // UpdateCustomerContactInfo is PUT /customers/{id}/contact-info's write
@@ -1499,6 +1558,86 @@ func (q *Queries) UpdateCustomerContactInfo(ctx context.Context, arg UpdateCusto
 		&i.Email,
 		&i.Phone,
 		&i.Website,
+		&i.OwnerUserID,
+	)
+	return i, err
+}
+
+const updateCustomerOwner = `-- name: UpdateCustomerOwner :one
+UPDATE customers.customers
+SET owner_user_id = $1,
+    updated_at = $2::timestamptz,
+    revision = revision + 1
+WHERE id = $3
+  AND ($4::int IS NULL OR revision = $4::int)
+RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
+          created_at, updated_at, type, revision, email, phone, website, owner_user_id
+`
+
+type UpdateCustomerOwnerParams struct {
+	OwnerUserID      *uuid.UUID
+	UpdatedAt        time.Time
+	ID               int32
+	ExpectedRevision *int32
+}
+
+type UpdateCustomerOwnerRow struct {
+	ID             int32
+	CustomerNumber int64
+	Name           string
+	Status         string
+	LegalCountry   *string
+	LegalID        *string
+	LegalName      *string
+	LegalSource    *string
+	LegalType      *string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	Type           string
+	Revision       int32
+	Email          *string
+	Phone          *string
+	Website        *string
+	OwnerUserID    *uuid.UUID
+}
+
+// UpdateCustomerOwner is PUT /customers/{id}/owner's write (owner and tags
+// design D1): the owner column only — name, status, type, the legal identity
+// and the contact info are untouched, since this sub-resource never writes
+// them. Guarded and revision-bumping exactly like UpdateCustomerContactInfo
+// above: sqlc.narg(expected_revision) is PutCustomerOwnerRequest's optional
+// revision, and the caller (owner.go) skips calling this entirely when the
+// owner did not actually change, so a resubmit of the current owner writes
+// nothing and bumps nothing (customers foundation design D5's no-op rule).
+//
+// @owner_user_id is NULL to clear the owner, which is a real change like any
+// other: it bumps the revision and records customer.owner_changed.
+func (q *Queries) UpdateCustomerOwner(ctx context.Context, arg UpdateCustomerOwnerParams) (UpdateCustomerOwnerRow, error) {
+	row := q.db.QueryRow(ctx, updateCustomerOwner,
+		arg.OwnerUserID,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.ExpectedRevision,
+	)
+	var i UpdateCustomerOwnerRow
+	err := row.Scan(
+		&i.ID,
+		&i.CustomerNumber,
+		&i.Name,
+		&i.Status,
+		&i.LegalCountry,
+		&i.LegalID,
+		&i.LegalName,
+		&i.LegalSource,
+		&i.LegalType,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Type,
+		&i.Revision,
+		&i.Email,
+		&i.Phone,
+		&i.Website,
+		&i.OwnerUserID,
 	)
 	return i, err
 }

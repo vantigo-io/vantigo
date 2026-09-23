@@ -27,7 +27,7 @@ RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name
 -- name: GetCustomer :one
 -- GetCustomer fetches one customer by id.
 SELECT id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-       created_at, updated_at, type, revision, email, phone, website
+       created_at, updated_at, type, revision, email, phone, website, owner_user_id
 FROM customers.customers
 WHERE id = @id;
 
@@ -79,7 +79,7 @@ SET name = @name,
 WHERE id = @id
   AND (sqlc.narg(expected_revision)::int IS NULL OR revision = sqlc.narg(expected_revision)::int)
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at, type, revision, email, phone, website;
+          created_at, updated_at, type, revision, email, phone, website, owner_user_id;
 
 -- name: SetCustomerStatus :one
 -- SetCustomerStatus is DeleteCustomerEndpoint's archive transition
@@ -115,7 +115,7 @@ SET type = @type,
 WHERE id = @id
   AND (sqlc.narg(expected_revision)::int IS NULL OR revision = sqlc.narg(expected_revision)::int)
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at, type, revision, email, phone, website;
+          created_at, updated_at, type, revision, email, phone, website, owner_user_id;
 
 -- name: UpdateCustomerContactInfo :one
 -- UpdateCustomerContactInfo is PUT /customers/{id}/contact-info's write
@@ -135,7 +135,36 @@ SET email = @email,
 WHERE id = @id
   AND (sqlc.narg(expected_revision)::int IS NULL OR revision = sqlc.narg(expected_revision)::int)
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at, type, revision, email, phone, website;
+          created_at, updated_at, type, revision, email, phone, website, owner_user_id;
+
+-- name: UpdateCustomerOwner :one
+-- UpdateCustomerOwner is PUT /customers/{id}/owner's write (owner and tags
+-- design D1): the owner column only — name, status, type, the legal identity
+-- and the contact info are untouched, since this sub-resource never writes
+-- them. Guarded and revision-bumping exactly like UpdateCustomerContactInfo
+-- above: sqlc.narg(expected_revision) is PutCustomerOwnerRequest's optional
+-- revision, and the caller (owner.go) skips calling this entirely when the
+-- owner did not actually change, so a resubmit of the current owner writes
+-- nothing and bumps nothing (customers foundation design D5's no-op rule).
+--
+-- @owner_user_id is NULL to clear the owner, which is a real change like any
+-- other: it bumps the revision and records customer.owner_changed.
+UPDATE customers.customers
+SET owner_user_id = @owner_user_id,
+    updated_at = @updated_at::timestamptz,
+    revision = revision + 1
+WHERE id = @id
+  AND (sqlc.narg(expected_revision)::int IS NULL OR revision = sqlc.narg(expected_revision)::int)
+RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
+          created_at, updated_at, type, revision, email, phone, website, owner_user_id;
+
+-- name: CustomerExists :one
+-- CustomerExists is PUT /customers/{id}/tags's 404 check (owner and tags
+-- design D2), and deliberately not LockCustomer (queries/addresses.sql): a
+-- tag set-replace is off the customer row, so it takes no lock on it and no
+-- revision — two concurrent replaces are last-wins, which is what replacing a
+-- set means. pgx.ErrNoRows means the customer does not exist.
+SELECT id FROM customers.customers WHERE id = @id;
 
 -- name: GetCustomerBillingProfile :one
 -- GetCustomerBillingProfile is GET /customers/{id}/billing-profile's read
@@ -205,6 +234,14 @@ RETURNING id, revision, type, legal_country, legal_id, legal_name, legal_source,
 -- D4), the legal name/id and any linked contact's name/email: a caller
 -- lacking those permissions gets exactly today's name-and-number behaviour,
 -- never an oracle for data the response would withhold.
+--
+-- owner_none/owner_id are the two halves of design D1's ownerId filter,
+-- because they are genuinely different questions: 'none' is "no owner at all"
+-- (a NULL test, which no equality can express) and a uuid — including the one
+-- 'me' resolved to in Go — is an equality. They are never both set: the Go
+-- validation turns exactly one ownerId value into exactly one of them. tag_id
+-- is design D2's single-tag filter: a customer matches when it carries that
+-- tag, and multi-tag filtering is not built until someone asks.
 SELECT count(*)
 FROM customers.customers c
 WHERE (
@@ -212,6 +249,13 @@ WHERE (
      OR (sqlc.narg(status)::text IS NULL AND (@include_archived::bool OR c.status <> 'archived'))
       )
   AND (sqlc.narg(customer_type)::text IS NULL OR c.type = sqlc.narg(customer_type)::text)
+  AND (NOT @owner_none::bool OR c.owner_user_id IS NULL)
+  AND (sqlc.narg(owner_id)::uuid IS NULL OR c.owner_user_id = sqlc.narg(owner_id)::uuid)
+  AND (sqlc.narg(tag_id)::uuid IS NULL OR EXISTS (
+        SELECT 1
+        FROM customers.customer_tags cft
+        WHERE cft.customer_id = c.id
+          AND cft.tag_id = sqlc.narg(tag_id)::uuid))
   AND (
         sqlc.narg(search)::text IS NULL
      OR c.name ILIKE sqlc.narg(search)::text
@@ -251,7 +295,7 @@ WHERE (
 -- whatever direction @descending asks for, the same shape
 -- ListCustomersByName's name-then-id ordering had.
 SELECT c.id, c.customer_number, c.name, c.status, c.type, c.legal_country, c.legal_id, c.legal_name, c.legal_source,
-       c.legal_type, c.created_at, c.updated_at, c.revision, c.email, c.phone, c.website,
+       c.legal_type, c.created_at, c.updated_at, c.revision, c.email, c.phone, c.website, c.owner_user_id,
        (SELECT count(*) FROM customers.customers_timeline_entries e
          WHERE e.customer_id = c.id AND e.state = 'active') AS entry_count,
        (SELECT max(e.occurred_on)::date FROM customers.customers_timeline_entries e
@@ -262,6 +306,13 @@ WHERE (
      OR (sqlc.narg(status)::text IS NULL AND (@include_archived::bool OR c.status <> 'archived'))
       )
   AND (sqlc.narg(customer_type)::text IS NULL OR c.type = sqlc.narg(customer_type)::text)
+  AND (NOT @owner_none::bool OR c.owner_user_id IS NULL)
+  AND (sqlc.narg(owner_id)::uuid IS NULL OR c.owner_user_id = sqlc.narg(owner_id)::uuid)
+  AND (sqlc.narg(tag_id)::uuid IS NULL OR EXISTS (
+        SELECT 1
+        FROM customers.customer_tags cft
+        WHERE cft.customer_id = c.id
+          AND cft.tag_id = sqlc.narg(tag_id)::uuid))
   AND (
         sqlc.narg(search)::text IS NULL
      OR c.name ILIKE sqlc.narg(search)::text
