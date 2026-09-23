@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -490,4 +491,80 @@ func recordCustomerOwnerChanged(ctx context.Context, q *store.Queries, now time.
 		"after":      after,
 	}
 	return recordGeneratedEvent(ctx, q, customerID, now, "customer.owner_changed", summary, payload, 1, actorKind, actorDisplay, actorUserID)
+}
+
+// tagSnapshot is customer.tags_changed's element shape (owner and tags design
+// D2): which tag, and what it was called at the time. The name is snapshotted
+// for the same reason ownerSnapshot's is — renaming a tag later must not
+// rewrite what the timeline says was put on the customer.
+type tagSnapshot struct {
+	TagID uuid.UUID `json:"tagId"`
+	Name  string    `json:"name"`
+}
+
+// tagSetDiff is what a set replace actually changed: the tags in after and not
+// in before, and the reverse. Both come out in after's/before's own order,
+// which is name-ascending (queries/tags.sql orders both reads that way), so a
+// payload and a summary read in the same order a person sees the chips in.
+func tagSetDiff(before, after []tagSnapshot) (added, removed []tagSnapshot) {
+	had := make(map[uuid.UUID]bool, len(before))
+	for _, t := range before {
+		had[t.TagID] = true
+	}
+	wants := make(map[uuid.UUID]bool, len(after))
+	for _, t := range after {
+		wants[t.TagID] = true
+	}
+	for _, t := range after {
+		if !had[t.TagID] {
+			added = append(added, t)
+		}
+	}
+	for _, t := range before {
+		if !wants[t.TagID] {
+			removed = append(removed, t)
+		}
+	}
+	return added, removed
+}
+
+// tagNameList is the summary's rendering of one side of the change.
+func tagNameList(tags []tagSnapshot) string {
+	names := make([]string, 0, len(tags))
+	for _, t := range tags {
+		names = append(names, t.Name)
+	}
+	return strings.Join(names, ", ")
+}
+
+// recordCustomerTagsChanged is PutCustomersByIdTags's own generated event
+// (owner and tags design D2). Only called once the handler has established
+// that the set actually moved, so added and removed are never both empty —
+// which is why the summary can always name at least one half.
+//
+// Like recordCustomerOwnerChanged there is no changes map: added and removed
+// ARE the change, and the spec names this payload shape exactly. Both arrays
+// are always present, empty included, so a consumer never has to tell "no tags
+// were added" from "the field is missing".
+func recordCustomerTagsChanged(ctx context.Context, q *store.Queries, now time.Time, customerID int32, added, removed []tagSnapshot, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	if added == nil {
+		added = []tagSnapshot{}
+	}
+	if removed == nil {
+		removed = []tagSnapshot{}
+	}
+	var parts []string
+	if len(added) > 0 {
+		parts = append(parts, "added "+tagNameList(added))
+	}
+	if len(removed) > 0 {
+		parts = append(parts, "removed "+tagNameList(removed))
+	}
+	summary := truncateUTF16("Customer tags changed: "+strings.Join(parts, "; "), 500)
+	payload := map[string]any{
+		"customerId": customerID,
+		"added":      added,
+		"removed":    removed,
+	}
+	return recordGeneratedEvent(ctx, q, customerID, now, "customer.tags_changed", summary, payload, 1, actorKind, actorDisplay, actorUserID)
 }

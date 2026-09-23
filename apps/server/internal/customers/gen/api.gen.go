@@ -631,6 +631,12 @@ type PostCustomersContactsJSONRequestBody = ContactRequest
 // PutCustomersContactsByIdJSONRequestBody defines body for PutCustomersContactsById for application/json ContentType.
 type PutCustomersContactsByIdJSONRequestBody = ContactRequest
 
+// PostCustomersTagsJSONRequestBody defines body for PostCustomersTags for application/json ContentType.
+type PostCustomersTagsJSONRequestBody = CustomerTagRequest
+
+// PutCustomersTagsByTagIdJSONRequestBody defines body for PutCustomersTagsByTagId for application/json ContentType.
+type PutCustomersTagsByTagIdJSONRequestBody = CustomerTagRequest
+
 // PutCustomersByIdJSONRequestBody defines body for PutCustomersById for application/json ContentType.
 type PutCustomersByIdJSONRequestBody = UpdateCustomerRequest
 
@@ -657,6 +663,9 @@ type PutCustomersByIdLegalIdentityJSONRequestBody = PutLegalIdentityRequest
 
 // PutCustomersByIdOwnerJSONRequestBody defines body for PutCustomersByIdOwner for application/json ContentType.
 type PutCustomersByIdOwnerJSONRequestBody = PutCustomerOwnerRequest
+
+// PutCustomersByIdTagsJSONRequestBody defines body for PutCustomersByIdTags for application/json ContentType.
+type PutCustomersByIdTagsJSONRequestBody = PutCustomerTagsRequest
 
 // PostCustomersByIdTimelineJSONRequestBody defines body for PostCustomersByIdTimeline for application/json ContentType.
 type PostCustomersByIdTimelineJSONRequestBody = TimelineManualTimelineRequest
@@ -711,6 +720,18 @@ type ServerInterface interface {
 	// GetCustomersStatsTimeseries Get customer dashboard time series
 	// (GET /api/v1/customers/stats/timeseries)
 	GetCustomersStatsTimeseries(w http.ResponseWriter, r *http.Request, params GetCustomersStatsTimeseriesParams)
+	// GetCustomersTags List every tag
+	// (GET /api/v1/customers/tags)
+	GetCustomersTags(w http.ResponseWriter, r *http.Request)
+	// PostCustomersTags Create a tag
+	// (POST /api/v1/customers/tags)
+	PostCustomersTags(w http.ResponseWriter, r *http.Request)
+	// DeleteCustomersTagsByTagId Delete a tag and remove it from every customer
+	// (DELETE /api/v1/customers/tags/{tagId})
+	DeleteCustomersTagsByTagId(w http.ResponseWriter, r *http.Request, tagId openapi_types.UUID)
+	// PutCustomersTagsByTagId Rename or recolour a tag
+	// (PUT /api/v1/customers/tags/{tagId})
+	PutCustomersTagsByTagId(w http.ResponseWriter, r *http.Request, tagId openapi_types.UUID)
 	// DeleteCustomersById Archive a customer (customers are never hard-deleted)
 	// (DELETE /api/v1/customers/{id})
 	DeleteCustomersById(w http.ResponseWriter, r *http.Request, id int32)
@@ -774,6 +795,9 @@ type ServerInterface interface {
 	// PostCustomersByIdRegistryRefresh Re-read this customer's registry record
 	// (POST /api/v1/customers/{id}/registry-refresh)
 	PostCustomersByIdRegistryRefresh(w http.ResponseWriter, r *http.Request, id int32)
+	// PutCustomersByIdTags Replace a customer's tags
+	// (PUT /api/v1/customers/{id}/tags)
+	PutCustomersByIdTags(w http.ResponseWriter, r *http.Request, id int32)
 	// GetCustomersByIdTimeline List a customer's timeline
 	// (GET /api/v1/customers/{id}/timeline)
 	GetCustomersByIdTimeline(w http.ResponseWriter, r *http.Request, id int32, params GetCustomersByIdTimelineParams)
@@ -1398,6 +1422,86 @@ func (siw *ServerInterfaceWrapper) GetCustomersStatsTimeseries(w http.ResponseWr
 	handler.ServeHTTP(w, r)
 }
 
+// GetCustomersTags operation middleware
+func (siw *ServerInterfaceWrapper) GetCustomersTags(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCustomersTags(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostCustomersTags operation middleware
+func (siw *ServerInterfaceWrapper) PostCustomersTags(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostCustomersTags(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteCustomersTagsByTagId operation middleware
+func (siw *ServerInterfaceWrapper) DeleteCustomersTagsByTagId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tagId" -------------
+	var tagId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tagId", r.PathValue("tagId"), &tagId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteCustomersTagsByTagId(w, r, tagId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutCustomersTagsByTagId operation middleware
+func (siw *ServerInterfaceWrapper) PutCustomersTagsByTagId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tagId" -------------
+	var tagId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tagId", r.PathValue("tagId"), &tagId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutCustomersTagsByTagId(w, r, tagId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteCustomersById operation middleware
 func (siw *ServerInterfaceWrapper) DeleteCustomersById(w http.ResponseWriter, r *http.Request) {
 
@@ -1980,6 +2084,32 @@ func (siw *ServerInterfaceWrapper) PostCustomersByIdRegistryRefresh(w http.Respo
 	handler.ServeHTTP(w, r)
 }
 
+// PutCustomersByIdTags operation middleware
+func (siw *ServerInterfaceWrapper) PutCustomersByIdTags(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutCustomersByIdTags(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetCustomersByIdTimeline operation middleware
 func (siw *ServerInterfaceWrapper) GetCustomersByIdTimeline(w http.ResponseWriter, r *http.Request) {
 
@@ -2438,6 +2568,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/peppol-lookup", wrapper.PostCustomersByIdPeppolLookup)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/registry-record", wrapper.GetCustomersByIdRegistryRecord)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/registry-refresh", wrapper.PostCustomersByIdRegistryRefresh)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/tags", wrapper.PutCustomersByIdTags)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/type", wrapper.PutCustomersByIdType)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/timeline", wrapper.GetCustomersByIdTimeline)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/timeline", wrapper.PostCustomersByIdTimeline)
@@ -2457,6 +2588,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/stats/attention", wrapper.GetCustomersStatsAttention)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/stats/summary", wrapper.GetCustomersStatsSummary)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/stats/timeseries", wrapper.GetCustomersStatsTimeseries)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/tags", wrapper.GetCustomersTags)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/tags", wrapper.PostCustomersTags)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/tags/{tagId}", wrapper.DeleteCustomersTagsByTagId)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/tags/{tagId}", wrapper.PutCustomersTagsByTagId)
 
 	return m
 }
@@ -3368,6 +3503,272 @@ func (response GetCustomersStatsTimeseries403JSONResponse) VisitGetCustomersStat
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersTagsRequestObject struct {
+}
+
+type GetCustomersTagsResponseObject interface {
+	VisitGetCustomersTagsResponse(w http.ResponseWriter) error
+}
+
+type GetCustomersTags200JSONResponse []CustomerTagSummary
+
+func (response GetCustomersTags200JSONResponse) VisitGetCustomersTagsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersTags401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersTags401JSONResponse) VisitGetCustomersTagsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersTags403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersTags403JSONResponse) VisitGetCustomersTagsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersTagsRequestObject struct {
+	Body *PostCustomersTagsJSONRequestBody
+}
+
+type PostCustomersTagsResponseObject interface {
+	VisitPostCustomersTagsResponse(w http.ResponseWriter) error
+}
+
+type PostCustomersTags201JSONResponse CustomerTagSummary
+
+func (response PostCustomersTags201JSONResponse) VisitPostCustomersTagsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersTags400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostCustomersTags400ApplicationProblemPlusJSONResponse) VisitPostCustomersTagsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersTags401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersTags401JSONResponse) VisitPostCustomersTagsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersTags403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersTags403JSONResponse) VisitPostCustomersTagsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersTags409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PostCustomersTags409ApplicationProblemPlusJSONResponse) VisitPostCustomersTagsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomersTagsByTagIdRequestObject struct {
+	TagId openapi_types.UUID `json:"tagId"`
+}
+
+type DeleteCustomersTagsByTagIdResponseObject interface {
+	VisitDeleteCustomersTagsByTagIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteCustomersTagsByTagId204Response struct {
+}
+
+func (response DeleteCustomersTagsByTagId204Response) VisitDeleteCustomersTagsByTagIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteCustomersTagsByTagId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteCustomersTagsByTagId401JSONResponse) VisitDeleteCustomersTagsByTagIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomersTagsByTagId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteCustomersTagsByTagId403JSONResponse) VisitDeleteCustomersTagsByTagIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomersTagsByTagId404Response struct {
+}
+
+func (response DeleteCustomersTagsByTagId404Response) VisitDeleteCustomersTagsByTagIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutCustomersTagsByTagIdRequestObject struct {
+	TagId openapi_types.UUID `json:"tagId"`
+	Body  *PutCustomersTagsByTagIdJSONRequestBody
+}
+
+type PutCustomersTagsByTagIdResponseObject interface {
+	VisitPutCustomersTagsByTagIdResponse(w http.ResponseWriter) error
+}
+
+type PutCustomersTagsByTagId200JSONResponse CustomerTagSummary
+
+func (response PutCustomersTagsByTagId200JSONResponse) VisitPutCustomersTagsByTagIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersTagsByTagId400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutCustomersTagsByTagId400ApplicationProblemPlusJSONResponse) VisitPutCustomersTagsByTagIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersTagsByTagId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCustomersTagsByTagId401JSONResponse) VisitPutCustomersTagsByTagIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersTagsByTagId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCustomersTagsByTagId403JSONResponse) VisitPutCustomersTagsByTagIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersTagsByTagId404Response struct {
+}
+
+func (response PutCustomersTagsByTagId404Response) VisitPutCustomersTagsByTagIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutCustomersTagsByTagId409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PutCustomersTagsByTagId409ApplicationProblemPlusJSONResponse) VisitPutCustomersTagsByTagIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -4871,6 +5272,79 @@ func (response PostCustomersByIdRegistryRefresh502ApplicationProblemPlusJSONResp
 	return err
 }
 
+type PutCustomersByIdTagsRequestObject struct {
+	Id   int32 `json:"id"`
+	Body *PutCustomersByIdTagsJSONRequestBody
+}
+
+type PutCustomersByIdTagsResponseObject interface {
+	VisitPutCustomersByIdTagsResponse(w http.ResponseWriter) error
+}
+
+type PutCustomersByIdTags200JSONResponse CustomerTagsResponse
+
+func (response PutCustomersByIdTags200JSONResponse) VisitPutCustomersByIdTagsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdTags400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutCustomersByIdTags400ApplicationProblemPlusJSONResponse) VisitPutCustomersByIdTagsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdTags401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCustomersByIdTags401JSONResponse) VisitPutCustomersByIdTagsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdTags403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCustomersByIdTags403JSONResponse) VisitPutCustomersByIdTagsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdTags404Response struct {
+}
+
+func (response PutCustomersByIdTags404Response) VisitPutCustomersByIdTagsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
 type GetCustomersByIdTimelineRequestObject struct {
 	Id     int32 `json:"id"`
 	Params GetCustomersByIdTimelineParams
@@ -5422,6 +5896,18 @@ type StrictServerInterface interface {
 	// GetCustomersStatsTimeseries Get customer dashboard time series
 	// (GET /api/v1/customers/stats/timeseries)
 	GetCustomersStatsTimeseries(ctx context.Context, request GetCustomersStatsTimeseriesRequestObject) (GetCustomersStatsTimeseriesResponseObject, error)
+	// GetCustomersTags List every tag
+	// (GET /api/v1/customers/tags)
+	GetCustomersTags(ctx context.Context, request GetCustomersTagsRequestObject) (GetCustomersTagsResponseObject, error)
+	// PostCustomersTags Create a tag
+	// (POST /api/v1/customers/tags)
+	PostCustomersTags(ctx context.Context, request PostCustomersTagsRequestObject) (PostCustomersTagsResponseObject, error)
+	// DeleteCustomersTagsByTagId Delete a tag and remove it from every customer
+	// (DELETE /api/v1/customers/tags/{tagId})
+	DeleteCustomersTagsByTagId(ctx context.Context, request DeleteCustomersTagsByTagIdRequestObject) (DeleteCustomersTagsByTagIdResponseObject, error)
+	// PutCustomersTagsByTagId Rename or recolour a tag
+	// (PUT /api/v1/customers/tags/{tagId})
+	PutCustomersTagsByTagId(ctx context.Context, request PutCustomersTagsByTagIdRequestObject) (PutCustomersTagsByTagIdResponseObject, error)
 	// DeleteCustomersById Archive a customer (customers are never hard-deleted)
 	// (DELETE /api/v1/customers/{id})
 	DeleteCustomersById(ctx context.Context, request DeleteCustomersByIdRequestObject) (DeleteCustomersByIdResponseObject, error)
@@ -5485,6 +5971,9 @@ type StrictServerInterface interface {
 	// PostCustomersByIdRegistryRefresh Re-read this customer's registry record
 	// (POST /api/v1/customers/{id}/registry-refresh)
 	PostCustomersByIdRegistryRefresh(ctx context.Context, request PostCustomersByIdRegistryRefreshRequestObject) (PostCustomersByIdRegistryRefreshResponseObject, error)
+	// PutCustomersByIdTags Replace a customer's tags
+	// (PUT /api/v1/customers/{id}/tags)
+	PutCustomersByIdTags(ctx context.Context, request PutCustomersByIdTagsRequestObject) (PutCustomersByIdTagsResponseObject, error)
 	// GetCustomersByIdTimeline List a customer's timeline
 	// (GET /api/v1/customers/{id}/timeline)
 	GetCustomersByIdTimeline(ctx context.Context, request GetCustomersByIdTimelineRequestObject) (GetCustomersByIdTimelineResponseObject, error)
@@ -5917,6 +6406,120 @@ func (sh *strictHandler) GetCustomersStatsTimeseries(w http.ResponseWriter, r *h
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetCustomersStatsTimeseriesResponseObject); ok {
 		if err := validResponse.VisitGetCustomersStatsTimeseriesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCustomersTags operation middleware
+func (sh *strictHandler) GetCustomersTags(w http.ResponseWriter, r *http.Request) {
+	var request GetCustomersTagsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCustomersTags(ctx, request.(GetCustomersTagsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCustomersTags")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCustomersTagsResponseObject); ok {
+		if err := validResponse.VisitGetCustomersTagsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostCustomersTags operation middleware
+func (sh *strictHandler) PostCustomersTags(w http.ResponseWriter, r *http.Request) {
+	var request PostCustomersTagsRequestObject
+
+	var body PostCustomersTagsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostCustomersTags(ctx, request.(PostCustomersTagsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostCustomersTags")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostCustomersTagsResponseObject); ok {
+		if err := validResponse.VisitPostCustomersTagsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteCustomersTagsByTagId operation middleware
+func (sh *strictHandler) DeleteCustomersTagsByTagId(w http.ResponseWriter, r *http.Request, tagId openapi_types.UUID) {
+	var request DeleteCustomersTagsByTagIdRequestObject
+
+	request.TagId = tagId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteCustomersTagsByTagId(ctx, request.(DeleteCustomersTagsByTagIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteCustomersTagsByTagId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteCustomersTagsByTagIdResponseObject); ok {
+		if err := validResponse.VisitDeleteCustomersTagsByTagIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutCustomersTagsByTagId operation middleware
+func (sh *strictHandler) PutCustomersTagsByTagId(w http.ResponseWriter, r *http.Request, tagId openapi_types.UUID) {
+	var request PutCustomersTagsByTagIdRequestObject
+
+	request.TagId = tagId
+
+	var body PutCustomersTagsByTagIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutCustomersTagsByTagId(ctx, request.(PutCustomersTagsByTagIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutCustomersTagsByTagId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutCustomersTagsByTagIdResponseObject); ok {
+		if err := validResponse.VisitPutCustomersTagsByTagIdResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -6530,6 +7133,39 @@ func (sh *strictHandler) PostCustomersByIdRegistryRefresh(w http.ResponseWriter,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostCustomersByIdRegistryRefreshResponseObject); ok {
 		if err := validResponse.VisitPostCustomersByIdRegistryRefreshResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutCustomersByIdTags operation middleware
+func (sh *strictHandler) PutCustomersByIdTags(w http.ResponseWriter, r *http.Request, id int32) {
+	var request PutCustomersByIdTagsRequestObject
+
+	request.Id = id
+
+	var body PutCustomersByIdTagsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutCustomersByIdTags(ctx, request.(PutCustomersByIdTagsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutCustomersByIdTags")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutCustomersByIdTagsResponseObject); ok {
+		if err := validResponse.VisitPutCustomersByIdTagsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
