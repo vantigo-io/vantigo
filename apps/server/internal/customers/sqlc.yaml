@@ -17,6 +17,7 @@ sql:
       - ../db/migrations/00021_customers_registry_records.sql
       - ../db/migrations/00022_customers_registry_status_dates.sql
       - ../db/migrations/00023_customers_registry_feed.sql
+      - ../db/migrations/00024_customers_owner_tags.sql
     queries: queries
     gen:
       go:
