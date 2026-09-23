@@ -96,8 +96,33 @@ func IsSerializationConflict(err error) bool {
 // two single-name calls that only the first of which a careless caller
 // might remember to make.
 func IsUniqueViolation(err error, constraints ...string) bool {
+	return isConstraintViolation(err, "23505", constraints)
+}
+
+// IsForeignKeyViolation reports whether err is a PostgreSQL
+// foreign_key_violation (23503) against any of constraints, matched exactly as
+// IsUniqueViolation matches its own: no constraints, or any element equal to
+// "", matches any 23503; otherwise err's violated-constraint name must equal
+// one of them.
+//
+// Naming the constraint matters more here than it does above, and for a
+// different reason than the several-indexes-per-write one. A single INSERT
+// commonly has several foreign keys pointing at DIFFERENT things (a link table
+// references both sides of the link), they fail for unrelated reasons, and the
+// answers do not interchange: a caller mapping "the tag you named is gone" to
+// a field error on the request body would, with an unnamed check, map "the
+// customer you are writing to is gone" to the same field error. Pass the one
+// name whose absence the caller actually knows how to explain.
+func IsForeignKeyViolation(err error, constraints ...string) bool {
+	return isConstraintViolation(err, "23503", constraints)
+}
+
+// isConstraintViolation is the matching both exported checks above do, shared
+// rather than written twice: the rules are identical and only the SQLSTATE
+// differs, so a change to how a name is matched must land in one place.
+func isConstraintViolation(err error, code string, constraints []string) bool {
 	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
+	if !errors.As(err, &pgErr) || pgErr.Code != code {
 		return false
 	}
 	if len(constraints) == 0 {

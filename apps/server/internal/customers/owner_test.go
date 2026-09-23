@@ -387,18 +387,26 @@ func TestGetCustomersAssignableUsers(t *testing.T) {
 	_, disabledID := h.SignInUser(t, "customers:view")
 	setDisplayName(t, h, disabledID, "Searchable Nils")
 	disableUser(t, h, disabledID)
+	// A third active match, so the limit case below can ask for a number in the
+	// MIDDLE of the dataset.
+	seedNamedUser(t, h, "Searchable Per")
 
 	found := getAssignableUsers(t, c, "query="+url.QueryEscape("Searchable"))
 	names := make([]string, 0, len(found))
 	for _, u := range found {
 		names = append(names, u.DisplayName)
 	}
-	if len(names) != 2 || names[0] != "Searchable Kari" || names[1] != "Searchable Ola" {
-		t.Errorf("assignable users = %v, want [Searchable Kari Searchable Ola] — active only, display-name order", names)
+	if len(names) != 3 || names[0] != "Searchable Kari" || names[1] != "Searchable Ola" || names[2] != "Searchable Per" {
+		t.Errorf("assignable users = %v, want [Searchable Kari Searchable Ola Searchable Per] — active only, display-name order (Nils is disabled)", names)
 	}
 
-	if got := getAssignableUsers(t, c, "query="+url.QueryEscape("Searchable")+"&limit=1"); len(got) != 1 {
-		t.Errorf("limit=1 answered %d users, want 1", len(got))
+	// Two of three, named: a limit smaller than the dataset AND larger than one,
+	// which is what tells "the limit reached the search" apart from a handler that
+	// ignores it (three answers) and from one that truncates to a single row
+	// whatever was asked (one answer). limit=1 could not separate the second case.
+	got := getAssignableUsers(t, c, "query="+url.QueryEscape("Searchable")+"&limit=2")
+	if len(got) != 2 || got[0].DisplayName != "Searchable Kari" || got[1].DisplayName != "Searchable Ola" {
+		t.Errorf("limit=2 answered %+v, want exactly Searchable Kari and Searchable Ola of the three matches", got)
 	}
 
 	for _, limit := range []string{"0", "21"} {

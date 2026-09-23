@@ -3,6 +3,7 @@ package db_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -201,5 +202,44 @@ func TestIsUniqueViolation(t *testing.T) {
 	}
 	if !db.IsUniqueViolation(err) {
 		t.Error("IsUniqueViolation(err) with no names = false, want true (no constraints given matches any 23505, same as \"\")")
+	}
+}
+
+// TestIsForeignKeyViolation pins the matching rules against a synthetic
+// pgconn.PgError rather than a provoked violation, which is the whole of what
+// this helper does: which SQLSTATE it accepts, which constraint names it
+// matches, and that it looks through a wrapped error. A real 23503 raised by a
+// real race is exercised where it matters — internal/customers'
+// TestPutCustomersByIdTags_ATagDeletedMidWriteIsAFieldError, which deletes a
+// tag out from under an in-flight insert — and reproducing one here would only
+// couple this package's tests to another module's schema.
+func TestIsForeignKeyViolation(t *testing.T) {
+	// Wrapped, because every caller sees this error through at least one
+	// fmt.Errorf("%w") on its way out of a query helper.
+	err := fmt.Errorf("insert links: %w", &pgconn.PgError{Code: "23503", ConstraintName: "customer_tags_tag_id_fkey"})
+
+	if !db.IsForeignKeyViolation(err, "customer_tags_tag_id_fkey") {
+		t.Errorf("IsForeignKeyViolation(err, %q) = false, want true", "customer_tags_tag_id_fkey")
+	}
+	if !db.IsForeignKeyViolation(err, "") {
+		t.Error(`IsForeignKeyViolation(err, "") = false, want true (empty constraint matches any 23503)`)
+	}
+	if !db.IsForeignKeyViolation(err) {
+		t.Error("IsForeignKeyViolation(err) with no names = false, want true (no constraints given matches any 23503)")
+	}
+	if !db.IsForeignKeyViolation(err, "customer_tags_customer_id_fkey", "customer_tags_tag_id_fkey") {
+		t.Error("IsForeignKeyViolation(err, wrong, right) = false, want true (matches the second name)")
+	}
+	// The distinction this helper exists to make: one insert into
+	// customers.customer_tags has two foreign keys, and "the tag is gone" is a
+	// field error on the body while "the customer is gone" is not.
+	if db.IsForeignKeyViolation(err, "customer_tags_customer_id_fkey") {
+		t.Error("IsForeignKeyViolation matched an unrelated constraint name")
+	}
+	if db.IsForeignKeyViolation(fmt.Errorf("wrapped: %w", &pgconn.PgError{Code: "23505", ConstraintName: "customer_tags_tag_id_fkey"})) {
+		t.Error("IsForeignKeyViolation matched a unique violation (23505), want 23503 only")
+	}
+	if db.IsForeignKeyViolation(errors.New("boom")) {
+		t.Error("IsForeignKeyViolation matched a non-pgconn error")
 	}
 }

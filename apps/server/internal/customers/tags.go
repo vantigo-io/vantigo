@@ -70,6 +70,33 @@ func tagNotFound(id uuid.UUID) string {
 	return fmt.Sprintf("Tag %s does not exist", id)
 }
 
+// customerTagsTagFK is the foreign key customers.customer_tags.tag_id carries
+// (migration 00024, named by PostgreSQL's own convention). Named here because
+// the same insert has a SECOND foreign key — customer_id — and the two mean
+// different things to a caller: a missing tag is a field error on tagIds, a
+// missing customer is not, so PutCustomersByIdTags matches this one by name
+// rather than catching any 23503.
+const customerTagsTagFK = "customer_tags_tag_id_fkey"
+
+// missingTagMessages is the tagIds field error for every id in wanted that
+// resolved does not hold, in the request's own order so the message list is
+// deterministic. PutCustomersByIdTags calls it twice — once for the resolve
+// before the write, once for the foreign-key violation after it — so the two
+// refusals are worded identically rather than by two copies of the same loop.
+func missingTagMessages(wanted []uuid.UUID, resolved []store.CustomersTag) []string {
+	known := make(map[uuid.UUID]bool, len(resolved))
+	for _, t := range resolved {
+		known[t.ID] = true
+	}
+	var messages []string
+	for _, id := range wanted {
+		if !known[id] {
+			messages = append(messages, tagNotFound(id))
+		}
+	}
+	return messages
+}
+
 // validateTagRequest is POST/PUT /customers/tags' shared validator: both
 // fields checked independently and both errors reported together, keyed by the
 // request's own field names — the module's all-errors-at-once shape
@@ -233,6 +260,14 @@ func (s *server) DeleteCustomersTagsByTagId(ctx context.Context, req gen.DeleteC
 //
 // The empty-to-empty case is a real request and is covered by the same check:
 // no tags before, none after, nothing written and nothing recorded.
+//
+// What being free to read first costs, and where that is paid: a tag deleted
+// between step (2) and the insert in step (5) raises a foreign-key violation
+// on a set step (2) had just called valid. That violation is mapped back to
+// step (2)'s own tagIds field error rather than escaping as a 500 — the resolve
+// exists to make a missing tag a field error, and a millisecond's difference in
+// when it went missing is not a distinction a caller can use
+// (tags_concurrency_test.go).
 func (s *server) PutCustomersByIdTags(ctx context.Context, req gen.PutCustomersByIdTagsRequestObject) (gen.PutCustomersByIdTagsResponseObject, error) {
 	body := gen.PutCustomerTagsRequest{}
 	if req.Body != nil {
@@ -263,18 +298,8 @@ func (s *server) PutCustomersByIdTags(ctx context.Context, req gen.PutCustomersB
 		return nil, fmt.Errorf("customers: resolve tags: %w", err)
 	}
 	if len(resolved) != len(wanted) {
-		known := make(map[uuid.UUID]bool, len(resolved))
-		for _, t := range resolved {
-			known[t.ID] = true
-		}
-		var messages []string
-		for _, id := range wanted {
-			if !known[id] {
-				messages = append(messages, tagNotFound(id))
-			}
-		}
 		return gen.PutCustomersByIdTags400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
-			"Invalid tags", map[string][]string{"tagIds": messages})), nil
+			"Invalid tags", map[string][]string{"tagIds": missingTagMessages(wanted, resolved)})), nil
 	}
 
 	after := make([]gen.CustomerTag, 0, len(resolved))
@@ -321,6 +346,26 @@ func (s *server) PutCustomersByIdTags(ctx context.Context, req gen.PutCustomersB
 		}
 		return recordCustomerTagsChanged(ctx, txq, now, req.Id, added, removed, act.Kind, act.Display, act.UserID)
 	})
+	if db.IsForeignKeyViolation(err, customerTagsTagFK) {
+		// A tag named in the request was deleted between the resolve above and
+		// this insert — the one window the resolve cannot close, since nothing
+		// here locks the vocabulary. Re-resolve and answer the field error the
+		// resolve itself would have given a moment later: the caller asked to
+		// carry a tag that does not exist, which is a fact about their body
+		// whichever side of the insert it became true on.
+		remaining, rerr := q.CustomerTagsByIDs(ctx, wanted)
+		if rerr != nil {
+			return nil, fmt.Errorf("customers: re-resolve tags after a foreign-key violation: %w", rerr)
+		}
+		if messages := missingTagMessages(wanted, remaining); len(messages) > 0 {
+			return gen.PutCustomersByIdTags400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
+				"Invalid tags", map[string][]string{"tagIds": messages})), nil
+		}
+		// Every id resolves again, so the tag the insert tripped over has been
+		// re-created since and there is no field error to report. The write did
+		// fail, and falling through to the 500 says so rather than inventing an
+		// empty list of reasons.
+	}
 	if err != nil {
 		return nil, fmt.Errorf("customers: replace customer tags: %w", err)
 	}
