@@ -283,6 +283,15 @@ func startServeEnv(t *testing.T, m mode, env map[string]string, extraModules ...
 		"APP_SECRET":       testAppSecret,
 		"SMTP_HOST":        "smtp.example.invalid",
 		"SMTP_FROM":        "noreply@example.invalid",
+		// These tests are about the commands and their modes, not about any
+		// module's background work: they compose every module for real, with no
+		// Deps.HTTPTransport and no fake Peppol lookup, so a customers worker
+		// started here would poll data.brreg.no and the live Peppol network from
+		// a unit test. The customers module's own tests cover registration and
+		// the switches (TestModule_ContributesItsWorkers); a serve test that
+		// genuinely wants a worker passes fakeWorkerModule, as they already do.
+		"CUSTOMERS_REGISTRY_FEED_ENABLED":  "0",
+		"CUSTOMERS_PEPPOL_RECHECK_ENABLED": "0",
 	}
 	for k, v := range env {
 		envMap[k] = v

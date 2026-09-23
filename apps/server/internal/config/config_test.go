@@ -1127,3 +1127,65 @@ func TestLoad_Management(t *testing.T) {
 		}
 	}
 }
+
+// TestLoad_CustomersRegistryWorkers pins the five variables the registry
+// workers read (registry workers design D7). Both switches default ON: the
+// workers are what make a registry record worth relying on, so an installation
+// that says nothing gets them — the same "on unless turned off" default
+// WORKERS_IN_PROCESS and PEPPOL_LOOKUP_ENABLED take, and the opposite of
+// flag()'s fail-safe-off switches.
+func TestLoad_CustomersRegistryWorkers(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+	if !cfg.CustomersRegistryFeedEnabled {
+		t.Error("CUSTOMERS_REGISTRY_FEED_ENABLED unset did not default to on")
+	}
+	if cfg.CustomersRegistryFeedPoll != 15*time.Minute {
+		t.Errorf("CustomersRegistryFeedPoll = %v, want 15m", cfg.CustomersRegistryFeedPoll)
+	}
+	if !cfg.CustomersPeppolRecheckEnabled {
+		t.Error("CUSTOMERS_PEPPOL_RECHECK_ENABLED unset did not default to on")
+	}
+	if cfg.CustomersPeppolRecheckPoll != 24*time.Hour {
+		t.Errorf("CustomersPeppolRecheckPoll = %v, want 24h", cfg.CustomersPeppolRecheckPoll)
+	}
+	if cfg.CustomersPeppolRecheckAge != 720*time.Hour {
+		t.Errorf("CustomersPeppolRecheckAge = %v, want 720h", cfg.CustomersPeppolRecheckAge)
+	}
+
+	tuned := mustLoad(t, with(validEnv(),
+		"CUSTOMERS_REGISTRY_FEED_ENABLED", "0",
+		"CUSTOMERS_REGISTRY_FEED_POLL", "5m",
+		"CUSTOMERS_PEPPOL_RECHECK_ENABLED", "0",
+		"CUSTOMERS_PEPPOL_RECHECK_POLL", "6h",
+		"CUSTOMERS_PEPPOL_RECHECK_AGE", "168h",
+	))
+	if tuned.CustomersRegistryFeedEnabled || tuned.CustomersPeppolRecheckEnabled {
+		t.Error("the switches did not turn off")
+	}
+	if tuned.CustomersRegistryFeedPoll != 5*time.Minute || tuned.CustomersPeppolRecheckPoll != 6*time.Hour ||
+		tuned.CustomersPeppolRecheckAge != 168*time.Hour {
+		t.Errorf("durations = %v/%v/%v, want 5m/6h/168h",
+			tuned.CustomersRegistryFeedPoll, tuned.CustomersPeppolRecheckPoll, tuned.CustomersPeppolRecheckAge)
+	}
+}
+
+// TestLoad_CustomersRegistryWorkersRejectNonsense pins that the switches are
+// the same strict "0"/"1" every other one is and the poll cadences are
+// positive durations — a zero or negative poll would make a worker's ticker
+// panic or spin, which is worse than refusing to start.
+func TestLoad_CustomersRegistryWorkersRejectNonsense(t *testing.T) {
+	if msg := loadError(t, with(validEnv(), "CUSTOMERS_REGISTRY_FEED_ENABLED", "yes")); !strings.Contains(msg, `CUSTOMERS_REGISTRY_FEED_ENABLED: must be "0" or "1"`) {
+		t.Errorf("error = %q", msg)
+	}
+	if msg := loadError(t, with(validEnv(), "CUSTOMERS_PEPPOL_RECHECK_ENABLED", "yes")); !strings.Contains(msg, `CUSTOMERS_PEPPOL_RECHECK_ENABLED: must be "0" or "1"`) {
+		t.Errorf("error = %q", msg)
+	}
+	for _, field := range []string{"CUSTOMERS_REGISTRY_FEED_POLL", "CUSTOMERS_PEPPOL_RECHECK_POLL", "CUSTOMERS_PEPPOL_RECHECK_AGE"} {
+		if msg := loadError(t, with(validEnv(), field, "0s")); !strings.Contains(msg, field+": must be a positive duration such as 30s") {
+			t.Errorf("%s: error = %q", field, msg)
+		}
+		if msg := loadError(t, with(validEnv(), field, "soon")); !strings.Contains(msg, field+": must be a positive duration such as 30s") {
+			t.Errorf("%s: error = %q", field, msg)
+		}
+	}
+}

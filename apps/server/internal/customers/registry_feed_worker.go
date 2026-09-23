@@ -110,12 +110,15 @@ func NewRegistryFeedWorker(d module.Deps) *RegistryFeedWorker {
 // Name identifies this worker in the runner's logs.
 func (w *RegistryFeedWorker) Name() string { return registryFeedWorkerName }
 
-// Interval is the poll cadence between cycles, 15 minutes. The feed is one
-// small request per poll, so the cadence is about how soon a change is noticed,
-// not about load. Task 3 makes it configurable
-// (CUSTOMERS_REGISTRY_FEED_POLL); until that setting exists there is one
-// cadence and this is it.
+// Interval is the poll cadence between cycles: the operator's
+// CUSTOMERS_REGISTRY_FEED_POLL when this worker was built from a Deps that
+// carries one, defaultRegistryFeedPoll otherwise. The feed is one small
+// request per poll, so the cadence is about how soon a change is noticed, not
+// about load.
 func (w *RegistryFeedWorker) Interval() time.Duration {
+	if w.deps.Config != nil && w.deps.Config.CustomersRegistryFeedPoll > 0 {
+		return w.deps.Config.CustomersRegistryFeedPoll
+	}
 	return defaultRegistryFeedPoll
 }
 
