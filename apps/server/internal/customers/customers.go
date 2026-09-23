@@ -8,11 +8,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
 	"github.com/vantigo-io/vantigo/server/internal/db"
@@ -44,6 +46,7 @@ type customerRow struct {
 	Email            *string
 	Phone            *string
 	Website          *string
+	OwnerUserID      *uuid.UUID
 	EntryCount       int64
 	LatestOccurredOn pgtype.Date
 }
@@ -60,12 +63,12 @@ type customerRow struct {
 // all four still select exactly the same sixteen columns. This one function
 // holds the actual field mapping; each adapter below is a one-line unpacking
 // of its own row type into it.
-func customerRowFrom(id int32, customerNumber int64, name, status, typ string, legalCountry, legalID, legalName, legalSource, legalType *string, createdAt, updatedAt time.Time, revision int32, email, phone, website *string, ts store.CustomerTimelineSummaryRow) customerRow {
+func customerRowFrom(id int32, customerNumber int64, name, status, typ string, legalCountry, legalID, legalName, legalSource, legalType *string, createdAt, updatedAt time.Time, revision int32, email, phone, website *string, ownerUserID *uuid.UUID, ts store.CustomerTimelineSummaryRow) customerRow {
 	return customerRow{
 		ID: id, CustomerNumber: customerNumber, Name: name, Status: status, Type: typ,
 		LegalCountry: legalCountry, LegalID: legalID, LegalName: legalName, LegalSource: legalSource, LegalType: legalType,
 		CreatedAt: createdAt, UpdatedAt: updatedAt, Revision: revision,
-		Email: email, Phone: phone, Website: website,
+		Email: email, Phone: phone, Website: website, OwnerUserID: ownerUserID,
 		EntryCount: ts.EntryCount, LatestOccurredOn: ts.LatestOccurredOn,
 	}
 }
@@ -74,24 +77,30 @@ func customerRowFrom(id int32, customerNumber int64, name, status, typ string, l
 // a customerRow — every GetCustomer(ctx, id) call in this module funnels
 // through here, whichever handler made it.
 func fromCustomerRow(c store.GetCustomerRow, ts store.CustomerTimelineSummaryRow) customerRow {
-	return customerRowFrom(c.ID, c.CustomerNumber, c.Name, c.Status, c.Type, c.LegalCountry, c.LegalID, c.LegalName, c.LegalSource, c.LegalType, c.CreatedAt, c.UpdatedAt, c.Revision, c.Email, c.Phone, c.Website, ts)
+	return customerRowFrom(c.ID, c.CustomerNumber, c.Name, c.Status, c.Type, c.LegalCountry, c.LegalID, c.LegalName, c.LegalSource, c.LegalType, c.CreatedAt, c.UpdatedAt, c.Revision, c.Email, c.Phone, c.Website, c.OwnerUserID, ts)
 }
 
 // fromUpdateCustomerRow is UpdateCustomer's own row (PutCustomersById's write).
 func fromUpdateCustomerRow(c store.UpdateCustomerRow, ts store.CustomerTimelineSummaryRow) customerRow {
-	return customerRowFrom(c.ID, c.CustomerNumber, c.Name, c.Status, c.Type, c.LegalCountry, c.LegalID, c.LegalName, c.LegalSource, c.LegalType, c.CreatedAt, c.UpdatedAt, c.Revision, c.Email, c.Phone, c.Website, ts)
+	return customerRowFrom(c.ID, c.CustomerNumber, c.Name, c.Status, c.Type, c.LegalCountry, c.LegalID, c.LegalName, c.LegalSource, c.LegalType, c.CreatedAt, c.UpdatedAt, c.Revision, c.Email, c.Phone, c.Website, c.OwnerUserID, ts)
 }
 
 // fromSetCustomerTypeRow is SetCustomerType's own row
 // (PutCustomersByIdType's write, customer_type.go).
 func fromSetCustomerTypeRow(c store.SetCustomerTypeRow, ts store.CustomerTimelineSummaryRow) customerRow {
-	return customerRowFrom(c.ID, c.CustomerNumber, c.Name, c.Status, c.Type, c.LegalCountry, c.LegalID, c.LegalName, c.LegalSource, c.LegalType, c.CreatedAt, c.UpdatedAt, c.Revision, c.Email, c.Phone, c.Website, ts)
+	return customerRowFrom(c.ID, c.CustomerNumber, c.Name, c.Status, c.Type, c.LegalCountry, c.LegalID, c.LegalName, c.LegalSource, c.LegalType, c.CreatedAt, c.UpdatedAt, c.Revision, c.Email, c.Phone, c.Website, c.OwnerUserID, ts)
 }
 
 // fromUpdateCustomerContactInfoRow is UpdateCustomerContactInfo's own row
 // (PutCustomersByIdContactInfo's write, contact_info.go).
 func fromUpdateCustomerContactInfoRow(c store.UpdateCustomerContactInfoRow, ts store.CustomerTimelineSummaryRow) customerRow {
-	return customerRowFrom(c.ID, c.CustomerNumber, c.Name, c.Status, c.Type, c.LegalCountry, c.LegalID, c.LegalName, c.LegalSource, c.LegalType, c.CreatedAt, c.UpdatedAt, c.Revision, c.Email, c.Phone, c.Website, ts)
+	return customerRowFrom(c.ID, c.CustomerNumber, c.Name, c.Status, c.Type, c.LegalCountry, c.LegalID, c.LegalName, c.LegalSource, c.LegalType, c.CreatedAt, c.UpdatedAt, c.Revision, c.Email, c.Phone, c.Website, c.OwnerUserID, ts)
+}
+
+// fromUpdateCustomerOwnerRow is UpdateCustomerOwner's own row
+// (PutCustomersByIdOwner's write, owner.go).
+func fromUpdateCustomerOwnerRow(c store.UpdateCustomerOwnerRow, ts store.CustomerTimelineSummaryRow) customerRow {
+	return customerRowFrom(c.ID, c.CustomerNumber, c.Name, c.Status, c.Type, c.LegalCountry, c.LegalID, c.LegalName, c.LegalSource, c.LegalType, c.CreatedAt, c.UpdatedAt, c.Revision, c.Email, c.Phone, c.Website, c.OwnerUserID, ts)
 }
 
 // fromListRow is store.ListCustomersRow's customerRow, the one list-query
@@ -103,7 +112,7 @@ func fromListRow(r store.ListCustomersRow) customerRow {
 		ID: r.ID, CustomerNumber: r.CustomerNumber, Name: r.Name, Status: r.Status, Type: r.Type,
 		LegalCountry: r.LegalCountry, LegalID: r.LegalID, LegalName: r.LegalName, LegalSource: r.LegalSource, LegalType: r.LegalType,
 		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, Revision: r.Revision,
-		Email: r.Email, Phone: r.Phone, Website: r.Website,
+		Email: r.Email, Phone: r.Phone, Website: r.Website, OwnerUserID: r.OwnerUserID,
 		EntryCount: r.EntryCount, LatestOccurredOn: r.LatestOccurredOn,
 	}
 }
@@ -146,8 +155,14 @@ func dateFromPgtype(d pgtype.Date) *openapi_types.Date {
 // populated when the caller holds legal-identity-view (inventory §6).
 // contactInfo (invoice-ready customer design D2) is never gated this way —
 // it is always set, ungated, since D2 makes it as visible as the name and
-// status every list caller already sees.
-func safeCustomerResponse(row customerRow, includeIdentity bool) gen.SafeCustomerResponse {
+// status every list caller already sees. dec is the part of the response that
+// does not come from the customer row: the owner's display name, which lives
+// in identity's directory and is resolved per response (owner and tags design
+// D1), and the customer's tags, which live in their own table (D2). Both are
+// as ungated as contactInfo — design D4's ruling: an owner is not sensitive
+// data and tags are classification, so customers:view is the whole gate.
+func safeCustomerResponse(row customerRow, includeIdentity bool, dec customerDecoration) gen.SafeCustomerResponse {
+	tags := dec.tagsFor(row.ID)
 	resp := gen.SafeCustomerResponse{
 		Id:             row.ID,
 		CustomerNumber: row.CustomerNumber,
@@ -158,6 +173,8 @@ func safeCustomerResponse(row customerRow, includeIdentity bool) gen.SafeCustome
 		UpdatedAt:      row.UpdatedAt,
 		Revision:       &row.Revision,
 		ContactInfo:    &gen.CustomerContactInfo{Email: row.Email, Phone: row.Phone, Website: row.Website},
+		Owner:          dec.owner(row.OwnerUserID),
+		Tags:           &tags,
 		TimelineSummary: gen.SafeTimelineSummary{
 			EntryCount:       int32(row.EntryCount),
 			LatestOccurredOn: dateFromPgtype(row.LatestOccurredOn),
@@ -245,7 +262,31 @@ func validateGetCustomersParams(p gen.GetCustomersParams) []string {
 	if p.Type != nil && *p.Type != "business" && *p.Type != "person" {
 		errs = append(errs, fmt.Sprintf("'type' must be one of 'business' or 'person', but was '%s'.", *p.Type))
 	}
+	// ownerId and tagId are checked for SHAPE here and resolved in
+	// GetCustomers: 'me' needs the request's principal, which this function
+	// deliberately does not see — it is a pure parameter check, unit-tested as
+	// one, and every message it collects is joined into the one 400 detail.
+	if p.OwnerId != nil && !validOwnerFilter(*p.OwnerId) {
+		errs = append(errs, fmt.Sprintf("'ownerId' must be a user id, 'me' or 'none', but was '%s'.", *p.OwnerId))
+	}
+	if p.TagId != nil && !validUUIDParam(*p.TagId) {
+		errs = append(errs, fmt.Sprintf("'tagId' must be a tag id, but was '%s'.", *p.TagId))
+	}
 	return errs
+}
+
+// validOwnerFilter and validUUIDParam are the ownerId/tagId parameter shapes
+// (owner and tags design D1, D2). 'me' and 'none' are matched
+// case-sensitively, as every other query parameter in this function is — a
+// query parameter is never normalized here, so 'Me' is rejected rather than
+// silently accepted.
+func validOwnerFilter(raw string) bool {
+	return raw == "me" || raw == "none" || validUUIDParam(raw)
+}
+
+func validUUIDParam(raw string) bool {
+	_, err := uuid.Parse(raw)
+	return err == nil
 }
 
 // GetCustomers List all customers
@@ -288,6 +329,44 @@ func (s *server) GetCustomers(ctx context.Context, req gen.GetCustomersRequestOb
 		sortBy = *req.Params.SortBy
 	}
 
+	// ownerId's three forms resolve to the two SQL parameters the list queries
+	// take (owner and tags design D1): 'none' is a NULL test, and both a user
+	// id and 'me' are an equality — 'me' resolved from the SESSION, never from
+	// anything the request says about who the caller is. The router already
+	// refused an unauthenticated call (design D4), so the missing-principal
+	// branch below is unreachable in production; it is a 400 rather than a
+	// silent "everyone's customers", because answering the wrong customers is
+	// the one outcome a "my customers" filter must never have.
+	var ownerID *uuid.UUID
+	ownerNone := false
+	if req.Params.OwnerId != nil {
+		switch *req.Params.OwnerId {
+		case "none":
+			ownerNone = true
+		case "me":
+			p, ok := contracts.PrincipalFrom(ctx)
+			if !ok || p.UserID == uuid.Nil {
+				return gen.GetCustomers400ApplicationProblemPlusJSONResponse(apicommon.Problem("Invalid query parameters",
+					"'ownerId' cannot be 'me' without a signed-in user.")), nil
+			}
+			id := p.UserID
+			ownerID = &id
+		default:
+			// validateGetCustomersParams already refused anything unparseable,
+			// so err is impossible here; the guard means an impossible value
+			// filters nothing rather than panicking.
+			if id, err := uuid.Parse(*req.Params.OwnerId); err == nil {
+				ownerID = &id
+			}
+		}
+	}
+	var tagID *uuid.UUID
+	if req.Params.TagId != nil {
+		if id, err := uuid.Parse(*req.Params.TagId); err == nil {
+			tagID = &id
+		}
+	}
+
 	// search_identity/search_contacts gate the legal-identity and
 	// contact/association branches of search: a caller who cannot see that
 	// data through its own endpoints must not be able to use search as an
@@ -312,6 +391,7 @@ func (s *server) GetCustomers(ctx context.Context, req gen.GetCustomersRequestOb
 		IncludeArchived: includeArchived, Status: req.Params.Status, CustomerType: req.Params.Type,
 		Search: search, SearchCompact: searchCompact, SearchIdentity: searchIdentity, SearchContacts: searchContacts,
 		SearchPhone: searchPhone,
+		OwnerNone:   ownerNone, OwnerID: ownerID, TagID: tagID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("customers: count customers: %w", err)
@@ -322,7 +402,8 @@ func (s *server) GetCustomers(ctx context.Context, req gen.GetCustomersRequestOb
 		IncludeArchived: includeArchived, Status: req.Params.Status, CustomerType: req.Params.Type,
 		Search: search, SearchCompact: searchCompact, SearchIdentity: searchIdentity, SearchContacts: searchContacts,
 		SearchPhone: searchPhone,
-		SortBy:      sortBy, Descending: descending, PageSize: pageSize, RowOffset: offset,
+		OwnerNone:   ownerNone, OwnerID: ownerID, TagID: tagID,
+		SortBy: sortBy, Descending: descending, PageSize: pageSize, RowOffset: offset,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("customers: list customers: %w", err)
@@ -332,12 +413,19 @@ func (s *server) GetCustomers(ctx context.Context, req gen.GetCustomersRequestOb
 		rows = append(rows, fromListRow(r))
 	}
 
+	// One directory call and one tags query for the whole page (owner and tags
+	// design D1, D2), never one per row: 25 rows would otherwise be 25
+	// out-of-process calls for data that is on the wire either way.
+	dec, err := s.decorate(ctx, q, rows...)
+	if err != nil {
+		return nil, err
+	}
 	// searchIdentity doubles as includeIdentity here: legalIdentityView
 	// answers both "may search reach the legal identity" and "may the
 	// response show it", so one hasPermission call serves both.
 	data := make([]gen.SafeCustomerResponse, 0, len(rows))
 	for _, r := range rows {
-		data = append(data, safeCustomerResponse(r, searchIdentity))
+		data = append(data, safeCustomerResponse(r, searchIdentity, dec))
 	}
 
 	return gen.GetCustomers200JSONResponse{
@@ -559,7 +647,12 @@ func (s *server) GetCustomer(ctx context.Context, req gen.GetCustomerRequestObje
 		return nil, fmt.Errorf("customers: timeline summary: %w", err)
 	}
 	includeIdentity := s.hasPermission(ctx, legalIdentityView)
-	return gen.GetCustomer200JSONResponse(safeCustomerResponse(fromCustomerRow(row, summary), includeIdentity)), nil
+	customer := fromCustomerRow(row, summary)
+	dec, err := s.decorate(ctx, q, customer)
+	if err != nil {
+		return nil, err
+	}
+	return gen.GetCustomer200JSONResponse(safeCustomerResponse(customer, includeIdentity, dec)), nil
 }
 
 // PutCustomersById Update a customer
@@ -704,7 +797,12 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 			return nil, fmt.Errorf("customers: timeline summary: %w", err)
 		}
 		includeIdentity := s.hasPermission(ctx, legalIdentityView)
-		return gen.PutCustomersById200JSONResponse(safeCustomerResponse(fromCustomerRow(existing, summary), includeIdentity)), nil
+		row := fromCustomerRow(existing, summary)
+		dec, err := s.decorate(ctx, q, row)
+		if err != nil {
+			return nil, err
+		}
+		return gen.PutCustomersById200JSONResponse(safeCustomerResponse(row, includeIdentity, dec)), nil
 	}
 
 	now := s.deps.Clock()
@@ -815,7 +913,12 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 		return nil, fmt.Errorf("customers: timeline summary: %w", err)
 	}
 	includeIdentity := s.hasPermission(ctx, legalIdentityView)
-	return gen.PutCustomersById200JSONResponse(safeCustomerResponse(fromUpdateCustomerRow(updated, summary), includeIdentity)), nil
+	row := fromUpdateCustomerRow(updated, summary)
+	dec, err := s.decorate(ctx, q, row)
+	if err != nil {
+		return nil, err
+	}
+	return gen.PutCustomersById200JSONResponse(safeCustomerResponse(row, includeIdentity, dec)), nil
 }
 
 // DeleteCustomersById Archive a customer (customers are never hard-deleted)

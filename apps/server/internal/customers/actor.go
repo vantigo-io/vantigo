@@ -21,6 +21,14 @@ type actor struct {
 	UserID  *uuid.UUID
 }
 
+// unknownUserDisplay is what a user the directory no longer knows is called,
+// wherever this module has to name one: the actor on a timeline entry written
+// by an account since deleted (actorFor below), and a customer's owner in the
+// same state (owner.go's customerDecoration.owner). One constant rather than
+// two literals, because it is one fact about one directory — and because the
+// two places must never disagree about it in the same response.
+const unknownUserDisplay = "Unknown user"
+
 // manualFallbackActor and generatedFallbackActor are actorFor's fallback
 // when ctx carries no attributable user principal: today's pre-D1 constant
 // values, unattributed for a manual entry, system for a generated one.
@@ -68,7 +76,7 @@ func (s *server) actorFor(ctx context.Context, fallback actor) (actor, error) {
 	}
 	userID := p.UserID
 	if user == nil {
-		return actor{Kind: "user", Display: "Unknown user", UserID: &userID}, nil
+		return actor{Kind: "user", Display: unknownUserDisplay, UserID: &userID}, nil
 	}
 	return actor{Kind: "user", Display: user.DisplayName, UserID: &userID}, nil
 }

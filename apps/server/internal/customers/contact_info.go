@@ -140,7 +140,12 @@ func (s *server) PutCustomersByIdContactInfo(ctx context.Context, req gen.PutCus
 		if err != nil {
 			return nil, fmt.Errorf("customers: timeline summary: %w", err)
 		}
-		return gen.PutCustomersByIdContactInfo200JSONResponse(safeCustomerResponse(fromCustomerRow(existing, summary), includeIdentity)), nil
+		row := fromCustomerRow(existing, summary)
+		dec, err := s.decorate(ctx, q, row)
+		if err != nil {
+			return nil, err
+		}
+		return gen.PutCustomersByIdContactInfo200JSONResponse(safeCustomerResponse(row, includeIdentity, dec)), nil
 	}
 
 	now := s.deps.Clock()
@@ -189,5 +194,10 @@ func (s *server) PutCustomersByIdContactInfo(ctx context.Context, req gen.PutCus
 	if err != nil {
 		return nil, fmt.Errorf("customers: timeline summary: %w", err)
 	}
-	return gen.PutCustomersByIdContactInfo200JSONResponse(safeCustomerResponse(fromUpdateCustomerContactInfoRow(updated, summary), includeIdentity)), nil
+	row := fromUpdateCustomerContactInfoRow(updated, summary)
+	dec, err := s.decorate(ctx, q, row)
+	if err != nil {
+		return nil, err
+	}
+	return gen.PutCustomersByIdContactInfo200JSONResponse(safeCustomerResponse(row, includeIdentity, dec)), nil
 }

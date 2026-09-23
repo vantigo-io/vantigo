@@ -65,7 +65,12 @@ func (s *server) PutCustomersByIdType(ctx context.Context, req gen.PutCustomersB
 		return nil, fmt.Errorf("customers: timeline summary: %w", err)
 	}
 	if existing.Type == customerType {
-		return gen.PutCustomersByIdType200JSONResponse(safeCustomerResponse(fromCustomerRow(existing, summary), includeIdentity)), nil
+		row := fromCustomerRow(existing, summary)
+		dec, err := s.decorate(ctx, q, row)
+		if err != nil {
+			return nil, err
+		}
+		return gen.PutCustomersByIdType200JSONResponse(safeCustomerResponse(row, includeIdentity, dec)), nil
 	}
 
 	before := identityFromRow(existing.LegalCountry, existing.LegalID, existing.LegalName, existing.LegalSource, existing.LegalType)
@@ -129,5 +134,10 @@ func (s *server) PutCustomersByIdType(ctx context.Context, req gen.PutCustomersB
 		return nil, fmt.Errorf("customers: change customer type: %w", err)
 	}
 
-	return gen.PutCustomersByIdType200JSONResponse(safeCustomerResponse(fromSetCustomerTypeRow(updated, summary), includeIdentity)), nil
+	row := fromSetCustomerTypeRow(updated, summary)
+	dec, err := s.decorate(ctx, q, row)
+	if err != nil {
+		return nil, err
+	}
+	return gen.PutCustomersByIdType200JSONResponse(safeCustomerResponse(row, includeIdentity, dec)), nil
 }

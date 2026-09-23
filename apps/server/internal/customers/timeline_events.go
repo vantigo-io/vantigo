@@ -451,3 +451,43 @@ func recordRegistryRemoved(ctx context.Context, q *store.Queries, now time.Time,
 	return recordGeneratedEventFrom(ctx, q, customerID, now, generatedProducerBrreg, "registry.change",
 		"Registry record removed from open data", registryChangePayload(changes), 1, actorKind, actorDisplay, actorUserID)
 }
+
+// ownerSnapshot is customer.owner_changed's before/after shape (owner and tags
+// design D1): who the owner was, by id AND by the name they had at the time.
+// The name is stored rather than resolved when the timeline is read, for the
+// same reason actorDisplay is stored on every entry: a renamed or deleted
+// account must not rewrite what the timeline says happened.
+type ownerSnapshot struct {
+	UserID      uuid.UUID `json:"userId"`
+	DisplayName string    `json:"displayName"`
+}
+
+// ownerSnapshotName is the summary's word for one side of the change.
+// "nobody" rather than "—" or an empty string: the summary is a sentence a
+// person reads in the timeline, and "Customer owner changed: Kari Nordmann →
+// nobody" says what happened without needing the payload.
+func ownerSnapshotName(s *ownerSnapshot) string {
+	if s == nil {
+		return "nobody"
+	}
+	return s.DisplayName
+}
+
+// recordCustomerOwnerChanged is PutCustomersByIdOwner's own generated event
+// (owner and tags design D1). Only called once the handler has confirmed the
+// owner actually changed (owner.go's no-op rule), so before and after are
+// never equal here — and either of them may be nil, which is how "assigned"
+// and "cleared" are told apart.
+//
+// Unlike recordCustomerUpdated there is no changes map: there is exactly one
+// field, so before/after IS the change, and a one-entry map repeating them
+// would be noise. The spec names this payload shape exactly.
+func recordCustomerOwnerChanged(ctx context.Context, q *store.Queries, now time.Time, customerID int32, before, after *ownerSnapshot, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	summary := truncateUTF16(fmt.Sprintf("Customer owner changed: %s → %s", ownerSnapshotName(before), ownerSnapshotName(after)), 500)
+	payload := map[string]any{
+		"customerId": customerID,
+		"before":     before,
+		"after":      after,
+	}
+	return recordGeneratedEvent(ctx, q, customerID, now, "customer.owner_changed", summary, payload, 1, actorKind, actorDisplay, actorUserID)
+}

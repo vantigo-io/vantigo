@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -47,6 +48,26 @@ type customerJSON struct {
 	Revision       int32             `json:"revision"`
 	Identity       *legalIdentityRef `json:"identity"`
 	ContactInfo    contactInfoJSON   `json:"contactInfo"`
+	Owner          *ownerJSON        `json:"owner"`
+	Tags           []tagJSON         `json:"tags"`
+}
+
+// ownerJSON decodes CustomerOwner, a pointer on customerJSON because it is
+// genuinely absent for an unowned customer (owner and tags design D1) — unlike
+// contactInfo, which the server always sends.
+type ownerJSON struct {
+	UserId      string `json:"userId"`
+	DisplayName string `json:"displayName"`
+	Active      bool   `json:"active"`
+}
+
+// tagJSON decodes CustomerTag. A plain slice, not a pointer: the server always
+// sends tags, empty array included, so a nil here means the field was missing
+// and that is a failure worth seeing as one (owner and tags design D2).
+type tagJSON struct {
+	Id    string  `json:"id"`
+	Name  string  `json:"name"`
+	Color *string `json:"color"`
 }
 
 // contactInfoJSON decodes CustomerContactInfo: each of the three fields
@@ -452,7 +473,10 @@ func TestUpdateCustomer_WithValidName_UpdatesName(t *testing.T) {
 	fetched := c.Do(http.MethodGet, fmt.Sprintf("/api/v1/customers/%d", created.Id), nil)
 	var refetched customerJSON
 	fetched.JSON(&refetched)
-	if refetched != updated {
+	// reflect.DeepEqual rather than ==: customerJSON carries the tags array
+	// (owner and tags design D2), so it is no longer a comparable struct — the
+	// assertion is still "the whole response, field for field".
+	if !reflect.DeepEqual(refetched, updated) {
 		t.Errorf("refetched = %+v, want the same as the update response %+v", refetched, updated)
 	}
 }
