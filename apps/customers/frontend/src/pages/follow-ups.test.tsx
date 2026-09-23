@@ -54,6 +54,28 @@ const row = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+/**
+ * What the tick answers, which is NOT a row of this list: POST
+ * .../follow-up/done returns the whole timeline ENTRY (`TimelineResponse`), and
+ * `markFollowUpDone` runs it through the entry normaliser. A `FollowUpRow` here
+ * would type-check nowhere and hide the mismatch behind a response nothing on
+ * the page reads.
+ */
+const tickedEntry = () => ({
+  id: 7,
+  provenance: "manual",
+  eventType: "note",
+  producer: "",
+  occurredOn: "2020-07-20",
+  note: "Ring back about the renewal",
+  currentRevision: 3,
+  state: "active",
+  actorKind: "user",
+  createdAt: "2026-07-20T00:00:00Z",
+  updatedAt: "2026-07-20T00:00:00Z",
+  followUp: { dueOn: "2020-08-01", doneAt: "2026-07-22T09:30:00Z" },
+});
+
 const renderPage = (fetchMock: ReturnType<typeof vi.fn>, canManageTimeline = true) => {
   const stub = stubFetch(fetchMock);
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -133,7 +155,7 @@ describe("the Follow-ups page", () => {
   it("ticks a row done through the entry's own path and re-reads the list", async () => {
     const stub = renderPage(
       vi.fn((input: RequestInfo | URL) => {
-        if (String(input).includes("/follow-up/done")) return Promise.resolve(json(row()));
+        if (String(input).includes("/follow-up/done")) return Promise.resolve(json(tickedEntry()));
         return Promise.resolve(json(page([row()])));
       }),
     );
@@ -167,7 +189,10 @@ describe("the Follow-ups page", () => {
         expect.objectContaining({ title: "Could not update the follow-up" }),
       ),
     );
-    expect(listReads(stub).length).toBeGreaterThanOrEqual(2);
+    // In a waitFor of its own: the notification and the refetch are two effects
+    // of one rejection, and nothing orders them — on a slow runner the message
+    // can land first and a bare assertion would see only the original read.
+    await waitFor(() => expect(listReads(stub).length).toBeGreaterThanOrEqual(2));
   });
 
   it("offers the pages when there is more than one, and page 2 reaches the URL and the wire", async () => {
@@ -220,5 +245,55 @@ describe("the Follow-ups page", () => {
     );
     expect(await screen.findByText("Alpha Co")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /mark done/i })).not.toBeInTheDocument();
+    // And the column they head is gone with them: a header over nothing reads
+    // as a column that failed to load.
+    expect(screen.queryByRole("columnheader", { name: /actions/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /assigned to/i })).toBeInTheDocument();
+  });
+
+  it("marks an assignee the directory no longer has as inactive", async () => {
+    // The disabled case the server deliberately keeps: somebody given a
+    // follow-up and since removed from the directory still holds it, so the name
+    // stays and says why it is odd.
+    renderPage(
+      vi.fn(() =>
+        Promise.resolve(
+          json(
+            page([
+              row({
+                followUp: {
+                  dueOn: "2020-08-01",
+                  assignee: { userId: "u1", displayName: "Kari Nordmann", active: false },
+                },
+              }),
+            ]),
+          ),
+        ),
+      ),
+    );
+    expect(await screen.findByText(/Kari Nordmann \(inactive\)/)).toBeInTheDocument();
+  });
+
+  // A caller the nav admits with `customers:timeline-view` alone reaches this
+  // page and the endpoint answers 403, because it also wants `customers:view`
+  // for the customer names. "Could not load follow-ups" on its own would read as
+  // a glitch worth reloading for; the server's own sentence is what says it is
+  // not.
+  it("says why the list did not load, and reads again on Retry", async () => {
+    let attempt = 0;
+    const stub = renderPage(
+      vi.fn(() => {
+        attempt += 1;
+        return attempt === 1
+          ? Promise.resolve(json({ title: "Forbidden", detail: "You do not have permission to view customers" }, 403))
+          : Promise.resolve(json(page([row()])));
+      }),
+    );
+
+    expect(await screen.findByText(/permission to view customers/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /try again/i }));
+
+    expect(await screen.findByText("Alpha Co")).toBeInTheDocument();
+    await waitFor(() => expect(listReads(stub).length).toBeGreaterThanOrEqual(2));
   });
 });

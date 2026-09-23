@@ -1011,4 +1011,133 @@ describe("the timeline's follow-ups", () => {
       expect(Object.hasOwn(JSON.parse(String(put?.[1]?.body)), "followUp")).toBe(false);
     });
   });
+
+  // The follow-up an entry already has must survive an edit of something else,
+  // and the PUT is a full replace — so the form seeding `followUpAssigneeUserId`
+  // from the entry is the ONLY thing standing between "fix a typo in the note"
+  // and silently unassigning whoever was on it. The assignee here is one the
+  // directory no longer offers (`active: false`, the disabled case the server
+  // deliberately keeps), because that is the seed that cannot be recovered from
+  // the picker's own option list.
+  it("re-sends the follow-up's assignee and date when only the note is edited", async () => {
+    const assignee = { userId: "u1", displayName: "Kari Nordmann", active: false };
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      // The directory answers ACTIVE users only, so it does not offer her: the
+      // id has to come from the entry, not from anything this list returned.
+      if (url.includes("/assignable-users")) return Promise.resolve(json([]));
+      if (init?.method === "PUT")
+        return Promise.resolve(json(withFollowUp({ dueOn: "2026-12-24", assignee, doneAt: null })));
+      if (url.includes("/timeline?")) {
+        return Promise.resolve(
+          json({ data: [withFollowUp({ dueOn: "2026-12-24", assignee, doneAt: null })], nextCursor: null }),
+        );
+      }
+      return Promise.resolve(json({ data: [] }));
+    });
+    await renderTimeline(fetchMock);
+    await userEvent.click(await waitFor(actionsButton));
+    await userEvent.click(await screen.findByText("Edit"));
+    const dialog = await screen.findByRole("dialog", { name: /edit timeline event/i });
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /description/i }), " — rescheduled");
+    await userEvent.click(within(dialog).getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(
+        ([url, init]) => String(url) === "/api/v1/customers/42/timeline/7" && init?.method === "PUT",
+      );
+      expect(put).toBeDefined();
+      expect(JSON.parse(String(put?.[1]?.body))).toMatchObject({
+        note: "Original note — rescheduled",
+        followUp: { dueOn: "2026-12-24", assigneeUserId: "u1" },
+      });
+    });
+  });
+
+  // A follow-up IS its date: there is nothing for an assignee to be on once the
+  // date is gone, so emptying the date clears the assignee rather than refusing
+  // the save. What it must not do is what it did before this ruling — stop at
+  // "give the follow-up a date, or clear the assignee" and leave the person to
+  // clear a field they did not ask about.
+  it("clears the assignee with the date, and the PUT then carries no followUp at all", async () => {
+    const assignee = { userId: "u1", displayName: "Kari Nordmann", active: true };
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/assignable-users")) return Promise.resolve(json([assignee]));
+      if (init?.method === "PUT") return Promise.resolve(json(withFollowUp(undefined)));
+      if (url.includes("/timeline?")) {
+        return Promise.resolve(
+          json({ data: [withFollowUp({ dueOn: "2026-12-24", assignee, doneAt: null })], nextCursor: null }),
+        );
+      }
+      return Promise.resolve(json({ data: [] }));
+    });
+    await renderTimeline(fetchMock);
+    await userEvent.click(await waitFor(actionsButton));
+    await userEvent.click(await screen.findByText("Edit"));
+    const dialog = await screen.findByRole("dialog", { name: /edit timeline event/i });
+    // The picker starts on her, which is what makes the clear observable.
+    expect(within(dialog).getByRole("combobox", { name: /assigned to/i })).toHaveValue("Kari Nordmann");
+    await userEvent.clear(within(dialog).getByRole("textbox", { name: /follow up on/i }));
+    // The picker empties with the date, so the form does not go on showing a
+    // person nobody is going to be sent.
+    expect(within(dialog).getByRole("combobox", { name: /assigned to/i })).toHaveValue("");
+    await userEvent.click(within(dialog).getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(
+        ([url, init]) => String(url) === "/api/v1/customers/42/timeline/7" && init?.method === "PUT",
+      );
+      expect(put).toBeDefined();
+      expect(Object.hasOwn(JSON.parse(String(put?.[1]?.body)), "followUp")).toBe(false);
+    });
+  });
+
+  it("marks an assignee the directory no longer has as inactive", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      if (String(input).includes("/timeline?")) {
+        return Promise.resolve(
+          json({
+            data: [
+              withFollowUp({
+                dueOn: "2020-01-02",
+                assignee: { userId: "u1", displayName: "Kari Nordmann", active: false },
+                doneAt: null,
+              }),
+            ],
+            nextCursor: null,
+          }),
+        );
+      }
+      return Promise.resolve(json({ data: [] }));
+    });
+    await renderTimeline(fetchMock);
+
+    // Her name stays — she still holds the follow-up — with the reason it looks
+    // odd said in words rather than left for the reader to wonder about.
+    expect(await screen.findByText(/Kari Nordmann \(inactive\)/)).toBeInTheDocument();
+  });
+
+  // The other end of "a follow-up IS its date": with no date there is nothing for
+  // an assignee to be on, so the picker is not offered rather than offered and
+  // then quietly ignored by the submit mapping.
+  it("offers no assignee until the follow-up has a date", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/assignable-users"))
+        return Promise.resolve(json([{ userId: "u1", displayName: "Kari Nordmann" }]));
+      if (url.includes("/timeline?")) return Promise.resolve(json({ data: [], nextCursor: null }));
+      return Promise.resolve(json({ data: [] }));
+    });
+    await renderTimeline(fetchMock);
+    await userEvent.click(await screen.findByRole("button", { name: /add event/i }));
+    const dialog = await screen.findByRole("dialog", { name: /add timeline event/i });
+
+    // A fresh entry starts with no follow-up date at all.
+    expect(within(dialog).getByRole("combobox", { name: /assigned to/i })).toBeDisabled();
+    expect(within(dialog).getByText("Give the follow-up a date first")).toBeInTheDocument();
+
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /follow up on/i }), "2026-12-24");
+    expect(within(dialog).getByRole("combobox", { name: /assigned to/i })).toBeEnabled();
+  });
 });

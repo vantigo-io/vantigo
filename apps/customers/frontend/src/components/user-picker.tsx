@@ -39,6 +39,7 @@ export const UserPicker = ({
   selected,
   onChange,
   disabled,
+  description,
   clearLabel,
 }: {
   label: string;
@@ -48,6 +49,8 @@ export const UserPicker = ({
   selected?: PickableUser | null;
   onChange: (value: string | null) => void;
   disabled?: boolean;
+  /** Why the field is as it is — a caller that disables it owes the reader a reason. */
+  description?: string;
   clearLabel: string;
 }) => {
   const { t } = useI18n("customers");
@@ -63,6 +66,7 @@ export const UserPicker = ({
     <Select
       label={label}
       placeholder={placeholder}
+      description={description}
       searchable
       clearable
       disabled={disabled}
