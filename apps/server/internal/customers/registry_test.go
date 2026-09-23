@@ -1052,6 +1052,51 @@ func TestRegistryRefresh_WithoutARegistryIdentity_Returns409(t *testing.T) {
 	}
 }
 
+// TestRegistryRefresh_WhenTheIdentityChangesUnderTheFetch_Returns409 is the
+// same conflict for the race (final fix wave I4): the organisation number is
+// resolved before the network call, so a click and a re-identification can
+// overlap, and the answer that comes back is then about a company this customer
+// is not. Storing it would be worse than useless — a record whose organisation
+// number is not the customer's legal_id is invisible through the GET, skipped by
+// both of the feed worker's sweeps, and counted as "has a record" by the
+// backfill, so the right one is never fetched.
+func TestRegistryRefresh_WhenTheIdentityChangesUnderTheFetch_Returns409(t *testing.T) {
+	t.Parallel()
+	transport := &registryTransport{}
+	h := newRegistryHarness(t, transport)
+	c := authenticatedClient(t, h)
+	// A manual identity: no create hook fetches for one, so this customer has no
+	// record and the refresh is not throttled.
+	created := createCustomerWithIdentity(t, c, "Equinor, typed by hand", "no", "923609016")
+
+	var moved bool
+	transport.respond = func(string) (*http.Response, error) {
+		if !moved {
+			// The registry is answering about 923609016; somebody saves a different
+			// identity before the answer is stored.
+			moved = true
+			h.Exec(t, `UPDATE customers.customers SET legal_id = '974760673' WHERE id = $1`, created.Id)
+		}
+		return registryEntityResponse(http.StatusOK, equinorRegistryBody), nil
+	}
+
+	r := postRegistryRefresh(t, c, created.Id)
+	if r.Status != http.StatusConflict {
+		t.Fatalf("status %d body %s, want 409", r.Status, r.Body)
+	}
+	var problem conflictProblemJSON
+	r.JSON(&problem)
+	if str(problem.Code) != "no_registry_identity" {
+		t.Errorf("code = %v, want no_registry_identity — the number this call was for is not the customer's any more", problem.Code)
+	}
+	if n := registryRowCount(t, h, created.Id); n != 0 {
+		t.Errorf("registry rows = %d, want 0", n)
+	}
+	if entries := fetchRegistryEvents(t, c, created.Id); len(entries) != 0 {
+		t.Errorf("timeline events = %d, want 0: nothing was stored", len(entries))
+	}
+}
+
 // TestRegistryRefresh_UpstreamFailure_Returns502AndKeepsTheRecord pins
 // design D2's 502 boundary, shaped like the Peppol lookup's own: a failed
 // fetch stores nothing, records nothing, and leaves the record on file

@@ -52,6 +52,13 @@ const (
 	// past that is not a bigger company, it is something to refuse rather
 	// than buffer in full.
 	brregEntityMaxBodyBytes = 1 << 20
+
+	// brregEntityRead is what this read is called in an error message
+	// (validateBrregContentType, readBrregBody), the counterpart of
+	// brregFeedRead's own constant (brreg_feed.go, final fix wave M11): the two
+	// reads' failures are told apart in a log by this word, so it is named in
+	// both places rather than spelled as a literal in one of them.
+	brregEntityRead = "entity"
 )
 
 // brregAddress is one of the registry's two address shapes on an entity
@@ -360,7 +367,7 @@ var errBrregBody = errors.New("brreg: response body could not be used")
 // module's own tests pin application/problem+json as a REFUSAL for the entity
 // read (TestEntity_WrongMediaTypeIsAnError), because a problem document is
 // exactly the shape a failure arrives in and must never be decoded as a
-// record. what names the read in the message ("entity", "update feed").
+// record. what names the read in the message (brregEntityRead, brregFeedRead).
 func validateBrregContentType(what, contentType string, accepted ...string) error {
 	mediaType, _, err := mime.ParseMediaType(contentType)
 	if err == nil {
@@ -440,7 +447,7 @@ func (c *brregClient) entity(ctx context.Context, orgnr string) (brregEntityReco
 		// alike (a 406, say) — must carry a body this module can trust before
 		// it is decoded, so the content type is checked here, once, ahead of
 		// both the success and failure branches below.
-		if err := validateBrregContentType("entity", contentType, brregEntityMediaType, "application/json"); err != nil {
+		if err := validateBrregContentType(brregEntityRead, contentType, brregEntityMediaType, "application/json"); err != nil {
 			return brregEntityRecord{}, brregEntityUnknown, fmt.Errorf("%w: %w", errBrregUnavailable, err)
 		}
 		if !isSuccessStatus(status) {
@@ -484,7 +491,7 @@ func (c *brregClient) entityAttempt(ctx context.Context, path string) (status in
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	data, err := readBrregBody("entity", resp, brregEntityMaxBodyBytes)
+	data, err := readBrregBody(brregEntityRead, resp, brregEntityMaxBodyBytes)
 	if err != nil {
 		return 0, "", nil, err
 	}

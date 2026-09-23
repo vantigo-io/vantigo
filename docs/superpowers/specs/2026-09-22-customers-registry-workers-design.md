@@ -87,8 +87,8 @@ Before reading the feed, each cycle refreshes up to **50** stale records (`hint 
 fetched_at`, oldest hint first) and up to **25** Norwegian business customers that have
 **no record at all** (non-archived, valid organisation number, lowest id first). The
 second half is the backfill: customers created before delivery A, and picks whose fetch
-failed, get their record without anyone clicking — a few hundred an hour, so a large
-installation is caught up within a day. The backfill keeps its own position on the
+failed, get their record without anyone clicking — about a hundred an hour at the
+default poll, so a few thousand customers are caught up within a day or two. The backfill keeps its own position on the
 cursor row (`backfill_after_id`, taking customers with `id >` it and only organisation
 numbers that are nine digits), because a customer whose number the register does not
 know never gets a record: without a position those 25 rows would be the same 25 rows on

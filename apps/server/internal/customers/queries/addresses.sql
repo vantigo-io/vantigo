@@ -8,7 +8,15 @@
 -- foreign key references. pgx.ErrNoRows means the customer does not exist —
 -- the addresses.go handlers turn that into a 404 the same way GetCustomer's
 -- callers elsewhere in this module do.
-SELECT id FROM customers.customers WHERE id = @id FOR NO KEY UPDATE;
+--
+-- It returns the legal identity as well as the id (final fix wave I4), for the
+-- one caller that needs to know what it locked rather than only that it exists:
+-- a registry refresh resolves the organisation number BEFORE its network call,
+-- and re-reading the identity under this lock is how it discovers that the
+-- customer became a different company in between. The address writes discard
+-- the row and only take the lock, as they always did.
+SELECT id, type, legal_country, legal_id, legal_name, legal_source, legal_type
+FROM customers.customers WHERE id = @id FOR NO KEY UPDATE;
 
 -- name: ListCustomerAddresses :many
 -- ListCustomerAddresses is GetCustomersByIdAddresses's one query
