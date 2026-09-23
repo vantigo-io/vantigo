@@ -152,6 +152,20 @@ describe("timeline API contract", () => {
     expect(normalizeFollowUp({ dueOn: "2026-08-01" })).toEqual({ dueOn: "2026-08-01", assignee: null, doneAt: null });
     expect(normalizeTimelineEntry({ ...entry(), followUp: undefined }).followUp).toBeNull();
   });
+
+  // The helper above proves the normaliser; this proves `fetchTimeline` is
+  // actually wired through it, which is what every reader of `entry.followUp`
+  // relies on. Without it the two could drift: a page read that skipped the
+  // normaliser would hand components `undefined` and every `followUp &&` guard
+  // would silently stop rendering instead of failing.
+  it("normalizes an omitted follow-up on the way out of fetchTimeline", async () => {
+    const wire: Record<string, unknown> = { ...entry() };
+    delete wire.followUp;
+    stubFetch(vi.fn().mockResolvedValue(json({ data: [wire], nextCursor: null })));
+
+    const page = await fetchTimeline(42);
+    expect(page.data[0].followUp).toBeNull();
+  });
 });
 
 describe("CustomerTimeline", () => {
@@ -250,10 +264,14 @@ describe("CustomerTimeline", () => {
       );
       expect(putCall).toBeDefined();
     });
-    const putCall = fetchMock.mock.calls.find(
+    // Matching by URL and method says a PUT happened; counting the matches is
+    // the property that says it happened ONCE — the thing a `find` on its own
+    // would let a double submit through.
+    const putCalls = fetchMock.mock.calls.filter(
       ([callUrl, callInit]) => String(callUrl) === "/api/v1/customers/42/timeline/7" && callInit?.method === "PUT",
     );
-    const [, putInit] = putCall ?? [];
+    expect(putCalls).toHaveLength(1);
+    const [, putInit] = putCalls[0] ?? [];
     expect(putInit?.headers).toEqual({ "Content-Type": "application/json" });
     expect(JSON.parse(String(putInit?.body))).toMatchObject({
       eventType: "note",
@@ -291,10 +309,13 @@ describe("CustomerTimeline", () => {
       );
       expect(postCall).toBeDefined();
     });
-    const postCall = fetchMock.mock.calls.find(
+    // Counted, not just found: one click is one create (same reason as the edit
+    // test above).
+    const postCalls = fetchMock.mock.calls.filter(
       ([callUrl, callInit]) => String(callUrl) === "/api/v1/customers/42/timeline" && callInit?.method === "POST",
     );
-    const [, postInit] = postCall ?? [];
+    expect(postCalls).toHaveLength(1);
+    const [, postInit] = postCalls[0] ?? [];
     expect(postInit?.headers).toEqual({ "Content-Type": "application/json" });
     expect(JSON.parse(String(postInit?.body))).toMatchObject({ eventType: "interaction.meeting", note: "Meet" });
   });
@@ -664,6 +685,10 @@ describe("the timeline's follow-ups", () => {
     const openLine = await screen.findByText(/Follow up /);
     expect(openLine).toHaveTextContent(/Kari Nordmann/);
     expect(openLine).toHaveTextContent(/overdue/);
+    // And red, which is `followUpTone`'s whole job. Mantine's `c` prop lands as
+    // a `color` declaration naming its own variable, so that variable — not a
+    // resolved colour jsdom has no stylesheet to compute — is what to assert.
+    expect(openLine).toHaveStyle({ color: "var(--mantine-color-red-text)" });
 
     // The done line is matched by ITS OWN wording ("Followed up …"), never by
     // /done/i: the Mark done BUTTON on the other row matches that too, so a
@@ -877,6 +902,40 @@ describe("the timeline's follow-ups", () => {
     expect(panel).not.toHaveTextContent(/Kari Nordmann/);
   });
 
+  // The server answers a tick on a generated entry with 409 "Generated,
+  // deleted, or voided timeline entries cannot be edited" (follow_ups.go's
+  // second step), so the control on one could only ever fail. A generated entry
+  // carrying a follow-up is not something today's writers produce — but the
+  // reader is data, not a promise, and `canManageTimeline` alone did not say
+  // anything about provenance, which is what the menu beside it has always
+  // checked.
+  it("offers no tick on a generated entry, even one that carries a follow-up", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      if (String(input).includes("/timeline?")) {
+        return Promise.resolve(
+          json({
+            data: [
+              {
+                ...withFollowUp({ dueOn: "2020-01-02", assignee: null, doneAt: null }),
+                provenance: "generated",
+                producer: "customers",
+                note: null,
+                summary: "Customer updated",
+              },
+            ],
+            nextCursor: null,
+          }),
+        );
+      }
+      return Promise.resolve(json({ data: [] }));
+    });
+    await renderTimeline(fetchMock);
+
+    // Readable, like every other generated entry: only the control is withheld.
+    expect(await screen.findByText(/Follow up /)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /mark done/i })).not.toBeInTheDocument();
+  });
+
   it("sends the follow-up the form collected, and clears it when the section is emptied", async () => {
     const created = vi.fn(() =>
       Promise.resolve(json(withFollowUp({ dueOn: "2026-12-24", assignee: null, doneAt: null }))),
@@ -915,6 +974,41 @@ describe("the timeline's follow-ups", () => {
       );
       expect(call).toBeDefined();
       expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({ followUp: { dueOn: "2026-12-24" } });
+    });
+  });
+
+  // The other half of that sentence, and the one the form's own comment calls an
+  // instruction: the PUT is a full replace, so an emptied date does not mean
+  // "leave the follow-up alone", it means there is none any more. What proves it
+  // is the key being ABSENT from the body — `undefined` is what JSON.stringify
+  // drops — because absent is what the contract reads as a clear.
+  it("clears a follow-up by emptying the date, and the PUT then carries no followUp at all", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/assignable-users")) return Promise.resolve(json([]));
+      if (init?.method === "PUT") return Promise.resolve(json(withFollowUp(undefined)));
+      if (url.includes("/timeline?")) {
+        return Promise.resolve(
+          json({ data: [withFollowUp({ dueOn: "2026-12-24", assignee: null, doneAt: null })], nextCursor: null }),
+        );
+      }
+      return Promise.resolve(json({ data: [] }));
+    });
+    await renderTimeline(fetchMock);
+    await userEvent.click(await waitFor(actionsButton));
+    await userEvent.click(await screen.findByText("Edit"));
+    const dialog = await screen.findByRole("dialog", { name: /edit timeline event/i });
+    const followUpOn = within(dialog).getByRole("textbox", { name: /follow up on/i });
+    expect(followUpOn).toHaveValue("2026-12-24");
+    await userEvent.clear(followUpOn);
+    await userEvent.click(within(dialog).getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(
+        ([url, init]) => String(url) === "/api/v1/customers/42/timeline/7" && init?.method === "PUT",
+      );
+      expect(put).toBeDefined();
+      expect(Object.hasOwn(JSON.parse(String(put?.[1]?.body)), "followUp")).toBe(false);
     });
   });
 });

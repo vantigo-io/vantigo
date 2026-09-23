@@ -1,4 +1,5 @@
 import { MantineProvider } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -23,12 +24,14 @@ vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <a href="#stub">{children}</a>,
 }));
 
+vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
 // Literally the wire body: followUp is required on a row, assignee and doneAt
 // are omitted rather than null when they have no value.
-const page = (rows: unknown[]) => ({
+const page = (rows: unknown[], pagination: Record<string, unknown> = {}) => ({
   data: rows,
   pagination: {
     page: 1,
@@ -37,6 +40,7 @@ const page = (rows: unknown[]) => ({
     totalPages: 1,
     hasNextPage: false,
     hasPreviousPage: false,
+    ...pagination,
   },
 });
 const row = (overrides: Record<string, unknown> = {}) => ({
@@ -62,6 +66,17 @@ const renderPage = (fetchMock: ReturnType<typeof vi.fn>, canManageTimeline = tru
   );
   return stub;
 };
+
+/**
+ * Every read of the list, matched by method and URL — never "the last fetch".
+ * A GET carries no `method` at all (the api client only sets one for unsafe
+ * requests), which is also what keeps the tick's POST to the same base path out
+ * of this count.
+ */
+const listReads = (stub: ReturnType<typeof stubFetch>) =>
+  stub.actualCalls.filter(
+    ([url, init]) => String(url).includes("/api/v1/customers/follow-ups") && (!init?.method || init.method === "GET"),
+  );
 
 afterEach(() => {
   cleanup();
@@ -110,7 +125,12 @@ describe("the Follow-ups page", () => {
     });
   });
 
-  it("ticks a row done through the entry's own path", async () => {
+  it("says so when there is nothing to follow up", async () => {
+    renderPage(vi.fn(() => Promise.resolve(json(page([])))));
+    expect(await screen.findByText("No follow-ups here.")).toBeInTheDocument();
+  });
+
+  it("ticks a row done through the entry's own path and re-reads the list", async () => {
     const stub = renderPage(
       vi.fn((input: RequestInfo | URL) => {
         if (String(input).includes("/follow-up/done")) return Promise.resolve(json(row()));
@@ -124,6 +144,68 @@ describe("the Follow-ups page", () => {
           String(url).endsWith("/api/v1/customers/42/timeline/7/follow-up/done") && init?.method === "POST",
       );
       expect(call).toBeDefined();
+    });
+    // A ticked row leaves the default "open" list, so the read after the write
+    // is what takes it off screen.
+    await waitFor(() => expect(listReads(stub).length).toBeGreaterThanOrEqual(2));
+  });
+
+  // The card's own rule (`-customer-timeline.tsx`: the done mutation refreshes
+  // on failure too): the entry may be gone, and a row that stays on screen with
+  // a live button invites the same 404 again. So the failure path re-reads
+  // BEFORE it says anything.
+  it("re-reads the list when the tick finds the entry gone, and says so", async () => {
+    const stub = renderPage(
+      vi.fn((input: RequestInfo | URL) => {
+        if (String(input).includes("/follow-up/done")) return Promise.resolve(json({ title: "Not found" }, 404));
+        return Promise.resolve(json(page([row()])));
+      }),
+    );
+    await userEvent.click(await screen.findByRole("button", { name: /mark done/i }));
+    await waitFor(() =>
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Could not update the follow-up" }),
+      ),
+    );
+    expect(listReads(stub).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("offers the pages when there is more than one, and page 2 reaches the URL and the wire", async () => {
+    // Rendered here rather than through `renderPage`, because this is the one
+    // case that needs a SECOND render of the same tree: the page number lives in
+    // the URL, so what the router does after `navigate` — hand the component a
+    // new search — is half of what is under test, and `rerender` is how the
+    // stubbed router's next value gets read.
+    const stub = stubFetch(
+      vi.fn(() => Promise.resolve(json(page([row()], { totalPages: 2, totalCount: 30, hasNextPage: true })))),
+    );
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    // A fresh element each time, not one stored in a const: React bails out of
+    // re-rendering a tree handed back the very same element object, and the
+    // second read would never happen.
+    const tree = () => (
+      <MantineProvider env="test">
+        <QueryClientProvider client={queryClient}>
+          <FollowUpsPage canManageTimeline />
+        </QueryClientProvider>
+      </MantineProvider>
+    );
+    const { rerender } = render(tree());
+
+    await userEvent.click(await screen.findByRole("button", { name: "2" }));
+    // Not `go()`'s reset-to-1: a page change is the one navigation that must
+    // keep the number it was given.
+    expect(router.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ search: expect.objectContaining({ page: 2 }) }),
+    );
+
+    router.search = { ...router.search, page: 2 };
+    rerender(tree());
+    await waitFor(() => {
+      const secondPage = listReads(stub).find(
+        ([url]) => new URL(String(url), "http://test").searchParams.get("page") === "2",
+      );
+      expect(secondPage).toBeDefined();
     });
   });
 

@@ -1187,7 +1187,7 @@ context, as time's and expenses' own items do:
 
 | Type | Raised when | Clears when |
 | --- | --- | --- |
-| `followUpOverdue` | An open follow-up on a non-archived customer, assigned to the caller **or unassigned**, whose `dueOn` is before today (UTC) | It is ticked done, reopened onto a later date, cleared, its entry is deleted, or the customer is archived |
+| `followUpOverdue` | An open follow-up on a non-archived customer, assigned to the caller **or unassigned**, whose `dueOn` is before today (UTC) | It is ticked done, its due date is moved to a later day (an edit — reopening never moves the date), it is cleared, its entry is deleted, or the customer is archived |
 | `followUpDue` | The same, with `dueOn` equal to today | The same |
 
 An **unassigned** follow-up is everyone's until somebody takes it, which is why
@@ -1720,8 +1720,8 @@ No new permission key was added for [Follow-ups](#follow-ups) either: a
 follow-up is part of a timeline entry, so setting, replacing, ticking and
 reopening one needs `customers:timeline-manage` (paired with
 `customers:timeline-view`, the same pairing every other timeline write already
-needs), and reading one — on the entry, on a revision, or on the Follow-ups list
-— needs `customers:timeline-view` alone. `GET /customers/follow-ups` needs
+needs), and reading one — on the entry or on a revision — needs
+`customers:timeline-view` alone. `GET /customers/follow-ups` needs
 `customers:timeline-view` **and** `customers:view` besides, because each row
 also names a customer. The two follow-up items on `GET /stats/attention` are
 gated the same second way, not by plain `customers:view` alone — see above.

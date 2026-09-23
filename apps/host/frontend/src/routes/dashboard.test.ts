@@ -215,12 +215,14 @@ describe("the dashboard's attention links", () => {
     expect(attentionTitle(item, () => "never", formatInLosAngeles)).toBe("Acme AS");
   });
 
-  it("has all four registry titles in English and Norwegian", () => {
+  it("has all six customer titles in English and Norwegian", () => {
     for (const key of [
       "dashboard.customerRegistryBankrupt",
       "dashboard.customerRegistryLiquidation",
       "dashboard.customerRegistryDeleted",
       "dashboard.customerRegistryRenamed",
+      "dashboard.customerFollowUpOverdue",
+      "dashboard.customerFollowUpDue",
     ]) {
       for (const lng of ["en", "nb"]) {
         expect(i18n.t(key, { ns: "host", lng, name: "Acme AS" })).not.toBe(key);

@@ -13,6 +13,7 @@ import {
   followUpsQueryOptions,
 } from "../api/follow-ups";
 import { markFollowUpDone, type TimelineFollowUp } from "../api/timeline";
+import { formatDateOnly } from "../lib/format-date-only";
 import "../i18n";
 
 /** Open and past its due date, in UTC — the same calendar the server compares in. */
@@ -45,15 +46,18 @@ export const FollowUpsPage = ({ canManageTimeline }: { canManageTimeline?: boole
 
   const go = (next: Partial<FollowUpsSearch>) => navigate({ search: { ...search, page: 1, ...next } });
 
+  const reload = () => queryClient.invalidateQueries({ queryKey: ["customers"] });
   const tick = useMutation({
     mutationFn: (row: FollowUpRow) => markFollowUpDone(row.customerId, row.entryId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["customers"] }),
-    onError: (error: Error) =>
-      notifications.show({ color: "red", title: t("couldNotUpdateFollowUp"), message: error.message }),
+    onSuccess: reload,
+    onError: (error: Error) => {
+      // The failure re-reads too, the way the timeline card's own tick does: the
+      // likeliest failure is an entry somebody else deleted or un-followed-up,
+      // and a row left on screen only offers the same doomed button again.
+      reload();
+      notifications.show({ color: "red", title: t("couldNotUpdateFollowUp"), message: error.message });
+    },
   });
-
-  const formatDateOnly = (date: string) =>
-    formatters.formatDate(`${date}T00:00:00Z`, { dateStyle: "medium", timeZone: "UTC" });
 
   return (
     <Stack gap="lg">
@@ -102,7 +106,7 @@ export const FollowUpsPage = ({ canManageTimeline }: { canManageTimeline?: boole
                           size="sm"
                           c={row.followUp.doneAt ? "dimmed" : isOverdue(row.followUp) ? "red" : undefined}
                         >
-                          {formatDateOnly(row.followUp.dueOn)}
+                          {formatDateOnly(formatters, row.followUp.dueOn)}
                         </Text>
                         {isOverdue(row.followUp) && (
                           <Badge size="xs" color="red" variant="light">
