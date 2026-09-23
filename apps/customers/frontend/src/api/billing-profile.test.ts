@@ -26,6 +26,7 @@ const profile = {
   revision: 3,
   peppolLookup: null,
   warnings: [],
+  groupDefault: null,
 };
 
 const registeredLookup = {

@@ -378,6 +378,7 @@ const cachedProfile = (revision: number): CustomerBillingProfile => ({
   revision,
   peppolLookup: null,
   warnings: [],
+  groupDefault: null,
 });
 
 describe("syncCustomerRevision", () => {
