@@ -236,7 +236,7 @@ on the same bet the tags' is.
 *Unblocks:* answering "who owns this relationship and what happens next" without
 building a deals pipeline.
 
-### Phase 5 — Customer 360
+### Phase 5 — Customer 360 (one delivery done)
 
 An overview panel per customer — open projects, unbilled hours and expenses, invoiced
 revenue and outstanding once Invoices exists, last activity — host-composed from
