@@ -56,6 +56,12 @@ a dependency of it.
   every column NULL means "not decided here — whoever invoices uses its own
   default". See [Contact info, addresses and the billing
   profile](#contact-info-addresses-and-the-billing-profile).
+- **Owner** — `owner_user_id` on `customers.customers` itself, naming one user of
+  this installation or nobody; no foreign key to identity. See [Owner and
+  tags](#owner-and-tags).
+- **Tag** — a vocabulary word (`customers.tags`, unique case-insensitively) a
+  customer's own set (`customers.customer_tags`) draws from; off the customer row,
+  so a tag change carries no `revision`. See [Owner and tags](#owner-and-tags).
 - **Timeline entry** — one row per customer event, generated or manual, each with its
   own revision history. See [The timeline](#the-timeline).
 
@@ -354,6 +360,89 @@ to it through the list or GET-by-id endpoints; only the dedicated sub-resource
 does, and that sub-resource's own GET needs nothing more than `customers:view`
 either).
 
+## Owner and tags
+
+Phase 4's first delivery, decided in
+[`docs/superpowers/specs/2026-09-23-customers-owner-tags-design.md`](superpowers/specs/2026-09-23-customers-owner-tags-design.md).
+Two questions a customer list has to be able to answer: *which of these are
+mine?*, and *which of these are of this kind?*
+
+### The owner
+
+`customers.customers.owner_user_id` names **one user** of this installation — not
+a team, not free text. The roadmap's "account manager" is one person accountable
+for the relationship, and every system this module was benchmarked against models
+it as exactly that (Salesforce's Account Owner, HubSpot's Company owner, Business
+Central's Salesperson code). Because it is a column on the customer row, it shares
+the row's `revision`: `PUT /customers/{id}/owner` is a revision-guarded
+sub-resource write exactly like contact info's — same ordering, same guard, same
+no-op rule, same 409 — so a concurrent edit cannot lose it, and a request that
+names the owner the customer already has writes nothing at all.
+
+The user is named through `contracts.UserDirectory` and nowhere else — the display
+name is never stored on the customer. That has three consequences worth stating,
+because each is a decision rather than a side effect:
+
+- **There is no foreign key** to `identity.users`. This module may not read
+  identity's schema, and a foreign key would decide in the database what the
+  design decides in prose: an owner who is later disabled, or whose account is
+  removed, **keeps the customer**. Nothing is revoked behind anyone's back.
+- The owner is therefore reported with an `active` flag, and an id the directory
+  no longer knows reads as `Unknown user` with `active: false` — the same answer
+  a timeline entry's actor gets for a vanished account.
+- To *be assigned*, on the other hand, a user must exist and be active: a field
+  error on `ownerUserId` otherwise (`User <id> does not exist`, `User <id> is
+  disabled and cannot own a customer`). `GET /customers/assignable-users` is the
+  picker's own search — the directory's active users, at most twenty (`limit`,
+  when given, must be between 1 and 20) — and it sits behind `customers:update`,
+  because who a customer *could* be given to is only useful to whoever may give
+  it.
+
+The list filters on `ownerId`, which takes a user id, the literal `me`, or
+`none`. `me` is resolved from the session, never from anything the request says
+about who the caller is, which is why "My customers" in the UI needs nothing from
+the host. `none` is the manager's "unassigned". Changing the owner records
+`customer.owner_changed` on the timeline, with both names snapshotted at the time
+of the change, and only when the owner actually changed — a no-op resubmit of the
+owner the customer already has, a disabled account included, answers 200 with
+nothing written and no directory lookup made for the candidate.
+
+### Tags
+
+Two tables (`customers.tags`, `customers.customer_tags`), shaped after
+communications' own tags with one difference that matters: the uniqueness is on
+`lower(name)`. A tag is a vocabulary word, so `VIP` and `vip` are the same word —
+an installation holding both has a filter that silently splits its customers in
+two. Case is still preserved as it was typed.
+
+A colour is one of Mantine's named colours (`gray red pink grape violet indigo
+blue cyan teal green lime yellow orange`) or null, validated by the server. That
+looks like a layering violation and is not: the alternative is every consumer
+sanitising whatever arrived, and a chip painted with a value no stylesheet knows
+is an invisible chip.
+
+A customer's tags are **replaced as a set** (`PUT /customers/{id}/tags`), which is
+the natural write for a multi-select. There is no `revision` and none is accepted:
+tags are off the customer row, so a tag change bumps nothing and two concurrent
+replaces are last-wins, which is what replacing a set means. The handler reads the
+customer's current set and diffs it against the request **before** opening a
+transaction or resolving a timeline actor — a multi-select whose caller changed
+their mind sends the set the customer already has, and that is a read, not a
+write, so a request that changes nothing answers right there, with no actor
+lookup and no directory call made for it. An unknown id is a field error on
+`tagIds`. Deleting a tag removes it from every customer through the join table's
+own cascade, and `GET /customers/tags` answers a `customerCount` per tag
+(`CustomerTagSummary`) so the delete confirmation can say how many that is.
+Renaming a tag records nothing on the customers carrying it — the tag is the
+vocabulary, not the customer — while a set replace records `customer.tags_changed`
+with what was added and what was removed, and only when the set moved.
+
+Search does not match owner names or tag names: search stays what it is, the
+customer's own fields. Everything here is readable with `customers:view` and
+writable with `customers:update` — an owner is not sensitive data and tags are
+classification, so a narrower key would be one more thing to configure for no
+protection gained.
+
 ## The timeline
 
 Every customer has a timeline: **generated** entries the module itself writes when
@@ -364,7 +453,8 @@ Generated event types: `customer.created`, `customer.updated`, `customer.type_ch
 `customer.contact_relationship_updated`, `customer.contact_detached`,
 `customer.contact_removed`, `customer.contact_info_updated`,
 `customer.billing_profile_updated`, `customer.address_added`,
-`customer.address_updated`, `customer.address_removed`, `customer.peppol_lookup`.
+`customer.address_updated`, `customer.address_removed`, `customer.peppol_lookup`,
+`customer.owner_changed`, `customer.tags_changed`.
 These are immutable — there is no edit or delete endpoint for a generated entry.
 
 - `customer.peppol_lookup` (see [Peppol lookup](#peppol-lookup)) is recorded only
@@ -377,6 +467,14 @@ These are immutable — there is no edit or delete endpoint for a generated entr
   already used for name/identity changes. Both are only ever recorded once the
   handler has confirmed something changed (the sub-resource's own no-op rule), so
   `changes` is never empty on either event.
+- `customer.owner_changed` (`{customerId, before, after}`, each side `{userId,
+  displayName}` or null) and `customer.tags_changed` (`{customerId, added,
+  removed}`, each element `{tagId, name}`) are [owner and tags](#owner-and-tags)'
+  own generated events. Both are recorded only when the value actually changed —
+  renaming a tag records nothing, since the vocabulary changed and no customer's
+  own set did — and both are already in `-customer-timeline.tsx`'s `typeKey`: a
+  generated type missing from that map is unfilterable in the frontend's Event
+  types filter, the one coupling between a new backend event and the UI.
 - Each address event's payload always carries `addressId`, `type`, `label` and a
   one-line `display` rendering (e.g. "Storgata 1, 0155 Oslo, NO");
   `customer.address_updated` also carries `before`/`after`/`changes`, the same shape
@@ -436,13 +534,20 @@ every other timeline column).
 ## The list endpoint and search
 
 `GET /api/v1/customers` supports paging (`page`, `pageSize` 1–100, default 25),
-`status`, `type`, `includeArchived`, `search`, and `sortBy` (`id`, `name`,
-`customerNumber`, `createdAt`, `updatedAt`, always tie-broken by `id`) with
-`sortDirection` (`asc`/`desc`).
+`status`, `type`, `includeArchived`, `search`, `ownerId`, `tagId`, and `sortBy`
+(`id`, `name`, `customerNumber`, `createdAt`, `updatedAt`, always tie-broken by
+`id`) with `sortDirection` (`asc`/`desc`).
 
 - Naming a `status` shows exactly that status — `status=archived` shows archived
   customers with no need for `includeArchived`. Leaving `status` off keeps the old
   default: archived hidden unless `includeArchived=true`.
+- [`ownerId`](#the-owner) (a user id, `me` or `none`) and [`tagId`](#tags) (a tag
+  id) narrow the list to one owner or one tag — anything else is a 400 worded
+  `'ownerId' must be a user id, 'me' or 'none', but was '…'.` or `'tagId' must be
+  a tag id, but was '…'.`. Both are applied to the count and the page from one
+  `WHERE` clause kept by hand in step with each other, the same fragment `GetCustomers`
+  and `CountCustomers` each carry (`queries/customers.sql`), so a filtered page
+  and its total never disagree.
 - **`search` never reaches data the caller could not otherwise see** — with one
   exception it deliberately does not gate. It always matches the name, the customer
   number, and, since the invoice-ready customer branch, the customer's own `email`
@@ -1271,6 +1376,13 @@ is exactly what that view permission gates. The dashboard's
 `GET /stats/attention` stays on plain `customers:view`: an item never carries the
 organisation number, only the customer's own name.
 
+No new permission key was added for [Owner and tags](#owner-and-tags) either:
+an owner is not sensitive data — it is a name, not a legal identity or a billing
+term — and tags are classification, so both ride on the same `customers:view`/
+`customers:update` split every other non-sensitive field of the customer row
+already uses, rather than a key of their own that every installation would have
+to remember to grant.
+
 ## `contracts.CustomerDirectory`
 
 The one sanctioned way another module reads customer data — an in-process, read-only
@@ -1352,12 +1464,21 @@ been in since the foundation.
 - **List** (`/customers`) — customer number column (replacing the old id column),
   status and type filters, sortable headers (number, name, created), all reflected in
   the URL (`status`, `type`, `sortBy`, `sortDirection`) and validated by the host
-  route, plus the KPI row and a spotlight-openable create form.
+  route, plus the KPI row and a spotlight-openable create form. [Owner and
+  tags](#owner-and-tags) added an **Owner** column, the tag chips beside each row's
+  name, and an **Owner** filter (mine/unassigned/all) and a **Tag** filter, both
+  reflected in the URL (`ownerId`, `tagId`) the same way the others are — the Owner
+  filter needs nothing new from the host, because `me` is resolved server-side from
+  the session, never from anything the page sends. The Tag filter carries a **Manage
+  tags** button, opening [the vocabulary editor](#tags), for a caller the host says
+  may edit: the host passes one new prop, `canEdit`, read from `customers:update`,
+  through its own `-customers-list.tsx` wrapper — this package still never fetches
+  permissions itself.
 - **Detail** (`/customers/:id`) — a host-composed page: this package owns the header
   (name, legal-identity badges, status/type badges, edit and change-type actions) and
-  an overview tab (contact & addresses card, billing card, contacts card, timeline);
-  other modules add their own tabs (Energy, Projects) the same way the host composes
-  any module's tabs onto a customer.
+  an overview tab (relationship card, contact & addresses card, billing card, contacts
+  card, timeline); other modules add their own tabs (Energy, Projects) the same way
+  the host composes any module's tabs onto a customer.
   **Archive and Restore** are gated on the host's permission check rather than a
   local one — the header takes `canArchive`/`canRestore` props and never fetches
   permissions itself: Archive needs `customers:delete` and goes through the shared
@@ -1368,6 +1489,20 @@ been in since the foundation.
   header. A `PUT` refused as a stale revision tells the user the customer changed
   and refetches it, rather than leaving a failure behind a button that would keep
   failing.
+- **Relationship card** (owner and tags design D3, `-customer-relationship-card.tsx`)
+  — where the owner and the tags actually live on the customer page: the owner's
+  name (with an "inactive" badge when the directory says so) and an `OwnerPicker`
+  (a searchable `Select` over `GET /assignable-users`, copied from projects' own
+  assignee picker) below it, then the tag chips and a `MultiSelect` over the tag
+  vocabulary that also offers *Create "x"* for a name no tag yet has — typing a new
+  tag posts it and replaces the customer's set including it in two calls, since a
+  set replace can only name ids that already exist. Both pickers sit behind the
+  same `canEdit` prop the rest of the page uses. The two writes reload differently
+  on purpose: the owner PUT answers the whole customer and carries a `revision`, so
+  `syncCustomerRevision` runs before its invalidation and a 409 raises the same
+  conflict-and-Reload alert the other row-editing modals use; the tags PUT carries
+  no revision at all, so a save is a plain invalidation of `["customers"]` with
+  nothing to sync and no conflict to handle.
 - **Contact & addresses card** (design D6) — email/phone/website (rendered as
   `mailto:`/`tel:`/an external link) with an edit modal, and the typed address list
   below it, grouped by type in the fixed order invoice/postal/delivery/visiting,
@@ -1420,7 +1555,7 @@ been in since the foundation.
 ## API
 
 Every operation is under `/api/v1/customers`, authenticated with the shared identity
-session cookie. 40 operations in total, each exercised by the module's own
+session cookie. 47 operations in total, each exercised by the module's own
 contract-validated test coverage gate — every operation in `openapi/customers.yaml`
 must be exercised by at least one successful exchange, with no allow-list.
 
@@ -1439,6 +1574,12 @@ must be exercised by at least one successful exchange, with no allow-list.
 | `PUT /{id}/addresses/{addressId}`, `DELETE /{id}/addresses/{addressId}` | `customers:update` + `customers:view` |
 | `GET /{id}/billing-profile` | `customers:view` |
 | `PUT /{id}/billing-profile` | `customers:billing-manage` + `customers:view` |
+| `PUT /{id}/owner` | `customers:update` + `customers:view` |
+| `GET /assignable-users` | `customers:update` |
+| `PUT /{id}/tags` | `customers:update` + `customers:view` |
+| `GET /tags` | `customers:view` |
+| `POST /tags` | `customers:update` |
+| `PUT /tags/{tagId}`, `DELETE /tags/{tagId}` | `customers:update` |
 | `POST /{id}/peppol-lookup` | `customers:billing-manage` + `customers:view` |
 | `GET /{id}/registry-record` | `customers:view` (withheld to 204 without `customers:legal-identity-view`) |
 | `POST /{id}/registry-refresh` | `customers:legal-identity-manage` + `customers:legal-identity-view` |
@@ -1499,7 +1640,20 @@ cursor, filling the `registry_updated_hint` column delivery A's own migration
 and backfills every Norwegian business customer that never had a record; and
 scheduled Peppol re-checks on the same `ehf_available`/`ehf_recipient_not_registered`
 warnings a manual check already raises. Registry data in this module is now
-maintained rather than merely fetched once. Past that, the remaining gaps are exactly
+maintained rather than merely fetched once.
+
+**Phase 4 delivery A** — [Owner and tags](#owner-and-tags) — has since landed: one
+owner per customer, named through `contracts.UserDirectory` and never stored as a
+foreign key, filterable as `me`/`none`/a user id; a case-insensitively unique tag
+vocabulary a customer's set is replaced against; and the two generated events,
+`customer.owner_changed` and `customer.tags_changed`, that record either. No
+permission key was added. Still ahead in the phase: typed contact roles with a
+primary contact, replacing today's free-text `role`; a follow-up date and assignee
+on a timeline entry, feeding `/stats/attention` and a "my follow-ups" view; customer
+groups that carry defaults; and attachments on a customer and its timeline entries,
+once the storage module has a model for it.
+
+Past that, the remaining gaps are exactly
 what [ROADMAP.md's Customers section](../ROADMAP.md#customers) is built around —
 `ContactsByEmail` still unused in production, no CSV import/export, no merge
 (phase 6) — itself drawn from
