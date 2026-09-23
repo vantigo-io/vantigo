@@ -33,7 +33,7 @@ import {
   useDebouncedListSearch,
   useI18n,
 } from "@vantigo/frontend-shell";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   type CustomerOwnerFilter,
@@ -130,6 +130,20 @@ export const CustomersPage = ({ canEdit }: { canEdit?: boolean }) => {
     navigate({ search: { ...listSearch, ...next, page: 1 } });
   const [manageTagsOpened, setManageTagsOpened] = useState(false);
   const { data: tags } = useQuery(customerTagsQueryOptions());
+  // A `tagId` no tag answers narrows the list to nothing while the Tag filter
+  // sits blank, so the page shows an empty table and claims to be filtering by
+  // nothing — a link that outlived the tag it names, or a tag deleted in another
+  // tab. Letting go of it is the same repair `onTagDeleted` makes below, for the
+  // deletions this page did not see. Gated on the vocabulary having ACTUALLY
+  // loaded: while it is in flight (or has failed) every id is one it does not
+  // know, and firing then would throw a live filter away on a slow request.
+  useEffect(() => {
+    if (!tagId || tags === undefined) return;
+    if (!tags.some((tag) => tag.id === tagId)) filterBy({ tagId: undefined });
+    // `filterBy` closes over this render's search and is new every render; the
+    // URL state it reads is `tagId`, which is in the list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tagId, tags]);
   const toggleSort = (column: SortColumn) => {
     const next: Pick<CustomersListSearch, "sortBy" | "sortDirection"> =
       sortBy !== column

@@ -17,9 +17,20 @@ import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EmptyState, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
-import { ApiValidationError } from "../api/request";
+import { ApiConflictError, ApiValidationError } from "../api/request";
 import { type CustomerTagSummary, customerTagsQueryOptions, deleteTag, TAG_COLORS, updateTag } from "../api/tags";
 import "../i18n";
+
+/**
+ * The CSS variable for a tag's swatch. The colour arrives as a wire string and
+ * is interpolated into a `var(--mantine-color-…)`, so it is checked against the
+ * list the API validates against rather than trusted: a value that is not one of
+ * them (an older server, a hand-edited row) would otherwise reach an inline
+ * style as whatever it happened to say. Unknown reads as no colour, which is
+ * what a tag without one shows.
+ */
+const swatchVariable = (color: string | null) =>
+  `var(--mantine-color-${color && (TAG_COLORS as readonly string[]).includes(color) ? color : "gray"}-6)`;
 
 /**
  * The tag vocabulary's own editor (owner and tags design D3): rename, recolour
@@ -59,7 +70,7 @@ export const ManageTagsModal = ({
                 <Table.Tr key={tag.id}>
                   <Table.Td>
                     <Group gap="xs" wrap="nowrap">
-                      <ColorSwatch color={`var(--mantine-color-${tag.color ?? "gray"}-6)`} size={12} />
+                      <ColorSwatch color={swatchVariable(tag.color)} size={12} />
                       <Text size="sm">{tag.name}</Text>
                     </Group>
                   </Table.Td>
@@ -144,6 +155,14 @@ const TagForm = ({ tag, onDone }: { tag: CustomerTagSummary; onDone: () => void 
     onError: (error) => {
       if (error instanceof ApiValidationError) {
         form.setErrors(error.fieldErrors);
+        return;
+      }
+      // The names are unique without regard to case, so this is what renaming a
+      // tag to a case variant of another one answers. It is about the one field
+      // the person just typed in, so it goes under that input rather than into a
+      // notification that would leave the form looking saved.
+      if (error instanceof ApiConflictError && error.code === "tag_exists") {
+        form.setErrors({ name: t("tagNameTaken") });
         return;
       }
       notifications.show({ color: "red", title: t("tagCouldNotBeSaved"), message: error.message });

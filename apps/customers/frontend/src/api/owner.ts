@@ -18,6 +18,12 @@ export interface AssignableUser {
  * `keepPreviousData` so the list does not blink empty between keystrokes, and
  * the trimmed term is both the query and the key, so " kari " and "kari" are
  * one cache entry rather than two requests for the same answer.
+ *
+ * The `staleTime` is why this key sitting under the `["customers"]` prefix costs
+ * nothing: every save on the customer page invalidates that whole prefix, and
+ * without it each one would send the directory search again underneath an open
+ * picker. Half a minute of an answer that is a directory listing, not the
+ * customer's own data, is not a staleness anyone can see.
  */
 export const assignableUsersQueryOptions = (query: string) => {
   const term = query.trim();
@@ -28,6 +34,7 @@ export const assignableUsersQueryOptions = (query: string) => {
       return request<AssignableUser[]>(`/api/v1/customers/assignable-users${search}`, { signal });
     },
     placeholderData: keepPreviousData,
+    staleTime: 30_000,
   });
 };
 

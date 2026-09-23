@@ -311,8 +311,8 @@ describe("CustomersPage, owner and tags", () => {
     expect(within(row).getByText("—")).toBeInTheDocument();
   });
 
-  it("drives the URL from the Owner filter and sends ownerId to the API", async () => {
-    const fetchMock = stubFetch([ownedRow]);
+  it("drives the URL from the Owner filter", async () => {
+    stubFetch([ownedRow]);
     renderPage();
     await screen.findByText("Equinor");
 
@@ -322,13 +322,16 @@ describe("CustomersPage, owner and tags", () => {
     expect(router.navigate).toHaveBeenCalledWith(
       expect.objectContaining({ search: expect.objectContaining({ ownerId: "me", page: 1 }) }),
     );
+  });
 
-    // The request is found by method and URL, never by "the last call": the
-    // stats and tags queries land on their own clocks.
+  it("sends ownerId to the API when the URL carries it", async () => {
+    const fetchMock = stubFetch([ownedRow]);
     router.search = { page: 1, search: "", ownerId: "me" };
-    cleanup();
     renderPage();
     await screen.findByText("Equinor");
+
+    // The request is found by URL, never by "the last call": the stats and tags
+    // queries land on their own clocks.
     const listCalls = fetchMock.mock.calls
       .map(([url]) => String(url))
       .filter((url) => url.startsWith("/api/v1/customers?"));
@@ -383,17 +386,76 @@ describe("CustomersPage, owner and tags", () => {
     });
   });
 
-  it("opens Manage tags only for a caller who may edit", async () => {
+  it("opens Manage tags for a caller who may edit", async () => {
     stubFetch([ownedRow]);
     renderPage({ canEdit: true });
     await screen.findByText("Equinor");
     await userEvent.click(screen.getByRole("button", { name: "Manage tags" }));
     expect(await screen.findByRole("dialog")).toHaveTextContent("Manage tags");
+  });
 
-    cleanup();
+  it("offers no Manage tags without canEdit", async () => {
+    stubFetch([ownedRow]);
     renderPage();
     await screen.findByText("Equinor");
     expect(screen.queryByRole("button", { name: "Manage tags" })).not.toBeInTheDocument();
+  });
+
+  it("drops a tagId the loaded vocabulary does not know", async () => {
+    // A link outlives the tag it filters by: someone deleted it in another tab,
+    // or a week ago. Left in the URL it narrows the list to nothing while the
+    // Tag filter sits blank, so the page shows an empty table and says it is
+    // filtering by nothing — the same dead end deleting a filtered tag leaves,
+    // arrived at from outside this page.
+    stubFetch([ownedRow]);
+    router.search = { page: 1, search: "", tagId: "6f1a7c3a-0000-0000-0000-000000000000" };
+    renderPage();
+    await screen.findByText("Equinor");
+
+    await waitFor(() =>
+      expect(router.navigate).toHaveBeenCalledWith(
+        expect.objectContaining({ search: expect.objectContaining({ tagId: undefined, page: 1 }) }),
+      ),
+    );
+  });
+
+  it("keeps a tagId the vocabulary knows", async () => {
+    stubFetch([ownedRow]);
+    router.search = { page: 1, search: "", tagId: "t1" };
+    renderPage();
+    await screen.findByText("Equinor");
+
+    // The filter naming the tag is the vocabulary having landed: t1 is in it,
+    // and a live filter must survive that.
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Tag" })).toHaveValue("VIP"));
+    expect(router.navigate).not.toHaveBeenCalled();
+  });
+
+  it("leaves the tagId alone while the vocabulary is unknown", async () => {
+    // Until the vocabulary answers, EVERY tag id is one it does not know —
+    // dropping the filter then would throw away a perfectly good one on nothing
+    // but a slow (or failing) request.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.startsWith("/api/v1/customers/tags")) {
+          return Promise.resolve(new Response(JSON.stringify({ title: "Boom" }), { status: 500 }));
+        }
+        if (url.startsWith("/api/v1/customers/stats")) return Promise.resolve(jsonResponse({}));
+        return Promise.resolve(
+          jsonResponse({
+            data: [ownedRow],
+            pagination: { page: 1, pageSize: 25, totalCount: 1, totalPages: 1, hasNextPage: false },
+          }),
+        );
+      }),
+    );
+    router.search = { page: 1, search: "", tagId: "t1" };
+    renderPage();
+    await screen.findByText("Equinor");
+
+    expect(router.navigate).not.toHaveBeenCalled();
   });
 
   it("drops a deleted tag from the URL when the list was filtered by it", async () => {

@@ -147,7 +147,13 @@ export interface CustomersListSearch {
   type?: CustomerType;
   sortBy?: CustomersQueryParams["sortBy"];
   sortDirection?: CustomersQueryParams["sortDirection"];
-  ownerId?: CustomerOwnerFilter | string;
+  /**
+   * The two literals and nothing else. The API would also take a user id, but
+   * the list offers only 'Mine' and 'Unassigned' and the host's route validates
+   * the URL down to exactly those (`OWNER_FILTERS`) — so the type says what can
+   * actually arrive, and a page that tried to put a uuid here would not compile.
+   */
+  ownerId?: CustomerOwnerFilter;
   tagId?: string;
 }
 

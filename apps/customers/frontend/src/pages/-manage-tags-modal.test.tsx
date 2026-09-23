@@ -80,6 +80,41 @@ describe("ManageTagsModal", () => {
     });
   });
 
+  it("puts the taken-name conflict on the Name input", async () => {
+    // Tag names are unique without regard to case, so renaming VIP to
+    // "prospect" collides with "Prospect". The refusal is about one field and
+    // belongs on it — a red notification would leave the form sitting there
+    // looking as though the name had been accepted. The body is literally the
+    // one the server sends (`tagExistsConflict` in tags.go).
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === "PUT") {
+          return Promise.resolve(
+            jsonResponse(
+              {
+                title: "Tag already exists",
+                detail: "A tag with this name already exists. Tag names are compared without regard to case.",
+                code: "tag_exists",
+                status: 409,
+              },
+              409,
+            ),
+          );
+        }
+        return Promise.resolve(jsonResponse(tagRows));
+      }),
+    );
+    renderModal();
+    await userEvent.click(await screen.findByRole("button", { name: "Rename VIP" }));
+    const input = screen.getByRole("textbox", { name: "Tag name" });
+    await userEvent.clear(input);
+    await userEvent.type(input, "prospect");
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByText("Another tag already has that name.")).toBeInTheDocument();
+  });
+
   it("shows the server's field error when a name is refused", async () => {
     vi.stubGlobal(
       "fetch",

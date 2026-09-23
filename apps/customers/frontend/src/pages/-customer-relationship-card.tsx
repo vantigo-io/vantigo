@@ -4,7 +4,13 @@ import { IconUserStar } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
-import { ApiConflictError, customerQueryOptions, syncCustomerRevision } from "../api/customers";
+import {
+  ApiConflictError,
+  type CustomerResponse,
+  customerQueryOptions,
+  invalidateCustomersExcept,
+  syncCustomerRevision,
+} from "../api/customers";
 import { setCustomerOwner } from "../api/owner";
 import { type CustomerTag, createTag, customerTagsQueryOptions, setCustomerTags } from "../api/tags";
 import { OwnerPicker } from "../components/owner-picker";
@@ -26,30 +32,35 @@ import { useCustomerReload } from "../lib/customer-reload";
  * The two writes reload differently, and deliberately:
  *
  *  - The owner is a column on the customer row, so its PUT is revision-guarded
- *    and answers the whole customer: `syncCustomerRevision` writes the fresh
- *    revision into every cache entry that carries it BEFORE the invalidation's
- *    refetches land, or an editor opened in that window sends the revision this
- *    save just replaced. A 409 raises the same conflict alert and Reload the
- *    other row-editing modals use (`useCustomerReload`). The revision this card
- *    sends is read straight off the query and never copied into state: unlike a
- *    modal, this card is mounted the whole time the other editors are saving,
- *    and their `syncCustomerRevision` moves the cached revision under it — a
- *    private copy would go stale into a 409 nobody caused
- *    (`-customer-peppol-status.tsx` sends the profile's own revision the same
- *    way).
- *  - The tags are off the row: no revision, nothing to sync, no conflict to
- *    handle — a plain invalidation of `["customers"]`, because the chips on the
- *    list and the counts in Manage tags both moved.
+ *    and answers the whole customer: that body goes straight into this query's
+ *    cache (the Owner row moves with no round trip), `syncCustomerRevision`
+ *    writes the fresh revision into every other cache entry that carries it
+ *    BEFORE the invalidation's refetches land, or an editor opened in that
+ *    window sends the revision this save just replaced, and
+ *    `invalidateCustomersExcept` refreshes the rest of `["customers"]` without
+ *    throwing away what the response just supplied. A 409 raises the same
+ *    conflict alert and Reload the other row-editing modals use
+ *    (`useCustomerReload`). The revision this card sends is read straight off
+ *    the query and never copied into state: unlike a modal, this card is mounted
+ *    the whole time the other editors are saving, and their
+ *    `syncCustomerRevision` moves the cached revision under it — a private copy
+ *    would go stale into a 409 nobody caused (`-customer-peppol-status.tsx`
+ *    sends the profile's own revision the same way).
+ *  - The tags are off the row: no revision to sync and no conflict to handle,
+ *    but the set replace does answer the customer's tags, so those are patched
+ *    into the cached customer the same way before the rest of `["customers"]` is
+ *    invalidated — the chips on the list and the counts in Manage tags moved too.
  */
 export const CustomerRelationshipCard = ({ customerId, canEdit }: { customerId: number; canEdit?: boolean }) => {
   const { t } = useI18n("customers");
   const { data: customer } = useSuspenseQuery(customerQueryOptions(customerId));
   const queryClient = useQueryClient();
+  const customerKey = customerQueryOptions(customerId).queryKey;
   const [conflict, setConflict] = useState(false);
 
   const reload = useCustomerReload({
     customerId,
-    queryKey: customerQueryOptions(customerId).queryKey,
+    queryKey: customerKey,
     fetchFresh: () => queryClient.fetchQuery({ ...customerQueryOptions(customerId), staleTime: 0 }),
     revisionOf: (fresh) => fresh.revision,
     // Nothing to re-seed but the banner: `fetchQuery` has already put the fresh
@@ -67,8 +78,14 @@ export const CustomerRelationshipCard = ({ customerId, canEdit }: { customerId: 
       reload.forget();
     },
     onSuccess: (saved) => {
+      // The PUT answered the whole customer, so the row this card reads is
+      // already in hand: it goes straight into the cache (the Owner row moves
+      // with no round trip at all), the fresh revision is carried to every other
+      // entry holding one, and the rest of ["customers"] is invalidated — but
+      // not this key, which is the one thing that is already fresh.
+      queryClient.setQueryData(customerKey, saved);
       syncCustomerRevision(queryClient, customerId, saved.revision);
-      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      invalidateCustomersExcept(queryClient, customerKey);
       notifications.show({ color: "teal", title: t("ownerUpdated"), message: t("ownerUpdatedMessage") });
     },
     onError: (error) => {
@@ -172,14 +189,22 @@ const TagsEditor = ({ customerId, tags }: { customerId: number; tags: CustomerTa
   const { data: vocabulary } = useQuery(customerTagsQueryOptions());
   const [search, setSearch] = useState("");
   const selected = tags.map((tag) => tag.id);
+  const customerKey = customerQueryOptions(customerId).queryKey;
+
+  // Both writes answer the customer's tags, so both end the same way: the
+  // answered set into the cached customer (chips and pills move without a round
+  // trip), then everything else under ["customers"] invalidated — the list's
+  // chips and Manage tags' counts moved too. A cached row is patched, never
+  // invented: a tag list is not enough to make a customer out of.
+  const applyTags = (answered: { tags: CustomerTag[] }) => {
+    queryClient.setQueryData(customerKey, (old?: CustomerResponse) => (old ? { ...old, tags: answered.tags } : old));
+    return invalidateCustomersExcept(queryClient, customerKey);
+  };
 
   const mutation = useMutation({
     mutationFn: (tagIds: string[]) => setCustomerTags(customerId, tagIds),
-    onSuccess: () => {
-      // No revision to sync: tags are off the customer row (design D2), so the
-      // only thing that moved is what the chips and the counts say.
-      queryClient.invalidateQueries({ queryKey: ["customers"] });
-    },
+    // No revision to sync: tags are off the customer row (design D2).
+    onSuccess: applyTags,
     onError: (error) => notifications.show({ color: "red", title: t("tagsCouldNotBeSaved"), message: error.message }),
   });
 
@@ -206,9 +231,9 @@ const TagsEditor = ({ customerId, tags }: { customerId: number; tags: CustomerTa
         return await attach(existing.id);
       }
     },
-    onSuccess: () => {
+    onSuccess: (saved) => {
       setSearch("");
-      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      applyTags(saved);
     },
     onError: (error) => notifications.show({ color: "red", title: t("tagCouldNotBeSaved"), message: error.message }),
   });
