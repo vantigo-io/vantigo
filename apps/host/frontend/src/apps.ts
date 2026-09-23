@@ -7,6 +7,7 @@ import {
   IconCategory,
   IconChecklist,
   IconClock,
+  IconFlag,
   IconInbox,
   IconLayoutDashboard,
   IconListCheck,
@@ -114,6 +115,15 @@ export const apps: readonly AppDefinition[] = [
       icon: IconAddressBook,
       requiredPermissions: ["customers:contacts-view", "customers:associations-view"],
       searchStrategy: "customer-list",
+    },
+    {
+      // Follow-ups is offered on customers:timeline-view alone, the permission
+      // the page's own API needs; the Done tick inside it asks for
+      // customers:timeline-manage separately (follow-ups design D3).
+      label: "navigation.followUps",
+      to: "/customers/follow-ups",
+      icon: IconFlag,
+      requiredPermissions: ["customers:timeline-view"],
     },
   ]),
   moduleApp("projects", "navigation.projects", IconBriefcase, "/projects", [

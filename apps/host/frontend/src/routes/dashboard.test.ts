@@ -229,6 +229,38 @@ describe("the dashboard's attention links", () => {
     }
   });
 
+  it("sends a follow-up item to its customer, whose page holds the timeline", () => {
+    expect(attentionHref({ module: "customers", type: "followUpOverdue", entityId: "42" })).toBe("/customers/42");
+    expect(attentionHref({ module: "customers", type: "followUpDue", entityId: "42" })).toBe("/customers/42");
+  });
+
+  it("names the two follow-up signals with the customer's own name", () => {
+    expect(attentionTitleKey({ module: "customers", type: "followUpOverdue" })).toBe(
+      "dashboard.customerFollowUpOverdue",
+    );
+    expect(attentionTitleKey({ module: "customers", type: "followUpDue" })).toBe("dashboard.customerFollowUpDue");
+    // The local stub `t` this file already uses for the four registry cases
+    // (`(key, values) => \`${key}:${values?.name}\``), not the real catalog:
+    // what is under test is that the right KEY is looked up with the customer's
+    // name, and asserting a translated sentence would make this test fail the
+    // day somebody rewords the Norwegian.
+    const t = (key: string, values?: Record<string, unknown>) => `${key}:${values?.name}`;
+    expect(
+      attentionTitle(
+        { module: "customers", type: "followUpOverdue", entityId: "42", title: "Alpha Co" },
+        t,
+        formatInLosAngeles,
+      ),
+    ).toBe("dashboard.customerFollowUpOverdue:Alpha Co");
+    expect(
+      attentionTitle(
+        { module: "customers", type: "followUpDue", entityId: "42", title: "Alpha Co" },
+        t,
+        formatInLosAngeles,
+      ),
+    ).toBe("dashboard.customerFollowUpDue:Alpha Co");
+  });
+
   // Ready milestones are a state, not a delta: most active projects have
   // none, so a standing "0 ready to invoice" would be a permanent fixture
   // rather than something worth reading — the same reasoning as Time's

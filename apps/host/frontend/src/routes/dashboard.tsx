@@ -285,6 +285,9 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
   if (item.module === "communications" && item.type === "conversationNoReply") {
     return `/communications/inbox?conversationId=${encodeURIComponent(item.entityId)}`;
   }
+  // Customers' six types all carry a customer id, follow-ups included: a
+  // follow-up lives on a timeline entry, and the entry lives on the customer's
+  // page, which is the only page that can show it.
   if (item.module === "customers") return `/customers/${encodeURIComponent(item.entityId)}`;
   if (item.module === "products") return `/products/${encodeURIComponent(item.entityId)}`;
   if (item.module === "energy") return `/energy/metering-points/${encodeURIComponent(item.entityId)}`;
@@ -339,15 +342,17 @@ const projectAttentionTitleKeys: Record<string, string> = {
   milestoneOverdue: "dashboard.projectMilestoneOverdue",
 };
 
-// The four registry facts a customer's stored Brreg record can surface
-// (Brreg in full design D4): server-built titles, like the four project
-// signals above, carrying the customer's own name rather than the
-// registry's.
+// Six now: the four registry signals (Brreg in full design D4) and the two
+// follow-up ones (follow-ups design D2). All six are server-built titles
+// carrying the customer's own name, so all six take the same `{{name}}`
+// treatment in attentionTitle below.
 const customerAttentionTitleKeys: Record<string, string> = {
   registryBankrupt: "dashboard.customerRegistryBankrupt",
   registryLiquidation: "dashboard.customerRegistryLiquidation",
   registryDeleted: "dashboard.customerRegistryDeleted",
   registryRenamed: "dashboard.customerRegistryRenamed",
+  followUpOverdue: "dashboard.customerFollowUpOverdue",
+  followUpDue: "dashboard.customerFollowUpDue",
 };
 
 /**

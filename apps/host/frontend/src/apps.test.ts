@@ -47,6 +47,7 @@ describe("the app registry", () => {
     expect(paths).toEqual([
       "/customers",
       "/customers/contacts",
+      "/customers/follow-ups",
       "/projects",
       "/projects/my-tasks",
       "/projects/economy",
@@ -73,6 +74,7 @@ describe("the app registry", () => {
       "customers:view",
       "customers:contacts-view",
       "customers:associations-view",
+      "customers:timeline-view",
     ]);
     expect(appForKey("home").requiredPermissions).toBeUndefined();
   });
@@ -338,6 +340,7 @@ describe("appNavSections", () => {
     expect(sections.flatMap((section) => section.items.map((item) => item.to))).toEqual([
       "/customers",
       "/customers/contacts",
+      "/customers/follow-ups",
     ]);
   });
 
