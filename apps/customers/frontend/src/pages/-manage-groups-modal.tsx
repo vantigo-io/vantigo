@@ -4,7 +4,7 @@ import { notifications } from "@mantine/notifications";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EmptyState, useI18n } from "@vantigo/frontend-shell";
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
   type CustomerGroupSummary,
   createGroup,
@@ -51,6 +51,10 @@ export const ManageGroupsModal = ({
   const { data: groups } = useQuery({ ...customerGroupsQueryOptions(), enabled: opened });
   const [editing, setEditing] = useState<CustomerGroupSummary | null>(null);
   const [deleting, setDeleting] = useState<CustomerGroupSummary | null>(null);
+  // Prefixes the ids that tie a disabled delete to the sentence saying why, so
+  // two mounted modals never share one.
+  const reasonIdPrefix = useId();
+  const blockedReasonId = (group: CustomerGroupSummary) => `${reasonIdPrefix}-blocked-${group.id}`;
 
   return (
     <Modal opened={opened} onClose={onClose} title={t("manageGroups")} centered>
@@ -89,11 +93,14 @@ export const ManageGroupsModal = ({
                         <IconPencil size={16} />
                       </ActionIcon>
                       {/* Disabled, not hidden: the reason belongs beside a control
-                          somebody can see, and the row below says what it is. */}
+                          somebody can see, and the sentence under the table says
+                          what it is — tied to the control by aria-describedby, so
+                          a screen reader hears the why and not only "dimmed". */}
                       <ActionIcon
                         variant="subtle"
                         color="red"
                         aria-label={t("deleteNamedGroup", { name: group.name })}
+                        aria-describedby={group.customerCount > 0 ? blockedReasonId(group) : undefined}
                         disabled={group.customerCount > 0}
                         onClick={() => setDeleting(group)}
                       >
@@ -113,19 +120,28 @@ export const ManageGroupsModal = ({
         {(groups ?? [])
           .filter((group) => group.customerCount > 0)
           .map((group) => (
-            <Text key={group.id} size="xs" c="dimmed">
+            <Text key={group.id} id={blockedReasonId(group)} size="xs" c="dimmed">
               {t("deleteGroupBlocked", { name: group.name, count: group.customerCount })}
             </Text>
           ))}
         {/* Keyed on the group being edited, so picking another row remounts the
             form on that group's values instead of writing them over the open
-            form's — and so leaving edit mode gives a blank CREATE form back. */}
-        <GroupForm key={editing?.id ?? "new"} group={editing} onDone={() => setEditing(null)} />
+            form's — and so leaving edit mode gives a blank CREATE form back.
+            The keys are prefixed because the form and the delete confirmation
+            are siblings and can name the SAME group: two children keyed "g2"
+            leave React unable to tell them apart, and the edit form survived
+            beside the create form it was replaced by. */}
+        <GroupForm key={editing ? `edit-${editing.id}` : "new"} group={editing} onDone={() => setEditing(null)} />
         {deleting && (
           <DeleteGroupConfirmation
-            key={deleting.id}
+            key={`delete-${deleting.id}`}
             group={deleting}
-            onDeleted={onGroupDeleted}
+            onDeleted={(deleted) => {
+              // An edit form open on the group just deleted would save into a
+              // 404: it goes back to the blank create form instead.
+              setEditing((current) => (current?.id === deleted ? null : current));
+              onGroupDeleted?.(deleted);
+            }}
             onDone={() => setDeleting(null)}
           />
         )}

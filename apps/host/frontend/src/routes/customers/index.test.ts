@@ -8,10 +8,13 @@ import { Route as CustomersIndexRoute } from "./index";
 // through `customersListParams`) — a mismatch here means the loader's
 // prefetch is wasted and the page re-fetches on mount regardless.
 describe("the customers list route's search params", () => {
+  // toStrictEqual, not toEqual, for every full search object: toEqual treats a
+  // key set to undefined as absent, so it could not tell a validator that
+  // forgot a filter from one that dropped its value.
   const validate = CustomersIndexRoute.options.validateSearch as (search: Record<string, unknown>) => unknown;
 
   it("falls back to the first page, no search and no filters, dropping what it does not know", () => {
-    expect(validate({})).toEqual({
+    expect(validate({})).toStrictEqual({
       page: 1,
       search: "",
       status: undefined,
@@ -22,7 +25,7 @@ describe("the customers list route's search params", () => {
       tagId: undefined,
       groupId: undefined,
     });
-    expect(validate({ status: "bogus", type: "bogus", sortBy: "bogus", sortDirection: "bogus" })).toEqual({
+    expect(validate({ status: "bogus", type: "bogus", sortBy: "bogus", sortDirection: "bogus" })).toStrictEqual({
       page: 1,
       search: "",
       status: undefined,
@@ -45,7 +48,7 @@ describe("the customers list route's search params", () => {
         sortBy: "createdAt",
         sortDirection: "desc",
       }),
-    ).toEqual({
+    ).toStrictEqual({
       page: 3,
       search: "acme",
       status: "archived",

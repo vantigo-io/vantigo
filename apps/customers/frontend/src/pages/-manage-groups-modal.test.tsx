@@ -18,9 +18,19 @@ const groupRows = [
   { id: "g2", name: "Key accounts", customerCount: 0 },
 ];
 
-const stubFetch = (options: { createConflict?: boolean } = {}) => {
+const stubFetch = (options: { createConflict?: boolean; createInvalid?: boolean } = {}) => {
   const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
     if (init?.method === "DELETE") return Promise.resolve(new Response(null, { status: 204 }));
+    if (init?.method === "POST" && options.createInvalid) {
+      // The problem body the server answers for a term out of range, keyed by
+      // the REQUEST's field name, which is not the form's.
+      return Promise.resolve(
+        jsonResponse(
+          { title: "Validation failed", errors: { defaultPaymentTermsDays: ["must be between 0 and 365"] } },
+          400,
+        ),
+      );
+    }
     if (init?.method === "POST") {
       return Promise.resolve(
         options.createConflict
@@ -124,5 +134,58 @@ describe("ManageGroupsModal", () => {
     await waitFor(() =>
       expect(fetchMock.mock.calls.filter(([, init]) => (init as RequestInit)?.method === "DELETE")).toHaveLength(1),
     );
+  });
+
+  it("says why a delete is refused to a screen reader too, not only on screen", async () => {
+    stubFetch();
+    renderModal();
+    await screen.findByText("Retail");
+    expect(screen.getByRole("button", { name: "Delete Retail" })).toHaveAccessibleDescription(
+      "2 customers belong to Retail. Move them out before deleting it.",
+    );
+    // Nothing blocks an empty group's delete, so it describes nothing.
+    expect(screen.getByRole("button", { name: "Delete Key accounts" })).not.toHaveAccessibleDescription();
+  });
+
+  it.each(["366", "3.5", "ten"])("refuses %s days under the field, without asking the server", async (days) => {
+    const fetchMock = stubFetch();
+    renderModal();
+    await screen.findByText("Retail");
+    await userEvent.type(screen.getByRole("textbox", { name: "Group name" }), "Public sector");
+    await userEvent.type(screen.getByRole("textbox", { name: "Default payment terms (days)" }), days);
+    await userEvent.click(screen.getByRole("button", { name: "Create group" }));
+
+    expect(
+      await screen.findByText("Give a whole number of days between 0 and 365, or leave it blank."),
+    ).toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([, init]) => (init as RequestInit)?.method === "POST")).toHaveLength(0);
+  });
+
+  it("puts the server's term error under the days field, whose name is not the request's", async () => {
+    stubFetch({ createInvalid: true });
+    renderModal();
+    await screen.findByText("Retail");
+    await userEvent.type(screen.getByRole("textbox", { name: "Group name" }), "Public sector");
+    await userEvent.type(screen.getByRole("textbox", { name: "Default payment terms (days)" }), "45");
+    await userEvent.click(screen.getByRole("button", { name: "Create group" }));
+
+    const days = screen.getByRole("textbox", { name: "Default payment terms (days)" });
+    await waitFor(() => expect(days).toHaveAccessibleDescription("must be between 0 and 365"));
+  });
+
+  it("gives the create form back when the group being edited is deleted", async () => {
+    // Left open, the edit form would save into a group that no longer exists
+    // and earn a 404 for it.
+    stubFetch();
+    renderModal();
+    await userEvent.click(await screen.findByRole("button", { name: "Edit Key accounts" }));
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Delete Key accounts" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete group" }));
+
+    expect(await screen.findByRole("button", { name: "Create group" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Group name" })).toHaveValue("");
   });
 });

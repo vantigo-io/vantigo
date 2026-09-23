@@ -153,6 +153,7 @@ describe("CustomerRelationshipCard", () => {
     await screen.findByText("Kari Nordmann");
     expect(screen.queryByRole("combobox", { name: "Owner" })).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Tags" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Group" })).not.toBeInTheDocument();
   });
 
   it("assigns an owner the debounced search found, and sends the revision it read", async () => {
