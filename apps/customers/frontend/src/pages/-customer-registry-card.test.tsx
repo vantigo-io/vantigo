@@ -448,6 +448,32 @@ describe("CustomerRegistryCard", () => {
     ).toBeInTheDocument();
   });
 
+  it("explains the 409 that means the customer's identity changed mid-read, distinctly from having none", async () => {
+    const fetchMock = registryFetch(null, (path, init) =>
+      path === "/api/v1/customers/1001/registry-refresh" && init?.method === "POST"
+        ? Promise.resolve(
+            problemResponse(409, {
+              title: "Registry identity changed",
+              detail: "This customer's legal identity changed while the registry was being read.",
+              code: "registry_identity_changed",
+            }),
+          )
+        : null,
+    );
+    renderCard(fetchMock);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Refresh" }));
+
+    expect(
+      await screen.findByText(
+        "This customer's identity changed while the registry was being read. Reload and refresh again.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("There is no Norwegian organisation number on this customer to look up."),
+    ).not.toBeInTheDocument();
+  });
+
   it("says the registry could not be reached, and invites another try", async () => {
     const fetchMock = registryFetch(fullRecordBody, (path, init) =>
       path === "/api/v1/customers/1001/registry-refresh" && init?.method === "POST"

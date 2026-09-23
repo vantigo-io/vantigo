@@ -10,6 +10,7 @@ import {
   type CustomerRegistryRecord,
   customerRegistryRecordQueryOptions,
   NO_REGISTRY_IDENTITY_CODE,
+  REGISTRY_IDENTITY_CHANGED_CODE,
   refreshRegistryRecord,
 } from "../api/registry";
 import { CustomerRegistryFields } from "./-customer-registry-fields";
@@ -20,9 +21,10 @@ import "../i18n";
  * an organisation number the register does not know and an entity removed
  * from open data both store nothing — the second one deletes the record on
  * file — so the answer lives here until the next click. `no_identity` and
- * `unavailable` are the 409 and the 502.
+ * `identity_changed` are two distinct 409s (the customer has no identity to
+ * look up, or has one but it changed mid-read); `unavailable` is the 502.
  */
-type RefreshNote = "unknown" | "removed" | "no_identity" | "unavailable";
+type RefreshNote = "unknown" | "removed" | "no_identity" | "identity_changed" | "unavailable";
 
 /**
  * The customer page's "Registry" card (design D5): what Enhetsregisteret says
@@ -91,6 +93,10 @@ export const CustomerRegistryCard = ({
     onError: (error) => {
       if (error instanceof ApiConflictError && error.code === NO_REGISTRY_IDENTITY_CODE) {
         setNote("no_identity");
+        return;
+      }
+      if (error instanceof ApiConflictError && error.code === REGISTRY_IDENTITY_CHANGED_CODE) {
+        setNote("identity_changed");
         return;
       }
       if ((error as { status?: number }).status === 502) {
@@ -223,6 +229,11 @@ export const CustomerRegistryCard = ({
             {note === "no_identity" && (
               <Text size="sm" c="dimmed">
                 {t("registryNoIdentity")}
+              </Text>
+            )}
+            {note === "identity_changed" && (
+              <Text size="sm" c="dimmed">
+                {t("registryIdentityChanged")}
               </Text>
             )}
             {note === "unavailable" && (

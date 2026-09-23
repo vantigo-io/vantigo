@@ -216,7 +216,7 @@ export interface paths {
         put?: never;
         /**
          * Re-read this customer's registry record
-         * @description Re-reads Enhetsregisteret for a customer whose legal identity is a Norwegian business with a valid organisation number — any source, so a manually entered number can be enriched too (Brreg in full design D2). The record lives in its own table, so a refresh never bumps the customer row's revision, and what differed from the record on file is written to the timeline as a single registry.change event. 409 with code 'no_registry_identity' when the customer has no such identity; 502 when the registry could not be reached, in which case nothing is stored and the record on file stands. A registry answer is never a failure: a struck-off entity answers 200 'deleted', one removed from open data 200 'removed' (its stored record is deleted), and an organisation number the registry does not know 200 'unknown' with nothing stored. Throttled to one outbound call per customer per 60 seconds: a refresh within 60 seconds of the record's own fetchedAt answers the stored record with an empty changes list and makes no call at all.
+         * @description Re-reads Enhetsregisteret for a customer whose legal identity is a Norwegian business with a valid organisation number — any source, so a manually entered number can be enriched too (Brreg in full design D2). The record lives in its own table, so a refresh never bumps the customer row's revision, and what differed from the record on file is written to the timeline as a single registry.change event. 409 with code 'no_registry_identity' when the customer has no such identity, or code 'registry_identity_changed' when the customer was re-identified while the registry was being read (the customer has an identity, just not the one this call was for — nothing is stored either); 502 when the registry could not be reached, in which case nothing is stored and the record on file stands. A registry answer is never a failure: a struck-off entity answers 200 'deleted', one removed from open data 200 'removed' (its stored record is deleted), and an organisation number the registry does not know 200 'unknown' with nothing stored. Throttled to one outbound call per customer per 60 seconds: a refresh within 60 seconds of the record's own fetchedAt answers the stored record with an empty changes list and makes no call at all.
          */
         post: operations["postCustomersByIdRegistryRefresh"];
         delete?: never;
@@ -561,7 +561,7 @@ export interface components {
             name: string;
             status: string;
         };
-        /** @description ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity conflict. A revision conflict carries neither. */
+        /** @description ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity and registry_identity_changed conflicts. A revision conflict carries neither. */
         CustomerConflictProblem: {
             code?: string | null;
             detail?: string | null;

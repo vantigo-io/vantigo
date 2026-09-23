@@ -503,8 +503,9 @@ const registryErrorKindDatabase = "database"
 // counts the customer as having a record, so the right one is never fetched.
 //
 // The caller's business, not this function's: the worker counts it as skipped
-// (nothing was wrong and nothing failed), and the endpoint answers the same 409
-// a customer with no registry identity gets.
+// (nothing was wrong and nothing failed), and the endpoint answers a 409 of
+// its own — registry_identity_changed, not no_registry_identity, since this
+// customer has a perfectly good identity, just not the one the fetch was for.
 var errRegistryIdentityChanged = errors.New("customers: the customer's legal identity changed during the registry fetch")
 
 // registryRefreshUnavailableResponse is the 502 a refresh answers when the
@@ -529,19 +530,23 @@ func noRegistryIdentityConflict() gen.CustomerConflictProblem {
 	return registryIdentityConflict("This customer has no Norwegian organisation number to look up in the registry.")
 }
 
-// registryIdentityChangedConflict is the same 409, for the refresh whose
+// registryIdentityChangedConflict is the same 409 shape, for the refresh whose
 // customer was re-identified while the registry was answering (final fix wave
-// I4). The code is deliberately no_registry_identity again rather than a new
-// one: from a client's point of view this IS that conflict — the number this
-// refresh was for is not the customer's any more — and the fix is the same
-// click, which will now ask about whatever company it is today. Only the detail
-// differs, because "nothing to look up" would be a lie for a customer that has
-// a perfectly good organisation number.
+// I4). It carries its own code, registry_identity_changed, rather than
+// no_registry_identity: from a client's point of view the two are NOT the same
+// conflict — this customer has a perfectly good organisation number, it is
+// simply not the one this call was answering about any more — and a UI that
+// keyed only on no_registry_identity would tell someone with a valid identity
+// that they have none.
 func registryIdentityChangedConflict() gen.CustomerConflictProblem {
-	return registryIdentityConflict("This customer's legal identity changed while the registry was being read. Please try again.")
+	title := "Registry identity changed"
+	detail := "This customer's legal identity changed while the registry was being read. Please try again."
+	code := "registry_identity_changed"
+	status := int32(http.StatusConflict)
+	return gen.CustomerConflictProblem{Title: &title, Detail: &detail, Code: &code, Status: &status}
 }
 
-// registryIdentityConflict is the shape both of those share.
+// registryIdentityConflict is noRegistryIdentityConflict's own shape.
 func registryIdentityConflict(detail string) gen.CustomerConflictProblem {
 	title := "No registry identity"
 	code := "no_registry_identity"
@@ -890,9 +895,10 @@ func (s *server) PostCustomersByIdRegistryRefresh(ctx context.Context, req gen.P
 	}
 	if errors.Is(err, errRegistryIdentityChanged) {
 		// Somebody re-identified the customer while the registry was answering
-		// (final fix wave I4): nothing was stored, and the same 409 the identity
-		// check above answers is what this is — the number this call was for is not
-		// the customer's any more.
+		// (final fix wave I4): nothing was stored, and this is a 409 of its own —
+		// registry_identity_changed, not the no_registry_identity the identity
+		// check above answers — because the number this call was for is not the
+		// customer's any more, but the customer does have one.
 		return gen.PostCustomersByIdRegistryRefresh409ApplicationProblemPlusJSONResponse(registryIdentityChangedConflict()), nil
 	}
 	if err != nil {

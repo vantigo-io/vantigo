@@ -943,7 +943,7 @@ func TestRegistryFeedWorker_ACancelledBackfillLeavesItsPositionAlone(t *testing.
 func TestRegistryFeedWorker_ABlackHoledRegistryEndsTheCycleEarly(t *testing.T) {
 	t.Parallel()
 	transport := newRegistryWorkerTransport(
-		// Every entity read is a 503, which is exactly what a black hole behind a
+		// Every entity read is a 500, which is exactly what a black hole behind a
 		// load balancer looks like: retryable, so each refresh also spends its whole
 		// retry budget on it.
 		func(string) (*http.Response, error) {

@@ -138,7 +138,7 @@ type CustomerConflictDuplicate struct {
 	Status         string `json:"status"`
 }
 
-// CustomerConflictProblem ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity conflict. A revision conflict carries neither.
+// CustomerConflictProblem ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity and registry_identity_changed conflicts. A revision conflict carries neither.
 type CustomerConflictProblem struct {
 	Code       *string                      `json:"code,omitempty"`
 	Detail     *string                      `json:"detail,omitempty"`
