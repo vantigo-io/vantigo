@@ -26,6 +26,7 @@
 - **The row's revision rules still bind:** every write to the `customers.customers` row bumps `revision`; a no-op writes nothing at all (no revision bump, no `updated_at` move, no timeline event); a guarded write repeats the revision comparison in the `UPDATE`'s own `WHERE`, and `pgx.ErrNoRows` from it means re-read and answer 409 (or 404 if the row is gone); the 409 body is `customerRevisionConflict` (title "Customer revision conflict", no `code`). The tags set-replace is **off** the row: it bumps nothing, takes no revision and accepts none.
 - Both catalogs (`en` and `nb`) of `apps/customers/frontend/src/i18n.ts` get every new string; `mise exec -- bun run translations:check` and `mise exec -- bun run i18n:test` must pass.
 - **Never assert "the last fetch"** in a frontend test — debounced pickers run on their own clock and CI is slow. Filter `fetchMock.mock.calls` by method and URL.
+- A Mantine `Select`/`MultiSelect` is queried as `getByRole("combobox", { name })`, never as a textbox; a plain `TextInput` is a textbox. A new generated timeline event type must also be added to `-customer-timeline.tsx`'s `typeKey`, or it is unlabelled and unfilterable.
 - After any `openapi/*.yaml`, `queries/*.sql` or migration change: `cd apps/server && mise exec -- go generate ./...` (a second run must show no new diff), then from the repo root `mise exec -- bun run gen:client` for a yaml change. Commit every generated file (`apps/server/internal/openapi/specs/customers.yaml`, `internal/customers/gen/api.gen.go`, `internal/customers/store/*.go`, each changed `api-schema.d.ts`, `openapi/COVERAGE.md` if it moved).
 - After any migration: add it to `apps/server/internal/customers/sqlc.yaml`'s `schema:` list (`TestSqlcSchemaListsOnlyTheModulesOwnMigrations` enforces that the list is exactly this module's migrations) and to `internal/db/schema_test.go`'s `wantTables`, then `go generate`.
 - **Read the generated file before writing Go against it.** After `go generate`, open `apps/server/internal/customers/store/tags.sql.go` and the changed parts of `store/customers.sql.go` and check which queries took a bare argument and which a `…Params` struct, the exact integer widths, and the spelling of every column (`LegalID` vs `LegalId`, `OwnerUserID` vs `OwnerUserId`). Where sqlc disagrees with this plan's Go, **follow sqlc** and adjust the call, not the query.
@@ -215,7 +216,7 @@ Add `      - ../db/migrations/00024_customers_owner_tags.sql` as the last entry 
 ```bash
 cd /home/anders/projects/vantigo/vantigo/apps/server && mise exec -- go test -count=1 -run 'TestCustomersBaseline|TestSqlcSchemaLists' ./internal/db/ ./internal/customers/
 ```
-Expected: PASS. (`./internal/customers/` also runs the module's suite; it is green at this point because nothing in Go has changed yet.)
+Expected: PASS. The `-run` filter matches no test in `./internal/customers/`, so that package compiles and reports no tests — which is the point: this task changes no Go, and a compile failure there would mean the generated store drifted. `TestSqlcSchemaListsOnlyTheModulesOwnMigrations` lives in `./internal/db/` and is what the second name in the filter selects.
 
 - [ ] **Step 5: Prove the new assertions can fail**
 
@@ -404,7 +405,7 @@ DELETE FROM customers.customer_tags WHERE customer_id = @customer_id;
 -- transaction that dies halfway cannot leave a partial set. An empty array
 -- inserts nothing, which is exactly what clearing a customer's tags means.
 INSERT INTO customers.customer_tags (customer_id, tag_id)
-SELECT @customer_id, unnest(@tag_ids::uuid[]);
+SELECT @customer_id::int, unnest(@tag_ids::uuid[]);
 ```
 
 - [ ] **Step 10: Verify nothing else moved, and commit**
@@ -645,7 +646,7 @@ git show --stat HEAD && git status --short
 
 **Files:**
 - Create: `apps/server/internal/customers/owner.go`, `apps/server/internal/customers/owner_test.go`
-- Modify: `apps/server/internal/customers/customers.go` (`customerRow.OwnerUserID`, `customerRowFrom`, the four adapters, `safeCustomerResponse`, `validateGetCustomersParams`, `GetCustomers`), `apps/server/internal/customers/timeline_events.go` (`recordCustomerOwnerChanged`), `apps/server/internal/customers/contact_info.go` and `customer_type.go` (their `safeCustomerResponse` calls), `apps/server/internal/customers/customers_test.go` (`customerJSON` gains `owner` and `tags`), `apps/server/internal/customers/harness_test.go` (three user fixtures)
+- Modify: `apps/server/internal/customers/customers.go` (`customerRow.OwnerUserID`, `customerRowFrom`, the four adapters, `safeCustomerResponse`, `validateGetCustomersParams`, `GetCustomers`), `apps/server/internal/customers/actor.go` (the `unknownUserDisplay` constant), `apps/server/internal/customers/timeline_events.go` (`recordCustomerOwnerChanged`), `apps/server/internal/customers/contact_info.go` and `customer_type.go` (their `safeCustomerResponse` calls), `apps/server/internal/customers/customers_test.go` (`customerJSON` gains `owner` and `tags`), `apps/server/internal/customers/harness_test.go` (three user fixtures)
 - Read first (do not change): `apps/server/internal/customers/contact_info.go` (the whole handler — the owner PUT is its shape, step for step), `actor.go` (the principal, the `Unknown user` precedent, the "before the transaction" rule), `apps/server/internal/projects/people.go:30-46` (`assignableUserLimit`, `userNotFound`, `userDisabled`) and `:356-422` (`GetProjectsByIdAssignableUsers`), `apps/server/internal/contracts/users.go` (both rules in its doc comment), `apps/server/internal/customers/store/customers.sql.go` (what Task 1 generated)
 
 **This task also builds the tags half of the decoration**, because `safeCustomerResponse` must change shape exactly once and `tags` is part of that shape: `customerDecoration` below carries both, and `decorate` loads both. Task 4 adds the tag *endpoints* and the `tagId` filter on top, and asserts tags on the list and the detail from the writing side.
@@ -655,7 +656,6 @@ git show --stat HEAD && git status --short
 - Produces:
 ```go
 const assignableOwnerLimit = 20
-const unknownOwnerDisplay  = "Unknown user"
 
 type customerDecoration struct { /* owners, tags */ }
 func (s *server) decorate(ctx context.Context, q *store.Queries, rows ...customerRow) (customerDecoration, error)
@@ -675,16 +675,18 @@ func (s *server) GetCustomersAssignableUsers(ctx context.Context, req gen.GetCus
 type ownerSnapshot struct { UserID uuid.UUID `json:"userId"`; DisplayName string `json:"displayName"` }
 func recordCustomerOwnerChanged(ctx context.Context, q *store.Queries, now time.Time, customerID int32, before, after *ownerSnapshot, actorKind, actorDisplay string, actorUserID *uuid.UUID) error
 ```
-- Produces (test fixtures, in `harness_test.go`, reused by Tasks 4's tests):
+- Produces (test fixtures, in `harness_test.go`, reused by Task 4's tests):
 ```go
 func setDisplayName(t *testing.T, h *modtest.Harness, userID uuid.UUID, name string)
+func seedNamedUser(t *testing.T, h *modtest.Harness, name string) uuid.UUID
 func disableUser(t *testing.T, h *modtest.Harness, userID uuid.UUID)
 func forgetUser(t *testing.T, h *modtest.Harness, userID uuid.UUID)
 ```
+- Reuses (do not redeclare): `conflictProblemJSON` (`duplicates_test.go:22-28`, pointer fields) and `problemTitle` (`timeline_test.go:65`).
 
 - [ ] **Step 1: Add the user fixtures the tests need**
 
-There is **no users fake** in `modtest`: the harness composes the real identity module, so `Deps.Users` reads `identity.users`, and a test shapes the directory's answers by writing that table. `h.SignInUser(t, perms…)` returns the signed-in user's id (that is the id `ownerId=me` must resolve to), and `seedUser` gives every user a generated email as its `display_name` — so a test that asserts a name sets one. Append to `apps/server/internal/customers/harness_test.go`:
+There is **no users fake** in `modtest`: the harness composes the real identity module, so `Deps.Users` reads `identity.users`, and a test shapes the directory's answers by writing that table. `h.SignInUser(t, perms…)` returns the signed-in user's id (that is the id `ownerId=me` must resolve to), and modtest's own `seedUser` gives every user a generated email as its `display_name` — so a test that asserts a name sets one, and a test that needs twenty-one findable users writes them itself. Append four helpers to `apps/server/internal/customers/harness_test.go`:
 
 ```go
 // setDisplayName, disableUser and forgetUser are the three states
@@ -711,6 +713,21 @@ func disableUser(t *testing.T, h *modtest.Harness, userID uuid.UUID) {
 	h.Exec(t, `UPDATE identity.users SET is_disabled = true WHERE id = $1`, userID)
 }
 
+// seedNamedUser writes one user directly, with the display name a test wants
+// to search for. modtest's own SignInUser also mints a role and a session,
+// which the twenty-one users of the assignable-users cap test have no use for —
+// they exist only to be found by contracts.UserDirectory.SearchUsers. The
+// column list is modtest.seedUser's own (modtest.go:582), version included: it
+// is a uuid, not a counter.
+func seedNamedUser(t *testing.T, h *modtest.Harness, name string) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	email := fmt.Sprintf("owner-candidate-%s@example.test", id)
+	h.Exec(t, `INSERT INTO identity.users (id, email, normalized_email, display_name, version, created_at, updated_at)
+	           VALUES ($1, $2, upper($2), $3, $4, $5, $5)`, id, email, name, uuid.New(), h.Now())
+	return id
+}
+
 // forgetUser removes the account entirely, which is how a stored owner_user_id
 // ends up naming a user the directory returns nothing for — the case that must
 // read as "Unknown user", inactive, rather than as a 500 or a vanished owner
@@ -722,6 +739,8 @@ func forgetUser(t *testing.T, h *modtest.Harness, userID uuid.UUID) {
 	h.Exec(t, `DELETE FROM identity.users WHERE id = $1`, userID)
 }
 ```
+
+(`harness_test.go` then imports `fmt`, if it does not already.)
 
 And extend `customerJSON` in `customers_test.go` with the two new response fields, plus the two decoding structs (`tagJSON` is reused by Task 4):
 
@@ -902,7 +921,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -1105,8 +1126,13 @@ func TestPutCustomersByIdOwner_StaleRevisionIsAConflictAndWritesNothing(t *testi
 	}
 	var conflict conflictProblemJSON
 	r.JSON(&conflict)
-	if conflict.Title != "Customer revision conflict" || conflict.Code != nil {
-		t.Errorf("conflict = %+v, want the revision conflict with no code", conflict)
+	// problemTitle (timeline_test.go:65) dereferences the nullable title, which
+	// is how contact_info_test.go's own stale-revision case reads it: the exact
+	// wording, not just the 409, is what separates the Go-side pre-check from
+	// the database guard's fallback.
+	if problemTitle(conflict.Title) != "Customer revision conflict" || conflict.Code != nil {
+		t.Errorf("conflict = title %q code %v, want the revision conflict with no code",
+			problemTitle(conflict.Title), conflict.Code)
 	}
 	got := fetchCustomerJSON(t, c, created.Id)
 	if got.Owner == nil || got.Revision != 2 {
@@ -1136,6 +1162,11 @@ func TestPutCustomersByIdOwner_NoOpWritesNothing(t *testing.T) {
 		t.Fatalf("set: status %d body %s, want 200", r.Status, r.Body)
 	}
 	before := fetchCustomerJSON(t, c, created.Id)
+	// The harness clock is frozen, so without this the updatedAt half of the
+	// assertion below could not fail even if the no-op DID write: the write
+	// would stamp the same instant it already carries. contact_info_test.go
+	// advances it for exactly this reason (:192).
+	h.Advance(time.Second)
 	if r := putOwner(t, c, created.Id, map[string]any{"ownerUserId": callerID.String()}); r.Status != http.StatusOK {
 		t.Fatalf("re-set: status %d body %s, want 200", r.Status, r.Body)
 	}
@@ -1286,9 +1317,6 @@ func TestGetCustomersAssignableUsers(t *testing.T) {
 	if got := getAssignableUsers(t, c, "query="+url.QueryEscape("Searchable")+"&limit=1"); len(got) != 1 {
 		t.Errorf("limit=1 answered %d users, want 1", len(got))
 	}
-	if got := len(getAssignableUsers(t, c, "")); got > 20 {
-		t.Errorf("no query answered %d users, want at most 20", got)
-	}
 
 	for _, limit := range []string{"0", "21"} {
 		r := c.Do(http.MethodGet, "/api/v1/customers/assignable-users?limit="+limit, nil)
@@ -1297,6 +1325,62 @@ func TestGetCustomersAssignableUsers(t *testing.T) {
 		}
 		if want := fmt.Sprintf("'limit' must be between 1 and 20, but was %s.", limit); !strings.Contains(r.Body, want) {
 			t.Errorf("limit=%s body = %s, want it to contain %q", limit, r.Body, want)
+		}
+	}
+}
+
+// TestGetCustomersAssignableUsers_CapsAtTwenty seeds twenty-one matching users
+// and asserts the answer is exactly twenty of them, in display-name order.
+// Twenty-one, not "some": a cap asserted against a dataset smaller than the cap
+// proves nothing, and `len(got) <= 20` would pass against an installation with
+// three users and a broken cap.
+func TestGetCustomersAssignableUsers_CapsAtTwenty(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	for i := 1; i <= 21; i++ {
+		seedNamedUser(t, h, fmt.Sprintf("Capped %02d", i))
+	}
+
+	found := getAssignableUsers(t, c, "query="+url.QueryEscape("Capped"))
+	if len(found) != 20 {
+		t.Fatalf("assignable users = %d, want exactly 20 of the 21 seeded", len(found))
+	}
+	// Display-name order, so the one left out is the last one alphabetically —
+	// which is also what tells a cap apart from an arbitrary truncation.
+	if found[0].DisplayName != "Capped 01" || found[19].DisplayName != "Capped 20" {
+		t.Errorf("first/last = %q/%q, want Capped 01/Capped 20", found[0].DisplayName, found[19].DisplayName)
+	}
+}
+
+// TestGetCustomers_OneOwnerOnTwoRowsResolvesBoth exercises decorate's
+// de-duplication: the distinct-id pass means a page where one person owns every
+// row asks the directory about them once. Nothing in the harness can count
+// directory calls — Deps.Users is identity's real implementation, not a fake —
+// so what is asserted is the behaviour the de-duplication must not break: both
+// rows still name the owner. It is here so the branch is executed at all, and
+// so a future refactor that indexes the owner map by row rather than by user id
+// fails a test instead of only getting slower.
+func TestGetCustomers_OneOwnerOnTwoRowsResolvesBoth(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, callerID := authenticatedClientWithID(t, h)
+	setDisplayName(t, h, callerID, "Kari Nordmann")
+	first := createCustomer(t, c, "Shared Owner One")
+	second := createCustomer(t, c, "Shared Owner Two")
+	for _, id := range []int32{first.Id, second.Id} {
+		if r := putOwner(t, c, id, map[string]any{"ownerUserId": callerID.String()}); r.Status != http.StatusOK {
+			t.Fatalf("own %d: status %d body %s", id, r.Status, r.Body)
+		}
+	}
+
+	list := getList(t, c, "search="+url.QueryEscape("Shared Owner"))
+	if len(list.Data) != 2 {
+		t.Fatalf("list = %d rows, want 2", len(list.Data))
+	}
+	for _, row := range list.Data {
+		if row.Owner == nil || row.Owner.DisplayName != "Kari Nordmann" {
+			t.Errorf("%s owner = %+v, want Kari Nordmann", row.Name, row.Owner)
 		}
 	}
 }
@@ -1341,20 +1425,10 @@ func TestPutCustomersByIdOwner_WhenCustomerDoesNotExist_ReturnsNotFound(t *testi
 }
 ```
 
-Two things this file needs that may not exist yet — check before writing, and add only what is missing:
+One thing to check before writing, and one thing that is already there:
 
-- `strings` in the import list (used by the two `strings.Contains` assertions).
-- `conflictProblemJSON` with at least `Title string` and `Code *string`. Grep for it: `grep -rn 'conflictProblemJSON\|Code \*string' apps/server/internal/customers/*_test.go`. If the module already decodes `CustomerConflictProblem` under another name, use that name; if not, add it beside `validationProblemJSON` in `customers_test.go`:
-
-```go
-// conflictProblemJSON decodes CustomerConflictProblem far enough to tell a
-// revision conflict (a title and no code) from a coded one such as
-// tag_exists (customers foundation design D5, D6).
-type conflictProblemJSON struct {
-	Title string  `json:"title"`
-	Code  *string `json:"code"`
-}
-```
+- `strings` and `time` are in the import list above (the two `strings.Contains` assertions, and `h.Advance(time.Second)`).
+- Nothing else: `conflictProblemJSON` **already exists**, in `duplicates_test.go:22-28`, decoding all five of `CustomerConflictProblem`'s conflict fields with **pointer** `Title`/`Detail`/`Code`. Do not add a second one. Its nullable title is read through `problemTitle` (`timeline_test.go:65`), which is why the assertion above calls it rather than comparing a string. Task 4's tests reuse the same type.
 
 
 - [ ] **Step 4: Run the owner tests to verify they fail**
@@ -1529,7 +1603,27 @@ Finally, replace the response-building loop with one that decorates the whole pa
 
 `customers.go` then imports `github.com/google/uuid` and `github.com/vantigo-io/vantigo/server/internal/contracts` if it does not already.
 
-- [ ] **Step 6: Write `owner.go`**
+- [ ] **Step 6a: Name "Unknown user" once, in `actor.go`**
+
+`actorFor` already answers `Display: "Unknown user"` for a principal the directory no longer knows (`actor.go:71`), and `decorate` below needs the same words for an owner in the same state. Two literals would drift the day one is reworded, so the constant goes where the first user of it lives:
+
+```go
+// unknownUserDisplay is what a user the directory no longer knows is called,
+// wherever this module has to name one: the actor on a timeline entry written
+// by an account since deleted (actorFor below), and a customer's owner in the
+// same state (owner.go's customerDecoration.owner). One constant rather than
+// two literals, because it is one fact about one directory — and because the
+// two places must never disagree about it in the same response.
+const unknownUserDisplay = "Unknown user"
+```
+
+and `actorFor`'s own line becomes `return actor{Kind: "user", Display: unknownUserDisplay, UserID: &userID}, nil`. Nothing else changes; `actor_test.go` asserts the words, not the literal, so it stays green and is this edit's guard:
+
+```bash
+cd /home/anders/projects/vantigo/vantigo/apps/server && mise exec -- go test -count=1 -run 'TestActor' ./internal/customers/
+```
+
+- [ ] **Step 6b: Write `owner.go`**
 
 ```go
 package customers
@@ -1578,13 +1672,6 @@ import (
 // (internal/projects/people.go): a picker's first page, not a report. Someone
 // who cannot find a colleague in twenty rows types more of their name.
 const assignableOwnerLimit = 20
-
-// unknownOwnerDisplay is what an owner the directory no longer knows is
-// called, the same words actorFor gives a vanished actor (actor.go): the
-// customer still HAS an owner — design D1 is explicit that nothing is
-// silently revoked — and a response that dropped the field would claim
-// otherwise.
-const unknownOwnerDisplay = "Unknown user"
 
 // ownerNotFound and ownerDisabled are the two ways ownerUserId can fail,
 // worded as projects words its own (people.go:39-45). Both are field errors
@@ -1678,7 +1765,7 @@ func (s *server) decorate(ctx context.Context, q *store.Queries, rows ...custome
 
 // owner is one customer's owner as the contract reports it, or nil when the
 // customer is unowned. An id the directory answered nothing for is still an
-// owner — reported as unknownOwnerDisplay and inactive, the actorFor
+// owner — reported as unknownUserDisplay and inactive, the actorFor
 // precedent — because contracts.UserDirectory's absence means "no such
 // account", not "the lookup failed" (its own doc comment), and design D1 keeps
 // the customer's owner either way.
@@ -1689,7 +1776,11 @@ func (d customerDecoration) owner(id *uuid.UUID) *gen.CustomerOwner {
 	if u, ok := d.owners[*id]; ok {
 		return &gen.CustomerOwner{UserId: u.ID, DisplayName: u.DisplayName, Active: u.Active}
 	}
-	return &gen.CustomerOwner{UserId: *id, DisplayName: unknownOwnerDisplay, Active: false}
+	// unknownUserDisplay is actor.go's own constant, shared rather than a second
+	// literal: an owner the directory forgot and an actor the directory forgot
+	// are the same fact about the same directory, and two copies of the words
+	// would drift the day one of them is reworded.
+	return &gen.CustomerOwner{UserId: *id, DisplayName: unknownUserDisplay, Active: false}
 }
 
 // tagsFor is one customer's tags, never nil: the contract promises an array,
@@ -1786,7 +1877,7 @@ func (s *server) PutCustomersByIdOwner(ctx context.Context, req gen.PutCustomers
 		// The name is snapshotted into the payload rather than resolved when
 		// the timeline is read: an account renamed or deleted later must not
 		// rewrite what the timeline says happened.
-		beforeSnapshot = &ownerSnapshot{UserID: *before, DisplayName: unknownOwnerDisplay}
+		beforeSnapshot = &ownerSnapshot{UserID: *before, DisplayName: unknownUserDisplay}
 		if user != nil {
 			beforeSnapshot.DisplayName = user.DisplayName
 		}
@@ -1973,7 +2064,7 @@ cd /home/anders/projects/vantigo/vantigo/apps/server && mise exec -- go test -co
 Four guards, each removed, seen red, restored:
 
 1. In `decorate`, drop the `if u, ok := d.owners[*id]; ok` branch of `owner` so every owner reads as `Unknown user`: `TestPutCustomersByIdOwner_SetsAndClears_ShowsInGetAndList` goes red.
-2. Move the candidate validation above the no-op check: `TestPutCustomersByIdOwner_AnOwnerDisabledAfterwardsKeepsTheCustomer` stays green (it never re-sends) but add a temporary re-send of the disabled owner and see the 400 — then remove both and restore the order. (Simpler variant: delete the `!user.Active` case entirely; `TestPutCustomersByIdOwner_RefusesAUserWhoCannotOwn` goes red.)
+2. Delete the `case !user.Active:` branch entirely: `TestPutCustomersByIdOwner_RefusesAUserWhoCannotOwn` goes red on the disabled half. Restore it.
 3. Add `OwnerNone`/`OwnerID` to `ListCustomersParams` but not to `CountCustomersParams`: `TestGetCustomers_OwnerIdFilter`'s `totalCount` assertion goes red — the drift those two queries' comments warn about, caught.
 4. Make `uuidPtrEqual(nil, nil)` return false: `TestPutCustomersByIdOwner_NoOpWritesNothing` goes red on the revision after clearing an unowned customer.
 
@@ -2018,6 +2109,8 @@ func (s *server) PutCustomersByIdTags(ctx context.Context, req gen.PutCustomersB
 
 // timeline_events.go
 type tagSnapshot struct { TagID uuid.UUID `json:"tagId"`; Name string `json:"name"` }
+func tagSetDiff(before, after []tagSnapshot) (added, removed []tagSnapshot)
+func tagNameList(tags []tagSnapshot) string
 func recordCustomerTagsChanged(ctx context.Context, q *store.Queries, now time.Time, customerID int32, added, removed []tagSnapshot, actorKind, actorDisplay string, actorUserID *uuid.UUID) error
 ```
 
@@ -2345,7 +2438,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -2543,6 +2638,10 @@ func TestPutCustomersByIdTags_ReplacesTheSet(t *testing.T) {
 	churned := createTag(t, c, map[string]any{"name": "Churned"})
 	customer := createCustomer(t, c, "Replace Co")
 	before := fetchCustomerJSON(t, c, customer.Id)
+	// Advanced so the updatedAt half of the final assertion can fail: with a
+	// frozen clock a write to the customer row would stamp the instant it
+	// already carries (contact_info_test.go:192 does the same).
+	h.Advance(time.Second)
 
 	r := putCustomerTags(t, c, customer.Id, []string{vip.Id, prospect.Id})
 	if r.Status != http.StatusOK {
@@ -2634,6 +2733,12 @@ func TestPutCustomersByIdTags_RecordsTheEventOnlyWhenTheSetChanged(t *testing.T)
 	if r := putCustomerTags(t, c, customer.Id, []string{}); r.Status != http.StatusOK {
 		t.Fatalf("clear an untagged customer: status %d body %s, want 200", r.Status, r.Body)
 	}
+	// The absence of an event is the observable half of the no-op rule. The
+	// other half — that the handler also skipped its actor lookup — is not
+	// observable here: Deps.Users is identity's real directory, not a fake with
+	// a counter, so nothing in the harness can count a call to it. The event
+	// count is what this test can assert, and the handler's own comment carries
+	// the rest.
 	if n := countTimelineEvents(t, h, customer.Id, "customer.tags_changed"); n != 0 {
 		t.Fatalf("events = %d after replacing an empty set with an empty set, want 0", n)
 	}
@@ -2641,6 +2746,10 @@ func TestPutCustomersByIdTags_RecordsTheEventOnlyWhenTheSetChanged(t *testing.T)
 	if r := putCustomerTags(t, c, customer.Id, []string{prospect.Id}); r.Status != http.StatusOK {
 		t.Fatalf("tag: status %d body %s, want 200", r.Status, r.Body)
 	}
+	// The harness clock is frozen; advancing it means a second event, if one
+	// were wrongly written, would be distinguishable rather than landing on the
+	// same instant as the first.
+	h.Advance(time.Second)
 	if r := putCustomerTags(t, c, customer.Id, []string{prospect.Id}); r.Status != http.StatusOK {
 		t.Fatalf("re-send the same set: status %d body %s, want 200", r.Status, r.Body)
 	}
@@ -2755,7 +2864,7 @@ func TestTagPermissions(t *testing.T) {
 }
 ```
 
-`strings` goes in the import list (the two `strings.Contains` assertions).
+`strings` and `time` are in the import list above (the `strings.Contains` assertions and `h.Advance`); `conflictProblemJSON` is `duplicates_test.go`'s existing type, with pointer fields — read through `problemTitle` when a title matters.
 
 - [ ] **Step 4: Run both test files to verify they fail**
 
@@ -3028,14 +3137,27 @@ func (s *server) DeleteCustomersTagsByTagId(ctx context.Context, req gen.DeleteC
 // Ordering: (1) the customer's existence, 404 — CustomerExists, deliberately
 // not LockCustomer, because this write takes no lock on the customer row
 // (design D2); (2) the ids resolved in one query, 400 keyed tagIds for any the
-// vocabulary does not hold; (3) the actor, resolved before the transaction and
-// only when something will actually be written; (4) the replace and its event
-// in one transaction.
+// vocabulary does not hold; (3) the current set read and diffed, and a request
+// that changes nothing answered right there; (4) the actor; (5) the replace and
+// its event in one transaction.
 //
-// The set is compared before it is written, inside the transaction, so the
-// event is recorded only when the set actually moved (design D2) — including
-// the empty-to-empty case, which is a real request from a multi-select whose
-// caller changed nothing.
+// **Why the diff happens before the transaction, not inside it.** The actor is
+// a directory lookup and must be resolved outside any transaction (actor.go),
+// and it must not be resolved at all for a request that writes nothing — a
+// multi-select whose caller changed their mind sends the set the customer
+// already has, and that is a read, not a write. Both rules can only hold if
+// "did the set move" is answered on the pool first, which this endpoint is
+// uniquely free to do: it is last-wins by design (design D2, no revision and no
+// lock), so a concurrent replace landing between this read and the write below
+// is not a lost update — it is the earlier writer losing, which is what
+// replacing a set means. The one thing the race can cost is an event whose
+// added/removed is computed against a set that moved in between; two
+// simultaneous replaces can therefore both claim to have added the same tag.
+// That is the honest consequence of last-wins and is cheaper than the lock a
+// perfectly-ordered timeline would need.
+//
+// The empty-to-empty case is a real request and is covered by the same check:
+// no tags before, none after, nothing written and nothing recorded.
 func (s *server) PutCustomersByIdTags(ctx context.Context, req gen.PutCustomersByIdTagsRequestObject) (gen.PutCustomersByIdTagsResponseObject, error) {
 	body := gen.PutCustomerTagsRequest{}
 	if req.Body != nil {
@@ -3086,12 +3208,29 @@ func (s *server) PutCustomersByIdTags(ctx context.Context, req gen.PutCustomersB
 		after = append(after, gen.CustomerTag{Id: t.ID, Name: t.Name, Color: t.Color})
 		afterSnapshots = append(afterSnapshots, tagSnapshot{TagID: t.ID, Name: t.Name})
 	}
+	answer := gen.PutCustomersByIdTags200JSONResponse(gen.CustomerTagsResponse{Tags: after})
+
+	current, err := q.CustomerTagsForCustomers(ctx, []int32{req.Id})
+	if err != nil {
+		return nil, fmt.Errorf("customers: read current customer tags: %w", err)
+	}
+	before := make([]tagSnapshot, 0, len(current))
+	for _, l := range current {
+		before = append(before, tagSnapshot{TagID: l.ID, Name: l.Name})
+	}
+	added, removed := tagSetDiff(before, afterSnapshots)
+	if len(added) == 0 && len(removed) == 0 {
+		// Nothing moved: the same no-op rule every write in this module follows
+		// (customers foundation design D5), applied to a set. The two statements
+		// below would be a delete and a re-insert of identical rows, the event
+		// would claim a change that did not happen, and the actor lookup would
+		// be a directory call made for a request that writes nothing.
+		return answer, nil
+	}
 
 	now := s.deps.Clock()
-	// Resolved before the transaction opens (customers foundation design D1),
-	// and unconditionally: whether the set changed is only known under the
-	// transaction, and resolving an actor there would be a directory call
-	// inside it. An actor resolved and then not used costs one cached lookup.
+	// Resolved here and not earlier: before the transaction opens (customers
+	// foundation design D1), and only now that a write is certain to follow.
 	act, err := s.actorFor(ctx, generatedFallbackActor)
 	if err != nil {
 		return nil, fmt.Errorf("customers: resolve actor: %w", err)
@@ -3099,23 +3238,6 @@ func (s *server) PutCustomersByIdTags(ctx context.Context, req gen.PutCustomersB
 
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
-		current, err := txq.CustomerTagsForCustomers(ctx, []int32{req.Id})
-		if err != nil {
-			return err
-		}
-		before := make([]tagSnapshot, 0, len(current))
-		for _, l := range current {
-			before = append(before, tagSnapshot{TagID: l.ID, Name: l.Name})
-		}
-		added, removed := tagSetDiff(before, afterSnapshots)
-		if len(added) == 0 && len(removed) == 0 {
-			// Nothing moved: the same no-op rule every write in this module
-			// follows (customers foundation design D5), applied to a set. The
-			// two statements below would be a delete and a re-insert of
-			// identical rows, and the event would claim a change that did not
-			// happen.
-			return nil
-		}
 		if err := txq.DeleteCustomerTagLinks(ctx, req.Id); err != nil {
 			return err
 		}
@@ -3128,7 +3250,7 @@ func (s *server) PutCustomersByIdTags(ctx context.Context, req gen.PutCustomersB
 		return nil, fmt.Errorf("customers: replace customer tags: %w", err)
 	}
 
-	return gen.PutCustomersByIdTags200JSONResponse(gen.CustomerTagsResponse{Tags: after}), nil
+	return answer, nil
 }
 ```
 
@@ -3253,7 +3375,7 @@ git show --stat HEAD && git status --short
 
 **Files:**
 - Create: `apps/customers/frontend/src/api/tags.ts`, `apps/customers/frontend/src/api/tags.test.ts`, `apps/customers/frontend/src/pages/-manage-tags-modal.tsx`, `apps/customers/frontend/src/pages/-manage-tags-modal.test.tsx`, `apps/host/frontend/src/routes/customers/-customers-list.tsx`
-- Modify: `apps/customers/frontend/src/api/customers.ts` (`owner`/`tags` on `CustomerResponse`, `normalizeCustomer`, `CustomersQueryParams`, `CustomersListSearch`, `customersListParams`), `apps/customers/frontend/src/api/customers.test.ts`, `apps/customers/frontend/src/pages/customers.index.tsx`, `apps/customers/frontend/src/pages/-customers.index.test.tsx`, `apps/customers/frontend/src/i18n.ts` (both catalogs), `apps/host/frontend/src/routes/customers/index.tsx`
+- Modify: `apps/customers/frontend/src/api/customers.ts` (`owner`/`tags` on `CustomerResponse`, `normalizeCustomer`, `CustomersQueryParams`, `CustomersListSearch`, `customersListParams`), `apps/customers/frontend/src/api/customers.test.ts`, `apps/customers/frontend/src/pages/customers.index.tsx`, `apps/customers/frontend/src/pages/-customers.index.test.tsx`, `apps/customers/frontend/src/pages/-customer-timeline.tsx` + `-customer-timeline.test.tsx` (the two new event types), `apps/customers/frontend/src/i18n.ts` (both catalogs), `apps/host/frontend/src/routes/customers/index.tsx`, `apps/host/frontend/src/routes/customers/index.test.ts`
 - Read first (do not change): `apps/customers/frontend/src/pages/customers.index.tsx` (the whole page — `useSearch({strict:false})`, `listSearch`, `useDebouncedListSearch`, `filterBy`, the `""` sentinel the two existing `Select`s use for "all", `showIdentity`'s conditional columns), `apps/customers/frontend/src/api/customers.ts:151-173` (`RawCustomerResponse`/`normalizeCustomer`, the omitted-to-null boundary), `apps/host/frontend/src/routes/customers/index.tsx` (`validateSearch`, `loaderDeps`, `oneOf`), `apps/host/frontend/src/routes/customers/-customer-overview-tab.tsx` (how a host wrapper computes a capability prop)
 
 **Interfaces:**
@@ -3360,6 +3482,7 @@ describe("customers list params and normalisation, owner and tags", () => {
       createdAt: "2026-06-01T10:00:00Z",
       updatedAt: "2026-07-01T10:00:00Z",
       identity: null,
+      timelineSummary: { entryCount: 0, latestOccurredOn: null },
     };
     const normalized = normalizeCustomerForTest(raw);
     expect(normalized.owner).toBeNull();
@@ -3376,6 +3499,7 @@ describe("customers list params and normalisation, owner and tags", () => {
       createdAt: "2026-06-01T10:00:00Z",
       updatedAt: "2026-07-01T10:00:00Z",
       identity: null,
+      timelineSummary: { entryCount: 0, latestOccurredOn: null },
       owner: { userId: "u1", displayName: "Kari Nordmann", active: true },
       tags: [{ id: "t1", name: "VIP" }],
     });
@@ -3395,11 +3519,58 @@ describe("customers list params and normalisation, owner and tags", () => {
 });
 ```
 
+`timelineSummary` is on both fixtures because it is **required** on `SafeCustomerResponse` and `RawCustomerResponse` therefore requires it too — a fixture without it does not typecheck, whatever the runtime would do with it.
+
 `normalizeCustomerForTest` does not exist: export `normalizeCustomer` from `src/api/customers.ts` (it is currently module-private) and import it under that name, or add `export { normalizeCustomer as normalizeCustomerForTest }`. Check how `customers.test.ts` already reaches module-private helpers and follow it rather than inventing a second convention.
 
 - [ ] **Step 2: Write the failing list-page tests**
 
-Append to `apps/customers/frontend/src/pages/-customers.index.test.tsx`. Its existing `stubFetch` answers one shape for every non-stats URL, so extend it first to answer `/api/v1/customers/tags` with a tag list, then add:
+Append to `apps/customers/frontend/src/pages/-customers.index.test.tsx`. Two changes to its existing helper first:
+
+1. It answers one shape for every non-stats URL — extend it to answer `/api/v1/customers/tags` with a tag list.
+2. **It returns `vi.stubGlobal(...)`, which is `VitestUtils`, not the mock**, so `stubFetch(...).mock.calls` does not exist. Build the mock, stub it, and return it:
+
+```ts
+const stubFetch = (rows: unknown[] = [defaultRow]) => {
+  const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.startsWith("/api/v1/customers/stats")) {
+      return Promise.resolve(
+        jsonResponse({
+          totalCount: 1,
+          activeCount: 1,
+          newLast30DaysCount: 0,
+          businessCount: null,
+          personCount: null,
+          missingIdentityCount: null,
+          distinctCountryCount: null,
+        }),
+      );
+    }
+    if (url.startsWith("/api/v1/customers/tags")) return Promise.resolve(jsonResponse(tagRows));
+    if (url.startsWith("/api/v1/customers/lookup")) return Promise.resolve(jsonResponse([]));
+    return Promise.resolve(
+      jsonResponse({
+        data: rows,
+        pagination: {
+          page: 1,
+          pageSize: 25,
+          totalCount: rows.length,
+          totalPages: 1,
+          hasNextPage: false,
+          hasPreviousPage: false,
+        },
+      }),
+    );
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+};
+```
+
+The `/tags` branch goes **before** the fall-through, and the existing `/stats` and `/lookup` branches keep their order — `/api/v1/customers/tags` would otherwise be answered as a customer page. Every existing call site ignores the return value, so nothing else in the file changes. (The alternative is `src/test/fetch.ts`'s shared `stubFetch`, whose recorded calls are `.calls` rather than `.mock.calls`; if you switch to it, switch every assertion in the file, not only the new ones.)
+
+Then add:
 
 ```tsx
 const tagRows = [
@@ -3452,7 +3623,7 @@ describe("CustomersPage, owner and tags", () => {
     renderPage();
     await screen.findByText("Equinor");
 
-    await userEvent.click(screen.getByRole("textbox", { name: "Owner" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Owner" }));
     await userEvent.click(await screen.findByRole("option", { name: "Mine" }));
 
     expect(router.navigate).toHaveBeenCalledWith(
@@ -3475,7 +3646,7 @@ describe("CustomersPage, owner and tags", () => {
     stubFetch([ownedRow]);
     renderPage();
     await screen.findByText("Equinor");
-    await userEvent.click(screen.getByRole("textbox", { name: "Owner" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Owner" }));
     await userEvent.click(await screen.findByRole("option", { name: "Unassigned" }));
     expect(router.navigate).toHaveBeenCalledWith(
       expect.objectContaining({ search: expect.objectContaining({ ownerId: "none", page: 1 }) }),
@@ -3486,7 +3657,7 @@ describe("CustomersPage, owner and tags", () => {
     stubFetch([ownedRow]);
     renderPage();
     await screen.findByText("Equinor");
-    await userEvent.click(screen.getByRole("textbox", { name: "Tag" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Tag" }));
     await userEvent.click(await screen.findByRole("option", { name: "Prospect" }));
     expect(router.navigate).toHaveBeenCalledWith(
       expect.objectContaining({ search: expect.objectContaining({ tagId: "t2", page: 1 }) }),
@@ -3507,6 +3678,8 @@ describe("CustomersPage, owner and tags", () => {
   });
 });
 ```
+
+Every Mantine `Select`/`MultiSelect` is queried as a **combobox**, not a textbox — the role Mantine's input carries and the role this file's existing Status and Type cases already use (`-customers.index.test.tsx:144,165`, and `-customer-timeline.test.tsx:363` for a `MultiSelect`). Only a plain `TextInput`, such as the Manage tags form's `Tag name`, is a textbox.
 
 `renderPage` currently takes no arguments: give it an optional props object (`const renderPage = (props: { canEdit?: boolean } = {}) => render(… <CustomersPage {...props} /> …)`) — the existing calls keep working.
 
@@ -3766,7 +3939,9 @@ On `CustomerResponse`, replacing nothing and adding two fields:
   tags: CustomerTag[];
 ```
 
-`RawCustomerResponse` and `normalizeCustomer` grow the same treatment `contactInfo` already gets — and `normalizeCustomer` stops taking its early-return shortcut, because `owner` and `tags` need normalising on every response, not only when `contactInfo` is present:
+`RawCustomerResponse` and `normalizeCustomer` grow the same treatment `contactInfo` already gets — and `normalizeCustomer` stops taking its early-return shortcut, because `owner` and `tags` need normalising on every response, not only when `contactInfo` is present.
+
+If TypeScript rejects the conditional spread below (a spread of `{} | {contactInfo: …}` can widen the result type in a way the compiler will not narrow back to `CustomerResponse`), **keep the existing ternary and add `owner`/`tags` to both of its arms** rather than casting — the two arms are three lines each and a cast here would defeat the one boundary that guarantees the rest of the package never sees an omitted field:
 
 ```ts
 type RawCustomerResponse = Omit<CustomerResponse, "contactInfo" | "owner" | "tags"> & {
@@ -3818,14 +3993,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EmptyState, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { ApiValidationError } from "../api/request";
-import {
-  type CustomerTagSummary,
-  TAG_COLORS,
-  createTag,
-  customerTagsQueryOptions,
-  deleteTag,
-  updateTag,
-} from "../api/tags";
+import { type CustomerTagSummary, TAG_COLORS, customerTagsQueryOptions, deleteTag, updateTag } from "../api/tags";
 import "../i18n";
 
 /**
@@ -3904,11 +4072,13 @@ interface TagFormValues {
 }
 
 /**
- * Creates a tag when `tag` is null and renames/recolours it otherwise — one
- * form, because the fields and the validation are identical and the only
- * difference is which request it sends. The colour `Select`'s own "no colour"
- * entry is the `""` sentinel the list page's filters use, for the same reason:
- * a Mantine `Select` needs a real string among its `data` to offer a row.
+ * Renames and recolours the tag it is given. It is only ever rendered for an
+ * existing tag — creation happens in the Overview tab's own multi-select, where
+ * someone is already typing a name (design D3), and this modal deliberately has
+ * no create form of its own — so there is one request it can send and no
+ * create/edit branch. The colour `Select`'s own "no colour" entry is the `""`
+ * sentinel the list page's filters use, for the same reason: a Mantine `Select`
+ * needs a real string among its `data` to offer a row.
  */
 const TagForm = ({ tag, onDone }: { tag: CustomerTagSummary | null; onDone: () => void }) => {
   const { t } = useI18n("customers");
@@ -3922,10 +4092,7 @@ const TagForm = ({ tag, onDone }: { tag: CustomerTagSummary | null; onDone: () =
   }
 
   const mutation = useMutation({
-    mutationFn: (values: TagFormValues) => {
-      const input = { name: values.name, color: values.color || null };
-      return tag ? updateTag(tag.id, input) : createTag(input);
-    },
+    mutationFn: (values: TagFormValues) => updateTag(String(tag?.id), { name: values.name, color: values.color || null }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       onDone();
@@ -4179,12 +4346,62 @@ and `index.tsx`'s `component: CustomersPage` becomes `component: CustomersListPa
     ]),
 ```
 
+`customerTagsQueryOptions` comes from its own module, not the customers one — add
+
+```ts
+import { customerTagsQueryOptions } from "@vantigo/customers-ui/api/tags";
+```
+
+beside the existing `@vantigo/customers-ui/api/customers` import. Check `apps/customers/frontend/package.json`'s `exports` map first: if the subpaths are enumerated rather than wildcarded, `./api/tags` has to be added there too, exactly as `./api/customers` is.
+
+`apps/host/frontend/src/routes/customers/index.test.ts` pins this parser with `toEqual` over the whole object, so it must learn both keys — add `ownerId: undefined, tagId: undefined` to its two existing expectations (and the real values to the "keeps a valid status, type and sort" case if you extend its input), plus a case of its own for the two new parsers:
+
+```ts
+  it("keeps the two ownership filters it knows and drops the rest", () => {
+    const tagId = "0191d4f8-6f1a-7c3a-9b2e-6d5f4c3b2a10";
+    expect(validate({ ownerId: "me" })).toMatchObject({ ownerId: "me", tagId: undefined });
+    expect(validate({ ownerId: "none" })).toMatchObject({ ownerId: "none" });
+    expect(validate({ ownerId: tagId })).toMatchObject({ ownerId: tagId });
+    // Neither is a filter the API accepts, so the URL never carries it: 'Me' is
+    // case-sensitive there, and a bare word is neither a uuid nor a literal.
+    expect(validate({ ownerId: "Me", tagId: "notauuid" })).toMatchObject({ ownerId: undefined, tagId: undefined });
+    expect(validate({ tagId })).toMatchObject({ tagId });
+  });
+```
+
+- [ ] **Step 8a: Teach the timeline the two new event types**
+
+`apps/customers/frontend/src/pages/-customer-timeline.tsx` maps every generated event type to a catalog key in one `typeKey` record (`:62-76`), and that record is also what builds the **Event types** filter's options (`:171-177`) and what `typeLabel` reads. A type missing from it renders under the generic `timelineEvent` label and **cannot be filtered for at all** — so the two events Tasks 3 and 4 added belong here, in the same edit that adds their catalog keys:
+
+```tsx
+  "customer.owner_changed": "customerOwnerChangedEvent",
+  "customer.tags_changed": "customerTagsChangedEvent",
+```
+
+placed after `"customer.type_changed"` and before the four contact entries, so the customer's own events stay together.
+
+Add a case to `apps/customers/frontend/src/pages/-customer-timeline.test.tsx` proving the filter offers them — the assertion that fails if a future event type is added to the backend and not here:
+
+```tsx
+  it("offers the owner and tag events in the Event types filter", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(json({ data: [entry({ id: 1 })], nextCursor: null })));
+    await renderTimeline(fetchMock);
+    await userEvent.click(screen.getByRole("combobox", { name: "Event types" }));
+    expect(screen.getByText("Owner changed", { selector: "span" })).toBeInTheDocument();
+    expect(screen.getByText("Tags changed", { selector: "span" })).toBeInTheDocument();
+  });
+```
+
+Read that file's existing `renderTimeline`/`entry`/`json` helpers and its own Event-types case (`:355-370`) first and match them exactly — the `{ selector: "span" }` qualifier is how that file picks option text out of a Mantine `MultiSelect`, and the combobox is found by its accessible name.
+
 - [ ] **Step 9: Both catalogs**
 
 Add to `en` and to `nb` in `apps/customers/frontend/src/i18n.ts` (keys in the same relative position in both):
 
 | key | en | nb |
 | --- | --- | --- |
+| `customerOwnerChangedEvent` | Owner changed | Eier endret |
+| `customerTagsChangedEvent` | Tags changed | Merkelapper endret |
 | `owner` | Owner | Eier |
 | `ownerMine` | Mine | Mine |
 | `ownerUnassigned` | Unassigned | Uten eier |
@@ -4196,12 +4413,14 @@ Add to `en` and to `nb` in `apps/customers/frontend/src/i18n.ts` (keys in the sa
 | `tagName` | Tag name | Navn på merkelapp |
 | `tagColour` | Colour | Farge |
 | `tagNoColour` | No colour | Ingen farge |
-| `tagOnCustomers` | {{count}} customers | {{count}} kunder |
+| `tagOnCustomers_one` | {{count}} customer | {{count}} kunde |
+| `tagOnCustomers_other` | {{count}} customers | {{count}} kunder |
 | `tagOnNoCustomers` | No customers | Ingen kunder |
 | `renameNamedTag` | Rename {{name}} | Gi {{name}} nytt navn |
 | `deleteNamedTag` | Delete {{name}} | Slett {{name}} |
 | `deleteTag` | Delete tag | Slett merkelapp |
-| `deleteTagWarning` | {{name}} is on {{count}} customers. Deleting it removes it from all of them. | {{name}} er satt på {{count}} kunder. Sletter du den, fjernes den fra alle. |
+| `deleteTagWarning_one` | {{name}} is on {{count}} customer. Deleting it removes it from that customer. | {{name}} er satt på {{count}} kunde. Sletter du den, fjernes den fra den kunden. |
+| `deleteTagWarning_other` | {{name}} is on {{count}} customers. Deleting it removes it from all of them. | {{name}} er satt på {{count}} kunder. Sletter du den, fjernes den fra alle. |
 | `deleteTagNoCustomers` | {{name}} is not on any customer. | {{name}} er ikke satt på noen kunder. |
 | `tagSaved` | Tag saved | Merkelapp lagret |
 | `tagSavedMessage` | The tag was saved successfully. | Merkelappen ble lagret. |
@@ -4222,6 +4441,8 @@ Add to `en` and to `nb` in `apps/customers/frontend/src/i18n.ts` (keys in the sa
 | `tagColour_lime` | Lime | Lime |
 | `tagColour_yellow` | Yellow | Gul |
 | `tagColour_orange` | Orange | Oransje |
+
+`tagOnCustomers` and `deleteTagWarning` are plural-sensitive, so each gets `_one` and `_other` forms in both catalogs — the convention this file already uses for `paymentTermsDaysValue` (`:356-357`) and `registryChangesSeeTimeline` (`:415-416`). The **call sites stay `t("tagOnCustomers", { count })`**: i18next picks the suffix from `count`, and a component never names a form. The `customerCount === 0` branches in `-manage-tags-modal.tsx` keep their own keys (`tagOnNoCustomers`, `deleteTagNoCustomers`) rather than becoming a `_zero` form — "No customers" is not a count, it is a different sentence.
 
 Task 6 adds a few more; `translations:check` fails on any key present in one catalog and not the other, so add each key to both in the same edit.
 
@@ -4244,7 +4465,7 @@ Then remove three guards, see red, restore:
 cd /home/anders/projects/vantigo/vantigo && bunx biome check --write apps/customers/frontend/src apps/host/frontend/src && bunx biome check .
 cd /home/anders/projects/vantigo/vantigo
 printf '%s\n\n%s\n' 'feat(customers-ui): the list shows who owns a customer and what it is tagged with, and filters on both' 'Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>' > /tmp/msg-owner-task5
-git add apps/customers/frontend/src/api/tags.ts apps/customers/frontend/src/api/tags.test.ts apps/customers/frontend/src/api/customers.ts apps/customers/frontend/src/api/customers.test.ts apps/customers/frontend/src/pages/customers.index.tsx apps/customers/frontend/src/pages/-customers.index.test.tsx apps/customers/frontend/src/pages/-manage-tags-modal.tsx apps/customers/frontend/src/pages/-manage-tags-modal.test.tsx apps/customers/frontend/src/i18n.ts apps/host/frontend/src/routes/customers/index.tsx apps/host/frontend/src/routes/customers/-customers-list.tsx
+git add apps/customers/frontend/src/api/tags.ts apps/customers/frontend/src/api/tags.test.ts apps/customers/frontend/src/api/customers.ts apps/customers/frontend/src/api/customers.test.ts apps/customers/frontend/src/pages/customers.index.tsx apps/customers/frontend/src/pages/-customers.index.test.tsx apps/customers/frontend/src/pages/-manage-tags-modal.tsx apps/customers/frontend/src/pages/-manage-tags-modal.test.tsx apps/customers/frontend/src/pages/-customer-timeline.tsx apps/customers/frontend/src/pages/-customer-timeline.test.tsx apps/customers/frontend/src/i18n.ts apps/host/frontend/src/routes/customers/index.tsx apps/host/frontend/src/routes/customers/index.test.ts apps/host/frontend/src/routes/customers/-customers-list.tsx
 git commit -F /tmp/msg-owner-task5 -- $(git diff --cached --name-only)
 git show --stat HEAD && git status --short
 ```
@@ -4445,14 +4666,14 @@ describe("CustomerRelationshipCard", () => {
     stubFetch({ customer: ownedBody });
     renderCard();
     await screen.findByText("Kari Nordmann");
-    expect(screen.queryByRole("textbox", { name: "Owner" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "Tags" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Owner" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Tags" })).not.toBeInTheDocument();
   });
 
   it("assigns an owner the debounced search found, and sends the revision it read", async () => {
     const fetchMock = stubFetch();
     renderCard({ canEdit: true });
-    const picker = await screen.findByRole("textbox", { name: "Owner" });
+    const picker = await screen.findByRole("combobox", { name: "Owner" });
     await userEvent.click(picker);
     await userEvent.type(picker, "Ola");
     await userEvent.click(await screen.findByRole("option", { name: "Ola Nordmann" }, { timeout: 2000 }));
@@ -4468,7 +4689,7 @@ describe("CustomerRelationshipCard", () => {
     // picker settled this).
     stubFetch({ customer: ownedBody });
     renderCard({ canEdit: true });
-    const picker = await screen.findByRole("textbox", { name: "Owner" });
+    const picker = await screen.findByRole("combobox", { name: "Owner" });
     expect(picker).toHaveValue("Kari Nordmann");
     await userEvent.click(picker);
     await userEvent.type(picker, "Ola");
@@ -4509,7 +4730,7 @@ describe("CustomerRelationshipCard", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     renderCard({ canEdit: true });
-    const picker = await screen.findByRole("textbox", { name: "Owner" });
+    const picker = await screen.findByRole("combobox", { name: "Owner" });
     await userEvent.click(picker);
     await userEvent.click(await screen.findByRole("option", { name: "Ola Nordmann" }, { timeout: 2000 }));
     await screen.findByText("Reload");
@@ -4530,7 +4751,7 @@ describe("CustomerRelationshipCard", () => {
   it("replaces the tag set from the multi-select, sending every id at once", async () => {
     const fetchMock = stubFetch({ customer: ownedBody });
     renderCard({ canEdit: true });
-    const tagsInput = await screen.findByRole("textbox", { name: "Tags" });
+    const tagsInput = await screen.findByRole("combobox", { name: "Tags" });
     await userEvent.click(tagsInput);
     await userEvent.click(await screen.findByRole("option", { name: "Prospect" }));
 
@@ -4543,7 +4764,7 @@ describe("CustomerRelationshipCard", () => {
   it("creates a tag on the fly and then puts it on the customer", async () => {
     const fetchMock = stubFetch({ customer: ownedBody });
     renderCard({ canEdit: true });
-    const tagsInput = await screen.findByRole("textbox", { name: "Tags" });
+    const tagsInput = await screen.findByRole("combobox", { name: "Tags" });
     await userEvent.click(tagsInput);
     await userEvent.type(tagsInput, "Churned");
     await userEvent.click(await screen.findByRole("option", { name: 'Create "Churned"' }));
@@ -5099,7 +5320,7 @@ protection gained.
 
 3. **The Permissions section**: one sentence saying this delivery adds no key, and why — the same reasoning the design's D4 gives. Do **not** change the permission count.
 4. **The frontend section**: the Owner column, the tag chips beside the name, the Owner and Tag filters, the Manage tags modal reached from the Tag filter with `canEdit`, and the Relationship card on the Overview tab with its picker and multi-select. Say that the host passes one new prop (`canEdit` on the list page, through its own `-customers-list.tsx` wrapper) and that the Owner filter needs nothing new, because `me` is resolved server-side.
-5. Wherever Step 1's first grep found the generated event types listed, add `customer.owner_changed` and `customer.tags_changed` with their payload shapes.
+5. Wherever Step 1's first grep found the generated event types listed, add `customer.owner_changed` (`{customerId, before, after}`, each side `{userId, displayName}` or null) and `customer.tags_changed` (`{customerId, added, removed}`, each element `{tagId, name}`), and say that both are recorded only when the value actually changed and that renaming a tag records nothing. If the list notes which types the frontend timeline can filter for, say that both are in `-customer-timeline.tsx`'s `typeKey` — a generated type missing from it is unfilterable, which is the one coupling between a new backend event and the UI.
 
 - [ ] **Step 4: Mark the delivery in `ROADMAP.md`**
 
@@ -5203,7 +5424,7 @@ Checked against the spec, section by section:
 
 - **D1** — owner column and migration: Task 1. PUT with revision + no-op + 409: Task 3. Field errors with projects' wording: Task 3. An owner disabled afterwards keeps the customer: Task 3's own test. `assignable-users` capped at 20, active only: Task 3. `owner` on list and detail from one batched `Users` call, `Unknown user`/`active: false` for a vanished id: Task 3 (`decorate`). `ownerId=me|none|<uuid>` with the list's own wording: Task 3. `customer.owner_changed` only on change, with the acting user: Task 3. The directory unchanged (no `OwnerUserID` on `CustomerEntry`): nothing in any task touches `contracts`, deliberately.
 - **D2** — two tables, unique on `lower(name)`, cascade both ways: Task 1. Colour validated in Go: Task 4. CRUD with the 409 `tag_exists`, the 1–100 trimmed name: Task 4. Set replace with the field error, no revision, last-wins: Task 4. `tags: []` always present, one query per page: Tasks 1 and 3. `tagId` filter: Tasks 1, 3 (validation) and 4 (behaviour). `customer.tags_changed` only on change; a rename records nothing: Task 4.
-- **D3** — Owner column, tag chips, the two filters, Manage tags with `customerCount`: Task 5. Owner row with the debounced picker that keeps its value plus Clear, Tags row with create-on-the-fly, the two reload rules: Task 6. Both catalogs: Tasks 5 and 6.
+- **D3** — Owner column, tag chips, the two filters, Manage tags with `customerCount`, and the two new event types in the timeline's own filter vocabulary: Task 5. Owner row with the debounced picker that keeps its value plus Clear, Tags row with create-on-the-fly, the two reload rules: Task 6. Both catalogs: Tasks 5 and 6.
 - **D4** — no new permission key, `customers:view`/`customers:update` throughout, search unchanged: asserted in Task 3's `TestOwnerPermissions` and Task 4's `TestTagPermissions`, documented in Task 7.
 - **Testing** section — every case it names has a test in Task 3, 4, 5 or 6; the frontend ones filter by method and URL rather than asserting the last fetch, and one fixture (`customerBody` in Task 6) is literally the wire body with nothing set.
 - **Out of scope** — nothing in any task builds teams, several owners, auto-assignment, notifications, tag hierarchies, a `CustomerDirectory` addition, an "Assign to me" shortcut or customer groups.
