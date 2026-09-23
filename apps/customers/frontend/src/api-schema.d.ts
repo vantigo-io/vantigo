@@ -915,7 +915,7 @@ export interface components {
             openCount: number;
             /** Format: int32 */
             totalCount: number;
-            /** @description True when the customer has at least as many projects as the project directory answers at once (2000); the counts are then over the oldest 2000. */
+            /** @description True when the customer has at least as many projects as the project directory answers at once (2000); the counts are then over the caller's visible projects among the customer's oldest 2000. It describes the customer's own list, so for a caller who sees only the projects they hold a role on, a role project past the cut is missing without this saying so for their set. */
             truncated: boolean;
         };
         /** @description What is going on with one customer across the modules that know (customer 360 design D1, D2). Every section but lastActivity may be absent, and absent means the module is off or the section is not for this caller — the response never says which, and never answers 403 for it. */
@@ -938,13 +938,18 @@ export interface components {
             lastWorkOn?: string;
             /** Format: int64 */
             submittedHoursHundredths: number;
-            /** @description What the unbilled work is worth at the rates it was logged at, per project currency, by ISO code; a currency with nothing unbilled is left out, and work on a project without a currency carries no amount. Only for projects:view-financials or projects:manage-all. */
+            /** @description What the unbilled work is worth at the rates it was logged at, per project currency, by ISO code; a currency with nothing unbilled is left out. Only priced billable work counts: billable work logged without a rate, or at a rate in another currency than the project's, counts in the hours and carries no amount (unpricedHoursHundredths says how much), and work on a project without a currency carries no amount at all. Only for projects:view-financials or projects:manage-all. */
             unbilledAmounts?: components["schemas"]["CustomerOverviewAmount"][];
             /**
              * Format: int64
-             * @description Approved work that has not been invoiced yet.
+             * @description Approved work that has not been invoiced yet, across the visible projects, billable or not — the time module's buckets are not split by billability, so an approved non-billable hour counts here although it will never be invoiced. unbilledAmounts counts only the priced billable part.
              */
             unbilledHoursHundredths: number;
+            /**
+             * Format: int64
+             * @description Billable hours logged without a bill rate, or at a rate in another currency than the project's, summed over the visible projects — the actuals contract's unpriced hours. They cover draft, submitted and approved work alike, invoiced included; the approved ones not yet invoiced are inside unbilledHoursHundredths and absent from unbilledAmounts, which is short by exactly their worth. On a project without a currency every billable hour is unpriced. Hours, not money: present whenever work is.
+             */
+            unpricedHoursHundredths?: number;
         };
         /** @description The single user accountable for the customer relationship (owner and tags design D1). displayName is resolved from the user directory at read time, never stored on the customer; a user the directory no longer knows is reported as "Unknown user" with active false, and an owner disabled after being assigned keeps the customer and is reported with active false. Absent when the customer is unowned. */
         CustomerOwner: {

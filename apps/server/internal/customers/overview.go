@@ -38,8 +38,10 @@ import (
 // any module. Cost never appears; the panel is about the customer, not the
 // margin.
 //
-// **No transaction.** Nothing here writes or locks; each contract is asked at
-// most once per request, in one batch.
+// **No transaction.** Nothing here writes or locks; each contract method is
+// asked at most once per request, and the two that take projects take them
+// all in one batch. The project directory itself is asked twice for a caller
+// who sees only their role projects: the customer's projects, and theirs.
 //
 // **Exact money, per currency.** Hours are int64 hundredths and subtract
 // exactly. Amounts arrive as the contracts' decimal text, are added and
@@ -73,8 +75,13 @@ type overviewRights struct {
 	// allProjects is every one of the customer's projects rather than the
 	// caller's own role projects: projects:view-all or projects:manage-all.
 	allProjects bool
-	// financials is money: projects:view-financials or projects:manage-all —
-	// the rule the expenses summary endpoint grants its own money by.
+	// financials is money: projects:view-financials or projects:manage-all.
+	// That is the global half of the rule projects and expenses grant money
+	// by, not all of it: both also show a project's managers their own
+	// project's money, and here a manager's role opens nothing, because
+	// ProjectsForUser carries no role and money is all-or-nothing per
+	// section. Matching them needs each visible project's role and money
+	// shaped per project (customer 360 design D2) — a delivery of its own.
 	financials bool
 }
 
@@ -262,13 +269,19 @@ func overviewProjectsSection(visible []contracts.ProjectEntry, truncated bool, a
 // Approved and reports that part beside it, so the subtraction is exact for
 // hours and exact for each project's two published amounts. Amounts are summed
 // per project currency, and only for a caller with financial rights — for
-// anybody else they are never even parsed.
+// anybody else they are never even parsed. The unpriced hours are the
+// contract's figure summed as it stands, for everybody: it is hours, and the
+// actuals contract makes surfacing it the price of showing what a project
+// will bill, since billable work without a rate in the project's currency is
+// in the unbilled hours and in no amount.
 func overviewWork(visible []contracts.ProjectEntry, actuals map[int32]contracts.ActualsTotals, financials bool) (gen.CustomerOverviewWork, error) {
 	var work gen.CustomerOverviewWork
 	unbilled := map[string]*big.Rat{}
 	var last string
+	var unpriced int64
 	for _, p := range visible {
 		totals := actuals[p.ID]
+		unpriced += totals.UnpricedHoursHundredths
 		work.UnbilledHoursHundredths += totals.Approved.HoursHundredths - totals.Invoiced.HoursHundredths
 		work.ApprovedHoursHundredths += totals.Approved.HoursHundredths
 		work.SubmittedHoursHundredths += totals.Submitted.HoursHundredths
@@ -294,6 +307,7 @@ func overviewWork(visible []contracts.ProjectEntry, actuals map[int32]contracts.
 		}
 		sum.Add(sum, approved.Sub(approved, invoiced))
 	}
+	work.UnpricedHoursHundredths = &unpriced
 	if financials {
 		amounts := overviewAmounts(unbilled)
 		work.UnbilledAmounts = &amounts

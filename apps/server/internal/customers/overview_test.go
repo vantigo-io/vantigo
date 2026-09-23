@@ -1,9 +1,11 @@
 package customers_test
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"net/http"
@@ -34,6 +36,9 @@ type fakeProjects struct {
 	mu       sync.Mutex
 	projects []contracts.ProjectEntry
 	roles    map[uuid.UUID][]int32
+	// customerErr and userErr, when set, are what ProjectsForCustomer and
+	// ProjectsForUser fail with.
+	customerErr, userErr error
 }
 
 var _ contracts.ProjectDirectory = (*fakeProjects)(nil)
@@ -57,6 +62,9 @@ func (f *fakeProjects) grant(userID uuid.UUID, projectIDs ...int32) {
 func (f *fakeProjects) ProjectsForCustomer(_ context.Context, customerID int32) ([]contracts.ProjectEntry, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.customerErr != nil {
+		return nil, f.customerErr
+	}
 	var out []contracts.ProjectEntry
 	for _, p := range f.projects {
 		if p.CustomerID != nil && *p.CustomerID == customerID {
@@ -75,6 +83,9 @@ func (f *fakeProjects) ProjectsForCustomer(_ context.Context, customerID int32) 
 func (f *fakeProjects) ProjectsForUser(_ context.Context, userID uuid.UUID) ([]contracts.ProjectEntry, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.userErr != nil {
+		return nil, f.userErr
+	}
 	var out []contracts.ProjectEntry
 	for _, p := range f.projects {
 		if slices.Contains(f.roles[userID], p.ID) {
@@ -92,6 +103,7 @@ type fakeActuals struct {
 	mu                       sync.Mutex
 	totals                   map[int32]contracts.ActualsTotals
 	asked                    []contracts.ActualsRequest
+	err                      error // when set, what ActualsForProjects fails with
 }
 
 var _ contracts.ProjectActuals = (*fakeActuals)(nil)
@@ -111,6 +123,9 @@ func (f *fakeActuals) ActualsForProjects(_ context.Context, reqs []contracts.Act
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.asked = append(f.asked, reqs...)
+	if f.err != nil {
+		return nil, f.err
+	}
 	out := make(map[int32]contracts.ActualsTotals, len(reqs))
 	for _, r := range reqs {
 		out[r.ProjectID] = f.totals[r.ProjectID]
@@ -124,6 +139,7 @@ type fakeExpenses struct {
 	mu     sync.Mutex
 	totals map[int32]contracts.ProjectExpenseTotals
 	asked  []int32
+	err    error // when set, what ExpensesForProjects fails with
 }
 
 var _ contracts.ProjectExpenses = (*fakeExpenses)(nil)
@@ -141,6 +157,9 @@ func (f *fakeExpenses) ExpensesForProjects(_ context.Context, ids []int32) (map[
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.asked = append(f.asked, ids...)
+	if f.err != nil {
+		return nil, f.err
+	}
 	out := map[int32]contracts.ProjectExpenseTotals{}
 	for _, id := range ids {
 		if totals, ok := f.totals[id]; ok {
@@ -206,6 +225,7 @@ type overviewJSON struct {
 		ApprovedHoursHundredths  int64                 `json:"approvedHoursHundredths"`
 		SubmittedHoursHundredths int64                 `json:"submittedHoursHundredths"`
 		DraftHoursHundredths     int64                 `json:"draftHoursHundredths"`
+		UnpricedHoursHundredths  *int64                `json:"unpricedHoursHundredths"`
 		LastWorkOn               *string               `json:"lastWorkOn"`
 	} `json:"work"`
 	Expenses *struct {
@@ -591,5 +611,169 @@ func TestOverview_ExpensesAreWhatIsReadyToInvoice(t *testing.T) {
 	slices.Sort(expenses.asked)
 	if !slices.Equal(expenses.asked, []int32{1001, 1002, 1003}) {
 		t.Errorf("expenses asked about %v, want only this customer's projects", expenses.asked)
+	}
+}
+
+// Billable work with no rate, or a rate in another currency than the
+// project's, is in the unbilled hours and in no amount — the actuals contract
+// says a consumer showing what a project will bill must surface it, so work
+// carries the sum of every visible project's unpriced hours. It is hours, not
+// money: a caller without financial rights sees it too.
+func TestOverview_WorkSaysHowManyHoursAreUnpriced(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name        string
+		permissions []string
+		money       bool
+	}{
+		{"view-financials", overviewFinancials, true},
+		{"view-all alone", overviewAll, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			projects, actuals := &fakeProjects{}, &fakeActuals{}
+			h := overviewHarness(t, projects, actuals, nil)
+			id := insertCustomer(t, h, "Kraft-Verket AS", "active")
+			projects.add(
+				project(1001, id, "KVEM1000", "active", ptr("NOK")),
+				project(1002, id, "KVEM1001", "active", ptr("NOK")),
+			)
+			// 1001: 2 h priced at 900 each and 1.5 h billable with no rate; the
+			// bill amount is the priced hours' alone.
+			actuals.set(1001, contracts.ActualsTotals{
+				Approved: bucket(350, "1800.00"), Invoiced: bucket(0, "0.00"), UnpricedHoursHundredths: 150,
+			})
+			actuals.set(1002, contracts.ActualsTotals{
+				Approved: bucket(25, "0.00"), Invoiced: bucket(0, "0.00"), UnpricedHoursHundredths: 25,
+			})
+
+			got, _ := getOverview(t, h.SignIn(t, tc.permissions...), id)
+			w := got.Work
+			if w == nil || w.UnpricedHoursHundredths == nil || *w.UnpricedHoursHundredths != 175 {
+				t.Fatalf("work = %+v, want unpricedHoursHundredths 175 (150 + 25 over both projects)", w)
+			}
+			if w.UnbilledHoursHundredths != 375 {
+				t.Errorf("unbilledHoursHundredths = %d, want 375: the unpriced hours are in it", w.UnbilledHoursHundredths)
+			}
+			if !tc.money {
+				if w.UnbilledAmounts != nil {
+					t.Errorf("unbilledAmounts = %v, want absent without financial rights", *w.UnbilledAmounts)
+				}
+				return
+			}
+			want := []overviewAmountJSON{{Currency: "NOK", Amount: 1800}}
+			if w.UnbilledAmounts == nil || !slices.Equal(*w.UnbilledAmounts, want) {
+				t.Errorf("unbilledAmounts = %v, want %v: the unpriced hours carry no amount", w.UnbilledAmounts, want)
+			}
+		})
+	}
+}
+
+// A customer with no projects, asked about by a caller who may see projects,
+// answers every section it would for one with projects — zeros and empty
+// lists, never null and never absent: absent means only "not for you, or not
+// installed".
+func TestOverview_ACustomerWithNoProjectsAnswersZerosNotAbsence(t *testing.T) {
+	t.Parallel()
+	h := overviewHarness(t, &fakeProjects{}, &fakeActuals{}, &fakeExpenses{})
+	id := insertCustomer(t, h, "Kraft-Verket AS", "active")
+
+	got, keys := getOverview(t, h.SignIn(t, overviewFinancials...), id)
+	wantSections(t, keys, "lastActivity", "projects", "work", "expenses")
+	for section, want := range map[string]map[string]string{
+		"projects": {"openCount": "0", "totalCount": "0", "truncated": "false", "open": "[]"},
+		"work": {
+			"unbilledHoursHundredths": "0", "approvedHoursHundredths": "0", "submittedHoursHundredths": "0",
+			"draftHoursHundredths": "0", "unpricedHoursHundredths": "0", "unbilledAmounts": "[]",
+		},
+		"expenses": {"readyCount": "0", "readyAmounts": "[]"},
+	} {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(keys[section], &fields); err != nil {
+			t.Fatalf("%s: %v", section, err)
+		}
+		gotFields := map[string]string{}
+		for k, v := range fields {
+			gotFields[k] = string(v)
+		}
+		if !maps.Equal(gotFields, want) {
+			t.Errorf("%s = %v, want exactly %v", section, gotFields, want)
+		}
+	}
+	if len(got.LastActivity) != 0 {
+		t.Errorf("lastActivity = %v, want {}", got.LastActivity)
+	}
+}
+
+// A caller who sees only its role projects asks time and expenses about those
+// projects and no others, and with projects:view-financials sees their money —
+// the other projects' money never reaches a sum.
+func TestOverview_ARoleOnlyCallerIsAskedAndPaidOnlyItsRoleProjects(t *testing.T) {
+	t.Parallel()
+	projects, actuals, expenses := &fakeProjects{}, &fakeActuals{}, &fakeExpenses{}
+	h := overviewHarness(t, projects, actuals, expenses)
+	id := insertCustomer(t, h, "Kraft-Verket AS", "active")
+	other := insertCustomer(t, h, "Acme Industrier AS", "active")
+	projects.add(
+		project(1001, id, "KVEM1000", "active", ptr("NOK")),
+		project(1002, id, "KVEM1001", "active", ptr("NOK")),
+		project(1003, other, "ACME1000", "active", ptr("NOK")),
+	)
+	for pid, amount := range map[int32]string{1001: "100.00", 1002: "2000.00", 1003: "30000.00"} {
+		actuals.set(pid, contracts.ActualsTotals{Approved: bucket(100, amount), Invoiced: bucket(0, "0.00")})
+		expenses.set(pid, contracts.ProjectExpenseTotals{
+			Currencies: []contracts.CurrencyExpenses{{Currency: "NOK", ReadyCount: 1, ReadyAmount: amount}},
+		})
+	}
+	c, userID := h.SignInUser(t, "customers:view", "projects:access", "projects:view-financials")
+	projects.grant(userID, 1001, 1003)
+
+	got, _ := getOverview(t, c, id)
+	var asked []int32
+	for _, r := range actuals.asked {
+		asked = append(asked, r.ProjectID)
+	}
+	if !slices.Equal(asked, []int32{1001}) || !slices.Equal(expenses.asked, []int32{1001}) {
+		t.Errorf("actuals asked %v, expenses asked %v; want only [1001], the role project on this customer", asked, expenses.asked)
+	}
+	want := []overviewAmountJSON{{Currency: "NOK", Amount: 100}}
+	if got.Work == nil || got.Work.UnbilledAmounts == nil || !slices.Equal(*got.Work.UnbilledAmounts, want) {
+		t.Errorf("work = %+v, want unbilledAmounts %v", got.Work, want)
+	}
+	if got.Expenses == nil || got.Expenses.ReadyCount != 1 || !slices.Equal(got.Expenses.ReadyAmounts, want) {
+		t.Errorf("expenses = %+v, want 1 ready, %v", got.Expenses, want)
+	}
+}
+
+// A contract that fails fails the request: a 500 and no overview at all, never
+// the sections that happened to answer — absent must never also mean "could
+// not be read".
+func TestOverview_AFailingContractFailsTheWholeRequest(t *testing.T) {
+	t.Parallel()
+	boom := errors.New("boom")
+	for _, tc := range []struct {
+		name        string
+		fail        func(*fakeProjects, *fakeActuals, *fakeExpenses)
+		permissions []string
+	}{
+		{"projects for customer", func(p *fakeProjects, _ *fakeActuals, _ *fakeExpenses) { p.customerErr = boom }, overviewFinancials},
+		{"projects for user", func(p *fakeProjects, _ *fakeActuals, _ *fakeExpenses) { p.userErr = boom }, []string{"customers:view", "projects:access"}},
+		{"actuals", func(_ *fakeProjects, a *fakeActuals, _ *fakeExpenses) { a.err = boom }, overviewFinancials},
+		{"expenses", func(_ *fakeProjects, _ *fakeActuals, e *fakeExpenses) { e.err = boom }, overviewFinancials},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			projects, actuals, expenses := &fakeProjects{}, &fakeActuals{}, &fakeExpenses{}
+			h := overviewHarness(t, projects, actuals, expenses)
+			id := insertCustomer(t, h, "Kraft-Verket AS", "active")
+			projects.add(project(1001, id, "KVEM1000", "active", ptr("NOK")))
+			tc.fail(projects, actuals, expenses)
+
+			r := h.SignIn(t, tc.permissions...).Do(http.MethodGet, fmt.Sprintf("/api/v1/customers/%d/overview", id), nil,
+				modtest.SkipContract("a contract failing is an infrastructure failure, deliberately off-contract"))
+			if r.Status != http.StatusInternalServerError || bytes.Contains(r.Body, []byte("lastActivity")) {
+				t.Errorf("status %d body %s, want 500 and no part of an overview", r.Status, r.Body)
+			}
+		})
 	}
 }
