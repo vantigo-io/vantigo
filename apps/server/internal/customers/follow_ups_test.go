@@ -681,13 +681,17 @@ func TestStatsAttention_CapsTheFollowUpHalfAtTheTwentyMostOverdue(t *testing.T) 
 		entries[due] = entry.Id
 	}
 
+	// Count the follow-up half only: the same list carries the registry items,
+	// and a registry record added to this fixture later must not fail the cap.
 	items := getAttention(t, c)
-	if len(items) != 20 {
-		t.Fatalf("len(items) = %d, want 20 (the cap on the follow-up half)", len(items))
-	}
 	reported := map[string]bool{}
 	for _, item := range items {
-		reported[item.Id] = true
+		if strings.HasPrefix(item.Type, "followUp") {
+			reported[item.Id] = true
+		}
+	}
+	if len(reported) != 20 {
+		t.Fatalf("follow-up items = %d, want 20 (the cap on the follow-up half); items = %+v", len(reported), items)
 	}
 	for offset := -25; offset <= -6; offset++ {
 		id := fmt.Sprintf("followUpOverdue/%d", entries[day(h, offset)])

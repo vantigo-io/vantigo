@@ -3185,7 +3185,7 @@ paths:
             x-vantigo-access: permission:customers:associations-view+customers:contacts-view
     /api/v1/customers/follow-ups:
         get:
-            description: 'Every follow-up the caller asked for, across customers, oldest due date first and then by entry id. Defaults answer the question the page exists for: assignee=me and state=open, i.e. "what is on my plate". Archived customers'' follow-ups are excluded unless state=done — a done follow-up is a record of work finished, and an archived customer''s finished work is still finished.'
+            description: 'Every follow-up the caller asked for, across customers, oldest due date first and then by entry id. Defaults answer the question the page exists for: assignee=me and state=open, i.e. "what is on my plate". Archived customers'' follow-ups are excluded unless state=done or state=all — a done follow-up is a record of work finished, and an archived customer''s finished work is still finished.'
             operationId: getCustomersFollowUps
             parameters:
                 - in: query
@@ -3206,7 +3206,7 @@ paths:
                 - in: query
                   name: state
                   schema:
-                    description: "'open' (not yet done), 'overdue' (open and past its due date, a subset of open), 'done' or 'all'. Case-sensitive. Defaults to 'open'."
+                    description: "'open' (not yet done), 'overdue' (open and past its due date, a subset of open), 'done' or 'all' (the superset: it alone besides done admits archived customers). Case-sensitive. Defaults to 'open'."
                     type: string
                 - in: query
                   name: customerId
