@@ -103,6 +103,10 @@ export const CustomerRegistryCard = ({
 
   const badges = record ? statusBadges(t, formatters.formatDate, record) : [];
   if (note === "removed") badges.push({ key: "removed", label: t("registryBadgeRemoved") });
+  // Non-null exactly when the line below should render, so the same value
+  // both gates the rendering and supplies it — no cast needed to prove to
+  // TypeScript that a truthy check here means a string, not `string | null`.
+  const behindHint = record ? behindSince(record) : null;
 
   return (
     <Card withBorder padding="lg" radius="md">
@@ -163,14 +167,15 @@ export const CustomerRegistryCard = ({
                 only just said so and the sweep has not caught up. Not dimmed,
                 unlike the provenance line below it — it is the one thing on this
                 card that is actionable, and Refresh is right there in the
-                header. Both values are instants, so both format in local time. */}
-            {isBehindTheRegistry(record) && (
+                header. Both values are instants, so both format in local time.
+                Outside the `role="status"` region below on purpose: its
+                appearance comes from this GET catching up with the register,
+                not from a click, so there is nothing here for a screen reader
+                to announce as a result of an action. */}
+            {behindHint && (
               <Text size="sm">
                 {t("registryUpdatedHintLine", {
-                  reported: formatters.formatDate(record.registryUpdatedHint as string, {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                  }),
+                  reported: formatters.formatDate(behindHint, { dateStyle: "medium", timeStyle: "short" }),
                   fetched: formatters.formatDate(record.fetchedAt, { dateStyle: "medium", timeStyle: "short" }),
                 })}
               </Text>
@@ -263,15 +268,19 @@ const statusBadges = (
 };
 
 /**
- * Whether the register has reported a change this record does not have yet
- * (design D2): the hint is written before a refresh is attempted, so a hint
- * newer than `fetchedAt` is exactly "the last refresh did not catch up".
+ * The register's reported-change hint, if the record has not caught up with
+ * it yet (design D2): the hint is written before a refresh is attempted, so a
+ * hint newer than `fetchedAt` is exactly "the last refresh did not catch up".
  * Compared as instants, not as strings — the two values come from different
- * writes and need not share a format.
+ * writes and need not share a format. Returns the hint itself when this is
+ * so and `null` otherwise, narrowing `string | null` to `string` for the one
+ * caller that needs both the predicate and the value it gates.
  */
-const isBehindTheRegistry = (record: CustomerRegistryRecord) =>
-  record.registryUpdatedHint !== null &&
-  new Date(record.registryUpdatedHint).getTime() > new Date(record.fetchedAt).getTime();
+const behindSince = (record: CustomerRegistryRecord): string | null => {
+  if (record.registryUpdatedHint === null) return null;
+  const isBehind = new Date(record.registryUpdatedHint).getTime() > new Date(record.fetchedAt).getTime();
+  return isBehind ? record.registryUpdatedHint : null;
+};
 
 /**
  * The register calls the company something else (design D4, D5). The legal

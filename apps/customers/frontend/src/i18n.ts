@@ -825,7 +825,7 @@ const nb = {
   registryNotFetched: "Registeropplysninger er ikke hentet ennå",
   registryRefresh: "Oppdater",
   registryFetchedFrom: "Fra Brønnøysundregistrene, hentet {{date}}",
-  registryUpdatedHintLine: "Registeret meldte en endring {{reported}}; disse opplysningene er fra {{fetched}}.",
+  registryUpdatedHintLine: "Registeret meldte om en endring {{reported}}; disse opplysningene er fra {{fetched}}.",
   registryOrganisationForm: "Organisasjonsform",
   registryIndustry: "Næringskode",
   registryEmployees: "Ansatte",
