@@ -445,7 +445,7 @@ meaning "not decided here — whoever invoices uses its own default" when NULL:
 | Field | Rule |
 | --- | --- |
 | `invoiceEmail`, `reminderEmail` | Contact info's email rule. Kept separate from each other and from the customer's own contact-info email because reminders cannot travel as EHF or eFaktura — the reminder channel is its own decision. |
-| `paymentTermsDays` | Integer, 0–365 inclusive. |
+| `paymentTermsDays` | Integer, 0–365 inclusive. NULL means "not decided here" — and, from [Groups](#groups) on, a customer whose group carries a default inherits that instead; `groupDefault` on this sub-resource says which group and what it gives, and the effective value is the profile's own, else the group's, else nothing. |
 | `currency` | Three-letter ISO 4217 code, upper-cased (the shape only — not checked against the set of actually-assigned codes, the same rule Projects' own currency field uses). |
 | `language` | `nb` or `en` — the languages a document can be produced in. |
 | `invoiceDelivery` | One of `email`, `ehf`, `efaktura`, `paper`. |
@@ -617,6 +617,118 @@ customer's own fields. Everything here is readable with `customers:view` and
 writable with `customers:update` — an owner is not sensitive data and tags are
 classification, so a narrower key would be one more thing to configure for no
 protection gained.
+
+## Groups
+
+A **group** is a named bucket an installation defines — "Retail", "Key accounts",
+"Public sector" — that a customer belongs to at most one of, and that carries a
+**default payment term** every member inherits. Two halves, and they copy
+opposite precedents on purpose: the vocabulary is the [tags'](#tags), and the
+membership is [the owner's](#the-owner).
+
+### The vocabulary
+
+`customers.customer_groups` (migration `00027`) is the tag vocabulary's shape
+down to the unique index on `lower(name)`: a group is a vocabulary word, so
+`Retail` and `retail` are the same word, and a name is NFC-normalised before it
+is stored or compared. It is **unpaged** for the same reason and with the same
+bet — `GET /customers/groups` answers every group, name-ascending, each with a
+`customerCount`, because the picker and the delete confirmation read the one
+list and a vocabulary stays in the tens.
+
+What it deliberately does not copy: no colour and no description. A group is a
+policy object, not a label. Its second field is a **default payment term**,
+validated 0–365 by the billing profile's own rule (`validatePaymentTermsDays`)
+and `CHECK`ed on the column too, because a value outside the range would be
+inherited by every member. `PUT /customers/groups/{groupId}` is a **full
+replace** of both fields, so a body without `defaultPaymentTermsDays` **clears**
+the group's default rather than leaving the one it had.
+
+**A group with members is never deleted.** `DELETE /customers/groups/{groupId}`
+counts first and answers **409 `group_in_use`** with that count in the detail;
+the members are moved out first, and the list's own `groupId` filter is how they
+are found. The column's foreign key is `ON DELETE RESTRICT` rather than
+`SET NULL`, so a writer that races the count cannot get past it either. The tags'
+cascade is right for a label — a tag going away says nothing about the customer —
+and wrong for a default: detaching the members would change every one of their
+effective payment terms with no record on any customer.
+
+The vocabulary's own writes record **no timeline event**, the tags' rule (the
+group is the vocabulary, not the customer), and that includes moving a group's
+default: doing so changes what every member inherits, at once, by design.
+
+### The membership
+
+`customers.customers.group_id` is a nullable column on the customer row with an
+in-module foreign key — unlike `owner_user_id`, which points across a module
+boundary at identity's users and therefore has none. Being on the row is the
+decision everything else follows from: the group **shares the row's `revision`**,
+so `PUT /customers/{id}/group` is an ordinary guarded write that a concurrent
+edit cannot lose, and it is the owner's PUT step for step — (1) the customer's
+404; (2) a stale `revision`, 409, ahead of the no-op check, so resubmitting the
+current group with a stale revision is still a conflict; (3) the no-op, nil-safe,
+which writes nothing at all and resolves no actor; (4) an unknown `groupId`, a
+400 field error on `groupId` rather than a 404, because the customer exists and
+the caller may edit it; (5) the guarded write and `customer.group_changed` in one
+transaction.
+
+**Only this sub-resource sets a customer's group.** `POST /customers` and
+`PUT /customers/{id}` do not take a `groupId` — the owner's own rule.
+
+`SafeCustomerResponse.group` is `{id, name}`, absent when the customer belongs to
+no group and never null, beside `owner`. It is resolved by `customerDecoration`
+in one batched query per response, exactly as the tags are, rather than selected
+by every customer query: one shape of group-on-a-response, one place it can be
+wrong. `GET /customers?groupId=<uuid>|none` filters on the column — an equality,
+or an `IS NULL` for `none`, in both `CountCustomers`' and `ListCustomers`' WHERE.
+An id no group holds simply matches nothing. `groupId=none` is a scan, migration
+`00024`'s own bet restated: the partial index serves the members, and "customers
+in no group" is a tidying-up sweep rather than a daily filter.
+
+`customer.group_changed` carries `{customerId, before: {groupId, name}|null,
+after: {groupId, name}|null}` with the name **snapshotted**, so renaming a group
+later never rewrites what the timeline says happened, and reads as "Moved to
+group Retail", "Moved from Retail to Key accounts" or "Removed from group
+Retail".
+
+### The default, and where it is applied
+
+A group's `defaultPaymentTermsDays` is resolved in exactly one place,
+`resolveBillingProfile` (`customers/directory.go`): **the billing profile's own
+`paymentTermsDays`, else the customer's group's default, else nothing** — the
+first field in this module with a third tier, and the only one that inherits at
+all. Currency, language and the delivery methods stay "not decided here" until
+somebody asks for a default. The check is a nil check, not a zero one: `0` days
+is "due on receipt", a decision a group must not override.
+
+`GET`/`PUT /customers/{id}/billing-profile` answer
+`groupDefault: {group: {id, name}, paymentTermsDays?}` whenever the customer
+belongs to a group, so a client can say "inherits 30 days from Retail" when the
+profile's own value is absent and "group default 30 days — overridden here" when
+it is not. The profile's own `paymentTermsDays` keeps meaning **decided here**,
+and `warnings` learn nothing new. `groupDefault.paymentTermsDays` is itself
+absent when the group carries no default: being in a group that decides nothing
+is a different thing to show than being in no group.
+
+`contracts.CustomerEntry.Group` (`{ID, Name}`, nil when none) is answered by both
+`Customer` and `Customers`. It has no reader yet — Products phase 4's
+customer-group prices are the intended one — and it is here now because it is one
+`LEFT JOIN` and one field, and because a consumer resolving a price by group must
+never have to read a billing profile for it.
+
+**No new permission key.** Reading the vocabulary is `customers:view`; creating,
+editing and deleting a group, and moving a customer between groups, is
+`customers:update` (plus `customers:view` for the membership PUT, as the owner's).
+A group's name and default are installation policy — the same reasoning that put
+the tag vocabulary on `customers:update` — and a customer's own override stays
+where it is, behind `customers:billing-manage`. A `customers:view` holder
+therefore learns a member's *inherited* term from the vocabulary list, which is a
+policy fact rather than a negotiated one.
+
+**Not built:** group-level prices (Products phase 4 reads `CustomerEntry.Group`
+when it comes), any default beyond payment terms, bulk moves or a
+move-on-delete, a group on the create form, hierarchy, paging the vocabulary, and
+a group column in the list table — the filter and the relationship card carry it.
 
 ## The timeline
 
@@ -1764,6 +1876,17 @@ already sees on every entry as its author, and a timeline writer has to be able
 to pick a follow-up's assignee without holding `customers:update`. There was
 nothing there for the stricter key to protect.
 
+No new permission key was added for [Groups](#groups) either, and the question
+was closer here than for owner and tags: a group carries a **billing** default,
+which is the one kind of data this module already treats as separately sensitive
+(`customers:billing-manage`). It rides on `customers:view`/`customers:update`
+anyway, because a group's name and its default are installation policy rather
+than one customer's negotiated terms — the same reasoning that put the tag
+vocabulary on `customers:update` — and because gating one field of a
+`customers:update` endpoint behind `billing-manage` would be a per-field
+permission this module has never had. A customer's own override stays behind
+`customers:billing-manage`, where it was.
+
 ## `contracts.CustomerDirectory`
 
 The one sanctioned way another module reads customer data — an in-process, read-only
@@ -1821,7 +1944,8 @@ invoice email, a reminder email or a Peppol id for itself.
 | `InvoiceEmail` | The billing profile's own `invoiceEmail`, else the customer's own contact-info `email`, else `""`. |
 | `ReminderEmail` | The billing profile's own `reminderEmail`, else the `InvoiceEmail` just resolved above — reminders fall back to where an invoice would go, never straight to the contact-info email. |
 | `PeppolID` | The billing profile's own explicit `peppolId`, else `derivedPeppolID(identity, customerType)`: `"0192:<legal id>"` when the identity's country is `"no"`, **the customer itself (not the identity) is of type `"business"`**, and the identity's `id` itself passes the Norwegian organisation-number check (a malformed or pre-validation legacy `id` derives nothing), else `""`. The same predicate backs `billingWarnings`'s `ehf_without_recipient` check above, so the two can never disagree about whether a recipient exists. |
-| `PaymentTermsDays`, `Currency`, `Language`, `InvoiceDelivery`, `ReminderDelivery`, `GLN`, `BuyerReference` | The billing profile's own value, `nil`/`""` if never set — no further resolution. |
+| `PaymentTermsDays` | The billing profile's own `paymentTermsDays`, else the customer's **group's** `defaultPaymentTermsDays` ([Groups](#groups)), else `nil`. The only field here with three levels, and the only one that inherits from a group: a nil check, not a zero one, so a profile (or a group) that decided `0` days — due on receipt — is not overridden by the next tier. |
+| `Currency`, `Language`, `InvoiceDelivery`, `ReminderDelivery`, `GLN`, `BuyerReference` | The billing profile's own value, `nil`/`""` if never set — no further resolution. |
 
 **Every consumer treats `""` (a string field) or `nil` (`PaymentTermsDays`,
 `InvoiceAddress`) as "not decided — use your own default"**, never as an error or
@@ -1836,7 +1960,8 @@ inbound email to a customer's contact). `ContactsByEmail` still has **no product
 caller** — it exists for Communications' future customer-suggestion feature.
 `BillingProfile` is ready for Invoices to read once that module exists — no
 consumer yet, the same "built ahead of its caller" position `ContactsByEmail` has
-been in since the foundation.
+been in since the foundation. `CustomerEntry.Group` is the other seam built ahead
+of its caller: Products phase 4's customer-group prices are the intended reader.
 
 ## The frontend
 
@@ -1854,7 +1979,10 @@ been in since the foundation.
   tags** button, opening [the vocabulary editor](#tags), for a caller the host says
   may edit: the host passes one new prop, `canEdit`, read from `customers:update`,
   through its own `-customers-list.tsx` wrapper — this package still never fetches
-  permissions itself.
+  permissions itself. [Groups](#groups) added a **Group** filter — **All**, **No
+  group**, then each group, reflected in the URL as `groupId` — with a **Manage
+  groups** button beside it, opening the vocabulary editor for a caller the host
+  says may edit.
 - **Detail** (`/customers/:id`) — a host-composed page: this package owns the header
   (name, legal-identity badges, status/type badges, edit and change-type actions) and
   an overview tab (relationship card, contact & addresses card, billing card, contacts
@@ -1883,7 +2011,10 @@ been in since the foundation.
   `syncCustomerRevision` runs before its invalidation and a 409 raises the same
   conflict-and-Reload alert the other row-editing modals use; the tags PUT carries
   no revision at all, so a save is a plain invalidation of `["customers"]` with
-  nothing to sync and no conflict to handle.
+  nothing to sync and no conflict to handle. [Groups](#groups) added a **Group**
+  `Select` beside the owner — the vocabulary's names with a *No group* row, saved
+  through `PUT /customers/{id}/group` with the card's own revision handling, so a
+  stale revision raises the same conflict-and-Reload alert the owner's save does.
 - **Contact & addresses card** (design D6) — email/phone/website (rendered as
   `mailto:`/`tel:`/an external link) with an edit modal, and the typed address list
   below it, grouped by type in the fixed order invoice/postal/delivery/visiting,
@@ -1929,7 +2060,9 @@ been in since the foundation.
   through the same revision-guarded `PUT` and Reload pattern as the edit
   modal, never a silent switch. A 503 (the feature disabled) hides the
   action until the page is reloaded, rather than asking again on every
-  mount.
+  mount. Under the payment-terms row it says where an unset term comes from —
+  *Inherits 30 days from Retail* — or that the customer's own overrides one,
+  from the profile's `groupDefault`.
 - **Form** (create/edit modal) — sends `revision` on every edit, so a stale write is
   caught by the backend's 409 rather than silently overwriting a concurrent change;
   a 409 revision conflict tells the user the customer changed underneath them and
@@ -1989,7 +2122,7 @@ been in since the foundation.
 ## API
 
 Every operation is under `/api/v1/customers`, authenticated with the shared identity
-session cookie. 50 operations in total, each exercised by the module's own
+session cookie. 55 operations in total, each exercised by the module's own
 contract-validated test coverage gate — every operation in `openapi/customers.yaml`
 must be exercised by at least one successful exchange, with no allow-list.
 
@@ -2010,6 +2143,9 @@ must be exercised by at least one successful exchange, with no allow-list.
 | `PUT /{id}/billing-profile` | `customers:billing-manage` + `customers:view` |
 | `PUT /{id}/owner` | `customers:update` + `customers:view` |
 | `GET /assignable-users` | `customers:view` |
+| `GET /groups` | `customers:view` |
+| `POST /groups`, `PUT /groups/{groupId}`, `DELETE /groups/{groupId}` | `customers:update` |
+| `PUT /{id}/group` | `customers:update` + `customers:view` |
 | `PUT /{id}/tags` | `customers:update` + `customers:view` |
 | `GET /tags` | `customers:view` |
 | `POST /tags` | `customers:update` |
