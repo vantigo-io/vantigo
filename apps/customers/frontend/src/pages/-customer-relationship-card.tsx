@@ -6,6 +6,7 @@ import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   ApiConflictError,
+  ApiValidationError,
   type CustomerGroupRef,
   type CustomerResponse,
   customerQueryOptions,
@@ -124,9 +125,28 @@ export const CustomerRelationshipCard = ({ customerId, canEdit }: { customerId: 
         setConflict(true);
         return;
       }
+      if (error instanceof ApiValidationError) {
+        // The one field error this PUT has: the group was deleted between the
+        // vocabulary read and the save. The field's message says so (the
+        // problem's title only says the body was wrong), and the vocabulary is
+        // read again so the vanished group stops being offered.
+        notifications.show({
+          color: "red",
+          title: t("groupCouldNotBeSaved"),
+          message: error.fieldErrors.groupId ?? error.message,
+        });
+        queryClient.invalidateQueries({ queryKey: customerGroupsQueryOptions().queryKey });
+        return;
+      }
       notifications.show({ color: "red", title: t("groupCouldNotBeSaved"), message: error.message });
     },
   });
+
+  // The owner and the group both send the revision read off the query, so a
+  // second save sent while the first is in flight carries the revision the
+  // first is about to replace — and earns a 409 nobody else caused. Both
+  // controls hold until either save has answered.
+  const rowSavePending = ownerMutation.isPending || groupMutation.isPending;
 
   return (
     <Card withBorder padding="lg" radius="md">
@@ -178,7 +198,7 @@ export const CustomerRelationshipCard = ({ customerId, canEdit }: { customerId: 
           <OwnerPicker
             value={customer.owner?.userId ?? null}
             selected={customer.owner}
-            disabled={ownerMutation.isPending}
+            disabled={rowSavePending}
             onChange={(value) => ownerMutation.mutate(value)}
           />
         )}
@@ -191,7 +211,7 @@ export const CustomerRelationshipCard = ({ customerId, canEdit }: { customerId: 
         {canEdit && (
           <GroupSelect
             group={customer.group}
-            disabled={groupMutation.isPending}
+            disabled={rowSavePending}
             onChange={(value) => groupMutation.mutate(value)}
           />
         )}
@@ -337,9 +357,10 @@ const TagsEditor = ({ customerId, tags }: { customerId: number; tags: CustomerTa
  * and "no group" is a choice a person makes rather than a cleared field.
  *
  * The customer's OWN group seeds the option list and the vocabulary widens it,
- * for the tags editor's reason: a `Select` renders the raw value of a selected
- * option its `data` does not describe, so without this the field reads as a uuid
- * until the vocabulary lands, and for good if it fails.
+ * for the tags editor's reason: a `Select` renders nothing for a value its
+ * `data` does not describe, so without this the field reads blank until the
+ * vocabulary lands, for good if it fails, and whenever the vocabulary no longer
+ * holds the customer's group.
  */
 const NO_GROUP = "";
 

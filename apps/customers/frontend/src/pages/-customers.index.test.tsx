@@ -546,6 +546,44 @@ describe("CustomersPage, owner and tags", () => {
     expect(screen.queryByRole("button", { name: "Manage groups" })).not.toBeInTheDocument();
   });
 
+  it("drops a groupId the loaded vocabulary does not know", async () => {
+    // The Tag filter's dead end, arrived at through a group: a bookmarked link
+    // to a group deleted since would narrow the list to nothing while the Group
+    // filter sat blank, since the Select renders nothing for a value none of its
+    // options describes.
+    stubFetch([ownedRow]);
+    router.search = { page: 1, search: "", groupId: "6f1a7c3a-0000-0000-0000-000000000000" };
+    renderPage();
+    await screen.findByText("Equinor");
+
+    await waitFor(() =>
+      expect(router.navigate).toHaveBeenCalledWith(
+        expect.objectContaining({ search: expect.objectContaining({ groupId: undefined, page: 1 }) }),
+      ),
+    );
+  });
+
+  it("keeps a known groupId, and No group, once the vocabulary has landed", async () => {
+    // `none` is a value the vocabulary never holds, so the repair must let it be.
+    stubFetch([ownedRow]);
+    router.search = { page: 1, search: "", groupId: "none" };
+    const { unmount } = renderPage();
+    await screen.findByText("Equinor");
+    // The select reading a vocabulary name proves the vocabulary is in.
+    await userEvent.click(screen.getByRole("combobox", { name: "Group" }));
+    expect(await screen.findByRole("option", { name: "Retail" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Group" })).toHaveValue("No group");
+    expect(router.navigate).not.toHaveBeenCalled();
+    unmount();
+
+    stubFetch([ownedRow]);
+    router.search = { page: 1, search: "", groupId: "g1" };
+    renderPage();
+    await screen.findByText("Equinor");
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Group" })).toHaveValue("Retail"));
+    expect(router.navigate).not.toHaveBeenCalled();
+  });
+
   it("drops a deleted group from the URL when the list was filtered by it", async () => {
     // The group is gone, so `groupId=g2` would narrow the list by an id no
     // customer can carry while the Group filter sat on a name nobody has.

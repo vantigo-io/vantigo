@@ -79,6 +79,7 @@ const typeKey: Record<string, string> = {
   "customer.type_changed": "customerTypeChangedEvent",
   "customer.owner_changed": "customerOwnerChangedEvent",
   "customer.tags_changed": "customerTagsChangedEvent",
+  "customer.group_changed": "customerGroupChangedEvent",
   "customer.contact_attached": "contactLinked",
   "customer.contact_relationship_updated": "contactRelationshipUpdated",
   "customer.contact_detached": "contactUnlinked",

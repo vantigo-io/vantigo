@@ -7,6 +7,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { syncCustomerRevision } from "../api/customers";
 import { CustomerRelationshipCard } from "./-customer-relationship-card";
 
+vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
+
+import { notifications } from "@mantine/notifications";
+
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -48,9 +52,15 @@ const groupRows = [
   { id: "g2", name: "Key accounts", customerCount: 0 },
 ];
 
-const stubFetch = (options: { customer?: unknown; tagsFail?: boolean } = {}) => {
+// `hold` names a PUT (by its URL's last segment) that never answers, so a test
+// can look at the card while that save is still in flight.
+const stubFetch = (
+  options: { customer?: unknown; tagsFail?: boolean; groups?: unknown[]; hold?: "owner" | "group" } = {},
+) => {
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    if (init?.method === "PUT" && options.hold && url.endsWith(`/${options.hold}`))
+      return new Promise<Response>(() => {});
     if (init?.method === "PUT" && url.endsWith("/owner"))
       return Promise.resolve(jsonResponse({ ...ownedBody, revision: 4 }));
     if (init?.method === "PUT" && url.endsWith("/group"))
@@ -64,7 +74,7 @@ const stubFetch = (options: { customer?: unknown; tagsFail?: boolean } = {}) => 
     if (url.startsWith("/api/v1/customers/assignable-users")) {
       return Promise.resolve(jsonResponse([{ userId: "u2", displayName: "Ola Nordmann" }]));
     }
-    if (url === "/api/v1/customers/groups") return Promise.resolve(jsonResponse(groupRows));
+    if (url === "/api/v1/customers/groups") return Promise.resolve(jsonResponse(options.groups ?? groupRows));
     if (url === "/api/v1/customers/tags")
       return Promise.resolve(options.tagsFail ? jsonResponse({ title: "Boom" }, 500) : jsonResponse(tagRows));
     return Promise.resolve(jsonResponse(options.customer ?? customerBody));
@@ -102,6 +112,7 @@ describe("CustomerRelationshipCard", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    vi.clearAllMocks();
   });
 
   it("names the owner and shows the tag chips", async () => {
@@ -437,5 +448,87 @@ describe("CustomerRelationshipCard", () => {
     await userEvent.click(screen.getByRole("combobox", { name: "Group" }));
     await userEvent.click(await screen.findByRole("option", { name: "No group" }));
     expect(await screen.findByText("Customer changed")).toBeInTheDocument();
+  });
+  it("removes the customer from its group with null, not the No-group row's empty value", async () => {
+    // "No group" is the "" sentinel inside the Select; "" on the wire would be
+    // an invalid uuid, so the mapping to null is what this pins.
+    const fetchMock = stubFetch({ customer: ownedBody });
+    renderCard({ canEdit: true });
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Group" })).toHaveValue("Retail"));
+    await userEvent.click(screen.getByRole("combobox", { name: "Group" }));
+    await userEvent.click(await screen.findByRole("option", { name: "No group" }));
+
+    await waitFor(() => expect(putsTo(fetchMock, "/api/v1/customers/1001/group")).toHaveLength(1));
+    const [, init] = putsTo(fetchMock, "/api/v1/customers/1001/group")[0];
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({ groupId: null, revision: 3 });
+  });
+
+  it("keeps the customer's own group on offer when the vocabulary no longer holds it", async () => {
+    // Retail is the customer's group but the vocabulary answered without it (a
+    // delete racing this read): the field must still name it, not read blank.
+    stubFetch({ customer: ownedBody, groups: [groupRows[1]] });
+    renderCard({ canEdit: true });
+    await userEvent.click(await screen.findByRole("combobox", { name: "Group" }));
+    // Key accounts on offer is the vocabulary having landed.
+    expect(await screen.findByRole("option", { name: "Key accounts" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Retail" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Group" })).toHaveValue("Retail");
+  });
+
+  it("holds both revision-carrying controls while either save is in flight", async () => {
+    // The owner and the group both send the revision read off the query; a
+    // second save sent before the first answers carries the revision the first
+    // is about to replace, and earns a 409 nobody else caused.
+    stubFetch({ customer: ownedBody, hold: "owner" });
+    renderCard({ canEdit: true });
+    await userEvent.click(await screen.findByLabelText("Clear owner"));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Group" })).toBeDisabled());
+    cleanup();
+
+    stubFetch({ customer: ownedBody, hold: "group" });
+    renderCard({ canEdit: true });
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Group" })).toHaveValue("Retail"));
+    await userEvent.click(screen.getByRole("combobox", { name: "Group" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Key accounts" }));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Owner" })).toBeDisabled());
+  });
+
+  it("names the field's reason when the group is gone by the time it is saved, and reads the vocabulary again", async () => {
+    // A group deleted between the vocabulary read and the save is a field error
+    // on groupId (the customer exists; the body is what is wrong). Its title is
+    // the problem's, so the field message is the one worth showing — and the
+    // vocabulary is read again so the vanished group stops being offered.
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "PUT" && url.endsWith("/group"))
+        return Promise.resolve(
+          jsonResponse(
+            {
+              title: "Invalid customer group",
+              status: 400,
+              errors: { groupId: ["Customer group g2 does not exist"] },
+            },
+            400,
+          ),
+        );
+      if (url === "/api/v1/customers/groups") return Promise.resolve(jsonResponse(groupRows));
+      if (url === "/api/v1/customers/tags") return Promise.resolve(jsonResponse(tagRows));
+      if (url.startsWith("/api/v1/customers/assignable-users")) return Promise.resolve(jsonResponse([]));
+      return Promise.resolve(jsonResponse(ownedBody));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const vocabularyReads = () =>
+      fetchMock.mock.calls.filter(([u, init]) => String(u) === "/api/v1/customers/groups" && !init?.method).length;
+    renderCard({ canEdit: true });
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Group" })).toHaveValue("Retail"));
+    await userEvent.click(screen.getByRole("combobox", { name: "Group" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Key accounts" }));
+
+    await waitFor(() =>
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({ color: "red", message: "Customer group g2 does not exist" }),
+      ),
+    );
+    await waitFor(() => expect(vocabularyReads()).toBe(2));
   });
 });

@@ -101,6 +101,24 @@ describe("customerBillingProfileQueryOptions", () => {
     expect(result).toEqual(profile);
   });
 
+  it.each([
+    ["carries the group's own term through", { paymentTermsDays: 30 }, 30],
+    // A group that decides no term answers its name and nothing else: the
+    // inner key is absent, not null, and has to leave this file as null — not
+    // undefined, which toStrictEqual tells apart.
+    ["fills in a term the group does not decide with null", {}, null],
+  ])("groupDefault %s", async (_name, term, expected) => {
+    const group = { id: "g1", name: "Retail" };
+    stubFetch(
+      vi.fn().mockResolvedValue(jsonResponse(200, { revision: 3, warnings: [], groupDefault: { group, ...term } })),
+    );
+
+    const options = customerBillingProfileQueryOptions(1001);
+    const result = await (options.queryFn as (context: unknown) => Promise<unknown>)({ signal: undefined });
+
+    expect(result).toStrictEqual({ ...profile, groupDefault: { group, paymentTermsDays: expected } });
+  });
+
   it("normalises a stored peppolLookup, participantId and smpHost included", async () => {
     stubFetch(
       vi

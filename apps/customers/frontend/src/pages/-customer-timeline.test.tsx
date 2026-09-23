@@ -479,6 +479,36 @@ describe("CustomerTimeline", () => {
     expect(screen.getByText("Tags changed", { selector: "span" })).toBeInTheDocument();
   });
 
+  it("labels a group move and offers it in the Event types filter", async () => {
+    // The wire body a membership write produces: generated, with the snapshotted names in its summary.
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(
+        json({
+          data: [
+            {
+              id: 3,
+              provenance: "generated",
+              eventType: "customer.group_changed",
+              producer: "customers",
+              occurredOn: "2026-09-23",
+              occurredAt: "2026-09-23T10:00:00Z",
+              summary: "Moved to group Retail",
+              payload: { customerId: 42, before: null, after: { groupId: "g1", name: "Retail" } },
+              currentRevision: 1,
+              createdAt: "2026-09-23T10:00:00Z",
+              updatedAt: "2026-09-23T10:00:00Z",
+              actorKind: "user",
+            },
+          ],
+        }),
+      ),
+    );
+    await renderTimeline(fetchMock);
+    expect(await screen.findByText("Group changed", { selector: "p" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("combobox", { name: "Event types" }));
+    expect(screen.getByText("Group changed", { selector: "span" })).toBeInTheDocument();
+  });
+
   it("serializes the applied date range with repeated event types", async () => {
     const fetchMock = vi.fn().mockResolvedValue(json({ data: [], nextCursor: null }));
     stubFetch(fetchMock);

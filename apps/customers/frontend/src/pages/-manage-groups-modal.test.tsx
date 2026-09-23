@@ -2,6 +2,7 @@ import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ManageGroupsModal } from "./-manage-groups-modal";
 
@@ -18,9 +19,17 @@ const groupRows = [
   { id: "g2", name: "Key accounts", customerCount: 0 },
 ];
 
-const stubFetch = (options: { createConflict?: boolean; createInvalid?: boolean } = {}) => {
+const stubFetch = (
+  options: { createConflict?: boolean; createInvalid?: boolean; deleteInUse?: boolean; list?: "hang" | "fail" } = {},
+) => {
   const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
-    if (init?.method === "DELETE") return Promise.resolve(new Response(null, { status: 204 }));
+    if (init?.method === "DELETE")
+      return Promise.resolve(
+        options.deleteInUse
+          ? // Somebody moved a customer in between the list and the click.
+            jsonResponse({ title: "Customer group in use", status: 409, code: "group_in_use" }, 409)
+          : new Response(null, { status: 204 }),
+      );
     if (init?.method === "POST" && options.createInvalid) {
       // The problem body the server answers for a term out of range, keyed by
       // the REQUEST's field name, which is not the form's.
@@ -40,6 +49,8 @@ const stubFetch = (options: { createConflict?: boolean; createInvalid?: boolean 
     }
     if (init?.method === "PUT")
       return Promise.resolve(jsonResponse({ id: "g1", name: "Retail chains", customerCount: 2 }));
+    if (options.list === "hang") return new Promise<Response>(() => {});
+    if (options.list === "fail") return Promise.resolve(jsonResponse({ title: "Boom" }, 500));
     return Promise.resolve(jsonResponse(groupRows));
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -54,6 +65,10 @@ const renderModal = () =>
       </QueryClientProvider>
     </MantineProvider>,
   );
+
+// The GETs of the vocabulary this test made, by method and URL.
+const listReads = (fetchMock: ReturnType<typeof stubFetch>) =>
+  fetchMock.mock.calls.filter(([u, init]) => String(u) === "/api/v1/customers/groups" && !init?.method);
 
 describe("ManageGroupsModal", () => {
   afterEach(() => {
@@ -187,5 +202,66 @@ describe("ManageGroupsModal", () => {
     expect(await screen.findByRole("button", { name: "Create group" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Group name" })).toHaveValue("");
+  });
+  it("reads the list again when a delete is refused, so the row stops offering it", async () => {
+    // The row's count said 0 and its delete was enabled; the server says the
+    // group is in use. Left as it was, the next click fails the same way.
+    const fetchMock = stubFetch({ deleteInUse: true });
+    renderModal();
+    await userEvent.click(await screen.findByRole("button", { name: "Delete Key accounts" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete group" }));
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.filter(([, init]) => (init as RequestInit)?.method === "DELETE")).toHaveLength(1),
+    );
+    await waitFor(() => expect(listReads(fetchMock)).toHaveLength(2));
+  });
+
+  it("says nothing about an empty vocabulary while it is loading", async () => {
+    stubFetch({ list: "hang" });
+    renderModal();
+    await screen.findByRole("dialog");
+    expect(screen.queryByText("No groups yet.")).not.toBeInTheDocument();
+  });
+
+  it("says the list failed to load rather than that there are no groups", async () => {
+    // "No groups yet" on a failed read would invite creating a name that exists.
+    stubFetch({ list: "fail" });
+    renderModal();
+    expect(await screen.findByText("Could not load the groups.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    expect(screen.queryByText("No groups yet.")).not.toBeInTheDocument();
+  });
+
+  it("opens on the list and the create form again after being closed mid-edit", async () => {
+    // The modal's component outlives a close; an edit or a delete left open
+    // must not greet the next opening, seeded from what may be a stale list.
+    stubFetch();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const Harness = () => {
+      const [opened, setOpened] = useState(true);
+      return (
+        <MantineProvider env="test">
+          <QueryClientProvider client={client}>
+            <button type="button" onClick={() => setOpened(true)}>
+              Reopen
+            </button>
+            <ManageGroupsModal opened={opened} onClose={() => setOpened(false)} />
+          </QueryClientProvider>
+        </MantineProvider>
+      );
+    };
+    render(<Harness />);
+    await userEvent.click(await screen.findByRole("button", { name: "Edit Retail" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete Key accounts" }));
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeInTheDocument();
+
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "Reopen" }));
+
+    expect(await screen.findByRole("button", { name: "Create group" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete group" })).not.toBeInTheDocument();
   });
 });
