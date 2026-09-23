@@ -97,7 +97,10 @@ describe("the customer row's revision across its editors", () => {
     await userEvent.click(within(contactDialog).getByRole("button", { name: /save changes/i }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 
-    await userEvent.click(await screen.findByLabelText("Edit billing profile"));
+    // The whole customer page renders here — every card, each with its own
+    // queries — and a save just before this triggers their refetches, so under
+    // a full-monorepo run the default one-second `findBy` timeout is tight.
+    await userEvent.click(await screen.findByLabelText("Edit billing profile", {}, { timeout: 5_000 }));
     const billingDialog = await screen.findByRole("dialog");
     await userEvent.click(within(billingDialog).getByRole("button", { name: /save changes/i }));
 
@@ -132,7 +135,10 @@ describe("the customer row's revision across its editors", () => {
     });
     renderPage(fetchMock);
 
-    await userEvent.click(await screen.findByLabelText("Edit billing profile"));
+    // The whole customer page renders here — every card, each with its own
+    // queries — and a save just before this triggers their refetches, so under
+    // a full-monorepo run the default one-second `findBy` timeout is tight.
+    await userEvent.click(await screen.findByLabelText("Edit billing profile", {}, { timeout: 5_000 }));
     const billingDialog = await screen.findByRole("dialog");
     await userEvent.click(within(billingDialog).getByRole("button", { name: /save changes/i }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());

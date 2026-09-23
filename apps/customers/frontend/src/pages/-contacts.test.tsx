@@ -348,6 +348,51 @@ describe("customer contacts card", () => {
     expect(await screen.findByText(/was created, but could not be added to the customer/i)).toBeInTheDocument();
   });
 
+  it("shows a create step's own validation error on the contact's own field, not the connection one", async () => {
+    // createContact's 400 is keyed to the contact's own `email` — the same
+    // field name the connection form uses for "Email at this customer". Only
+    // the attach step's 400 may be remapped onto the connection-prefixed
+    // paths (mapConnectionErrors), so this proves a create-step 400 lands on
+    // the contact's own Email input, unmapped, and the attach never even runs.
+    const createSpy = vi.fn<(init?: RequestInit) => Response>(() =>
+      jsonResponse(400, {
+        title: "Invalid contact",
+        status: 400,
+        errors: { email: ["Email is not valid"] },
+      }),
+    );
+    const attachSpy = vi.fn<(init?: RequestInit) => Response>(() => jsonResponse(200, {}));
+
+    stubFetch({
+      "GET /api/v1/customers/2002": () => jsonResponse(200, customer),
+      "GET /api/v1/customers/2002/billing-profile": () => jsonResponse(200, emptyBillingProfile),
+      "GET /api/v1/customers/2002/addresses": () => jsonResponse(200, { data: [] }),
+      "GET /api/v1/customers/2002/contacts": () => jsonResponse(200, { data: [] }),
+      "GET /api/v1/customers/contacts": () => jsonResponse(200, paginated([])),
+      "POST /api/v1/customers/contacts": createSpy,
+      "POST /api/v1/customers/2002/contacts": attachSpy,
+    });
+
+    await renderRoute("/customers/2002", "Refsdal Holding");
+
+    await userEvent.click(await screen.findByRole("button", { name: /add contact/i }));
+
+    const modal = await screen.findByRole("dialog");
+    await userEvent.type(within(modal).getByLabelText(/search for a contact/i), "Nobody");
+    await userEvent.click(await screen.findByText(/no contact found/i));
+
+    await userEvent.type(within(modal).getByLabelText(/last name/i), "Badmail");
+    await userEvent.type(within(modal).getByLabelText(/^email$/i), "not-an-email");
+    await userEvent.type(within(modal).getByLabelText(/^title$/i), "Custodian");
+    await userEvent.click(within(modal).getByRole("button", { name: /^add contact$/i }));
+
+    await waitFor(() => expect(createSpy).toHaveBeenCalled());
+    expect(attachSpy).not.toHaveBeenCalled();
+    expect(await within(modal).findByText("Email is not valid")).toBeInTheDocument();
+    expect(within(modal).getByLabelText(/^email$/i)).toHaveAttribute("aria-invalid", "true");
+    expect(within(modal).getByLabelText(/^email at this customer$/i)).not.toHaveAttribute("aria-invalid", "true");
+  });
+
   it("clears a server-side roles error the moment a role is ticked or unticked, not only the title error", async () => {
     // -connection.tsx only cleared the `title` field error on a role tick, so
     // a `roles` error from the server (attachExisting already routes these

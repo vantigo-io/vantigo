@@ -329,16 +329,18 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
       } catch (error) {
         if (error instanceof ApiValidationError) {
           // The contact exists at this point but the attach was refused for a
-          // field reason — say so here (the generic wrap below would hide it
-          // from the `instanceof` check in onError), then rethrow the
-          // original so the fields get routed through mapConnectionErrors the
-          // same way attachExisting's onError does.
+          // field reason — say so here, then rethrow marked as attach-scoped:
+          // only a ConnectionValidationError's fields get routed through
+          // mapConnectionErrors, because attach and create share field names
+          // (title/roles/phone/email) that mean different things depending on
+          // which step refused them — createContact's own `email`/`phone`
+          // must land on the contact's own inputs, not the connection ones.
           notifications.show({
             color: "red",
             title: t("contactCouldNotBeCreated"),
-            message: `The contact "${formatContactName(contact)}" was created, but could not be added to the customer.`,
+            message: t("contactCreatedNotAttached", { name: formatContactName(contact) }),
           });
-          throw error;
+          throw new ConnectionValidationError(error);
         }
         // The contact exists at this point — make that explicit so it is not
         // silently orphaned when only the association fails.
@@ -354,8 +356,14 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
     },
     onSuccess,
     onError: (error) => {
-      if (error instanceof ApiValidationError) {
+      if (error instanceof ConnectionValidationError) {
         form.setErrors(mapConnectionErrors(error));
+        return;
+      }
+      if (error instanceof ApiValidationError) {
+        // A create-step 400 — its `email`/`phone`/etc. name the contact's own
+        // fields, not the connection's, so these land unmapped.
+        form.setErrors(error.fieldErrors);
         return;
       }
       notifications.show({ color: "red", title: t("contactCouldNotBeCreated"), message: error.message });
@@ -506,6 +514,18 @@ const mapConnectionPath = (path: string) =>
 /** Maps attach validation errors (keyed title/roles/phone/email) onto the prefixed form paths. */
 const mapConnectionErrors = (error: ApiValidationError) =>
   Object.fromEntries(Object.entries(error.fieldErrors).map(([field, message]) => [mapConnectionPath(field), message]));
+
+/**
+ * Marks a 400 as coming from the attach step, not from creating the contact —
+ * the two share field names (title/roles/phone/email) that mapConnectionErrors
+ * must only ever apply to the attach's own.
+ */
+class ConnectionValidationError extends ApiValidationError {
+  constructor(cause: ApiValidationError) {
+    super(cause.message, cause.errors, cause.status);
+    this.name = "ConnectionValidationError";
+  }
+}
 
 /**
  * The attach form holds the contact's own fields beside the connection's, with
