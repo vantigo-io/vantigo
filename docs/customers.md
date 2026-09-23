@@ -64,6 +64,10 @@ a dependency of it.
 - **Tag** — a vocabulary word (`customers.tags`, unique case-insensitively) a
   customer's own set (`customers.customer_tags`) draws from; off the customer row,
   so a tag change carries no `revision`. See [Owner and tags](#owner-and-tags).
+- **Group** — a vocabulary word (`customers.customer_groups`, unique
+  case-insensitively) a customer belongs to at most one of, on `group_id` on
+  `customers.customers` itself (so it shares the row's `revision`), carrying a
+  default payment term every member inherits. See [Groups](#groups).
 - **Timeline entry** — one row per customer event, generated or manual, each with its
   own revision history. See [The timeline](#the-timeline).
 
@@ -665,12 +669,25 @@ boundary at identity's users and therefore has none. Being on the row is the
 decision everything else follows from: the group **shares the row's `revision`**,
 so `PUT /customers/{id}/group` is an ordinary guarded write that a concurrent
 edit cannot lose, and it is the owner's PUT step for step — (1) the customer's
-404; (2) a stale `revision`, 409, ahead of the no-op check, so resubmitting the
-current group with a stale revision is still a conflict; (3) the no-op, nil-safe,
-which writes nothing at all and resolves no actor; (4) an unknown `groupId`, a
-400 field error on `groupId` rather than a 404, because the customer exists and
-the caller may edit it; (5) the guarded write and `customer.group_changed` in one
+404; (2) a `revision` the **caller** supplied that disagrees with the row just
+read, 409, ahead of the no-op check, so resubmitting the current group with a
+stale revision is still a conflict; (3) the no-op, nil-safe, which writes
+nothing at all and resolves no actor; (4) an unknown `groupId`, a 400 field
+error on `groupId` rather than a 404, because the customer exists and the
+caller may edit it; (5) the guarded write and `customer.group_changed` in one
 transaction.
+
+Unlike the owner's PUT, the customer row and its current group membership come
+from two separate, unlocked reads, so a write can land between them — the
+handler compares the revision each read saw. A disagreement there is a
+different question from step (2)'s: if the caller **supplied** a `revision`,
+it is the same stale-revision 409, since the row has by definition moved past
+what they read; if the caller supplied **none** — asking for the change to
+apply unconditionally, the owner's own rule for an omitted revision — refusing
+it outright would break that rule, so both reads run again instead, up to
+three attempts, and the handler proceeds with the first consistent pair. Only
+a customer still changing under every attempt gets the 409: the honest answer
+that it kept moving underneath the request.
 
 **Only this sub-resource sets a customer's group.** `POST /customers` and
 `PUT /customers/{id}` do not take a `groupId` — the owner's own rule.
@@ -741,7 +758,7 @@ Generated event types: `customer.created`, `customer.updated`, `customer.type_ch
 `customer.contact_removed`, `customer.contact_info_updated`,
 `customer.billing_profile_updated`, `customer.address_added`,
 `customer.address_updated`, `customer.address_removed`, `customer.peppol_lookup`,
-`customer.owner_changed`, `customer.tags_changed`.
+`customer.owner_changed`, `customer.tags_changed`, `customer.group_changed`.
 These are immutable — there is no edit or delete endpoint for a generated entry.
 
 - `customer.peppol_lookup` (see [Peppol lookup](#peppol-lookup)) is recorded only
@@ -762,6 +779,11 @@ These are immutable — there is no edit or delete endpoint for a generated entr
   own set did — and both are already in `-customer-timeline.tsx`'s `typeKey`: a
   generated type missing from that map is unfilterable in the frontend's Event
   types filter, the one coupling between a new backend event and the UI.
+- `customer.group_changed` (`{customerId, before, after}`, each side `{groupId,
+  name}` or null, the name **snapshotted** at the time so a later rename never
+  rewrites the entry) is [Groups](#groups)' own generated event, recorded only
+  when the group actually changed. Its summary is one of three: "Moved to group
+  Retail", "Moved from Retail to Key accounts" or "Removed from group Retail".
 - Each address event's payload always carries `addressId`, `type`, `label` and a
   one-line `display` rendering (e.g. "Storgata 1, 0155 Oslo, NO");
   `customer.address_updated` also carries `before`/`after`/`changes`, the same shape
@@ -975,20 +997,22 @@ moving one means editing its entry and naming a new assignee.
 ## The list endpoint and search
 
 `GET /api/v1/customers` supports paging (`page`, `pageSize` 1–100, default 25),
-`status`, `type`, `includeArchived`, `search`, `ownerId`, `tagId`, and `sortBy`
-(`id`, `name`, `customerNumber`, `createdAt`, `updatedAt`, always tie-broken by
-`id`) with `sortDirection` (`asc`/`desc`).
+`status`, `type`, `includeArchived`, `search`, `ownerId`, `tagId`, `groupId`, and
+`sortBy` (`id`, `name`, `customerNumber`, `createdAt`, `updatedAt`, always
+tie-broken by `id`) with `sortDirection` (`asc`/`desc`).
 
 - Naming a `status` shows exactly that status — `status=archived` shows archived
   customers with no need for `includeArchived`. Leaving `status` off keeps the old
   default: archived hidden unless `includeArchived=true`.
-- [`ownerId`](#the-owner) (a user id, `me` or `none`) and [`tagId`](#tags) (a tag
-  id) narrow the list to one owner or one tag — anything else is a 400 worded
-  `'ownerId' must be a user id, 'me' or 'none', but was '…'.` or `'tagId' must be
-  a tag id, but was '…'.`. Both are applied to the count and the page from one
-  `WHERE` clause kept by hand in step with each other, the same fragment `GetCustomers`
-  and `CountCustomers` each carry (`queries/customers.sql`), so a filtered page
-  and its total never disagree.
+- [`ownerId`](#the-owner) (a user id, `me` or `none`), [`tagId`](#tags) (a tag
+  id) and [`groupId`](#groups) (a group id or `none`) narrow the list to one
+  owner, one tag or one group — anything else is a 400 worded `'ownerId' must be
+  a user id, 'me' or 'none', but was '…'.`, `'tagId' must be a tag id, but was
+  '…'.` or `'groupId' must be a group id or 'none', but was '…'.`. All three are
+  applied to the count and the page from one `WHERE` clause kept by hand in step
+  with each other, the same fragment `GetCustomers` and `CountCustomers` each
+  carry (`queries/customers.sql`), so a filtered page and its total never
+  disagree.
 - **`search` never reaches data the caller could not otherwise see** — with one
   exception it deliberately does not gate. It always matches the name, the customer
   number, and, since the invoice-ready customer branch, the customer's own `email`
@@ -2236,8 +2260,8 @@ existing endpoints and its two existing permissions — no new paths, no new key
 — and a promotion caused by somebody else's write is recorded on the promoted
 contact with the user who caused it. Still ahead in the phase: a follow-up date
 and assignee on a timeline entry, feeding `/stats/attention` and a "my
-follow-ups" view; customer groups that carry defaults; and attachments on a
-customer and its timeline entries, once the storage module has a model for it.
+follow-ups" view; and attachments on a customer and its timeline entries, once
+the storage module has a model for it.
 The role vocabulary is deliberately **three** values, the same "unpaged, on
 purpose" bet the tag vocabulary makes — a wider list (technical, executive
 sponsor) is a value change rather than a migration, and the free-text title

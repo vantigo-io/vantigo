@@ -111,7 +111,7 @@ consumer that resolves a price by group must not read the billing profile for it
   terms (days, blank = none), member count; create, rename/re-default, delete — the
   delete control disabled with the reason when `customerCount > 0`; 409
   `group_exists` recovered as the tags' `tag_exists` is. Opened from the list
-  page's new **Group** filter (`groupId` ↔ URL, "All groups" / "No group" /
+  page's new **Group** filter (`groupId` ↔ URL, "All" (the other filters' word) / "No group" /
   each group) behind `canEdit`.
 - **Billing card**: under the payment terms field, one line from `groupDefault` —
   "Inherits {n} days from {group}" when own is unset, "Group default {n} days —
