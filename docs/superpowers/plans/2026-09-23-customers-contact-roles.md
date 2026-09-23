@@ -27,7 +27,7 @@
 - **The timeline actor is resolved before the transaction and only when a write will happen** (`s.actorFor(ctx, generatedFallbackActor)`, `actor.go`). No directory call ever runs inside a transaction or under a lock.
 - **Contact-association writes touch no `revision`** — `customers.customers_contacts` and `customers.customer_contact_roles` are off the customer row, exactly as addresses and tags are. No write here takes a `revision`, accepts one, or bumps one.
 - Both catalogs (`en` and `nb`) of `apps/customers/frontend/src/i18n.ts` get every new string; `mise exec -- bun run translations:check` and `mise exec -- bun run i18n:test` must pass.
-- **Never assert "the last fetch"** in a frontend test — debounced pickers run on their own clock and CI is slow. Filter `fetchMock.mock.calls` (or the per-route spy's own `mock.calls`) by method and URL. `stubFetch` from `src/test/fetch.ts` **returns the business mock** (`businessMock.calls` / `.actualCalls`), so a test that needs every call reads the returned value rather than reaching for `vi.mocked(fetch)`.
+- **Never assert "the last fetch"** in a frontend test — debounced pickers run on their own clock and CI is slow. Filter by method and URL instead. Two different call lists exist and they are not interchangeable: a **per-route `vi.fn` spy** handed to `stubFetch`'s handler map has `spy.mock.calls`, where element `[0]` is the `RequestInit` (the handler's only argument); the value **`stubFetch` itself returns** (`src/test/fetch.ts`) is not a `vi.fn` wrapper and has no `.mock` — it carries plain `calls` (everything, session bootstrap included) and `actualCalls` (everything but the bootstrap) arrays of `[input, init]` pairs. Use `spy.mock.calls[0][0]` for a spied route and `returned.actualCalls.find(([url, init]) => …)` for anything else.
 - A Mantine `Select`/`MultiSelect` is queried as `getByRole("combobox", { name })`, never as a textbox; a plain `TextInput` is a textbox; a `Checkbox` is `getByRole("checkbox", { name })`; a `Switch` renders `<input type="checkbox" role="switch">` in Mantine 9.5, so it is `getByRole("switch", { name })`. Mantine popovers/modals/selects need `<MantineProvider>` (the existing route tests already wrap in one).
 - No new generated timeline **event type** is introduced, so `-customer-timeline.tsx`'s `typeKey` needs no entry: `customer.contact_attached`, `customer.contact_relationship_updated`, `customer.contact_detached` and `customer.contact_removed` are all already in it.
 - After any `openapi/*.yaml`, `queries/*.sql` or migration change: `cd apps/server && mise exec -- go generate ./...` (a second run must show no new diff), then from the repo root `mise exec -- bun run gen:client` for a yaml change. Commit every generated file (`apps/server/internal/openapi/specs/customers.yaml`, `internal/customers/gen/api.gen.go`, `internal/customers/store/*.go`, each changed `api-schema.d.ts`). `openapi/COVERAGE.md` does **not** move — this delivery adds no operation — and `KnownServeMuxConflicts` is untouched for the same reason.
@@ -36,6 +36,7 @@
 - After any exported Go signature change: `mise exec -- go vet ./...` and grep every caller including tests and fakes. `contracts.CustomerDirectory` is **not** touched by this delivery (the spec parks `PrimaryContact` until Invoices asks), so no fake changes.
 - Match the surrounding code: comment density and voice (these files explain *why*), naming, error wording, test style.
 - Every new test must be shown able to fail (remove the guard, see red, restore). Say so in the report.
+- **Every Go listing in this plan is written for readability, not to gofmt's alignment.** Run `mise exec -- gofmt -l <dir>` before each commit that touches Go, `gofmt -w` whatever it names, and commit the formatted version — `golangci-lint` fails on unformatted code. The same applies to the TypeScript listings and `bunx biome check .`.
 - **One implementer commits at a time.** If two agents share the tree, the second writes and verifies but does not commit.
 
 ---
@@ -66,7 +67,8 @@
 
 **Files:**
 - Create: `apps/server/internal/db/migrations/00025_customers_contact_roles.sql`, `apps/server/internal/customers/queries/contact_roles.sql`
-- Modify: `apps/server/internal/customers/sqlc.yaml` (the `schema:` list), `apps/server/internal/db/schema_test.go` (`wantTables` plus three assertions in `TestCustomersBaseline_AppliesAndIsIdempotent`), `apps/server/internal/customers/queries/contacts.sql`, `apps/server/internal/customers/contacts.go`, `apps/server/internal/customers/contacts_timeline.go`, `apps/server/internal/customers/harness_test.go` (the `associate` fixture)
+- Modify: `apps/server/internal/customers/sqlc.yaml` (the `schema:` list), `apps/server/internal/db/schema_test.go` (`wantTables` plus three assertions in `TestCustomersBaseline_AppliesAndIsIdempotent`), `apps/server/internal/customers/queries/contacts.sql`, `apps/server/internal/customers/contacts.go`, `apps/server/internal/customers/harness_test.go` (the `associate` fixture)
+- Deliberately **not** modified: `apps/server/internal/customers/contacts_timeline.go` — its `role string` parameter is still the title and the payload's `role` key is still what the corpus recorded, so nothing in it changes until Task 3
 - Generated: `apps/server/internal/customers/store/contact_roles.sql.go`, `store/contacts.sql.go`, `store/models.go`
 - Read first (do not change): `apps/server/internal/db/migrations/00024_customers_owner_tags.sql` (the migration voice), `apps/server/internal/customers/queries/addresses.sql:1-19` (`LockCustomer`), `apps/server/internal/customers/queries/addresses.sql:52-90` (the three statements the primary invariant is built from)
 
@@ -430,7 +432,27 @@ ORDER BY customer_id;
 cd /home/anders/projects/vantigo/vantigo/apps/server
 mise exec -- go generate ./... && mise exec -- go generate ./... && git status --short
 ```
-The second run must add no new diff. Then **read** `internal/customers/store/contact_roles.sql.go` and the changed parts of `internal/customers/store/contacts.sql.go` and `store/models.go`, and write down for yourself: which of the nine new queries took a bare argument and which a `…Params` struct (`ContactRolesForCustomer` and `ContactRolesForContact` take one bare `int32`; the rest take a struct), the exact field spellings (`ExcludeContactID`, `IsPrimary`, `Keep []string`, `Now time.Time`), and that `CountContactRoleHolders` returns `int64`. Later tasks are written against those names; where they differ, **follow the generated file**.
+**First, check that sqlc tracked the rename at all.** No migration in this repo has used `RENAME COLUMN` or `ALTER COLUMN … DROP NOT NULL` before (`grep -rn 'RENAME COLUMN\|DROP NOT NULL' apps/server/internal/db/migrations/` finds nothing), so sqlc's own DDL interpreter is being asked to do something this codebase has never asked it to do. Prove it did:
+
+```bash
+cd /home/anders/projects/vantigo/vantigo/apps/server
+grep -n 'Title\|Role' internal/customers/store/models.go | sed -n '/CustomersCustomersContact/,$p'
+grep -n 'type CustomersCustomersContact' -A 8 internal/customers/store/models.go
+```
+Expected: `CustomersCustomersContact` has `Title *string` and **no** `Role` field. Two failure modes to look for, and what each means:
+- `Role string` still there, or `Title string` (not a pointer): sqlc applied the `RENAME` but not the `DROP NOT NULL`, or neither.
+- `go generate` errors with a column-not-found on `cc.title`: sqlc did not apply the `RENAME` at all.
+
+**If either happens, express the rename as three statements instead** and regenerate — the observable schema is identical, and this is a pure preservation of data:
+
+```sql
+ALTER TABLE customers.customers_contacts ADD COLUMN title varchar(255);
+UPDATE customers.customers_contacts SET title = role;
+ALTER TABLE customers.customers_contacts DROP COLUMN role;
+```
+with the `Down` section becoming the mirror (`ADD COLUMN role varchar(255)`, `UPDATE … SET role = coalesce(title, '')`, `ALTER COLUMN role SET NOT NULL`, `DROP COLUMN title`). Note in the report which form was used and why. Task 1 Step 1's schema test passes under either form — it asserts the columns the schema ends with, not how it got there — and that is on purpose.
+
+Then **read** `internal/customers/store/contact_roles.sql.go` and the changed parts of `internal/customers/store/contacts.sql.go` and `store/models.go`, and write down for yourself: which of the nine new queries took a bare argument and which a `…Params` struct (`ContactRolesForCustomer` and `ContactRolesForContact` take one bare `int32`; the rest take a struct), the exact field spellings (`ExcludeContactID`, `IsPrimary`, `Keep []string`, `Now time.Time`), and that `CountContactRoleHolders` returns `int64`. Later tasks are written against those names; where they differ, **follow the generated file**.
 
 - [ ] **Step 9: Adapt every Go reader of the renamed column**
 
@@ -481,7 +503,7 @@ Comment out the `CREATE UNIQUE INDEX ux_customer_contact_roles_primary` line in 
 ### Task 2: The contract — `title` and `roles` on four schemas, `role` relaxed in two (D1, D3)
 
 **Files:**
-- Modify: `openapi/customers.yaml`
+- Modify: `openapi/customers.yaml`, `apps/server/internal/customers/contacts.go` (two call sites, so the package still compiles — this task's Step 5)
 - Generated: `apps/server/internal/openapi/specs/customers.yaml`, `apps/server/internal/customers/gen/api.gen.go`, `apps/customers/frontend/src/api-schema.d.ts` (and any other package's `api-schema.d.ts` that changes)
 - Read first (do not change): `openapi/customers.yaml:3-18` (`AttachCustomerContactRequest`), `:340-368` (`CustomerContactRequest`, `CustomerContactResponse`), `:668-682` (`GetContactCustomersContactCustomerResponse`), `:573-591` (`CustomerTagSummary` — the voice a new schema's `description` is written in)
 
@@ -491,7 +513,7 @@ Comment out the `CREATE UNIQUE INDEX ux_customer_contact_roles_primary` line in 
 
 - [ ] **Step 1: Add the two new schemas**
 
-The schema block is alphabetical. Insert `CustomerContactRole` and `CustomerContactRoleRequest` between `CustomerContactRequest` and `CustomerContactResponse` (so, after the `CustomerContactRequest` block ends and before the `CustomerContactResponse:` key), at the same indentation as their siblings — eight spaces for the schema name, twelve for `properties`:
+The schema block is sorted by key, and `CustomerContactResponse` sorts **before** `CustomerContactRole` (`Res` < `Rol`), so insert `CustomerContactRole` and `CustomerContactRoleRequest` **after** the `CustomerContactResponse` block ends and before the next key (`CustomerOwner`). Use the same indentation as their siblings — eight spaces for the schema name, twelve for `properties`. Generation rewrites `apps/server/internal/openapi/specs/customers.yaml` in sorted order anyway, so if the placement here is off, Step 4's second `go generate` shows it as a diff; putting it in the right place by hand keeps the source file and the generated one reading the same.
 
 ```yaml
         CustomerContactRole:
@@ -506,9 +528,10 @@ The schema block is alphabetical. Insert `CustomerContactRole` and `CustomerCont
                 - primary
             type: object
         CustomerContactRoleRequest:
-            description: One typed role to give a contact for a customer (typed contact roles design D2, D3). An omitted primary means false, and is only honoured once the role already has a holder: the first contact given a role is its primary whatever the request says. primary true on another contact demotes the current one; primary false on the contact that is the only or the primary holder is refused with a field error on roles.
+            description: "One typed role to give a contact for a customer (typed contact roles design D2, D3). primary is three-valued, and the three values mean different things: omitted on a role the contact ALREADY holds leaves its primary flag exactly as it is, so a request that replaces the role set without meaning to move anybody does not have to echo every flag back; omitted on a role the contact does NOT yet hold follows the first-holder rule (primary if nobody holds the role, otherwise not). true demotes whoever holds the role now. An explicit false on the contact that is the only or the primary holder is refused with a field error on roles — there is always a primary while anyone holds the role."
             properties:
                 primary:
+                    nullable: true
                     type: boolean
                 role:
                     type: string
@@ -569,7 +592,7 @@ The schema block is alphabetical. Insert `CustomerContactRole` and `CustomerCont
                     nullable: true
                     type: string
                 roles:
-                    description: The complete set of typed roles the contact is to hold for this customer (typed contact roles design D3). Omitted leaves the roles unchanged; an empty array clears them.
+                    description: The complete set of typed roles the contact is to hold for this customer (typed contact roles design D3). Omitted leaves the roles unchanged; an empty array clears them. A role listed without a primary keeps the primary flag it already has, so replacing the set is not an accidental demotion.
                     items:
                         $ref: '#/components/schemas/CustomerContactRoleRequest'
                     type: array
@@ -657,22 +680,34 @@ cd /home/anders/projects/vantigo/vantigo && mise exec -- bun run gen:client && g
 ```
 Then read `apps/server/internal/customers/gen/api.gen.go`'s `AttachCustomerContactRequest`, `CustomerContactRequest`, `CustomerContactResponse`, `GetContactCustomersContactCustomerResponse`, `CustomerContactRole` and `CustomerContactRoleRequest`, and confirm the shapes named in **Interfaces** above. If oapi-codegen spells the array field differently (a `*[]T` vs a `[]T`), **follow it** — Task 3's Go is written against `*[]T` because that is how `SafeCustomerResponse.Tags` generates from an identical declaration, and a mismatch here means adjusting Task 3's call sites, not the yaml.
 
-- [ ] **Step 5: Prove the corpus still validates**
+- [ ] **Step 5: Adapt the two call sites the relaxed `required:` just broke**
+
+Dropping `role` from the two request schemas' `required:` lists changes `Role string` to `Role *string` on `gen.AttachCustomerContactRequest` and `gen.CustomerContactRequest`, so `contacts.go` no longer compiles: `validateCustomerContactRequest(body.Role, …)` at line ~478 (`PostCustomersByIdContacts`) and line ~576 (`PutCustomersByIdContactsByContactId`) now pass a pointer where a string is wanted. This task's commit has to be green on its own, so both are adapted here, minimally — Task 3 replaces these handlers wholesale and this shim disappears with them:
+
+```go
+	assoc, errs := validateCustomerContactRequest(deref(body.Role), body.Phone, body.Email)
+```
+
+at both call sites. `deref` is `server.go:132` and turns a nil `*string` into `""`, which `validateContactRole` already refuses with the message the corpus recorded — so a body that omits `role` entirely behaves exactly as `{"role": ""}` did until Task 3 introduces `title` and the title-or-role rule. Nothing else in the file needs touching: `title` and `roles` are new fields nothing reads yet, and the responses' new fields are pointers that stay nil, so the server keeps answering exactly the four keys the corpus recorded.
+
+Confirm with the generated file which of the two fields really became a pointer before editing — if oapi-codegen kept `Role string` for either schema (it should not, but the generated file is the ground truth), leave that call site alone.
+
+- [ ] **Step 6: Prove the package compiles and the corpus still validates**
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo/apps/server
-mise exec -- go test -count=1 ./internal/openapi/... && mise exec -- go test -count=1 ./internal/customers/...
+mise exec -- gofmt -l ./internal/customers && mise exec -- go vet ./... && mise exec -- go test -count=1 ./internal/openapi/... && mise exec -- go test -count=1 ./internal/customers/...
 ```
-Expected: PASS. Two things this specifically proves:
+Expected: `gofmt -l` prints nothing, then PASS. Two things this specifically proves:
 - `TestRecordedExchangesMatchTheContract` still validates the corpus line `POST /api/v1/customers/1086/contacts` with body `{"contactId":1027,"role":"","email":"not-an-email"}` and status 400. Dropping `role` from `required` cannot break it (an empty string is still a valid `string`), and the recorded 400 is checked against the generic `HttpValidationProblemDetails`, so the message inside it is not pinned by the contract — only by this module's own tests.
 - Every GET list line in the corpus, whose items carry `role` and neither `title` nor `roles`, still validates, because neither new property joined a `required:` list.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo
 printf '%s\n\n%s\n\n%s\n' 'feat(customers): the contact-association contract learns title and typed roles' 'role stays accepted in both request bodies (now an optional alias of title) and stays required in both response bodies, so every recorded exchange still validates; title and roles are additive and optional even though the server always answers roles.' 'Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>' > /tmp/msg-roles-task2
-git add openapi/customers.yaml apps/server/internal/openapi/specs/customers.yaml apps/server/internal/customers/gen/api.gen.go apps/customers/frontend/src/api-schema.d.ts
+git add openapi/customers.yaml apps/server/internal/openapi/specs/customers.yaml apps/server/internal/customers/gen/api.gen.go apps/server/internal/customers/contacts.go apps/customers/frontend/src/api-schema.d.ts
 git commit -F /tmp/msg-roles-task2 -- $(git diff --cached --name-only)
 git show --stat HEAD && git status --short
 ```
@@ -701,7 +736,7 @@ git show --stat HEAD && git status --short
   - `func applyRoles(ctx context.Context, txq *store.Queries, customerID, contactID int32, existing []contactRole, want []requestedRole, now time.Time) ([]contactRole, []rolePromotion, error)`
   - `func releaseRoles(ctx context.Context, txq *store.Queries, customerID, contactID int32, held []contactRole) ([]rolePromotion, error)`
   - `func genContactRoles(roles []contactRole) *[]gen.CustomerContactRole`
-  - `func recordContactPromoted(...)` and a `role`-aware `recordContactEvent` (see Step 6)
+  - `func recordContactPromoted(...)` and a `role`-aware `recordContactEvent` (see Step 8)
 
 - [ ] **Step 1: Write the failing validation unit tests**
 
@@ -763,7 +798,7 @@ Expected: FAIL to build — `undefined: validateAssociationRole`, `undefined: va
 
 - [ ] **Step 3: Write the three value rules**
 
-`validateAssociationRole` below reads `contactRoleOrder`, which Step 5 declares in `contact_roles.go`, so create that file now with nothing in it but the `package customers` line, the three role constants, `contactRoleOrder` and `contactRoleRank` — copy those four declarations verbatim from Step 5's listing, including their comments — and Step 5 then adds the rest of the file around them. Without this the package does not compile and Step 4 cannot run.
+`validateAssociationRole` below reads `contactRoleOrder`, which Step 7 declares in `contact_roles.go`, so create that file now with nothing in it but the `package customers` line, the three role constants, `contactRoleOrder` and `contactRoleRank` — copy those four declarations verbatim from Step 7's listing, including their comments — and Step 7 then adds the rest of the file around them. Without this the package does not compile and Step 4 cannot run.
 
 Then, in `apps/server/internal/customers/values.go`, replace the existing `validateContactRole` block (lines ~320-331) with:
 
@@ -831,1137 +866,11 @@ mise exec -- go test -count=1 -run 'TestValidateAssociationRole|TestValidateCont
 ```
 Expected: PASS, the three pre-existing `TestValidateContactRole_*` included and unmodified.
 
-- [ ] **Step 5: Write `contact_roles.go` — the vocabulary, the request validation and the invariant**
+- [ ] **Step 5: Write the HTTP-level tests, and watch them fail**
 
-Create `apps/server/internal/customers/contact_roles.go`:
+Create `apps/server/internal/customers/contact_roles_test.go` **before any of the implementation in Steps 7-9 exists**. It compiles against nothing new — every case drives the four association endpoints over HTTP and reads `customers.customer_contact_roles`, which Task 1 created — so it builds and fails on its assertions rather than on missing symbols, which is exactly the red this plan wants: the server currently accepts a `roles` array and ignores it, so every case fails on an absent or wrong role set.
 
-```go
-package customers
-
-import (
-	"context"
-	"errors"
-	"fmt"
-	"slices"
-	"strings"
-	"time"
-
-	"github.com/jackc/pgx/v5"
-
-	"github.com/vantigo-io/vantigo/server/internal/apicommon"
-	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
-	"github.com/vantigo-io/vantigo/server/internal/customers/store"
-)
-
-// This file is the typed contact roles (typed contact roles design D2, D3):
-// the vocabulary, the validation of a request's `roles` array, and the
-// one-primary-per-role invariant every association write keeps.
-//
-// The invariant is the ADDRESSES' invariant (invoice-ready customer design D3;
-// addresses.go), deliberately unaltered, with (customer_id, type) swapped for
-// (customer_id, role) and "the oldest address" for "the longest-standing
-// holder". That is not laziness: the two are the same problem, the addresses'
-// version has a partial unique index, a concurrency test and a paragraph of
-// documentation behind it, and a second, subtly different version of the same
-// rule in one module is how the two drift. Anything below that reads like
-// addresses.go is meant to.
-//
-// Every function here assumes the caller already holds the customer row's
-// FOR NO KEY UPDATE lock (queries/addresses.sql's LockCustomer) and is inside
-// that same transaction. Nothing here takes the lock itself, because the
-// handlers need it for their own 404 first.
-
-// The role vocabulary (design D2). contactRoleOrder is also the order every
-// response and every payload lists roles in, so a client never sees them
-// shuffle, and it is the order the promotion bookkeeping walks in, so two
-// roles lost in one write promote deterministically.
-const (
-	contactRoleBilling       = "billing"
-	contactRoleProject       = "project"
-	contactRoleDecisionMaker = "decision_maker"
-)
-
-var contactRoleOrder = []string{contactRoleBilling, contactRoleProject, contactRoleDecisionMaker}
-
-// contactRoleRank is contactRoleOrder as a sort key, with an unknown code
-// last. There is no unknown code today — validateAssociationRole is the only
-// way one enters — but a widened vocabulary is a value change, and a sort that
-// silently drops what it does not recognise is worse than one that puts it at
-// the end.
-func contactRoleRank(role string) int {
-	if i := slices.Index(contactRoleOrder, role); i >= 0 {
-		return i
-	}
-	return len(contactRoleOrder)
-}
-
-// contactRole is one role an association holds, exactly the pair the contract
-// answers (gen.CustomerContactRole) and exactly the pair the timeline payload
-// carries — the json tags let it be both, the convention addressSnapshot
-// follows for the same reason.
-type contactRole struct {
-	Role    string `json:"role"`
-	Primary bool   `json:"primary"`
-}
-
-// requestedRole is one validated element of a request's `roles` array: the
-// role, and what the request asked its primary flag to be. "Asked" is the
-// operative word — the invariant may override it (the first holder of a role
-// is its primary whatever the request says).
-type requestedRole struct {
-	Role    string
-	Primary bool
-}
-
-// validatedAssociation is the validated, normalized values of an
-// AttachCustomerContactRequest or a CustomerContactRequest
-// (Endpoints/Customers/Contacts/Dtos/CustomerContactRequest.cs, plus design
-// D1 and D3). RolesGiven distinguishes the two things a nil Roles can mean on
-// an update: `roles: []` (hold none) from an omitted `roles` (leave them
-// alone). Title is nil when the association has none.
-type validatedAssociation struct {
-	Title        *string
-	Roles        []requestedRole
-	RolesGiven   bool
-	Phone, Email *string
-}
-
-// validateCustomerContactRequest is CustomerContactRequest.TryApplyTo, widened
-// by design D1 and D3. Every field is validated regardless of an earlier one's
-// failure and every error is reported together, keyed by the JSON field name —
-// the module's all-errors-at-once shape.
-//
-// title and role are the same value under two names (D1): role is the
-// deprecated alias the recorded corpus sends, title wins when both are given,
-// and each is validated under its own noun so the message names the field the
-// caller wrote. A blank string in either is an error, not an absence.
-//
-// rolesWhenOmitted is how many roles the association already holds, and it
-// exists only for the title-or-role rule: an attach passes 0 (a new
-// association holds none), an update passes the count it just read, because
-// `roles` omitted on an update means "leave them alone" and an association
-// that keeps three roles is not saying nothing about the person just because
-// this request did not mention them.
-func validateCustomerContactRequest(title, role *string, roles *[]gen.CustomerContactRoleRequest, phone, email *string, rolesWhenOmitted int) (validatedAssociation, map[string][]string) {
-	errs := map[string][]string{}
-
-	var parsedTitle *string
-	switch {
-	case title != nil:
-		t, err := validateContactTitle(*title)
-		if err != "" {
-			errs["title"] = []string{err}
-		} else {
-			parsedTitle = &t
-		}
-	case role != nil:
-		t, err := validateContactRole(*role)
-		if err != "" {
-			errs["role"] = []string{err}
-		} else {
-			parsedTitle = &t
-		}
-	}
-
-	var parsedRoles []requestedRole
-	rolesGiven := roles != nil
-	if rolesGiven {
-		var roleErrs []string
-		seen := map[string]bool{}
-		for _, r := range *roles {
-			name, err := validateAssociationRole(r.Role)
-			if err != "" {
-				roleErrs = append(roleErrs, err)
-				continue
-			}
-			if seen[name] {
-				// Not the same as sending it once: a request naming a role
-				// twice with two different primary flags has asked for two
-				// contradictory things, and picking one of them silently is
-				// how a client learns the wrong lesson about what it sent.
-				roleErrs = append(roleErrs, fmt.Sprintf("A contact role can only be given once, but '%s' was given more than once", name))
-				continue
-			}
-			seen[name] = true
-			parsedRoles = append(parsedRoles, requestedRole{Role: name, Primary: r.Primary != nil && *r.Primary})
-		}
-		if len(roleErrs) > 0 {
-			errs["roles"] = roleErrs
-		}
-		// Answered in the design's fixed order rather than the request's, so
-		// the write's bookkeeping — and therefore which contact a lost primary
-		// promotes when two roles move at once — does not depend on how a
-		// client happened to order its array.
-		slices.SortFunc(parsedRoles, func(a, b requestedRole) int { return contactRoleRank(a.Role) - contactRoleRank(b.Role) })
-	}
-
-	// The title-or-role rule (design D1): an association that says nothing
-	// about the person is not worth having. Checked only once the two halves
-	// are known to be individually valid, so a request with a too-long title
-	// hears about the title rather than about a rule it did not break.
-	if len(errs) == 0 {
-		effectiveRoles := rolesWhenOmitted
-		if rolesGiven {
-			effectiveRoles = len(parsedRoles)
-		}
-		if parsedTitle == nil && effectiveRoles == 0 {
-			errs["title"] = []string{"A contact needs a title or at least one role"}
-		}
-	}
-
-	p := validateOptionalPhone("phone", phone, errs)
-	e := validateOptionalEmail("email", email, errs)
-
-	if len(errs) > 0 {
-		return validatedAssociation{}, errs
-	}
-	return validatedAssociation{Title: parsedTitle, Roles: parsedRoles, RolesGiven: rolesGiven, Phone: p, Email: e}, nil
-}
-
-// errRolePrimaryTransitionRefused is the one role refusal that is only knowable
-// under the customer's lock, so it travels out of the transaction as a sentinel
-// the way addresses.go's errPrimaryTransitionRefused does — and it is the same
-// refusal, worded for contacts.
-var errRolePrimaryTransitionRefused = errors.New("customers: primary contact role transition refused")
-
-// rolePrimaryTransitionMessage is errRolePrimaryTransitionRefused's field
-// error, keyed `roles` (design D2). It names the role, because a request
-// carrying three of them should not have to guess which one was refused.
-func rolePrimaryTransitionMessage(role string) string {
-	return fmt.Sprintf("A contact that is the only or primary holder of the '%s' role stays primary; make another contact primary instead", role)
-}
-
-// rolePromotion is one contact that became primary for one role as a SIDE
-// EFFECT of somebody else's write — a request that dropped a role it was
-// primary for, a detach, or a deleted contact. The handlers record one
-// timeline event per promotion, on the promoted contact, with the acting user
-// who caused it (design D4), which is why this has to travel back out of the
-// bookkeeping instead of being invisible inside it.
-type rolePromotion struct {
-	ContactID int32
-	Role      string
-}
-
-// demoteRoleHolder is the demote half of demote-before-promote (design D2;
-// addresses.go's demoteCurrentPrimary): the role's current primary, whoever it
-// is, stops being it. A role with no holder at all is not an error — there is
-// simply nothing to demote.
-func demoteRoleHolder(ctx context.Context, txq *store.Queries, customerID int32, role string) error {
-	current, err := txq.PrimaryContactRoleHolder(ctx, store.PrimaryContactRoleHolderParams{CustomerID: customerID, Role: role})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	return txq.SetContactRolePrimary(ctx, store.SetContactRolePrimaryParams{
-		CustomerID: customerID, ContactID: current, Role: role, IsPrimary: false,
-	})
-}
-
-// promoteLongestStandingHolder is the promote half (design D2; addresses.go's
-// promoteOldestOfType): the longest-standing remaining holder of role, other
-// than excludeContactID — the contact that just gave it up — becomes its
-// primary. Nobody remaining is not an error: the role is unheld now, and
-// "always a primary while anyone holds the role" is vacuous when nobody does.
-// It answers the promoted contact, or 0 when there was none, so the caller can
-// record the event design D4 requires.
-func promoteLongestStandingHolder(ctx context.Context, txq *store.Queries, customerID, excludeContactID int32, role string) (int32, error) {
-	next, err := txq.OldestContactRoleHolder(ctx, store.OldestContactRoleHolderParams{
-		CustomerID: customerID, Role: role, ExcludeContactID: excludeContactID,
-	})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, nil
-	}
-	if err != nil {
-		return 0, err
-	}
-	if err := txq.SetContactRolePrimary(ctx, store.SetContactRolePrimaryParams{
-		CustomerID: customerID, ContactID: next, Role: role, IsPrimary: true,
-	}); err != nil {
-		return 0, err
-	}
-	return next, nil
-}
-
-// applyRoles brings one association's roles from existing to want, inside the
-// caller's transaction and under the customer row's lock it already holds, and
-// answers the set the association holds afterwards plus every OTHER contact
-// promoted along the way (design D2).
-//
-// The order of the four phases is the whole correctness argument, and it is
-// addresses.go's order:
-//
-//  1. Refuse first, write nothing. `primary: false` on a role this association
-//     currently holds AS primary is the refusal — the only or the primary
-//     holder stays primary — and it has to be decided before any statement
-//     runs, so a request that is going to be refused leaves the database
-//     untouched rather than half-applied and rolled back.
-//  2. Delete the dropped roles, then promote in each of them. Deleting first
-//     is what makes the promotion safe: while a row with is_primary = true
-//     still exists, promoting another holder of the same role would put two
-//     primaries in ux_customer_contact_roles_primary at once, even if only
-//     until the transaction commits.
-//  3. For each kept role, demote the incumbent before this contact takes over.
-//     Same index, same reason, opposite direction.
-//  4. For each new role, count the holders FIRST: none means this contact is
-//     the first and is primary whatever it asked for; some means the request's
-//     own flag decides, demoting the incumbent when it is true.
-func applyRoles(ctx context.Context, txq *store.Queries, customerID, contactID int32, existing []contactRole, want []requestedRole, now time.Time) ([]contactRole, []rolePromotion, error) {
-	held := make(map[string]bool, len(existing))
-	for _, r := range existing {
-		held[r.Role] = r.Primary
-	}
-	wanted := make(map[string]bool, len(want))
-	for _, r := range want {
-		wanted[r.Role] = r.Primary
-	}
-
-	// Phase 1: refuse, before anything is written.
-	for _, r := range want {
-		if wasPrimary, ok := held[r.Role]; ok && wasPrimary && !r.Primary {
-			return nil, nil, fmt.Errorf("%w: %s", errRolePrimaryTransitionRefused, r.Role)
-		}
-	}
-
-	// Phase 2: the dropped roles leave, then each of them promotes.
-	keep := make([]string, 0, len(want))
-	for _, r := range want {
-		keep = append(keep, r.Role)
-	}
-	if err := txq.DeleteContactRolesNotIn(ctx, store.DeleteContactRolesNotInParams{
-		CustomerID: customerID, ContactID: contactID, Keep: keep,
-	}); err != nil {
-		return nil, nil, err
-	}
-	var promotions []rolePromotion
-	for _, r := range existing { // existing is already in contactRoleOrder
-		if _, stillWanted := wanted[r.Role]; stillWanted || !r.Primary {
-			continue
-		}
-		promoted, err := promoteLongestStandingHolder(ctx, txq, customerID, contactID, r.Role)
-		if err != nil {
-			return nil, nil, err
-		}
-		if promoted != 0 {
-			promotions = append(promotions, rolePromotion{ContactID: promoted, Role: r.Role})
-		}
-	}
-
-	// Phases 3 and 4: the roles the association is to hold, in the fixed order.
-	after := make([]contactRole, 0, len(want))
-	for _, r := range want {
-		wasPrimary, alreadyHeld := held[r.Role]
-		switch {
-		case alreadyHeld:
-			primary := wasPrimary || r.Primary
-			if primary && !wasPrimary {
-				if err := demoteRoleHolder(ctx, txq, customerID, r.Role); err != nil {
-					return nil, nil, err
-				}
-				if err := txq.SetContactRolePrimary(ctx, store.SetContactRolePrimaryParams{
-					CustomerID: customerID, ContactID: contactID, Role: r.Role, IsPrimary: true,
-				}); err != nil {
-					return nil, nil, err
-				}
-			}
-			after = append(after, contactRole{Role: r.Role, Primary: primary})
-		default:
-			holders, err := txq.CountContactRoleHolders(ctx, store.CountContactRoleHoldersParams{
-				CustomerID: customerID, Role: r.Role, ExcludeContactID: contactID,
-			})
-			if err != nil {
-				return nil, nil, err
-			}
-			primary := r.Primary
-			if holders == 0 {
-				primary = true
-			} else if primary {
-				if err := demoteRoleHolder(ctx, txq, customerID, r.Role); err != nil {
-					return nil, nil, err
-				}
-			}
-			if err := txq.InsertContactRole(ctx, store.InsertContactRoleParams{
-				CustomerID: customerID, ContactID: contactID, Role: r.Role, IsPrimary: primary, Now: now,
-			}); err != nil {
-				return nil, nil, err
-			}
-			after = append(after, contactRole{Role: r.Role, Primary: primary})
-		}
-	}
-	return after, promotions, nil
-}
-
-// releaseRoles is applyRoles' detach case (design D2): the association is gone
-// — DELETE .../contacts/{contactId} removed its row, or DELETE
-// /customers/contacts/{id} removed the contact and the composite foreign key's
-// ON DELETE CASCADE took the role rows with it — so there is nothing to
-// refuse, nothing to keep and nothing to insert, only a promotion in each role
-// this association was primary for. The caller must already have deleted the
-// row: promoting while a primary row still exists is the double-primary the
-// partial unique index forbids, which is why this takes `held` as an argument
-// rather than reading it itself.
-func releaseRoles(ctx context.Context, txq *store.Queries, customerID, contactID int32, held []contactRole) ([]rolePromotion, error) {
-	var promotions []rolePromotion
-	for _, r := range held { // already in contactRoleOrder
-		if !r.Primary {
-			continue
-		}
-		promoted, err := promoteLongestStandingHolder(ctx, txq, customerID, contactID, r.Role)
-		if err != nil {
-			return nil, err
-		}
-		if promoted != 0 {
-			promotions = append(promotions, rolePromotion{ContactID: promoted, Role: r.Role})
-		}
-	}
-	return promotions, nil
-}
-
-// contactRolesOf reads one association's roles as the type the rest of this
-// file speaks, already in the design's fixed order (the query's own ORDER BY).
-func contactRolesOf(ctx context.Context, q *store.Queries, customerID, contactID int32) ([]contactRole, error) {
-	rows, err := q.ContactRolesForAssociation(ctx, store.ContactRolesForAssociationParams{CustomerID: customerID, ContactID: contactID})
-	if err != nil {
-		return nil, err
-	}
-	out := make([]contactRole, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, contactRole{Role: r.Role, Primary: r.IsPrimary})
-	}
-	return out, nil
-}
-
-// genContactRoles is contactRole's contract projection. It always answers a
-// non-nil pointer to a non-nil slice, so `roles` is always on the wire and is
-// `[]` rather than `null` for a contact that holds none — the contract keeps
-// the property optional only because the recorded exchange corpus predates it
-// (the same treatment SafeCustomerResponse.tags gets).
-func genContactRoles(roles []contactRole) *[]gen.CustomerContactRole {
-	out := make([]gen.CustomerContactRole, 0, len(roles))
-	for _, r := range roles {
-		out = append(out, gen.CustomerContactRole{Role: r.Role, Primary: r.Primary})
-	}
-	return &out
-}
-
-// rolesChanged reports whether two role sets differ at all — membership or a
-// primary flag. Both sides are in contactRoleOrder, so this is an element-wise
-// comparison and not a set operation.
-func rolesChanged(before, after []contactRole) bool {
-	return !slices.Equal(before, after)
-}
-
-// associationProblem is the 400 body every association write answers, keyed by
-// field. One helper because the two writing handlers each have their own
-// generated response type and would otherwise repeat the title string — and
-// the title is what a UI shows above the field errors, so a typo in one of two
-// copies is a visible inconsistency. The return type is whatever
-// apicommon.ValidationProblem answers (HttpValidationProblemDetails); read it
-// once and match it rather than guessing.
-func associationProblem(errs map[string][]string) apicommon.HttpValidationProblemDetails {
-	return apicommon.ValidationProblem("Invalid contact association", errs)
-}
-
-// roleErrorsFor turns errRolePrimaryTransitionRefused back into the field error
-// the caller sees. The sentinel is wrapped with the role name (applyRoles), so
-// this reads it back out rather than making every handler format the message.
-func roleErrorsFor(err error) map[string][]string {
-	role := strings.TrimSpace(strings.TrimPrefix(err.Error(), errRolePrimaryTransitionRefused.Error()+":"))
-	return map[string][]string{"roles": {rolePrimaryTransitionMessage(role)}}
-}
-```
-
-- [ ] **Step 6: Teach the timeline about `title`, `roles` and the two new summaries**
-
-In `apps/server/internal/customers/contacts_timeline.go`, replace `recordContactEvent` and the four recorders with:
-
-```go
-// recordContactEvent is AddContact (SV/CustomerTimelineRecorder.cs:99-124),
-// widened by typed contact roles design D4: the payload gains `title` (the
-// same value `role` carries, under the name the field now has) and `roles`,
-// and `role` stays exactly where it was because the recorded corpus and every
-// timeline entry already written speak it.
-func recordContactEvent(ctx context.Context, q *store.Queries, now time.Time, customerID int32, eventType, action string, contact store.CustomersContact, title *string, roles []contactRole, phone, email *string, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
-	displayName := contactDisplayName(contact.FirstName, contact.MiddleName, contact.LastName)
-	summary := fmt.Sprintf("%s: %s (#%d)", action, displayName, contact.ID)
-	// Never nil: a payload that says "roles": null cannot be told apart from
-	// one written before roles existed, while "roles": [] says the association
-	// holds none, which is a fact.
-	if roles == nil {
-		roles = []contactRole{}
-	}
-	payload := map[string]any{
-		"customerId":  customerID,
-		"contactId":   contact.ID,
-		"displayName": displayName,
-		"firstName":   contact.FirstName,
-		"middleName":  contact.MiddleName,
-		"lastName":    contact.LastName,
-		"role":        deref(title),
-		"title":       title,
-		"roles":       roles,
-		"phone":       phone,
-		"email":       email,
-	}
-	return recordGeneratedEvent(ctx, q, customerID, now, eventType, truncateUTF16(summary, 500), payload, 1, actorKind, actorDisplay, actorUserID)
-}
-
-// recordContactAttached is RecordContactAttached (SV/CustomerTimelineRecorder.cs:87-88).
-func recordContactAttached(ctx context.Context, q *store.Queries, now time.Time, customerID int32, contact store.CustomersContact, title *string, roles []contactRole, phone, email *string, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
-	return recordContactEvent(ctx, q, now, customerID, "customer.contact_attached", "Contact linked", contact, title, roles, phone, email, actorKind, actorDisplay, actorUserID)
-}
-
-// recordContactRelationshipUpdated is RecordContactRelationshipUpdated
-// (SV/CustomerTimelineRecorder.cs:90-91): only called when the title, the
-// phone, the email, the role set or a primary flag actually changed (design
-// D4), and its action says which of those it was — see
-// relationshipUpdateAction.
-func recordContactRelationshipUpdated(ctx context.Context, q *store.Queries, now time.Time, customerID int32, contact store.CustomersContact, action string, title *string, roles []contactRole, phone, email *string, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
-	return recordContactEvent(ctx, q, now, customerID, "customer.contact_relationship_updated", action, contact, title, roles, phone, email, actorKind, actorDisplay, actorUserID)
-}
-
-// recordContactDetached is RecordContactDetached (SV/CustomerTimelineRecorder.cs:93-94).
-func recordContactDetached(ctx context.Context, q *store.Queries, now time.Time, customerID int32, contact store.CustomersContact, title *string, roles []contactRole, phone, email *string, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
-	return recordContactEvent(ctx, q, now, customerID, "customer.contact_detached", "Contact unlinked", contact, title, roles, phone, email, actorKind, actorDisplay, actorUserID)
-}
-
-// recordContactRemoved is RecordContactRemoved (SV/CustomerTimelineRecorder.cs:96-97),
-// called once per association DeleteContact cascades over, before the contact
-// row itself is deleted.
-func recordContactRemoved(ctx context.Context, q *store.Queries, now time.Time, customerID int32, contact store.CustomersContact, title *string, roles []contactRole, phone, email *string, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
-	return recordContactEvent(ctx, q, now, customerID, "customer.contact_removed", "Contact removed", contact, title, roles, phone, email, actorKind, actorDisplay, actorUserID)
-}
-
-// relationshipUpdateActionDefault is what an update that moved only the title,
-// the phone or the email has always said.
-const relationshipUpdateActionDefault = "Contact relationship updated"
-
-// relationshipUpdateAction is design D4's "its summary names what changed".
-// Becoming a role's primary is the one change worth saying out loud on a
-// timeline — it is the answer to "who gets the invoice" moving — so it wins
-// over the plainer wordings, and a write that made this contact primary for
-// more than one role names the first in the design's fixed order rather than
-// listing them: the summary is a varchar(500) one-liner in a feed, and the
-// payload carries the whole set for anyone who needs it.
-func relationshipUpdateAction(before, after []contactRole) string {
-	wasPrimary := make(map[string]bool, len(before))
-	for _, r := range before {
-		wasPrimary[r.Role] = r.Primary
-	}
-	for _, r := range after { // after is in contactRoleOrder
-		if r.Primary && !wasPrimary[r.Role] {
-			return fmt.Sprintf("Now the primary %s contact", contactRoleSummaryLabel(r.Role))
-		}
-	}
-	if rolesChanged(before, after) {
-		return "Roles updated"
-	}
-	return relationshipUpdateActionDefault
-}
-
-// contactRoleSummaryLabel is a role inside an English sentence, which is not
-// the same as the code: "decision_maker" reads as a column name in a feed.
-// Only the summary uses it — the payload and the API always carry the code —
-// and the frontend never reads it, because the frontend has its own catalogs.
-func contactRoleSummaryLabel(role string) string {
-	if role == contactRoleDecisionMaker {
-		return "decision-maker"
-	}
-	return role
-}
-
-// recordContactPromoted is design D4's promotion event: a contact that became
-// a role's primary because SOMEBODY ELSE gave it up, was detached, or was
-// deleted. It is a customer.contact_relationship_updated — the relationship
-// did change, and inventing a type for it would be a type no timeline filter
-// knows — recorded against the promoted contact, with the acting user who
-// caused it rather than a system actor: a person did this, indirectly, and the
-// timeline's job is to say who.
-func recordContactPromoted(ctx context.Context, q *store.Queries, now time.Time, customerID int32, contact store.CustomersContact, role string, title *string, roles []contactRole, phone, email *string, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
-	action := fmt.Sprintf("Now the primary %s contact", contactRoleSummaryLabel(role))
-	return recordContactEvent(ctx, q, now, customerID, "customer.contact_relationship_updated", action, contact, title, roles, phone, email, actorKind, actorDisplay, actorUserID)
-}
-```
-
-`truncateUTF16` (timeline.go:92) is now applied to the summary: a contact's display name is three name parts of up to 100 characters each, and the longest action above adds twenty-odd more, so the total can exceed `varchar(500)` — it could before this delivery too, and the addresses' recorders already truncate.
-
-- [ ] **Step 7: Rewrite the four handlers in `contacts.go`**
-
-Delete `validatedAssociation` and `validateCustomerContactRequest` from `contacts.go` (lines ~129-155) — they now live in `contact_roles.go` — and add one constant beside the two existing sentinels:
-
-```go
-// contactRoleWriteAttempts is how often an association write's transaction runs
-// before the deadlock it keeps losing escapes as a 500. Three, as tags.go's
-// tagWriteAttempts and identity's serializableAttempts both settled on.
-//
-// The deadlock is real and is between two handlers in this very file. An
-// attach locks the CUSTOMER row (LockCustomer, so the role bookkeeping
-// serializes) and then the CONTACT row (GetContactForUpdate, the ported lock
-// that serializes attach against a concurrent delete of the same contact),
-// while DELETE /customers/contacts/{id} locks the contact row first — it has
-// to, that is the lock's whole purpose — and only then the rows of every
-// customer it must promote a new primary for. Two opposite lock orders, so the
-// two can cycle; PostgreSQL breaks it by killing one side (40P01). Being the
-// victim of a lock-order cycle is not something either caller did wrong, so
-// the retry runs the loser again from a fresh snapshot, in which one of the two
-// writes has simply already happened.
-//
-// Reversing one of the orders instead was considered and rejected: the delete
-// cannot lock the customers before the contact, because which customers those
-// are is what reading the contact's associations tells it, and an association
-// added between that read and the lock would need a retry anyway.
-const contactRoleWriteAttempts = 3
-```
-
-**`PostCustomersByIdContacts`** — validation still runs before existence (`TestAttachContact_InvalidConnectionAgainstUnknownCustomer_Returns400` pins it), and `rolesWhenOmitted` is 0 because a new association holds no roles:
-
-```go
-func (s *server) PostCustomersByIdContacts(ctx context.Context, req gen.PostCustomersByIdContactsRequestObject) (gen.PostCustomersByIdContactsResponseObject, error) {
-	body := gen.AttachCustomerContactRequest{}
-	if req.Body != nil {
-		body = *req.Body
-	}
-
-	assoc, errs := validateCustomerContactRequest(body.Title, body.Role, body.Roles, body.Phone, body.Email, 0)
-	if errs != nil {
-		return gen.PostCustomersByIdContacts400ApplicationProblemPlusJSONResponse(associationProblem(errs)), nil
-	}
-
-	now := s.deps.Clock()
-	// Resolved before the transaction opens (customers foundation design D1,
-	// actor.go): a successful write always follows past validation, and the
-	// 404/409 refusals are only knowable inside the transaction, so one wasted
-	// directory call on those paths is accepted rather than resolving it twice.
-	act, err := s.actorFor(ctx, generatedFallbackActor)
-	if err != nil {
-		return nil, fmt.Errorf("customers: resolve actor: %w", err)
-	}
-
-	var response gen.CustomerContactResponse
-	err = db.RetrySerializable(ctx, contactRoleWriteAttempts, func() error {
-		return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-			txq := store.New(tx)
-
-			// The customer row's lock comes first, before the contact's: every
-			// write that touches customer_contact_roles takes it (typed
-			// contact roles design D2), and it is also this handler's
-			// existence check, replacing the plain GetCustomer it used to make.
-			customer, err := txq.LockCustomer(ctx, req.Id)
-			if errors.Is(err, pgx.ErrNoRows) {
-				return errAssociationTargetNotFound
-			}
-			if err != nil {
-				return err
-			}
-			contact, err := txq.GetContactForUpdate(ctx, body.ContactId)
-			if errors.Is(err, pgx.ErrNoRows) {
-				return errAssociationTargetNotFound
-			}
-			if err != nil {
-				return err
-			}
-
-			attached, err := txq.AssociationExists(ctx, store.AssociationExistsParams{CustomerID: req.Id, ContactID: body.ContactId})
-			if err != nil {
-				return err
-			}
-			if attached {
-				return errAlreadyAttached
-			}
-
-			if err := txq.InsertAssociation(ctx, store.InsertAssociationParams{
-				CustomerID: req.Id, ContactID: body.ContactId, Title: assoc.Title, Phone: assoc.Phone, Email: assoc.Email,
-			}); err != nil {
-				return err
-			}
-			// nil existing: the association was created a statement ago, so
-			// every role it is given is a new one and the first-holder rule is
-			// the only one that can apply.
-			roles, promotions, err := applyRoles(ctx, txq, req.Id, body.ContactId, nil, assoc.Roles, now)
-			if err != nil {
-				return err
-			}
-			if err := recordContactAttached(ctx, txq, now, customer.ID, contact, assoc.Title, roles, assoc.Phone, assoc.Email, act.Kind, act.Display, act.UserID); err != nil {
-				return err
-			}
-			if err := recordPromotions(ctx, txq, now, req.Id, promotions, act); err != nil {
-				return err
-			}
-
-			response = gen.CustomerContactResponse{
-				Contact: contactResponse(contact), Role: deref(assoc.Title), Title: assoc.Title,
-				Roles: genContactRoles(roles), Phone: assoc.Phone, Email: assoc.Email,
-			}
-			return nil
-		})
-	})
-	switch {
-	case errors.Is(err, errAssociationTargetNotFound):
-		return gen.PostCustomersByIdContacts404Response{}, nil
-	case errors.Is(err, errAlreadyAttached):
-		detail := fmt.Sprintf("Contact %d is already associated with customer %d.", body.ContactId, req.Id)
-		return gen.PostCustomersByIdContacts409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus("Contact already associated", detail, http.StatusConflict)), nil
-	case errors.Is(err, errRolePrimaryTransitionRefused):
-		// Unreachable on an attach — nothing is held yet, so no primary can be
-		// cleared — but handled rather than falling into the 500 below, because
-		// "unreachable" is a property of applyRoles' phase 1 and not of this
-		// call site, and a future change to either should surface as the 400 it
-		// is.
-		return gen.PostCustomersByIdContacts400ApplicationProblemPlusJSONResponse(associationProblem(roleErrorsFor(err))), nil
-	case err != nil:
-		return nil, fmt.Errorf("customers: attach contact: %w", err)
-	}
-	return gen.PostCustomersByIdContacts200JSONResponse(response), nil
-}
-```
-
-**`PutCustomersByIdContactsByContactId`** — the association lookup still precedes validation (`TestUpdateCustomerContact_InvalidConnectionAgainstUnknownAssociation_Returns404` pins it), the no-op now answers without opening a transaction at all, and the authoritative read happens under the lock:
-
-```go
-func (s *server) PutCustomersByIdContactsByContactId(ctx context.Context, req gen.PutCustomersByIdContactsByContactIdRequestObject) (gen.PutCustomersByIdContactsByContactIdResponseObject, error) {
-	q := store.New(s.deps.Pool)
-	existing, err := q.GetAssociationWithContact(ctx, store.GetAssociationWithContactParams{CustomerID: req.Id, ContactID: req.ContactId})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return gen.PutCustomersByIdContactsByContactId404Response{}, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("customers: get association: %w", err)
-	}
-	currentRoles, err := contactRolesOf(ctx, q, req.Id, req.ContactId)
-	if err != nil {
-		return nil, fmt.Errorf("customers: read association roles: %w", err)
-	}
-
-	body := gen.CustomerContactRequest{}
-	if req.Body != nil {
-		body = *req.Body
-	}
-	// rolesWhenOmitted is what the association already holds: `roles` omitted
-	// means "leave them alone" (design D3), so the title-or-role rule must not
-	// refuse a request that only changes a phone number on an association that
-	// already has three roles.
-	assoc, errs := validateCustomerContactRequest(body.Title, body.Role, body.Roles, body.Phone, body.Email, len(currentRoles))
-	if errs != nil {
-		return gen.PutCustomersByIdContactsByContactId400ApplicationProblemPlusJSONResponse(associationProblem(errs)), nil
-	}
-
-	// An omitted `roles` is the current set, so the rest of this handler can
-	// treat "what to hold" as one thing.
-	want := assoc.Roles
-	if !assoc.RolesGiven {
-		want = make([]requestedRole, 0, len(currentRoles))
-		for _, r := range currentRoles {
-			want = append(want, requestedRole{Role: r.Role, Primary: r.Primary})
-		}
-	}
-
-	answer := gen.PutCustomersByIdContactsByContactId200JSONResponse{
-		Contact: contactResponse(contactFromAssociationRow(existing)), Role: deref(assoc.Title), Title: assoc.Title,
-		Roles: genContactRoles(currentRoles), Phone: assoc.Phone, Email: assoc.Email,
-	}
-
-	fieldsChanged := deref(existing.Title) != deref(assoc.Title) ||
-		deref(existing.AssociationPhone) != deref(assoc.Phone) ||
-		deref(existing.AssociationEmail) != deref(assoc.Email)
-	if !fieldsChanged && !rolesChanged(currentRoles, requestedAsHeld(want, currentRoles)) {
-		// Nothing moved: the no-op rule every write in this module follows
-		// (customers foundation design D5), and the reason this handler no
-		// longer opens a transaction for one — the UPDATE would rewrite
-		// identical values, the role bookkeeping would rewrite identical rows,
-		// no event would be recorded anyway, and the actor lookup below would
-		// be a directory call made for a request that writes nothing. A
-		// concurrent writer can make this answer stale, which is what
-		// last-wins on an off-the-row resource means (tags.go says the same).
-		return answer, nil
-	}
-
-	now := s.deps.Clock()
-	// Resolved before the transaction opens, and only now that a write is
-	// certain to follow (customers foundation design D1, actor.go).
-	act, err := s.actorFor(ctx, generatedFallbackActor)
-	if err != nil {
-		return nil, fmt.Errorf("customers: resolve actor: %w", err)
-	}
-
-	err = db.RetrySerializable(ctx, contactRoleWriteAttempts, func() error {
-		return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-			txq := store.New(tx)
-			if _, err := txq.LockCustomer(ctx, req.Id); err != nil {
-				if errors.Is(err, pgx.ErrNoRows) {
-					return errAssociationTargetNotFound
-				}
-				return err
-			}
-			// Re-read under the lock: the unlocked read above answered the
-			// 404 and shaped the validation, but a concurrent detach could
-			// have removed the association since, and inserting role rows for
-			// an association that no longer exists is a foreign-key violation
-			// rather than the 404 it really is. Detach takes this same lock,
-			// so re-reading inside it is a complete answer, not a narrower
-			// window.
-			locked, err := txq.GetAssociationWithContact(ctx, store.GetAssociationWithContactParams{CustomerID: req.Id, ContactID: req.ContactId})
-			if errors.Is(err, pgx.ErrNoRows) {
-				return errAssociationTargetNotFound
-			}
-			if err != nil {
-				return err
-			}
-			before, err := contactRolesOf(ctx, txq, req.Id, req.ContactId)
-			if err != nil {
-				return err
-			}
-
-			if err := txq.UpdateAssociation(ctx, store.UpdateAssociationParams{
-				CustomerID: req.Id, ContactID: req.ContactId, Title: assoc.Title, Phone: assoc.Phone, Email: assoc.Email,
-			}); err != nil {
-				return err
-			}
-			after, promotions, err := applyRoles(ctx, txq, req.Id, req.ContactId, before, want, now)
-			if err != nil {
-				return err
-			}
-			answer.Roles = genContactRoles(after)
-
-			// Recomputed against what the lock actually found: a concurrent
-			// writer may already have made this exact change, and an event
-			// claiming a change that did not happen is worse than the wasted
-			// actor lookup above (the same trade addresses.go documents).
-			if deref(locked.Title) != deref(assoc.Title) ||
-				deref(locked.AssociationPhone) != deref(assoc.Phone) ||
-				deref(locked.AssociationEmail) != deref(assoc.Email) ||
-				rolesChanged(before, after) {
-				if err := recordContactRelationshipUpdated(ctx, txq, now, req.Id, contactFromAssociationRow(locked),
-					relationshipUpdateAction(before, after), assoc.Title, after, assoc.Phone, assoc.Email,
-					act.Kind, act.Display, act.UserID); err != nil {
-					return err
-				}
-			}
-			return recordPromotions(ctx, txq, now, req.Id, promotions, act)
-		})
-	})
-	switch {
-	case errors.Is(err, errAssociationTargetNotFound):
-		return gen.PutCustomersByIdContactsByContactId404Response{}, nil
-	case errors.Is(err, errRolePrimaryTransitionRefused):
-		return gen.PutCustomersByIdContactsByContactId400ApplicationProblemPlusJSONResponse(associationProblem(roleErrorsFor(err))), nil
-	case err != nil:
-		return nil, fmt.Errorf("customers: update association: %w", err)
-	}
-
-	return answer, nil
-}
-
-// requestedAsHeld projects a desired role set onto contactRole, resolving the
-// one thing a request cannot decide for itself: a role the association already
-// holds as primary stays primary whatever the request's flag says, because
-// clearing it is refused, not applied. It exists so the no-op check compares
-// like with like — without it, a client resubmitting a role it holds as primary
-// with `primary: false` would look like a change, open a transaction, and be
-// refused a 400 for a request that asked for nothing at all.
-func requestedAsHeld(want []requestedRole, held []contactRole) []contactRole {
-	wasPrimary := make(map[string]bool, len(held))
-	for _, r := range held {
-		wasPrimary[r.Role] = r.Primary
-	}
-	out := make([]contactRole, 0, len(want))
-	for _, r := range want {
-		out = append(out, contactRole{Role: r.Role, Primary: r.Primary || wasPrimary[r.Role]})
-	}
-	return out
-}
-```
-
-`requestedAsHeld` deliberately treats a refused `primary: false` as "unchanged" so the two sides of the no-op comparison are like for like. That alone would let the no-op shortcut swallow the refusal, so the refusal is checked **before** the shortcut. Insert this immediately after `want` is computed and before `answer` is built:
-
-```go
-	// The refusal is decided before the no-op shortcut, on the set the unlocked
-	// read found: a request asking to clear the primary flag of a role this
-	// contact is the only or the primary holder of is refused (design D2) even
-	// when it changes nothing else, because answering 200 to it would tell the
-	// client its `primary: false` was honoured. applyRoles refuses again under
-	// the lock — that check is the authoritative one — and this one only makes
-	// sure the shortcut below cannot swallow it.
-	for _, r := range want {
-		if wasPrimary, ok := heldPrimary(currentRoles)[r.Role]; ok && wasPrimary && !r.Primary {
-			return gen.PutCustomersByIdContactsByContactId400ApplicationProblemPlusJSONResponse(
-				associationProblem(map[string][]string{"roles": {rolePrimaryTransitionMessage(r.Role)}})), nil
-		}
-	}
-```
-
-with, in `contact_roles.go`:
-
-```go
-// heldPrimary indexes a role set by role, answering each one's primary flag —
-// the shape both applyRoles' phase 1 and the update handler's early refusal
-// need, written once.
-func heldPrimary(roles []contactRole) map[string]bool {
-	out := make(map[string]bool, len(roles))
-	for _, r := range roles {
-		out[r.Role] = r.Primary
-	}
-	return out
-}
-```
-
-and use `heldPrimary` inside `applyRoles` and `requestedAsHeld` in place of their own inline loops.
-
-**`DeleteCustomersByIdContactsByContactId`** — the detach:
-
-```go
-func (s *server) DeleteCustomersByIdContactsByContactId(ctx context.Context, req gen.DeleteCustomersByIdContactsByContactIdRequestObject) (gen.DeleteCustomersByIdContactsByContactIdResponseObject, error) {
-	q := store.New(s.deps.Pool)
-	if _, err := q.GetAssociationWithContact(ctx, store.GetAssociationWithContactParams{CustomerID: req.Id, ContactID: req.ContactId}); errors.Is(err, pgx.ErrNoRows) {
-		return gen.DeleteCustomersByIdContactsByContactId404Response{}, nil
-	} else if err != nil {
-		return nil, fmt.Errorf("customers: get association: %w", err)
-	}
-
-	// Resolved before the transaction opens: this handler always records a
-	// "detached" event once it reaches here (the 404 case wastes one call).
-	act, err := s.actorFor(ctx, generatedFallbackActor)
-	if err != nil {
-		return nil, fmt.Errorf("customers: resolve actor: %w", err)
-	}
-
-	now := s.deps.Clock()
-	err = db.RetrySerializable(ctx, contactRoleWriteAttempts, func() error {
-		return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-			txq := store.New(tx)
-			if _, err := txq.LockCustomer(ctx, req.Id); err != nil {
-				if errors.Is(err, pgx.ErrNoRows) {
-					return errAssociationTargetNotFound
-				}
-				return err
-			}
-			// Re-read under the lock, the same reason the PUT does: the 404
-			// above was decided outside it.
-			locked, err := txq.GetAssociationWithContact(ctx, store.GetAssociationWithContactParams{CustomerID: req.Id, ContactID: req.ContactId})
-			if errors.Is(err, pgx.ErrNoRows) {
-				return errAssociationTargetNotFound
-			}
-			if err != nil {
-				return err
-			}
-			held, err := contactRolesOf(ctx, txq, req.Id, req.ContactId)
-			if err != nil {
-				return err
-			}
-
-			// The association row goes first, and its roles go with it through
-			// the composite foreign key's ON DELETE CASCADE (migration 00025).
-			// Only then can another holder be promoted: while this contact's
-			// is_primary row still exists, promoting one would put two
-			// primaries of one role in ux_customer_contact_roles_primary at
-			// once — the same delete-before-promote order
-			// DeleteCustomersByIdAddressesByAddressId keeps, for the same
-			// index-shaped reason.
-			if err := txq.DeleteAssociation(ctx, store.DeleteAssociationParams{CustomerID: req.Id, ContactID: req.ContactId}); err != nil {
-				return err
-			}
-			promotions, err := releaseRoles(ctx, txq, req.Id, req.ContactId, held)
-			if err != nil {
-				return err
-			}
-
-			if err := recordContactDetached(ctx, txq, now, req.Id, contactFromAssociationRow(locked), locked.Title, held,
-				locked.AssociationPhone, locked.AssociationEmail, act.Kind, act.Display, act.UserID); err != nil {
-				return err
-			}
-			return recordPromotions(ctx, txq, now, req.Id, promotions, act)
-		})
-	})
-	switch {
-	case errors.Is(err, errAssociationTargetNotFound):
-		return gen.DeleteCustomersByIdContactsByContactId404Response{}, nil
-	case err != nil:
-		return nil, fmt.Errorf("customers: detach contact: %w", err)
-	}
-	return gen.DeleteCustomersByIdContactsByContactId204Response{}, nil
-}
-```
-
-**`DeleteCustomersContactsById`** — the contact delete, which cascades over every association:
-
-```go
-func (s *server) DeleteCustomersContactsById(ctx context.Context, req gen.DeleteCustomersContactsByIdRequestObject) (gen.DeleteCustomersContactsByIdResponseObject, error) {
-	// Resolved before the transaction opens: the directory lookup actorFor can
-	// make is an out-of-process call this module never wants to make while
-	// holding a row lock (customers foundation design D1, actor.go).
-	act, err := s.actorFor(ctx, generatedFallbackActor)
-	if err != nil {
-		return nil, fmt.Errorf("customers: resolve actor: %w", err)
-	}
-
-	now := s.deps.Clock()
-	err = db.RetrySerializable(ctx, contactRoleWriteAttempts, func() error {
-		return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-			txq := store.New(tx)
-			contact, err := txq.GetContactForUpdate(ctx, req.Id)
-			if err != nil {
-				return err
-			}
-			associations, err := txq.ListAssociationsForContact(ctx, req.Id)
-			if err != nil {
-				return err
-			}
-			roleRows, err := txq.ContactRolesForContact(ctx, req.Id)
-			if err != nil {
-				return err
-			}
-			rolesByCustomer := make(map[int32][]contactRole, len(associations))
-			for _, r := range roleRows { // already ordered by customer, then the fixed role order
-				rolesByCustomer[r.CustomerID] = append(rolesByCustomer[r.CustomerID], contactRole{Role: r.Role, Primary: r.IsPrimary})
-			}
-
-			// Every customer this contact is attached to has to be locked
-			// before its roles are re-arranged (typed contact roles design
-			// D2), and in the order ListAssociationsForContact answers —
-			// ascending customer_id, which the query's own ORDER BY
-			// guarantees. A deterministic order across all callers is what
-			// keeps two concurrent deletes of two contacts that share two
-			// customers from deadlocking with each other; the retry above
-			// exists for the other cycle, the one against an attach.
-			for _, a := range associations {
-				if _, err := txq.LockCustomer(ctx, a.CustomerID); err != nil {
-					return err
-				}
-			}
-			for _, a := range associations {
-				if err := recordContactRemoved(ctx, txq, now, a.CustomerID, contact, a.Title, rolesByCustomer[a.CustomerID],
-					a.Phone, a.Email, act.Kind, act.Display, act.UserID); err != nil {
-					return err
-				}
-			}
-
-			// The contact goes, and with it every association and every role
-			// row (two cascades: contacts → customers_contacts → 
-			// customer_contact_roles). Only then is a promotion safe, the same
-			// delete-before-promote order the detach keeps.
-			if err := txq.DeleteContact(ctx, req.Id); err != nil {
-				return err
-			}
-			for _, a := range associations {
-				promotions, err := releaseRoles(ctx, txq, a.CustomerID, req.Id, rolesByCustomer[a.CustomerID])
-				if err != nil {
-					return err
-				}
-				if err := recordPromotions(ctx, txq, now, a.CustomerID, promotions, act); err != nil {
-					return err
-				}
-			}
-			return nil
-		})
-	})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return gen.DeleteCustomersContactsById404Response{}, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("customers: delete contact: %w", err)
-	}
-	return gen.DeleteCustomersContactsById204Response{}, nil
-}
-```
-
-and the shared promotion recorder, in `contacts.go` beside the handlers that use it:
-
-```go
-// recordPromotions records design D4's promotion event for each contact that
-// became a role's primary as a side effect of the write just made: on the
-// promoted contact, with the acting user who caused it. It reads each promoted
-// association back — the event's payload is that association's own title,
-// phone, email and full role set, not a fragment — which is one query per
-// promotion and at most three per write, since a contact can be primary for at
-// most the three roles there are.
-func recordPromotions(ctx context.Context, txq *store.Queries, now time.Time, customerID int32, promotions []rolePromotion, act actor) error {
-	for _, p := range promotions {
-		row, err := txq.GetAssociationWithContact(ctx, store.GetAssociationWithContactParams{CustomerID: customerID, ContactID: p.ContactID})
-		if err != nil {
-			return err
-		}
-		roles, err := contactRolesOf(ctx, txq, customerID, p.ContactID)
-		if err != nil {
-			return err
-		}
-		if err := recordContactPromoted(ctx, txq, now, customerID, contactFromAssociationRow(row), p.Role,
-			row.Title, roles, row.AssociationPhone, row.AssociationEmail, act.Kind, act.Display, act.UserID); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-```
-
-Finally, the two list handlers answer `title` and `roles`, each loading every role row of the page in one query:
-
-`GetCustomersByIdContacts` — after `rows, err := q.ListContactAssociationsForCustomer(...)`:
-
-```go
-	roleRows, err := q.ContactRolesForCustomer(ctx, req.Id)
-	if err != nil {
-		return nil, fmt.Errorf("customers: list customer contact roles: %w", err)
-	}
-	// One query for the whole list, never one per row (design D3), grouped the
-	// way CustomerTagsForCustomers' answer is: the rows arrive in the fixed
-	// role order already, so appending preserves it.
-	byContact := make(map[int32][]contactRole, len(rows))
-	for _, r := range roleRows {
-		byContact[r.ContactID] = append(byContact[r.ContactID], contactRole{Role: r.Role, Primary: r.IsPrimary})
-	}
-
-	data := make([]gen.CustomerContactResponse, 0, len(rows))
-	for _, r := range rows {
-		data = append(data, gen.CustomerContactResponse{
-			Contact: gen.ContactResponse{
-				Id: r.ID, FirstName: r.FirstName, LastName: r.LastName,
-				MiddleName: r.MiddleName, Prefix: r.Prefix, Suffix: r.Suffix, Phone: r.ContactPhone, Email: r.ContactEmail,
-			},
-			Role: deref(r.Title), Title: r.Title, Roles: genContactRoles(byContact[r.ID]),
-			Phone: r.AssociationPhone, Email: r.AssociationEmail,
-		})
-	}
-```
-
-`GetCustomersContactsByIdCustomers` — the mirror, keyed by customer:
-
-```go
-	roleRows, err := q.ContactRolesForContact(ctx, req.Id)
-	if err != nil {
-		return nil, fmt.Errorf("customers: list contact roles: %w", err)
-	}
-	byCustomer := make(map[int32][]contactRole, len(rows))
-	for _, r := range roleRows {
-		byCustomer[r.CustomerID] = append(byCustomer[r.CustomerID], contactRole{Role: r.Role, Primary: r.IsPrimary})
-	}
-
-	data := make([]gen.GetContactCustomersContactCustomerResponse, 0, len(rows))
-	for _, r := range rows {
-		data = append(data, gen.GetContactCustomersContactCustomerResponse{
-			Customer: gen.GetContactCustomersCustomerReference{Id: r.ID, CustomerNumber: r.CustomerNumber, Name: r.Name},
-			Role:     deref(r.Title), Title: r.Title, Roles: genContactRoles(byCustomer[r.ID]),
-			Phone:    r.Phone, Email: r.Email,
-		})
-	}
-```
-
-- [ ] **Step 8: Compile and fix the four pre-existing payload assertions**
-
-```bash
-cd /home/anders/projects/vantigo/vantigo/apps/server
-mise exec -- go vet ./... && mise exec -- go test -count=1 ./internal/customers/
-```
-Four tests in `contacts_test.go` assert the event payload with `reflect.DeepEqual` and now see two extra keys. Add them to each `wantPayload`, in the shape the recorder writes (`title` is a JSON string or `nil`; `roles` decodes to `[]any`):
-
-- `TestAttachContact_RecordsTimelineEvent` (~line 882): add `"title": "CEO",` and `"roles": []any{},`
-- `TestUpdateCustomerContact_RecordsRelationshipUpdatedEvent` (~line 924): add `"title": "Chairman",` and `"roles": []any{},`
-- `TestDetachContact_RecordsTimelineEvent` and `TestDeleteContact_RecordsRemovedTimelineEvent`: the same two keys with that test's own title value and `[]any{}`.
-
-Everything else in the file stays: `attachContact` still sends `role`, the corpus's field name, which is exactly the compatibility this delivery promises.
-
-- [ ] **Step 9: Write the HTTP-level tests — run them first and watch them fail**
-
-Create `apps/server/internal/customers/contact_roles_test.go`. Write the whole file, then run it **before** reading the results of Step 8's fixes, so every case below is seen red at least once:
+Write the whole file:
 
 ```go
 package customers_test
@@ -2156,6 +1065,82 @@ func TestUpdateCustomerContact_ClearingTheOnlyHoldersPrimaryIsRefused(t *testing
 	}
 	if !reflect.DeepEqual(rolesOf(t, h, customer.Id, contact.Id), []contactRoleJSON{{Role: "billing", Primary: true}}) {
 		t.Errorf("stored roles = %+v, want billing still primary (a refusal writes nothing)", rolesOf(t, h, customer.Id, contact.Id))
+	}
+}
+
+// TestUpdateCustomerContact_OmittedPrimaryKeepsTheFlagInAReplace is the
+// omitted-flag half of design D2's three-valued primary: a replace that adds a
+// role and says nothing about the flag of one the contact already holds as
+// primary must keep that flag, not demote it and not be refused. This is the
+// rule that makes "the complete set of roles" a writable field at all — a
+// client rebuilding the set from a checkbox group has no business having to
+// echo every primary flag back to avoid demoting somebody.
+func TestUpdateCustomerContact_OmittedPrimaryKeepsTheFlagInAReplace(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	customer := createCustomer(t, c, "Omitted Flag Co")
+	contact := createContact(t, c, map[string]any{"firstName": "Omitted", "lastName": "Flagsen"})
+	other := createContact(t, c, map[string]any{"firstName": "Other", "lastName": "Flagsen"})
+	// contact takes project first, so it is project's primary; other holds
+	// project too, so contact is not its ONLY holder — which is the case a
+	// "the only holder stays primary" reading would let through and this one
+	// must not.
+	attachWithRoles(t, c, customer.Id, map[string]any{"contactId": contact.Id, "title": "CEO",
+		"roles": []any{map[string]any{"role": "project"}}})
+	attachWithRoles(t, c, customer.Id, map[string]any{"contactId": other.Id, "title": "CTO",
+		"roles": []any{map[string]any{"role": "project"}}})
+
+	r := putAssociation(t, c, customer.Id, contact.Id, map[string]any{"title": "CEO",
+		"roles": []any{map[string]any{"role": "project"}, map[string]any{"role": "billing"}}})
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200 (an omitted primary asks for nothing and cannot be refused)", r.Status, r.Body)
+	}
+	var updated roledContactJSON
+	r.JSON(&updated)
+	want := []contactRoleJSON{{Role: "billing", Primary: true}, {Role: "project", Primary: true}}
+	if !reflect.DeepEqual(updated.Roles, want) {
+		t.Errorf("roles = %+v, want %+v (project's flag kept, billing primary as its first holder)", updated.Roles, want)
+	}
+	if !reflect.DeepEqual(rolesOf(t, h, customer.Id, contact.Id), want) {
+		t.Errorf("stored roles = %+v, want %+v", rolesOf(t, h, customer.Id, contact.Id), want)
+	}
+	if got := primaryHolderOf(t, h, customer.Id, "project"); got != contact.Id {
+		t.Errorf("primary project holder = %d, want %d (unmoved)", got, contact.Id)
+	}
+}
+
+// TestUpdateCustomerContact_ExplicitPrimaryFalseInAReplaceIsRefused is the other
+// half: saying `primary: false` OUT LOUD about a role this contact is the
+// primary holder of is the refusal (design D2), whether or not anything else in
+// the request changed. The two tests together are what pins the pointer: drop it
+// and make the flag a plain bool, and exactly one of them must break.
+func TestUpdateCustomerContact_ExplicitPrimaryFalseInAReplaceIsRefused(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	customer := createCustomer(t, c, "Explicit False Co")
+	contact := createContact(t, c, map[string]any{"firstName": "Explicit", "lastName": "Falsesen"})
+	other := createContact(t, c, map[string]any{"firstName": "Other", "lastName": "Falsesen"})
+	attachWithRoles(t, c, customer.Id, map[string]any{"contactId": contact.Id, "title": "CEO",
+		"roles": []any{map[string]any{"role": "project"}}})
+	attachWithRoles(t, c, customer.Id, map[string]any{"contactId": other.Id, "title": "CTO",
+		"roles": []any{map[string]any{"role": "project"}}})
+
+	r := putAssociation(t, c, customer.Id, contact.Id, map[string]any{"title": "CEO",
+		"roles": []any{map[string]any{"role": "project", "primary": false}, map[string]any{"role": "billing"}}})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	want := "A contact that is the only or primary holder of the 'project' role stays primary; make another contact primary instead"
+	if msgs := problem.Errors["roles"]; len(msgs) != 1 || msgs[0] != want {
+		t.Errorf("errors[roles] = %v, want [%q]", msgs, want)
+	}
+	// A refusal writes nothing at all — billing was never added.
+	if got := rolesOf(t, h, customer.Id, contact.Id); !reflect.DeepEqual(got, []contactRoleJSON{{Role: "project", Primary: true}}) {
+		t.Errorf("stored roles = %+v, want project primary and nothing else", got)
 	}
 }
 
@@ -2430,6 +1415,15 @@ func TestDeleteContact_PromotesInEveryCustomerItWasPrimaryFor(t *testing.T) {
 	}
 }
 
+// TestUpdateCustomerContact_RecordsAnEventOnlyWhenSomethingMovedAndSaysWhat is
+// also where the omitted-flag rule earns its keep. Two of its steps send a
+// `roles` replace that lists a role the contact holds AS primary and says
+// nothing about the flag — `[{"role":"project"}, {"role":"billing"}]` and then
+// `[{"role":"project"}]`. Under a rule that read an omitted flag as false, both
+// would be 400s refusing to demote the primary project contact, for requests
+// that never asked to; because an omitted flag means "leave this one alone"
+// (design D2, requestedRole), both are the plain role-set changes they look
+// like. That is the case, not an incidental detail of the fixture.
 func TestUpdateCustomerContact_RecordsAnEventOnlyWhenSomethingMovedAndSaysWhat(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -2498,13 +1492,19 @@ Add `"time"` to the import list for `h.Advance(time.Hour)`.
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo/apps/server
-mise exec -- go test -count=1 -run 'TestAttachContact_First|TestAttachContact_Primary|TestUpdateCustomerContact_(Clearing|Losing|Omitted|RecordsAnEvent)|TestAssociationRequests|TestGetContactCustomers_Carries|TestDetachContact_Promotes|TestDeleteContact_Promotes' ./internal/customers/
+mise exec -- go test -count=1 -run 'TestAttachContact_First|TestAttachContact_Primary|TestUpdateCustomerContact_(Clearing|Losing|Omitted|Explicit|RecordsAnEvent)|TestAssociationRequests|TestGetContactCustomers_Carries|TestDetachContact_Promotes|TestDeleteContact_Promotes' ./internal/customers/
 ```
-Expected: every case FAILs before Steps 5-7 are in place, and PASSes after. If any case passes before the implementation, it is not testing what it claims — fix the test, not the claim.
+Expected: **every case FAILs now**, and each one's message names the absent role set or the missing refusal rather than a compile error. Write down which case failed how — Step 11 re-runs this exact command and expects PASS, and a case that was green here is a case that tests nothing. If one is green, fix the test before going on.
 
-- [ ] **Step 10: Write the forced race of two `primary: true` writers**
+- [ ] **Step 6: Write the forced races — two `primary: true` writers, and the crossed lock orders**
 
-Create `apps/server/internal/customers/contact_roles_concurrency_test.go`:
+Create `apps/server/internal/customers/contact_roles_concurrency_test.go`, still before the implementation. These three also build against nothing new, and they fail now for their own reasons: the first two find no role rows at all to count primaries among, and `TestAttachAndDeleteContact_CrossedLockOrders` cannot form a cycle yet because neither handler takes the second lock. Run them and record that:
+
+```bash
+cd /home/anders/projects/vantigo/vantigo/apps/server
+taskset -c 0-3 mise exec -- go test -count=1 -run 'TestPutAssociation_Concurrent|TestDetachTheOnlyHolder|TestAttachAndDeleteContact_CrossedLockOrders|TestPartialIndexIsTheBackstop' ./internal/customers/
+```
+Expected: FAIL. Step 12 re-runs it and expects PASS.
 
 ```go
 package customers_test
@@ -2649,6 +1649,82 @@ func TestDetachTheOnlyHolder_RacesAttachingANewOne(t *testing.T) {
 	}
 }
 
+// TestAttachAndDeleteContact_CrossedLockOrders forces the one lock cycle in this
+// module: an attach takes the CUSTOMER row's lock and then the CONTACT row's
+// (contacts.go's PostCustomersByIdContacts), while deleting a contact takes the
+// contact row's lock first — it has to, that is the ported lock's purpose — and
+// only then the row of every customer it must promote a new primary for. Two
+// opposite orders, so the two can cycle, and PostgreSQL breaks a cycle by
+// killing one side with 40P01.
+//
+// The gate is what makes the interleaving reachable: while a third transaction
+// holds the customer row, the delete gets the contact lock and then queues for
+// the customer, and the attach queues for the customer too. Releasing the gate
+// admits one of them:
+//
+//   - the delete wins the customer lock: it already holds the contact lock, so
+//     it finishes, and the attach then finds no contact and answers 404; or
+//   - the attach wins the customer lock: it now wants the contact lock the
+//     delete holds, while the delete wants the customer lock the attach holds —
+//     a cycle. One of the two is killed with 40P01, db.RetrySerializable
+//     (contactRoleWriteAttempts) runs the loser again from a fresh snapshot, and
+//     it succeeds or 404s on the second attempt.
+//
+// Which branch a run takes is the database's choice, so this asserts what is
+// true of both: the delete always ends up done, the attach answers 200 or 404,
+// and **neither ever answers 500**. That last one is the retry's whole
+// observable effect — remove db.RetrySerializable from either handler and the
+// 40P01 victim escapes through `fmt.Errorf("customers: attach contact: %w", err)`
+// as a 500, which is what this test catches. Run it with -count=20: the cycle
+// branch is likely, not certain.
+func TestAttachAndDeleteContact_CrossedLockOrders(t *testing.T) {
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	customer := createCustomer(t, c, "Crossed Locks Co")
+	target := createContact(t, c, map[string]any{"firstName": "Crossed", "lastName": "Locksen"})
+	// The contact is already attached elsewhere, so the delete really does have
+	// a customer row to lock and a promotion to consider rather than taking a
+	// short path with no customer lock at all.
+	other := createCustomer(t, c, "Crossed Other Co")
+	attachWithRoles(t, c, other.Id, map[string]any{"contactId": target.Id, "title": "A",
+		"roles": []any{map[string]any{"role": "billing"}}})
+
+	release := gateCustomerLock(t, h, customer.Id)
+
+	attach := func() *modtest.Response {
+		return c.Do(http.MethodPost, fmt.Sprintf("/api/v1/customers/%d/contacts", customer.Id), map[string]any{
+			"contactId": target.Id, "title": "B", "roles": []any{map[string]any{"role": "project"}},
+		})
+	}
+	del := func() *modtest.Response {
+		return c.Do(http.MethodDelete, fmt.Sprintf("/api/v1/customers/contacts/%d", target.Id), nil)
+	}
+
+	done := make(chan []*modtest.Response, 1)
+	finished := make(chan struct{})
+	go func() {
+		done <- race(attach, del)
+		close(finished)
+	}()
+	awaitLockWaiters(t, h, 2, finished)
+	release()
+	responses := <-done
+	attachResp, deleteResp := responses[0], responses[1]
+
+	if deleteResp.Status != http.StatusNoContent {
+		t.Errorf("delete: status %d body %s, want 204", deleteResp.Status, deleteResp.Body)
+	}
+	if attachResp.Status != http.StatusOK && attachResp.Status != http.StatusNotFound {
+		t.Errorf("attach: status %d body %s, want 200 or 404 — never a 500, which is what an unretried 40P01 looks like", attachResp.Status, attachResp.Body)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM customers.contacts WHERE id = $1`, target.Id); n != 0 {
+		t.Errorf("contact rows left = %d, want 0 (the delete always wins eventually)", n)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM customers.customer_contact_roles WHERE contact_id = $1`, target.Id); n != 0 {
+		t.Errorf("orphaned role rows = %d, want 0", n)
+	}
+}
+
 // TestPartialIndexIsTheBackstop proves the database's own last word is really
 // there (design D2): a second primary row for one (customer, role), inserted
 // behind the handlers' backs, is refused by
@@ -2673,22 +1749,1201 @@ func TestPartialIndexIsTheBackstop(t *testing.T) {
 }
 ```
 
-- [ ] **Step 11: Run the concurrency file, pinned to four CPUs**
+- [ ] **Step 7: Write `contact_roles.go` — the vocabulary, the request validation and the invariant**
+
+Create `apps/server/internal/customers/contact_roles.go`:
+
+```go
+package customers
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
+	"github.com/vantigo-io/vantigo/server/internal/customers/store"
+)
+
+// This file is the typed contact roles (typed contact roles design D2, D3):
+// the vocabulary, the validation of a request's `roles` array, and the
+// one-primary-per-role invariant every association write keeps.
+//
+// The invariant is the ADDRESSES' invariant (invoice-ready customer design D3;
+// addresses.go), deliberately unaltered, with (customer_id, type) swapped for
+// (customer_id, role) and "the oldest address" for "the longest-standing
+// holder". That is not laziness: the two are the same problem, the addresses'
+// version has a partial unique index, a concurrency test and a paragraph of
+// documentation behind it, and a second, subtly different version of the same
+// rule in one module is how the two drift. Anything below that reads like
+// addresses.go is meant to.
+//
+// Every function here assumes the caller already holds the customer row's
+// FOR NO KEY UPDATE lock (queries/addresses.sql's LockCustomer) and is inside
+// that same transaction. Nothing here takes the lock itself, because the
+// handlers need it for their own 404 first.
+
+// The role vocabulary (design D2). contactRoleOrder is also the order every
+// response and every payload lists roles in, so a client never sees them
+// shuffle, and it is the order the promotion bookkeeping walks in, so two
+// roles lost in one write promote deterministically.
+const (
+	contactRoleBilling       = "billing"
+	contactRoleProject       = "project"
+	contactRoleDecisionMaker = "decision_maker"
+)
+
+var contactRoleOrder = []string{contactRoleBilling, contactRoleProject, contactRoleDecisionMaker}
+
+// contactRoleRank is contactRoleOrder as a sort key, with an unknown code
+// last. There is no unknown code today — validateAssociationRole is the only
+// way one enters — but a widened vocabulary is a value change, and a sort that
+// silently drops what it does not recognise is worse than one that puts it at
+// the end.
+func contactRoleRank(role string) int {
+	if i := slices.Index(contactRoleOrder, role); i >= 0 {
+		return i
+	}
+	return len(contactRoleOrder)
+}
+
+// contactRole is one role an association holds, exactly the pair the contract
+// answers (gen.CustomerContactRole) and exactly the pair the timeline payload
+// carries — the json tags let it be both, the convention addressSnapshot
+// follows for the same reason.
+type contactRole struct {
+	Role    string `json:"role"`
+	Primary bool   `json:"primary"`
+}
+
+// requestedRole is one validated element of a request's `roles` array: the
+// role, and what the request asked its primary flag to be. Primary is a
+// POINTER because the field is three-valued, and the three values mean
+// different things (design D2, D3):
+//
+//   - nil (omitted) on a role the association already holds: leave the flag
+//     exactly as it is. This is the case that makes a set replace safe to
+//     write: a client changing which roles a contact holds should not have to
+//     echo every primary flag back, and reading an omitted flag as false would
+//     turn "also give this contact billing" into "and stop being the primary
+//     project contact" — which is not even applied, it is refused (see phase 1
+//     of applyRoles), so the request fails for something it never said.
+//   - nil on a role the association does NOT hold yet: the first-holder rule
+//     decides — primary if nobody holds the role, otherwise not.
+//   - non-nil: what the request said. true demotes the incumbent; an explicit
+//     false on the only or primary holder is the refusal.
+//
+// "Asked" is still the operative word for the non-nil case: the invariant may
+// override it, because the first contact given a role is its primary whatever
+// the request says.
+type requestedRole struct {
+	Role    string
+	Primary *bool
+}
+
+// wantsPrimary and clearsPrimary read requestedRole.Primary's three states
+// without every call site repeating the nil check — and, more to the point,
+// without any of them collapsing nil into false by accident, which is the one
+// mistake this pointer exists to prevent.
+func (r requestedRole) wantsPrimary() bool  { return r.Primary != nil && *r.Primary }
+func (r requestedRole) clearsPrimary() bool { return r.Primary != nil && !*r.Primary }
+
+// heldPrimary indexes a role set by role, answering each one's primary flag —
+// the shape applyRoles' phase 1, requestedAsHeld and the update handler's early
+// refusal all need, written once.
+func heldPrimary(roles []contactRole) map[string]bool {
+	out := make(map[string]bool, len(roles))
+	for _, r := range roles {
+		out[r.Role] = r.Primary
+	}
+	return out
+}
+
+// validatedAssociation is the validated, normalized values of an
+// AttachCustomerContactRequest or a CustomerContactRequest
+// (Endpoints/Customers/Contacts/Dtos/CustomerContactRequest.cs, plus design
+// D1 and D3). RolesGiven distinguishes the two things a nil Roles can mean on
+// an update: `roles: []` (hold none) from an omitted `roles` (leave them
+// alone). Title is nil when the association has none.
+type validatedAssociation struct {
+	Title        *string
+	Roles        []requestedRole
+	RolesGiven   bool
+	Phone, Email *string
+}
+
+// validateCustomerContactRequest is CustomerContactRequest.TryApplyTo, widened
+// by design D1 and D3. Every field is validated regardless of an earlier one's
+// failure and every error is reported together, keyed by the JSON field name —
+// the module's all-errors-at-once shape.
+//
+// title and role are the same value under two names (D1): role is the
+// deprecated alias the recorded corpus sends, title wins when both are given,
+// and each is validated under its own noun so the message names the field the
+// caller wrote. A blank string in either is an error, not an absence.
+//
+// rolesWhenOmitted is how many roles the association already holds, and it
+// exists only for the title-or-role rule: an attach passes 0 (a new
+// association holds none), an update passes the count it just read, because
+// `roles` omitted on an update means "leave them alone" and an association
+// that keeps three roles is not saying nothing about the person just because
+// this request did not mention them.
+func validateCustomerContactRequest(title, role *string, roles *[]gen.CustomerContactRoleRequest, phone, email *string, rolesWhenOmitted int) (validatedAssociation, map[string][]string) {
+	errs := map[string][]string{}
+
+	var parsedTitle *string
+	switch {
+	case title != nil:
+		t, err := validateContactTitle(*title)
+		if err != "" {
+			errs["title"] = []string{err}
+		} else {
+			parsedTitle = &t
+		}
+	case role != nil:
+		t, err := validateContactRole(*role)
+		if err != "" {
+			errs["role"] = []string{err}
+		} else {
+			parsedTitle = &t
+		}
+	}
+
+	var parsedRoles []requestedRole
+	rolesGiven := roles != nil
+	if rolesGiven {
+		var roleErrs []string
+		seen := map[string]bool{}
+		for _, r := range *roles {
+			name, err := validateAssociationRole(r.Role)
+			if err != "" {
+				roleErrs = append(roleErrs, err)
+				continue
+			}
+			if seen[name] {
+				// Not the same as sending it once: a request naming a role
+				// twice with two different primary flags has asked for two
+				// contradictory things, and picking one of them silently is
+				// how a client learns the wrong lesson about what it sent.
+				roleErrs = append(roleErrs, fmt.Sprintf("A contact role can only be given once, but '%s' was given more than once", name))
+				continue
+			}
+			seen[name] = true
+			// r.Primary travels through as the pointer it arrived as: absent,
+			// true and false are three different instructions here (see
+			// requestedRole), so this is the one place that must NOT normalise
+			// it into a bool.
+			parsedRoles = append(parsedRoles, requestedRole{Role: name, Primary: r.Primary})
+		}
+		if len(roleErrs) > 0 {
+			errs["roles"] = roleErrs
+		}
+		// Answered in the design's fixed order rather than the request's, so
+		// the write's bookkeeping — and therefore which contact a lost primary
+		// promotes when two roles move at once — does not depend on how a
+		// client happened to order its array.
+		slices.SortFunc(parsedRoles, func(a, b requestedRole) int { return contactRoleRank(a.Role) - contactRoleRank(b.Role) })
+	}
+
+	// The title-or-role rule (design D1): an association that says nothing
+	// about the person is not worth having. Checked only once the two halves
+	// are known to be individually valid, so a request with a too-long title
+	// hears about the title rather than about a rule it did not break.
+	if len(errs) == 0 {
+		effectiveRoles := rolesWhenOmitted
+		if rolesGiven {
+			effectiveRoles = len(parsedRoles)
+		}
+		if parsedTitle == nil && effectiveRoles == 0 {
+			errs["title"] = []string{"A contact needs a title or at least one role"}
+		}
+	}
+
+	p := validateOptionalPhone("phone", phone, errs)
+	e := validateOptionalEmail("email", email, errs)
+
+	if len(errs) > 0 {
+		return validatedAssociation{}, errs
+	}
+	return validatedAssociation{Title: parsedTitle, Roles: parsedRoles, RolesGiven: rolesGiven, Phone: p, Email: e}, nil
+}
+
+// errRolePrimaryTransitionRefused is the one role refusal that is only knowable
+// under the customer's lock, so it travels out of the transaction as a sentinel
+// the way addresses.go's errPrimaryTransitionRefused does — and it is the same
+// refusal, worded for contacts.
+var errRolePrimaryTransitionRefused = errors.New("customers: primary contact role transition refused")
+
+// rolePrimaryTransitionMessage is errRolePrimaryTransitionRefused's field
+// error, keyed `roles` (design D2). It names the role, because a request
+// carrying three of them should not have to guess which one was refused.
+func rolePrimaryTransitionMessage(role string) string {
+	return fmt.Sprintf("A contact that is the only or primary holder of the '%s' role stays primary; make another contact primary instead", role)
+}
+
+// rolePromotion is one contact that became primary for one role as a SIDE
+// EFFECT of somebody else's write — a request that dropped a role it was
+// primary for, a detach, or a deleted contact. The handlers record one
+// timeline event per promotion, on the promoted contact, with the acting user
+// who caused it (design D4), which is why this has to travel back out of the
+// bookkeeping instead of being invisible inside it.
+type rolePromotion struct {
+	ContactID int32
+	Role      string
+}
+
+// demoteRoleHolder is the demote half of demote-before-promote (design D2;
+// addresses.go's demoteCurrentPrimary): the role's current primary, whoever it
+// is, stops being it. A role with no holder at all is not an error — there is
+// simply nothing to demote.
+func demoteRoleHolder(ctx context.Context, txq *store.Queries, customerID int32, role string) error {
+	current, err := txq.PrimaryContactRoleHolder(ctx, store.PrimaryContactRoleHolderParams{CustomerID: customerID, Role: role})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return txq.SetContactRolePrimary(ctx, store.SetContactRolePrimaryParams{
+		CustomerID: customerID, ContactID: current, Role: role, IsPrimary: false,
+	})
+}
+
+// promoteLongestStandingHolder is the promote half (design D2; addresses.go's
+// promoteOldestOfType): the longest-standing remaining holder of role, other
+// than excludeContactID — the contact that just gave it up — becomes its
+// primary. Nobody remaining is not an error: the role is unheld now, and
+// "always a primary while anyone holds the role" is vacuous when nobody does.
+// It answers the promoted contact, or 0 when there was none, so the caller can
+// record the event design D4 requires.
+func promoteLongestStandingHolder(ctx context.Context, txq *store.Queries, customerID, excludeContactID int32, role string) (int32, error) {
+	next, err := txq.OldestContactRoleHolder(ctx, store.OldestContactRoleHolderParams{
+		CustomerID: customerID, Role: role, ExcludeContactID: excludeContactID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	if err := txq.SetContactRolePrimary(ctx, store.SetContactRolePrimaryParams{
+		CustomerID: customerID, ContactID: next, Role: role, IsPrimary: true,
+	}); err != nil {
+		return 0, err
+	}
+	return next, nil
+}
+
+// applyRoles brings one association's roles from existing to want, inside the
+// caller's transaction and under the customer row's lock it already holds, and
+// answers the set the association holds afterwards plus every OTHER contact
+// promoted along the way (design D2).
+//
+// The order of the four phases is the whole correctness argument, and it is
+// addresses.go's order:
+//
+//  1. Refuse first, write nothing. An EXPLICIT `primary: false` on a role this
+//     association currently holds AS primary is the refusal — the only or the
+//     primary holder stays primary — and it has to be decided before any
+//     statement runs, so a request that is going to be refused leaves the
+//     database untouched rather than half-applied and rolled back. An OMITTED
+//     flag is not that refusal: it means "leave this one alone" (see
+//     requestedRole), which is why phase 1 asks clearsPrimary() and not
+//     !wantsPrimary().
+//  2. Delete the dropped roles, then promote in each of them. Deleting first
+//     is what makes the promotion safe: while a row with is_primary = true
+//     still exists, promoting another holder of the same role would put two
+//     primaries in ux_customer_contact_roles_primary at once, even if only
+//     until the transaction commits.
+//  3. For each kept role, demote the incumbent before this contact takes over.
+//     Same index, same reason, opposite direction.
+//  4. For each new role, count the holders FIRST: none means this contact is
+//     the first and is primary whatever it asked for (or did not ask); some
+//     means the request's own flag decides — true demotes the incumbent, false
+//     or omitted joins as a plain member.
+func applyRoles(ctx context.Context, txq *store.Queries, customerID, contactID int32, existing []contactRole, want []requestedRole, now time.Time) ([]contactRole, []rolePromotion, error) {
+	held := heldPrimary(existing)
+	wanted := make(map[string]bool, len(want))
+	for _, r := range want {
+		wanted[r.Role] = true
+	}
+
+	// Phase 1: refuse, before anything is written. Only an EXPLICIT false
+	// refuses; an omitted flag is "leave it alone" and can never be the
+	// refusal, which is what keeps a set replace from failing for something it
+	// did not say.
+	for _, r := range want {
+		if wasPrimary, ok := held[r.Role]; ok && wasPrimary && r.clearsPrimary() {
+			return nil, nil, fmt.Errorf("%w: %s", errRolePrimaryTransitionRefused, r.Role)
+		}
+	}
+
+	// Phase 2: the dropped roles leave, then each of them promotes.
+	keep := make([]string, 0, len(want))
+	for _, r := range want {
+		keep = append(keep, r.Role)
+	}
+	if err := txq.DeleteContactRolesNotIn(ctx, store.DeleteContactRolesNotInParams{
+		CustomerID: customerID, ContactID: contactID, Keep: keep,
+	}); err != nil {
+		return nil, nil, err
+	}
+	var promotions []rolePromotion
+	for _, r := range existing { // existing is already in contactRoleOrder
+		if _, stillWanted := wanted[r.Role]; stillWanted || !r.Primary {
+			continue
+		}
+		promoted, err := promoteLongestStandingHolder(ctx, txq, customerID, contactID, r.Role)
+		if err != nil {
+			return nil, nil, err
+		}
+		if promoted != 0 {
+			promotions = append(promotions, rolePromotion{ContactID: promoted, Role: r.Role})
+		}
+	}
+
+	// Phases 3 and 4: the roles the association is to hold, in the fixed order.
+	after := make([]contactRole, 0, len(want))
+	for _, r := range want {
+		wasPrimary, alreadyHeld := held[r.Role]
+		switch {
+		case alreadyHeld:
+			// Omitted keeps what it was; true promotes; explicit false on a
+			// non-primary holder keeps it non-primary (false on a PRIMARY
+			// holder never reaches here — phase 1 refused it).
+			primary := wasPrimary || r.wantsPrimary()
+			if primary && !wasPrimary {
+				if err := demoteRoleHolder(ctx, txq, customerID, r.Role); err != nil {
+					return nil, nil, err
+				}
+				if err := txq.SetContactRolePrimary(ctx, store.SetContactRolePrimaryParams{
+					CustomerID: customerID, ContactID: contactID, Role: r.Role, IsPrimary: true,
+				}); err != nil {
+					return nil, nil, err
+				}
+			}
+			after = append(after, contactRole{Role: r.Role, Primary: primary})
+		default:
+			holders, err := txq.CountContactRoleHolders(ctx, store.CountContactRoleHoldersParams{
+				CustomerID: customerID, Role: r.Role, ExcludeContactID: contactID,
+			})
+			if err != nil {
+				return nil, nil, err
+			}
+			// A role the association does not hold yet: the flag it asked for,
+			// with omitted reading as false here and only here — the
+			// first-holder rule below is what an omitted flag on a new role
+			// actually means, and it is the next line.
+			primary := r.wantsPrimary()
+			if holders == 0 {
+				primary = true
+			} else if primary {
+				if err := demoteRoleHolder(ctx, txq, customerID, r.Role); err != nil {
+					return nil, nil, err
+				}
+			}
+			if err := txq.InsertContactRole(ctx, store.InsertContactRoleParams{
+				CustomerID: customerID, ContactID: contactID, Role: r.Role, IsPrimary: primary, Now: now,
+			}); err != nil {
+				return nil, nil, err
+			}
+			after = append(after, contactRole{Role: r.Role, Primary: primary})
+		}
+	}
+	return after, promotions, nil
+}
+
+// releaseRoles is applyRoles' detach case (design D2): the association is gone
+// — DELETE .../contacts/{contactId} removed its row, or DELETE
+// /customers/contacts/{id} removed the contact and the composite foreign key's
+// ON DELETE CASCADE took the role rows with it — so there is nothing to
+// refuse, nothing to keep and nothing to insert, only a promotion in each role
+// this association was primary for. The caller must already have deleted the
+// row: promoting while a primary row still exists is the double-primary the
+// partial unique index forbids, which is why this takes `held` as an argument
+// rather than reading it itself.
+func releaseRoles(ctx context.Context, txq *store.Queries, customerID, contactID int32, held []contactRole) ([]rolePromotion, error) {
+	var promotions []rolePromotion
+	for _, r := range held { // already in contactRoleOrder
+		if !r.Primary {
+			continue
+		}
+		promoted, err := promoteLongestStandingHolder(ctx, txq, customerID, contactID, r.Role)
+		if err != nil {
+			return nil, err
+		}
+		if promoted != 0 {
+			promotions = append(promotions, rolePromotion{ContactID: promoted, Role: r.Role})
+		}
+	}
+	return promotions, nil
+}
+
+// contactRolesOf reads one association's roles as the type the rest of this
+// file speaks, already in the design's fixed order (the query's own ORDER BY).
+func contactRolesOf(ctx context.Context, q *store.Queries, customerID, contactID int32) ([]contactRole, error) {
+	rows, err := q.ContactRolesForAssociation(ctx, store.ContactRolesForAssociationParams{CustomerID: customerID, ContactID: contactID})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]contactRole, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, contactRole{Role: r.Role, Primary: r.IsPrimary})
+	}
+	return out, nil
+}
+
+// genContactRoles is contactRole's contract projection. It always answers a
+// non-nil pointer to a non-nil slice, so `roles` is always on the wire and is
+// `[]` rather than `null` for a contact that holds none — the contract keeps
+// the property optional only because the recorded exchange corpus predates it
+// (the same treatment SafeCustomerResponse.tags gets).
+func genContactRoles(roles []contactRole) *[]gen.CustomerContactRole {
+	out := make([]gen.CustomerContactRole, 0, len(roles))
+	for _, r := range roles {
+		out = append(out, gen.CustomerContactRole{Role: r.Role, Primary: r.Primary})
+	}
+	return &out
+}
+
+// rolesChanged reports whether two role sets differ at all — membership or a
+// primary flag. Both sides are in contactRoleOrder, so this is an element-wise
+// comparison and not a set operation.
+func rolesChanged(before, after []contactRole) bool {
+	return !slices.Equal(before, after)
+}
+
+// associationProblem is the 400 body every association write answers, keyed by
+// field. One helper because the two writing handlers each have their own
+// generated response type and would otherwise repeat the title string — and
+// the title is what a UI shows above the field errors, so a typo in one of two
+// copies is a visible inconsistency. The return type is whatever
+// apicommon.ValidationProblem answers (HttpValidationProblemDetails); read it
+// once and match it rather than guessing.
+func associationProblem(errs map[string][]string) apicommon.HttpValidationProblemDetails {
+	return apicommon.ValidationProblem("Invalid contact association", errs)
+}
+
+// roleErrorsFor turns errRolePrimaryTransitionRefused back into the field error
+// the caller sees. The sentinel is wrapped with the role name (applyRoles), so
+// this reads it back out rather than making every handler format the message.
+func roleErrorsFor(err error) map[string][]string {
+	role := strings.TrimSpace(strings.TrimPrefix(err.Error(), errRolePrimaryTransitionRefused.Error()+":"))
+	return map[string][]string{"roles": {rolePrimaryTransitionMessage(role)}}
+}
+```
+
+- [ ] **Step 8: Teach the timeline about `title`, `roles` and the two new summaries**
+
+In `apps/server/internal/customers/contacts_timeline.go`, replace `recordContactEvent` and the four recorders with:
+
+```go
+// recordContactEvent is AddContact (SV/CustomerTimelineRecorder.cs:99-124),
+// widened by typed contact roles design D4: the payload gains `title` (the
+// same value `role` carries, under the name the field now has) and `roles`,
+// and `role` stays exactly where it was because the recorded corpus and every
+// timeline entry already written speak it.
+func recordContactEvent(ctx context.Context, q *store.Queries, now time.Time, customerID int32, eventType, action string, contact store.CustomersContact, title *string, roles []contactRole, phone, email *string, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	displayName := contactDisplayName(contact.FirstName, contact.MiddleName, contact.LastName)
+	summary := fmt.Sprintf("%s: %s (#%d)", action, displayName, contact.ID)
+	// Never nil: a payload that says "roles": null cannot be told apart from
+	// one written before roles existed, while "roles": [] says the association
+	// holds none, which is a fact.
+	if roles == nil {
+		roles = []contactRole{}
+	}
+	payload := map[string]any{
+		"customerId":  customerID,
+		"contactId":   contact.ID,
+		"displayName": displayName,
+		"firstName":   contact.FirstName,
+		"middleName":  contact.MiddleName,
+		"lastName":    contact.LastName,
+		"role":        deref(title),
+		"title":       title,
+		"roles":       roles,
+		"phone":       phone,
+		"email":       email,
+	}
+	return recordGeneratedEvent(ctx, q, customerID, now, eventType, truncateUTF16(summary, 500), payload, 1, actorKind, actorDisplay, actorUserID)
+}
+
+// recordContactAttached is RecordContactAttached (SV/CustomerTimelineRecorder.cs:87-88).
+func recordContactAttached(ctx context.Context, q *store.Queries, now time.Time, customerID int32, contact store.CustomersContact, title *string, roles []contactRole, phone, email *string, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	return recordContactEvent(ctx, q, now, customerID, "customer.contact_attached", "Contact linked", contact, title, roles, phone, email, actorKind, actorDisplay, actorUserID)
+}
+
+// recordContactRelationshipUpdated is RecordContactRelationshipUpdated
+// (SV/CustomerTimelineRecorder.cs:90-91): only called when the title, the
+// phone, the email, the role set or a primary flag actually changed (design
+// D4), and its action says which of those it was — see
+// relationshipUpdateAction.
+func recordContactRelationshipUpdated(ctx context.Context, q *store.Queries, now time.Time, customerID int32, contact store.CustomersContact, action string, title *string, roles []contactRole, phone, email *string, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	return recordContactEvent(ctx, q, now, customerID, "customer.contact_relationship_updated", action, contact, title, roles, phone, email, actorKind, actorDisplay, actorUserID)
+}
+
+// recordContactDetached is RecordContactDetached (SV/CustomerTimelineRecorder.cs:93-94).
+func recordContactDetached(ctx context.Context, q *store.Queries, now time.Time, customerID int32, contact store.CustomersContact, title *string, roles []contactRole, phone, email *string, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	return recordContactEvent(ctx, q, now, customerID, "customer.contact_detached", "Contact unlinked", contact, title, roles, phone, email, actorKind, actorDisplay, actorUserID)
+}
+
+// recordContactRemoved is RecordContactRemoved (SV/CustomerTimelineRecorder.cs:96-97),
+// called once per association DeleteContact cascades over, before the contact
+// row itself is deleted.
+func recordContactRemoved(ctx context.Context, q *store.Queries, now time.Time, customerID int32, contact store.CustomersContact, title *string, roles []contactRole, phone, email *string, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	return recordContactEvent(ctx, q, now, customerID, "customer.contact_removed", "Contact removed", contact, title, roles, phone, email, actorKind, actorDisplay, actorUserID)
+}
+
+// relationshipUpdateActionDefault is what an update that moved only the title,
+// the phone or the email has always said.
+const relationshipUpdateActionDefault = "Contact relationship updated"
+
+// relationshipUpdateAction is design D4's "its summary names what changed".
+// Becoming a role's primary is the one change worth saying out loud on a
+// timeline — it is the answer to "who gets the invoice" moving — so it wins
+// over the plainer wordings, and a write that made this contact primary for
+// more than one role names the first in the design's fixed order rather than
+// listing them: the summary is a varchar(500) one-liner in a feed, and the
+// payload carries the whole set for anyone who needs it.
+func relationshipUpdateAction(before, after []contactRole) string {
+	wasPrimary := make(map[string]bool, len(before))
+	for _, r := range before {
+		wasPrimary[r.Role] = r.Primary
+	}
+	for _, r := range after { // after is in contactRoleOrder
+		if r.Primary && !wasPrimary[r.Role] {
+			return fmt.Sprintf("Now the primary %s contact", contactRoleSummaryLabel(r.Role))
+		}
+	}
+	if rolesChanged(before, after) {
+		return "Roles updated"
+	}
+	return relationshipUpdateActionDefault
+}
+
+// contactRoleSummaryLabel is a role inside an English sentence, which is not
+// the same as the code: "decision_maker" reads as a column name in a feed.
+// Only the summary uses it — the payload and the API always carry the code —
+// and the frontend never reads it, because the frontend has its own catalogs.
+func contactRoleSummaryLabel(role string) string {
+	if role == contactRoleDecisionMaker {
+		return "decision-maker"
+	}
+	return role
+}
+
+// recordContactPromoted is design D4's promotion event: a contact that became
+// a role's primary because SOMEBODY ELSE gave it up, was detached, or was
+// deleted. It is a customer.contact_relationship_updated — the relationship
+// did change, and inventing a type for it would be a type no timeline filter
+// knows — recorded against the promoted contact, with the acting user who
+// caused it rather than a system actor: a person did this, indirectly, and the
+// timeline's job is to say who.
+func recordContactPromoted(ctx context.Context, q *store.Queries, now time.Time, customerID int32, contact store.CustomersContact, role string, title *string, roles []contactRole, phone, email *string, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	action := fmt.Sprintf("Now the primary %s contact", contactRoleSummaryLabel(role))
+	return recordContactEvent(ctx, q, now, customerID, "customer.contact_relationship_updated", action, contact, title, roles, phone, email, actorKind, actorDisplay, actorUserID)
+}
+```
+
+`truncateUTF16` (timeline.go:92) is now applied to the summary: a contact's display name is three name parts of up to 100 characters each, and the longest action above adds twenty-odd more, so the total can exceed `varchar(500)` — it could before this delivery too, and the addresses' recorders already truncate.
+
+- [ ] **Step 9: Rewrite the four handlers in `contacts.go`**
+
+Delete `validatedAssociation` and `validateCustomerContactRequest` from `contacts.go` (lines ~129-155) — they now live in `contact_roles.go` — and add one constant beside the two existing sentinels:
+
+```go
+// contactRoleWriteAttempts is how often an association write's transaction runs
+// before the deadlock it keeps losing escapes as a 500. Three, as tags.go's
+// tagWriteAttempts and identity's serializableAttempts both settled on.
+//
+// The deadlock is real and is between two handlers in this very file. An
+// attach locks the CUSTOMER row (LockCustomer, so the role bookkeeping
+// serializes) and then the CONTACT row (GetContactForUpdate, the ported lock
+// that serializes attach against a concurrent delete of the same contact),
+// while DELETE /customers/contacts/{id} locks the contact row first — it has
+// to, that is the lock's whole purpose — and only then the rows of every
+// customer it must promote a new primary for. Two opposite lock orders, so the
+// two can cycle; PostgreSQL breaks it by killing one side (40P01). Being the
+// victim of a lock-order cycle is not something either caller did wrong, so
+// the retry runs the loser again from a fresh snapshot, in which one of the two
+// writes has simply already happened.
+//
+// Reversing one of the orders instead was considered and rejected: the delete
+// cannot lock the customers before the contact, because which customers those
+// are is what reading the contact's associations tells it, and an association
+// added between that read and the lock would need a retry anyway.
+const contactRoleWriteAttempts = 3
+```
+
+**`PostCustomersByIdContacts`** — validation still runs before existence (`TestAttachContact_InvalidConnectionAgainstUnknownCustomer_Returns400` pins it), and `rolesWhenOmitted` is 0 because a new association holds no roles:
+
+```go
+func (s *server) PostCustomersByIdContacts(ctx context.Context, req gen.PostCustomersByIdContactsRequestObject) (gen.PostCustomersByIdContactsResponseObject, error) {
+	body := gen.AttachCustomerContactRequest{}
+	if req.Body != nil {
+		body = *req.Body
+	}
+
+	assoc, errs := validateCustomerContactRequest(body.Title, body.Role, body.Roles, body.Phone, body.Email, 0)
+	if errs != nil {
+		return gen.PostCustomersByIdContacts400ApplicationProblemPlusJSONResponse(associationProblem(errs)), nil
+	}
+
+	now := s.deps.Clock()
+	// Resolved before the transaction opens (customers foundation design D1,
+	// actor.go): a successful write always follows past validation, and the
+	// 404/409 refusals are only knowable inside the transaction, so one wasted
+	// directory call on those paths is accepted rather than resolving it twice.
+	act, err := s.actorFor(ctx, generatedFallbackActor)
+	if err != nil {
+		return nil, fmt.Errorf("customers: resolve actor: %w", err)
+	}
+
+	var response gen.CustomerContactResponse
+	err = db.RetrySerializable(ctx, contactRoleWriteAttempts, func() error {
+		return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+			txq := store.New(tx)
+
+			// The customer row's lock comes first, before the contact's: every
+			// write that touches customer_contact_roles takes it (typed
+			// contact roles design D2), and it is also this handler's
+			// existence check, replacing the plain GetCustomer it used to make.
+			customer, err := txq.LockCustomer(ctx, req.Id)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return errAssociationTargetNotFound
+			}
+			if err != nil {
+				return err
+			}
+			contact, err := txq.GetContactForUpdate(ctx, body.ContactId)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return errAssociationTargetNotFound
+			}
+			if err != nil {
+				return err
+			}
+
+			attached, err := txq.AssociationExists(ctx, store.AssociationExistsParams{CustomerID: req.Id, ContactID: body.ContactId})
+			if err != nil {
+				return err
+			}
+			if attached {
+				return errAlreadyAttached
+			}
+
+			if err := txq.InsertAssociation(ctx, store.InsertAssociationParams{
+				CustomerID: req.Id, ContactID: body.ContactId, Title: assoc.Title, Phone: assoc.Phone, Email: assoc.Email,
+			}); err != nil {
+				return err
+			}
+			// nil existing: the association was created a statement ago, so
+			// every role it is given is a new one and the first-holder rule is
+			// the only one that can apply.
+			roles, promotions, err := applyRoles(ctx, txq, req.Id, body.ContactId, nil, assoc.Roles, now)
+			if err != nil {
+				return err
+			}
+			if err := recordContactAttached(ctx, txq, now, customer.ID, contact, assoc.Title, roles, assoc.Phone, assoc.Email, act.Kind, act.Display, act.UserID); err != nil {
+				return err
+			}
+			if err := recordPromotions(ctx, txq, now, req.Id, promotions, act); err != nil {
+				return err
+			}
+
+			response = gen.CustomerContactResponse{
+				Contact: contactResponse(contact), Role: deref(assoc.Title), Title: assoc.Title,
+				Roles: genContactRoles(roles), Phone: assoc.Phone, Email: assoc.Email,
+			}
+			return nil
+		})
+	})
+	switch {
+	case errors.Is(err, errAssociationTargetNotFound):
+		return gen.PostCustomersByIdContacts404Response{}, nil
+	case errors.Is(err, errAlreadyAttached):
+		detail := fmt.Sprintf("Contact %d is already associated with customer %d.", body.ContactId, req.Id)
+		return gen.PostCustomersByIdContacts409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus("Contact already associated", detail, http.StatusConflict)), nil
+	case errors.Is(err, errRolePrimaryTransitionRefused):
+		// Unreachable on an attach — nothing is held yet, so no primary can be
+		// cleared — but handled rather than falling into the 500 below, because
+		// "unreachable" is a property of applyRoles' phase 1 and not of this
+		// call site, and a future change to either should surface as the 400 it
+		// is.
+		return gen.PostCustomersByIdContacts400ApplicationProblemPlusJSONResponse(associationProblem(roleErrorsFor(err))), nil
+	case err != nil:
+		return nil, fmt.Errorf("customers: attach contact: %w", err)
+	}
+	return gen.PostCustomersByIdContacts200JSONResponse(response), nil
+}
+```
+
+**`PutCustomersByIdContactsByContactId`** — the association lookup still precedes validation (`TestUpdateCustomerContact_InvalidConnectionAgainstUnknownAssociation_Returns404` pins it), the no-op now answers without opening a transaction at all, and the authoritative read happens under the lock:
+
+```go
+func (s *server) PutCustomersByIdContactsByContactId(ctx context.Context, req gen.PutCustomersByIdContactsByContactIdRequestObject) (gen.PutCustomersByIdContactsByContactIdResponseObject, error) {
+	q := store.New(s.deps.Pool)
+	existing, err := q.GetAssociationWithContact(ctx, store.GetAssociationWithContactParams{CustomerID: req.Id, ContactID: req.ContactId})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return gen.PutCustomersByIdContactsByContactId404Response{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("customers: get association: %w", err)
+	}
+	currentRoles, err := contactRolesOf(ctx, q, req.Id, req.ContactId)
+	if err != nil {
+		return nil, fmt.Errorf("customers: read association roles: %w", err)
+	}
+
+	body := gen.CustomerContactRequest{}
+	if req.Body != nil {
+		body = *req.Body
+	}
+	// rolesWhenOmitted is what the association already holds: `roles` omitted
+	// means "leave them alone" (design D3), so the title-or-role rule must not
+	// refuse a request that only changes a phone number on an association that
+	// already has three roles.
+	assoc, errs := validateCustomerContactRequest(body.Title, body.Role, body.Roles, body.Phone, body.Email, len(currentRoles))
+	if errs != nil {
+		return gen.PutCustomersByIdContactsByContactId400ApplicationProblemPlusJSONResponse(associationProblem(errs)), nil
+	}
+
+	// An omitted `roles` is the current set, so the rest of this handler can
+	// treat "what to hold" as one thing. Every element's Primary is nil — "leave
+	// this one alone" — and not the flag copied out of currentRoles: a request
+	// that did not mention roles at all must be unable to move a primary flag,
+	// and nil is the only value of the three that guarantees that even if the
+	// set changed under us between the unlocked read and the lock.
+	want := assoc.Roles
+	if !assoc.RolesGiven {
+		want = make([]requestedRole, 0, len(currentRoles))
+		for _, r := range currentRoles {
+			want = append(want, requestedRole{Role: r.Role, Primary: nil})
+		}
+	}
+
+	// The refusal is decided before the no-op shortcut below, on the set the
+	// unlocked read found: a request asking to clear the primary flag of a role
+	// this contact is the only or the primary holder of is refused (design D2)
+	// even when it changes nothing else, because answering 200 to it would tell
+	// the client its `primary: false` was honoured. Only an EXPLICIT false is
+	// this refusal — an omitted flag means "leave it alone" and is never
+	// refused. applyRoles refuses again under the lock, and that check is the
+	// authoritative one; this one only makes sure the shortcut cannot swallow it.
+	currentPrimary := heldPrimary(currentRoles)
+	for _, r := range want {
+		if wasPrimary, ok := currentPrimary[r.Role]; ok && wasPrimary && r.clearsPrimary() {
+			return gen.PutCustomersByIdContactsByContactId400ApplicationProblemPlusJSONResponse(
+				associationProblem(map[string][]string{"roles": {rolePrimaryTransitionMessage(r.Role)}})), nil
+		}
+	}
+
+	answer := gen.PutCustomersByIdContactsByContactId200JSONResponse{
+		Contact: contactResponse(contactFromAssociationRow(existing)), Role: deref(assoc.Title), Title: assoc.Title,
+		Roles: genContactRoles(currentRoles), Phone: assoc.Phone, Email: assoc.Email,
+	}
+
+	fieldsChanged := deref(existing.Title) != deref(assoc.Title) ||
+		deref(existing.AssociationPhone) != deref(assoc.Phone) ||
+		deref(existing.AssociationEmail) != deref(assoc.Email)
+	if !fieldsChanged && !rolesChanged(currentRoles, requestedAsHeld(want, currentRoles)) {
+		// Nothing moved: the no-op rule every write in this module follows
+		// (customers foundation design D5), and the reason this handler no
+		// longer opens a transaction for one — the UPDATE would rewrite
+		// identical values, the role bookkeeping would rewrite identical rows,
+		// no event would be recorded anyway, and the actor lookup below would
+		// be a directory call made for a request that writes nothing. A
+		// concurrent writer can make this answer stale, which is what
+		// last-wins on an off-the-row resource means (tags.go says the same).
+		return answer, nil
+	}
+
+	now := s.deps.Clock()
+	// Resolved before the transaction opens, and only now that a write is
+	// certain to follow (customers foundation design D1, actor.go).
+	act, err := s.actorFor(ctx, generatedFallbackActor)
+	if err != nil {
+		return nil, fmt.Errorf("customers: resolve actor: %w", err)
+	}
+
+	err = db.RetrySerializable(ctx, contactRoleWriteAttempts, func() error {
+		return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+			txq := store.New(tx)
+			if _, err := txq.LockCustomer(ctx, req.Id); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return errAssociationTargetNotFound
+				}
+				return err
+			}
+			// Re-read under the lock: the unlocked read above answered the
+			// 404 and shaped the validation, but a concurrent detach could
+			// have removed the association since, and inserting role rows for
+			// an association that no longer exists is a foreign-key violation
+			// rather than the 404 it really is. Detach takes this same lock,
+			// so re-reading inside it is a complete answer, not a narrower
+			// window.
+			locked, err := txq.GetAssociationWithContact(ctx, store.GetAssociationWithContactParams{CustomerID: req.Id, ContactID: req.ContactId})
+			if errors.Is(err, pgx.ErrNoRows) {
+				return errAssociationTargetNotFound
+			}
+			if err != nil {
+				return err
+			}
+			before, err := contactRolesOf(ctx, txq, req.Id, req.ContactId)
+			if err != nil {
+				return err
+			}
+
+			if err := txq.UpdateAssociation(ctx, store.UpdateAssociationParams{
+				CustomerID: req.Id, ContactID: req.ContactId, Title: assoc.Title, Phone: assoc.Phone, Email: assoc.Email,
+			}); err != nil {
+				return err
+			}
+			after, promotions, err := applyRoles(ctx, txq, req.Id, req.ContactId, before, want, now)
+			if err != nil {
+				return err
+			}
+			answer.Roles = genContactRoles(after)
+
+			// Recomputed against what the lock actually found: a concurrent
+			// writer may already have made this exact change, and an event
+			// claiming a change that did not happen is worse than the wasted
+			// actor lookup above (the same trade addresses.go documents).
+			if deref(locked.Title) != deref(assoc.Title) ||
+				deref(locked.AssociationPhone) != deref(assoc.Phone) ||
+				deref(locked.AssociationEmail) != deref(assoc.Email) ||
+				rolesChanged(before, after) {
+				if err := recordContactRelationshipUpdated(ctx, txq, now, req.Id, contactFromAssociationRow(locked),
+					relationshipUpdateAction(before, after), assoc.Title, after, assoc.Phone, assoc.Email,
+					act.Kind, act.Display, act.UserID); err != nil {
+					return err
+				}
+			}
+			return recordPromotions(ctx, txq, now, req.Id, promotions, act)
+		})
+	})
+	switch {
+	case errors.Is(err, errAssociationTargetNotFound):
+		return gen.PutCustomersByIdContactsByContactId404Response{}, nil
+	case errors.Is(err, errRolePrimaryTransitionRefused):
+		return gen.PutCustomersByIdContactsByContactId400ApplicationProblemPlusJSONResponse(associationProblem(roleErrorsFor(err))), nil
+	case err != nil:
+		return nil, fmt.Errorf("customers: update association: %w", err)
+	}
+
+	return answer, nil
+}
+
+// requestedAsHeld predicts what applyRoles will leave the association holding,
+// so the no-op check can compare like with like. It resolves the two things a
+// request does not state outright (see requestedRole):
+//
+//   - a role the association already holds with an OMITTED flag keeps the flag
+//     it has, which is the whole reason the flag is a pointer; and
+//   - a role it already holds with an explicit true is primary, while an
+//     explicit true on a role it does not hold yet may or may not be (the
+//     first-holder rule needs a holder count this function does not have) —
+//     which does not matter, because a role the association does not hold is a
+//     MEMBERSHIP change and rolesChanged has already answered true whatever
+//     flag is predicted for it.
+func requestedAsHeld(want []requestedRole, held []contactRole) []contactRole {
+	wasPrimary := heldPrimary(held)
+	out := make([]contactRole, 0, len(want))
+	for _, r := range want {
+		primary, alreadyHeld := wasPrimary[r.Role]
+		if !alreadyHeld {
+			primary = r.wantsPrimary()
+		} else if r.wantsPrimary() {
+			primary = true
+		}
+		out = append(out, contactRole{Role: r.Role, Primary: primary})
+	}
+	return out
+}
+```
+
+**`DeleteCustomersByIdContactsByContactId`** — the detach:
+
+```go
+func (s *server) DeleteCustomersByIdContactsByContactId(ctx context.Context, req gen.DeleteCustomersByIdContactsByContactIdRequestObject) (gen.DeleteCustomersByIdContactsByContactIdResponseObject, error) {
+	q := store.New(s.deps.Pool)
+	if _, err := q.GetAssociationWithContact(ctx, store.GetAssociationWithContactParams{CustomerID: req.Id, ContactID: req.ContactId}); errors.Is(err, pgx.ErrNoRows) {
+		return gen.DeleteCustomersByIdContactsByContactId404Response{}, nil
+	} else if err != nil {
+		return nil, fmt.Errorf("customers: get association: %w", err)
+	}
+
+	// Resolved before the transaction opens: this handler always records a
+	// "detached" event once it reaches here (the 404 case wastes one call).
+	act, err := s.actorFor(ctx, generatedFallbackActor)
+	if err != nil {
+		return nil, fmt.Errorf("customers: resolve actor: %w", err)
+	}
+
+	now := s.deps.Clock()
+	err = db.RetrySerializable(ctx, contactRoleWriteAttempts, func() error {
+		return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+			txq := store.New(tx)
+			if _, err := txq.LockCustomer(ctx, req.Id); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return errAssociationTargetNotFound
+				}
+				return err
+			}
+			// Re-read under the lock, the same reason the PUT does: the 404
+			// above was decided outside it.
+			locked, err := txq.GetAssociationWithContact(ctx, store.GetAssociationWithContactParams{CustomerID: req.Id, ContactID: req.ContactId})
+			if errors.Is(err, pgx.ErrNoRows) {
+				return errAssociationTargetNotFound
+			}
+			if err != nil {
+				return err
+			}
+			held, err := contactRolesOf(ctx, txq, req.Id, req.ContactId)
+			if err != nil {
+				return err
+			}
+
+			// The association row goes first, and its roles go with it through
+			// the composite foreign key's ON DELETE CASCADE (migration 00025).
+			// Only then can another holder be promoted: while this contact's
+			// is_primary row still exists, promoting one would put two
+			// primaries of one role in ux_customer_contact_roles_primary at
+			// once — the same delete-before-promote order
+			// DeleteCustomersByIdAddressesByAddressId keeps, for the same
+			// index-shaped reason.
+			if err := txq.DeleteAssociation(ctx, store.DeleteAssociationParams{CustomerID: req.Id, ContactID: req.ContactId}); err != nil {
+				return err
+			}
+			promotions, err := releaseRoles(ctx, txq, req.Id, req.ContactId, held)
+			if err != nil {
+				return err
+			}
+
+			if err := recordContactDetached(ctx, txq, now, req.Id, contactFromAssociationRow(locked), locked.Title, held,
+				locked.AssociationPhone, locked.AssociationEmail, act.Kind, act.Display, act.UserID); err != nil {
+				return err
+			}
+			return recordPromotions(ctx, txq, now, req.Id, promotions, act)
+		})
+	})
+	switch {
+	case errors.Is(err, errAssociationTargetNotFound):
+		return gen.DeleteCustomersByIdContactsByContactId404Response{}, nil
+	case err != nil:
+		return nil, fmt.Errorf("customers: detach contact: %w", err)
+	}
+	return gen.DeleteCustomersByIdContactsByContactId204Response{}, nil
+}
+```
+
+**`DeleteCustomersContactsById`** — the contact delete, which cascades over every association:
+
+```go
+func (s *server) DeleteCustomersContactsById(ctx context.Context, req gen.DeleteCustomersContactsByIdRequestObject) (gen.DeleteCustomersContactsByIdResponseObject, error) {
+	// Resolved before the transaction opens: the directory lookup actorFor can
+	// make is an out-of-process call this module never wants to make while
+	// holding a row lock (customers foundation design D1, actor.go).
+	act, err := s.actorFor(ctx, generatedFallbackActor)
+	if err != nil {
+		return nil, fmt.Errorf("customers: resolve actor: %w", err)
+	}
+
+	now := s.deps.Clock()
+	err = db.RetrySerializable(ctx, contactRoleWriteAttempts, func() error {
+		return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+			txq := store.New(tx)
+			contact, err := txq.GetContactForUpdate(ctx, req.Id)
+			if err != nil {
+				return err
+			}
+			associations, err := txq.ListAssociationsForContact(ctx, req.Id)
+			if err != nil {
+				return err
+			}
+			roleRows, err := txq.ContactRolesForContact(ctx, req.Id)
+			if err != nil {
+				return err
+			}
+			rolesByCustomer := make(map[int32][]contactRole, len(associations))
+			for _, r := range roleRows { // already ordered by customer, then the fixed role order
+				rolesByCustomer[r.CustomerID] = append(rolesByCustomer[r.CustomerID], contactRole{Role: r.Role, Primary: r.IsPrimary})
+			}
+
+			// Every customer this contact is attached to has to be locked
+			// before its roles are re-arranged (typed contact roles design
+			// D2), and in the order ListAssociationsForContact answers —
+			// ascending customer_id, which the query's own ORDER BY
+			// guarantees. A deterministic order across all callers is what
+			// keeps two concurrent deletes of two contacts that share two
+			// customers from deadlocking with each other; the retry above
+			// exists for the other cycle, the one against an attach.
+			for _, a := range associations {
+				if _, err := txq.LockCustomer(ctx, a.CustomerID); err != nil {
+					return err
+				}
+			}
+			for _, a := range associations {
+				if err := recordContactRemoved(ctx, txq, now, a.CustomerID, contact, a.Title, rolesByCustomer[a.CustomerID],
+					a.Phone, a.Email, act.Kind, act.Display, act.UserID); err != nil {
+					return err
+				}
+			}
+
+			// The contact goes, and with it every association and every role
+			// row (two cascades: contacts → customers_contacts → 
+			// customer_contact_roles). Only then is a promotion safe, the same
+			// delete-before-promote order the detach keeps.
+			if err := txq.DeleteContact(ctx, req.Id); err != nil {
+				return err
+			}
+			for _, a := range associations {
+				promotions, err := releaseRoles(ctx, txq, a.CustomerID, req.Id, rolesByCustomer[a.CustomerID])
+				if err != nil {
+					return err
+				}
+				if err := recordPromotions(ctx, txq, now, a.CustomerID, promotions, act); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return gen.DeleteCustomersContactsById404Response{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("customers: delete contact: %w", err)
+	}
+	return gen.DeleteCustomersContactsById204Response{}, nil
+}
+```
+
+and the shared promotion recorder, in `contacts.go` beside the handlers that use it:
+
+```go
+// recordPromotions records design D4's promotion event for each contact that
+// became a role's primary as a side effect of the write just made: on the
+// promoted contact, with the acting user who caused it. It reads each promoted
+// association back — the event's payload is that association's own title,
+// phone, email and full role set, not a fragment — which is one query per
+// promotion and at most three per write, since a contact can be primary for at
+// most the three roles there are.
+func recordPromotions(ctx context.Context, txq *store.Queries, now time.Time, customerID int32, promotions []rolePromotion, act actor) error {
+	for _, p := range promotions {
+		row, err := txq.GetAssociationWithContact(ctx, store.GetAssociationWithContactParams{CustomerID: customerID, ContactID: p.ContactID})
+		if err != nil {
+			return err
+		}
+		roles, err := contactRolesOf(ctx, txq, customerID, p.ContactID)
+		if err != nil {
+			return err
+		}
+		if err := recordContactPromoted(ctx, txq, now, customerID, contactFromAssociationRow(row), p.Role,
+			row.Title, roles, row.AssociationPhone, row.AssociationEmail, act.Kind, act.Display, act.UserID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+```
+
+Finally, the two list handlers answer `title` and `roles`, each loading every role row of the page in one query:
+
+`GetCustomersByIdContacts` — after `rows, err := q.ListContactAssociationsForCustomer(...)`:
+
+```go
+	roleRows, err := q.ContactRolesForCustomer(ctx, req.Id)
+	if err != nil {
+		return nil, fmt.Errorf("customers: list customer contact roles: %w", err)
+	}
+	// One query for the whole list, never one per row (design D3), grouped the
+	// way CustomerTagsForCustomers' answer is: the rows arrive in the fixed
+	// role order already, so appending preserves it.
+	byContact := make(map[int32][]contactRole, len(rows))
+	for _, r := range roleRows {
+		byContact[r.ContactID] = append(byContact[r.ContactID], contactRole{Role: r.Role, Primary: r.IsPrimary})
+	}
+
+	data := make([]gen.CustomerContactResponse, 0, len(rows))
+	for _, r := range rows {
+		data = append(data, gen.CustomerContactResponse{
+			Contact: gen.ContactResponse{
+				Id: r.ID, FirstName: r.FirstName, LastName: r.LastName,
+				MiddleName: r.MiddleName, Prefix: r.Prefix, Suffix: r.Suffix, Phone: r.ContactPhone, Email: r.ContactEmail,
+			},
+			Role: deref(r.Title), Title: r.Title, Roles: genContactRoles(byContact[r.ID]),
+			Phone: r.AssociationPhone, Email: r.AssociationEmail,
+		})
+	}
+```
+
+`GetCustomersContactsByIdCustomers` — the mirror, keyed by customer:
+
+```go
+	roleRows, err := q.ContactRolesForContact(ctx, req.Id)
+	if err != nil {
+		return nil, fmt.Errorf("customers: list contact roles: %w", err)
+	}
+	byCustomer := make(map[int32][]contactRole, len(rows))
+	for _, r := range roleRows {
+		byCustomer[r.CustomerID] = append(byCustomer[r.CustomerID], contactRole{Role: r.Role, Primary: r.IsPrimary})
+	}
+
+	data := make([]gen.GetContactCustomersContactCustomerResponse, 0, len(rows))
+	for _, r := range rows {
+		data = append(data, gen.GetContactCustomersContactCustomerResponse{
+			Customer: gen.GetContactCustomersCustomerReference{Id: r.ID, CustomerNumber: r.CustomerNumber, Name: r.Name},
+			Role:     deref(r.Title), Title: r.Title, Roles: genContactRoles(byCustomer[r.ID]),
+			Phone:    r.Phone, Email: r.Email,
+		})
+	}
+```
+
+- [ ] **Step 10: Compile and fix the four pre-existing payload assertions**
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo/apps/server
-taskset -c 0-3 mise exec -- go test -count=5 -run 'TestPutAssociation_Concurrent|TestDetachTheOnlyHolder|TestPartialIndexIsTheBackstop' ./internal/customers/
+mise exec -- go vet ./... && mise exec -- go test -count=1 ./internal/customers/
 ```
-Expected: PASS every time. The machine has far more cores than CI; `taskset -c 0-3` is what this project uses to make timing look like CI's. These three are **not** `t.Parallel()` (except the backstop), because a lock gate and a parallel sibling holding the same customer row are two different experiments.
+Four tests in `contacts_test.go` assert the event payload with `reflect.DeepEqual` and now see two extra keys. Add them to each `wantPayload`, in the shape the recorder writes (`title` is a JSON string or `nil`; `roles` decodes to `[]any`):
 
-- [ ] **Step 12: The whole package green**
+- `TestAttachContact_RecordsTimelineEvent` (~line 882): add `"title": "CEO",` and `"roles": []any{},`
+- `TestUpdateCustomerContact_RecordsRelationshipUpdatedEvent` (~line 924): add `"title": "Chairman",` and `"roles": []any{},`
+- `TestDetachContact_RecordsTimelineEvent` and `TestDeleteContact_RecordsRemovedTimelineEvent`: the same two keys with that test's own title value and `[]any{}`.
+
+Everything else in the file stays: `attachContact` still sends `role`, the corpus's field name, which is exactly the compatibility this delivery promises.
+
+- [ ] **Step 11: Run Step 5's tests and watch them turn green**
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo/apps/server
-mise exec -- go vet ./... && mise exec -- go test -count=1 ./internal/customers/... ./internal/openapi/... ./internal/module/... ./internal/db/...
+mise exec -- go test -count=1 -run 'TestAttachContact_First|TestAttachContact_Primary|TestUpdateCustomerContact_(Clearing|Losing|Omitted|Explicit|RecordsAnEvent)|TestAssociationRequests|TestGetContactCustomers_Carries|TestDetachContact_Promotes|TestDeleteContact_Promotes' ./internal/customers/
 ```
+Expected: PASS, every case that Step 5 saw fail. This is the same command Step 5 ran; comparing the two runs is the proof that each case pins something the implementation does and not something it happened to do already.
 
-- [ ] **Step 13: Commit**
+- [ ] **Step 12: Run Step 6's concurrency file green, pinned to four CPUs**
+
+```bash
+cd /home/anders/projects/vantigo/vantigo/apps/server
+taskset -c 0-3 mise exec -- go test -count=5 -run 'TestPutAssociation_Concurrent|TestDetachTheOnlyHolder|TestAttachAndDeleteContact_CrossedLockOrders|TestPartialIndexIsTheBackstop' ./internal/customers/
+```
+Expected: PASS every time. The machine has far more cores than CI; `taskset -c 0-3` is what this project uses to make timing look like CI's. The three race cases are **not** `t.Parallel()` (the backstop is), because a lock gate and a parallel sibling holding the same customer row are two different experiments.
+
+- [ ] **Step 13: The whole package green, and gofmt'd**
+
+```bash
+cd /home/anders/projects/vantigo/vantigo/apps/server
+mise exec -- gofmt -l ./internal/customers && mise exec -- go vet ./... && mise exec -- go test -count=1 ./internal/customers/... ./internal/openapi/... ./internal/module/... ./internal/db/...
+```
+`gofmt -l` must print nothing before the commit. **Every Go listing in this plan is written for readability, not to gofmt's exact alignment** — struct-literal field alignment and comment wrapping in particular — so run `mise exec -- gofmt -w ./internal/customers` if it names a file, and commit the formatted version. `golangci-lint` (Task 6) fails on unformatted code, so this is not a stylistic nicety.
+
+- [ ] **Step 14: Commit**
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo
@@ -2698,13 +2953,15 @@ git commit -F /tmp/msg-roles-task3 -- $(git diff --cached --name-only)
 git show --stat HEAD && git status --short
 ```
 
-- [ ] **Step 14: Show three of the new tests can fail**
+- [ ] **Step 15: Show five of the new tests can fail**
 
 Each by removing exactly the guard it claims to pin, running it, seeing red, and restoring:
 1. `TestAttachContact_FirstHolderOfARoleIsPrimaryWhateverItAsked` — delete `if holders == 0 { primary = true }` from `applyRoles`' new-role branch.
 2. `TestUpdateCustomerContact_LosingAPrimaryRolePromotesTheLongestStandingHolder` — change `OldestContactRoleHolder`'s `ORDER BY created_at, contact_id` to `ORDER BY contact_id` and regenerate.
 3. `TestPutAssociation_ConcurrentPrimaryTrue_ExactlyOneWinner` — delete the `LockCustomer` call from the update handler's transaction.
-Note all three in the report, with what the failure said.
+4. `TestUpdateCustomerContact_OmittedPrimaryKeepsTheFlagInAReplace` and `TestUpdateCustomerContact_ExplicitPrimaryFalseInAReplaceIsRefused` together — collapse the three-valued flag by changing `requestedRole.Primary` to a plain `bool` (`Primary: r.Primary != nil && *r.Primary` in validation, `!r.Primary` in phase 1, `r.Primary` everywhere else). Exactly one of the two must go red: the omitted case now 400s on a demotion it never asked for. Restore.
+5. `TestAttachAndDeleteContact_CrossedLockOrders` — remove `db.RetrySerializable` from `PostCustomersByIdContacts` (call `db.WithTx` directly) and run it with `-count=20`; a 500 from the 40P01 victim must appear. Restore. If twenty runs never reach the cycle branch, say so in the report rather than claiming the proof — the branch is the database's choice, not the test's.
+Note all five in the report, with what each failure said.
 
 ---
 
@@ -2754,7 +3011,8 @@ describe("contactRoleLabel", () => {
 ```tsx
 import { MantineProvider } from "@mantine/core";
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { setLanguagePreference } from "@vantigo/frontend-shell";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ContactRoleBadges } from "./contact-role-badges";
 import "../i18n";
 
@@ -2766,6 +3024,10 @@ const renderBadges = (roles: { role: string; primary: boolean }[]) =>
   );
 
 describe("ContactRoleBadges", () => {
+  // The language is a module-level preference, so it is reset between cases the
+  // way legal-badges.test.tsx resets it — otherwise the nb case below leaks into
+  // whatever runs after it.
+  beforeEach(() => setLanguagePreference("auto"));
   afterEach(cleanup);
 
   it("renders one badge per role with its catalog label", () => {
@@ -2790,9 +3052,33 @@ describe("ContactRoleBadges", () => {
     expect(screen.queryByLabelText("Primary project contact")).not.toBeInTheDocument();
   });
 
-  it("renders nothing at all for a contact with no roles", () => {
+  it("localizes the labels and the primary sentence", async () => {
+    // The nb catalog is not proved by translations:check, which only proves the
+    // two catalogs have the same keys — this proves the Norwegian strings are
+    // the ones that actually render, including the interpolated role name inside
+    // the primary sentence, which is the one string a missing placeholder would
+    // break silently. setLanguagePreference is frontend-shell's own seam, used
+    // exactly as legal-badges.test.tsx uses it.
+    setLanguagePreference("nb");
+    renderBadges([
+      { role: "billing", primary: true },
+      { role: "decision_maker", primary: false },
+    ]);
+
+    expect(await screen.findByText("Faktura")).toBeInTheDocument();
+    expect(screen.getByText("Beslutningstaker")).toBeInTheDocument();
+    expect(screen.getByLabelText("Primær faktura-kontakt")).toBeInTheDocument();
+  });
+
+  it("renders no badge at all for a contact with no roles", () => {
+    // Not `toBeEmptyDOMElement`: MantineProvider always injects a <style>
+    // element of its own, so the container is never literally empty. What the
+    // component promises is that it contributes nothing, which is "no badge".
     const { container } = renderBadges([]);
-    expect(container).toBeEmptyDOMElement();
+    expect(container.querySelector(".mantine-Badge-root")).toBeNull();
+    expect(screen.queryByText("Billing")).not.toBeInTheDocument();
+    expect(screen.queryByText("Project")).not.toBeInTheDocument();
+    expect(screen.queryByText("Decision maker")).not.toBeInTheDocument();
   });
 });
 ```
@@ -2958,6 +3244,33 @@ mise exec -- bun run translations:check && mise exec -- bun run i18n:test
 Append to `src/api/contacts.test.ts`:
 
 ```ts
+  it("reads the title out of a response that only has role, the way the corpus answers", async () => {
+    // `role` is the title under its old name (design D1), so a response with no
+    // `title` key must still show one — this is what keeps the contacts card's
+    // title line working against the shape the recorded corpus answers.
+    stubFetch(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                contact: { id: 1001, firstName: "A", lastName: "B", middleName: null, prefix: null, suffix: null, phone: null, email: null },
+                role: "CTO",
+                phone: null,
+                email: null,
+              },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+
+    const answered = await customerContactsQueryOptions(2002).queryFn!({ signal: undefined } as never);
+    expect(answered.data[0].title).toBe("CTO");
+    expect(answered.data[0].roles).toEqual([]);
+  });
+
   it("normalises roles: absent is empty, primary defaults to false, and the fixed order is restored", () => {
     // The server sorts, but a cached response from an older version, or any
     // future widening, must not decide what the UI's order is.
@@ -2997,9 +3310,15 @@ Append to `src/api/contacts.test.ts`:
       roles: [{ role: "billing", primary: true }],
     });
 
+    // role is "" and title is absent, so the title is genuinely none — not "".
     expect(answered.title).toBeNull();
     expect(answered.roles).toEqual([{ role: "billing", primary: true }]);
-    const attach = fetchMock.mock.calls.find(
+    // `actualCalls`, not `.mock.calls`: `stubFetch` (src/test/fetch.ts) returns
+    // the business mock with `calls` (everything, session bootstrap included)
+    // and `actualCalls` (everything but the bootstrap) as plain arrays on it —
+    // it is not a vi.fn wrapper with a `.mock` of its own. Filtering by method
+    // and URL rather than taking the last call, as the Global Constraints require.
+    const attach = fetchMock.actualCalls.find(
       ([url, init]) => String(url) === "/api/v1/customers/2002/contacts" && init?.method === "POST",
     );
     expect(JSON.parse((attach?.[1] as RequestInit).body as string)).toEqual({
@@ -3009,7 +3328,7 @@ Append to `src/api/contacts.test.ts`:
   });
 ```
 
-Add `attachCustomerContact` and `normalizeContactRoles` to the file's import list, and `stubFetch` if it is not already imported (read the file's existing imports first — the other cases in it already stub fetch, and this uses the same helper rather than a second one).
+Add `attachCustomerContact`, `customerContactsQueryOptions` and `normalizeContactRoles` to the file's import list, and `stubFetch` if it is not already imported (read the file's existing imports first — the other cases in it already stub fetch, and this uses the same helper rather than a second one). If the existing cases call the query function differently from `queryOptions(…).queryFn!({ signal: undefined } as never)`, follow the file's own way of invoking one; the assertion is what matters, not the invocation style.
 
 Then, in `src/api/contacts.ts`, add above `CustomerContactResponse`:
 
@@ -3103,15 +3422,25 @@ type RawContactCustomerResponse = Omit<ContactCustomerResponse, "title" | "roles
   roles?: RawContactRole[] | null;
 };
 
+/**
+ * `title` absent falls back to `role`, which is not a guess: `role` IS the title
+ * on the wire (design D1), so a response from a server or a cache that predates
+ * `title` carries the title under the old name. Reading it here is what lets
+ * every component downstream read `title` alone and never think about which
+ * version answered — and `role: ""`, which is what the server sends for an
+ * association with no title, becomes null rather than an empty string.
+ */
+const titleOf = (raw: { title?: string | null; role: string }): string | null => raw.title ?? (raw.role || null);
+
 const normalizeCustomerContact = (raw: RawCustomerContactResponse): CustomerContactResponse => ({
   ...raw,
-  title: raw.title ?? null,
+  title: titleOf(raw),
   roles: normalizeContactRoles(raw.roles),
 });
 
 const normalizeContactCustomer = (raw: RawContactCustomerResponse): ContactCustomerResponse => ({
   ...raw,
-  title: raw.title ?? null,
+  title: titleOf(raw),
   roles: normalizeContactRoles(raw.roles),
 });
 ```
@@ -3158,375 +3487,41 @@ export const updateCustomerContact = (customerId: number, contactId: number, inp
     });
 ```
 
-- [ ] **Step 7: Rewrite the shared connection fields and the edit modal**
+- [ ] **Step 7: Extend the two route test files, and watch them fail**
 
-In `src/pages/-connection.tsx`, replace `ConnectionFormValues`, `ConnectionFields`, `EditConnectionTarget` and the modal's form wiring:
+`src/pages/-contacts.test.tsx`'s `describe("customer contacts card")` has four cases: `"lists associated contacts with connection values falling back to the contact's own"` (the only one whose contacts fixture carries data), `"shows an empty state when the customer has no contacts"`, `"attaches an existing contact found through the search"` and `"offers to create a new contact when the search finds nothing"`. Three of them need changing:
+
+These are written **before** Steps 8 and 9 touch any component, so they fail on the UI as it is today: there is no Title input to type into, no `checkbox`/`switch` to click, no badge to find, and the attach body still carries `role`. That is the red this plan wants.
+
+**(a) Adapt the two existing attach cases**, which type into a `/role/i` label that is about to stop existing and assert bodies that are about to stop matching. In `"attaches an existing contact found through the search"` (lines ~222 and ~227):
 
 ```tsx
-/**
- * The association's editable state, as the form holds it (design D5). The two
- * `Record`s are keyed by role code: `roles` is which checkboxes are ticked,
- * `primary` which of the ticked ones asked to be primary. Two flat maps rather
- * than an array of objects, because that is what a checkbox group and a switch
- * bind to without a reducer in between.
- */
-export interface ConnectionFormValues {
-  title: string;
-  roles: Record<string, boolean>;
-  primary: Record<string, boolean>;
-  phone: string;
-  email: string;
-}
+    await userEvent.type(within(modal).getByLabelText(/^title$/i), "CEO");
+    await userEvent.click(within(modal).getByRole("button", { name: /^add contact$/i }));
 
-/** The empty form: no title, nothing ticked. */
-export const emptyConnectionValues = (): ConnectionFormValues => ({
-  title: "",
-  roles: {},
-  primary: {},
-  phone: "",
-  email: "",
-});
-
-/**
- * The form's roles as the API's `roles` array (design D3: the complete set to
- * hold), in the fixed order so the request looks the same whatever order the
- * boxes were ticked in.
- */
-export const toRoleInputs = (values: ConnectionFormValues): ContactRoleInput[] =>
-  CONTACT_ROLES.filter((role) => values.roles[role]).map((role) => ({
-    role,
-    primary: values.primary[role] ?? false,
-  }));
-
-/**
- * The title-or-role rule the server enforces (design D1), checked here too so
- * the user is told before a round trip rather than after one. The message is
- * shown on the title, the field the server keys its own refusal to.
- */
-export const validateConnectionValues = (t: (key: string) => string) => ({
-  title: (value: string, values: ConnectionFormValues) =>
-    value.trim().length === 0 && toRoleInputs(values).length === 0 ? t("titleOrRoleRequired") : null,
-});
-
-interface ConnectionFieldsProps {
-  getInputProps: (path: string) => object;
-  values: ConnectionFormValues;
-  setFieldValue: (path: string, value: unknown) => void;
-  /**
-   * Roles this association currently holds AS primary, per the last read from
-   * the server: clearing one is refused (design D2), so its switch is on and
-   * disabled rather than offering a change that cannot happen.
-   */
-  lockedPrimary: string[];
-  /**
-   * Of those, the ones no other contact holds at all. The two cases get
-   * different reasons because only one of them is true, and the contact page
-   * cannot know which — it passes an empty array and gets the general wording.
-   */
-  soleRoles: string[];
-}
-
-export const ConnectionFields = ({ getInputProps, values, setFieldValue, lockedPrimary, soleRoles }: ConnectionFieldsProps) => {
-  const { t } = useI18n("customers");
-  return (
-    <>
-      <TextInput
-        label={t("contactTitle")}
-        placeholder={t("contactTitlePlaceholder")}
-        {...getInputProps("title")}
-      />
-      <Input.Wrapper label={t("contactRoles")} description={t("contactRolesDescription")} error={getRolesError(getInputProps)}>
-        <Stack gap="xs" mt="xs">
-          {CONTACT_ROLES.map((role) => {
-            const checked = values.roles[role] ?? false;
-            const locked = lockedPrimary.includes(role);
-            const reason = soleRoles.includes(role) ? t("roleOnlyHolder") : t("rolePrimaryStays");
-            return (
-              <Group key={role} justify="space-between" wrap="nowrap">
-                <Checkbox
-                  label={contactRoleLabel(t, role)}
-                  checked={checked}
-                  onChange={(event) => {
-                    const next = event.currentTarget.checked;
-                    setFieldValue(`roles.${role}`, next);
-                    // Unticking a role also drops its primary request, so a
-                    // re-tick does not silently carry the old one back.
-                    if (!next) setFieldValue(`primary.${role}`, false);
-                  }}
-                />
-                <Tooltip label={reason} disabled={!locked}>
-                  <Switch
-                    label={t("primaryBadge")}
-                    aria-label={t("primaryRoleFor", { role: contactRoleLabel(t, role).toLocaleLowerCase() })}
-                    labelPosition="left"
-                    size="sm"
-                    checked={locked || (values.primary[role] ?? false)}
-                    disabled={!checked || locked}
-                    description={locked ? reason : undefined}
-                    onChange={(event) => setFieldValue(`primary.${role}`, event.currentTarget.checked)}
-                  />
-                </Tooltip>
-              </Group>
-            );
-          })}
-        </Stack>
-      </Input.Wrapper>
-      <Group grow>
-        <TextInput label={t("phone")} description={t("connectionPhoneDescription")} {...getInputProps("phone")} />
-        <TextInput label={t("email")} description={t("connectionEmailDescription")} {...getInputProps("email")} />
-      </Group>
-    </>
-  );
-};
-
-/**
- * The server keys its role refusals to `roles`, which is a group here and not
- * an input, so its error is read off the form and shown on the wrapper — the
- * one place a `roles` message can land where a user will see it.
- */
-const getRolesError = (getInputProps: (path: string) => object) =>
-  (getInputProps("roles") as { error?: React.ReactNode }).error;
-
-/** Identifies the association being edited plus its current values and modal title. */
-export interface EditConnectionTarget {
-  customerId: number;
-  contactId: number;
-  /** The name of the counterpart shown in the modal title. */
-  counterpartName: string;
-  title: string | null;
-  roles: ContactRoleAssignment[];
-  /** Roles this contact is the ONLY holder of, for the disabled switch's reason. */
-  soleRoles: string[];
-  phone: string | null;
-  email: string | null;
-}
+    await waitFor(() => expect(attachSpy).toHaveBeenCalled());
+    const body = JSON.parse((attachSpy.mock.calls[0][0] as RequestInit).body as string);
+    expect(body).toEqual({ contactId: 1001, title: "CEO", roles: [] });
 ```
 
-Imports gained: `Checkbox`, `Input`, `Switch` from `@mantine/core`; `CONTACT_ROLES`, `type ContactRoleAssignment`, `type ContactRoleInput` from `../api/contacts`; `contactRoleLabel` from `../lib/contact-role-label`.
-
-The modal's form, sync and mutation:
+and in `"offers to create a new contact when the search finds nothing"` (lines ~266 and ~276):
 
 ```tsx
-  const form = useForm<ConnectionFormValues>({
-    initialValues: emptyConnectionValues(),
-    validate: validateConnectionValues(t),
-  });
-
-  const lockedPrimary = (target?.roles ?? []).filter((r) => r.primary).map((r) => r.role);
-
-  useEffect(() => {
-    if (target) {
-      form.setValues({
-        title: target.title ?? "",
-        roles: Object.fromEntries(target.roles.map((r) => [r.role, true])),
-        primary: Object.fromEntries(target.roles.map((r) => [r.role, r.primary])),
-        phone: target.phone ?? "",
-        email: target.email ?? "",
-      });
-      form.resetDirty();
-      form.clearErrors();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [target]);
-
-  const mutation = useMutation({
-    mutationFn: (values: ConnectionFormValues) => {
-      if (!target) {
-        throw new Error(t("editConnection"));
-      }
-      return updateCustomerContact(target.customerId, target.contactId, {
-        title: values.title.trim() || undefined,
-        roles: toRoleInputs(values),
-        phone: values.phone.trim() || undefined,
-        email: values.email.trim() || undefined,
-      });
-    },
-    // Keep the existing onSuccess and onError bodies verbatim: the
-    // notification, the three invalidations and the ApiValidationError branch
-    // are all unaffected by this change.
-  });
+    await userEvent.type(within(modal).getByLabelText(/^title$/i), "Custodian");
+```
+```tsx
+    const attachBody = JSON.parse((attachSpy.mock.calls[0][0] as RequestInit).body as string);
+    expect(attachBody).toEqual({ contactId: 1005, title: "Custodian", roles: [] });
 ```
 
-and the render passes the four props:
+Both keep their `role: "CEO"` / `role: "Custodian"` **response** fixtures: the server still answers `role`, and leaving them proves the card reads a response that carries neither `title` nor `roles`.
+
+`"shows an empty state when the customer has no contacts"` needs nothing — its fixture is `{ data: [] }`.
+
+**(b) Replace `"lists associated contacts with connection values falling back to the contact's own"`** with the title-and-badges case below (it keeps the connection-fallback assertions it had, and gains the two new columns), **and (c) add the four new cases** after it — one of the fixtures deliberately **without** `title`/`roles`, as the corpus-shaped body:
 
 ```tsx
-          <ConnectionFields
-            getInputProps={form.getInputProps}
-            values={form.values}
-            setFieldValue={form.setFieldValue}
-            lockedPrimary={lockedPrimary}
-            soleRoles={target?.soleRoles ?? []}
-          />
-```
-
-- [ ] **Step 8: Rewrite the two tables and the two attach modals**
-
-In `src/pages/-customer-contacts-card.tsx`:
-
-1. The header cell `{t("role")}` becomes `{t("contactRoles")}`.
-2. The name cell carries the title under the name, and the role cell the badges:
-
-```tsx
-                    <Table.Td>
-                      <Text size="sm">{formatContactName(association.contact)}</Text>
-                      {association.title && (
-                        <Text size="xs" c="dimmed">
-                          {association.title}
-                        </Text>
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      <ContactRoleBadges roles={association.roles} />
-                    </Table.Td>
-```
-
-3. `setEditing({…})` gains the three new fields. `soleRoles` is computable *here*, because this card holds every association of the customer — which is why it is a prop of the modal rather than a guess inside it:
-
-```tsx
-                            setEditing({
-                              customerId,
-                              contactId: association.contact.id,
-                              counterpartName: formatContactName(association.contact),
-                              title: association.title,
-                              roles: association.roles,
-                              soleRoles: association.roles
-                                .filter(
-                                  (assignment) =>
-                                    !associations.some(
-                                      (other) =>
-                                        other.contact.id !== association.contact.id &&
-                                        other.roles.some((r) => r.role === assignment.role),
-                                    ),
-                                )
-                                .map((assignment) => assignment.role),
-                              phone: association.phone,
-                              email: association.email,
-                            })
-```
-
-4. The attach modal's form loses `role` and gains the connection shape. Its `initialValues` become the contact fields plus `...emptyConnectionValues()` with the two prefixed connection keys removed — the `mapConnectionPath` indirection existed only because `phone`/`email` clashed with the contact's own, and `title`/`roles`/`primary` do not, so only those two stay prefixed:
-
-```tsx
-  const form = useForm({
-    initialValues: {
-      firstName: "",
-      lastName: "",
-      middleName: "",
-      prefix: "",
-      suffix: "",
-      phone: "",
-      email: "",
-      title: "",
-      roles: {} as Record<string, boolean>,
-      primary: {} as Record<string, boolean>,
-      connectionPhone: "",
-      connectionEmail: "",
-    },
-    validate: {
-      title: (value, values) =>
-        value.trim().length === 0 && toRoleInputs(connectionValuesOf(values)).length === 0
-          ? t("titleOrRoleRequired")
-          : null,
-      firstName: (value) => (creatingNew && !selected && value.trim().length === 0 ? t("firstNameRequired") : null),
-      lastName: (value) => (creatingNew && !selected && value.trim().length === 0 ? t("lastNameRequired") : null),
-    },
-  });
-
-/**
- * The attach form holds the contact's own fields beside the connection's, with
- * the two clashing ones prefixed; this is the connection half of it, in the
- * shape ConnectionFields and toRoleInputs speak.
- */
-const connectionValuesOf = (values: {
-  title: string;
-  roles: Record<string, boolean>;
-  primary: Record<string, boolean>;
-  connectionPhone: string;
-  connectionEmail: string;
-}): ConnectionFormValues => ({
-  title: values.title,
-  roles: values.roles,
-  primary: values.primary,
-  phone: values.connectionPhone,
-  email: values.connectionEmail,
-});
-```
-
-5. Both mutations send `title` and the complete `roles`, and the "create a new contact then attach" path sends them too — the roles are the point of the attach, not an afterthought:
-
-```tsx
-  const attachExisting = useMutation({
-    mutationFn: (contact: ContactResponse) =>
-      attachCustomerContact(customerId, {
-        contactId: contact.id,
-        title: form.values.title.trim() || undefined,
-        roles: toRoleInputs(connectionValuesOf(form.values)),
-        phone: form.values.connectionPhone.trim() || undefined,
-        email: form.values.connectionEmail.trim() || undefined,
-      }),
-    …
-  });
-
-  const createAndAttach = useMutation({
-    mutationFn: async () => {
-      const contact = await createContact(toContactInput(form.values));
-      try {
-        await attachCustomerContact(customerId, {
-          contactId: contact.id,
-          title: form.values.title.trim() || undefined,
-          roles: toRoleInputs(connectionValuesOf(form.values)),
-        });
-      } catch (error) {
-        // Keep the existing catch verbatim: the "the contact exists at this
-        // point" re-throw is what stops a created contact being silently
-        // orphaned when only the association fails.
-        throw new Error(
-          `The contact "${formatContactName(contact)}" was created, but could not be added to the customer: ${
-            error instanceof Error ? error.message : "unknown error"
-          }`,
-          { cause: error },
-        );
-      }
-      return contact;
-    },
-    // onSuccess and onError are unchanged.
-  });
-```
-
-6. Both branches of `showConnectionForm` now render the same `ConnectionFields` — the standalone `TextInput label={t("role")}` for the create-new branch goes away, because a new contact needs its roles exactly as much as an existing one does. `lockedPrimary` and `soleRoles` are empty: an attach holds nothing yet, so nothing can be locked.
-
-```tsx
-          {showConnectionForm && (
-            <>
-              <ConnectionFields
-                getInputProps={(path) => form.getInputProps(mapConnectionPath(path))}
-                values={connectionValuesOf(form.values)}
-                setFieldValue={(path, value) => form.setFieldValue(mapConnectionPath(path), value)}
-                lockedPrimary={[]}
-                soleRoles={[]}
-              />
-              <Group justify="flex-end" mt="xs">
-                <Button variant="default" onClick={close}>
-                  {t("cancel")}
-                </Button>
-                <Button type="submit" loading={attachExisting.isPending || createAndAttach.isPending}>
-                  {t("addContact")}
-                </Button>
-              </Group>
-            </>
-          )}
-```
-
-7. `mapConnectionErrors` gains nothing: the server keys its errors `title`, `roles`, `phone`, `email`, and `mapConnectionPath` already maps the last two onto the prefixed paths while leaving the first two alone.
-
-In `src/pages/contacts.$contactId.tsx`, the same four edits: the header cell, the name/roles cells (the customer's name stays an anchor; the title goes under it), the `setEditing` call — with `soleRoles: []`, because this page lists the contact's *customers* and cannot know who else holds a role at any of them — and the add-customer modal's form, which uses `emptyConnectionValues()`, `validateConnectionValues(t)`, `ConnectionFields` with empty `lockedPrimary`/`soleRoles`, and sends `title` + `toRoleInputs(form.values)`.
-
-- [ ] **Step 9: Extend the two route test files, red first**
-
-In `src/pages/-contacts.test.tsx`'s `describe("customer contacts card")`, the three existing fixtures gain the two new keys — one of them deliberately **without** them, as the corpus-shaped body:
-
-```tsx
-  it("shows the title under the name and a starred badge for the primary role", async () => {
+  it("shows the title under the name, a starred badge for the primary role, and the connection fallbacks", async () => {
     stubFetch({
       "GET /api/v1/customers/2002": () => jsonResponse(200, customer),
       "GET /api/v1/customers/2002/billing-profile": () => jsonResponse(200, emptyBillingProfile),
@@ -3535,14 +3530,14 @@ In `src/pages/-contacts.test.tsx`'s `describe("customer contacts card")`, the th
         jsonResponse(200, {
           data: [
             {
-              contact: contact(1001, "Anders", "Refsdal"),
+              contact: contact(1001, "Anders", "Refsdal", { email: "anders@personal.no" }),
               role: "CEO",
               title: "CEO",
               roles: [
                 { role: "billing", primary: true },
                 { role: "project", primary: false },
               ],
-              phone: null,
+              phone: "+47 11 22 33 44",
               email: null,
             },
             // Literally the shape the recorded corpus answers: role and
@@ -3560,6 +3555,10 @@ In `src/pages/-contacts.test.tsx`'s `describe("customer contacts card")`, the th
     expect(screen.getByLabelText("Primary billing contact")).toBeInTheDocument();
     expect(screen.getByText("Project")).toBeInTheDocument();
     expect(screen.queryByLabelText("Primary project contact")).not.toBeInTheDocument();
+    // The connection fallbacks this case has always pinned: the
+    // connection-specific phone plainly, the inherited email dimmed.
+    expect(screen.getByText("+47 11 22 33 44")).toBeInTheDocument();
+    expect(screen.getByText("anders@personal.no")).toBeInTheDocument();
     // The corpus-shaped row: its title still shows (role is the title), and it
     // has no badges of its own.
     expect(screen.getByText("Kari Nordmann")).toBeInTheDocument();
@@ -3722,12 +3721,13 @@ In `src/pages/-contacts.test.tsx`'s `describe("customer contacts card")`, the th
 
     await waitFor(() => expect(putSpy).toHaveBeenCalled());
     const body = JSON.parse((putSpy.mock.calls[0][0] as RequestInit).body as string);
+    // billing carries `primary: true` because its switch is on (it is the
+    // contact's primary billing role); decision_maker carries no `primary` key
+    // at all, because an omitted flag is what "I did not ask about this one"
+    // means on the wire — sending `false` would be the server's one refusal.
     expect(body).toEqual({
       title: "Chairman",
-      roles: [
-        { role: "billing", primary: true },
-        { role: "decision_maker", primary: false },
-      ],
+      roles: [{ role: "billing", primary: true }, { role: "decision_maker" }],
     });
   });
 ```
@@ -3764,6 +3764,385 @@ In `src/pages/-contact-details.test.tsx`, the customers-list fixture and the att
 and the existing `expect(body).toEqual({ contactId: 1001, role: "CEO" })` (line ~154) becomes `expect(body).toEqual({ contactId: 1001, title: "CEO", roles: [] })`, with the typing step changed from `getByLabelText(/role/i)` to `getByLabelText(/^title$/i)`.
 
 Note the label regexes: `/^title$/i` and not `/title/i`, because the modal also has a `Roles` group whose accessible name contains no "title" but whose switches' do — an unanchored `/role/i` would match three switches and the group's own label.
+
+Run both files now and record the failures:
+
+```bash
+cd /home/anders/projects/vantigo/vantigo
+mise exec -- bun run --cwd apps/customers/frontend test -- src/pages/-contacts.test.tsx src/pages/-contact-details.test.tsx
+```
+Expected: FAIL — "unable to find a label with the text of: /^title$/i" and the attach bodies still carrying `role`. Step 10 re-runs the whole suite and expects PASS.
+
+- [ ] **Step 8: Rewrite the shared connection fields and the edit modal**
+
+In `src/pages/-connection.tsx`, replace `ConnectionFormValues`, `ConnectionFields`, `EditConnectionTarget` and the modal's form wiring:
+
+```tsx
+/**
+ * The association's editable state, as the form holds it (design D5). The two
+ * `Record`s are keyed by role code: `roles` is which checkboxes are ticked,
+ * `primary` which of the ticked ones asked to be primary. Two flat maps rather
+ * than an array of objects, because that is what a checkbox group and a switch
+ * bind to without a reducer in between.
+ */
+export interface ConnectionFormValues {
+  title: string;
+  roles: Record<string, boolean>;
+  primary: Record<string, boolean>;
+  phone: string;
+  email: string;
+}
+
+/** The empty form: no title, nothing ticked. */
+export const emptyConnectionValues = (): ConnectionFormValues => ({
+  title: "",
+  roles: {},
+  primary: {},
+  phone: "",
+  email: "",
+});
+
+/**
+ * The form's roles as the API's `roles` array (design D3: the complete set to
+ * hold), in the fixed order so the request looks the same whatever order the
+ * boxes were ticked in.
+ *
+ * `primary` is sent only when the switch is ON, and OMITTED otherwise — the API's
+ * three-valued flag, used as it is meant to be. An omitted flag says "leave this
+ * role's primary as it is, or let the first-holder rule decide if it is new",
+ * which is exactly what an untouched switch means; sending an explicit `false`
+ * instead would be the server's one refusal (`primary: false` on the primary
+ * holder), so a UI that echoed every switch would turn ticking a second role into
+ * a 400. There is deliberately no way to demote from here: the server refuses it,
+ * and the way to move a primary is to make another contact primary instead.
+ */
+export const toRoleInputs = (values: ConnectionFormValues): ContactRoleInput[] =>
+  CONTACT_ROLES.filter((role) => values.roles[role]).map((role) =>
+    values.primary[role] ? { role, primary: true } : { role },
+  );
+
+/**
+ * The title-or-role rule the server enforces (design D1), checked here too so
+ * the user is told before a round trip rather than after one. The message is
+ * shown on the title, the field the server keys its own refusal to.
+ */
+export const validateConnectionValues = (t: (key: string) => string) => ({
+  title: (value: string, values: ConnectionFormValues) =>
+    value.trim().length === 0 && toRoleInputs(values).length === 0 ? t("titleOrRoleRequired") : null,
+});
+
+interface ConnectionFieldsProps {
+  getInputProps: (path: string) => object;
+  values: ConnectionFormValues;
+  setFieldValue: (path: string, value: unknown) => void;
+  /**
+   * Roles this association currently holds AS primary, per the last read from
+   * the server: clearing one is refused (design D2), so its switch is on and
+   * disabled rather than offering a change that cannot happen.
+   */
+  lockedPrimary: string[];
+  /**
+   * Of those, the ones no other contact holds at all. The two cases get
+   * different reasons because only one of them is true, and the contact page
+   * cannot know which — it passes an empty array and gets the general wording.
+   */
+  soleRoles: string[];
+}
+
+export const ConnectionFields = ({ getInputProps, values, setFieldValue, lockedPrimary, soleRoles }: ConnectionFieldsProps) => {
+  const { t } = useI18n("customers");
+  return (
+    <>
+      <TextInput
+        label={t("contactTitle")}
+        placeholder={t("contactTitlePlaceholder")}
+        {...getInputProps("title")}
+      />
+      <Input.Wrapper label={t("contactRoles")} description={t("contactRolesDescription")} error={getRolesError(getInputProps)}>
+        <Stack gap="xs" mt="xs">
+          {CONTACT_ROLES.map((role) => {
+            const checked = values.roles[role] ?? false;
+            const locked = lockedPrimary.includes(role);
+            const reason = soleRoles.includes(role) ? t("roleOnlyHolder") : t("rolePrimaryStays");
+            return (
+              <Group key={role} justify="space-between" wrap="nowrap">
+                <Checkbox
+                  label={contactRoleLabel(t, role)}
+                  checked={checked}
+                  onChange={(event) => {
+                    const next = event.currentTarget.checked;
+                    setFieldValue(`roles.${role}`, next);
+                    // Unticking a role also drops its primary request, so a
+                    // re-tick does not silently carry the old one back.
+                    if (!next) setFieldValue(`primary.${role}`, false);
+                  }}
+                />
+                <Tooltip label={reason} disabled={!locked}>
+                  <Switch
+                    label={t("primaryBadge")}
+                    aria-label={t("primaryRoleFor", { role: contactRoleLabel(t, role).toLocaleLowerCase() })}
+                    labelPosition="left"
+                    size="sm"
+                    checked={locked || (values.primary[role] ?? false)}
+                    disabled={!checked || locked}
+                    description={locked ? reason : undefined}
+                    onChange={(event) => setFieldValue(`primary.${role}`, event.currentTarget.checked)}
+                  />
+                </Tooltip>
+              </Group>
+            );
+          })}
+        </Stack>
+      </Input.Wrapper>
+      <Group grow>
+        <TextInput label={t("phone")} description={t("connectionPhoneDescription")} {...getInputProps("phone")} />
+        <TextInput label={t("email")} description={t("connectionEmailDescription")} {...getInputProps("email")} />
+      </Group>
+    </>
+  );
+};
+
+/**
+ * The server keys its role refusals to `roles`, which is a group here and not
+ * an input, so its error is read off the form and shown on the wrapper — the
+ * one place a `roles` message can land where a user will see it.
+ */
+const getRolesError = (getInputProps: (path: string) => object) =>
+  (getInputProps("roles") as { error?: ReactNode }).error;
+
+/** Identifies the association being edited plus its current values and modal title. */
+export interface EditConnectionTarget {
+  customerId: number;
+  contactId: number;
+  /** The name of the counterpart shown in the modal title. */
+  counterpartName: string;
+  title: string | null;
+  roles: ContactRoleAssignment[];
+  /** Roles this contact is the ONLY holder of, for the disabled switch's reason. */
+  soleRoles: string[];
+  phone: string | null;
+  email: string | null;
+}
+```
+
+Imports gained: `Checkbox`, `Input`, `Switch` from `@mantine/core`; `type ReactNode` from `"react"` (the file already imports `useEffect` from it — `getRolesError`'s return type needs the type, and `React.ReactNode` is not available because nothing here imports the `React` namespace); `CONTACT_ROLES`, `type ContactRoleAssignment`, `type ContactRoleInput` from `../api/contacts`; `contactRoleLabel` from `../lib/contact-role-label`. Write `getRolesError`'s cast as `{ error?: ReactNode }`, not `{ error?: React.ReactNode }`.
+
+The modal's form, sync and mutation:
+
+```tsx
+  const form = useForm<ConnectionFormValues>({
+    initialValues: emptyConnectionValues(),
+    validate: validateConnectionValues(t),
+  });
+
+  const lockedPrimary = (target?.roles ?? []).filter((r) => r.primary).map((r) => r.role);
+
+  useEffect(() => {
+    if (target) {
+      form.setValues({
+        title: target.title ?? "",
+        roles: Object.fromEntries(target.roles.map((r) => [r.role, true])),
+        primary: Object.fromEntries(target.roles.map((r) => [r.role, r.primary])),
+        phone: target.phone ?? "",
+        email: target.email ?? "",
+      });
+      form.resetDirty();
+      form.clearErrors();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target]);
+
+  const mutation = useMutation({
+    mutationFn: (values: ConnectionFormValues) => {
+      if (!target) {
+        throw new Error(t("editConnection"));
+      }
+      return updateCustomerContact(target.customerId, target.contactId, {
+        title: values.title.trim() || undefined,
+        roles: toRoleInputs(values),
+        phone: values.phone.trim() || undefined,
+        email: values.email.trim() || undefined,
+      });
+    },
+    // Keep the existing onSuccess and onError bodies verbatim: the
+    // notification, the three invalidations and the ApiValidationError branch
+    // are all unaffected by this change.
+  });
+```
+
+and the render passes the four props:
+
+```tsx
+          <ConnectionFields
+            getInputProps={form.getInputProps}
+            values={form.values}
+            setFieldValue={form.setFieldValue}
+            lockedPrimary={lockedPrimary}
+            soleRoles={target?.soleRoles ?? []}
+          />
+```
+
+- [ ] **Step 9: Rewrite the two tables and the two attach modals**
+
+In `src/pages/-customer-contacts-card.tsx`:
+
+1. The header cell `{t("role")}` becomes `{t("contactRoles")}`.
+2. The name cell carries the title under the name, and the role cell the badges:
+
+```tsx
+                    <Table.Td>
+                      <Text size="sm">{formatContactName(association.contact)}</Text>
+                      {association.title && (
+                        <Text size="xs" c="dimmed">
+                          {association.title}
+                        </Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      <ContactRoleBadges roles={association.roles} />
+                    </Table.Td>
+```
+
+3. `setEditing({…})` gains the three new fields. `soleRoles` is computable *here*, because this card holds every association of the customer — which is why it is a prop of the modal rather than a guess inside it:
+
+```tsx
+                            setEditing({
+                              customerId,
+                              contactId: association.contact.id,
+                              counterpartName: formatContactName(association.contact),
+                              title: association.title,
+                              roles: association.roles,
+                              soleRoles: association.roles
+                                .filter(
+                                  (assignment) =>
+                                    !associations.some(
+                                      (other) =>
+                                        other.contact.id !== association.contact.id &&
+                                        other.roles.some((r) => r.role === assignment.role),
+                                    ),
+                                )
+                                .map((assignment) => assignment.role),
+                              phone: association.phone,
+                              email: association.email,
+                            })
+```
+
+4. The attach modal's form loses `role` and gains the connection shape. Its `initialValues` become the contact fields plus `...emptyConnectionValues()` with the two prefixed connection keys removed — the `mapConnectionPath` indirection existed only because `phone`/`email` clashed with the contact's own, and `title`/`roles`/`primary` do not, so only those two stay prefixed:
+
+```tsx
+  const form = useForm({
+    initialValues: {
+      firstName: "",
+      lastName: "",
+      middleName: "",
+      prefix: "",
+      suffix: "",
+      phone: "",
+      email: "",
+      title: "",
+      roles: {} as Record<string, boolean>,
+      primary: {} as Record<string, boolean>,
+      connectionPhone: "",
+      connectionEmail: "",
+    },
+    validate: {
+      title: (value, values) =>
+        value.trim().length === 0 && toRoleInputs(connectionValuesOf(values)).length === 0
+          ? t("titleOrRoleRequired")
+          : null,
+      firstName: (value) => (creatingNew && !selected && value.trim().length === 0 ? t("firstNameRequired") : null),
+      lastName: (value) => (creatingNew && !selected && value.trim().length === 0 ? t("lastNameRequired") : null),
+    },
+  });
+
+/**
+ * The attach form holds the contact's own fields beside the connection's, with
+ * the two clashing ones prefixed; this is the connection half of it, in the
+ * shape ConnectionFields and toRoleInputs speak.
+ */
+const connectionValuesOf = (values: {
+  title: string;
+  roles: Record<string, boolean>;
+  primary: Record<string, boolean>;
+  connectionPhone: string;
+  connectionEmail: string;
+}): ConnectionFormValues => ({
+  title: values.title,
+  roles: values.roles,
+  primary: values.primary,
+  phone: values.connectionPhone,
+  email: values.connectionEmail,
+});
+```
+
+5. Both mutations send `title` and the complete `roles`, and the "create a new contact then attach" path sends them too — the roles are the point of the attach, not an afterthought:
+
+```tsx
+  const attachExisting = useMutation({
+    mutationFn: (contact: ContactResponse) =>
+      attachCustomerContact(customerId, {
+        contactId: contact.id,
+        title: form.values.title.trim() || undefined,
+        roles: toRoleInputs(connectionValuesOf(form.values)),
+        phone: form.values.connectionPhone.trim() || undefined,
+        email: form.values.connectionEmail.trim() || undefined,
+      }),
+    …
+  });
+
+  const createAndAttach = useMutation({
+    mutationFn: async () => {
+      const contact = await createContact(toContactInput(form.values));
+      try {
+        await attachCustomerContact(customerId, {
+          contactId: contact.id,
+          title: form.values.title.trim() || undefined,
+          roles: toRoleInputs(connectionValuesOf(form.values)),
+        });
+      } catch (error) {
+        // Keep the existing catch verbatim: the "the contact exists at this
+        // point" re-throw is what stops a created contact being silently
+        // orphaned when only the association fails.
+        throw new Error(
+          `The contact "${formatContactName(contact)}" was created, but could not be added to the customer: ${
+            error instanceof Error ? error.message : "unknown error"
+          }`,
+          { cause: error },
+        );
+      }
+      return contact;
+    },
+    // onSuccess and onError are unchanged.
+  });
+```
+
+6. Both branches of `showConnectionForm` now render the same `ConnectionFields` — the standalone `TextInput label={t("role")}` for the create-new branch goes away, because a new contact needs its roles exactly as much as an existing one does. `lockedPrimary` and `soleRoles` are empty: an attach holds nothing yet, so nothing can be locked.
+
+```tsx
+          {showConnectionForm && (
+            <>
+              <ConnectionFields
+                getInputProps={(path) => form.getInputProps(mapConnectionPath(path))}
+                values={connectionValuesOf(form.values)}
+                setFieldValue={(path, value) => form.setFieldValue(mapConnectionPath(path), value)}
+                lockedPrimary={[]}
+                soleRoles={[]}
+              />
+              <Group justify="flex-end" mt="xs">
+                <Button variant="default" onClick={close}>
+                  {t("cancel")}
+                </Button>
+                <Button type="submit" loading={attachExisting.isPending || createAndAttach.isPending}>
+                  {t("addContact")}
+                </Button>
+              </Group>
+            </>
+          )}
+```
+
+7. `mapConnectionErrors` gains nothing: the server keys its errors `title`, `roles`, `phone`, `email`, and `mapConnectionPath` already maps the last two onto the prefixed paths while leaving the first two alone.
+
+In `src/pages/contacts.$contactId.tsx`, the same four edits: the header cell, the name/roles cells (the customer's name stays an anchor; the title goes under it), the `setEditing` call — with `soleRoles: []`, because this page lists the contact's *customers* and cannot know who else holds a role at any of them — and the add-customer modal's form, which uses `emptyConnectionValues()`, `validateConnectionValues(t)`, `ConnectionFields` with empty `lockedPrimary`/`soleRoles`, and sends `title` + `toRoleInputs(form.values)`.
 
 - [ ] **Step 10: Run the whole customers frontend suite**
 
@@ -3905,9 +4284,10 @@ not a second one:
 
 The rest of the invariant's shape: the **first** contact given a role is its
 primary whatever the request says. `primary: true` on another contact demotes the
-current one in the same transaction. `primary: false` on the contact that is the
-only or the primary holder is **refused** (400, field `roles`) — there is always
-a primary while anyone holds the role. A contact **losing** a role it was primary
+current one in the same transaction. An **explicit** `primary: false` on the
+contact that is the only or the primary holder is **refused** (400, field
+`roles`) — there is always a primary while anyone holds the role. A contact
+**losing** a role it was primary
 for is not refused the way clearing the flag is: it promotes the
 **longest-standing** remaining holder (`created_at`, then `contact_id`), which is
 why `created_at` is never rewritten by a demotion or a promotion — seniority in a
@@ -3931,7 +4311,26 @@ Roles ride on the association's **own** endpoints; there are no new paths.
 `POST /customers/{id}/contacts` takes `roles` as the roles to give (none when
 omitted), `PUT /customers/{id}/contacts/{contactId}` takes it as the **complete**
 set to hold (omitted = unchanged, `[]` = none), and both list shapes answer
-`roles` in the fixed order `billing, project, decision_maker`. The association
+`roles` in the fixed order `billing, project, decision_maker`.
+
+Inside a `roles` array, **`primary` is three-valued**, and the three values are
+three different instructions:
+
+| `primary` | on a role the contact already holds | on a role it does not hold yet |
+| --- | --- | --- |
+| omitted | leave the flag exactly as it is | the first-holder rule: primary if nobody holds the role, otherwise not |
+| `true` | become the primary, demoting whoever holds it | become the primary, demoting whoever holds it |
+| `false` | **refused** if this contact is the primary holder; otherwise stays non-primary | join as a plain member — unless nobody holds the role, in which case the first-holder rule still makes it primary |
+
+The omitted case is what makes "the complete set of roles" a writable field at
+all. A client rebuilding the set from a checkbox group states which roles it
+wants, not who should be primary for each; reading an omitted flag as `false`
+would turn "also give this contact billing" into "and stop being the primary
+project contact" — and because clearing a primary flag is *refused* rather than
+applied, the request would fail for something it never said. So an omitted flag
+asks for nothing, and only an explicit `false` is the refusal.
+
+The association
 endpoints' existing permissions cover roles — a role is part of the association —
 so this delivery adds no permission key. `GET /customers/{id}/contacts` keeps its
 contact-name order: "the primary billing contact" is found by scanning the list,
@@ -4038,9 +4437,9 @@ CC="$(command -v zig >/dev/null && echo "$PWD/../../scripts/zig-cc" || echo cc)"
 If the repo's zig-cc wrapper is at another path, use that one (`ls scripts/`); if `go test -race` refuses for want of a C compiler, that wrapper is what supplies it. Then run the three role concurrency cases harder, since a database row lock is not something `-race` can see:
 
 ```bash
-taskset -c 0-3 mise exec -- go test -count=10 -run 'TestPutAssociation_Concurrent|TestDetachTheOnlyHolder|TestAttachContact_RacesDeleteContact' ./internal/customers/
+taskset -c 0-3 mise exec -- go test -count=20 -run 'TestPutAssociation_Concurrent|TestDetachTheOnlyHolder|TestAttachContact_RacesDeleteContact|TestAttachAndDeleteContact_CrossedLockOrders' ./internal/customers/
 ```
-`TestAttachContact_RacesDeleteContact_OnTheSameContactRow` is the pre-existing case, and it is in this list on purpose: the contact delete now takes customer locks in the opposite order from the attach, so it is the one test that exercises `contactRoleWriteAttempts`' retry.
+`TestAttachContact_RacesDeleteContact_OnTheSameContactRow` is the pre-existing case and is in this list because it still has to pass, **not** because it exercises the retry: its gate is on the contact row, so the attach never reaches its own customer lock before queueing, and no cycle can form. `TestAttachAndDeleteContact_CrossedLockOrders` (Task 3, Step 6) is the one that can form it, and `-count=20` is what makes the deadlock branch likely rather than occasional.
 
 - [ ] **Step 4: The whole frontend**
 
@@ -4080,13 +4479,14 @@ Write `/tmp/pr-contact-roles.md` first. It covers:
   2. `validateAssociationRole` is the name of the new typed-role validator (not `validateContactRole`, which was taken).
   3. The contract schema the spec calls `ContactCustomerResponse` is actually named `GetContactCustomersContactCustomerResponse`; the contract's own name was used.
   4. A blank `title` or `role` **given** is an error, not an absence — so the corpus's `{"role": ""}` line still answers `A role cannot be null or empty` keyed `role`, and the ported `TestAttachContact_WithInvalidConnection_ReportsFieldErrors` is unchanged.
-  5. The update handler answers a no-op **without opening a transaction** (the module's no-op rule, the tags set replace's precedent), and the primary-clearing refusal is checked before that shortcut so a request that changes nothing else is still refused.
-  6. The update and detach **re-read the association under the customer lock** and answer 404 if it is gone, closing a window that used to answer 200 for a concurrently detached association and would now be a foreign-key 500.
-  7. `contactRoleWriteAttempts = 3` retries the deadlock between the attach's customer→contact lock order and the contact delete's contact→customer one, which cannot be removed by reordering (see the constant's comment).
-  8. The disabled Primary switch's reason is **two** messages, not the spec's one: "Already the only holder" where the page can prove it (the customer's contacts card holds every association) and "the primary holder stays primary — make another contact primary instead" where it cannot (the contact page). Both are true; one message would have been wrong half the time.
-  9. `roles` is always answered as `[]` and never `null`, while staying optional in the yaml — the `SafeCustomerResponse.tags` precedent.
-  10. `normalizeContactRoles` re-sorts into the fixed order rather than trusting the server's, so no component depends on where its array came from.
-- **What was proved able to fail:** the five mutations listed in Tasks 1, 3 and 4's final steps, and what each failure said.
+  5. **`primary` in a `roles` element is three-valued** (`*bool`), which the spec leaves implicit: omitted on a role the contact already holds means "leave the flag alone", omitted on a new role follows the first-holder rule, and only an *explicit* `false` on the only/primary holder is refused. Reading an omitted flag as `false` would make every set replace that adds a role a 400 refusing to demote a primary the request never mentioned, so "the complete set of roles" would not be a writable field at all. The yaml declares `primary` nullable with that wording, and two tests pin the two halves.
+  6. The update handler answers a no-op **without opening a transaction** (the module's no-op rule, the tags set replace's precedent), and the primary-clearing refusal is checked before that shortcut so a request that changes nothing else is still refused.
+  7. The update and detach **re-read the association under the customer lock** and answer 404 if it is gone, closing a window that used to answer 200 for a concurrently detached association and would now be a foreign-key 500.
+  8. `contactRoleWriteAttempts = 3` retries the deadlock between the attach's customer→contact lock order and the contact delete's contact→customer one, which cannot be removed by reordering (see the constant's comment).
+  9. The disabled Primary switch's reason is **two** messages, not the spec's one: "Already the only holder" where the page can prove it (the customer's contacts card holds every association) and "the primary holder stays primary — make another contact primary instead" where it cannot (the contact page). Both are true; one message would have been wrong half the time.
+  10. `roles` is always answered as `[]` and never `null`, while staying optional in the yaml — the `SafeCustomerResponse.tags` precedent.
+  11. `normalizeContactRoles` re-sorts into the fixed order rather than trusting the server's, so no component depends on where its array came from.
+- **What was proved able to fail:** the eight mutations listed in Tasks 1, 3 and 4's final steps, and what each failure said — including whether twenty runs of `TestAttachAndDeleteContact_CrossedLockOrders` without `db.RetrySerializable` actually reached the 40P01 branch, stated honestly either way.
 - Nothing in scope crept: no wider vocabulary, no roles on the customer's own contact info, no `CustomerDirectory` accessor, no use of the billing contact for invoice or reminder e-mail resolution, no contact-level permissions, no follow-ups.
 
 End the body with:
@@ -4111,12 +4511,19 @@ If the PR description needs editing afterwards, `gh pr edit` is broken in this e
 Checked against the spec, section by section:
 
 - **D1 — the free text is a title.** Migration `00025` renaming `role` → `title` and dropping `NOT NULL`: Task 1. `role` optional in both request schemas, required in both response schemas, `title` nullable beside it, nothing added to a `required:` list: Task 2. `title` wins when both are sent; the title-or-role refusal on field `title` with the spec's exact message; today's validation rule (non-blank when given, ≤ 255 UTF-16 units, trimmed): Task 3, Steps 3 and 5, pinned by `TestAssociationRequests_RefuseAnUnknownRole…` and `TestAssociationRequests_TheCorpusShapeStillWorksAndTitleWins`.
-- **D2 — three roles, one primary each.** The table with its PK, composite cascading FK, partial unique index and `created_at`: Task 1. The vocabulary and its message: Task 3, Step 3. The primary rule's four clauses, verbatim from addresses: `applyRoles` and `releaseRoles` in Task 3, Step 5, with one test per clause in Step 9 and the promotion-on-detach and promotion-on-delete cases too. Detach and delete running the same promotion per role: Task 3, Step 7.
-- **D3 — roles ride on the association's own endpoints.** No new paths, no new permissions, `roles` as "the roles to give" on attach and "the complete set" on update with omitted = unchanged and `[]` = none, duplicates a 400 on `roles`, both response shapes answering `roles` sorted: Tasks 2 and 3. `GET /customers/{id}/contacts` keeping its contact-name order: unchanged, and stated in Task 5's docs. The customer row locked for every role write, with the partial index as backstop: Task 1's index, Task 3's handlers, Task 3 Step 10's forced race and `TestPartialIndexIsTheBackstop`. No `CustomerDirectory` accessor is added anywhere.
+- **D2 — three roles, one primary each.** The table with its PK, composite cascading FK, partial unique index and `created_at`: Task 1. The vocabulary and its message: Task 3, Step 3. The primary rule's four clauses, verbatim from addresses: `applyRoles` and `releaseRoles` in Task 3, Step 7, with one test per clause in Step 5 and the promotion-on-detach and promotion-on-delete cases too. Detach and delete running the same promotion per role: Task 3, Step 9. The three-valued `primary` flag: Task 2's yaml, Task 3's `requestedRole`, and the two tests in Step 5 that pin its omitted and explicit-false halves.
+- **D3 — roles ride on the association's own endpoints.** No new paths, no new permissions, `roles` as "the roles to give" on attach and "the complete set" on update with omitted = unchanged and `[]` = none, duplicates a 400 on `roles`, both response shapes answering `roles` sorted: Tasks 2 and 3. `GET /customers/{id}/contacts` keeping its contact-name order: unchanged, and stated in Task 5's docs. The customer row locked for every role write, with the partial index as backstop: Task 1's index, Task 3's handlers, Task 3 Step 6's two forced races and `TestPartialIndexIsTheBackstop`. No `CustomerDirectory` accessor is added anywhere.
 - **D4 — timeline.** `title` and `roles` on the four payloads beside `role`; the update event only on change; the situational summary ("Roles updated" / "Now the primary billing contact"); the promotion recorded on the promoted contact with the acting user: Task 3, Steps 6 and 7, pinned by `TestUpdateCustomerContact_RecordsAnEventOnlyWhenSomethingMovedAndSaysWhat` and `TestDetachContact_PromotesAndRecordsThePromotionWithTheActingUser`. `contact_detached`/`_removed` carrying `title`/`roles` in the snapshot: same recorders, same step.
-- **D5 — what the user sees.** Badges with the primary star and its tooltip, the title under the name, on both the contacts card and the contact page: Task 4, Steps 3 and 8. The Title input, the Roles checkbox group, the per-role Primary switch disabled with a reason: Task 4, Step 7. Both catalogs: Task 4, Step 4. No dashboard or attention change is made anywhere.
+- **D5 — what the user sees.** Badges with the primary star and its tooltip, the title under the name, on both the contacts card and the contact page: Task 4, Steps 3 and 9. The Title input, the Roles checkbox group, the per-role Primary switch disabled with a reason: Task 4, Step 8. Both catalogs: Task 4, Step 4, with the nb rendering pinned in Step 1's badge test. No dashboard or attention change is made anywhere.
 - **Testing section.** Every case it names has a test: attach with roles (first holder primary whatever was sent, `primary: true` demotes, `primary: false` on the only holder refused, duplicates 400, unknown role 400, the title-or-role rule), update replacing the set (promotion of the longest-standing holder, `[]` clears, omitted keeps), detach and contact deletion promote, the corpus's `role`-only requests answering `role` = title, `title`/`roles` on both list shapes, events only on change with the right summaries and actor, the forced race of two `primary: true` writers, the partial index as backstop — Task 3, Steps 1, 9 and 10. Frontend: the modal round trip against wire-shaped fixtures with one literally the corpus body (no `title`, no `roles`), badge rendering, the disabled Primary switch, both catalogs — Task 4, Steps 1, 6 and 9.
 - **Out of scope.** Nothing in any task adds a wider vocabulary, roles on the customer's own contact info, a directory accessor, invoice/reminder e-mail resolution from the billing contact, contact-level permissions, or follow-ups.
 
-Type consistency: `contactRole{Role, Primary}` is the one Go role type, used by `applyRoles`, `releaseRoles`, `contactRolesOf`, `genContactRoles`, `rolesChanged`, `heldPrimary`, `requestedAsHeld`, `relationshipUpdateAction` and every recorder; `requestedRole{Role, Primary}` is the request side only; `rolePromotion{ContactID, Role}` travels from the bookkeeping to `recordPromotions`. On the frontend, `ContactRoleAssignment{role, primary}` is what every component reads and `ContactRoleInput{role, primary?}` is what every request sends; `contactRoleLabel` is the only role → label function and `ContactRoleBadges` the only role → chip component.
+Type consistency, checked field by field:
+
+- `contactRole{Role string; Primary bool}` is the one Go type for a role the database holds — used by `applyRoles`, `releaseRoles`, `contactRolesOf`, `genContactRoles`, `rolesChanged`, `heldPrimary`, `requestedAsHeld`, `relationshipUpdateAction`, `recordPromotions` and all five recorders. Its `Primary` is never a pointer.
+- `requestedRole{Role string; Primary *bool}` is the request side only, and its `Primary` is **always** a pointer: `wantsPrimary()` and `clearsPrimary()` are the only two readers, and neither collapses nil into false. Nothing outside `contact_roles.go` and the update handler constructs one.
+- `rolePromotion{ContactID int32; Role string}` travels from `applyRoles`/`releaseRoles` to `recordPromotions`.
+- `validatedAssociation{Title *string; Roles []requestedRole; RolesGiven bool; Phone, Email *string}` is what validation answers; `RolesGiven` is the only thing that distinguishes an omitted `roles` from `[]`.
+- Generated names used: `gen.CustomerContactRole{Role string; Primary bool}`, `gen.CustomerContactRoleRequest{Primary *bool; Role string}`, `Title *string` / `Roles *[]…` on the four association types. `store.…Params` field spellings (`ExcludeContactID`, `IsPrimary`, `Keep`, `Now`) are to be confirmed against the generated file in Task 1 Step 8 and followed where they differ.
+- On the frontend, `ContactRoleAssignment{role: string; primary: boolean}` is what every component reads (never optional, because `normalizeContactRoles` fills it), `ContactRoleInput{role: string; primary?: boolean}` is what every request sends (optional, because an omitted flag is a meaningful instruction), `contactRoleLabel` is the only role → label function, and `ContactRoleBadges` the only role → chip component. `titleOf` is the only place `role` is read as a title fallback.
 
