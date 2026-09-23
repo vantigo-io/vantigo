@@ -319,6 +319,86 @@ func TestDirectory_ProjectsForUserWithoutAnyRoleIsEmpty(t *testing.T) {
 	}
 }
 
+// TestDirectory_ProjectsForCustomerListsEveryStatusByID proves
+// ProjectsForCustomer finds every project billed to one customer, whatever its
+// status, by id rather than by code — the cap cuts in id order (customer 360
+// design D1), so the order is part of the contract — and nobody else's.
+func TestDirectory_ProjectsForCustomerListsEveryStatusByID(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+
+	// Created in reverse code order, so id order and code order disagree and
+	// the assertion below can tell which one the query used.
+	zed := createProject(t, c, map[string]any{"code": "CUSZ1000"})
+	mid := createProject(t, c, map[string]any{"code": "CUSM1000"})
+	alpha := createProject(t, c, map[string]any{"code": "CUSA1000"})
+	setStatus(t, c, mid.Id, "cancelled")
+	// Neither of these bills to Kraft-Verket, and both must be absent.
+	createProject(t, c, map[string]any{"code": "CUSX1000", "customerId": customerAcme})
+	createProject(t, c, map[string]any{"code": "CUSI1000", "customerId": nil, "billingType": "non-billable"})
+
+	got, err := newDirectory(t, h).ProjectsForCustomer(context.Background(), customerKraftVerket)
+	if err != nil {
+		t.Fatalf("ProjectsForCustomer: %v", err)
+	}
+	wantIDs := []int32{zed.Id, mid.Id, alpha.Id}
+	if len(got) != len(wantIDs) {
+		t.Fatalf("ProjectsForCustomer = %+v, want %d projects", got, len(wantIDs))
+	}
+	for i, want := range wantIDs {
+		if got[i].ID != want {
+			t.Errorf("ProjectsForCustomer[%d].ID = %d, want %d (order by id, not by code)", i, got[i].ID, want)
+		}
+		if got[i].CustomerID == nil || *got[i].CustomerID != customerKraftVerket {
+			t.Errorf("ProjectsForCustomer[%d].CustomerID = %v, want %d", i, got[i].CustomerID, customerKraftVerket)
+		}
+	}
+	if got[1].Status != "cancelled" || got[1].OpenForWork {
+		t.Errorf("ProjectsForCustomer[1] = %+v, want the cancelled project, not open for work: any status is included", got[1])
+	}
+}
+
+// TestDirectory_ProjectsForCustomerUnknownIsEmpty proves a customer with no
+// projects — here one nobody has — is an empty result rather than an error:
+// the directory does not know which customers exist, only which projects do.
+func TestDirectory_ProjectsForCustomerUnknownIsEmpty(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+
+	got, err := newDirectory(t, h).ProjectsForCustomer(context.Background(), customerUnknown)
+	if err != nil || len(got) != 0 {
+		t.Errorf("ProjectsForCustomer(unknown) = %+v, %v, want an empty result and no error", got, err)
+	}
+}
+
+// TestDirectory_ProjectsForCustomerStopsAtTheActualsCap proves the answer is
+// never longer than contracts.MaxActualsRequests — the batch a consumer asks
+// the time and expenses providers next — and that what it keeps is the lowest
+// ids. The rows are inserted behind the API because two thousand and one
+// creates over HTTP would be the whole test's runtime.
+func TestDirectory_ProjectsForCustomerStopsAtTheActualsCap(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.Exec(t, `INSERT INTO projects.projects (code, name, customer_id, billing_type, created_by_user_id, created_at, updated_at)
+	           SELECT 'CAP' || g, 'Cap ' || g, $1::integer, 'time-and-materials', $2::uuid, now(), now()
+	           FROM generate_series(1, $3::integer) AS g`,
+		customerAcme, uuid.New(), contracts.MaxActualsRequests+1)
+	highest := modtest.One[int32](t, h, `SELECT max(id) FROM projects.projects`)
+
+	got, err := newDirectory(t, h).ProjectsForCustomer(context.Background(), customerAcme)
+	if err != nil {
+		t.Fatalf("ProjectsForCustomer: %v", err)
+	}
+	if len(got) != contracts.MaxActualsRequests {
+		t.Fatalf("ProjectsForCustomer = %d projects, want exactly %d (the cap)", len(got), contracts.MaxActualsRequests)
+	}
+	if got[len(got)-1].ID == highest || got[0].ID >= got[len(got)-1].ID {
+		t.Errorf("ProjectsForCustomer kept ids %d..%d, want the lowest ids with the highest (%d) cut",
+			got[0].ID, got[len(got)-1].ID, highest)
+	}
+}
+
 // TestDirectory_ProjectsReturnsKnownIdsAndOmitsUnknown proves Projects
 // resolves every id that exists and simply omits one that does not, rather
 // than erroring or leaving a hole in the slice.

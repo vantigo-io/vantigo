@@ -34,6 +34,10 @@ func (silentDirectory) ProjectsForUser(context.Context, uuid.UUID) ([]contracts.
 	return nil, nil
 }
 
+func (silentDirectory) ProjectsForCustomer(context.Context, int32) ([]contracts.ProjectEntry, error) {
+	return nil, nil
+}
+
 func (silentDirectory) Projects(context.Context, []int32) ([]contracts.ProjectEntry, error) {
 	return nil, nil
 }

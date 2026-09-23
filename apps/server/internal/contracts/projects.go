@@ -73,6 +73,15 @@ type ProjectDirectory interface {
 	BillingLine(ctx context.Context, projectID, lineID int32) (*BillingLineEntry, error)
 	// ProjectsForUser lists every project userID holds a role on.
 	ProjectsForUser(ctx context.Context, userID uuid.UUID) ([]ProjectEntry, error)
+	// ProjectsForCustomer lists every project whose customer is customerID,
+	// in any status, by id ascending, and at most MaxActualsRequests of them —
+	// the batch a consumer asks ProjectActuals and ProjectExpenses about next,
+	// so one answer here is never a list either provider would refuse. A
+	// consumer that gets exactly MaxActualsRequests back must assume there are
+	// more; the ones kept are the oldest. A customer with no projects, or one
+	// that does not exist, answers an empty result rather than an error: the
+	// directory knows projects, not which customers exist.
+	ProjectsForCustomer(ctx context.Context, customerID int32) ([]ProjectEntry, error)
 	// Projects looks up every project in ids, in any status. An id that does
 	// not exist is simply omitted from the result, rather than reported as
 	// an error or a hole in the slice.
