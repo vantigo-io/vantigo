@@ -20,6 +20,7 @@ describe("the customers list route's search params", () => {
       sortDirection: undefined,
       ownerId: undefined,
       tagId: undefined,
+      groupId: undefined,
     });
     expect(validate({ status: "bogus", type: "bogus", sortBy: "bogus", sortDirection: "bogus" })).toEqual({
       page: 1,
@@ -30,6 +31,7 @@ describe("the customers list route's search params", () => {
       sortDirection: undefined,
       ownerId: undefined,
       tagId: undefined,
+      groupId: undefined,
     });
   });
 
@@ -52,6 +54,7 @@ describe("the customers list route's search params", () => {
       sortDirection: "desc",
       ownerId: undefined,
       tagId: undefined,
+      groupId: undefined,
     });
   });
 
@@ -68,6 +71,16 @@ describe("the customers list route's search params", () => {
     // case-sensitive there, and a bare word is neither a uuid nor a literal.
     expect(validate({ ownerId: "Me", tagId: "notauuid" })).toMatchObject({ ownerId: undefined, tagId: undefined });
     expect(validate({ tagId })).toMatchObject({ tagId });
+  });
+
+  it("keeps a group id and the no-group literal, and drops anything else", () => {
+    const groupId = "0191d4f8-6f1a-7c3a-9b2e-6d5f4c3b2a11";
+    expect(validate({ groupId })).toMatchObject({ groupId });
+    expect(validate({ groupId: "none" })).toMatchObject({ groupId: "none" });
+    // 'None' is case-sensitive at the API and a bare word is neither a uuid nor
+    // the literal, so the URL never carries either.
+    expect(validate({ groupId: "None" })).toMatchObject({ groupId: undefined });
+    expect(validate({ groupId: "notauuid" })).toMatchObject({ groupId: undefined });
   });
 
   it("opens the create form only for the one create value it knows", () => {

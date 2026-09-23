@@ -86,7 +86,7 @@ describe("updateCustomer", () => {
 
     const result = await updateCustomer(1001, { name: "Initrode" });
 
-    expect(result).toEqual({ ...updated, owner: null, tags: [] });
+    expect(result).toEqual({ ...updated, owner: null, group: null, tags: [] });
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/1001", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -116,7 +116,7 @@ describe("customerQueryOptions", () => {
       signal: undefined,
     });
 
-    expect(result).toEqual({ ...customer, owner: null, tags: [] });
+    expect(result).toEqual({ ...customer, owner: null, group: null, tags: [] });
     expect(options.queryKey).toEqual(["customers", 1001]);
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/1001", { signal: undefined });
   });
@@ -140,6 +140,7 @@ describe("customerQueryOptions", () => {
       ...customer,
       contactInfo: { email: null, phone: "+47 934 89 731", website: null },
       owner: null,
+      group: null,
       tags: [],
     });
   });
@@ -359,6 +360,7 @@ const cachedCustomer = (revision: number): CustomerResponse => ({
   timelineSummary: { entryCount: 0, latestOccurredOn: null },
   revision,
   owner: null,
+  group: null,
   tags: [],
 });
 

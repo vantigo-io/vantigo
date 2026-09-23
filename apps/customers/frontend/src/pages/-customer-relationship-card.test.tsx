@@ -14,8 +14,9 @@ const jsonResponse = (body: unknown, status = 200) =>
   });
 
 // customerBody is literally the wire body for a customer with nothing set:
-// no owner key at all, no tags key at all (design D1, D2 — both are omitted
-// rather than sent as null/[]), which is the shape a component must survive.
+// no owner key, no tags key and no group key at all (owner and tags design D1,
+// D2; customer groups design D3 — each is omitted rather than sent as null/[]),
+// which is the shape a component must survive.
 const customerBody = {
   id: 1001,
   customerNumber: 5001,
@@ -32,6 +33,7 @@ const ownedBody = {
   ...customerBody,
   owner: { userId: "u1", displayName: "Kari Nordmann", active: true },
   tags: [{ id: "t1", name: "VIP", color: "grape" }],
+  group: { id: "g1", name: "Retail" },
 };
 
 const tagRows = [
@@ -39,11 +41,20 @@ const tagRows = [
   { id: "t2", name: "Prospect", color: null, customerCount: 0 },
 ];
 
+// Literally the vocabulary's wire rows: Key accounts has no default, so it has
+// no defaultPaymentTermsDays key at all.
+const groupRows = [
+  { id: "g1", name: "Retail", defaultPaymentTermsDays: 30, customerCount: 2 },
+  { id: "g2", name: "Key accounts", customerCount: 0 },
+];
+
 const stubFetch = (options: { customer?: unknown; tagsFail?: boolean } = {}) => {
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (init?.method === "PUT" && url.endsWith("/owner"))
       return Promise.resolve(jsonResponse({ ...ownedBody, revision: 4 }));
+    if (init?.method === "PUT" && url.endsWith("/group"))
+      return Promise.resolve(jsonResponse({ ...ownedBody, group: { id: "g2", name: "Key accounts" }, revision: 4 }));
     if (init?.method === "PUT" && url.endsWith("/tags"))
       return Promise.resolve(
         jsonResponse({ tags: tagRows.map((tag) => ({ id: tag.id, name: tag.name, color: tag.color })) }),
@@ -53,6 +64,7 @@ const stubFetch = (options: { customer?: unknown; tagsFail?: boolean } = {}) => 
     if (url.startsWith("/api/v1/customers/assignable-users")) {
       return Promise.resolve(jsonResponse([{ userId: "u2", displayName: "Ola Nordmann" }]));
     }
+    if (url === "/api/v1/customers/groups") return Promise.resolve(jsonResponse(groupRows));
     if (url === "/api/v1/customers/tags")
       return Promise.resolve(options.tagsFail ? jsonResponse({ title: "Boom" }, 500) : jsonResponse(tagRows));
     return Promise.resolve(jsonResponse(options.customer ?? customerBody));
@@ -368,5 +380,61 @@ describe("CustomerRelationshipCard", () => {
     await waitFor(() => expect(putsTo(fetchMock, "/api/v1/customers/1001/tags")).toHaveLength(1));
     const [, init] = putsTo(fetchMock, "/api/v1/customers/1001/tags")[0];
     expect(JSON.parse(String((init as RequestInit).body)).tagIds.sort()).toEqual(["t1", "t3"]);
+  });
+
+  it("shows no group for a customer that belongs to none, and offers the vocabulary to a caller who may edit", async () => {
+    stubFetch();
+    renderCard({ canEdit: true });
+    // The wire body has no `group` key at all: absent, not null (design D3) — and
+    // a Mantine Select's input renders the LABEL of the option matching its
+    // value, so an empty value with a "No group" row reads as "No group", never
+    // as "" (the owner picker's "keeps the current owner" case asserts the same).
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Group" })).toHaveValue("No group"));
+    await userEvent.click(screen.getByRole("combobox", { name: "Group" }));
+    expect(await screen.findByRole("option", { name: "Retail" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "No group" })).toBeInTheDocument();
+  });
+
+  it("saves a group through its own PUT and takes the answered customer into the cache", async () => {
+    const fetchMock = stubFetch({ customer: ownedBody });
+    const queryClient = renderCard({ canEdit: true });
+    // The billing profile's revision IS the row's, and nothing on this page
+    // observes it, so its cached copy only moves if the save carries the
+    // answered revision there itself (`syncCustomerRevision`) — the broad
+    // invalidation merely marks an unobserved entry stale.
+    queryClient.setQueryData(["customers", 1001, "billing-profile"], { revision: 3 });
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Group" })).toHaveValue("Retail"));
+    await userEvent.click(screen.getByRole("combobox", { name: "Group" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Key accounts" }));
+
+    await waitFor(() => expect(putsTo(fetchMock, "/api/v1/customers/1001/group")).toHaveLength(1));
+    const [, init] = putsTo(fetchMock, "/api/v1/customers/1001/group")[0];
+    // The revision is read off the query, never a private copy: a sibling
+    // editor's save moves it under this card between renders.
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({ groupId: "g2", revision: 3 });
+    await waitFor(() =>
+      expect((queryClient.getQueryData(["customers", 1001]) as { group: { name: string } }).group.name).toBe(
+        "Key accounts",
+      ),
+    );
+    expect((queryClient.getQueryData(["customers", 1001, "billing-profile"]) as { revision: number }).revision).toBe(4);
+  });
+
+  it("raises the conflict alert when the group save loses a revision race", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "PUT" && url.endsWith("/group"))
+        return Promise.resolve(jsonResponse({ title: "Customer revision conflict" }, 409));
+      if (url === "/api/v1/customers/groups") return Promise.resolve(jsonResponse(groupRows));
+      if (url === "/api/v1/customers/tags") return Promise.resolve(jsonResponse(tagRows));
+      if (url.startsWith("/api/v1/customers/assignable-users")) return Promise.resolve(jsonResponse([]));
+      return Promise.resolve(jsonResponse(ownedBody));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderCard({ canEdit: true });
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Group" })).toHaveValue("Retail"));
+    await userEvent.click(screen.getByRole("combobox", { name: "Group" }));
+    await userEvent.click(await screen.findByRole("option", { name: "No group" }));
+    expect(await screen.findByText("Customer changed")).toBeInTheDocument();
   });
 });
