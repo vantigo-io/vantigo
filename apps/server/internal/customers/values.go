@@ -9,6 +9,8 @@ import (
 	"unicode"
 	"unicode/utf16"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
 )
 
@@ -619,19 +621,30 @@ func validateAddress(req gen.CustomerAddressRequest) (validatedAddress, map[stri
 // contrast against both themes.
 var tagColors = []string{"gray", "red", "pink", "grape", "violet", "indigo", "blue", "cyan", "teal", "green", "lime", "yellow", "orange"}
 
-// validateTagName is the tag name rule: non-blank, at most 100 UTF-16 code
-// units, trimmed but case-preserved — validateFriendlyName's own shape with
-// 100 instead of 255. Case is preserved even though uniqueness ignores it
-// (migration 00024's lower(name) index): 'VIP' is how someone wrote it and is
-// how it should read back, while 'vip' is not a second tag.
+// validateTagName is the tag name rule: NFC-normalised, non-blank, at most 100
+// UTF-16 code units, trimmed but case-preserved — validateFriendlyName's own
+// shape with 100 instead of 255. Case is preserved even though uniqueness
+// ignores it (migration 00024's lower(name) index): 'VIP' is how someone wrote
+// it and is how it should read back, while 'vip' is not a second tag.
+//
+// The NFC pass (final fix wave M2) is the same argument as the lower(name)
+// index, one layer down. 'Café' with a precomposed é and 'Café' with an e plus
+// a combining acute are one word to every reader and two different byte strings
+// to the index, so without it a macOS filename, an iOS keyboard or a paste from
+// another system quietly creates a second, indistinguishable tag and splits the
+// customers carrying it in two. Normalising on the way in — not comparing both
+// forms at each call site — means the stored name is the composed one whichever
+// form arrived, and it happens BEFORE the length check so the count is of the
+// string that will actually be stored.
 func validateTagName(raw string) (string, string) {
-	if strings.TrimSpace(raw) == "" {
+	name := norm.NFC.String(raw)
+	if strings.TrimSpace(name) == "" {
 		return "", "A tag name cannot be null or empty"
 	}
-	if n := utf16Length(raw); n > 100 {
+	if n := utf16Length(name); n > 100 {
 		return "", fmt.Sprintf("A tag name cannot be longer than 100 characters, the given value was %d characters", n)
 	}
-	return strings.TrimSpace(raw), ""
+	return strings.TrimSpace(name), ""
 }
 
 // validateTagColor is the colour rule. Case-sensitive, like every other value

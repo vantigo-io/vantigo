@@ -165,7 +165,11 @@ recorded only when the value actually changed. See
 replacing today's free-text `role`; follow-ups (a timeline entry's own date and
 assignee, feeding `/stats/attention` and a "my follow-ups" view); customer groups
 that can carry defaults; attachments on a customer and its timeline entries, once
-the storage module has a model for it.
+the storage module has a model for it. Also left for later on purpose: the tag
+vocabulary is **unpaged** (`GET /customers/tags` answers all of it, and both the
+picker and the Manage tags modal want the whole list), which is a bet that a
+vocabulary stays in the tens or low hundreds — paging it is an additive contract
+change the day an installation proves otherwise.
 
 *Unblocks:* answering "who owns this relationship and what happens next" without
 building a deals pipeline.

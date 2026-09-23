@@ -32,7 +32,11 @@ import (
 //     is "here is the set now" — which also means there is no revision here
 //     and none is accepted: tags are off the customer row (design D2), so
 //     nothing bumps and two concurrent replaces are last-wins, which is what
-//     replacing a set means.
+//     replacing a set means. Last-wins is a promise about the OUTCOME, not
+//     licence to let two replaces interleave: the replace is a delete followed
+//     by an insert, so its transaction takes the customer row's own
+//     FOR NO KEY UPDATE first and the two run one after the other (final fix
+//     wave C1, PutCustomersByIdTags below).
 //  3. **The list carries a customerCount**, because design D3's delete
 //     confirmation has to say what it will affect and is already showing the
 //     list.
@@ -77,6 +81,22 @@ func tagNotFound(id uuid.UUID) string {
 // missing customer is not, so PutCustomersByIdTags matches this one by name
 // rather than catching any 23503.
 const customerTagsTagFK = "customer_tags_tag_id_fkey"
+
+// tagWriteAttempts is how often a tag write's transaction runs before the
+// deadlock it keeps losing escapes as a 500 (final fix wave I1). Three, as
+// identity's own serializableAttempts settled on.
+//
+// The deadlock is real and is between the two writes in this file rather than
+// anything exotic: DELETE /customers/tags/{tagId} locks the tags row and then,
+// through the join table's ON DELETE CASCADE, its customer_tags rows, while
+// PutCustomersByIdTags' insert locks customer_tags rows and then takes
+// FOR KEY SHARE on the tags rows its foreign key points at — the two lock
+// orders are opposite, so a tag deleted at the same moment as a customer being
+// re-tagged with it can form a cycle. PostgreSQL breaks it by killing one side
+// (40P01), and being the victim of a lock-order cycle is not something either
+// caller did wrong: the retry runs the loser again, from a fresh snapshot, in
+// which one of the two writes has simply already happened.
+const tagWriteAttempts = 3
 
 // missingTagMessages is the tagIds field error for every id in wanted that
 // resolved does not hold, in the request's own order so the message list is
@@ -178,6 +198,12 @@ func (s *server) PostCustomersTags(ctx context.Context, req gen.PostCustomersTag
 // plain 200, not a conflict with itself — the unique index compares
 // lower(name) and the row being updated is the row being compared against, so
 // the database says so too.
+//
+// One statement, UPDATE … RETURNING with the count (final fix wave M3): the
+// body this endpoint answers is what the Manage tags modal keeps on screen, so
+// the count has to be the one the list would report, and reading it back
+// separately left a window in which a tag deleted just after the rename turned
+// a successful write into a 404.
 func (s *server) PutCustomersTagsByTagId(ctx context.Context, req gen.PutCustomersTagsByTagIdRequestObject) (gen.PutCustomersTagsByTagIdResponseObject, error) {
 	body := gen.CustomerTagRequest{}
 	if req.Body != nil {
@@ -198,15 +224,7 @@ func (s *server) PutCustomersTagsByTagId(ctx context.Context, req gen.PutCustome
 	case err != nil:
 		return nil, fmt.Errorf("customers: update tag: %w", err)
 	}
-
-	// The count is re-read rather than assumed: a rename must answer the same
-	// customerCount the list would, and this endpoint's own body is what the
-	// Manage tags modal keeps on screen afterwards.
-	row, err := q.GetCustomerTag(ctx, updated.ID)
-	if err != nil {
-		return nil, fmt.Errorf("customers: read tag after update: %w", err)
-	}
-	return gen.PutCustomersTagsByTagId200JSONResponse(tagSummaryOf(row.ID, row.Name, row.Color, row.CustomerCount)), nil
+	return gen.PutCustomersTagsByTagId200JSONResponse(tagSummaryOf(updated.ID, updated.Name, updated.Color, updated.CustomerCount)), nil
 }
 
 // DeleteCustomersTagsByTagId Delete a tag and remove it from every customer
@@ -221,9 +239,20 @@ func (s *server) PutCustomersTagsByTagId(ctx context.Context, req gen.PutCustome
 //
 // No timeline event on the customers that lose the tag: the customers did not
 // change their minds, the vocabulary did (design D2).
+//
+// The one statement is still retried on a deadlock (final fix wave I1): its
+// cascade locks the tags row before the customer_tags rows, which is the
+// opposite order PutCustomersByIdTags' insert takes them in, so a delete racing
+// a re-tag with the same tag can be picked as PostgreSQL's deadlock victim.
+// Nothing here is worth failing for that — see tagWriteAttempts.
 func (s *server) DeleteCustomersTagsByTagId(ctx context.Context, req gen.DeleteCustomersTagsByTagIdRequestObject) (gen.DeleteCustomersTagsByTagIdResponseObject, error) {
 	q := store.New(s.deps.Pool)
-	rows, err := q.DeleteCustomerTag(ctx, req.TagId)
+	var rows int64
+	err := db.RetrySerializable(ctx, tagWriteAttempts, func() error {
+		var err error
+		rows, err = q.DeleteCustomerTag(ctx, req.TagId)
+		return err
+	})
 	if err != nil {
 		return nil, fmt.Errorf("customers: delete tag: %w", err)
 	}
@@ -236,12 +265,30 @@ func (s *server) DeleteCustomersTagsByTagId(ctx context.Context, req gen.DeleteC
 // PutCustomersByIdTags Replace a customer's tags
 // (PUT /api/v1/customers/{id}/tags)
 //
-// Ordering: (1) the customer's existence, 404 — CustomerExists, deliberately
-// not LockCustomer, because this write takes no lock on the customer row
-// (design D2); (2) the ids resolved in one query, 400 keyed tagIds for any the
-// vocabulary does not hold; (3) the current set read and diffed, and a request
-// that changes nothing answered right there; (4) the actor; (5) the replace and
-// its event in one transaction.
+// Ordering: (1) the customer's existence, 404 — CustomerExists on the pool;
+// (2) the ids resolved in one query, 400 keyed tagIds for any the vocabulary
+// does not hold; (3) the current set read and diffed, and a request that changes
+// nothing answered right there; (4) the actor; (5) inside one transaction: the
+// customer row locked FOR NO KEY UPDATE, then the replace and its event.
+//
+// **Why the transaction locks the customer row** (final fix wave C1). The
+// replace is a DELETE followed by an INSERT, and under READ COMMITTED two of
+// them on one customer do not produce last-wins on their own: the second
+// transaction's DELETE waits on the first's row locks, resumes with a statement
+// snapshot taken before the first committed, therefore deletes nothing, and its
+// INSERT then trips customer_tags' primary key on every id the two sets share —
+// a 500 where the contract promises the later writer simply wins (and, for two
+// disjoint sets, the union of both instead of the second). Tags are off the
+// customer row, so this lock is not about the row's own data and takes nothing
+// but NO KEY UPDATE: it is a serialization point, the same one every address
+// write uses (queries/addresses.sql's LockCustomer), and it is what makes
+// "last-wins" true rather than merely intended. pgx.ErrNoRows from it is the
+// same 404 step (1) answers, for a customer deleted in between.
+//
+// The pre-check in step (1) is NOT redundant with that lock. A request that
+// changes nothing never opens the transaction at all, and it must still answer
+// 404 for a customer that does not exist — with an empty tagIds against a
+// missing customer, the diff alone cannot tell "no tags" from "no customer".
 //
 // **Why the diff happens before the transaction, not inside it.** The actor is
 // a directory lookup and must be resolved outside any transaction (actor.go),
@@ -249,14 +296,14 @@ func (s *server) DeleteCustomersTagsByTagId(ctx context.Context, req gen.DeleteC
 // multi-select whose caller changed their mind sends the set the customer
 // already has, and that is a read, not a write. Both rules can only hold if
 // "did the set move" is answered on the pool first, which this endpoint is
-// uniquely free to do: it is last-wins by design (design D2, no revision and no
-// lock), so a concurrent replace landing between this read and the write below
-// is not a lost update — it is the earlier writer losing, which is what
-// replacing a set means. The one thing the race can cost is an event whose
-// added/removed is computed against a set that moved in between; two
-// simultaneous replaces can therefore both claim to have added the same tag.
-// That is the honest consequence of last-wins and is cheaper than the lock a
-// perfectly-ordered timeline would need.
+// uniquely free to do: it is last-wins by design (design D2, no revision), so a
+// concurrent replace landing between this read and the write below is not a lost
+// update — it is the earlier writer losing, which is what replacing a set means.
+// The one thing the race can cost is an event whose added/removed is computed
+// against a set that moved in between; two simultaneous replaces can therefore
+// both claim to have added the same tag. That is the honest consequence of
+// last-wins and is cheaper than reading the set again under the lock for a
+// perfectly-ordered timeline.
 //
 // The empty-to-empty case is a real request and is covered by the same check:
 // no tags before, none after, nothing written and nothing recorded.
@@ -336,16 +383,32 @@ func (s *server) PutCustomersByIdTags(ctx context.Context, req gen.PutCustomersB
 		return nil, fmt.Errorf("customers: resolve actor: %w", err)
 	}
 
-	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		txq := store.New(tx)
-		if err := txq.DeleteCustomerTagLinks(ctx, req.Id); err != nil {
-			return err
-		}
-		if err := txq.InsertCustomerTagLinks(ctx, store.InsertCustomerTagLinksParams{CustomerID: req.Id, TagIds: wanted}); err != nil {
-			return err
-		}
-		return recordCustomerTagsChanged(ctx, txq, now, req.Id, added, removed, act.Kind, act.Display, act.UserID)
+	// Retried on a deadlock with DELETE /customers/tags/{tagId}, whose cascade
+	// takes the same two tables' locks in the opposite order (tagWriteAttempts).
+	// Nothing inside leaves the database: the actor is already resolved above, so
+	// a retry repeats the lock, the delete, the insert and the event, and
+	// nothing else.
+	err = db.RetrySerializable(ctx, tagWriteAttempts, func() error {
+		return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+			txq := store.New(tx)
+			if _, err := txq.LockCustomer(ctx, req.Id); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return errCustomerNotFound
+				}
+				return err
+			}
+			if err := txq.DeleteCustomerTagLinks(ctx, req.Id); err != nil {
+				return err
+			}
+			if err := txq.InsertCustomerTagLinks(ctx, store.InsertCustomerTagLinksParams{CustomerID: req.Id, TagIds: wanted}); err != nil {
+				return err
+			}
+			return recordCustomerTagsChanged(ctx, txq, now, req.Id, added, removed, act.Kind, act.Display, act.UserID)
+		})
 	})
+	if errors.Is(err, errCustomerNotFound) {
+		return gen.PutCustomersByIdTags404Response{}, nil
+	}
 	if db.IsForeignKeyViolation(err, customerTagsTagFK) {
 		// A tag named in the request was deleted between the resolve above and
 		// this insert — the one window the resolve cannot close, since nothing

@@ -101,12 +101,13 @@ func addressResponse(r store.CustomersCustomerAddress) gen.CustomerAddress {
 	}
 }
 
-// errCustomerNotFound is the shared 404 sentinel every address write's
-// transaction raises once LockCustomer (or, for PUT/DELETE, the address
-// lookup that follows it) finds nothing — threaded out of the transaction
-// fn as a sentinel error so db.WithTx's own error path stays a plain "did
-// it fail" signal, the same technique contacts.go's
-// errAssociationTargetNotFound uses.
+// errCustomerNotFound is the shared 404 sentinel a write's transaction raises
+// once LockCustomer (or, for an address PUT/DELETE, the address lookup that
+// follows it) finds nothing — threaded out of the transaction fn as a sentinel
+// error so db.WithTx's own error path stays a plain "did it fail" signal, the
+// same technique contacts.go's errAssociationTargetNotFound uses. The address
+// writes are its original callers; PutCustomersByIdTags joined them once its
+// own transaction started taking that lock too (tags.go, final fix wave C1).
 var errCustomerNotFound = errors.New("customers: customer or address not found")
 
 // errAddressCapReached is PostCustomersByIdAddresses' 400 when the customer

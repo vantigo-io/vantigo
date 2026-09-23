@@ -60,9 +60,11 @@ UI never has to sanitise it.
   customer (204; the cascade). Name: 1–100 UTF-16 units, trimmed.
 - `PUT /customers/{id}/tags` (`customers:update`) `{tagIds: uuid[]}` **replaces** the
   customer's set — the natural write for a multi-select — and answers `{tags: Tag[]}`.
-  An unknown id is a field error on `tagIds`. Off the customer row: no `revision`, no
-  customer lock beyond the row's existence check; two concurrent replaces are last-wins,
-  which is what a set-replace means.
+  An unknown id is a field error on `tagIds`. Off the customer row: no `revision`; two
+  concurrent replaces are last-wins, which is what a set-replace means. The write still
+  takes the customer row's `FOR NO KEY UPDATE` first, as the serialization point last-wins
+  needs — the delete-then-insert of two replaces interleaved collides on the join table's
+  primary key rather than letting the later one win (final fix wave C1).
 - `SafeCustomerResponse` gains `tags: Tag[]` (always present, `[]` when none), loaded
   in one query per list page.
 - List filter `tagId` (one tag, as communications' inbox filters by one tag; a customer

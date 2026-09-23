@@ -25,6 +25,15 @@ ALTER TABLE customers.customers
 -- unowned customers are found by IS NULL and never by an index lookup on a
 -- value, so indexing them would be bytes spent on rows this index can never
 -- serve.
+--
+-- The consequence is deliberate and worth stating: ownerId=none is a SCAN. A
+-- partial index does not serve its own WHERE's complement, so "unassigned"
+-- reads the table the same way an unfiltered list does — which is what it is,
+-- a manager's occasional sweep rather than a daily filter, and it already
+-- shares that plan with every other page of this list. The day unowned
+-- customers are the majority of a large installation and that sweep is what
+-- people run all day, the answer is a second partial index on
+-- (owner_user_id IS NULL), not widening this one.
 CREATE INDEX ix_customers_owner_user ON customers.customers (owner_user_id)
     WHERE owner_user_id IS NOT NULL;
 
