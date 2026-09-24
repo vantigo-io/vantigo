@@ -98,7 +98,9 @@ delete's lock-order rule) and `RetrySerializable`:
   flatten, and each re-pointed row's revision advances). A merged-away customer no
   longer holds its legal identity for the duplicate-identity guard, and it is
   read-only: every write to it answers 409 `customer_merged` naming the survivor
-  (final review ruling), the restore included.
+  (final review ruling), the restore included — so it also leaves its group
+  (`group_id` cleared, the payload's `absorbed.groupId` recording it), or that group
+  could never be emptied and deleted.
 - **Events**: `customer.merged` on the survivor (`{customerId, absorbed: {id,
   customerNumber, name, type, status, identity, contactInfo, billingProfile, ownerUserId,
   groupId}, moved: [{kind, count}]}`, summary "Absorbed #1005 Acme Norge AS: 3

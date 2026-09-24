@@ -850,3 +850,33 @@ func TestAMergedAwayCustomerRefusesEveryWrite(t *testing.T) {
 		t.Errorf("the registry was asked %v for a merged-away customer", paths)
 	}
 }
+
+// TestPostCustomersByIdMerge_TheAbsorbedCustomerLeavesItsGroup: a merged-away
+// customer refuses every write, the group PUT included, so it must not keep
+// counting in its group — else the group could never be emptied and deleted.
+// The merge takes it out; customer.merged's payload says which group it was.
+func TestPostCustomersByIdMerge_TheAbsorbedCustomerLeavesItsGroup(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := mergeClient(t, h)
+	survivor := createCustomer(t, c, "Acme AS").Id
+	absorbed := createCustomer(t, c, "Acme Norge AS").Id
+	group := createGroup(t, c, map[string]any{"name": "Retail"})
+	if r := putCustomerGroup(t, c, absorbed, map[string]any{"groupId": group.Id}); r.Status != http.StatusOK {
+		t.Fatalf("group: status %d body %s", r.Status, r.Body)
+	}
+
+	mergeOK(t, c, survivor, absorbed)
+
+	if got := fetchCustomerJSON(t, c, absorbed); got.Group != nil {
+		t.Errorf("the merged-away customer's group = %+v, want none", got.Group)
+	}
+	merged := entriesOfType(timelineOf(t, c, survivor), "customer.merged")
+	var payload mergedEventPayloadJSON
+	if len(merged) != 1 || json.Unmarshal(merged[0].Payload, &payload) != nil || payload.Absorbed.GroupId == nil || *payload.Absorbed.GroupId != group.Id {
+		t.Errorf("customer.merged = %+v, want absorbed.groupId %s", merged, group.Id)
+	}
+	if r := c.Do(http.MethodDelete, "/api/v1/customers/groups/"+group.Id, nil); r.Status != http.StatusNoContent {
+		t.Errorf("delete the group: status %d body %s, want 204", r.Status, r.Body)
+	}
+}
