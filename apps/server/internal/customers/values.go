@@ -667,6 +667,12 @@ var tagColors = []string{"gray", "red", "pink", "grape", "violet", "indigo", "bl
 // forms at each call site — means the stored name is the composed one whichever
 // form arrived, and it happens BEFORE the length check so the count is of the
 // string that will actually be stored.
+//
+// '|' is refused (customers import/export design D1): it is csvTagSeparator,
+// what the customers file's tags cell puts between names, and a name holding
+// it would be exported as a cell that reads back as the tags on either side
+// of it — silently, whenever those exist. Refused here, the cell has one
+// reading only.
 func validateTagName(raw string) (string, string) {
 	name := norm.NFC.String(raw)
 	if strings.TrimSpace(name) == "" {
@@ -674,6 +680,9 @@ func validateTagName(raw string) (string, string) {
 	}
 	if n := utf16Length(name); n > 100 {
 		return "", fmt.Sprintf("A tag name cannot be longer than 100 characters, the given value was %d characters", n)
+	}
+	if strings.Contains(name, csvTagSeparator) {
+		return "", fmt.Sprintf("A tag name cannot contain '%s', which the customers file puts between tag names", csvTagSeparator)
 	}
 	return strings.TrimSpace(name), ""
 }

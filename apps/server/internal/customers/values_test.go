@@ -957,6 +957,14 @@ func TestValidateTagName(t *testing.T) {
 		{name: "blank is refused", in: "   ", wantErr: "A tag name cannot be null or empty"},
 		{name: "empty is refused", in: "", wantErr: "A tag name cannot be null or empty"},
 		{
+			// The customers file joins a customer's tag names with '|'
+			// (csvTagSeparator), so a name holding one could never be named by
+			// a file — and would be read back as the tags on either side.
+			name:    "the tags cell's separator is refused",
+			in:      "Inn|Ut",
+			wantErr: "A tag name cannot contain '|', which the customers file puts between tag names",
+		},
+		{
 			name:    "past 100 UTF-16 units is refused, counted in UTF-16",
 			in:      strings.Repeat("😀", 51), // 51 emoji = 102 UTF-16 units
 			wantErr: "A tag name cannot be longer than 100 characters, the given value was 102 characters",

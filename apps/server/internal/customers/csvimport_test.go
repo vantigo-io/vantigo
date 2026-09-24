@@ -411,29 +411,87 @@ func TestPostCustomersImport_GroupAndTagsAreNamedCaseInsensitively_AnUnknownName
 	}
 }
 
-// TestPostCustomersImport_ATagNamedWithTheSeparatorCannotBeImported: the
-// export joins tag names with '|', so a tag whose name holds one comes back
-// from its own export as pieces. A piece that names no tag is the row's error,
-// named as such, and the row writes nothing — even though its other piece
-// happens to be a tag of its own.
-func TestPostCustomersImport_ATagNamedWithTheSeparatorCannotBeImported(t *testing.T) {
+// TestPostCustomersImport_ATagsCellIsNamesJoinedBySeparators: '|' is never
+// part of a tag's name (validateTagName refuses it), so a cell holding it can
+// only mean the tags on either side — both of them, never a third word.
+func TestPostCustomersImport_ATagsCellIsNamesJoinedBySeparators(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	c := authenticatedClient(t, h)
-	inOut := createTag(t, c, map[string]any{"name": "Inn|Ut"})
 	createTag(t, c, map[string]any{"name": "Inn"})
-	kunde := createCustomer(t, c, "Pipe AS")
-	if r := putCustomerTags(t, c, kunde.Id, []string{inOut.Id}); r.Status != http.StatusOK {
-		t.Fatalf("tags: status %d body %s", r.Status, r.Body)
-	}
+	createTag(t, c, map[string]any{"name": "Ut"})
 
-	result := importResultOf(t, postImport(t, c, "?dryRun=false", exportCSV(t, c, "").Body))
-	want := []importErrorJSON{{Row: 1, Column: "tags", Message: "No tag is named 'Ut'"}}
-	if result.Updated != 0 || result.Failed != 1 || fmt.Sprint(result.Errors) != fmt.Sprint(want) {
-		t.Errorf("result = %+v, want the row refused with %+v", result, want)
+	result := importResultOf(t, postImport(t, c, "?dryRun=false", csvFileOf([]string{"name", "tags"}, []string{"Pipe AS", "Inn|Ut"})))
+	if result.Created != 1 || result.Failed != 0 {
+		t.Fatalf("result = %+v, want the row created", result)
 	}
-	if got := fetchCustomerJSON(t, c, kunde.Id); len(got.Tags) != 1 || got.Tags[0].Name != "Inn|Ut" {
-		t.Errorf("tags = %+v, want Inn|Ut kept", got.Tags)
+	if got := fetchCustomerJSON(t, c, customerIDByName(t, h, "Pipe AS")); len(got.Tags) != 2 || got.Tags[0].Name != "Inn" || got.Tags[1].Name != "Ut" {
+		t.Errorf("tags = %+v, want Inn and Ut", got.Tags)
+	}
+}
+
+// TestPostCustomersImport_ADecomposedNameFindsItsWord: the vocabularies are
+// stored NFC (validateTagName, validateGroupName), and a file saved on a Mac
+// may spell the same word decomposed — an a and a combining ring for å. It is
+// one word to every reader, so it is one word to the import.
+func TestPostCustomersImport_ADecomposedNameFindsItsWord(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	createGroup(t, c, map[string]any{"name": "Kafé"})
+	createTag(t, c, map[string]any{"name": "Små"})
+
+	result := importResultOf(t, postImport(t, c, "?dryRun=false", csvFileOf(
+		[]string{"name", "group", "tags"},
+		[]string{"Bakeri AS", "Kafe\u0301", "SMA\u030a"},
+	)))
+	if result.Created != 1 || result.Failed != 0 {
+		t.Fatalf("result = %+v, want the row created", result)
+	}
+	got := fetchCustomerJSON(t, c, customerIDByName(t, h, "Bakeri AS"))
+	if got.Group == nil || got.Group.Name != "Kafé" || len(got.Tags) != 1 || got.Tags[0].Name != "Små" {
+		t.Errorf("group %+v tags %+v, want Kafé and Små", got.Group, got.Tags)
+	}
+}
+
+// TestPostCustomersImport_TakesABodyPastTheRoutersDefaultCap: a full 5000-row
+// file is a few MB, past the 1 MiB every other operation is capped at, so the
+// import's own cap (importBodyLimits) must be the one in effect. About 1.4 MB
+// of rows whose names are too long keeps it cheap: every row fails in plan,
+// before any transaction.
+func TestPostCustomersImport_TakesABodyPastTheRoutersDefaultCap(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	rows := [][]string{{"name"}}
+	for i := 0; i < 2000; i++ {
+		rows = append(rows, []string{fmt.Sprintf("%04d %s", i, strings.Repeat("x", 700))})
+	}
+	data := csvFileOf(rows...)
+	if len(data) <= 1<<20 {
+		t.Fatalf("the file is %d bytes; it must be past 1 MiB to mean anything", len(data))
+	}
+	result := importResultOf(t, postImport(t, c, "", data))
+	if result.Rows != 2000 || result.Failed != 2000 {
+		t.Errorf("result: rows %d failed %d, want 2000 read and refused", result.Rows, result.Failed)
+	}
+}
+
+// TestPostCustomersImport_AnInvalidTypeIsReportedOnce: a type cell the
+// validator refuses is that row's error on type, and nothing else is judged
+// against a type the row does not have — no identity mismatch against the
+// business a blank type would default to.
+func TestPostCustomersImport_AnInvalidTypeIsReportedOnce(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	result := importResultOf(t, postImport(t, c, "?dryRun=false", csvFileOf(
+		cells([]string{"name", "type"}, legalHeader),
+		[]string{"Ola Nordmann", "persn", "se", "person", "19800101-1234", "Ola Nordmann"},
+	)))
+	want := []importErrorJSON{{Row: 1, Column: "type", Message: "A customer type must be one of 'business' or 'person', but was 'persn'"}}
+	if result.Failed != 1 || fmt.Sprint(result.Errors) != fmt.Sprint(want) {
+		t.Errorf("result = %+v, want only %+v", result, want)
 	}
 }
 
@@ -560,6 +618,11 @@ func TestCustomersExportImport_ARoundTripChangesNothing(t *testing.T) {
 	putOwner(t, c, fjord.Id, map[string]any{"ownerUserId": userID.String()})
 	createCustomerOfType(t, c, "Ola Nordmann", "person")
 	createCustomer(t, c, "=Formel AS")
+
+	// A Brreg pick, so the round trip also shows a repeated identity keeping
+	// its source (importedIdentity): the file cannot say brreg, and a manual
+	// identity would read back unchanged either way.
+	h.Exec(t, `UPDATE customers.customers SET legal_source = 'brreg' WHERE id = $1`, fjord.Id)
 
 	first := exportCSV(t, c, "").Body
 	events := h.Count(t, `SELECT count(*) FROM customers.customers_timeline_entries`)

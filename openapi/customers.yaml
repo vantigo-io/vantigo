@@ -875,7 +875,7 @@ components:
                 - name
             type: object
         CustomerTagRequest:
-            description: A tag's name and colour (owner and tags design D2). name is 1-100 characters, trimmed; a name another tag already has, ignoring case, is a 409 with code tag_exists.
+            description: A tag's name and colour (owner and tags design D2). name is 1-100 characters, trimmed, and never holds '|' (the customers file's tags cell puts it between names); a name another tag already has, ignoring case, is a 409 with code tag_exists.
             properties:
                 color:
                     nullable: true
@@ -3859,7 +3859,7 @@ paths:
 
                 Each row, in file order: a customerNumber selects the customer to update (unknown is that row's error; no revision is sent, so the change applies regardless), a blank one creates. Each group in the header is written as its own endpoint writes it — a full replace, a blank cell clearing that field; all of an address's cells blank remove the primary address of that type; a blank tags cell clears the tags — and a group not in the header is left alone. name, type and status are each optional columns: a create needs a name and defaults to business and active; on an update an absent name column keeps the name but a blank name cell is that row's error (a name is never cleared), a blank or absent status keeps the status, and a type that differs is an error (PUT /customers/{id}/type is a deliberate act). An imported legal identity's source is manual, unless it repeats the identity on file field for field, which keeps it. group and tags name existing vocabulary, case-insensitively; an unknown name is that row's error. Each row is its own transaction through the endpoints' own validation, statements and events, the caller as actor; a row that fails writes nothing and does not stop the file.
 
-                dryRun defaults to true: every row runs exactly as in a real run, each in its own transaction, rolled back instead of committed — no customer, no number and no event is kept, and no lock outlives its row. Two rows of the file creating one legal identity are refused on the second in both runs (a check made on the file before any row runs); otherwise a dry run cannot see an earlier row's effect on a later one, and where that matters the real run refuses the later row cleanly, as that row's error. allowDuplicateIdentity is the create endpoint's flag, applied to every row.
+                dryRun defaults to true: every row runs exactly as in a real run, each in its own transaction, rolled back instead of committed — no customer, no customer number and no event is kept (the customer-number counter rolls back with the row; only internal row ids, which the API never promises to be consecutive, may skip), and no lock outlives its row. Two rows of the file creating one legal identity are refused on the second in both runs (a check made on the file before any row runs); otherwise a dry run cannot see an earlier row's effect on a later one, and where that matters the real run refuses the later row cleanly, as that row's error. allowDuplicateIdentity is the create endpoint's flag, applied to every row.
             operationId: postCustomersImport
             parameters:
                 - description: "'true' (the default) checks the file and keeps nothing; 'false' imports it."
