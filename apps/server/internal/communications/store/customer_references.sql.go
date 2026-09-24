@@ -18,9 +18,8 @@ WITH gone AS (
     INSERT INTO communications.conversation_customer_candidates (conversation_id, customer_id, created_at)
     SELECT conversation_id, $2::integer, created_at FROM gone
     ON CONFLICT (conversation_id, customer_id) DO NOTHING
-    RETURNING conversation_id
 )
-SELECT (SELECT count(*) FROM gone)::bigint AS moved, (SELECT count(*) FROM kept)::bigint AS added
+SELECT (SELECT count(*) FROM gone)::bigint AS moved
 `
 
 type RepointConversationCustomerCandidatesParams struct {
@@ -28,23 +27,21 @@ type RepointConversationCustomerCandidatesParams struct {
 	IntoCustomerID int32
 }
 
-type RepointConversationCustomerCandidatesRow struct {
-	Moved int64
-	Added int64
-}
-
 // The candidate list is the one place a re-point can collide: a conversation
 // may already list the survivor beside the absorbed customer, and
 // (conversation_id, customer_id) is the primary key. So the absorbed rows are
 // deleted and re-inserted for the survivor with ON CONFLICT DO NOTHING — one
 // statement, a conversation that listed both keeps the survivor once, and
-// each candidate keeps its created_at. moved is how many the absorbed customer
-// had; added how many of those were new to the survivor.
-func (q *Queries) RepointConversationCustomerCandidates(ctx context.Context, arg RepointConversationCustomerCandidatesParams) (RepointConversationCustomerCandidatesRow, error) {
+// each candidate keeps its created_at. The answer is how many rows the absorbed
+// customer had, ones that collapsed into a row the survivor already had
+// included — the count a merge reports; how many were new to the survivor is
+// nothing anybody reads, so it is not asked for (a data-modifying WITH runs to
+// completion whether or not the outer SELECT reads it).
+func (q *Queries) RepointConversationCustomerCandidates(ctx context.Context, arg RepointConversationCustomerCandidatesParams) (int64, error) {
 	row := q.db.QueryRow(ctx, repointConversationCustomerCandidates, arg.FromCustomerID, arg.IntoCustomerID)
-	var i RepointConversationCustomerCandidatesRow
-	err := row.Scan(&i.Moved, &i.Added)
-	return i, err
+	var moved int64
+	err := row.Scan(&moved)
+	return moved, err
 }
 
 const repointConversationsCustomer = `-- name: RepointConversationsCustomer :execrows

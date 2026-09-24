@@ -99,7 +99,8 @@ func TestCustomerReferences_RepointsConversationsSuggestionsAndCandidates(t *tes
 }
 
 // Rolled back, nothing moved: every one of the three statements ran in the
-// caller's transaction.
+// caller's transaction. A customer with nothing here still answers all three
+// kinds, as zeros.
 func TestCustomerReferences_WritesOnlyInsideTheCallersTransaction(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -109,6 +110,9 @@ func TestCustomerReferences_WritesOnlyInsideTheCallersTransaction(t *testing.T) 
 	insertCandidate(t, h, conversation.String(), absorbed)
 
 	moved := repointCommunicationsCustomer(t, h, absorbed, 1002, false)
+	if len(moved) != 3 {
+		t.Fatalf("RepointCustomer = %+v, want the three kinds", moved)
+	}
 	for _, m := range moved {
 		if m.Count != 1 {
 			t.Errorf("%s = %d, want 1", m.Kind, m.Count)
@@ -119,5 +123,35 @@ func TestCustomerReferences_WritesOnlyInsideTheCallersTransaction(t *testing.T) 
 	}
 	if n := h.Count(t, `SELECT count(*) FROM communications.conversation_customer_candidates WHERE customer_id = $1`, absorbed); n != 1 {
 		t.Error("a rolled-back re-point moved the candidate")
+	}
+
+	if moved := repointCommunicationsCustomer(t, h, 4242, 1002, true); !slices.Equal(moved, zeroCommunicationsKinds) {
+		t.Errorf("RepointCustomer for a customer with nothing here = %+v, want %+v", moved, zeroCommunicationsKinds)
+	}
+}
+
+// zeroCommunicationsKinds is the holder's answer when nothing moved.
+var zeroCommunicationsKinds = []contracts.RepointedReferences{
+	{Kind: "communications.conversations", Count: 0},
+	{Kind: "communications.conversationSuggestions", Count: 0},
+	{Kind: "communications.conversationCandidates", Count: 0},
+}
+
+// A customer merged into itself moves nothing (the holder's own guard; the
+// merge refuses merge_self before it gets here): its candidate row stays, and
+// all three kinds answer zero.
+func TestCustomerReferences_RepointingACustomerOntoItselfWritesNothing(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	channel := setupChannel(t, h)
+	customer := int32(1001)
+	conversation := insertConversationFor(t, h, channel, &customer, &customer)
+	insertCandidate(t, h, conversation.String(), customer)
+
+	if moved := repointCommunicationsCustomer(t, h, customer, customer, true); !slices.Equal(moved, zeroCommunicationsKinds) {
+		t.Errorf("RepointCustomer(%d, %d) = %+v, want %+v", customer, customer, moved, zeroCommunicationsKinds)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM communications.conversation_customer_candidates WHERE conversation_id = $1 AND customer_id = $2`, conversation, customer); n != 1 {
+		t.Errorf("the conversation lists the customer %d times, want once", n)
 	}
 }

@@ -30,8 +30,13 @@ func newCustomerReferenceHolder(module.Deps) contracts.CustomerReferenceHolder {
 }
 
 // RepointCustomer moves every supply period of from to into, inside the
-// caller's transaction (RepointSupplyPeriodsCustomer).
+// caller's transaction (RepointSupplyPeriodsCustomer). A customer merged into
+// itself moves nothing — the merge refuses that before any holder runs
+// (merge_self), and this guard keeps the answer honest should that change.
 func (customerReferenceHolder) RepointCustomer(ctx context.Context, tx pgx.Tx, from, into int32) ([]contracts.RepointedReferences, error) {
+	if from == into {
+		return []contracts.RepointedReferences{{Kind: customerReferenceKindSupplyPeriods, Count: 0}}, nil
+	}
 	n, err := store.New(tx).RepointSupplyPeriodsCustomer(ctx, store.RepointSupplyPeriodsCustomerParams{
 		FromCustomerID: from, IntoCustomerID: into,
 	})
