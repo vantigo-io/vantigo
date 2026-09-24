@@ -136,7 +136,7 @@ describe("customer contacts card", () => {
 
   // The Overview tab's billing card (design D6) always GETs the billing
   // profile, which answers 200 for every customer (design D4) — with the
-  // ten optional fields left out entirely when nothing is set, as the wire
+  // eleven optional fields left out entirely when nothing is set, as the wire
   // really encodes them. Every route test below needs this stubbed the same
   // way it stubs the customer's own GET.
   const emptyBillingProfile = { revision: 1, warnings: [] };

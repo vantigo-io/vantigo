@@ -472,8 +472,9 @@ const en = {
   billingCurrency: "Currency",
   billingDefaultBillRate: "Default bill rate",
   billingDefaultBillRateHint:
-    "Per hour, in the currency above — used on this customer's projects that set no rate of their own.",
+    "Per hour, in the currency above — used for this customer's projects when no billing line or project rate applies.",
   billingDefaultBillRateValue: "{{amount}} {{currency}} per hour",
+  billingDefaultBillRateValueNoCurrency: "{{amount}} per hour",
   billingDefaultBillRateNotSet: "Not set — the project's or the person's rate applies",
   billingLanguage: "Document language",
   billingInvoiceDelivery: "Invoice delivery",
@@ -1035,8 +1036,10 @@ const nb = {
   billingPaymentTermsDays: "Betalingsbetingelser",
   billingCurrency: "Valuta",
   billingDefaultBillRate: "Standard timepris",
-  billingDefaultBillRateHint: "Per time, i valutaen over — brukes på kundens prosjekter som ikke har egen timepris.",
+  billingDefaultBillRateHint:
+    "Per time, i valutaen over — brukes for kundens prosjekter når verken en faktureringslinje eller prosjektet har egen timepris.",
   billingDefaultBillRateValue: "{{amount}} {{currency}} per time",
+  billingDefaultBillRateValueNoCurrency: "{{amount}} per time",
   billingDefaultBillRateNotSet: "Ikke satt — prosjektets eller personens timepris gjelder",
   billingLanguage: "Dokumentspråk",
   billingInvoiceDelivery: "Fakturalevering",

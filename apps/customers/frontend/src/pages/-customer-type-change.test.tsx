@@ -25,7 +25,7 @@ const customer = (type: "business" | "person", overrides: { revision?: number } 
 });
 
 // The Overview tab's billing card (design D6) always GETs the billing
-// profile, which answers 200 for every customer (design D4) — with the ten
+// profile, which answers 200 for every customer (design D4) — with the eleven
 // optional fields left out entirely when nothing is set, as the wire really
 // encodes them. Every route test below needs this stubbed the same way it
 // stubs the customer's own GET, legal identity and timeline.

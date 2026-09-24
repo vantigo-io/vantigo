@@ -59,9 +59,9 @@ they are not.
   (`invoice_email`, `reminder_email`, `payment_terms_days`, `currency`, `language`,
   `invoice_delivery`, `reminder_delivery`, `peppol_id`, `gln`, `buyer_reference`,
   `default_bill_rate`):
-  every column NULL means "not decided here — whoever invoices uses its own
-  default". See [Contact info, addresses and the billing
-  profile](#contact-info-addresses-and-the-billing-profile).
+  every column NULL means "not decided here — whoever invoices (or, for the
+  rate, whatever prices the hours) uses its own default". See [Contact info,
+  addresses and the billing profile](#contact-info-addresses-and-the-billing-profile).
 - **Owner** — `owner_user_id` on `customers.customers` itself, naming one user of
   this installation or nobody; no foreign key to identity. See [Owner and
   tags](#owner-and-tags).

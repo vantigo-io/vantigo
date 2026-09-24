@@ -184,6 +184,8 @@ const BillingFields = ({
     </Text>
   );
   const value = (text: string | null) => (text === null ? notSet : <Text size="sm">{text}</Text>);
+  const billRate = (rate: number) =>
+    formatters.formatNumber(rate, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const contactEmail = customer.contactInfo?.email ?? null;
   const resolvedInvoiceEmail = profile.invoiceEmail ?? contactEmail;
@@ -242,15 +244,15 @@ const BillingFields = ({
             </Text>
           ) : (
             <Text size="sm">
-              {t("billingDefaultBillRateValue", {
-                amount: formatters.formatNumber(profile.defaultBillRate, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                }),
-                // Never empty for a profile the server answered: it refuses a
-                // rate without a currency.
-                currency: profile.currency ?? "",
-              })}
+              {/* The server refuses a rate without a currency, so the first
+                  form should never show; if it ever does, the amount stands
+                  alone rather than leaving a gap where the code would be. */}
+              {profile.currency === null
+                ? t("billingDefaultBillRateValueNoCurrency", { amount: billRate(profile.defaultBillRate) })
+                : t("billingDefaultBillRateValue", {
+                    amount: billRate(profile.defaultBillRate),
+                    currency: profile.currency,
+                  })}
             </Text>
           )
         }

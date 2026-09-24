@@ -44,7 +44,7 @@ const emptyProfile = {
 
 /**
  * What the server really sends for a customer that has decided nothing: the
- * ten optional fields are `omitempty` on the wire (see
+ * eleven optional fields are `omitempty` on the wire (see
  * `apps/server/internal/customers/gen/api.gen.go`), so they are absent, not
  * null. Every other fixture here spells the nulls out, which the wire never
  * does.
@@ -205,6 +205,14 @@ describe("CustomerBillingCard", () => {
     expect(screen.getByText("PO-42")).toBeInTheDocument();
     expect(screen.getByText("1,250.00 NOK per hour")).toBeInTheDocument();
     expect(screen.getByText("Default bill rate")).toBeInTheDocument();
+  });
+
+  it("shows a rate that somehow arrived without a currency as the amount alone", async () => {
+    // Impossible through the API (a rate needs a currency), but the row must
+    // not render a gap where the code would be. textContent, not the matcher's
+    // own text: getByText collapses the double space an empty code would leave.
+    renderCard({ ...emptyProfile, defaultBillRate: 1250 });
+    expect((await screen.findByText(/^1,250\.00/)).textContent).toBe("1,250.00 per hour");
   });
 
   it("uses the singular form for a single day", async () => {
