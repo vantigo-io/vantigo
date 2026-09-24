@@ -49,11 +49,12 @@ var limits = map[string]ratelimit.Policy{}
 // customer merge re-points its projects through.
 func Module() module.Module {
 	return module.Module{
-		Name:               "projects",
-		Permissions:        permissions,
-		Mount:              mount,
-		Projects:           newDirectory,
-		CustomerReferences: newCustomerReferenceHolder,
+		Name:                 "projects",
+		Permissions:          permissions,
+		Mount:                mount,
+		Projects:             newDirectory,
+		CustomerReferences:   newCustomerReferenceHolder,
+		CustomerPersonalData: newCustomerPersonalData,
 	}
 }
 

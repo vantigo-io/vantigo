@@ -1124,6 +1124,14 @@ and `customerName` reads the survivor's from then on. Time and expenses hold no
 customer id of their own, so the move keeps them right too. See
 [Merging duplicates](customers.md#merging-duplicates).
 
+It hands a private person's projects over too — `contracts.CustomerPersonalData`
+([module boundaries rule 9](module-boundaries.md#the-rules)): code, name, status and
+dates of every project billed to them, in their export's `modules.projects`. Their
+anonymisation keeps every project: invoiced work stays, a project stores no customer
+name to blank, and `customerName` reads the anonymised customer's through the
+directory from then on. A project named after the person is free text this module
+does not rewrite. See [Personal data and anonymisation](customers.md#personal-data-and-anonymisation).
+
 ### What Time tracking should build on
 
 Time tracking is the first consumer, and the seam is already in place:

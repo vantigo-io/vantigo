@@ -64,6 +64,27 @@ the absorbed customer to the survivor, and the candidate list — where a conver
 that already lists the survivor keeps it once. See
 [Merging duplicates](customers.md#merging-duplicates).
 
+It also hands over and takes out what it holds about a private person —
+`contracts.CustomerPersonalData` ([module boundaries rule 9](module-boundaries.md#the-rules)).
+A person's export carries every conversation about them, with each message's
+direction, date and text body and each attachment's name (`modules.communications`).
+Their anonymisation deletes those conversations inside the customers module's
+transaction, through the retention worker's own deletes: every message and the rows
+under it in the order `message_events`' RESTRICT allows, each attachment, raw payload
+and staged upload's object queued on the cleanup ledger before the rows naming it go —
+the cleanup worker deletes the objects after the transaction commits — and a message
+still waiting in the outbox with its job. A conversation that only suggests or lists
+the person keeps its own customer and loses the suggestion, its reasoning and the
+candidate row. See [Personal data and anonymisation](customers.md#personal-data-and-anonymisation).
+
+What the erase does not cover, on the record: this module takes no customer lock, so a
+message written into one of the person's conversations while the erase runs goes with
+the conversation by cascade rather than through the ledger — or trips `message_events`'
+RESTRICT, which rolls the customer back and the worker retries next cycle; nothing stops
+a conversation being linked to the archived "Anonymised person" afterwards;
+`communications.suppressions` can still hold the person's address; and a customer's
+`customer.peppol_lookup` entries keep their `smpHost`, derived from the participant id.
+
 ## SMTP
 
 **Per-channel SMTP credentials are configured through the Communications API, not

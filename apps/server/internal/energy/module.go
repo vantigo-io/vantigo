@@ -52,10 +52,11 @@ var limits = map[string]ratelimit.Policy{}
 // drives, not a read anyone makes.
 func Module() module.Module {
 	return module.Module{
-		Name:               "energy",
-		Permissions:        permissions,
-		Mount:              mount,
-		CustomerReferences: newCustomerReferenceHolder,
+		Name:                 "energy",
+		Permissions:          permissions,
+		Mount:                mount,
+		CustomerReferences:   newCustomerReferenceHolder,
+		CustomerPersonalData: newCustomerPersonalData,
 	}
 }
 
