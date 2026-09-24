@@ -88,7 +88,11 @@ transaction each**, the row locked, at most 50 per cycle:
   bookkeeping reference), legal identity cleared, contact info cleared, the billing
   profile's identifiers cleared (`invoiceEmail`, `reminderEmail`, `peppolId`, `gln`,
   `buyerReference`; terms, currency, language and delivery methods stay — they are not
-  personal), `website` cleared; owner, group and tags stay (staff and vocabulary).
+  personal), `website` cleared; owner and tags stay (staff and vocabulary). The customer
+  **leaves its group**, the merged-away customer's way (#123): an anonymised customer
+  refuses every write, the group PUT included, so a group it still counted in could
+  never be emptied and deleted. The group is vocabulary, not personal, so
+  `customer.anonymised` does not record which it was.
 - **Addresses**: deleted. **Peppol lookup**: deleted. **Registry record**: none for a
   person.
 - **Contacts**: every association detached; a contact linked to no other customer
