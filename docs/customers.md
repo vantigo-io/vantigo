@@ -1234,9 +1234,10 @@ skipped and takes no number), `column` the header of a field's error as the file
 spells it (headers match without regard to case; a problem with the row as a whole —
 a create in a file with no `name` column, say — has none), `message` the module's
 own validation wording. File-level refusals are 400s on `file`, never a
-result. The frontend builds the **failed-rows file** from these errors and the file
-the browser still holds: the original rows that failed, as they were, with an
-`error` column appended — fix them and import that file.
+result. The frontend builds the **failed-rows file** from these errors and the bytes
+it read at Check: the original rows that failed, each as wide as it was (never padded
+or cut), with an `error` column first — the import ignores that column wherever it
+sits — fix them and import that file.
 
 ## Revision and concurrency
 
@@ -2315,8 +2316,13 @@ of its caller: Products phase 4's customer-group prices are the intended reader.
   link), **Check** — the dry run's counts and an errors table of row, column and
   problem — then **Import**, enabled once the check found a row that would succeed,
   and afterwards the counts again and, when rows failed, **Download failed rows**:
-  the original rows with an `error` column, built in the browser from the file it
-  still holds. The list refreshes when an import completes. The host passes two more
+  the original rows with an `error` column first, built in the browser from the
+  bytes it read at Check (a file over 5 MiB is refused before it is sent; picking a
+  new file or toggling **Allow duplicate identity** discards the check; a check the
+  person abandons is cancelled, and a real run cannot be closed until it answers —
+  its failed rows exist only there; after a failed real run the modal says rows may
+  already have been saved only when the server did not answer). The list refreshes
+  when an import completes. The host passes two more
   props: `canExport` (`customers:view`) and `canImport` (`customers:create`,
   `customers:update` and `customers:view` — the import operation's own rule).
 - **Detail** (`/customers/:id`) — a host-composed page: this package owns the header
