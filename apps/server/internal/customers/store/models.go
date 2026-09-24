@@ -59,6 +59,8 @@ type CustomersCustomer struct {
 	GroupID              *uuid.UUID
 	DefaultBillRate      pgtype.Numeric
 	MergedIntoCustomerID *int32
+	AnonymiseOn          pgtype.Date
+	AnonymisedAt         *time.Time
 }
 
 type CustomersCustomerAddress struct {

@@ -169,10 +169,11 @@ func dateFromPgtype(d pgtype.Date) *openapi_types.Date {
 // in identity's directory and is resolved per response (owner and tags design
 // D1), the customer's tags, which live in their own table (D2), the customer's
 // group, which lives in the module's own vocabulary table (customer groups
-// design D3), and the customer it was merged into (customers merge design D3).
-// All four are as ungated as contactInfo — design D4's ruling: an owner is not
-// sensitive data and tags and groups are classification, so customers:view is
-// the whole gate.
+// design D3), the customer it was merged into (customers merge design D3), and
+// its anonymisation (customers GDPR design D4). All five are as ungated as
+// contactInfo — owner and tags design D4's ruling: an owner is not sensitive
+// data and tags and groups are classification, so customers:view is the whole
+// gate.
 func safeCustomerResponse(row customerRow, includeIdentity bool, dec customerDecoration) gen.SafeCustomerResponse {
 	tags := dec.tagsFor(row.ID)
 	resp := gen.SafeCustomerResponse{
@@ -188,6 +189,7 @@ func safeCustomerResponse(row customerRow, includeIdentity bool, dec customerDec
 		Owner:          dec.owner(row.OwnerUserID),
 		Group:          dec.group(row.ID),
 		MergedInto:     dec.merged(row.ID),
+		Anonymisation:  dec.anonymisationOf(row.ID),
 		Tags:           &tags,
 		TimelineSummary: gen.SafeTimelineSummary{
 			EntryCount:       int32(row.EntryCount),

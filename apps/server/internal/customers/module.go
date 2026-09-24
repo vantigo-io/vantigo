@@ -28,7 +28,11 @@ import (
 // narrower than customers:update. customers:merge (customers merge design D2)
 // is the second: a merge rewrites other modules' references and archives a
 // customer, which is more than customers:delete does, so it is its own
-// sensitive key, never implied by delete.
+// sensitive key, never implied by delete. customers:personal-data (customers
+// GDPR design D3, D4) is the third: handing a person their whole file reads
+// what legal-identity-view and contacts-view each guard, and an anonymisation
+// removes more than any delete, so it is its own sensitive key, implied by
+// nothing.
 var permissions = []contracts.Permission{
 	{Key: "customers:view", Display: "View customers", Description: "View customer names, identifiers, and a sanitized activity summary.", Category: "Customers", Sensitive: false, Delegable: true},
 	{Key: "customers:create", Display: "Create customers", Description: "Create customers without legal identity data.", Category: "Customers", Sensitive: false, Delegable: true},
@@ -45,6 +49,7 @@ var permissions = []contracts.Permission{
 	{Key: "customers:lookup-view", Display: "Use registry lookup", Description: "Search the external business registry for legal identities.", Category: "Lookup", Sensitive: true, Delegable: true},
 	{Key: "customers:billing-manage", Display: "Manage billing profiles", Description: "Set a customer's payment terms, invoice delivery and billing addresses for documents.", Category: "Billing", Sensitive: true, Delegable: true},
 	{Key: "customers:merge", Display: "Merge customers", Description: "Merge a duplicate customer into another, moving its contacts, addresses, timeline, tags and other modules' references, and archiving it.", Category: "Customers", Sensitive: true, Delegable: true},
+	{Key: "customers:personal-data", Display: "Manage personal data", Description: "Hand a private person all the data held about them, and schedule the anonymisation of an archived private person.", Category: "Customers", Sensitive: true, Delegable: true},
 }
 
 // limits maps each rate-limited operationId to its policy. It is empty and
@@ -53,7 +58,7 @@ var permissions = []contracts.Permission{
 var limits = map[string]ratelimit.Policy{}
 
 // Module is customers as a platform module: its contract mounted under
-// /api/v1/customers/, its fifteen permissions in the composed catalog, and
+// /api/v1/customers/, its sixteen permissions in the composed catalog, and
 // the customer directory it publishes to every other module.
 func Module() module.Module {
 	return module.Module{
