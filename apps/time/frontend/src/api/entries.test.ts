@@ -6,6 +6,7 @@ import {
   createTimeEntry,
   deleteTimeEntry,
   submitTimeEntries,
+  type TimeEntry,
   timeEntriesQueryOptions,
   timeEntryQueryOptions,
   timeEntryUpdateFrom,
@@ -53,6 +54,16 @@ describe("timeEntryQueryOptions", () => {
 
     expect(options.queryKey).toEqual(["time", "entries", "detail", 501]);
     expect(fetchMock.actualCalls[0]?.[0]).toBe("/api/v1/time/entries/501");
+  });
+
+  it("carries a customer-priced entry's rate source through as the chain names it", async () => {
+    // rateSource is a plain string on the wire; the union is this file's own
+    // narrowing, so a step it forgets would be a type error on this fixture.
+    stubFetch(() => Promise.resolve(jsonResponse(200, entry({ rateSource: "customer" }))));
+
+    const result = (await runQuery(timeEntryQueryOptions(501))) as TimeEntry;
+
+    expect(result.rateSource).toBe("customer");
   });
 });
 

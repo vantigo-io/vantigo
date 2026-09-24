@@ -530,7 +530,7 @@ export interface components {
             /** Format: int32 */
             projectId: number;
             projectName: string;
-            /** @description The step of the rate chain the bill rate came from: 'line', 'project', 'person' or 'none'. */
+            /** @description The step of the rate chain the bill rate came from: 'line', 'project', 'customer', 'person' or 'none'. */
             rateSource: string;
             rejectionReason?: string | null;
             /** Format: int32 */
@@ -709,7 +709,7 @@ export interface components {
         TimeRateRequest: {
             /**
              * Format: double
-             * @description The hourly bill rate, greater than zero. Used for an entry only when no billing line or project default prices it and the card's currency is the project's.
+             * @description The hourly bill rate, greater than zero. Used for an entry only when no billing line, project default or customer default prices it, and the card's currency is the project's (or the project has none).
              */
             billRate?: number | null;
             /**

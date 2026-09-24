@@ -14,8 +14,11 @@
 //
 // Time reads projects only through contracts.ProjectDirectory (required:
 // config refuses "time" without "projects"), names people through
-// contracts.UserDirectory, and prices billing lines through
-// contracts.ProductCatalog when products is enabled (D4). It provides one
+// contracts.UserDirectory, prices billing lines through
+// contracts.ProductCatalog when products is enabled (D4), and reads a
+// customer's default bill rate through contracts.CustomerDirectory when
+// customers is enabled (customers bill-rate design D3) — optional, so checked
+// where it is read, never at mount. It provides one
 // contract of its own: contracts.ProjectActuals (actuals.go), what has been
 // logged against a project, which projects reads its economy from.
 package timetracking

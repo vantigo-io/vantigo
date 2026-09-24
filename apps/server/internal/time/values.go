@@ -36,13 +36,15 @@ const (
 	statusInvoiced  = "invoiced"
 )
 
-// The steps of the rate chain an entry's bill rate can come from (D3), as
-// rate_source records them.
+// The steps of the rate chain an entry's bill rate can come from (D3, and
+// the customer's since customers bill-rate design D3), as rate_source records
+// them.
 const (
-	sourceLine    = "line"
-	sourceProject = "project"
-	sourcePerson  = "person"
-	sourceNone    = "none"
+	sourceLine     = "line"
+	sourceProject  = "project"
+	sourceCustomer = "customer"
+	sourcePerson   = "person"
+	sourceNone     = "none"
 )
 
 // The billing-line pricing modes and the one project billing type the rules

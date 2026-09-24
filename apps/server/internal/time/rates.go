@@ -17,13 +17,14 @@ import (
 
 // This file is D3's rate chain. It runs at every save while an entry is a
 // draft or rejected, and what it answers is snapshotted onto the entry: from
-// submitted on, a rate card, a project's default or a price list changing
-// underneath never moves an entry's money. No currency is ever converted —
-// the bill rate is in the project's currency when a line or the project
-// priced it and in the person card's when the person did, the cost rate
-// always in the card's. A project bills in one currency: a card in another
-// cannot price its hours, so that step answers nothing rather than storing,
-// say, a NOK rate on a EUR project.
+// submitted on, a rate card, a project's default, a customer's default or a
+// price list changing underneath never moves an entry's money. No currency is
+// ever converted — the bill rate is in the project's currency when a line or
+// the project priced it, in the customer's when the customer did (which is the
+// project's whenever the project has one), and in the person card's when the
+// person did, the cost rate always in the card's. A project bills in one
+// currency: a customer or a card in another cannot price its hours, so that
+// step answers nothing rather than storing, say, a NOK rate on a EUR project.
 
 // rateRequest is what the chain resolves from: whose hours, whether they are
 // billable, on which project and billing line (nil for none), on which day.
@@ -52,15 +53,18 @@ type rateSnapshot struct {
 //   - bill, only when billable: the billing line's rule (a fixed amount, or
 //     the variant's list price in the project's currency on the entry date,
 //     discounted when the line says so) → the project's default bill rate →
-//     the person's bill rate in effect on the date, when their card is in the
+//     the project's customer's default bill rate, when customers is enabled
+//     and the customer's currency is the project's (or the project has none,
+//     and the customer's is taken; customers bill-rate design D3) → the
+//     person's bill rate in effect on the date, when their card is in the
 //     project's currency (or the project has none, and the card's is taken)
 //     → none;
 //   - cost, always: the person's cost rate in effect on the date → none.
 //
 // A step that cannot answer falls through to the next rather than ending the
 // chain: a list line with products disabled, or with no price in the
-// project's currency, is priced by the project's default or the person, the
-// same as an entry with no line at all.
+// project's currency, is priced by the project's default, the customer or the
+// person, the same as an entry with no line at all.
 func (s *server) resolveRates(ctx context.Context, q *store.Queries, req rateRequest) (rateSnapshot, error) {
 	card, err := personRate(ctx, q, req.UserID, req.Date)
 	if err != nil {
@@ -92,14 +96,57 @@ func (s *server) resolveRates(ctx context.Context, q *store.Queries, req rateReq
 	switch {
 	case lineRate != nil:
 		snap.Source, snap.BillRate, snap.BillCurrency = sourceLine, lineRate, req.Project.Currency
+		return snap, nil
 	case req.Project.DefaultBillRate != nil && req.Project.Currency != nil:
 		rate := *req.Project.DefaultBillRate
 		snap.Source, snap.BillRate, snap.BillCurrency = sourceProject, &rate, req.Project.Currency
+		return snap, nil
+	}
+
+	// The customer's step asks another module, so it is asked only here, once
+	// the line and the project have both priced nothing — and at most once.
+	customerRate, customerCurrency, err := s.customerRate(ctx, req.Project)
+	if err != nil {
+		return rateSnapshot{}, err
+	}
+	switch {
+	case customerRate != nil:
+		snap.Source, snap.BillRate, snap.BillCurrency = sourceCustomer, customerRate, customerCurrency
 	case cardBill != nil && (req.Project.Currency == nil || *req.Project.Currency == card.Currency):
 		currency := card.Currency
 		snap.Source, snap.BillRate, snap.BillCurrency = sourcePerson, cardBill, &currency
 	}
 	return snap, nil
+}
+
+// customerRate is the chain's third step (customers bill-rate design D3): the
+// default bill rate on the billing profile of the project's customer, and the
+// currency it is quoted in — both nil when the step prices nothing: a project
+// with no customer, the customers module off (Deps.Directory is nil then, a
+// real installation and never an error), a customer the directory does not
+// know ((nil, nil)), one with no rate, or one quoted in another currency than
+// the project bills in. That last is the person card's rule verbatim — nothing
+// converts — and a project with no currency of its own takes the customer's.
+// An archived customer still answers: a project of theirs can still be worked
+// on. A directory that fails is an error, as a failing list price is: a lookup
+// silently skipped would store the person's rate on hours the customer's
+// should have priced.
+func (s *server) customerRate(ctx context.Context, project contracts.ProjectEntry) (*float64, *string, error) {
+	if project.CustomerID == nil || s.deps.Directory == nil {
+		return nil, nil, nil
+	}
+	profile, err := s.deps.Directory.BillingProfile(ctx, *project.CustomerID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("time: look up the customer's default bill rate: %w", err)
+	}
+	if profile == nil || profile.DefaultBillRate == nil || profile.Currency == "" {
+		return nil, nil, nil
+	}
+	if project.Currency != nil && *project.Currency != profile.Currency {
+		return nil, nil, nil
+	}
+	rate, currency := *profile.DefaultBillRate, profile.Currency
+	return &rate, &currency, nil
 }
 
 // lineRate is the chain's first step: what the entry's billing line prices an

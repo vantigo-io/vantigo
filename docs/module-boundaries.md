@@ -163,12 +163,15 @@ which a provider contract cannot see or grant on its behalf. See
 [`docs/projects.md`](projects.md#project-economy) for what each shaping level
 returns.
 
-Time is the first module to consume three contracts and provide one:
+Time consumes four contracts and provides one:
 `contracts.ProjectDirectory` (required — hence the config check),
 `contracts.UserDirectory` (always there, for names and for the rate card's user
 search), `contracts.ProductCatalog` (optional — with products disabled a `list` or
 `discount` billing line simply has no price, and the rate chain falls through to the
-project default) — and it provides `contracts.ProjectActuals` (optional for its
+project default), `contracts.CustomerDirectory` (optional — the rate chain's customer
+step reads a customer's default bill rate from `BillingProfile`; with customers
+disabled the chain goes from the project default to the person) — and it provides
+`contracts.ProjectActuals` (optional for its
 consumer, above), reading its own `time` tables and never calling back into
 `contracts.ProjectDirectory` to serve it: the currency an amount is measured in
 arrives in the request, because Projects is the module that owns that fact. It also
