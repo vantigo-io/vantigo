@@ -172,13 +172,15 @@ func formatCSVDecimal(v *float64) string {
 // parseCSVDecimal reads a number cell back: whitespace dropped (a Norwegian
 // spreadsheet groups thousands with a space, often a no-break one), and either
 // mark taken as the decimal one — but never both, since "1.250,50" says
-// nothing a reader can be sure of. The value's own rules (greater than zero,
-// two decimals) are its validator's, not this function's.
+// nothing a reader can be sure of. That "never both" is enforced by
+// csvDecimalPattern alone, with no separate check needed: only the first
+// comma is turned into a point below, so a cell that already had a point
+// ends up with two, and csvDecimalPattern accepts at most one — a decimal
+// stricter than this would have to change that pattern, not add a check
+// here. The value's own rules (greater than zero, two decimals) are its
+// validator's, not this function's.
 func parseCSVDecimal(raw string) (float64, bool) {
 	compact := stripWhitespace(raw)
-	if strings.Contains(compact, ",") && strings.Contains(compact, ".") {
-		return 0, false
-	}
 	// One point followed by exactly three digits after at most three — "1.250"
 	// — is a thousands separator to one reader and a decimal to another, so it
 	// is refused rather than read as 1.25. "1250.555" is a number with three
@@ -215,9 +217,12 @@ const (
 
 // readCSVFile reads data as the customers file: a byte order mark taken off if
 // there is one, UTF-8 required, semicolons, CRLF or LF, RFC 4180 quoting. The
-// refusal is "" on success. Rows keep whatever cell count they have — a row
-// that disagrees with the header is that row's problem (import.go), not the
-// file's. A record whose every cell is blank is skipped and numbered not at
+// refusal is "" on success. FieldsPerRecord is left at -1 (variable), so a row
+// with fewer or more cells than the header is never itself a file-level
+// error — a short row's Cells is simply shorter than Header, a long row's
+// longer, neither padded nor truncated; a row that disagrees with the header
+// this way is that row's problem to report (import.go), not the file's to
+// refuse. A record whose every cell is blank is skipped and numbered not at
 // all, and more than maxRows rows is refused before the rest is read.
 func readCSVFile(data []byte, maxRows int) (csvFile, string) {
 	data = bytes.TrimPrefix(data, []byte(csvByteOrderMark))

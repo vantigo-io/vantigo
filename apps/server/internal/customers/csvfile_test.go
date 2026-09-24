@@ -147,6 +147,61 @@ func TestReadCSVFile_RefusesWhatIsNotACustomersFile(t *testing.T) {
 	}
 }
 
+// TestReadCSVFile_HeaderOnlyFileHasNoDataRows: a template, or a file
+// somebody downloaded and never filled in, is not empty — it has a header —
+// so it is not the "empty" refusal; it is a file with zero rows to import.
+func TestReadCSVFile_HeaderOnlyFileHasNoDataRows(t *testing.T) {
+	file, refusal := readCSVFile([]byte("name;email\n"), customersFileMaxRows)
+	if refusal != "" {
+		t.Fatalf("refusal = %q, want none", refusal)
+	}
+	if !reflect.DeepEqual(file.Header, []string{"name", "email"}) {
+		t.Errorf("header = %q", file.Header)
+	}
+	if len(file.Rows) != 0 {
+		t.Errorf("rows = %+v, want none", file.Rows)
+	}
+}
+
+// TestReadCSVFile_RowsKeepTheirOwnWidth pins what FieldsPerRecord = -1 buys:
+// a row is never refused, nor padded, nor truncated, for disagreeing with the
+// header's column count — it keeps exactly the cells it was written with, so
+// a row with fewer or more columns than the header is left for import.go to
+// judge, row by row, against the column it is actually missing or has extra.
+func TestReadCSVFile_RowsKeepTheirOwnWidth(t *testing.T) {
+	file, refusal := readCSVFile([]byte("name;email;phone\nA;a@x.no\nB;b@x.no;123;extra\n"), customersFileMaxRows)
+	if refusal != "" {
+		t.Fatalf("refusal = %q, want none", refusal)
+	}
+	want := []csvRecord{
+		{Row: 1, Cells: []string{"A", "a@x.no"}},
+		{Row: 2, Cells: []string{"B", "b@x.no", "123", "extra"}},
+	}
+	if !reflect.DeepEqual(file.Rows, want) {
+		t.Errorf("rows = %+v, want %+v", file.Rows, want)
+	}
+}
+
+// TestReadCSVFile_ABareCRInAQuotedCellRoundTrips: encoding/csv only folds a
+// quoted CRLF to LF (TestReadCSVFile_ReadsBackWhatTheWriterWrites); a lone CR
+// with no LF after it is not that fold's business and comes back exactly as
+// written, same as any other guarded character.
+func TestReadCSVFile_ABareCRInAQuotedCellRoundTrips(t *testing.T) {
+	var b bytes.Buffer
+	b.WriteString(csvByteOrderMark)
+	writeCSVRow(&b, []string{"note"})
+	writeCSVRow(&b, []string{"a\rb"})
+
+	file, refusal := readCSVFile(b.Bytes(), customersFileMaxRows)
+	if refusal != "" {
+		t.Fatalf("refusal = %q, want none", refusal)
+	}
+	want := []csvRecord{{Row: 1, Cells: []string{"a\rb"}}}
+	if !reflect.DeepEqual(file.Rows, want) {
+		t.Errorf("rows = %+v, want %+v", file.Rows, want)
+	}
+}
+
 // TestCSVDecimal_WritesTheDecimalCommaAndReadsEitherMark: money leaves with
 // the decimal comma a Norwegian spreadsheet expects and two decimals, and comes
 // back from whichever mark the spreadsheet used — but only as plain digits: a
