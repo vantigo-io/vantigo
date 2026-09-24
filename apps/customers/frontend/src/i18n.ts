@@ -1037,7 +1037,7 @@ const nb = {
   billingCurrency: "Valuta",
   billingDefaultBillRate: "Standard timepris",
   billingDefaultBillRateHint:
-    "Per time, i valutaen over — brukes for kundens prosjekter når verken en faktureringslinje eller prosjektet har egen timepris.",
+    "Per time, i valutaen over — brukes for kundens prosjekter når verken en fakturalinje eller prosjektet har egen timepris.",
   billingDefaultBillRateValue: "{{amount}} {{currency}} per time",
   billingDefaultBillRateValueNoCurrency: "{{amount}} per time",
   billingDefaultBillRateNotSet: "Ikke satt — prosjektets eller personens timepris gjelder",
