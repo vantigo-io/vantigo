@@ -168,6 +168,28 @@ describe("CustomerImportModal", () => {
     expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
   });
 
+  it("shows the server's refusal of a national identity number on its legalId row", async () => {
+    const refusal = "A Norwegian national identity number is never stored here";
+    stubImport({
+      dry: json({
+        dryRun: true,
+        rows: 1,
+        created: 0,
+        updated: 0,
+        failed: 1,
+        errors: [{ row: 1, column: "legalId", message: refusal }],
+      }),
+    });
+    renderModal();
+    await chooseFile();
+    await userEvent.click(screen.getByRole("button", { name: "Check" }));
+    await checkShown();
+    const row = within(screen.getByRole("table", { name: "Problems in the file, by row" }))
+      .getByText(refusal)
+      .closest("tr") as HTMLElement;
+    expect(within(row).getByText("legalId")).toBeInTheDocument();
+  });
+
   it("shows the server's own reasons when the file itself is refused", async () => {
     stubImport({
       dry: json(

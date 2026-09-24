@@ -7,8 +7,10 @@ import {
   IconArrowMerge,
   IconArrowsExchange,
   IconBuilding,
+  IconCalendarEvent,
   IconPencil,
   IconUser,
+  IconUserOff,
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -35,12 +37,14 @@ import {
   LegalValueBadge,
 } from "../components/legal-badges";
 import { customerWriteErrorMessage } from "../lib/customer-write-error";
+import { formatDateOnly } from "../lib/format-date-only";
 import { getLegalSource } from "../lib/legal-sources";
 import { CustomerBillingCard } from "./-customer-billing-card";
 import { CustomerContactCard } from "./-customer-contact-card";
 import { CustomerContactsCard } from "./-customer-contacts-card";
 import { CustomerFormModal, type CustomerModalState } from "./-customer-form-modal";
 import { CustomerMergeModal } from "./-customer-merge-modal";
+import { CustomerPersonalDataMenu } from "./-customer-personal-data";
 import { CustomerRegistryCard } from "./-customer-registry-card";
 import { CustomerRelationshipCard } from "./-customer-relationship-card";
 import { CustomerTimeline } from "./-customer-timeline";
@@ -56,6 +60,10 @@ import "../i18n";
  * (customers merge design D4): it puts **Merge…** beside the other actions, and
  * is handed to the edit form for its duplicate-identity hint. A merged-away
  * customer shows where it went instead of the archived banner, and none of the
+ * actions that would edit it. `canManagePersonalData` is the host's
+ * `customers:personal-data` check (customers GDPR design D5): it puts
+ * **Personal data** beside the other actions on a private person's page. An
+ * anonymised customer, like a merged-away one, shows its banner and none of the
  * actions that would edit it.
  */
 export const CustomerDetailHeader = ({
@@ -64,12 +72,14 @@ export const CustomerDetailHeader = ({
   canArchive,
   canRestore,
   canMerge,
+  canManagePersonalData,
 }: {
   customerId: number;
   actions?: ReactNode;
   canArchive?: boolean;
   canRestore?: boolean;
   canMerge?: boolean;
+  canManagePersonalData?: boolean;
 }) => {
   const { t, formatters } = useI18n("customers");
   const { data: customer } = useSuspenseQuery(customerQueryOptions(customerId));
@@ -80,6 +90,11 @@ export const CustomerDetailHeader = ({
   const restore = useRestoreCustomer(customer);
   const isArchived = customer.status === "archived";
   const mergedInto = customer.mergedInto;
+  const anonymisation = customer.anonymisation;
+  const anonymisedAt = anonymisation?.anonymisedAt ?? null;
+  // Merged away or anonymised: either way the customer takes no more changes
+  // (merge design D2, GDPR design D4), so the page offers none.
+  const readOnly = Boolean(mergedInto) || Boolean(anonymisedAt);
 
   const { data: identity } = useSuspenseQuery(legalIdentityQueryOptions(customerId));
   const TypeIcon = customer.type === "business" ? IconBuilding : IconUser;
@@ -98,6 +113,24 @@ export const CustomerDetailHeader = ({
               {t("mergedAwayOpenSurvivor", { number: mergedInto.customerNumber, name: mergedInto.name })}
             </Anchor>
           </Stack>
+        </Alert>
+      ) : anonymisedAt ? (
+        <Alert
+          color="gray"
+          icon={<IconUserOff size={16} />}
+          title={t("anonymisedBannerTitle", { date: formatters.formatDate(anonymisedAt) })}
+        >
+          {t("anonymisedBannerMessage")}
+        </Alert>
+      ) : anonymisation ? (
+        <Alert
+          color="yellow"
+          icon={<IconCalendarEvent size={16} />}
+          title={t("anonymisationScheduledBannerTitle", {
+            date: formatDateOnly(formatters, anonymisation.anonymiseOn),
+          })}
+        >
+          {t("anonymisationScheduledBannerMessage")}
         </Alert>
       ) : (
         isArchived && (
@@ -151,7 +184,7 @@ export const CustomerDetailHeader = ({
               <CopyableBadge variant="light" size="lg" tooltip={t("customerIdTooltip")} copyValue={String(customer.id)}>
                 #{customer.id}
               </CopyableBadge>
-              {!mergedInto && (
+              {!readOnly && (
                 <>
                   <Button
                     variant="default"
@@ -170,7 +203,7 @@ export const CustomerDetailHeader = ({
                   </Button>
                 </>
               )}
-              {canMerge && !mergedInto && (
+              {canMerge && !readOnly && (
                 <Button
                   variant="subtle"
                   color="gray"
@@ -185,7 +218,7 @@ export const CustomerDetailHeader = ({
                   {t("archiveCustomer")}
                 </Button>
               )}
-              {canRestore && isArchived && !mergedInto && (
+              {canRestore && isArchived && !readOnly && (
                 <Button
                   variant="light"
                   color="teal"
@@ -196,6 +229,7 @@ export const CustomerDetailHeader = ({
                   {t("restoreCustomer")}
                 </Button>
               )}
+              {canManagePersonalData && customer.type === "person" && <CustomerPersonalDataMenu customer={customer} />}
               {actions}
             </Group>
           }
@@ -390,9 +424,9 @@ const useRestoreCustomer = (customer: CustomerResponse) => {
  * controls were always server-enforced, so a reader saw buttons that answered
  * 403. It also gates the new Done/Reopen control on a follow-up.
  *
- * A merged-away customer (merge design D4) gets every capability as false,
- * whatever the host passed — and the contacts card, which never took one,
- * `readOnly`.
+ * A merged-away or anonymised customer (merge design D4, GDPR design D5) gets
+ * every capability as false, whatever the host passed — and the contacts card,
+ * which never took one, `readOnly`.
  */
 export const CustomerOverview = ({
   customerId,
@@ -410,11 +444,11 @@ export const CustomerOverview = ({
   canManageTimeline?: boolean;
 }) => {
   const { data: customer } = useSuspenseQuery(customerQueryOptions(customerId));
-  // A merged-away customer is read-only on the page (customers merge design
-  // D4): everything it had is on the survivor, and anything written here would
-  // land on a customer nobody looks at. The API still accepts the writes — it is
-  // an archived customer like any other — so the gate is here, on every card.
-  const editable = !customer.mergedInto;
+  // A merged-away or anonymised customer is read-only on the page (merge design
+  // D4, GDPR design D5), as it is on the server: everything a merged-away one
+  // had is on the survivor, and what an anonymised one has left is kept for
+  // bookkeeping — anything written here would be refused.
+  const editable = !customer.mergedInto && !customer.anonymisation?.anonymisedAt;
   // Enhetsregisteret answers for Norwegian businesses and nothing else, and
   // the record repeats the legal identity's organisation number — so for any
   // other customer, or any caller without that permission, the record is not

@@ -59,7 +59,7 @@ import {
 import { UserPicker } from "../components/user-picker";
 import { actorLabel } from "../lib/actor-label";
 import { billingLanguageLabel, deliveryMethodLabel } from "../lib/billing-labels";
-import { customerWriteErrorMessage, isCustomerMerged } from "../lib/customer-write-error";
+import { customerWriteErrorMessage, isCustomerReadOnly } from "../lib/customer-write-error";
 import { isOverdue, utcToday } from "../lib/follow-up-dates";
 import { formatDateOnly } from "../lib/format-date-only";
 import "../i18n";
@@ -91,6 +91,9 @@ const typeKey: Record<string, string> = {
   "customer.contact_removed": "contactRemoved",
   "customer.merged": "customerMergedEvent",
   "customer.merged_away": "customerMergedAwayEvent",
+  "customer.anonymisation_scheduled": "customerAnonymisationScheduledEvent",
+  "customer.anonymisation_cancelled": "customerAnonymisationCancelledEvent",
+  "customer.anonymised": "customerAnonymisedEvent",
 };
 const iconFor = (type: string) =>
   type.startsWith("interaction.") ? IconCalendarEvent : type === "note" ? IconEdit : IconWand;
@@ -185,12 +188,40 @@ const text = (value: unknown): string | null =>
   typeof value === "string" && value !== "" ? value : typeof value === "number" ? String(value) : null;
 
 /**
+ * customer.anonymised's `erased` (customers GDPR design D4): what the
+ * anonymisation took out, kind by kind — this module's own kinds first, then
+ * each module's (`communications.conversations`, `energy.supplyPeriods`, …) in
+ * the order the server composed them. The kinds are the modules' own names and
+ * a new module brings new ones, so they are shown as they come, never looked up
+ * in a list the page would have to keep in step.
+ */
+const AnonymisedErasedDetails = ({ payload }: { payload: unknown }) => {
+  const { t } = useI18n("customers");
+  const erased = record(payload)?.erased;
+  if (!Array.isArray(erased)) return null;
+  const items = erased.flatMap((raw) => {
+    const kind = text(record(raw)?.kind);
+    const count = text(record(raw)?.count);
+    return kind && count ? [`${kind}: ${count}`] : [];
+  });
+  if (items.length === 0) return null;
+  return (
+    <Text size="sm" c="dimmed">
+      {t("anonymisedErased", { items: items.join(" · ") })}
+    </Text>
+  );
+};
+
+/**
  * customer.merged's `absorbed` (customers merge design D3): the absorbed
  * customer's own row as it was when it was merged. The survivor kept every
  * field of its own, so this is the one place a person reads what the other
  * customer said — its identity, contact details and billing profile — which is
  * what the Merge modal promises ("stay readable in this customer's timeline").
  * Only what is set is listed; the server writes the unset fields as nulls.
+ * Once the customer it describes has been anonymised (GDPR design D4)
+ * `absorbed` is the plain "[anonymised]" string, which is no record, so nothing
+ * is listed — the entry's own summary already says "[anonymised]".
  */
 const MergedAbsorbedDetails = ({ payload }: { payload: unknown }) => {
   const { t, formatters } = useI18n("customers");
@@ -365,9 +396,10 @@ export const CustomerTimeline = ({
     onError: (error: Error & { status?: number }) => {
       setDeleting(null);
       refresh();
-      // A merged-away customer's refusal is a 409 as well, but not the entry
-      // changing under the reader: refreshing will not make the delete work.
-      const changed = error.status === 409 && !isCustomerMerged(error);
+      // A merged-away or anonymised customer's refusal is a 409 as well, but
+      // not the entry changing under the reader: refreshing will not make the
+      // delete work.
+      const changed = error.status === 409 && !isCustomerReadOnly(error);
       notifications.show({
         color: changed ? "yellow" : "red",
         title: changed ? t("eventChanged") : t("couldNotDeleteEvent"),
@@ -591,6 +623,7 @@ export const CustomerTimeline = ({
                       )}
                       {entry.eventType === "customer.merged" && <MergedAbsorbedDetails payload={entry.payload} />}
                       {entry.eventType === "customer.merged_away" && <MergedIntoLink payload={entry.payload} />}
+                      {entry.eventType === "customer.anonymised" && <AnonymisedErasedDetails payload={entry.payload} />}
                       {!entry.note && !(contact && entry.summary?.includes(contact)) && contact && (
                         <Text size="sm" c="dimmed">
                           {t("contactReference", { name: contact })}
@@ -810,7 +843,7 @@ const TimelineForm = ({
       if (error.status === 409) client.invalidateQueries({ queryKey: ["customers", customerId, "timeline"] });
       notifications.show({
         color: "red",
-        title: error.status === 409 && !isCustomerMerged(error) ? t("thisEventChanged") : t("couldNotSaveEvent"),
+        title: error.status === 409 && !isCustomerReadOnly(error) ? t("thisEventChanged") : t("couldNotSaveEvent"),
         message: customerWriteErrorMessage(error, t),
       });
     },

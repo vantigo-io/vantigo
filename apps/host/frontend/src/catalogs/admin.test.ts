@@ -70,7 +70,8 @@ describe("the admin permission catalog", () => {
   });
 
   // Hand-kept in step with apps/server/internal/customers/module.go, like the
-  // lists above: customers:merge is the one key this delivery adds.
+  // lists above: customers:merge and customers:personal-data are the keys the
+  // last two deliveries added.
   it("names customers:merge in English and Norwegian, the English the server's own", () => {
     const translation = hostPermissionTranslationKeys["customers:merge"];
     expect(translation, "no catalog entry for customers:merge").toBeDefined();
@@ -83,6 +84,21 @@ describe("the admin permission catalog", () => {
     expect(en[translation.displayNameKey]).toBe("Merge customers");
     expect(en[translation.descriptionKey]).toBe(
       "Merge a duplicate customer into another, moving its contacts, addresses, timeline, tags and other modules' references, and archiving it.",
+    );
+  });
+
+  it("names customers:personal-data in English and Norwegian, the English the server's own", () => {
+    const translation = hostPermissionTranslationKeys["customers:personal-data"];
+    expect(translation, "no catalog entry for customers:personal-data").toBeDefined();
+    for (const lng of ["en", "nb"] as const) {
+      const catalog = adminCatalog[lng] as Record<string, string>;
+      expect(catalog[translation.displayNameKey], `display name (${lng})`).toBeTruthy();
+      expect(catalog[translation.descriptionKey], `description (${lng})`).toBeTruthy();
+    }
+    const en = adminCatalog.en as Record<string, string>;
+    expect(en[translation.displayNameKey]).toBe("Manage personal data");
+    expect(en[translation.descriptionKey]).toBe(
+      "Hand a private person all the data held about them, and schedule the anonymisation of an archived private person.",
     );
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ApiConflictError } from "../api/request";
-import { customerWriteErrorMessage, isCustomerMerged } from "./customer-write-error";
+import { customerWriteErrorMessage, isCustomerMerged, isCustomerReadOnly } from "./customer-write-error";
 
 const t = (key: string) => `t:${key}`;
 
@@ -37,5 +37,21 @@ describe("customerWriteErrorMessage", () => {
       expect(isCustomerMerged(error)).toBe(false);
       expect(customerWriteErrorMessage(error, t)).toBe(error.message);
     }
+  });
+});
+
+// Literally the problem the server answers a write on an anonymised customer.
+const anonymised = new ApiConflictError("This customer's personal data was anonymised on 2027-01-31.", {
+  title: "Customer was anonymised",
+  code: "customer_anonymised",
+  problem: { title: "Customer was anonymised", status: 409, code: "customer_anonymised" },
+});
+
+describe("an anonymised customer's refusal", () => {
+  it("is read-only, not merged, and says so in the catalog's words", () => {
+    expect(isCustomerReadOnly(anonymised)).toBe(true);
+    expect(isCustomerMerged(anonymised)).toBe(false);
+    expect(isCustomerReadOnly(merged)).toBe(true);
+    expect(customerWriteErrorMessage(anonymised, t)).toBe("t:customerAnonymisedMessage");
   });
 });

@@ -64,9 +64,10 @@ const fileNameFrom = (disposition: string | null, fallback: string): string => {
  * plain `<a download>` would drop the person on a JSON page when the export is
  * refused, and the export's cap refusal carries no `errors` object, only a
  * detail asking for a narrower filter. Reading the body here is what lets it be
- * shown.
+ * shown. A `CsvDownload` is any file the server hands over — the name predates
+ * the personal-data export, which is JSON.
  */
-const downloadCsv = async (path: string, fallback: string): Promise<CsvDownload> => {
+export const downloadFile = async (path: string, fallback: string): Promise<CsvDownload> => {
   const response = await fetch(appUrl(path), { credentials: "include" });
   if (response.ok) {
     return {
@@ -92,14 +93,14 @@ const downloadCsv = async (path: string, fallback: string): Promise<CsvDownload>
 
 /** The list, as the caller sees it, as the customers file: its filters and sort, never its paging. */
 export const downloadCustomersCsv = (params: CustomersQueryParams): Promise<CsvDownload> =>
-  downloadCsv(
+  downloadFile(
     `/api/v1/customers/export${customersSearchParams({ ...params, page: undefined, pageSize: undefined })}`,
     "customers.csv",
   );
 
 /** The header every import may carry. */
 export const downloadImportTemplate = (): Promise<CsvDownload> =>
-  downloadCsv("/api/v1/customers/import/template", "customers-import-template.csv");
+  downloadFile("/api/v1/customers/import/template", "customers-import-template.csv");
 
 /**
  * Hands the file to the browser, then lets go of the object URL — deferred,

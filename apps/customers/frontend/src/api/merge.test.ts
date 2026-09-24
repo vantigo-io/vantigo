@@ -51,6 +51,7 @@ describe("mergeCustomer", () => {
       owner: null,
       group: null,
       mergedInto: null,
+      anonymisation: null,
       tags: [],
     });
     expect(result.moved).toEqual(answered.moved);
