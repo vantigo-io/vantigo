@@ -1,6 +1,7 @@
 package customers
 
 import (
+	"math"
 	"testing"
 
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
@@ -237,6 +238,30 @@ func TestValidateDefaultBillRate_PositiveTwoDecimalsWithinTheColumn(t *testing.T
 	errs := map[string][]string{}
 	if got := validateDefaultBillRate(nil, errs); got != nil || len(errs) != 0 {
 		t.Errorf("validateDefaultBillRate(nil) = %v, %v, want nil and no error: absent clears", got, errs)
+	}
+}
+
+// TestNumericFromFloatPtr_RefusesWhatIsNotANumber pins the conversion's
+// refusals: pgtype scans the text "NaN" as a numeric NaN without an error, so
+// NaN is refused before formatting, the same way an infinity is — neither is a
+// rate anybody could have typed, and storing either would be a lie. nil stays
+// SQL NULL, and a real rate converts.
+func TestNumericFromFloatPtr_RefusesWhatIsNotANumber(t *testing.T) {
+	for _, v := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+		if n, err := numericFromFloatPtr(&v); err == nil {
+			t.Errorf("numericFromFloatPtr(%v) = %+v, nil, want an error", v, n)
+		}
+	}
+	if n, err := numericFromFloatPtr(nil); err != nil || n.Valid {
+		t.Errorf("numericFromFloatPtr(nil) = %+v, %v, want SQL NULL and no error", n, err)
+	}
+	rate := 1250.5
+	n, err := numericFromFloatPtr(&rate)
+	if err != nil || !n.Valid || n.NaN {
+		t.Fatalf("numericFromFloatPtr(1250.5) = %+v, %v, want a valid number", n, err)
+	}
+	if back, err := floatPtrFromNumeric(n); err != nil || back == nil || *back != rate {
+		t.Errorf("floatPtrFromNumeric(numericFromFloatPtr(1250.5)) = %v, %v, want 1250.5", back, err)
 	}
 }
 

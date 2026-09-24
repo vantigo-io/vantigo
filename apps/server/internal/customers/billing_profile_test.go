@@ -643,6 +643,15 @@ func TestPutCustomersByIdBillingProfile_DefaultBillRate_ChangesAreWrittenAndReco
 			t.Errorf("changes = %v, want defaultBillRate alone", changes)
 		}
 		change, _ := changes["defaultBillRate"].(map[string]any)
+		// The event's before/after snapshots carry the rate too, key present
+		// even when the rate is nil — the same full-profile shape as every
+		// other field, so a reader of either snapshot alone sees the rate.
+		for _, side := range []string{"before", "after"} {
+			snapshot, _ := event.Payload[side].(map[string]any)
+			if got, ok := snapshot["defaultBillRate"]; !ok || got != change[side] {
+				t.Errorf("%s.defaultBillRate = %v (present %t), want %v, the change's own %s", side, got, ok, change[side], side)
+			}
+		}
 		return change
 	}
 
