@@ -252,7 +252,7 @@ type CustomerGroupSummary struct {
 	Name                    string             `json:"name"`
 }
 
-// CustomerImportError One problem with one row of an import (customers import/export design D3). row is the 1-based data row — the first row under the header is 1, and a row whose every cell is blank is skipped and takes no number. column is the header of the offending cell for a field's error, absent for a problem with the row as a whole. message is the module's own validation wording.
+// CustomerImportError One problem with one row of an import (customers import/export design D3). row is the 1-based data row — the first row under the header is 1, and a row whose every cell is blank is skipped and takes no number. column is the header of the offending cell for a field's error, as the file spells it, absent for a problem with the row as a whole. message is the module's own validation wording.
 type CustomerImportError struct {
 	Column  *string `json:"column,omitempty"`
 	Message string  `json:"message"`
@@ -4491,6 +4491,20 @@ func (response PostCustomersImport403JSONResponse) VisitPostCustomersImportRespo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersImport409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PostCustomersImport409ApplicationProblemPlusJSONResponse) VisitPostCustomersImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }

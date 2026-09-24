@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -68,12 +69,23 @@ const (
 	// (design D4), ignored so that file imports as it is.
 	importErrorColumn = "error"
 	// maxImportRows is how many data rows one import takes: the export's cap
-	// (customersFileMaxRows), so a round trip always fits — unless the timing
-	// test (csvimport_cap_test.go) says one request cannot carry that many in
-	// time, in which case it is the largest round number that can, and
-	// docs/customers.md says so.
+	// (customersFileMaxRows), so a round trip always fits. The timing test
+	// (csvimport_cap_test.go) measured a real run at the cap at about 30 s on
+	// four CPUs, inside the ~100 s a hosted installation's proxy allows; were a
+	// run ever to need more, this is the number to lower, and
+	// docs/customers.md the paragraph that says so.
 	maxImportRows = customersFileMaxRows
+	// maxNamelessColumnsNamed is how many positions of nameless columns the
+	// refusal lists before it counts the rest.
+	maxNamelessColumnsNamed = 10
 )
+
+// maxImportHeaderWidth is the widest header the table can describe: every
+// column once, the export-only four included, and the error column. A wider
+// one cannot be a customers file, and is refused before its cells are looked
+// at one by one — a 5 MB header of semicolons is five million cells, and a
+// refusal per cell would be a response hundreds of MB large.
+var maxImportHeaderWidth = len(customerCSVColumns) + 1
 
 // importBodyLimits raises the router's request-body cap for the import. Every
 // other operation of this module keeps the platform default (1 MiB).
@@ -86,6 +98,21 @@ const (
 	invalidImportFileTitle     = "Invalid import file"
 	invalidImportUploadMessage = "A customer import is one CSV file of at most 5 MB, sent as the multipart part named 'file'"
 )
+
+// The 409 a second import gets while one runs (PostCustomersImport).
+const (
+	importRunningTitle  = "An import is already running"
+	importRunningDetail = "Another customer import is running. Try again once it has finished."
+)
+
+// importHeldForTest, when set, runs once the import lock is held and the
+// vocabularies are read, before the first row, and the rows run under the
+// context it answers: the one point a test can hold an import open at (a
+// second import meanwhile is the 409), change the database under it (a group
+// or tag deleted after the file named it) or cancel it (the caller gone).
+// Set only through export_test.go's SetImportHeldHook, by a test that does not
+// run in parallel; nil in production.
+var importHeldForTest func(context.Context) context.Context
 
 func invalidImportFile(messages ...string) apicommon.HttpValidationProblemDetails {
 	return apicommon.ValidationProblem(invalidImportFileTitle, map[string][]string{"file": messages})
@@ -143,12 +170,13 @@ func importFlag(name string, raw *string, fallback bool) (bool, string) {
 }
 
 // importLayout is a header read against the column table: where each column a
-// row is written from sits, which groups the file carries, and how many cells
-// a row must have.
+// row is written from sits, how the file spells it, which groups the file
+// carries, and how many cells a row must have.
 type importLayout struct {
-	index  map[string]int
-	groups map[csvGroup]bool
-	width  int
+	index    map[string]int
+	spelling map[string]string
+	groups   map[csvGroup]bool
+	width    int
 }
 
 func (l importLayout) has(g csvGroup) bool { return l.groups[g] }
@@ -159,6 +187,16 @@ func (l importLayout) cell(rec csvRecord, column string) string {
 		return rec.Cells[i]
 	}
 	return ""
+}
+
+// spelt is column as the file's header spells it — headers match without
+// regard to case, and an error names the cell the person will look for —
+// and "" (a row-level error) as it is.
+func (l importLayout) spelt(column string) string {
+	if s, ok := l.spelling[column]; ok {
+		return s
+	}
+	return column
 }
 
 // position orders a row's errors by where their column sits in the file, a
@@ -174,21 +212,28 @@ func (l importLayout) position(column string) int {
 // names, the export-only four or the error column, each at most once, matched
 // without regard to case; a group's columns all together or not at all; and
 // no column the caller could not write by hand. It answers every refusal at
-// once, so a file is fixed in one pass rather than one error at a time.
+// once, so a file is fixed in one pass rather than one error at a time — but
+// never more refusals than the table has columns: a header wider than the
+// table can describe is one refusal, and nameless columns are one between
+// them, so the answer stays small whatever the file holds.
 func (s *server) importLayoutFor(ctx context.Context, header []string) (importLayout, []string) {
 	if len(header) == 1 && strings.Contains(header[0], ",") {
 		return importLayout{}, []string{"The file is comma-separated; the import reads semicolon-separated files, the form the export writes and a Norwegian Excel saves as CSV"}
+	}
+	if len(header) > maxImportHeaderWidth {
+		return importLayout{}, []string{fmt.Sprintf("The header has %d columns, but the file describes at most %d", len(header), maxImportHeaderWidth)}
 	}
 	known := make(map[string]csvColumn, len(customerCSVColumns))
 	for _, c := range customerCSVColumns {
 		known[strings.ToLower(c.Name)] = c
 	}
-	l := importLayout{index: map[string]int{}, groups: map[csvGroup]bool{}, width: len(header)}
+	l := importLayout{index: map[string]int{}, spelling: map[string]string{}, groups: map[csvGroup]bool{}, width: len(header)}
 	var refusals, unknown []string
+	var nameless []int
 	for i, raw := range header {
 		name := strings.TrimSpace(raw)
 		if name == "" {
-			refusals = append(refusals, fmt.Sprintf("Column %d has no name", i+1))
+			nameless = append(nameless, i+1)
 			continue
 		}
 		if strings.EqualFold(name, importErrorColumn) {
@@ -207,7 +252,11 @@ func (s *server) importLayoutFor(ctx context.Context, header []string) (importLa
 			continue
 		}
 		l.index[c.Name] = i
+		l.spelling[c.Name] = name
 		l.groups[c.Group] = true
+	}
+	if len(nameless) > 0 {
+		refusals = append(refusals, namelessColumnsRefusal(nameless))
 	}
 	if len(unknown) > 0 {
 		refusals = append(refusals, fmt.Sprintf("Unknown columns: %s. A column is one the export and the template carry, and a misspelt one is refused rather than ignored", strings.Join(unknown, ", ")))
@@ -236,6 +285,28 @@ func (s *server) importLayoutFor(ctx context.Context, header []string) (importLa
 		refusals = append(refusals, importPermissionRefusal(csvGroupBilling, billingManage))
 	}
 	return l, refusals
+}
+
+// namelessColumnsRefusal is every header cell with no name, as one refusal:
+// "Column 3 has no name", "Columns 3, 7 and 12 have no name", and past
+// maxNamelessColumnsNamed positions the rest counted rather than listed.
+func namelessColumnsRefusal(positions []int) string {
+	if len(positions) == 1 {
+		return fmt.Sprintf("Column %d has no name", positions[0])
+	}
+	named := positions
+	rest := 0
+	if len(named) > maxNamelessColumnsNamed {
+		named, rest = positions[:maxNamelessColumnsNamed], len(positions)-maxNamelessColumnsNamed
+	}
+	list := make([]string, len(named))
+	for i, p := range named {
+		list[i] = strconv.Itoa(p)
+	}
+	if rest > 0 {
+		return fmt.Sprintf("Columns %s and %d more have no name", strings.Join(list, ", "), rest)
+	}
+	return fmt.Sprintf("Columns %s and %s have no name", strings.Join(list[:len(list)-1], ", "), list[len(list)-1])
 }
 
 // importPermissionRefusal names a group's columns and the key they need.
@@ -376,7 +447,8 @@ func (l importLayout) plan(rec csvRecord, vocab importVocabulary) (importPlan, [
 			p.Name = name
 		}
 	} else if p.CustomerNumber == nil {
-		fail("name", "A new customer needs a name, and this file has no name column")
+		// The row's, not a cell's: the column it would name is not in the file.
+		fail("", "A new customer needs a name, and this file has no name column")
 	}
 	// typeFailed keeps a refused type cell to its own error: the identity
 	// below is then judged against no type rather than the business a blank
@@ -496,9 +568,9 @@ func (l importLayout) plan(rec csvRecord, vocab importVocabulary) (importPlan, [
 }
 
 // address reads one address group (design D3): not in the file, left alone;
-// every cell blank, "no primary address of this type"; otherwise
-// validateAddress's request, its field errors keyed back to the file's columns
-// ("line1" → "postalLine1").
+// every cell blank, "no primary address of this type" (importPrimaryAddress
+// says when that can be); otherwise validateAddress's request, its field
+// errors keyed back to the file's columns ("line1" → "postalLine1").
 func (l importLayout) address(rec csvRecord, g csvGroup, addrType string, failAll func(func(string) string, map[string][]string)) (bool, *validatedAddress) {
 	if !l.has(g) {
 		return false, nil
@@ -717,9 +789,16 @@ func (s *server) importRelations(ctx context.Context, txq *store.Queries, id int
 // importPrimaryAddress makes the customer's primary address of addrType the
 // row's (design D3): none on file and none in the row, nothing; none on file,
 // insertAddress it as primary; one on file and none in the row, removeAddress
-// it — the oldest remaining of the type becomes primary, as a delete by hand
-// does; one on file and one in the row, replaceAddress it unless it already
-// says the same. The file has no label column, so the address keeps its own.
+// it — but only when it is the only address of its type; one on file and one
+// in the row, replaceAddress it unless it already says the same. The file has
+// no label column, so the address keeps its own.
+//
+// The blank row removes only a lone address because anything else would not
+// be idempotent: removing a primary makes the oldest remaining one of its
+// type primary, as a delete by hand does, so the same file imported again
+// would remove that one too, and a third time the next. A file describes the
+// primary address alone and cannot say which of the others is meant, so it
+// is refused (otherAddressesOfType) and the others are left to a person.
 func importPrimaryAddress(ctx context.Context, txq *store.Queries, customerID int32, addrType string, after *validatedAddress, now time.Time, act actor) error {
 	current, err := txq.PrimaryCustomerAddressOfType(ctx, store.PrimaryCustomerAddressOfTypeParams{CustomerID: customerID, Type: addrType})
 	switch {
@@ -732,6 +811,13 @@ func importPrimaryAddress(ctx context.Context, txq *store.Queries, customerID in
 	case err != nil:
 		return err
 	case after == nil:
+		others, err := txq.CountCustomerAddressesOfType(ctx, store.CountCustomerAddressesOfTypeParams{CustomerID: customerID, Type: addrType, ExcludeID: current.ID})
+		if err != nil {
+			return err
+		}
+		if others > 0 {
+			return otherAddressesOfType{addrType: addrType, count: others + 1}
+		}
 		return removeAddress(ctx, txq, customerID, current, now, act)
 	}
 	next := *after
@@ -746,11 +832,29 @@ func importPrimaryAddress(ctx context.Context, txq *store.Queries, customerID in
 	return err
 }
 
-// addressRefusal is the address cap as the row's error, on the group's first
-// column; anything else passes through.
+// otherAddressesOfType is importPrimaryAddress refusing to clear a primary
+// address that is not the only one of its type: count is how many there are.
+type otherAddressesOfType struct {
+	addrType string
+	count    int64
+}
+
+func (e otherAddressesOfType) Error() string {
+	return fmt.Sprintf("customers: %d %s addresses, and the row clears the primary", e.count, e.addrType)
+}
+
+// addressRefusal is the address cap, and a blank address group that cannot
+// clear, as the row's error on the group's first column; anything else passes
+// through.
 func addressRefusal(row int, column string, err error) error {
 	if errors.Is(err, errAddressCapReached) {
 		return refuseRow(row, column, addressCapMessage)
+	}
+	var others otherAddressesOfType
+	if errors.As(err, &others) {
+		return refuseRow(row, column, fmt.Sprintf(
+			"This customer has %d %s addresses; the file can only describe the primary one — remove the others by hand before clearing it",
+			others.count, others.addrType))
 	}
 	return err
 }
@@ -837,7 +941,15 @@ func (t importTally) result(dryRun bool) gen.CustomerImportResult {
 // run, whose rows cannot see each other's writes, still refuses what the real
 // run would. A refusal is that row's failure and the next row runs; any other
 // error ends the request.
-func importRows(file csvFile, l importLayout, vocab importVocabulary, allowDuplicateIdentity bool, apply func(importPlan) (importOutcome, error)) (importTally, error) {
+//
+// So does a cancelled request, checked before each row's transaction opens:
+// a caller that went away — a Check abandoned, a tab closed, a proxy that
+// gave up — has nobody left to read the result, and a run at the cap would
+// otherwise go on for half a minute holding the one-import lock, the next
+// Check refused until it ended. The rows already run stay as they are (a real
+// run's committed, a dry run's rolled back); the deferred unlock frees the
+// lock as the handler returns.
+func importRows(ctx context.Context, file csvFile, l importLayout, vocab importVocabulary, allowDuplicateIdentity bool, apply func(importPlan) (importOutcome, error)) (importTally, error) {
 	tally := importTally{rows: len(file.Rows), errs: []importError{}}
 	plans := make([]importPlan, len(file.Rows))
 	planErrs := make([][]importError, len(file.Rows))
@@ -850,6 +962,9 @@ func importRows(file csvFile, l importLayout, vocab importVocabulary, allowDupli
 	for i, p := range plans {
 		errs := planErrs[i]
 		if len(errs) == 0 {
+			if err := ctx.Err(); err != nil {
+				return importTally{}, err
+			}
 			outcome, err := apply(p)
 			var refused *importRowRefusal
 			switch {
@@ -865,7 +980,10 @@ func importRows(file csvFile, l importLayout, vocab importVocabulary, allowDupli
 		}
 		if len(errs) > 0 {
 			tally.failed++
-			tally.errs = append(tally.errs, errs...)
+			for _, e := range errs {
+				e.Column = l.spelt(e.Column)
+				tally.errs = append(tally.errs, e)
+			}
 		}
 	}
 	return tally, nil
@@ -906,7 +1024,7 @@ var errImportDryRun = errors.New("customers: import dry run rolled back")
 // deadlock a tag replace can lose to a tag delete (tagWriteAttempts, tags.go),
 // the tags PUT's own retry, in both runs.
 func (s *server) importFile(ctx context.Context, file csvFile, l importLayout, vocab importVocabulary, o importOptions, dryRun bool) (importTally, error) {
-	return importRows(file, l, vocab, o.allowDuplicateIdentity, func(p importPlan) (importOutcome, error) {
+	return importRows(ctx, file, l, vocab, o.allowDuplicateIdentity, func(p importPlan) (importOutcome, error) {
 		var outcome importOutcome
 		err := db.RetrySerializable(ctx, tagWriteAttempts, func() error {
 			return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
@@ -952,9 +1070,22 @@ func (s *server) PostCustomersImport(ctx context.Context, req gen.PostCustomersI
 		return gen.PostCustomersImport400ApplicationProblemPlusJSONResponse(invalidImportFile(refusals...)), nil
 	}
 
+	// One import at a time, real or dry: a run at the cap is half a minute of
+	// row transactions, and two of them side by side — a Check clicked twice,
+	// a script in a loop — would only share the pool between them. Taken after
+	// every refusal, so a file that cannot run never holds it, and never
+	// waited for: the second caller is told, not queued behind the first.
+	if !s.importing.TryLock() {
+		return gen.PostCustomersImport409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(importRunningTitle, importRunningDetail, http.StatusConflict)), nil
+	}
+	defer s.importing.Unlock()
+
 	vocab, err := importVocabularyFor(ctx, store.New(s.deps.Pool), layout)
 	if err != nil {
 		return nil, err
+	}
+	if importHeldForTest != nil {
+		ctx = importHeldForTest(ctx)
 	}
 	tally := importTally{errs: []importError{}}
 	if len(file.Rows) > 0 {

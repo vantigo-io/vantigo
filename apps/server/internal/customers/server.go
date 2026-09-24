@@ -2,6 +2,7 @@ package customers
 
 import (
 	"context"
+	"sync"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
@@ -16,6 +17,11 @@ type server struct {
 	deps         module.Deps
 	brreg        *brregClient
 	peppolLookup func(ctx context.Context, participant string) (peppol.Result, error)
+	// importing is held for the length of one POST /customers/import
+	// (import.go): one import at a time. A process mounts the module once,
+	// so this is the process's one lock — per server rather than per package
+	// only so that each test harness, its own installation, has its own.
+	importing sync.Mutex
 }
 
 var _ gen.StrictServerInterface = (*server)(nil)

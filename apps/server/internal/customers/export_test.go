@@ -75,3 +75,17 @@ func SetRegistryFeedPageSize(n int) func() {
 // organisation numbers is one this module will actually act on
 // (TestValidOrgNumbersFixture).
 func ValidNorwegianOrgNumberForTest(s string) bool { return validNorwegianOrgNumber(s) }
+
+// SetImportHeldHook makes f run inside every POST /customers/import once the
+// import lock is held and the vocabularies are read, before the first row,
+// the rows then running under the context f answers (import.go's
+// importHeldForTest); it answers the function that takes the hook away again.
+// It is how a test holds one import open while a second one is sent, deletes
+// a group or tag the file already named, or cancels an import as a caller
+// that went away would. The test that uses it does not run in parallel,
+// because the hook is the package's.
+func SetImportHeldHook(f func(context.Context) context.Context) func() {
+	previous := importHeldForTest
+	importHeldForTest = f
+	return func() { importHeldForTest = previous }
+}

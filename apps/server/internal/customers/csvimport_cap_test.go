@@ -10,8 +10,12 @@ import (
 // importAtTheCapBudget is what a real run of maxImportRows rows may take
 // (design D3's "measure it and say what it takes"). Sixty seconds, well inside
 // the ~100 s after which the proxy in front of a hosted installation
-// (cloudflared) answers 524 while the rows go on committing. The run logs what
-// it actually took, and that number is what docs/customers.md quotes.
+// (cloudflared) gives up on the request. A run cut off there does not go on:
+// the server cancels a request whose connection went, and the import stops
+// before its next row (importRows) — but every row before it stays committed,
+// the caller gets no result saying which, and sending the file again creates
+// those customers a second time (docs/customers.md, "A run cut off"). The run
+// logs what it actually took, and that number is what docs/customers.md quotes.
 const importAtTheCapBudget = 60 * time.Second
 
 // importCapSlice is how many rows one request of this test carries. modtest's
@@ -69,6 +73,6 @@ func TestPostCustomersImport_AtTheCap(t *testing.T) {
 		t.Errorf("created %d, want 5000", created)
 	}
 	if took > importAtTheCapBudget {
-		t.Errorf("5000 rows took %s; want within %s — see Task 4 Step 6's rule for lowering maxImportRows", took, importAtTheCapBudget)
+		t.Errorf("5000 rows took %s; want within %s — see maxImportRows's comment (import.go) for lowering the cap", took, importAtTheCapBudget)
 	}
 }

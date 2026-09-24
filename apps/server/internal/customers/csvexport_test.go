@@ -312,22 +312,47 @@ func TestGetCustomersExport_MoreThan5000Customers_IsRefusedAskingForANarrowerFil
 	}
 }
 
-// TestGetCustomersImportTemplate_IsTheImportableHeaderAlone: every column an
-// import writes — the legal identity's included, whoever asks, since the
-// template is the file's shape and not anybody's data — and nothing else.
-func TestGetCustomersImportTemplate_IsTheImportableHeaderAlone(t *testing.T) {
+// TestGetCustomersImportTemplate_IsWhatItsCallerCanImport: every column the
+// caller's import can write — the legal identity's four only with
+// customers:legal-identity-manage, the billing profile's eleven only with
+// customers:billing-manage — and nothing else, so the template sent straight
+// back by the one who downloaded it is never refused for its header.
+func TestGetCustomersImportTemplate_IsWhatItsCallerCanImport(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	viewer := h.SignIn(t, "customers:view")
+	importer := []string{"customers:view", "customers:create", "customers:update"}
+	identity := "legalCountry;legalType;legalId;legalName;"
+	billing := "invoiceEmail;reminderEmail;paymentTermsDays;currency;language;invoiceDelivery;reminderDelivery;peppolId;gln;buyerReference;defaultBillRate;"
+	for _, tc := range []struct {
+		name string
+		keys []string
+		want string
+	}{
+		{"every write key", append(slices.Clone(importer), "customers:legal-identity-manage", "customers:billing-manage"), importableHeader},
+		{"no legal-identity-manage", append(slices.Clone(importer), "customers:billing-manage"), strings.Replace(importableHeader, identity, "", 1)},
+		{"no billing-manage", append(slices.Clone(importer), "customers:legal-identity-manage"), strings.Replace(importableHeader, billing, "", 1)},
+		{"neither", importer, strings.Replace(strings.Replace(importableHeader, identity, "", 1), billing, "", 1)},
+	} {
+		c := h.SignIn(t, tc.keys...)
+		r := c.Do(http.MethodGet, "/api/v1/customers/import/template", nil)
+		if r.Status != http.StatusOK {
+			t.Fatalf("%s: template: status %d body %s", tc.name, r.Status, r.Body)
+		}
+		if got, want := string(r.Body), csvBOM+tc.want+"\r\n"; got != want {
+			t.Errorf("%s: template is\n%q\nwant\n%q", tc.name, got, want)
+		}
+		if got, want := r.Header("Content-Disposition"), `attachment; filename="customers-import-template.csv"`; got != want {
+			t.Errorf("%s: Content-Disposition = %q, want %q", tc.name, got, want)
+		}
+		contentType, body := multipartBody(t, "file", r.Body)
+		if back := c.Do(http.MethodPost, "/api/v1/customers/import", nil, modtest.RawBody(contentType, body)); back.Status != http.StatusOK {
+			t.Errorf("%s: the template sent back: status %d body %s, want 200", tc.name, back.Status, back.Body)
+		}
+	}
 
-	r := viewer.Do(http.MethodGet, "/api/v1/customers/import/template", nil)
-	if r.Status != http.StatusOK {
-		t.Fatalf("template: status %d body %s", r.Status, r.Body)
-	}
-	if got, want := string(r.Body), csvBOM+importableHeader+"\r\n"; got != want {
-		t.Errorf("template is\n%q\nwant\n%q", got, want)
-	}
-	if got, want := r.Header("Content-Disposition"), `attachment; filename="customers-import-template.csv"`; got != want {
-		t.Errorf("Content-Disposition = %q, want %q", got, want)
+	viewer := h.SignIn(t, "customers:view")
+	if r := viewer.Do(http.MethodGet, "/api/v1/customers/import/template", nil); r.Status != http.StatusOK ||
+		string(r.Body) != csvBOM+strings.Replace(strings.Replace(importableHeader, identity, "", 1), billing, "", 1)+"\r\n" {
+		t.Errorf("a viewer's template: status %d body %q, want the header without the identity and billing columns", r.Status, r.Body)
 	}
 }
