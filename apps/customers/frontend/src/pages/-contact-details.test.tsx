@@ -213,6 +213,35 @@ describe("contact details page", () => {
     expect(within(modal).queryByText("Already the only holder")).not.toBeInTheDocument();
   });
 
+  it("says a customer was merged when a connection edit lands on one merged away", async () => {
+    // A tab opened before the merge: the association's customer is merged away
+    // now, and every customer-scoped write answers customer_merged. The
+    // association is the wire body — nothing unset is on it.
+    stubFetch({
+      "GET /api/v1/customers/contacts/1001": () => jsonResponse(200, anders),
+      "GET /api/v1/customers/contacts/1001/customers": () =>
+        jsonResponse(200, {
+          data: [{ customer: { id: 2002, name: "Refsdal Holding" }, roles: [{ role: "billing", primary: false }] }],
+        }),
+      "PUT /api/v1/customers/2002/contacts/1001": () =>
+        jsonResponse(409, {
+          title: "Customer was merged",
+          status: 409,
+          code: "customer_merged",
+          detail: "#5 Refsdal Holding was merged into #2 Refsdal Group AS.",
+        }),
+    });
+
+    await renderRoute("/customers/contacts/1001", "Dr. Anders Refsdal");
+    await userEvent.click(await screen.findByRole("button", { name: "Edit connection for Refsdal Holding" }));
+    const modal = await screen.findByRole("dialog");
+    await userEvent.click(within(modal).getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByText("This customer was merged into another")).toBeInTheDocument();
+    expect(screen.getByText("Failed to update connection")).toBeInTheDocument();
+    expect(screen.queryByText(/was merged into #2/)).not.toBeInTheDocument();
+  });
+
   it("shows a not-found state for unknown contacts", async () => {
     stubFetch({});
 

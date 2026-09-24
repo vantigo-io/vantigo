@@ -14,6 +14,7 @@ import {
   followUpsQueryOptions,
 } from "../api/follow-ups";
 import { markFollowUpDone } from "../api/timeline";
+import { customerWriteErrorMessage } from "../lib/customer-write-error";
 import { isOverdue } from "../lib/follow-up-dates";
 import { formatDateOnly } from "../lib/format-date-only";
 import "../i18n";
@@ -53,7 +54,11 @@ export const FollowUpsPage = ({ canManageTimeline }: { canManageTimeline?: boole
       // likeliest failure is an entry somebody else deleted or un-followed-up,
       // and a row left on screen only offers the same doomed button again.
       reload();
-      notifications.show({ color: "red", title: t("couldNotUpdateFollowUp"), message: error.message });
+      notifications.show({
+        color: "red",
+        title: t("couldNotUpdateFollowUp"),
+        message: customerWriteErrorMessage(error, t),
+      });
     },
   });
 
