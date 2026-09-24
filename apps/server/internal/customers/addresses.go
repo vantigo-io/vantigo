@@ -357,8 +357,8 @@ func (s *server) PostCustomersByIdAddresses(ctx context.Context, req gen.PostCus
 		return err
 	})
 	switch {
-	case isMergedAway(err):
-		return gen.PostCustomersByIdAddresses409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
+	case isReadOnlyCustomer(err):
+		return gen.PostCustomersByIdAddresses409ApplicationProblemPlusJSONResponse(readOnlyProblem(err)), nil
 	case errors.Is(err, errCustomerNotFound):
 		return gen.PostCustomersByIdAddresses404Response{}, nil
 	case errors.Is(err, errAddressCapReached):
@@ -447,8 +447,8 @@ func (s *server) PutCustomersByIdAddressesByAddressId(ctx context.Context, req g
 		return err
 	})
 	switch {
-	case isMergedAway(err):
-		return gen.PutCustomersByIdAddressesByAddressId409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
+	case isReadOnlyCustomer(err):
+		return gen.PutCustomersByIdAddressesByAddressId409ApplicationProblemPlusJSONResponse(readOnlyProblem(err)), nil
 	case errors.Is(err, errCustomerNotFound):
 		return gen.PutCustomersByIdAddressesByAddressId404Response{}, nil
 	case errors.Is(err, errPrimaryTransitionRefused):
@@ -499,8 +499,8 @@ func (s *server) DeleteCustomersByIdAddressesByAddressId(ctx context.Context, re
 		return removeAddress(ctx, txq, req.Id, existing, now, act)
 	})
 	switch {
-	case isMergedAway(err):
-		return gen.DeleteCustomersByIdAddressesByAddressId409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
+	case isReadOnlyCustomer(err):
+		return gen.DeleteCustomersByIdAddressesByAddressId409ApplicationProblemPlusJSONResponse(readOnlyProblem(err)), nil
 	case errors.Is(err, errCustomerNotFound):
 		return gen.DeleteCustomersByIdAddressesByAddressId404Response{}, nil
 	case err != nil:

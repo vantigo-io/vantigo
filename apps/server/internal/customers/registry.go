@@ -865,8 +865,8 @@ func (s *server) PostCustomersByIdRegistryRefresh(ctx context.Context, req gen.P
 	// Before the registry is asked: a merged-away customer's record would be
 	// refused under the lock anyway (refreshRegistryRecord), and the merge
 	// deleted the one it had.
-	if err := refuseMergedAway(ctx, q, req.Id); isMergedAway(err) {
-		return gen.PostCustomersByIdRegistryRefresh409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
+	if err := refuseReadOnlyCustomer(ctx, q, req.Id); isReadOnlyCustomer(err) {
+		return gen.PostCustomersByIdRegistryRefresh409ApplicationProblemPlusJSONResponse(readOnlyProblem(err)), nil
 	} else if err != nil {
 		return nil, err
 	}
@@ -901,9 +901,9 @@ func (s *server) PostCustomersByIdRegistryRefresh(ctx context.Context, req gen.P
 		// a moment earlier.
 		return gen.PostCustomersByIdRegistryRefresh404Response{}, nil
 	}
-	if isMergedAway(err) {
+	if isReadOnlyCustomer(err) {
 		// Merged away while the registry was answering: nothing was stored.
-		return gen.PostCustomersByIdRegistryRefresh409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
+		return gen.PostCustomersByIdRegistryRefresh409ApplicationProblemPlusJSONResponse(readOnlyProblem(err)), nil
 	}
 	if errors.Is(err, errRegistryIdentityChanged) {
 		// Somebody re-identified the customer while the registry was answering

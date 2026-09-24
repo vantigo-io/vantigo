@@ -348,8 +348,8 @@ func (s *server) PutCustomersByIdBillingProfile(ctx context.Context, req gen.Put
 		return err
 	})
 	switch {
-	case isMergedAway(err):
-		return gen.PutCustomersByIdBillingProfile409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
+	case isReadOnlyCustomer(err):
+		return gen.PutCustomersByIdBillingProfile409ApplicationProblemPlusJSONResponse(readOnlyProblem(err)), nil
 	case errors.Is(err, pgx.ErrNoRows):
 		// The guarded UPDATE's WHERE clause matched no row: a concurrent writer
 		// moved the revision between our read above and this write, the same

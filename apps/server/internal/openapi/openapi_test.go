@@ -182,8 +182,11 @@ func TestOperationIDsAreUniqueAcrossModules(t *testing.T) {
 // production code, so this white-box test file — package openapi — cannot
 // import module itself without an import cycle.
 var KnownServeMuxConflicts = []string{
+	"DELETE /api/v1/customers/contacts/{id} ⟷ DELETE /api/v1/customers/{id}/anonymisation",
 	"DELETE /api/v1/customers/contacts/{id} ⟷ DELETE /api/v1/customers/{id}/legal-identity",
+	"DELETE /api/v1/customers/groups/{groupId} ⟷ DELETE /api/v1/customers/{id}/anonymisation",
 	"DELETE /api/v1/customers/groups/{groupId} ⟷ DELETE /api/v1/customers/{id}/legal-identity",
+	"DELETE /api/v1/customers/tags/{tagId} ⟷ DELETE /api/v1/customers/{id}/anonymisation",
 	"DELETE /api/v1/customers/tags/{tagId} ⟷ DELETE /api/v1/customers/{id}/legal-identity",
 	"GET /api/v1/customers/contacts/{id} ⟷ GET /api/v1/customers/{id}/addresses",
 	"GET /api/v1/customers/contacts/{id} ⟷ GET /api/v1/customers/{id}/billing-profile",
@@ -210,6 +213,7 @@ var KnownServeMuxConflicts = []string{
 	"GET /api/v1/projects/tasks/{taskId} ⟷ GET /api/v1/projects/{id}/roles",
 	"GET /api/v1/projects/tasks/{taskId} ⟷ GET /api/v1/projects/{id}/tasks",
 	"GET /api/v1/projects/tasks/{taskId} ⟷ GET /api/v1/projects/{id}/timeline",
+	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/anonymisation",
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/billing-profile",
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/contact-info",
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/group",
@@ -217,6 +221,7 @@ var KnownServeMuxConflicts = []string{
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/owner",
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/tags",
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/type",
+	"PUT /api/v1/customers/groups/{groupId} ⟷ PUT /api/v1/customers/{id}/anonymisation",
 	"PUT /api/v1/customers/groups/{groupId} ⟷ PUT /api/v1/customers/{id}/billing-profile",
 	"PUT /api/v1/customers/groups/{groupId} ⟷ PUT /api/v1/customers/{id}/contact-info",
 	"PUT /api/v1/customers/groups/{groupId} ⟷ PUT /api/v1/customers/{id}/group",
@@ -224,6 +229,7 @@ var KnownServeMuxConflicts = []string{
 	"PUT /api/v1/customers/groups/{groupId} ⟷ PUT /api/v1/customers/{id}/owner",
 	"PUT /api/v1/customers/groups/{groupId} ⟷ PUT /api/v1/customers/{id}/tags",
 	"PUT /api/v1/customers/groups/{groupId} ⟷ PUT /api/v1/customers/{id}/type",
+	"PUT /api/v1/customers/tags/{tagId} ⟷ PUT /api/v1/customers/{id}/anonymisation",
 	"PUT /api/v1/customers/tags/{tagId} ⟷ PUT /api/v1/customers/{id}/billing-profile",
 	"PUT /api/v1/customers/tags/{tagId} ⟷ PUT /api/v1/customers/{id}/contact-info",
 	"PUT /api/v1/customers/tags/{tagId} ⟷ PUT /api/v1/customers/{id}/group",

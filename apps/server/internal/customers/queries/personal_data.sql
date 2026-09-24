@@ -38,3 +38,26 @@ SELECT id, customer_id, provenance, producer, event_type, occurred_on, occurred_
 FROM customers.customers_timeline_entries
 WHERE customer_id = @customer_id
 ORDER BY occurred_on, occurred_at NULLS FIRST, id;
+
+-- name: SetCustomerAnonymiseOn :exec
+-- SetCustomerAnonymiseOn is the schedule's write (design D4): PUT sets the
+-- day, DELETE clears it (NULL). A write to the row like any other, so the
+-- revision advances; both callers hold the lock and have decided the write is
+-- not a no-op.
+UPDATE customers.customers
+SET anonymise_on = sqlc.narg(anonymise_on)::date, updated_at = @now::timestamptz, revision = revision + 1
+WHERE id = @id;
+
+-- name: DropCustomerAnonymiseOn :exec
+-- DropCustomerAnonymiseOn calls a schedule off as part of another write to the
+-- row — a restore, a change of type (cancelAnonymisationSchedule,
+-- anonymisation.go) — whose own UPDATE has already advanced the revision in the
+-- same transaction, so this one does not advance it a second time.
+UPDATE customers.customers SET anonymise_on = NULL WHERE id = @id;
+
+-- name: CustomerAnonymisedAt :one
+-- CustomerAnonymisedAt is the read-only refusal read on the pool
+-- (refuseReadOnlyCustomer, merge.go): when a customer was anonymised, NULL when
+-- it was not. pgx.ErrNoRows is a customer that does not exist, whose 404 is the
+-- caller's to give.
+SELECT anonymised_at FROM customers.customers WHERE id = @id;

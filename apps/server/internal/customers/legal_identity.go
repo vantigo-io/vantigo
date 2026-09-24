@@ -168,8 +168,8 @@ func (s *server) PutCustomersByIdLegalIdentity(ctx context.Context, req gen.PutC
 			nil, needsDuplicateCheck, nameHolders, now, act)
 		return err
 	})
-	if isMergedAway(err) {
-		return gen.PutCustomersByIdLegalIdentity409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
+	if isReadOnlyCustomer(err) {
+		return gen.PutCustomersByIdLegalIdentity409ApplicationProblemPlusJSONResponse(readOnlyProblem(err)), nil
 	}
 	if errors.Is(err, errDuplicateIdentity) {
 		return gen.PutCustomersByIdLegalIdentity409ApplicationProblemPlusJSONResponse(*conflict), nil
@@ -254,8 +254,8 @@ func (s *server) DeleteCustomersByIdLegalIdentity(ctx context.Context, req gen.D
 		}
 		return recordCustomerUpdated(ctx, txq, now, req.Id, existing.Name, before, existing.Name, nil, act.Kind, act.Display, act.UserID)
 	})
-	if isMergedAway(err) {
-		return gen.DeleteCustomersByIdLegalIdentity409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
+	if isReadOnlyCustomer(err) {
+		return gen.DeleteCustomersByIdLegalIdentity409ApplicationProblemPlusJSONResponse(readOnlyProblem(err)), nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("customers: remove legal identity: %w", err)

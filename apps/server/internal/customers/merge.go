@@ -57,66 +57,101 @@ var (
 	errMergeRefused = errors.New("customers: merge refused")
 )
 
-// customerMergedError is a write refused because its customer was merged away
-// (customers merge design D2): from the merge on, the absorbed customer is
-// read-only — its records are the survivor's now, and a write here would
-// quietly start a second history nobody sees. The 409 carries code
-// customer_merged and names the survivor. It is an error, not a return value,
-// so that it can abort whichever transaction found it and travel out through
-// the helpers in between; isMergedAway and mergedAwayProblem read it back.
-type customerMergedError struct {
+// customerReadOnlyError is a write refused because its customer takes no more
+// changes. Two reasons: merged away (customers merge design D2) — its records
+// are the survivor's now, and a write here would quietly start a second
+// history nobody sees — or anonymised (customers GDPR design D4) — what is left
+// is kept for bookkeeping, and a write would put a person back into it. The 409
+// carries code customer_merged and names the survivor, or customer_anonymised
+// and names the day. It is an error, not a return value, so that it can abort
+// whichever transaction found it and travel out through the helpers in between;
+// isReadOnlyCustomer and readOnlyProblem read it back.
+type customerReadOnlyError struct {
 	problem gen.CustomerConflictProblem
-	// into is the survivor as a person reads it, "#1002 Acme AS".
+	// into is the survivor as a person reads it, "#1002 Acme AS"; empty for an
+	// anonymised customer.
 	into string
+	// anonymised tells the two apart for the one caller whose words differ,
+	// the CSV import's row error.
+	anonymised bool
 }
 
-func (e *customerMergedError) Error() string {
+func (e *customerReadOnlyError) Error() string {
+	if e.anonymised {
+		return "customers: customer was anonymised"
+	}
 	return "customers: customer was merged away"
 }
 
-// isMergedAway reports whether err is a customer_merged refusal, and
-// mergedAwayProblem is its 409 body — the pair a handler's switch uses, case
-// and answer.
-func isMergedAway(err error) bool {
-	var merged *customerMergedError
-	return errors.As(err, &merged)
+// isReadOnlyCustomer reports whether err is either refusal — customer_merged
+// or customer_anonymised — and readOnlyProblem is its 409 body: the pair a
+// handler's switch uses, case and answer. Every handler that refused a
+// merged-away customer refuses an anonymised one the same way, with no change
+// of its own.
+func isReadOnlyCustomer(err error) bool {
+	var readOnly *customerReadOnlyError
+	return errors.As(err, &readOnly)
 }
 
-func mergedAwayProblem(err error) gen.CustomerConflictProblem {
-	var merged *customerMergedError
-	if errors.As(err, &merged) {
-		return merged.problem
+func readOnlyProblem(err error) gen.CustomerConflictProblem {
+	var readOnly *customerReadOnlyError
+	if errors.As(err, &readOnly) {
+		return readOnly.problem
 	}
 	return gen.CustomerConflictProblem{}
 }
 
-// mergedAwayInto is the survivor err's refusal names, "#1002 Acme AS".
+// isAnonymisedRefusal reports whether err is the customer_anonymised refusal.
+func isAnonymisedRefusal(err error) bool {
+	var readOnly *customerReadOnlyError
+	return errors.As(err, &readOnly) && readOnly.anonymised
+}
+
+// mergedAwayInto is the survivor err's refusal names, "#1002 Acme AS" — empty
+// for an anonymised customer's.
 func mergedAwayInto(err error) string {
-	var merged *customerMergedError
-	if errors.As(err, &merged) {
-		return merged.into
+	var readOnly *customerReadOnlyError
+	if errors.As(err, &readOnly) {
+		return readOnly.into
 	}
 	return ""
 }
 
 // customerMerged is the customer_merged refusal, naming the customer this one
 // was merged into.
-func customerMerged(intoNumber int64, intoName string) *customerMergedError {
+func customerMerged(intoNumber int64, intoName string) *customerReadOnlyError {
 	into := customerLabel(intoNumber, intoName)
-	return &customerMergedError{into: into, problem: *mergeConflict("Customer was merged", "customer_merged", fmt.Sprintf(
+	return &customerReadOnlyError{into: into, problem: *mergeConflict("Customer was merged", "customer_merged", fmt.Sprintf(
 		"This customer was merged into %s. Its records are there now, and it takes no more changes.", into))}
+}
+
+// customerAnonymised is the customer_anonymised refusal (customers GDPR design
+// D4), naming the day it was anonymised and nothing else — there is nothing
+// else left to name.
+func customerAnonymised(at time.Time) *customerReadOnlyError {
+	return &customerReadOnlyError{anonymised: true, problem: *mergeConflict("Customer was anonymised", "customer_anonymised", fmt.Sprintf(
+		"This customer's personal data was anonymised on %s. What is left is kept for bookkeeping and takes no more changes.",
+		at.UTC().Format(time.DateOnly)))}
 }
 
 // lockWritableCustomer is every customer-scoped write's LockCustomer: the
 // customer row's FOR NO KEY UPDATE lock, then the refusal when the row it
-// locked was merged away. A merge holds this same lock until it commits, so a
-// write that queued behind one reads its marker here and refuses rather than
-// writing to the customer that just went away. pgx.ErrNoRows still means the
-// customer does not exist.
+// locked was anonymised or merged away. A merge and an anonymisation both hold
+// this same lock until they commit, so a write that queued behind one reads its
+// outcome here and refuses rather than writing to a customer that just stopped
+// taking writes. Anonymised is asked first: a customer both merged away and
+// anonymised has nothing left the survivor's name would help with.
+// pgx.ErrNoRows still means the customer does not exist.
 func lockWritableCustomer(ctx context.Context, txq *store.Queries, id int32) (store.LockCustomerRow, error) {
 	locked, err := txq.LockCustomer(ctx, id)
-	if err != nil || locked.MergedIntoCustomerID == nil {
+	if err != nil {
 		return locked, err
+	}
+	if locked.AnonymisedAt != nil {
+		return locked, customerAnonymised(*locked.AnonymisedAt)
+	}
+	if locked.MergedIntoCustomerID == nil {
+		return locked, nil
 	}
 	// Read, not locked, as the merge ladder's own merge_already_merged reads
 	// it: the refusal only names it, and the marker's foreign key guarantees
@@ -128,16 +163,25 @@ func lockWritableCustomer(ctx context.Context, txq *store.Queries, id int32) (st
 	return locked, customerMerged(into.CustomerNumber, into.Name)
 }
 
-// refuseMergedAway is the same refusal read on the pool, before a write gets
-// as far as its lock, for the writes that would otherwise answer something
+// refuseReadOnlyCustomer is the same refusal read on the pool, before a write
+// gets as far as its lock, for the writes that would otherwise answer something
 // else first or do something costly before it: an entry, an association or a
 // follow-up of a merged-away customer moved with the merge, so looking it up
 // answers 404; and a Peppol lookup or a registry refresh would ask the network
 // first. It answers the error lockWritableCustomer would, or nil — for a
-// customer that is not merged away and equally for one that does not exist,
-// whose 404 is the caller's to give. Only the lock decides a race; this is the
-// answer when there is none.
-func refuseMergedAway(ctx context.Context, q *store.Queries, id int32) error {
+// customer that takes writes and equally for one that does not exist, whose 404
+// is the caller's to give. Only the lock decides a race; this is the answer
+// when there is none.
+func refuseReadOnlyCustomer(ctx context.Context, q *store.Queries, id int32) error {
+	at, err := q.CustomerAnonymisedAt(ctx, id)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return nil
+	case err != nil:
+		return fmt.Errorf("customers: read the anonymisation of %d: %w", id, err)
+	case at != nil:
+		return customerAnonymised(*at)
+	}
 	rows, err := q.MergedIntoForCustomers(ctx, []int32{id})
 	if err != nil {
 		return fmt.Errorf("customers: read merge marker of %d: %w", id, err)
@@ -183,8 +227,9 @@ func customerTypePhrase(customerType string) string {
 
 // mergeRefusal is design D2's ladder after the 404s, read from the two rows
 // under their locks, in its order: the same customer twice, two types, an
-// archived survivor, an absorbed customer merged away before, then the
-// survivor's stale revision. nil, nil lets the merge go ahead.
+// archived survivor, an absorbed customer that was anonymised, an absorbed
+// customer merged away before, then the survivor's stale revision. nil, nil
+// lets the merge go ahead.
 func mergeRefusal(ctx context.Context, txq *store.Queries, survivor, absorbed store.CustomerForMergeRow, expected *int32) (*gen.CustomerConflictProblem, error) {
 	switch {
 	case survivor.ID == absorbed.ID:
@@ -199,6 +244,10 @@ func mergeRefusal(ctx context.Context, txq *store.Queries, survivor, absorbed st
 		return mergeConflict("Customer is archived", "merge_into_archived", fmt.Sprintf(
 			"%s is archived. Restore it before merging another customer into it.",
 			customerLabel(survivor.CustomerNumber, survivor.Name))), nil
+	case absorbed.AnonymisedAt != nil:
+		// An anonymised customer is read-only (customers GDPR design D4), and a
+		// merge writes it; there is nothing of a person left in it to fold in.
+		return &customerAnonymised(*absorbed.AnonymisedAt).problem, nil
 	case absorbed.MergedIntoCustomerID != nil:
 		// The marker's foreign key guarantees the row exists; it is read, not
 		// locked — the refusal only names it.

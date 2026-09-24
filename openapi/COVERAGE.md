@@ -43,11 +43,12 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/identity/account` (putIdentityAccount)
 - `PUT /api/v1/identity/scim/v2/Users/{id}` (putIdentityScimV2UsersById)
 
-## customers (35 uncovered)
+## customers (37 uncovered)
 
 - `DELETE /api/v1/customers/groups/{groupId}` (deleteCustomersGroupsByGroupId)
 - `DELETE /api/v1/customers/tags/{tagId}` (deleteCustomersTagsByTagId)
 - `DELETE /api/v1/customers/{id}/addresses/{addressId}` (deleteCustomersByIdAddressesByAddressId)
+- `DELETE /api/v1/customers/{id}/anonymisation` (deleteCustomersByIdAnonymisation)
 - `DELETE /api/v1/customers/{id}/timeline/{entryId}/follow-up/done` (deleteCustomersByIdTimelineByEntryIdFollowUpDone)
 - `GET /api/v1/customers/assignable-users` (getCustomersAssignableUsers)
 - `GET /api/v1/customers/export` (getCustomersExport)
@@ -74,6 +75,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/customers/groups/{groupId}` (putCustomersGroupsByGroupId)
 - `PUT /api/v1/customers/tags/{tagId}` (putCustomersTagsByTagId)
 - `PUT /api/v1/customers/{id}/addresses/{addressId}` (putCustomersByIdAddressesByAddressId)
+- `PUT /api/v1/customers/{id}/anonymisation` (putCustomersByIdAnonymisation)
 - `PUT /api/v1/customers/{id}/billing-profile` (putCustomersByIdBillingProfile)
 - `PUT /api/v1/customers/{id}/contact-info` (putCustomersByIdContactInfo)
 - `PUT /api/v1/customers/{id}/group` (putCustomersByIdGroup)
@@ -239,4 +241,4 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/expenses/rates/{id}` (putExpensesRatesById)
 - `PUT /api/v1/expenses/settings` (putExpensesSettings)
 
-Total: 213 of 348 operations have no recorded exchange.
+Total: 215 of 350 operations have no recorded exchange.

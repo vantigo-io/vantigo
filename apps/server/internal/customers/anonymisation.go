@@ -1,0 +1,258 @@
+package customers
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
+	"github.com/vantigo-io/vantigo/server/internal/customers/store"
+	"github.com/vantigo-io/vantigo/server/internal/db"
+)
+
+// This file is a private person's anonymisation (customers GDPR design D4):
+// PUT and DELETE /customers/{id}/anonymisation, which put it on a day a person
+// chose and take it off again, what else takes it off, and — from
+// anonymiseCustomer down, run by the worker in anonymisation_worker.go — the
+// anonymisation itself. There is no default day anywhere in it: Norwegian
+// bookkeeping rules keep accounting material for years after the fiscal year,
+// and the person scheduling knows what was invoiced; the module does not.
+
+// errAnonymisationRefused aborts a scheduling transaction on a refusal read
+// under the lock; the body travels beside it, as errMergeRefused's does.
+var errAnonymisationRefused = errors.New("customers: anonymisation refused")
+
+// personalDataCustomerActive is the refusal for a customer that is not
+// archived (design D4): an ongoing relationship is not anonymised out from
+// under itself, so the relationship is ended first, deliberately, by archiving.
+func personalDataCustomerActive(number int64, name, status string) *gen.CustomerConflictProblem {
+	return mergeConflict("Customer is not archived", "personal_data_customer_active", fmt.Sprintf(
+		"%s is %s. Archive it before scheduling its anonymisation: an ongoing relationship is not anonymised out from under it.",
+		customerLabel(number, name), status))
+}
+
+// scheduleRefusal is design D4's refusals after the read-only one, in order:
+// a business, then a customer that is not archived. nil lets the schedule go
+// ahead.
+func scheduleRefusal(number int64, name, customerType, status string) *gen.CustomerConflictProblem {
+	switch {
+	case customerType != "person":
+		return personalDataNotAPerson(number, name)
+	case status != "archived":
+		return personalDataCustomerActive(number, name, status)
+	}
+	return nil
+}
+
+// validateAnonymiseOn is the body's one field: a yyyy-MM-dd day, parsed the way
+// every date of this module is (parseISODate), today in UTC or later. Today is
+// allowed — the worker takes it on its next cycle — and a day in the past is
+// not: it would read as "already due" to a person who meant something else.
+func validateAnonymiseOn(raw string, now time.Time) (time.Time, string) {
+	on, err := parseISODate(raw)
+	if err != nil {
+		return time.Time{}, "AnonymiseOn must be an ISO date (yyyy-MM-dd)"
+	}
+	if on.Before(civilDate(now)) {
+		return time.Time{}, "An anonymisation date cannot be in the past"
+	}
+	return on, ""
+}
+
+// customerAfterWrite is the customer as GET /customers/{id} answers it, read
+// and decorated from the pool once a write has committed — never inside the
+// transaction, since decorating asks the user directory.
+func (s *server) customerAfterWrite(ctx context.Context, id int32) (gen.SafeCustomerResponse, error) {
+	q := store.New(s.deps.Pool)
+	row, err := q.GetCustomer(ctx, id)
+	if err != nil {
+		return gen.SafeCustomerResponse{}, fmt.Errorf("customers: read customer %d: %w", id, err)
+	}
+	summary, err := q.CustomerTimelineSummary(ctx, id)
+	if err != nil {
+		return gen.SafeCustomerResponse{}, fmt.Errorf("customers: timeline summary: %w", err)
+	}
+	customer := fromCustomerRow(row, summary)
+	dec, err := s.decorate(ctx, q, customer)
+	if err != nil {
+		return gen.SafeCustomerResponse{}, err
+	}
+	return safeCustomerResponse(customer, s.hasPermission(ctx, legalIdentityView), dec), nil
+}
+
+// cancelAnonymisationSchedule calls a schedule off as part of another write
+// that takes the customer out of what may be anonymised — a restore
+// (writeCustomerCore) or a change of type away from person (customer_type.go)
+// — in that write's transaction, under the lock it already holds, and records
+// it (design D4, this plan's reading): left in place, a date would fire the
+// night the customer was archived again, months after anybody meant it. The
+// caller's own UPDATE advanced the revision; DropCustomerAnonymiseOn does not
+// advance it twice. Nothing scheduled, nothing happens.
+func cancelAnonymisationSchedule(ctx context.Context, txq *store.Queries, id int32, locked store.LockCustomerRow, now time.Time, act actor) error {
+	if !locked.AnonymiseOn.Valid {
+		return nil
+	}
+	if err := txq.DropCustomerAnonymiseOn(ctx, id); err != nil {
+		return fmt.Errorf("call off the anonymisation of %d: %w", id, err)
+	}
+	return recordAnonymisationCancelled(ctx, txq, now, id, locked.AnonymiseOn.Time, act.Kind, act.Display, act.UserID)
+}
+
+// PutCustomersByIdAnonymisation Schedule a private person's anonymisation
+// (PUT /api/v1/customers/{id}/anonymisation)
+//
+// Order: (1) the day, 400 before any database access; (2) the customer on the
+// pool, its 404, and — answered there, before the actor costs a directory call
+// — a business, a customer that is not archived, and the day already
+// scheduled; a read-only customer's refusal is left to the lock, which words
+// it; (3) the actor; (4) the transaction: the lock and the read-only refusal,
+// the two refusals again under it, the no-op again, the write and the event;
+// (5) the customer, read after commit.
+func (s *server) PutCustomersByIdAnonymisation(ctx context.Context, req gen.PutCustomersByIdAnonymisationRequestObject) (gen.PutCustomersByIdAnonymisationResponseObject, error) {
+	raw := ""
+	if req.Body != nil {
+		raw = req.Body.AnonymiseOn
+	}
+	on, msg := validateAnonymiseOn(raw, s.deps.Clock())
+	if msg != "" {
+		return gen.PutCustomersByIdAnonymisation400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid anonymisation",
+			map[string][]string{"anonymiseOn": {msg}})), nil
+	}
+
+	current, err := store.New(s.deps.Pool).CustomerForPersonalData(ctx, req.Id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return gen.PutCustomersByIdAnonymisation404Response{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("customers: get customer: %w", err)
+	}
+	if current.AnonymisedAt == nil && current.MergedIntoCustomerID == nil {
+		if problem := scheduleRefusal(current.CustomerNumber, current.Name, current.Type, current.Status); problem != nil {
+			return gen.PutCustomersByIdAnonymisation409ApplicationProblemPlusJSONResponse(*problem), nil
+		}
+		if current.AnonymiseOn.Valid && current.AnonymiseOn.Time.Equal(on) {
+			return s.putAnonymisationAnswer(ctx, req.Id)
+		}
+	}
+
+	act, err := s.actorFor(ctx, generatedFallbackActor)
+	if err != nil {
+		return nil, fmt.Errorf("customers: resolve actor: %w", err)
+	}
+	now := s.deps.Clock()
+	var refusal *gen.CustomerConflictProblem
+	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		txq := store.New(tx)
+		locked, err := lockWritableCustomer(ctx, txq, req.Id)
+		if err != nil {
+			return err
+		}
+		if refusal = scheduleRefusal(current.CustomerNumber, current.Name, locked.Type, locked.Status); refusal != nil {
+			return errAnonymisationRefused
+		}
+		var previous *time.Time
+		if locked.AnonymiseOn.Valid {
+			if locked.AnonymiseOn.Time.Equal(on) {
+				return nil
+			}
+			was := locked.AnonymiseOn.Time
+			previous = &was
+		}
+		if err := txq.SetCustomerAnonymiseOn(ctx, store.SetCustomerAnonymiseOnParams{
+			ID: req.Id, AnonymiseOn: pgtype.Date{Time: on, Valid: true}, Now: now,
+		}); err != nil {
+			return err
+		}
+		return recordAnonymisationScheduled(ctx, txq, now, req.Id, on, previous, act.Kind, act.Display, act.UserID)
+	})
+	switch {
+	case isReadOnlyCustomer(err):
+		return gen.PutCustomersByIdAnonymisation409ApplicationProblemPlusJSONResponse(readOnlyProblem(err)), nil
+	case errors.Is(err, errAnonymisationRefused):
+		return gen.PutCustomersByIdAnonymisation409ApplicationProblemPlusJSONResponse(*refusal), nil
+	case errors.Is(err, pgx.ErrNoRows):
+		return gen.PutCustomersByIdAnonymisation404Response{}, nil
+	case err != nil:
+		return nil, fmt.Errorf("customers: schedule the anonymisation of %d: %w", req.Id, err)
+	}
+	return s.putAnonymisationAnswer(ctx, req.Id)
+}
+
+func (s *server) putAnonymisationAnswer(ctx context.Context, id int32) (gen.PutCustomersByIdAnonymisationResponseObject, error) {
+	answer, err := s.customerAfterWrite(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return gen.PutCustomersByIdAnonymisation200JSONResponse(answer), nil
+}
+
+// DeleteCustomersByIdAnonymisation Cancel a private person's anonymisation
+// (DELETE /api/v1/customers/{id}/anonymisation)
+//
+// Order: (1) the customer on the pool, its 404, an anonymised one's 409, and
+// nothing scheduled — answered as it is, before the actor; (2) the actor; (3)
+// under the lock, the same two again, the write and the event. It takes
+// LockCustomer, not lockWritableCustomer: calling a schedule off is the one
+// write a merged-away customer takes, since one made before its merge would
+// otherwise be irrevocable — and the merge refusal is the only thing
+// lockWritableCustomer would add besides the anonymised one asked here.
+func (s *server) DeleteCustomersByIdAnonymisation(ctx context.Context, req gen.DeleteCustomersByIdAnonymisationRequestObject) (gen.DeleteCustomersByIdAnonymisationResponseObject, error) {
+	current, err := store.New(s.deps.Pool).CustomerForPersonalData(ctx, req.Id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return gen.DeleteCustomersByIdAnonymisation404Response{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("customers: get customer: %w", err)
+	}
+	if current.AnonymisedAt != nil {
+		return gen.DeleteCustomersByIdAnonymisation409ApplicationProblemPlusJSONResponse(customerAnonymised(*current.AnonymisedAt).problem), nil
+	}
+	if !current.AnonymiseOn.Valid {
+		return s.deleteAnonymisationAnswer(ctx, req.Id)
+	}
+
+	act, err := s.actorFor(ctx, generatedFallbackActor)
+	if err != nil {
+		return nil, fmt.Errorf("customers: resolve actor: %w", err)
+	}
+	now := s.deps.Clock()
+	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		txq := store.New(tx)
+		locked, err := txq.LockCustomer(ctx, req.Id)
+		if err != nil {
+			return err
+		}
+		if locked.AnonymisedAt != nil {
+			return customerAnonymised(*locked.AnonymisedAt)
+		}
+		if !locked.AnonymiseOn.Valid {
+			return nil
+		}
+		if err := txq.SetCustomerAnonymiseOn(ctx, store.SetCustomerAnonymiseOnParams{ID: req.Id, Now: now}); err != nil {
+			return err
+		}
+		return recordAnonymisationCancelled(ctx, txq, now, req.Id, locked.AnonymiseOn.Time, act.Kind, act.Display, act.UserID)
+	})
+	switch {
+	case isReadOnlyCustomer(err):
+		return gen.DeleteCustomersByIdAnonymisation409ApplicationProblemPlusJSONResponse(readOnlyProblem(err)), nil
+	case errors.Is(err, pgx.ErrNoRows):
+		return gen.DeleteCustomersByIdAnonymisation404Response{}, nil
+	case err != nil:
+		return nil, fmt.Errorf("customers: cancel the anonymisation of %d: %w", req.Id, err)
+	}
+	return s.deleteAnonymisationAnswer(ctx, req.Id)
+}
+
+func (s *server) deleteAnonymisationAnswer(ctx context.Context, id int32) (gen.DeleteCustomersByIdAnonymisationResponseObject, error) {
+	answer, err := s.customerAfterWrite(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return gen.DeleteCustomersByIdAnonymisation200JSONResponse(answer), nil
+}
