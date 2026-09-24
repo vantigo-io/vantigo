@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -63,13 +64,19 @@ func personsConversation(t *testing.T, h *modtest.Harness, customerID int32, att
 // TestCustomerPersonalData_ExportsThePersonsCorrespondence is communications'
 // section of a private person's export (customers GDPR design D2): each
 // conversation about them with its subject and dates, each message's
-// direction, date and text, each attachment's name — and nothing of anybody
-// else's. A customer with no conversation has no section at all.
+// direction, date and body — the HTML one too, which is all an HTML-only
+// message has — each attachment's name, and nothing of anybody else's. A
+// customer with no conversation has no section at all.
 func TestCustomerPersonalData_ExportsThePersonsCorrespondence(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	fx := personsConversation(t, h, 1001, "objects/"+uuid.NewString()+".txt")
 	personsConversation(t, h, 1002, "")
+	// A reply sent with only htmlBody, which validateSubjectAndBody accepts.
+	h.Exec(t, `INSERT INTO communications.conversation_messages
+		(id, conversation_id, direction, participant_id, html_body, occurred_at, created_at)
+		VALUES ($1, $2, 'outbound', $3, '<p>Vi kommer i morgen.</p>', $4, $4)`,
+		uuid.New(), fx.conversationID, fx.participantID, h.Now().Add(time.Minute))
 
 	section, err := personalDataOf(t, h).ExportCustomerData(context.Background(), 1001)
 	if err != nil {
@@ -86,7 +93,8 @@ func TestCustomerPersonalData_ExportsThePersonsCorrespondence(t *testing.T) {
 			Status   string    `json:"status"`
 			Messages []struct {
 				Direction   string   `json:"direction"`
-				TextBody    string   `json:"textBody"`
+				TextBody    *string  `json:"textBody"`
+				HTMLBody    *string  `json:"htmlBody"`
 				Attachments []string `json:"attachments"`
 			} `json:"messages"`
 		} `json:"conversations"`
@@ -98,9 +106,16 @@ func TestCustomerPersonalData_ExportsThePersonsCorrespondence(t *testing.T) {
 		t.Fatalf("conversations = %s, want customer 1001's one", body)
 	}
 	messages := got.Conversations[0].Messages
-	if len(messages) != 1 || messages[0].Direction != "outbound" || messages[0].TextBody != "Hei, strømmen er borte igjen." ||
-		!slices.Equal(messages[0].Attachments, []string{"a.txt"}) {
-		t.Errorf("messages = %+v, want the one message with its text and attachment name", messages)
+	if len(messages) != 2 {
+		t.Fatalf("messages = %s, want the conversation's two", body)
+	}
+	if first := messages[0]; first.Direction != "outbound" || first.TextBody == nil || *first.TextBody != "Hei, strømmen er borte igjen." ||
+		first.HTMLBody != nil || !slices.Equal(first.Attachments, []string{"a.txt"}) {
+		t.Errorf("first message = %s, want its text, no HTML, and its attachment name", body)
+	}
+	if second := messages[1]; second.TextBody != nil || second.HTMLBody == nil || *second.HTMLBody != "<p>Vi kommer i morgen.</p>" ||
+		len(second.Attachments) != 0 {
+		t.Errorf("the HTML-only message = %s, want its htmlBody and no textBody", body)
 	}
 
 	none, err := personalDataOf(t, h).ExportCustomerData(context.Background(), 1003)
@@ -112,8 +127,9 @@ func TestCustomerPersonalData_ExportsThePersonsCorrespondence(t *testing.T) {
 // TestCustomerPersonalData_ErasesThroughTheCleanupLedgerInsideTheCallersTransaction
 // is the anonymisation's half (customers GDPR design D2): the person's
 // conversations and every row under them go in retention's own order — the
-// event before the delivery it names — the attachment's object is queued on the
-// cleanup ledger, never deleted here, and a suggestion or candidate row naming
+// event before the delivery it names — the attachment's and the staged upload's
+// objects are queued on the cleanup ledger, never deleted here, and a
+// suggestion or candidate row naming
 // the person on somebody else's conversation goes too. Rolled back, nothing
 // went; run again, it finds nothing.
 func TestCustomerPersonalData_ErasesThroughTheCleanupLedgerInsideTheCallersTransaction(t *testing.T) {
@@ -126,6 +142,14 @@ func TestCustomerPersonalData_ErasesThroughTheCleanupLedgerInsideTheCallersTrans
 	           SET suggested_customer_id = 1001, suggested_customer_confidence = 0.9, suggested_customer_reasoning = 'Kari skrev fra samme adresse'
 	           WHERE id = $1`, other.conversationID)
 	insertCandidate(t, h, other.conversationID.String(), 1001)
+	// A clean upload staged on the person's conversation: its row cascades
+	// with the conversation, so its object must reach the ledger first.
+	staged := "staged-attachments/" + uuid.NewString() + "/a.bin"
+	h.Exec(t, `INSERT INTO communications.attachment_uploads
+		(id, conversation_id, uploaded_by_user_id, file_name, content_type, size_bytes, content_hash,
+		 storage_key, is_inline, idempotency_key, expires_at, created_at)
+		VALUES ($1, $2, $3, 'a.bin', 'application/octet-stream', 2, 'hash', $4, false, $5, $6, $7)`,
+		uuid.New(), fx.conversationID, uuid.New(), staged, uuid.NewString(), h.Now().Add(time.Hour), h.Now())
 
 	if erased := eraseCommunicationsCustomer(t, h, 1001, false); len(erased) != 5 {
 		t.Fatalf("EraseCustomerData = %+v, want the five kinds", erased)
@@ -138,7 +162,7 @@ func TestCustomerPersonalData_ErasesThroughTheCleanupLedgerInsideTheCallersTrans
 	want := []contracts.ErasedData{
 		{Kind: "communications.conversations", Count: 1},
 		{Kind: "communications.messages", Count: 1},
-		{Kind: "communications.attachments", Count: 1},
+		{Kind: "communications.objects", Count: 2},
 		{Kind: "communications.conversationSuggestions", Count: 1},
 		{Kind: "communications.conversationCandidates", Count: 1},
 	}
@@ -156,8 +180,10 @@ func TestCustomerPersonalData_ErasesThroughTheCleanupLedgerInsideTheCallersTrans
 			t.Errorf("communications.%s still holds %s", table, id)
 		}
 	}
-	if n := h.Count(t, `SELECT count(*) FROM communications.attachment_cleanup_records WHERE storage_key = $1 AND status = 'pending'`, key); n != 1 {
-		t.Errorf("pending cleanup records for the attachment = %d, want 1: its object goes through the ledger", n)
+	for what, k := range map[string]string{"the attachment": key, "the staged upload": staged} {
+		if n := h.Count(t, `SELECT count(*) FROM communications.attachment_cleanup_records WHERE storage_key = $1 AND status = 'pending'`, k); n != 1 {
+			t.Errorf("pending cleanup records for %s = %d, want 1: its object goes through the ledger", what, n)
+		}
 	}
 	if n := h.Count(t, `SELECT count(*) FROM communications.conversations
 	                     WHERE id = $1 AND customer_id = 1002 AND suggested_customer_id IS NULL

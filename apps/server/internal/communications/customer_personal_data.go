@@ -16,11 +16,17 @@ import (
 )
 
 // The five kinds a person's anonymisation reports from this module, in the
-// order it erases them.
+// order it reports them.
+//
+// personalDataKindObjects counts every object key the erase queued for
+// deletion on the cleanup ledger — message attachments, raw payloads and staged
+// uploads alike — not message_attachments rows. It counts each
+// queueObjectForDeletion call, one that wrote nothing because a record for the
+// key already existed included.
 const (
 	personalDataKindConversations = "communications.conversations"
 	personalDataKindMessages      = "communications.messages"
-	personalDataKindObjects       = "communications.attachments"
+	personalDataKindObjects       = "communications.objects"
 	personalDataKindSuggestions   = "communications.conversationSuggestions"
 	personalDataKindCandidates    = "communications.conversationCandidates"
 )
@@ -64,13 +70,15 @@ type personalDataMessage struct {
 	Subject     *string   `json:"subject,omitempty"`
 	OccurredAt  time.Time `json:"occurredAt"`
 	TextBody    *string   `json:"textBody,omitempty"`
+	HTMLBody    *string   `json:"htmlBody,omitempty"`
 	Attachments []string  `json:"attachments"`
 }
 
 // ExportCustomerData reads the three statements in one read-only snapshot, so
 // a message written between them can never show without its conversation, and
-// answers nil for a customer with no conversation. The HTML bodies are left
-// out: the text body is the message, and the HTML is the same words dressed.
+// answers nil for a customer with no conversation. Both bodies go in, each when
+// present: a message may carry either or both (validateSubjectAndBody asks for
+// one of them), and an HTML-only letter's words are only in its HTML.
 func (p *customerPersonalData) ExportCustomerData(ctx context.Context, customerID int32) (any, error) {
 	var (
 		conversations []store.CustomerConversationsForExportRow
@@ -107,7 +115,7 @@ func (p *customerPersonalData) ExportCustomerData(ctx context.Context, customerI
 			files = []string{}
 		}
 		byConversation[m.ConversationID] = append(byConversation[m.ConversationID], personalDataMessage{
-			Direction: m.Direction, Subject: m.Subject, OccurredAt: m.OccurredAt, TextBody: m.TextBody, Attachments: files,
+			Direction: m.Direction, Subject: m.Subject, OccurredAt: m.OccurredAt, TextBody: m.TextBody, HTMLBody: m.HtmlBody, Attachments: files,
 		})
 	}
 	section := personalDataSection{Conversations: make([]personalDataConversation, 0, len(conversations))}
