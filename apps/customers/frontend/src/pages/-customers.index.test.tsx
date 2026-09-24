@@ -133,6 +133,8 @@ describe("CustomersPage", () => {
       fetchMock.mock.calls.find(([input]) => String(input).startsWith("/api/v1/customers/export"))?.[0],
     );
     expect(exportUrl).toBe("/api/v1/customers/export?search=fjord&status=archived&sortBy=name&sortDirection=desc");
+    // The object URL is let go once the browser has the file.
+    await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:customers"));
     click.mockRestore();
   });
 
@@ -177,8 +179,16 @@ describe("CustomersPage", () => {
     expect(screen.queryByRole("button", { name: "Import" })).not.toBeInTheDocument();
     cleanup();
 
-    renderPage({ canExport: true, canImport: true });
+    // Each on its own: one capability must never switch on the other's button.
+    renderPage({ canExport: true });
+    await screen.findByText("Equinor");
+    expect(screen.getByRole("button", { name: "Export" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Import" })).not.toBeInTheDocument();
+    cleanup();
+
+    renderPage({ canImport: true });
     await userEvent.click(await screen.findByRole("button", { name: "Import" }));
+    expect(screen.queryByRole("button", { name: "Export" })).not.toBeInTheDocument();
     expect(await screen.findByRole("dialog")).toHaveTextContent("Import customers");
   });
 

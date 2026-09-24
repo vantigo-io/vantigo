@@ -123,11 +123,13 @@ export const saveCsv = ({ blob, fileName }: CsvDownload): void => {
  * Sends the file to the import: one part named `file`, the `Content-Type` left
  * to the browser so the multipart boundary is its own. `dryRun: true` keeps
  * nothing. A file the server refuses as a whole is an `ApiValidationError`
- * whose `fields.file` says why.
+ * whose `fields.file` says why; a second import while one runs is a 409.
+ * `signal` calls off a check nobody waits for any more — the server runs one
+ * import at a time, so an abandoned one would refuse the person's next check.
  */
 export const importCustomers = async (
   file: File,
-  options: { dryRun: boolean; allowDuplicateIdentity: boolean },
+  options: { dryRun: boolean; allowDuplicateIdentity: boolean; signal?: AbortSignal },
 ): Promise<CustomerImportResult> => {
   const form = new FormData();
   form.append("file", file, file.name);
@@ -138,6 +140,7 @@ export const importCustomers = async (
   const raw = await request<RawCustomerImportResult>(`/api/v1/customers/import?${query}`, {
     method: "POST",
     body: form,
+    signal: options.signal,
   });
   return { ...raw, errors: raw.errors.map((error) => ({ ...error, column: error.column ?? null })) };
 };

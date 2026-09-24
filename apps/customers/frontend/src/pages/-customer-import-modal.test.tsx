@@ -76,6 +76,20 @@ const renderModal = () => {
   return { invalidate };
 };
 
+/** The figure shown under `label`: the counts are labelled numbers, not a sentence. */
+const figure = (label: string) => screen.getByText(label).nextElementSibling;
+const checkShown = () => screen.findByText("Would be created");
+const importShown = () => screen.findByText("Created");
+
+const problem = (status: number, title: string, detail: string) =>
+  new Response(JSON.stringify({ title, status, detail }), {
+    status,
+    headers: { "Content-Type": "application/problem+json" },
+  });
+// Literally the server's body for a second import while one runs.
+const alreadyRunning = () =>
+  problem(409, "An import is already running", "Another customer import is running. Try again once it has finished.");
+
 const chooseFile = async (file = new File([FILE_TEXT], "kunder.csv", { type: "text/csv" })) =>
   userEvent.upload(screen.getByLabelText("Choose CSV file"), file);
 
@@ -107,11 +121,13 @@ describe("CustomerImportModal", () => {
     expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: "Check" }));
 
-    expect(
-      await screen.findByText("3 rows — 2 would be created, 0 would be updated, 1 have errors"),
-    ).toBeInTheDocument();
+    await checkShown();
+    expect(figure("Rows")).toHaveTextContent("3");
+    expect(figure("Would be created")).toHaveTextContent("2");
+    expect(figure("Would be updated")).toHaveTextContent("0");
+    expect(figure("Have errors")).toHaveTextContent("1");
     // The result is announced, and the table says what it lists.
-    expect(screen.getByRole("status")).toHaveTextContent("2 would be created");
+    expect(screen.getByRole("status")).toHaveTextContent("Would be created2");
     const errorRow = within(screen.getByRole("table", { name: "Problems in the file, by row" }))
       .getByText(EMAIL_ERROR)
       .closest("tr") as HTMLElement;
@@ -122,7 +138,9 @@ describe("CustomerImportModal", () => {
     expect(invalidate).not.toHaveBeenCalled();
 
     await userEvent.click(screen.getByRole("button", { name: "Import" }));
-    expect(await screen.findByText("3 rows — 2 created, 0 updated, 1 failed")).toBeInTheDocument();
+    await importShown();
+    expect(figure("Created")).toHaveTextContent("2");
+    expect(figure("Failed")).toHaveTextContent("1");
     expect(fetchMock.mock.calls.filter(([input]) => String(input).includes("dryRun=false"))).toHaveLength(1);
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["customers"] });
 
@@ -132,7 +150,7 @@ describe("CustomerImportModal", () => {
     expect(fileName).toBe("kunder-failed-rows.csv");
     // Blob.text() strips a leading BOM; the file must keep it, so the bytes are decoded with it.
     const text = new TextDecoder("utf-8", { ignoreBOM: true }).decode(await blob.arrayBuffer());
-    expect(text).toBe(`\ufeffcustomerNumber;name;email;error\r\n1001;Gammel AS;nope;email: ${EMAIL_ERROR}\r\n`);
+    expect(text).toBe(`\ufefferror;customerNumber;name;email\r\nemail: ${EMAIL_ERROR};1001;Gammel AS;nope\r\n`);
   });
 
   it("keeps Import disabled when no row of the file could be imported, and shows a row-level error without a column", async () => {
@@ -176,7 +194,7 @@ describe("CustomerImportModal", () => {
 
     await chooseFile();
     await userEvent.click(screen.getByRole("button", { name: "Check" }));
-    await screen.findByText("3 rows — 2 would be created, 0 would be updated, 1 have errors");
+    await checkShown();
     await userEvent.click(screen.getByRole("button", { name: "Import" }));
 
     expect(await screen.findByText("The file could not be imported")).toBeInTheDocument();
@@ -226,7 +244,7 @@ describe("CustomerImportModal", () => {
 
     await chooseFile();
     await userEvent.click(screen.getByRole("button", { name: "Check" }));
-    await screen.findByText("3 rows — 2 would be created, 0 would be updated, 1 have errors");
+    await checkShown();
     await userEvent.click(screen.getByRole("button", { name: "Import" }));
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled());
@@ -241,20 +259,20 @@ describe("CustomerImportModal", () => {
     const file = new File([FILE_TEXT], "kunder.csv", { type: "text/csv" });
     await chooseFile(file);
     await userEvent.click(screen.getByRole("button", { name: "Check" }));
-    await screen.findByText("3 rows — 2 would be created, 0 would be updated, 1 have errors");
+    await checkShown();
 
     // The file on disk changed or went away after the check: Chrome's NotReadableError.
     const gone = () => Promise.reject(new DOMException("The file could not be read", "NotReadableError"));
     Object.assign(file, { text: gone, arrayBuffer: gone, stream: gone });
     await userEvent.click(screen.getByRole("button", { name: "Import" }));
-    await screen.findByText("3 rows — 2 created, 0 updated, 1 failed");
+    await importShown();
     await userEvent.click(screen.getByRole("button", { name: "Download failed rows" }));
 
     await waitFor(() => expect(saveCsv).toHaveBeenCalled());
     const text = new TextDecoder("utf-8", { ignoreBOM: true }).decode(
       await vi.mocked(saveCsv).mock.calls[0][0].blob.arrayBuffer(),
     );
-    expect(text).toBe(`\ufeffcustomerNumber;name;email;error\r\n1001;Gammel AS;nope;email: ${EMAIL_ERROR}\r\n`);
+    expect(text).toBe(`\ufefferror;customerNumber;name;email\r\nemail: ${EMAIL_ERROR};1001;Gammel AS;nope\r\n`);
     // And the real run sent what was checked.
     const realCall = fetchMock.mock.calls.find(([input]) => String(input).includes("dryRun=false"));
     const [, init] = realCall as unknown as [string, RequestInit];
@@ -281,7 +299,7 @@ describe("CustomerImportModal", () => {
     await userEvent.click(screen.getByLabelText("Allow a customer to share a legal identity with another customer"));
     await userEvent.click(screen.getByRole("button", { name: "Check" }));
 
-    await screen.findByText("3 rows — 2 would be created, 0 would be updated, 1 have errors");
+    await checkShown();
     const dryCall = fetchMock.mock.calls.find(([input]) => String(input).includes("dryRun=true"));
     expect(String(dryCall?.[0])).toContain("allowDuplicateIdentity=true");
   });
@@ -294,5 +312,157 @@ describe("CustomerImportModal", () => {
 
     await waitFor(() => expect(saveCsv).toHaveBeenCalled());
     expect(vi.mocked(saveCsv).mock.calls[0][0].fileName).toBe("customers-import-template.csv");
+  });
+
+  it("says an import is already running when a check meets one", async () => {
+    stubImport({ dry: alreadyRunning() });
+    renderModal();
+
+    await chooseFile();
+    await userEvent.click(screen.getByRole("button", { name: "Check" }));
+
+    expect(await screen.findByText("An import is already running")).toBeInTheDocument();
+    expect(screen.getByText("Another customer import is running. Try again once it has finished.")).toBeInTheDocument();
+    expect(screen.queryByText("The file could not be imported")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Some rows may already have been saved/)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Check" })).toBeEnabled());
+  });
+
+  it("keeps the check when Import meets a running import, which saved nothing", async () => {
+    stubImport({ dry: json(checked), real: alreadyRunning() });
+    renderModal();
+
+    await chooseFile();
+    await userEvent.click(screen.getByRole("button", { name: "Check" }));
+    await checkShown();
+    await userEvent.click(screen.getByRole("button", { name: "Import" }));
+
+    expect(await screen.findByText("An import is already running")).toBeInTheDocument();
+    // The 409 comes before any row runs: nothing was saved, and Import can be pressed again once the other ends.
+    expect(screen.queryByText(/Some rows may already have been saved/)).not.toBeInTheDocument();
+    expect(figure("Would be created")).toHaveTextContent("2");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Import" })).toBeEnabled());
+  });
+
+  it("keeps the check and shows the server's reason when Import is refused before any row runs", async () => {
+    stubImport({
+      dry: json(checked),
+      real: json(
+        {
+          title: "Invalid import file",
+          status: 400,
+          errors: { file: ["The column 'invoiceEmail' needs the customers:billing-manage permission"] },
+        },
+        400,
+      ),
+    });
+    renderModal();
+
+    await chooseFile();
+    await userEvent.click(screen.getByRole("button", { name: "Check" }));
+    await checkShown();
+    await userEvent.click(screen.getByRole("button", { name: "Import" }));
+
+    expect(await screen.findByText(/needs the customers:billing-manage permission/)).toBeInTheDocument();
+    expect(screen.queryByText(/Some rows may already have been saved/)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Import" })).toBeEnabled());
+  });
+
+  it("says in its own words that the server could not be reached, and that rows may have been saved", async () => {
+    const fetchMock = stubImport({ dry: json(checked) });
+    const answer = fetchMock.getMockImplementation() as (input: RequestInfo | URL) => Promise<Response>;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      if (String(input).includes("dryRun=false")) throw new TypeError("Failed to fetch");
+      return answer(input);
+    });
+    renderModal();
+
+    await chooseFile();
+    await userEvent.click(screen.getByRole("button", { name: "Check" }));
+    await checkShown();
+    await userEvent.click(screen.getByRole("button", { name: "Import" }));
+
+    expect(await screen.findByText("The server could not be reached. Try again.")).toBeInTheDocument();
+    expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
+    // The request may have reached the server and run before the answer was lost.
+    expect(screen.getByText(/Some rows may already have been saved/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
+  });
+
+  it("calls off a check that a new file, the duplicate box or a close abandons", async () => {
+    const signals: AbortSignal[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.signal) signals.push(init.signal);
+        return new Promise<Response>(() => {});
+      }),
+    );
+    renderModal();
+    const check = async () => {
+      await userEvent.click(screen.getByRole("button", { name: "Check" }));
+      await waitFor(() => expect(signals.at(-1)?.aborted).toBe(false));
+    };
+
+    await chooseFile();
+    await check();
+    await chooseFile(new File([FILE_TEXT], "andre.csv", { type: "text/csv" }));
+    expect(signals).toHaveLength(1);
+    expect(signals[0].aborted).toBe(true);
+
+    await check();
+    await userEvent.click(screen.getByLabelText("Allow a customer to share a legal identity with another customer"));
+    expect(signals).toHaveLength(2);
+    expect(signals[1].aborted).toBe(true);
+
+    await check();
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(signals).toHaveLength(3);
+    expect(signals[2].aborted).toBe(true);
+  });
+
+  it("never calls off a real run, and says why it cannot be closed while it goes", async () => {
+    const fetchMock = stubImport({ dry: json(checked), real: "pending" });
+    renderModal();
+
+    await chooseFile();
+    await userEvent.click(screen.getByRole("button", { name: "Check" }));
+    await checkShown();
+    expect(document.querySelector(".mantine-Modal-close")).not.toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Import" }));
+
+    expect(
+      await screen.findByText("Importing — this window can be closed once the import has finished."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Importing");
+    expect(document.querySelector(".mantine-Modal-close")).toBeNull();
+    const realCall = fetchMock.mock.calls.find(([input]) => String(input).includes("dryRun=false"));
+    const [, init] = realCall as unknown as [string, RequestInit];
+    expect(init.signal).toBeUndefined();
+  });
+
+  it("shows the counts as numbers in the reader's own format", async () => {
+    stubImport({ dry: json({ ...checked, rows: 5000, created: 4999 }) });
+    renderModal();
+
+    await chooseFile();
+    await userEvent.click(screen.getByRole("button", { name: "Check" }));
+
+    await checkShown();
+    expect(figure("Rows")).toHaveTextContent("5,000");
+    expect(figure("Would be created")).toHaveTextContent("4,999");
+  });
+
+  it("says the template could not be downloaded, not that the file could not be imported", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => problem(500, "Internal Server Error", "Something went wrong")),
+    );
+    renderModal();
+
+    await userEvent.click(screen.getByRole("button", { name: "Download template" }));
+
+    expect(await screen.findByText("The template could not be downloaded")).toBeInTheDocument();
+    expect(screen.queryByText("The file could not be imported")).not.toBeInTheDocument();
   });
 });

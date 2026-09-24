@@ -39,30 +39,51 @@ describe("csvCell", () => {
 describe("failedRowsCsv", () => {
   const table = parseCsv("\ufeffname;email\r\nOk AS;ok@x.no\r\nFeil AS;nei\r\nKort AS\r\n");
 
-  it("keeps only the rows that failed, as they were, with an error column appended", () => {
+  it("keeps only the rows that failed, every cell as it was, behind an error column put first", () => {
     const csv = failedRowsCsv(table, [
       { row: 2, column: "email", message: "An email address must look like name@example.com, but was 'nei'" },
       { row: 3, column: null, message: "This row has 1 cells, but the header has 2" },
       { row: 2, column: "name", message: "Second problem" },
     ]);
     expect(csv).toBe(
-      "\ufeffname;email;error\r\n" +
-        "Feil AS;nei;email: An email address must look like name@example.com, but was 'nei' | name: Second problem\r\n" +
-        "Kort AS;;This row has 1 cells, but the header has 2\r\n",
+      "\ufefferror;name;email\r\n" +
+        "email: An email address must look like name@example.com, but was 'nei' | name: Second problem;Feil AS;nei\r\n" +
+        // Short stays short: a blank cell here would be a write that clears email.
+        "This row has 1 cells, but the header has 2;Kort AS\r\n",
     );
   });
 
-  it("keeps every cell of a row longer than the header, the error after the last of them", () => {
+  it("keeps every cell of a row longer than the header, so it stays exactly as much too long", () => {
     const long = parseCsv("name;email\r\nA;a@x.no;extra\r\n");
     expect(failedRowsCsv(long, [{ row: 1, column: null, message: "This row has 3 cells, but the header has 2" }])).toBe(
-      "\ufeffname;email;error\r\nA;a@x.no;extra;This row has 3 cells, but the header has 2\r\n",
+      "\ufefferror;name;email\r\nThis row has 3 cells, but the header has 2;A;a@x.no;extra\r\n",
     );
   });
 
-  it("overwrites the error column of a failed-rows file being re-run rather than adding a second", () => {
-    const rerun = parseCsv("name;error\r\nFeil AS;old problem\r\n");
-    expect(failedRowsCsv(rerun, [{ row: 1, column: "name", message: "new problem" }])).toBe(
-      "\ufeffname;error\r\nFeil AS;name: new problem\r\n",
+  it("replaces the error column of a failed-rows file being re-run rather than adding a second", () => {
+    const rerun = parseCsv("error;name\r\nold problem;Feil AS\r\nold short\r\n");
+    expect(
+      failedRowsCsv(rerun, [
+        { row: 1, column: "name", message: "new problem" },
+        { row: 2, column: null, message: "This row has 1 cells, but the header has 2" },
+      ]),
+    ).toBe("\ufefferror;name\r\nname: new problem;Feil AS\r\nThis row has 1 cells, but the header has 2\r\n");
+  });
+
+  it("moves an error column that is not first to the front, the old text of every row going with it", () => {
+    const rerun = parseCsv("name;error;email\r\nFeil AS;old problem;nei\r\nLang AS;old;a@x.no;extra\r\nKort AS\r\n");
+    expect(
+      failedRowsCsv(rerun, [
+        { row: 1, column: "email", message: "new problem" },
+        { row: 2, column: null, message: "This row has 4 cells, but the header has 3" },
+        { row: 3, column: null, message: "This row has 1 cells, but the header has 3" },
+      ]),
+    ).toBe(
+      "\ufefferror;name;email\r\n" +
+        "email: new problem;Feil AS;nei\r\n" +
+        "This row has 4 cells, but the header has 3;Lang AS;a@x.no;extra\r\n" +
+        // It never reached the old error column, so it has no old text to lose.
+        "This row has 1 cells, but the header has 3;Kort AS\r\n",
     );
   });
 });
