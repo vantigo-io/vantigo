@@ -3,7 +3,7 @@
 -- person's correspondence for their export (customers GDPR design D2,
 -- contracts.CustomerPersonalData): every conversation about the customer,
 -- oldest first, then every message of them — internal notes included, they are
--- about the person too — and every attachment's name. customer_personal_data.go
+-- about the person too — with both bodies, and every attachment's name. customer_personal_data.go
 -- reads the three in one read-only snapshot. ix_conversations_customer_id
 -- finds the conversations.
 SELECT id, subject, status, created_at, last_activity_at
@@ -12,7 +12,7 @@ WHERE customer_id = @customer_id::integer
 ORDER BY created_at, id;
 
 -- name: CustomerMessagesForExport :many
-SELECT m.id, m.conversation_id, m.direction, m.subject, m.text_body, m.occurred_at
+SELECT m.id, m.conversation_id, m.direction, m.subject, m.text_body, m.html_body, m.occurred_at
 FROM communications.conversation_messages m
 JOIN communications.conversations c ON c.id = m.conversation_id
 WHERE c.customer_id = @customer_id::integer

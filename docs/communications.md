@@ -67,7 +67,9 @@ that already lists the survivor keeps it once. See
 It also hands over and takes out what it holds about a private person —
 `contracts.CustomerPersonalData` ([module boundaries rule 9](module-boundaries.md#the-rules)).
 A person's export carries every conversation about them, with each message's
-direction, date and text body and each attachment's name (`modules.communications`).
+direction, date and body — the text body and the HTML body, each when the message has
+it, so an HTML-only message is not left empty — and each attachment's name
+(`modules.communications`).
 Their anonymisation deletes those conversations inside the customers module's
 transaction, through the retention worker's own deletes: every message and the rows
 under it in the order `message_events`' RESTRICT allows, each attachment, raw payload
@@ -75,14 +77,20 @@ and staged upload's object queued on the cleanup ledger before the rows naming i
 the cleanup worker deletes the objects after the transaction commits — and a message
 still waiting in the outbox with its job. A conversation that only suggests or lists
 the person keeps its own customer and loses the suggestion, its reasoning and the
-candidate row. See [Personal data and anonymisation](customers.md#personal-data-and-anonymisation).
+candidate row. The anonymisation reports `communications.objects` as the number of
+object keys it queued — attachments, raw payloads and staged uploads, a key already on
+the ledger counted too — not as a number of attachment rows. See
+[Personal data and anonymisation](customers.md#personal-data-and-anonymisation).
 
 What the erase does not cover, on the record: this module takes no customer lock, so a
 message written into one of the person's conversations while the erase runs goes with
 the conversation by cascade rather than through the ledger — or trips `message_events`'
 RESTRICT, which rolls the customer back and the worker retries next cycle; nothing stops
 a conversation being linked to the archived "Anonymised person" afterwards;
-`communications.suppressions` can still hold the person's address; and a customer's
+`communications.suppressions` can still hold the person's address; a conversation not
+linked to the customer (no customer, or another one) keeps the person's participant
+address, and the export does not list the addresses the person wrote from or was
+written to; and a customer's
 `customer.peppol_lookup` entries keep their `smpHost`, derived from the participant id.
 
 ## SMTP
