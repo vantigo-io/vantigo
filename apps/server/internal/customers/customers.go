@@ -759,8 +759,9 @@ type customerCore struct {
 // writeCustomerCore is the transaction body PutCustomersById and
 // PutCustomersByIdLegalIdentity share, and the one the CSV importer
 // (import.go) writes a row's name, status and identity through: the
-// customer's lock, and customer_merged for a customer merged away (customers
-// merge design D2); the duplicate check when duplicateCheck says so (a conflict returns errDuplicateIdentity
+// customer's lock, and customer_merged or customer_anonymised for a customer
+// merged away or anonymised (customers merge design D2, GDPR design D4); the
+// duplicate check when duplicateCheck says so (a conflict returns errDuplicateIdentity
 // and its body, before anything is written — no revision bump, no event); the
 // UPDATE, guarded when expectedRevision is set (pgx.ErrNoRows then means a
 // stale revision); the registry record's invalidation when the identity moved
@@ -768,15 +769,18 @@ type customerCore struct {
 // company's, so it goes in the same transaction, under the customer-row lock
 // taken first: the same lock a refresh takes first, so the two can never
 // interleave); and the events — customer.updated for a name or identity
-// change, customer.status_changed for a status change. The caller has already
+// change, customer.status_changed for a status change; and a restore's calling
+// off of an anonymisation date (customers GDPR design D4). The caller has already
 // decided the write is not a no-op and resolved act and nameHolders before
 // the transaction opened.
 func (s *server) writeCustomerCore(ctx context.Context, txq *store.Queries, id int32, customerType string, before, after customerCore, expectedRevision *int32, duplicateCheck, nameHolders bool, now time.Time, act actor) (store.UpdateCustomerRow, *gen.CustomerConflictProblem, error) {
-	// The customer's lock and the merged-away refusal first (customers merge
-	// design D2), for every caller: a status of active on a merged-away
-	// customer — PUT /customers/{id} or a CSV row — would restore a customer
-	// whose records are somebody else's now.
-	if _, err := lockWritableCustomer(ctx, txq, id); err != nil {
+	// The customer's lock and the read-only refusal first (customers merge
+	// design D2, GDPR design D4), for every caller: a status of active on a
+	// merged-away or anonymised customer — PUT /customers/{id} or a CSV row —
+	// would restore a customer whose records are somebody else's now, or put a
+	// person back into what was kept for bookkeeping.
+	locked, err := lockWritableCustomer(ctx, txq, id)
+	if err != nil {
 		return store.UpdateCustomerRow{}, nil, err
 	}
 	if duplicateCheck && after.Identity != nil {
@@ -810,6 +814,13 @@ func (s *server) writeCustomerCore(ctx context.Context, txq *store.Queries, id i
 	}
 	if before.Status != after.Status {
 		if err := recordCustomerStatusChanged(ctx, txq, now, id, before.Status, after.Status, act.Kind, act.Display, act.UserID); err != nil {
+			return store.UpdateCustomerRow{}, nil, err
+		}
+	}
+	// A customer leaving the archive takes its anonymisation date with it
+	// (customers GDPR design D4): only an archived person may be scheduled.
+	if after.Status != "archived" {
+		if err := cancelAnonymisationSchedule(ctx, txq, id, locked, now, act); err != nil {
 			return store.UpdateCustomerRow{}, nil, err
 		}
 	}
@@ -994,8 +1005,8 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 		return err
 	})
 	switch {
-	case isMergedAway(err):
-		return gen.PutCustomersById409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
+	case isReadOnlyCustomer(err):
+		return gen.PutCustomersById409ApplicationProblemPlusJSONResponse(readOnlyProblem(err)), nil
 	case errors.Is(err, errDuplicateIdentity):
 		return gen.PutCustomersById409ApplicationProblemPlusJSONResponse(*conflict), nil
 	case errors.Is(err, pgx.ErrNoRows):
@@ -1081,7 +1092,7 @@ func (s *server) DeleteCustomersById(ctx context.Context, req gen.DeleteCustomer
 		// above is archived already — by the merge, which wrote its own
 		// event — so this is the idempotent no-op the archived check above
 		// answers, not a second archive (customers merge design D2).
-		if _, err := lockWritableCustomer(ctx, txq, req.Id); isMergedAway(err) {
+		if _, err := lockWritableCustomer(ctx, txq, req.Id); isReadOnlyCustomer(err) {
 			return nil
 		} else if err != nil {
 			return err

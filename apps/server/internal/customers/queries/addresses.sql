@@ -21,7 +21,15 @@
 -- that here, under the lock a merge also takes — so a write that queued
 -- behind a merge reads the marker the merge just committed, and refuses
 -- (lockWritableCustomer, merge.go).
-SELECT id, type, legal_country, legal_id, legal_name, legal_source, legal_type, merged_into_customer_id
+--
+-- And the status and the anonymisation (customers GDPR design D4): a private
+-- person's schedule is decided under this lock — only an archived person may
+-- be scheduled, and a restore or a change of type that takes it out of that
+-- calls the schedule off in the same transaction — and an anonymised customer
+-- is read-only, which every customer-scoped write learns here, as it learns a
+-- merge (lockWritableCustomer, merge.go).
+SELECT id, type, status, legal_country, legal_id, legal_name, legal_source, legal_type, merged_into_customer_id,
+       anonymise_on, anonymised_at
 FROM customers.customers WHERE id = @id FOR NO KEY UPDATE;
 
 -- name: ListCustomerAddresses :many

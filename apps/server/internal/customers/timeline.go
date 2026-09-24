@@ -745,8 +745,8 @@ func (s *server) PostCustomersByIdTimeline(ctx context.Context, req gen.PostCust
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 		return gen.PostCustomersByIdTimeline404Response{}, nil
-	case isMergedAway(err):
-		return gen.PostCustomersByIdTimeline409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
+	case isReadOnlyCustomer(err):
+		return gen.PostCustomersByIdTimeline409ApplicationProblemPlusJSONResponse(readOnlyProblem(err)), nil
 	case err != nil:
 		return nil, fmt.Errorf("customers: create timeline entry: %w", err)
 	}
@@ -825,8 +825,8 @@ func (s *server) PutCustomersByIdTimelineByEntryId(ctx context.Context, req gen.
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Missing, perhaps because it moved with a merge of this customer: the
 		// merged-away customer's refusal is the truer answer then.
-		if merr := refuseMergedAway(ctx, q, req.Id); isMergedAway(merr) {
-			return gen.PutCustomersByIdTimelineByEntryId409ApplicationProblemPlusJSONResponse(mergedAwayProblem(merr)), nil
+		if merr := refuseReadOnlyCustomer(ctx, q, req.Id); isReadOnlyCustomer(merr) {
+			return gen.PutCustomersByIdTimelineByEntryId409ApplicationProblemPlusJSONResponse(readOnlyProblem(merr)), nil
 		} else if merr != nil {
 			return nil, merr
 		}
@@ -903,8 +903,8 @@ func (s *server) PutCustomersByIdTimelineByEntryId(ctx context.Context, req gen.
 		return insertTimelineRevisionFromEntry(ctx, txq, updated, act)
 	})
 	switch {
-	case isMergedAway(err):
-		return gen.PutCustomersByIdTimelineByEntryId409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
+	case isReadOnlyCustomer(err):
+		return gen.PutCustomersByIdTimelineByEntryId409ApplicationProblemPlusJSONResponse(readOnlyProblem(err)), nil
 	case errors.Is(err, pgx.ErrNoRows):
 		return gen.PutCustomersByIdTimelineByEntryId409ApplicationProblemPlusJSONResponse(timelineProblem(
 			timelineRevisionConflictTitle, "The timeline entry was changed by another request.")), nil
@@ -936,8 +936,8 @@ func (s *server) DeleteCustomersByIdTimelineByEntryId(ctx context.Context, req g
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Missing, perhaps because it moved with a merge of this customer: the
 		// merged-away customer's refusal is the truer answer then.
-		if merr := refuseMergedAway(ctx, q, req.Id); isMergedAway(merr) {
-			return gen.DeleteCustomersByIdTimelineByEntryId409ApplicationProblemPlusJSONResponse(mergedAwayProblem(merr)), nil
+		if merr := refuseReadOnlyCustomer(ctx, q, req.Id); isReadOnlyCustomer(merr) {
+			return gen.DeleteCustomersByIdTimelineByEntryId409ApplicationProblemPlusJSONResponse(readOnlyProblem(merr)), nil
 		} else if merr != nil {
 			return nil, merr
 		}
@@ -993,8 +993,8 @@ func (s *server) DeleteCustomersByIdTimelineByEntryId(ctx context.Context, req g
 		return insertTimelineRevisionFromEntry(ctx, txq, deleted, act)
 	})
 	switch {
-	case isMergedAway(err):
-		return gen.DeleteCustomersByIdTimelineByEntryId409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
+	case isReadOnlyCustomer(err):
+		return gen.DeleteCustomersByIdTimelineByEntryId409ApplicationProblemPlusJSONResponse(readOnlyProblem(err)), nil
 	case errors.Is(err, pgx.ErrNoRows):
 		return gen.DeleteCustomersByIdTimelineByEntryId409ApplicationProblemPlusJSONResponse(timelineProblem(
 			timelineRevisionConflictTitle, "The timeline entry was changed by another request.")), nil

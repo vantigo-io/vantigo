@@ -124,6 +124,11 @@ type CustomerAnonymisation struct {
 	AnonymisedAt *time.Time         `json:"anonymisedAt,omitempty"`
 }
 
+// CustomerAnonymisationRequest PUT /customers/{id}/anonymisation's body (customers GDPR design D4): anonymiseOn is the UTC calendar day to anonymise the customer on, yyyy-MM-dd, today or later — a plain string the module validates in its own words. There is no default: the caller chooses.
+type CustomerAnonymisationRequest struct {
+	AnonymiseOn string `json:"anonymiseOn"`
+}
+
 // CustomerAssignableUser A user who may be made a customer's owner (owner and tags design D1) — the directory's active users, capped at 20. Enough to name them in a picker and nothing more, which is all contracts.UserDirectory publishes.
 type CustomerAssignableUser struct {
 	DisplayName string             `json:"displayName"`
@@ -1011,6 +1016,9 @@ type PostCustomersByIdAddressesJSONRequestBody = CustomerAddressRequest
 // PutCustomersByIdAddressesByAddressIdJSONRequestBody defines body for PutCustomersByIdAddressesByAddressId for application/json ContentType.
 type PutCustomersByIdAddressesByAddressIdJSONRequestBody = CustomerAddressRequest
 
+// PutCustomersByIdAnonymisationJSONRequestBody defines body for PutCustomersByIdAnonymisation for application/json ContentType.
+type PutCustomersByIdAnonymisationJSONRequestBody = CustomerAnonymisationRequest
+
 // PutCustomersByIdBillingProfileJSONRequestBody defines body for PutCustomersByIdBillingProfile for application/json ContentType.
 type PutCustomersByIdBillingProfileJSONRequestBody = PutCustomerBillingProfileRequest
 
@@ -1148,6 +1156,12 @@ type ServerInterface interface {
 	// PutCustomersByIdAddressesByAddressId Replace a customer's address
 	// (PUT /api/v1/customers/{id}/addresses/{addressId})
 	PutCustomersByIdAddressesByAddressId(w http.ResponseWriter, r *http.Request, id int32, addressId int32)
+	// DeleteCustomersByIdAnonymisation Cancel a private person's anonymisation
+	// (DELETE /api/v1/customers/{id}/anonymisation)
+	DeleteCustomersByIdAnonymisation(w http.ResponseWriter, r *http.Request, id int32)
+	// PutCustomersByIdAnonymisation Schedule a private person's anonymisation
+	// (PUT /api/v1/customers/{id}/anonymisation)
+	PutCustomersByIdAnonymisation(w http.ResponseWriter, r *http.Request, id int32)
 	// GetCustomersByIdBillingProfile Get a customer's billing profile
 	// (GET /api/v1/customers/{id}/billing-profile)
 	GetCustomersByIdBillingProfile(w http.ResponseWriter, r *http.Request, id int32)
@@ -2490,6 +2504,58 @@ func (siw *ServerInterfaceWrapper) PutCustomersByIdAddressesByAddressId(w http.R
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteCustomersByIdAnonymisation operation middleware
+func (siw *ServerInterfaceWrapper) DeleteCustomersByIdAnonymisation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteCustomersByIdAnonymisation(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutCustomersByIdAnonymisation operation middleware
+func (siw *ServerInterfaceWrapper) PutCustomersByIdAnonymisation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutCustomersByIdAnonymisation(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetCustomersByIdBillingProfile operation middleware
 func (siw *ServerInterfaceWrapper) GetCustomersByIdBillingProfile(w http.ResponseWriter, r *http.Request) {
 
@@ -3516,6 +3582,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/addresses", wrapper.PostCustomersByIdAddresses)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/{id}/addresses/{addressId}", wrapper.DeleteCustomersByIdAddressesByAddressId)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/addresses/{addressId}", wrapper.PutCustomersByIdAddressesByAddressId)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/{id}/anonymisation", wrapper.DeleteCustomersByIdAnonymisation)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/anonymisation", wrapper.PutCustomersByIdAnonymisation)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/billing-profile", wrapper.GetCustomersByIdBillingProfile)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/billing-profile", wrapper.PutCustomersByIdBillingProfile)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/contact-info", wrapper.PutCustomersByIdContactInfo)
@@ -5804,6 +5872,165 @@ func (response PutCustomersByIdAddressesByAddressId409ApplicationProblemPlusJSON
 	return err
 }
 
+type DeleteCustomersByIdAnonymisationRequestObject struct {
+	Id int32 `json:"id"`
+}
+
+type DeleteCustomersByIdAnonymisationResponseObject interface {
+	VisitDeleteCustomersByIdAnonymisationResponse(w http.ResponseWriter) error
+}
+
+type DeleteCustomersByIdAnonymisation200JSONResponse SafeCustomerResponse
+
+func (response DeleteCustomersByIdAnonymisation200JSONResponse) VisitDeleteCustomersByIdAnonymisationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomersByIdAnonymisation401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteCustomersByIdAnonymisation401JSONResponse) VisitDeleteCustomersByIdAnonymisationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomersByIdAnonymisation403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteCustomersByIdAnonymisation403JSONResponse) VisitDeleteCustomersByIdAnonymisationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteCustomersByIdAnonymisation404Response struct {
+}
+
+func (response DeleteCustomersByIdAnonymisation404Response) VisitDeleteCustomersByIdAnonymisationResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteCustomersByIdAnonymisation409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response DeleteCustomersByIdAnonymisation409ApplicationProblemPlusJSONResponse) VisitDeleteCustomersByIdAnonymisationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdAnonymisationRequestObject struct {
+	Id   int32 `json:"id"`
+	Body *PutCustomersByIdAnonymisationJSONRequestBody
+}
+
+type PutCustomersByIdAnonymisationResponseObject interface {
+	VisitPutCustomersByIdAnonymisationResponse(w http.ResponseWriter) error
+}
+
+type PutCustomersByIdAnonymisation200JSONResponse SafeCustomerResponse
+
+func (response PutCustomersByIdAnonymisation200JSONResponse) VisitPutCustomersByIdAnonymisationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdAnonymisation400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutCustomersByIdAnonymisation400ApplicationProblemPlusJSONResponse) VisitPutCustomersByIdAnonymisationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdAnonymisation401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCustomersByIdAnonymisation401JSONResponse) VisitPutCustomersByIdAnonymisationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdAnonymisation403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCustomersByIdAnonymisation403JSONResponse) VisitPutCustomersByIdAnonymisationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdAnonymisation404Response struct {
+}
+
+func (response PutCustomersByIdAnonymisation404Response) VisitPutCustomersByIdAnonymisationResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutCustomersByIdAnonymisation409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PutCustomersByIdAnonymisation409ApplicationProblemPlusJSONResponse) VisitPutCustomersByIdAnonymisationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCustomersByIdBillingProfileRequestObject struct {
 	Id int32 `json:"id"`
 }
@@ -8053,6 +8280,12 @@ type StrictServerInterface interface {
 	// PutCustomersByIdAddressesByAddressId Replace a customer's address
 	// (PUT /api/v1/customers/{id}/addresses/{addressId})
 	PutCustomersByIdAddressesByAddressId(ctx context.Context, request PutCustomersByIdAddressesByAddressIdRequestObject) (PutCustomersByIdAddressesByAddressIdResponseObject, error)
+	// DeleteCustomersByIdAnonymisation Cancel a private person's anonymisation
+	// (DELETE /api/v1/customers/{id}/anonymisation)
+	DeleteCustomersByIdAnonymisation(ctx context.Context, request DeleteCustomersByIdAnonymisationRequestObject) (DeleteCustomersByIdAnonymisationResponseObject, error)
+	// PutCustomersByIdAnonymisation Schedule a private person's anonymisation
+	// (PUT /api/v1/customers/{id}/anonymisation)
+	PutCustomersByIdAnonymisation(ctx context.Context, request PutCustomersByIdAnonymisationRequestObject) (PutCustomersByIdAnonymisationResponseObject, error)
 	// GetCustomersByIdBillingProfile Get a customer's billing profile
 	// (GET /api/v1/customers/{id}/billing-profile)
 	GetCustomersByIdBillingProfile(ctx context.Context, request GetCustomersByIdBillingProfileRequestObject) (GetCustomersByIdBillingProfileResponseObject, error)
@@ -9090,6 +9323,65 @@ func (sh *strictHandler) PutCustomersByIdAddressesByAddressId(w http.ResponseWri
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutCustomersByIdAddressesByAddressIdResponseObject); ok {
 		if err := validResponse.VisitPutCustomersByIdAddressesByAddressIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteCustomersByIdAnonymisation operation middleware
+func (sh *strictHandler) DeleteCustomersByIdAnonymisation(w http.ResponseWriter, r *http.Request, id int32) {
+	var request DeleteCustomersByIdAnonymisationRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteCustomersByIdAnonymisation(ctx, request.(DeleteCustomersByIdAnonymisationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteCustomersByIdAnonymisation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteCustomersByIdAnonymisationResponseObject); ok {
+		if err := validResponse.VisitDeleteCustomersByIdAnonymisationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutCustomersByIdAnonymisation operation middleware
+func (sh *strictHandler) PutCustomersByIdAnonymisation(w http.ResponseWriter, r *http.Request, id int32) {
+	var request PutCustomersByIdAnonymisationRequestObject
+
+	request.Id = id
+
+	var body PutCustomersByIdAnonymisationJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutCustomersByIdAnonymisation(ctx, request.(PutCustomersByIdAnonymisationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutCustomersByIdAnonymisation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutCustomersByIdAnonymisationResponseObject); ok {
+		if err := validResponse.VisitPutCustomersByIdAnonymisationResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -393,8 +393,8 @@ func (s *server) PutCustomersByIdOwner(ctx context.Context, req gen.PutCustomers
 		return recordCustomerOwnerChanged(ctx, txq, now, req.Id, beforeSnapshot, afterSnapshot, act.Kind, act.Display, act.UserID)
 	})
 	switch {
-	case isMergedAway(err):
-		return gen.PutCustomersByIdOwner409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
+	case isReadOnlyCustomer(err):
+		return gen.PutCustomersByIdOwner409ApplicationProblemPlusJSONResponse(readOnlyProblem(err)), nil
 	case errors.Is(err, pgx.ErrNoRows):
 		// The guarded UPDATE matched no row: a concurrent writer moved the
 		// revision between the read above and this write, answered by

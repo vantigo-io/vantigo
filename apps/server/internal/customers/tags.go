@@ -417,8 +417,8 @@ func (s *server) PutCustomersByIdTags(ctx context.Context, req gen.PutCustomersB
 			return replaceCustomerTags(ctx, txq, req.Id, wanted, added, removed, now, act)
 		})
 	})
-	if isMergedAway(err) {
-		return gen.PutCustomersByIdTags409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
+	if isReadOnlyCustomer(err) {
+		return gen.PutCustomersByIdTags409ApplicationProblemPlusJSONResponse(readOnlyProblem(err)), nil
 	}
 	if errors.Is(err, errCustomerNotFound) {
 		return gen.PutCustomersByIdTags404Response{}, nil

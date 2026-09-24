@@ -613,7 +613,7 @@ func (w *RegistryFeedWorker) refresh(ctx context.Context, customerID int32, cust
 	}
 	result, err := w.srv.refreshRegistryRecord(ctx, customerID, orgnr, identity.Name, generatedFallbackActor)
 	if err != nil {
-		if errors.Is(err, errCustomerNotFound) || errors.Is(err, pgx.ErrNoRows) || isMergedAway(err) {
+		if errors.Is(err, errCustomerNotFound) || errors.Is(err, pgx.ErrNoRows) || isReadOnlyCustomer(err) {
 			// Archived, merged away or gone between the select and here: nothing
 			// to refresh and nothing wrong.
 			return refreshSkipped

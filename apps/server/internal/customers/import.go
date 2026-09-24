@@ -662,11 +662,15 @@ func (s *server) importUpdate(ctx context.Context, txq *store.Queries, p importP
 	if err != nil {
 		return 0, err
 	}
-	if _, err := lockWritableCustomer(ctx, txq, id); isMergedAway(err) {
-		// A customer merged away takes no more changes (customers merge design
-		// D2) — this row would otherwise restore it, or write into a history
-		// nobody reads. The row is refused; the survivor's number is the one
-		// to import it under.
+	if _, err := lockWritableCustomer(ctx, txq, id); isReadOnlyCustomer(err) {
+		// A customer merged away or anonymised takes no more changes (customers
+		// merge design D2, GDPR design D4) — this row would otherwise restore it,
+		// write into a history nobody reads, or put a person back into what was
+		// kept for bookkeeping. The row is refused; a merged-away customer's
+		// survivor is the one to import it under.
+		if isAnonymisedRefusal(err) {
+			return 0, refuseRow(p.Row, "customerNumber", fmt.Sprintf("Customer %d was anonymised and takes no more changes", *p.CustomerNumber))
+		}
 		return 0, refuseRow(p.Row, "customerNumber", fmt.Sprintf("Customer %d was merged into %s and takes no more changes; use that customer's number instead",
 			*p.CustomerNumber, mergedAwayInto(err)))
 	} else if err != nil {

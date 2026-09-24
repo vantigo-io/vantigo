@@ -3,9 +3,11 @@
 -- merge design D2, D3), made after both LockCustomer calls so the refusal
 -- ladder and the absorbed customer's snapshot see the rows exactly as they
 -- will be written: the type, status, marker and revision the ladder checks,
--- and every column customer.merged's absorbed payload records — the identity,
--- the contact info, the eleven billing columns, the owner and the group.
-SELECT id, customer_number, name, type, status, revision, merged_into_customer_id,
+-- whether the absorbed customer was anonymised (customers GDPR design D4 — an
+-- anonymised customer is read-only, and a merge would write it), and every
+-- column customer.merged's absorbed payload records — the identity, the
+-- contact info, the eleven billing columns, the owner and the group.
+SELECT id, customer_number, name, type, status, revision, merged_into_customer_id, anonymised_at,
        legal_country, legal_id, legal_name, legal_source, legal_type,
        email, phone, website, owner_user_id, group_id,
        invoice_email, reminder_email, payment_terms_days, currency, language,

@@ -284,7 +284,7 @@ func (w *PeppolRecheckWorker) recheck(ctx context.Context, customerID int32, par
 		// Nor for a customer merged away since the batch was read: the
 		// candidates exclude archived customers, so it is only that race, and
 		// the refusal is the right outcome, not a failure.
-		if !errors.Is(err, errPeppolLookupUnavailable) && !isMergedAway(err) && ctx.Err() == nil {
+		if !errors.Is(err, errPeppolLookupUnavailable) && !isReadOnlyCustomer(err) && ctx.Err() == nil {
 			w.logger().Error("customers: storing a peppol re-check failed",
 				"worker", peppolRecheckWorkerName, "customerId", customerID, "error", err.Error())
 		}

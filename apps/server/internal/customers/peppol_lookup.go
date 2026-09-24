@@ -313,8 +313,8 @@ func (s *server) PostCustomersByIdPeppolLookup(ctx context.Context, req gen.Post
 
 	// Before the network is asked: a merged-away customer's answer would be
 	// refused under the lock anyway (lookupAndStorePeppol).
-	if err := refuseMergedAway(ctx, q, req.Id); isMergedAway(err) {
-		return gen.PostCustomersByIdPeppolLookup409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
+	if err := refuseReadOnlyCustomer(ctx, q, req.Id); isReadOnlyCustomer(err) {
+		return gen.PostCustomersByIdPeppolLookup409ApplicationProblemPlusJSONResponse(readOnlyProblem(err)), nil
 	} else if err != nil {
 		return nil, err
 	}
@@ -352,8 +352,8 @@ func (s *server) PostCustomersByIdPeppolLookup(ctx context.Context, req gen.Post
 		// Already logged by kind inside lookupAndStorePeppol.
 		return peppolLookupUnavailableResponse(), nil
 	}
-	if isMergedAway(err) {
-		return gen.PostCustomersByIdPeppolLookup409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
+	if isReadOnlyCustomer(err) {
+		return gen.PostCustomersByIdPeppolLookup409ApplicationProblemPlusJSONResponse(readOnlyProblem(err)), nil
 	}
 	if err != nil {
 		return nil, err

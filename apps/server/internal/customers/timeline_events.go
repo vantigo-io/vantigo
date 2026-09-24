@@ -722,3 +722,32 @@ func recordCustomerMergedAway(ctx context.Context, q *store.Queries, now time.Ti
 	summary := truncateUTF16("Merged into "+customerLabel(into.CustomerNumber, into.Name), 500)
 	return recordGeneratedEvent(ctx, q, customerID, now, "customer.merged_away", summary, payload, 1, actorKind, actorDisplay, actorUserID)
 }
+
+// recordAnonymisationScheduled is PUT /customers/{id}/anonymisation's event
+// (customers GDPR design D4), attributed to whoever chose the date — the worker
+// that later acts on it is only the system, so this entry is where the
+// decision's author is on record. previous is the day it replaces, nil for a
+// first schedule. Dates only: the payload names nothing the anonymisation will
+// have to take out again.
+func recordAnonymisationScheduled(ctx context.Context, q *store.Queries, now time.Time, customerID int32, on time.Time, previous *time.Time, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	day := on.Format(time.DateOnly)
+	payload := map[string]any{"customerId": customerID, "anonymiseOn": day}
+	summary := "Anonymisation scheduled for " + day
+	if previous != nil {
+		was := previous.Format(time.DateOnly)
+		payload["previousAnonymiseOn"] = was
+		summary = fmt.Sprintf("Anonymisation moved from %s to %s", was, day)
+	}
+	return recordGeneratedEvent(ctx, q, customerID, now, "customer.anonymisation_scheduled", summary, payload, 1, actorKind, actorDisplay, actorUserID)
+}
+
+// recordAnonymisationCancelled is the schedule called off (design D4): by
+// DELETE /customers/{id}/anonymisation, or by a restore or a change of type
+// that took the customer out of what may be anonymised
+// (cancelAnonymisationSchedule). on is the day that was scheduled.
+func recordAnonymisationCancelled(ctx context.Context, q *store.Queries, now time.Time, customerID int32, on time.Time, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	day := on.Format(time.DateOnly)
+	return recordGeneratedEvent(ctx, q, customerID, now, "customer.anonymisation_cancelled",
+		"Anonymisation cancelled; it was scheduled for "+day, map[string]any{"customerId": customerID, "anonymiseOn": day}, 1,
+		actorKind, actorDisplay, actorUserID)
+}

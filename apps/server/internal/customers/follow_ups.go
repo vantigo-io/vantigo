@@ -276,8 +276,8 @@ func (s *server) markFollowUp(ctx context.Context, customerID, entryID int32, do
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Missing, perhaps because it moved with a merge of this customer: the
 		// merged-away customer's refusal is the truer answer then.
-		if merr := refuseMergedAway(ctx, q, customerID); isMergedAway(merr) {
-			problem := mergedAwayProblem(merr)
+		if merr := refuseReadOnlyCustomer(ctx, q, customerID); isReadOnlyCustomer(merr) {
+			problem := readOnlyProblem(merr)
 			return followUpOutcome{Problem: &problem}, nil
 		} else if merr != nil {
 			return followUpOutcome{}, merr
@@ -330,8 +330,8 @@ func (s *server) markFollowUp(ctx context.Context, customerID, entryID int32, do
 		return insertTimelineRevisionFromEntry(ctx, txq, written, act)
 	})
 	switch {
-	case isMergedAway(err):
-		problem := mergedAwayProblem(err)
+	case isReadOnlyCustomer(err):
+		problem := readOnlyProblem(err)
 		return followUpOutcome{Problem: &problem}, nil
 	case errors.Is(err, pgx.ErrNoRows):
 		fresh, ferr := q.GetTimelineEntry(ctx, store.GetTimelineEntryParams{ID: entryID, CustomerID: customerID})

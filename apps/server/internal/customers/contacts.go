@@ -687,8 +687,8 @@ func (s *server) PostCustomersByIdContacts(ctx context.Context, req gen.PostCust
 	})
 	var refused errRolePrimaryTransitionRefused
 	switch {
-	case isMergedAway(err):
-		return gen.PostCustomersByIdContacts409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
+	case isReadOnlyCustomer(err):
+		return gen.PostCustomersByIdContacts409ApplicationProblemPlusJSONResponse(readOnlyProblem(err)), nil
 	case errors.Is(err, errAssociationTargetNotFound):
 		return gen.PostCustomersByIdContacts404Response{}, nil
 	case errors.Is(err, errAlreadyAttached):
@@ -736,8 +736,8 @@ func (s *server) PutCustomersByIdContactsByContactId(ctx context.Context, req ge
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Missing, perhaps because it moved with a merge of this customer: the
 		// merged-away customer's refusal is the truer answer then.
-		if merr := refuseMergedAway(ctx, q, req.Id); isMergedAway(merr) {
-			return gen.PutCustomersByIdContactsByContactId409ApplicationProblemPlusJSONResponse(mergedAwayProblem(merr)), nil
+		if merr := refuseReadOnlyCustomer(ctx, q, req.Id); isReadOnlyCustomer(merr) {
+			return gen.PutCustomersByIdContactsByContactId409ApplicationProblemPlusJSONResponse(readOnlyProblem(merr)), nil
 		} else if merr != nil {
 			return nil, merr
 		}
@@ -904,8 +904,8 @@ func (s *server) PutCustomersByIdContactsByContactId(ctx context.Context, req ge
 	})
 	var refused errRolePrimaryTransitionRefused
 	switch {
-	case isMergedAway(err):
-		return gen.PutCustomersByIdContactsByContactId409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
+	case isReadOnlyCustomer(err):
+		return gen.PutCustomersByIdContactsByContactId409ApplicationProblemPlusJSONResponse(readOnlyProblem(err)), nil
 	case errors.Is(err, errAssociationTargetNotFound):
 		return gen.PutCustomersByIdContactsByContactId404Response{}, nil
 	case errors.As(err, &refused):
@@ -957,8 +957,8 @@ func (s *server) DeleteCustomersByIdContactsByContactId(ctx context.Context, req
 	if _, err := q.GetAssociationWithContact(ctx, store.GetAssociationWithContactParams{CustomerID: req.Id, ContactID: req.ContactId}); errors.Is(err, pgx.ErrNoRows) {
 		// Missing, perhaps because it moved with a merge of this customer: the
 		// merged-away customer's refusal is the truer answer then.
-		if merr := refuseMergedAway(ctx, q, req.Id); isMergedAway(merr) {
-			return gen.DeleteCustomersByIdContactsByContactId409ApplicationProblemPlusJSONResponse(mergedAwayProblem(merr)), nil
+		if merr := refuseReadOnlyCustomer(ctx, q, req.Id); isReadOnlyCustomer(merr) {
+			return gen.DeleteCustomersByIdContactsByContactId409ApplicationProblemPlusJSONResponse(readOnlyProblem(merr)), nil
 		} else if merr != nil {
 			return nil, merr
 		}
@@ -1022,8 +1022,8 @@ func (s *server) DeleteCustomersByIdContactsByContactId(ctx context.Context, req
 		})
 	})
 	switch {
-	case isMergedAway(err):
-		return gen.DeleteCustomersByIdContactsByContactId409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
+	case isReadOnlyCustomer(err):
+		return gen.DeleteCustomersByIdContactsByContactId409ApplicationProblemPlusJSONResponse(readOnlyProblem(err)), nil
 	case errors.Is(err, errAssociationTargetNotFound):
 		return gen.DeleteCustomersByIdContactsByContactId404Response{}, nil
 	case err != nil:

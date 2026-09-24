@@ -56,6 +56,21 @@ func (q *Queries) AnonymisationForCustomers(ctx context.Context, customerIds []i
 	return items, nil
 }
 
+const customerAnonymisedAt = `-- name: CustomerAnonymisedAt :one
+SELECT anonymised_at FROM customers.customers WHERE id = $1
+`
+
+// CustomerAnonymisedAt is the read-only refusal read on the pool
+// (refuseReadOnlyCustomer, merge.go): when a customer was anonymised, NULL when
+// it was not. pgx.ErrNoRows is a customer that does not exist, whose 404 is the
+// caller's to give.
+func (q *Queries) CustomerAnonymisedAt(ctx context.Context, id int32) (*time.Time, error) {
+	row := q.db.QueryRow(ctx, customerAnonymisedAt, id)
+	var anonymised_at *time.Time
+	err := row.Scan(&anonymised_at)
+	return anonymised_at, err
+}
+
 const customerForPersonalData = `-- name: CustomerForPersonalData :one
 SELECT id, customer_number, name, type, status, revision, merged_into_customer_id, anonymise_on, anonymised_at,
        legal_country, legal_id, legal_name, legal_source, legal_type,
@@ -145,6 +160,19 @@ func (q *Queries) CustomerForPersonalData(ctx context.Context, id int32) (Custom
 	return i, err
 }
 
+const dropCustomerAnonymiseOn = `-- name: DropCustomerAnonymiseOn :exec
+UPDATE customers.customers SET anonymise_on = NULL WHERE id = $1
+`
+
+// DropCustomerAnonymiseOn calls a schedule off as part of another write to the
+// row — a restore, a change of type (cancelAnonymisationSchedule,
+// anonymisation.go) — whose own UPDATE has already advanced the revision in the
+// same transaction, so this one does not advance it a second time.
+func (q *Queries) DropCustomerAnonymiseOn(ctx context.Context, id int32) error {
+	_, err := q.db.Exec(ctx, dropCustomerAnonymiseOn, id)
+	return err
+}
+
 const listTimelineEntriesForExport = `-- name: ListTimelineEntriesForExport :many
 SELECT id, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
        source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
@@ -200,4 +228,25 @@ func (q *Queries) ListTimelineEntriesForExport(ctx context.Context, customerID i
 		return nil, err
 	}
 	return items, nil
+}
+
+const setCustomerAnonymiseOn = `-- name: SetCustomerAnonymiseOn :exec
+UPDATE customers.customers
+SET anonymise_on = $1::date, updated_at = $2::timestamptz, revision = revision + 1
+WHERE id = $3
+`
+
+type SetCustomerAnonymiseOnParams struct {
+	AnonymiseOn pgtype.Date
+	Now         time.Time
+	ID          int32
+}
+
+// SetCustomerAnonymiseOn is the schedule's write (design D4): PUT sets the
+// day, DELETE clears it (NULL). A write to the row like any other, so the
+// revision advances; both callers hold the lock and have decided the write is
+// not a no-op.
+func (q *Queries) SetCustomerAnonymiseOn(ctx context.Context, arg SetCustomerAnonymiseOnParams) error {
+	_, err := q.db.Exec(ctx, setCustomerAnonymiseOn, arg.AnonymiseOn, arg.Now, arg.ID)
+	return err
 }

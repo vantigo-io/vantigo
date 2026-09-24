@@ -8,6 +8,8 @@ package store
 import (
 	"context"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const countCustomerAddresses = `-- name: CountCustomerAddresses :one
@@ -277,19 +279,23 @@ func (q *Queries) ListCustomerAddresses(ctx context.Context, customerID int32) (
 }
 
 const lockCustomer = `-- name: LockCustomer :one
-SELECT id, type, legal_country, legal_id, legal_name, legal_source, legal_type, merged_into_customer_id
+SELECT id, type, status, legal_country, legal_id, legal_name, legal_source, legal_type, merged_into_customer_id,
+       anonymise_on, anonymised_at
 FROM customers.customers WHERE id = $1 FOR NO KEY UPDATE
 `
 
 type LockCustomerRow struct {
 	ID                   int32
 	Type                 string
+	Status               string
 	LegalCountry         *string
 	LegalID              *string
 	LegalName            *string
 	LegalSource          *string
 	LegalType            *string
 	MergedIntoCustomerID *int32
+	AnonymiseOn          pgtype.Date
+	AnonymisedAt         *time.Time
 }
 
 // LockCustomer is every address write's first statement (invoice-ready
@@ -314,18 +320,28 @@ type LockCustomerRow struct {
 // that here, under the lock a merge also takes — so a write that queued
 // behind a merge reads the marker the merge just committed, and refuses
 // (lockWritableCustomer, merge.go).
+//
+// And the status and the anonymisation (customers GDPR design D4): a private
+// person's schedule is decided under this lock — only an archived person may
+// be scheduled, and a restore or a change of type that takes it out of that
+// calls the schedule off in the same transaction — and an anonymised customer
+// is read-only, which every customer-scoped write learns here, as it learns a
+// merge (lockWritableCustomer, merge.go).
 func (q *Queries) LockCustomer(ctx context.Context, id int32) (LockCustomerRow, error) {
 	row := q.db.QueryRow(ctx, lockCustomer, id)
 	var i LockCustomerRow
 	err := row.Scan(
 		&i.ID,
 		&i.Type,
+		&i.Status,
 		&i.LegalCountry,
 		&i.LegalID,
 		&i.LegalName,
 		&i.LegalSource,
 		&i.LegalType,
 		&i.MergedIntoCustomerID,
+		&i.AnonymiseOn,
+		&i.AnonymisedAt,
 	)
 	return i, err
 }

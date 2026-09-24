@@ -75,6 +75,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/customers/{id}/anonymisation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Schedule a private person's anonymisation
+         * @description Schedules a private person's anonymisation on anonymiseOn (customers GDPR design D4). On that UTC day the anonymisation worker takes the person out of the customer — the name, legal identity, contact info, the billing profile's identifiers, addresses, contacts no other customer has, the content of every timeline entry, and what other modules hold — and keeps the customer number, the dates and the shape of its history for bookkeeping. There is no default date: Norwegian bookkeeping rules keep accounting material for years after the fiscal year, and the caller, who knows what was invoiced, chooses. anonymiseOn is today or later; the date already scheduled writes nothing, another one moves it. Records customer.anonymisation_scheduled. Restoring the customer, or changing its type, calls the schedule off. 400 for a date that is malformed or past; 404 when the customer does not exist; 409 personal_data_not_a_person (a business), personal_data_customer_active (not archived: archive it first), customer_merged or customer_anonymised (it takes no more changes).
+         */
+        put: operations["putCustomersByIdAnonymisation"];
+        post?: never;
+        /**
+         * Cancel a private person's anonymisation
+         * @description Calls off a private person's scheduled anonymisation (customers GDPR design D4) and records customer.anonymisation_cancelled. With nothing scheduled it writes nothing and answers the customer as it is. It is the one write a merged-away customer takes: a schedule made before its merge would otherwise be irrevocable. 404 when the customer does not exist; 409 customer_anonymised once the anonymisation has run — there is nothing left to call off.
+         */
+        delete: operations["deleteCustomersByIdAnonymisation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/customers/{id}/billing-profile": {
         parameters: {
             query?: never;
@@ -864,6 +888,10 @@ export interface components {
             /** Format: date-time */
             anonymisedAt?: string;
             /** Format: date */
+            anonymiseOn: string;
+        };
+        /** @description PUT /customers/{id}/anonymisation's body (customers GDPR design D4): anonymiseOn is the UTC calendar day to anonymise the customer on, yyyy-MM-dd, today or later — a plain string the module validates in its own words. There is no default: the caller chooses. */
+        CustomerAnonymisationRequest: {
             anonymiseOn: string;
         };
         /** @description What this customer's group would give it (customer groups design D4). Present whenever the customer belongs to a group, so a client can say "inherits 30 days from Retail" when the profile's own paymentTermsDays is absent, and "group default 30 days, overridden" when it is present. paymentTermsDays is absent when the group carries no default of its own — nothing to inherit, never a 0. The profile's own paymentTermsDays keeps meaning "decided here": the effective value is the profile's own, else this one, else nothing, which is the rule contracts.CustomerDirectory.BillingProfile already applies for every consumer. */
@@ -2158,6 +2186,131 @@ export interface operations {
                 content?: never;
             };
             /** @description Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
+                };
+            };
+        };
+    };
+    putCustomersByIdAnonymisation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomerAnonymisationRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SafeCustomerResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
+                };
+            };
+        };
+    };
+    deleteCustomersByIdAnonymisation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SafeCustomerResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — customer_anonymised */
             409: {
                 headers: {
                     [name: string]: unknown;

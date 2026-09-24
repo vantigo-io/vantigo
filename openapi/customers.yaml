@@ -237,6 +237,14 @@ components:
             required:
                 - anonymiseOn
             type: object
+        CustomerAnonymisationRequest:
+            description: "PUT /customers/{id}/anonymisation's body (customers GDPR design D4): anonymiseOn is the UTC calendar day to anonymise the customer on, yyyy-MM-dd, today or later — a plain string the module validates in its own words. There is no default: the caller chooses."
+            properties:
+                anonymiseOn:
+                    type: string
+            required:
+                - anonymiseOn
+            type: object
         CustomerBillingGroupDefault:
             description: "What this customer's group would give it (customer groups design D4). Present whenever the customer belongs to a group, so a client can say \"inherits 30 days from Retail\" when the profile's own paymentTermsDays is absent, and \"group default 30 days, overridden\" when it is present. paymentTermsDays is absent when the group carries no default of its own — nothing to inherit, never a 0. The profile's own paymentTermsDays keeps meaning \"decided here\": the effective value is the profile's own, else this one, else nothing, which is the rule contracts.CustomerDirectory.BillingProfile already applies for every consumer."
             properties:
@@ -2254,6 +2262,101 @@ paths:
             tags:
                 - Customers
             x-vantigo-access: permission:customers:update+customers:view
+    /api/v1/customers/{id}/anonymisation:
+        delete:
+            description: "Calls off a private person's scheduled anonymisation (customers GDPR design D4) and records customer.anonymisation_cancelled. With nothing scheduled it writes nothing and answers the customer as it is. It is the one write a merged-away customer takes: a schedule made before its merge would otherwise be irrevocable. 404 when the customer does not exist; 409 customer_anonymised once the anonymisation has run — there is nothing left to call off."
+            operationId: deleteCustomersByIdAnonymisation
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SafeCustomerResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: Conflict — customer_anonymised
+            summary: Cancel a private person's anonymisation
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:personal-data+customers:view
+        put:
+            description: "Schedules a private person's anonymisation on anonymiseOn (customers GDPR design D4). On that UTC day the anonymisation worker takes the person out of the customer — the name, legal identity, contact info, the billing profile's identifiers, addresses, contacts no other customer has, the content of every timeline entry, and what other modules hold — and keeps the customer number, the dates and the shape of its history for bookkeeping. There is no default date: Norwegian bookkeeping rules keep accounting material for years after the fiscal year, and the caller, who knows what was invoiced, chooses. anonymiseOn is today or later; the date already scheduled writes nothing, another one moves it. Records customer.anonymisation_scheduled. Restoring the customer, or changing its type, calls the schedule off. 400 for a date that is malformed or past; 404 when the customer does not exist; 409 personal_data_not_a_person (a business), personal_data_customer_active (not archived: archive it first), customer_merged or customer_anonymised (it takes no more changes)."
+            operationId: putCustomersByIdAnonymisation
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CustomerAnonymisationRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SafeCustomerResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: Conflict
+            summary: Schedule a private person's anonymisation
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:personal-data+customers:view
     /api/v1/customers/{id}/billing-profile:
         get:
             operationId: getCustomersByIdBillingProfile
