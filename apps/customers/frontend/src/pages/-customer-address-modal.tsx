@@ -16,6 +16,7 @@ import {
 import { customerBillingProfileQueryOptions } from "../api/billing-profile";
 import { CountrySelect } from "../components/country-select";
 import { addressTypeLabel } from "../lib/address-type-label";
+import { customerWriteErrorMessage } from "../lib/customer-write-error";
 import "../i18n";
 
 /**
@@ -171,7 +172,11 @@ export const CustomerAddressModal = ({
         setCapError(capMessage ?? null);
         return;
       }
-      notifications.show({ color: "red", title: t("addressCouldNotBeSaved"), message: error.message });
+      notifications.show({
+        color: "red",
+        title: t("addressCouldNotBeSaved"),
+        message: customerWriteErrorMessage(error, t),
+      });
     },
   });
 

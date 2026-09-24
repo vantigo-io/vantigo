@@ -17,6 +17,7 @@ import {
 } from "../api/customers";
 import type { CustomerRegistryRecord } from "../api/registry";
 import { useCustomerReload } from "../lib/customer-reload";
+import { customerWriteErrorMessage } from "../lib/customer-write-error";
 import { CustomerAddressesSection } from "./-customer-address-list";
 import "../i18n";
 
@@ -270,7 +271,11 @@ const CustomerContactInfoModal = ({
         setConflict(true);
         return;
       }
-      notifications.show({ color: "red", title: t("contactInfoCouldNotBeSaved"), message: error.message });
+      notifications.show({
+        color: "red",
+        title: t("contactInfoCouldNotBeSaved"),
+        message: customerWriteErrorMessage(error, t),
+      });
     },
   });
 

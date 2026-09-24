@@ -91,7 +91,10 @@ describe("the customer row's revision across its editors", () => {
     });
     renderPage(fetchMock);
 
-    await userEvent.click(await screen.findByRole("button", { name: "Edit contact details" }));
+    // The first paint is the whole page — the header and every card, each
+    // suspending on its own read — so it gets the same allowance as the
+    // billing pencil below rather than the default one second.
+    await userEvent.click(await screen.findByRole("button", { name: "Edit contact details" }, { timeout: 5_000 }));
     const contactDialog = await screen.findByRole("dialog");
     await userEvent.type(within(contactDialog).getByLabelText(/^email/i), "new@acme.test");
     await userEvent.click(within(contactDialog).getByRole("button", { name: /save changes/i }));

@@ -362,6 +362,27 @@ describe("CustomersPage", () => {
 
     expect(await screen.findByText("Archived")).toBeInTheDocument();
   });
+
+  it("offers no edit pencil on a merged-away customer's row, and keeps it on the others", async () => {
+    // Literally the list's rows: only the merged-away one carries mergedInto.
+    stubFetch([
+      { ...defaultRow, status: "archived" },
+      {
+        ...defaultRow,
+        id: 1002,
+        customerNumber: 5002,
+        name: "Equinor Gammel",
+        status: "archived",
+        mergedInto: { id: 1001, customerNumber: 5001, name: "Equinor" },
+      },
+    ]);
+    router.search = { page: 1, search: "", status: "archived" };
+    renderPage({ canEdit: true });
+
+    expect(await screen.findByRole("button", { name: "Edit Equinor" })).toBeInTheDocument();
+    expect(screen.getByText("Equinor Gammel")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit Equinor Gammel" })).not.toBeInTheDocument();
+  });
 });
 
 // ownedRow is the wire body for a customer with an owner and one tag —

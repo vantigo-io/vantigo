@@ -36,6 +36,7 @@ import {
 } from "../api/customers";
 import { brregLookupQueryOptions, type LookupResult } from "../api/lookup";
 import { useCustomerReload } from "../lib/customer-reload";
+import { customerWriteErrorMessage, isCustomerMerged } from "../lib/customer-write-error";
 import "../i18n";
 
 export type CustomerModalState = { mode: "create" } | { mode: "edit"; customer: CustomerResponse };
@@ -185,7 +186,9 @@ export const CustomerFormModal = ({
         form.setErrors(mapContactInfoErrors(error.fieldErrors));
         return;
       }
-      if (error instanceof ApiConflictError) {
+      // A merged-away customer's refusal is a 409 too, but no reload makes the
+      // save go through: it is said, as every customer write says it.
+      if (error instanceof ApiConflictError && !isCustomerMerged(error)) {
         setConflict(
           error.code === "duplicate_legal_identity"
             ? { kind: "duplicate", duplicates: conflictDuplicates(error) }
@@ -193,7 +196,11 @@ export const CustomerFormModal = ({
         );
         return;
       }
-      notifications.show({ color: "red", title: t("customerCouldNotBeSaved"), message: error.message });
+      notifications.show({
+        color: "red",
+        title: t("customerCouldNotBeSaved"),
+        message: customerWriteErrorMessage(error, t),
+      });
     },
   });
   const save = (values: CustomerFormValues, override: boolean) =>

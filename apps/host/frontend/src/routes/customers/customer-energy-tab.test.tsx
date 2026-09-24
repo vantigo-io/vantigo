@@ -2,13 +2,13 @@ import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CustomerProjectsTab } from "./-customer-projects-tab";
+import { CustomerEnergyTab } from "./-customer-energy-tab";
 import "../../i18n";
 
 // The tab is the host's, not the package's: it decides whether the module is
-// mounted at all and whether this caller may create a project on this
+// mounted at all and whether this caller may attach a metering point to this
 // customer. Those answers are invisible to the package's own tests, so they
-// are pinned here.
+// are pinned here, as the Projects tab's are.
 vi.mock("@tanstack/react-query", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@tanstack/react-query")>();
   return { ...actual, useQuery: vi.fn() };
@@ -25,10 +25,10 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
   };
 });
 
-vi.mock("@vantigo/projects-ui", () => ({
-  CustomerProjectsPanel: ({ customerId, canCreate }: { customerId: number; canCreate?: boolean }) => (
+vi.mock("@vantigo/energy-ui", () => ({
+  CustomerEnergyPanel: ({ customerId, canAttach }: { customerId: number; canAttach?: boolean }) => (
     <div>
-      customer {customerId} canCreate {String(canCreate)}
+      customer {customerId} canAttach {String(canAttach)}
     </div>
   ),
 }));
@@ -44,49 +44,40 @@ const customer = (mergedInto: { id: number; customerNumber: number; name: string
   mergedInto,
 });
 
-const renderTab = (permissions: string[], modules?: string[], cached = customer()) => {
+const renderTab = (cached: ReturnType<typeof customer>, modules?: string[]) => {
   if (modules) window.__VANTIGO_APP__ = { basePath: "/", title: "Vantigo", support: {}, modules };
   vi.mocked(useQuery).mockImplementation((options) =>
-    options.queryKey[0] === "authorization"
-      ? ({ data: { permissions }, isPending: false } as never)
-      : options.queryKey[0] === "customers"
-        ? ({ data: cached, isPending: false } as never)
-        : ({ data: { user: { id: "user-1", roles: [] } } } as never),
+    options.queryKey[0] === "customers" ? ({ data: cached, isPending: false } as never) : ({} as never),
   );
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <MantineProvider env="test">
       <QueryClientProvider client={queryClient}>
-        <CustomerProjectsTab />
+        <CustomerEnergyTab />
       </QueryClientProvider>
     </MantineProvider>,
   );
 };
 
-describe("the customer page's projects tab", () => {
+describe("the customer page's energy tab", () => {
   afterEach(() => {
     cleanup();
     delete window.__VANTIGO_APP__;
   });
 
-  it("lets the caller create a project from the panel only with projects:create", () => {
-    renderTab(["projects:access", "projects:create"]);
-    expect(screen.getByText("customer 42 canCreate true")).toBeInTheDocument();
+  it("lets the caller attach a metering point, but not to a merged-away customer", () => {
+    renderTab(customer());
+    expect(screen.getByText("customer 42 canAttach true")).toBeInTheDocument();
 
     cleanup();
-    renderTab(["projects:access"]);
-    expect(screen.getByText("customer 42 canCreate false")).toBeInTheDocument();
+    renderTab(customer({ id: 2, customerNumber: 2, name: "Acme" }));
+    expect(screen.getByText("customer 42 canAttach false")).toBeInTheDocument();
   });
 
-  it("offers no create on a merged-away customer, whatever the caller may do", () => {
-    renderTab(["projects:access", "projects:create"], undefined, customer({ id: 2, customerNumber: 2, name: "Acme" }));
-    expect(screen.getByText("customer 42 canCreate false")).toBeInTheDocument();
-  });
+  it("renders the not-enabled page in place when the installation did not mount energy", () => {
+    renderTab(customer(), ["customers", "projects"]);
 
-  it("renders the not-enabled page in place when the installation did not mount projects", () => {
-    renderTab(["*"], ["customers", "energy"]);
-
-    expect(screen.getByRole("heading", { name: "Projects is not enabled" })).toBeInTheDocument();
-    expect(screen.queryByText(/canCreate/)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Energy is not enabled" })).toBeInTheDocument();
+    expect(screen.queryByText(/canAttach/)).not.toBeInTheDocument();
   });
 });

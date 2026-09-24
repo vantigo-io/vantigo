@@ -34,6 +34,7 @@ import {
 import { ApiValidationError, type CustomerResponse, customersQueryOptions } from "../api/customers";
 import { ContactRoleBadges } from "../components/contact-role-badges";
 import { CopyableBadge } from "../components/legal-badges";
+import { customerWriteErrorMessage } from "../lib/customer-write-error";
 import { formatContactName } from "../lib/format-contact-name";
 import {
   ConnectionFields,
@@ -149,7 +150,11 @@ const ContactCustomersCard = ({ contact, contactName }: { contact: ContactRespon
       queryClient.invalidateQueries({ queryKey: ["customers", association.customer.id, "timeline"] });
     },
     onError: (error) => {
-      notifications.show({ color: "red", title: t("failedRemoveCustomer"), message: error.message });
+      notifications.show({
+        color: "red",
+        title: t("failedRemoveCustomer"),
+        message: customerWriteErrorMessage(error, t),
+      });
     },
   });
 
@@ -358,7 +363,11 @@ const AddCustomerModal = ({ contactId, contactName, attachedCustomerIds, opened,
         form.setErrors(error.fieldErrors);
         return;
       }
-      notifications.show({ color: "red", title: t("customerCouldNotBeSaved"), message: error.message });
+      notifications.show({
+        color: "red",
+        title: t("customerCouldNotBeSaved"),
+        message: customerWriteErrorMessage(error, t),
+      });
     },
   });
 

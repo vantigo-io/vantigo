@@ -522,14 +522,19 @@ export const CustomersPage = ({
                         )}
                         <Table.Td>{formatters.formatDate(customer.createdAt)}</Table.Td>
                         <Table.Td onClick={(event) => event.stopPropagation()}>
-                          <ActionIcon
-                            variant="subtle"
-                            color="gray"
-                            aria-label={t("editNamed", { name: customer.name })}
-                            onClick={() => setModalState({ mode: "edit", customer })}
-                          >
-                            <IconPencil size={16} />
-                          </ActionIcon>
+                          {/* A merged-away customer is read-only (customers merge design D4):
+                              everything it had moved, so an edit here would land on a
+                              customer nobody looks at, and no later merge re-points it. */}
+                          {!customer.mergedInto && (
+                            <ActionIcon
+                              variant="subtle"
+                              color="gray"
+                              aria-label={t("editNamed", { name: customer.name })}
+                              onClick={() => setModalState({ mode: "edit", customer })}
+                            >
+                              <IconPencil size={16} />
+                            </ActionIcon>
+                          )}
                         </Table.Td>
                       </Table.Tr>
                     ))}

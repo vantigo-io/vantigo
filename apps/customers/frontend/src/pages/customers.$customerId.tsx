@@ -34,6 +34,7 @@ import {
   LegalTypeBadge,
   LegalValueBadge,
 } from "../components/legal-badges";
+import { customerWriteErrorMessage } from "../lib/customer-write-error";
 import { getLegalSource } from "../lib/legal-sources";
 import { CustomerBillingCard } from "./-customer-billing-card";
 import { CustomerContactCard } from "./-customer-contact-card";
@@ -253,7 +254,11 @@ const useCustomerTypeChange = (customer: CustomerResponse) => {
         notifications.show({ color: "yellow", title: t("customerChangedTitle"), message: t("customerChangedMessage") });
         return;
       }
-      notifications.show({ color: "red", title: t("customerTypeCouldNotBeChanged"), message: error.message });
+      notifications.show({
+        color: "red",
+        title: t("customerTypeCouldNotBeChanged"),
+        message: customerWriteErrorMessage(error, t),
+      });
     },
   });
 
@@ -298,7 +303,11 @@ const useArchiveCustomer = (customer: CustomerResponse) => {
       });
     },
     onError: (error) => {
-      notifications.show({ color: "red", title: t("customerCouldNotBeArchived"), message: error.message });
+      notifications.show({
+        color: "red",
+        title: t("customerCouldNotBeArchived"),
+        message: customerWriteErrorMessage(error, t),
+      });
     },
   });
 
@@ -346,7 +355,11 @@ const useRestoreCustomer = (customer: CustomerResponse) => {
         notifications.show({ color: "yellow", title: t("customerChangedTitle"), message: t("customerChangedMessage") });
         return;
       }
-      notifications.show({ color: "red", title: t("customerCouldNotBeRestored"), message: error.message });
+      notifications.show({
+        color: "red",
+        title: t("customerCouldNotBeRestored"),
+        message: customerWriteErrorMessage(error, t),
+      });
     },
   });
 };
