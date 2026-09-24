@@ -310,7 +310,8 @@ type SetCustomerGroupRow struct {
 // the caller's revision when the request carried one, else the revision the
 // handler's two reads agreed on (the NULL arm is never taken from this
 // handler — a request without a revision is guarded on what it read, and
-// re-read on a miss), and the handler skips calling
+// re-read on a miss; the CSV importer takes it, under LockCustomer, where
+// nothing can move between its read and this write), and the handler skips calling
 // this entirely when the group did not actually change, so a resubmit of the
 // current group writes nothing and bumps nothing (customers foundation design
 // D5's no-op rule).
