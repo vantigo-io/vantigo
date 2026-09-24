@@ -120,6 +120,122 @@ var errAddressCapReached = errors.New("customers: address cap reached")
 // (controller ruling's exact wording).
 var errPrimaryTransitionRefused = errors.New("customers: primary address transition refused")
 
+// addressCapMessage is D3's cap in words: the address POST's 400 on
+// "addresses", and the CSV importer's row error when a row would add a 51st.
+const addressCapMessage = "A customer can have at most 50 addresses"
+
+// insertAddress is PostCustomersByIdAddresses's transaction body once the
+// customer lock is held: the 50-address cap (errAddressCapReached), the
+// primary bookkeeping — the first address of its type is primary whatever
+// requestedPrimary says, and a primary that replaces another demotes it first
+// — the insert and customer.address_added. The CSV importer adds a primary
+// postal or invoice address through it.
+func insertAddress(ctx context.Context, txq *store.Queries, customerID int32, parsed validatedAddress, requestedPrimary bool, now time.Time, act actor) (store.CustomersCustomerAddress, error) {
+	total, err := txq.CountCustomerAddresses(ctx, customerID)
+	if err != nil {
+		return store.CustomersCustomerAddress{}, err
+	}
+	if total >= maxCustomerAddresses {
+		return store.CustomersCustomerAddress{}, errAddressCapReached
+	}
+	countOfType, err := txq.CountCustomerAddressesOfType(ctx, store.CountCustomerAddressesOfTypeParams{CustomerID: customerID, Type: parsed.Type, ExcludeID: 0})
+	if err != nil {
+		return store.CustomersCustomerAddress{}, err
+	}
+	isPrimary := requestedPrimary
+	if countOfType == 0 {
+		isPrimary = true
+	} else if requestedPrimary {
+		if err := demoteCurrentPrimary(ctx, txq, customerID, parsed.Type, now); err != nil {
+			return store.CustomersCustomerAddress{}, err
+		}
+	}
+	created, err := txq.InsertCustomerAddress(ctx, store.InsertCustomerAddressParams{
+		CustomerID: customerID, Type: parsed.Type, Label: parsed.Label, Line1: parsed.Line1, Line2: parsed.Line2,
+		PostalCode: parsed.PostalCode, City: parsed.City, Region: parsed.Region, Country: parsed.Country,
+		IsPrimary: isPrimary, Now: now,
+	})
+	if err != nil {
+		return store.CustomersCustomerAddress{}, err
+	}
+	return created, recordCustomerAddressAdded(ctx, txq, now, customerID, created.ID, addressSnapshotFromRow(created), act.Kind, act.Display, act.UserID)
+}
+
+// replaceAddress is PutCustomersByIdAddressesByAddressId's transaction body
+// once the customer lock is held and existing has been read: the primary
+// bookkeeping the handler's doc comment describes (errPrimaryTransitionRefused
+// for a same-type demotion of the primary), the full-replace UPDATE, the old
+// type's promotion when a primary changed type, and one
+// customer.address_updated. The CSV importer replaces a primary postal or
+// invoice address through it.
+func replaceAddress(ctx context.Context, txq *store.Queries, customerID int32, existing store.CustomersCustomerAddress, parsed validatedAddress, requestedPrimary bool, now time.Time, act actor) (store.CustomersCustomerAddress, error) {
+	var isPrimary bool
+	if parsed.Type == existing.Type {
+		if existing.IsPrimary && !requestedPrimary {
+			return store.CustomersCustomerAddress{}, errPrimaryTransitionRefused
+		}
+		isPrimary = requestedPrimary || existing.IsPrimary
+		if isPrimary && !existing.IsPrimary {
+			if err := demoteCurrentPrimary(ctx, txq, customerID, parsed.Type, now); err != nil {
+				return store.CustomersCustomerAddress{}, err
+			}
+		}
+	} else {
+		countOfNewType, err := txq.CountCustomerAddressesOfType(ctx, store.CountCustomerAddressesOfTypeParams{CustomerID: customerID, Type: parsed.Type, ExcludeID: existing.ID})
+		if err != nil {
+			return store.CustomersCustomerAddress{}, err
+		}
+		if countOfNewType == 0 {
+			isPrimary = true
+		} else {
+			isPrimary = requestedPrimary
+			if requestedPrimary {
+				if err := demoteCurrentPrimary(ctx, txq, customerID, parsed.Type, now); err != nil {
+					return store.CustomersCustomerAddress{}, err
+				}
+			}
+		}
+	}
+	updated, err := txq.UpdateCustomerAddress(ctx, store.UpdateCustomerAddressParams{
+		ID: existing.ID, CustomerID: customerID,
+		Type: parsed.Type, Label: parsed.Label, Line1: parsed.Line1, Line2: parsed.Line2,
+		PostalCode: parsed.PostalCode, City: parsed.City, Region: parsed.Region, Country: parsed.Country,
+		IsPrimary: isPrimary, UpdatedAt: now,
+	})
+	if err != nil {
+		return store.CustomersCustomerAddress{}, err
+	}
+	if parsed.Type != existing.Type && existing.IsPrimary {
+		if err := promoteOldestOfType(ctx, txq, customerID, existing.Type, existing.ID, now); err != nil {
+			return store.CustomersCustomerAddress{}, err
+		}
+	}
+	return updated, recordCustomerAddressUpdated(ctx, txq, now, customerID, existing.ID, addressSnapshotFromRow(existing), addressSnapshotFromRow(updated), act.Kind, act.Display, act.UserID)
+}
+
+// removeAddress is DeleteCustomersByIdAddressesByAddressId's transaction body
+// once the customer lock is held and existing has been read: the delete, the
+// oldest remaining address of the type promoted when a primary went, and one
+// customer.address_removed. The CSV importer removes a primary postal or
+// invoice address through it.
+func removeAddress(ctx context.Context, txq *store.Queries, customerID int32, existing store.CustomersCustomerAddress, now time.Time, act actor) error {
+	// The row itself is deleted before any promotion of a different
+	// address of the same type: while the deleted row still exists with
+	// is_primary=true, promoting another row of the same type would
+	// transiently violate ux_customer_addresses_primary (two primaries
+	// of one type at once) — deleting it first removes that row from the
+	// index entirely, so the promotion below is always safe.
+	if err := txq.DeleteCustomerAddress(ctx, store.DeleteCustomerAddressParams{ID: existing.ID, CustomerID: customerID}); err != nil {
+		return err
+	}
+	if existing.IsPrimary {
+		if err := promoteOldestOfType(ctx, txq, customerID, existing.Type, existing.ID, now); err != nil {
+			return err
+		}
+	}
+	return recordCustomerAddressRemoved(ctx, txq, now, customerID, existing.ID, addressSnapshotFromRow(existing), act.Kind, act.Display, act.UserID)
+}
+
 // primaryTransitionProblem is errPrimaryTransitionRefused's body: the one
 // address-write refusal that is not field-shaped the way validateAddress's
 // are, so it is its own small helper rather than folded into validateAddress
@@ -228,7 +344,6 @@ func (s *server) PostCustomersByIdAddresses(ctx context.Context, req gen.PostCus
 
 	now := s.deps.Clock()
 	var created store.CustomersCustomerAddress
-	var capProblem gen.PostCustomersByIdAddresses400ApplicationProblemPlusJSONResponse
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
 		if _, err := txq.LockCustomer(ctx, req.Id); err != nil {
@@ -237,45 +352,16 @@ func (s *server) PostCustomersByIdAddresses(ctx context.Context, req gen.PostCus
 			}
 			return err
 		}
-
-		total, err := txq.CountCustomerAddresses(ctx, req.Id)
-		if err != nil {
-			return err
-		}
-		if total >= maxCustomerAddresses {
-			capProblem = gen.PostCustomersByIdAddresses400ApplicationProblemPlusJSONResponse(
-				apicommon.ValidationProblem("Invalid address", map[string][]string{"addresses": {"A customer can have at most 50 addresses"}}))
-			return errAddressCapReached
-		}
-
-		countOfType, err := txq.CountCustomerAddressesOfType(ctx, store.CountCustomerAddressesOfTypeParams{CustomerID: req.Id, Type: parsed.Type, ExcludeID: 0})
-		if err != nil {
-			return err
-		}
-		isPrimary := requestedPrimary
-		if countOfType == 0 {
-			isPrimary = true
-		} else if requestedPrimary {
-			if err := demoteCurrentPrimary(ctx, txq, req.Id, parsed.Type, now); err != nil {
-				return err
-			}
-		}
-
-		created, err = txq.InsertCustomerAddress(ctx, store.InsertCustomerAddressParams{
-			CustomerID: req.Id, Type: parsed.Type, Label: parsed.Label, Line1: parsed.Line1, Line2: parsed.Line2,
-			PostalCode: parsed.PostalCode, City: parsed.City, Region: parsed.Region, Country: parsed.Country,
-			IsPrimary: isPrimary, Now: now,
-		})
-		if err != nil {
-			return err
-		}
-		return recordCustomerAddressAdded(ctx, txq, now, req.Id, created.ID, addressSnapshotFromRow(created), act.Kind, act.Display, act.UserID)
+		var err error
+		created, err = insertAddress(ctx, txq, req.Id, parsed, requestedPrimary, now, act)
+		return err
 	})
 	switch {
 	case errors.Is(err, errCustomerNotFound):
 		return gen.PostCustomersByIdAddresses404Response{}, nil
 	case errors.Is(err, errAddressCapReached):
-		return capProblem, nil
+		return gen.PostCustomersByIdAddresses400ApplicationProblemPlusJSONResponse(
+			apicommon.ValidationProblem("Invalid address", map[string][]string{"addresses": {addressCapMessage}})), nil
 	case err != nil:
 		return nil, fmt.Errorf("customers: create address: %w", err)
 	}
@@ -338,9 +424,7 @@ func (s *server) PutCustomersByIdAddressesByAddressId(ctx context.Context, req g
 	}
 
 	now := s.deps.Clock()
-	var before, after addressSnapshot
 	var updated store.CustomersCustomerAddress
-	var primaryProblem gen.PutCustomersByIdAddressesByAddressId400ApplicationProblemPlusJSONResponse
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
 		if _, err := txq.LockCustomer(ctx, req.Id); err != nil {
@@ -357,61 +441,14 @@ func (s *server) PutCustomersByIdAddressesByAddressId(ctx context.Context, req g
 		if err != nil {
 			return err
 		}
-		before = addressSnapshotFromRow(existing)
-
-		var isPrimary bool
-		if parsed.Type == existing.Type {
-			if existing.IsPrimary && !requestedPrimary {
-				primaryProblem = primaryTransitionProblem()
-				return errPrimaryTransitionRefused
-			}
-			isPrimary = requestedPrimary || existing.IsPrimary
-			if isPrimary && !existing.IsPrimary {
-				if err := demoteCurrentPrimary(ctx, txq, req.Id, parsed.Type, now); err != nil {
-					return err
-				}
-			}
-		} else {
-			countOfNewType, err := txq.CountCustomerAddressesOfType(ctx, store.CountCustomerAddressesOfTypeParams{CustomerID: req.Id, Type: parsed.Type, ExcludeID: req.AddressId})
-			if err != nil {
-				return err
-			}
-			if countOfNewType == 0 {
-				isPrimary = true
-			} else {
-				isPrimary = requestedPrimary
-				if requestedPrimary {
-					if err := demoteCurrentPrimary(ctx, txq, req.Id, parsed.Type, now); err != nil {
-						return err
-					}
-				}
-			}
-		}
-
-		updated, err = txq.UpdateCustomerAddress(ctx, store.UpdateCustomerAddressParams{
-			ID: req.AddressId, CustomerID: req.Id,
-			Type: parsed.Type, Label: parsed.Label, Line1: parsed.Line1, Line2: parsed.Line2,
-			PostalCode: parsed.PostalCode, City: parsed.City, Region: parsed.Region, Country: parsed.Country,
-			IsPrimary: isPrimary, UpdatedAt: now,
-		})
-		if err != nil {
-			return err
-		}
-		after = addressSnapshotFromRow(updated)
-
-		if parsed.Type != existing.Type && existing.IsPrimary {
-			if err := promoteOldestOfType(ctx, txq, req.Id, existing.Type, req.AddressId, now); err != nil {
-				return err
-			}
-		}
-
-		return recordCustomerAddressUpdated(ctx, txq, now, req.Id, req.AddressId, before, after, act.Kind, act.Display, act.UserID)
+		updated, err = replaceAddress(ctx, txq, req.Id, existing, parsed, requestedPrimary, now, act)
+		return err
 	})
 	switch {
 	case errors.Is(err, errCustomerNotFound):
 		return gen.PutCustomersByIdAddressesByAddressId404Response{}, nil
 	case errors.Is(err, errPrimaryTransitionRefused):
-		return primaryProblem, nil
+		return primaryTransitionProblem(), nil
 	case err != nil:
 		return nil, fmt.Errorf("customers: update address: %w", err)
 	}
@@ -455,24 +492,7 @@ func (s *server) DeleteCustomersByIdAddressesByAddressId(ctx context.Context, re
 		if err != nil {
 			return err
 		}
-
-		// The row itself is deleted before any promotion of a different
-		// address of the same type: while the deleted row still exists with
-		// is_primary=true, promoting another row of the same type would
-		// transiently violate ux_customer_addresses_primary (two primaries
-		// of one type at once) — deleting it first removes that row from the
-		// index entirely, so the promotion below is always safe.
-		if err := txq.DeleteCustomerAddress(ctx, store.DeleteCustomerAddressParams{ID: req.AddressId, CustomerID: req.Id}); err != nil {
-			return err
-		}
-
-		if existing.IsPrimary {
-			if err := promoteOldestOfType(ctx, txq, req.Id, existing.Type, req.AddressId, now); err != nil {
-				return err
-			}
-		}
-
-		return recordCustomerAddressRemoved(ctx, txq, now, req.Id, req.AddressId, addressSnapshotFromRow(existing), act.Kind, act.Display, act.UserID)
+		return removeAddress(ctx, txq, req.Id, existing, now, act)
 	})
 	switch {
 	case errors.Is(err, errCustomerNotFound):

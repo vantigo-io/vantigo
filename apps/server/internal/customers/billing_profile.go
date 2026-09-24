@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -233,6 +234,31 @@ func (s *server) resolvedPeppolLookupFor(ctx context.Context, q *store.Queries, 
 	return resolvedPeppolLookup(stored, participant, showParticipantID), nil
 }
 
+// writeBillingProfile is PutCustomersByIdBillingProfile's transaction body —
+// the rate's numeric column value, the guarded full-replace UPDATE
+// (pgx.ErrNoRows on a stale expectedRevision) and
+// customer.billing_profile_updated — and the one the CSV importer writes a
+// row's billing profile through. The caller has decided before and after
+// differ. The rate's conversion fails only for a value JSON cannot carry, and
+// is an error, never a NULL.
+func writeBillingProfile(ctx context.Context, txq *store.Queries, id int32, before, after billingProfile, expectedRevision *int32, now time.Time, act actor) (store.UpdateCustomerBillingProfileRow, error) {
+	defaultBillRate, err := numericFromFloatPtr(after.DefaultBillRate)
+	if err != nil {
+		return store.UpdateCustomerBillingProfileRow{}, err
+	}
+	updated, err := txq.UpdateCustomerBillingProfile(ctx, store.UpdateCustomerBillingProfileParams{
+		ID: id, InvoiceEmail: after.InvoiceEmail, ReminderEmail: after.ReminderEmail,
+		PaymentTermsDays: after.PaymentTermsDays, Currency: after.Currency, Language: after.Language,
+		InvoiceDelivery: after.InvoiceDelivery, ReminderDelivery: after.ReminderDelivery,
+		PeppolID: after.PeppolID, Gln: after.Gln, BuyerReference: after.BuyerReference, DefaultBillRate: defaultBillRate,
+		UpdatedAt: now, ExpectedRevision: expectedRevision,
+	})
+	if err != nil {
+		return store.UpdateCustomerBillingProfileRow{}, err
+	}
+	return updated, recordCustomerBillingProfileUpdated(ctx, txq, now, id, before, after, act.Kind, act.Display, act.UserID)
+}
+
 // PutCustomersByIdBillingProfile Replace a customer's billing profile
 // (PUT /api/v1/customers/{id}/billing-profile)
 //
@@ -299,13 +325,6 @@ func (s *server) PutCustomersByIdBillingProfile(ctx context.Context, req gen.Put
 		return gen.PutCustomersByIdBillingProfile200JSONResponse(billingProfileResponse(before, existing.Revision, warnings, lookup, groupDefault)), nil
 	}
 
-	// The rate's column value, built before the transaction like everything
-	// else this write needs: a failed conversion is an error, never a NULL.
-	defaultBillRate, err := numericFromFloatPtr(after.DefaultBillRate)
-	if err != nil {
-		return nil, err
-	}
-
 	now := s.deps.Clock()
 
 	// Resolved before the transaction opens: this handler always records a
@@ -319,19 +338,9 @@ func (s *server) PutCustomersByIdBillingProfile(ctx context.Context, req gen.Put
 
 	var updated store.UpdateCustomerBillingProfileRow
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		txq := store.New(tx)
 		var err error
-		updated, err = txq.UpdateCustomerBillingProfile(ctx, store.UpdateCustomerBillingProfileParams{
-			ID: req.Id, InvoiceEmail: after.InvoiceEmail, ReminderEmail: after.ReminderEmail,
-			PaymentTermsDays: after.PaymentTermsDays, Currency: after.Currency, Language: after.Language,
-			InvoiceDelivery: after.InvoiceDelivery, ReminderDelivery: after.ReminderDelivery,
-			PeppolID: after.PeppolID, Gln: after.Gln, BuyerReference: after.BuyerReference, DefaultBillRate: defaultBillRate,
-			UpdatedAt: now, ExpectedRevision: body.Revision,
-		})
-		if err != nil {
-			return err
-		}
-		return recordCustomerBillingProfileUpdated(ctx, txq, now, req.Id, before, after, act.Kind, act.Display, act.UserID)
+		updated, err = writeBillingProfile(ctx, store.New(tx), req.Id, before, after, body.Revision, now, act)
+		return err
 	})
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):

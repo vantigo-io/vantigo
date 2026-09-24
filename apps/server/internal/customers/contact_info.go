@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -91,6 +92,21 @@ func validateContactInfo(email, phone, website *string) (contactInfo, map[string
 	return info, nil
 }
 
+// writeContactInfo is PutCustomersByIdContactInfo's transaction body — the
+// guarded UPDATE (pgx.ErrNoRows on a stale expectedRevision) and
+// customer.contact_info_updated — and the one the CSV importer writes a row's
+// contact info through. The caller has decided before and after differ.
+func writeContactInfo(ctx context.Context, txq *store.Queries, id int32, before, after contactInfo, expectedRevision *int32, now time.Time, act actor) (store.UpdateCustomerContactInfoRow, error) {
+	updated, err := txq.UpdateCustomerContactInfo(ctx, store.UpdateCustomerContactInfoParams{
+		ID: id, Email: after.Email, Phone: after.Phone, Website: after.Website,
+		UpdatedAt: now, ExpectedRevision: expectedRevision,
+	})
+	if err != nil {
+		return store.UpdateCustomerContactInfoRow{}, err
+	}
+	return updated, recordCustomerContactInfoUpdated(ctx, txq, now, id, before, after, act.Kind, act.Display, act.UserID)
+}
+
 // PutCustomersByIdContactInfo Replace a customer's contact info
 // (PUT /api/v1/customers/{id}/contact-info)
 //
@@ -161,16 +177,9 @@ func (s *server) PutCustomersByIdContactInfo(ctx context.Context, req gen.PutCus
 
 	var updated store.UpdateCustomerContactInfoRow
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		txq := store.New(tx)
 		var err error
-		updated, err = txq.UpdateCustomerContactInfo(ctx, store.UpdateCustomerContactInfoParams{
-			ID: req.Id, Email: after.Email, Phone: after.Phone, Website: after.Website,
-			UpdatedAt: now, ExpectedRevision: body.Revision,
-		})
-		if err != nil {
-			return err
-		}
-		return recordCustomerContactInfoUpdated(ctx, txq, now, req.Id, before, after, act.Kind, act.Display, act.UserID)
+		updated, err = writeContactInfo(ctx, store.New(tx), req.Id, before, after, body.Revision, now, act)
+		return err
 	})
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):

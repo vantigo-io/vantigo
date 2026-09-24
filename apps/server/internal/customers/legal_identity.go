@@ -150,44 +150,23 @@ func (s *server) PutCustomersByIdLegalIdentity(ctx context.Context, req gen.PutC
 	// (duplicates.go).
 	nameHolders := needsDuplicateCheck && s.hasPermission(ctx, customersView)
 
-	legalCountry, legalID, legalName, legalSource, legalType := legalColumns(after)
 	var conflict *gen.CustomerConflictProblem
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		txq := store.New(tx)
-		// The duplicate check runs last, immediately before the write: a
-		// conflict aborts the transaction via errDuplicateIdentity before
-		// UpdateCustomer ever runs, so a refused replace leaves the row (and
-		// its revision) untouched.
-		if needsDuplicateCheck {
-			problem, err := s.duplicateIdentityProblem(ctx, txq, *after, req.Id, nameHolders)
-			if err != nil {
-				return err
-			}
-			if problem != nil {
-				conflict = problem
-				return errDuplicateIdentity
-			}
-		}
-		// ExpectedRevision is always nil here: the legal-identity sub-resource
-		// stays an unconditional write, not a revision-guarded one (customers
+		// ExpectedRevision is nil: the legal-identity sub-resource stays an
+		// unconditional write, not a revision-guarded one (customers
 		// foundation design D5) — a call that changes the identity bumps the
-		// row's revision by one whatever revision the caller last read.
-		if _, err := txq.UpdateCustomer(ctx, store.UpdateCustomerParams{
-			ID: req.Id, Name: existing.Name, Status: existing.Status,
-			LegalCountry: legalCountry, LegalID: legalID, LegalName: legalName, LegalSource: legalSource, LegalType: legalType,
-			UpdatedAt: now,
-		}); err != nil {
-			return err
-		}
-		// The record on file was fetched for the identity this call just
-		// replaced (fix round 2, C2): if it is a different company's now, it
-		// goes, in the same transaction as the write that made it wrong. The
-		// UPDATE above holds the customer row's lock, which is the lock the
-		// refresh takes first, so this cannot interleave with a fetch.
-		if err := invalidateRegistryRecord(ctx, txq, req.Id, after, existing.Type); err != nil {
-			return err
-		}
-		return recordCustomerUpdated(ctx, txq, now, req.Id, existing.Name, before, existing.Name, after, act.Kind, act.Display, act.UserID)
+		// row's revision by one whatever revision the caller last read. Name
+		// and status are carried over unchanged, so customer.updated is the
+		// one event. The duplicate check (immediately before the write, so a
+		// refused replace leaves the row and its revision untouched), the
+		// registry record's invalidation and the event are writeCustomerCore's,
+		// in the order this handler has always run them.
+		var err error
+		_, conflict, err = s.writeCustomerCore(ctx, store.New(tx), req.Id, existing.Type,
+			customerCore{Name: existing.Name, Status: existing.Status, Identity: before},
+			customerCore{Name: existing.Name, Status: existing.Status, Identity: after},
+			nil, needsDuplicateCheck, nameHolders, now, act)
+		return err
 	})
 	if errors.Is(err, errDuplicateIdentity) {
 		return gen.PutCustomersByIdLegalIdentity409ApplicationProblemPlusJSONResponse(*conflict), nil

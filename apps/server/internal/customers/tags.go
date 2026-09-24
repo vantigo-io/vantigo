@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -262,6 +263,22 @@ func (s *server) DeleteCustomersTagsByTagId(ctx context.Context, req gen.DeleteC
 	return gen.DeleteCustomersTagsByTagId204Response{}, nil
 }
 
+// replaceCustomerTags is PutCustomersByIdTags' transaction body once the
+// customer lock is held: the set replaced — every link deleted, the wanted ones
+// inserted in one statement — and customer.tags_changed with what was added and
+// removed. A tag deleted in between is a foreign-key violation on
+// customerTagsTagFK, the caller's to map. The CSV importer replaces a row's
+// tags through it.
+func replaceCustomerTags(ctx context.Context, txq *store.Queries, id int32, wanted []uuid.UUID, added, removed []tagSnapshot, now time.Time, act actor) error {
+	if err := txq.DeleteCustomerTagLinks(ctx, id); err != nil {
+		return err
+	}
+	if err := txq.InsertCustomerTagLinks(ctx, store.InsertCustomerTagLinksParams{CustomerID: id, TagIds: wanted}); err != nil {
+		return err
+	}
+	return recordCustomerTagsChanged(ctx, txq, now, id, added, removed, act.Kind, act.Display, act.UserID)
+}
+
 // PutCustomersByIdTags Replace a customer's tags
 // (PUT /api/v1/customers/{id}/tags)
 //
@@ -397,13 +414,7 @@ func (s *server) PutCustomersByIdTags(ctx context.Context, req gen.PutCustomersB
 				}
 				return err
 			}
-			if err := txq.DeleteCustomerTagLinks(ctx, req.Id); err != nil {
-				return err
-			}
-			if err := txq.InsertCustomerTagLinks(ctx, store.InsertCustomerTagLinksParams{CustomerID: req.Id, TagIds: wanted}); err != nil {
-				return err
-			}
-			return recordCustomerTagsChanged(ctx, txq, now, req.Id, added, removed, act.Kind, act.Display, act.UserID)
+			return replaceCustomerTags(ctx, txq, req.Id, wanted, added, removed, now, act)
 		})
 	})
 	if errors.Is(err, errCustomerNotFound) {

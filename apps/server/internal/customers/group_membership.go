@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -56,6 +57,27 @@ const groupMembershipReadAttempts = 3
 // is wrong is the body they sent.
 func groupNotFound(id uuid.UUID) string {
 	return fmt.Sprintf("Customer group %s does not exist", id)
+}
+
+// writeCustomerGroup is PutCustomersByIdGroup's transaction body — the guarded
+// group_id write (pgx.ErrNoRows when expectedRevision is stale; a foreign-key
+// violation on customersGroupFK when the group was deleted in between) and
+// customer.group_changed with both names snapshotted. The CSV importer moves a
+// row's customer through it too, unguarded (expectedRevision nil) because it
+// holds the customer's row lock, so a move by file and a move by hand are one
+// event of one shape.
+func writeCustomerGroup(ctx context.Context, txq *store.Queries, id int32, before, after *groupSnapshot, expectedRevision *int32, now time.Time, act actor) (store.SetCustomerGroupRow, error) {
+	var groupID *uuid.UUID
+	if after != nil {
+		groupID = &after.GroupID
+	}
+	updated, err := txq.SetCustomerGroup(ctx, store.SetCustomerGroupParams{
+		ID: id, GroupID: groupID, UpdatedAt: now, ExpectedRevision: expectedRevision,
+	})
+	if err != nil {
+		return store.SetCustomerGroupRow{}, err
+	}
+	return updated, recordCustomerGroupChanged(ctx, txq, now, id, before, after, act.Kind, act.Display, act.UserID)
 }
 
 // PutCustomersByIdGroup Put a customer in a group, or take it out of every group
@@ -217,15 +239,9 @@ func (s *server) PutCustomersByIdGroup(ctx context.Context, req gen.PutCustomers
 		now := s.deps.Clock()
 		var updated store.SetCustomerGroupRow
 		err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-			txq := store.New(tx)
 			var err error
-			updated, err = txq.SetCustomerGroup(ctx, store.SetCustomerGroupParams{
-				ID: req.Id, GroupID: after, UpdatedAt: now, ExpectedRevision: guard,
-			})
-			if err != nil {
-				return err
-			}
-			return recordCustomerGroupChanged(ctx, txq, now, req.Id, beforeSnapshot, afterSnapshot, act.Kind, act.Display, act.UserID)
+			updated, err = writeCustomerGroup(ctx, store.New(tx), req.Id, beforeSnapshot, afterSnapshot, guard, now, *act)
+			return err
 		})
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):
