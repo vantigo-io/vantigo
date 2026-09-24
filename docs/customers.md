@@ -595,7 +595,11 @@ sanitising whatever arrived, and a chip painted with a value no stylesheet knows
 is an invisible chip. A name is normalised to Unicode NFC before it is stored or
 compared, for the same reason the uniqueness ignores case: `Café` typed with a
 precomposed `é` and `Café` typed with a combining acute are one word to every
-reader. `PUT /customers/tags/{tagId}` is a full replace of both fields, so a body
+reader. A tag name may not contain `|` either: it is what
+[the customers file](#csv-import-and-export)'s tags cell puts between a
+customer's tag names, and a name holding it would export as a cell that reads
+back as the tags on either side of it — the cell has one reading only.
+`PUT /customers/tags/{tagId}` is a full replace of both fields, so a body
 without `color` **clears** the colour rather than leaving the one the tag had.
 
 The vocabulary is **unpaged**: `GET /customers/tags` answers every tag, and both
@@ -1094,7 +1098,8 @@ headers are the API's JSON names, so the field tables above describe the file:
 
 Delivery and visiting addresses, contacts, the timeline and the owner are not in
 the file — an owner is a user of this installation, which no file can name
-safely. A tag whose name contains `|` cannot be named by a file. Two edge cases of
+safely. A tag name can never hold `|`, the tags cell's own separator (see
+[Tags](#tags)), so the cell has one reading. Two edge cases of
 the format: a number cell of one `.` followed by exactly three digits (`1.250`) is
 refused rather than guessed at — it reads as thousands to one person and as a
 decimal to another — and a value that itself begins with an apostrophe followed by
@@ -1149,8 +1154,10 @@ Inside a group, a blank cell clears that field — all of an address's cells bla
 remove the primary address of that type (the oldest remaining becomes primary, as
 a delete by hand does), a blank `tags` cell clears the tags. The primary address
 keeps its label, which the file does not carry. `group` and `tags` name existing
-vocabulary, case-insensitively; an unknown name is that row's error, never a word
-created behind anybody's back. A new legal identity is `manual`; a row repeating
+vocabulary, matched ignoring both case and Unicode normalisation (NFC/NFD) — a
+name a file spells decomposed (a macOS filename, an iOS keyboard, a paste from
+another system) still finds the word it names; an unknown name is that row's
+error, never a word created behind anybody's back. A new legal identity is `manual`; a row repeating
 the identity on file keeps its source, so re-importing an export never turns a
 Brreg pick into a manual entry. `allowDuplicateIdentity=true` is the create
 endpoint's own flag, for every row.
@@ -1165,18 +1172,23 @@ audit trail.
 
 **The dry run.** `dryRun` defaults to `true`: every row runs exactly as in the real
 run — each in its own transaction — and is rolled back instead of committed.
-Nothing is kept: no customer, no customer number, no event, and no lock outlives its
-row, so a check holds nobody up. Because each row rolls back before the next runs,
-a dry run cannot see an earlier row's effect on a later one. The case a file makes
-likely — two rows creating customers with the same legal identity — is checked on
-the file itself before any row runs, so the second is refused in both runs alike
-(unless `allowDuplicateIdentity`). Any other dependency between rows (a row naming
-a customer an earlier row changed, say) may check clean and still be refused by the
-real run — cleanly, as that row's error, with the other rows imported. At the cap
-(5000 creates, each with contact info, a postal address, a billing profile and a
-tag) a real run took about 30 s on 4 CPUs (`taskset -c 0-3`); a dry run costs the same.
-The ceiling that matters is the proxy in front of a hosted installation, which gives up
-after about 100 seconds while the rows go on committing.
+Nothing is kept that a user could see: no customer, no customer number, no event,
+and no lock outlives its row, so a check holds nobody up. (The tables' own row ids
+are identity columns, which a rollback does not rewind, so internal ids may skip —
+harmless, and nothing a user sees.) Because each row rolls back before the next
+runs, a dry run cannot see an earlier row's effect on a later one. The case a file
+makes likely — two rows creating customers with the same legal identity — is
+checked on the file itself before any row runs, so the second is refused in both
+runs alike (unless `allowDuplicateIdentity`). Any other dependency between rows (a
+row naming a customer an earlier row changed, say) may check clean and still be
+refused by the real run — cleanly, as that row's error, with the other rows
+imported. At the cap (5000 creates, each with contact info, a postal address, a
+billing profile and a tag) a real run took about 30 s on 4 CPUs and without the
+race detector, measured by the opt-in test `VANTIGO_IMPORT_TIMING=1` (CI's own
+race-detected run says nothing about the import, so the timing test skips unless
+asked for); a dry run costs the same. The ceiling that matters is the proxy in
+front of a hosted installation, which gives up after about 100 seconds while the
+rows go on committing.
 
 **The result** is `CustomerImportResult` — `dryRun`, `rows`, `created`, `updated`
 (an unchanged update counts), `failed`, and `errors[]` of `{row, column?,
