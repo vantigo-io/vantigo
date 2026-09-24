@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -445,7 +446,9 @@ func TestValidateLegalIdentity_NorwegianOrgNumberRule(t *testing.T) {
 		}
 	})
 
-	t.Run("person type keeps the unchanged rule", func(t *testing.T) {
+	t.Run("person type keeps the plain rule for anything that is not a national identity number", func(t *testing.T) {
+		// Eleven digits with a hyphen, but the second check digit fails (it
+		// would be 3): free text, as it always was.
 		got, errs := validateLegalIdentity("no", "person", "010170-12345", "Kari Nordmann", "manual")
 		if errs != nil {
 			t.Fatalf("validateLegalIdentity: unexpected errors %v", errs)
@@ -1046,5 +1049,85 @@ func TestValidateContactTitle_MirrorsTheRoleRuleUnderItsOwnNoun(t *testing.T) {
 	want := "A title cannot be longer than 255 characters, the given value was 256 characters"
 	if _, err := validateContactTitle(strings.Repeat("a", 256)); err != want {
 		t.Errorf("validateContactTitle(256 chars) = error %q, want %q", err, want)
+	}
+}
+
+// TestValidateLegalIdentity_RefusesANorwegianNationalIdentityNumber is customers
+// GDPR design D1: for a Norwegian private person, eleven digits whose two
+// mod-11 check digits pass are refused — a fødselsnummer and a D-number alike,
+// run together or grouped the way people write them — while every near miss
+// stays the free text a person's legal id always was. The refusal names no
+// number: echoing it back would put it in a browser's error state and a log.
+func TestValidateLegalIdentity_RefusesANorwegianNationalIdentityNumber(t *testing.T) {
+	const refusal = "A Norwegian national identity number is never stored here"
+	fnr := NationalIDForTest("018190", 100, false)
+	dNumber := NationalIDForTest("018190", 100, true)
+	for name, id := range map[string]string{
+		"a fødselsnummer":       fnr,
+		"a D-number":            dNumber,
+		"grouped with a space":  fnr[:6] + " " + fnr[6:],
+		"grouped with a hyphen": fnr[:6] + "-" + fnr[6:],
+		"with full stops":       fnr[:2] + "." + fnr[2:4] + "." + fnr[4:],
+	} {
+		t.Run("refused/"+name, func(t *testing.T) {
+			_, errs := validateLegalIdentity("no", "person", id, "Kari Nordmann", "manual")
+			if got := errs["id"]; len(got) != 1 || got[0] != refusal {
+				t.Errorf("errors[\"id\"] = %v, want [%q]", got, refusal)
+			}
+			if len(errs) != 1 {
+				t.Errorf("errors = %v, want only id", errs)
+			}
+			if strings.Contains(fmt.Sprint(errs), fnr[6:]) {
+				t.Errorf("errors = %v: the refusal names the number", errs)
+			}
+		})
+	}
+
+	wrongSecond := fnr[:10] + strconv.Itoa((int(fnr[10]-'0')+1)%10)
+	for name, tc := range map[string]struct{ country, typ, id string }{
+		"a second check digit that fails": {"no", "person", wrongSecond},
+		"ten digits":                      {"no", "person", fnr[:10]},
+		"twelve digits":                   {"no", "person", fnr + "0"},
+		"a letter among the digits":       {"no", "person", fnr[:10] + "x"},
+		"a passport number":               {"no", "person", "FX1234567"},
+		"another country's person":        {"se", "person", fnr},
+	} {
+		t.Run("kept/"+name, func(t *testing.T) {
+			got, errs := validateLegalIdentity(tc.country, tc.typ, tc.id, "Kari Nordmann", "manual")
+			if errs != nil {
+				t.Fatalf("validateLegalIdentity(%q): unexpected errors %v", tc.id, errs)
+			}
+			if got.ID != strings.ToLower(tc.id) {
+				t.Errorf("ID = %q, want %q", got.ID, strings.ToLower(tc.id))
+			}
+		})
+	}
+
+	// The organisation-number rule is untouched: a business keeps its own.
+	if got, errs := validateLegalIdentity("no", "business", "923609016", "Acme AS", "manual"); errs != nil || got.ID != "923609016" {
+		t.Errorf("a Norwegian business = %+v, %v; want the organisation number stored", got, errs)
+	}
+}
+
+// TestIsNorwegianNationalID_AnyOneDigitChangedIsNotOne: every weight is
+// between 1 and 9 and 11 is prime, so changing any one digit of a valid number
+// moves the check it takes part in — the rule refuses exactly the numbers
+// whose check digits pass, not "eleven digits" in general.
+func TestIsNorwegianNationalID_AnyOneDigitChangedIsNotOne(t *testing.T) {
+	for _, valid := range []string{NationalIDForTest("298292", 400, false), NationalIDForTest("318299", 7, true)} {
+		if !isNorwegianNationalID(valid) {
+			t.Fatalf("isNorwegianNationalID(%q) = false, want true", valid)
+		}
+		for i := range valid {
+			for d := byte('0'); d <= '9'; d++ {
+				if d == valid[i] {
+					continue
+				}
+				changed := valid[:i] + string(d) + valid[i+1:]
+				if isNorwegianNationalID(changed) {
+					t.Errorf("isNorwegianNationalID(%q) = true: digit %d changed from %c to %c", changed, i, valid[i], d)
+				}
+			}
+		}
 	}
 }

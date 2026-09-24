@@ -146,6 +146,74 @@ func validNorwegianOrgNumber(digits string) bool {
 	return int(digits[8]-'0') == check
 }
 
+// nationalIDRefused is customers GDPR design D1's refusal: a Norwegian
+// private person's legal id is never their national identity number.
+// Datatilsynet's advice for ordinary customer administration is not to hold
+// one at all, and this module has promised since its foundation never to be a
+// fødselsnummer field. The sentence names no number, deliberately.
+const nationalIDRefused = "A Norwegian national identity number is never stored here"
+
+// nationalIDFirstWeights and nationalIDSecondWeights are the two weight rows
+// of a Norwegian national identity number's mod-11 check digits: the tenth
+// digit is computed over the first nine, the eleventh over the first ten. A
+// D-number is the same number with its first digit raised by four (the day
+// plus 40), and its check digits are computed the same way — so one rule
+// catches both, and an H-number or one of Skatteetaten's synthetic test
+// numbers besides.
+var (
+	nationalIDFirstWeights  = []int{3, 7, 6, 1, 8, 9, 4, 5, 2}
+	nationalIDSecondWeights = []int{5, 4, 3, 2, 7, 6, 5, 4, 3, 2}
+)
+
+// nationalIDCheckDigit is one mod-11 check digit over the leading digits,
+// weighted, or -1 when the remainder would make it 10: no number carries that
+// check digit, so digits that would need one are not a national identity
+// number at all.
+func nationalIDCheckDigit(digits string, weights []int) int {
+	sum := 0
+	for i, w := range weights {
+		sum += int(digits[i]-'0') * w
+	}
+	switch check := 11 - sum%11; check {
+	case 11:
+		return 0
+	case 10:
+		return -1
+	default:
+		return check
+	}
+}
+
+// isNorwegianNationalID reports whether s is a Norwegian national identity
+// number (customers GDPR design D1): once whitespace, hyphens and full stops
+// are taken out — "010190 12345" and "010190-12345" are how people write one —
+// eleven ASCII digits whose two check digits both pass. Only the check digits
+// decide; the first six digits are not read as a date, so every kind of
+// number the register issues is caught by the one rule. A false positive costs
+// somebody whose foreign id happens to have the shape one retyped value; a
+// false negative would store the one number this module promises never to hold.
+func isNorwegianNationalID(s string) bool {
+	digits := strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) || r == '-' || r == '.' {
+			return -1
+		}
+		return r
+	}, s)
+	if len(digits) != 11 {
+		return false
+	}
+	for i := 0; i < len(digits); i++ {
+		if digits[i] < '0' || digits[i] > '9' {
+			return false
+		}
+	}
+	if first := nationalIDCheckDigit(digits[:9], nationalIDFirstWeights); first < 0 || int(digits[9]-'0') != first {
+		return false
+	}
+	second := nationalIDCheckDigit(digits[:10], nationalIDSecondWeights)
+	return second >= 0 && int(digits[10]-'0') == second
+}
+
 // validateLegalID is LegalId's Validate and constructor
 // (DM/Customers/Common/LegalId.cs): non-blank, at most 50 UTF-16 code
 // units, trimmed and lowercased. Not format- or checksum-validated here —
@@ -457,10 +525,15 @@ type legalIdentity struct {
 // top: when the normalised country is "no" and the normalised type is
 // "business", id must be a Norwegian organisasjonsnummer, checked (and, on
 // success, stored as) here rather than in validateLegalID — this is the one
-// place both values are already known good. Every other combination,
-// including "no" with type "person" (deliberately not treated as a
-// fødselsnummer field — that is P5's GDPR call to make, not this one's),
-// keeps validateLegalID's plain non-blank/length rule.
+// place both values are already known good.
+//
+// Customers GDPR design D1 adds the mirror image for "no" with type
+// "person": an id that is a Norwegian national identity number
+// (isNorwegianNationalID) is refused outright rather than validated into
+// legitimacy, because this module never stores one. Every other combination
+// keeps validateLegalID's plain non-blank/length rule, and so does a Norwegian
+// person's id that is anything else — a passport number, a foreign id, a
+// customer reference.
 func validateLegalIdentity(country, legalType, id, name, source string) (legalIdentity, map[string][]string) {
 	errs := map[string][]string{}
 
@@ -492,6 +565,14 @@ func validateLegalIdentity(country, legalType, id, name, source string) (legalId
 		} else {
 			i = digits
 		}
+	}
+
+	// The check reads the value as sent, separators and all (the organisation
+	// number's whitespace-stripping is for storing it; this is for refusing it),
+	// and runs only once country and type are known good, exactly as the
+	// business rule above does.
+	if errs["country"] == nil && errs["type"] == nil && errs["id"] == nil && c == "no" && t == "person" && isNorwegianNationalID(i) {
+		errs["id"] = []string{nationalIDRefused}
 	}
 
 	if len(errs) > 0 {
