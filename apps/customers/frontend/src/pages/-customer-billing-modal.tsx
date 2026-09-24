@@ -15,6 +15,7 @@ import {
 import { invalidateCustomersExcept, syncCustomerRevision } from "../api/customers";
 import { billingLanguageLabel, deliveryMethodLabel } from "../lib/billing-labels";
 import { useCustomerReload } from "../lib/customer-reload";
+import { customerWriteErrorMessage } from "../lib/customer-write-error";
 import "../i18n";
 
 interface BillingFormValues {
@@ -166,7 +167,11 @@ export const CustomerBillingModal = ({
         setConflict(true);
         return;
       }
-      notifications.show({ color: "red", title: t("billingProfileCouldNotBeSaved"), message: error.message });
+      notifications.show({
+        color: "red",
+        title: t("billingProfileCouldNotBeSaved"),
+        message: customerWriteErrorMessage(error, t),
+      });
     },
   });
 

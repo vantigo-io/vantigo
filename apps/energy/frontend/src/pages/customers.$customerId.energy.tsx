@@ -15,7 +15,15 @@ const lastTwelveMonths = (now: string) => {
   return { from: from.toISOString(), to: now };
 };
 
-export const CustomerEnergyPanel = ({ customerId }: { customerId: number }) => {
+/**
+ * The customer page's Energy tab. `canAttach` is the host's answer to whether
+ * this caller may attach a metering point to this customer — a merged-away
+ * customer (customers merge design D4) takes none, since a supply period
+ * attached there would sit on a customer nobody looks at. It defaults to
+ * withheld, the safe direction: a call site that forgets it shows the meters
+ * without an action that should not be there.
+ */
+export const CustomerEnergyPanel = ({ customerId, canAttach = false }: { customerId: number; canAttach?: boolean }) => {
   const { t } = useI18n("energy");
   // A stable per-mount "now" keeps the aggregate query key from changing every render.
   const [now] = useState(() => new Date().toISOString());
@@ -28,12 +36,16 @@ export const CustomerEnergyPanel = ({ customerId }: { customerId: number }) => {
   return (
     <Stack gap="lg" mt="md">
       <CustomerEnergyStats meters={meters ?? []} aggregates={aggregates ?? []} />
-      <Group justify="flex-end">
-        <Button leftSection={<IconPlus size={16} />} onClick={() => setAttachOpen(true)}>
-          {t("attachMeteringPoint")}
-        </Button>
-      </Group>
-      <AttachMeteringPointModal customerId={customerId} opened={attachOpen} onClose={() => setAttachOpen(false)} />
+      {canAttach && (
+        <>
+          <Group justify="flex-end">
+            <Button leftSection={<IconPlus size={16} />} onClick={() => setAttachOpen(true)}>
+              {t("attachMeteringPoint")}
+            </Button>
+          </Group>
+          <AttachMeteringPointModal customerId={customerId} opened={attachOpen} onClose={() => setAttachOpen(false)} />
+        </>
+      )}
       {isPending ? <ContentSkeleton rows={4} rowHeight={52} /> : <CustomerMetersTable meters={meters ?? []} />}
     </Stack>
   );

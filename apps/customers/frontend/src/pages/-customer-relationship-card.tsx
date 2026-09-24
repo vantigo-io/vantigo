@@ -18,6 +18,7 @@ import { setCustomerOwner } from "../api/owner";
 import { type CustomerTag, createTag, customerTagsQueryOptions, setCustomerTags } from "../api/tags";
 import { OwnerPicker } from "../components/owner-picker";
 import { TagBadge } from "../components/tag-badge";
+import { customerWriteErrorMessage } from "../lib/customer-write-error";
 import "../i18n";
 import { useCustomerReload } from "../lib/customer-reload";
 
@@ -100,7 +101,11 @@ export const CustomerRelationshipCard = ({ customerId, canEdit }: { customerId: 
         setConflict(true);
         return;
       }
-      notifications.show({ color: "red", title: t("ownerCouldNotBeSaved"), message: error.message });
+      notifications.show({
+        color: "red",
+        title: t("ownerCouldNotBeSaved"),
+        message: customerWriteErrorMessage(error, t),
+      });
     },
   });
 
@@ -138,7 +143,11 @@ export const CustomerRelationshipCard = ({ customerId, canEdit }: { customerId: 
         queryClient.invalidateQueries({ queryKey: customerGroupsQueryOptions().queryKey });
         return;
       }
-      notifications.show({ color: "red", title: t("groupCouldNotBeSaved"), message: error.message });
+      notifications.show({
+        color: "red",
+        title: t("groupCouldNotBeSaved"),
+        message: customerWriteErrorMessage(error, t),
+      });
     },
   });
 
@@ -276,7 +285,12 @@ const TagsEditor = ({ customerId, tags }: { customerId: number; tags: CustomerTa
     mutationFn: (tagIds: string[]) => setCustomerTags(customerId, tagIds),
     // No revision to sync: tags are off the customer row (design D2).
     onSuccess: applyTags,
-    onError: (error) => notifications.show({ color: "red", title: t("tagsCouldNotBeSaved"), message: error.message }),
+    onError: (error) =>
+      notifications.show({
+        color: "red",
+        title: t("tagsCouldNotBeSaved"),
+        message: customerWriteErrorMessage(error, t),
+      }),
   });
 
   const createAndAttach = useMutation({
@@ -306,7 +320,12 @@ const TagsEditor = ({ customerId, tags }: { customerId: number; tags: CustomerTa
       setSearch("");
       applyTags(saved);
     },
-    onError: (error) => notifications.show({ color: "red", title: t("tagCouldNotBeSaved"), message: error.message }),
+    onError: (error) =>
+      notifications.show({
+        color: "red",
+        title: t("tagCouldNotBeSaved"),
+        message: customerWriteErrorMessage(error, t),
+      }),
   });
 
   // The customer's OWN tags seed the option list, and the vocabulary widens it.

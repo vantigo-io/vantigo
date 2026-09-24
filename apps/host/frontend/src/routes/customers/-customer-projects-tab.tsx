@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
+import { customerQueryOptions } from "@vantigo/customers-ui/api/customers";
 import { useI18n } from "@vantigo/frontend-shell";
 import { CustomerProjectsPanel } from "@vantigo/projects-ui";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
@@ -13,7 +14,10 @@ import "../../i18n";
  * The customer page's Projects tab. It lives in the customers app but calls
  * the projects API, so it gates on the projects module itself: a pasted link
  * must not hit an API 404. The panel is the package's; whether this caller may
- * create a project from it is the host's answer, so it is passed in.
+ * create a project from it is the host's answer, so it is passed in: with
+ * `projects:create`, and never on a merged-away customer (customers merge
+ * design D4), whose page is read-only — a project created there would sit on a
+ * customer nobody looks at, and no later merge would re-point it.
  *
  * It sits beside the route file rather than inside it because the route file
  * may export nothing but its `Route` without costing the bundle a code split.
@@ -30,11 +34,13 @@ export const CustomerProjectsTab = () => {
     retry: false,
     staleTime: 300_000,
   });
+  // The layout's loader has already put the customer in the cache.
+  const customer = useQuery(customerQueryOptions(customerId));
   if (!enabledModuleKeys().includes("projects")) return <ModuleNotEnabledPage appLabel={t("navigation.projects")} />;
   return (
     <CustomerProjectsPanel
       customerId={customerId}
-      canCreate={hasPermissions(authorization.data?.permissions, ["projects:create"])}
+      canCreate={hasPermissions(authorization.data?.permissions, ["projects:create"]) && !customer.data?.mergedInto}
     />
   );
 };

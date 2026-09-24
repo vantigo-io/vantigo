@@ -12,6 +12,7 @@ import {
 } from "../api/customers";
 import { type CustomerMergeMove, type CustomerMergeResult, mergeCustomer } from "../api/merge";
 import { CustomerPicker } from "../components/customer-picker";
+import { CUSTOMER_MERGED_CODE } from "../lib/customer-write-error";
 import "../i18n";
 
 /** The words for each kind a merge can move (merge design D3); a kind missing here still shows, as `mergeMovedOther`. */
@@ -33,6 +34,9 @@ const refusalKeys: Record<string, string> = {
   merge_type_mismatch: "mergeRefusedTypeMismatch",
   merge_into_archived: "mergeRefusedIntoArchived",
   merge_already_merged: "mergeRefusedAlreadyMerged",
+  // This customer itself was merged away from another tab: every
+  // customer-scoped write answers it so (see lib/customer-write-error).
+  [CUSTOMER_MERGED_CODE]: "customerMergedMessage",
 };
 
 const typePhraseKey = (type: CustomerType) => (type === "person" ? "mergeTypePerson" : "mergeTypeBusiness");
@@ -44,7 +48,11 @@ const typePhraseKey = (type: CustomerType) => (type === "person" ? "mergeTypePer
  * off; what only the server knows (the pick merged away meanwhile, a stale
  * revision) comes back as its 409 and is said in words. The survivor's
  * revision is the one the page holds; a 409 without a code is that revision
- * going stale, answered the way the header's other writes answer it.
+ * going stale, answered the way the header's other writes answer it — the
+ * page refetches, so the next Merge sends the fresh revision and just works.
+ * A coded refusal refetches too: the picker's cached list may still offer a
+ * customer merged away meanwhile, and the survivor itself may have been
+ * archived or merged away from another tab.
  *
  * On success the answered survivor goes into the cache and its revision is
  * synced before the broad invalidation — the page refreshes, the timeline
@@ -63,7 +71,7 @@ export const CustomerMergeModal = ({
   const queryClient = useQueryClient();
   const [source, setSource] = useState<CustomerResponse | null>(null);
   const [done, setDone] = useState<{ source: CustomerResponse; result: CustomerMergeResult } | null>(null);
-  const [refusal, setRefusal] = useState<string | null>(null);
+  const [refusal, setRefusal] = useState<{ stale: boolean; message: string } | null>(null);
   const mutation = useMutation({
     mutationFn: (picked: CustomerResponse) =>
       mergeCustomer(customer.id, { sourceId: picked.id, revision: customer.revision }),
@@ -81,11 +89,16 @@ export const CustomerMergeModal = ({
     onError: (error) => {
       if (error instanceof ApiConflictError && !error.code) {
         queryClient.invalidateQueries({ queryKey: ["customers"] });
-        setRefusal(t("customerChangedMessage"));
+        setRefusal({ stale: true, message: t("mergeCustomerChangedMessage") });
         return;
       }
+      if (error instanceof ApiConflictError) {
+        queryClient.invalidateQueries({ queryKey: ["customers"] });
+        // The pick was merged away meanwhile: it is not one to offer again.
+        if (error.code === "merge_already_merged") setSource(null);
+      }
       const key = error instanceof ApiConflictError && error.code ? refusalKeys[error.code] : undefined;
-      setRefusal(key ? t(key) : error.message);
+      setRefusal({ stale: false, message: key ? t(key) : error.message });
     },
   });
   // The component stays mounted while closed, so a pick, a refusal or a result
@@ -143,8 +156,11 @@ export const CustomerMergeModal = ({
           )}
           {intoArchived && <Alert color="yellow">{t("mergeIntoArchivedWarning")}</Alert>}
           {refusal && (
-            <Alert color="red" title={t("mergeCouldNotMerge")}>
-              {refusal}
+            <Alert
+              color={refusal.stale ? "yellow" : "red"}
+              title={refusal.stale ? t("customerChangedTitle") : t("mergeCouldNotMerge")}
+            >
+              {refusal.message}
             </Alert>
           )}
           <Group justify="flex-end">

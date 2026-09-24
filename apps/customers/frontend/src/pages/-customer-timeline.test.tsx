@@ -1,7 +1,9 @@
 import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from "@tanstack/react-router";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { setLanguagePreference } from "@vantigo/frontend-shell";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineEntry } from "../api/timeline";
 import {
@@ -1169,5 +1171,129 @@ describe("the timeline's follow-ups", () => {
 
     await userEvent.type(within(dialog).getByRole("textbox", { name: /follow up on/i }), "2026-12-24");
     expect(within(dialog).getByRole("combobox", { name: /assigned to/i })).toBeEnabled();
+  });
+});
+
+// Literally the two entries a merge writes (customers merge design D3), as the
+// server sends them: the entry omits what is unset, and the payload is the Go
+// snapshot as stored — its unset fields are nulls, since the payload is not a
+// wire schema of its own.
+const mergedEntry = {
+  id: 91,
+  provenance: "generated",
+  eventType: "customer.merged",
+  producer: "customers",
+  occurredOn: "2026-09-24",
+  occurredAt: "2026-09-24T10:00:00Z",
+  summary: "Absorbed #5 Acme Norge AS: 3 contacts",
+  payload: {
+    customerId: 42,
+    absorbed: {
+      id: 1005,
+      customerNumber: 5,
+      name: "Acme Norge AS",
+      type: "business",
+      status: "archived",
+      identity: { country: "no", type: "organization", id: "923609016", name: "ACME NORGE AS", source: "brreg" },
+      contactInfo: { email: "post@acme.no", phone: null, website: null },
+      billingProfile: {
+        invoiceEmail: "faktura@acme.no",
+        reminderEmail: null,
+        paymentTermsDays: 30,
+        currency: "NOK",
+        language: null,
+        invoiceDelivery: "ehf",
+        reminderDelivery: null,
+        peppolId: null,
+        gln: null,
+        buyerReference: null,
+        defaultBillRate: null,
+      },
+      ownerUserId: null,
+      groupId: null,
+    },
+    moved: [{ kind: "customers.contacts", count: 3 }],
+  },
+  currentRevision: 1,
+  createdAt: "2026-09-24T10:00:00Z",
+  updatedAt: "2026-09-24T10:00:00Z",
+  actorKind: "user",
+  actorDisplay: "Kari Nordmann",
+};
+const mergedAwayEntry = {
+  id: 92,
+  provenance: "generated",
+  eventType: "customer.merged_away",
+  producer: "customers",
+  occurredOn: "2026-09-24",
+  occurredAt: "2026-09-24T10:00:00Z",
+  summary: "Merged into #2 Acme AS",
+  payload: { customerId: 1005, into: { id: 1002, customerNumber: 2, name: "Acme AS" } },
+  currentRevision: 1,
+  createdAt: "2026-09-24T10:00:00Z",
+  updatedAt: "2026-09-24T10:00:00Z",
+  actorKind: "user",
+  actorDisplay: "Kari Nordmann",
+};
+
+/** The timeline under a real router: the merged-away entry links to the survivor's page. */
+const renderRoutedTimeline = async (entries: unknown[]) => {
+  stubFetch(vi.fn(() => Promise.resolve(json({ data: entries }))));
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const rootRoute = createRootRoute({
+    component: () => (
+      <MantineProvider env="test">
+        <QueryClientProvider client={queryClient}>
+          <CustomerTimeline customerId={42} />
+        </QueryClientProvider>
+      </MantineProvider>
+    ),
+  });
+  const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: ["/"] }) });
+  await router.load();
+  render(<RouterProvider router={router} />);
+};
+
+describe("the timeline's merge events", () => {
+  afterEach(() => {
+    cleanup();
+    setLanguagePreference("auto");
+  });
+
+  it("shows what the absorbed customer said, since the survivor kept its own details", async () => {
+    await renderRoutedTimeline([mergedEntry]);
+
+    expect(await screen.findByText("Merged a duplicate in", { selector: "p" })).toBeInTheDocument();
+    const details = screen.getByLabelText("The duplicate's own details");
+    const value = (term: string) => within(details).getByText(term, { selector: "dt" }).nextElementSibling?.textContent;
+    expect(value("Number")).toBe("#5");
+    expect(value("Name")).toBe("Acme Norge AS");
+    expect(value("Status")).toBe("Archived");
+    expect(value("Legal identity")).toBe("ACME NORGE AS · 923609016 · NO");
+    expect(value("Email")).toBe("post@acme.no");
+    expect(value("Invoice email")).toBe("faktura@acme.no");
+    expect(value("Payment terms")).toBe("30 days");
+    expect(value("Invoice delivery")).toBe("EHF");
+    // What the row did not hold is not listed at all.
+    expect(within(details).queryByText("Phone", { selector: "dt" })).not.toBeInTheDocument();
+    expect(within(details).queryByText("Owner", { selector: "dt" })).not.toBeInTheDocument();
+  });
+
+  it("links a merged-away customer's entry to the customer it went into", async () => {
+    await renderRoutedTimeline([mergedAwayEntry]);
+
+    expect(await screen.findByText("Merged into another customer", { selector: "p" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open #2 Acme AS" })).toHaveAttribute("href", "/customers/1002");
+  });
+
+  it("names both merge events in Norwegian too, and offers them in the Event types filter", async () => {
+    setLanguagePreference("nb");
+    await renderRoutedTimeline([mergedEntry, mergedAwayEntry]);
+
+    expect(await screen.findByText("Slo sammen et duplikat", { selector: "p" })).toBeInTheDocument();
+    expect(screen.getByText("Slått sammen med en annen kunde", { selector: "p" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("combobox", { name: "Hendelsestyper" }));
+    expect(screen.getByText("Slo sammen et duplikat", { selector: "span" })).toBeInTheDocument();
+    expect(screen.getByText("Slått sammen med en annen kunde", { selector: "span" })).toBeInTheDocument();
   });
 });

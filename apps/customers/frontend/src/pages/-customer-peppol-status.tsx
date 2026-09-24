@@ -16,6 +16,7 @@ import {
 import { invalidateCustomersExcept, syncCustomerRevision } from "../api/customers";
 import { EHF_AVAILABLE_CODE } from "../lib/billing-labels";
 import { useCustomerReload } from "../lib/customer-reload";
+import { customerWriteErrorMessage } from "../lib/customer-write-error";
 import { toInput, valuesFromProfile } from "./-customer-billing-modal";
 import "../i18n";
 
@@ -288,7 +289,11 @@ export const CustomerEhfOffer = ({
         setConflict(true);
         return;
       }
-      notifications.show({ color: "red", title: t("peppolUseEhfFailed"), message: error.message });
+      notifications.show({
+        color: "red",
+        title: t("peppolUseEhfFailed"),
+        message: customerWriteErrorMessage(error, t),
+      });
     },
   });
 

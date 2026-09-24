@@ -13,6 +13,7 @@ import {
   REGISTRY_IDENTITY_CHANGED_CODE,
   refreshRegistryRecord,
 } from "../api/registry";
+import { customerWriteErrorMessage } from "../lib/customer-write-error";
 import { CustomerRegistryFields } from "./-customer-registry-fields";
 import "../i18n";
 
@@ -103,7 +104,11 @@ export const CustomerRegistryCard = ({
         setNote("unavailable");
         return;
       }
-      notifications.show({ color: "red", title: t("registryRefreshFailed"), message: error.message });
+      notifications.show({
+        color: "red",
+        title: t("registryRefreshFailed"),
+        message: customerWriteErrorMessage(error, t),
+      });
     },
   });
 
@@ -341,7 +346,11 @@ const RegistryRenameNotice = ({
     // A 409 cannot be the duplicate-identity conflict here: the write changes
     // nothing but the name, and the identity it names is this customer's own.
     onError: (error) => {
-      notifications.show({ color: "red", title: t("registryLegalNameCouldNotBeUpdated"), message: error.message });
+      notifications.show({
+        color: "red",
+        title: t("registryLegalNameCouldNotBeUpdated"),
+        message: customerWriteErrorMessage(error, t),
+      });
     },
   });
 

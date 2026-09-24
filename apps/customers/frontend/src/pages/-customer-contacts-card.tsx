@@ -33,6 +33,7 @@ import {
 } from "../api/contacts";
 import { ApiValidationError } from "../api/customers";
 import { ContactRoleBadges } from "../components/contact-role-badges";
+import { customerWriteErrorMessage } from "../lib/customer-write-error";
 import { formatContactName } from "../lib/format-contact-name";
 import {
   ConnectionFields,
@@ -86,7 +87,11 @@ export const CustomerContactsCard = ({
       invalidateCustomerTimeline();
     },
     onError: (error) => {
-      notifications.show({ color: "red", title: t("failedRemoveCustomer"), message: error.message });
+      notifications.show({
+        color: "red",
+        title: t("failedRemoveCustomer"),
+        message: customerWriteErrorMessage(error, t),
+      });
     },
   });
 
@@ -321,7 +326,11 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
         form.setErrors(mapConnectionErrors(error));
         return;
       }
-      notifications.show({ color: "red", title: t("contactCouldNotBeCreated"), message: error.message });
+      notifications.show({
+        color: "red",
+        title: t("contactCouldNotBeCreated"),
+        message: customerWriteErrorMessage(error, t),
+      });
     },
   });
 
@@ -377,7 +386,11 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
         form.setErrors(error.fieldErrors);
         return;
       }
-      notifications.show({ color: "red", title: t("contactCouldNotBeCreated"), message: error.message });
+      notifications.show({
+        color: "red",
+        title: t("contactCouldNotBeCreated"),
+        message: customerWriteErrorMessage(error, t),
+      });
     },
   });
 

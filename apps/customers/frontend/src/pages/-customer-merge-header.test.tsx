@@ -9,9 +9,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { stubFetch } from "../test/fetch";
 import { CustomerDetailHeader, CustomerOverview } from "./customers.$customerId";
 
+vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
+
+import { notifications } from "@mantine/notifications";
+
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
+// Literally the body the server sends: nothing unset is on the wire, so
+// timelineSummary carries no latestOccurredOn until there is one.
 const customer = (overrides: Record<string, unknown> = {}) => ({
   id: 1005,
   customerNumber: 5,
@@ -20,7 +26,7 @@ const customer = (overrides: Record<string, unknown> = {}) => ({
   type: "business",
   createdAt: "2026-06-01T10:00:00Z",
   updatedAt: "2026-07-01T10:00:00Z",
-  timelineSummary: { entryCount: 0, latestOccurredOn: null },
+  timelineSummary: { entryCount: 0 },
   revision: 4,
   ...overrides,
 });
@@ -39,6 +45,20 @@ const renderHeader = async (
       const path = String(url);
       if (path === "/api/v1/customers/1005/legal-identity") return Promise.resolve(new Response(null, { status: 403 }));
       if (path === "/api/v1/customers/1005") return Promise.resolve(jsonResponse(200, body));
+      // A write from a tab opened before the customer was merged away: what
+      // every customer-scoped write answers it.
+      if (path === "/api/v1/customers/1005/type")
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              title: "Customer was merged",
+              status: 409,
+              code: "customer_merged",
+              detail: "#5 Acme Norge AS was merged into #2 Acme AS.",
+            }),
+            { status: 409, headers: { "Content-Type": "application/problem+json" } },
+          ),
+        );
       return Promise.resolve(new Response(null, { status: 404 }));
     }),
   );
@@ -63,7 +83,26 @@ const renderHeader = async (
 };
 
 describe("customer detail header — merge", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.mocked(notifications.show).mockClear();
+  });
+
+  it("tells a tab opened before the merge that its customer was merged, in the catalog's words", async () => {
+    await renderHeader(customer());
+    await userEvent.click(screen.getByRole("button", { name: "Change type" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Change to private" }));
+
+    await vi.waitFor(() =>
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          color: "red",
+          title: "Customer type could not be changed",
+          message: "This customer was merged into another",
+        }),
+      ),
+    );
+  });
 
   it("offers Merge… only to a caller the host says may merge, and opens the modal", async () => {
     await renderHeader(customer());
@@ -95,18 +134,27 @@ describe("customer detail header — merge", () => {
 
 /**
  * The page body (every card) under the same router, with every capability the
- * host could pass. Only the customer is answered; each card's own read gets a
- * 404, which is enough: the three actions asserted here — two in their cards'
- * headers, the contact card's in its empty state, which reads the customer —
- * render whatever the other reads answer.
+ * host could pass. Each card's own read is answered with the empty body the
+ * server sends for a customer with nothing on it, so every card settles into
+ * the state that offers its action: the addresses and contacts empty states,
+ * the timeline's, the billing profile (whose pencil waits for it), and the
+ * relationship card's owner, group and tags editors. The Registry card is not
+ * here: without a Norwegian organisation number it offers nothing to anyone.
  */
 const renderOverview = async (body: ReturnType<typeof customer>) => {
   stubFetch(
-    vi.fn((url: RequestInfo | URL) =>
-      Promise.resolve(
-        String(url) === "/api/v1/customers/1005" ? jsonResponse(200, body) : new Response(null, { status: 404 }),
-      ),
-    ),
+    vi.fn((url: RequestInfo | URL) => {
+      const path = String(url);
+      if (path === "/api/v1/customers/1005") return Promise.resolve(jsonResponse(200, body));
+      if (path === "/api/v1/customers/1005/addresses") return Promise.resolve(jsonResponse(200, { data: [] }));
+      if (path.startsWith("/api/v1/customers/1005/contacts")) return Promise.resolve(jsonResponse(200, { data: [] }));
+      if (path.startsWith("/api/v1/customers/1005/timeline")) return Promise.resolve(jsonResponse(200, { data: [] }));
+      if (path === "/api/v1/customers/1005/billing-profile")
+        return Promise.resolve(jsonResponse(200, { revision: 4, warnings: [] }));
+      if (path === "/api/v1/customers/tags" || path === "/api/v1/customers/groups")
+        return Promise.resolve(jsonResponse(200, []));
+      return Promise.resolve(new Response(null, { status: 404 }));
+    }),
   );
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const rootRoute = createRootRoute({
@@ -132,7 +180,20 @@ const renderOverview = async (body: ReturnType<typeof customer>) => {
   const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: ["/"] }) });
   await router.load();
   render(<RouterProvider router={router} />);
+  // Every card has settled — each empty state is what a card shows once its
+  // read landed, and the billing card's "not set" lines appear with the
+  // profile its pencil waits for — so an action missing below is withheld, not
+  // merely not rendered yet.
+  const settled = { timeout: 5_000 };
+  await screen.findByText("No addresses yet", undefined, settled);
+  await screen.findByText("No contacts associated with this customer yet.", undefined, settled);
+  await screen.findByText("No events yet. Add the first moment worth remembering.", undefined, settled);
+  await screen.findAllByText("Not set — the invoicing default applies", undefined, settled);
 };
+
+/** The actions each card offers an editor: buttons, and the relationship card's three editors. */
+const cardButtons = ["Add contact", "Add event", "Add address", "Edit contact details", "Edit billing profile"];
+const cardEditors = ["Owner", "Group", "Tags"];
 
 describe("customer page body — a merged-away customer", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -141,18 +202,19 @@ describe("customer page body — a merged-away customer", () => {
     // The positive control first: the same capabilities on a customer that was
     // not merged show the cards' actions, so their absence below is the gate's.
     await renderOverview(customer());
-    expect(await screen.findByRole("button", { name: "Add contact" })).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: "Add event" })).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: "Edit contact details" })).toBeInTheDocument();
+    for (const action of cardButtons) expect(screen.getByRole("button", { name: action })).toBeInTheDocument();
+    for (const editor of cardEditors) expect(screen.getByRole("combobox", { name: editor })).toBeInTheDocument();
     cleanup();
     vi.unstubAllGlobals();
 
     await renderOverview(
       customer({ status: "archived", mergedInto: { id: 1002, customerNumber: 2, name: "Acme AS" } }),
     );
-    expect((await screen.findAllByText("Contacts")).length).toBeGreaterThan(0);
-    for (const action of ["Add contact", "Add event", "Add address", "Edit contact details"]) {
+    for (const action of cardButtons) {
       expect(screen.queryByRole("button", { name: action })).not.toBeInTheDocument();
+    }
+    for (const editor of cardEditors) {
+      expect(screen.queryByRole("combobox", { name: editor })).not.toBeInTheDocument();
     }
   });
 });

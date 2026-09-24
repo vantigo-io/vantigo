@@ -17,6 +17,7 @@ import { customerBillingProfileQueryOptions } from "../api/billing-profile";
 import type { CustomerRegistryAddress, CustomerRegistryRecord } from "../api/registry";
 import { addressTypeLabel } from "../lib/address-type-label";
 import { countryDisplayName } from "../lib/country-display";
+import { customerWriteErrorMessage } from "../lib/customer-write-error";
 import { registryAddressValues } from "../lib/registry-address";
 import { type AddressModalState, CustomerAddressModal } from "./-customer-address-modal";
 import "../i18n";
@@ -68,7 +69,11 @@ export const CustomerAddressesSection = ({
       notifications.show({ color: "teal", title: t("addressMadePrimary"), message: t("addressMadePrimaryMessage") });
     },
     onError: (error) => {
-      notifications.show({ color: "red", title: t("addressCouldNotBeMadePrimary"), message: error.message });
+      notifications.show({
+        color: "red",
+        title: t("addressCouldNotBeMadePrimary"),
+        message: customerWriteErrorMessage(error, t),
+      });
     },
   });
 
@@ -79,7 +84,11 @@ export const CustomerAddressesSection = ({
       notifications.show({ color: "teal", title: t("addressDeleted"), message: t("addressDeletedMessage") });
     },
     onError: (error) => {
-      notifications.show({ color: "red", title: t("addressCouldNotBeDeleted"), message: error.message });
+      notifications.show({
+        color: "red",
+        title: t("addressCouldNotBeDeleted"),
+        message: customerWriteErrorMessage(error, t),
+      });
     },
   });
 

@@ -29,6 +29,12 @@ const CUSTOMER_PICKER_PAGE_SIZE = 20;
  * returns, so its name never turns into a bare id; and Mantine's own filter is
  * replaced by one that keeps every option — the API has already searched, on
  * the customer number and more besides the name the label shows.
+ *
+ * Only typing searches. Once a customer is picked, Mantine puts its label in
+ * the input and reports that as a search too; searching for
+ * "#5 Acme Norge AS · Archived" finds nothing, and reopening the list to change
+ * the pick would then offer the pick alone. So the selected label reads as no
+ * search at all, and the list stays the one the pick was made from.
  */
 export const CustomerPicker = ({
   label,
@@ -57,15 +63,15 @@ export const CustomerPicker = ({
     }),
   );
 
+  const optionLabel = (customer: CustomerResponse) =>
+    customer.status === "archived"
+      ? `#${customer.customerNumber} ${customer.name} · ${t("statusArchived")}`
+      : `#${customer.customerNumber} ${customer.name}`;
   const offered = new Map<number, CustomerResponse>();
   for (const customer of data?.data ?? []) {
     if (customer.id !== excludeId && customer.mergedInto === null) offered.set(customer.id, customer);
   }
   if (value) offered.set(value.id, value);
-  const optionLabel = (customer: CustomerResponse) =>
-    customer.status === "archived"
-      ? `#${customer.customerNumber} ${customer.name} · ${t("statusArchived")}`
-      : `#${customer.customerNumber} ${customer.name}`;
 
   return (
     <Select
@@ -75,7 +81,7 @@ export const CustomerPicker = ({
       searchable
       clearable
       filter={({ options }) => options}
-      onSearchChange={setSearch}
+      onSearchChange={(text) => setSearch(value && text === optionLabel(value) ? "" : text)}
       nothingFoundMessage={t("noCustomersFound")}
       data={[...offered.values()].map((customer) => ({ value: String(customer.id), label: optionLabel(customer) }))}
       value={value ? String(value.id) : null}

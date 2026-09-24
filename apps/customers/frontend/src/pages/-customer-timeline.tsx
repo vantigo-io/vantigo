@@ -1,7 +1,9 @@
 import {
   Accordion,
   ActionIcon,
+  Anchor,
   Badge,
+  Box,
   Button,
   Card,
   Divider,
@@ -36,8 +38,9 @@ import {
   IconWand,
 } from "@tabler/icons-react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import {
   createTimelineEntry,
   defaultTimelineFilters,
@@ -55,6 +58,8 @@ import {
 } from "../api/timeline";
 import { UserPicker } from "../components/user-picker";
 import { actorLabel } from "../lib/actor-label";
+import { billingLanguageLabel, deliveryMethodLabel } from "../lib/billing-labels";
+import { customerWriteErrorMessage, isCustomerMerged } from "../lib/customer-write-error";
 import { isOverdue, utcToday } from "../lib/follow-up-dates";
 import { formatDateOnly } from "../lib/format-date-only";
 import "../i18n";
@@ -84,6 +89,8 @@ const typeKey: Record<string, string> = {
   "customer.contact_relationship_updated": "contactRelationshipUpdated",
   "customer.contact_detached": "contactUnlinked",
   "customer.contact_removed": "contactRemoved",
+  "customer.merged": "customerMergedEvent",
+  "customer.merged_away": "customerMergedAwayEvent",
 };
 const iconFor = (type: string) =>
   type.startsWith("interaction.") ? IconCalendarEvent : type === "note" ? IconEdit : IconWand;
@@ -172,6 +179,127 @@ const payloadDetails = (payload: unknown, t: (key: string, options?: Record<stri
   }
   return details.filter(Boolean).join(" · ") || null;
 };
+const record = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+const text = (value: unknown): string | null =>
+  typeof value === "string" && value !== "" ? value : typeof value === "number" ? String(value) : null;
+
+/**
+ * customer.merged's `absorbed` (customers merge design D3): the absorbed
+ * customer's own row as it was when it was merged. The survivor kept every
+ * field of its own, so this is the one place a person reads what the other
+ * customer said — its identity, contact details and billing profile — which is
+ * what the Merge modal promises ("stay readable in this customer's timeline").
+ * Only what is set is listed; the server writes the unset fields as nulls.
+ */
+const MergedAbsorbedDetails = ({ payload }: { payload: unknown }) => {
+  const { t, formatters } = useI18n("customers");
+  const absorbed = record(record(payload)?.absorbed);
+  if (!absorbed) return null;
+  const identity = record(absorbed.identity);
+  const contactInfo = record(absorbed.contactInfo) ?? {};
+  const billing = record(absorbed.billingProfile) ?? {};
+  const rate = typeof billing.defaultBillRate === "number" ? billing.defaultBillRate : null;
+  const amount =
+    rate === null ? null : formatters.formatNumber(rate, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const currency = text(billing.currency);
+  const rows: [string, string | null][] = [
+    [t("customerNumberColumn"), absorbed.customerNumber == null ? null : `#${absorbed.customerNumber}`],
+    [t("name"), text(absorbed.name)],
+    [
+      t("type"),
+      absorbed.type === "business"
+        ? t("customerTypeBusiness")
+        : absorbed.type === "person"
+          ? t("customerTypePerson")
+          : text(absorbed.type),
+    ],
+    [
+      t("status"),
+      absorbed.status === "active"
+        ? t("statusActive")
+        : absorbed.status === "archived"
+          ? t("statusArchived")
+          : absorbed.status === "disabled"
+            ? t("statusDisabled")
+            : text(absorbed.status),
+    ],
+    [
+      t("mergedAbsorbedIdentity"),
+      identity
+        ? [text(identity.name), text(identity.id), text(identity.country)?.toUpperCase()].filter(Boolean).join(" · ")
+        : null,
+    ],
+    [t("email"), text(contactInfo.email)],
+    [t("phone"), text(contactInfo.phone)],
+    [t("website"), text(contactInfo.website)],
+    [t("billingInvoiceEmail"), text(billing.invoiceEmail)],
+    [t("billingReminderEmail"), text(billing.reminderEmail)],
+    [
+      t("billingPaymentTermsDays"),
+      typeof billing.paymentTermsDays === "number"
+        ? t("paymentTermsDaysValue", { count: billing.paymentTermsDays })
+        : null,
+    ],
+    [t("billingCurrency"), currency],
+    [
+      t("billingDefaultBillRate"),
+      amount === null
+        ? null
+        : currency === null
+          ? t("billingDefaultBillRateValueNoCurrency", { amount })
+          : t("billingDefaultBillRateValue", { amount, currency }),
+    ],
+    [t("billingLanguage"), text(billing.language) && billingLanguageLabel(t, String(billing.language))],
+    [
+      t("billingInvoiceDelivery"),
+      text(billing.invoiceDelivery) && deliveryMethodLabel(t, String(billing.invoiceDelivery)),
+    ],
+    [
+      t("billingReminderDelivery"),
+      text(billing.reminderDelivery) && deliveryMethodLabel(t, String(billing.reminderDelivery)),
+    ],
+    [t("billingPeppolId"), text(billing.peppolId)],
+    [t("billingGln"), text(billing.gln)],
+    [t("billingBuyerReference"), text(billing.buyerReference)],
+    // Ids, not names: the snapshot records what the row held, and the owner or
+    // group may since have been renamed or removed.
+    [t("owner"), text(absorbed.ownerUserId)],
+    [t("group"), text(absorbed.groupId)],
+  ];
+  return (
+    <Box
+      component="dl"
+      aria-label={t("mergedAbsorbedDetails")}
+      fz="sm"
+      c="dimmed"
+      m={0}
+      style={{ display: "grid", gridTemplateColumns: "max-content 1fr", columnGap: 12, rowGap: 2 }}
+    >
+      {rows
+        .filter((row): row is [string, string] => Boolean(row[1]))
+        .map(([label, value]) => (
+          <Fragment key={label}>
+            <dt>{label}</dt>
+            <dd style={{ margin: 0, overflowWrap: "anywhere" }}>{value}</dd>
+          </Fragment>
+        ))}
+    </Box>
+  );
+};
+
+/** customer.merged_away's `into`: the survivor, as a link to its page. */
+const MergedIntoLink = ({ payload }: { payload: unknown }) => {
+  const { t } = useI18n("customers");
+  const into = record(record(payload)?.into);
+  if (!into || typeof into.id !== "number") return null;
+  return (
+    <Anchor size="sm" renderRoot={(props) => <Link to={`/customers/${into.id}` as never} {...props} />}>
+      {t("mergedAwayOpenSurvivor", { number: into.customerNumber, name: into.name })}
+    </Anchor>
+  );
+};
+
 const dateValue = (value: Date | string | null) =>
   value
     ? typeof value === "string"
@@ -237,10 +365,13 @@ export const CustomerTimeline = ({
     onError: (error: Error & { status?: number }) => {
       setDeleting(null);
       refresh();
+      // A merged-away customer's refusal is a 409 as well, but not the entry
+      // changing under the reader: refreshing will not make the delete work.
+      const changed = error.status === 409 && !isCustomerMerged(error);
       notifications.show({
-        color: error.status === 409 ? "yellow" : "red",
-        title: error.status === 409 ? t("eventChanged") : t("couldNotDeleteEvent"),
-        message: error.status === 409 ? t("timelineRefreshed") : error.message,
+        color: changed ? "yellow" : "red",
+        title: changed ? t("eventChanged") : t("couldNotDeleteEvent"),
+        message: changed ? t("timelineRefreshed") : customerWriteErrorMessage(error, t),
       });
     },
   });
@@ -256,7 +387,11 @@ export const CustomerTimeline = ({
       // the reader can resolve by retrying, so they all get the same answer the
       // vanished entry and the network get: re-read, then say it did not happen.
       refresh();
-      notifications.show({ color: "red", title: t("couldNotUpdateFollowUp"), message: error.message });
+      notifications.show({
+        color: "red",
+        title: t("couldNotUpdateFollowUp"),
+        message: customerWriteErrorMessage(error, t),
+      });
     },
   });
   const reset = () => {
@@ -454,6 +589,8 @@ export const CustomerTimeline = ({
                           {details}
                         </Text>
                       )}
+                      {entry.eventType === "customer.merged" && <MergedAbsorbedDetails payload={entry.payload} />}
+                      {entry.eventType === "customer.merged_away" && <MergedIntoLink payload={entry.payload} />}
                       {!entry.note && !(contact && entry.summary?.includes(contact)) && contact && (
                         <Text size="sm" c="dimmed">
                           {t("contactReference", { name: contact })}
@@ -673,8 +810,8 @@ const TimelineForm = ({
       if (error.status === 409) client.invalidateQueries({ queryKey: ["customers", customerId, "timeline"] });
       notifications.show({
         color: "red",
-        title: error.status === 409 ? t("thisEventChanged") : t("couldNotSaveEvent"),
-        message: error.message,
+        title: error.status === 409 && !isCustomerMerged(error) ? t("thisEventChanged") : t("couldNotSaveEvent"),
+        message: customerWriteErrorMessage(error, t),
       });
     },
   });
