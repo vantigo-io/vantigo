@@ -15,8 +15,8 @@
 // So this package is deliberately not a module and is deliberately outside
 // every depguard rule: `.golangci.yml`'s rules are scoped with `files:` to
 // `**/internal/<module>/**` and the platform list, and this directory is in
-// neither, which is what lets one test import `projects`, `time` and
-// `expenses` together. Nothing here is built into the binary — the package has
+// neither, which is what lets one test import `customers`, `projects`, `time`
+// and `expenses` together. Nothing here is built into the binary — the package has
 // no production code and nothing imports it — so the exemption buys a test and
 // costs no coupling. If anything non-test is ever added here, that reasoning
 // stops holding and this package needs a depguard rule of its own.
