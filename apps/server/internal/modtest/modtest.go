@@ -125,6 +125,7 @@ type setup struct {
 	projects     contracts.ProjectDirectory
 	actuals      contracts.ProjectActuals
 	expenses     contracts.ProjectExpenses
+	holders      []contracts.CustomerReferenceHolder
 	smtpVerify   func(ctx context.Context, cfg config.MailConfig) error
 	smtpSend     func(ctx context.Context, cfg config.MailConfig, msg mail.Outbound) error
 	objectStore  storage.ObjectStore
@@ -236,6 +237,18 @@ func WithActuals(p contracts.ProjectActuals) Option {
 // rather than as zeroes.
 func WithExpenses(p contracts.ProjectExpenses) Option {
 	return func(s *setup) { s.expenses = p }
+}
+
+// WithCustomerReferenceHolders adds holders to Deps.CustomerReferenceHolders,
+// for the module that merges customers (customers merge design D1) to be
+// tested against fakes that record what they were asked to re-point — or
+// fail, to prove a merge rolls back — without composing projects, energy or
+// communications beside it: depguard keeps those out of customers' tests.
+// module.Compose appends the composed modules' own holders after these, so a
+// value set here survives Compose; given more than once, the holders
+// accumulate in order.
+func WithCustomerReferenceHolders(holders ...contracts.CustomerReferenceHolder) Option {
+	return func(s *setup) { s.holders = append(s.holders, holders...) }
 }
 
 // WithSMTPVerify sets the function Deps.SMTPVerify carries, for a module
@@ -391,24 +404,25 @@ func New(t *testing.T, opts ...Option) *Harness {
 	// The limiter runs on the harness clock too, so a throttle window turns
 	// over when a test advances the clock and never mid-test on the wall clock.
 	h.deps = module.Deps{
-		Config:        cfg,
-		Pool:          pool,
-		Logger:        logger,
-		Clock:         h.Now,
-		Mail:          &mail.Fake{},
-		Secrets:       box,
-		Limiter:       ratelimit.NewWithClock(pool, h.Now),
-		HTTPTransport: s.transport,
-		HTTPBackoff:   s.backoff,
-		Directory:     s.directory,
-		Products:      s.products,
-		Projects:      s.projects,
-		Actuals:       s.actuals,
-		Expenses:      s.expenses,
-		SMTPVerify:    s.smtpVerify,
-		SMTPSend:      s.smtpSend,
-		ObjectStore:   s.objectStore,
-		PeppolLookup:  s.peppolLookup,
+		Config:                   cfg,
+		Pool:                     pool,
+		Logger:                   logger,
+		Clock:                    h.Now,
+		Mail:                     &mail.Fake{},
+		Secrets:                  box,
+		Limiter:                  ratelimit.NewWithClock(pool, h.Now),
+		HTTPTransport:            s.transport,
+		HTTPBackoff:              s.backoff,
+		Directory:                s.directory,
+		Products:                 s.products,
+		Projects:                 s.projects,
+		Actuals:                  s.actuals,
+		Expenses:                 s.expenses,
+		CustomerReferenceHolders: s.holders,
+		SMTPVerify:               s.smtpVerify,
+		SMTPSend:                 s.smtpSend,
+		ObjectStore:              s.objectStore,
+		PeppolLookup:             s.peppolLookup,
 	}
 	access := identity.NewAccess(h.deps)
 	h.deps.Access = access

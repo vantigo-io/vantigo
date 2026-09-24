@@ -83,6 +83,16 @@ type Deps struct {
 	// though never while it serves; it is nil when expenses is disabled,
 	// which a caller reads as "expense tracking is off".
 	Expenses contracts.ProjectExpenses
+	// CustomerReferenceHolders are every enabled module's
+	// contracts.CustomerReferenceHolder (customers merge design D1), in the
+	// order the modules were given to Compose — the one many-provider contract
+	// slot. Compose collects them before any Mount runs, after the six
+	// single-provider slots, and appends them to whatever the caller preset
+	// here (the seam modtest.WithCustomerReferenceHolders fills), so every
+	// module's Deps carries the same list. Only the module that merges
+	// customers calls them, and only inside its merge transaction. nil when no
+	// enabled module holds customer ids.
+	CustomerReferenceHolders []contracts.CustomerReferenceHolder
 	// HTTPTransport is the RoundTripper a module's own outbound HTTP client
 	// (customers' Brreg lookup, so far the only one) dials through. nil in
 	// production, meaning http.DefaultTransport; a test harness sets it to a
@@ -190,4 +200,12 @@ type Module struct {
 	// any Mount runs — for every module MODULES enables, and concatenates
 	// the results in mods order. A module with none leaves it nil.
 	Workers func(Deps) []worker.Worker
+	// CustomerReferences builds this module's
+	// contracts.CustomerReferenceHolder, if it stores customer ids in its own
+	// schema (customers merge design D1). Unlike Directory, and like Workers,
+	// any number of enabled modules may set it: Compose calls every one, in
+	// mods order, before any Mount runs, and puts the list on every module's
+	// Deps as CustomerReferenceHolders. A module holding no customer ids leaves
+	// it nil — time and expenses reach a customer only through a project.
+	CustomerReferences func(Deps) contracts.CustomerReferenceHolder
 }
