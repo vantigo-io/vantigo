@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/customers"
 	"github.com/vantigo-io/vantigo/server/internal/expenses"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/module"
@@ -22,8 +23,11 @@ import (
 // composed together by module.Compose, through modtest, against the real test
 // database. No module here is given a fake of another module — the only fake
 // is the customer directory, because `customers` is the one thing projects
-// needs that this delivery has nothing to say about, and composing it would
-// only add a schema nothing reads.
+// needs that the economy figures have nothing to say about, and composing it
+// would only add a schema nothing reads. The one test that is about what
+// customers answers — its default bill rate pricing time (rates_test.go) —
+// composes the real module instead, and Compose then replaces the fake with
+// customers' own directory, exactly as it does in `cmd/vantigo`.
 //
 // That is the whole point. Each module's own suite hands the other side an
 // imitation; here `Deps.Expenses` is the expenses module's own provider and
@@ -33,9 +37,10 @@ import (
 // The module names, so a test says which installation it is about rather than
 // repeating a list.
 const (
-	modProjects = "projects"
-	modTime     = "time"
-	modExpenses = "expenses"
+	modCustomers = "customers"
+	modProjects  = "projects"
+	modTime      = "time"
+	modExpenses  = "expenses"
 )
 
 // moduleNamed is the real module value for one name. It is the only place this
@@ -44,6 +49,8 @@ const (
 func moduleNamed(t *testing.T, name string) module.Module {
 	t.Helper()
 	switch name {
+	case modCustomers:
+		return customers.Module()
 	case modProjects:
 		return projects.Module()
 	case modTime:
@@ -59,7 +66,9 @@ func moduleNamed(t *testing.T, name string) module.Module {
 // way an operator's MODULES list would. modtest derives MODULES from the
 // modules it is handed, so "expenses is enabled" here means the real thing:
 // enabledModules filtered it in, Compose resolved its provider slot, and
-// Deps.Expenses is the provider rather than a preset.
+// Deps.Expenses is the provider rather than a preset. The same holds for
+// customers: composed, its directory replaces the fake preset below (Compose
+// overwrites Deps.Directory whenever a composed module provides one).
 func newInstallation(t *testing.T, names ...string) *modtest.Harness {
 	t.Helper()
 	opts := []modtest.Option{
@@ -72,14 +81,15 @@ func newInstallation(t *testing.T, names ...string) *modtest.Harness {
 	return modtest.New(t, opts...)
 }
 
-// recorder validates every exchange of every test here against the *three*
-// contracts at once, so a request to any of the modules is checked against the
+// recorder validates every exchange of every test here against every
+// composed module's contract at once, so a request to any of the modules is checked against the
 // contract that declares it.
 //
 // It is one recorder over a merged document rather than one per module
 // because modtest installs a single transport: openapi.Validate routes an
-// exchange by path through the document it is given, and the three modules'
-// paths are disjoint (/api/v1/projects, /api/v1/time, /api/v1/expenses), so a
+// exchange by path through the document it is given, and the modules' paths
+// are disjoint (/api/v1/customers, /api/v1/projects, /api/v1/time,
+// /api/v1/expenses), so a
 // document holding all of them routes each exchange to its own operation. The
 // documents are already fully resolved when Load returns, so a path item
 // carries its schemas with it and nothing is lost in the merge.
@@ -88,7 +98,7 @@ func newInstallation(t *testing.T, names ...string) *modtest.Harness {
 // TestMain's job over its own contract, and a cross-module test that counted
 // towards it would let an operation look exercised without its module's suite
 // ever having exercised it.
-var recorder = mergedRecorder(modProjects, modTime, modExpenses)
+var recorder = mergedRecorder(modCustomers, modProjects, modTime, modExpenses)
 
 func mergedRecorder(names ...string) *contracttest.Recorder {
 	merged := &openapi3.T{
