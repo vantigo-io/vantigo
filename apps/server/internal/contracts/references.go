@@ -7,8 +7,9 @@ import (
 )
 
 // CustomerReferenceHolder is a module that stores customer ids in its own
-// schema, and the one sanctioned cross-module WRITE (customers merge design
-// D1). Every other contract here is a read. This one exists because merging
+// schema, and the first sanctioned cross-module WRITE (customers merge design
+// D1); CustomerPersonalData (personal_data.go) is the second, with a rule of
+// its own. Every other contract here is a read. This one exists because merging
 // two customers must move every reference to the absorbed one, and every
 // module shares one database and one pool, so the move can be a single
 // transaction with no event bus: the customers module opens it, locks both

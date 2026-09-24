@@ -256,6 +256,12 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		deps.CustomerReferenceHolders = append(slices.Clone(deps.CustomerReferenceHolders), holders...)
 	}
 
+	// Customer personal data is the second many-provider slot (customers GDPR
+	// design D2), collected from every module given, for the holders' reason
+	// above, by the helper Workers uses too: the export reads it through a
+	// Mount, the anonymisation worker through Workers.
+	deps = withCustomerPersonalData(deps, given)
+
 	outer := http.NewServeMux()
 	mounts := make([]moduleMount, 0, len(mods))
 	order := make([]string, 0, len(mods))
@@ -535,4 +541,25 @@ func ResponseError() func(http.ResponseWriter, *http.Request, error) {
 		}
 		httpx.WriteError(w, r, err)
 	}
+}
+
+// withCustomerPersonalData is deps with every module's
+// contracts.CustomerPersonalData appended to Deps.CustomerPersonalData, each
+// under its module's name, in mods order (customers GDPR design D2) — onto a
+// copy of whatever the caller preset, so a harness's own slice is never
+// written through. mods is every module given, enabled or not.
+func withCustomerPersonalData(deps Deps, mods []Module) Deps {
+	var holders []contracts.CustomerPersonalDataHolder
+	for _, mod := range mods {
+		if mod.CustomerPersonalData == nil {
+			continue
+		}
+		if data := mod.CustomerPersonalData(deps); data != nil {
+			holders = append(holders, contracts.CustomerPersonalDataHolder{Module: mod.Name, Data: data})
+		}
+	}
+	if len(holders) > 0 {
+		deps.CustomerPersonalData = append(slices.Clone(deps.CustomerPersonalData), holders...)
+	}
+	return deps
 }

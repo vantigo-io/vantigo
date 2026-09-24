@@ -2,10 +2,12 @@ package module
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
 
@@ -116,5 +118,24 @@ func TestWorkers_NoModulesDeclareAnyReturnsNone(t *testing.T) {
 	got := Workers(deps, Module{Name: "alpha"}, Module{Name: "beta"})
 	if got != nil {
 		t.Errorf("got = %v, want none", got)
+	}
+}
+
+// Worker mode never composes, and the anonymisation worker is the one caller
+// of contracts.CustomerPersonalData's erase (customers GDPR design D2), so
+// Workers collects the slot itself — from every module given, a disabled one
+// included — before any module builds its workers.
+func TestWorkers_HandTheWorkersEveryModulesCustomerPersonalData(t *testing.T) {
+	beta := &fakePersonalData{name: "beta"}
+	var seen []contracts.CustomerPersonalDataHolder
+	Workers(Deps{Config: &config.Config{Modules: []string{"alpha"}}},
+		Module{Name: "alpha", Workers: func(d Deps) []worker.Worker {
+			seen = d.CustomerPersonalData
+			return nil
+		}},
+		Module{Name: "beta", CustomerPersonalData: func(Deps) contracts.CustomerPersonalData { return beta }},
+	)
+	if want := []contracts.CustomerPersonalDataHolder{{Module: "beta", Data: beta}}; !slices.Equal(seen, want) {
+		t.Errorf("alpha's workers saw Deps.CustomerPersonalData = %v, want beta's (disabled)", seen)
 	}
 }
