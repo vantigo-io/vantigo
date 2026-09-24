@@ -168,6 +168,67 @@ func (q *Queries) CountCustomers(ctx context.Context, arg CountCustomersParams) 
 	return count, err
 }
 
+const customerBillingProfilesForCustomers = `-- name: CustomerBillingProfilesForCustomers :many
+SELECT id, invoice_email, reminder_email, payment_terms_days, currency, language,
+       invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference, default_bill_rate
+FROM customers.customers
+WHERE id = ANY($1::int[])
+`
+
+type CustomerBillingProfilesForCustomersRow struct {
+	ID               int32
+	InvoiceEmail     *string
+	ReminderEmail    *string
+	PaymentTermsDays *int32
+	Currency         *string
+	Language         *string
+	InvoiceDelivery  *string
+	ReminderDelivery *string
+	PeppolID         *string
+	Gln              *string
+	BuyerReference   *string
+	DefaultBillRate  pgtype.Numeric
+}
+
+// CustomerBillingProfilesForCustomers is the billing profile of a whole export
+// in ONE query (customers import/export design D2), CustomerTagsForCustomers'
+// shape: the eleven columns GetCustomerBillingProfile selects for one customer,
+// for every id in @ids, never one read per row. Only the export reads it: no
+// response of this module carries a billing column beside the customer's own
+// (invoice-ready customer design D4's ruling), and a file is not a response.
+func (q *Queries) CustomerBillingProfilesForCustomers(ctx context.Context, ids []int32) ([]CustomerBillingProfilesForCustomersRow, error) {
+	rows, err := q.db.Query(ctx, customerBillingProfilesForCustomers, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CustomerBillingProfilesForCustomersRow
+	for rows.Next() {
+		var i CustomerBillingProfilesForCustomersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.InvoiceEmail,
+			&i.ReminderEmail,
+			&i.PaymentTermsDays,
+			&i.Currency,
+			&i.Language,
+			&i.InvoiceDelivery,
+			&i.ReminderDelivery,
+			&i.PeppolID,
+			&i.Gln,
+			&i.BuyerReference,
+			&i.DefaultBillRate,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const customerCreationBuckets = `-- name: CustomerCreationBuckets :many
 SELECT (created_at AT TIME ZONE 'UTC')::date AS day, count(*) AS value
 FROM customers.customers

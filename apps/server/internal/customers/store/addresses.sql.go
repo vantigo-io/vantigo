@@ -363,6 +363,51 @@ func (q *Queries) OldestCustomerAddressOfType(ctx context.Context, arg OldestCus
 	return i, err
 }
 
+const primaryAddressesForCustomers = `-- name: PrimaryAddressesForCustomers :many
+SELECT id, customer_id, type, label, line1, line2, postal_code, city, region, country, is_primary, created_at, updated_at
+FROM customers.customer_addresses
+WHERE customer_id = ANY($1::int[]) AND is_primary AND type IN ('postal', 'invoice')
+ORDER BY customer_id, type
+`
+
+// PrimaryAddressesForCustomers is the two addresses the customers file carries
+// (customers import/export design D1) — each customer's primary postal and
+// primary invoice address — for a whole export in ONE query. At most two rows
+// per customer: the partial unique index allows one primary per type.
+func (q *Queries) PrimaryAddressesForCustomers(ctx context.Context, customerIds []int32) ([]CustomersCustomerAddress, error) {
+	rows, err := q.db.Query(ctx, primaryAddressesForCustomers, customerIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CustomersCustomerAddress
+	for rows.Next() {
+		var i CustomersCustomerAddress
+		if err := rows.Scan(
+			&i.ID,
+			&i.CustomerID,
+			&i.Type,
+			&i.Label,
+			&i.Line1,
+			&i.Line2,
+			&i.PostalCode,
+			&i.City,
+			&i.Region,
+			&i.Country,
+			&i.IsPrimary,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const primaryCustomerAddressOfType = `-- name: PrimaryCustomerAddressOfType :one
 SELECT id, customer_id, type, label, line1, line2, postal_code, city, region, country, is_primary, created_at, updated_at
 FROM customers.customer_addresses

@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -797,6 +798,19 @@ type GetCustomersContactsParams struct {
 	Search        *string `form:"search,omitempty" json:"search,omitempty"`
 }
 
+// GetCustomersExportParams defines parameters for GetCustomersExport.
+type GetCustomersExportParams struct {
+	SortBy          *string `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+	SortDirection   *string `form:"sortDirection,omitempty" json:"sortDirection,omitempty"`
+	IncludeArchived *bool   `form:"includeArchived,omitempty" json:"includeArchived,omitempty"`
+	Search          *string `form:"search,omitempty" json:"search,omitempty"`
+	Status          *string `form:"status,omitempty" json:"status,omitempty"`
+	Type            *string `form:"type,omitempty" json:"type,omitempty"`
+	OwnerId         *string `form:"ownerId,omitempty" json:"ownerId,omitempty"`
+	TagId           *string `form:"tagId,omitempty" json:"tagId,omitempty"`
+	GroupId         *string `form:"groupId,omitempty" json:"groupId,omitempty"`
+}
+
 // GetCustomersFollowUpsParams defines parameters for GetCustomersFollowUps.
 type GetCustomersFollowUpsParams struct {
 	Page       *int32  `form:"page,omitempty" json:"page,omitempty"`
@@ -932,6 +946,9 @@ type ServerInterface interface {
 	// GetCustomersContactsByIdCustomers List the customers a contact is associated with
 	// (GET /api/v1/customers/contacts/{id}/customers)
 	GetCustomersContactsByIdCustomers(w http.ResponseWriter, r *http.Request, id int32)
+	// GetCustomersExport Export customers as CSV
+	// (GET /api/v1/customers/export)
+	GetCustomersExport(w http.ResponseWriter, r *http.Request, params GetCustomersExportParams)
 	// GetCustomersFollowUps List follow-ups across customers
 	// (GET /api/v1/customers/follow-ups)
 	GetCustomersFollowUps(w http.ResponseWriter, r *http.Request, params GetCustomersFollowUpsParams)
@@ -947,6 +964,9 @@ type ServerInterface interface {
 	// PutCustomersGroupsByGroupId Rename a customer group or change its default payment term
 	// (PUT /api/v1/customers/groups/{groupId})
 	PutCustomersGroupsByGroupId(w http.ResponseWriter, r *http.Request, groupId openapi_types.UUID)
+	// GetCustomersImportTemplate Download the customers import template
+	// (GET /api/v1/customers/import/template)
+	GetCustomersImportTemplate(w http.ResponseWriter, r *http.Request)
 	// GetCustomersLookupBrreg Look up business entities in Brønnøysundregisteret
 	// (GET /api/v1/customers/lookup/brreg)
 	GetCustomersLookupBrreg(w http.ResponseWriter, r *http.Request, params GetCustomersLookupBrregParams)
@@ -1510,6 +1530,143 @@ func (siw *ServerInterfaceWrapper) GetCustomersContactsByIdCustomers(w http.Resp
 	handler.ServeHTTP(w, r)
 }
 
+// GetCustomersExport operation middleware
+func (siw *ServerInterfaceWrapper) GetCustomersExport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetCustomersExportParams
+
+	// ------------- Optional query parameter "sortBy" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sortBy", r.URL.Query(), &params.SortBy, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sortBy"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortBy", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sortDirection" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sortDirection", r.URL.Query(), &params.SortDirection, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sortDirection"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortDirection", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "includeArchived" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeArchived", r.URL.Query(), &params.IncludeArchived, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeArchived"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeArchived", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "search" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "search", r.URL.Query(), &params.Search, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "search"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "search", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "type", r.URL.Query(), &params.Type, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "type", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "ownerId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "ownerId", r.URL.Query(), &params.OwnerId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "ownerId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ownerId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tagId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tagId", r.URL.Query(), &params.TagId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "groupId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "groupId", r.URL.Query(), &params.GroupId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "groupId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "groupId", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCustomersExport(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetCustomersFollowUps operation middleware
 func (siw *ServerInterfaceWrapper) GetCustomersFollowUps(w http.ResponseWriter, r *http.Request) {
 
@@ -1666,6 +1823,20 @@ func (siw *ServerInterfaceWrapper) PutCustomersGroupsByGroupId(w http.ResponseWr
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutCustomersGroupsByGroupId(w, r, groupId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCustomersImportTemplate operation middleware
+func (siw *ServerInterfaceWrapper) GetCustomersImportTemplate(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCustomersImportTemplate(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3141,11 +3312,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/contacts/{id}", wrapper.GetContact)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/contacts/{id}", wrapper.PutCustomersContactsById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/contacts/{id}/customers", wrapper.GetCustomersContactsByIdCustomers)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/export", wrapper.GetCustomersExport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/follow-ups", wrapper.GetCustomersFollowUps)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/groups", wrapper.GetCustomersGroups)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/groups", wrapper.PostCustomersGroups)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/groups/{groupId}", wrapper.DeleteCustomersGroupsByGroupId)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/groups/{groupId}", wrapper.PutCustomersGroupsByGroupId)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/import/template", wrapper.GetCustomersImportTemplate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/lookup/brreg", wrapper.GetCustomersLookupBrreg)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/stats", wrapper.GetCustomersStats)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/stats/attention", wrapper.GetCustomersStatsAttention)
@@ -3758,6 +3931,76 @@ func (response GetCustomersContactsByIdCustomers404Response) VisitGetCustomersCo
 	return nil
 }
 
+type GetCustomersExportRequestObject struct {
+	Params GetCustomersExportParams
+}
+
+type GetCustomersExportResponseObject interface {
+	VisitGetCustomersExportResponse(w http.ResponseWriter) error
+}
+
+type GetCustomersExport200TextcsvResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetCustomersExport200TextcsvResponse) VisitGetCustomersExportResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetCustomersExport400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetCustomersExport400ApplicationProblemPlusJSONResponse) VisitGetCustomersExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersExport401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersExport401JSONResponse) VisitGetCustomersExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersExport403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersExport403JSONResponse) VisitGetCustomersExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCustomersFollowUpsRequestObject struct {
 	Params GetCustomersFollowUpsParams
 }
@@ -4098,6 +4341,61 @@ func (response PutCustomersGroupsByGroupId409ApplicationProblemPlusJSONResponse)
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersImportTemplateRequestObject struct {
+}
+
+type GetCustomersImportTemplateResponseObject interface {
+	VisitGetCustomersImportTemplateResponse(w http.ResponseWriter) error
+}
+
+type GetCustomersImportTemplate200TextcsvResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetCustomersImportTemplate200TextcsvResponse) VisitGetCustomersImportTemplateResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetCustomersImportTemplate401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersImportTemplate401JSONResponse) VisitGetCustomersImportTemplateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersImportTemplate403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersImportTemplate403JSONResponse) VisitGetCustomersImportTemplateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -7079,6 +7377,9 @@ type StrictServerInterface interface {
 	// GetCustomersContactsByIdCustomers List the customers a contact is associated with
 	// (GET /api/v1/customers/contacts/{id}/customers)
 	GetCustomersContactsByIdCustomers(ctx context.Context, request GetCustomersContactsByIdCustomersRequestObject) (GetCustomersContactsByIdCustomersResponseObject, error)
+	// GetCustomersExport Export customers as CSV
+	// (GET /api/v1/customers/export)
+	GetCustomersExport(ctx context.Context, request GetCustomersExportRequestObject) (GetCustomersExportResponseObject, error)
 	// GetCustomersFollowUps List follow-ups across customers
 	// (GET /api/v1/customers/follow-ups)
 	GetCustomersFollowUps(ctx context.Context, request GetCustomersFollowUpsRequestObject) (GetCustomersFollowUpsResponseObject, error)
@@ -7094,6 +7395,9 @@ type StrictServerInterface interface {
 	// PutCustomersGroupsByGroupId Rename a customer group or change its default payment term
 	// (PUT /api/v1/customers/groups/{groupId})
 	PutCustomersGroupsByGroupId(ctx context.Context, request PutCustomersGroupsByGroupIdRequestObject) (PutCustomersGroupsByGroupIdResponseObject, error)
+	// GetCustomersImportTemplate Download the customers import template
+	// (GET /api/v1/customers/import/template)
+	GetCustomersImportTemplate(ctx context.Context, request GetCustomersImportTemplateRequestObject) (GetCustomersImportTemplateResponseObject, error)
 	// GetCustomersLookupBrreg Look up business entities in Brønnøysundregisteret
 	// (GET /api/v1/customers/lookup/brreg)
 	GetCustomersLookupBrreg(ctx context.Context, request GetCustomersLookupBrregRequestObject) (GetCustomersLookupBrregResponseObject, error)
@@ -7512,6 +7816,32 @@ func (sh *strictHandler) GetCustomersContactsByIdCustomers(w http.ResponseWriter
 	}
 }
 
+// GetCustomersExport operation middleware
+func (sh *strictHandler) GetCustomersExport(w http.ResponseWriter, r *http.Request, params GetCustomersExportParams) {
+	var request GetCustomersExportRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCustomersExport(ctx, request.(GetCustomersExportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCustomersExport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCustomersExportResponseObject); ok {
+		if err := validResponse.VisitGetCustomersExportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetCustomersFollowUps operation middleware
 func (sh *strictHandler) GetCustomersFollowUps(w http.ResponseWriter, r *http.Request, params GetCustomersFollowUpsParams) {
 	var request GetCustomersFollowUpsRequestObject
@@ -7645,6 +7975,30 @@ func (sh *strictHandler) PutCustomersGroupsByGroupId(w http.ResponseWriter, r *h
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutCustomersGroupsByGroupIdResponseObject); ok {
 		if err := validResponse.VisitPutCustomersGroupsByGroupIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCustomersImportTemplate operation middleware
+func (sh *strictHandler) GetCustomersImportTemplate(w http.ResponseWriter, r *http.Request) {
+	var request GetCustomersImportTemplateRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCustomersImportTemplate(ctx, request.(GetCustomersImportTemplateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCustomersImportTemplate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCustomersImportTemplateResponseObject); ok {
+		if err := validResponse.VisitGetCustomersImportTemplateResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

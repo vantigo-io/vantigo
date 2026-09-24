@@ -32,6 +32,16 @@ ORDER BY
     is_primary DESC,
     id;
 
+-- name: PrimaryAddressesForCustomers :many
+-- PrimaryAddressesForCustomers is the two addresses the customers file carries
+-- (customers import/export design D1) — each customer's primary postal and
+-- primary invoice address — for a whole export in ONE query. At most two rows
+-- per customer: the partial unique index allows one primary per type.
+SELECT id, customer_id, type, label, line1, line2, postal_code, city, region, country, is_primary, created_at, updated_at
+FROM customers.customer_addresses
+WHERE customer_id = ANY(@customer_ids::int[]) AND is_primary AND type IN ('postal', 'invoice')
+ORDER BY customer_id, type;
+
 -- name: CountCustomerAddresses :one
 -- CountCustomerAddresses backs the 50-address cap (invoice-ready customer
 -- design D3): every type together, checked under the customer lock so two

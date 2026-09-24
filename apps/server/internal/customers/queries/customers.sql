@@ -215,6 +215,18 @@ RETURNING id, revision, type, legal_country, legal_id, legal_name, legal_source,
           invoice_email, reminder_email, payment_terms_days, currency, language,
           invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference, default_bill_rate;
 
+-- name: CustomerBillingProfilesForCustomers :many
+-- CustomerBillingProfilesForCustomers is the billing profile of a whole export
+-- in ONE query (customers import/export design D2), CustomerTagsForCustomers'
+-- shape: the eleven columns GetCustomerBillingProfile selects for one customer,
+-- for every id in @ids, never one read per row. Only the export reads it: no
+-- response of this module carries a billing column beside the customer's own
+-- (invoice-ready customer design D4's ruling), and a file is not a response.
+SELECT id, invoice_email, reminder_email, payment_terms_days, currency, language,
+       invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference, default_bill_rate
+FROM customers.customers
+WHERE id = ANY(@ids::int[]);
+
 -- name: CountCustomers :one
 -- CountCustomers is the total row count GetCustomers paginates over
 -- (GetCustomersEndpoint.cs:58), the same filters ListCustomers applies

@@ -43,15 +43,17 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/identity/account` (putIdentityAccount)
 - `PUT /api/v1/identity/scim/v2/Users/{id}` (putIdentityScimV2UsersById)
 
-## customers (30 uncovered)
+## customers (32 uncovered)
 
 - `DELETE /api/v1/customers/groups/{groupId}` (deleteCustomersGroupsByGroupId)
 - `DELETE /api/v1/customers/tags/{tagId}` (deleteCustomersTagsByTagId)
 - `DELETE /api/v1/customers/{id}/addresses/{addressId}` (deleteCustomersByIdAddressesByAddressId)
 - `DELETE /api/v1/customers/{id}/timeline/{entryId}/follow-up/done` (deleteCustomersByIdTimelineByEntryIdFollowUpDone)
 - `GET /api/v1/customers/assignable-users` (getCustomersAssignableUsers)
+- `GET /api/v1/customers/export` (getCustomersExport)
 - `GET /api/v1/customers/follow-ups` (getCustomersFollowUps)
 - `GET /api/v1/customers/groups` (getCustomersGroups)
+- `GET /api/v1/customers/import/template` (getCustomersImportTemplate)
 - `GET /api/v1/customers/stats/attention` (getCustomersStatsAttention)
 - `GET /api/v1/customers/stats/summary` (getCustomersStatsSummary)
 - `GET /api/v1/customers/stats/timeseries` (getCustomersStatsTimeseries)
@@ -234,4 +236,4 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/expenses/rates/{id}` (putExpensesRatesById)
 - `PUT /api/v1/expenses/settings` (putExpensesSettings)
 
-Total: 208 of 343 operations have no recorded exchange.
+Total: 210 of 345 operations have no recorded exchange.

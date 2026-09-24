@@ -312,44 +312,62 @@ func validUUIDParam(raw string) bool {
 	return err == nil
 }
 
-// GetCustomers List all customers
-// (GET /api/v1/customers)
-func (s *server) GetCustomers(ctx context.Context, req gen.GetCustomersRequestObject) (gen.GetCustomersResponseObject, error) {
-	if msgs := validateGetCustomersParams(req.Params); len(msgs) > 0 {
-		return gen.GetCustomers400ApplicationProblemPlusJSONResponse(apicommon.Problem("Invalid query parameters", strings.Join(msgs, " "))), nil
-	}
+// customerListFilter is GET /customers' query parameters resolved into what
+// CountCustomers and ListCustomers take: the filters, the search with its three
+// permission-gated reaches, and the sort. GetCustomers and GetCustomersExport
+// (csvexport.go) both build one through customerListFilterFor, so the file a
+// person downloads is exactly the list they are looking at — the same filters,
+// the same search reach, the same order (customers import/export design D2).
+type customerListFilter struct {
+	includeArchived       bool
+	status, customerType  *string
+	search, searchCompact *string
+	searchPhone           bool
+	// searchIdentity is legalIdentityView: it decides both whether search may
+	// reach the legal identity and whether a response (or a file) shows it.
+	searchIdentity bool
+	searchContacts bool
+	ownerNone      bool
+	ownerID        *uuid.UUID
+	tagID          *uuid.UUID
+	groupNone      bool
+	groupID        *uuid.UUID
+	sortBy         string
+	descending     bool
+}
 
-	page := int32(1)
-	if req.Params.Page != nil {
-		page = *req.Params.Page
+// customerListFilterFor resolves p, or answers the one 400 detail the list
+// gives for it (every message validateGetCustomersParams collects, joined with
+// a space, or the 'me'-without-a-session refusal).
+func (s *server) customerListFilterFor(ctx context.Context, p gen.GetCustomersParams) (customerListFilter, string) {
+	if msgs := validateGetCustomersParams(p); len(msgs) > 0 {
+		return customerListFilter{}, strings.Join(msgs, " ")
 	}
-	pageSize := int32(25)
-	if req.Params.PageSize != nil {
-		pageSize = *req.Params.PageSize
+	f := customerListFilter{
+		includeArchived: p.IncludeArchived != nil && *p.IncludeArchived,
+		status:          p.Status,
+		customerType:    p.Type,
+		sortBy:          "id",
+		descending:      p.SortDirection != nil && *p.SortDirection == "desc",
 	}
-	includeArchived := req.Params.IncludeArchived != nil && *req.Params.IncludeArchived
-	var search, searchCompact *string
-	var searchPhone bool
-	if req.Params.Search != nil {
-		if trimmed := strings.TrimSpace(*req.Params.Search); trimmed != "" {
-			p := likePattern(trimmed)
-			search = &p
+	if p.SortBy != nil {
+		f.sortBy = *p.SortBy
+	}
+	if p.Search != nil {
+		if trimmed := strings.TrimSpace(*p.Search); trimmed != "" {
+			search := likePattern(trimmed)
+			f.search = &search
 			// search_compact matches the customer number and legal id the
 			// way a person actually types them: "923 609 016" finds a legal
 			// id stored, with no spaces, as "923609016" (customers
 			// foundation design D4).
 			compact := stripWhitespace(trimmed)
-			cp := likePattern(compact)
-			searchCompact = &cp
+			searchCompact := likePattern(compact)
+			f.searchCompact = &searchCompact
 			// search_phone gates the phone branch on the same compact term
 			// (final review fix M2): searchPhoneEligible above.
-			searchPhone = searchPhoneEligible(compact)
+			f.searchPhone = searchPhoneEligible(compact)
 		}
-	}
-	descending := req.Params.SortDirection != nil && *req.Params.SortDirection == "desc"
-	sortBy := "id"
-	if req.Params.SortBy != nil {
-		sortBy = *req.Params.SortBy
 	}
 
 	// ownerId's three forms resolve to the two SQL parameters the list queries
@@ -360,48 +378,42 @@ func (s *server) GetCustomers(ctx context.Context, req gen.GetCustomersRequestOb
 	// branch below is unreachable in production; it is a 400 rather than a
 	// silent "everyone's customers", because answering the wrong customers is
 	// the one outcome a "my customers" filter must never have.
-	var ownerID *uuid.UUID
-	ownerNone := false
-	if req.Params.OwnerId != nil {
-		switch *req.Params.OwnerId {
+	if p.OwnerId != nil {
+		switch *p.OwnerId {
 		case "none":
-			ownerNone = true
+			f.ownerNone = true
 		case "me":
-			p, ok := contracts.PrincipalFrom(ctx)
-			if !ok || p.UserID == uuid.Nil {
-				return gen.GetCustomers400ApplicationProblemPlusJSONResponse(apicommon.Problem("Invalid query parameters",
-					"'ownerId' cannot be 'me' without a signed-in user.")), nil
+			principal, ok := contracts.PrincipalFrom(ctx)
+			if !ok || principal.UserID == uuid.Nil {
+				return customerListFilter{}, "'ownerId' cannot be 'me' without a signed-in user."
 			}
-			id := p.UserID
-			ownerID = &id
+			id := principal.UserID
+			f.ownerID = &id
 		default:
 			// validateGetCustomersParams already refused anything unparseable,
 			// so err is impossible here; the guard means an impossible value
 			// filters nothing rather than panicking.
-			if id, err := uuid.Parse(*req.Params.OwnerId); err == nil {
-				ownerID = &id
+			if id, err := uuid.Parse(*p.OwnerId); err == nil {
+				f.ownerID = &id
 			}
 		}
 	}
-	var tagID *uuid.UUID
-	if req.Params.TagId != nil {
-		if id, err := uuid.Parse(*req.Params.TagId); err == nil {
-			tagID = &id
+	if p.TagId != nil {
+		if id, err := uuid.Parse(*p.TagId); err == nil {
+			f.tagID = &id
 		}
 	}
 	// groupId's two forms resolve to the two SQL parameters the list queries
 	// take (design D3). No 'me' here and nothing session-dependent: a group is a
 	// bucket the installation defines, not a relationship to the caller.
-	var groupID *uuid.UUID
-	groupNone := false
-	if req.Params.GroupId != nil {
-		if *req.Params.GroupId == "none" {
-			groupNone = true
-		} else if id, err := uuid.Parse(*req.Params.GroupId); err == nil {
+	if p.GroupId != nil {
+		if *p.GroupId == "none" {
+			f.groupNone = true
+		} else if id, err := uuid.Parse(*p.GroupId); err == nil {
 			// validateGetCustomersParams already refused anything unparseable, so
 			// err is impossible here; the guard means an impossible value filters
 			// nothing rather than panicking.
-			groupID = &id
+			f.groupID = &id
 		}
 	}
 
@@ -409,42 +421,68 @@ func (s *server) GetCustomers(ctx context.Context, req gen.GetCustomersRequestOb
 	// contact/association branches of search: a caller who cannot see that
 	// data through its own endpoints must not be able to use search as an
 	// oracle for it either (customers foundation design D4). Computed once
-	// here and reused for both queries below, so the count and the page
-	// never disagree about what search reaches.
+	// here and reused for both queries, so the count and the page never
+	// disagree about what search reaches.
 	//
 	// Each answer costs an access check — a session lookup plus a permission
-	// query — so the list endpoint asks for as few as it needs: searchIdentity
+	// query — so the list asks for as few as it needs: searchIdentity
 	// unconditionally, because legalIdentityView also decides whether the
-	// response's identity block is populated (see includeIdentity below);
-	// searchContacts only when there is a search term at all, since with no
-	// term the contact/association branch of the query is unreachable and the
-	// flag cannot change a single row either way. The two contact permissions
-	// travel as one AND-gated check (hasPermissions, server.go) rather than
-	// two.
-	searchIdentity := s.hasPermission(ctx, legalIdentityView)
-	searchContacts := search != nil && s.hasPermissions(ctx, contactsView, associationsView)
+	// identity is shown; searchContacts only when there is a search term at
+	// all, since with no term the contact/association branch of the query is
+	// unreachable and the flag cannot change a single row either way. The two
+	// contact permissions travel as one AND-gated check (hasPermissions,
+	// server.go) rather than two.
+	f.searchIdentity = s.hasPermission(ctx, legalIdentityView)
+	f.searchContacts = f.search != nil && s.hasPermissions(ctx, contactsView, associationsView)
+	return f, ""
+}
+
+// countParams is f as CountCustomers takes it.
+func (f customerListFilter) countParams() store.CountCustomersParams {
+	return store.CountCustomersParams{
+		IncludeArchived: f.includeArchived, Status: f.status, CustomerType: f.customerType,
+		Search: f.search, SearchCompact: f.searchCompact, SearchIdentity: f.searchIdentity, SearchContacts: f.searchContacts,
+		SearchPhone: f.searchPhone,
+		OwnerNone:   f.ownerNone, OwnerID: f.ownerID, TagID: f.tagID,
+		GroupNone: f.groupNone, GroupID: f.groupID,
+	}
+}
+
+// listParams is f as ListCustomers takes it, for one page.
+func (f customerListFilter) listParams(pageSize, offset int32) store.ListCustomersParams {
+	return store.ListCustomersParams{
+		IncludeArchived: f.includeArchived, Status: f.status, CustomerType: f.customerType,
+		Search: f.search, SearchCompact: f.searchCompact, SearchIdentity: f.searchIdentity, SearchContacts: f.searchContacts,
+		SearchPhone: f.searchPhone,
+		OwnerNone:   f.ownerNone, OwnerID: f.ownerID, TagID: f.tagID,
+		GroupNone: f.groupNone, GroupID: f.groupID,
+		SortBy: f.sortBy, Descending: f.descending, PageSize: pageSize, RowOffset: offset,
+	}
+}
+
+// GetCustomers List all customers
+// (GET /api/v1/customers)
+func (s *server) GetCustomers(ctx context.Context, req gen.GetCustomersRequestObject) (gen.GetCustomersResponseObject, error) {
+	filter, detail := s.customerListFilterFor(ctx, req.Params)
+	if detail != "" {
+		return gen.GetCustomers400ApplicationProblemPlusJSONResponse(apicommon.Problem("Invalid query parameters", detail)), nil
+	}
+
+	page := int32(1)
+	if req.Params.Page != nil {
+		page = *req.Params.Page
+	}
+	pageSize := int32(25)
+	if req.Params.PageSize != nil {
+		pageSize = *req.Params.PageSize
+	}
 
 	q := store.New(s.deps.Pool)
-	total, err := q.CountCustomers(ctx, store.CountCustomersParams{
-		IncludeArchived: includeArchived, Status: req.Params.Status, CustomerType: req.Params.Type,
-		Search: search, SearchCompact: searchCompact, SearchIdentity: searchIdentity, SearchContacts: searchContacts,
-		SearchPhone: searchPhone,
-		OwnerNone:   ownerNone, OwnerID: ownerID, TagID: tagID,
-		GroupNone: groupNone, GroupID: groupID,
-	})
+	total, err := q.CountCustomers(ctx, filter.countParams())
 	if err != nil {
 		return nil, fmt.Errorf("customers: count customers: %w", err)
 	}
-
-	offset := (page - 1) * pageSize
-	list, err := q.ListCustomers(ctx, store.ListCustomersParams{
-		IncludeArchived: includeArchived, Status: req.Params.Status, CustomerType: req.Params.Type,
-		Search: search, SearchCompact: searchCompact, SearchIdentity: searchIdentity, SearchContacts: searchContacts,
-		SearchPhone: searchPhone,
-		OwnerNone:   ownerNone, OwnerID: ownerID, TagID: tagID,
-		GroupNone: groupNone, GroupID: groupID,
-		SortBy: sortBy, Descending: descending, PageSize: pageSize, RowOffset: offset,
-	})
+	list, err := q.ListCustomers(ctx, filter.listParams(pageSize, (page-1)*pageSize))
 	if err != nil {
 		return nil, fmt.Errorf("customers: list customers: %w", err)
 	}
@@ -465,7 +503,7 @@ func (s *server) GetCustomers(ctx context.Context, req gen.GetCustomersRequestOb
 	// response show it", so one hasPermission call serves both.
 	data := make([]gen.SafeCustomerResponse, 0, len(rows))
 	for _, r := range rows {
-		data = append(data, safeCustomerResponse(r, searchIdentity, dec))
+		data = append(data, safeCustomerResponse(r, filter.searchIdentity, dec))
 	}
 
 	return gen.GetCustomers200JSONResponse{
