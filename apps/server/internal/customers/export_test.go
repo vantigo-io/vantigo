@@ -2,6 +2,9 @@ package customers
 
 import (
 	"context"
+	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/module"
@@ -88,4 +91,55 @@ func SetImportHeldHook(f func(context.Context) context.Context) func() {
 	previous := importHeldForTest
 	importHeldForTest = f
 	return func() { importHeldForTest = previous }
+}
+
+// NationalIDForTest builds an eleven-digit Norwegian national identity number
+// for a test (customers GDPR design D1): birth is six digits, DDMMYY, and the
+// individual number is the first one from individual up whose two mod-11
+// check digits both exist — a remainder that would make either one 10 skips
+// that individual number, as the population register does. dNumber raises the
+// first digit by four, which is all a D-number is.
+//
+// It is its own arithmetic, deliberately not values.go's: a test that built its
+// numbers with the function under test could not catch a wrong weight in it.
+// Callers pass a synthetic birth date — the month plus 80, the range
+// Skatteetaten keeps for test persons — so nothing built here is a real
+// person's number.
+func NationalIDForTest(birth string, individual int, dNumber bool) string {
+	firstWeights := []int{3, 7, 6, 1, 8, 9, 4, 5, 2}
+	secondWeights := []int{5, 4, 3, 2, 7, 6, 5, 4, 3, 2}
+	check := func(digits, weights []int) int {
+		sum := 0
+		for i, w := range weights {
+			sum += digits[i] * w
+		}
+		// 11 - 0 is 11, which is the check digit 0; 11 - 1 is 10, which no
+		// number has, and the caller skips it.
+		return (11 - sum%11) % 11
+	}
+	for n := individual; n < 1000; n++ {
+		digits := make([]int, 0, 11)
+		for _, r := range fmt.Sprintf("%s%03d", birth, n) {
+			digits = append(digits, int(r-'0'))
+		}
+		if dNumber {
+			digits[0] += 4
+		}
+		first := check(digits, firstWeights)
+		if first == 10 {
+			continue
+		}
+		digits = append(digits, first)
+		second := check(digits, secondWeights)
+		if second == 10 {
+			continue
+		}
+		digits = append(digits, second)
+		var b strings.Builder
+		for _, d := range digits {
+			b.WriteByte(byte('0' + d))
+		}
+		return b.String()
+	}
+	panic("NationalIDForTest: no individual number from " + strconv.Itoa(individual) + " up gives two check digits for " + birth)
 }

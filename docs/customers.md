@@ -139,15 +139,27 @@ when the identity is nested inside a create/update body rather than the dedicate
 | --- | --- |
 | `country` | Non-blank; must be an assigned **ISO 3166-1 alpha-2** code (249 codes, embedded in Go, no external dependency), case-insensitive, stored lower-case. User-assigned codes (`xk`, `aa`, …) and the unofficial `uk` alias for `gb` are deliberately not accepted. |
 | `type` | Non-blank. Only `person`/`business` are conventional; any other non-blank value is accepted here (an inventory oddity carried over from the original implementation) — it is `identityTypeMismatch`, not this field's own validator, that enforces agreement with the customer's `type`. |
-| `id` | Non-blank, at most 50 UTF-16 code units, trimmed and lower-cased — **except** when `country` is `no` and `type` is `business`, in which case it must be a Norwegian **organisasjonsnummer**: whitespace stripped, then exactly nine digits whose last is the mod-11 check digit (weights 3 2 7 6 5 4 3 2; a remainder that would produce check digit 10 is invalid outright). Stored as the nine digits. |
+| `id` | Non-blank, at most 50 UTF-16 code units, trimmed and lower-cased — **except** when `country` is `no`: for `type` `business` it must be a Norwegian **organisasjonsnummer** (whitespace stripped, then exactly nine digits whose last is the mod-11 check digit — weights 3 2 7 6 5 4 3 2; a remainder that would produce check digit 10 is invalid outright — stored as the nine digits); for `type` `person` it must **not** be a Norwegian national identity number (below). |
 | `name` | Non-blank, at most 255 UTF-16 code units, trimmed, case preserved. |
 | `source` | `brreg` or `manual`. |
 
-**Norwegian person identities are deliberately not validated as a fødselsnummer.**
-Every other country/type combination — including `no` + `person` — keeps the plain
-non-blank/length rule above. Whether a Norwegian person's legal id should even be
-stored at all, and under what GDPR handling, is [ROADMAP phase 6](../ROADMAP.md#customers)'s
-call to make; this branch does not make that field look sanctioned by validating it.
+**A Norwegian national identity number is refused, never stored.** For `country` `no`
+and `type` `person`, an `id` that is a fødselsnummer or a D-number — once spaces,
+hyphens and full stops are taken out, eleven digits whose two mod-11 check digits pass
+(weights 3 7 6 1 8 9 4 5 2 for the tenth, 5 4 3 2 7 6 5 4 3 2 for the eleventh; a
+D-number is the same number with its first digit raised by four) — is a 400, "A
+Norwegian national identity number is never stored here", keyed like every other
+identity error: `id` on `PUT .../legal-identity`, `identity.id` in a create or update
+body, the `legalId` column of a CSV row. Only the check digits decide — the date is not
+read as a date — so every kind of number the register issues is caught, and the
+sentence names no number back. Any other person identifier (a passport number, a
+foreign id, a customer reference) stays free text under the plain rule above.
+Datatilsynet's advice for ordinary customer administration is not to hold the number
+at all, and this module promised from its foundation never to be a fødselsnummer
+field; phase 6 delivery C made the promise a rule
+([Personal data and anonymisation](#personal-data-and-anonymisation)). An identity
+stored before the rule is not re-validated (below), and is cleared by an
+anonymisation like every other identity.
 
 **Validation applies to writes only.** A row already stored is never re-validated —
 older data that predates a rule can sit there unchanged — and a `PUT` that omits
