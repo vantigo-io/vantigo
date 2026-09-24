@@ -53,12 +53,11 @@ type rateSnapshot struct {
 //   - bill, only when billable: the billing line's rule (a fixed amount, or
 //     the variant's list price in the project's currency on the entry date,
 //     discounted when the line says so) → the project's default bill rate →
-//     the project's customer's default bill rate, when customers is enabled
-//     and the customer's currency is the project's (or the project has none,
-//     and the customer's is taken; customers bill-rate design D3) → the
-//     person's bill rate in effect on the date, when their card is in the
-//     project's currency (or the project has none, and the card's is taken)
-//     → none;
+//     the project's customer's default bill rate, when the customer's
+//     currency is the project's (or the project has none, and the customer's
+//     is taken; customers bill-rate design D3) → the person's bill rate in
+//     effect on the date, when their card is in the project's currency (or
+//     the project has none, and the card's is taken) → none;
 //   - cost, always: the person's cost rate in effect on the date → none.
 //
 // A step that cannot answer falls through to the next rather than ending the
@@ -122,11 +121,13 @@ func (s *server) resolveRates(ctx context.Context, q *store.Queries, req rateReq
 // customerRate is the chain's third step (customers bill-rate design D3): the
 // default bill rate on the billing profile of the project's customer, and the
 // currency it is quoted in — both nil when the step prices nothing: a project
-// with no customer, the customers module off (Deps.Directory is nil then, a
-// real installation and never an error), a customer the directory does not
-// know ((nil, nil)), one with no rate, or one quoted in another currency than
-// the project bills in. That last is the person card's rule verbatim — nothing
+// with no customer, a customer the directory does not know ((nil, nil)), one
+// with no rate or no currency, or one quoted in another currency than the
+// project bills in. That last is the person card's rule verbatim — nothing
 // converts — and a project with no currency of its own takes the customer's.
+// A nil Deps.Directory prices nothing too, but no installation has one: time
+// requires projects, which requires customers, so the check is a defensive
+// floor (a harness can compose time without customers), not a mode.
 // An archived customer still answers: a project of theirs can still be worked
 // on. A directory that fails is an error, as a failing list price is: a lookup
 // silently skipped would store the person's rate on hours the customer's

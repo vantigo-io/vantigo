@@ -26,9 +26,8 @@ import (
 // Deps.Projects, Deps.Products and Deps.Directory are fakes built directly
 // against internal/contracts — depguard forbids internal/time/** from
 // importing internal/projects, internal/products or internal/customers, even
-// in tests. The user directory
-// is not stubbed: identity is always composed, and it provides the real one,
-// which names every user signIn seeds.
+// in tests. The user directory is not stubbed: identity is always composed,
+// and it provides the real one, which names every user signIn seeds.
 type harness struct {
 	*modtest.Harness
 	projects  *fakeProjects

@@ -151,7 +151,8 @@ func TestPostTimeEntries_ProjectWithoutCurrency_TakesThePersonCardsCurrency(t *t
 // snapshotted with rateSource "customer", in the customer's currency when the
 // project has none — a customer quoted in another currency than the project's
 // is passed over for the person, and a project default still wins. A draft
-// re-resolves at its next save, so a changed customer rate reaches it.
+// re-resolves at its next save, so a changed customer rate reaches it; a
+// submitted entry keeps the rate it was submitted at.
 func TestPostTimeEntries_NoProjectDefault_UsesTheCustomerDefaultRate(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -164,6 +165,8 @@ func TestPostTimeEntries_NoProjectDefault_UsesTheCustomerDefaultRate(t *testing.
 	priced := createEntry(t, c, map[string]any{"projectId": projectNoCurrency})
 	wantRate(t, priced, 1250, "NOK", "customer")
 	wantRate(t, getEntry(t, c, priced.Id), 1250, "NOK", "customer")
+	submitted := submittedEntry(t, c, map[string]any{"projectId": projectNoCurrency})
+	wantRate(t, submitted, 1250, "NOK", "customer")
 
 	// A EUR project, a NOK customer: nothing converts, so the EUR card prices it.
 	wantRate(t, createEntry(t, c, map[string]any{"projectId": projectEuro}), 1100, "EUR", "person")
@@ -172,6 +175,11 @@ func TestPostTimeEntries_NoProjectDefault_UsesTheCustomerDefaultRate(t *testing.
 
 	h.customers.setBillRate(customerKraftVerket, 1300, "NOK")
 	wantRate(t, updateEntry(t, c, priced, map[string]any{"hours": 3}), 1300, "NOK", "customer")
+	// The one path that re-resolves is a save, and a submitted entry refuses it.
+	if r := c.Do(http.MethodPut, entryPath(submitted.Id), updateBody(submitted, map[string]any{"hours": 3})); r.Status != http.StatusForbidden {
+		t.Fatalf("update a submitted entry: status %d body %s, want 403", r.Status, r.Body)
+	}
+	wantRate(t, getEntry(t, c, submitted.Id), 1250, "NOK", "customer")
 }
 
 // Billable defaults from the billing type: time and materials and fixed

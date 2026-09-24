@@ -166,13 +166,13 @@ func WithBackoff(fn func(attempt int) time.Duration) Option {
 
 // WithDirectory sets Deps.Directory directly to d, for a module under test
 // that reads another module's data through contracts.CustomerDirectory
-// (energy, so far) without composing that other module beside it — depguard
-// forbids the module's own test package from importing the module that
-// would otherwise provide one (customers), so the test builds its own fake
-// directly against the contracts interface, the same seam .NET's
+// (energy and time, so far) without composing that other module beside it —
+// depguard forbids the module's own test package from importing the module
+// that would otherwise provide one (customers), so the test builds its own
+// fake directly against the contracts interface, the same seam .NET's
 // FakeCustomerDirectory fills in EnergyApiFactory. module.Compose only ever
 // overwrites Deps.Directory when one of the composed modules declares
-// Module.Directory (none of energy's harnesses do), so a value set here
+// Module.Directory (none of their harnesses do), so a value set here
 // survives Compose unchanged.
 func WithDirectory(d contracts.CustomerDirectory) Option {
 	return func(s *setup) { s.directory = d }
