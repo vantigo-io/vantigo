@@ -1170,7 +1170,7 @@ export interface components {
             customer: components["schemas"]["CustomerPersonalDataCustomer"];
             /** Format: date-time */
             exportedAt: string;
-            /** @description Each other module's section, under the module's name — communications (the person's conversations: subject, dates, each message's direction, date and text body, attachment names), energy (supply periods with the metering point's address), projects (code, name, status and dates). A module holding nothing for the customer has no key. */
+            /** @description Each other module's section, under the module's name — communications (the person's conversations: subject, dates, each message's direction, date, and text and HTML body (each when present), attachment names), energy (supply periods with the metering point's address), projects (code, name, status and dates). A module holding nothing for the customer has no key. */
             modules: {
                 [key: string]: unknown;
             };

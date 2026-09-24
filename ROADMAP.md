@@ -272,7 +272,7 @@ exists.
 
 *Unblocks:* the reason the customer page is meant to be the hub, not just a card.
 
-### Phase 6 — Data operations and compliance
+### Phase 6 — Data operations and compliance (done)
 
 CSV import (create and update, with error-row re-run) and export, for onboarding away
 from Tripletex/Fiken/PowerOffice. Merging duplicate customers — moving contacts,
@@ -299,7 +299,22 @@ communications); the survivor keeps every field of its own and the duplicate is
 archived with a marker; behind the new `customers:merge`. See
 [`docs/customers.md#merging-duplicates`](docs/customers.md#merging-duplicates).
 
-**Still ahead in this phase:** GDPR handling for person customers (delivery C).
+**Delivery C (done)** — decided in
+[`docs/superpowers/specs/2026-09-24-customers-gdpr-design.md`](docs/superpowers/specs/2026-09-24-customers-gdpr-design.md):
+a Norwegian national identity number is refused as a person's legal id; a private
+person's data is exported in one file; and an archived private person is anonymised on a
+chosen day by a worker — the number, the dates and the shape of the history kept for
+bookkeeping, the person taken out of the customer, its timeline and other modules
+through `contracts.CustomerPersonalData` (communications, energy, projects); behind the
+new `customers:personal-data`. See
+[`docs/customers.md#personal-data-and-anonymisation`](docs/customers.md#personal-data-and-anonymisation).
+
+Phase 6 is complete, and with it the Customers roadmap — this was its last delivery.
+Still deferred, each waiting on another module rather than on Customers: attachments on
+a customer and its timeline entries (phase 4), once the storage module has a model for
+them; and the other modules' timeline writers (phase 5), which ride on the
+domain-events outbox deferred until Orders — as do invoiced revenue and outstanding,
+once Invoices exists.
 
 *Unblocks:* clean onboarding and offboarding, and a merge path that only gets more
 expensive the longer it waits.

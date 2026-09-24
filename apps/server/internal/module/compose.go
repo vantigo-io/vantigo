@@ -25,11 +25,11 @@ import (
 // two modules both declare, a component two modules declare differently
 // under the same name, two modules both declaring a customer directory, a
 // user directory, a product catalog, a project directory, project actuals or
-// project expenses (naming both) — customer reference holders, the one
-// many-provider contract slot, are collected from every module given instead,
-// enabled or not — or a nil Deps.Config: enablement (which modules MODULES
-// turns on) is meaningless without one, and every real caller already loads
-// one before composing.
+// project expenses (naming both) — customer reference holders and customer
+// personal-data providers, the two many-provider contract slots, are collected
+// from every module given instead, enabled or not — or a nil Deps.Config:
+// enablement (which modules MODULES turns on) is meaningless without one, and
+// every real caller already loads one before composing.
 func Compose(deps Deps, mods ...Module) (http.Handler, error) {
 	if deps.Config == nil {
 		return nil, fmt.Errorf("module: Compose requires a non-nil Deps.Config to know which modules MODULES enables")
@@ -133,8 +133,9 @@ func (c *rememberedContracts) combined(ctx context.Context, order []string) ([]b
 
 func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.Handler, error) {
 	ctx := context.Background()
-	// Every module given, before enablement drops any: the customer reference
-	// holders below are collected from all of them.
+	// Every module given, before enablement drops any: both customer slots
+	// below — the reference holders and the personal-data providers — are
+	// collected from all of them.
 	given := mods
 	mods = enabledModules(deps, mods)
 
