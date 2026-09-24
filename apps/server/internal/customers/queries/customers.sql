@@ -173,23 +173,23 @@ SELECT id FROM customers.customers WHERE id = @id;
 
 -- name: GetCustomerBillingProfile :one
 -- GetCustomerBillingProfile is GET /customers/{id}/billing-profile's read
--- (invoice-ready customer design D1, D4): the ten billing columns plus
--- everything billingWarnings (billing_profile.go) needs to compute its
--- warnings at read time — the customer's type and legal identity (the
--- ehf_without_recipient check) and its own contact-info email (the
--- email_without_address check) — in one round trip, without ever adding a
--- billing column to GetCustomer/ListCustomers's own SELECT list (the
--- controller ruling: the billing profile must never reach
--- SafeCustomerResponse).
+-- (invoice-ready customer design D1, D4): the eleven billing columns — the
+-- default bill rate (customers bill-rate design D1) last — plus everything
+-- billingWarnings (billing_profile.go) needs to compute its warnings at read
+-- time — the customer's type and legal identity (the ehf_without_recipient
+-- check) and its own contact-info email (the email_without_address check) — in
+-- one round trip, without ever adding a billing column to
+-- GetCustomer/ListCustomers's own SELECT list (the controller ruling: the
+-- billing profile must never reach SafeCustomerResponse).
 SELECT id, revision, type, legal_country, legal_id, legal_name, legal_source, legal_type, email,
        invoice_email, reminder_email, payment_terms_days, currency, language,
-       invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference
+       invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference, default_bill_rate
 FROM customers.customers
 WHERE id = @id;
 
 -- name: UpdateCustomerBillingProfile :one
 -- UpdateCustomerBillingProfile is PUT /customers/{id}/billing-profile's
--- write (invoice-ready customer design D1, D4): a full replace of the ten
+-- write (invoice-ready customer design D1, D4): a full replace of the eleven
 -- billing columns only — name, status, type and the legal identity are
 -- untouched, since this sub-resource never writes them. Guarded and
 -- revision-bumping exactly like UpdateCustomerContactInfo above; RETURNING
@@ -206,13 +206,14 @@ SET invoice_email = @invoice_email,
     peppol_id = @peppol_id,
     gln = @gln,
     buyer_reference = @buyer_reference,
+    default_bill_rate = @default_bill_rate,
     updated_at = @updated_at::timestamptz,
     revision = revision + 1
 WHERE id = @id
   AND (sqlc.narg(expected_revision)::int IS NULL OR revision = sqlc.narg(expected_revision)::int)
 RETURNING id, revision, type, legal_country, legal_id, legal_name, legal_source, legal_type, email,
           invoice_email, reminder_email, payment_terms_days, currency, language,
-          invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference;
+          invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference, default_bill_rate;
 
 -- name: CountCustomers :one
 -- CountCustomers is the total row count GetCustomers paginates over
@@ -561,7 +562,7 @@ ORDER BY c.id;
 -- DirectoryBillingProfile is contracts.CustomerDirectory.BillingProfile's
 -- customer row (invoice-ready customer design D5): identity (all five
 -- columns, so identityFromRow's all-or-none invariant holds the same way it
--- does everywhere else this module reads it), contact email and the ten
+-- does everywhere else this module reads it), contact email and the eleven
 -- billing columns GetCustomerBillingProfile itself selects, plus
 -- customer_number and status — what resolveBillingProfile (directory.go)
 -- needs to fill in every field of contracts.CustomerBillingProfile except
@@ -577,7 +578,7 @@ ORDER BY c.id;
 SELECT c.id, c.customer_number, c.name, c.type, c.status = 'archived' AS archived,
        c.legal_country, c.legal_id, c.legal_name, c.legal_source, c.legal_type, c.email,
        c.invoice_email, c.reminder_email, c.payment_terms_days, c.currency, c.language,
-       c.invoice_delivery, c.reminder_delivery, c.peppol_id, c.gln, c.buyer_reference,
+       c.invoice_delivery, c.reminder_delivery, c.peppol_id, c.gln, c.buyer_reference, c.default_bill_rate,
        g.default_payment_terms_days AS group_default_payment_terms_days
 FROM customers.customers c
 LEFT JOIN customers.customer_groups g ON g.id = c.group_id

@@ -237,6 +237,9 @@ func billingProfileChanges(before, after billingProfile) map[string]any {
 	if !stringPtrEqual(before.Currency, after.Currency) {
 		changes["currency"] = map[string]any{"before": before.Currency, "after": after.Currency}
 	}
+	if !floatPtrEqual(before.DefaultBillRate, after.DefaultBillRate) {
+		changes["defaultBillRate"] = map[string]any{"before": before.DefaultBillRate, "after": after.DefaultBillRate}
+	}
 	if !stringPtrEqual(before.Language, after.Language) {
 		changes["language"] = map[string]any{"before": before.Language, "after": after.Language}
 	}

@@ -39,7 +39,7 @@ import (
 // that sets or changes defaultPaymentTermsDays, and on a membership PUT whose
 // before or after group carries a default: a per-request check, with no new key.
 
-// billingProfileResponse is CustomerBillingProfile.FromDomain: p's ten
+// billingProfileResponse is CustomerBillingProfile.FromDomain: p's eleven
 // fields, revision, warnings, the resolved Peppol lookup (peppol lookup
 // design D3, nil when none or stale) and the group default assembled from
 // wherever the caller computed them — GET and PUT both call this once they
@@ -54,7 +54,7 @@ func billingProfileResponse(p billingProfile, revision int32, warnings []string,
 	return gen.CustomerBillingProfile{
 		InvoiceEmail: p.InvoiceEmail, ReminderEmail: p.ReminderEmail, PaymentTermsDays: p.PaymentTermsDays,
 		Currency: p.Currency, Language: p.Language, InvoiceDelivery: p.InvoiceDelivery, ReminderDelivery: p.ReminderDelivery,
-		PeppolId: p.PeppolID, Gln: p.Gln, BuyerReference: p.BuyerReference,
+		PeppolId: p.PeppolID, Gln: p.Gln, BuyerReference: p.BuyerReference, DefaultBillRate: p.DefaultBillRate,
 		Revision: revision, Warnings: warnings, PeppolLookup: lookup, GroupDefault: groupDefault,
 	}
 }
@@ -191,8 +191,12 @@ func (s *server) GetCustomersByIdBillingProfile(ctx context.Context, req gen.Get
 		return nil, err
 	}
 
+	defaultBillRate, err := floatPtrFromNumeric(row.DefaultBillRate)
+	if err != nil {
+		return nil, err
+	}
 	profile := billingProfileFromRow(row.InvoiceEmail, row.ReminderEmail, row.PaymentTermsDays,
-		row.Currency, row.Language, row.InvoiceDelivery, row.ReminderDelivery, row.PeppolID, row.Gln, row.BuyerReference)
+		row.Currency, row.Language, row.InvoiceDelivery, row.ReminderDelivery, row.PeppolID, row.Gln, row.BuyerReference, defaultBillRate)
 	identity := identityFromRow(row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType)
 
 	hasInvoiceAddress, err := q.CustomerHasInvoiceAddress(ctx, req.Id)
@@ -238,7 +242,7 @@ func (s *server) resolvedPeppolLookupFor(ctx context.Context, q *store.Queries, 
 // that disagrees with the row just read, 409 — ahead of the no-op check
 // below, so resubmitting the current profile with a stale revision is still
 // a conflict, not a free pass; (4) the no-op check itself: identical in all
-// ten fields writes nothing at all (customers foundation design D5) — no
+// eleven fields writes nothing at all (customers foundation design D5) — no
 // revision bump, no updated_at move, no timeline event; (5) the write,
 // guarded the same way UpdateCustomerContactInfo's is.
 //
@@ -273,8 +277,12 @@ func (s *server) PutCustomersByIdBillingProfile(ctx context.Context, req gen.Put
 		return gen.PutCustomersByIdBillingProfile409ApplicationProblemPlusJSONResponse(customerRevisionConflict(*body.Revision, existing.Revision)), nil
 	}
 
+	existingRate, err := floatPtrFromNumeric(existing.DefaultBillRate)
+	if err != nil {
+		return nil, err
+	}
 	before := billingProfileFromRow(existing.InvoiceEmail, existing.ReminderEmail, existing.PaymentTermsDays,
-		existing.Currency, existing.Language, existing.InvoiceDelivery, existing.ReminderDelivery, existing.PeppolID, existing.Gln, existing.BuyerReference)
+		existing.Currency, existing.Language, existing.InvoiceDelivery, existing.ReminderDelivery, existing.PeppolID, existing.Gln, existing.BuyerReference, existingRate)
 	identity := identityFromRow(existing.LegalCountry, existing.LegalID, existing.LegalName, existing.LegalSource, existing.LegalType)
 
 	hasInvoiceAddress, err := q.CustomerHasInvoiceAddress(ctx, req.Id)
@@ -289,6 +297,13 @@ func (s *server) PutCustomersByIdBillingProfile(ctx context.Context, req gen.Put
 		}
 		warnings := billingWarnings(before, existing.Type, identity, existing.Email, hasInvoiceAddress, lookup)
 		return gen.PutCustomersByIdBillingProfile200JSONResponse(billingProfileResponse(before, existing.Revision, warnings, lookup, groupDefault)), nil
+	}
+
+	// The rate's column value, built before the transaction like everything
+	// else this write needs: a failed conversion is an error, never a NULL.
+	defaultBillRate, err := numericFromFloatPtr(after.DefaultBillRate)
+	if err != nil {
+		return nil, err
 	}
 
 	now := s.deps.Clock()
@@ -310,7 +325,7 @@ func (s *server) PutCustomersByIdBillingProfile(ctx context.Context, req gen.Put
 			ID: req.Id, InvoiceEmail: after.InvoiceEmail, ReminderEmail: after.ReminderEmail,
 			PaymentTermsDays: after.PaymentTermsDays, Currency: after.Currency, Language: after.Language,
 			InvoiceDelivery: after.InvoiceDelivery, ReminderDelivery: after.ReminderDelivery,
-			PeppolID: after.PeppolID, Gln: after.Gln, BuyerReference: after.BuyerReference,
+			PeppolID: after.PeppolID, Gln: after.Gln, BuyerReference: after.BuyerReference, DefaultBillRate: defaultBillRate,
 			UpdatedAt: now, ExpectedRevision: body.Revision,
 		})
 		if err != nil {

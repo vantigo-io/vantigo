@@ -3,7 +3,10 @@ package customers
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
+
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
 )
@@ -18,7 +21,7 @@ import (
 // absent always means "clear to NULL", never a validation error.
 
 // billingProfile is a customer's normalized billing profile: each field nil
-// when the customer has none, exactly the shape customers.customers' ten
+// when the customer has none, exactly the shape customers.customers' eleven
 // nullable billing columns store. Field names follow
 // store.GetCustomerBillingProfileRow's own spelling (PeppolID, Gln — sqlc's
 // initialism handling, not oapi-codegen's gen.CustomerBillingProfile.PeppolId)
@@ -37,6 +40,11 @@ type billingProfile struct {
 	PeppolID         *string `json:"peppolId"`
 	Gln              *string `json:"gln"`
 	BuyerReference   *string `json:"buyerReference"`
+	// DefaultBillRate is the customer's default hourly bill rate (customers
+	// bill-rate design D1), quoted in Currency — never set without one — and
+	// read by Time's rate chain through the directory. *float64 like every
+	// money field a contract carries; the column is numeric(12,2).
+	DefaultBillRate *float64 `json:"defaultBillRate"`
 }
 
 // billingProfileEqual reports whether a and b are the same billing profile:
@@ -54,12 +62,24 @@ func billingProfileEqual(a, b billingProfile) bool {
 		stringPtrEqual(a.ReminderDelivery, b.ReminderDelivery) &&
 		stringPtrEqual(a.PeppolID, b.PeppolID) &&
 		stringPtrEqual(a.Gln, b.Gln) &&
-		stringPtrEqual(a.BuyerReference, b.BuyerReference)
+		stringPtrEqual(a.BuyerReference, b.BuyerReference) &&
+		floatPtrEqual(a.DefaultBillRate, b.DefaultBillRate)
 }
 
 // int32PtrEqual is stringPtrEqual's *int32 twin, needed for
-// paymentTermsDays alone among this profile's ten fields.
+// paymentTermsDays alone among this profile's eleven fields.
 func int32PtrEqual(a, b *int32) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+// floatPtrEqual is stringPtrEqual's *float64 twin, for defaultBillRate. Exact
+// equality, not a tolerance, is right here: both sides are at most two
+// decimals — one read back from numeric(12,2)'s text, the other validated to
+// that precision — and the same decimal always parses to the same float64.
+func floatPtrEqual(a, b *float64) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
@@ -69,13 +89,54 @@ func int32PtrEqual(a, b *int32) bool {
 // billingProfileFromRow is a persisted customer row's billing profile —
 // store.GetCustomerBillingProfileRow and store.UpdateCustomerBillingProfileRow
 // share this shape field for field, so billing_profile.go calls this with
-// either.
-func billingProfileFromRow(invoiceEmail, reminderEmail *string, paymentTermsDays *int32, currency, language, invoiceDelivery, reminderDelivery, peppolID, gln, buyerReference *string) billingProfile {
+// either. defaultBillRate arrives already read off its numeric column
+// (floatPtrFromNumeric), because that read can fail and this cannot; a caller
+// whose query does not select the rate — the Peppol lookups, which only derive
+// a participant from the profile — passes nil.
+func billingProfileFromRow(invoiceEmail, reminderEmail *string, paymentTermsDays *int32, currency, language, invoiceDelivery, reminderDelivery, peppolID, gln, buyerReference *string, defaultBillRate *float64) billingProfile {
 	return billingProfile{
 		InvoiceEmail: invoiceEmail, ReminderEmail: reminderEmail, PaymentTermsDays: paymentTermsDays,
 		Currency: currency, Language: language, InvoiceDelivery: invoiceDelivery, ReminderDelivery: reminderDelivery,
-		PeppolID: peppolID, Gln: gln, BuyerReference: buyerReference,
+		PeppolID: peppolID, Gln: gln, BuyerReference: buyerReference, DefaultBillRate: defaultBillRate,
 	}
+}
+
+// numericFromFloatPtr is a default bill rate on its way into numeric(12,2):
+// nil stays an invalid (SQL NULL) pgtype.Numeric, and a value is scanned from
+// its shortest decimal text — the digits the caller sent, never the binary
+// fraction a float64 happens to hold. internal/projects/values.go's own rule
+// for its money columns, duplicated because depguard forbids the import. Scan's
+// error is returned, not dropped: it can only fire for an infinity, which JSON
+// cannot carry, and discarding it would store a NULL for a number the caller
+// actually sent.
+func numericFromFloatPtr(v *float64) (pgtype.Numeric, error) {
+	if v == nil {
+		return pgtype.Numeric{}, nil
+	}
+	var n pgtype.Numeric
+	if err := n.Scan(strconv.FormatFloat(*v, 'f', -1, 64)); err != nil {
+		return pgtype.Numeric{}, fmt.Errorf("customers: %v is not a storable decimal: %w", *v, err)
+	}
+	return n, nil
+}
+
+// floatPtrFromNumeric reads a default bill rate back off its column: nil for a
+// SQL NULL, never 0, which would be a rate somebody set. A number the column
+// holds but Go cannot read is an error rather than a nil — rendering it absent
+// would tell the caller the rate was never set — though numeric(12,2) cannot
+// hold one, so nothing reachable produces it today. Projects' rule again.
+func floatPtrFromNumeric(n pgtype.Numeric) (*float64, error) {
+	if !n.Valid {
+		return nil, nil
+	}
+	f, err := n.Float64Value()
+	if err != nil {
+		return nil, fmt.Errorf("customers: read a stored decimal: %w", err)
+	}
+	if !f.Valid {
+		return nil, nil
+	}
+	return &f.Float64, nil
 }
 
 // derivedPeppolID is the EHF recipient this module can derive from the
@@ -251,6 +312,52 @@ func validatePaymentTermsDays(raw *int32, field string, errs map[string][]string
 	return &v
 }
 
+// maxBillRate is numeric(12,2)'s ceiling, default_bill_rate's column (migration
+// 00028) — the width, and the number, internal/projects' maxAmount12 gives its
+// own default bill rate. A rate past it is refused here rather than left to
+// Postgres, whose 22003 the handler could only answer as a 500.
+const maxBillRate = 9999999999.99
+
+// validateDefaultBillRate is the customer default bill rate's own rule
+// (customers bill-rate design D1): absent left nil — clearing it — and a value
+// greater than zero, at most maxBillRate and at most two decimals. The
+// precision half is projects' argument for its own money: the column is scale
+// 2, so a third decimal would be rounded away silently, and a customer billed
+// at a rate nobody typed is worse than a refusal. Projects' validatePositiveAmount
+// rule, mirrored in this module's wording ("…, but was …") since depguard
+// forbids sharing it; the number is quoted as its shortest decimal text, the
+// digits the caller sent. Keyed like validatePaymentTermsDays, into the same
+// errs map, so it is reported beside every other field's problem.
+func validateDefaultBillRate(raw *float64, errs map[string][]string) *float64 {
+	if raw == nil {
+		return nil
+	}
+	v := *raw
+	text := strconv.FormatFloat(v, 'f', -1, 64)
+	switch {
+	case v <= 0:
+		errs["defaultBillRate"] = []string{fmt.Sprintf("A default bill rate must be greater than zero, but was %s", text)}
+	case v > maxBillRate:
+		errs["defaultBillRate"] = []string{fmt.Sprintf("A default bill rate must be at most %.2f, but was %s", maxBillRate, text)}
+	case decimalPlaces(text) > 2:
+		errs["defaultBillRate"] = []string{fmt.Sprintf("A default bill rate must have at most two decimals, but was %s", text)}
+	default:
+		return &v
+	}
+	return nil
+}
+
+// decimalPlaces is how many digits follow the point in text, a number's
+// shortest 'f' formatting (never an exponent) — internal/projects'
+// decimalPlaces, taking the text the message quotes anyway.
+func decimalPlaces(text string) int {
+	point := strings.IndexByte(text, '.')
+	if point < 0 {
+		return 0
+	}
+	return len(text) - point - 1
+}
+
 // validateBillingProfile is PutCustomersByIdBillingProfile's validator
 // (invoice-ready customer design D1, D4): every field validated
 // independently and every error reported together, keyed by the request's
@@ -273,6 +380,16 @@ func validateBillingProfile(req gen.PutCustomerBillingProfileRequest) (billingPr
 		Gln:              normalizedOrNil(req.Gln, "gln", validateGLN, errs),
 		BuyerReference:   validateOptionalAddressText(req.BuyerReference, "buyerReference", "A buyer reference", 100, errs),
 		PaymentTermsDays: validatePaymentTermsDays(req.PaymentTermsDays, "paymentTermsDays", errs),
+		DefaultBillRate:  validateDefaultBillRate(req.DefaultBillRate, errs),
+	}
+	// The one cross-field rule on this profile (customers bill-rate design D1):
+	// a rate is quoted in the profile's own currency, so a rate with none — the
+	// currency absent or blank, which clear alike, including a full replace that
+	// clears it while sending the rate — is refused on the rate. Not when the
+	// currency was sent and is invalid: that field already carries its own error,
+	// and a second on the rate would say the same thing twice.
+	if profile.DefaultBillRate != nil && profile.Currency == nil && len(errs["currency"]) == 0 {
+		errs["defaultBillRate"] = []string{"A default bill rate needs the billing profile's currency to be quoted in"}
 	}
 	if len(errs) > 0 {
 		return billingProfile{}, errs

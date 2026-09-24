@@ -205,10 +205,72 @@ func TestValidatePaymentTermsDays_RangeIsZeroTo365(t *testing.T) {
 	}
 }
 
+// TestValidateDefaultBillRate_PositiveTwoDecimalsWithinTheColumn is the
+// customer default bill rate's own rule (customers bill-rate design D1) at
+// its edges: the smallest and largest rates numeric(12,2) holds pass, and
+// zero, a negative, a third decimal and one cent past the ceiling are each
+// refused with a message quoting the number sent.
+func TestValidateDefaultBillRate_PositiveTwoDecimalsWithinTheColumn(t *testing.T) {
+	for _, ok := range []float64{0.01, 1250, 1250.5, 9999999999.99} {
+		errs := map[string][]string{}
+		if got := validateDefaultBillRate(&ok, errs); got == nil || *got != ok || len(errs) != 0 {
+			t.Errorf("validateDefaultBillRate(%v) = %v, %v, want it kept with no error", ok, got, errs)
+		}
+	}
+	for _, tc := range []struct {
+		rate float64
+		want string
+	}{
+		{0, "A default bill rate must be greater than zero, but was 0"},
+		{-0.01, "A default bill rate must be greater than zero, but was -0.01"},
+		{1250.555, "A default bill rate must have at most two decimals, but was 1250.555"},
+		{10000000000, "A default bill rate must be at most 9999999999.99, but was 10000000000"},
+	} {
+		errs := map[string][]string{}
+		if got := validateDefaultBillRate(&tc.rate, errs); got != nil {
+			t.Errorf("validateDefaultBillRate(%v) = %v, want nil", tc.rate, *got)
+		}
+		if msgs := errs["defaultBillRate"]; len(msgs) != 1 || msgs[0] != tc.want {
+			t.Errorf("errs[defaultBillRate] = %v, want [%q]", msgs, tc.want)
+		}
+	}
+	errs := map[string][]string{}
+	if got := validateDefaultBillRate(nil, errs); got != nil || len(errs) != 0 {
+		t.Errorf("validateDefaultBillRate(nil) = %v, %v, want nil and no error: absent clears", got, errs)
+	}
+}
+
+// TestValidateBillingProfile_DefaultBillRateNeedsTheCurrency is the profile's
+// one cross-field rule (design D1): a rate is quoted in the profile's own
+// currency, so a rate with none — absent or blank, which clear alike — is
+// refused on defaultBillRate. An invalid currency is refused on currency
+// alone: blaming the rate as well would say the same thing twice.
+func TestValidateBillingProfile_DefaultBillRateNeedsTheCurrency(t *testing.T) {
+	rate := 1250.0
+	want := "A default bill rate needs the billing profile's currency to be quoted in"
+	for name, currency := range map[string]*string{"absent": nil, "blank": billingStrPtr("   ")} {
+		_, errs := validateBillingProfile(gen.PutCustomerBillingProfileRequest{DefaultBillRate: &rate, Currency: currency})
+		if msgs := errs["defaultBillRate"]; len(msgs) != 1 || msgs[0] != want || len(errs) != 1 {
+			t.Errorf("%s currency: errs = %v, want only defaultBillRate [%q]", name, errs, want)
+		}
+	}
+
+	_, errs := validateBillingProfile(gen.PutCustomerBillingProfileRequest{DefaultBillRate: &rate, Currency: billingStrPtr("US")})
+	if len(errs["currency"]) != 1 || errs["defaultBillRate"] != nil {
+		t.Errorf("invalid currency: errs = %v, want the currency's own error and none on defaultBillRate", errs)
+	}
+
+	got, errs := validateBillingProfile(gen.PutCustomerBillingProfileRequest{DefaultBillRate: &rate, Currency: billingStrPtr("nok")})
+	if errs != nil || got.DefaultBillRate == nil || *got.DefaultBillRate != 1250 || got.Currency == nil || *got.Currency != "NOK" {
+		t.Errorf("with a currency: got %+v, errs %v, want 1250 in NOK", got, errs)
+	}
+}
+
 func billingStrPtr(s string) *string { return &s }
 
 func TestValidateBillingProfile_ValidRequestNormalizesEveryField(t *testing.T) {
 	terms := int32(30)
+	rate := 1250.5
 	req := gen.PutCustomerBillingProfileRequest{
 		InvoiceEmail:     billingStrPtr("invoice@example.com"),
 		ReminderEmail:    billingStrPtr("reminders@example.com"),
@@ -220,6 +282,7 @@ func TestValidateBillingProfile_ValidRequestNormalizesEveryField(t *testing.T) {
 		PeppolId:         billingStrPtr("0192:923609016"),
 		Gln:              billingStrPtr("4006381333931"),
 		BuyerReference:   billingStrPtr("PO-123"),
+		DefaultBillRate:  &rate,
 	}
 	got, errs := validateBillingProfile(req)
 	if errs != nil {
@@ -248,6 +311,9 @@ func TestValidateBillingProfile_ValidRequestNormalizesEveryField(t *testing.T) {
 	}
 	if got.BuyerReference == nil || *got.BuyerReference != "PO-123" {
 		t.Errorf("BuyerReference = %v, want PO-123", got.BuyerReference)
+	}
+	if got.DefaultBillRate == nil || *got.DefaultBillRate != 1250.5 {
+		t.Errorf("DefaultBillRate = %v, want 1250.5", got.DefaultBillRate)
 	}
 }
 
@@ -282,20 +348,22 @@ func TestValidateBillingProfile_BlankAndAbsentFieldsClearToNull(t *testing.T) {
 // validateLegalIdentity/validateAddress give their own multi-field requests.
 func TestValidateBillingProfile_MultipleInvalidValuesReportsEachField(t *testing.T) {
 	badTerms := int32(400)
+	zeroRate := 0.0
 	req := gen.PutCustomerBillingProfileRequest{
 		Currency:         billingStrPtr("US"),
 		Language:         billingStrPtr("fr"),
 		PaymentTermsDays: &badTerms,
 		Gln:              billingStrPtr("not-a-gln"),
+		DefaultBillRate:  &zeroRate,
 	}
 	_, errs := validateBillingProfile(req)
-	for _, field := range []string{"currency", "language", "paymentTermsDays", "gln"} {
+	for _, field := range []string{"currency", "language", "paymentTermsDays", "gln", "defaultBillRate"} {
 		if len(errs[field]) != 1 {
 			t.Errorf("errs[%q] = %v, want exactly one error", field, errs[field])
 		}
 	}
-	if len(errs) != 4 {
-		t.Errorf("errs has %d keys, want 4: %v", len(errs), errs)
+	if len(errs) != 5 {
+		t.Errorf("errs has %d keys, want 5: %v", len(errs), errs)
 	}
 }
 
@@ -315,6 +383,14 @@ func TestBillingProfileEqual(t *testing.T) {
 	e := billingProfile{PaymentTermsDays: &terms2}
 	if billingProfileEqual(d, e) {
 		t.Errorf("billingProfileEqual with different PaymentTermsDays = true, want false")
+	}
+	rate, sameRate, otherRate := 1250.0, 1250.0, 1300.0
+	if !billingProfileEqual(billingProfile{DefaultBillRate: &rate}, billingProfile{DefaultBillRate: &sameRate}) {
+		t.Errorf("billingProfileEqual with the same DefaultBillRate = false, want true")
+	}
+	if billingProfileEqual(billingProfile{DefaultBillRate: &rate}, billingProfile{DefaultBillRate: &otherRate}) ||
+		billingProfileEqual(billingProfile{DefaultBillRate: &rate}, billingProfile{}) {
+		t.Errorf("billingProfileEqual with a different or cleared DefaultBillRate = true, want false")
 	}
 }
 

@@ -751,10 +751,15 @@ export interface components {
             /** Format: int32 */
             paymentTermsDays?: number | null;
         };
-        /** @description A customer's billing profile (invoice-ready customer design D1, D4): payment terms, currency, document language, delivery methods and the identifiers used to send it invoices — every field optional, meaning "not decided here, whoever invoices uses its own default"; unset, a field is simply absent from the response rather than sent as null. warnings is computed at read time from the profile plus the customer's type, legal identity, contact email and addresses — never stored — in a fixed order: ehf_without_recipient, email_without_address, efaktura_for_business, no_invoice_address, ehf_recipient_not_registered, ehf_available (can-this-customer-receive-EHF design D4). peppolLookup is the last Peppol lookup on record (POST .../peppol-lookup), present only when it was made for the participant this profile would look up now — a stale answer (the org number or peppolId changed since) is omitted. groupDefault is the customer's group and the payment term that group would give it (customer groups design D4), computed at read time and absent for a customer in no group; the profile's own paymentTermsDays, when set, overrides it. */
+        /** @description A customer's billing profile (invoice-ready customer design D1, D4): payment terms, currency, document language, delivery methods and the identifiers used to send it invoices — every field optional, meaning "not decided here, whoever invoices uses its own default"; unset, a field is simply absent from the response rather than sent as null. warnings is computed at read time from the profile plus the customer's type, legal identity, contact email and addresses — never stored — in a fixed order: ehf_without_recipient, email_without_address, efaktura_for_business, no_invoice_address, ehf_recipient_not_registered, ehf_available (can-this-customer-receive-EHF design D4). peppolLookup is the last Peppol lookup on record (POST .../peppol-lookup), present only when it was made for the participant this profile would look up now — a stale answer (the org number or peppolId changed since) is omitted. groupDefault is the customer's group and the payment term that group would give it (customer groups design D4), computed at read time and absent for a customer in no group; the profile's own paymentTermsDays, when set, overrides it. defaultBillRate is the customer's default hourly bill rate (customers bill-rate design D1), quoted in this profile's own currency: the rate chain's customer step, which Time applies to this customer's projects that price their hours neither by a billing line nor by a default of their own. It is never set without a currency. */
         CustomerBillingProfile: {
             buyerReference?: string | null;
             currency?: string | null;
+            /**
+             * Format: double
+             * @description The customer's default hourly bill rate, in this profile's currency (customers bill-rate design D1). Greater than zero, at most two decimals; absent when the customer has none.
+             */
+            defaultBillRate?: number | null;
             gln?: string | null;
             /** @description The customer's group and the payment term it would give it (customer groups design D4). Absent when the customer belongs to no group. */
             groupDefault?: components["schemas"]["CustomerBillingGroupDefault"];
@@ -1148,6 +1153,11 @@ export interface components {
         PutCustomerBillingProfileRequest: {
             buyerReference?: string | null;
             currency?: string | null;
+            /**
+             * Format: double
+             * @description The customer's default hourly bill rate (customers bill-rate design D1). Greater than zero, at most two decimals, and only with a currency to be quoted in — a rate without one is a 400 on defaultBillRate. Absent or null clears it.
+             */
+            defaultBillRate?: number | null;
             gln?: string | null;
             invoiceDelivery?: string | null;
             invoiceEmail?: string | null;

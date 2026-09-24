@@ -306,8 +306,9 @@ func (s *server) PostCustomersByIdPeppolLookup(ctx context.Context, req gen.Post
 		return peppolLookupDisabledResponse(), nil
 	}
 
+	// No rate: the profile is read here for its Peppol participant alone.
 	profile := billingProfileFromRow(row.InvoiceEmail, row.ReminderEmail, row.PaymentTermsDays,
-		row.Currency, row.Language, row.InvoiceDelivery, row.ReminderDelivery, row.PeppolID, row.Gln, row.BuyerReference)
+		row.Currency, row.Language, row.InvoiceDelivery, row.ReminderDelivery, row.PeppolID, row.Gln, row.BuyerReference, nil)
 	identity := identityFromRow(row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType)
 
 	participant, derived := lookupParticipant(profile, identity, row.Type)
