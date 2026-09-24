@@ -1372,7 +1372,7 @@ const nb = {
   anonymisationModalRetention:
     "Det finnes ingen standarddato. Bokføringsreglene krever at regnskapsmateriale oppbevares i flere år etter regnskapsårets slutt, så velg en dag etter at hver oppbevaringsperiode for det som er fakturert denne kunden, er over.",
   anonymisationModalIrreversible: "En anonymisering kan ikke angres.",
-  anonymisationDate: "Anonymiser den",
+  anonymisationDate: "Anonymiseringsdato",
   anonymisationDateRequired: "Velg en dag",
   anonymisationDateInPast: "Dagen kan ikke være passert",
   anonymisationConfirm: "Planlegg anonymisering",

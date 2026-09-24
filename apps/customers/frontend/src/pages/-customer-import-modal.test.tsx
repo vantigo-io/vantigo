@@ -190,6 +190,28 @@ describe("CustomerImportModal", () => {
     expect(within(row).getByText("legalId")).toBeInTheDocument();
   });
 
+  it("shows the server's refusal of an anonymised customer on its customerNumber row", async () => {
+    const refusal = "Customer 5 was anonymised and takes no more changes";
+    stubImport({
+      dry: json({
+        dryRun: true,
+        rows: 1,
+        created: 0,
+        updated: 0,
+        failed: 1,
+        errors: [{ row: 1, column: "customerNumber", message: refusal }],
+      }),
+    });
+    renderModal();
+    await chooseFile();
+    await userEvent.click(screen.getByRole("button", { name: "Check" }));
+    await checkShown();
+    const row = within(screen.getByRole("table", { name: "Problems in the file, by row" }))
+      .getByText(refusal)
+      .closest("tr") as HTMLElement;
+    expect(within(row).getByText("customerNumber")).toBeInTheDocument();
+  });
+
   it("shows the server's own reasons when the file itself is refused", async () => {
     stubImport({
       dry: json(
