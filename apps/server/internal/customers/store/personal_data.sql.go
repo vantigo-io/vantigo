@@ -56,6 +56,181 @@ func (q *Queries) AnonymisationForCustomers(ctx context.Context, customerIds []i
 	return items, nil
 }
 
+const anonymiseAbsorbedSnapshotRevisions = `-- name: AnonymiseAbsorbedSnapshotRevisions :exec
+UPDATE customers.customers_timeline_entries_revisions
+SET summary = $1::text,
+    payload_json = jsonb_set(payload_json, '{absorbed}', to_jsonb($1::text))
+WHERE customer_id = $2::int AND event_type = 'customer.merged'
+  AND jsonb_typeof(payload_json -> 'absorbed') = 'object'
+  AND (payload_json -> 'absorbed' ->> 'id')::int = $3::int
+`
+
+type AnonymiseAbsorbedSnapshotRevisionsParams struct {
+	Anonymised string
+	SurvivorID int32
+	AbsorbedID int32
+}
+
+// And that entry's revisions, which carry its customer_id (MoveTimelineRevisions).
+func (q *Queries) AnonymiseAbsorbedSnapshotRevisions(ctx context.Context, arg AnonymiseAbsorbedSnapshotRevisionsParams) error {
+	_, err := q.db.Exec(ctx, anonymiseAbsorbedSnapshotRevisions, arg.Anonymised, arg.SurvivorID, arg.AbsorbedID)
+	return err
+}
+
+const anonymiseAbsorbedSnapshots = `-- name: AnonymiseAbsorbedSnapshots :exec
+UPDATE customers.customers_timeline_entries
+SET summary = $1::text,
+    payload_json = jsonb_set(payload_json, '{absorbed}', to_jsonb($1::text))
+WHERE customer_id = $2::int AND event_type = 'customer.merged'
+  AND jsonb_typeof(payload_json -> 'absorbed') = 'object'
+  AND (payload_json -> 'absorbed' ->> 'id')::int = $3::int
+`
+
+type AnonymiseAbsorbedSnapshotsParams struct {
+	Anonymised string
+	SurvivorID int32
+	AbsorbedID int32
+}
+
+// A merged-away customer anonymised on its own (design D4) takes its snapshot
+// off its survivor's timeline: the customer.merged entry that absorbed it keeps
+// its moved counts and loses the absorbed block and the summary naming it.
+// Nothing else of the survivor's is touched — its own history is its own, and
+// the history that moved to it with the merge is its now.
+func (q *Queries) AnonymiseAbsorbedSnapshots(ctx context.Context, arg AnonymiseAbsorbedSnapshotsParams) error {
+	_, err := q.db.Exec(ctx, anonymiseAbsorbedSnapshots, arg.Anonymised, arg.SurvivorID, arg.AbsorbedID)
+	return err
+}
+
+const anonymiseCustomerRow = `-- name: AnonymiseCustomerRow :exec
+UPDATE customers.customers
+SET name = $1::text,
+    legal_country = NULL, legal_id = NULL, legal_name = NULL, legal_source = NULL, legal_type = NULL,
+    email = NULL, phone = NULL, website = NULL,
+    invoice_email = NULL, reminder_email = NULL, peppol_id = NULL, gln = NULL, buyer_reference = NULL,
+    group_id = NULL,
+    anonymise_on = $2::date,
+    anonymised_at = $3::timestamptz, updated_at = $3::timestamptz, revision = revision + 1
+WHERE id = $4
+`
+
+type AnonymiseCustomerRowParams struct {
+	Name        string
+	AnonymiseOn pgtype.Date
+	Now         time.Time
+	ID          int32
+}
+
+// The row itself, last before the event (design D4): the name becomes the
+// anonymised name — the customer number stays, it is the bookkeeping reference
+// — the legal identity, the contact info and the billing profile's five
+// identifiers are cleared, and the terms, currency, language and delivery
+// methods stay: they say how the customer was invoiced, not who it was. Owner
+// and tags stay: staff and vocabulary. It leaves its group, though, the
+// merged-away customer's way (MarkCustomerMerged): an anonymised customer
+// refuses every write, the group PUT included, so a group it still counted in
+// could never be emptied and deleted (customers_group_id_fkey restricts); the
+// group is vocabulary, so no event needs to say which it was. anonymise_on is
+// the day that was scheduled — for a customer merged into the one scheduled,
+// that customer's day, whatever its own schedule said: the chain is one person
+// and one anonymisation. A write to the row, so the revision advances.
+func (q *Queries) AnonymiseCustomerRow(ctx context.Context, arg AnonymiseCustomerRowParams) error {
+	_, err := q.db.Exec(ctx, anonymiseCustomerRow,
+		arg.Name,
+		arg.AnonymiseOn,
+		arg.Now,
+		arg.ID,
+	)
+	return err
+}
+
+const anonymiseTimelineEntries = `-- name: AnonymiseTimelineEntries :execrows
+UPDATE customers.customers_timeline_entries e
+SET summary = CASE
+        WHEN e.provenance = 'generated' AND e.event_type = ANY($1::text[]) THEN e.summary
+        ELSE $2::text
+    END,
+    note = CASE WHEN e.note IS NULL THEN NULL ELSE $2::text END,
+    source_url = NULL,
+    payload_json = CASE
+        WHEN jsonb_typeof(e.payload_json) = 'object' THEN coalesce((
+            SELECT jsonb_object_agg(p.key, CASE WHEN p.key = ANY($3::text[]) THEN to_jsonb($2::text) ELSE p.value END)
+            FROM jsonb_each(e.payload_json) AS p(key, value)), '{}'::jsonb)
+        ELSE e.payload_json
+    END
+WHERE e.customer_id = $4::int
+`
+
+type AnonymiseTimelineEntriesParams struct {
+	KeptSummaryTypes []string
+	Anonymised       string
+	PersonalKeys     []string
+	CustomerID       int32
+}
+
+// AnonymiseTimelineEntries rewrites every timeline entry of an anonymised
+// customer in one statement (design D4): every entry stays, dated and typed,
+// with its content anonymised. A manual entry's summary and note become the
+// anonymised text and its source URL goes — a link is content too. A generated
+// entry's summary does as well, unless its event type is one whose summary is
+// built from nothing personal (kept_summary_types, anonymisation.go). Every
+// payload's top-level keys named in personal_keys become the anonymised text,
+// every other key — customerId, ids, dates, counts — is kept as it was;
+// coalesce keeps an empty object an object. Neither updated_at nor
+// current_revision moves: this is not an edit, and the revisions below are
+// rewritten the same way rather than added to.
+func (q *Queries) AnonymiseTimelineEntries(ctx context.Context, arg AnonymiseTimelineEntriesParams) (int64, error) {
+	result, err := q.db.Exec(ctx, anonymiseTimelineEntries,
+		arg.KeptSummaryTypes,
+		arg.Anonymised,
+		arg.PersonalKeys,
+		arg.CustomerID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const anonymiseTimelineRevisions = `-- name: AnonymiseTimelineRevisions :exec
+UPDATE customers.customers_timeline_entries_revisions r
+SET summary = CASE
+        WHEN r.provenance = 'generated' AND r.event_type = ANY($1::text[]) THEN r.summary
+        ELSE $2::text
+    END,
+    note = CASE WHEN r.note IS NULL THEN NULL ELSE $2::text END,
+    source_url = NULL,
+    payload_json = CASE
+        WHEN jsonb_typeof(r.payload_json) = 'object' THEN coalesce((
+            SELECT jsonb_object_agg(p.key, CASE WHEN p.key = ANY($3::text[]) THEN to_jsonb($2::text) ELSE p.value END)
+            FROM jsonb_each(r.payload_json) AS p(key, value)), '{}'::jsonb)
+        ELSE r.payload_json
+    END
+WHERE r.customer_timeline_entry_id IN (
+    SELECT id FROM customers.customers_timeline_entries WHERE customer_id = $4::int
+)
+`
+
+type AnonymiseTimelineRevisionsParams struct {
+	KeptSummaryTypes []string
+	Anonymised       string
+	PersonalKeys     []string
+	CustomerID       int32
+}
+
+// The same rewrite of every revision of those entries (design D4: "revisions
+// the same"), found through their entry — the revisions' own customer_id is not
+// indexed, and ux_customers_timeline_entries_revisions_entry_revision is.
+func (q *Queries) AnonymiseTimelineRevisions(ctx context.Context, arg AnonymiseTimelineRevisionsParams) error {
+	_, err := q.db.Exec(ctx, anonymiseTimelineRevisions,
+		arg.KeptSummaryTypes,
+		arg.Anonymised,
+		arg.PersonalKeys,
+		arg.CustomerID,
+	)
+	return err
+}
+
 const customerAnonymisedAt = `-- name: CustomerAnonymisedAt :one
 SELECT anonymised_at FROM customers.customers WHERE id = $1
 `
@@ -160,6 +335,94 @@ func (q *Queries) CustomerForPersonalData(ctx context.Context, id int32) (Custom
 	return i, err
 }
 
+const customersMergedInto = `-- name: CustomersMergedInto :many
+SELECT id
+FROM customers.customers
+WHERE merged_into_customer_id = $1::int AND anonymised_at IS NULL
+ORDER BY id
+`
+
+// CustomersMergedInto is the rest of a merge chain (design D4: a chain is one
+// person): every customer merged into this one and not yet anonymised.
+// FlattenMergedIntoChain keeps every marker one hop long, so this one level is
+// the whole chain. ix_customers_merged_into finds them.
+func (q *Queries) CustomersMergedInto(ctx context.Context, customerID int32) ([]int32, error) {
+	rows, err := q.db.Query(ctx, customersMergedInto, customerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int32
+	for rows.Next() {
+		var id int32
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const deleteAllCustomerAddresses = `-- name: DeleteAllCustomerAddresses :execrows
+DELETE FROM customers.customer_addresses WHERE customer_id = $1
+`
+
+// Every address of an anonymised customer (design D4): an address is where a
+// person lives or is reached, and none of it is bookkeeping.
+func (q *Queries) DeleteAllCustomerAddresses(ctx context.Context, customerID int32) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteAllCustomerAddresses, customerID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteOrphanedContacts = `-- name: DeleteOrphanedContacts :execrows
+DELETE FROM customers.contacts c
+WHERE c.id = ANY($1::int[])
+  AND NOT EXISTS (SELECT 1 FROM customers.customers_contacts cc WHERE cc.contact_id = c.id)
+`
+
+// A contact the anonymised customer was the only one linked to existed for it
+// alone (design D4), and goes; one another customer still links is somebody
+// else's contact too, and stays.
+func (q *Queries) DeleteOrphanedContacts(ctx context.Context, contactIds []int32) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteOrphanedContacts, contactIds)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const detachCustomerContacts = `-- name: DetachCustomerContacts :many
+DELETE FROM customers.customers_contacts WHERE customer_id = $1 RETURNING contact_id
+`
+
+// Every association of an anonymised customer, its role rows cascading with it
+// (design D4), answering the contacts it linked so their orphans can go next.
+func (q *Queries) DetachCustomerContacts(ctx context.Context, customerID int32) ([]int32, error) {
+	rows, err := q.db.Query(ctx, detachCustomerContacts, customerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int32
+	for rows.Next() {
+		var contact_id int32
+		if err := rows.Scan(&contact_id); err != nil {
+			return nil, err
+		}
+		items = append(items, contact_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const dropCustomerAnonymiseOn = `-- name: DropCustomerAnonymiseOn :exec
 UPDATE customers.customers SET anonymise_on = NULL WHERE id = $1
 `
@@ -171,6 +434,44 @@ UPDATE customers.customers SET anonymise_on = NULL WHERE id = $1
 func (q *Queries) DropCustomerAnonymiseOn(ctx context.Context, id int32) error {
 	_, err := q.db.Exec(ctx, dropCustomerAnonymiseOn, id)
 	return err
+}
+
+const dueAnonymisations = `-- name: DueAnonymisations :many
+SELECT id
+FROM customers.customers
+WHERE anonymise_on <= $1::date AND anonymised_at IS NULL AND status = 'archived' AND type = 'person'
+ORDER BY anonymise_on, id
+LIMIT $2::int
+`
+
+type DueAnonymisationsParams struct {
+	Today    pgtype.Date
+	RowLimit int32
+}
+
+// DueAnonymisations is the worker's batch (design D4): every private person
+// whose day has come (UTC), archived and not yet anonymised, oldest day first,
+// at most row_limit. ix_customers_anonymise_on holds exactly the scheduled and
+// not yet anonymised. A merged-away customer scheduled before its merge is
+// here too: it is archived, and it is a person.
+func (q *Queries) DueAnonymisations(ctx context.Context, arg DueAnonymisationsParams) ([]int32, error) {
+	rows, err := q.db.Query(ctx, dueAnonymisations, arg.Today, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int32
+	for rows.Next() {
+		var id int32
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listTimelineEntriesForExport = `-- name: ListTimelineEntriesForExport :many
@@ -228,6 +529,20 @@ func (q *Queries) ListTimelineEntriesForExport(ctx context.Context, customerID i
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockContactsForAnonymisation = `-- name: LockContactsForAnonymisation :exec
+SELECT id FROM customers.contacts WHERE id = ANY($1::int[]) ORDER BY id FOR UPDATE
+`
+
+// The detached contacts, locked before the orphan delete below reads whether
+// anything else still links them: an attach key-shares the contact row, so one
+// that has not taken it yet waits here, and one that has is committed — and
+// seen — by the time the lock is granted. Ascending id, every multi-contact
+// writer's order.
+func (q *Queries) LockContactsForAnonymisation(ctx context.Context, contactIds []int32) error {
+	_, err := q.db.Exec(ctx, lockContactsForAnonymisation, contactIds)
+	return err
 }
 
 const setCustomerAnonymiseOn = `-- name: SetCustomerAnonymiseOn :exec

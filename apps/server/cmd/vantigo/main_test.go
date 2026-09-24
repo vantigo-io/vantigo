@@ -292,6 +292,7 @@ func startServeEnv(t *testing.T, m mode, env map[string]string, extraModules ...
 		// genuinely wants a worker passes fakeWorkerModule, as they already do.
 		"CUSTOMERS_REGISTRY_FEED_ENABLED":  "0",
 		"CUSTOMERS_PEPPOL_RECHECK_ENABLED": "0",
+		"CUSTOMERS_ANONYMISATION_ENABLED":  "0",
 	}
 	for k, v := range env {
 		envMap[k] = v
@@ -1000,6 +1001,7 @@ func TestServe_AManagementBindFailureStartsNoWorkers(t *testing.T) {
 		// depending on the bug's absence to keep the test honest.
 		"CUSTOMERS_REGISTRY_FEED_ENABLED":  "0",
 		"CUSTOMERS_PEPPOL_RECHECK_ENABLED": "0",
+		"CUSTOMERS_ANONYMISATION_ENABLED":  "0",
 	})
 	if err != nil {
 		t.Fatal(err)

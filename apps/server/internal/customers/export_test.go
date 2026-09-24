@@ -143,3 +143,8 @@ func NationalIDForTest(birth string, individual int, dNumber bool) string {
 	}
 	panic("NationalIDForTest: no individual number from " + strconv.Itoa(individual) + " up gives two check digits for " + birth)
 }
+
+// AnonymisationLeaseKeyForTest is the anonymisation worker's advisory-lease
+// key, exported so a test can take the same lock from a second connection and
+// prove a cycle skips — RegistryFeedLeaseKeyForTest's seam.
+const AnonymisationLeaseKeyForTest = anonymisationLeaseKey
