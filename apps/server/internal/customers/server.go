@@ -95,6 +95,13 @@ const legalIdentityView = "customers:legal-identity-view"
 // should claim to be the only one.
 const legalIdentityManage = "customers:legal-identity-manage"
 
+// billingManage is the permission the CSV import asks for itself (customers
+// import/export design D3): a file carrying the billing profile's columns is
+// refused whole without it, because the importer may never write more than
+// its sender could by hand, and the billing profile's own PUT wants this key.
+// module.Router enforces it everywhere else, from x-vantigo-access.
+const billingManage = "customers:billing-manage"
+
 // contactsView and associationsView are the two permissions GetCustomers
 // checks together (customers foundation design D4) to decide whether
 // search may reach into a linked contact's name and email: both are

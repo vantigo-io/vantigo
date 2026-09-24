@@ -104,16 +104,20 @@ func workers(d module.Deps) []worker.Worker {
 
 // mount registers every contract operation on the platform router, which wraps
 // each in its access rule and request-body cap before the generated wrapper
-// decodes it. It fails when the router reports a problem: an operation never
-// registered, a rule that does not parse, or a permission missing from the
-// catalog.
+// decodes it. Every body is capped at the router's default
+// (module.DefaultMaxBodyBytes) except the CSV import's, which gets
+// maxImportRequestBytes (importBodyLimits, import.go). It fails when the
+// router reports a problem: an operation never registered, a rule that does
+// not parse, a permission missing from the catalog, or a BodyLimits entry
+// naming no operation.
 func mount(d module.Deps) (http.Handler, error) {
 	router := module.NewRouter(module.RouterOptions{
-		Doc:     d.Doc,
-		Access:  d.Access,
-		Limiter: d.Limiter,
-		Limits:  limits,
-		Catalog: d.Catalog,
+		Doc:        d.Doc,
+		Access:     d.Access,
+		Limiter:    d.Limiter,
+		Limits:     limits,
+		Catalog:    d.Catalog,
+		BodyLimits: importBodyLimits,
 	})
 	strict := gen.NewStrictHandlerWithOptions(newServer(d), nil, gen.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  module.DecodeError(apicommon.WriteDecodeError),

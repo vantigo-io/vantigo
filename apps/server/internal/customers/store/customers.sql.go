@@ -291,6 +291,21 @@ func (q *Queries) CustomerExists(ctx context.Context, id int32) (int32, error) {
 	return id_2, err
 }
 
+const customerIDByNumber = `-- name: CustomerIDByNumber :one
+SELECT id FROM customers.customers WHERE customer_number = $1
+`
+
+// CustomerIDByNumber is the CSV import's match (customers import/export design
+// D3): a row's customerNumber selects the customer it updates.
+// ux_customers_customer_number makes the answer one row or none, and
+// pgx.ErrNoRows is that row's error, not the file's.
+func (q *Queries) CustomerIDByNumber(ctx context.Context, customerNumber int64) (int32, error) {
+	row := q.db.QueryRow(ctx, customerIDByNumber, customerNumber)
+	var id int32
+	err := row.Scan(&id)
+	return id, err
+}
+
 const customerIdentityFigures = `-- name: CustomerIdentityFigures :one
 SELECT
     count(*) FILTER (WHERE type = 'business') AS business_count,

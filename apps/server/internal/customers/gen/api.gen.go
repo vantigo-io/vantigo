@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"time"
 
@@ -249,6 +250,23 @@ type CustomerGroupSummary struct {
 	DefaultPaymentTermsDays *int32             `json:"defaultPaymentTermsDays,omitempty"`
 	Id                      openapi_types.UUID `json:"id"`
 	Name                    string             `json:"name"`
+}
+
+// CustomerImportError One problem with one row of an import (customers import/export design D3). row is the 1-based data row — the first row under the header is 1, and a row whose every cell is blank is skipped and takes no number. column is the header of the offending cell for a field's error, absent for a problem with the row as a whole. message is the module's own validation wording.
+type CustomerImportError struct {
+	Column  *string `json:"column,omitempty"`
+	Message string  `json:"message"`
+	Row     int32   `json:"row"`
+}
+
+// CustomerImportResult What an import did, or in a dry run would do (customers import/export design D3). rows counts the data rows read; created and updated the rows that succeeded (an update that changed nothing still counts); failed the rows that did not, each with at least one entry in errors, in row order.
+type CustomerImportResult struct {
+	Created int32                 `json:"created"`
+	DryRun  bool                  `json:"dryRun"`
+	Errors  []CustomerImportError `json:"errors"`
+	Failed  int32                 `json:"failed"`
+	Rows    int32                 `json:"rows"`
+	Updated int32                 `json:"updated"`
 }
 
 // CustomerOverviewAmount One currency's amount on the customer overview. Nothing is ever converted, so money in two currencies is two entries and never a sum that is in neither.
@@ -820,6 +838,20 @@ type GetCustomersFollowUpsParams struct {
 	CustomerId *int32  `form:"customerId,omitempty" json:"customerId,omitempty"`
 }
 
+// PostCustomersImportMultipartBody defines parameters for PostCustomersImport.
+type PostCustomersImportMultipartBody struct {
+	File openapi_types.File `json:"file"`
+}
+
+// PostCustomersImportParams defines parameters for PostCustomersImport.
+type PostCustomersImportParams struct {
+	// DryRun 'true' (the default) checks the file and keeps nothing; 'false' imports it.
+	DryRun *string `form:"dryRun,omitempty" json:"dryRun,omitempty"`
+
+	// AllowDuplicateIdentity 'true' skips the duplicate-legal-identity check for every row; 'false' (the default) makes a duplicate that row's error.
+	AllowDuplicateIdentity *string `form:"allowDuplicateIdentity,omitempty" json:"allowDuplicateIdentity,omitempty"`
+}
+
 // GetCustomersLookupBrregParams defines parameters for GetCustomersLookupBrreg.
 type GetCustomersLookupBrregParams struct {
 	Search  *string `form:"search,omitempty" json:"search,omitempty"`
@@ -868,6 +900,9 @@ type PostCustomersGroupsJSONRequestBody = CustomerGroupRequest
 
 // PutCustomersGroupsByGroupIdJSONRequestBody defines body for PutCustomersGroupsByGroupId for application/json ContentType.
 type PutCustomersGroupsByGroupIdJSONRequestBody = CustomerGroupRequest
+
+// PostCustomersImportMultipartRequestBody defines body for PostCustomersImport for multipart/form-data ContentType.
+type PostCustomersImportMultipartRequestBody PostCustomersImportMultipartBody
 
 // PostCustomersTagsJSONRequestBody defines body for PostCustomersTags for application/json ContentType.
 type PostCustomersTagsJSONRequestBody = CustomerTagRequest
@@ -964,6 +999,9 @@ type ServerInterface interface {
 	// PutCustomersGroupsByGroupId Rename a customer group or change its default payment term
 	// (PUT /api/v1/customers/groups/{groupId})
 	PutCustomersGroupsByGroupId(w http.ResponseWriter, r *http.Request, groupId openapi_types.UUID)
+	// PostCustomersImport Import customers from CSV
+	// (POST /api/v1/customers/import)
+	PostCustomersImport(w http.ResponseWriter, r *http.Request, params PostCustomersImportParams)
 	// GetCustomersImportTemplate Download the customers import template
 	// (GET /api/v1/customers/import/template)
 	GetCustomersImportTemplate(w http.ResponseWriter, r *http.Request)
@@ -1823,6 +1861,52 @@ func (siw *ServerInterfaceWrapper) PutCustomersGroupsByGroupId(w http.ResponseWr
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutCustomersGroupsByGroupId(w, r, groupId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostCustomersImport operation middleware
+func (siw *ServerInterfaceWrapper) PostCustomersImport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PostCustomersImportParams
+
+	// ------------- Optional query parameter "dryRun" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dryRun", r.URL.Query(), &params.DryRun, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dryRun"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dryRun", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "allowDuplicateIdentity" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "allowDuplicateIdentity", r.URL.Query(), &params.AllowDuplicateIdentity, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "allowDuplicateIdentity"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "allowDuplicateIdentity", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostCustomersImport(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3318,6 +3402,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/groups", wrapper.PostCustomersGroups)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/groups/{groupId}", wrapper.DeleteCustomersGroupsByGroupId)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/groups/{groupId}", wrapper.PutCustomersGroupsByGroupId)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/import", wrapper.PostCustomersImport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/import/template", wrapper.GetCustomersImportTemplate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/lookup/brreg", wrapper.GetCustomersLookupBrreg)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/stats", wrapper.GetCustomersStats)
@@ -4341,6 +4426,71 @@ func (response PutCustomersGroupsByGroupId409ApplicationProblemPlusJSONResponse)
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersImportRequestObject struct {
+	Params PostCustomersImportParams
+	Body   *multipart.Reader
+}
+
+type PostCustomersImportResponseObject interface {
+	VisitPostCustomersImportResponse(w http.ResponseWriter) error
+}
+
+type PostCustomersImport200JSONResponse CustomerImportResult
+
+func (response PostCustomersImport200JSONResponse) VisitPostCustomersImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersImport400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostCustomersImport400ApplicationProblemPlusJSONResponse) VisitPostCustomersImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersImport401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersImport401JSONResponse) VisitPostCustomersImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersImport403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersImport403JSONResponse) VisitPostCustomersImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -7395,6 +7545,9 @@ type StrictServerInterface interface {
 	// PutCustomersGroupsByGroupId Rename a customer group or change its default payment term
 	// (PUT /api/v1/customers/groups/{groupId})
 	PutCustomersGroupsByGroupId(ctx context.Context, request PutCustomersGroupsByGroupIdRequestObject) (PutCustomersGroupsByGroupIdResponseObject, error)
+	// PostCustomersImport Import customers from CSV
+	// (POST /api/v1/customers/import)
+	PostCustomersImport(ctx context.Context, request PostCustomersImportRequestObject) (PostCustomersImportResponseObject, error)
 	// GetCustomersImportTemplate Download the customers import template
 	// (GET /api/v1/customers/import/template)
 	GetCustomersImportTemplate(ctx context.Context, request GetCustomersImportTemplateRequestObject) (GetCustomersImportTemplateResponseObject, error)
@@ -7975,6 +8128,39 @@ func (sh *strictHandler) PutCustomersGroupsByGroupId(w http.ResponseWriter, r *h
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutCustomersGroupsByGroupIdResponseObject); ok {
 		if err := validResponse.VisitPutCustomersGroupsByGroupIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostCustomersImport operation middleware
+func (sh *strictHandler) PostCustomersImport(w http.ResponseWriter, r *http.Request, params PostCustomersImportParams) {
+	var request PostCustomersImportRequestObject
+
+	request.Params = params
+
+	if reader, err := r.MultipartReader(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
+		return
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostCustomersImport(ctx, request.(PostCustomersImportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostCustomersImport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostCustomersImportResponseObject); ok {
+		if err := validResponse.VisitPostCustomersImportResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

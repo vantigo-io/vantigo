@@ -551,6 +551,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/customers/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import customers from CSV
+         * @description Creates and updates customers from the customers file (customers import/export design D1, D3) — the columns GET /customers/export writes and GET /customers/import/template starts, read with the same format rules; id, ownerName, createdAt, updatedAt and a column named error are ignored, so an export and a failed-rows file re-import as they are. At most 5000 data rows and 5 MB.
+         *
+         *     The file may only say what its sender could say by hand. There is no import permission: the operation wants customers:create, customers:update and customers:view — view because every write the import stands in for needs it by hand (PUT /customers/{id} and each sub-resource PUT are update plus view), and because a row's errors (an unknown number, a customer's type) would otherwise tell a caller about customers they may not see — and the file is then checked against the caller before any row is read — the legal-identity columns need customers:legal-identity-manage, the billing columns customers:billing-manage — and a file carrying a column its sender may not write is refused whole. So is a file with an unknown column (a misspelt header is never a silently ignored one) or with some but not all of a group's columns: the legal identity's four, contact info's three, each address's six and the billing profile's eleven come together or not at all.
+         *
+         *     Each row, in file order: a customerNumber selects the customer to update (unknown is that row's error; no revision is sent, so the change applies regardless), a blank one creates. Each group in the header is written as its own endpoint writes it — a full replace, a blank cell clearing that field; all of an address's cells blank remove the primary address of that type; a blank tags cell clears the tags — and a group not in the header is left alone. name, type and status are each optional columns: a create needs a name and defaults to business and active; on an update an absent name column keeps the name but a blank name cell is that row's error (a name is never cleared), a blank or absent status keeps the status, and a type that differs is an error (PUT /customers/{id}/type is a deliberate act). An imported legal identity's source is manual, unless it repeats the identity on file field for field, which keeps it. group and tags name existing vocabulary, case-insensitively; an unknown name is that row's error. Each row is its own transaction through the endpoints' own validation, statements and events, the caller as actor; a row that fails writes nothing and does not stop the file.
+         *
+         *     dryRun defaults to true: every row runs exactly as in a real run, each in its own transaction, rolled back instead of committed — no customer, no number and no event is kept, and no lock outlives its row. Two rows of the file creating one legal identity are refused on the second in both runs (a check made on the file before any row runs); otherwise a dry run cannot see an earlier row's effect on a later one, and where that matters the real run refuses the later row cleanly, as that row's error. allowDuplicateIdentity is the create endpoint's flag, applied to every row.
+         */
+        post: operations["postCustomersImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/customers/import/template": {
         parameters: {
             query?: never;
@@ -912,6 +938,26 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
+        };
+        /** @description One problem with one row of an import (customers import/export design D3). row is the 1-based data row — the first row under the header is 1, and a row whose every cell is blank is skipped and takes no number. column is the header of the offending cell for a field's error, absent for a problem with the row as a whole. message is the module's own validation wording. */
+        CustomerImportError: {
+            column?: string;
+            message: string;
+            /** Format: int32 */
+            row: number;
+        };
+        /** @description What an import did, or in a dry run would do (customers import/export design D3). rows counts the data rows read; created and updated the rows that succeeded (an update that changed nothing still counts); failed the rows that did not, each with at least one entry in errors, in row order. */
+        CustomerImportResult: {
+            /** Format: int32 */
+            created: number;
+            dryRun: boolean;
+            errors: components["schemas"]["CustomerImportError"][];
+            /** Format: int32 */
+            failed: number;
+            /** Format: int32 */
+            rows: number;
+            /** Format: int32 */
+            updated: number;
         };
         /** @description One currency's amount on the customer overview. Nothing is ever converted, so money in two currencies is two entries and never a sum that is in neither. */
         CustomerOverviewAmount: {
@@ -4180,6 +4226,65 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["CustomerConflictProblem"];
+                };
+            };
+        };
+    };
+    postCustomersImport: {
+        parameters: {
+            query?: {
+                /** @description 'true' (the default) checks the file and keeps nothing; 'false' imports it. */
+                dryRun?: string;
+                /** @description 'true' skips the duplicate-legal-identity check for every row; 'false' (the default) makes a duplicate that row's error. */
+                allowDuplicateIdentity?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK — what the rows did, or would do in a dry run. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerImportResult"];
+                };
+            };
+            /** @description Bad Request — on 'file' for the file itself (no part named file, empty, past 5 MB, not UTF-8, not a semicolon-separated CSV, more than 5000 rows, an unknown or repeated column, part of a group, or a column the caller may not write), or on 'dryRun' or 'allowDuplicateIdentity' for a value that is neither 'true' nor 'false'. A body that is not multipart at all is a bare 400. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
         };

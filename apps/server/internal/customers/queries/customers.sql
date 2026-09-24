@@ -31,6 +31,13 @@ SELECT id, customer_number, name, status, legal_country, legal_id, legal_name, l
 FROM customers.customers
 WHERE id = @id;
 
+-- name: CustomerIDByNumber :one
+-- CustomerIDByNumber is the CSV import's match (customers import/export design
+-- D3): a row's customerNumber selects the customer it updates.
+-- ux_customers_customer_number makes the answer one row or none, and
+-- pgx.ErrNoRows is that row's error, not the file's.
+SELECT id FROM customers.customers WHERE customer_number = @customer_number;
+
 -- name: CustomersByLegalIdentity :many
 -- CustomersByLegalIdentity is the duplicate-legal-identity conflict check
 -- (customers foundation design D6): any customer — of any status, archived
