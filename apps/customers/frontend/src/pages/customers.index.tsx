@@ -14,14 +14,17 @@ import {
   TextInput,
   UnstyledButton,
 } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import {
   IconAlertCircle,
   IconChevronDown,
   IconChevronUp,
+  IconDownload,
   IconPencil,
   IconPlus,
   IconSearch,
   IconSelector,
+  IconUpload,
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -45,10 +48,12 @@ import {
   customersQueryOptions,
 } from "../api/customers";
 import { customerGroupsQueryOptions } from "../api/groups";
+import { downloadCustomersCsv, saveCsv } from "../api/import-export";
 import { customerTagsQueryOptions } from "../api/tags";
 import { TagBadge } from "../components/tag-badge";
 import "../i18n";
 import { CustomerFormModal, type CustomerModalState } from "./-customer-form-modal";
+import { CustomerImportModal } from "./-customer-import-modal";
 import { ManageGroupsModal } from "./-manage-groups-modal";
 import { ManageTagsModal } from "./-manage-tags-modal";
 
@@ -112,7 +117,17 @@ const SortableHeader = ({ column, label, sortBy, sortDirection, onSort }: Sortab
   );
 };
 
-export const CustomersPage = ({ canEdit }: { canEdit?: boolean }) => {
+export const CustomersPage = ({
+  canEdit,
+  canExport,
+  canImport,
+}: {
+  canEdit?: boolean;
+  /** `customers:view`: download the list, as filtered and sorted, as the customers file. */
+  canExport?: boolean;
+  /** `customers:create`, `customers:update` and `customers:view` — the import operation's own rule. */
+  canImport?: boolean;
+}) => {
   const { t, formatters } = useI18n("customers");
   const { page, search, status, type, ownerId, tagId, groupId, sortBy, sortDirection, create } = useSearch({
     strict: false,
@@ -197,6 +212,22 @@ export const CustomersPage = ({ canEdit }: { canEdit?: boolean }) => {
     if (create) navigate({ search: listSearch, replace: true });
   };
 
+  const [importOpened, setImportOpened] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  // The list as it stands — its filters and sort from the URL, never its page —
+  // saved as the customers file. A refusal (the 5000-row cap) is the server's
+  // own sentence, shown rather than swallowed.
+  const exportList = async () => {
+    setExporting(true);
+    try {
+      saveCsv(await downloadCustomersCsv(customersListParams(listSearch)));
+    } catch (error) {
+      notifications.show({ color: "red", title: t("exportCouldNotBeDownloaded"), message: (error as Error).message });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const { data, isPending, isError, error } = useQuery(customersQueryOptions(customersListParams(listSearch)));
   const { data: stats } = useQuery(customerStatsQueryOptions());
 
@@ -221,6 +252,21 @@ export const CustomersPage = ({ canEdit }: { canEdit?: boolean }) => {
                 {t("total", { count: formatters.formatNumber(data.pagination.totalCount) })}
               </Badge>
             )}
+            {canExport && (
+              <Button
+                variant="default"
+                leftSection={<IconDownload size={16} />}
+                loading={exporting}
+                onClick={() => void exportList()}
+              >
+                {t("exportCustomers")}
+              </Button>
+            )}
+            {canImport && (
+              <Button variant="default" leftSection={<IconUpload size={16} />} onClick={() => setImportOpened(true)}>
+                {t("importCustomers")}
+              </Button>
+            )}
             <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
               {t("createNewCustomer")}
             </Button>
@@ -229,6 +275,7 @@ export const CustomersPage = ({ canEdit }: { canEdit?: boolean }) => {
       />
 
       <CustomerFormModal state={modalState} onClose={closeModal} />
+      <CustomerImportModal opened={importOpened} onClose={() => setImportOpened(false)} />
       <ManageTagsModal
         opened={manageTagsOpened}
         onClose={() => setManageTagsOpened(false)}

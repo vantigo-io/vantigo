@@ -2,7 +2,7 @@ import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { CustomersPage } from "./customers.index";
 
 const router = vi.hoisted(() => ({
@@ -44,6 +44,14 @@ const groupRows = [
 const stubFetch = (rows: unknown[] = [defaultRow]) => {
   const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    if (url.startsWith("/api/v1/customers/export")) {
+      return Promise.resolve(
+        new Response("\ufeffcustomerNumber;name\r\n", {
+          status: 200,
+          headers: { "Content-Disposition": 'attachment; filename="customers-2026-09-24.csv"' },
+        }),
+      );
+    }
     if (init?.method === "DELETE") return Promise.resolve(new Response(null, { status: 204 }));
     if (url.startsWith("/api/v1/customers/stats")) {
       return Promise.resolve(
@@ -84,7 +92,7 @@ const stubFetch = (rows: unknown[] = [defaultRow]) => {
 /** The table row a cell belongs to, so an assertion about one customer says so. */
 const rowOf = (cell: HTMLElement) => cell.closest("tr") as HTMLElement;
 
-const renderPage = (props: { canEdit?: boolean } = {}) =>
+const renderPage = (props: { canEdit?: boolean; canExport?: boolean; canImport?: boolean } = {}) =>
   render(
     <MantineProvider env="test">
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -99,6 +107,44 @@ describe("CustomersPage", () => {
     vi.unstubAllGlobals();
     router.search = { page: 1, search: "" };
     router.navigate.mockReset();
+  });
+
+  it("downloads the list it shows as the customers file", async () => {
+    const fetchMock = stubFetch();
+    // The two statics only — the URL constructor stays real for the render.
+    const { createObjectURL, revokeObjectURL } = URL;
+    URL.createObjectURL = vi.fn(() => "blob:customers");
+    URL.revokeObjectURL = vi.fn();
+    onTestFinished(() => {
+      URL.createObjectURL = createObjectURL;
+      URL.revokeObjectURL = revokeObjectURL;
+    });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    router.search = { page: 2, search: "fjord", status: "archived", sortBy: "name", sortDirection: "desc" };
+    renderPage({ canExport: true });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Export" }));
+
+    await waitFor(() => expect(click).toHaveBeenCalled());
+    expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe("customers-2026-09-24.csv");
+    const exportUrl = String(
+      fetchMock.mock.calls.find(([input]) => String(input).startsWith("/api/v1/customers/export"))?.[0],
+    );
+    expect(exportUrl).toBe("/api/v1/customers/export?search=fjord&status=archived&sortBy=name&sortDirection=desc");
+    click.mockRestore();
+  });
+
+  it("offers Export and Import only to a caller the host says may use them", async () => {
+    stubFetch();
+    renderPage();
+    await screen.findByText("Equinor");
+    expect(screen.queryByRole("button", { name: "Export" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Import" })).not.toBeInTheDocument();
+    cleanup();
+
+    renderPage({ canExport: true, canImport: true });
+    await userEvent.click(await screen.findByRole("button", { name: "Import" }));
+    expect(await screen.findByRole("dialog")).toHaveTextContent("Import customers");
   });
 
   it("keeps the create form closed on an ordinary list URL", async () => {
