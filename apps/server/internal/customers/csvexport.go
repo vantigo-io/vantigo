@@ -166,7 +166,9 @@ func (s *server) GetCustomersImportTemplate(_ context.Context, _ gen.GetCustomer
 }
 
 // customersCSV is the file: the byte order mark, the header, then one row per
-// customer with its cells in columns' order.
+// customer with its cells in columns' order. It is built whole in memory — a few
+// megabytes at the 5000-row cap, and Content-Length needs the whole body anyway;
+// a much larger cap would want the rows streamed instead.
 func customersCSV(columns []csvColumn, rows []customerRow, dec customerDecoration, profiles map[int32]billingProfile, addresses map[int32]map[string]store.CustomersCustomerAddress) []byte {
 	var b bytes.Buffer
 	b.WriteString(csvByteOrderMark)
