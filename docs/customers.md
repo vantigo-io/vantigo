@@ -106,6 +106,11 @@ permission the endpoint already needs. The billing profile is **not** part of
 - **A merged-away customer is archived too** ([Merging duplicates](#merging-duplicates)):
   `merged_into_customer_id` names the customer that absorbed it, and its response
   carries `mergedInto`.
+- **An anonymised customer is archived too** ([Personal data and
+  anonymisation](#personal-data-and-anonymisation)): a private person whose scheduled
+  day came, its response carrying `anonymisation.anonymisedAt`. It cannot be restored —
+  every write answers 409 `customer_anonymised` — and restoring a customer that is only
+  *scheduled* calls the schedule off.
 - **Restoring** an archived customer is `PUT /customers/{id}` with `status: "active"`
   (or any other status) — there is no dedicated "restore" endpoint. It needs
   `customers:update`, the same permission any other edit does. A customer merged away
@@ -806,7 +811,11 @@ Generated event types: `customer.created`, `customer.updated`, `customer.type_ch
 `customer.contact_removed`, `customer.contact_info_updated`,
 `customer.billing_profile_updated`, `customer.address_added`,
 `customer.address_updated`, `customer.address_removed`, `customer.peppol_lookup`,
-`customer.owner_changed`, `customer.tags_changed`, `customer.group_changed`.
+`customer.owner_changed`, `customer.tags_changed`, `customer.group_changed`, and
+phase 6's `customer.merged` and `customer.merged_away` ([Merging
+duplicates](#merging-duplicates)) and `customer.anonymisation_scheduled`,
+`customer.anonymisation_cancelled` and `customer.anonymised` ([Personal data and
+anonymisation](#personal-data-and-anonymisation)).
 These are immutable — there is no edit or delete endpoint for a generated entry.
 
 - `customer.peppol_lookup` (see [Peppol lookup](#peppol-lookup)) is recorded only
@@ -1373,6 +1382,7 @@ absorbed customer needs none: it is going away.
 | 409 `merge_self` | the same customer twice |
 | 409 `merge_type_mismatch` | a person and a business — a merge never changes what a customer is |
 | 409 `merge_into_archived` | the survivor is archived; restore it first |
+| 409 `customer_anonymised` | the absorbed customer was anonymised — it takes no more writes ([Personal data and anonymisation](#personal-data-and-anonymisation)) |
 | 409 `merge_already_merged` | the absorbed customer was merged away before; the detail names where |
 | 409 without a code | the survivor's `revision` is stale |
 
@@ -1430,7 +1440,7 @@ own SQL, on its own schema, from its own package:
 | Holder | What it re-points (kind) |
 | --- | --- |
 | projects | `projects.projects.customer_id` (`projects.projects`). Each moved project's revision advances; no project timeline entry is written. Time and expenses reach a customer only through a project, so they hold nothing. |
-| energy | `energy.supply_periods.customer_id` (`energy.supplyPeriods`). The overlap constraint is per metering point, so a re-point cannot violate it. Energy has no module doc of its own; this row is its paragraph. |
+| energy | `energy.supply_periods.customer_id` (`energy.supplyPeriods`). The overlap constraint is per metering point, so a re-point cannot violate it. Energy has no module doc of its own; this row is its paragraph. Its personal data (rule 9) is the supply periods with the metering point's address, handed over in the export and kept by an anonymisation. |
 | communications | `conversations.customer_id` (`communications.conversations`), `conversations.suggested_customer_id` (`communications.conversationSuggestions`), and the candidate list (`communications.conversationCandidates`), where a conversation that already lists the survivor keeps it once. |
 
 Any error, a holder's included, rolls back everything: nothing moved, no marker, no
@@ -1480,6 +1490,155 @@ Not built: un-merging (the event payload is the record), merging
 more than two at once, filling the survivor's blank fields from the absorbed
 customer, rewriting historical payloads, and a "find duplicates" report — the
 duplicate-identity guard and the list search are how duplicates are found today.
+
+## Personal data and anonymisation
+
+A **private person**'s data can be handed to them in one file, and taken out of the
+customer on a day somebody chose (phase 6 delivery C, decided in
+[`docs/superpowers/specs/2026-09-24-customers-gdpr-design.md`](superpowers/specs/2026-09-24-customers-gdpr-design.md)).
+The customer row stays — its number, its place in projects and supply periods, the
+shape of its history — and the person disappears from it. A business is not a data
+subject: both operations refuse one with 409 `personal_data_not_a_person`, and a
+business's contacts are people handled through customers of their own, if they are
+customers at all. Both need `customers:personal-data` and `customers:view`. The
+[legal identity rule](#legal-identity-and-its-validation) that refuses a Norwegian
+national identity number is the same delivery's.
+
+### The export
+
+`GET /customers/{id}/personal-data` answers everything held about the person as a
+JSON attachment, `customer-<number>-personal-data.json`, `Cache-Control: private,
+no-store` — built in memory and streamed from the request, the [CSV export](#export)'s
+shape, with `exportedAt` saying when it was made:
+
+| Part | What it holds |
+| --- | --- |
+| `customer` | id, number, name, type, status, created and updated, legal identity, contact info, addresses, the billing profile's own stored values (not the resolved profile), owner, group, tags, `mergedInto`, `anonymisation` |
+| `contacts` | every contact linked to the customer as the contact is stored, with the association's title, phone, email and roles |
+| `timeline` | every entry, oldest first, deleted ones included (their `state` says so), each with its summary, its note — internal notes included: a note staff wrote about the person is data held about them — its payload, actor and follow-up; revisions are not in the file |
+| `modules` | each other module's section under its name — `communications` (the person's conversations: subject, status, dates, each message's direction, subject, date, text and HTML body, each when present, and its attachment names), `energy` (supply periods with the metering point's GSRN and address), `projects` (code, name, status, dates); a module holding nothing for the customer has no key |
+
+It is shaped by nothing but `customers:personal-data`: that key means "may hand this
+person their data", so the legal identity and the contacts are in the file without
+`customers:legal-identity-view` or `customers:contacts-view`. This module's parts are
+read in one read-only snapshot; each module's section is its own
+`contracts.CustomerPersonalData.ExportCustomerData`
+([module boundaries rule 9](module-boundaries.md#the-rules)), called outside any
+transaction of this module's. **The file is all or nothing**: a module whose export
+fails fails the request with a 500, never a file with that module's section quietly
+missing — a person handed a partial file would take it for the whole. The body is
+encoded before a header is written, so a failure is never half a file either. An
+anonymised customer's file is what is left.
+
+### Scheduling
+
+`PUT /customers/{id}/anonymisation` with `{anonymiseOn}` — a UTC calendar day,
+`yyyy-MM-dd`, today or later (400 on `anonymiseOn` otherwise) — puts the day on the
+customer and records `customer.anonymisation_scheduled` (`{customerId, anonymiseOn,
+previousAnonymiseOn?}`, attributed to the caller: the worker that acts on it later is
+only the system, so this entry is where the decision's author is on record). The
+customer must be a person and **archived** — 409 `personal_data_customer_active`
+otherwise: an ongoing relationship is not anonymised out from under itself, so it is
+ended first, deliberately. The day already scheduled writes nothing; another day moves
+it. `DELETE …/anonymisation` calls it off and records `customer.anonymisation_cancelled`
+(`{customerId, anonymiseOn}`, the day that was scheduled, attributed to the caller); with
+nothing scheduled it writes nothing. Both answer the customer, whose `anonymisation` is
+`{anonymiseOn, anonymisedAt?}` from then on (absent when nothing is scheduled). Neither
+takes a `revision` — the day is its own field, and nothing else in the body could be
+stale — but each write advances the customer's revision like any other write to the
+row, so an edit form opened before it answers the [revision
+conflict](#revision-and-concurrency).
+
+The refusals come in this order: the day's 400 before anything is read; the 404; then
+**read-only first** — 409 `customer_anonymised` or `customer_merged`, decided under the
+customer's lock ([below](#an-anonymised-customer-is-read-only)) — and only then
+`personal_data_not_a_person` and `personal_data_customer_active`. An anonymised
+customer is told it was anonymised, not that it is not active; a merged-away one is
+told where its survivor is.
+
+**There is no default day, and the field says why it exists.** Norwegian bookkeeping
+rules ([bokføringsloven](https://lovdata.no/dokument/NL/lov/2004-11-19-73)) keep
+accounting material for years after the end of the fiscal year, and the person
+scheduling is the one who knows what was invoiced to this customer and when; this
+installation invoices nothing yet, and no number is encoded here. Choose a day after
+every retention period that applies to this customer has passed.
+
+What takes a customer out of what may be anonymised calls its schedule off in the same
+transaction, recorded as `customer.anonymisation_cancelled` attributed to whoever made
+that write: restoring it (`PUT /customers/{id}` or a CSV row with a status other than
+archived) or changing its type away from person. Left in place, a day would fire the
+night the customer was archived again, months after anybody meant it. A merged-away
+customer cannot be scheduled (409 `customer_merged` — schedule its survivor), but a
+schedule made before its merge can still be called off: `DELETE …/anonymisation` is the
+one write a merged-away customer takes, since that schedule would otherwise be
+irrevocable. An anonymised customer's DELETE answers `customer_anonymised`.
+
+### What the worker does
+
+The `customers-anonymisation` worker takes every archived private person whose day has
+come (UTC) and who is not anonymised yet, at most fifty a cycle, oldest day first, each
+in **one transaction** with the customer row locked, retried on a deadlock. Under the
+lock it reads the customer again — a cancel, a restore or a change of type may have
+landed since the batch was selected — and one no longer due is left alone:
+
+| | |
+| --- | --- |
+| The row | `name` → "Anonymised person"; the **customer number stays** — it is the bookkeeping reference. The legal identity, contact info (email, phone, website) and the billing profile's identifiers (`invoiceEmail`, `reminderEmail`, `peppolId`, `gln`, `buyerReference`) are cleared; the payment terms, currency, language, delivery methods and default bill rate stay — they say how the customer was invoiced, not who it was. Owner and tags stay: staff and vocabulary. The customer leaves its group, as a merged-away one does: it refuses every write, the group PUT included, so a group it still counted in could never be deleted. Status stays archived, and `anonymise_on` stays set beside the new `anonymised_at` — the day it was scheduled for is part of the record. |
+| Addresses, Peppol answer, registry record | Deleted. |
+| Contacts | Every association detached, its roles with it; a contact linked to no other customer afterwards is deleted — it existed for this person alone. One another customer still links stays, theirs too. |
+| Timeline | Every entry **stays**, deleted ones included — its type, its day, its state and its follow-up's day and assignee as they were; an open follow-up is not closed — with its content anonymised: a manual entry's summary and note become "[anonymised]" and its source URL goes; a generated entry's summary does too, unless its type's summary is built from nothing personal (`customer.status_changed`, `customer.type_changed`, `customer.contact_info_updated`, `customer.billing_profile_updated`, `customer.peppol_lookup`, `customer.tags_changed`, `customer.group_changed`, `customer.owner_changed` and the three anonymisation events — an allow-list, so an event type added later is anonymised until somebody decides otherwise); in every payload the top-level keys that carry the person — `name`, `customerName`, `identity`, `legalIdentity`, `contactInfo`, `billingProfile`, `before`, `after`, `changes`, `absorbed`, `into`, and a contact's or address's `displayName`, `firstName`, `middleName`, `lastName`, `title`, `phone`, `email`, `label`, `display` — become "[anonymised]", each replaced whole — on every event alike, so a status change's `before` and `after` go too, rather than a per-event list a new event type could slip past — and the rest (`customerId`, ids, dates, counts, statuses) is kept. Revisions the same. The author of each entry (`actorDisplay`) is staff, and stays. One set-based statement per table, in SQL. |
+| Other modules | Each `contracts.CustomerPersonalData.EraseCustomerData`, inside the same transaction, in the order the installation composes them: communications deletes the person's conversations, every message and the rows under it through the retention worker's own deletes (a message still waiting in the outbox goes with its job), queues every object key — attachments, raw payloads and staged uploads — on the cleanup ledger for the cleanup worker to delete after commit, and clears a suggestion or candidate row naming them on another conversation; energy keeps the supply periods (a period is the metering point's history, the address the point's); projects keeps the projects (invoiced work stays, no customer name is stored there). |
+| Last | `anonymised_at` is set, the revision advances, and `customer.anonymised` is recorded — after the rewrite, so the one event that keeps its words: `{customerId, erased: [{kind, count}]}`, this module's four kinds first (`customers.addresses`, `customers.contactAssociations`, `customers.contacts`, `customers.timelineEntries`) and then each module's — `communications.conversations`, `communications.messages`, `communications.objects`, `communications.conversationSuggestions`, `communications.conversationCandidates`, `energy.supplyPeriods`, `projects.projects` — a module that kept everything listed at zero; the actor is the system. |
+
+**A failing customer is logged and tried again.** A module's error — or a deadlock
+lost three times — rolls that customer's whole run back; the worker logs it at error
+level with its `customerId` ("anonymising a customer failed; it is tried again next
+cycle"), moves on to the next, and takes it again next cycle, and each cycle ends with
+an info line counting `anonymised` and `failed`. A customer that fails every time — a
+communications object key the cleanup ledger refuses as not a safe relative key, one
+stored by an older version, say — stays scheduled and not anonymised, keeps its place at
+the head of the batch (its day stays the oldest), and is visible in exactly those log
+lines, cycle after cycle, until somebody looks; nothing else raises it. Fifty of them
+would fill every batch, and the customers behind them would wait.
+
+**A merge chain is one person.** Customers merged into the one that is due are
+anonymised in the same transaction, each with its own row, its own `customer.anonymised`
+and the chain's day as its `anonymiseOn`; the `customer.merged` entries describing them
+are on the due customer's timeline and go with the rest of it. A customer scheduled and
+then merged away is anonymised on its day as itself, and its snapshot comes off its
+survivor's `customer.merged` entry (the `absorbed` block and the summary naming it);
+nothing else of the survivor's changes — the history that moved to it with the merge is
+the survivor's now, and is anonymised with the survivor.
+
+Not built, on purpose: business customers' data; deleting the customer row; a
+law-derived default day; anonymising staff users (identity's concern); a bulk
+"anonymise everyone archived before X"; rewriting other modules' free text (a project
+named after the person); encryption at rest.
+
+### An anonymised customer is read-only
+
+Every write to it answers **409 `customer_anonymised`**, "Customer was anonymised",
+its detail naming the day — through the same lock-time check that answers
+`customer_merged` ([A merged-away customer is read-only](#a-merged-away-customer-is-read-only)),
+so the list of writes is that one, its schedule's two included: it cannot be scheduled
+again. Anonymised is asked first, so a customer both merged away and anonymised
+answers `customer_anonymised`. A CSV row naming its number is refused on
+`customerNumber`; a merge will not absorb it (the refusal comes after
+`merge_into_archived`, [The refusals, in order](#the-refusals-in-order)); `DELETE
+/customers/{id}` is the archived no-op. It stays archived, and its export still answers.
+
+**Configuration**, read once at startup by `internal/config`:
+
+| Variable | Default | |
+| --- | --- | --- |
+| `CUSTOMERS_ANONYMISATION_ENABLED` | `1` | `0` → the worker is never handed to the runner, and scheduled days wait |
+| `CUSTOMERS_ANONYMISATION_POLL` | `24h` | how often a cycle runs; a schedule is a day, so once a day is on time |
+
+The worker runs where the other [registry workers](#registry-workers) do — in worker
+mode, and in api mode with `WORKERS_IN_PROCESS=1`. The batch of fifty is a constant,
+not a knob. The worker takes an advisory lease of its own (`"CUSTANO1"` read as a
+64-bit value), so one replica at a time runs a cycle — per database, not per tenant,
+with the [registry workers' caveat](#registry-workers) about tenants sharing one.
 
 ## Brreg lookup
 
@@ -2256,7 +2415,7 @@ you, or not installed".
 
 ## Permissions
 
-Fifteen keys, category-grouped, every one delegable. Only `view`, `create` and
+Sixteen keys, category-grouped, every one delegable. Only `view`, `create` and
 `update` are non-sensitive.
 
 | Key | Category | Meaning | Sensitive |
@@ -2276,6 +2435,7 @@ Fifteen keys, category-grouped, every one delegable. Only `view`, `create` and
 | `customers:lookup-view` | Lookup | Search the external business registry for legal identities. | yes |
 | `customers:billing-manage` | Billing | Set a customer's payment terms, invoice delivery and billing addresses for documents. | yes |
 | `customers:merge` | Customers | Merge a duplicate customer into another, moving its contacts, addresses, timeline, tags and other modules' references, and archiving it. | yes |
+| `customers:personal-data` | Customers | Hand a private person all the data held about them, and schedule the anonymisation of an archived private person. | yes |
 
 `customers:billing-manage` is the one key with no earlier counterpart: writing a
 customer's billing profile is deliberately gated separately from
@@ -2288,6 +2448,12 @@ gets from the general customer PUT.
 `customers:merge` is the second ([Merging duplicates](#merging-duplicates)): a merge
 rewrites other modules' references and archives a customer, which is more than
 `customers:delete` does, so neither key implies the other.
+
+`customers:personal-data` is the third ([Personal data and
+anonymisation](#personal-data-and-anonymisation)): handing a person their whole file
+reads what `customers:legal-identity-view` and `customers:contacts-view` each guard, and
+an anonymisation removes more than any delete, so it is its own sensitive key, implied
+by none of the others.
 
 Two permissions combine to widen list search beyond name/number:
 `customers:legal-identity-view` alone unlocks legal name/id; **both**
@@ -2493,6 +2659,33 @@ of its caller: Products phase 4's customer-group prices are the intended reader.
   duplicate-identity conflict adds a line suggesting Merge… on the duplicate it
   already links to, for a caller who may merge — the list page passes `canMerge`
   too, since it opens the same form.
+- **Personal data** on a private person's page header — never a business's — for a
+  caller the host says may manage it (a new `canManagePersonalData` prop, read from
+  `customers:personal-data`): a menu with **Export personal data** — the JSON file,
+  downloaded the customers file's way (a plain `fetch`, the server's filename, an object
+  URL), and still offered once the customer is anonymised, for what is left — and
+  **Schedule anonymisation…**, a date picker with no default day (the scheduled one when
+  moving it) and nothing before today (UTC), the retention reminder and the
+  irreversibility said before the button. The item is off, with the reason under it,
+  while the customer is not archived ("archive first") or was merged away ("schedule it
+  on the survivor"). Once scheduled, **Change anonymisation date…** and **Cancel
+  anonymisation** (through the shared confirm modal); once anonymised, Export alone. The
+  schedule and the cancel put the customer they answer straight into the page's cache,
+  so the banner changes without waiting for a refetch; restoring or changing the type
+  calls a schedule off on the server's side. A scheduled customer's page shows a yellow
+  banner "Anonymisation scheduled for …"; an anonymised one's a grey "Anonymised on …"
+  and, the merged-away banner's way, no edit action anywhere — the header hides Edit,
+  Change type, Restore and Merge, and every card gets `canX && !readOnly`. The timeline
+  labels the three new events, shows under a `customer.anonymised` entry what was taken
+  out ("Removed: kind: count · …", the kinds as the server names them, so a new module's
+  show as they come), and renders "[anonymised]" content as the plain text it is; an
+  absorbed snapshot that was anonymised shows no details list. A write refused
+  `customer_anonymised` reads "This customer was anonymised" in the reader's language, as
+  `customer_merged` has its own sentence. No screen in this package lets a person's legal
+  id be typed, so the national identity refusal surfaces only where such an id can come
+  in — the CSV import's problems table, on the row's `legalId` — and an import row naming
+  an anonymised customer is refused there on its `customerNumber`. The admin catalog
+  labels the key "Manage personal data", in both catalogs.
 - **Detail** (`/customers/:id`) — a host-composed page: this package owns the header
   (name, legal-identity badges, status/type badges, edit and change-type actions) and
   an overview tab (relationship card, contact & addresses card, billing card, contacts
@@ -2643,7 +2836,7 @@ of its caller: Products phase 4's customer-group prices are the intended reader.
 ## API
 
 Every operation is under `/api/v1/customers`, authenticated with the shared identity
-session cookie. 60 operations in total, each exercised by the module's own
+session cookie. 63 operations in total, each exercised by the module's own
 contract-validated test coverage gate — every operation in `openapi/customers.yaml`
 must be exercised by at least one successful exchange, with no allow-list.
 
@@ -2656,6 +2849,8 @@ must be exercised by at least one successful exchange, with no allow-list.
 | `PUT /{id}`, `PUT /{id}/type` | `customers:update` + `customers:view` (plus `legal-identity-manage` if the body carries an `identity`) |
 | `DELETE /{id}` (archive) | `customers:delete` |
 | `POST /{id}/merge` | `customers:merge` + `customers:view` |
+| `GET /{id}/personal-data` | `customers:personal-data` + `customers:view` |
+| `PUT /{id}/anonymisation`, `DELETE /{id}/anonymisation` | `customers:personal-data` + `customers:view` |
 | `GET /{id}/legal-identity` | `customers:legal-identity-view` |
 | `PUT /{id}/legal-identity` | `customers:legal-identity-manage` + `customers:legal-identity-view` |
 | `DELETE /{id}/legal-identity` | `customers:legal-identity-manage` |
@@ -2827,12 +3022,27 @@ references, the survivor keeping every field of its own and the duplicate archiv
 with a marker. It added one permission key (`customers:merge`), one migration
 (`00029`), two event types and the first cross-module write contract,
 `contracts.CustomerReferenceHolder`, which projects, energy and communications
-implement. Still ahead in phase 6: GDPR handling for person customers (delivery C).
+implement. Delivery C followed it (below).
+
+**Phase 6 delivery C** — [Personal data and anonymisation](#personal-data-and-anonymisation)
+— has landed, decided in
+[`docs/superpowers/specs/2026-09-24-customers-gdpr-design.md`](superpowers/specs/2026-09-24-customers-gdpr-design.md):
+a Norwegian national identity number is refused as a person's legal id; a private person's
+data is handed over in one file; and an archived private person is anonymised on a day a
+person chose — the number and the shape of the history kept, the person taken out, every
+module's part in the same transaction. It added one permission key
+(`customers:personal-data`), one migration (`00030`), three operations, three event types,
+one worker (`customers-anonymisation`), one refusal code (`customer_anonymised`) and the
+second cross-module direction, `contracts.CustomerPersonalData`, which communications,
+energy and projects implement. It is **the roadmap's last delivery**: phase 6, and the
+Customers roadmap with it, is complete. Attachments on a customer and its timeline
+entries wait on the storage module, and other modules' timeline writers on the outbox.
 
 Past that, the remaining gaps are exactly
 what [ROADMAP.md's Customers section](../ROADMAP.md#customers) is built around —
-`ContactsByEmail` still unused in production, no GDPR handling (phase 6 delivery
-C) — itself drawn from
+`ContactsByEmail` still unused in production, other modules writing to the customer
+timeline (on the outbox, deferred until Orders), invoiced revenue once Invoices exists —
+itself drawn from
 [`docs/superpowers/research/2026-09-21-customers-module-next.md`](superpowers/research/2026-09-21-customers-module-next.md),
 which also compares this module against the Nordic ERP/accounting and international
 CRM/PSA fields it was benchmarked against.

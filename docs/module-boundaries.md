@@ -131,7 +131,8 @@ Communications' outbox is the working example.
   re-points real rows through a real transaction, and the customers module's
   merge tests prove that a holder's error rolls the whole merge back.
 - **Rule 9**: the same way. `EraseCustomerData` is handed the caller's `pgx.Tx`
-  and nothing else it could write with; its SQL is in its own `queries/`, so rule
+  and writes through it alone (communications' implementation holds the pool, for
+  its export's own read-only snapshot); its SQL is in its own `queries/`, so rule
   4's scan covers it; each module's package test erases real rows through a real
   transaction it rolls back first, and the customers module's anonymisation tests
   prove a module's error rolls that customer's whole anonymisation back.
