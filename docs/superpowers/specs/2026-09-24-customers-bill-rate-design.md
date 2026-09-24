@@ -103,8 +103,9 @@ two "every field" tests extended, the directory (`BillingProfile`) carries it an
 `resolveBillingProfile` passes it through (nil stays nil, value stays value). Time:
 `rates_internal_test.go`'s table gains the customer cases (customer default when no
 project default; project default wins over it; currency mismatch falls to the person
-card; a currency-less project takes the customer's currency; customers module off →
-person; project without a customer → person; missing customer → person; a directory
+card; a currency-less project takes the customer's currency; a nil directory (a floor
+that cannot fire — Time requires Projects, which requires Customers) → person;
+project without a customer → person; missing customer → person; a directory
 error → error), with a fake `CustomerDirectory` in Time's test package; an
 `entries_test.go` end-to-end case asserting `rateSource: "customer"` and the snapshot;
 the harness gains `modtest.WithDirectory`. Frontend: the modal's round trip (the PUT
