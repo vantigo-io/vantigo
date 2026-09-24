@@ -16,6 +16,13 @@ type CustomerEntry struct {
 	// Group is the group the customer belongs to, nil when it belongs to none
 	// (customer groups design D4). A customer belongs to at most one.
 	Group *CustomerGroupEntry
+	// MergedInto is the customer this one was merged into (customers merge
+	// design D3), nil unless it was merged away. A merged-away customer is
+	// archived and still resolves — a consumer holding a stale id learns where
+	// to look. Every CustomerReferenceHolder re-points the references that
+	// existed when the merge ran; one written for this id afterwards (or
+	// committed while the merge ran) is what this field is the backstop for.
+	MergedInto *int32
 }
 
 // CustomerGroupEntry is the group a customer belongs to, as another module may

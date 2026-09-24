@@ -597,6 +597,32 @@ func TestCustomersBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		t.Errorf("customers.default_bill_rate = %q, want %q", billRateColumn, "numeric:12,2:YES")
 	}
 
+	// merged_into_customer_id (00029) is the merge's marker: an in-module
+	// foreign key, RESTRICT because a survivor is never deleted out from under
+	// the customers merged into it (customers are archived, never deleted, and
+	// the marker is what their page links to), and a partial index — the
+	// merged-away customers are a handful among many.
+	var mergedIntoDeleteRule string
+	if err := pool.QueryRow(ctx, `
+		SELECT confdeltype FROM pg_constraint c
+		JOIN pg_class t ON t.oid = c.conrelid
+		JOIN pg_namespace n ON n.oid = t.relnamespace
+		WHERE n.nspname = 'customers' AND t.relname = 'customers' AND c.contype = 'f'
+		  AND c.conname = 'customers_merged_into_customer_id_fkey'`).Scan(&mergedIntoDeleteRule); err != nil {
+		t.Fatalf("query the merge marker's foreign key: %v", err)
+	}
+	if mergedIntoDeleteRule != "r" {
+		t.Errorf("customers.merged_into_customer_id delete rule = %q, want %q (ON DELETE RESTRICT)", mergedIntoDeleteRule, "r")
+	}
+	var mergedIntoIndexDef string
+	if err := pool.QueryRow(ctx, `SELECT indexdef FROM pg_indexes
+	                              WHERE schemaname = 'customers' AND indexname = 'ix_customers_merged_into'`).Scan(&mergedIntoIndexDef); err != nil {
+		t.Fatalf("read ix_customers_merged_into definition: %v", err)
+	}
+	if strings.Contains(mergedIntoIndexDef, "UNIQUE") || !strings.Contains(mergedIntoIndexDef, "WHERE (merged_into_customer_id IS NOT NULL)") {
+		t.Errorf("ix_customers_merged_into = %q, want a non-unique PARTIAL index on merged_into_customer_id IS NOT NULL", mergedIntoIndexDef)
+	}
+
 	var tenantIDColumns int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_schema = 'customers' AND column_name = 'tenant_id'`).Scan(&tenantIDColumns); err != nil {
 		t.Fatalf("count tenant_id columns: %v", err)

@@ -167,11 +167,12 @@ func dateFromPgtype(d pgtype.Date) *openapi_types.Date {
 // status every list caller already sees. dec is the part of the response that
 // does not come from the customer row: the owner's display name, which lives
 // in identity's directory and is resolved per response (owner and tags design
-// D1), the customer's tags, which live in their own table (D2), and the
-// customer's group, which lives in the module's own vocabulary table (customer
-// groups design D3). All three are as ungated as contactInfo — design D4's
-// ruling: an owner is not sensitive data and tags and groups are
-// classification, so customers:view is the whole gate.
+// D1), the customer's tags, which live in their own table (D2), the customer's
+// group, which lives in the module's own vocabulary table (customer groups
+// design D3), and the customer it was merged into (customers merge design D3).
+// All four are as ungated as contactInfo — design D4's ruling: an owner is not
+// sensitive data and tags and groups are classification, so customers:view is
+// the whole gate.
 func safeCustomerResponse(row customerRow, includeIdentity bool, dec customerDecoration) gen.SafeCustomerResponse {
 	tags := dec.tagsFor(row.ID)
 	resp := gen.SafeCustomerResponse{
@@ -186,6 +187,7 @@ func safeCustomerResponse(row customerRow, includeIdentity bool, dec customerDec
 		ContactInfo:    &gen.CustomerContactInfo{Email: row.Email, Phone: row.Phone, Website: row.Website},
 		Owner:          dec.owner(row.OwnerUserID),
 		Group:          dec.group(row.ID),
+		MergedInto:     dec.merged(row.ID),
 		Tags:           &tags,
 		TimelineSummary: gen.SafeTimelineSummary{
 			EntryCount:       int32(row.EntryCount),

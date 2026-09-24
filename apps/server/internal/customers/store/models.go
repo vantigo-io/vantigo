@@ -29,35 +29,36 @@ type CustomersCounter struct {
 }
 
 type CustomersCustomer struct {
-	ID               int32
-	CustomerNumber   int64
-	Name             string
-	Status           string
-	LegalCountry     *string
-	LegalID          *string
-	LegalName        *string
-	LegalSource      *string
-	LegalType        *string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-	Type             string
-	Revision         int32
-	Email            *string
-	Phone            *string
-	Website          *string
-	InvoiceEmail     *string
-	ReminderEmail    *string
-	PaymentTermsDays *int32
-	Currency         *string
-	Language         *string
-	InvoiceDelivery  *string
-	ReminderDelivery *string
-	PeppolID         *string
-	Gln              *string
-	BuyerReference   *string
-	OwnerUserID      *uuid.UUID
-	GroupID          *uuid.UUID
-	DefaultBillRate  pgtype.Numeric
+	ID                   int32
+	CustomerNumber       int64
+	Name                 string
+	Status               string
+	LegalCountry         *string
+	LegalID              *string
+	LegalName            *string
+	LegalSource          *string
+	LegalType            *string
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+	Type                 string
+	Revision             int32
+	Email                *string
+	Phone                *string
+	Website              *string
+	InvoiceEmail         *string
+	ReminderEmail        *string
+	PaymentTermsDays     *int32
+	Currency             *string
+	Language             *string
+	InvoiceDelivery      *string
+	ReminderDelivery     *string
+	PeppolID             *string
+	Gln                  *string
+	BuyerReference       *string
+	OwnerUserID          *uuid.UUID
+	GroupID              *uuid.UUID
+	DefaultBillRate      pgtype.Numeric
+	MergedIntoCustomerID *int32
 }
 
 type CustomersCustomerAddress struct {

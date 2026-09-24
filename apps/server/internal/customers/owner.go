@@ -72,21 +72,23 @@ func uuidPtrEqual(a, b *uuid.UUID) bool {
 // customerDecoration is everything a SafeCustomerResponse carries that is not
 // on the customer row: the owner's display name, borrowed from identity's
 // directory for the length of one response (owner and tags design D1), the
-// customer's tags, which live in their own table (D2), and the customer's
-// group, whose name lives in the group vocabulary (customer groups design D3).
-// It exists so safeCustomerResponse knows one shape whether it is rendering one
-// customer or a page of twenty-five, and so the three lookups happen once per
-// response rather than once per row.
+// customer's tags, which live in their own table (D2), the customer's group,
+// whose name lives in the group vocabulary (customer groups design D3), and the
+// customer it was merged into, if any (customers merge design D3). It exists
+// so safeCustomerResponse knows one shape whether it is rendering one customer
+// or a page of twenty-five, and so the four lookups happen once per response
+// rather than once per row.
 type customerDecoration struct {
-	owners map[uuid.UUID]contracts.UserEntry
-	tags   map[int32][]gen.CustomerTag
-	groups map[int32]gen.CustomerGroupRef
+	owners     map[uuid.UUID]contracts.UserEntry
+	tags       map[int32][]gen.CustomerTag
+	groups     map[int32]gen.CustomerGroupRef
+	mergedInto map[int32]gen.CustomerReference
 }
 
-// decorate resolves the owners, tags and groups of rows in one directory call
-// and two queries. q must be a pool-backed store.Queries, never a
-// transaction's: the directory call inside is out-of-process and must not
-// happen under a lock, so every caller decorates after its write has
+// decorate resolves the owners, tags, groups and merge markers of rows in one
+// directory call and three queries. q must be a pool-backed store.Queries,
+// never a transaction's: the directory call inside is out-of-process and must
+// not happen under a lock, so every caller decorates after its write has
 // committed.
 //
 // An empty rows is not an error and makes no calls at all — an empty list page
@@ -110,9 +112,10 @@ func (s *server) decorate(ctx context.Context, q *store.Queries, rows ...custome
 // decorate's own doc comment says still holds, the pool-backed q included.
 func (s *server) decorateKnowing(ctx context.Context, q *store.Queries, known *contracts.UserEntry, rows ...customerRow) (customerDecoration, error) {
 	dec := customerDecoration{
-		owners: map[uuid.UUID]contracts.UserEntry{},
-		tags:   map[int32][]gen.CustomerTag{},
-		groups: map[int32]gen.CustomerGroupRef{},
+		owners:     map[uuid.UUID]contracts.UserEntry{},
+		tags:       map[int32][]gen.CustomerTag{},
+		groups:     map[int32]gen.CustomerGroupRef{},
+		mergedInto: map[int32]gen.CustomerReference{},
 	}
 	if len(rows) == 0 {
 		return dec, nil
@@ -159,6 +162,18 @@ func (s *server) decorateKnowing(ctx context.Context, q *store.Queries, known *c
 	}
 	for _, g := range groups {
 		dec.groups[g.CustomerID] = gen.CustomerGroupRef{Id: g.ID, Name: g.Name}
+	}
+
+	// The merge marker is one more batched query over the same ids (customers
+	// merge design D3), for the group's reason: the survivor's number and name
+	// live on another row, and a join on every customer row type would widen
+	// five of them for a field almost every customer answers without.
+	markers, err := q.MergedIntoForCustomers(ctx, customerIDs)
+	if err != nil {
+		return customerDecoration{}, fmt.Errorf("customers: load merge markers: %w", err)
+	}
+	for _, m := range markers {
+		dec.mergedInto[m.CustomerID] = gen.CustomerReference{Id: m.ID, CustomerNumber: m.CustomerNumber, Name: m.Name}
 	}
 
 	if len(userIDs) > 0 {
@@ -212,6 +227,15 @@ func (d customerDecoration) tagsFor(customerID int32) []gen.CustomerTag {
 func (d customerDecoration) group(customerID int32) *gen.CustomerGroupRef {
 	if g, ok := d.groups[customerID]; ok {
 		return &g
+	}
+	return nil
+}
+
+// merged is the customer this one was merged into, or nil when it was not —
+// absent on the wire, never null, the idiom group beside it follows.
+func (d customerDecoration) merged(customerID int32) *gen.CustomerReference {
+	if m, ok := d.mergedInto[customerID]; ok {
+		return &m
 	}
 	return nil
 }

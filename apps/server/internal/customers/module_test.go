@@ -29,11 +29,12 @@ func TestModule_ComposesAndDemandsAPermission(t *testing.T) {
 }
 
 // TestModule_DeclaresItsPermissionCatalog pins the module's name and all
-// fourteen permissions, field for field, against the .NET contributor
+// fifteen permissions, field for field, against the .NET contributor
 // (AZ/CustomerPermissionCatalogContributor.cs:9-49, inventory §6) plus
-// customers:billing-manage (invoice-ready customer design D1, D4, no .NET
-// ancestor): every key is delegable, and only view, create and update are
-// not sensitive.
+// customers:billing-manage (invoice-ready customer design D1, D4) and
+// customers:merge (customers merge design D2), neither with a .NET ancestor:
+// every key is delegable, and only view, create and update are not
+// sensitive.
 func TestModule_DeclaresItsPermissionCatalog(t *testing.T) {
 	t.Parallel()
 	m := customers.Module()
@@ -53,6 +54,7 @@ func TestModule_DeclaresItsPermissionCatalog(t *testing.T) {
 		{Key: "customers:timeline-manage", Display: "Manage customer timeline", Description: "Create, update, and delete customer timeline entries.", Category: "Timeline", Sensitive: true, Delegable: true},
 		{Key: "customers:lookup-view", Display: "Use registry lookup", Description: "Search the external business registry for legal identities.", Category: "Lookup", Sensitive: true, Delegable: true},
 		{Key: "customers:billing-manage", Display: "Manage billing profiles", Description: "Set a customer's payment terms, invoice delivery and billing addresses for documents.", Category: "Billing", Sensitive: true, Delegable: true},
+		{Key: "customers:merge", Display: "Merge customers", Description: "Merge a duplicate customer into another, moving its contacts, addresses, timeline, tags and other modules' references, and archiving it.", Category: "Customers", Sensitive: true, Delegable: true},
 	}
 	if m.Name != "customers" {
 		t.Errorf("Name = %q, want customers", m.Name)
