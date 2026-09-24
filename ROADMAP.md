@@ -290,8 +290,16 @@ through the endpoints' own write paths, with a dry run and a failed-rows file fo
 re-run; one canonical format, no import key. See
 [`docs/customers.md#csv-import-and-export`](docs/customers.md#csv-import-and-export).
 
-**Still ahead in this phase:** merging duplicate customers (delivery B) and GDPR
-handling for person customers (delivery C).
+**Delivery B (done)** — decided in
+[`docs/superpowers/specs/2026-09-24-customers-merge-design.md`](docs/superpowers/specs/2026-09-24-customers-merge-design.md):
+`POST /customers/{id}/merge` — one customer absorbs its duplicate in one transaction:
+contacts (roles unioned), addresses, timeline, tags, and every other module's
+references through `contracts.CustomerReferenceHolder` (projects, energy,
+communications); the survivor keeps every field of its own and the duplicate is
+archived with a marker; behind the new `customers:merge`. See
+[`docs/customers.md#merging-duplicates`](docs/customers.md#merging-duplicates).
+
+**Still ahead in this phase:** GDPR handling for person customers (delivery C).
 
 *Unblocks:* clean onboarding and offboarding, and a merge path that only gets more
 expensive the longer it waits.
