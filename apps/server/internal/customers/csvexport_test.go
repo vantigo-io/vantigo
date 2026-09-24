@@ -76,9 +76,13 @@ const importableHeader = "customerNumber;name;type;status;legalCountry;legalType
 	"group;tags"
 
 // TestGetCustomersExport_IsExactlyTheseBytes is the golden sample: a customer
-// with every group filled in — a name carrying the separator and quotes, a phone
-// number a spreadsheet would read as a formula, a rate with the decimal comma —
-// and a bare one whose very name starts like a formula.
+// with every one of the forty cells filled in, each with a value no other cell
+// holds — a name carrying the separator and quotes, a phone number a
+// spreadsheet would read as a formula, a rate with the decimal comma, a primary
+// postal and a primary invoice address beside a second, non-primary postal one
+// the file must not carry — and a bare one whose very name starts like a
+// formula. The full row is checked cell by cell against its column first, so a
+// value written under the wrong column names that column; then the bytes.
 func TestGetCustomersExport_IsExactlyTheseBytes(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -88,15 +92,28 @@ func TestGetCustomersExport_IsExactlyTheseBytes(t *testing.T) {
 	r := c.Do(http.MethodPost, "/api/v1/customers", map[string]any{
 		"name":        `Fjord; "Nord" AS`,
 		"identity":    map[string]any{"country": "no", "type": "business", "id": "923609016", "name": "Fjord Nord AS", "source": "manual"},
-		"contactInfo": map[string]any{"email": "post@fjord.no", "phone": "+47 22 33 44 55"},
+		"contactInfo": map[string]any{"email": "post@fjord.no", "phone": "+47 22 33 44 55", "website": "https://fjord.no"},
 	})
 	if r.Status != http.StatusCreated {
 		t.Fatalf("create: status %d body %s", r.Status, r.Body)
 	}
 	var fjord createdCustomerJSON
 	r.JSON(&fjord)
-	createAddress(t, c, fjord.Id, map[string]any{"type": "postal", "line1": "Storgata 1", "postalCode": "0155", "city": "Oslo", "country": "no"})
-	if r := putBillingProfile(t, c, fjord.Id, map[string]any{"paymentTermsDays": 30, "currency": "NOK", "defaultBillRate": 1250.5}); r.Status != http.StatusOK {
+	// The primary postal address first (the first of a type is primary), the
+	// non-primary one after it, so a read that forgot is_primary would find the
+	// wrong one last.
+	createAddress(t, c, fjord.Id, map[string]any{"type": "postal", "line1": "Storgata 1", "line2": "Bakgården",
+		"postalCode": "0155", "city": "Oslo", "region": "Oslo fylke", "country": "no"})
+	createAddress(t, c, fjord.Id, map[string]any{"type": "postal", "line1": "Lagerveien 9", "postalCode": "0668",
+		"city": "Lager", "country": "se", "isPrimary": false})
+	createAddress(t, c, fjord.Id, map[string]any{"type": "invoice", "line1": "Postboks 9", "line2": "Att. Regnskap",
+		"postalCode": "0101", "city": "Bergen", "region": "Vestland", "country": "dk"})
+	if r := putBillingProfile(t, c, fjord.Id, map[string]any{
+		"invoiceEmail": "faktura@fjord.no", "reminderEmail": "purring@fjord.no",
+		"paymentTermsDays": 30, "currency": "NOK", "language": "nb",
+		"invoiceDelivery": "ehf", "reminderDelivery": "email",
+		"peppolId": "0192:923609016", "gln": "4006381333931", "buyerReference": "PO-42", "defaultBillRate": 1250.5,
+	}); r.Status != http.StatusOK {
 		t.Fatalf("billing: status %d body %s", r.Status, r.Body)
 	}
 	retail := createGroup(t, c, map[string]any{"name": "Retail"})
@@ -114,26 +131,46 @@ func TestGetCustomersExport_IsExactlyTheseBytes(t *testing.T) {
 	bare := createCustomer(t, c, "=Formel AS")
 	stamp := h.Now().UTC().Format(time.RFC3339)
 
-	fjordRow := []string{
-		fmt.Sprint(fjord.CustomerNumber), `"Fjord; ""Nord"" AS"`, "business", "active",
+	exportHeader := importableHeader + ";id;ownerName;createdAt;updatedAt"
+	// fjordCells is the full row as a spreadsheet reads it, in D1's order.
+	fjordCells := []string{
+		fmt.Sprint(fjord.CustomerNumber), `Fjord; "Nord" AS`, "business", "active",
 		"no", "business", "923609016", "Fjord Nord AS",
-		"post@fjord.no", "'+47 22 33 44 55", "",
-		"Storgata 1", "", "0155", "Oslo", "", "no",
-		"", "", "", "", "", "",
-		"", "", "30", "NOK", "", "", "", "", "", "", "1250,50",
+		"post@fjord.no", "'+47 22 33 44 55", "https://fjord.no",
+		"Storgata 1", "Bakgården", "0155", "Oslo", "Oslo fylke", "no",
+		"Postboks 9", "Att. Regnskap", "0101", "Bergen", "Vestland", "dk",
+		"faktura@fjord.no", "purring@fjord.no", "30", "NOK", "nb", "ehf", "email", "0192:923609016", "4006381333931", "PO-42", "1250,50",
 		"Retail", "Key|VIP",
 		fmt.Sprint(fjord.Id), "Kari Nordmann", stamp, stamp,
 	}
+	body := exportCSV(t, c, "").Body
+	header, rows := exportTable(t, body)
+	if len(rows) != 2 || len(rows[0]) != len(header) {
+		t.Fatalf("the export has %d rows (want 2), its first %d cells for %d columns:\n%s", len(rows), len(rows[0]), len(header), body)
+	}
+	for i, column := range strings.Split(exportHeader, ";") {
+		if fjordCells[i] == "" {
+			t.Fatalf("the fixture leaves %s blank; every cell of the full row must be filled", column)
+		}
+		if header[i] != column || rows[0][i] != fjordCells[i] {
+			t.Errorf("cell %d: %s = %q, want %s = %q", i+1, header[i], rows[0][i], column, fjordCells[i])
+		}
+	}
+
+	// The bytes: fjordCells as the file writes them — only the name needs
+	// quoting (the guard's apostrophe is already in the phone cell).
+	fjordRow := slices.Clone(fjordCells)
+	fjordRow[1] = `"Fjord; ""Nord"" AS"`
 	bareRow := append([]string{fmt.Sprint(bare.CustomerNumber), "'=Formel AS", "business", "active"}, make([]string, 32)...)
 	bareRow = append(bareRow, fmt.Sprint(bare.Id), "", stamp, stamp)
 	want := csvBOM + strings.Join([]string{
-		importableHeader + ";id;ownerName;createdAt;updatedAt",
+		exportHeader,
 		strings.Join(fjordRow, ";"),
 		strings.Join(bareRow, ";"),
 		"",
 	}, "\r\n")
 
-	if got := string(exportCSV(t, c, "").Body); got != want {
+	if got := string(body); got != want {
 		t.Errorf("the export is\n%q\nwant\n%q", got, want)
 	}
 }
@@ -171,8 +208,12 @@ func TestGetCustomersExport_LegalIdentityColumnsAreAbsentWithoutLegalIdentityVie
 	legal := []string{"legalCountry", "legalType", "legalId", "legalName"}
 
 	header, rows := exportTable(t, exportCSV(t, owner, "").Body)
-	if len(header) != 40 || rows[0][slices.Index(header, "legalId")] != "923609016" {
-		t.Errorf("with legal-identity-view: %d columns, legalId %q; want 40 and 923609016", len(header), rows[0][slices.Index(header, "legalId")])
+	at := slices.Index(header, "legalId")
+	if len(header) != 40 || at < 0 || len(rows) != 1 {
+		t.Fatalf("with legal-identity-view: header %q, %d rows; want 40 columns with legalId and one row", header, len(rows))
+	}
+	if rows[0][at] != "923609016" {
+		t.Errorf("with legal-identity-view: legalId %q, want 923609016", rows[0][at])
 	}
 
 	viewer := h.SignIn(t, "customers:view")
