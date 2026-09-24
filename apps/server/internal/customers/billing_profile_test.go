@@ -34,6 +34,7 @@ type billingProfileJSON struct {
 	PeppolId         *string           `json:"peppolId"`
 	Gln              *string           `json:"gln"`
 	BuyerReference   *string           `json:"buyerReference"`
+	DefaultBillRate  *float64          `json:"defaultBillRate"`
 	Revision         int32             `json:"revision"`
 	Warnings         []string          `json:"warnings"`
 	PeppolLookup     *peppolLookupJSON `json:"peppolLookup"`
@@ -79,7 +80,7 @@ func TestGetCustomersByIdBillingProfile_FreshCustomer_AllNullWithNoInvoiceAddres
 	got := fetchBillingProfile(t, c, created.Id)
 	if got.InvoiceEmail != nil || got.ReminderEmail != nil || got.PaymentTermsDays != nil ||
 		got.Currency != nil || got.Language != nil || got.InvoiceDelivery != nil || got.ReminderDelivery != nil ||
-		got.PeppolId != nil || got.Gln != nil || got.BuyerReference != nil {
+		got.PeppolId != nil || got.Gln != nil || got.BuyerReference != nil || got.DefaultBillRate != nil {
 		t.Errorf("profile = %+v, want every field null", got)
 	}
 	if got.Revision != 1 {
@@ -127,7 +128,7 @@ func TestPutCustomersByIdBillingProfile_SetsEveryField_ShowsInGet(t *testing.T) 
 		"invoiceEmail": "invoice@fullbilling.co", "reminderEmail": "reminders@fullbilling.co",
 		"paymentTermsDays": 30, "currency": "nok", "language": "NB",
 		"invoiceDelivery": "EHF", "reminderDelivery": "Email",
-		"peppolId": "0192:923609016", "gln": "4006381333931", "buyerReference": "PO-42",
+		"peppolId": "0192:923609016", "gln": "4006381333931", "buyerReference": "PO-42", "defaultBillRate": 1250.5,
 	}
 	r := putBillingProfile(t, c, created.Id, body)
 	if r.Status != http.StatusOK {
@@ -166,6 +167,9 @@ func TestPutCustomersByIdBillingProfile_SetsEveryField_ShowsInGet(t *testing.T) 
 		if p.BuyerReference == nil || *p.BuyerReference != "PO-42" {
 			t.Errorf("BuyerReference = %v, want PO-42", p.BuyerReference)
 		}
+		if p.DefaultBillRate == nil || *p.DefaultBillRate != 1250.5 {
+			t.Errorf("DefaultBillRate = %v, want 1250.5", p.DefaultBillRate)
+		}
 	}
 	want(updated)
 	want(fetchBillingProfile(t, c, created.Id))
@@ -190,20 +194,20 @@ func TestPutCustomersByIdBillingProfile_BlankAndAbsentFieldsClearToNull(t *testi
 	created := createCustomer(t, c, "Clearable Billing Co")
 
 	r := putBillingProfile(t, c, created.Id, map[string]any{
-		"invoiceEmail": "invoice@clearable.co", "currency": "NOK", "buyerReference": "PO-1",
+		"invoiceEmail": "invoice@clearable.co", "currency": "NOK", "buyerReference": "PO-1", "defaultBillRate": 900,
 	})
 	if r.Status != http.StatusOK {
 		t.Fatalf("set: status %d body %s, want 200", r.Status, r.Body)
 	}
 
-	r = putBillingProfile(t, c, created.Id, map[string]any{"invoiceEmail": "   ", "currency": "", "buyerReference": nil})
+	r = putBillingProfile(t, c, created.Id, map[string]any{"invoiceEmail": "   ", "currency": "", "buyerReference": nil, "defaultBillRate": nil})
 	if r.Status != http.StatusOK {
 		t.Fatalf("clear with blank/null: status %d body %s, want 200", r.Status, r.Body)
 	}
 	var cleared billingProfileJSON
 	r.JSON(&cleared)
-	if cleared.InvoiceEmail != nil || cleared.Currency != nil || cleared.BuyerReference != nil {
-		t.Errorf("profile = %+v, want invoiceEmail/currency/buyerReference cleared to null", cleared)
+	if cleared.InvoiceEmail != nil || cleared.Currency != nil || cleared.BuyerReference != nil || cleared.DefaultBillRate != nil {
+		t.Errorf("profile = %+v, want invoiceEmail/currency/buyerReference/defaultBillRate cleared to null", cleared)
 	}
 
 	// Re-set, then clear by omitting every field entirely: absent must mean
@@ -256,6 +260,78 @@ func TestPutCustomersByIdBillingProfile_InvalidCurrency_ReturnsBadRequest(t *tes
 	want := "A currency must be a three-letter ISO 4217 code, but was 'US'"
 	if msgs := problem.Errors["currency"]; len(msgs) != 1 || msgs[0] != want {
 		t.Errorf("errors[currency] = %v, want [%q]", msgs, want)
+	}
+}
+
+// TestPutCustomersByIdBillingProfile_InvalidDefaultBillRate_ReturnsBadRequest
+// is D1's rule for the rate itself, one case per way to break it, each sent
+// with the currency it needs so the rate is the only thing wrong — and none
+// of them writes anything.
+func TestPutCustomersByIdBillingProfile_InvalidDefaultBillRate_ReturnsBadRequest(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	created := createCustomer(t, c, "Bad Rate Co")
+
+	for _, tc := range []struct {
+		rate any
+		want string
+	}{
+		{0, "A default bill rate must be greater than zero, but was 0"},
+		{-100, "A default bill rate must be greater than zero, but was -100"},
+		{12.345, "A default bill rate must have at most two decimals, but was 12.345"},
+		{10000000000, "A default bill rate must be at most 9999999999.99, but was 10000000000"},
+	} {
+		r := putBillingProfile(t, c, created.Id, map[string]any{"currency": "NOK", "defaultBillRate": tc.rate})
+		if r.Status != http.StatusBadRequest {
+			t.Fatalf("rate %v: status %d body %s, want 400", tc.rate, r.Status, r.Body)
+		}
+		var problem validationProblemJSON
+		r.JSON(&problem)
+		if msgs := problem.Errors["defaultBillRate"]; len(msgs) != 1 || msgs[0] != tc.want {
+			t.Errorf("rate %v: errors[defaultBillRate] = %v, want [%q]", tc.rate, msgs, tc.want)
+		}
+	}
+	if got := fetchBillingProfile(t, c, created.Id); got.DefaultBillRate != nil || got.Currency != nil || got.Revision != 1 {
+		t.Errorf("profile = %+v, want nothing written by a refused PUT", got)
+	}
+}
+
+// TestPutCustomersByIdBillingProfile_DefaultBillRateWithoutCurrency_ReturnsBadRequest
+// is D1's currency rule over HTTP: a rate with no currency to be quoted in is
+// a 400 on defaultBillRate, and because the PUT is a full replace, clearing
+// the currency while sending the rate is the same refusal — leaving the
+// stored pair as it was.
+func TestPutCustomersByIdBillingProfile_DefaultBillRateWithoutCurrency_ReturnsBadRequest(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	created := createCustomer(t, c, "Rate Without Currency Co")
+	want := "A default bill rate needs the billing profile's currency to be quoted in"
+
+	refused := func(what string) {
+		t.Helper()
+		r := putBillingProfile(t, c, created.Id, map[string]any{"defaultBillRate": 1250})
+		if r.Status != http.StatusBadRequest {
+			t.Fatalf("%s: status %d body %s, want 400", what, r.Status, r.Body)
+		}
+		var problem validationProblemJSON
+		r.JSON(&problem)
+		if msgs := problem.Errors["defaultBillRate"]; len(msgs) != 1 || msgs[0] != want {
+			t.Errorf("%s: errors[defaultBillRate] = %v, want [%q]", what, msgs, want)
+		}
+	}
+
+	refused("no currency ever set")
+
+	if r := putBillingProfile(t, c, created.Id, map[string]any{"currency": "NOK", "defaultBillRate": 1250}); r.Status != http.StatusOK {
+		t.Fatalf("set: status %d body %s, want 200", r.Status, r.Body)
+	}
+	refused("currency cleared by the full replace")
+
+	got := fetchBillingProfile(t, c, created.Id)
+	if got.Currency == nil || *got.Currency != "NOK" || got.DefaultBillRate == nil || *got.DefaultBillRate != 1250 || got.Revision != 2 {
+		t.Errorf("profile = %+v, want NOK 1250 at revision 2, untouched by the refusal", got)
 	}
 }
 
@@ -543,6 +619,72 @@ func TestPutCustomersByIdBillingProfile_ChangesFields_BumpsRevisionAndRecordsEve
 	}
 }
 
+// TestPutCustomersByIdBillingProfile_DefaultBillRate_ChangesAreWrittenAndRecordedResubmitsAreNot
+// proves the rate is a full member of the profile's write path (customers
+// bill-rate design D1): a PUT that changes only the rate is a real write — one
+// revision, one event whose changes name defaultBillRate alone, payload version
+// still 1 — resubmitting the same rate writes nothing, and omitting it clears
+// it, recorded the same way.
+func TestPutCustomersByIdBillingProfile_DefaultBillRate_ChangesAreWrittenAndRecordedResubmitsAreNot(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	created := createCustomer(t, c, "Rate Changes Co")
+	const eventType = "customer.billing_profile_updated"
+
+	rateChange := func() map[string]any {
+		t.Helper()
+		event := fetchTimelineEvent(t, h, created.Id, eventType)
+		if event.PayloadVersion != 1 {
+			t.Errorf("payload_version = %d, want 1: an added optional field is not a new shape", event.PayloadVersion)
+		}
+		changes, _ := event.Payload["changes"].(map[string]any)
+		if len(changes) != 1 {
+			t.Errorf("changes = %v, want defaultBillRate alone", changes)
+		}
+		change, _ := changes["defaultBillRate"].(map[string]any)
+		return change
+	}
+
+	if r := putBillingProfile(t, c, created.Id, map[string]any{"currency": "NOK", "defaultBillRate": 1250.5}); r.Status != http.StatusOK {
+		t.Fatalf("set: status %d body %s, want 200", r.Status, r.Body)
+	}
+	h.Advance(time.Second)
+
+	r := putBillingProfile(t, c, created.Id, map[string]any{"currency": "NOK", "defaultBillRate": 1300, "revision": 2})
+	if r.Status != http.StatusOK {
+		t.Fatalf("change: status %d body %s, want 200", r.Status, r.Body)
+	}
+	var changed billingProfileJSON
+	r.JSON(&changed)
+	if changed.Revision != 3 || changed.DefaultBillRate == nil || *changed.DefaultBillRate != 1300 {
+		t.Errorf("changed = %+v, want 1300 at revision 3", changed)
+	}
+	if change := rateChange(); change["before"] != 1250.5 || change["after"] != float64(1300) {
+		t.Errorf("changes.defaultBillRate = %v, want before 1250.5, after 1300", change)
+	}
+
+	if r := putBillingProfile(t, c, created.Id, map[string]any{"currency": "NOK", "defaultBillRate": 1300, "revision": 3}); r.Status != http.StatusOK {
+		t.Fatalf("resubmit: status %d body %s, want 200", r.Status, r.Body)
+	}
+	if got := fetchBillingProfile(t, c, created.Id); got.Revision != 3 {
+		t.Errorf("revision after resubmitting the same rate = %d, want 3 (a no-op writes nothing)", got.Revision)
+	}
+	if n := countTimelineEvents(t, h, created.Id, eventType); n != 2 {
+		t.Errorf("%s events = %d, want 2", eventType, n)
+	}
+
+	if r := putBillingProfile(t, c, created.Id, map[string]any{"currency": "NOK", "revision": 3}); r.Status != http.StatusOK {
+		t.Fatalf("clear: status %d body %s, want 200", r.Status, r.Body)
+	}
+	if got := fetchBillingProfile(t, c, created.Id); got.DefaultBillRate != nil || got.Currency == nil || *got.Currency != "NOK" {
+		t.Errorf("profile = %+v, want the rate cleared by omission and NOK kept", got)
+	}
+	if change := rateChange(); change["before"] != float64(1300) || change["after"] != nil {
+		t.Errorf("changes.defaultBillRate = %v, want before 1300, after nil", change)
+	}
+}
+
 func TestPutCustomersByIdBillingProfile_WhenCustomerDoesNotExist_ReturnsNotFound(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -587,7 +729,7 @@ func TestGetCustomer_ResponseNeverCarriesBillingFields(t *testing.T) {
 	created := createCustomer(t, c, "Billing Not Leaked Co")
 
 	r := putBillingProfile(t, c, created.Id, map[string]any{
-		"currency": "NOK", "invoiceEmail": "invoice@notleaked.co", "gln": "4006381333931",
+		"currency": "NOK", "invoiceEmail": "invoice@notleaked.co", "gln": "4006381333931", "defaultBillRate": 1250,
 	})
 	if r.Status != http.StatusOK {
 		t.Fatalf("set billing profile: status %d body %s, want 200", r.Status, r.Body)
@@ -597,7 +739,7 @@ func TestGetCustomer_ResponseNeverCarriesBillingFields(t *testing.T) {
 	if getR.Status != http.StatusOK {
 		t.Fatalf("get customer: status %d body %s, want 200", getR.Status, getR.Body)
 	}
-	if body := getR.Body; containsAny(body, "invoiceEmail", "\"gln\"", "peppolId", "buyerReference", "paymentTermsDays") {
+	if body := getR.Body; containsAny(body, "invoiceEmail", "\"gln\"", "peppolId", "buyerReference", "paymentTermsDays", "defaultBillRate") {
 		t.Errorf("GET /customers/{id} body leaks a billing field: %s", body)
 	}
 
@@ -605,7 +747,7 @@ func TestGetCustomer_ResponseNeverCarriesBillingFields(t *testing.T) {
 	if rawList.Status != http.StatusOK {
 		t.Fatalf("list customers: status %d body %s, want 200", rawList.Status, rawList.Body)
 	}
-	if body := rawList.Body; containsAny(body, "invoiceEmail", "\"gln\"", "peppolId", "buyerReference", "paymentTermsDays") {
+	if body := rawList.Body; containsAny(body, "invoiceEmail", "\"gln\"", "peppolId", "buyerReference", "paymentTermsDays", "defaultBillRate") {
 		t.Errorf("GET /customers body leaks a billing field: %s", body)
 	}
 }

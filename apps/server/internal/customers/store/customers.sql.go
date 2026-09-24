@@ -447,7 +447,7 @@ const directoryBillingProfile = `-- name: DirectoryBillingProfile :one
 SELECT c.id, c.customer_number, c.name, c.type, c.status = 'archived' AS archived,
        c.legal_country, c.legal_id, c.legal_name, c.legal_source, c.legal_type, c.email,
        c.invoice_email, c.reminder_email, c.payment_terms_days, c.currency, c.language,
-       c.invoice_delivery, c.reminder_delivery, c.peppol_id, c.gln, c.buyer_reference,
+       c.invoice_delivery, c.reminder_delivery, c.peppol_id, c.gln, c.buyer_reference, c.default_bill_rate,
        g.default_payment_terms_days AS group_default_payment_terms_days
 FROM customers.customers c
 LEFT JOIN customers.customer_groups g ON g.id = c.group_id
@@ -476,13 +476,14 @@ type DirectoryBillingProfileRow struct {
 	PeppolID                     *string
 	Gln                          *string
 	BuyerReference               *string
+	DefaultBillRate              pgtype.Numeric
 	GroupDefaultPaymentTermsDays *int32
 }
 
 // DirectoryBillingProfile is contracts.CustomerDirectory.BillingProfile's
 // customer row (invoice-ready customer design D5): identity (all five
 // columns, so identityFromRow's all-or-none invariant holds the same way it
-// does everywhere else this module reads it), contact email and the ten
+// does everywhere else this module reads it), contact email and the eleven
 // billing columns GetCustomerBillingProfile itself selects, plus
 // customer_number and status — what resolveBillingProfile (directory.go)
 // needs to fill in every field of contracts.CustomerBillingProfile except
@@ -520,6 +521,7 @@ func (q *Queries) DirectoryBillingProfile(ctx context.Context, id int32) (Direct
 		&i.PeppolID,
 		&i.Gln,
 		&i.BuyerReference,
+		&i.DefaultBillRate,
 		&i.GroupDefaultPaymentTermsDays,
 	)
 	return i, err
@@ -758,7 +760,7 @@ func (q *Queries) GetCustomer(ctx context.Context, id int32) (GetCustomerRow, er
 const getCustomerBillingProfile = `-- name: GetCustomerBillingProfile :one
 SELECT id, revision, type, legal_country, legal_id, legal_name, legal_source, legal_type, email,
        invoice_email, reminder_email, payment_terms_days, currency, language,
-       invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference
+       invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference, default_bill_rate
 FROM customers.customers
 WHERE id = $1
 `
@@ -783,17 +785,18 @@ type GetCustomerBillingProfileRow struct {
 	PeppolID         *string
 	Gln              *string
 	BuyerReference   *string
+	DefaultBillRate  pgtype.Numeric
 }
 
 // GetCustomerBillingProfile is GET /customers/{id}/billing-profile's read
-// (invoice-ready customer design D1, D4): the ten billing columns plus
-// everything billingWarnings (billing_profile.go) needs to compute its
-// warnings at read time — the customer's type and legal identity (the
-// ehf_without_recipient check) and its own contact-info email (the
-// email_without_address check) — in one round trip, without ever adding a
-// billing column to GetCustomer/ListCustomers's own SELECT list (the
-// controller ruling: the billing profile must never reach
-// SafeCustomerResponse).
+// (invoice-ready customer design D1, D4): the eleven billing columns — the
+// default bill rate (customers bill-rate design D1) last — plus everything
+// billingWarnings (billing_profile.go) needs to compute its warnings at read
+// time — the customer's type and legal identity (the ehf_without_recipient
+// check) and its own contact-info email (the email_without_address check) — in
+// one round trip, without ever adding a billing column to
+// GetCustomer/ListCustomers's own SELECT list (the controller ruling: the
+// billing profile must never reach SafeCustomerResponse).
 func (q *Queries) GetCustomerBillingProfile(ctx context.Context, id int32) (GetCustomerBillingProfileRow, error) {
 	row := q.db.QueryRow(ctx, getCustomerBillingProfile, id)
 	var i GetCustomerBillingProfileRow
@@ -817,6 +820,7 @@ func (q *Queries) GetCustomerBillingProfile(ctx context.Context, id int32) (GetC
 		&i.PeppolID,
 		&i.Gln,
 		&i.BuyerReference,
+		&i.DefaultBillRate,
 	)
 	return i, err
 }
@@ -1439,13 +1443,14 @@ SET invoice_email = $1,
     peppol_id = $8,
     gln = $9,
     buyer_reference = $10,
-    updated_at = $11::timestamptz,
+    default_bill_rate = $11,
+    updated_at = $12::timestamptz,
     revision = revision + 1
-WHERE id = $12
-  AND ($13::int IS NULL OR revision = $13::int)
+WHERE id = $13
+  AND ($14::int IS NULL OR revision = $14::int)
 RETURNING id, revision, type, legal_country, legal_id, legal_name, legal_source, legal_type, email,
           invoice_email, reminder_email, payment_terms_days, currency, language,
-          invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference
+          invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference, default_bill_rate
 `
 
 type UpdateCustomerBillingProfileParams struct {
@@ -1459,6 +1464,7 @@ type UpdateCustomerBillingProfileParams struct {
 	PeppolID         *string
 	Gln              *string
 	BuyerReference   *string
+	DefaultBillRate  pgtype.Numeric
 	UpdatedAt        time.Time
 	ID               int32
 	ExpectedRevision *int32
@@ -1484,10 +1490,11 @@ type UpdateCustomerBillingProfileRow struct {
 	PeppolID         *string
 	Gln              *string
 	BuyerReference   *string
+	DefaultBillRate  pgtype.Numeric
 }
 
 // UpdateCustomerBillingProfile is PUT /customers/{id}/billing-profile's
-// write (invoice-ready customer design D1, D4): a full replace of the ten
+// write (invoice-ready customer design D1, D4): a full replace of the eleven
 // billing columns only — name, status, type and the legal identity are
 // untouched, since this sub-resource never writes them. Guarded and
 // revision-bumping exactly like UpdateCustomerContactInfo above; RETURNING
@@ -1505,6 +1512,7 @@ func (q *Queries) UpdateCustomerBillingProfile(ctx context.Context, arg UpdateCu
 		arg.PeppolID,
 		arg.Gln,
 		arg.BuyerReference,
+		arg.DefaultBillRate,
 		arg.UpdatedAt,
 		arg.ID,
 		arg.ExpectedRevision,
@@ -1530,6 +1538,7 @@ func (q *Queries) UpdateCustomerBillingProfile(ctx context.Context, arg UpdateCu
 		&i.PeppolID,
 		&i.Gln,
 		&i.BuyerReference,
+		&i.DefaultBillRate,
 	)
 	return i, err
 }

@@ -583,6 +583,20 @@ func TestCustomersBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		t.Errorf("default_payment_terms_days CHECK constraints = %d, want 1", groupTermsChecks)
 	}
 
+	// default_bill_rate (00028) is money at the rate chain's own scale —
+	// numeric(12,2), the project default's and time's rates' — and nullable,
+	// NULL being "no rate decided here". Another scale would round a rate on
+	// its way from one step of the chain to the next.
+	var billRateColumn string
+	if err := pool.QueryRow(ctx, `SELECT coalesce(max(data_type || ':' || numeric_precision || ',' || numeric_scale || ':' || is_nullable), 'MISSING')
+	                              FROM information_schema.columns
+	                              WHERE table_schema = 'customers' AND table_name = 'customers' AND column_name = 'default_bill_rate'`).Scan(&billRateColumn); err != nil {
+		t.Fatalf("read customers.default_bill_rate: %v", err)
+	}
+	if billRateColumn != "numeric:12,2:YES" {
+		t.Errorf("customers.default_bill_rate = %q, want %q", billRateColumn, "numeric:12,2:YES")
+	}
+
 	var tenantIDColumns int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_schema = 'customers' AND column_name = 'tenant_id'`).Scan(&tenantIDColumns); err != nil {
 		t.Fatalf("count tenant_id columns: %v", err)

@@ -160,8 +160,9 @@ func (w *PeppolRecheckWorker) RunCycle(ctx context.Context) (bool, error) {
 			if ctx.Err() != nil {
 				return nil
 			}
+			// No rate: the profile is read here for its Peppol participant alone.
 			profile := billingProfileFromRow(row.InvoiceEmail, row.ReminderEmail, row.PaymentTermsDays,
-				row.Currency, row.Language, row.InvoiceDelivery, row.ReminderDelivery, row.PeppolID, row.Gln, row.BuyerReference)
+				row.Currency, row.Language, row.InvoiceDelivery, row.ReminderDelivery, row.PeppolID, row.Gln, row.BuyerReference, nil)
 			identity := identityFromRow(row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType)
 			participant, _ := lookupParticipant(profile, identity, row.Type)
 			if participant == "" {
@@ -195,8 +196,9 @@ func (w *PeppolRecheckWorker) RunCycle(ctx context.Context) (bool, error) {
 			if ctx.Err() != nil {
 				return nil
 			}
+			// No rate: the profile is read here for its Peppol participant alone.
 			profile := billingProfileFromRow(row.InvoiceEmail, row.ReminderEmail, row.PaymentTermsDays,
-				row.Currency, row.Language, row.InvoiceDelivery, row.ReminderDelivery, row.PeppolID, row.Gln, row.BuyerReference)
+				row.Currency, row.Language, row.InvoiceDelivery, row.ReminderDelivery, row.PeppolID, row.Gln, row.BuyerReference, nil)
 			identity := identityFromRow(row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType)
 			participant, _ := lookupParticipant(profile, identity, row.Type)
 			// The participant rule (design D6, this file's header): only a lookup

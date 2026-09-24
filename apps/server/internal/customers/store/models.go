@@ -57,6 +57,7 @@ type CustomersCustomer struct {
 	BuyerReference   *string
 	OwnerUserID      *uuid.UUID
 	GroupID          *uuid.UUID
+	DefaultBillRate  pgtype.Numeric
 }
 
 type CustomersCustomerAddress struct {

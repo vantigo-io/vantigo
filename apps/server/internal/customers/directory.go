@@ -147,8 +147,12 @@ func (d *directory) BillingProfile(ctx context.Context, id int32) (*contracts.Cu
 		}
 	}
 
+	defaultBillRate, err := floatPtrFromNumeric(row.DefaultBillRate)
+	if err != nil {
+		return nil, err
+	}
 	profile := billingProfileFromRow(row.InvoiceEmail, row.ReminderEmail, row.PaymentTermsDays,
-		row.Currency, row.Language, row.InvoiceDelivery, row.ReminderDelivery, row.PeppolID, row.Gln, row.BuyerReference)
+		row.Currency, row.Language, row.InvoiceDelivery, row.ReminderDelivery, row.PeppolID, row.Gln, row.BuyerReference, defaultBillRate)
 	identity := identityFromRow(row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType)
 
 	return resolveBillingProfile(row.ID, row.CustomerNumber, row.Name, row.Type, row.Archived,
