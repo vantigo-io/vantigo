@@ -346,7 +346,7 @@ func (s *server) PostCustomersByIdAddresses(ctx context.Context, req gen.PostCus
 	var created store.CustomersCustomerAddress
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
-		if _, err := txq.LockCustomer(ctx, req.Id); err != nil {
+		if _, err := lockWritableCustomer(ctx, txq, req.Id); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return errCustomerNotFound
 			}
@@ -357,6 +357,8 @@ func (s *server) PostCustomersByIdAddresses(ctx context.Context, req gen.PostCus
 		return err
 	})
 	switch {
+	case isMergedAway(err):
+		return gen.PostCustomersByIdAddresses409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
 	case errors.Is(err, errCustomerNotFound):
 		return gen.PostCustomersByIdAddresses404Response{}, nil
 	case errors.Is(err, errAddressCapReached):
@@ -427,7 +429,7 @@ func (s *server) PutCustomersByIdAddressesByAddressId(ctx context.Context, req g
 	var updated store.CustomersCustomerAddress
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
-		if _, err := txq.LockCustomer(ctx, req.Id); err != nil {
+		if _, err := lockWritableCustomer(ctx, txq, req.Id); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return errCustomerNotFound
 			}
@@ -445,6 +447,8 @@ func (s *server) PutCustomersByIdAddressesByAddressId(ctx context.Context, req g
 		return err
 	})
 	switch {
+	case isMergedAway(err):
+		return gen.PutCustomersByIdAddressesByAddressId409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
 	case errors.Is(err, errCustomerNotFound):
 		return gen.PutCustomersByIdAddressesByAddressId404Response{}, nil
 	case errors.Is(err, errPrimaryTransitionRefused):
@@ -478,7 +482,7 @@ func (s *server) DeleteCustomersByIdAddressesByAddressId(ctx context.Context, re
 	now := s.deps.Clock()
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
-		if _, err := txq.LockCustomer(ctx, req.Id); err != nil {
+		if _, err := lockWritableCustomer(ctx, txq, req.Id); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return errCustomerNotFound
 			}
@@ -495,6 +499,8 @@ func (s *server) DeleteCustomersByIdAddressesByAddressId(ctx context.Context, re
 		return removeAddress(ctx, txq, req.Id, existing, now, act)
 	})
 	switch {
+	case isMergedAway(err):
+		return gen.DeleteCustomersByIdAddressesByAddressId409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
 	case errors.Is(err, errCustomerNotFound):
 		return gen.DeleteCustomersByIdAddressesByAddressId404Response{}, nil
 	case err != nil:

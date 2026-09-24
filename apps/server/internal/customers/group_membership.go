@@ -67,6 +67,11 @@ func groupNotFound(id uuid.UUID) string {
 // holds the customer's row lock, so a move by file and a move by hand are one
 // event of one shape.
 func writeCustomerGroup(ctx context.Context, txq *store.Queries, id int32, before, after *groupSnapshot, expectedRevision *int32, now time.Time, act actor) (store.SetCustomerGroupRow, error) {
+	// The customer's lock and the merged-away refusal first (customers merge
+	// design D2): every caller, the CSV importer's included, gets both.
+	if _, err := lockWritableCustomer(ctx, txq, id); err != nil {
+		return store.SetCustomerGroupRow{}, err
+	}
 	var groupID *uuid.UUID
 	if after != nil {
 		groupID = &after.GroupID
@@ -244,6 +249,8 @@ func (s *server) PutCustomersByIdGroup(ctx context.Context, req gen.PutCustomers
 			return err
 		})
 		switch {
+		case isMergedAway(err):
+			return gen.PutCustomersByIdGroup409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
 		case errors.Is(err, pgx.ErrNoRows):
 			// The guarded UPDATE matched no row: a concurrent writer moved the
 			// revision between the reads above and this write. Without a

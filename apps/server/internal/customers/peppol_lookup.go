@@ -184,8 +184,8 @@ type peppolLookupOutcome struct {
 
 // lookupAndStorePeppol asks the Peppol network about participant and remembers
 // the answer: the network call bounded by Config.PeppolTimeout and OUTSIDE any
-// transaction, then one transaction with a locked read of the stored row, the
-// upsert, and the customer.peppol_lookup event only when the answer changed
+// transaction, then one transaction with the customer's lock, a locked read of
+// the stored row, the upsert, and the customer.peppol_lookup event only when the answer changed
 // (design D3's controller ruling, unchanged).
 //
 // It is one function because there are two callers and there must be exactly
@@ -233,6 +233,14 @@ func (s *server) lookupAndStorePeppol(ctx context.Context, customerID int32, par
 	)
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
+		// The customer's lock before the lookup row's, as every customer-scoped
+		// write takes it: the lookup row's own lock does not fence a merge, which
+		// deletes the absorbed customer's answer and moves its timeline. Queued
+		// behind one, this finds the customer merged away and stores nothing
+		// (customer_merged) — the survivor's own answer is the one that counts.
+		if _, err := lockWritableCustomer(ctx, txq, customerID); err != nil {
+			return err
+		}
 		var perr error
 		previous, perr = txq.GetCustomerPeppolLookupForUpdate(ctx, customerID)
 		switch {
@@ -278,7 +286,8 @@ func (s *server) lookupAndStorePeppol(ctx context.Context, customerID int32, par
 // Ordering (design D3's controller ruling): 404 (the same
 // GetCustomerBillingProfile read GET .../billing-profile uses, which also
 // gives the type, identity and peppolId a participant is resolved from) →
-// 503 when the feature is disabled → decide the participant, answering
+// 409 customer_merged for a customer merged away (customers merge design D2,
+// and again under the lock) → 503 when the feature is disabled → decide the participant, answering
 // no_identifier immediately with nothing stored and no network call when
 // there is none → resolve the timeline actor → the network call itself,
 // outside any transaction, bounded by Config.PeppolTimeout → 502 on
@@ -300,6 +309,14 @@ func (s *server) PostCustomersByIdPeppolLookup(ctx context.Context, req gen.Post
 	}
 	if err != nil {
 		return nil, fmt.Errorf("customers: get customer billing profile: %w", err)
+	}
+
+	// Before the network is asked: a merged-away customer's answer would be
+	// refused under the lock anyway (lookupAndStorePeppol).
+	if err := refuseMergedAway(ctx, q, req.Id); isMergedAway(err) {
+		return gen.PostCustomersByIdPeppolLookup409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
+	} else if err != nil {
+		return nil, err
 	}
 
 	if s.peppolLookup == nil {
@@ -334,6 +351,9 @@ func (s *server) PostCustomersByIdPeppolLookup(ctx context.Context, req gen.Post
 	if errors.Is(err, errPeppolLookupUnavailable) {
 		// Already logged by kind inside lookupAndStorePeppol.
 		return peppolLookupUnavailableResponse(), nil
+	}
+	if isMergedAway(err) {
+		return gen.PostCustomersByIdPeppolLookup409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
 	}
 	if err != nil {
 		return nil, err

@@ -613,9 +613,9 @@ func (w *RegistryFeedWorker) refresh(ctx context.Context, customerID int32, cust
 	}
 	result, err := w.srv.refreshRegistryRecord(ctx, customerID, orgnr, identity.Name, generatedFallbackActor)
 	if err != nil {
-		if errors.Is(err, errCustomerNotFound) || errors.Is(err, pgx.ErrNoRows) {
-			// Archived or gone between the select and here: nothing to refresh
-			// and nothing wrong.
+		if errors.Is(err, errCustomerNotFound) || errors.Is(err, pgx.ErrNoRows) || isMergedAway(err) {
+			// Archived, merged away or gone between the select and here: nothing
+			// to refresh and nothing wrong.
 			return refreshSkipped
 		}
 		if errors.Is(err, errRegistryIdentityChanged) {

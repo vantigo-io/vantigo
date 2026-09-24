@@ -242,6 +242,11 @@ func (s *server) resolvedPeppolLookupFor(ctx context.Context, q *store.Queries, 
 // differ. The rate's conversion fails only for a value JSON cannot carry, and
 // is an error, never a NULL.
 func writeBillingProfile(ctx context.Context, txq *store.Queries, id int32, before, after billingProfile, expectedRevision *int32, now time.Time, act actor) (store.UpdateCustomerBillingProfileRow, error) {
+	// The customer's lock and the merged-away refusal first (customers merge
+	// design D2): every caller, the CSV importer's included, gets both.
+	if _, err := lockWritableCustomer(ctx, txq, id); err != nil {
+		return store.UpdateCustomerBillingProfileRow{}, err
+	}
 	defaultBillRate, err := numericFromFloatPtr(after.DefaultBillRate)
 	if err != nil {
 		return store.UpdateCustomerBillingProfileRow{}, err
@@ -343,6 +348,8 @@ func (s *server) PutCustomersByIdBillingProfile(ctx context.Context, req gen.Put
 		return err
 	})
 	switch {
+	case isMergedAway(err):
+		return gen.PutCustomersByIdBillingProfile409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
 	case errors.Is(err, pgx.ErrNoRows):
 		// The guarded UPDATE's WHERE clause matched no row: a concurrent writer
 		// moved the revision between our read above and this write, the same

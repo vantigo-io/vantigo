@@ -633,8 +633,10 @@ func (s *server) PostCustomersByIdContacts(ctx context.Context, req gen.PostCust
 			// The customer row's lock comes first, before the contact's: every
 			// write that touches customer_contact_roles takes it (typed
 			// contact roles design D2), and it is also this handler's
-			// existence check, replacing the plain GetCustomer it used to make.
-			customer, err := txq.LockCustomer(ctx, req.Id)
+			// existence check, replacing the plain GetCustomer it used to make —
+			// and, since a merge takes it too, what refuses an attach that
+			// queued behind the merge of this customer (customer_merged).
+			customer, err := lockWritableCustomer(ctx, txq, req.Id)
 			if errors.Is(err, pgx.ErrNoRows) {
 				return errAssociationTargetNotFound
 			}
@@ -685,11 +687,15 @@ func (s *server) PostCustomersByIdContacts(ctx context.Context, req gen.PostCust
 	})
 	var refused errRolePrimaryTransitionRefused
 	switch {
+	case isMergedAway(err):
+		return gen.PostCustomersByIdContacts409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
 	case errors.Is(err, errAssociationTargetNotFound):
 		return gen.PostCustomersByIdContacts404Response{}, nil
 	case errors.Is(err, errAlreadyAttached):
 		detail := fmt.Sprintf("Contact %d is already associated with customer %d.", body.ContactId, req.Id)
-		return gen.PostCustomersByIdContacts409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus("Contact already associated", detail, http.StatusConflict)), nil
+		title := "Contact already associated"
+		status := int32(http.StatusConflict)
+		return gen.PostCustomersByIdContacts409ApplicationProblemPlusJSONResponse(gen.CustomerConflictProblem{Title: &title, Detail: &detail, Status: &status}), nil
 	case errors.As(err, &refused):
 		// Unreachable on an attach — nothing is held yet, so no primary can be
 		// cleared — but handled rather than falling into the 500 below, because
@@ -728,6 +734,13 @@ func (s *server) PutCustomersByIdContactsByContactId(ctx context.Context, req ge
 	q := store.New(s.deps.Pool)
 	existing, err := q.GetAssociationWithContact(ctx, store.GetAssociationWithContactParams{CustomerID: req.Id, ContactID: req.ContactId})
 	if errors.Is(err, pgx.ErrNoRows) {
+		// Missing, perhaps because it moved with a merge of this customer: the
+		// merged-away customer's refusal is the truer answer then.
+		if merr := refuseMergedAway(ctx, q, req.Id); isMergedAway(merr) {
+			return gen.PutCustomersByIdContactsByContactId409ApplicationProblemPlusJSONResponse(mergedAwayProblem(merr)), nil
+		} else if merr != nil {
+			return nil, merr
+		}
 		return gen.PutCustomersByIdContactsByContactId404Response{}, nil
 	}
 	if err != nil {
@@ -833,7 +846,7 @@ func (s *server) PutCustomersByIdContactsByContactId(ctx context.Context, req ge
 	err = db.RetrySerializable(ctx, contactRoleWriteAttempts, func() error {
 		return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			txq := store.New(tx)
-			if _, err := txq.LockCustomer(ctx, req.Id); err != nil {
+			if _, err := lockWritableCustomer(ctx, txq, req.Id); err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
 					return errAssociationTargetNotFound
 				}
@@ -891,6 +904,8 @@ func (s *server) PutCustomersByIdContactsByContactId(ctx context.Context, req ge
 	})
 	var refused errRolePrimaryTransitionRefused
 	switch {
+	case isMergedAway(err):
+		return gen.PutCustomersByIdContactsByContactId409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
 	case errors.Is(err, errAssociationTargetNotFound):
 		return gen.PutCustomersByIdContactsByContactId404Response{}, nil
 	case errors.As(err, &refused):
@@ -940,6 +955,13 @@ func requestedAsHeld(want []requestedRole, held []contactRole) []contactRole {
 func (s *server) DeleteCustomersByIdContactsByContactId(ctx context.Context, req gen.DeleteCustomersByIdContactsByContactIdRequestObject) (gen.DeleteCustomersByIdContactsByContactIdResponseObject, error) {
 	q := store.New(s.deps.Pool)
 	if _, err := q.GetAssociationWithContact(ctx, store.GetAssociationWithContactParams{CustomerID: req.Id, ContactID: req.ContactId}); errors.Is(err, pgx.ErrNoRows) {
+		// Missing, perhaps because it moved with a merge of this customer: the
+		// merged-away customer's refusal is the truer answer then.
+		if merr := refuseMergedAway(ctx, q, req.Id); isMergedAway(merr) {
+			return gen.DeleteCustomersByIdContactsByContactId409ApplicationProblemPlusJSONResponse(mergedAwayProblem(merr)), nil
+		} else if merr != nil {
+			return nil, merr
+		}
 		return gen.DeleteCustomersByIdContactsByContactId404Response{}, nil
 	} else if err != nil {
 		return nil, fmt.Errorf("customers: get association: %w", err)
@@ -956,7 +978,7 @@ func (s *server) DeleteCustomersByIdContactsByContactId(ctx context.Context, req
 	err = db.RetrySerializable(ctx, contactRoleWriteAttempts, func() error {
 		return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			txq := store.New(tx)
-			if _, err := txq.LockCustomer(ctx, req.Id); err != nil {
+			if _, err := lockWritableCustomer(ctx, txq, req.Id); err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
 					return errAssociationTargetNotFound
 				}
@@ -1000,6 +1022,8 @@ func (s *server) DeleteCustomersByIdContactsByContactId(ctx context.Context, req
 		})
 	})
 	switch {
+	case isMergedAway(err):
+		return gen.DeleteCustomersByIdContactsByContactId409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
 	case errors.Is(err, errAssociationTargetNotFound):
 		return gen.DeleteCustomersByIdContactsByContactId404Response{}, nil
 	case err != nil:

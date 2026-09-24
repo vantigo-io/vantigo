@@ -408,7 +408,7 @@ func (s *server) PutCustomersByIdTags(ctx context.Context, req gen.PutCustomersB
 	err = db.RetrySerializable(ctx, tagWriteAttempts, func() error {
 		return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			txq := store.New(tx)
-			if _, err := txq.LockCustomer(ctx, req.Id); err != nil {
+			if _, err := lockWritableCustomer(ctx, txq, req.Id); err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
 					return errCustomerNotFound
 				}
@@ -417,6 +417,9 @@ func (s *server) PutCustomersByIdTags(ctx context.Context, req gen.PutCustomersB
 			return replaceCustomerTags(ctx, txq, req.Id, wanted, added, removed, now, act)
 		})
 	})
+	if isMergedAway(err) {
+		return gen.PutCustomersByIdTags409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
+	}
 	if errors.Is(err, errCustomerNotFound) {
 		return gen.PutCustomersByIdTags404Response{}, nil
 	}

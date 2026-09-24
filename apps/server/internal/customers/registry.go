@@ -682,7 +682,7 @@ func (s *server) refreshRegistryRecord(ctx context.Context, customerID int32, or
 	var result registryRefreshResult
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
-		locked, err := txq.LockCustomer(ctx, customerID)
+		locked, err := lockWritableCustomer(ctx, txq, customerID)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				// The customer went away between this request's own 404 check
@@ -862,6 +862,14 @@ func (s *server) PostCustomersByIdRegistryRefresh(ctx context.Context, req gen.P
 	if err != nil {
 		return nil, fmt.Errorf("customers: get customer: %w", err)
 	}
+	// Before the registry is asked: a merged-away customer's record would be
+	// refused under the lock anyway (refreshRegistryRecord), and the merge
+	// deleted the one it had.
+	if err := refuseMergedAway(ctx, q, req.Id); isMergedAway(err) {
+		return gen.PostCustomersByIdRegistryRefresh409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
+	} else if err != nil {
+		return nil, err
+	}
 
 	identity := identityFromRow(existing.LegalCountry, existing.LegalID, existing.LegalName, existing.LegalSource, existing.LegalType)
 	orgnr := registryOrganisationNumber(identity, existing.Type)
@@ -892,6 +900,10 @@ func (s *server) PostCustomersByIdRegistryRefresh(ctx context.Context, req gen.P
 		// refreshRegistryRecord): the same 404 the read above would have given
 		// a moment earlier.
 		return gen.PostCustomersByIdRegistryRefresh404Response{}, nil
+	}
+	if isMergedAway(err) {
+		// Merged away while the registry was answering: nothing was stored.
+		return gen.PostCustomersByIdRegistryRefresh409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
 	}
 	if errors.Is(err, errRegistryIdentityChanged) {
 		// Somebody re-identified the customer while the registry was answering

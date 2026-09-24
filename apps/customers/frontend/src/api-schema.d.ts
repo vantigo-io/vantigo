@@ -884,7 +884,7 @@ export interface components {
             name: string;
             status: string;
         };
-        /** @description ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity and registry_identity_changed conflicts, the group vocabulary's group_exists and group_in_use, the tag vocabulary's tag_exists, and the merge's merge_self, merge_type_mismatch, merge_into_archived and merge_already_merged (customers merge design D2). A revision conflict carries neither. */
+        /** @description ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity and registry_identity_changed conflicts, the group vocabulary's group_exists and group_in_use, the tag vocabulary's tag_exists, the merge's merge_self, merge_type_mismatch, merge_into_archived and merge_already_merged (customers merge design D2), and customer_merged, the answer a write to a customer merged away gets (the same design). A revision conflict carries neither. */
         CustomerConflictProblem: {
             code?: string | null;
             detail?: string | null;
@@ -983,7 +983,7 @@ export interface components {
             /** Format: int32 */
             updated: number;
         };
-        /** @description One kind of reference a merge moved to the surviving customer, and how many (customers merge design D3). This module's four kinds come first — customers.contacts (the absorbed customer's contact associations, a contact the survivor already had included), customers.addresses, customers.timelineEntries (its active entries) and customers.tags (its tags, one the survivor already carried included) — then each other module's, in the order the installation composes them: projects.projects, energy.supplyPeriods, communications.conversations, communications.conversationSuggestions and communications.conversationCandidates. A kind is listed with count 0 when there was nothing of it; a module that is not enabled lists nothing. */
+        /** @description One kind of reference a merge moved to the surviving customer, and how many (customers merge design D3). This module's four kinds come first — customers.contacts (the absorbed customer's contact associations, a contact the survivor already had included), customers.addresses, customers.timelineEntries (its active entries) and customers.tags (its tags, one the survivor already carried included) — then each other module's, in the order the installation composes them: projects.projects, energy.supplyPeriods, communications.conversations, communications.conversationSuggestions and communications.conversationCandidates. A kind is listed with count 0 when there was nothing of it. Every holder the installation carries runs, its module enabled or not: every schema is migrated whatever MODULES says, so a module switched off still has references to re-point. */
         CustomerMergeMove: {
             /** Format: int64 */
             count: number;
@@ -1787,7 +1787,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict */
+            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1950,6 +1950,15 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
+                };
+            };
         };
     };
     putCustomersByIdAddressesByAddressId: {
@@ -2011,6 +2020,15 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
+                };
+            };
         };
     };
     deleteCustomersByIdAddressesByAddressId: {
@@ -2056,6 +2074,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
+                };
             };
         };
     };
@@ -2164,7 +2191,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict */
+            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2233,7 +2260,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict */
+            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2349,13 +2376,13 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict */
+            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
                 };
             };
         };
@@ -2419,6 +2446,15 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
+                };
+            };
         };
     };
     deleteCustomersByIdContactsByContactId: {
@@ -2464,6 +2500,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
+                };
             };
         };
     };
@@ -2525,7 +2570,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict */
+            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2648,7 +2693,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict */
+            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2701,6 +2746,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
+                };
             };
         };
     };
@@ -2878,7 +2932,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict */
+            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2933,6 +2987,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
+                };
             };
             /** @description Bad Gateway */
             502: {
@@ -3053,7 +3116,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict */
+            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3131,6 +3194,15 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
+                };
+            };
         };
     };
     putCustomersByIdType: {
@@ -3191,7 +3263,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict */
+            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3323,6 +3395,15 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
+                };
+            };
         };
     };
     getCustomersByIdTimelineByEntryId: {
@@ -3432,13 +3513,13 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict */
+            /** @description Conflict: the timeline entry's own refusals, which carry no code, or customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
                 };
             };
         };
@@ -3489,13 +3570,13 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict */
+            /** @description Conflict: the timeline entry's own refusals, which carry no code, or customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
                 };
             };
         };
@@ -3546,13 +3627,13 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict */
+            /** @description Conflict: the timeline entry's own refusals, which carry no code, or customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
                 };
             };
         };
@@ -3603,13 +3684,13 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict */
+            /** @description Conflict: the timeline entry's own refusals, which carry no code, or customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
                 };
             };
         };

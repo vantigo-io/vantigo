@@ -756,19 +756,27 @@ type customerCore struct {
 
 // writeCustomerCore is the transaction body PutCustomersById and
 // PutCustomersByIdLegalIdentity share, and the one the CSV importer
-// (import.go) writes a row's name, status and identity through: the duplicate
-// check when duplicateCheck says so (a conflict returns errDuplicateIdentity
+// (import.go) writes a row's name, status and identity through: the
+// customer's lock, and customer_merged for a customer merged away (customers
+// merge design D2); the duplicate check when duplicateCheck says so (a conflict returns errDuplicateIdentity
 // and its body, before anything is written — no revision bump, no event); the
 // UPDATE, guarded when expectedRevision is set (pgx.ErrNoRows then means a
 // stale revision); the registry record's invalidation when the identity moved
 // (fix round 2, C2 — a new identity makes the record on file the old
 // company's, so it goes in the same transaction, under the customer-row lock
-// the UPDATE holds: the same lock a refresh takes first, so the two can never
+// taken first: the same lock a refresh takes first, so the two can never
 // interleave); and the events — customer.updated for a name or identity
 // change, customer.status_changed for a status change. The caller has already
 // decided the write is not a no-op and resolved act and nameHolders before
 // the transaction opened.
 func (s *server) writeCustomerCore(ctx context.Context, txq *store.Queries, id int32, customerType string, before, after customerCore, expectedRevision *int32, duplicateCheck, nameHolders bool, now time.Time, act actor) (store.UpdateCustomerRow, *gen.CustomerConflictProblem, error) {
+	// The customer's lock and the merged-away refusal first (customers merge
+	// design D2), for every caller: a status of active on a merged-away
+	// customer — PUT /customers/{id} or a CSV row — would restore a customer
+	// whose records are somebody else's now.
+	if _, err := lockWritableCustomer(ctx, txq, id); err != nil {
+		return store.UpdateCustomerRow{}, nil, err
+	}
 	if duplicateCheck && after.Identity != nil {
 		problem, err := s.duplicateIdentityProblem(ctx, txq, *after.Identity, id, nameHolders)
 		if err != nil {
@@ -984,6 +992,8 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 		return err
 	})
 	switch {
+	case isMergedAway(err):
+		return gen.PutCustomersById409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
 	case errors.Is(err, errDuplicateIdentity):
 		return gen.PutCustomersById409ApplicationProblemPlusJSONResponse(*conflict), nil
 	case errors.Is(err, pgx.ErrNoRows):
@@ -1065,6 +1075,15 @@ func (s *server) DeleteCustomersById(ctx context.Context, req gen.DeleteCustomer
 	now := s.deps.Clock()
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
+		// Under the customer's lock, a customer merged away since the read
+		// above is archived already — by the merge, which wrote its own
+		// event — so this is the idempotent no-op the archived check above
+		// answers, not a second archive (customers merge design D2).
+		if _, err := lockWritableCustomer(ctx, txq, req.Id); isMergedAway(err) {
+			return nil
+		} else if err != nil {
+			return err
+		}
 		if _, err := txq.SetCustomerStatus(ctx, store.SetCustomerStatusParams{ID: req.Id, Status: "archived", Now: now}); err != nil {
 			return err
 		}

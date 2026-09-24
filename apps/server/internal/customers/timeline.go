@@ -496,9 +496,12 @@ func timelineRevisionResponse(r store.CustomersCustomersTimelineEntriesRevision,
 // timelineProblem is Conflict (TimelineEndpoints.cs:437-438): every
 // concurrency refusal in this file, all three guards alike, answers this
 // same problem shape — title and detail text are the only way a caller (or
-// a test) can tell which guard caught it.
-func timelineProblem(title, detail string) apicommon.ProblemDetails {
-	return apicommon.ProblemStatus(title, detail, http.StatusConflict)
+// a test) can tell which guard caught it. It is a CustomerConflictProblem
+// without a code, the shape customer_merged also answers these operations
+// with (customers merge design D2): the fields are ProblemDetails' own.
+func timelineProblem(title, detail string) gen.CustomerConflictProblem {
+	status := int32(http.StatusConflict)
+	return gen.CustomerConflictProblem{Title: &title, Detail: &detail, Status: &status}
 }
 
 const timelineImmutableTitle = "Timeline entry is immutable"
@@ -675,7 +678,8 @@ func (r createdTimelineResponse) VisitPostCustomersByIdTimelineResponse(w http.R
 //
 // Ordering follows TimelineEndpoints.Create (customers inventory §1.4): (1)
 // manual-entry validation, every field collected together, before any
-// database access; (2) customer existence.
+// database access; (2) customer existence, under the customer's lock; (3) a
+// customer merged away refuses (customer_merged).
 func (s *server) PostCustomersByIdTimeline(ctx context.Context, req gen.PostCustomersByIdTimelineRequestObject) (gen.PostCustomersByIdTimelineResponseObject, error) {
 	body := gen.TimelineManualTimelineRequest{}
 	if req.Body != nil {
@@ -707,30 +711,43 @@ func (s *server) PostCustomersByIdTimeline(ctx context.Context, req gen.PostCust
 		return nil, fmt.Errorf("customers: resolve actor: %w", err)
 	}
 
-	q := store.New(s.deps.Pool)
-	if _, err := q.GetCustomer(ctx, req.Id); errors.Is(err, pgx.ErrNoRows) {
-		return gen.PostCustomersByIdTimeline404Response{}, nil
-	} else if err != nil {
-		return nil, fmt.Errorf("customers: get customer: %w", err)
-	}
+	// The customer's lock first, as every customer-scoped write takes it: it
+	// is the existence check, and it is what makes this insert queue behind a
+	// merge of the customer rather than land between the merge's statements —
+	// an entry committed there would stay behind on the customer that went
+	// away. Once the merge has committed, the lock reads its marker and the
+	// entry is refused (customer_merged).
+	var created store.InsertManualTimelineEntryRow
+	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		txq := store.New(tx)
+		if _, err := lockWritableCustomer(ctx, txq, req.Id); err != nil {
+			return err
+		}
+		var err error
+		created, err = txq.InsertManualTimelineEntry(ctx, store.InsertManualTimelineEntryParams{
+			CustomerID:   req.Id,
+			EventType:    parsed.EventType,
+			OccurredOn:   pgtype.Date{Time: parsed.OccurredOn, Valid: true},
+			OccurredAt:   parsed.OccurredAt,
+			Summary:      truncateUTF16(parsed.Note, 500),
+			Note:         parsed.Note,
+			SourceUrl:    parsed.SourceURL,
+			ActorKind:    act.Kind,
+			ActorDisplay: act.Display,
+			ActorUserID:  act.UserID,
+			Now:          now,
 
-	created, err := q.InsertManualTimelineEntry(ctx, store.InsertManualTimelineEntryParams{
-		CustomerID:   req.Id,
-		EventType:    parsed.EventType,
-		OccurredOn:   pgtype.Date{Time: parsed.OccurredOn, Valid: true},
-		OccurredAt:   parsed.OccurredAt,
-		Summary:      truncateUTF16(parsed.Note, 500),
-		Note:         parsed.Note,
-		SourceUrl:    parsed.SourceURL,
-		ActorKind:    act.Kind,
-		ActorDisplay: act.Display,
-		ActorUserID:  act.UserID,
-		Now:          now,
-
-		FollowUpOn:             followUpDateParam(parsed.FollowUp),
-		FollowUpAssigneeUserID: followUpAssigneeParam(parsed.FollowUp),
+			FollowUpOn:             followUpDateParam(parsed.FollowUp),
+			FollowUpAssigneeUserID: followUpAssigneeParam(parsed.FollowUp),
+		})
+		return err
 	})
-	if err != nil {
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return gen.PostCustomersByIdTimeline404Response{}, nil
+	case isMergedAway(err):
+		return gen.PostCustomersByIdTimeline409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
+	case err != nil:
 		return nil, fmt.Errorf("customers: create timeline entry: %w", err)
 	}
 
@@ -806,6 +823,13 @@ func (s *server) PutCustomersByIdTimelineByEntryId(ctx context.Context, req gen.
 	q := store.New(s.deps.Pool)
 	entry, err := q.GetTimelineEntry(ctx, store.GetTimelineEntryParams{ID: req.EntryId, CustomerID: req.Id})
 	if errors.Is(err, pgx.ErrNoRows) {
+		// Missing, perhaps because it moved with a merge of this customer: the
+		// merged-away customer's refusal is the truer answer then.
+		if merr := refuseMergedAway(ctx, q, req.Id); isMergedAway(merr) {
+			return gen.PutCustomersByIdTimelineByEntryId409ApplicationProblemPlusJSONResponse(mergedAwayProblem(merr)), nil
+		} else if merr != nil {
+			return nil, merr
+		}
 		return gen.PutCustomersByIdTimelineByEntryId404Response{}, nil
 	}
 	if err != nil {
@@ -849,6 +873,13 @@ func (s *server) PutCustomersByIdTimelineByEntryId(ctx context.Context, req gen.
 	var updated store.CustomersCustomersTimelineEntry
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
+		// The customer's lock first (lockWritableCustomer): an entry read
+		// above, before a merge of this customer committed, has moved with it
+		// — this refuses as customer_merged instead of reporting a revision
+		// race that never happened.
+		if _, err := lockWritableCustomer(ctx, txq, req.Id); err != nil {
+			return err
+		}
 		var err error
 		updated, err = txq.UpdateManualTimelineEntry(ctx, store.UpdateManualTimelineEntryParams{
 			ID:               req.EntryId,
@@ -872,6 +903,8 @@ func (s *server) PutCustomersByIdTimelineByEntryId(ctx context.Context, req gen.
 		return insertTimelineRevisionFromEntry(ctx, txq, updated, act)
 	})
 	switch {
+	case isMergedAway(err):
+		return gen.PutCustomersByIdTimelineByEntryId409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
 	case errors.Is(err, pgx.ErrNoRows):
 		return gen.PutCustomersByIdTimelineByEntryId409ApplicationProblemPlusJSONResponse(timelineProblem(
 			timelineRevisionConflictTitle, "The timeline entry was changed by another request.")), nil
@@ -901,6 +934,13 @@ func (s *server) DeleteCustomersByIdTimelineByEntryId(ctx context.Context, req g
 	q := store.New(s.deps.Pool)
 	entry, err := q.GetTimelineEntry(ctx, store.GetTimelineEntryParams{ID: req.EntryId, CustomerID: req.Id})
 	if errors.Is(err, pgx.ErrNoRows) {
+		// Missing, perhaps because it moved with a merge of this customer: the
+		// merged-away customer's refusal is the truer answer then.
+		if merr := refuseMergedAway(ctx, q, req.Id); isMergedAway(merr) {
+			return gen.DeleteCustomersByIdTimelineByEntryId409ApplicationProblemPlusJSONResponse(mergedAwayProblem(merr)), nil
+		} else if merr != nil {
+			return nil, merr
+		}
 		return gen.DeleteCustomersByIdTimelineByEntryId404Response{}, nil
 	}
 	if err != nil {
@@ -935,6 +975,10 @@ func (s *server) DeleteCustomersByIdTimelineByEntryId(ctx context.Context, req g
 	var deleted store.CustomersCustomersTimelineEntry
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
+		// The customer's lock first, for the PUT's reason.
+		if _, err := lockWritableCustomer(ctx, txq, req.Id); err != nil {
+			return err
+		}
 		var err error
 		deleted, err = txq.SetTimelineEntryDeleted(ctx, store.SetTimelineEntryDeletedParams{
 			ID:               req.EntryId,
@@ -949,6 +993,8 @@ func (s *server) DeleteCustomersByIdTimelineByEntryId(ctx context.Context, req g
 		return insertTimelineRevisionFromEntry(ctx, txq, deleted, act)
 	})
 	switch {
+	case isMergedAway(err):
+		return gen.DeleteCustomersByIdTimelineByEntryId409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
 	case errors.Is(err, pgx.ErrNoRows):
 		return gen.DeleteCustomersByIdTimelineByEntryId409ApplicationProblemPlusJSONResponse(timelineProblem(
 			timelineRevisionConflictTitle, "The timeline entry was changed by another request.")), nil

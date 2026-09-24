@@ -244,7 +244,7 @@ func followUpResponse(on pgtype.Date, assigneeID *uuid.UUID, doneAt *time.Time, 
 // heading for.
 type followUpOutcome struct {
 	Entry   *gen.TimelineResponse
-	Problem *apicommon.ProblemDetails
+	Problem *gen.CustomerConflictProblem
 	Missing bool
 }
 
@@ -274,6 +274,14 @@ func (s *server) markFollowUp(ctx context.Context, customerID, entryID int32, do
 	q := store.New(s.deps.Pool)
 	entry, err := q.GetTimelineEntry(ctx, store.GetTimelineEntryParams{ID: entryID, CustomerID: customerID})
 	if errors.Is(err, pgx.ErrNoRows) {
+		// Missing, perhaps because it moved with a merge of this customer: the
+		// merged-away customer's refusal is the truer answer then.
+		if merr := refuseMergedAway(ctx, q, customerID); isMergedAway(merr) {
+			problem := mergedAwayProblem(merr)
+			return followUpOutcome{Problem: &problem}, nil
+		} else if merr != nil {
+			return followUpOutcome{}, merr
+		}
 		return followUpOutcome{Missing: true}, nil
 	}
 	if err != nil {
@@ -300,6 +308,12 @@ func (s *server) markFollowUp(ctx context.Context, customerID, entryID int32, do
 	var written store.CustomersCustomersTimelineEntry
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
+		// The customer's lock first, as every customer-scoped write takes it:
+		// an entry whose customer was merged away since the read above
+		// refuses as customer_merged (timeline.go's PUT, same reason).
+		if _, err := lockWritableCustomer(ctx, txq, customerID); err != nil {
+			return err
+		}
 		var err error
 		if done {
 			written, err = txq.SetTimelineEntryFollowUpDone(ctx, store.SetTimelineEntryFollowUpDoneParams{
@@ -316,6 +330,9 @@ func (s *server) markFollowUp(ctx context.Context, customerID, entryID int32, do
 		return insertTimelineRevisionFromEntry(ctx, txq, written, act)
 	})
 	switch {
+	case isMergedAway(err):
+		problem := mergedAwayProblem(err)
+		return followUpOutcome{Problem: &problem}, nil
 	case errors.Is(err, pgx.ErrNoRows):
 		fresh, ferr := q.GetTimelineEntry(ctx, store.GetTimelineEntryParams{ID: entryID, CustomerID: customerID})
 		if errors.Is(ferr, pgx.ErrNoRows) {
