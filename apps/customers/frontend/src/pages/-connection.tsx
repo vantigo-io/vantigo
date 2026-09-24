@@ -14,6 +14,7 @@ import {
 import { ApiValidationError } from "../api/customers";
 import { NoValue } from "../components/legal-badges";
 import { contactRoleLabel, primaryContactLabel } from "../lib/contact-role-label";
+import { customerWriteErrorMessage } from "../lib/customer-write-error";
 import "../i18n";
 
 /**
@@ -304,7 +305,11 @@ export const EditConnectionModal = ({ target, onClose }: EditConnectionModalProp
         form.setErrors(error.fieldErrors);
         return;
       }
-      notifications.show({ color: "red", title: t("failedUpdateConnection"), message: error.message });
+      notifications.show({
+        color: "red",
+        title: t("failedUpdateConnection"),
+        message: customerWriteErrorMessage(error, t),
+      });
     },
   });
 

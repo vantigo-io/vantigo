@@ -348,6 +348,40 @@ describe("customer contacts card", () => {
     expect(await screen.findByText(/was created, but could not be added to the customer/i)).toBeInTheDocument();
   });
 
+  it("says the customer was merged when a create-and-attach lands on one merged away", async () => {
+    // A tab opened before the merge: the contact is created, then the attach —
+    // a customer-scoped write — answers customer_merged. The wrap that says the
+    // contact exists must carry the helper's sentence, not the server's detail.
+    stubFetch({
+      "GET /api/v1/customers/2002": () => jsonResponse(200, customer),
+      "GET /api/v1/customers/2002/billing-profile": () => jsonResponse(200, emptyBillingProfile),
+      "GET /api/v1/customers/2002/addresses": () => jsonResponse(200, { data: [] }),
+      "GET /api/v1/customers/2002/contacts": () => jsonResponse(200, { data: [] }),
+      "GET /api/v1/customers/contacts": () => jsonResponse(200, paginated([])),
+      "POST /api/v1/customers/contacts": () => jsonResponse(201, contact(1007, "Nobody", "Merged")),
+      "POST /api/v1/customers/2002/contacts": () =>
+        jsonResponse(409, {
+          title: "Customer was merged",
+          status: 409,
+          code: "customer_merged",
+          detail: "#2 Refsdal Holding was merged into #3 Refsdal Group AS.",
+        }),
+    });
+
+    await renderRoute("/customers/2002", "Refsdal Holding");
+    await userEvent.click(await screen.findByRole("button", { name: /add contact/i }));
+    const modal = await screen.findByRole("dialog");
+    await userEvent.type(within(modal).getByLabelText(/search for a contact/i), "Nobody");
+    await userEvent.click(await screen.findByText(/no contact found/i));
+    await userEvent.type(within(modal).getByLabelText(/last name/i), "Merged");
+    await userEvent.type(within(modal).getByLabelText(/^title$/i), "CFO");
+    await userEvent.click(within(modal).getByRole("button", { name: /^add contact$/i }));
+
+    expect(
+      await screen.findByText(/could not be added to the customer: This customer was merged into another$/),
+    ).toBeInTheDocument();
+  });
+
   it("shows a create step's own validation error on the contact's own field, not the connection one", async () => {
     // createContact's 400 is keyed to the contact's own `email` — the same
     // field name the connection form uses for "Email at this customer". Only

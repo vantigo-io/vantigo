@@ -195,6 +195,37 @@ describe("the Follow-ups page", () => {
     await waitFor(() => expect(listReads(stub).length).toBeGreaterThanOrEqual(2));
   });
 
+  it("says the customer was merged when the tick lands on one merged away", async () => {
+    // The list was read before the row's customer was merged away; the tick is
+    // a customer-scoped write, so it answers customer_merged.
+    renderPage(
+      vi.fn((input: RequestInfo | URL) => {
+        if (String(input).includes("/follow-up/done"))
+          return Promise.resolve(
+            json(
+              {
+                title: "Customer was merged",
+                status: 409,
+                code: "customer_merged",
+                detail: "#5 Acme Norge AS was merged into #2 Acme AS.",
+              },
+              409,
+            ),
+          );
+        return Promise.resolve(json(page([row()])));
+      }),
+    );
+    await userEvent.click(await screen.findByRole("button", { name: /mark done/i }));
+    await waitFor(() =>
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Could not update the follow-up",
+          message: "This customer was merged into another",
+        }),
+      ),
+    );
+  });
+
   it("offers the pages when there is more than one, and page 2 reaches the URL and the wire", async () => {
     // Rendered here rather than through `renderPage`, because this is the one
     // case that needs a SECOND render of the same tree: the page number lives in

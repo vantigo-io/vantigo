@@ -363,10 +363,11 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
           throw new ConnectionValidationError(error);
         }
         // The contact exists at this point — make that explicit so it is not
-        // silently orphaned when only the association fails.
+        // silently orphaned when only the association fails. The wrap drops
+        // the refusal's code, so a merged-away customer's is put in words here.
         throw new Error(
           `The contact "${formatContactName(contact)}" was created, but could not be added to the customer: ${
-            error instanceof Error ? error.message : "unknown error"
+            error instanceof Error ? customerWriteErrorMessage(error, t) : "unknown error"
           }`,
           { cause: error },
         );
