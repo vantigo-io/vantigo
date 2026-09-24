@@ -47,6 +47,17 @@ export interface CustomerGroupRef {
   name: string;
 }
 
+/**
+ * The customer this one was merged into (customers merge design D3), named so
+ * a page can link there. Null unless the customer was merged away — the wire
+ * omits the field entirely otherwise.
+ */
+export interface CustomerMergedInto {
+  id: number;
+  customerNumber: number;
+  name: string;
+}
+
 /** The list's Owner filter: the caller's own customers, or the unassigned ones. */
 export type CustomerOwnerFilter = "me" | "none";
 
@@ -83,6 +94,8 @@ export interface CustomerResponse {
   group: CustomerGroupRef | null;
   /** Design D2. Always an array — the boundary turns an omitted field into `[]`. */
   tags: CustomerTag[];
+  /** Merge design D3. Null unless the customer was merged away; the wire omits the field then. */
+  mergedInto: CustomerMergedInto | null;
 }
 
 export interface CustomerStatsResponse {
@@ -124,6 +137,12 @@ export interface CustomersQueryParams {
   ownerId?: string;
   tagId?: string;
   groupId?: string;
+  /**
+   * Archived customers as well as the rest — the list endpoint's own
+   * `includeArchived`. The merge picker's search sets it: an archived duplicate
+   * is the usual thing to absorb (merge design D2).
+   */
+  includeArchived?: boolean;
 }
 
 /**
@@ -143,6 +162,7 @@ export const customersSearchParams = (params: CustomersQueryParams): string => {
   if (params.ownerId) searchParams.set("ownerId", params.ownerId);
   if (params.tagId) searchParams.set("tagId", params.tagId);
   if (params.groupId) searchParams.set("groupId", params.groupId);
+  if (params.includeArchived) searchParams.set("includeArchived", "true");
   return searchParams.size > 0 ? `?${searchParams}` : "";
 };
 
@@ -220,10 +240,11 @@ export const customerStatsQueryOptions = () =>
  * `contactInfo` itself stays optional: it is genuinely absent on the
  * recorded responses that predate design D2.
  */
-type RawCustomerResponse = Omit<CustomerResponse, "contactInfo" | "owner" | "group" | "tags"> & {
+export type RawCustomerResponse = Omit<CustomerResponse, "contactInfo" | "owner" | "group" | "tags" | "mergedInto"> & {
   contactInfo?: Partial<CustomerContactInfo>;
   owner?: CustomerOwner | null;
   group?: CustomerGroupRef | null;
+  mergedInto?: CustomerMergedInto | null;
   tags?: { id: string; name: string; color?: string | null }[];
 };
 
@@ -231,10 +252,11 @@ export const normalizeCustomer = ({
   contactInfo,
   owner,
   group,
+  mergedInto,
   tags,
   ...rest
 }: RawCustomerResponse): CustomerResponse => {
-  // The four normalised fields are destructured out, so what is left is
+  // The five normalised fields are destructured out, so what is left is
   // already the rest of a `CustomerResponse` and the two arms below need no
   // cast to say so — `contactInfo` is optional on the result, which is exactly
   // what "absent on responses that predate design D2" means.
@@ -242,6 +264,7 @@ export const normalizeCustomer = ({
     ...rest,
     owner: owner ?? null,
     group: group ?? null,
+    mergedInto: mergedInto ?? null,
     tags: (tags ?? []).map(normalizeTag),
   };
   if (!contactInfo) return normalized;

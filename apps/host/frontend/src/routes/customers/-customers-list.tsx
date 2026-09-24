@@ -14,7 +14,9 @@ const IMPORT_PERMISSIONS = ["customers:create", "customers:update", "customers:v
  * filter (owner and tags design D3). `canExport` (`customers:view`) puts
  * **Export** in the header and `canImport` (`customers:create`,
  * `customers:update` and `customers:view` together — the import operation's
- * own rule) puts **Import** there (customers import/export design D4). The
+ * own rule) puts **Import** there (customers import/export design D4).
+ * `canMerge` (`customers:merge`) lets the create and edit forms'
+ * duplicate-identity conflict suggest a merge (customers merge design D4). The
  * Owner filter needs nothing from the host — "Mine" is the API's own `me`,
  * resolved from the request principal server-side, so the host never has to
  * tell the page who the caller is.
@@ -38,6 +40,7 @@ export const CustomersListPage = () => {
       canEdit={hasPermissions(permissions, ["customers:update"])}
       canExport={hasPermissions(permissions, ["customers:view"])}
       canImport={IMPORT_PERMISSIONS.every((permission) => hasPermissions(permissions, [permission]))}
+      canMerge={hasPermissions(permissions, ["customers:merge"])}
     />
   );
 };

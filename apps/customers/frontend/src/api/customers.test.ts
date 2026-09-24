@@ -10,6 +10,7 @@ import {
   customerQueryOptions,
   customersListParams,
   customersQueryOptions,
+  customersSearchParams,
   invalidateCustomersExcept,
   legalIdentityQueryOptions,
   NotFoundError,
@@ -86,7 +87,7 @@ describe("updateCustomer", () => {
 
     const result = await updateCustomer(1001, { name: "Initrode" });
 
-    expect(result).toEqual({ ...updated, owner: null, group: null, tags: [] });
+    expect(result).toEqual({ ...updated, owner: null, group: null, mergedInto: null, tags: [] });
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/1001", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -116,7 +117,7 @@ describe("customerQueryOptions", () => {
       signal: undefined,
     });
 
-    expect(result).toEqual({ ...customer, owner: null, group: null, tags: [] });
+    expect(result).toEqual({ ...customer, owner: null, group: null, mergedInto: null, tags: [] });
     expect(options.queryKey).toEqual(["customers", 1001]);
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/1001", { signal: undefined });
   });
@@ -141,6 +142,7 @@ describe("customerQueryOptions", () => {
       contactInfo: { email: null, phone: "+47 934 89 731", website: null },
       owner: null,
       group: null,
+      mergedInto: null,
       tags: [],
     });
   });
@@ -154,6 +156,34 @@ describe("customerQueryOptions", () => {
     }).catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(NotFoundError);
+  });
+
+  it("carries mergedInto through, and reads its absence as null", async () => {
+    // A merged-away customer (customers merge design D3); every other customer
+    // arrives without the key at all, which the tests above already cover.
+    const mergedAway = {
+      id: 1005,
+      name: "Acme Norge AS",
+      status: "archived",
+      timelineSummary: { entryCount: 1, latestOccurredOn: "2026-09-24" },
+      mergedInto: { id: 1002, customerNumber: 2, name: "Acme AS" },
+    };
+    stubFetch(vi.fn().mockResolvedValue(jsonResponse(200, mergedAway)));
+
+    const options = customerQueryOptions(1005);
+    const result = (await (options.queryFn as (context: unknown) => Promise<unknown>)({
+      signal: undefined,
+    })) as CustomerResponse;
+
+    expect(result.mergedInto).toEqual({ id: 1002, customerNumber: 2, name: "Acme AS" });
+  });
+
+  it("asks for archived customers only when told to", () => {
+    // The merge picker's search: an archived duplicate is the usual thing to absorb.
+    expect(customersSearchParams({ page: 1, pageSize: 20, includeArchived: true })).toBe(
+      "?page=1&pageSize=20&includeArchived=true",
+    );
+    expect(customersSearchParams({ page: 1, pageSize: 20 })).toBe("?page=1&pageSize=20");
   });
 });
 
@@ -361,6 +391,7 @@ const cachedCustomer = (revision: number): CustomerResponse => ({
   revision,
   owner: null,
   group: null,
+  mergedInto: null,
   tags: [],
 });
 

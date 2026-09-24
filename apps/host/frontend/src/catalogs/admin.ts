@@ -111,6 +111,12 @@ export const hostPermissionTranslationKeys = {
     displayNameKey: "admin.permission.customersBillingManage",
     descriptionKey: "admin.permission.customersBillingManageDescription",
   },
+  "customers:merge": {
+    moduleKey: "admin.permission.module.customers",
+    categoryKey: "admin.permission.category.customers",
+    displayNameKey: "admin.permission.customersMerge",
+    descriptionKey: "admin.permission.customersMergeDescription",
+  },
   "communications:conversations-view": {
     moduleKey: "admin.permission.module.communications",
     categoryKey: "admin.permission.category.communications",
@@ -471,6 +477,9 @@ const en = {
   "admin.permission.customersBillingManage": "Manage billing profiles",
   "admin.permission.customersBillingManageDescription":
     "Set a customer's payment terms, invoice delivery and billing addresses for documents.",
+  "admin.permission.customersMerge": "Merge customers",
+  "admin.permission.customersMergeDescription":
+    "Merge a duplicate customer into another, moving its contacts, addresses, timeline, tags and other modules' references, and archiving it.",
   "admin.permission.communicationsConversationsView": "View communications conversations",
   "admin.permission.communicationsConversationsViewDescription":
     "View conversations, messages, participants, bodies, attachments, and tags.",
@@ -813,6 +822,9 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.customersBillingManage": "Administrer faktureringsprofiler",
   "admin.permission.customersBillingManageDescription":
     "Sett en kundes betalingsbetingelser, fakturalevering og faktureringsadresser for dokumenter.",
+  "admin.permission.customersMerge": "Slå sammen kunder",
+  "admin.permission.customersMergeDescription":
+    "Slå en duplikatkunde sammen med en annen: kontaktene, adressene, tidslinjen, merkelappene og andre modulers referanser flyttes, og duplikatet arkiveres.",
   "admin.permission.communicationsConversationsView": "Se kommunikasjonssamtaler",
   "admin.permission.communicationsConversationsViewDescription":
     "Se samtaler, meldinger, deltakere, brødtekst, vedlegg og etiketter.",

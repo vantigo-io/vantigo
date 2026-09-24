@@ -113,6 +113,7 @@ export const CustomerDetailLayout = () => {
         customerId={customerId}
         canArchive={hasPermissions(permissions, ["customers:delete"])}
         canRestore={hasPermissions(permissions, ["customers:update"])}
+        canMerge={hasPermissions(permissions, ["customers:merge"])}
         actions={
           showCorrespondenceAction(enabledModules, permissions) ? (
             <Button
