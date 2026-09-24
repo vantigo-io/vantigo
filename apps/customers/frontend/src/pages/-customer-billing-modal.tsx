@@ -22,6 +22,7 @@ interface BillingFormValues {
   reminderEmail: string;
   paymentTermsDays: number | string;
   currency: string;
+  defaultBillRate: number | string;
   language: string | null;
   invoiceDelivery: string | null;
   reminderDelivery: string | null;
@@ -32,7 +33,7 @@ interface BillingFormValues {
 
 /**
  * Exported so `-customer-peppol-status.tsx`'s Use EHF button can build its
- * PUT body the same way this modal's own save does — the ten fields go
+ * PUT body the same way this modal's own save does — the eleven fields go
  * exactly as they are, `invoiceDelivery` overridden to "ehf" by the caller
  * (design D4, D6).
  */
@@ -42,6 +43,7 @@ export const valuesFromProfile = (profile: CustomerBillingProfile): BillingFormV
   reminderEmail: profile.reminderEmail ?? "",
   paymentTermsDays: profile.paymentTermsDays ?? "",
   currency: profile.currency ?? "",
+  defaultBillRate: profile.defaultBillRate ?? "",
   language: profile.language,
   invoiceDelivery: profile.invoiceDelivery,
   reminderDelivery: profile.reminderDelivery,
@@ -66,6 +68,7 @@ export const toInput = (values: BillingFormValues, revision: number): CustomerBi
   reminderEmail: values.reminderEmail.trim() || null,
   paymentTermsDays: numeric(values.paymentTermsDays),
   currency: values.currency.trim() || null,
+  defaultBillRate: numeric(values.defaultBillRate),
   language: values.language,
   invoiceDelivery: values.invoiceDelivery,
   reminderDelivery: values.reminderDelivery,
@@ -215,6 +218,17 @@ export const CustomerBillingModal = ({
             maxLength={3}
             {...form.getInputProps("currency")}
             onChange={(event) => form.setFieldValue("currency", event.currentTarget.value.toUpperCase())}
+          />
+          <NumberInput
+            label={t("billingDefaultBillRate")}
+            description={t("billingDefaultBillRateHint")}
+            // A rate is money at the column's own scale — two decimals, never
+            // zero or negative — which the server refuses otherwise, so the
+            // input does not offer it. Empty is "cleared", like payment terms.
+            decimalScale={2}
+            allowNegative={false}
+            min={0}
+            {...form.getInputProps("defaultBillRate")}
           />
           <Select
             label={t("billingLanguage")}

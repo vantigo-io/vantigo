@@ -37,6 +37,7 @@ const emptyProfile = {
   peppolId: null,
   gln: null,
   buyerReference: null,
+  defaultBillRate: null,
   revision: 3,
   warnings: [],
 };
@@ -99,14 +100,19 @@ describe("CustomerBillingCard", () => {
 
   it("shows 'Not set — the invoicing default applies' for every null field", async () => {
     renderCard(emptyProfile);
-    // Ten billing fields, all null in emptyProfile.
+    // Eleven billing fields, all null in emptyProfile — ten say the invoicing default
+    // applies; the rate has its own words (asserted below).
     expect(await screen.findAllByText("Not set — the invoicing default applies")).toHaveLength(10);
+    // The rate's own words: when it is not set, the chain goes on to the
+    // project's or the person's rate — not to an invoicing default.
+    expect(screen.getByText("Not set — the project's or the person's rate applies")).toBeInTheDocument();
   });
 
   it("reads a profile whose unset fields the server left out entirely", async () => {
     renderCard(omittedProfile);
 
     expect(await screen.findAllByText("Not set — the invoicing default applies")).toHaveLength(10);
+    expect(screen.getByText("Not set — the project's or the person's rate applies")).toBeInTheDocument();
     // "Payment terms" would otherwise render the raw catalog key: i18next
     // cannot pluralise a count of undefined.
     expect(screen.queryByText(/paymentTermsDaysValue/)).not.toBeInTheDocument();
@@ -144,6 +150,7 @@ describe("CustomerBillingCard", () => {
       peppolId: null,
       gln: null,
       buyerReference: null,
+      defaultBillRate: null,
       revision: 3,
     });
   });
@@ -183,6 +190,7 @@ describe("CustomerBillingCard", () => {
       peppolId: "0192:923609016",
       gln: "7040110000005",
       buyerReference: "PO-42",
+      defaultBillRate: 1250,
     });
 
     expect(await screen.findByText("invoices@acme.test")).toBeInTheDocument();
@@ -195,6 +203,8 @@ describe("CustomerBillingCard", () => {
     expect(screen.getByText("0192:923609016")).toBeInTheDocument();
     expect(screen.getByText("7040110000005")).toBeInTheDocument();
     expect(screen.getByText("PO-42")).toBeInTheDocument();
+    expect(screen.getByText("1,250.00 NOK per hour")).toBeInTheDocument();
+    expect(screen.getByText("Default bill rate")).toBeInTheDocument();
   });
 
   it("uses the singular form for a single day", async () => {

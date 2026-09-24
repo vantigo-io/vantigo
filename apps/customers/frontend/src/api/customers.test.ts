@@ -375,6 +375,7 @@ const cachedProfile = (revision: number): CustomerBillingProfile => ({
   peppolId: null,
   gln: null,
   buyerReference: null,
+  defaultBillRate: null,
   revision,
   peppolLookup: null,
   warnings: [],

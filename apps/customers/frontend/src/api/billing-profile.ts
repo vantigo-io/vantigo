@@ -67,6 +67,13 @@ export interface CustomerBillingProfile {
   peppolId: string | null;
   gln: string | null;
   buyerReference: string | null;
+  /**
+   * The customer's default hourly bill rate (customers bill-rate design D1),
+   * quoted in `currency` — the server never stores one without it. Time's rate
+   * chain prices this customer's projects at it when they price nothing
+   * themselves.
+   */
+  defaultBillRate: number | null;
   revision: number;
   /**
    * The last Peppol lookup on record for the participant this profile
@@ -129,6 +136,7 @@ const normalizeBillingProfile = (raw: RawCustomerBillingProfile): CustomerBillin
   peppolId: raw.peppolId ?? null,
   gln: raw.gln ?? null,
   buyerReference: raw.buyerReference ?? null,
+  defaultBillRate: raw.defaultBillRate ?? null,
   revision: raw.revision,
   peppolLookup: normalizePeppolLookup(raw.peppolLookup),
   warnings: raw.warnings ?? [],
@@ -166,6 +174,7 @@ export interface CustomerBillingProfileInput {
   peppolId: string | null;
   gln: string | null;
   buyerReference: string | null;
+  defaultBillRate: number | null;
   revision?: number;
 }
 

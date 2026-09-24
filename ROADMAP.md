@@ -236,7 +236,7 @@ on the same bet the tags' is.
 *Unblocks:* answering "who owns this relationship and what happens next" without
 building a deals pipeline.
 
-### Phase 5 — Customer 360 (one delivery done)
+### Phase 5 — Customer 360 (two deliveries done)
 
 An overview panel per customer — open projects, unbilled hours and expenses, invoiced
 revenue and outstanding once Invoices exists, last activity — host-composed from
@@ -259,9 +259,16 @@ shaped by the projects module's keys and absent rather than refused; money per
 currency and only for financial rights. See
 [`docs/customers.md#customer-360`](docs/customers.md#customer-360).
 
-**Still ahead in this phase:** the customer default bill rate in the rate chain
-(delivery B); other modules writing to the customer timeline, riding on the outbox
-deferred until Orders; invoiced revenue and outstanding, once Invoices exists.
+**Delivery B (done)** — decided in
+[`docs/superpowers/specs/2026-09-24-customers-bill-rate-design.md`](docs/superpowers/specs/2026-09-24-customers-bill-rate-design.md):
+the customer default bill rate, the billing profile's eleventh field, quoted in the
+profile's own currency, and the customer step of Time's rate chain between the
+project default and the person card — the person card's currency rule, nothing
+converted. See [`docs/time.md#the-rate-chain`](docs/time.md#the-rate-chain).
+
+**Still ahead in this phase:** other modules writing to the customer timeline, riding
+on the outbox deferred until Orders; invoiced revenue and outstanding, once Invoices
+exists.
 
 *Unblocks:* the reason the customer page is meant to be the hub, not just a card.
 
@@ -460,7 +467,7 @@ PM tools. Time is its own module (`time`) that requires Projects and reads
 Projects. A time entry references a project, optionally a billing line
 (`KVEM1000-PM`) and optionally a task — the timesheet lists, under each project
 code, the active lines and the caller's open tasks. Rates resolve through an
-explicit chain (billing-line rule → project default → person default; cost
+explicit chain (billing-line rule → project default → customer default → person default; cost
 always from the person) and are snapshotted onto the entry; approval is a
 state machine (`draft → submitted → approved → invoiced`) with period locking.
 
