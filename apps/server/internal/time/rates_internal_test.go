@@ -46,8 +46,8 @@ func (p *priceList) ListPrice(_ context.Context, _ int32, currency string, at ti
 // customerRates is a contracts.CustomerDirectory answering one billing
 // profile per customer id and recording every id BillingProfile was asked
 // about, so a test can prove the chain asks at most once and only when it
-// reaches the customer step. fail makes every lookup an error. The other four
-// methods are what time never asks.
+// reaches the customer step. fail makes every lookup errDirectoryUnavailable.
+// The other four methods are what time never asks.
 type customerRates struct {
 	mu       sync.Mutex
 	profiles map[int32]contracts.CustomerBillingProfile
@@ -56,6 +56,10 @@ type customerRates struct {
 }
 
 var _ contracts.CustomerDirectory = (*customerRates)(nil)
+
+// errDirectoryUnavailable is what a failing customerRates answers, so a test
+// can tell the directory's error from any other the chain could return.
+var errDirectoryUnavailable = errors.New("customer directory unavailable")
 
 func (c *customerRates) Customer(context.Context, int32) (*contracts.CustomerEntry, error) {
 	return nil, nil
@@ -78,7 +82,7 @@ func (c *customerRates) BillingProfile(_ context.Context, id int32) (*contracts.
 	defer c.mu.Unlock()
 	c.asked = append(c.asked, id)
 	if c.fail {
-		return nil, errors.New("customer directory unavailable")
+		return nil, errDirectoryUnavailable
 	}
 	p, ok := c.profiles[id]
 	if !ok {
@@ -221,9 +225,10 @@ func TestResolveRates_PricesAListLineAtNoonOnTheEntryDate(t *testing.T) {
 // TestResolveRates_CustomerStep is the chain's third step as a table (customers
 // bill-rate design D3): the customer's default bill rate prices what neither
 // the line nor the project did, under the person card's currency rule, and
-// falls through to the person whenever it cannot — customers off, no customer,
-// a customer the directory does not know, one without a rate, one in another
-// currency. An archived customer's rate still applies: the directory resolves
+// falls through to the person whenever it cannot — no directory (the defensive
+// floor: customers is never off when time is on), no customer, a customer the
+// directory does not know, one without a rate or without a currency, one in
+// another currency. An archived customer's rate still applies: the directory resolves
 // archived customers on purpose, and a project of theirs may still be worked
 // on. The directory is asked at most once, and never by an entry the chain
 // priced before the step (or that is not billable at all).
@@ -255,6 +260,7 @@ func TestResolveRates_CustomerStep(t *testing.T) {
 		sekCustomer      int32 = 8  // 1400 SEK
 		noRateCustomer   int32 = 9  // NOK, no rate
 		archivedCustomer int32 = 10 // 1250 NOK, archived
+		blankCurrency    int32 = 11 // 1250, but no currency
 		unknownCustomer  int32 = 99 // the directory answers (nil, nil)
 	)
 	directory := func() *customerRates {
@@ -265,6 +271,10 @@ func TestResolveRates_CustomerStep(t *testing.T) {
 			// Archived customers still resolve (contracts.CustomerDirectory's own
 			// rule), and a project of theirs may still be worked on: its rate applies.
 			archivedCustomer: {ID: archivedCustomer, Archived: true, Currency: "NOK", DefaultBillRate: float(1250)},
+			// Customers refuses a rate without a currency, so the directory never
+			// answers this; the chain guards it anyway rather than snapshot a rate
+			// quoted in "" on a project that has no currency of its own.
+			blankCurrency: {ID: blankCurrency, DefaultBillRate: float(1250)},
 		}}
 	}
 	project := func(currency *string, defaultRate *float64, customer *int32) contracts.ProjectEntry {
@@ -274,7 +284,7 @@ func TestResolveRates_CustomerStep(t *testing.T) {
 	fixed := &contracts.BillingLineEntry{ID: 10, PricingMode: "fixed", FixedAmount: float(1500), VariantID: 7, Active: true}
 
 	for name, tc := range map[string]struct {
-		directory   *customerRates // nil: the customers module is off
+		directory   *customerRates // nil: no directory, the defensive floor
 		user        uuid.UUID
 		billable    bool
 		project     contracts.ProjectEntry
@@ -312,7 +322,7 @@ func TestResolveRates_CustomerStep(t *testing.T) {
 			directory: directory(), user: nokCard, billable: true, project: project(text("EUR"), nil, id(nokCustomer)),
 			wantSource: "none", wantAsked: 1,
 		},
-		"customers module off falls through to the person": {
+		"no directory (the defensive floor) falls through to the person": {
 			user: nokCard, billable: true, project: project(text("NOK"), nil, id(nokCustomer)),
 			wantSource: "person", wantBill: float(1100), wantBillCur: text("NOK"),
 		},
@@ -332,6 +342,10 @@ func TestResolveRates_CustomerStep(t *testing.T) {
 			directory: directory(), user: nokCard, billable: true, project: project(text("NOK"), nil, id(noRateCustomer)),
 			wantSource: "person", wantBill: float(1100), wantBillCur: text("NOK"), wantAsked: 1,
 		},
+		"a customer rate without a currency falls through to the person": {
+			directory: directory(), user: nokCard, billable: true, project: project(nil, nil, id(blankCurrency)),
+			wantSource: "person", wantBill: float(1100), wantBillCur: text("NOK"), wantAsked: 1,
+		},
 		"not billable never asks": {
 			directory: directory(), user: nokCard, billable: false, project: project(text("NOK"), nil, id(nokCustomer)),
 			wantSource: "none", wantAsked: 0,
@@ -340,7 +354,7 @@ func TestResolveRates_CustomerStep(t *testing.T) {
 		deps := module.Deps{}
 		if tc.directory != nil {
 			// Only a real directory: a nil *customerRates in the interface would
-			// be a non-nil Directory, which is not what "customers off" is.
+			// be a non-nil Directory, which is not what "no directory" is.
 			deps.Directory = tc.directory
 		}
 		got, err := newServer(deps).resolveRates(ctx, q, rateRequest{
@@ -376,8 +390,8 @@ func TestResolveRates_CustomerDirectoryErrorIsAnError(t *testing.T) {
 		Project: contracts.ProjectEntry{Currency: text("NOK"), CustomerID: &customer},
 		Date:    date(t, "2026-09-14"),
 	})
-	if err == nil {
-		t.Fatal("resolveRates with a failing directory = nil error, want the directory's error")
+	if !errors.Is(err, errDirectoryUnavailable) {
+		t.Fatalf("resolveRates with a failing directory = %v, want the directory's error wrapped", err)
 	}
 }
 
