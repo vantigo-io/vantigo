@@ -222,9 +222,11 @@ export const CustomerBillingModal = ({
           <NumberInput
             label={t("billingDefaultBillRate")}
             description={t("billingDefaultBillRateHint")}
-            // A rate is money at the column's own scale — two decimals, never
-            // zero or negative — which the server refuses otherwise, so the
-            // input does not offer it. Empty is "cleared", like payment terms.
+            // A rate is money at the column's own scale: two decimals, never
+            // negative, and the input offers neither. Zero and anything past
+            // the column's cap are the server's to refuse — its 400 lands on
+            // this field, as the projects rate input leaves them too. Empty is
+            // "cleared", like payment terms.
             decimalScale={2}
             allowNegative={false}
             min={0}

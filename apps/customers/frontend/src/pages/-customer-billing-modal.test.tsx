@@ -183,6 +183,28 @@ describe("CustomerBillingModal", () => {
     expect(rate).toHaveAttribute("aria-invalid", "true");
   });
 
+  it("sends a typed zero rate as it is, and shows the server's refusal on the rate field", async () => {
+    // The input offers no floor above zero: 0 must reach the server as 0 —
+    // not clamped, not read as "cleared" — so its refusal is the one the user sees.
+    const message = "A default bill rate must be greater than zero, but was 0";
+    const fetchMock = renderModal(
+      { ...emptyProfile, currency: "NOK" },
+      {
+        billingPut: () =>
+          jsonResponse(400, { title: "Invalid billing profile", status: 400, errors: { defaultBillRate: [message] } }),
+      },
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    const rate = within(dialog).getByLabelText(/default bill rate/i);
+    await userEvent.type(rate, "0");
+    await userEvent.click(within(dialog).getByRole("button", { name: /save changes/i }));
+
+    expect(await within(dialog).findByText(message)).toBeInTheDocument();
+    expect(rate).toHaveAttribute("aria-invalid", "true");
+    expect(JSON.parse(String((lastBillingPut(fetchMock) as [string, RequestInit])[1].body)).defaultBillRate).toBe(0);
+  });
+
   it("maps field errors from a 400 onto the right inputs", async () => {
     renderModal(emptyProfile, {
       billingPut: () =>
