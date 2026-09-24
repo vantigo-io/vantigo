@@ -48,9 +48,11 @@ Communications' outbox is the working example.
    module's `Deps` already carries what it consumes; `Actuals` and `Expenses` are
    resolved last, after `Projects`, so those providers' *constructors* are allowed
    to read the project directory (neither does, but a future provider could).
-   Two slots are *many-provider* instead — any number of enabled modules may
-   fill them, and Compose collects them in module order: `Workers` (background
-   work) and `CustomerReferences` (`contracts.CustomerReferenceHolder`, rule 8).
+   Two slots are *many-provider* instead — any number of modules may fill them,
+   and Compose collects them in module order: `Workers` (background work, from
+   the enabled modules) and `CustomerReferences`
+   (`contracts.CustomerReferenceHolder`, rule 8, from every module Compose is
+   given, enabled or not — see [Turning a module off](#turning-a-module-off)).
 6. **Never reach around the boundary.** Do not call another module's HTTP endpoints
    from inside the process, and do not reach into another module's schema.
 7. **Frontend packages are isolated too.** A module frontend package (for instance
@@ -101,11 +103,12 @@ Communications' outbox is the working example.
   naming both.
 - **Rule 7**: `no-restricted-imports` in each module frontend's `eslint.config.js`,
   run by `bun run frontend:lint` locally and in CI.
-- **Rule 8**: by shape and by test. A holder is handed a `pgx.Tx` and nothing
-  else it could write with; its SQL lives in its own `queries/`, so rule 4's
-  scan covers it; each holder's own package test re-points real rows through a
-  real transaction, and the customers module's merge tests prove that a
-  holder's error rolls the whole merge back.
+- **Rule 8**: by shape and by test. `RepointCustomer` is handed the caller's
+  `pgx.Tx`; its constructor sees `Deps`, and each holder's rollback test fails if
+  it writes through anything but the transaction. Its SQL lives in its own
+  `queries/`, so rule 4's scan covers it; each holder's own package test
+  re-points real rows through a real transaction, and the customers module's
+  merge tests prove that a holder's error rolls the whole merge back.
 
 ## Turning a module off
 
@@ -127,7 +130,11 @@ problem. The decision is taken once, before anything mounts, so a module can nev
 end up with endpoints mapped whose permissions were never contributed.
 
 **Every schema is migrated regardless of what `MODULES` enables**, so enabling a
-module later needs no migration.
+module later needs no migration. For the same reason a disabled module still
+contributes its `CustomerReferenceHolder` (rule 8): a module that was on once and is
+off now still has rows naming customers, and a merge that skipped them would leave them
+on the absorbed customer for good. A holder needs only the caller's transaction and its
+own schema, both there whatever `MODULES` says.
 
 Some modules cannot be hosted alone. Energy, Communications and Projects read
 customer data through `contracts.CustomerDirectory`, which only Customers implements,

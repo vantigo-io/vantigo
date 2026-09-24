@@ -108,7 +108,9 @@ permission the endpoint already needs. The billing profile is **not** part of
   carries `mergedInto`.
 - **Restoring** an archived customer is `PUT /customers/{id}` with `status: "active"`
   (or any other status) — there is no dedicated "restore" endpoint. It needs
-  `customers:update`, the same permission any other edit does.
+  `customers:update`, the same permission any other edit does. A customer merged away
+  cannot be restored: like every other write to it, the PUT answers 409
+  `customer_merged` ([Merging duplicates](#a-merged-away-customer-is-read-only)).
 - Archived customers are still returned by every lookup that finds a customer by id —
   `GetCustomer`, the `CustomerDirectory`, the contact-association endpoints — so a
   reference held elsewhere (an energy supply period, a project) never breaks. The
@@ -1297,7 +1299,8 @@ concurrent address writers instead.
 Wherever a legal identity is written — `POST /customers`, `PUT /customers/{id}`,
 `PUT /customers/{id}/legal-identity` — if **another** customer, of any status
 (archived included, since the usual next move is to restore it, not create a
-duplicate) already carries the same `(country, id)`, the write is refused with:
+duplicate; a customer [merged away](#a-merged-away-customer-is-read-only) is the one
+exception) already carries the same `(country, id)`, the write is refused with:
 
 ```
 409 Conflict
@@ -1371,11 +1374,11 @@ archived when somebody noticed it.
 | The survivor's own row | Kept, every field: name, type, status, legal identity, contact info, billing profile, owner, group, customer number. Nothing is filled in from the absorbed customer. |
 | Contacts | Every association moves. A contact linked to both keeps the survivor's association — its title, phone and email. Roles are unioned: the survivor's primary for a role stays, the absorbed customer's primary becomes the survivor's for a role it had nobody in, and every other primary flag is dropped, so each role still has exactly one. A role keeps its `created_at`, which is what "longest-standing" means when a primary later steps down. |
 | Addresses | Every address moves, label and all; the absorbed primary of a type the survivor already has a primary for is demoted. The 50-address cap guards a write, not a merge: a survivor may end past 50, and adds another only once it is under again. |
-| Timeline | Every entry and every revision moves, follow-ups with them. Payloads are **not** rewritten: `payload.customerId` says which customer an event happened to at the time, and the merge event says the rest. |
+| Timeline | Every entry and every revision moves, follow-ups with them — a revision follows its entry, so the two never part. Payloads are **not** rewritten: `payload.customerId` says which customer an event happened to at the time, and the merge event says the rest. |
 | Tags | Unioned. |
 | Registry record, Peppol answer | The survivor keeps its own; the absorbed customer's are deleted — they described an identity the survivor either shares or does not have, and a refresh or a re-check fetches either again. |
 | Other modules | Re-pointed in the same transaction ([below](#one-transaction-every-module)). |
-| The absorbed customer | Archived, with `merged_into_customer_id` naming the survivor (migration `00029`, a foreign key to this table, `ON DELETE RESTRICT`). It keeps its name, number, identity, contact info and billing profile, so its page still reads, and its response carries `mergedInto: {id, customerNumber, name}`. |
+| The absorbed customer | Archived, with `merged_into_customer_id` naming the survivor (migration `00029`, a foreign key to this table, `ON DELETE RESTRICT`). It keeps its name, number, identity, contact info and billing profile, so its page still reads, and its response carries `mergedInto: {id, customerNumber, name}`. A customer merged into it earlier is re-pointed at the survivor too, so a marker is always one hop: A merged into B and B later into C leaves A naming C, its revision one on. |
 
 Both rows' `revision` advances. Two events are written, and no
 `customer.status_changed` beside them — the merge is the reason:
@@ -1385,7 +1388,9 @@ Both rows' `revision` advances. Two events are written, and no
   were. Payload `{customerId, absorbed: {id, customerNumber, name, type, status,
   identity, contactInfo, billingProfile, ownerUserId, groupId}, moved: [{kind,
   count}]}`: the absorbed customer's own values, so a person who wanted its billing
-  profile or its identity can still read them.
+  profile or its identity can still read them. It is read with `customers:timeline-view`,
+  and its `absorbed.identity` is visible to that reader, as `customer.created`'s and
+  `customer.updated`'s identity payloads already are.
 - **`customer.merged_away`** on the absorbed customer. Summary "Merged into #1002
   Acme AS", payload `{customerId, into: {id, customerNumber, name}}`.
 
@@ -1394,8 +1399,11 @@ answer it, and every kind with its count, a zero included — this module's four
 each counting what the absorbed customer had (`customers.contacts` its associations,
 a contact the survivor already had included; `customers.addresses`;
 `customers.timelineEntries` its active entries; `customers.tags` its tags), then each
-other module's in the order the installation composes them. A module that is not
-enabled lists nothing.
+other module's in the order the installation composes them. Every holder the binary
+carries runs, its module enabled in `MODULES` or not: every schema is migrated
+regardless ([module boundaries](module-boundaries.md#turning-a-module-off)), so a module
+switched off still has references to re-point, and they would otherwise wait on the
+absorbed customer for the module to come back.
 
 ### One transaction, every module
 
@@ -1420,7 +1428,10 @@ lock cycles: copying an association takes a key-share on the contact row while
 the tag union locks the absorbed customer's tag links and then key-shares each tag while
 `DELETE /customers/tags/{tagId}` locks the tag and then, by its cascade, those links.
 Either pair can deadlock, and the loser runs again. An attach cannot — it takes the
-customer first, as a merge does.
+customer first, as a merge does, and so does every other customer-scoped write, the
+timeline entry POST and the Peppol lookup included: each queues behind a merge rather
+than landing inside it, and once the merge has committed it finds the customer merged
+away and is refused (below).
 
 The [directory](#contractscustomerdirectory) still answers an absorbed customer —
 archived, with `CustomerEntry.MergedInto`. The merge re-points every reference that
@@ -1429,9 +1440,26 @@ communications all do) can still write one for the merged-away id afterwards, or
 one while the merge runs, and the directory's `MergedInto` tells that consumer where to
 look.
 
-A merged-away customer is an archived customer like any other: it can still be
-edited or restored through the API (the page hides those actions), and the marker
-stays either way. Not built: un-merging (the event payload is the record), merging
+### A merged-away customer is read-only
+
+Every write to a customer merged away answers **409 `customer_merged`**, "Customer was
+merged", its detail naming the survivor: `PUT /customers/{id}` (a restore included), its
+type, contact info, billing profile, owner, group and legal identity (put or removed),
+its addresses, tags and contact associations, its timeline entries and follow-ups, a
+Peppol lookup and a registry refresh — the last two before the network is asked. Each
+write learns it under the customer's own lock, the one a merge holds until it commits,
+so one that queued behind the merge is refused too; an entry, address or association
+that moved with the merge answers the same rather than a 404. A CSV row naming its
+number is refused on `customerNumber`. `DELETE /customers/{id}` is the archived no-op it
+is for every archived customer (204, nothing written), and a request that would change
+nothing is answered as it always is, since it writes nothing.
+
+A merged-away customer no longer holds its legal identity either: the
+[duplicate-identity guard](#the-duplicate-identity-guard) passes it over, so the survivor —
+or anybody — can take that organisation number on; the identity it had is history,
+recorded in `customer.merged`.
+
+Not built: un-merging (the event payload is the record), merging
 more than two at once, filling the survivor's blank fields from the absorbed
 customer, rewriting historical payloads, and a "find duplicates" report — the
 duplicate-identity guard and the list search are how duplicates are found today.
@@ -2770,9 +2798,8 @@ one canonical file (the payroll export's form, the API's JSON names), the list
 exported as the caller sees it and capped at 5000 rows, and an import that creates
 and updates by `customerNumber` through the endpoints' own write paths, a group at a
 time, with a dry run by default and the failed rows handed back for a re-run. No
-permission key, no event type and no migration were added. Still ahead in phase 6
-after it: merging (delivery B, below) and GDPR handling for person customers
-(delivery C).
+permission key, no event type and no migration were added. Delivery B followed it
+(below).
 
 **Phase 6 delivery B** — [Merging duplicates](#merging-duplicates) — has landed,
 decided in

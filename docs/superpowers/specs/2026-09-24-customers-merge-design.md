@@ -35,7 +35,9 @@ type RepointedReferences struct { Kind string; Count int64 } // "energy.supplyPe
 ```
 
 `module.Module` gains `CustomerReferences func(Deps) contracts.CustomerReferenceHolder`
-— a **many-provider** slot like `Workers`: Compose collects every enabled module's holder
+— a **many-provider** slot like `Workers`: Compose collects the holder of every module it
+is given — enabled or not, unlike every other slot, since every schema is migrated
+whatever `MODULES` says and a module switched off still has rows naming customers —
 into `Deps.CustomerReferenceHolders []contracts.CustomerReferenceHolder` before any Mount.
 Holders today: **projects** (`projects.projects.customer_id`), **energy**
 (`energy.supply_periods.customer_id`), **communications** (`conversations.customer_id`,
@@ -79,7 +81,7 @@ delete's lock-order rule) and `RetrySerializable`:
 - **Addresses**: every address moves; the absorbed customer's primary of a type the
   survivor already has a primary for is demoted; labels stay.
 - **Timeline**: every entry and its revisions move (`customer_id` rewritten on both
-  tables); follow-ups ride along. Payloads are **not** rewritten: `payload.customerId`
+  tables, a revision following its entry's); follow-ups ride along. Payloads are **not** rewritten: `payload.customerId`
   records which customer an event happened to at the time, and the merge event on the
   survivor says the rest.
 - **Tags**: unioned (`ON CONFLICT DO NOTHING`).
@@ -91,7 +93,12 @@ delete's lock-order rule) and `RetrySerializable`:
 - **The absorbed customer** is set `archived`, gains `merged_into_customer_id`
   (migration `00029`: nullable, an in-module FK, `ON DELETE RESTRICT`, partial index),
   and both rows bump `revision`. It keeps its name, number and identity — history
-  stays readable, and its page shows where it went.
+  stays readable, and its page shows where it went. Markers stay one hop long: a
+  customer merged into the absorbed one earlier now names the survivor (chains
+  flatten, and each re-pointed row's revision advances). A merged-away customer no
+  longer holds its legal identity for the duplicate-identity guard, and it is
+  read-only: every write to it answers 409 `customer_merged` naming the survivor
+  (final review ruling), the restore included.
 - **Events**: `customer.merged` on the survivor (`{customerId, absorbed: {id,
   customerNumber, name, type, status, identity, contactInfo, billingProfile, ownerUserId,
   groupId}, moved: [{kind, count}]}`, summary "Absorbed #1005 Acme Norge AS: 3
