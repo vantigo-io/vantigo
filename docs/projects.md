@@ -1113,6 +1113,17 @@ the 409 above, and `timeTracking: false` / `expenseTracking: false` in
 [Project economy](#project-economy)). `modtest` has matching options so a module
 test can run against a fake or a real provider.
 
+Projects also **holds customer references** — `contracts.CustomerReferenceHolder`,
+the one sanctioned cross-module write ([module boundaries rule 8](module-boundaries.md#the-rules)).
+When the customers module merges two customers, `RepointProjectsCustomer` moves every
+project of the absorbed customer to the survivor inside the merge's own transaction,
+advancing each moved project's revision like any other change to the row, so an edit
+form still holding the old customer answers the stale-revision 409. No project
+timeline entry is written: the merge is recorded on the survivor's customer timeline,
+and `customerName` reads the survivor's from then on. Time and expenses hold no
+customer id of their own, so the move keeps them right too. See
+[Merging duplicates](customers.md#merging-duplicates).
+
 ### What Time tracking should build on
 
 Time tracking is the first consumer, and the seam is already in place:

@@ -103,6 +103,9 @@ permission the endpoint already needs. The billing profile is **not** part of
 - **Customers are archived, never deleted.** `DELETE /customers/{id}` sets
   `status: "archived"`; it is idempotent (archiving an already-archived customer
   writes nothing and emits no second event) and requires `customers:delete`.
+- **A merged-away customer is archived too** ([Merging duplicates](#merging-duplicates)):
+  `merged_into_customer_id` names the customer that absorbed it, and its response
+  carries `mergedInto`.
 - **Restoring** an archived customer is `PUT /customers/{id}` with `status: "active"`
   (or any other status) — there is no dedicated "restore" endpoint. It needs
   `customers:update`, the same permission any other edit does.
@@ -1334,6 +1337,105 @@ duplicate) already carries the same `(country, id)`, the write is refused with:
   and shows up to three existing matches with a link. There is no dedicated endpoint
   for it.
 
+## Merging duplicates
+
+Two customers that are the same real-world entity become one (phase 6 delivery B,
+decided in
+[`docs/superpowers/specs/2026-09-24-customers-merge-design.md`](superpowers/specs/2026-09-24-customers-merge-design.md)).
+`POST /customers/{id}/merge` with `{sourceId, revision?}`: the customer in the path
+**survives** and **absorbs** `sourceId`. It needs `customers:merge` and
+`customers:view` — merging rewrites other modules' data and archives a customer,
+which is more than `customers:delete` does. `revision` is the survivor's and
+optional; stale, it is the [revision conflict](#revision-and-concurrency). The
+absorbed customer needs none: it is going away.
+
+### The refusals, in order
+
+| Answer | When |
+| --- | --- |
+| 400 | `sourceId` is missing or not a positive id |
+| 404 | either customer does not exist |
+| 409 `merge_self` | the same customer twice |
+| 409 `merge_type_mismatch` | a person and a business — a merge never changes what a customer is |
+| 409 `merge_into_archived` | the survivor is archived; restore it first |
+| 409 `merge_already_merged` | the absorbed customer was merged away before; the detail names where |
+| 409 without a code | the survivor's `revision` is stale |
+
+An **archived** customer may be absorbed — the usual case: the duplicate was
+archived when somebody noticed it.
+
+### What moves, what stays, what is recorded
+
+| | |
+| --- | --- |
+| The survivor's own row | Kept, every field: name, type, status, legal identity, contact info, billing profile, owner, group, customer number. Nothing is filled in from the absorbed customer. |
+| Contacts | Every association moves. A contact linked to both keeps the survivor's association — its title, phone and email. Roles are unioned: the survivor's primary for a role stays, the absorbed customer's primary becomes the survivor's for a role it had nobody in, and every other primary flag is dropped, so each role still has exactly one. A role keeps its `created_at`, which is what "longest-standing" means when a primary later steps down. |
+| Addresses | Every address moves, label and all; the absorbed primary of a type the survivor already has a primary for is demoted. The 50-address cap guards a write, not a merge: a survivor may end past 50, and adds another only once it is under again. |
+| Timeline | Every entry and every revision moves, follow-ups with them. Payloads are **not** rewritten: `payload.customerId` says which customer an event happened to at the time, and the merge event says the rest. |
+| Tags | Unioned. |
+| Registry record, Peppol answer | The survivor keeps its own; the absorbed customer's are deleted — they described an identity the survivor either shares or does not have, and a refresh or a re-check fetches either again. |
+| Other modules | Re-pointed in the same transaction ([below](#one-transaction-every-module)). |
+| The absorbed customer | Archived, with `merged_into_customer_id` naming the survivor (migration `00029`, a foreign key to this table, `ON DELETE RESTRICT`). It keeps its name, number, identity, contact info and billing profile, so its page still reads, and its response carries `mergedInto: {id, customerNumber, name}`. |
+
+Both rows' `revision` advances. Two events are written, and no
+`customer.status_changed` beside them — the merge is the reason:
+
+- **`customer.merged`** on the survivor. Summary "Absorbed #1005 Acme Norge AS: 3
+  contacts, 2 addresses, 14 timeline entries, 2 projects" — only the kinds there
+  were. Payload `{customerId, absorbed: {id, customerNumber, name, type, status,
+  identity, contactInfo, billingProfile, ownerUserId, groupId}, moved: [{kind,
+  count}]}`: the absorbed customer's own values, so a person who wanted its billing
+  profile or its identity can still read them.
+- **`customer.merged_away`** on the absorbed customer. Summary "Merged into #1002
+  Acme AS", payload `{customerId, into: {id, customerNumber, name}}`.
+
+The answer is `CustomerMergeResult {customer, moved}`: the survivor as `GET` would
+answer it, and every kind with its count, a zero included — this module's four first,
+each counting what the absorbed customer had (`customers.contacts` its associations,
+a contact the survivor already had included; `customers.addresses`;
+`customers.timelineEntries` its active entries; `customers.tags` its tags), then each
+other module's in the order the installation composes them. A module that is not
+enabled lists nothing.
+
+### One transaction, every module
+
+All modules share one database, so a merge is one transaction and needs no event
+bus. It locks both customer rows in ascending id order — the order every writer that
+locks several customers takes ([Typed roles](#typed-roles-and-one-primary-per-role)) —
+reads the refusals under the locks, moves this module's tables, and then hands the
+same transaction to each `contracts.CustomerReferenceHolder` Compose collected
+([module boundaries rule 8](module-boundaries.md#the-rules)). Each holder runs its
+own SQL, on its own schema, from its own package:
+
+| Holder | What it re-points (kind) |
+| --- | --- |
+| projects | `projects.projects.customer_id` (`projects.projects`). Each moved project's revision advances; no project timeline entry is written. Time and expenses reach a customer only through a project, so they hold nothing. |
+| energy | `energy.supply_periods.customer_id` (`energy.supplyPeriods`). The overlap constraint is per metering point, so a re-point cannot violate it. Energy has no module doc of its own; this row is its paragraph. |
+| communications | `conversations.customer_id` (`communications.conversations`), `conversations.suggested_customer_id` (`communications.conversationSuggestions`), and the candidate list (`communications.conversationCandidates`), where a conversation that already lists the survivor keeps it once. |
+
+Any error, a holder's included, rolls back everything: nothing moved, no marker, no
+event. The transaction runs under `db.RetrySerializable` with three attempts, for two
+lock cycles: copying an association takes a key-share on the contact row while
+`DELETE /customers/contacts/{id}` takes the contact first and the customers after; and
+the tag union locks the absorbed customer's tag links and then key-shares each tag while
+`DELETE /customers/tags/{tagId}` locks the tag and then, by its cascade, those links.
+Either pair can deadlock, and the loser runs again. An attach cannot — it takes the
+customer first, as a merge does.
+
+The [directory](#contractscustomerdirectory) still answers an absorbed customer —
+archived, with `CustomerEntry.MergedInto`. The merge re-points every reference that
+existed when it ran; a module that accepts archived customers (projects, energy and
+communications all do) can still write one for the merged-away id afterwards, or commit
+one while the merge runs, and the directory's `MergedInto` tells that consumer where to
+look.
+
+A merged-away customer is an archived customer like any other: it can still be
+edited or restored through the API (the page hides those actions), and the marker
+stays either way. Not built: un-merging (the event payload is the record), merging
+more than two at once, filling the survivor's blank fields from the absorbed
+customer, rewriting historical payloads, and a "find duplicates" report — the
+duplicate-identity guard and the list search are how duplicates are found today.
+
 ## Brreg lookup
 
 `GET /api/v1/customers/lookup/brreg` (`customers:lookup-view`) queries
@@ -2109,7 +2211,7 @@ you, or not installed".
 
 ## Permissions
 
-Fourteen keys, category-grouped, every one delegable. Only `view`, `create` and
+Fifteen keys, category-grouped, every one delegable. Only `view`, `create` and
 `update` are non-sensitive.
 
 | Key | Category | Meaning | Sensitive |
@@ -2128,6 +2230,7 @@ Fourteen keys, category-grouped, every one delegable. Only `view`, `create` and
 | `customers:timeline-manage` | Timeline | Create, update, and delete customer timeline entries. | yes |
 | `customers:lookup-view` | Lookup | Search the external business registry for legal identities. | yes |
 | `customers:billing-manage` | Billing | Set a customer's payment terms, invoice delivery and billing addresses for documents. | yes |
+| `customers:merge` | Customers | Merge a duplicate customer into another, moving its contacts, addresses, timeline, tags and other modules' references, and archiving it. | yes |
 
 `customers:billing-manage` is the one key with no earlier counterpart: writing a
 customer's billing profile is deliberately gated separately from
@@ -2136,6 +2239,10 @@ profile](#contact-info-addresses-and-the-billing-profile) gives above. Note that
 reading a billing profile (`GET .../billing-profile`) needs only `customers:view` —
 `customers:billing-manage` gates the *write* alone, the same split `customers:update`
 gets from the general customer PUT.
+
+`customers:merge` is the second ([Merging duplicates](#merging-duplicates)): a merge
+rewrites other modules' references and archives a customer, which is more than
+`customers:delete` does, so neither key implies the other.
 
 Two permissions combine to widen list search beyond name/number:
 `customers:legal-identity-view` alone unlocks legal name/id; **both**
@@ -2216,7 +2323,7 @@ wired into every module's `Deps` by Compose before any module mounts:
 
 ```go
 type CustomerDirectory interface {
-    Customer(ctx, id int32) (*CustomerEntry, error)             // {ID, Name, Archived, Group}
+    Customer(ctx, id int32) (*CustomerEntry, error)             // {ID, Name, Archived, Group, MergedInto}
     Customers(ctx, ids []int32) ([]CustomerEntry, error)         // batch; a missing id is simply absent
     Contact(ctx, id int32) (*ContactEntry, error)                // {ID, FirstName, LastName, Email}
     ContactsByEmail(ctx, email string) ([]ContactMatch, error)   // {ContactID, CandidateCustomerIDs}
@@ -2235,7 +2342,8 @@ Rules that hold across every method here:
   `BillingProfile` alike. A supply period, a project or a past invoice can hold a
   long-lived pointer to a customer that has since been archived, and must still be
   able to show its name or invoice it again — `Archived` tells the caller to
-  decorate the reference, not that the lookup failed.
+  decorate the reference, not that the lookup failed. A merged-away customer
+  resolves the same way, with `MergedInto` naming the customer that absorbed it.
 - **More than one match from `ContactsByEmail` is ambiguous, on purpose.** An email
   is not unique across customers; the directory returns every candidate and leaves
   resolving the ambiguity to the caller.
@@ -2325,6 +2433,21 @@ of its caller: Products phase 4's customer-group prices are the intended reader.
   when an import completes. The host passes two more
   props: `canExport` (`customers:view`) and `canImport` (`customers:create`,
   `customers:update` and `customers:view` — the import operation's own rule).
+- **Merge…** on the customer page header, for a caller the host says may merge (a
+  new `canMerge` prop, read from `customers:merge`): a modal with this package's own
+  customer picker (the projects picker's shape, over this module's list with
+  archived customers included, leaving out this customer and any merged away), a
+  plain sentence of what will happen, a warning, and the Merge button disabled, for
+  two types or an archived survivor, then the counts of what moved; the page
+  refreshes. A merged-away customer's page shows a banner "Merged into #1002 Acme AS"
+  linking there, and shows no edit action anywhere: the header hides Edit, Change
+  type, Archive, Restore and Merge, and every card — owner, tags and group, contact
+  info and addresses, the registry record, the billing profile, contacts, the
+  timeline — is handed its capability as `canX && !customer.mergedInto` (the contacts
+  card, which had none, takes `readOnly`). The create and edit forms'
+  duplicate-identity conflict adds a line suggesting Merge… on the duplicate it
+  already links to, for a caller who may merge — the list page passes `canMerge`
+  too, since it opens the same form.
 - **Detail** (`/customers/:id`) — a host-composed page: this package owns the header
   (name, legal-identity badges, status/type badges, edit and change-type actions) and
   an overview tab (relationship card, contact & addresses card, billing card, contacts
@@ -2475,7 +2598,7 @@ of its caller: Products phase 4's customer-group prices are the intended reader.
 ## API
 
 Every operation is under `/api/v1/customers`, authenticated with the shared identity
-session cookie. 59 operations in total, each exercised by the module's own
+session cookie. 60 operations in total, each exercised by the module's own
 contract-validated test coverage gate — every operation in `openapi/customers.yaml`
 must be exercised by at least one successful exchange, with no allow-list.
 
@@ -2487,6 +2610,7 @@ must be exercised by at least one successful exchange, with no allow-list.
 | `POST /` | `customers:create` (plus `customers:legal-identity-manage` if the body carries an `identity`) |
 | `PUT /{id}`, `PUT /{id}/type` | `customers:update` + `customers:view` (plus `legal-identity-manage` if the body carries an `identity`) |
 | `DELETE /{id}` (archive) | `customers:delete` |
+| `POST /{id}/merge` | `customers:merge` + `customers:view` |
 | `GET /{id}/legal-identity` | `customers:legal-identity-view` |
 | `PUT /{id}/legal-identity` | `customers:legal-identity-manage` + `customers:legal-identity-view` |
 | `DELETE /{id}/legal-identity` | `customers:legal-identity-manage` |
@@ -2646,14 +2770,25 @@ one canonical file (the payroll export's form, the API's JSON names), the list
 exported as the caller sees it and capped at 5000 rows, and an import that creates
 and updates by `customerNumber` through the endpoints' own write paths, a group at a
 time, with a dry run by default and the failed rows handed back for a re-run. No
-permission key, no event type and no migration were added. Still ahead in phase 6:
-merging duplicate customers (delivery B) and GDPR handling for person customers
+permission key, no event type and no migration were added. Still ahead in phase 6
+after it: merging (delivery B, below) and GDPR handling for person customers
 (delivery C).
+
+**Phase 6 delivery B** — [Merging duplicates](#merging-duplicates) — has landed,
+decided in
+[`docs/superpowers/specs/2026-09-24-customers-merge-design.md`](superpowers/specs/2026-09-24-customers-merge-design.md):
+`POST /customers/{id}/merge` absorbs a duplicate into the customer in the path in one
+transaction — its contacts, addresses, timeline, tags and every other module's
+references, the survivor keeping every field of its own and the duplicate archived
+with a marker. It added one permission key (`customers:merge`), one migration
+(`00029`), two event types and the first cross-module write contract,
+`contracts.CustomerReferenceHolder`, which projects, energy and communications
+implement. Still ahead in phase 6: GDPR handling for person customers (delivery C).
 
 Past that, the remaining gaps are exactly
 what [ROADMAP.md's Customers section](../ROADMAP.md#customers) is built around —
-`ContactsByEmail` still unused in production, no merge and no GDPR handling
-(phase 6 deliveries B and C) — itself drawn from
+`ContactsByEmail` still unused in production, no GDPR handling (phase 6 delivery
+C) — itself drawn from
 [`docs/superpowers/research/2026-09-21-customers-module-next.md`](superpowers/research/2026-09-21-customers-module-next.md),
 which also compares this module against the Nordic ERP/accounting and international
 CRM/PSA fields it was benchmarked against.

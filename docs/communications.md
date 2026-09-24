@@ -56,6 +56,14 @@ never import each other and never query another module's schema.
 Customer and contact link values are opaque domain values. Preserve them exactly; do
 not derive meaning from them or use them as authorization credentials.
 
+The one write in the other direction is a customer merge: communications declares a
+`contracts.CustomerReferenceHolder` ([module boundaries rule 8](module-boundaries.md#the-rules)),
+and when the customers module merges two customers it re-points, inside the merge's
+own transaction, every conversation's `customer_id` and `suggested_customer_id` from
+the absorbed customer to the survivor, and the candidate list — where a conversation
+that already lists the survivor keeps it once. See
+[Merging duplicates](customers.md#merging-duplicates).
+
 ## SMTP
 
 **Per-channel SMTP credentials are configured through the Communications API, not
