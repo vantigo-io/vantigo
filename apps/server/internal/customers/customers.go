@@ -52,7 +52,8 @@ type customerRow struct {
 }
 
 // customerRowFrom is fromCustomerRow and its three sibling adapters' shared
-// core: since customers.customers gained ten billing columns none of
+// core: since customers.customers gained eleven billing columns (ten in
+// 00019, the default bill rate in 00028) none of
 // GetCustomer/UpdateCustomer/SetCustomerType/UpdateCustomerContactInfo
 // selects (invoice-ready customer design D4's controller ruling — the
 // billing profile must never reach SafeCustomerResponse), sqlc can no longer

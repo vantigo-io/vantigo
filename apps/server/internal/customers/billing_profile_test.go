@@ -643,6 +643,13 @@ func TestPutCustomersByIdBillingProfile_DefaultBillRate_ChangesAreWrittenAndReco
 			t.Errorf("changes = %v, want defaultBillRate alone", changes)
 		}
 		change, _ := changes["defaultBillRate"].(map[string]any)
+		// Both sides are keys even when nil: an absent key reads as nil too, so
+		// without this a clear that lost its "after" would still pass below.
+		for _, side := range []string{"before", "after"} {
+			if _, ok := change[side]; !ok {
+				t.Errorf("changes.defaultBillRate = %v, want the %q key", change, side)
+			}
+		}
 		// The event's before/after snapshots carry the rate too, key present
 		// even when the rate is nil — the same full-profile shape as every
 		// other field, so a reader of either snapshot alone sees the rate.

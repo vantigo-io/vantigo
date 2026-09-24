@@ -52,10 +52,12 @@ type CustomerAddressEntry struct {
 	Label, Line1, Line2, PostalCode, City, Region, Country string
 }
 
-// CustomerBillingProfile is what an invoice needs to know about a customer,
-// already resolved: every rule that would otherwise have to be re-derived by
-// whoever sends the invoice is applied once, here, by the module that owns
-// the data (invoice-ready customer design D5).
+// CustomerBillingProfile is what an invoice needs to know about a customer —
+// and, since customers bill-rate design D2, the default bill rate Time's rate
+// chain prices hours with — already resolved: every rule that would otherwise
+// have to be re-derived by whoever sends the invoice or prices the hours is
+// applied once, here, by the module that owns the data (invoice-ready
+// customer design D5).
 type CustomerBillingProfile struct {
 	ID             int32
 	CustomerNumber int64
@@ -134,7 +136,9 @@ type CustomerBillingProfile struct {
 //     id or "the" invoice address itself: a caller receiving an empty string or a nil
 //     pointer back has learned that nothing was decided for that field, not
 //     that the lookup failed, and is free to apply its own default the
-//     billing profile's own GET endpoint would not presume to pick.
+//     billing profile's own GET endpoint would not presume to pick — or, for
+//     the default bill rate, to fall through to its own next step (Time's
+//     rate chain reads the profile too, customers bill-rate design D2).
 type CustomerDirectory interface {
 	// Customer looks up a customer by ID. It returns (nil, nil) if id does
 	// not exist.
@@ -153,8 +157,9 @@ type CustomerDirectory interface {
 	// together with the customers it is linked to. It returns an empty
 	// slice, not an error, when no contact matches.
 	ContactsByEmail(ctx context.Context, email string) ([]ContactMatch, error)
-	// BillingProfile is what an invoice needs to know about a customer,
-	// already resolved (see the rules above). It returns (nil, nil) if id
-	// does not exist.
+	// BillingProfile is what an invoice needs to know about a customer, and
+	// the default bill rate Time's rate chain prices hours with, already
+	// resolved (see the rules above). It returns (nil, nil) if id does not
+	// exist.
 	BillingProfile(ctx context.Context, id int32) (*CustomerBillingProfile, error)
 }
