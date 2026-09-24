@@ -417,7 +417,8 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 		// identity — always mounted, never listed in MODULES — plus whichever
 		// of the rest MODULES enables, and injects customers' customer
 		// directory into every enabled module's Deps. A disabled module
-		// contributes no route, no permission and no contract path.
+		// contributes no route, no permission and no contract path — only its
+		// customer reference holder, since its schema is there regardless.
 		api, err := module.Compose(deps, mods...)
 		if err != nil {
 			logger.Error("startup failed", "error", err)

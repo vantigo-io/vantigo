@@ -33,8 +33,19 @@ func newCustomerReferenceHolder(module.Deps) contracts.CustomerReferenceHolder {
 }
 
 // RepointCustomer runs the three re-points inside the caller's transaction, in
-// the order the kinds are reported.
+// the order the kinds are reported. A customer merged into itself moves
+// nothing — the merge refuses that before any holder runs (merge_self), and
+// this guard keeps the answer honest should that change: the candidates
+// statement would otherwise delete and re-insert every row it has, and report
+// them all as moved.
 func (customerReferenceHolder) RepointCustomer(ctx context.Context, tx pgx.Tx, from, into int32) ([]contracts.RepointedReferences, error) {
+	if from == into {
+		return []contracts.RepointedReferences{
+			{Kind: customerReferenceKindConversations, Count: 0},
+			{Kind: customerReferenceKindSuggestions, Count: 0},
+			{Kind: customerReferenceKindCandidates, Count: 0},
+		}, nil
+	}
 	q := store.New(tx)
 	conversations, err := q.RepointConversationsCustomer(ctx, store.RepointConversationsCustomerParams{FromCustomerID: from, IntoCustomerID: into})
 	if err != nil {
@@ -51,6 +62,6 @@ func (customerReferenceHolder) RepointCustomer(ctx context.Context, tx pgx.Tx, f
 	return []contracts.RepointedReferences{
 		{Kind: customerReferenceKindConversations, Count: conversations},
 		{Kind: customerReferenceKindSuggestions, Count: suggestions},
-		{Kind: customerReferenceKindCandidates, Count: candidates.Moved},
+		{Kind: customerReferenceKindCandidates, Count: candidates},
 	}, nil
 }

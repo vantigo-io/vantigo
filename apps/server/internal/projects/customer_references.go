@@ -36,7 +36,15 @@ func newCustomerReferenceHolder(d module.Deps) contracts.CustomerReferenceHolder
 // transaction (RepointProjectsCustomer). No project timeline entry is
 // written: the merge is recorded on the survivor's customer timeline, and a
 // project's customerName reads the survivor's the moment the merge commits.
+//
+// A customer merged into itself moves nothing: the merge refuses that case
+// (merge_self) before any holder runs, and this guard keeps it so should that
+// ever change — the statement would match every project the customer has and
+// bump each one's revision for nothing.
 func (h *customerReferenceHolder) RepointCustomer(ctx context.Context, tx pgx.Tx, from, into int32) ([]contracts.RepointedReferences, error) {
+	if from == into {
+		return []contracts.RepointedReferences{{Kind: customerReferenceKindProjects, Count: 0}}, nil
+	}
 	n, err := store.New(tx).RepointProjectsCustomer(ctx, store.RepointProjectsCustomerParams{
 		FromCustomerID: from, IntoCustomerID: into, Now: h.clock(),
 	})

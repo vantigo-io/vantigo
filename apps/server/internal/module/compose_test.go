@@ -1364,10 +1364,45 @@ func TestCompose_CollectsEveryCustomerReferenceHolderInModuleOrder(t *testing.T)
 	}
 }
 
-// A module MODULES leaves out contributes no holder even when it declares one,
-// exactly as it contributes no directory — and with no holder anywhere the
-// slice stays nil rather than becoming an empty one Compose invented.
-func TestCompose_DisabledModuleContributesNoCustomerReferenceHolder(t *testing.T) {
+// A module MODULES leaves out still contributes its holder, unlike its
+// directory: every schema is migrated whatever MODULES says, so a merge must
+// re-point a disabled module's rows too (customers merge design D1). The
+// holder reaches the enabled modules' Deps, in the order the modules were
+// given.
+func TestCompose_DisabledModuleStillContributesItsCustomerReferenceHolder(t *testing.T) {
+	var got []contracts.CustomerReferenceHolder
+	beta := &fakeReferenceHolder{name: "beta"}
+	gamma := &fakeReferenceHolder{name: "gamma"}
+
+	_, err := compose(
+		Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha", "gamma"}}},
+		fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract, "gamma": gammaContract}),
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d.CustomerReferenceHolders
+			return staticHandler("alpha")(d)
+		}},
+		Module{
+			Name:               "beta",
+			CustomerReferences: func(Deps) contracts.CustomerReferenceHolder { return beta },
+			Mount:              staticHandler("beta"),
+		},
+		Module{
+			Name:               "gamma",
+			CustomerReferences: func(Deps) contracts.CustomerReferenceHolder { return gamma },
+			Mount:              staticHandler("gamma"),
+		},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if want := []contracts.CustomerReferenceHolder{beta, gamma}; !slices.Equal(got, want) {
+		t.Errorf("Deps.CustomerReferenceHolders = %v, want beta's (disabled) then gamma's", got)
+	}
+}
+
+// With no holder anywhere the slice stays nil rather than becoming an empty
+// one Compose invented.
+func TestCompose_NoCustomerReferenceHolderLeavesTheSliceNil(t *testing.T) {
 	got := []contracts.CustomerReferenceHolder{&fakeReferenceHolder{}} // non-nil, so a no-op is caught
 
 	_, err := compose(
@@ -1377,17 +1412,13 @@ func TestCompose_DisabledModuleContributesNoCustomerReferenceHolder(t *testing.T
 			got = d.CustomerReferenceHolders
 			return staticHandler("alpha")(d)
 		}},
-		Module{
-			Name:               "beta",
-			CustomerReferences: func(Deps) contracts.CustomerReferenceHolder { return &fakeReferenceHolder{name: "beta"} },
-			Mount:              staticHandler("beta"),
-		},
+		Module{Name: "beta", Mount: staticHandler("beta")},
 	)
 	if err != nil {
 		t.Fatalf("compose: %v", err)
 	}
 	if got != nil {
-		t.Errorf("Deps.CustomerReferenceHolders = %v, want nil: beta, the only holder, is disabled", got)
+		t.Errorf("Deps.CustomerReferenceHolders = %v, want nil: no module declares a holder", got)
 	}
 }
 

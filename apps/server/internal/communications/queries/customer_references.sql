@@ -22,8 +22,11 @@ WHERE suggested_customer_id = @from_customer_id::integer;
 -- (conversation_id, customer_id) is the primary key. So the absorbed rows are
 -- deleted and re-inserted for the survivor with ON CONFLICT DO NOTHING — one
 -- statement, a conversation that listed both keeps the survivor once, and
--- each candidate keeps its created_at. moved is how many the absorbed customer
--- had; added how many of those were new to the survivor.
+-- each candidate keeps its created_at. The answer is how many rows the absorbed
+-- customer had, ones that collapsed into a row the survivor already had
+-- included — the count a merge reports; how many were new to the survivor is
+-- nothing anybody reads, so it is not asked for (a data-modifying WITH runs to
+-- completion whether or not the outer SELECT reads it).
 WITH gone AS (
     DELETE FROM communications.conversation_customer_candidates
     WHERE customer_id = @from_customer_id::integer
@@ -32,6 +35,5 @@ WITH gone AS (
     INSERT INTO communications.conversation_customer_candidates (conversation_id, customer_id, created_at)
     SELECT conversation_id, @into_customer_id::integer, created_at FROM gone
     ON CONFLICT (conversation_id, customer_id) DO NOTHING
-    RETURNING conversation_id
 )
-SELECT (SELECT count(*) FROM gone)::bigint AS moved, (SELECT count(*) FROM kept)::bigint AS added;
+SELECT (SELECT count(*) FROM gone)::bigint AS moved;

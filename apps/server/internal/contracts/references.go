@@ -37,6 +37,13 @@ import (
 //     says what was looked at as well as what moved. A kind is
 //     "<module>.<what>" in the API's camelCase: "projects.projects",
 //     "energy.supplyPeriods".
+//   - It runs whether or not its module is enabled: every schema is migrated
+//     whatever MODULES says, so Compose collects the holder of every module it
+//     is given, and a module switched off still has its references moved. Its
+//     constructor must therefore need nothing a disabled module's Deps lacks.
+//   - Given from == into it writes nothing and reports its kinds as zeros. The
+//     merge refuses that case before any holder runs; the guard is each
+//     holder's own, so the answer stays honest should that ever change.
 type CustomerReferenceHolder interface {
 	RepointCustomer(ctx context.Context, tx pgx.Tx, from, into int32) ([]RepointedReferences, error)
 }

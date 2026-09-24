@@ -83,3 +83,19 @@ func TestCustomerReferences_WritesOnlyInsideTheCallersTransaction(t *testing.T) 
 		t.Errorf("RepointCustomer for a customer with no supply periods = %+v, want %+v", moved, want)
 	}
 }
+
+// A customer merged into itself moves nothing (the holder's own guard; the
+// merge refuses merge_self before it gets here), and the kind is still
+// reported, as a zero.
+func TestCustomerReferences_RepointingACustomerOntoItselfWritesNothing(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	point := createMeteringPoint(t, h.SignIn(t, allEnergyPermissions...))
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	insertActiveSupplyPeriod(t, h, point.Id, 1001, start, start.AddDate(0, 1, 0))
+
+	want := []contracts.RepointedReferences{{Kind: "energy.supplyPeriods", Count: 0}}
+	if moved := repointEnergyCustomer(t, h, 1001, 1001, true); !slices.Equal(moved, want) {
+		t.Errorf("RepointCustomer(1001, 1001) = %+v, want %+v", moved, want)
+	}
+}

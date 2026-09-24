@@ -120,9 +120,29 @@ func TestCustomerReferences_WritesOnlyInsideTheCallersTransaction(t *testing.T) 
 	}
 }
 
+// A customer merged into itself moves nothing (the holder's own guard; the
+// merge refuses merge_self before it gets here): no project is written, so no
+// revision advances, and the kind is still reported, as a zero.
+func TestCustomerReferences_RepointingACustomerOntoItselfWritesNothing(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	customer := int32(customerAcme)
+	id := insertProjectFor(t, h, "MRG3000", &customer)
+
+	want := []contracts.RepointedReferences{{Kind: "projects.projects", Count: 0}}
+	if moved := repointProjectsCustomer(t, h, customer, customer, true); !slices.Equal(moved, want) {
+		t.Errorf("RepointCustomer(%d, %d) = %+v, want %+v", customer, customer, moved, want)
+	}
+	if got := modtest.One[int32](t, h, `SELECT revision FROM projects.projects WHERE id = $1`, id); got != 1 {
+		t.Errorf("the project's revision = %d, want 1: it was written", got)
+	}
+}
+
 // Compose puts projects' holder on every module's Deps once projects is
 // composed — the capture module is TestModule_ComposesProjectDirectoryOntoDeps'
-// own, named "customers" so a real embedded contract loads for it.
+// own, named "customers" so a real embedded contract loads for it. The one
+// holder is run, on a transaction rolled back after, to prove it is projects'
+// own and not merely one: it answers projects.projects.
 func TestModule_ComposesItsCustomerReferenceHolderOntoDeps(t *testing.T) {
 	t.Parallel()
 	var got []contracts.CustomerReferenceHolder
@@ -134,9 +154,22 @@ func TestModule_ComposesItsCustomerReferenceHolderOntoDeps(t *testing.T) {
 		},
 	}
 
-	newHarness(t, modtest.WithModule(capture))
+	h := newHarness(t, modtest.WithModule(capture))
 
 	if len(got) != 1 {
-		t.Errorf("Deps.CustomerReferenceHolders = %v, want projects' one holder", got)
+		t.Fatalf("Deps.CustomerReferenceHolders = %v, want projects' one holder", got)
+	}
+	ctx := context.Background()
+	tx, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	moved, err := got[0].RepointCustomer(ctx, tx, customerKraftVerket, customerAcme)
+	if err != nil {
+		t.Fatalf("RepointCustomer: %v", err)
+	}
+	if len(moved) != 1 || moved[0].Kind != "projects.projects" {
+		t.Errorf("the composed holder answered %+v, want projects' projects.projects", moved)
 	}
 }

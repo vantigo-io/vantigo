@@ -83,15 +83,15 @@ type Deps struct {
 	// though never while it serves; it is nil when expenses is disabled,
 	// which a caller reads as "expense tracking is off".
 	Expenses contracts.ProjectExpenses
-	// CustomerReferenceHolders are every enabled module's
-	// contracts.CustomerReferenceHolder (customers merge design D1), in the
-	// order the modules were given to Compose — the one many-provider contract
-	// slot. Compose collects them before any Mount runs, after the six
+	// CustomerReferenceHolders are every given module's
+	// contracts.CustomerReferenceHolder (customers merge design D1), enabled
+	// or not, in the order the modules were given to Compose — the one
+	// many-provider contract slot. Compose collects them before any Mount runs, after the six
 	// single-provider slots, and appends them to whatever the caller preset
 	// here (the seam modtest.WithCustomerReferenceHolders fills), so every
 	// module's Deps carries the same list. Only the module that merges
 	// customers calls them, and only inside its merge transaction. nil when no
-	// enabled module holds customer ids.
+	// module given holds customer ids.
 	CustomerReferenceHolders []contracts.CustomerReferenceHolder
 	// HTTPTransport is the RoundTripper a module's own outbound HTTP client
 	// (customers' Brreg lookup, so far the only one) dials through. nil in
@@ -203,9 +203,12 @@ type Module struct {
 	// CustomerReferences builds this module's
 	// contracts.CustomerReferenceHolder, if it stores customer ids in its own
 	// schema (customers merge design D1). Unlike Directory, and like Workers,
-	// any number of enabled modules may set it: Compose calls every one, in
-	// mods order, before any Mount runs, and puts the list on every module's
-	// Deps as CustomerReferenceHolders. A module holding no customer ids leaves
-	// it nil — time and expenses reach a customer only through a project.
+	// any number of modules may set it: Compose calls every one, in mods
+	// order, before any Mount runs, and puts the list on every module's Deps
+	// as CustomerReferenceHolders. Unlike Workers, it is called for a module
+	// MODULES leaves out too — its schema is migrated regardless and may still
+	// name customers — so it must need nothing of Deps a disabled module
+	// would lack. A module holding no customer ids leaves it nil — time and
+	// expenses reach a customer only through a project.
 	CustomerReferences func(Deps) contracts.CustomerReferenceHolder
 }

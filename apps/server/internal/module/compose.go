@@ -26,10 +26,10 @@ import (
 // under the same name, two modules both declaring a customer directory, a
 // user directory, a product catalog, a project directory, project actuals or
 // project expenses (naming both) — customer reference holders, the one
-// many-provider slot, are collected from every enabled module instead — or a
-// nil Deps.Config: enablement (which
-// modules MODULES turns on) is meaningless without one, and every real caller
-// already loads one before composing.
+// many-provider contract slot, are collected from every module given instead,
+// enabled or not — or a nil Deps.Config: enablement (which modules MODULES
+// turns on) is meaningless without one, and every real caller already loads
+// one before composing.
 func Compose(deps Deps, mods ...Module) (http.Handler, error) {
 	if deps.Config == nil {
 		return nil, fmt.Errorf("module: Compose requires a non-nil Deps.Config to know which modules MODULES enables")
@@ -133,6 +133,9 @@ func (c *rememberedContracts) combined(ctx context.Context, order []string) ([]b
 
 func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.Handler, error) {
 	ctx := context.Background()
+	// Every module given, before enablement drops any: the customer reference
+	// holders below are collected from all of them.
+	given := mods
 	mods = enabledModules(deps, mods)
 
 	names := make(map[string]bool, len(mods))
@@ -229,13 +232,19 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 
 	// Customer reference holders are the one many-provider contract slot
 	// (contracts.CustomerReferenceHolder, customers merge design D1): every
-	// enabled module that declares one contributes it, in mods order, so the
-	// merge that calls them does so in the same order on every run. They are
+	// module given that declares one contributes it, in the order given, so
+	// the merge that calls them does so in the same order on every run. A
+	// module MODULES leaves out contributes its holder too, unlike every other
+	// slot: every schema is migrated whatever MODULES says, so a module that
+	// was on once and is off now still has rows naming customers, and a merge
+	// that skipped them would leave them on the absorbed customer for good,
+	// waiting for the module to come back. A holder needs only the caller's
+	// transaction and its own schema, both there regardless. They are
 	// resolved last, on deps as the single slots left it, and appended to
 	// whatever the caller preset — onto a copy, so a harness's own slice is
 	// never written through.
 	var holders []contracts.CustomerReferenceHolder
-	for _, mod := range mods {
+	for _, mod := range given {
 		if mod.CustomerReferences == nil {
 			continue
 		}
