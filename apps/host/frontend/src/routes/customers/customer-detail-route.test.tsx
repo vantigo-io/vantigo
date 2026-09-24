@@ -31,7 +31,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 });
 
 // The header does its own suspense-query data fetching; irrelevant to tab
-// wiring, so it is reduced to its actions slot plus the three capability props
+// wiring, so it is reduced to its actions slot plus the four capability props
 // this route computes from permissions (see the archive/restore assertions
 // below — the package's own tests cover what the header does with them).
 vi.mock("@vantigo/customers-ui/pages/customers.$customerId", () => ({
@@ -40,17 +40,20 @@ vi.mock("@vantigo/customers-ui/pages/customers.$customerId", () => ({
     canArchive,
     canRestore,
     canMerge,
+    canManagePersonalData,
   }: {
     actions?: ReactNode;
     canArchive?: boolean;
     canRestore?: boolean;
     canMerge?: boolean;
+    canManagePersonalData?: boolean;
   }) => (
     <div>
       {actions}
       <span data-testid="can-archive">{String(Boolean(canArchive))}</span>
       <span data-testid="can-restore">{String(Boolean(canRestore))}</span>
       <span data-testid="can-merge">{String(Boolean(canMerge))}</span>
+      <span data-testid="can-manage-personal-data">{String(Boolean(canManagePersonalData))}</span>
     </div>
   ),
 }));
@@ -145,5 +148,27 @@ describe("the customer detail route's archive/restore capability props", () => {
     );
     renderCustomerDetailLayout();
     expect(screen.getByTestId("can-merge")).toHaveTextContent("true");
+  });
+
+  it("passes canManagePersonalData from customers:personal-data, and only from it", () => {
+    vi.mocked(useQuery).mockImplementation((options) =>
+      options.queryKey[0] === "authorization"
+        ? ({
+            data: { permissions: ["customers:delete", "customers:update", "customers:merge"] },
+            isPending: false,
+          } as never)
+        : ({ data: { user: { id: "user-1", roles: [] } } } as never),
+    );
+    renderCustomerDetailLayout();
+    expect(screen.getByTestId("can-manage-personal-data")).toHaveTextContent("false");
+    cleanup();
+
+    vi.mocked(useQuery).mockImplementation((options) =>
+      options.queryKey[0] === "authorization"
+        ? ({ data: { permissions: ["customers:personal-data"] }, isPending: false } as never)
+        : ({ data: { user: { id: "user-1", roles: [] } } } as never),
+    );
+    renderCustomerDetailLayout();
+    expect(screen.getByTestId("can-manage-personal-data")).toHaveTextContent("true");
   });
 });

@@ -117,6 +117,12 @@ export const hostPermissionTranslationKeys = {
     displayNameKey: "admin.permission.customersMerge",
     descriptionKey: "admin.permission.customersMergeDescription",
   },
+  "customers:personal-data": {
+    moduleKey: "admin.permission.module.customers",
+    categoryKey: "admin.permission.category.customers",
+    displayNameKey: "admin.permission.customersPersonalData",
+    descriptionKey: "admin.permission.customersPersonalDataDescription",
+  },
   "communications:conversations-view": {
     moduleKey: "admin.permission.module.communications",
     categoryKey: "admin.permission.category.communications",
@@ -480,6 +486,9 @@ const en = {
   "admin.permission.customersMerge": "Merge customers",
   "admin.permission.customersMergeDescription":
     "Merge a duplicate customer into another, moving its contacts, addresses, timeline, tags and other modules' references, and archiving it.",
+  "admin.permission.customersPersonalData": "Manage personal data",
+  "admin.permission.customersPersonalDataDescription":
+    "Hand a private person all the data held about them, and schedule the anonymisation of an archived private person.",
   "admin.permission.communicationsConversationsView": "View communications conversations",
   "admin.permission.communicationsConversationsViewDescription":
     "View conversations, messages, participants, bodies, attachments, and tags.",
@@ -825,6 +834,9 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.customersMerge": "Slå sammen kunder",
   "admin.permission.customersMergeDescription":
     "Slå en duplikatkunde sammen med en annen: kontaktene, adressene, tidslinjen, merkelappene og andre modulers referanser flyttes, og duplikatet arkiveres.",
+  "admin.permission.customersPersonalData": "Håndtere personopplysninger",
+  "admin.permission.customersPersonalDataDescription":
+    "Gi en privatperson alle opplysningene som finnes om dem, og planlegg anonymiseringen av en arkivert privatperson.",
   "admin.permission.communicationsConversationsView": "Se kommunikasjonssamtaler",
   "admin.permission.communicationsConversationsViewDescription":
     "Se samtaler, meldinger, deltakere, brødtekst, vedlegg og etiketter.",

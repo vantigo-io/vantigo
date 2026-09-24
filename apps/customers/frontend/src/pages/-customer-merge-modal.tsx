@@ -12,7 +12,7 @@ import {
 } from "../api/customers";
 import { type CustomerMergeMove, type CustomerMergeResult, mergeCustomer } from "../api/merge";
 import { CustomerPicker } from "../components/customer-picker";
-import { CUSTOMER_MERGED_CODE } from "../lib/customer-write-error";
+import { CUSTOMER_ANONYMISED_CODE, CUSTOMER_MERGED_CODE } from "../lib/customer-write-error";
 import "../i18n";
 
 /** The words for each kind a merge can move (merge design D3); a kind missing here still shows, as `mergeMovedOther`. */
@@ -37,6 +37,9 @@ const refusalKeys: Record<string, string> = {
   // This customer itself was merged away from another tab: every
   // customer-scoped write answers it so (see lib/customer-write-error).
   [CUSTOMER_MERGED_CODE]: "customerMergedMessage",
+  // The picked duplicate was anonymised (GDPR design D4): nothing of a person
+  // is left in it to fold in.
+  [CUSTOMER_ANONYMISED_CODE]: "customerAnonymisedMessage",
 };
 
 const typePhraseKey = (type: CustomerType) => (type === "person" ? "mergeTypePerson" : "mergeTypeBusiness");

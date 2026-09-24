@@ -1286,6 +1286,113 @@ describe("the timeline's merge events", () => {
     expect(screen.getByRole("link", { name: "Open #2 Acme AS" })).toHaveAttribute("href", "/customers/1002");
   });
 
+  it("renders an anonymised customer's entries plainly, and labels the three new events", async () => {
+    await renderTimeline(
+      vi.fn().mockResolvedValue(
+        json({
+          data: [
+            entry({
+              id: 3,
+              provenance: "generated",
+              eventType: "customer.anonymised",
+              note: null,
+              summary: "Customer anonymised",
+              payload: { customerId: 42, erased: [{ kind: "customers.addresses", count: 2 }] },
+            }),
+            entry({
+              id: 2,
+              provenance: "generated",
+              eventType: "customer.merged",
+              note: null,
+              summary: "[anonymised]",
+              payload: { customerId: 42, absorbed: "[anonymised]", moved: [] },
+            }),
+            entry({
+              id: 1,
+              provenance: "generated",
+              eventType: "customer.contact_attached",
+              note: null,
+              summary: "[anonymised]",
+              payload: { customerId: 42, contactId: 7, displayName: "[anonymised]", roles: [] },
+            }),
+          ],
+          nextCursor: null,
+        }),
+      ),
+    );
+    // The Event types filter renders every label as a <span> at once; the feed's
+    // own lines are <p>, so the selector waits for the feed.
+    expect(await screen.findAllByText("Customer anonymised", { selector: "p" })).toHaveLength(2); // the label and the summary
+    expect(screen.getAllByText("[anonymised]")).toHaveLength(2);
+    expect(screen.queryByLabelText("The duplicate's own details")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Contact: \[anonymised\]/)).not.toBeInTheDocument();
+  });
+
+  it("lists what an anonymisation took out, kind by kind, whichever module named it", async () => {
+    // customer.anonymised's erased list (GDPR design D4): this module's kinds
+    // first, then each module's own; the page knows none of them by name.
+    await renderTimeline(
+      vi.fn().mockResolvedValue(
+        json({
+          data: [
+            entry({
+              id: 3,
+              provenance: "generated",
+              eventType: "customer.anonymised",
+              note: null,
+              summary: "Customer anonymised",
+              payload: {
+                customerId: 42,
+                erased: [
+                  { kind: "customers.addresses", count: 2 },
+                  { kind: "communications.conversations", count: 3 },
+                  { kind: "energy.supplyPeriods", count: 0 },
+                ],
+              },
+            }),
+          ],
+          nextCursor: null,
+        }),
+      ),
+    );
+    expect(
+      await screen.findByText(
+        "Removed: customers.addresses: 2 · communications.conversations: 3 · energy.supplyPeriods: 0",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("labels the scheduling events in Norwegian too", async () => {
+    setLanguagePreference("nb");
+    await renderTimeline(
+      vi.fn().mockResolvedValue(
+        json({
+          data: [
+            entry({
+              id: 2,
+              provenance: "generated",
+              eventType: "customer.anonymisation_scheduled",
+              note: null,
+              summary: "Anonymisation scheduled for 2027-01-31",
+              payload: { customerId: 42, anonymiseOn: "2027-01-31" },
+            }),
+            entry({
+              id: 1,
+              provenance: "generated",
+              eventType: "customer.anonymisation_cancelled",
+              note: null,
+              summary: "Anonymisation cancelled; it was scheduled for 2027-01-31",
+              payload: { customerId: 42, anonymiseOn: "2027-01-31" },
+            }),
+          ],
+          nextCursor: null,
+        }),
+      ),
+    );
+    expect(await screen.findByText("Anonymisering planlagt", { selector: "p" })).toBeInTheDocument();
+    expect(screen.getByText("Anonymisering avbrutt", { selector: "p" })).toBeInTheDocument();
+  });
+
   it("names both merge events in Norwegian too, and offers them in the Event types filter", async () => {
     setLanguagePreference("nb");
     await renderRoutedTimeline([mergedEntry, mergedAwayEntry]);

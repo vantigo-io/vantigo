@@ -72,6 +72,16 @@ export interface CustomerContactInfo {
   website: string | null;
 }
 
+/**
+ * A private person's anonymisation (customers GDPR design D4): the UTC day it
+ * is scheduled for, and — once the worker has run — when it ran. Null until
+ * then; the wire omits it.
+ */
+export interface CustomerAnonymisation {
+  anonymiseOn: string;
+  anonymisedAt: string | null;
+}
+
 export interface CustomerResponse {
   id: number;
   /** The customer-facing number (KVEM1000-CU style), shown in the list in place of the database id. */
@@ -96,6 +106,8 @@ export interface CustomerResponse {
   tags: CustomerTag[];
   /** Merge design D3. Null unless the customer was merged away; the wire omits the field then. */
   mergedInto: CustomerMergedInto | null;
+  /** GDPR design D4. Null unless an anonymisation is scheduled or done; the wire omits the field then. */
+  anonymisation: CustomerAnonymisation | null;
 }
 
 export interface CustomerStatsResponse {
@@ -240,11 +252,15 @@ export const customerStatsQueryOptions = () =>
  * `contactInfo` itself stays optional: it is genuinely absent on the
  * recorded responses that predate design D2.
  */
-export type RawCustomerResponse = Omit<CustomerResponse, "contactInfo" | "owner" | "group" | "tags" | "mergedInto"> & {
+export type RawCustomerResponse = Omit<
+  CustomerResponse,
+  "contactInfo" | "owner" | "group" | "tags" | "mergedInto" | "anonymisation"
+> & {
   contactInfo?: Partial<CustomerContactInfo>;
   owner?: CustomerOwner | null;
   group?: CustomerGroupRef | null;
   mergedInto?: CustomerMergedInto | null;
+  anonymisation?: { anonymiseOn: string; anonymisedAt?: string } | null;
   tags?: { id: string; name: string; color?: string | null }[];
 };
 
@@ -253,10 +269,11 @@ export const normalizeCustomer = ({
   owner,
   group,
   mergedInto,
+  anonymisation,
   tags,
   ...rest
 }: RawCustomerResponse): CustomerResponse => {
-  // The five normalised fields are destructured out, so what is left is
+  // The six normalised fields are destructured out, so what is left is
   // already the rest of a `CustomerResponse` and the two arms below need no
   // cast to say so — `contactInfo` is optional on the result, which is exactly
   // what "absent on responses that predate design D2" means.
@@ -265,6 +282,9 @@ export const normalizeCustomer = ({
     owner: owner ?? null,
     group: group ?? null,
     mergedInto: mergedInto ?? null,
+    anonymisation: anonymisation
+      ? { anonymiseOn: anonymisation.anonymiseOn, anonymisedAt: anonymisation.anonymisedAt ?? null }
+      : null,
     tags: (tags ?? []).map(normalizeTag),
   };
   if (!contactInfo) return normalized;

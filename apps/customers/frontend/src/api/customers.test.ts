@@ -87,7 +87,7 @@ describe("updateCustomer", () => {
 
     const result = await updateCustomer(1001, { name: "Initrode" });
 
-    expect(result).toEqual({ ...updated, owner: null, group: null, mergedInto: null, tags: [] });
+    expect(result).toEqual({ ...updated, owner: null, group: null, mergedInto: null, anonymisation: null, tags: [] });
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/1001", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -117,7 +117,7 @@ describe("customerQueryOptions", () => {
       signal: undefined,
     });
 
-    expect(result).toEqual({ ...customer, owner: null, group: null, mergedInto: null, tags: [] });
+    expect(result).toEqual({ ...customer, owner: null, group: null, mergedInto: null, anonymisation: null, tags: [] });
     expect(options.queryKey).toEqual(["customers", 1001]);
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/1001", { signal: undefined });
   });
@@ -143,6 +143,7 @@ describe("customerQueryOptions", () => {
       owner: null,
       group: null,
       mergedInto: null,
+      anonymisation: null,
       tags: [],
     });
   });
@@ -176,6 +177,27 @@ describe("customerQueryOptions", () => {
     })) as CustomerResponse;
 
     expect(result.mergedInto).toEqual({ id: 1002, customerNumber: 2, name: "Acme AS" });
+  });
+
+  it("carries an anonymisation through, reading an omitted anonymisedAt as null", async () => {
+    // A scheduled private person (customers GDPR design D4): the worker has not
+    // run, so the server leaves anonymisedAt out.
+    const scheduled = {
+      id: 1005,
+      name: "Kari Nordmann",
+      status: "archived",
+      timelineSummary: { entryCount: 1, latestOccurredOn: "2026-09-24" },
+      anonymisation: { anonymiseOn: "2027-01-31" },
+    };
+    stubFetch(vi.fn().mockResolvedValue(jsonResponse(200, scheduled)));
+
+    const options = customerQueryOptions(1005);
+    const result = (await (options.queryFn as (context: unknown) => Promise<unknown>)({
+      signal: undefined,
+    })) as CustomerResponse;
+
+    expect(result.anonymisation).toEqual({ anonymiseOn: "2027-01-31", anonymisedAt: null });
+    expect(result.mergedInto).toBeNull();
   });
 
   it("asks for archived customers only when told to", () => {
@@ -392,6 +414,7 @@ const cachedCustomer = (revision: number): CustomerResponse => ({
   owner: null,
   group: null,
   mergedInto: null,
+  anonymisation: null,
   tags: [],
 });
 
