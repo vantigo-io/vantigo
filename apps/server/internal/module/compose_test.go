@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -1310,4 +1312,113 @@ func TestResponseError(t *testing.T) {
 			t.Errorf("body echoes the error: %q", rec.Body.String())
 		}
 	})
+}
+
+// fakeReferenceHolder is a contracts.CustomerReferenceHolder with only a name,
+// so a test can tell whose holder landed where. It is never called: Compose
+// collects holders, and only the module that merges customers calls them.
+type fakeReferenceHolder struct{ name string }
+
+func (*fakeReferenceHolder) RepointCustomer(context.Context, pgx.Tx, int32, int32) ([]contracts.RepointedReferences, error) {
+	return nil, nil
+}
+
+// Customer reference holders are the many-provider slot (customers merge design
+// D1): unlike Directory, every enabled module may declare one, and Compose
+// collects them all, in the order the modules were given — the order the merge
+// calls them in, the same on every run. Every module's Mount sees the one list:
+// a provider's own, and one that provides nothing.
+func TestCompose_CollectsEveryCustomerReferenceHolderInModuleOrder(t *testing.T) {
+	alpha, gamma := &fakeReferenceHolder{name: "alpha"}, &fakeReferenceHolder{name: "gamma"}
+	var inAlpha, inBeta []contracts.CustomerReferenceHolder
+
+	_, err := compose(Deps{Access: &fakeAccess{}},
+		fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract, "gamma": gammaContract}),
+		Module{
+			Name:               "alpha",
+			CustomerReferences: func(Deps) contracts.CustomerReferenceHolder { return alpha },
+			Mount: func(d Deps) (http.Handler, error) {
+				inAlpha = d.CustomerReferenceHolders
+				return staticHandler("alpha")(d)
+			},
+		},
+		Module{Name: "beta", Mount: func(d Deps) (http.Handler, error) {
+			inBeta = d.CustomerReferenceHolders
+			return staticHandler("beta")(d)
+		}},
+		Module{
+			Name:               "gamma",
+			CustomerReferences: func(Deps) contracts.CustomerReferenceHolder { return gamma },
+			Mount:              staticHandler("gamma"),
+		},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	want := []contracts.CustomerReferenceHolder{alpha, gamma}
+	if !slices.Equal(inAlpha, want) {
+		t.Errorf("alpha's Deps.CustomerReferenceHolders = %v, want alpha's then gamma's", inAlpha)
+	}
+	if !slices.Equal(inBeta, want) {
+		t.Errorf("beta's Deps.CustomerReferenceHolders = %v, want alpha's then gamma's", inBeta)
+	}
+}
+
+// A module MODULES leaves out contributes no holder even when it declares one,
+// exactly as it contributes no directory — and with no holder anywhere the
+// slice stays nil rather than becoming an empty one Compose invented.
+func TestCompose_DisabledModuleContributesNoCustomerReferenceHolder(t *testing.T) {
+	got := []contracts.CustomerReferenceHolder{&fakeReferenceHolder{}} // non-nil, so a no-op is caught
+
+	_, err := compose(
+		Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha"}}},
+		fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d.CustomerReferenceHolders
+			return staticHandler("alpha")(d)
+		}},
+		Module{
+			Name:               "beta",
+			CustomerReferences: func(Deps) contracts.CustomerReferenceHolder { return &fakeReferenceHolder{name: "beta"} },
+			Mount:              staticHandler("beta"),
+		},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got != nil {
+		t.Errorf("Deps.CustomerReferenceHolders = %v, want nil: beta, the only holder, is disabled", got)
+	}
+}
+
+// Holders a caller preset on Deps — modtest.WithCustomerReferenceHolders' seam —
+// survive Compose and come first, and Compose appends the composed modules'
+// own to a copy: the caller's backing array is never written through.
+func TestCompose_PresetCustomerReferenceHoldersComeFirstAndAreNotWrittenThrough(t *testing.T) {
+	preset := &fakeReferenceHolder{name: "preset"}
+	own := &fakeReferenceHolder{name: "alpha"}
+	presetList := make([]contracts.CustomerReferenceHolder, 1, 4)
+	presetList[0] = preset
+	var got []contracts.CustomerReferenceHolder
+
+	_, err := compose(Deps{Access: &fakeAccess{}, CustomerReferenceHolders: presetList},
+		fakeLoad(map[string]string{"alpha": alphaContract}),
+		Module{
+			Name:               "alpha",
+			CustomerReferences: func(Deps) contracts.CustomerReferenceHolder { return own },
+			Mount: func(d Deps) (http.Handler, error) {
+				got = d.CustomerReferenceHolders
+				return staticHandler("alpha")(d)
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if want := []contracts.CustomerReferenceHolder{preset, own}; !slices.Equal(got, want) {
+		t.Errorf("Deps.CustomerReferenceHolders = %v, want the preset then alpha's", got)
+	}
+	if spare := presetList[:2]; spare[1] != nil {
+		t.Errorf("Compose wrote %v into the caller's own backing array", spare[1])
+	}
 }

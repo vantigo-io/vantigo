@@ -25,7 +25,9 @@ import (
 // two modules both declare, a component two modules declare differently
 // under the same name, two modules both declaring a customer directory, a
 // user directory, a product catalog, a project directory, project actuals or
-// project expenses (naming both), or a nil Deps.Config: enablement (which
+// project expenses (naming both) — customer reference holders, the one
+// many-provider slot, are collected from every enabled module instead — or a
+// nil Deps.Config: enablement (which
 // modules MODULES turns on) is meaningless without one, and every real caller
 // already loads one before composing.
 func Compose(deps Deps, mods ...Module) (http.Handler, error) {
@@ -223,6 +225,26 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	}
 	if expensesProvider != nil {
 		deps.Expenses = expensesProvider.Expenses(deps)
+	}
+
+	// Customer reference holders are the one many-provider contract slot
+	// (contracts.CustomerReferenceHolder, customers merge design D1): every
+	// enabled module that declares one contributes it, in mods order, so the
+	// merge that calls them does so in the same order on every run. They are
+	// resolved last, on deps as the single slots left it, and appended to
+	// whatever the caller preset — onto a copy, so a harness's own slice is
+	// never written through.
+	var holders []contracts.CustomerReferenceHolder
+	for _, mod := range mods {
+		if mod.CustomerReferences == nil {
+			continue
+		}
+		if holder := mod.CustomerReferences(deps); holder != nil {
+			holders = append(holders, holder)
+		}
+	}
+	if len(holders) > 0 {
+		deps.CustomerReferenceHolders = append(slices.Clone(deps.CustomerReferenceHolders), holders...)
 	}
 
 	outer := http.NewServeMux()

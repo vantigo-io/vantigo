@@ -27,6 +27,8 @@ Communications' outbox is the working example.
 3. **Contracts stay pure.** `internal/contracts` holds cross-module interfaces,
    permissions and access rules as DTOs only, never store types, so any module or a
    future extracted service can implement or consume them.
+   The one non-DTO type is `pgx.Tx` in `contracts.CustomerReferenceHolder` —
+   a platform type, never a store type, and the reason is rule 8's.
 4. **One schema per module.** Each module maps tables only into its own PostgreSQL
    schema (`identity`, `customers`, `products`, `energy`, `communications`,
    `projects`, `time`, `expenses`), and no module's migrations or queries reference
@@ -46,6 +48,9 @@ Communications' outbox is the working example.
    module's `Deps` already carries what it consumes; `Actuals` and `Expenses` are
    resolved last, after `Projects`, so those providers' *constructors* are allowed
    to read the project directory (neither does, but a future provider could).
+   Two slots are *many-provider* instead — any number of enabled modules may
+   fill them, and Compose collects them in module order: `Workers` (background
+   work) and `CustomerReferences` (`contracts.CustomerReferenceHolder`, rule 8).
 6. **Never reach around the boundary.** Do not call another module's HTTP endpoints
    from inside the process, and do not reach into another module's schema.
 7. **Frontend packages are isolated too.** A module frontend package (for instance
@@ -53,6 +58,19 @@ Communications' outbox is the working example.
    host app; only the host composes them. Shared UI lives in
    `@vantigo/frontend-shell` and the generated API types and client in
    `@vantigo/frontend-api-client`.
+8. **One sanctioned cross-module write.** A module never writes another's data —
+   with one exception, made for merging customers:
+   `contracts.CustomerReferenceHolder`. A module that stores customer ids in its
+   own schema declares `Module.CustomerReferences`, and the customers module's
+   merge calls every holder **inside its own transaction**, which already holds
+   both customer rows locked. The holder runs its own SQL, on its own schema,
+   from its own package — so rules 1, 4 and 6 hold as they do for a read — never
+   begins or ends a transaction, never reads a directory (no in-process lookup
+   happens under a lock anywhere in this codebase), and tolerates a reference
+   that already points at the surviving customer. Today's holders are projects,
+   energy and communications ([Merging duplicates](customers.md#merging-duplicates)).
+   Another write direction needs a design of its own, not a second
+   holder-shaped interface.
 
 ## How they are enforced
 
@@ -83,6 +101,11 @@ Communications' outbox is the working example.
   naming both.
 - **Rule 7**: `no-restricted-imports` in each module frontend's `eslint.config.js`,
   run by `bun run frontend:lint` locally and in CI.
+- **Rule 8**: by shape and by test. A holder is handed a `pgx.Tx` and nothing
+  else it could write with; its SQL lives in its own `queries/`, so rule 4's
+  scan covers it; each holder's own package test re-points real rows through a
+  real transaction, and the customers module's merge tests prove that a
+  holder's error rolls the whole merge back.
 
 ## Turning a module off
 
