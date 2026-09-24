@@ -90,6 +90,13 @@ type CustomerBillingProfile struct {
 	PeppolID       string
 	GLN            string
 	BuyerReference string
+	// DefaultBillRate is the customer's own default hourly bill rate
+	// (customers bill-rate design D2), quoted in Currency — which is never ""
+	// when this is set, since the billing profile refuses a rate without a
+	// currency — and nil when the customer set none. Own value only: no group
+	// tier, so nil means this customer decided nothing, and a consumer pricing
+	// hours (Time's rate chain) falls through to its next step.
+	DefaultBillRate *float64
 }
 
 // CustomerDirectory is the one sanctioned way a module reads another

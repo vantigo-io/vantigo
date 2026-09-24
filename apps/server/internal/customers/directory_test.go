@@ -352,6 +352,35 @@ func TestDirectory_BillingProfile_ArchivedResolves(t *testing.T) {
 	}
 }
 
+// TestDirectory_BillingProfile_DefaultBillRate_IsTheCustomersOwn proves the
+// directory reads the stored rate through to the contract (customers bill-rate
+// design D2) — the value Time's rate chain prices hours with — in the profile's
+// currency, and nil for a customer that set none.
+func TestDirectory_BillingProfile_DefaultBillRate_IsTheCustomersOwn(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	dir := newDirectory(t, h)
+	priced := insertCustomer(t, h, "Timepris AS", "active")
+	h.Exec(t, `UPDATE customers.customers SET currency = 'NOK', default_bill_rate = 1250.50 WHERE id = $1`, priced)
+	unpriced := insertCustomer(t, h, "Uten Pris AS", "active")
+
+	got, err := dir.BillingProfile(context.Background(), priced)
+	if err != nil {
+		t.Fatalf("BillingProfile(priced): %v", err)
+	}
+	if got.DefaultBillRate == nil || *got.DefaultBillRate != 1250.5 || got.Currency != "NOK" {
+		t.Errorf("DefaultBillRate/Currency = %v/%q, want 1250.5 in NOK", got.DefaultBillRate, got.Currency)
+	}
+
+	got, err = dir.BillingProfile(context.Background(), unpriced)
+	if err != nil {
+		t.Fatalf("BillingProfile(unpriced): %v", err)
+	}
+	if got.DefaultBillRate != nil {
+		t.Errorf("DefaultBillRate = %v, want nil for a customer that set none", *got.DefaultBillRate)
+	}
+}
+
 // TestDirectory_BillingProfile_InvoiceEmail_FallsBackToContactEmail proves
 // the resolution order both ways: the billing profile's own invoiceEmail
 // wins when set, and the customer's own contact-info email is used only

@@ -2073,22 +2073,26 @@ invoice email, a reminder email or a Peppol id for itself.
 | `ReminderEmail` | The billing profile's own `reminderEmail`, else the `InvoiceEmail` just resolved above — reminders fall back to where an invoice would go, never straight to the contact-info email. |
 | `PeppolID` | The billing profile's own explicit `peppolId`, else `derivedPeppolID(identity, customerType)`: `"0192:<legal id>"` when the identity's country is `"no"`, **the customer itself (not the identity) is of type `"business"`**, and the identity's `id` itself passes the Norwegian organisation-number check (a malformed or pre-validation legacy `id` derives nothing), else `""`. The same predicate backs `billingWarnings`'s `ehf_without_recipient` check above, so the two can never disagree about whether a recipient exists. |
 | `PaymentTermsDays` | The billing profile's own `paymentTermsDays`, else the customer's **group's** `defaultPaymentTermsDays` ([Groups](#groups)), else `nil`. The only field here with three levels, and the only one that inherits from a group: a nil check, not a zero one, so a profile (or a group) that decided `0` days — due on receipt — is not overridden by the next tier. |
+| `DefaultBillRate` | The billing profile's own `defaultBillRate`, else `nil`, quoted in `Currency` (never `""` when a rate is set). **Own value only** — no group tier; a group default bill rate would slot in beside `defaultPaymentTermsDays` if it is ever wanted. [Time's rate chain](time.md#the-rate-chain) reads it: the customer step, between the project default and the person card. |
 | `Currency`, `Language`, `InvoiceDelivery`, `ReminderDelivery`, `GLN`, `BuyerReference` | The billing profile's own value, `nil`/`""` if never set — no further resolution. |
 
 **Every consumer treats `""` (a string field) or `nil` (`PaymentTermsDays`,
-`InvoiceAddress`) as "not decided — use your own default"**, never as an error or
+`DefaultBillRate`, `InvoiceAddress`) as "not decided — use your own default"**, never as an error or
 an empty-but-meaningful value: a caller receiving one back has learned that
 nothing was decided for that field, not that the lookup failed, and is free to
 apply whatever default its own module would otherwise presume.
 
 Today's consumers: Energy (naming the customer on a metering point/supply period),
 Projects (resolving a project's `customerId`, and now naming a whole list page's
-customers through `Customers` in one call), and Communications (matching an
-inbound email to a customer's contact). `ContactsByEmail` still has **no production
-caller** — it exists for Communications' future customer-suggestion feature.
-`BillingProfile` is ready for Invoices to read once that module exists — no
-consumer yet, the same "built ahead of its caller" position `ContactsByEmail` has
-been in since the foundation. `CustomerEntry.Group` is the other seam built ahead
+customers through `Customers` in one call), Communications (matching an
+inbound email to a customer's contact), and Time (`BillingProfile`'s
+`DefaultBillRate` and `Currency`, for the rate chain's customer step — asked at most
+once per entry save, and only when neither a billing line nor the project priced the
+hours). `ContactsByEmail` still has **no production
+caller** — it exists for Communications' future customer-suggestion feature. The rest
+of `BillingProfile` is ready for Invoices to read once that module exists — the same
+"built ahead of its caller" position `ContactsByEmail` has been in since the
+foundation. `CustomerEntry.Group` is the other seam built ahead
 of its caller: Products phase 4's customer-group prices are the intended reader.
 
 ## The frontend
