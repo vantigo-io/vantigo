@@ -55,8 +55,8 @@ its row.
   and nothing converts — the chain falls through to the person card.
 - `rateSource` = **`customer`**; `bill_rate`/`bill_currency` snapshot as every other
   source. A directory error is an error (the `ListPrice` precedent); a missing customer
-  ((nil, nil)) or an archived one is simply "no rate here" — archived customers still
-  resolve, and a project of theirs may still be worked on.
+  ((nil, nil)) is simply "no rate here". An archived customer's rate **applies**:
+  archived customers still resolve, and a project of theirs may still be worked on.
 - The directory is asked at most once per resolve, only when the chain reaches step 3
   (never for a non-billable entry, a line-priced one, or a project with its own
   default). Rates still resolve at every save while draft/rejected and freeze on submit,
