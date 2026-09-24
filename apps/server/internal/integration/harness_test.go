@@ -125,9 +125,10 @@ const (
 )
 
 // fakeCustomers is contracts.CustomerDirectory over the one customer these
-// tests need. It is the only fake in this package: customers is a module this
-// delivery does not touch, and projects refuses a customer id it cannot
-// resolve, so something has to answer for it.
+// tests need, for the harnesses that do not compose the real customers module
+// (rates_test.go does, to price a time entry from a real billing profile):
+// projects refuses a customer id it cannot resolve, so something has to
+// answer for it.
 type fakeCustomers struct{}
 
 var _ contracts.CustomerDirectory = fakeCustomers{}
