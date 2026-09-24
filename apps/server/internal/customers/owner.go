@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -74,19 +75,23 @@ func uuidPtrEqual(a, b *uuid.UUID) bool {
 // directory for the length of one response (owner and tags design D1), the
 // customer's tags, which live in their own table (D2), the customer's group,
 // whose name lives in the group vocabulary (customer groups design D3), and the
-// customer it was merged into, if any (customers merge design D3). It exists
-// so safeCustomerResponse knows one shape whether it is rendering one customer
-// or a page of twenty-five, and so the four lookups happen once per response
-// rather than once per row.
+// customer it was merged into, if any (customers merge design D3), and its
+// anonymisation (customers GDPR design D4). It exists so safeCustomerResponse
+// knows one shape whether it is rendering one customer or a page of
+// twenty-five, and so the five lookups happen once per response rather than
+// once per row.
 type customerDecoration struct {
 	owners     map[uuid.UUID]contracts.UserEntry
 	tags       map[int32][]gen.CustomerTag
 	groups     map[int32]gen.CustomerGroupRef
 	mergedInto map[int32]gen.CustomerReference
+	// anonymisations is each customer's anonymisation, scheduled or done
+	// (customers GDPR design D4); a customer never scheduled has no entry.
+	anonymisations map[int32]gen.CustomerAnonymisation
 }
 
-// decorate resolves the owners, tags, groups and merge markers of rows in one
-// directory call and three queries. q must be a pool-backed store.Queries,
+// decorate resolves the owners, tags, groups, merge markers and anonymisations
+// of rows in one directory call and four queries. q must be a pool-backed store.Queries,
 // never a transaction's: the directory call inside is out-of-process and must
 // not happen under a lock, so every caller decorates after its write has
 // committed.
@@ -112,10 +117,11 @@ func (s *server) decorate(ctx context.Context, q *store.Queries, rows ...custome
 // decorate's own doc comment says still holds, the pool-backed q included.
 func (s *server) decorateKnowing(ctx context.Context, q *store.Queries, known *contracts.UserEntry, rows ...customerRow) (customerDecoration, error) {
 	dec := customerDecoration{
-		owners:     map[uuid.UUID]contracts.UserEntry{},
-		tags:       map[int32][]gen.CustomerTag{},
-		groups:     map[int32]gen.CustomerGroupRef{},
-		mergedInto: map[int32]gen.CustomerReference{},
+		owners:         map[uuid.UUID]contracts.UserEntry{},
+		tags:           map[int32][]gen.CustomerTag{},
+		groups:         map[int32]gen.CustomerGroupRef{},
+		mergedInto:     map[int32]gen.CustomerReference{},
+		anonymisations: map[int32]gen.CustomerAnonymisation{},
 	}
 	if len(rows) == 0 {
 		return dec, nil
@@ -174,6 +180,21 @@ func (s *server) decorateKnowing(ctx context.Context, q *store.Queries, known *c
 	}
 	for _, m := range markers {
 		dec.mergedInto[m.CustomerID] = gen.CustomerReference{Id: m.ID, CustomerNumber: m.CustomerNumber, Name: m.Name}
+	}
+
+	// The anonymisation is one more batched query over the same ids (customers
+	// GDPR design D4), for the merge marker's reason: two columns almost every
+	// customer answers without, on five row types that would otherwise each
+	// grow them.
+	schedules, err := q.AnonymisationForCustomers(ctx, customerIDs)
+	if err != nil {
+		return customerDecoration{}, fmt.Errorf("customers: load anonymisations: %w", err)
+	}
+	for _, a := range schedules {
+		dec.anonymisations[a.CustomerID] = gen.CustomerAnonymisation{
+			AnonymiseOn:  openapi_types.Date{Time: a.AnonymiseOn.Time},
+			AnonymisedAt: a.AnonymisedAt,
+		}
 	}
 
 	if len(userIDs) > 0 {
@@ -236,6 +257,15 @@ func (d customerDecoration) group(customerID int32) *gen.CustomerGroupRef {
 func (d customerDecoration) merged(customerID int32) *gen.CustomerReference {
 	if m, ok := d.mergedInto[customerID]; ok {
 		return &m
+	}
+	return nil
+}
+
+// anonymisationOf is one customer's anonymisation, scheduled or done, or nil —
+// absent on the wire, never null, the idiom merged beside it follows.
+func (d customerDecoration) anonymisationOf(customerID int32) *gen.CustomerAnonymisation {
+	if a, ok := d.anonymisations[customerID]; ok {
+		return &a
 	}
 	return nil
 }

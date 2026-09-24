@@ -118,6 +118,12 @@ type CustomerAddressRequest struct {
 	Type       string  `json:"type"`
 }
 
+// CustomerAnonymisation A private person's anonymisation (customers GDPR design D4): anonymiseOn is the UTC calendar day it is scheduled for, anonymisedAt the moment the worker ran it — absent until then, omitted, never null. From anonymisedAt on the customer is read-only: every write answers 409 customer_anonymised.
+type CustomerAnonymisation struct {
+	AnonymiseOn  openapi_types.Date `json:"anonymiseOn"`
+	AnonymisedAt *time.Time         `json:"anonymisedAt,omitempty"`
+}
+
 // CustomerAssignableUser A user who may be made a customer's owner (owner and tags design D1) — the directory's active users, capped at 20. Enough to name them in a picker and nothing more, which is all contracts.UserDirectory publishes.
 type CustomerAssignableUser struct {
 	DisplayName string             `json:"displayName"`
@@ -164,7 +170,7 @@ type CustomerConflictDuplicate struct {
 	Status         string `json:"status"`
 }
 
-// CustomerConflictProblem ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity and registry_identity_changed conflicts, the group vocabulary's group_exists and group_in_use, the tag vocabulary's tag_exists, the merge's merge_self, merge_type_mismatch, merge_into_archived and merge_already_merged (customers merge design D2), and customer_merged, the answer a write to a customer merged away gets (the same design). A revision conflict carries neither.
+// CustomerConflictProblem ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity and registry_identity_changed conflicts, the group vocabulary's group_exists and group_in_use, the tag vocabulary's tag_exists, the merge's merge_self, merge_type_mismatch, merge_into_archived and merge_already_merged (customers merge design D2), customer_merged, the answer a write to a customer merged away gets (the same design), and personal_data_not_a_person, personal_data_customer_active and customer_anonymised (customers GDPR design D3, D4 — the last the answer a write to an anonymised customer gets). A revision conflict carries neither.
 type CustomerConflictProblem struct {
 	Code       *string                      `json:"code,omitempty"`
 	Detail     *string                      `json:"detail,omitempty"`
@@ -384,6 +390,67 @@ type CustomerPeppolLookup struct {
 	ParticipantId        *string   `json:"participantId,omitempty"`
 	SmpHost              *string   `json:"smpHost,omitempty"`
 	Status               string    `json:"status"`
+}
+
+// CustomerPersonalData GET /customers/{id}/personal-data's file (customers GDPR design D3): everything this installation holds about a private person. exportedAt is when it was made.
+type CustomerPersonalData struct {
+	// Contacts Every contact linked to the customer, as the contact is stored, with the association's own title, phone, email and roles.
+	Contacts []CustomerContactResponse `json:"contacts"`
+
+	// Customer The customer row in a personal-data file (customers GDPR design D3): what SafeCustomerResponse carries, plus the legal identity whatever the caller's legal-identity permission — the file is shaped by customers:personal-data alone — and the addresses and billing profile's own values.
+	Customer   CustomerPersonalDataCustomer `json:"customer"`
+	ExportedAt time.Time                    `json:"exportedAt"`
+
+	// Modules Each other module's section, under the module's name — communications (the person's conversations: subject, dates, each message's direction, date and text body, attachment names), energy (supply periods with the metering point's address), projects (code, name, status and dates). A module holding nothing for the customer has no key.
+	Modules map[string]interface{} `json:"modules"`
+
+	// Timeline Every timeline entry, oldest first, deleted ones included (state says which), each with its payload, actor and follow-up. Revisions are not part of the file.
+	Timeline []TimelineResponse `json:"timeline"`
+}
+
+// CustomerPersonalDataBillingProfile The billing profile's own stored values (customers GDPR design D3) — what the customer row holds, not the resolved profile GET .../billing-profile answers with its warnings and its group's default. Unset, a field is absent.
+type CustomerPersonalDataBillingProfile struct {
+	BuyerReference   *string  `json:"buyerReference,omitempty"`
+	Currency         *string  `json:"currency,omitempty"`
+	DefaultBillRate  *float64 `json:"defaultBillRate,omitempty"`
+	Gln              *string  `json:"gln,omitempty"`
+	InvoiceDelivery  *string  `json:"invoiceDelivery,omitempty"`
+	InvoiceEmail     *string  `json:"invoiceEmail,omitempty"`
+	Language         *string  `json:"language,omitempty"`
+	PaymentTermsDays *int32   `json:"paymentTermsDays,omitempty"`
+	PeppolId         *string  `json:"peppolId,omitempty"`
+	ReminderDelivery *string  `json:"reminderDelivery,omitempty"`
+	ReminderEmail    *string  `json:"reminderEmail,omitempty"`
+}
+
+// CustomerPersonalDataCustomer The customer row in a personal-data file (customers GDPR design D3): what SafeCustomerResponse carries, plus the legal identity whatever the caller's legal-identity permission — the file is shaped by customers:personal-data alone — and the addresses and billing profile's own values.
+type CustomerPersonalDataCustomer struct {
+	Addresses []CustomerAddress `json:"addresses"`
+
+	// Anonymisation A private person's anonymisation (customers GDPR design D4): anonymiseOn is the UTC calendar day it is scheduled for, anonymisedAt the moment the worker ran it — absent until then, omitted, never null. From anonymisedAt on the customer is read-only: every write answers 409 customer_anonymised.
+	Anonymisation *CustomerAnonymisation `json:"anonymisation,omitempty"`
+
+	// BillingProfile The billing profile's own stored values (customers GDPR design D3) — what the customer row holds, not the resolved profile GET .../billing-profile answers with its warnings and its group's default. Unset, a field is absent.
+	BillingProfile CustomerPersonalDataBillingProfile `json:"billingProfile"`
+
+	// ContactInfo A customer's own contact details (invoice-ready customer design D2) — what reaches the customer itself, not one of its contacts. Each field is optional; a blank value is stored as null, but the response never sends null back — a field with none is simply absent.
+	ContactInfo    CustomerContactInfo `json:"contactInfo"`
+	CreatedAt      time.Time           `json:"createdAt"`
+	CustomerNumber int64               `json:"customerNumber"`
+
+	// Group The group a customer belongs to (customer groups design D3): its id and its name, and nothing else — a client that needs the group's default payment term reads it from GET /customers/groups or from the billing profile's own groupDefault, where it is already resolved against the customer.
+	Group      *CustomerGroupRef      `json:"group,omitempty"`
+	Id         int32                  `json:"id"`
+	Identity   *LegalIdentityResponse `json:"identity,omitempty"`
+	MergedInto *CustomerReference     `json:"mergedInto,omitempty"`
+	Name       string                 `json:"name"`
+
+	// Owner The single user accountable for the customer relationship (owner and tags design D1). displayName is resolved from the user directory at read time, never stored on the customer; a user the directory no longer knows is reported as "Unknown user" with active false, and an owner disabled after being assigned keeps the customer and is reported with active false. Absent when the customer is unowned.
+	Owner     *CustomerOwner `json:"owner,omitempty"`
+	Status    string         `json:"status"`
+	Tags      []CustomerTag  `json:"tags"`
+	Type      string         `json:"type"`
+	UpdatedAt time.Time      `json:"updatedAt"`
 }
 
 // CustomerReference defines model for CustomerReference.
@@ -670,6 +737,9 @@ type SafeCustomerIdentity struct {
 
 // SafeCustomerResponse defines model for SafeCustomerResponse.
 type SafeCustomerResponse struct {
+	// Anonymisation A private person's anonymisation, scheduled or done (customers GDPR design D4). Absent unless one is scheduled — omitted, never null, like owner. Once anonymisedAt is set the customer is read-only, and its name, identity and contact info are gone.
+	Anonymisation *CustomerAnonymisation `json:"anonymisation,omitempty"`
+
 	// ContactInfo A customer's own contact details (invoice-ready customer design D2). Always present; optional here only because the recorded exchange corpus predates it.
 	ContactInfo    *CustomerContactInfo `json:"contactInfo,omitempty"`
 	CreatedAt      time.Time            `json:"createdAt"`
@@ -1123,6 +1193,9 @@ type ServerInterface interface {
 	// PostCustomersByIdPeppolLookup Ask Peppol whether this customer can receive EHF invoices
 	// (POST /api/v1/customers/{id}/peppol-lookup)
 	PostCustomersByIdPeppolLookup(w http.ResponseWriter, r *http.Request, id int32)
+	// GetCustomersByIdPersonalData Export a private person's data
+	// (GET /api/v1/customers/{id}/personal-data)
+	GetCustomersByIdPersonalData(w http.ResponseWriter, r *http.Request, id int32)
 	// GetCustomersByIdRegistryRecord Get what the registry says about this customer
 	// (GET /api/v1/customers/{id}/registry-record)
 	GetCustomersByIdRegistryRecord(w http.ResponseWriter, r *http.Request, id int32)
@@ -2825,6 +2898,32 @@ func (siw *ServerInterfaceWrapper) PostCustomersByIdPeppolLookup(w http.Response
 	handler.ServeHTTP(w, r)
 }
 
+// GetCustomersByIdPersonalData operation middleware
+func (siw *ServerInterfaceWrapper) GetCustomersByIdPersonalData(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCustomersByIdPersonalData(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetCustomersByIdRegistryRecord operation middleware
 func (siw *ServerInterfaceWrapper) GetCustomersByIdRegistryRecord(w http.ResponseWriter, r *http.Request) {
 
@@ -3432,6 +3531,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/overview", wrapper.GetCustomersByIdOverview)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/owner", wrapper.PutCustomersByIdOwner)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/peppol-lookup", wrapper.PostCustomersByIdPeppolLookup)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/personal-data", wrapper.GetCustomersByIdPersonalData)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/registry-record", wrapper.GetCustomersByIdRegistryRecord)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/registry-refresh", wrapper.PostCustomersByIdRegistryRefresh)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/tags", wrapper.PutCustomersByIdTags)
@@ -6874,6 +6974,78 @@ func (response PostCustomersByIdPeppolLookup503ApplicationProblemPlusJSONRespons
 	return err
 }
 
+type GetCustomersByIdPersonalDataRequestObject struct {
+	Id int32 `json:"id"`
+}
+
+type GetCustomersByIdPersonalDataResponseObject interface {
+	VisitGetCustomersByIdPersonalDataResponse(w http.ResponseWriter) error
+}
+
+type GetCustomersByIdPersonalData200JSONResponse CustomerPersonalData
+
+func (response GetCustomersByIdPersonalData200JSONResponse) VisitGetCustomersByIdPersonalDataResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdPersonalData401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersByIdPersonalData401JSONResponse) VisitGetCustomersByIdPersonalDataResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdPersonalData403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetCustomersByIdPersonalData403JSONResponse) VisitGetCustomersByIdPersonalDataResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCustomersByIdPersonalData404Response struct {
+}
+
+func (response GetCustomersByIdPersonalData404Response) VisitGetCustomersByIdPersonalDataResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetCustomersByIdPersonalData409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response GetCustomersByIdPersonalData409ApplicationProblemPlusJSONResponse) VisitGetCustomersByIdPersonalDataResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCustomersByIdRegistryRecordRequestObject struct {
 	Id int32 `json:"id"`
 }
@@ -7926,6 +8098,9 @@ type StrictServerInterface interface {
 	// PostCustomersByIdPeppolLookup Ask Peppol whether this customer can receive EHF invoices
 	// (POST /api/v1/customers/{id}/peppol-lookup)
 	PostCustomersByIdPeppolLookup(ctx context.Context, request PostCustomersByIdPeppolLookupRequestObject) (PostCustomersByIdPeppolLookupResponseObject, error)
+	// GetCustomersByIdPersonalData Export a private person's data
+	// (GET /api/v1/customers/{id}/personal-data)
+	GetCustomersByIdPersonalData(ctx context.Context, request GetCustomersByIdPersonalDataRequestObject) (GetCustomersByIdPersonalDataResponseObject, error)
 	// GetCustomersByIdRegistryRecord Get what the registry says about this customer
 	// (GET /api/v1/customers/{id}/registry-record)
 	GetCustomersByIdRegistryRecord(ctx context.Context, request GetCustomersByIdRegistryRecordRequestObject) (GetCustomersByIdRegistryRecordResponseObject, error)
@@ -9363,6 +9538,32 @@ func (sh *strictHandler) PostCustomersByIdPeppolLookup(w http.ResponseWriter, r 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostCustomersByIdPeppolLookupResponseObject); ok {
 		if err := validResponse.VisitPostCustomersByIdPeppolLookupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCustomersByIdPersonalData operation middleware
+func (sh *strictHandler) GetCustomersByIdPersonalData(w http.ResponseWriter, r *http.Request, id int32) {
+	var request GetCustomersByIdPersonalDataRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCustomersByIdPersonalData(ctx, request.(GetCustomersByIdPersonalDataRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCustomersByIdPersonalData")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCustomersByIdPersonalDataResponseObject); ok {
+		if err := validResponse.VisitGetCustomersByIdPersonalDataResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

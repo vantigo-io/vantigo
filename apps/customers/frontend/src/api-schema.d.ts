@@ -259,6 +259,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/customers/{id}/personal-data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export a private person's data
+         * @description Everything this installation holds about a private person, in one file (customers GDPR design D3): the customer — number, name, type, status, legal identity, contact info, addresses, the billing profile's own values, owner, group, tags, mergedInto and anonymisation — every contact linked to it as the contact is stored, with the association's title, phone, email and roles, every timeline entry (deleted ones included, revisions left out) with its payload, actor and follow-up, and each other module's section under modules, keyed by the module's name. Served as an attachment named customer-<customerNumber>-personal-data.json, and never cached. Shaped by nothing but customers:personal-data: the key means may hand this person their data, so the legal identity and the contacts are in the file without customers:legal-identity-view or customers:contacts-view. An anonymised customer's file is what is left. 404 when the customer does not exist; 409 personal_data_not_a_person for a business, which is not a data subject.
+         */
+        get: operations["getCustomersByIdPersonalData"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/customers/{id}/registry-record": {
         parameters: {
             query?: never;
@@ -839,6 +859,13 @@ export interface components {
             region?: string | null;
             type: string;
         };
+        /** @description A private person's anonymisation (customers GDPR design D4): anonymiseOn is the UTC calendar day it is scheduled for, anonymisedAt the moment the worker ran it — absent until then, omitted, never null. From anonymisedAt on the customer is read-only: every write answers 409 customer_anonymised. */
+        CustomerAnonymisation: {
+            /** Format: date-time */
+            anonymisedAt?: string;
+            /** Format: date */
+            anonymiseOn: string;
+        };
         /** @description What this customer's group would give it (customer groups design D4). Present whenever the customer belongs to a group, so a client can say "inherits 30 days from Retail" when the profile's own paymentTermsDays is absent, and "group default 30 days, overridden" when it is present. paymentTermsDays is absent when the group carries no default of its own — nothing to inherit, never a 0. The profile's own paymentTermsDays keeps meaning "decided here": the effective value is the profile's own, else this one, else nothing, which is the rule contracts.CustomerDirectory.BillingProfile already applies for every consumer. */
         CustomerBillingGroupDefault: {
             group: components["schemas"]["CustomerGroupRef"];
@@ -884,7 +911,7 @@ export interface components {
             name: string;
             status: string;
         };
-        /** @description ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity and registry_identity_changed conflicts, the group vocabulary's group_exists and group_in_use, the tag vocabulary's tag_exists, the merge's merge_self, merge_type_mismatch, merge_into_archived and merge_already_merged (customers merge design D2), and customer_merged, the answer a write to a customer merged away gets (the same design). A revision conflict carries neither. */
+        /** @description ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity and registry_identity_changed conflicts, the group vocabulary's group_exists and group_in_use, the tag vocabulary's tag_exists, the merge's merge_self, merge_type_mismatch, merge_into_archived and merge_already_merged (customers merge design D2), customer_merged, the answer a write to a customer merged away gets (the same design), and personal_data_not_a_person, personal_data_customer_active and customer_anonymised (customers GDPR design D3, D4 — the last the answer a write to an anonymised customer gets). A revision conflict carries neither. */
         CustomerConflictProblem: {
             code?: string | null;
             detail?: string | null;
@@ -1107,6 +1134,59 @@ export interface components {
             participantId?: string | null;
             smpHost?: string | null;
             status: string;
+        };
+        /** @description GET /customers/{id}/personal-data's file (customers GDPR design D3): everything this installation holds about a private person. exportedAt is when it was made. */
+        CustomerPersonalData: {
+            /** @description Every contact linked to the customer, as the contact is stored, with the association's own title, phone, email and roles. */
+            contacts: components["schemas"]["CustomerContactResponse"][];
+            customer: components["schemas"]["CustomerPersonalDataCustomer"];
+            /** Format: date-time */
+            exportedAt: string;
+            /** @description Each other module's section, under the module's name — communications (the person's conversations: subject, dates, each message's direction, date and text body, attachment names), energy (supply periods with the metering point's address), projects (code, name, status and dates). A module holding nothing for the customer has no key. */
+            modules: {
+                [key: string]: unknown;
+            };
+            /** @description Every timeline entry, oldest first, deleted ones included (state says which), each with its payload, actor and follow-up. Revisions are not part of the file. */
+            timeline: components["schemas"]["TimelineResponse"][];
+        };
+        /** @description The billing profile's own stored values (customers GDPR design D3) — what the customer row holds, not the resolved profile GET .../billing-profile answers with its warnings and its group's default. Unset, a field is absent. */
+        CustomerPersonalDataBillingProfile: {
+            buyerReference?: string | null;
+            currency?: string | null;
+            /** Format: double */
+            defaultBillRate?: number | null;
+            gln?: string | null;
+            invoiceDelivery?: string | null;
+            invoiceEmail?: string | null;
+            language?: string | null;
+            /** Format: int32 */
+            paymentTermsDays?: number | null;
+            peppolId?: string | null;
+            reminderDelivery?: string | null;
+            reminderEmail?: string | null;
+        };
+        /** @description The customer row in a personal-data file (customers GDPR design D3): what SafeCustomerResponse carries, plus the legal identity whatever the caller's legal-identity permission — the file is shaped by customers:personal-data alone — and the addresses and billing profile's own values. */
+        CustomerPersonalDataCustomer: {
+            addresses: components["schemas"]["CustomerAddress"][];
+            anonymisation?: components["schemas"]["CustomerAnonymisation"];
+            billingProfile: components["schemas"]["CustomerPersonalDataBillingProfile"];
+            contactInfo: components["schemas"]["CustomerContactInfo"];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int64 */
+            customerNumber: number;
+            group?: components["schemas"]["CustomerGroupRef"];
+            /** Format: int32 */
+            id: number;
+            identity?: components["schemas"]["LegalIdentityResponse"];
+            mergedInto?: components["schemas"]["CustomerReference"];
+            name: string;
+            owner?: components["schemas"]["CustomerOwner"];
+            status: string;
+            tags: components["schemas"]["CustomerTag"][];
+            type: string;
+            /** Format: date-time */
+            updatedAt: string;
         };
         CustomerReference: {
             /** Format: int64 */
@@ -1371,6 +1451,8 @@ export interface components {
             type: string;
         };
         SafeCustomerResponse: {
+            /** @description A private person's anonymisation, scheduled or done (customers GDPR design D4). Absent unless one is scheduled — omitted, never null, like owner. Once anonymisedAt is set the customer is read-only, and its name, identity and contact info are gone. */
+            anonymisation?: components["schemas"]["CustomerAnonymisation"];
             /** @description A customer's own contact details (invoice-ready customer design D2). Always present; optional here only because the recorded exchange corpus predates it. */
             contactInfo?: components["schemas"]["CustomerContactInfo"];
             /** Format: date-time */
@@ -3013,6 +3095,62 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getCustomersByIdPersonalData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — served as an attachment named customer-<customerNumber>-personal-data.json, and never cached. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerPersonalData"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — personal_data_not_a_person */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
                 };
             };
         };

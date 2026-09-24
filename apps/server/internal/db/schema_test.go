@@ -622,6 +622,31 @@ func TestCustomersBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	if strings.Contains(mergedIntoIndexDef, "UNIQUE") || !strings.Contains(mergedIntoIndexDef, "WHERE (merged_into_customer_id IS NOT NULL)") {
 		t.Errorf("ix_customers_merged_into = %q, want a non-unique PARTIAL index on merged_into_customer_id IS NOT NULL", mergedIntoIndexDef)
 	}
+	// anonymise_on and anonymised_at (00030) are customers GDPR design D4's
+	// schedule and its outcome: a date and an instant, both nullable — most
+	// customers are never scheduled — and the worker's one lookup, the due
+	// customers, has a partial index holding only the scheduled and not yet
+	// anonymised. COLLATE "C": the underscore must sort as a character here, not
+	// be skipped the way a linguistic collation skips it.
+	var anonymisationColumns string
+	if err := pool.QueryRow(ctx, `SELECT coalesce(string_agg(column_name || ':' || data_type || ':' || is_nullable, ',' ORDER BY column_name COLLATE "C"), 'MISSING')
+	                              FROM information_schema.columns
+	                              WHERE table_schema = 'customers' AND table_name = 'customers'
+	                                AND column_name IN ('anonymise_on', 'anonymised_at')`).Scan(&anonymisationColumns); err != nil {
+		t.Fatalf("read the anonymisation columns: %v", err)
+	}
+	if want := "anonymise_on:date:YES,anonymised_at:timestamp with time zone:YES"; anonymisationColumns != want {
+		t.Errorf("anonymisation columns = %q, want %q", anonymisationColumns, want)
+	}
+	var anonymiseIndexDef string
+	if err := pool.QueryRow(ctx, `SELECT indexdef FROM pg_indexes
+	                              WHERE schemaname = 'customers' AND indexname = 'ix_customers_anonymise_on'`).Scan(&anonymiseIndexDef); err != nil {
+		t.Fatalf("read ix_customers_anonymise_on definition: %v", err)
+	}
+	if strings.Contains(anonymiseIndexDef, "UNIQUE") ||
+		!strings.Contains(anonymiseIndexDef, "WHERE ((anonymise_on IS NOT NULL) AND (anonymised_at IS NULL))") {
+		t.Errorf("ix_customers_anonymise_on = %q, want a non-unique PARTIAL index on the scheduled, not yet anonymised", anonymiseIndexDef)
+	}
 
 	var tenantIDColumns int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_schema = 'customers' AND column_name = 'tenant_id'`).Scan(&tenantIDColumns); err != nil {

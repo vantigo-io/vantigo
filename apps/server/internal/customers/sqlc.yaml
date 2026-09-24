@@ -23,6 +23,7 @@ sql:
       - ../db/migrations/00027_customers_groups.sql
       - ../db/migrations/00028_customers_default_bill_rate.sql
       - ../db/migrations/00029_customers_merge.sql
+      - ../db/migrations/00030_customers_personal_data.sql
     queries: queries
     gen:
       go:

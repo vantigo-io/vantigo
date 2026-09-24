@@ -29,10 +29,11 @@ func TestModule_ComposesAndDemandsAPermission(t *testing.T) {
 }
 
 // TestModule_DeclaresItsPermissionCatalog pins the module's name and all
-// fifteen permissions, field for field, against the .NET contributor
+// sixteen permissions, field for field, against the .NET contributor
 // (AZ/CustomerPermissionCatalogContributor.cs:9-49, inventory §6) plus
-// customers:billing-manage (invoice-ready customer design D1, D4) and
-// customers:merge (customers merge design D2), neither with a .NET ancestor:
+// customers:billing-manage (invoice-ready customer design D1, D4),
+// customers:merge (customers merge design D2) and customers:personal-data
+// (customers GDPR design D3, D4), none with a .NET ancestor:
 // every key is delegable, and only view, create and update are not
 // sensitive.
 func TestModule_DeclaresItsPermissionCatalog(t *testing.T) {
@@ -55,6 +56,7 @@ func TestModule_DeclaresItsPermissionCatalog(t *testing.T) {
 		{Key: "customers:lookup-view", Display: "Use registry lookup", Description: "Search the external business registry for legal identities.", Category: "Lookup", Sensitive: true, Delegable: true},
 		{Key: "customers:billing-manage", Display: "Manage billing profiles", Description: "Set a customer's payment terms, invoice delivery and billing addresses for documents.", Category: "Billing", Sensitive: true, Delegable: true},
 		{Key: "customers:merge", Display: "Merge customers", Description: "Merge a duplicate customer into another, moving its contacts, addresses, timeline, tags and other modules' references, and archiving it.", Category: "Customers", Sensitive: true, Delegable: true},
+		{Key: "customers:personal-data", Display: "Manage personal data", Description: "Hand a private person all the data held about them, and schedule the anonymisation of an archived private person.", Category: "Customers", Sensitive: true, Delegable: true},
 	}
 	if m.Name != "customers" {
 		t.Errorf("Name = %q, want customers", m.Name)

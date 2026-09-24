@@ -225,6 +225,18 @@ components:
                 - line1
                 - country
             type: object
+        CustomerAnonymisation:
+            description: "A private person's anonymisation (customers GDPR design D4): anonymiseOn is the UTC calendar day it is scheduled for, anonymisedAt the moment the worker ran it — absent until then, omitted, never null. From anonymisedAt on the customer is read-only: every write answers 409 customer_anonymised."
+            properties:
+                anonymisedAt:
+                    format: date-time
+                    type: string
+                anonymiseOn:
+                    format: date
+                    type: string
+            required:
+                - anonymiseOn
+            type: object
         CustomerBillingGroupDefault:
             description: "What this customer's group would give it (customer groups design D4). Present whenever the customer belongs to a group, so a client can say \"inherits 30 days from Retail\" when the profile's own paymentTermsDays is absent, and \"group default 30 days, overridden\" when it is present. paymentTermsDays is absent when the group carries no default of its own — nothing to inherit, never a 0. The profile's own paymentTermsDays keeps meaning \"decided here\": the effective value is the profile's own, else this one, else nothing, which is the rule contracts.CustomerDirectory.BillingProfile already applies for every consumer."
             properties:
@@ -324,7 +336,7 @@ components:
                 - status
             type: object
         CustomerConflictProblem:
-            description: ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity and registry_identity_changed conflicts, the group vocabulary's group_exists and group_in_use, the tag vocabulary's tag_exists, the merge's merge_self, merge_type_mismatch, merge_into_archived and merge_already_merged (customers merge design D2), and customer_merged, the answer a write to a customer merged away gets (the same design). A revision conflict carries neither.
+            description: ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity and registry_identity_changed conflicts, the group vocabulary's group_exists and group_in_use, the tag vocabulary's tag_exists, the merge's merge_self, merge_type_mismatch, merge_into_archived and merge_already_merged (customers merge design D2), customer_merged, the answer a write to a customer merged away gets (the same design), and personal_data_not_a_person, personal_data_customer_active and customer_anonymised (customers GDPR design D3, D4 — the last the answer a write to an anonymised customer gets). A revision conflict carries neither.
             properties:
                 code:
                     nullable: true
@@ -758,6 +770,130 @@ components:
                 - canReceiveInvoice
                 - canReceiveCreditNote
                 - checkedAt
+            type: object
+        CustomerPersonalData:
+            description: "GET /customers/{id}/personal-data's file (customers GDPR design D3): everything this installation holds about a private person. exportedAt is when it was made."
+            properties:
+                contacts:
+                    description: Every contact linked to the customer, as the contact is stored, with the association's own title, phone, email and roles.
+                    items:
+                        $ref: '#/components/schemas/CustomerContactResponse'
+                    type: array
+                customer:
+                    $ref: '#/components/schemas/CustomerPersonalDataCustomer'
+                exportedAt:
+                    format: date-time
+                    type: string
+                modules:
+                    additionalProperties: true
+                    description: "Each other module's section, under the module's name — communications (the person's conversations: subject, dates, each message's direction, date and text body, attachment names), energy (supply periods with the metering point's address), projects (code, name, status and dates). A module holding nothing for the customer has no key."
+                    type: object
+                timeline:
+                    description: Every timeline entry, oldest first, deleted ones included (state says which), each with its payload, actor and follow-up. Revisions are not part of the file.
+                    items:
+                        $ref: '#/components/schemas/TimelineResponse'
+                    type: array
+            required:
+                - exportedAt
+                - customer
+                - contacts
+                - timeline
+                - modules
+            type: object
+        CustomerPersonalDataBillingProfile:
+            description: The billing profile's own stored values (customers GDPR design D3) — what the customer row holds, not the resolved profile GET .../billing-profile answers with its warnings and its group's default. Unset, a field is absent.
+            properties:
+                buyerReference:
+                    nullable: true
+                    type: string
+                currency:
+                    nullable: true
+                    type: string
+                defaultBillRate:
+                    format: double
+                    nullable: true
+                    type: number
+                gln:
+                    nullable: true
+                    type: string
+                invoiceDelivery:
+                    nullable: true
+                    type: string
+                invoiceEmail:
+                    nullable: true
+                    type: string
+                language:
+                    nullable: true
+                    type: string
+                paymentTermsDays:
+                    format: int32
+                    nullable: true
+                    type: integer
+                peppolId:
+                    nullable: true
+                    type: string
+                reminderDelivery:
+                    nullable: true
+                    type: string
+                reminderEmail:
+                    nullable: true
+                    type: string
+            type: object
+        CustomerPersonalDataCustomer:
+            description: "The customer row in a personal-data file (customers GDPR design D3): what SafeCustomerResponse carries, plus the legal identity whatever the caller's legal-identity permission — the file is shaped by customers:personal-data alone — and the addresses and billing profile's own values."
+            properties:
+                addresses:
+                    items:
+                        $ref: '#/components/schemas/CustomerAddress'
+                    type: array
+                anonymisation:
+                    $ref: '#/components/schemas/CustomerAnonymisation'
+                billingProfile:
+                    $ref: '#/components/schemas/CustomerPersonalDataBillingProfile'
+                contactInfo:
+                    $ref: '#/components/schemas/CustomerContactInfo'
+                createdAt:
+                    format: date-time
+                    type: string
+                customerNumber:
+                    format: int64
+                    type: integer
+                group:
+                    $ref: '#/components/schemas/CustomerGroupRef'
+                id:
+                    format: int32
+                    type: integer
+                identity:
+                    $ref: '#/components/schemas/LegalIdentityResponse'
+                mergedInto:
+                    $ref: '#/components/schemas/CustomerReference'
+                name:
+                    type: string
+                owner:
+                    $ref: '#/components/schemas/CustomerOwner'
+                status:
+                    type: string
+                tags:
+                    items:
+                        $ref: '#/components/schemas/CustomerTag'
+                    type: array
+                type:
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - customerNumber
+                - name
+                - type
+                - status
+                - createdAt
+                - updatedAt
+                - contactInfo
+                - addresses
+                - billingProfile
+                - tags
             type: object
         CustomerReference:
             properties:
@@ -1344,6 +1480,10 @@ components:
             type: object
         SafeCustomerResponse:
             properties:
+                anonymisation:
+                    allOf:
+                        - $ref: '#/components/schemas/CustomerAnonymisation'
+                    description: "A private person's anonymisation, scheduled or done (customers GDPR design D4). Absent unless one is scheduled — omitted, never null, like owner. Once anonymisedAt is set the customer is read-only, and its name, identity and contact info are gone."
                 contactInfo:
                     allOf:
                         - $ref: '#/components/schemas/CustomerContactInfo'
@@ -2817,6 +2957,48 @@ paths:
             tags:
                 - Customers
             x-vantigo-access: permission:customers:billing-manage+customers:view
+    /api/v1/customers/{id}/personal-data:
+        get:
+            description: "Everything this installation holds about a private person, in one file (customers GDPR design D3): the customer — number, name, type, status, legal identity, contact info, addresses, the billing profile's own values, owner, group, tags, mergedInto and anonymisation — every contact linked to it as the contact is stored, with the association's title, phone, email and roles, every timeline entry (deleted ones included, revisions left out) with its payload, actor and follow-up, and each other module's section under modules, keyed by the module's name. Served as an attachment named customer-<customerNumber>-personal-data.json, and never cached. Shaped by nothing but customers:personal-data: the key means may hand this person their data, so the legal identity and the contacts are in the file without customers:legal-identity-view or customers:contacts-view. An anonymised customer's file is what is left. 404 when the customer does not exist; 409 personal_data_not_a_person for a business, which is not a data subject."
+            operationId: getCustomersByIdPersonalData
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerPersonalData'
+                    description: OK — served as an attachment named customer-<customerNumber>-personal-data.json, and never cached.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: Conflict — personal_data_not_a_person
+            summary: Export a private person's data
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:personal-data+customers:view
     /api/v1/customers/{id}/registry-record:
         get:
             description: "What Enhetsregisteret says about this customer, as last fetched (Brreg in full design D1, D2). 204 with no body when no record has ever been fetched — and equally when the caller lacks customers:legal-identity-view, since the record repeats the legal identity's organisation number and is that permission's to show; the two cases are deliberately indistinguishable, as the legal-identity GET's own \"nothing to show\" is. 404 when the customer does not exist."
