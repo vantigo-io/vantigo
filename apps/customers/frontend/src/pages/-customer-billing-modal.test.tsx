@@ -21,6 +21,7 @@ const emptyProfile = {
   peppolId: null,
   gln: null,
   buyerReference: null,
+  defaultBillRate: null,
   revision: 3,
   warnings: [],
 };
@@ -64,7 +65,7 @@ const renderModal = (
 describe("CustomerBillingModal", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("sends the full ten-field profile plus revision on save", async () => {
+  it("sends the full eleven-field profile plus revision on save", async () => {
     const fetchMock = renderModal(emptyProfile, {
       billingPut: () => jsonResponse(200, { ...emptyProfile, invoiceEmail: "invoices@acme.test" }),
     });
@@ -74,6 +75,7 @@ describe("CustomerBillingModal", () => {
     await userEvent.type(within(dialog).getByLabelText(/^reminder email/i), "reminders@acme.test");
     await userEvent.type(within(dialog).getByLabelText(/payment terms/i), "30");
     await userEvent.type(within(dialog).getByLabelText(/^currency/i), "nok");
+    await userEvent.type(within(dialog).getByLabelText(/default bill rate/i), "1250.5");
     await userEvent.click(within(dialog).getByRole("button", { name: /save changes/i }));
 
     await waitFor(() => expect(lastBillingPut(fetchMock)).toBeTruthy());
@@ -90,6 +92,7 @@ describe("CustomerBillingModal", () => {
       peppolId: null,
       gln: null,
       buyerReference: null,
+      defaultBillRate: 1250.5,
       revision: 3,
     });
   });
@@ -131,6 +134,53 @@ describe("CustomerBillingModal", () => {
     const currency = within(dialog).getByLabelText(/^currency/i);
     await userEvent.type(currency, "nok");
     expect(currency).toHaveValue("NOK");
+  });
+
+  it("keeps a stored default bill rate through a save that never touched it, and sends null once it is cleared", async () => {
+    // The PUT is a full replace, and the Use EHF offer builds its body through
+    // the same valuesFromProfile/toInput: a rate the form did not carry would be
+    // cleared by a save about something else.
+    const stored = { ...emptyProfile, currency: "NOK", defaultBillRate: 1250.5 };
+    const fetchMock = renderModal(stored, {
+      billingPut: () => jsonResponse(200, { ...stored, revision: 4 }),
+    });
+    const puts = () =>
+      fetchMock.mock.calls.filter(
+        ([url, init]) =>
+          String(url).endsWith("/billing-profile") && (init as RequestInit | undefined)?.method === "PUT",
+      );
+
+    const dialog = await screen.findByRole("dialog");
+    const rate = within(dialog).getByLabelText(/default bill rate/i);
+    expect(rate).toHaveValue("1250.5");
+    await userEvent.click(within(dialog).getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    expect(JSON.parse(String((lastBillingPut(fetchMock) as [string, RequestInit])[1].body)).defaultBillRate).toBe(
+      1250.5,
+    );
+
+    await userEvent.clear(rate);
+    await userEvent.click(within(dialog).getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(puts()).toHaveLength(2));
+    expect(JSON.parse(String((lastBillingPut(fetchMock) as [string, RequestInit])[1].body)).defaultBillRate).toBeNull();
+  });
+
+  it("shows the server's rate-needs-a-currency error on the rate field", async () => {
+    const message = "A default bill rate needs the billing profile's currency to be quoted in";
+    renderModal(emptyProfile, {
+      billingPut: () =>
+        jsonResponse(400, { title: "Invalid billing profile", status: 400, errors: { defaultBillRate: [message] } }),
+    });
+
+    const dialog = await screen.findByRole("dialog");
+    const rate = within(dialog).getByLabelText(/default bill rate/i);
+    await userEvent.type(rate, "1250");
+    await userEvent.click(within(dialog).getByRole("button", { name: /save changes/i }));
+
+    expect(await within(dialog).findByText(message)).toBeInTheDocument();
+    expect(rate).toHaveAttribute("aria-invalid", "true");
   });
 
   it("maps field errors from a 400 onto the right inputs", async () => {

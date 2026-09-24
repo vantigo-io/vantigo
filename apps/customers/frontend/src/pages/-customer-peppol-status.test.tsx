@@ -26,6 +26,7 @@ const emptyProfile = {
   peppolId: "0192:923609016",
   gln: null,
   buyerReference: null,
+  defaultBillRate: null,
   revision: 3,
   warnings: [],
 };
@@ -305,6 +306,8 @@ describe("CustomerPeppolStatus", () => {
         return Promise.resolve(
           jsonResponse(200, {
             ...emptyProfile,
+            currency: "NOK",
+            defaultBillRate: 1250.5,
             invoiceDelivery: "ehf",
             peppolLookup: registeredWithInvoice,
             revision: 4,
@@ -314,7 +317,13 @@ describe("CustomerPeppolStatus", () => {
       }
       if (path === "/api/v1/customers/1001/billing-profile") {
         return Promise.resolve(
-          jsonResponse(200, { ...emptyProfile, warnings: ["ehf_available"], peppolLookup: registeredWithInvoice }),
+          jsonResponse(200, {
+            ...emptyProfile,
+            currency: "NOK",
+            defaultBillRate: 1250.5,
+            warnings: ["ehf_available"],
+            peppolLookup: registeredWithInvoice,
+          }),
         );
       }
       return Promise.resolve(new Response(null, { status: 404 }));
@@ -332,13 +341,14 @@ describe("CustomerPeppolStatus", () => {
       invoiceEmail: null,
       reminderEmail: null,
       paymentTermsDays: null,
-      currency: null,
+      currency: "NOK",
       language: null,
       invoiceDelivery: "ehf",
       reminderDelivery: null,
       peppolId: "0192:923609016",
       gln: null,
       buyerReference: null,
+      defaultBillRate: 1250.5,
       revision: 3,
     });
   });

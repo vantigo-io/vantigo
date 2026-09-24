@@ -23,6 +23,7 @@ const profile = {
   peppolId: null,
   gln: null,
   buyerReference: null,
+  defaultBillRate: null,
   revision: 3,
   peppolLookup: null,
   warnings: [],
@@ -67,6 +68,19 @@ describe("customerBillingProfileQueryOptions", () => {
     const result = await (options.queryFn as (context: unknown) => Promise<unknown>)({ signal: undefined });
 
     expect(result).toEqual({ ...profile, warnings: ["no_invoice_address"] });
+  });
+
+  it("carries the default bill rate through as the number the server sent", async () => {
+    stubFetch(
+      vi
+        .fn()
+        .mockResolvedValue(jsonResponse(200, { revision: 3, warnings: [], currency: "NOK", defaultBillRate: 1250.5 })),
+    );
+
+    const options = customerBillingProfileQueryOptions(1001);
+    const result = await (options.queryFn as (context: unknown) => Promise<unknown>)({ signal: undefined });
+
+    expect(result).toEqual({ ...profile, currency: "NOK", defaultBillRate: 1250.5 });
   });
 
   it("treats an absent warnings list as no warnings", async () => {
@@ -231,7 +245,7 @@ describe("checkPeppol", () => {
 describe("updateBillingProfile", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("PUTs the full ten-field profile plus revision", async () => {
+  it("PUTs the full eleven-field profile plus revision", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { ...profile, invoiceEmail: "invoices@acme.test" }));
     stubFetch(fetchMock);
 
@@ -246,6 +260,7 @@ describe("updateBillingProfile", () => {
       peppolId: "0192:923609016",
       gln: null,
       buyerReference: null,
+      defaultBillRate: 1250.5,
       revision: 3,
     };
     const result = await updateBillingProfile(1001, input);
@@ -269,6 +284,7 @@ describe("updateBillingProfile", () => {
     peppolId: null,
     gln: null,
     buyerReference: null,
+    defaultBillRate: null,
     revision: 3,
   };
 

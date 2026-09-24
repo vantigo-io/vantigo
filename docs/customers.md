@@ -55,9 +55,10 @@ they are not.
   `created_at`, `updated_at`) — any number per customer, typed `postal`/`invoice`/
   `delivery`/`visiting`, at most one primary per type. See [Contact info, addresses
   and the billing profile](#contact-info-addresses-and-the-billing-profile).
-- **Billing profile** — ten nullable columns on `customers.customers` itself
+- **Billing profile** — eleven nullable columns on `customers.customers` itself
   (`invoice_email`, `reminder_email`, `payment_terms_days`, `currency`, `language`,
-  `invoice_delivery`, `reminder_delivery`, `peppol_id`, `gln`, `buyer_reference`):
+  `invoice_delivery`, `reminder_delivery`, `peppol_id`, `gln`, `buyer_reference`,
+  `default_bill_rate`):
   every column NULL means "not decided here — whoever invoices uses its own
   default". See [Contact info, addresses and the billing
   profile](#contact-info-addresses-and-the-billing-profile).
@@ -446,14 +447,17 @@ between at most two candidate rows, never an arbitrary one among many.
 
 ### Billing profile
 
-Ten nullable columns on `customers.customers` (migration `00019`), every one
-meaning "not decided here — whoever invoices uses its own default" when NULL:
+Eleven nullable columns on `customers.customers` — ten from migration `00019`,
+`default_bill_rate` from `00028` — every one meaning "not decided here — whoever
+invoices (or, for the rate, whatever prices the hours) uses its own default" when
+NULL:
 
 | Field | Rule |
 | --- | --- |
 | `invoiceEmail`, `reminderEmail` | Contact info's email rule. Kept separate from each other and from the customer's own contact-info email because reminders cannot travel as EHF or eFaktura — the reminder channel is its own decision. |
 | `paymentTermsDays` | Integer, 0–365 inclusive. NULL means "not decided here" — and, from [Groups](#groups) on, a customer whose group carries a default inherits that instead; `groupDefault` on this sub-resource says which group and what it gives, and the effective value is the profile's own, else the group's, else nothing. |
 | `currency` | Three-letter ISO 4217 code, upper-cased (the shape only — not checked against the set of actually-assigned codes, the same rule Projects' own currency field uses). |
+| `defaultBillRate` | The customer's default hourly bill rate, quoted in the profile's own `currency` — one currency per customer, never a pair of its own the way a project has. Greater than zero, at most two decimals, at most 9999999999.99 (`numeric(12,2)`, the scale every rate in the chain has). **A rate needs the currency**: a body with `defaultBillRate` and no `currency` is a 400 on `defaultBillRate`, and since the PUT is a full replace, clearing the currency while sending the rate is the same error. Omitted or null clears it. It is the customer step of [Time's rate chain](time.md#the-rate-chain), between the project default and the person card. |
 | `language` | `nb` or `en` — the languages a document can be produced in. |
 | `invoiceDelivery` | One of `email`, `ehf`, `efaktura`, `paper`. |
 | `reminderDelivery` | One of `email`, `paper` — a narrower set than `invoiceDelivery`'s, since a reminder can never travel as EHF or eFaktura. |
@@ -461,7 +465,9 @@ meaning "not decided here — whoever invoices uses its own default" when NULL:
 | `gln` | 13 digits (whitespace stripped first) with a valid GS1 mod-10 check digit. |
 | `buyerReference` | At most 100 characters — the default "deres referanse". |
 
-**There are deliberately no cross-field rules** — no "EHF needs a Peppol id", no
+**There is one cross-field rule and deliberately no others.** The one is the rate's:
+`defaultBillRate` needs `currency`, because a number with no currency to be quoted in
+prices nothing. Beyond it, no "EHF needs a Peppol id", no
 "eFaktura only makes sense for a business". A profile is filled in over time, field
 by field, and whether a customer *can actually be invoiced* a given way is
 Invoices' question to ask at send time, not this module's to gatekeep at save
@@ -511,12 +517,12 @@ lookup](#peppol-lookup).
 `customers:view` — a caller who could not otherwise see the customer cannot manage
 its billing either. It is revision-guarded and no-op'd exactly like the
 contact-info PUT: a supplied stale `revision` is a 409 checked before the no-op
-comparison; a request identical in all ten fields writes nothing — no revision
+comparison; a request identical in all eleven fields writes nothing — no revision
 bump, no `updated_at` move, no `customer.billing_profile_updated` event.
 
 The billing profile is **not** part of `SafeCustomerResponse` — list pages do not
 need it, and keeping it off the general response keeps D1's permission story
-simple (a caller with plain `customers:view` never has ten billing columns handed
+simple (a caller with plain `customers:view` never has eleven billing columns handed
 to it through the list or GET-by-id endpoints; only the dedicated sub-resource
 does, and that sub-resource's own GET needs nothing more than `customers:view`
 either).
@@ -1063,7 +1069,7 @@ tie-broken by `id`) with `sortDirection` (`asc`/`desc`).
 the row** — a general update, a type change, a legal-identity put or delete, an
 archive, and, since the invoice-ready customer branch, a contact-info or a
 billing-profile `PUT` — increments it by one; both new sub-resource writes live on
-`customers.customers` itself (contact info and the ten billing columns), so both
+`customers.customers` itself (contact info and the eleven billing columns), so both
 bump `revision` the same way a name/status update does. A request that turns out to
 write nothing is not a write: like `PUT /customers/{id}`, a legal-identity `PUT`
 that resubmits the identity already stored (equal in all five fields), or a
@@ -2202,7 +2208,10 @@ of its caller: Products phase 4's customer-group prices are the intended reader.
   action until the page is reloaded, rather than asking again on every
   mount. Under the payment-terms row it says where an unset term comes from —
   *Inherits 30 days from Retail* — or that the customer's own overrides one,
-  from the profile's `groupDefault`.
+  from the profile's `groupDefault`. After the currency comes the **default bill
+  rate** (*1,250.00 NOK per hour*, or *Not set — the project's or the person's rate
+  applies*), edited in the modal as a two-decimal number that is cleared by emptying
+  it; the server's refusal of a rate without a currency lands on that field.
 - **Form** (create/edit modal) — sends `revision` on every edit, so a stale write is
   caught by the backend's 409 rather than silently overwriting a concurrent change;
   a 409 revision conflict tells the user the customer changed underneath them and
@@ -2409,10 +2418,20 @@ directory and the time and expenses batch contracts, and a host-owned panel at t
 top of the customer page. It needed two additive contract changes —
 `ProjectDirectory.ProjectsForCustomer` and `ActualsTotals.Invoiced`, the part of
 approved already billed — and no permission key: every section is shaped by the
-projects module's own keys. Still ahead in phase 5: the customer default bill rate
-in the rate chain (delivery B), other modules writing to the customer timeline (on
-the outbox deferred until Orders), and invoiced revenue and outstanding once
-Invoices exists.
+projects module's own keys.
+
+**Phase 5 delivery B** — the customer default bill rate — has landed on top of it,
+decided in
+[`docs/superpowers/specs/2026-09-24-customers-bill-rate-design.md`](superpowers/specs/2026-09-24-customers-bill-rate-design.md):
+the billing profile's eleventh field, `defaultBillRate` (migration `00028`, the
+module's first money column), quoted in the profile's own currency and written under
+`customers:billing-manage` like every other billing field; the directory's
+`BillingProfile.DefaultBillRate`, the customer's own value with no group tier; and
+the customer step of [Time's rate chain](time.md#the-rate-chain), between the
+project default and the person card, recorded as `rateSource: "customer"`. No
+permission key was added. Still ahead in phase 5: other modules writing to the
+customer timeline (on the outbox deferred until Orders), and invoiced revenue and
+outstanding once Invoices exists.
 
 Past that, the remaining gaps are exactly
 what [ROADMAP.md's Customers section](../ROADMAP.md#customers) is built around —

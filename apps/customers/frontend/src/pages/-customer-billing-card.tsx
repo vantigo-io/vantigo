@@ -153,7 +153,7 @@ const BillingRow = ({
 );
 
 /**
- * The ten billing fields, in the same order the contract lists them.
+ * The eleven billing fields, in the same order the contract lists them.
  * Resolution hints mirror `resolveBillingProfile` in
  * `apps/server/internal/customers/directory.go`: an invoice email falls back
  * to the customer's own contact email, a reminder email falls back to the
@@ -177,7 +177,7 @@ const BillingFields = ({
   customerId: number;
   canManageBilling?: boolean;
 }) => {
-  const { t } = useI18n("customers");
+  const { t, formatters } = useI18n("customers");
   const notSet = (
     <Text size="sm" c="dimmed">
       {t("billingNotSet")}
@@ -231,6 +231,30 @@ const BillingFields = ({
         hint={paymentTermsHint}
       />
       <BillingRow label={t("billingCurrency")} value={value(profile.currency)} />
+      <BillingRow
+        label={t("billingDefaultBillRate")}
+        value={
+          profile.defaultBillRate === null ? (
+            // Not "the invoicing default": an unset rate sends the chain on to
+            // the project's or the person's rate, and the words say which.
+            <Text size="sm" c="dimmed">
+              {t("billingDefaultBillRateNotSet")}
+            </Text>
+          ) : (
+            <Text size="sm">
+              {t("billingDefaultBillRateValue", {
+                amount: formatters.formatNumber(profile.defaultBillRate, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                }),
+                // Never empty for a profile the server answered: it refuses a
+                // rate without a currency.
+                currency: profile.currency ?? "",
+              })}
+            </Text>
+          )
+        }
+      />
       <BillingRow
         label={t("billingLanguage")}
         value={profile.language === null ? notSet : <Text size="sm">{billingLanguageLabel(t, profile.language)}</Text>}
