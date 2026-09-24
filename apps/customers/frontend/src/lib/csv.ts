@@ -97,6 +97,10 @@ export const toCsv = (rows: string[][]): string =>
  * A file that already carries an `error` column — a failed-rows file being
  * re-run — has it overwritten rather than a second one added. The import
  * ignores that column, so the file goes straight back in once fixed.
+ *
+ * A record with more cells than the header ("This row has 3 cells, but the
+ * header has 2") keeps every one of them: its error goes after its last cell,
+ * never over a cell the person wrote.
  */
 export const failedRowsCsv = (table: CsvTable, errors: CustomerImportError[]): string => {
   const problems = new Map<number, string[]>();
@@ -111,8 +115,10 @@ export const failedRowsCsv = (table: CsvTable, errors: CustomerImportError[]): s
     .filter((record) => problems.has(record.row))
     .map((record) => {
       const cells = [...record.cells];
+      const text = (problems.get(record.row) ?? []).join(" | ");
+      if (cells.length > table.header.length) return [...cells, text];
       while (cells.length < header.length) cells.push("");
-      cells[at] = (problems.get(record.row) ?? []).join(" | ");
+      cells[at] = text;
       return cells;
     });
   return toCsv([header, ...rows]);

@@ -1,8 +1,10 @@
 import { MantineProvider } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { setUnauthorizedHandler } from "../api/request";
 import { CustomersPage } from "./customers.index";
 
 const router = vi.hoisted(() => ({
@@ -132,6 +134,39 @@ describe("CustomersPage", () => {
     );
     expect(exportUrl).toBe("/api/v1/customers/export?search=fjord&status=archived&sortBy=name&sortDirection=desc");
     click.mockRestore();
+  });
+
+  it("shows an export's refusal, but not an expired session, which signs the person out instead", async () => {
+    const fetchMock = stubFetch();
+    const list = fetchMock.getMockImplementation() as (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => Promise<Response>;
+    let exportAnswer = () => new Response(null, { status: 401 });
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) =>
+      String(input).startsWith("/api/v1/customers/export") ? Promise.resolve(exportAnswer()) : list(input, init),
+    );
+    const unauthorized = vi.fn();
+    setUnauthorizedHandler(unauthorized);
+    onTestFinished(() => setUnauthorizedHandler(undefined));
+    const show = vi.spyOn(notifications, "show");
+    onTestFinished(() => show.mockRestore());
+    renderPage({ canExport: true });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Export" }));
+    await waitFor(() => expect(unauthorized).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Export" })).toBeEnabled());
+    expect(show).not.toHaveBeenCalled();
+
+    exportAnswer = () =>
+      new Response(JSON.stringify({ title: "Too many customers to export", detail: "Narrow it with a filter." }), {
+        status: 400,
+        headers: { "Content-Type": "application/problem+json" },
+      });
+    await userEvent.click(screen.getByRole("button", { name: "Export" }));
+    await waitFor(() =>
+      expect(show).toHaveBeenCalledWith(expect.objectContaining({ message: "Narrow it with a filter." })),
+    );
   });
 
   it("offers Export and Import only to a caller the host says may use them", async () => {

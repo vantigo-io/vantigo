@@ -12,6 +12,12 @@ describe("parseCsv", () => {
     ]);
   });
 
+  it("skips an empty line before the header, as Go's encoding/csv does", () => {
+    const table = parseCsv("\r\nname\r\nA\r\n");
+    expect(table.header).toEqual(["name"]);
+    expect(table.records).toEqual([{ row: 1, cells: ["A"] }]);
+  });
+
   it("takes LF, no BOM, and skips empty lines", () => {
     expect(parseCsv("name\nA\n\nB").records).toEqual([
       { row: 1, cells: ["A"] },
@@ -43,6 +49,13 @@ describe("failedRowsCsv", () => {
       "\ufeffname;email;error\r\n" +
         "Feil AS;nei;email: An email address must look like name@example.com, but was 'nei' | name: Second problem\r\n" +
         "Kort AS;;This row has 1 cells, but the header has 2\r\n",
+    );
+  });
+
+  it("keeps every cell of a row longer than the header, the error after the last of them", () => {
+    const long = parseCsv("name;email\r\nA;a@x.no;extra\r\n");
+    expect(failedRowsCsv(long, [{ row: 1, column: null, message: "This row has 3 cells, but the header has 2" }])).toBe(
+      "\ufeffname;email;error\r\nA;a@x.no;extra;This row has 3 cells, but the header has 2\r\n",
     );
   });
 

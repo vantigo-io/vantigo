@@ -48,7 +48,7 @@ import {
   customersQueryOptions,
 } from "../api/customers";
 import { customerGroupsQueryOptions } from "../api/groups";
-import { downloadCustomersCsv, saveCsv } from "../api/import-export";
+import { downloadCustomersCsv, isSessionExpired, saveCsv } from "../api/import-export";
 import { customerTagsQueryOptions } from "../api/tags";
 import { TagBadge } from "../components/tag-badge";
 import "../i18n";
@@ -222,6 +222,9 @@ export const CustomersPage = ({
     try {
       saveCsv(await downloadCustomersCsv(customersListParams(listSearch)));
     } catch (error) {
+      // An expired session has signed the person out already; an error on top
+      // of that says nothing they can act on.
+      if (isSessionExpired(error)) return;
       notifications.show({ color: "red", title: t("exportCouldNotBeDownloaded"), message: (error as Error).message });
     } finally {
       setExporting(false);

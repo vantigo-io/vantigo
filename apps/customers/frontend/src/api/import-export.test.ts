@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { downloadCustomersCsv, importCustomers } from "./import-export";
+import { downloadCustomersCsv, downloadImportTemplate, importCustomers, isSessionExpired } from "./import-export";
 import { setAuthStateClearer, setUnauthorizedHandler } from "./request";
 
 afterEach(() => {
@@ -59,9 +59,13 @@ describe("downloadCustomersCsv", () => {
       vi.fn(async () => new Response(null, { status: 401 })),
     );
 
-    await expect(downloadCustomersCsv({})).rejects.toThrow();
+    const error = await downloadCustomersCsv({}).catch((caught: unknown) => caught);
     expect(cleared).toHaveBeenCalled();
     expect(unauthorized).toHaveBeenCalled();
+    // The sign-out is the answer; the page must not also show an error for it.
+    expect(isSessionExpired(error)).toBe(true);
+    // The shared client's sentence, not whatever the 401's body happened to say.
+    expect((error as Error).message).toBe("Your session has expired");
   });
 
   it("leaves the session alone on a refusal that is about the export", async () => {
@@ -78,8 +82,26 @@ describe("downloadCustomersCsv", () => {
       ),
     );
 
-    await expect(downloadCustomersCsv({})).rejects.toThrow("Narrow it with a filter.");
+    const error = await downloadCustomersCsv({}).catch((caught: unknown) => caught);
+    expect((error as Error).message).toBe("Narrow it with a filter.");
     expect(unauthorized).not.toHaveBeenCalled();
+    expect(isSessionExpired(error)).toBe(false);
+  });
+});
+
+describe("downloadImportTemplate", () => {
+  it("takes the encoded file name, and the plain one when the encoded one is malformed", async () => {
+    const answer = (disposition: string) =>
+      vi.fn(
+        async () => new Response("\ufeffname\r\n", { status: 200, headers: { "Content-Disposition": disposition } }),
+      );
+
+    vi.stubGlobal("fetch", answer("attachment; filename=\"mal.csv\"; filename*=UTF-8''kunde%C3%A6r-mal.csv"));
+    expect((await downloadImportTemplate()).fileName).toBe("kundeær-mal.csv");
+
+    // A stray % is a URIError to decodeURIComponent; the download itself is fine.
+    vi.stubGlobal("fetch", answer("attachment; filename=\"mal.csv\"; filename*=UTF-8''kunde%E0%A4%A-mal.csv"));
+    expect((await downloadImportTemplate()).fileName).toBe("mal.csv");
   });
 });
 
