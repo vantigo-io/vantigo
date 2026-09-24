@@ -962,7 +962,7 @@ func TestValidateTagName(t *testing.T) {
 			// a file — and would be read back as the tags on either side.
 			name:    "the tags cell's separator is refused",
 			in:      "Inn|Ut",
-			wantErr: "A tag name cannot contain '|', which the customers file puts between tag names",
+			wantErr: "A tag name cannot contain '|'",
 		},
 		{
 			name:    "past 100 UTF-16 units is refused, counted in UTF-16",

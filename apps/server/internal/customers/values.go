@@ -672,7 +672,9 @@ var tagColors = []string{"gray", "red", "pink", "grape", "violet", "indigo", "bl
 // what the customers file's tags cell puts between names, and a name holding
 // it would be exported as a cell that reads back as the tags on either side
 // of it — silently, whenever those exist. Refused here, the cell has one
-// reading only.
+// reading only. The message states the rule bare, as every other validator's
+// does; the reason is here, in docs/customers.md and in CustomerTagRequest's
+// description.
 func validateTagName(raw string) (string, string) {
 	name := norm.NFC.String(raw)
 	if strings.TrimSpace(name) == "" {
@@ -682,7 +684,7 @@ func validateTagName(raw string) (string, string) {
 		return "", fmt.Sprintf("A tag name cannot be longer than 100 characters, the given value was %d characters", n)
 	}
 	if strings.Contains(name, csvTagSeparator) {
-		return "", fmt.Sprintf("A tag name cannot contain '%s', which the customers file puts between tag names", csvTagSeparator)
+		return "", fmt.Sprintf("A tag name cannot contain '%s'", csvTagSeparator)
 	}
 	return strings.TrimSpace(name), ""
 }

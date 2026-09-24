@@ -16,7 +16,8 @@ import (
 
 // This file is GET /customers/export and GET /customers/import/template
 // (customers import/export design D1, D2): the customers file (csvfile.go) on
-// its way out. The export is the list a person is looking at — its filters,
+// its way out. The template is shaped by what its caller may write, the
+// export by what its caller may see. The export is the list a person is looking at — its filters,
 // its sort, and its permission shape: the legal identity's four columns are
 // absent for a caller without customers:legal-identity-view, as the identity
 // is absent from their list rows. Every value a row needs beyond the list's own
@@ -78,14 +79,22 @@ func exportColumns(includeIdentity bool) []csvColumn {
 	return out
 }
 
-// importTemplateColumns is every column an import writes: the table less the
-// export-only four.
-func importTemplateColumns() []csvColumn {
+// importTemplateColumns is every column its caller's import can write: the
+// table less the export-only four, less the legal identity's four without
+// customers:legal-identity-manage and the billing profile's eleven without
+// customers:billing-manage — the very columns importLayoutFor would refuse
+// the file for, so a template filled in and sent back is never refused for
+// its header.
+func importTemplateColumns(identity, billing bool) []csvColumn {
 	out := make([]csvColumn, 0, len(customerCSVColumns))
 	for _, c := range customerCSVColumns {
-		if c.Group != csvGroupExportOnly {
-			out = append(out, c)
+		switch {
+		case c.Group == csvGroupExportOnly,
+			c.Group == csvGroupIdentity && !identity,
+			c.Group == csvGroupBilling && !billing:
+			continue
 		}
+		out = append(out, c)
 	}
 	return out
 }
@@ -158,10 +167,10 @@ func (s *server) GetCustomersExport(ctx context.Context, req gen.GetCustomersExp
 
 // GetCustomersImportTemplate Download the customers import template
 // (GET /api/v1/customers/import/template)
-func (s *server) GetCustomersImportTemplate(_ context.Context, _ gen.GetCustomersImportTemplateRequestObject) (gen.GetCustomersImportTemplateResponseObject, error) {
+func (s *server) GetCustomersImportTemplate(ctx context.Context, _ gen.GetCustomersImportTemplateRequestObject) (gen.GetCustomersImportTemplateResponseObject, error) {
 	var b bytes.Buffer
 	b.WriteString(csvByteOrderMark)
-	writeCSVRow(&b, csvColumnNames(importTemplateColumns()))
+	writeCSVRow(&b, csvColumnNames(importTemplateColumns(s.hasPermission(ctx, legalIdentityManage), s.hasPermission(ctx, billingManage))))
 	return csvDownload{body: b.Bytes(), fileName: "customers-import-template.csv"}, nil
 }
 

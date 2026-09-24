@@ -566,9 +566,13 @@ export interface paths {
          *
          *     The file may only say what its sender could say by hand. There is no import permission: the operation wants customers:create, customers:update and customers:view — view because every write the import stands in for needs it by hand (PUT /customers/{id} and each sub-resource PUT are update plus view), and because a row's errors (an unknown number, a customer's type) would otherwise tell a caller about customers they may not see — and the file is then checked against the caller before any row is read — the legal-identity columns need customers:legal-identity-manage, the billing columns customers:billing-manage — and a file carrying a column its sender may not write is refused whole. So is a file with an unknown column (a misspelt header is never a silently ignored one) or with some but not all of a group's columns: the legal identity's four, contact info's three, each address's six and the billing profile's eleven come together or not at all.
          *
-         *     Each row, in file order: a customerNumber selects the customer to update (unknown is that row's error; no revision is sent, so the change applies regardless), a blank one creates. Each group in the header is written as its own endpoint writes it — a full replace, a blank cell clearing that field; all of an address's cells blank remove the primary address of that type; a blank tags cell clears the tags — and a group not in the header is left alone. name, type and status are each optional columns: a create needs a name and defaults to business and active; on an update an absent name column keeps the name but a blank name cell is that row's error (a name is never cleared), a blank or absent status keeps the status, and a type that differs is an error (PUT /customers/{id}/type is a deliberate act). An imported legal identity's source is manual, unless it repeats the identity on file field for field, which keeps it. group and tags name existing vocabulary, case-insensitively; an unknown name is that row's error. Each row is its own transaction through the endpoints' own validation, statements and events, the caller as actor; a row that fails writes nothing and does not stop the file.
+         *     Each row, in file order: a customerNumber selects the customer to update (unknown is that row's error; no revision is sent, so the change applies regardless), a blank one creates. Each group in the header is written as its own endpoint writes it — a full replace, a blank cell clearing that field; all of an address's cells blank remove the primary address of that type when it is the only address of that type, are nothing when there is none, and are that row's error when the customer has others of the type (the file describes the primary address alone, so the same file imported twice does the same thing); a blank tags cell clears the tags — and a group not in the header is left alone. name, type and status are each optional columns: a create needs a name and defaults to business and active; on an update an absent name column keeps the name but a blank name cell is that row's error (a name is never cleared), a blank or absent status keeps the status, and a type that differs is an error (PUT /customers/{id}/type is a deliberate act). An imported legal identity's source is manual, unless it repeats the identity on file field for field, which keeps it. group and tags name existing vocabulary, case-insensitively; an unknown name is that row's error. Each row is its own transaction through the endpoints' own validation, statements and events, the caller as actor; a row that fails writes nothing and does not stop the file.
          *
          *     dryRun defaults to true: every row runs exactly as in a real run, each in its own transaction, rolled back instead of committed — no customer, no customer number and no event is kept (the customer-number counter rolls back with the row; only internal row ids, which the API never promises to be consecutive, may skip), and no lock outlives its row. Two rows of the file creating one legal identity are refused on the second in both runs (a check made on the file before any row runs); otherwise a dry run cannot see an earlier row's effect on a later one, and where that matters the real run refuses the later row cleanly, as that row's error. allowDuplicateIdentity is the create endpoint's flag, applied to every row.
+         *
+         *     One import runs at a time, real or dry: another one sent meanwhile is a 409, not queued.
+         *
+         *     A real run that does not answer 200 keeps every row committed before it stopped, and says which rows those were nowhere. The run stops before its next row when the connection goes (a closed tab, or a proxy that gives up and closes its connection — a hosted installation's gives up after about 100 seconds), and a server error or a whole-request 409 ends it the same way. Sending the same file again then creates those rows' customers a second time — only a row with a legal identity has the duplicate guard — and a dry run of it reports them as creates like any other. Export, or look at the list, before sending it again, and keep a file on a hosted installation well inside the cap.
          */
         post: operations["postCustomersImport"];
         delete?: never;
@@ -586,7 +590,7 @@ export interface paths {
         };
         /**
          * Download the customers import template
-         * @description The customers file's header row alone (customers import/export design D2), with every column an import writes — the export's columns less id, ownerName, createdAt and updatedAt, the legal identity's four included whoever asks, since the template is the file's shape and nobody's data. The starting point for a file made by hand.
+         * @description The customers file's header row alone (customers import/export design D2), with every column the caller's import can write — the export's columns less id, ownerName, createdAt and updatedAt, less the legal identity's four without customers:legal-identity-manage and the billing profile's eleven without customers:billing-manage — so a template filled in and imported by the one who downloaded it is never refused for its header. The starting point for a file made by hand.
          */
         get: operations["getCustomersImportTemplate"];
         put?: never;
@@ -939,7 +943,7 @@ export interface components {
             id: string;
             name: string;
         };
-        /** @description One problem with one row of an import (customers import/export design D3). row is the 1-based data row — the first row under the header is 1, and a row whose every cell is blank is skipped and takes no number. column is the header of the offending cell for a field's error, absent for a problem with the row as a whole. message is the module's own validation wording. */
+        /** @description One problem with one row of an import (customers import/export design D3). row is the 1-based data row — the first row under the header is 1, and a row whose every cell is blank is skipped and takes no number. column is the header of the offending cell for a field's error, as the file spells it, absent for a problem with the row as a whole. message is the module's own validation wording. */
         CustomerImportError: {
             column?: string;
             message: string;
@@ -4260,7 +4264,7 @@ export interface operations {
                     "application/json": components["schemas"]["CustomerImportResult"];
                 };
             };
-            /** @description Bad Request — on 'file' for the file itself (no part named file, empty, past 5 MB, not UTF-8, not a semicolon-separated CSV, more than 5000 rows, an unknown or repeated column, part of a group, or a column the caller may not write), or on 'dryRun' or 'allowDuplicateIdentity' for a value that is neither 'true' nor 'false'. A body that is not multipart at all is a bare 400. */
+            /** @description Bad Request — on 'file' for the file itself (no part named file or two of them, an empty part, a part or a body past 5 MB, not UTF-8, no header row, comma-separated, not a semicolon-separated CSV, more than 5000 rows, a header wider than the file's columns, a column with no name, an unknown or repeated column, part of a group, no column an import writes, or a column the caller may not write), or on 'dryRun' or 'allowDuplicateIdentity' for a value that is neither 'true' nor 'false'. A body that is not multipart at all is a bare 400. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -4285,6 +4289,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — another import is running; no row of this file ran. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
         };

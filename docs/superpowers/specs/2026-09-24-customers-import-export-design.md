@@ -68,7 +68,10 @@ the module's own rule for an omitted revision); a blank one **creates**. A colum
 is applied only when at least one of its columns is in the header, and then as the
 group's endpoint applies it — a **full replace of that group**: a present-but-blank
 cell clears (a billing profile column blank clears that field; all postal columns blank
-removes the primary postal address; `tags` blank clears the tags). A group whose columns
+removes the primary postal address when it is the only postal address, is a no-op when
+there is none, and is a row error on `postalLine1` when the customer has others of the
+type — removing the primary promotes the next, so anything else would remove one more
+address each time the same file ran; `tags` blank clears the tags). A group whose columns
 are absent from the header is left untouched. `group` and `tags` name existing
 vocabulary entries (case-insensitive); an unknown name is a row error, never a
 silently created word. Type may not change on an update through the row column

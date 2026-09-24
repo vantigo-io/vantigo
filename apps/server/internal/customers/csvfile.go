@@ -31,9 +31,8 @@ const (
 	csvByteOrderMark = "\ufeff"
 	csvSeparator     = ';'
 	csvLineEnd       = "\r\n"
-	// csvTagSeparator joins a customer's tag names in the one tags cell. A tag
-	// whose own name holds it cannot be named by a file — the only name no
-	// file can reach, and a vocabulary word nobody has had reason to write.
+	// csvTagSeparator joins a customer's tag names in the one tags cell. No
+	// tag name may hold it (validateTagName), so the cell has one reading.
 	csvTagSeparator = "|"
 	// customersFileMaxRows is the export's cap and the import's (design D2, D3):
 	// the expenses precedent's five thousand, and one number for both so that a

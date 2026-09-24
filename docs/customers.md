@@ -1088,7 +1088,7 @@ headers are the API's JSON names, so the field tables above describe the file:
 | Group | Columns | The import writes it through |
 | --- | --- | --- |
 | Row | `customerNumber` (blank creates), `name`, `type`, `status` | the create, or `PUT /{id}` |
-| Legal identity | `legalCountry`, `legalType`, `legalId`, `legalName` | `PUT /{id}/legal-identity`'s rules; source `manual` |
+| Legal identity | `legalCountry`, `legalType`, `legalId`, `legalName` | the create's and `PUT /{id}`'s rules; source `manual` |
 | Contact info | `email`, `phone`, `website` | `PUT /{id}/contact-info`'s rules |
 | Postal address | `postalLine1`, `postalLine2`, `postalPostalCode`, `postalCity`, `postalRegion`, `postalCountry` | the primary `postal` address |
 | Invoice address | `invoiceLine1` … `invoiceCountry` | the primary `invoice` address |
@@ -1104,7 +1104,9 @@ the format: a number cell of one `.` followed by exactly three digits (`1.250`) 
 refused rather than guessed at — it reads as thousands to one person and as a
 decimal to another — and a value that itself begins with an apostrophe followed by
 one of the guarded characters (a name stored as `'=x`) comes back from a round trip
-without that apostrophe, because the import cannot tell it from the guard's.
+without that apostrophe, because the import cannot tell it from the guard's — so
+re-importing that export renames the customer to `=x`, the one value a round trip
+changes; it is kept that way rather than guarded twice.
 
 ### Export
 
@@ -1118,9 +1120,15 @@ viewer, as the billing profile's own GET is. More than **5000** customers is a 4
 asking for a narrower filter: a portfolio that size is exported in slices. Owners,
 tags, groups, billing profiles and addresses are read in bulk — a fixed number of
 queries whatever the row count. `GET /customers/import/template` answers the header
-alone, every importable column. A viewer's own export carries the billing columns,
-so someone without `customers:billing-manage` re-importing it removes those eleven
-columns first — the import refuses a column its sender could not write.
+alone: every column the caller's import can write — the legal identity's four only
+with `customers:legal-identity-manage`, the billing profile's eleven only with
+`customers:billing-manage` — so a template filled in and sent back by the one who
+downloaded it is never refused for its header. An export is shaped by what its
+caller may *see*, not write: a viewer's own export carries the billing columns, so
+someone without `customers:billing-manage` re-importing it removes those eleven
+columns first, and one with `customers:legal-identity-view` but not `-manage`
+removes the identity's four — the import refuses a column its sender could not
+write.
 
 ### Import
 
@@ -1139,7 +1147,13 @@ made. So does an unknown column — a misspelt header is never silently ignored 
 repeated one, and **part of a group**: the legal identity's four, contact info's
 three, an address's six and the billing profile's eleven come together or not at
 all. `name`, `type` and `status` are each optional. The export-only four and a
-column named `error` are ignored.
+column named `error` are ignored. A header wider than the file's 41 possible
+columns is one refusal, and columns with no name are one refusal between them, so
+the answer stays small whatever the file holds. The identity columns follow the
+create and `PUT /{id}`, which want `customers:legal-identity-manage` alone — not
+`PUT /{id}/legal-identity`, which wants `-view` as well — so a caller with manage
+but not view can write identities by file that they cannot read back, exactly as
+they can by hand.
 
 **Matching.** A row with a `customerNumber` updates that customer (an unknown number
 is that row's error; no revision is sent, so the change applies regardless); a
@@ -1150,9 +1164,15 @@ status; and a `type` that differs from the customer's is an error — changing i
 /{id}/type`'s deliberate act.
 
 **A group in the file is replaced whole; a group not in the file is left alone.**
-Inside a group, a blank cell clears that field — all of an address's cells blank
-remove the primary address of that type (the oldest remaining becomes primary, as
-a delete by hand does), a blank `tags` cell clears the tags. The primary address
+Inside a group, a blank cell clears that field, and a blank `tags` cell clears the
+tags. All of an address's cells blank remove the primary address of that type when
+it is the **only** address of that type, and do nothing when there is none. When the
+customer has others of the type, the row is refused on the group's first column
+(`postalLine1`, `invoiceLine1`): the file describes the primary address alone, and
+removing it would make the oldest remaining one primary, as a delete by hand does —
+so the same file imported again would remove that one too, one more address each
+run. Refused, the same file gives the same result however often it is imported;
+the other addresses are a person's to remove. The primary address
 keeps its label, which the file does not carry. `group` and `tags` name existing
 vocabulary, matched ignoring both case and Unicode normalisation (NFC/NFD) — a
 name a file spells decomposed (a macOS filename, an iOS keyboard, a paste from
@@ -1187,14 +1207,33 @@ billing profile and a tag) a real run took about 30 s on 4 CPUs and without the
 race detector, measured by the opt-in test `VANTIGO_IMPORT_TIMING=1` (CI's own
 race-detected run says nothing about the import, so the timing test skips unless
 asked for); a dry run costs the same. The ceiling that matters is the proxy in
-front of a hosted installation, which gives up after about 100 seconds while the
-rows go on committing.
+front of a hosted installation, which gives up after about 100 seconds.
+
+**One import at a time.** A second import — dry or real, from anybody — sent while
+one runs is a 409 (`An import is already running`), not queued: a run at the cap is
+half a minute of row transactions, and two side by side would only share the
+database between them. A file refused for its header never takes the turn.
+
+**A run cut off.** The server cancels a request whose connection went — a closed
+tab, an abandoned check, a proxy that gives up and closes its connection to the
+server (what cloudflared does after its ~100 s has not been measured) — and the
+import stops before its next row, so an abandoned run does not hold the turn
+above. A real run that ends in anything but a 200 — a disconnect, a server error, a
+stray database conflict answered as a whole-request 409 — keeps every row committed
+before it stopped, and no result says which rows those were. Sending the same file
+again then creates those rows' customers **a second time**: only a row with a legal
+identity has the duplicate guard, and a dry run of the file reports the others as
+creates like any other. Before sending it again, export or look at the list and
+take the rows already in out of the file; on a hosted installation, keep files well
+inside the cap.
 
 **The result** is `CustomerImportResult` — `dryRun`, `rows`, `created`, `updated`
 (an unchanged update counts), `failed`, and `errors[]` of `{row, column?,
 message}`: `row` is the 1-based data row (the header is row 0; an all-blank row is
-skipped and takes no number), `column` the header of a field's error, `message` the
-module's own validation wording. File-level refusals are 400s on `file`, never a
+skipped and takes no number), `column` the header of a field's error as the file
+spells it (headers match without regard to case; a problem with the row as a whole —
+a create in a file with no `name` column, say — has none), `message` the module's
+own validation wording. File-level refusals are 400s on `file`, never a
 result. The frontend builds the **failed-rows file** from these errors and the file
 the browser still holds: the original rows that failed, as they were, with an
 `error` column appended — fix them and import that file.
@@ -2164,7 +2203,9 @@ against the caller's keys before reading a row — the legal identity's against
 `customers:legal-identity-manage`, the billing profile's against
 `customers:billing-manage` — refusing the whole file for a column its sender could
 not write by hand. The export needs `customers:view`, and shapes its columns by
-`customers:legal-identity-view` the way a customer response does.
+`customers:legal-identity-view` the way a customer response does; the template
+shapes its columns by the write keys instead — `customers:legal-identity-manage`,
+`customers:billing-manage` — so it is always a header its caller's import accepts.
 
 ## `contracts.CustomerDirectory`
 
@@ -2435,7 +2476,7 @@ must be exercised by at least one successful exchange, with no allow-list.
 | Endpoint | Access |
 | --- | --- |
 | `GET /`, `GET /{id}` | `customers:view` |
-| `GET /export`, `GET /import/template` | `customers:view` (the export's legal-identity columns only with `customers:legal-identity-view`) |
+| `GET /export`, `GET /import/template` | `customers:view` (the export's legal-identity columns only with `customers:legal-identity-view`; the template's only with `customers:legal-identity-manage`, its billing columns only with `customers:billing-manage`) |
 | `POST /import` | `customers:create` + `customers:update` + `customers:view` (plus `customers:legal-identity-manage` for a file with the legal-identity columns, `customers:billing-manage` for one with the billing columns) |
 | `POST /` | `customers:create` (plus `customers:legal-identity-manage` if the body carries an `identity`) |
 | `PUT /{id}`, `PUT /{id}/type` | `customers:update` + `customers:view` (plus `legal-identity-manage` if the body carries an `identity`) |
