@@ -33,10 +33,28 @@ type RawCustomerImportResult = Omit<CustomerImportResult, "errors"> & {
   errors: Array<Omit<CustomerImportError, "column"> & { column?: string }>;
 };
 
+/**
+ * The error a download throws once it has signed the person out: the shared
+ * client's own sentence and status, so `isSessionExpired` tells a caller there
+ * is nothing left to show — the sign-out is the answer.
+ */
+const sessionExpired = () => Object.assign(new Error("Your session has expired"), { status: 401 });
+
+/** Whether `error` is an expired session this package has already handed to the host. */
+export const isSessionExpired = (error: unknown): boolean => (error as { status?: unknown } | null)?.status === 401;
+
 /** The name the server attached the file under, or `fallback` when it said nothing. */
 const fileNameFrom = (disposition: string | null, fallback: string): string => {
   const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition ?? "");
-  if (encoded) return decodeURIComponent(encoded[1]);
+  if (encoded) {
+    // A malformed escape is a URIError; the download itself is fine, so the
+    // plain name (or the fallback) serves instead.
+    try {
+      return decodeURIComponent(encoded[1]);
+    } catch {
+      // fall through
+    }
+  }
   const plain = /filename="?([^";]+)"?/i.exec(disposition ?? "");
   return plain ? plain[1] : fallback;
 };
@@ -59,7 +77,10 @@ const downloadCsv = async (path: string, fallback: string): Promise<CsvDownload>
   // The shared client is what signs somebody out; this request does not go
   // through it, so an expired session is handed over by hand rather than shown
   // as a raw problem sentence.
-  if (response.status === 401) await handleUnauthorized();
+  if (response.status === 401) {
+    await handleUnauthorized();
+    throw sessionExpired();
+  }
   const problem = await readJson<{ title?: string; detail?: string; errors?: Record<string, string[]> }>(
     response,
   ).catch(() => null);

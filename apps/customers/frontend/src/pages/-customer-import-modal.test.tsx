@@ -2,6 +2,7 @@ import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { saveCsv } from "../api/import-export";
 import { CustomerImportModal } from "./-customer-import-modal";
@@ -11,8 +12,10 @@ vi.mock("../api/import-export", async (importOriginal) => ({
   saveCsv: vi.fn(),
 }));
 
+// The all-blank record sits before the failing one: it takes no row number, so
+// row 2 is `1001;…` only if the browser numbers rows exactly as the server does.
 const FILE_TEXT =
-  "\ufeffcustomerNumber;name;email\r\n;Ny Kunde AS;post@ny.no\r\n1001;Gammel AS;nope\r\n;;\r\n;Tredje AS;\r\n";
+  "\ufeffcustomerNumber;name;email\r\n;Ny Kunde AS;post@ny.no\r\n;;\r\n1001;Gammel AS;nope\r\n;Tredje AS;\r\n";
 const EMAIL_ERROR = "An email address must look like name@example.com, but was 'nope'";
 
 const checked = {
@@ -40,11 +43,14 @@ const json = (body: unknown, status = 200) =>
     headers: { "Content-Type": status === 200 ? "application/json" : "application/problem+json" },
   });
 
-const stubImport = (answers: { dry: Response; real?: Response }) => {
+/** `real: "pending"` is a real run that never answers. */
+const stubImport = (answers: { dry: Response; real?: Response | "pending" }) => {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.startsWith("/api/v1/customers/import?dryRun=true")) return answers.dry.clone();
-    if (url.startsWith("/api/v1/customers/import?dryRun=false") && answers.real) return answers.real.clone();
+    if (url.startsWith("/api/v1/customers/import?dryRun=false") && answers.real) {
+      return answers.real === "pending" ? new Promise<Response>(() => {}) : answers.real.clone();
+    }
     if (url.startsWith("/api/v1/customers/import/template")) {
       return new Response("\ufeffcustomerNumber;name\r\n", {
         status: 200,
@@ -70,8 +76,21 @@ const renderModal = () => {
   return { invalidate };
 };
 
-const chooseFile = async () =>
-  userEvent.upload(screen.getByLabelText("Choose CSV file"), new File([FILE_TEXT], "kunder.csv", { type: "text/csv" }));
+const chooseFile = async (file = new File([FILE_TEXT], "kunder.csv", { type: "text/csv" })) =>
+  userEvent.upload(screen.getByLabelText("Choose CSV file"), file);
+
+/** The page's shape: the modal stays mounted, and only `opened` goes back and forth. */
+const Reopenable = () => {
+  const [opened, setOpened] = useState(true);
+  return (
+    <>
+      <button type="button" onClick={() => setOpened(true)}>
+        Reopen
+      </button>
+      <CustomerImportModal opened={opened} onClose={() => setOpened(false)} />
+    </>
+  );
+};
 
 describe("CustomerImportModal", () => {
   afterEach(() => {
@@ -91,7 +110,11 @@ describe("CustomerImportModal", () => {
     expect(
       await screen.findByText("3 rows — 2 would be created, 0 would be updated, 1 have errors"),
     ).toBeInTheDocument();
-    const errorRow = screen.getByText(EMAIL_ERROR).closest("tr") as HTMLElement;
+    // The result is announced, and the table says what it lists.
+    expect(screen.getByRole("status")).toHaveTextContent("2 would be created");
+    const errorRow = within(screen.getByRole("table", { name: "Problems in the file, by row" }))
+      .getByText(EMAIL_ERROR)
+      .closest("tr") as HTMLElement;
     expect(within(errorRow).getByText("2")).toBeInTheDocument();
     expect(within(errorRow).getByText("email")).toBeInTheDocument();
     const dryCall = fetchMock.mock.calls.find(([input]) => String(input).includes("dryRun=true"));
@@ -157,10 +180,97 @@ describe("CustomerImportModal", () => {
     await userEvent.click(screen.getByRole("button", { name: "Import" }));
 
     expect(await screen.findByText("The file could not be imported")).toBeInTheDocument();
+    // A second check of the same file would call the saved rows new again.
+    expect(screen.getByText(/Some rows may already have been saved/)).toBeInTheDocument();
     // Rows before the failure may have been committed: the list is refreshed,
     // and Import cannot be clicked again on the stale check.
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["customers"] }));
     expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
+  });
+
+  it("drops a check that answers after the modal was closed, and opens again on nothing", async () => {
+    let answer: (response: Response) => void = () => {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            answer = resolve;
+          }),
+      ),
+    );
+    render(
+      <MantineProvider env="test">
+        <QueryClientProvider client={new QueryClient()}>
+          <Reopenable />
+        </QueryClientProvider>
+      </MantineProvider>,
+    );
+
+    await chooseFile();
+    await userEvent.click(screen.getByRole("button", { name: "Check" }));
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    answer(json(checked));
+    await userEvent.click(screen.getByRole("button", { name: "Reopen" }));
+
+    await screen.findByRole("dialog");
+    expect(screen.queryByText(/would be created/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Check" })).toBeDisabled();
+  });
+
+  it("cannot be cancelled while a real run is going, whose result it would lose", async () => {
+    stubImport({ dry: json(checked), real: "pending" });
+    renderModal();
+
+    await chooseFile();
+    await userEvent.click(screen.getByRole("button", { name: "Check" }));
+    await screen.findByText("3 rows — 2 would be created, 0 would be updated, 1 have errors");
+    await userEvent.click(screen.getByRole("button", { name: "Import" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled());
+    // Escape is a close too, and must not forget the run either.
+    await userEvent.keyboard("{Escape}");
+    expect(screen.getByText("Chosen: kunder.csv")).toBeInTheDocument();
+  });
+
+  it("builds the failed rows from the bytes it checked, never a second read of the file", async () => {
+    const fetchMock = stubImport({ dry: json(checked), real: json(imported) });
+    renderModal();
+    const file = new File([FILE_TEXT], "kunder.csv", { type: "text/csv" });
+    await chooseFile(file);
+    await userEvent.click(screen.getByRole("button", { name: "Check" }));
+    await screen.findByText("3 rows — 2 would be created, 0 would be updated, 1 have errors");
+
+    // The file on disk changed or went away after the check: Chrome's NotReadableError.
+    const gone = () => Promise.reject(new DOMException("The file could not be read", "NotReadableError"));
+    Object.assign(file, { text: gone, arrayBuffer: gone, stream: gone });
+    await userEvent.click(screen.getByRole("button", { name: "Import" }));
+    await screen.findByText("3 rows — 2 created, 0 updated, 1 failed");
+    await userEvent.click(screen.getByRole("button", { name: "Download failed rows" }));
+
+    await waitFor(() => expect(saveCsv).toHaveBeenCalled());
+    const text = new TextDecoder("utf-8", { ignoreBOM: true }).decode(
+      await vi.mocked(saveCsv).mock.calls[0][0].blob.arrayBuffer(),
+    );
+    expect(text).toBe(`\ufeffcustomerNumber;name;email;error\r\n1001;Gammel AS;nope;email: ${EMAIL_ERROR}\r\n`);
+    // And the real run sent what was checked.
+    const realCall = fetchMock.mock.calls.find(([input]) => String(input).includes("dryRun=false"));
+    const [, init] = realCall as unknown as [string, RequestInit];
+    const sent = (init.body as FormData).get("file") as File;
+    expect(new TextDecoder("utf-8", { ignoreBOM: true }).decode(await sent.arrayBuffer())).toBe(FILE_TEXT);
+  });
+
+  it("refuses a file over the server's 5 MB limit without sending it", async () => {
+    const fetchMock = stubImport({ dry: json(checked) });
+    renderModal();
+
+    await chooseFile(new File([new Uint8Array(5 * 1024 * 1024 + 1)], "stor.csv", { type: "text/csv" }));
+
+    expect(screen.getByText("stor.csv is larger than 5 MB, the most an import takes.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Check" })).toBeDisabled();
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).includes("/customers/import?"))).toHaveLength(0);
   });
 
   it("sends allowDuplicateIdentity when the box is ticked", async () => {

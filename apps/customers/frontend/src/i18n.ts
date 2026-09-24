@@ -569,7 +569,7 @@ const en = {
   importCustomers: "Import",
   importTitle: "Import customers",
   importIntro:
-    "A semicolon-separated CSV file in UTF-8, with the columns the export and the template carry. A row with a customer number updates that customer; a row without one creates a new customer. Nothing is saved until you import.",
+    "A semicolon-separated CSV file in UTF-8 of at most 5 MB, with the columns the export and the template carry. A row with a customer number updates that customer; a row without one creates a new customer. Nothing is saved until you import.",
   importDownloadTemplate: "Download template",
   importDropFile: "Drop a CSV file here, or choose one.",
   importChooseFile: "Choose CSV file",
@@ -590,6 +590,11 @@ const en = {
   importFailedRowsHint:
     "The rows that failed, exactly as they were, with an error column added. Fix them and import that file.",
   importCouldNotRun: "The file could not be imported",
+  importFileTooLarge: "{{name}} is larger than 5 MB, the most an import takes.",
+  importFileUnreadable: "The file could not be read. Choose it again.",
+  importMayBeSaved:
+    "Some rows may already have been saved. Look at the list, or export it, before you import this file again.",
+  importErrorsCaption: "Problems in the file, by row",
   importClose: "Close",
 } as const;
 
@@ -1160,7 +1165,7 @@ const nb = {
   importCustomers: "Importer",
   importTitle: "Importer kunder",
   importIntro:
-    "En semikolonseparert CSV-fil i UTF-8, med kolonnene eksporten og malen har. En rad med kundenummer oppdaterer den kunden; en rad uten oppretter en ny kunde. Ingenting lagres før du importerer.",
+    "En semikolonseparert CSV-fil i UTF-8 på høyst 5 MB, med kolonnene eksporten og malen har. En rad med kundenummer oppdaterer den kunden; en rad uten oppretter en ny kunde. Ingenting lagres før du importerer.",
   importDownloadTemplate: "Last ned mal",
   importDropFile: "Slipp en CSV-fil her, eller velg en.",
   importChooseFile: "Velg CSV-fil",
@@ -1181,6 +1186,11 @@ const nb = {
   importFailedRowsHint:
     "Radene som feilet, akkurat som de var, med en error-kolonne lagt til. Rett dem og importer den filen.",
   importCouldNotRun: "Filen kunne ikke importeres",
+  importFileTooLarge: "{{name}} er større enn 5 MB, det meste en import tar imot.",
+  importFileUnreadable: "Filen kunne ikke leses. Velg den på nytt.",
+  importMayBeSaved:
+    "Noen rader kan allerede være lagret. Se i listen, eller eksporter den, før du importerer denne filen på nytt.",
+  importErrorsCaption: "Feil i filen, per rad",
   importClose: "Lukk",
 } as const;
 
