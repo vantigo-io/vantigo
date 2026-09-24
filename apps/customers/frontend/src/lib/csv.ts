@@ -3,7 +3,7 @@ import type { CustomerImportError } from "../api/import-export";
 /**
  * The customers file (customers import/export design D1) as the browser reads
  * and writes it — for one purpose: the failed-rows file (D4), built from the
- * file the person picked and the errors the import answered. The server is the
+ * bytes the check read and the errors the import answered. The server is the
  * authority on what a row means; this only has to number rows exactly as the
  * server does (so an error's `row` finds its line) and write a file the server
  * reads back. Semicolons, CRLF, a byte order mark, RFC 4180 quoting, the
@@ -92,15 +92,23 @@ export const toCsv = (rows: string[][]): string =>
 
 /**
  * The failed-rows file (D4): the header and, of the records, only those an
- * error names — each as it was, with an `error` column holding every problem
- * of that row (`column: message`, or the message alone for the row as a whole).
- * A file that already carries an `error` column — a failed-rows file being
- * re-run — has it overwritten rather than a second one added. The import
- * ignores that column, so the file goes straight back in once fixed.
+ * error names — each with every cell as it was, behind an `error` column put
+ * FIRST that holds every problem of that row (`column: message`, or the message
+ * alone for the row as a whole). The import ignores that column wherever it
+ * sits, so the file goes straight back in once fixed.
  *
- * A record with more cells than the header ("This row has 3 cells, but the
- * header has 2") keeps every one of them: its error goes after its last cell,
- * never over a cell the person wrote.
+ * First, because a row is never padded or cut. The server refuses a row whose
+ * cell count differs from the header's, since it cannot tell which cell is
+ * missing or extra; padding a short row with blanks would settle that as
+ * "blank", and a blank cell clears its field on re-import. With the error in
+ * front, a short row stays exactly as short and a long one as long, and each
+ * is refused again until the person fixes it.
+ *
+ * A file that already carries an `error` column — a failed-rows file being
+ * re-run — has it moved to the front with the new text in it, never a second
+ * one added: each row gives up the cell at that column's place (its old text)
+ * and gains the new one, so its width against the header is unchanged. A row
+ * that stops before that place has no old text to give up.
  */
 export const failedRowsCsv = (table: CsvTable, errors: CustomerImportError[]): string => {
   const problems = new Map<number, string[]>();
@@ -109,17 +117,10 @@ export const failedRowsCsv = (table: CsvTable, errors: CustomerImportError[]): s
     problems.set(error.row, [...(problems.get(error.row) ?? []), text]);
   }
   const existing = table.header.findIndex((name) => name.trim().toLowerCase() === ERROR_COLUMN);
-  const header = existing >= 0 ? table.header : [...table.header, ERROR_COLUMN];
-  const at = existing >= 0 ? existing : table.header.length;
+  const without = (cells: string[]) => (existing >= 0 ? cells.filter((_, index) => index !== existing) : cells);
+  const header = [ERROR_COLUMN, ...without(table.header)];
   const rows = table.records
     .filter((record) => problems.has(record.row))
-    .map((record) => {
-      const cells = [...record.cells];
-      const text = (problems.get(record.row) ?? []).join(" | ");
-      if (cells.length > table.header.length) return [...cells, text];
-      while (cells.length < header.length) cells.push("");
-      cells[at] = text;
-      return cells;
-    });
+    .map((record) => [(problems.get(record.row) ?? []).join(" | "), ...without(record.cells)]);
   return toCsv([header, ...rows]);
 };

@@ -134,4 +134,25 @@ describe("importCustomers", () => {
     expect(new Headers(init.headers).has("Content-Type")).toBe(false);
     expect(result.errors).toEqual([{ row: 1, column: null, message: "This row has 1 cells, but the header has 2" }]);
   });
+
+  it("hands the caller's signal to the request, so an abandoned check can be called off", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ dryRun: true, rows: 0, created: 0, updated: 0, failed: 0, errors: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+
+    await importCustomers(new File(["name\r\n"], "kunder.csv"), {
+      dryRun: true,
+      allowDuplicateIdentity: false,
+      signal: controller.signal,
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.signal).toBe(controller.signal);
+  });
 });
