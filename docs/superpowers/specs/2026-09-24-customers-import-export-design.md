@@ -51,7 +51,8 @@ importable column.
 
 ### D3 — Import: a file may only say what its sender could say by hand
 
-`POST /customers/import` (`customers:create` **and** `customers:update`; multipart
+`POST /customers/import` (`customers:create`, `customers:update` **and** `customers:view` —
+view because every write it stands in for needs view by hand; multipart
 `file`, body limit 5 MiB, at most **5000 data rows** — the export's cap, so a round
 trip always fits) with `?dryRun=true|false` (default **true**) and
 `?allowDuplicateIdentity=true|false` (default false, the create endpoint's own flag
@@ -84,9 +85,15 @@ handful of them per customer once.
 The answer is JSON, `CustomerImportResult`: `{dryRun, rows, created, updated, failed,
 errors: [{row, column?, message}]}` — `row` is the 1-based data row (the header is row
 0), `column` the offending header when the error is a field error, `message` the
-module's own validation wording. A dry run runs every row in a transaction that is
-rolled back, so its result is exactly what the real run would do against the same data
-(events are not recorded). File-level refusals (unknown column, forbidden column, too
+module's own validation wording. A dry run runs every row exactly as the real run
+does — each in its own transaction — and rolls each back instead of committing it:
+nothing is kept (no customer, no number, no event) and no lock outlives its row.
+Because each row is then checked on its own, the importer also checks the file against
+itself before any row runs: of two rows that create customers with the same legal
+identity (country and id), the second is a row error in both runs unless
+`allowDuplicateIdentity`. The difference that remains is stated plainly: a dry run
+cannot see any other effect of an earlier row on a later one, and where that matters
+the real run still refuses the later row cleanly, as that row's error. File-level refusals (unknown column, forbidden column, too
 many rows, not a CSV, no `file` part) are a 400 problem, not a result.
 
 ### D4 — The frontend
