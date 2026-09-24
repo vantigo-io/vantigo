@@ -16,12 +16,14 @@ import "testing"
 // resolveBillingProfile copies across unchanged: CustomerNumber (the id
 // argument's twin) and the profile's own Currency, Language,
 // InvoiceDelivery, ReminderDelivery, GLN and BuyerReference, each deref'd
-// from the billingProfile's *string, "" when unset.
+// from the billingProfile's *string, "" when unset — and DefaultBillRate,
+// carried across as the pointer it is.
 func TestResolveBillingProfile_PassThroughFields(t *testing.T) {
+	rate := 1250.5
 	profile := billingProfile{
 		Currency: billingStrPtr("SEK"), Language: billingStrPtr("en"),
 		InvoiceDelivery: billingStrPtr("paper"), ReminderDelivery: billingStrPtr("paper"),
-		Gln: billingStrPtr("1234567890128"), BuyerReference: billingStrPtr("PO-9"),
+		Gln: billingStrPtr("1234567890128"), BuyerReference: billingStrPtr("PO-9"), DefaultBillRate: &rate,
 	}
 	got := resolveBillingProfile(42, 100042, "Acme AS", "business", false, nil, nil, profile, nil, nil)
 
@@ -57,6 +59,9 @@ func TestResolveBillingProfile_PassThroughFields(t *testing.T) {
 	}
 	if got.BuyerReference != "PO-9" {
 		t.Errorf("BuyerReference = %q, want PO-9", got.BuyerReference)
+	}
+	if got.DefaultBillRate == nil || *got.DefaultBillRate != 1250.5 {
+		t.Errorf("DefaultBillRate = %v, want 1250.5", got.DefaultBillRate)
 	}
 }
 
@@ -134,5 +139,25 @@ func TestResolveBillingProfile_PaymentTermsDays_GroupDefaultIsTheThirdTier(t *te
 	got = resolveBillingProfile(1, 1, "Receipt Group AS", "business", false, nil, nil, billingProfile{}, &zero, nil)
 	if got.PaymentTermsDays == nil || *got.PaymentTermsDays != 0 {
 		t.Errorf("PaymentTermsDays = %v, want 0: the group decided 0", got.PaymentTermsDays)
+	}
+}
+
+// TestResolveBillingProfile_DefaultBillRate_TheCustomersOwnAndNoGroupTier pins
+// the rate's resolution (customers bill-rate design D2): the profile's own value
+// passes through, nil stays nil — never a 0, which would be a rate somebody set
+// — and a group's default payment term, the one thing a group resolves, never
+// becomes a rate: there is no group tier here.
+func TestResolveBillingProfile_DefaultBillRate_TheCustomersOwnAndNoGroupTier(t *testing.T) {
+	groupDefault := int32(30)
+	got := resolveBillingProfile(1, 1, "No Rate AS", "business", false, nil, nil, billingProfile{}, &groupDefault, nil)
+	if got.DefaultBillRate != nil {
+		t.Errorf("DefaultBillRate = %v, want nil: no own rate, and a group gives none", *got.DefaultBillRate)
+	}
+
+	rate := 980.75
+	got = resolveBillingProfile(1, 1, "Own Rate AS", "business", false, nil, nil,
+		billingProfile{Currency: billingStrPtr("NOK"), DefaultBillRate: &rate}, &groupDefault, nil)
+	if got.DefaultBillRate == nil || *got.DefaultBillRate != 980.75 || got.Currency != "NOK" {
+		t.Errorf("DefaultBillRate/Currency = %v/%q, want 980.75 in NOK", got.DefaultBillRate, got.Currency)
 	}
 }

@@ -185,6 +185,9 @@ func (d *directory) BillingProfile(ctx context.Context, id int32) (*contracts.Cu
 //     "not decided here" until somebody asks for a default. nil out means
 //     nobody decided, which is what every consumer already reads nil as — a
 //     group with no default of its own and no group at all are the same answer.
+//   - DefaultBillRate: the billing profile's own defaultBillRate, else nil
+//     (customers bill-rate design D2) — no group tier, so it passes through
+//     like Currency, the currency it is quoted in. Time's rate chain reads it.
 func resolveBillingProfile(id int32, customerNumber int64, name, customerType string, archived bool,
 	identity *legalIdentity, contactEmail *string, profile billingProfile, groupDefaultPaymentTermsDays *int32,
 	invoiceAddress *contracts.CustomerAddressEntry,
@@ -231,5 +234,6 @@ func resolveBillingProfile(id int32, customerNumber int64, name, customerType st
 		PeppolID:         peppolID,
 		GLN:              deref(profile.Gln),
 		BuyerReference:   deref(profile.BuyerReference),
+		DefaultBillRate:  profile.DefaultBillRate,
 	}
 }
