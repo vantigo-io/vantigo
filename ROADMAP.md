@@ -283,6 +283,16 @@ a merge, and Tripletex states customers cannot be merged at all. GDPR handling f
 anonymisation that leaves bookkeeping retention intact — and, as phase 1 already
 insists, never a fødselsnummer field.
 
+**Delivery A (done)** — decided in
+[`docs/superpowers/specs/2026-09-24-customers-import-export-design.md`](docs/superpowers/specs/2026-09-24-customers-import-export-design.md):
+CSV export of the list as the caller sees it and CSV import that creates and updates
+through the endpoints' own write paths, with a dry run and a failed-rows file for the
+re-run; one canonical format, no import key. See
+[`docs/customers.md#csv-import-and-export`](docs/customers.md#csv-import-and-export).
+
+**Still ahead in this phase:** merging duplicate customers (delivery B) and GDPR
+handling for person customers (delivery C).
+
 *Unblocks:* clean onboarding and offboarding, and a merge path that only gets more
 expensive the longer it waits.
 
