@@ -6,7 +6,7 @@ import { notifications } from "@mantine/notifications";
 import { IconCalendarX, IconChevronDown, IconDownload, IconShieldLock, IconUserOff } from "@tabler/icons-react";
 import { type QueryClient, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
-import { useEffect, useState } from "react";
+import { useId, useState } from "react";
 import {
   ApiConflictError,
   ApiValidationError,
@@ -59,6 +59,7 @@ export const CustomerPersonalDataMenu = ({ customer }: { customer: CustomerRespo
   const { t, formatters } = useI18n("customers");
   const queryClient = useQueryClient();
   const [scheduling, setScheduling] = useState(false);
+  const blockedReasonId = useId();
   const anonymisation = customer.anonymisation;
   const anonymised = Boolean(anonymisation?.anonymisedAt);
   const scheduledOn = anonymisation && !anonymised ? anonymisation.anonymiseOn : null;
@@ -133,12 +134,16 @@ export const CustomerPersonalDataMenu = ({ customer }: { customer: CustomerRespo
               <Menu.Item
                 leftSection={<IconUserOff size={15} />}
                 disabled={Boolean(blocked)}
+                // The reason is plain text, not a menu item, so arrow keys and
+                // a screen reader pass it by; described-by is what reads it
+                // out with the item it explains.
+                aria-describedby={blocked ? blockedReasonId : undefined}
                 onClick={() => setScheduling(true)}
               >
                 {scheduledOn ? t("anonymisationReschedule") : t("anonymisationSchedule")}
               </Menu.Item>
               {blocked && (
-                <Text size="xs" c="dimmed" px="sm" pb={4} maw={280}>
+                <Text id={blockedReasonId} size="xs" c="dimmed" px="sm" pb={4} maw={280}>
                   {blocked}
                 </Text>
               )}
@@ -179,14 +184,6 @@ const AnonymisationScheduleModal = ({
   const { t, formatters } = useI18n("customers");
   const queryClient = useQueryClient();
   const [refusal, setRefusal] = useState<string | null>(null);
-  // A refusal left from the last time the modal was open is cleared on the
-  // opening itself, adjusted during render rather than in an effect — the form
-  // modal's seenState pattern (-customer-form-modal.tsx).
-  const [seenOpened, setSeenOpened] = useState(opened);
-  if (opened !== seenOpened) {
-    setSeenOpened(opened);
-    if (opened) setRefusal(null);
-  }
   const form = useForm({
     initialValues: { anonymiseOn: "" },
     validate: {
@@ -194,13 +191,19 @@ const AnonymisationScheduleModal = ({
         !value ? t("anonymisationDateRequired") : value < utcToday() ? t("anonymisationDateInPast") : null,
     },
   });
-  useEffect(() => {
+  // Each opening starts afresh — the day already scheduled (or none), no field
+  // error and no refusal left from the last time — adjusted during render
+  // rather than in an effect: the form modal's seenState pattern
+  // (-customer-form-modal.tsx).
+  const [seenOpened, setSeenOpened] = useState(opened);
+  if (opened !== seenOpened) {
+    setSeenOpened(opened);
     if (opened) {
+      setRefusal(null);
       form.setValues({ anonymiseOn: customer.anonymisation?.anonymiseOn ?? "" });
       form.clearErrors();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opened]);
+  }
   const mutation = useMutation({
     mutationFn: (anonymiseOn: string) => scheduleAnonymisation(customer.id, anonymiseOn),
     onSuccess: (updated, anonymiseOn) => {

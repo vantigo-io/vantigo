@@ -120,7 +120,9 @@ describe("customer detail header — personal data", () => {
   it("keeps scheduling off, with the reason, while the customer is active", async () => {
     await renderHeader(person(), { canManagePersonalData: true });
     await openMenu();
-    expect(await screen.findByRole("menuitem", { name: "Schedule anonymisation…" })).toBeDisabled();
+    const item = await screen.findByRole("menuitem", { name: "Schedule anonymisation…" });
+    expect(item).toBeDisabled();
+    expect(item).toHaveAccessibleDescription("Archive the customer first: an ongoing relationship is not anonymised.");
     expect(
       screen.getByText("Archive the customer first: an ongoing relationship is not anonymised."),
     ).toBeInTheDocument();
@@ -201,6 +203,8 @@ describe("customer detail header — personal data", () => {
     await vi.waitFor(() =>
       expect(callsTo(fetchMock, "DELETE", "/api/v1/customers/1005/anonymisation")).toHaveLength(1),
     );
+    // The answer carries no anonymisation, and it goes straight into the cache.
+    await vi.waitFor(() => expect(screen.queryByText(/^Anonymisation scheduled for /)).not.toBeInTheDocument());
   });
 
   it("shows an anonymised customer's banner and none of the actions that would edit it", async () => {

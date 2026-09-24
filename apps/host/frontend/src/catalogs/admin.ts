@@ -834,9 +834,9 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.customersMerge": "Slå sammen kunder",
   "admin.permission.customersMergeDescription":
     "Slå en duplikatkunde sammen med en annen: kontaktene, adressene, tidslinjen, merkelappene og andre modulers referanser flyttes, og duplikatet arkiveres.",
-  "admin.permission.customersPersonalData": "Håndtere personopplysninger",
+  "admin.permission.customersPersonalData": "Håndter personopplysninger",
   "admin.permission.customersPersonalDataDescription":
-    "Gi en privatperson alle opplysningene som finnes om dem, og planlegg anonymiseringen av en arkivert privatperson.",
+    "Gi en privatperson alle opplysningene som finnes om vedkommende, og planlegg anonymiseringen av en arkivert privatperson.",
   "admin.permission.communicationsConversationsView": "Se kommunikasjonssamtaler",
   "admin.permission.communicationsConversationsViewDescription":
     "Se samtaler, meldinger, deltakere, brødtekst, vedlegg og etiketter.",
