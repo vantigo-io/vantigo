@@ -126,10 +126,12 @@ export interface CustomersQueryParams {
   groupId?: string;
 }
 
-async function fetchCustomers(
-  params: CustomersQueryParams,
-  signal: AbortSignal,
-): Promise<PaginatedResponse<CustomerResponse>> {
+/**
+ * The list's filters, sort and paging as a query string — `?…`, or "" when
+ * there is none. The list and the export (`import-export.ts`) both build it
+ * here, so the file a person downloads is the list they are looking at.
+ */
+export const customersSearchParams = (params: CustomersQueryParams): string => {
   const searchParams = new URLSearchParams();
   if (params.page) searchParams.set("page", String(params.page));
   if (params.pageSize) searchParams.set("pageSize", String(params.pageSize));
@@ -141,9 +143,17 @@ async function fetchCustomers(
   if (params.ownerId) searchParams.set("ownerId", params.ownerId);
   if (params.tagId) searchParams.set("tagId", params.tagId);
   if (params.groupId) searchParams.set("groupId", params.groupId);
+  return searchParams.size > 0 ? `?${searchParams}` : "";
+};
 
-  const query = searchParams.size > 0 ? `?${searchParams}` : "";
-  const response = await request<PaginatedResponse<RawCustomerResponse>>(`/api/v1/customers${query}`, { signal });
+async function fetchCustomers(
+  params: CustomersQueryParams,
+  signal: AbortSignal,
+): Promise<PaginatedResponse<CustomerResponse>> {
+  const response = await request<PaginatedResponse<RawCustomerResponse>>(
+    `/api/v1/customers${customersSearchParams(params)}`,
+    { signal },
+  );
   return { ...response, data: response.data.map(normalizeCustomer) };
 }
 

@@ -564,6 +564,33 @@ const en = {
   registryLegalNameCouldNotBeUpdated: "Legal name could not be updated",
   useRegistryBusinessAddress: "Use the registry's business address",
   useRegistryPostalAddress: "Use the registry's postal address",
+  exportCustomers: "Export",
+  exportCouldNotBeDownloaded: "The export could not be downloaded",
+  importCustomers: "Import",
+  importTitle: "Import customers",
+  importIntro:
+    "A semicolon-separated CSV file in UTF-8, with the columns the export and the template carry. A row with a customer number updates that customer; a row without one creates a new customer. Nothing is saved until you import.",
+  importDownloadTemplate: "Download template",
+  importDropFile: "Drop a CSV file here, or choose one.",
+  importChooseFile: "Choose CSV file",
+  importChosenFile: "Chosen: {{name}}",
+  importAllowDuplicateIdentity: "Allow a customer to share a legal identity with another customer",
+  importCheck: "Check",
+  importCheckCounts:
+    "{{rows}} rows — {{created}} would be created, {{updated}} would be updated, {{failed}} have errors",
+  importCheckIntro: "Nothing has been saved yet: this is what importing the file would do.",
+  importNothingToImport: "No row in this file can be imported. Fix the rows below and check again.",
+  importErrorRow: "Row",
+  importErrorColumn: "Column",
+  importErrorMessage: "Problem",
+  importRun: "Import",
+  importDone: "Import finished",
+  importDoneCounts: "{{rows}} rows — {{created}} created, {{updated}} updated, {{failed}} failed",
+  importDownloadFailedRows: "Download failed rows",
+  importFailedRowsHint:
+    "The rows that failed, exactly as they were, with an error column added. Fix them and import that file.",
+  importCouldNotRun: "The file could not be imported",
+  importClose: "Close",
 } as const;
 
 const nb = {
@@ -1128,6 +1155,33 @@ const nb = {
   registryLegalNameCouldNotBeUpdated: "Kunne ikke oppdatere juridisk navn",
   useRegistryBusinessAddress: "Bruk forretningsadressen fra registeret",
   useRegistryPostalAddress: "Bruk postadressen fra registeret",
+  exportCustomers: "Eksporter",
+  exportCouldNotBeDownloaded: "Eksporten kunne ikke lastes ned",
+  importCustomers: "Importer",
+  importTitle: "Importer kunder",
+  importIntro:
+    "En semikolonseparert CSV-fil i UTF-8, med kolonnene eksporten og malen har. En rad med kundenummer oppdaterer den kunden; en rad uten oppretter en ny kunde. Ingenting lagres før du importerer.",
+  importDownloadTemplate: "Last ned mal",
+  importDropFile: "Slipp en CSV-fil her, eller velg en.",
+  importChooseFile: "Velg CSV-fil",
+  importChosenFile: "Valgt: {{name}}",
+  importAllowDuplicateIdentity: "Tillat at en kunde har samme juridiske identitet som en annen kunde",
+  importCheck: "Kontroller",
+  importCheckCounts:
+    "{{rows}} rader — {{created}} ville blitt opprettet, {{updated}} ville blitt oppdatert, {{failed}} har feil",
+  importCheckIntro: "Ingenting er lagret ennå: dette er hva en import av filen ville gjort.",
+  importNothingToImport: "Ingen rader i filen kan importeres. Rett radene nedenfor og kontroller på nytt.",
+  importErrorRow: "Rad",
+  importErrorColumn: "Kolonne",
+  importErrorMessage: "Feil",
+  importRun: "Importer",
+  importDone: "Importen er ferdig",
+  importDoneCounts: "{{rows}} rader — {{created}} opprettet, {{updated}} oppdatert, {{failed}} feilet",
+  importDownloadFailedRows: "Last ned radene som feilet",
+  importFailedRowsHint:
+    "Radene som feilet, akkurat som de var, med en error-kolonne lagt til. Rett dem og importer den filen.",
+  importCouldNotRun: "Filen kunne ikke importeres",
+  importClose: "Lukk",
 } as const;
 
 export const customersCatalog = { en, nb } satisfies CatalogResources;
