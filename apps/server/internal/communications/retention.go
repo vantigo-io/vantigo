@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
@@ -189,6 +190,82 @@ func (w *RetentionWorker) underLease(ctx context.Context, action func(context.Co
 	return true, action(ctx)
 }
 
+// deleteMessages is steps 1 to 6 of a retention batch, for messageIDs, inside
+// the caller's transaction, and answers how many messages it deleted and how
+// many object keys it handed to the cleanup ledger. Two callers: CleanupBatch
+// below, for its batch, and a person's anonymisation
+// (customer_personal_data.go), for every message of their conversations — so a
+// person's correspondence leaves through exactly the deletes and the ledger
+// retention's does, in the order message_events' RESTRICT allows. Step 7, the
+// orphan sweeps, is each caller's own.
+func deleteMessages(ctx context.Context, q *store.Queries, messageIDs []uuid.UUID, now time.Time) (int64, int, error) {
+	// Step 1, then step 2. NOT the other way round: see the header.
+	if err := q.DeleteMessageEventsByMessageIDs(ctx, messageIDs); err != nil {
+		return 0, 0, fmt.Errorf("communications: delete message events: %w", err)
+	}
+	if err := q.DeleteMessageDeliveriesByMessageIDs(ctx, messageIDs); err != nil {
+		return 0, 0, fmt.Errorf("communications: delete message deliveries: %w", err)
+	}
+
+	// Step 3: read every object key the batch is about to orphan, while
+	// the rows that identify their owners still exist.
+	attachments, err := q.ListRetentionAttachments(ctx, messageIDs)
+	if err != nil {
+		return 0, 0, fmt.Errorf("communications: list retention attachments: %w", err)
+	}
+	rawPayloads, err := q.ListRetentionRawPayloadKeys(ctx, messageIDs)
+	if err != nil {
+		return 0, 0, fmt.Errorf("communications: list retention raw payload keys: %w", err)
+	}
+
+	// Step 4: queue them. Step 5 in .NET is an explicit SaveChanges
+	// ("Persist every reservation before deleting the rows that identify
+	// its owner", `:101-102`) which forces EF's buffered inserts out
+	// ahead of the ExecuteDeletes below. Here every statement is sent
+	// when it is written, so that ordering is inherent rather than
+	// something to arrange — and the enclosing transaction gives the same
+	// all-or-nothing guarantee either way.
+	queued := 0
+	for _, attachment := range attachments {
+		messageID := attachment.MessageID
+		if err := queueObjectForDeletion(ctx, q, attachment.StorageKey, &messageID, now); err != nil {
+			return 0, 0, err
+		}
+		queued++
+	}
+	// .NET dedupes the raw keys through an Ordinal HashSet (`:94`); two
+	// messages sharing a raw-payload key would otherwise be queued twice,
+	// and the second call would merely re-stamp the first's record.
+	seen := make(map[string]bool, len(rawPayloads))
+	for _, raw := range rawPayloads {
+		if raw.RawPayloadStorageKey == nil || seen[*raw.RawPayloadStorageKey] {
+			continue
+		}
+		seen[*raw.RawPayloadStorageKey] = true
+		messageID := raw.ID
+		if err := queueObjectForDeletion(ctx, q, *raw.RawPayloadStorageKey, &messageID, now); err != nil {
+			return 0, 0, err
+		}
+		queued++
+	}
+
+	// Step 6.
+	if err := q.DeleteMessageAttachmentsByMessageIDs(ctx, messageIDs); err != nil {
+		return 0, 0, fmt.Errorf("communications: delete message attachments: %w", err)
+	}
+	if err := q.DeleteIdempotencyRecordsByMessageIDs(ctx, messageIDs); err != nil {
+		return 0, 0, fmt.Errorf("communications: delete idempotency records: %w", err)
+	}
+	if err := q.DeleteOutboxJobsByMessageIDs(ctx, messageIDs); err != nil {
+		return 0, 0, fmt.Errorf("communications: delete outbox jobs: %w", err)
+	}
+	deleted, err := q.DeleteConversationMessagesByIDs(ctx, messageIDs)
+	if err != nil {
+		return 0, 0, fmt.Errorf("communications: delete conversation messages: %w", err)
+	}
+	return deleted, queued, nil
+}
+
 // CleanupBatch is RetentionCleanupService.CleanupTenantBatchAsync
 // (`:47-115`) minus tenancy and minus the two inbound candidate sets the scope
 // cut removed: one batch, ONE transaction, returning how many
@@ -219,77 +296,23 @@ func (w *RetentionWorker) CleanupBatch(ctx context.Context) (int, error) {
 			// at the default batch size is ~100 of those, all but the last
 			// scanning tables the batch did not touch.
 			//
-			// Skipping them here is safe because this worker is the only
-			// producer of the orphans they clean: a conversation loses its
-			// last message only in the step-6 delete below, and a participant
-			// loses its last link only in the step-7 delete that follows it.
-			// A batch that deleted no message can therefore have created no
-			// orphan, and the batch that DID delete messages already swept
-			// after itself. Pinned by
+			// Skipping them here is safe because every producer of the
+			// orphans they clean sweeps after itself: a conversation loses its
+			// last message only in deleteMessages' step-6 delete, and a
+			// participant loses its last link only in the step-7 delete that
+			// follows it — here, or in a person's anonymisation
+			// (customer_personal_data.go), which runs the same sweeps. A batch
+			// that deleted no message can therefore have created no orphan,
+			// and the batch that DID delete messages already swept after
+			// itself. Pinned by
 			// TestRetention_AnEmptyBatchSkipsTheOrphanSweeps.
 			return nil
 		}
 
-		// Step 1, then step 2. NOT the other way round: see the header.
-		if err := q.DeleteMessageEventsByMessageIDs(ctx, messageIDs); err != nil {
-			return fmt.Errorf("communications: delete message events: %w", err)
-		}
-		if err := q.DeleteMessageDeliveriesByMessageIDs(ctx, messageIDs); err != nil {
-			return fmt.Errorf("communications: delete message deliveries: %w", err)
-		}
-
-		// Step 3: read every object key the batch is about to orphan, while
-		// the rows that identify their owners still exist.
-		attachments, err := q.ListRetentionAttachments(ctx, messageIDs)
+		// Steps 1 to 6, shared with a person's anonymisation.
+		deleted, _, err = deleteMessages(ctx, q, messageIDs, now)
 		if err != nil {
-			return fmt.Errorf("communications: list retention attachments: %w", err)
-		}
-		rawPayloads, err := q.ListRetentionRawPayloadKeys(ctx, messageIDs)
-		if err != nil {
-			return fmt.Errorf("communications: list retention raw payload keys: %w", err)
-		}
-
-		// Step 4: queue them. Step 5 in .NET is an explicit SaveChanges
-		// ("Persist every reservation before deleting the rows that identify
-		// its owner", `:101-102`) which forces EF's buffered inserts out
-		// ahead of the ExecuteDeletes below. Here every statement is sent
-		// when it is written, so that ordering is inherent rather than
-		// something to arrange — and the enclosing transaction gives the same
-		// all-or-nothing guarantee either way.
-		for _, attachment := range attachments {
-			messageID := attachment.MessageID
-			if err := queueObjectForDeletion(ctx, q, attachment.StorageKey, &messageID, now); err != nil {
-				return err
-			}
-		}
-		// .NET dedupes the raw keys through an Ordinal HashSet (`:94`); two
-		// messages sharing a raw-payload key would otherwise be queued twice,
-		// and the second call would merely re-stamp the first's record.
-		seen := make(map[string]bool, len(rawPayloads))
-		for _, raw := range rawPayloads {
-			if raw.RawPayloadStorageKey == nil || seen[*raw.RawPayloadStorageKey] {
-				continue
-			}
-			seen[*raw.RawPayloadStorageKey] = true
-			messageID := raw.ID
-			if err := queueObjectForDeletion(ctx, q, *raw.RawPayloadStorageKey, &messageID, now); err != nil {
-				return err
-			}
-		}
-
-		// Step 6.
-		if err := q.DeleteMessageAttachmentsByMessageIDs(ctx, messageIDs); err != nil {
-			return fmt.Errorf("communications: delete message attachments: %w", err)
-		}
-		if err := q.DeleteIdempotencyRecordsByMessageIDs(ctx, messageIDs); err != nil {
-			return fmt.Errorf("communications: delete idempotency records: %w", err)
-		}
-		if err := q.DeleteOutboxJobsByMessageIDs(ctx, messageIDs); err != nil {
-			return fmt.Errorf("communications: delete outbox jobs: %w", err)
-		}
-		deleted, err = q.DeleteConversationMessagesByIDs(ctx, messageIDs)
-		if err != nil {
-			return fmt.Errorf("communications: delete conversation messages: %w", err)
+			return err
 		}
 
 		// Step 7, run on every batch that actually deleted messages. .NET

@@ -81,11 +81,12 @@ func bodyLimits(d module.Deps) map[string]int64 {
 // merge design D1).
 func Module() module.Module {
 	return module.Module{
-		Name:               "communications",
-		Permissions:        permissions,
-		Mount:              mount,
-		Workers:            workers,
-		CustomerReferences: newCustomerReferenceHolder,
+		Name:                 "communications",
+		Permissions:          permissions,
+		Mount:                mount,
+		Workers:              workers,
+		CustomerReferences:   newCustomerReferenceHolder,
+		CustomerPersonalData: newCustomerPersonalData,
 	}
 }
 
