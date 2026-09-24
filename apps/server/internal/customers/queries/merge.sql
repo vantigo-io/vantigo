@@ -144,9 +144,12 @@ WHERE id = @id
 -- MarkCustomerMerged is the absorbed customer's end (design D3): archived —
 -- already, or now — with the marker naming the survivor, and its revision
 -- advanced. Its name, number, identity, contact info and billing profile stay
--- as they were, so its page still reads.
+-- as they were, so its page still reads. It leaves its group, though: a
+-- merged-away customer refuses every write, the group PUT included, so a group
+-- it still counted in could never be emptied and deleted (customers_group_id_fkey
+-- restricts). customer.merged's absorbed.groupId records which group it was.
 UPDATE customers.customers
-SET status = 'archived', merged_into_customer_id = @into_customer_id::int,
+SET status = 'archived', merged_into_customer_id = @into_customer_id::int, group_id = NULL,
     updated_at = @now::timestamptz, revision = revision + 1
 WHERE id = @id;
 

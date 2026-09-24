@@ -1454,6 +1454,11 @@ number is refused on `customerNumber`. `DELETE /customers/{id}` is the archived 
 is for every archived customer (204, nothing written), and a request that would change
 nothing is answered as it always is, since it writes nothing.
 
+It leaves its group as it is merged — the group PUT is one of the writes it refuses,
+so a group it still counted in could never be emptied and deleted; `customer.merged`'s
+`absorbed.groupId` records which group it was. Its tags and contact associations have
+moved to the survivor already, and its owner restricts nothing.
+
 A merged-away customer no longer holds its legal identity either: the
 [duplicate-identity guard](#the-duplicate-identity-guard) passes it over, so the survivor —
 or anybody — can take that organisation number on; the identity it had is history,
