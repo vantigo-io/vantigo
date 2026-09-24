@@ -468,6 +468,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/customers/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export customers as CSV
+         * @description The customer list as the customers file (customers import/export design D1, D2): UTF-8 with a byte order mark, semicolon-separated, decimal comma, ISO dates (createdAt and updatedAt are UTC, RFC 3339), CRLF line ends and a header row — the expenses payroll export's form, which a Norwegian Excel opens without an import dialog. Quoting is RFC 4180's with the semicolon as the separator, and a cell beginning with '=', '+', '-', '@', a tab or a carriage return is prefixed with an apostrophe, so nothing a person typed becomes a formula in somebody's spreadsheet; the import takes that apostrophe off again.
+         *
+         *     The columns are the API's own JSON names, in this order: customerNumber, name, type, status; legalCountry, legalType, legalId, legalName; email, phone, website; postalLine1, postalLine2, postalPostalCode, postalCity, postalRegion, postalCountry (the primary postal address); invoiceLine1, invoiceLine2, invoicePostalCode, invoiceCity, invoiceRegion, invoiceCountry (the primary invoice address); invoiceEmail, reminderEmail, paymentTermsDays, currency, language, invoiceDelivery, reminderDelivery, peppolId, gln, buyerReference, defaultBillRate (the billing profile, the customer's own values); group (its name) and tags (their names, joined by '|'); then id, ownerName, createdAt and updatedAt, which an import ignores. The four legal-identity columns are present only for a caller holding customers:legal-identity-view — absent, not blank, so a file without them re-imports without touching an identity. The billing columns are there for every caller, as the billing profile's own GET is.
+         *
+         *     It takes the list's own filters and sort, and is deliberately not paged: more than 5000 customers is refused and asks for a narrower filter.
+         */
+        get: operations["getCustomersExport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/customers/follow-ups": {
         parameters: {
             query?: never;
@@ -522,6 +546,26 @@ export interface paths {
          * @description Deletes a group that no customer belongs to. A group with members is refused with 409 group_in_use and its member count in the detail: the members are moved first (the list's groupId filter finds them), because detaching them silently would change every one of their effective payment terms with no record on any customer.
          */
         delete: operations["deleteCustomersGroupsByGroupId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/customers/import/template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download the customers import template
+         * @description The customers file's header row alone (customers import/export design D2), with every column an import writes — the export's columns less id, ownerName, createdAt and updatedAt, the legal identity's four included whoever asks, since the template is the file's shape and nobody's data. The starting point for a file made by hand.
+         */
+        get: operations["getCustomersImportTemplate"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -3809,6 +3853,63 @@ export interface operations {
             };
         };
     };
+    getCustomersExport: {
+        parameters: {
+            query?: {
+                sortBy?: string;
+                sortDirection?: string;
+                includeArchived?: boolean;
+                search?: string;
+                status?: string;
+                type?: string;
+                ownerId?: string;
+                tagId?: string;
+                groupId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — served as an attachment named customers-YYYY-MM-DD.csv (the day in UTC), and never cached. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description Bad Request — a parameter the list itself would refuse, in the list's words, or more than 5000 customers, which asks for a narrower filter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
     getCustomersFollowUps: {
         parameters: {
             query?: {
@@ -4079,6 +4180,44 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["CustomerConflictProblem"];
+                };
+            };
+        };
+    };
+    getCustomersImportTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — served as an attachment named customers-import-template.csv. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
         };
