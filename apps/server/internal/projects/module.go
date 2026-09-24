@@ -45,13 +45,15 @@ var limits = map[string]ratelimit.Policy{}
 // Module is projects as a platform module: its contract mounted under
 // /api/v1/projects/, its six permissions in the composed catalog, and the
 // contracts.ProjectDirectory it publishes to the modules built on top of it
-// — Time tracking first.
+// — Time tracking first — and the contracts.CustomerReferenceHolder a
+// customer merge re-points its projects through.
 func Module() module.Module {
 	return module.Module{
-		Name:        "projects",
-		Permissions: permissions,
-		Mount:       mount,
-		Projects:    newDirectory,
+		Name:               "projects",
+		Permissions:        permissions,
+		Mount:              mount,
+		Projects:           newDirectory,
+		CustomerReferences: newCustomerReferenceHolder,
 	}
 }
 

@@ -75,13 +75,17 @@ func bodyLimits(d module.Deps) map[string]int64 {
 // /api/v1/communications/ and its five permissions in the composed catalog.
 // Like products and energy, communications publishes no
 // contracts.CustomerDirectory of its own — it only ever *reads* one, to
-// validate a conversation's customerId — so Directory is left nil.
+// validate a conversation's customerId — so Directory is left nil. What it
+// does provide is the contracts.CustomerReferenceHolder a customer merge
+// re-points its conversations, suggestions and candidates through (customers
+// merge design D1).
 func Module() module.Module {
 	return module.Module{
-		Name:        "communications",
-		Permissions: permissions,
-		Mount:       mount,
-		Workers:     workers,
+		Name:               "communications",
+		Permissions:        permissions,
+		Mount:              mount,
+		Workers:            workers,
+		CustomerReferences: newCustomerReferenceHolder,
 	}
 }
 
