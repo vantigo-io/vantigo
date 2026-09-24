@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -55,6 +56,104 @@ var (
 	// beside it, as errDuplicateIdentity's does (duplicates.go).
 	errMergeRefused = errors.New("customers: merge refused")
 )
+
+// customerMergedError is a write refused because its customer was merged away
+// (customers merge design D2): from the merge on, the absorbed customer is
+// read-only — its records are the survivor's now, and a write here would
+// quietly start a second history nobody sees. The 409 carries code
+// customer_merged and names the survivor. It is an error, not a return value,
+// so that it can abort whichever transaction found it and travel out through
+// the helpers in between; isMergedAway and mergedAwayProblem read it back.
+type customerMergedError struct {
+	problem gen.CustomerConflictProblem
+	// into is the survivor as a person reads it, "#1002 Acme AS".
+	into string
+}
+
+func (e *customerMergedError) Error() string {
+	return "customers: customer was merged away"
+}
+
+// isMergedAway reports whether err is a customer_merged refusal, and
+// mergedAwayProblem is its 409 body — the pair a handler's switch uses, case
+// and answer.
+func isMergedAway(err error) bool {
+	var merged *customerMergedError
+	return errors.As(err, &merged)
+}
+
+func mergedAwayProblem(err error) gen.CustomerConflictProblem {
+	var merged *customerMergedError
+	if errors.As(err, &merged) {
+		return merged.problem
+	}
+	return gen.CustomerConflictProblem{}
+}
+
+// mergedAwayInto is the survivor err's refusal names, "#1002 Acme AS".
+func mergedAwayInto(err error) string {
+	var merged *customerMergedError
+	if errors.As(err, &merged) {
+		return merged.into
+	}
+	return ""
+}
+
+// customerMerged is the customer_merged refusal, naming the customer this one
+// was merged into.
+func customerMerged(intoNumber int64, intoName string) *customerMergedError {
+	into := customerLabel(intoNumber, intoName)
+	return &customerMergedError{into: into, problem: *mergeConflict("Customer was merged", "customer_merged", fmt.Sprintf(
+		"This customer was merged into %s. Its records are there now, and it takes no more changes.", into))}
+}
+
+// lockWritableCustomer is every customer-scoped write's LockCustomer: the
+// customer row's FOR NO KEY UPDATE lock, then the refusal when the row it
+// locked was merged away. A merge holds this same lock until it commits, so a
+// write that queued behind one reads its marker here and refuses rather than
+// writing to the customer that just went away. pgx.ErrNoRows still means the
+// customer does not exist.
+func lockWritableCustomer(ctx context.Context, txq *store.Queries, id int32) (store.LockCustomerRow, error) {
+	locked, err := txq.LockCustomer(ctx, id)
+	if err != nil || locked.MergedIntoCustomerID == nil {
+		return locked, err
+	}
+	// Read, not locked, as the merge ladder's own merge_already_merged reads
+	// it: the refusal only names it, and the marker's foreign key guarantees
+	// the row.
+	into, err := txq.GetCustomer(ctx, *locked.MergedIntoCustomerID)
+	if err != nil {
+		return locked, fmt.Errorf("read the customer %d was merged into: %w", id, err)
+	}
+	return locked, customerMerged(into.CustomerNumber, into.Name)
+}
+
+// refuseMergedAway is the same refusal read on the pool, before a write gets
+// as far as its lock, for the writes that would otherwise answer something
+// else first or do something costly before it: an entry, an association or a
+// follow-up of a merged-away customer moved with the merge, so looking it up
+// answers 404; and a Peppol lookup or a registry refresh would ask the network
+// first. It answers the error lockWritableCustomer would, or nil — for a
+// customer that is not merged away and equally for one that does not exist,
+// whose 404 is the caller's to give. Only the lock decides a race; this is the
+// answer when there is none.
+func refuseMergedAway(ctx context.Context, q *store.Queries, id int32) error {
+	rows, err := q.MergedIntoForCustomers(ctx, []int32{id})
+	if err != nil {
+		return fmt.Errorf("customers: read merge marker of %d: %w", id, err)
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	return customerMerged(rows[0].CustomerNumber, rows[0].Name)
+}
+
+// isUniqueOrExclusionViolation is err carrying a PostgreSQL unique (23505) or
+// exclusion (23P01) violation — the two httpx.WriteError answers with a 409.
+func isUniqueOrExclusionViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && (pgErr.Code == "23505" || pgErr.Code == "23P01")
+}
 
 // mergeLockOrder is the rows a merge locks, in the order it locks them:
 // ascending id, every multi-customer writer's order (the contact delete's),
@@ -161,7 +260,7 @@ func moveOwnRecords(ctx context.Context, txq *store.Queries, from, into int32, n
 	if err != nil {
 		return nil, fmt.Errorf("move the timeline: %w", err)
 	}
-	if err := txq.MoveTimelineRevisions(ctx, store.MoveTimelineRevisionsParams{IntoCustomerID: into, FromCustomerID: from}); err != nil {
+	if err := txq.MoveTimelineRevisions(ctx, from); err != nil {
 		return nil, fmt.Errorf("move the timeline revisions: %w", err)
 	}
 	tags, err := txq.MergeCustomerTags(ctx, store.MergeCustomerTagsParams{IntoCustomerID: into, FromCustomerID: from})
@@ -247,6 +346,9 @@ func (s *server) mergeCustomers(ctx context.Context, tx pgx.Tx, into, from int32
 	if err := txq.MarkCustomerMerged(ctx, store.MarkCustomerMergedParams{ID: from, IntoCustomerID: into, Now: now}); err != nil {
 		return nil, nil, err
 	}
+	if err := txq.FlattenMergedIntoChain(ctx, store.FlattenMergedIntoChainParams{FromCustomerID: from, IntoCustomerID: into, Now: now}); err != nil {
+		return nil, nil, err
+	}
 	if err := recordCustomerMerged(ctx, txq, now, into, snapshot, moved, act.Kind, act.Display, act.UserID); err != nil {
 		return nil, nil, err
 	}
@@ -295,6 +397,17 @@ func (s *server) PostCustomersByIdMerge(ctx context.Context, req gen.PostCustome
 		return gen.PostCustomersByIdMerge404Response{}, nil
 	case errors.Is(err, errMergeRefused):
 		return gen.PostCustomersByIdMerge409ApplicationProblemPlusJSONResponse(*refusal), nil
+	case isUniqueOrExclusionViolation(err):
+		// Under both customer locks no other writer can make one of the
+		// merge's own rows collide, and every holder's statement tolerates the
+		// survivor already having a row. A unique or exclusion violation here
+		// therefore means the merge's own SQL is wrong — its primaries logic,
+		// most likely — and that is a bug to hear about loudly: a 500 logged
+		// as an error, not the generic 409 httpx.WriteError would make of it,
+		// which a client could not tell from a revision conflict. Its text
+		// only, not the error itself, so the PostgreSQL error no longer
+		// surfaces as one.
+		return nil, fmt.Errorf("customers: merge customer %d into %d broke a constraint it must keep: %s", from, into, err.Error())
 	case err != nil:
 		return nil, fmt.Errorf("customers: merge customer %d into %d: %w", from, into, err)
 	}

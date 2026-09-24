@@ -164,7 +164,7 @@ type CustomerConflictDuplicate struct {
 	Status         string `json:"status"`
 }
 
-// CustomerConflictProblem ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity and registry_identity_changed conflicts, the group vocabulary's group_exists and group_in_use, the tag vocabulary's tag_exists, and the merge's merge_self, merge_type_mismatch, merge_into_archived and merge_already_merged (customers merge design D2). A revision conflict carries neither.
+// CustomerConflictProblem ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity and registry_identity_changed conflicts, the group vocabulary's group_exists and group_in_use, the tag vocabulary's tag_exists, the merge's merge_self, merge_type_mismatch, merge_into_archived and merge_already_merged (customers merge design D2), and customer_merged, the answer a write to a customer merged away gets (the same design). A revision conflict carries neither.
 type CustomerConflictProblem struct {
 	Code       *string                      `json:"code,omitempty"`
 	Detail     *string                      `json:"detail,omitempty"`
@@ -269,7 +269,7 @@ type CustomerImportResult struct {
 	Updated int32                 `json:"updated"`
 }
 
-// CustomerMergeMove One kind of reference a merge moved to the surviving customer, and how many (customers merge design D3). This module's four kinds come first — customers.contacts (the absorbed customer's contact associations, a contact the survivor already had included), customers.addresses, customers.timelineEntries (its active entries) and customers.tags (its tags, one the survivor already carried included) — then each other module's, in the order the installation composes them: projects.projects, energy.supplyPeriods, communications.conversations, communications.conversationSuggestions and communications.conversationCandidates. A kind is listed with count 0 when there was nothing of it; a module that is not enabled lists nothing.
+// CustomerMergeMove One kind of reference a merge moved to the surviving customer, and how many (customers merge design D3). This module's four kinds come first — customers.contacts (the absorbed customer's contact associations, a contact the survivor already had included), customers.addresses, customers.timelineEntries (its active entries) and customers.tags (its tags, one the survivor already carried included) — then each other module's, in the order the installation composes them: projects.projects, energy.supplyPeriods, communications.conversations, communications.conversationSuggestions and communications.conversationCandidates. A kind is listed with count 0 when there was nothing of it. Every holder the installation carries runs, its module enabled or not: every schema is migrated whatever MODULES says, so a module switched off still has references to re-point.
 type CustomerMergeMove struct {
 	Count int64  `json:"count"`
 	Kind  string `json:"kind"`
@@ -5535,6 +5535,20 @@ func (response PostCustomersByIdAddresses404Response) VisitPostCustomersByIdAddr
 	return nil
 }
 
+type PostCustomersByIdAddresses409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PostCustomersByIdAddresses409ApplicationProblemPlusJSONResponse) VisitPostCustomersByIdAddressesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteCustomersByIdAddressesByAddressIdRequestObject struct {
 	Id        int32 `json:"id"`
 	AddressId int32 `json:"addressId"`
@@ -5586,6 +5600,20 @@ type DeleteCustomersByIdAddressesByAddressId404Response struct {
 func (response DeleteCustomersByIdAddressesByAddressId404Response) VisitDeleteCustomersByIdAddressesByAddressIdResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type DeleteCustomersByIdAddressesByAddressId409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response DeleteCustomersByIdAddressesByAddressId409ApplicationProblemPlusJSONResponse) VisitDeleteCustomersByIdAddressesByAddressIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type PutCustomersByIdAddressesByAddressIdRequestObject struct {
@@ -5660,6 +5688,20 @@ type PutCustomersByIdAddressesByAddressId404Response struct {
 func (response PutCustomersByIdAddressesByAddressId404Response) VisitPutCustomersByIdAddressesByAddressIdResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type PutCustomersByIdAddressesByAddressId409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PutCustomersByIdAddressesByAddressId409ApplicationProblemPlusJSONResponse) VisitPutCustomersByIdAddressesByAddressIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetCustomersByIdBillingProfileRequestObject struct {
@@ -6025,7 +6067,7 @@ func (response PostCustomersByIdContacts404Response) VisitPostCustomersByIdConta
 	return nil
 }
 
-type PostCustomersByIdContacts409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+type PostCustomersByIdContacts409ApplicationProblemPlusJSONResponse CustomerConflictProblem
 
 func (response PostCustomersByIdContacts409ApplicationProblemPlusJSONResponse) VisitPostCustomersByIdContactsResponse(w http.ResponseWriter) error {
 
@@ -6090,6 +6132,20 @@ type DeleteCustomersByIdContactsByContactId404Response struct {
 func (response DeleteCustomersByIdContactsByContactId404Response) VisitDeleteCustomersByIdContactsByContactIdResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type DeleteCustomersByIdContactsByContactId409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response DeleteCustomersByIdContactsByContactId409ApplicationProblemPlusJSONResponse) VisitDeleteCustomersByIdContactsByContactIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type PutCustomersByIdContactsByContactIdRequestObject struct {
@@ -6164,6 +6220,20 @@ type PutCustomersByIdContactsByContactId404Response struct {
 func (response PutCustomersByIdContactsByContactId404Response) VisitPutCustomersByIdContactsByContactIdResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type PutCustomersByIdContactsByContactId409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PutCustomersByIdContactsByContactId409ApplicationProblemPlusJSONResponse) VisitPutCustomersByIdContactsByContactIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type PutCustomersByIdGroupRequestObject struct {
@@ -6303,6 +6373,20 @@ type DeleteCustomersByIdLegalIdentity404Response struct {
 func (response DeleteCustomersByIdLegalIdentity404Response) VisitDeleteCustomersByIdLegalIdentityResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type DeleteCustomersByIdLegalIdentity409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response DeleteCustomersByIdLegalIdentity409ApplicationProblemPlusJSONResponse) VisitDeleteCustomersByIdLegalIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetCustomersByIdLegalIdentityRequestObject struct {
@@ -6748,6 +6832,20 @@ func (response PostCustomersByIdPeppolLookup404Response) VisitPostCustomersByIdP
 	return nil
 }
 
+type PostCustomersByIdPeppolLookup409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PostCustomersByIdPeppolLookup409ApplicationProblemPlusJSONResponse) VisitPostCustomersByIdPeppolLookupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostCustomersByIdPeppolLookup502ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
 
 func (response PostCustomersByIdPeppolLookup502ApplicationProblemPlusJSONResponse) VisitPostCustomersByIdPeppolLookupResponse(w http.ResponseWriter) error {
@@ -7001,6 +7099,20 @@ func (response PutCustomersByIdTags404Response) VisitPutCustomersByIdTagsRespons
 	return nil
 }
 
+type PutCustomersByIdTags409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PutCustomersByIdTags409ApplicationProblemPlusJSONResponse) VisitPutCustomersByIdTagsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCustomersByIdTimelineRequestObject struct {
 	Id     int32 `json:"id"`
 	Params GetCustomersByIdTimelineParams
@@ -7147,6 +7259,20 @@ func (response PostCustomersByIdTimeline404Response) VisitPostCustomersByIdTimel
 	return nil
 }
 
+type PostCustomersByIdTimeline409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PostCustomersByIdTimeline409ApplicationProblemPlusJSONResponse) VisitPostCustomersByIdTimelineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteCustomersByIdTimelineByEntryIdRequestObject struct {
 	Id      int32 `json:"id"`
 	EntryId int32 `json:"entryId"`
@@ -7201,7 +7327,7 @@ func (response DeleteCustomersByIdTimelineByEntryId404Response) VisitDeleteCusto
 	return nil
 }
 
-type DeleteCustomersByIdTimelineByEntryId409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+type DeleteCustomersByIdTimelineByEntryId409ApplicationProblemPlusJSONResponse CustomerConflictProblem
 
 func (response DeleteCustomersByIdTimelineByEntryId409ApplicationProblemPlusJSONResponse) VisitDeleteCustomersByIdTimelineByEntryIdResponse(w http.ResponseWriter) error {
 
@@ -7348,7 +7474,7 @@ func (response PutCustomersByIdTimelineByEntryId404Response) VisitPutCustomersBy
 	return nil
 }
 
-type PutCustomersByIdTimelineByEntryId409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+type PutCustomersByIdTimelineByEntryId409ApplicationProblemPlusJSONResponse CustomerConflictProblem
 
 func (response PutCustomersByIdTimelineByEntryId409ApplicationProblemPlusJSONResponse) VisitPutCustomersByIdTimelineByEntryIdResponse(w http.ResponseWriter) error {
 
@@ -7421,7 +7547,7 @@ func (response DeleteCustomersByIdTimelineByEntryIdFollowUpDone404Response) Visi
 	return nil
 }
 
-type DeleteCustomersByIdTimelineByEntryIdFollowUpDone409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+type DeleteCustomersByIdTimelineByEntryIdFollowUpDone409ApplicationProblemPlusJSONResponse CustomerConflictProblem
 
 func (response DeleteCustomersByIdTimelineByEntryIdFollowUpDone409ApplicationProblemPlusJSONResponse) VisitDeleteCustomersByIdTimelineByEntryIdFollowUpDoneResponse(w http.ResponseWriter) error {
 
@@ -7494,7 +7620,7 @@ func (response PostCustomersByIdTimelineByEntryIdFollowUpDone404Response) VisitP
 	return nil
 }
 
-type PostCustomersByIdTimelineByEntryIdFollowUpDone409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+type PostCustomersByIdTimelineByEntryIdFollowUpDone409ApplicationProblemPlusJSONResponse CustomerConflictProblem
 
 func (response PostCustomersByIdTimelineByEntryIdFollowUpDone409ApplicationProblemPlusJSONResponse) VisitPostCustomersByIdTimelineByEntryIdFollowUpDoneResponse(w http.ResponseWriter) error {
 

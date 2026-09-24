@@ -96,12 +96,20 @@ SELECT count(*) FILTER (WHERE state = 'active')::bigint AS active_count FROM mov
 
 -- name: MoveTimelineRevisions :exec
 -- MoveTimelineRevisions rewrites the revisions' own customer_id to match their
--- entry's (00003 mirrors it column for column). The column is not indexed, so
--- this reads the revisions table; a merge is rare, and an index every timeline
--- write would pay for is not worth it.
-UPDATE customers.customers_timeline_entries_revisions
-SET customer_id = @into_customer_id::int
-WHERE customer_id = @from_customer_id::int;
+-- entry's (00003 mirrors it column for column) — to the ENTRY's, read in this
+-- statement, not to the survivor's id: a revision follows its entry wherever
+-- MoveTimelineEntries left it. Every writer of an entry takes the customer's
+-- lock first and so waits for the merge, but should one ever slip in between
+-- the two statements, the worst it can do is leave an entry, with every one of
+-- its revisions, behind — never split a revision from its entry. The column is
+-- not indexed, so this reads the revisions table; a merge is rare, and an
+-- index every timeline write would pay for is not worth it.
+UPDATE customers.customers_timeline_entries_revisions r
+SET customer_id = e.customer_id
+FROM customers.customers_timeline_entries e
+WHERE e.id = r.customer_timeline_entry_id
+  AND r.customer_id = @from_customer_id::int
+  AND e.customer_id <> r.customer_id;
 
 -- name: MergeCustomerTags :one
 -- MergeCustomerTags unions the tags (design D3): the absorbed customer's links
@@ -141,6 +149,20 @@ UPDATE customers.customers
 SET status = 'archived', merged_into_customer_id = @into_customer_id::int,
     updated_at = @now::timestamptz, revision = revision + 1
 WHERE id = @id;
+
+-- name: FlattenMergedIntoChain :exec
+-- FlattenMergedIntoChain keeps every marker one hop long (customers merge
+-- design D3): a customer merged into the one being absorbed now names the
+-- survivor, so A merged into B and B later into C leaves A pointing at C, not
+-- at B — the customer whose records are really there. Each re-pointed row is
+-- written, so its revision advances as any write to the row does. These rows
+-- are not locked first: they are merged away already, and every writer of a
+-- merged-away customer refuses once it holds the lock, so the UPDATE's own row
+-- lock is all this needs.
+UPDATE customers.customers
+SET merged_into_customer_id = @into_customer_id::int,
+    updated_at = @now::timestamptz, revision = revision + 1
+WHERE merged_into_customer_id = @from_customer_id::int;
 
 -- name: MergedIntoForCustomers :many
 -- MergedIntoForCustomers is the merge marker of a whole page of customers in

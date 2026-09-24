@@ -11,14 +11,16 @@ import (
 // real customers module merges, Compose has put the real projects module's
 // CustomerReferenceHolder on its Deps, and projects' own statement moves the
 // duplicate's project in the merge's transaction. The project then names the
-// survivor — through projects' own read of the real customer directory — and
-// the survivor's overview, which reads projects through the project directory,
-// counts it, while the duplicate's counts nothing.
+// survivor — through projects' own read of the real customer directory — at a
+// revision one on; the survivor's overview, which reads projects through the
+// project directory, counts it, while the duplicate's counts nothing; and the
+// duplicate's own read names the survivor as where it went.
 //
 // Only projects is composed beside customers, deliberately: energy's and
 // communications' holders prove their SQL in their own packages, and
-// internal/module proves Compose collects every enabled holder. What only this
-// package can prove is that a real merge reaches a real holder at all.
+// internal/module proves Compose collects every holder, its module enabled or
+// not. What only this package can prove is that a real merge reaches a real
+// holder at all.
 func TestMerge_RepointsTheRealProjectsAndTheSurvivorsOverviewShowsThem(t *testing.T) {
 	t.Parallel()
 	h := newInstallation(t, modCustomers, modProjects)
@@ -42,6 +44,10 @@ func TestMerge_RepointsTheRealProjectsAndTheSurvivorsOverviewShowsThem(t *testin
 		"currency":    "NOK",
 	}, &project)
 	okJSON(t, admin, http.MethodPut, fmt.Sprintf("%s/%d/status", projectsPath, project.Id), map[string]any{"status": "active"}, nil)
+	var before struct {
+		Revision int32 `json:"revision"`
+	}
+	okJSON(t, admin, http.MethodGet, fmt.Sprintf("%s/%d", projectsPath, project.Id), nil, &before)
 
 	var merged struct {
 		Moved []struct {
@@ -63,10 +69,29 @@ func TestMerge_RepointsTheRealProjectsAndTheSurvivorsOverviewShowsThem(t *testin
 	var got struct {
 		CustomerId   *int32  `json:"customerId"`
 		CustomerName *string `json:"customerName"`
+		Revision     int32   `json:"revision"`
 	}
 	okJSON(t, admin, http.MethodGet, fmt.Sprintf("%s/%d", projectsPath, project.Id), nil, &got)
 	if got.CustomerId == nil || *got.CustomerId != survivor.Id || got.CustomerName == nil || *got.CustomerName != "Acme AS" {
 		t.Errorf("the project names customer %v %v, want the survivor %d Acme AS", got.CustomerId, got.CustomerName, survivor.Id)
+	}
+	// The re-point is a write to the project, so its revision advanced: an edit
+	// form opened before the merge answers the stale-revision 409 rather than
+	// writing the duplicate back.
+	if got.Revision != before.Revision+1 {
+		t.Errorf("the project's revision = %d (was %d), want one on", got.Revision, before.Revision)
+	}
+
+	// And the duplicate itself says where it went.
+	var gone struct {
+		MergedInto *struct {
+			Id   int32  `json:"id"`
+			Name string `json:"name"`
+		} `json:"mergedInto"`
+	}
+	okJSON(t, admin, http.MethodGet, fmt.Sprintf("/api/v1/customers/%d", absorbed.Id), nil, &gone)
+	if gone.MergedInto == nil || gone.MergedInto.Id != survivor.Id || gone.MergedInto.Name != "Acme AS" {
+		t.Errorf("the duplicate's mergedInto = %+v, want the survivor %d Acme AS", gone.MergedInto, survivor.Id)
 	}
 
 	type overview struct {

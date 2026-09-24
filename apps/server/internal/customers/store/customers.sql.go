@@ -465,6 +465,7 @@ const customersByLegalIdentity = `-- name: CustomersByLegalIdentity :many
 SELECT id, customer_number, name, status
 FROM customers.customers
 WHERE legal_country = $1::text AND legal_id = $2::text AND id <> $3::int
+  AND merged_into_customer_id IS NULL
 ORDER BY id
 LIMIT 5
 `
@@ -486,7 +487,10 @@ type CustomersByLegalIdentityRow struct {
 // (customers foundation design D6): any customer — of any status, archived
 // included, since the right move for one is usually to restore it rather
 // than create a second — already holding (@country, @legal_id), other than
-// @exclude_id itself. Country and id are compared as stored, i.e. already
+// @exclude_id itself. A customer merged away is not a holder (customers merge
+// design D3): it can never be restored, and the identity it kept is history
+// now, recorded in the survivor's customer.merged — so the survivor, or
+// anybody, may take that identity on. Country and id are compared as stored, i.e. already
 // normalised by validateLegalIdentity (lower-cased country, stripped
 // Norwegian org number), so this is a plain equality, not another ILIKE.
 // Ordered by id and capped at 5: the conflict body only ever names a

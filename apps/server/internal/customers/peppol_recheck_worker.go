@@ -281,7 +281,10 @@ func (w *PeppolRecheckWorker) recheck(ctx context.Context, customerID int32, par
 		// db.WithTx is this cycle being told to stop, not a database problem, and
 		// Run's own loop applies the same guard to the same effect — an operator
 		// reading Error lines must find only things that were actually wrong.
-		if !errors.Is(err, errPeppolLookupUnavailable) && ctx.Err() == nil {
+		// Nor for a customer merged away since the batch was read: the
+		// candidates exclude archived customers, so it is only that race, and
+		// the refusal is the right outcome, not a failure.
+		if !errors.Is(err, errPeppolLookupUnavailable) && !isMergedAway(err) && ctx.Err() == nil {
 			w.logger().Error("customers: storing a peppol re-check failed",
 				"worker", peppolRecheckWorkerName, "customerId", customerID, "error", err.Error())
 		}

@@ -324,7 +324,7 @@ components:
                 - status
             type: object
         CustomerConflictProblem:
-            description: ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity and registry_identity_changed conflicts, the group vocabulary's group_exists and group_in_use, the tag vocabulary's tag_exists, and the merge's merge_self, merge_type_mismatch, merge_into_archived and merge_already_merged (customers merge design D2). A revision conflict carries neither.
+            description: ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity and registry_identity_changed conflicts, the group vocabulary's group_exists and group_in_use, the tag vocabulary's tag_exists, the merge's merge_self, merge_type_mismatch, merge_into_archived and merge_already_merged (customers merge design D2), and customer_merged, the answer a write to a customer merged away gets (the same design). A revision conflict carries neither.
             properties:
                 code:
                     nullable: true
@@ -543,7 +543,7 @@ components:
                 - updated
             type: object
         CustomerMergeMove:
-            description: "One kind of reference a merge moved to the surviving customer, and how many (customers merge design D3). This module's four kinds come first — customers.contacts (the absorbed customer's contact associations, a contact the survivor already had included), customers.addresses, customers.timelineEntries (its active entries) and customers.tags (its tags, one the survivor already carried included) — then each other module's, in the order the installation composes them: projects.projects, energy.supplyPeriods, communications.conversations, communications.conversationSuggestions and communications.conversationCandidates. A kind is listed with count 0 when there was nothing of it; a module that is not enabled lists nothing."
+            description: "One kind of reference a merge moved to the surviving customer, and how many (customers merge design D3). This module's four kinds come first — customers.contacts (the absorbed customer's contact associations, a contact the survivor already had included), customers.addresses, customers.timelineEntries (its active entries) and customers.tags (its tags, one the survivor already carried included) — then each other module's, in the order the installation composes them: projects.projects, energy.supplyPeriods, communications.conversations, communications.conversationSuggestions and communications.conversationCandidates. A kind is listed with count 0 when there was nothing of it. Every holder the installation carries runs, its module enabled or not: every schema is migrated whatever MODULES says, so a module switched off still has references to re-point."
             properties:
                 count:
                     format: int64
@@ -1916,7 +1916,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/CustomerConflictProblem'
-                    description: Conflict
+                    description: "Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to."
             summary: Update a customer
             tags:
                 - Customers
@@ -2003,6 +2003,12 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: "Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to."
             summary: Add an address to a customer
             tags:
                 - Customers
@@ -2040,6 +2046,12 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: "Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to."
             summary: Remove an address from a customer
             tags:
                 - Customers
@@ -2092,6 +2104,12 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: "Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to."
             summary: Replace a customer's address
             tags:
                 - Customers
@@ -2178,7 +2196,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/CustomerConflictProblem'
-                    description: Conflict
+                    description: "Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to."
             summary: Replace a customer's billing profile
             tags:
                 - Customers
@@ -2231,7 +2249,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/CustomerConflictProblem'
-                    description: Conflict
+                    description: "Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to."
             summary: Replace a customer's contact info
             tags:
                 - Customers
@@ -2317,8 +2335,8 @@ paths:
                     content:
                         application/problem+json:
                             schema:
-                                $ref: common.yaml#/components/schemas/ProblemDetails
-                    description: Conflict
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: "Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to."
             summary: Associate a contact with a customer
             tags:
                 - Customers
@@ -2356,6 +2374,12 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: "Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to."
             summary: Remove a contact association from a customer
             tags:
                 - Customers
@@ -2408,6 +2432,12 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: "Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to."
             summary: Update a customer's contact association
             tags:
                 - Customers
@@ -2460,7 +2490,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/CustomerConflictProblem'
-                    description: Conflict
+                    description: "Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to."
             summary: Put a customer in a group, or take it out of every group
             tags:
                 - Customers
@@ -2492,6 +2522,12 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: "Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to."
             summary: Remove a customer's legal identity
             tags:
                 - Customers
@@ -2579,7 +2615,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/CustomerConflictProblem'
-                    description: Conflict
+                    description: "Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to."
             summary: Replace a customer's legal identity
             tags:
                 - Customers
@@ -2722,7 +2758,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/CustomerConflictProblem'
-                    description: Conflict
+                    description: "Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to."
             summary: Set or clear a customer's owner
             tags:
                 - Customers
@@ -2759,6 +2795,12 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: "Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to."
                 "502":
                     content:
                         application/problem+json:
@@ -2850,7 +2892,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/CustomerConflictProblem'
-                    description: Conflict
+                    description: "Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to."
                 "502":
                     content:
                         application/problem+json:
@@ -2904,6 +2946,12 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: "Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to."
             summary: Replace a customer's tags
             tags:
                 - Customers
@@ -2957,7 +3005,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/CustomerConflictProblem'
-                    description: Conflict
+                    description: "Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to."
             summary: Change a customer's type
             tags:
                 - Customers
@@ -3073,6 +3121,12 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: "Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to."
             summary: Create a manual customer timeline entry
             tags:
                 - Customers
@@ -3119,8 +3173,8 @@ paths:
                     content:
                         application/problem+json:
                             schema:
-                                $ref: common.yaml#/components/schemas/ProblemDetails
-                    description: Conflict
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: "Conflict: the timeline entry's own refusals, which carry no code, or customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to."
             summary: Delete a manual customer timeline entry
             tags:
                 - Customers
@@ -3217,8 +3271,8 @@ paths:
                     content:
                         application/problem+json:
                             schema:
-                                $ref: common.yaml#/components/schemas/ProblemDetails
-                    description: Conflict
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: "Conflict: the timeline entry's own refusals, which carry no code, or customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to."
             summary: Update a manual customer timeline entry
             tags:
                 - Customers
@@ -3265,8 +3319,8 @@ paths:
                     content:
                         application/problem+json:
                             schema:
-                                $ref: common.yaml#/components/schemas/ProblemDetails
-                    description: Conflict
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: "Conflict: the timeline entry's own refusals, which carry no code, or customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to."
             summary: Reopen a timeline entry's follow-up
             tags:
                 - Customers
@@ -3312,8 +3366,8 @@ paths:
                     content:
                         application/problem+json:
                             schema:
-                                $ref: common.yaml#/components/schemas/ProblemDetails
-                    description: Conflict
+                                $ref: '#/components/schemas/CustomerConflictProblem'
+                    description: "Conflict: the timeline entry's own refusals, which carry no code, or customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to."
             summary: Mark a timeline entry's follow-up done
             tags:
                 - Customers

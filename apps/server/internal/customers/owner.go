@@ -348,6 +348,11 @@ func (s *server) PutCustomersByIdOwner(ctx context.Context, req gen.PutCustomers
 	var updated store.UpdateCustomerOwnerRow
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
+		// The customer's lock and the merged-away refusal first (customers
+		// merge design D2), as every customer-scoped write takes them.
+		if _, err := lockWritableCustomer(ctx, txq, req.Id); err != nil {
+			return err
+		}
 		var err error
 		updated, err = txq.UpdateCustomerOwner(ctx, store.UpdateCustomerOwnerParams{
 			ID: req.Id, OwnerUserID: after, UpdatedAt: now, ExpectedRevision: body.Revision,
@@ -358,6 +363,8 @@ func (s *server) PutCustomersByIdOwner(ctx context.Context, req gen.PutCustomers
 		return recordCustomerOwnerChanged(ctx, txq, now, req.Id, beforeSnapshot, afterSnapshot, act.Kind, act.Display, act.UserID)
 	})
 	switch {
+	case isMergedAway(err):
+		return gen.PutCustomersByIdOwner409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
 	case errors.Is(err, pgx.ErrNoRows):
 		// The guarded UPDATE matched no row: a concurrent writer moved the
 		// revision between the read above and this write, answered by

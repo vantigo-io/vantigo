@@ -92,6 +92,11 @@ func (s *server) PutCustomersByIdType(ctx context.Context, req gen.PutCustomersB
 	var updated store.SetCustomerTypeRow
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
+		// The customer's lock and the merged-away refusal first (customers
+		// merge design D2), as every customer-scoped write takes them.
+		if _, err := lockWritableCustomer(ctx, txq, req.Id); err != nil {
+			return err
+		}
 		var err error
 		updated, err = txq.SetCustomerType(ctx, store.SetCustomerTypeParams{
 			ID: req.Id, Type: customerType,
@@ -118,6 +123,8 @@ func (s *server) PutCustomersByIdType(ctx context.Context, req gen.PutCustomersB
 		return nil
 	})
 	switch {
+	case isMergedAway(err):
+		return gen.PutCustomersByIdType409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
 	case errors.Is(err, pgx.ErrNoRows):
 		// Same race as PutCustomersById's guarded write (customers
 		// foundation design D5): a concurrent writer moved the revision

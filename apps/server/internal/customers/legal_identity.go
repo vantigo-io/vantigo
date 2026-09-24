@@ -168,6 +168,9 @@ func (s *server) PutCustomersByIdLegalIdentity(ctx context.Context, req gen.PutC
 			nil, needsDuplicateCheck, nameHolders, now, act)
 		return err
 	})
+	if isMergedAway(err) {
+		return gen.PutCustomersByIdLegalIdentity409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
+	}
 	if errors.Is(err, errDuplicateIdentity) {
 		return gen.PutCustomersByIdLegalIdentity409ApplicationProblemPlusJSONResponse(*conflict), nil
 	}
@@ -228,6 +231,11 @@ func (s *server) DeleteCustomersByIdLegalIdentity(ctx context.Context, req gen.D
 	now := s.deps.Clock()
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
+		// The customer's lock and the merged-away refusal first (customers
+		// merge design D2), as every customer-scoped write takes them.
+		if _, err := lockWritableCustomer(ctx, txq, req.Id); err != nil {
+			return err
+		}
 		// ExpectedRevision is always nil here, the same unconditional write as
 		// the PUT above (customers foundation design D5).
 		if _, err := txq.UpdateCustomer(ctx, store.UpdateCustomerParams{
@@ -246,6 +254,9 @@ func (s *server) DeleteCustomersByIdLegalIdentity(ctx context.Context, req gen.D
 		}
 		return recordCustomerUpdated(ctx, txq, now, req.Id, existing.Name, before, existing.Name, nil, act.Kind, act.Display, act.UserID)
 	})
+	if isMergedAway(err) {
+		return gen.DeleteCustomersByIdLegalIdentity409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("customers: remove legal identity: %w", err)
 	}

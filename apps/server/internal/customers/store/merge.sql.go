@@ -139,6 +139,32 @@ func (q *Queries) DeleteCustomerAssociations(ctx context.Context, customerID int
 	return result.RowsAffected(), nil
 }
 
+const flattenMergedIntoChain = `-- name: FlattenMergedIntoChain :exec
+UPDATE customers.customers
+SET merged_into_customer_id = $1::int,
+    updated_at = $2::timestamptz, revision = revision + 1
+WHERE merged_into_customer_id = $3::int
+`
+
+type FlattenMergedIntoChainParams struct {
+	IntoCustomerID int32
+	Now            time.Time
+	FromCustomerID int32
+}
+
+// FlattenMergedIntoChain keeps every marker one hop long (customers merge
+// design D3): a customer merged into the one being absorbed now names the
+// survivor, so A merged into B and B later into C leaves A pointing at C, not
+// at B — the customer whose records are really there. Each re-pointed row is
+// written, so its revision advances as any write to the row does. These rows
+// are not locked first: they are merged away already, and every writer of a
+// merged-away customer refuses once it holds the lock, so the UPDATE's own row
+// lock is all this needs.
+func (q *Queries) FlattenMergedIntoChain(ctx context.Context, arg FlattenMergedIntoChainParams) error {
+	_, err := q.db.Exec(ctx, flattenMergedIntoChain, arg.IntoCustomerID, arg.Now, arg.FromCustomerID)
+	return err
+}
+
 const insertMergedAssociations = `-- name: InsertMergedAssociations :exec
 INSERT INTO customers.customers_contacts (customer_id, contact_id, title, phone, email)
 SELECT $1::int, contact_id, title, phone, email
@@ -364,21 +390,24 @@ func (q *Queries) MoveTimelineEntries(ctx context.Context, arg MoveTimelineEntri
 }
 
 const moveTimelineRevisions = `-- name: MoveTimelineRevisions :exec
-UPDATE customers.customers_timeline_entries_revisions
-SET customer_id = $1::int
-WHERE customer_id = $2::int
+UPDATE customers.customers_timeline_entries_revisions r
+SET customer_id = e.customer_id
+FROM customers.customers_timeline_entries e
+WHERE e.id = r.customer_timeline_entry_id
+  AND r.customer_id = $1::int
+  AND e.customer_id <> r.customer_id
 `
 
-type MoveTimelineRevisionsParams struct {
-	IntoCustomerID int32
-	FromCustomerID int32
-}
-
 // MoveTimelineRevisions rewrites the revisions' own customer_id to match their
-// entry's (00003 mirrors it column for column). The column is not indexed, so
-// this reads the revisions table; a merge is rare, and an index every timeline
-// write would pay for is not worth it.
-func (q *Queries) MoveTimelineRevisions(ctx context.Context, arg MoveTimelineRevisionsParams) error {
-	_, err := q.db.Exec(ctx, moveTimelineRevisions, arg.IntoCustomerID, arg.FromCustomerID)
+// entry's (00003 mirrors it column for column) — to the ENTRY's, read in this
+// statement, not to the survivor's id: a revision follows its entry wherever
+// MoveTimelineEntries left it. Every writer of an entry takes the customer's
+// lock first and so waits for the merge, but should one ever slip in between
+// the two statements, the worst it can do is leave an entry, with every one of
+// its revisions, behind — never split a revision from its entry. The column is
+// not indexed, so this reads the revisions table; a merge is rare, and an
+// index every timeline write would pay for is not worth it.
+func (q *Queries) MoveTimelineRevisions(ctx context.Context, fromCustomerID int32) error {
+	_, err := q.db.Exec(ctx, moveTimelineRevisions, fromCustomerID)
 	return err
 }

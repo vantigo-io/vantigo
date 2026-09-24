@@ -277,18 +277,19 @@ func (q *Queries) ListCustomerAddresses(ctx context.Context, customerID int32) (
 }
 
 const lockCustomer = `-- name: LockCustomer :one
-SELECT id, type, legal_country, legal_id, legal_name, legal_source, legal_type
+SELECT id, type, legal_country, legal_id, legal_name, legal_source, legal_type, merged_into_customer_id
 FROM customers.customers WHERE id = $1 FOR NO KEY UPDATE
 `
 
 type LockCustomerRow struct {
-	ID           int32
-	Type         string
-	LegalCountry *string
-	LegalID      *string
-	LegalName    *string
-	LegalSource  *string
-	LegalType    *string
+	ID                   int32
+	Type                 string
+	LegalCountry         *string
+	LegalID              *string
+	LegalName            *string
+	LegalSource          *string
+	LegalType            *string
+	MergedIntoCustomerID *int32
 }
 
 // LockCustomer is every address write's first statement (invoice-ready
@@ -307,6 +308,12 @@ type LockCustomerRow struct {
 // and re-reading the identity under this lock is how it discovers that the
 // customer became a different company in between. The address writes discard
 // the row and only take the lock, as they always did.
+//
+// And it returns the merge marker (customers merge design D2, final wave): a
+// merged-away customer is read-only, and every customer-scoped write learns
+// that here, under the lock a merge also takes — so a write that queued
+// behind a merge reads the marker the merge just committed, and refuses
+// (lockWritableCustomer, merge.go).
 func (q *Queries) LockCustomer(ctx context.Context, id int32) (LockCustomerRow, error) {
 	row := q.db.QueryRow(ctx, lockCustomer, id)
 	var i LockCustomerRow
@@ -318,6 +325,7 @@ func (q *Queries) LockCustomer(ctx context.Context, id int32) (LockCustomerRow, 
 		&i.LegalName,
 		&i.LegalSource,
 		&i.LegalType,
+		&i.MergedIntoCustomerID,
 	)
 	return i, err
 }

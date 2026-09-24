@@ -17,6 +17,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
+	"github.com/vantigo-io/vantigo/server/internal/peppol"
 )
 
 // This file is POST /customers/{id}/merge (customers merge design D2, D3): the
@@ -103,15 +104,18 @@ type mergedAwayPayloadJSON struct {
 	Into       contactCustomerReferenceJSON `json:"into"`
 }
 
-// mergeClient signs in a caller who may merge and do everything the fixtures
-// need: every customer key but lookup, customers:merge included.
+// mergeKeys is every customer key but lookup, customers:merge included:
+// everything a merge test's fixtures need.
+var mergeKeys = []string{"customers:view", "customers:create", "customers:update", "customers:delete", "customers:merge",
+	"customers:legal-identity-view", "customers:legal-identity-manage",
+	"customers:contacts-view", "customers:contacts-manage",
+	"customers:associations-view", "customers:associations-manage",
+	"customers:timeline-view", "customers:timeline-manage", "customers:billing-manage"}
+
+// mergeClient signs in a caller holding mergeKeys.
 func mergeClient(t *testing.T, h *modtest.Harness) *modtest.Client {
 	t.Helper()
-	return h.SignIn(t, "customers:view", "customers:create", "customers:update", "customers:delete", "customers:merge",
-		"customers:legal-identity-view", "customers:legal-identity-manage",
-		"customers:contacts-view", "customers:contacts-manage",
-		"customers:associations-view", "customers:associations-manage",
-		"customers:timeline-view", "customers:timeline-manage", "customers:billing-manage")
+	return h.SignIn(t, mergeKeys...)
 }
 
 func postMerge(t *testing.T, c *modtest.Client, into int32, body map[string]any, opts ...modtest.RequestOption) *modtest.Response {
@@ -200,8 +204,8 @@ func insertRegistryAndPeppol(t *testing.T, h *modtest.Harness, customerID int32)
 // TestPostCustomersByIdMerge_RefusesInTheDesignsOrder walks design D2's ladder
 // on one installation: 404 for either customer, then merge_self,
 // merge_type_mismatch, merge_into_archived, merge_already_merged, then the
-// survivor's stale revision — and the order is pinned where two refusals
-// apply at once. A refused merge calls no holder: the one holder call is the
+// survivor's stale revision — and the order is pinned wherever two
+// neighbouring refusals apply at once. A refused merge calls no holder: the one holder call is the
 // merge that went through.
 func TestPostCustomersByIdMerge_RefusesInTheDesignsOrder(t *testing.T) {
 	t.Parallel()
@@ -258,6 +262,10 @@ func TestPostCustomersByIdMerge_RefusesInTheDesignsOrder(t *testing.T) {
 	if want := fmt.Sprintf("#%d Acme AS", acme.CustomerNumber); !strings.Contains(already.Detail, want) {
 		t.Errorf("already-merged detail = %q, want it to name %s", already.Detail, want)
 	}
+	// Both apply: an archived survivor is refused before an absorbed customer
+	// merged away before; and merged away before wins over a stale revision.
+	refusedWith(t, postMerge(t, c, archived.Id, map[string]any{"sourceId": duplicate.Id}), "merge_into_archived")
+	refusedWith(t, postMerge(t, c, elsewhere.Id, map[string]any{"sourceId": duplicate.Id, "revision": 99}), "merge_already_merged")
 	if calls := holder.callsSoFar(); !slices.Equal(calls, [][2]int32{{duplicate.Id, acme.Id}}) {
 		t.Errorf("holder calls = %v, want the one merge that went through", calls)
 	}
@@ -664,5 +672,181 @@ func TestPostCustomersByIdMerge_AbsorbsAnArchivedDuplicate(t *testing.T) {
 	}
 	if n := len(entriesOfType(timeline, "customer.merged_away")); n != 1 {
 		t.Errorf("merged_away entries = %d, want 1", n)
+	}
+}
+
+// TestPostCustomersByIdMerge_AUniqueViolationInsideIsA500 is what a unique
+// violation inside a merge means: under both customer locks no other writer
+// can make the merge's rows collide, so one is the merge's own SQL gone wrong,
+// and it answers a 500 — never the generic 409 a client would take for a
+// revision conflict and reload. The fake holder breaks ux_customers_customer_number
+// inside the merge's own transaction.
+func TestPostCustomersByIdMerge_AUniqueViolationInsideIsA500(t *testing.T) {
+	t.Parallel()
+	colliding := &fakeReferenceHolder{during: func(ctx context.Context, tx pgx.Tx, from, into int32) error {
+		_, err := tx.Exec(ctx, `UPDATE customers.customers SET customer_number = (SELECT customer_number FROM customers.customers WHERE id = $2) WHERE id = $1`, from, into)
+		return err
+	}}
+	h := newHarness(t, modtest.WithCustomerReferenceHolders(colliding))
+	c := mergeClient(t, h)
+	survivor := createCustomer(t, c, "Acme AS").Id
+	absorbed := createCustomer(t, c, "Acme Norge AS").Id
+
+	r := postMerge(t, c, survivor, map[string]any{"sourceId": absorbed},
+		modtest.SkipContract("a broken constraint inside a merge is a bug's 500, deliberately off-contract"))
+
+	if r.Status != http.StatusInternalServerError {
+		t.Errorf("status %d body %s, want 500", r.Status, r.Body)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM customers.customers WHERE id = $1 AND merged_into_customer_id IS NULL`, absorbed); n != 1 {
+		t.Error("the duplicate was marked although the merge failed")
+	}
+}
+
+// TestPostCustomersByIdMerge_FlattensAChainOfMerges: A merged into B, then B
+// into C, leaves A pointing at C — where its records are — rather than at B,
+// which has none; A's row was written, so its revision advanced.
+func TestPostCustomersByIdMerge_FlattensAChainOfMerges(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := mergeClient(t, h)
+	first := createCustomer(t, c, "Acme AS")
+	second := createCustomer(t, c, "Acme Norge AS")
+	third := createCustomer(t, c, "Acme Holding AS")
+	mergeOK(t, c, second.Id, first.Id)
+	before := fetchCustomerJSON(t, c, first.Id)
+
+	mergeOK(t, c, third.Id, second.Id)
+
+	after := fetchCustomerJSON(t, c, first.Id)
+	if after.MergedInto == nil || after.MergedInto.Id != third.Id || after.MergedInto.Name != "Acme Holding AS" {
+		t.Errorf("the first customer's mergedInto = %+v, want the last survivor %d", after.MergedInto, third.Id)
+	}
+	if after.Revision != before.Revision+1 {
+		t.Errorf("the first customer's revision = %d (was %d), want one on: its row was written", after.Revision, before.Revision)
+	}
+	if got := fetchCustomerJSON(t, c, second.Id); got.MergedInto == nil || got.MergedInto.Id != third.Id {
+		t.Errorf("the second customer's mergedInto = %+v, want %d", got.MergedInto, third.Id)
+	}
+}
+
+// TestPostCustomersByIdMerge_TheAbsorbedIdentityIsFreeAfterwards: a customer
+// merged away no longer holds its legal identity (design D3), so the survivor
+// can take it on without the duplicate-identity conflict naming the customer
+// that went away — while an archived customer that was NOT merged still holds
+// its own.
+func TestPostCustomersByIdMerge_TheAbsorbedIdentityIsFreeAfterwards(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := mergeClient(t, h)
+	survivor := createCustomer(t, c, "Acme AS").Id
+	absorbed := createCustomerWithIdentity(t, c, "Acme Norge AS", "no", "923609016").Id
+	archived := createCustomerWithIdentity(t, c, "Gamle Acme AS", "no", "974760673").Id
+	if r := c.Do(http.MethodDelete, fmt.Sprintf("/api/v1/customers/%d", archived), nil); r.Status != http.StatusNoContent {
+		t.Fatalf("archive: status %d body %s", r.Status, r.Body)
+	}
+	mergeOK(t, c, survivor, absorbed)
+
+	identity := func(orgNumber string) map[string]any {
+		return map[string]any{"country": "no", "type": "business", "id": orgNumber, "name": "ACME NORGE AS", "source": "manual"}
+	}
+	r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/legal-identity", survivor), identity("923609016"))
+	if r.Status != http.StatusOK {
+		t.Errorf("the absorbed identity onto the survivor: status %d body %s, want 200", r.Status, r.Body)
+	}
+	r = c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/legal-identity", survivor), identity("974760673"))
+	refusedWith(t, r, "duplicate_legal_identity")
+}
+
+// TestAMergedAwayCustomerRefusesEveryWrite is design D2's read-only rule: every
+// write addressed to a customer merged away answers 409 customer_merged,
+// naming the survivor — the restore included, and the CSV import's row — and
+// writes nothing: its revision stays where the merge left it, nothing new
+// lands on its timeline, and neither the Peppol network nor the registry is
+// asked. Archiving it again is the idempotent no-op every archived customer
+// answers.
+func TestAMergedAwayCustomerRefusesEveryWrite(t *testing.T) {
+	t.Parallel()
+	peppolCalls := &peppolLookupCalls{}
+	registry := registryStatus(http.StatusInternalServerError, `{}`)
+	h := newHarness(t,
+		modtest.WithPeppolLookup(stubPeppolLookup(peppolCalls, peppol.Result{}, nil)),
+		modtest.WithTransport(registry))
+	c, callerID := h.SignInUser(t, mergeKeys...)
+	survivor := createCustomer(t, c, "Acme AS")
+	absorbed := createCustomerWithIdentity(t, c, "Acme Norge AS", "no", "923609016")
+	address := createAddress(t, c, absorbed.Id, fullAddressBody("postal", nil))
+	moved := createContact(t, c, map[string]any{"firstName": "Bea", "lastName": "Billing"}).Id
+	attachWithRoles(t, c, absorbed.Id, map[string]any{"contactId": moved, "roles": []any{map[string]any{"role": "billing"}}})
+	other := createContact(t, c, map[string]any{"firstName": "Otto", "lastName": "Other"}).Id
+	entry := createWithFollowUp(t, c, absorbed.Id, day(h, 0), "Ring dem", map[string]any{"dueOn": day(h, 7)})
+	tag := createTag(t, c, map[string]any{"name": "VIP"})
+	group := createGroup(t, c, map[string]any{"name": "Retail"})
+	mergeOK(t, c, survivor.Id, absorbed.Id)
+	gone := fetchCustomerJSON(t, c, absorbed.Id)
+	entriesBefore := h.Count(t, `SELECT count(*) FROM customers.customers_timeline_entries WHERE customer_id = $1`, absorbed.Id)
+
+	base := fmt.Sprintf("/api/v1/customers/%d", absorbed.Id)
+	identity := map[string]any{"country": "no", "type": "business", "id": "974760673", "name": "ACME NORGE AS", "source": "manual"}
+	for _, w := range []struct {
+		name, method, path string
+		body               any
+	}{
+		{"restore", http.MethodPut, base, map[string]any{"name": "Acme Norge AS", "status": "active"}},
+		{"rename", http.MethodPut, base, map[string]any{"name": "Acme Norge igjen AS"}},
+		{"type", http.MethodPut, base + "/type", map[string]any{"type": "person"}},
+		{"contact info", http.MethodPut, base + "/contact-info", map[string]any{"email": "post@acmenorge.no"}},
+		{"billing profile", http.MethodPut, base + "/billing-profile", map[string]any{"currency": "EUR"}},
+		{"owner", http.MethodPut, base + "/owner", map[string]any{"ownerUserId": callerID.String()}},
+		{"group", http.MethodPut, base + "/group", map[string]any{"groupId": group.Id}},
+		{"legal identity", http.MethodPut, base + "/legal-identity", identity},
+		{"remove legal identity", http.MethodDelete, base + "/legal-identity", nil},
+		{"add address", http.MethodPost, base + "/addresses", fullAddressBody("invoice", nil)},
+		{"replace address", http.MethodPut, fmt.Sprintf("%s/addresses/%d", base, address.Id), fullAddressBody("postal", nil)},
+		{"remove address", http.MethodDelete, fmt.Sprintf("%s/addresses/%d", base, address.Id), nil},
+		{"tags", http.MethodPut, base + "/tags", map[string]any{"tagIds": []string{tag.Id}}},
+		{"attach", http.MethodPost, base + "/contacts", map[string]any{"contactId": other, "roles": []any{map[string]any{"role": "project"}}}},
+		{"update association", http.MethodPut, fmt.Sprintf("%s/contacts/%d", base, moved), map[string]any{"title": "CFO"}},
+		{"detach", http.MethodDelete, fmt.Sprintf("%s/contacts/%d", base, moved), nil},
+		{"timeline entry", http.MethodPost, base + "/timeline", map[string]any{"eventType": "note", "occurredOn": day(h, 0), "note": "Etter"}},
+		{"edit entry", http.MethodPut, fmt.Sprintf("%s/timeline/%d", base, entry.Id),
+			map[string]any{"eventType": "note", "occurredOn": day(h, 0), "note": "Endret", "expectedRevision": entry.CurrentRevision}},
+		{"delete entry", http.MethodDelete, fmt.Sprintf("%s/timeline/%d?expectedRevision=%d", base, entry.Id, entry.CurrentRevision), nil},
+		{"follow-up done", http.MethodPost, fmt.Sprintf("%s/timeline/%d/follow-up/done", base, entry.Id), nil},
+		{"follow-up reopened", http.MethodDelete, fmt.Sprintf("%s/timeline/%d/follow-up/done", base, entry.Id), nil},
+		{"peppol lookup", http.MethodPost, base + "/peppol-lookup", nil},
+		{"registry refresh", http.MethodPost, base + "/registry-refresh", nil},
+	} {
+		t.Run(w.name, func(t *testing.T) {
+			problem := refusedWith(t, c.Do(w.method, w.path, w.body), "customer_merged")
+			if want := fmt.Sprintf("#%d Acme AS", survivor.CustomerNumber); problem.Title != "Customer was merged" || !strings.Contains(problem.Detail, want) {
+				t.Errorf("problem = %+v, want \"Customer was merged\" naming %s", problem, want)
+			}
+		})
+	}
+
+	file := csvFileOf([]string{"customerNumber", "name", "status"}, []string{strconv.FormatInt(absorbed.CustomerNumber, 10), "Acme Norge AS", "active"})
+	result := importResultOf(t, postImport(t, c, "?dryRun=false", file))
+	if result.Updated != 0 || result.Failed != 1 || len(result.Errors) != 1 || result.Errors[0].Column != "customerNumber" ||
+		!strings.Contains(result.Errors[0].Message, fmt.Sprintf("was merged into #%d Acme AS", survivor.CustomerNumber)) {
+		t.Errorf("import of the merged-away customer's row = %+v, want it refused on customerNumber, naming the survivor", result)
+	}
+
+	if r := c.Do(http.MethodDelete, base, nil); r.Status != http.StatusNoContent {
+		t.Errorf("archive again: status %d body %s, want the archived no-op's 204", r.Status, r.Body)
+	}
+	after := fetchCustomerJSON(t, c, absorbed.Id)
+	if after.Revision != gone.Revision || after.Status != "archived" || after.Name != "Acme Norge AS" {
+		t.Errorf("the merged-away customer = revision %d status %q name %q, want it as the merge left it (revision %d)",
+			after.Revision, after.Status, after.Name, gone.Revision)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM customers.customers_timeline_entries WHERE customer_id = $1`, absorbed.Id); n != entriesBefore {
+		t.Errorf("the merged-away customer's timeline has %d entries, want the %d the merge left", n, entriesBefore)
+	}
+	if calls := peppolCalls.all(); len(calls) != 0 {
+		t.Errorf("the Peppol network was asked %v for a merged-away customer", calls)
+	}
+	if paths := registry.requests(); len(paths) != 0 {
+		t.Errorf("the registry was asked %v for a merged-away customer", paths)
 	}
 }

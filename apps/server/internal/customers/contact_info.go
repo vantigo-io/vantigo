@@ -97,6 +97,11 @@ func validateContactInfo(email, phone, website *string) (contactInfo, map[string
 // customer.contact_info_updated — and the one the CSV importer writes a row's
 // contact info through. The caller has decided before and after differ.
 func writeContactInfo(ctx context.Context, txq *store.Queries, id int32, before, after contactInfo, expectedRevision *int32, now time.Time, act actor) (store.UpdateCustomerContactInfoRow, error) {
+	// The customer's lock and the merged-away refusal first (customers merge
+	// design D2): every caller, the CSV importer's included, gets both.
+	if _, err := lockWritableCustomer(ctx, txq, id); err != nil {
+		return store.UpdateCustomerContactInfoRow{}, err
+	}
 	updated, err := txq.UpdateCustomerContactInfo(ctx, store.UpdateCustomerContactInfoParams{
 		ID: id, Email: after.Email, Phone: after.Phone, Website: after.Website,
 		UpdatedAt: now, ExpectedRevision: expectedRevision,
@@ -182,6 +187,8 @@ func (s *server) PutCustomersByIdContactInfo(ctx context.Context, req gen.PutCus
 		return err
 	})
 	switch {
+	case isMergedAway(err):
+		return gen.PutCustomersByIdContactInfo409ApplicationProblemPlusJSONResponse(mergedAwayProblem(err)), nil
 	case errors.Is(err, pgx.ErrNoRows):
 		// The guarded UPDATE's WHERE clause matched no row: a concurrent writer
 		// moved the revision between our read above and this write, the same
