@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
 )
 
@@ -609,4 +610,115 @@ func recordCustomerTagsChanged(ctx context.Context, q *store.Queries, now time.T
 		"removed":    removed,
 	}
 	return recordGeneratedEvent(ctx, q, customerID, now, "customer.tags_changed", summary, payload, 1, actorKind, actorDisplay, actorUserID)
+}
+
+// mergedCustomerSnapshot is customer.merged's absorbed shape (customers merge
+// design D3): the absorbed customer's own row as it was when it was merged.
+// The survivor keeps every field of its own, so this is where a person who
+// wanted the other's billing profile or identity reads it — nothing was filled
+// in from it by guesswork, and nothing of it is lost either.
+type mergedCustomerSnapshot struct {
+	ID             int32                  `json:"id"`
+	CustomerNumber int64                  `json:"customerNumber"`
+	Name           string                 `json:"name"`
+	Type           string                 `json:"type"`
+	Status         string                 `json:"status"`
+	Identity       *legalIdentitySnapshot `json:"identity"`
+	ContactInfo    contactInfo            `json:"contactInfo"`
+	BillingProfile billingProfile         `json:"billingProfile"`
+	OwnerUserID    *uuid.UUID             `json:"ownerUserId"`
+	GroupID        *uuid.UUID             `json:"groupId"`
+}
+
+// customerRefSnapshot is a customer named by id, number and name, as the
+// merge's two events and the merge refusals name one.
+type customerRefSnapshot struct {
+	ID             int32  `json:"id"`
+	CustomerNumber int64  `json:"customerNumber"`
+	Name           string `json:"name"`
+}
+
+// mergeMove is one entry of customer.merged's moved list.
+type mergeMove struct {
+	Kind  string `json:"kind"`
+	Count int64  `json:"count"`
+}
+
+// customerLabel is how the merge names a customer to a person: "#1005 Acme
+// Norge AS", the customer number the duplicate-identity list shows.
+func customerLabel(number int64, name string) string {
+	return fmt.Sprintf("#%d %s", number, name)
+}
+
+// mergeKindNouns are the words customer.merged's summary uses for each kind a
+// merge can move, singular then plural. The other modules' kinds are here as
+// words only — this module never reads their data — and a kind missing from
+// the table still reads, as "4 × kind", so a holder added later cannot break
+// the summary.
+var mergeKindNouns = map[string][2]string{
+	mergeKindContacts:                        {"contact", "contacts"},
+	mergeKindAddresses:                       {"address", "addresses"},
+	mergeKindTimelineEntries:                 {"timeline entry", "timeline entries"},
+	mergeKindTags:                            {"tag", "tags"},
+	"projects.projects":                      {"project", "projects"},
+	"energy.supplyPeriods":                   {"supply period", "supply periods"},
+	"communications.conversations":           {"conversation", "conversations"},
+	"communications.conversationSuggestions": {"conversation suggestion", "conversation suggestions"},
+	"communications.conversationCandidates":  {"conversation candidate", "conversation candidates"},
+}
+
+// mergeSummary is customer.merged's summary: "Absorbed #1005 Acme Norge AS: 3
+// contacts, 2 addresses, 14 timeline entries, 2 projects" — every kind that
+// moved anything, in the answer's order, and the absorbed customer alone when
+// nothing did.
+func mergeSummary(absorbed mergedCustomerSnapshot, moved []contracts.RepointedReferences) string {
+	var parts []string
+	for _, m := range moved {
+		if m.Count == 0 {
+			continue
+		}
+		nouns, known := mergeKindNouns[m.Kind]
+		switch {
+		case !known:
+			parts = append(parts, fmt.Sprintf("%d × %s", m.Count, m.Kind))
+		case m.Count == 1:
+			parts = append(parts, "1 "+nouns[0])
+		default:
+			parts = append(parts, fmt.Sprintf("%d %s", m.Count, nouns[1]))
+		}
+	}
+	summary := "Absorbed " + customerLabel(absorbed.CustomerNumber, absorbed.Name)
+	if len(parts) > 0 {
+		summary += ": " + strings.Join(parts, ", ")
+	}
+	return truncateUTF16(summary, 500)
+}
+
+// recordCustomerMerged is POST /customers/{id}/merge's event on the survivor
+// (customers merge design D3). moved is the answer's own list, zeros included,
+// so the event and the response can never disagree about what moved.
+func recordCustomerMerged(ctx context.Context, q *store.Queries, now time.Time, customerID int32, absorbed mergedCustomerSnapshot, moved []contracts.RepointedReferences, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	moves := make([]mergeMove, 0, len(moved))
+	for _, m := range moved {
+		moves = append(moves, mergeMove{Kind: m.Kind, Count: m.Count})
+	}
+	payload := map[string]any{
+		"customerId": customerID,
+		"absorbed":   absorbed,
+		"moved":      moves,
+	}
+	return recordGeneratedEvent(ctx, q, customerID, now, "customer.merged", mergeSummary(absorbed, moved), payload, 1, actorKind, actorDisplay, actorUserID)
+}
+
+// recordCustomerMergedAway is the merge's event on the absorbed customer: the
+// one entry its own timeline gains, recorded after the rest of its timeline has
+// moved, so it is the one that stays. No customer.status_changed goes beside
+// it — the merge is the reason the customer is archived.
+func recordCustomerMergedAway(ctx context.Context, q *store.Queries, now time.Time, customerID int32, into customerRefSnapshot, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	payload := map[string]any{
+		"customerId": customerID,
+		"into":       into,
+	}
+	summary := truncateUTF16("Merged into "+customerLabel(into.CustomerNumber, into.Name), 500)
+	return recordGeneratedEvent(ctx, q, customerID, now, "customer.merged_away", summary, payload, 1, actorKind, actorDisplay, actorUserID)
 }

@@ -164,7 +164,7 @@ type CustomerConflictDuplicate struct {
 	Status         string `json:"status"`
 }
 
-// CustomerConflictProblem ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity and registry_identity_changed conflicts. A revision conflict carries neither.
+// CustomerConflictProblem ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity and registry_identity_changed conflicts, the group vocabulary's group_exists and group_in_use, the tag vocabulary's tag_exists, and the merge's merge_self, merge_type_mismatch, merge_into_archived and merge_already_merged (customers merge design D2). A revision conflict carries neither.
 type CustomerConflictProblem struct {
 	Code       *string                      `json:"code,omitempty"`
 	Detail     *string                      `json:"detail,omitempty"`
@@ -267,6 +267,25 @@ type CustomerImportResult struct {
 	Failed  int32                 `json:"failed"`
 	Rows    int32                 `json:"rows"`
 	Updated int32                 `json:"updated"`
+}
+
+// CustomerMergeMove One kind of reference a merge moved to the surviving customer, and how many (customers merge design D3). This module's four kinds come first — customers.contacts (the absorbed customer's contact associations, a contact the survivor already had included), customers.addresses, customers.timelineEntries (its active entries) and customers.tags (its tags, one the survivor already carried included) — then each other module's, in the order the installation composes them: projects.projects, energy.supplyPeriods, communications.conversations, communications.conversationSuggestions and communications.conversationCandidates. A kind is listed with count 0 when there was nothing of it; a module that is not enabled lists nothing.
+type CustomerMergeMove struct {
+	Count int64  `json:"count"`
+	Kind  string `json:"kind"`
+}
+
+// CustomerMergeRequest POST /customers/{id}/merge's body (customers merge design D2): sourceId is the customer to absorb into the one in the path. revision is the path customer's, optional — omitted, the merge applies regardless; present and stale, a 409. The absorbed customer needs none: it is going away.
+type CustomerMergeRequest struct {
+	// Revision The revision the caller read the surviving customer at (customers foundation design D5).
+	Revision *int32 `json:"revision,omitempty"`
+	SourceId int32  `json:"sourceId"`
+}
+
+// CustomerMergeResult What a merge did (customers merge design D3): the surviving customer as GET /customers/{id} answers it, and every kind of reference that moved to it.
+type CustomerMergeResult struct {
+	Customer SafeCustomerResponse `json:"customer"`
+	Moved    []CustomerMergeMove  `json:"moved"`
 }
 
 // CustomerOverviewAmount One currency's amount on the customer overview. Nothing is ever converted, so money in two currencies is two entries and never a sum that is in neither.
@@ -660,7 +679,10 @@ type SafeCustomerResponse struct {
 	Group    *CustomerGroupRef     `json:"group,omitempty"`
 	Id       int32                 `json:"id"`
 	Identity *SafeCustomerIdentity `json:"identity,omitempty"`
-	Name     string                `json:"name"`
+
+	// MergedInto The customer this one was merged into (customers merge design D3). Absent unless it was merged away — omitted, never null, like owner. A merged-away customer is archived, and everything it had is on that customer now.
+	MergedInto *CustomerReference `json:"mergedInto,omitempty"`
+	Name       string             `json:"name"`
 
 	// Owner The user accountable for this customer relationship (owner and tags design D1). Absent when the customer is unowned — omitted, never null, like every other optional field this API answers with; needs nothing beyond customers:view to read.
 	Owner *CustomerOwner `json:"owner,omitempty"`
@@ -937,6 +959,9 @@ type PutCustomersByIdGroupJSONRequestBody = PutCustomerGroupRequest
 // PutCustomersByIdLegalIdentityJSONRequestBody defines body for PutCustomersByIdLegalIdentity for application/json ContentType.
 type PutCustomersByIdLegalIdentityJSONRequestBody = PutLegalIdentityRequest
 
+// PostCustomersByIdMergeJSONRequestBody defines body for PostCustomersByIdMerge for application/json ContentType.
+type PostCustomersByIdMergeJSONRequestBody = CustomerMergeRequest
+
 // PutCustomersByIdOwnerJSONRequestBody defines body for PutCustomersByIdOwner for application/json ContentType.
 type PutCustomersByIdOwnerJSONRequestBody = PutCustomerOwnerRequest
 
@@ -1086,6 +1111,9 @@ type ServerInterface interface {
 	// PutCustomersByIdLegalIdentity Replace a customer's legal identity
 	// (PUT /api/v1/customers/{id}/legal-identity)
 	PutCustomersByIdLegalIdentity(w http.ResponseWriter, r *http.Request, id int32)
+	// PostCustomersByIdMerge Merge another customer into this one
+	// (POST /api/v1/customers/{id}/merge)
+	PostCustomersByIdMerge(w http.ResponseWriter, r *http.Request, id int32)
 	// GetCustomersByIdOverview Get a customer's overview across modules
 	// (GET /api/v1/customers/{id}/overview)
 	GetCustomersByIdOverview(w http.ResponseWriter, r *http.Request, id int32)
@@ -2693,6 +2721,32 @@ func (siw *ServerInterfaceWrapper) PutCustomersByIdLegalIdentity(w http.Response
 	handler.ServeHTTP(w, r)
 }
 
+// PostCustomersByIdMerge operation middleware
+func (siw *ServerInterfaceWrapper) PostCustomersByIdMerge(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostCustomersByIdMerge(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetCustomersByIdOverview operation middleware
 func (siw *ServerInterfaceWrapper) GetCustomersByIdOverview(w http.ResponseWriter, r *http.Request) {
 
@@ -3374,6 +3428,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/{id}/legal-identity", wrapper.DeleteCustomersByIdLegalIdentity)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/legal-identity", wrapper.GetCustomersByIdLegalIdentity)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/legal-identity", wrapper.PutCustomersByIdLegalIdentity)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/merge", wrapper.PostCustomersByIdMerge)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/overview", wrapper.GetCustomersByIdOverview)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/owner", wrapper.PutCustomersByIdOwner)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/peppol-lookup", wrapper.PostCustomersByIdPeppolLookup)
@@ -6403,6 +6458,93 @@ func (response PutCustomersByIdLegalIdentity409ApplicationProblemPlusJSONRespons
 	return err
 }
 
+type PostCustomersByIdMergeRequestObject struct {
+	Id   int32 `json:"id"`
+	Body *PostCustomersByIdMergeJSONRequestBody
+}
+
+type PostCustomersByIdMergeResponseObject interface {
+	VisitPostCustomersByIdMergeResponse(w http.ResponseWriter) error
+}
+
+type PostCustomersByIdMerge200JSONResponse CustomerMergeResult
+
+func (response PostCustomersByIdMerge200JSONResponse) VisitPostCustomersByIdMergeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdMerge400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostCustomersByIdMerge400ApplicationProblemPlusJSONResponse) VisitPostCustomersByIdMergeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdMerge401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersByIdMerge401JSONResponse) VisitPostCustomersByIdMergeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdMerge403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostCustomersByIdMerge403JSONResponse) VisitPostCustomersByIdMergeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostCustomersByIdMerge404Response struct {
+}
+
+func (response PostCustomersByIdMerge404Response) VisitPostCustomersByIdMergeResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostCustomersByIdMerge409ApplicationProblemPlusJSONResponse CustomerConflictProblem
+
+func (response PostCustomersByIdMerge409ApplicationProblemPlusJSONResponse) VisitPostCustomersByIdMergeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCustomersByIdOverviewRequestObject struct {
 	Id int32 `json:"id"`
 }
@@ -7646,6 +7788,9 @@ type StrictServerInterface interface {
 	// PutCustomersByIdLegalIdentity Replace a customer's legal identity
 	// (PUT /api/v1/customers/{id}/legal-identity)
 	PutCustomersByIdLegalIdentity(ctx context.Context, request PutCustomersByIdLegalIdentityRequestObject) (PutCustomersByIdLegalIdentityResponseObject, error)
+	// PostCustomersByIdMerge Merge another customer into this one
+	// (POST /api/v1/customers/{id}/merge)
+	PostCustomersByIdMerge(ctx context.Context, request PostCustomersByIdMergeRequestObject) (PostCustomersByIdMergeResponseObject, error)
 	// GetCustomersByIdOverview Get a customer's overview across modules
 	// (GET /api/v1/customers/{id}/overview)
 	GetCustomersByIdOverview(ctx context.Context, request GetCustomersByIdOverviewRequestObject) (GetCustomersByIdOverviewResponseObject, error)
@@ -8974,6 +9119,39 @@ func (sh *strictHandler) PutCustomersByIdLegalIdentity(w http.ResponseWriter, r 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutCustomersByIdLegalIdentityResponseObject); ok {
 		if err := validResponse.VisitPutCustomersByIdLegalIdentityResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostCustomersByIdMerge operation middleware
+func (sh *strictHandler) PostCustomersByIdMerge(w http.ResponseWriter, r *http.Request, id int32) {
+	var request PostCustomersByIdMergeRequestObject
+
+	request.Id = id
+
+	var body PostCustomersByIdMergeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostCustomersByIdMerge(ctx, request.(PostCustomersByIdMergeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostCustomersByIdMerge")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostCustomersByIdMergeResponseObject); ok {
+		if err := validResponse.VisitPostCustomersByIdMergeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

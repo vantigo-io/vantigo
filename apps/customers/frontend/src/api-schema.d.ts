@@ -182,6 +182,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/customers/{id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge another customer into this one
+         * @description This customer absorbs another (customers merge design D2, D3). sourceId's contacts (roles unioned, a role's primary resolved), addresses (a primary of a type this customer already has demoted), timeline entries with their revisions and follow-ups, and tags move here; every other module's reference to it — projects, supply periods, conversations — is re-pointed here in the same transaction; its registry record and Peppol answer are deleted; and it is archived with mergedInto naming this customer. This customer keeps every field of its own row: nothing is filled in from the other, whose own values are recorded in the customer.merged timeline event. Both customers' revisions advance. revision is this customer's, optional; present and stale, a 409 without a code. 404 when either customer does not exist. 409 with code merge_self (the same customer twice), merge_type_mismatch (a person and a business: a merge never changes what a customer is), merge_into_archived (this customer is archived — restore it first) or merge_already_merged (sourceId was merged away before; the detail names where). An archived sourceId may be absorbed.
+         */
+        post: operations["postCustomersByIdMerge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/customers/{id}/overview": {
         parameters: {
             query?: never;
@@ -864,7 +884,7 @@ export interface components {
             name: string;
             status: string;
         };
-        /** @description ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity and registry_identity_changed conflicts. A revision conflict carries neither. */
+        /** @description ProblemDetails plus the customers module's own conflict detail (customers foundation design D5, D6). duplicates is populated only by the duplicate-legal-identity conflict, which also sets code; code alone (without duplicates) is also populated by the registry refresh's no_registry_identity and registry_identity_changed conflicts, the group vocabulary's group_exists and group_in_use, the tag vocabulary's tag_exists, and the merge's merge_self, merge_type_mismatch, merge_into_archived and merge_already_merged (customers merge design D2). A revision conflict carries neither. */
         CustomerConflictProblem: {
             code?: string | null;
             detail?: string | null;
@@ -962,6 +982,27 @@ export interface components {
             rows: number;
             /** Format: int32 */
             updated: number;
+        };
+        /** @description One kind of reference a merge moved to the surviving customer, and how many (customers merge design D3). This module's four kinds come first — customers.contacts (the absorbed customer's contact associations, a contact the survivor already had included), customers.addresses, customers.timelineEntries (its active entries) and customers.tags (its tags, one the survivor already carried included) — then each other module's, in the order the installation composes them: projects.projects, energy.supplyPeriods, communications.conversations, communications.conversationSuggestions and communications.conversationCandidates. A kind is listed with count 0 when there was nothing of it; a module that is not enabled lists nothing. */
+        CustomerMergeMove: {
+            /** Format: int64 */
+            count: number;
+            kind: string;
+        };
+        /** @description POST /customers/{id}/merge's body (customers merge design D2): sourceId is the customer to absorb into the one in the path. revision is the path customer's, optional — omitted, the merge applies regardless; present and stale, a 409. The absorbed customer needs none: it is going away. */
+        CustomerMergeRequest: {
+            /**
+             * Format: int32
+             * @description The revision the caller read the surviving customer at (customers foundation design D5).
+             */
+            revision?: number | null;
+            /** Format: int32 */
+            sourceId: number;
+        };
+        /** @description What a merge did (customers merge design D3): the surviving customer as GET /customers/{id} answers it, and every kind of reference that moved to it. */
+        CustomerMergeResult: {
+            customer: components["schemas"]["SafeCustomerResponse"];
+            moved: components["schemas"]["CustomerMergeMove"][];
         };
         /** @description One currency's amount on the customer overview. Nothing is ever converted, so money in two currencies is two entries and never a sum that is in neither. */
         CustomerOverviewAmount: {
@@ -1341,6 +1382,8 @@ export interface components {
             /** Format: int32 */
             id: number;
             identity?: components["schemas"]["SafeCustomerIdentity"] | null;
+            /** @description The customer this one was merged into (customers merge design D3). Absent unless it was merged away — omitted, never null, like owner. A merged-away customer is archived, and everything it had is on that customer now. */
+            mergedInto?: components["schemas"]["CustomerReference"];
             name: string;
             /** @description The user accountable for this customer relationship (owner and tags design D1). Absent when the customer is unowned — omitted, never null, like every other optional field this API answers with; needs nothing beyond customers:view to read. */
             owner?: components["schemas"]["CustomerOwner"];
@@ -2658,6 +2701,75 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    postCustomersByIdMerge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomerMergeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerMergeResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["CustomerConflictProblem"];
+                };
             };
         };
     };

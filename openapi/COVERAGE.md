@@ -43,7 +43,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/identity/account` (putIdentityAccount)
 - `PUT /api/v1/identity/scim/v2/Users/{id}` (putIdentityScimV2UsersById)
 
-## customers (33 uncovered)
+## customers (34 uncovered)
 
 - `DELETE /api/v1/customers/groups/{groupId}` (deleteCustomersGroupsByGroupId)
 - `DELETE /api/v1/customers/tags/{tagId}` (deleteCustomersTagsByTagId)
@@ -66,6 +66,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `POST /api/v1/customers/import` (postCustomersImport)
 - `POST /api/v1/customers/tags` (postCustomersTags)
 - `POST /api/v1/customers/{id}/addresses` (postCustomersByIdAddresses)
+- `POST /api/v1/customers/{id}/merge` (postCustomersByIdMerge)
 - `POST /api/v1/customers/{id}/peppol-lookup` (postCustomersByIdPeppolLookup)
 - `POST /api/v1/customers/{id}/registry-refresh` (postCustomersByIdRegistryRefresh)
 - `POST /api/v1/customers/{id}/timeline/{entryId}/follow-up/done` (postCustomersByIdTimelineByEntryIdFollowUpDone)
@@ -237,4 +238,4 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/expenses/rates/{id}` (putExpensesRatesById)
 - `PUT /api/v1/expenses/settings` (putExpensesSettings)
 
-Total: 211 of 346 operations have no recorded exchange.
+Total: 212 of 347 operations have no recorded exchange.

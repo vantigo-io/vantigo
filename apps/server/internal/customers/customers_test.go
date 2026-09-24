@@ -51,6 +51,9 @@ type customerJSON struct {
 	Owner          *ownerJSON        `json:"owner"`
 	Group          *groupRefJSON     `json:"group"`
 	Tags           []tagJSON         `json:"tags"`
+	// MergedInto decodes SafeCustomerResponse.mergedInto (customers merge
+	// design D3): a pointer, absent unless the customer was merged away.
+	MergedInto *contactCustomerReferenceJSON `json:"mergedInto"`
 }
 
 // ownerJSON decodes CustomerOwner, a pointer on customerJSON because it is

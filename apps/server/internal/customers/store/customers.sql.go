@@ -696,18 +696,19 @@ func (q *Queries) DirectoryContactsByEmail(ctx context.Context, email string) ([
 }
 
 const directoryCustomer = `-- name: DirectoryCustomer :one
-SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name
+SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id
 FROM customers.customers c
 LEFT JOIN customers.customer_groups g ON g.id = c.group_id
 WHERE c.id = $1
 `
 
 type DirectoryCustomerRow struct {
-	ID        int32
-	Name      string
-	Archived  bool
-	GroupID   *uuid.UUID
-	GroupName *string
+	ID                   int32
+	Name                 string
+	Archived             bool
+	GroupID              *uuid.UUID
+	GroupName            *string
+	MergedIntoCustomerID *int32
 }
 
 // DirectoryCustomer is contracts.CustomerDirectory.Customer's row
@@ -716,6 +717,9 @@ type DirectoryCustomerRow struct {
 // must still be able to name it. Its group comes along (customer groups
 // design D4, contracts.CustomerEntry.Group) through a LEFT JOIN, so a
 // customer in no group still answers its row, with both group columns NULL.
+// The merge marker comes along too (customers merge design D3,
+// contracts.CustomerEntry.MergedInto): a consumer holding the id of a
+// customer merged away learns where it went.
 func (q *Queries) DirectoryCustomer(ctx context.Context, id int32) (DirectoryCustomerRow, error) {
 	row := q.db.QueryRow(ctx, directoryCustomer, id)
 	var i DirectoryCustomerRow
@@ -725,12 +729,13 @@ func (q *Queries) DirectoryCustomer(ctx context.Context, id int32) (DirectoryCus
 		&i.Archived,
 		&i.GroupID,
 		&i.GroupName,
+		&i.MergedIntoCustomerID,
 	)
 	return i, err
 }
 
 const directoryCustomers = `-- name: DirectoryCustomers :many
-SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name
+SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id
 FROM customers.customers c
 LEFT JOIN customers.customer_groups g ON g.id = c.group_id
 WHERE c.id = ANY($1::int[])
@@ -738,11 +743,12 @@ ORDER BY c.id
 `
 
 type DirectoryCustomersRow struct {
-	ID        int32
-	Name      string
-	Archived  bool
-	GroupID   *uuid.UUID
-	GroupName *string
+	ID                   int32
+	Name                 string
+	Archived             bool
+	GroupID              *uuid.UUID
+	GroupName            *string
+	MergedIntoCustomerID *int32
 }
 
 // DirectoryCustomers is contracts.CustomerDirectory.Customers' rows: every
@@ -769,6 +775,7 @@ func (q *Queries) DirectoryCustomers(ctx context.Context, ids []int32) ([]Direct
 			&i.Archived,
 			&i.GroupID,
 			&i.GroupName,
+			&i.MergedIntoCustomerID,
 		); err != nil {
 			return nil, err
 		}

@@ -510,7 +510,10 @@ ORDER BY day;
 -- must still be able to name it. Its group comes along (customer groups
 -- design D4, contracts.CustomerEntry.Group) through a LEFT JOIN, so a
 -- customer in no group still answers its row, with both group columns NULL.
-SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name
+-- The merge marker comes along too (customers merge design D3,
+-- contracts.CustomerEntry.MergedInto): a consumer holding the id of a
+-- customer merged away learns where it went.
+SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id
 FROM customers.customers c
 LEFT JOIN customers.customer_groups g ON g.id = c.group_id
 WHERE c.id = @id;
@@ -571,7 +574,7 @@ ORDER BY m.id;
 -- is simply absent, not an error. Ordered by id, not by @ids' own order, so
 -- two callers asking for the same set always see it the same way. The group
 -- columns are DirectoryCustomer's own, joined the same way.
-SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name
+SELECT c.id, c.name, c.status = 'archived' AS archived, c.group_id, g.name AS group_name, c.merged_into_customer_id
 FROM customers.customers c
 LEFT JOIN customers.customer_groups g ON g.id = c.group_id
 WHERE c.id = ANY(@ids::int[])
