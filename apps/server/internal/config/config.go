@@ -219,6 +219,17 @@ type Config struct {
 	// days). It is deliberately a duration rather than a day count, so an
 	// installation can shorten it to something a test or a pilot can observe.
 	CustomersPeppolRecheckAge time.Duration
+	// CustomersAnonymisationEnabled is the on/off switch for the customers
+	// module's anonymisation worker (CUSTOMERS_ANONYMISATION_ENABLED,
+	// customers GDPR design D4). Default ON, like the registry workers, and for
+	// a stronger reason: the worker does what a person scheduled for a date, and
+	// an installation that says nothing must still keep that promise. A 0 means
+	// the worker is never handed to the runner, and scheduled dates simply wait.
+	CustomersAnonymisationEnabled bool
+	// CustomersAnonymisationPoll is how often that worker runs a cycle
+	// (CUSTOMERS_ANONYMISATION_POLL, default 24 hours): a schedule is a day, so
+	// once a day is on time. Each cycle is at most fifty customers, a constant.
+	CustomersAnonymisationPoll time.Duration
 
 	// StorageProvider selects the internal/storage backend: "" (unset,
 	// STORAGE_PROVIDER) or "fs". When unset, internal/storage.New still
@@ -391,6 +402,7 @@ func Load(env map[string]string) (*Config, error) {
 
 	peppolLookup(&p, env, c)
 	customersRegistryWorkers(&p, env, c)
+	customersAnonymisation(&p, env, c)
 
 	objectStorage(&p, env, c)
 	communicationsAttachments(&p, env, c)
@@ -578,6 +590,15 @@ func customersRegistryWorkers(p *problems, env map[string]string, c *Config) {
 	c.CustomersPeppolRecheckEnabled = boolean(p, env, "CUSTOMERS_PEPPOL_RECHECK_ENABLED", true)
 	c.CustomersPeppolRecheckPoll = duration(p, env, "CUSTOMERS_PEPPOL_RECHECK_POLL", 24*time.Hour)
 	c.CustomersPeppolRecheckAge = duration(p, env, "CUSTOMERS_PEPPOL_RECHECK_AGE", 720*time.Hour)
+}
+
+// customersAnonymisation loads the anonymisation worker's settings (customers
+// GDPR design D4): its switch, on by default, and its cadence. The batch — at
+// most fifty customers a cycle — is a constant in the worker, not a knob: each
+// customer is one transaction holding its row, and a cycle is meant to finish.
+func customersAnonymisation(p *problems, env map[string]string, c *Config) {
+	c.CustomersAnonymisationEnabled = boolean(p, env, "CUSTOMERS_ANONYMISATION_ENABLED", true)
+	c.CustomersAnonymisationPoll = duration(p, env, "CUSTOMERS_ANONYMISATION_POLL", 24*time.Hour)
 }
 
 // isNumericPort reports whether port is all ASCII digits, at least one:

@@ -55,6 +55,14 @@ func (f *fakePersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, cus
 	return f.erased, nil
 }
 
+// erasesSoFar is every customer EraseCustomerData was called for, in call
+// order, copied under the lock each call records under.
+func (f *fakePersonalData) erasesSoFar() []int32 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.erases)
+}
+
 // personalDataClient signs in the caller this delivery adds: its key and view,
 // nothing else. The export needs nothing else — it is shaped by nothing else
 // (design D3) — and the scheduling needs nothing else either (D4).

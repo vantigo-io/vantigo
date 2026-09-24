@@ -1189,3 +1189,29 @@ func TestLoad_CustomersRegistryWorkersRejectNonsense(t *testing.T) {
 		}
 	}
 }
+
+// TestLoad_CustomersAnonymisationWorker pins the anonymisation worker's two
+// settings (customers GDPR design D4): on unless turned off — a date a person
+// chose is kept whether or not the operator remembered a switch — and a daily
+// cadence, since a schedule is a day.
+func TestLoad_CustomersAnonymisationWorker(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+	if !cfg.CustomersAnonymisationEnabled {
+		t.Error("CUSTOMERS_ANONYMISATION_ENABLED unset did not default to on")
+	}
+	if cfg.CustomersAnonymisationPoll != 24*time.Hour {
+		t.Errorf("CustomersAnonymisationPoll = %v, want 24h", cfg.CustomersAnonymisationPoll)
+	}
+	tuned := mustLoad(t, with(validEnv(), "CUSTOMERS_ANONYMISATION_ENABLED", "0", "CUSTOMERS_ANONYMISATION_POLL", "1h"))
+	if tuned.CustomersAnonymisationEnabled || tuned.CustomersAnonymisationPoll != time.Hour {
+		t.Errorf("tuned = %v/%v, want off and 1h", tuned.CustomersAnonymisationEnabled, tuned.CustomersAnonymisationPoll)
+	}
+	if msg := loadError(t, with(validEnv(), "CUSTOMERS_ANONYMISATION_ENABLED", "yes")); !strings.Contains(msg, `CUSTOMERS_ANONYMISATION_ENABLED: must be "0" or "1"`) {
+		t.Errorf("error = %q", msg)
+	}
+	for _, v := range []string{"0s", "soon"} {
+		if msg := loadError(t, with(validEnv(), "CUSTOMERS_ANONYMISATION_POLL", v)); !strings.Contains(msg, "CUSTOMERS_ANONYMISATION_POLL: must be a positive duration such as 30s") {
+			t.Errorf("%s: error = %q", v, msg)
+		}
+	}
+}

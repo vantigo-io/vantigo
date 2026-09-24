@@ -71,9 +71,11 @@ func Module() module.Module {
 }
 
 // workers is this module's background work (registry workers design D7): the
-// Brreg update-feed worker and the Peppol re-check worker. cmd/vantigo starts
-// these through module.Workers in worker mode, and in api mode when
-// WORKERS_IN_PROCESS=1 — never in server mode.
+// Brreg update-feed worker and the Peppol re-check worker. And, since
+// customers GDPR design D4, the anonymisation worker, which keeps the days
+// people schedule; it asks no network, so it has one condition, its own
+// switch. cmd/vantigo starts these through module.Workers in worker mode, and
+// in api mode when WORKERS_IN_PROCESS=1 — never in server mode.
 //
 // Each worker is registered only when its own switch is on, rather than
 // registered always and skipped inside its cycle: "the feed worker is off"
@@ -86,10 +88,13 @@ func Module() module.Module {
 // "effective only alongside the lookup" (design D6) is spelled here as never
 // started rather than started and idle.
 //
-// Both workers take an advisory lease, unlike communications' outbox and
+// All three take an advisory lease, unlike communications' outbox and
 // cleanup workers: they have no per-row claim to fall back on — a cursor is
 // one row for the whole installation, and a re-check is a network call with no
 // row to claim first — so one replica at a time is the exclusion (design D5).
+// The anonymisation worker's customers are rows, but each is a transaction
+// holding every module's part, and two replicas racing through the same batch
+// would only queue on each other's row locks.
 //
 // TestModule_ContributesItsWorkers asserts this set exactly: a worker added
 // here without its name added there, or the reverse, fails that test rather
@@ -107,6 +112,9 @@ func workers(d module.Deps) []worker.Worker {
 	}
 	if d.Config.PeppolLookupEnabled && d.Config.CustomersPeppolRecheckEnabled {
 		out = append(out, NewPeppolRecheckWorker(d))
+	}
+	if d.Config.CustomersAnonymisationEnabled {
+		out = append(out, NewAnonymisationWorker(d))
 	}
 	return out
 }

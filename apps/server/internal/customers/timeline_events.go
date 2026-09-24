@@ -751,3 +751,24 @@ func recordAnonymisationCancelled(ctx context.Context, q *store.Queries, now tim
 		"Anonymisation cancelled; it was scheduled for "+day, map[string]any{"customerId": customerID, "anonymiseOn": day}, 1,
 		actorKind, actorDisplay, actorUserID)
 }
+
+// erasedKind is one entry of customer.anonymised's erased list.
+type erasedKind struct {
+	Kind  string `json:"kind"`
+	Count int64  `json:"count"`
+}
+
+// recordCustomerAnonymised is the anonymisation's event (customers GDPR design
+// D4), recorded after the timeline was rewritten and so the one entry of it
+// that keeps its words: what was taken out, kind by kind — this module's four
+// first, then each module's in Compose order. The actor is the system: the
+// worker did it, on the day a person chose, and that person is on the
+// customer.anonymisation_scheduled entry.
+func recordCustomerAnonymised(ctx context.Context, q *store.Queries, now time.Time, customerID int32, erased []contracts.ErasedData, actorKind, actorDisplay string, actorUserID *uuid.UUID) error {
+	kinds := make([]erasedKind, 0, len(erased))
+	for _, e := range erased {
+		kinds = append(kinds, erasedKind{Kind: e.Kind, Count: e.Count})
+	}
+	payload := map[string]any{"customerId": customerID, "erased": kinds}
+	return recordGeneratedEvent(ctx, q, customerID, now, "customer.anonymised", "Customer anonymised", payload, 1, actorKind, actorDisplay, actorUserID)
+}

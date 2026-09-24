@@ -97,29 +97,35 @@ func TestModule_ContributesItsWorkers(t *testing.T) {
 		env  map[string]string
 		want []string
 	}{
-		{name: "the default installation runs both", want: []string{"customers-peppol-recheck", "customers-registry-feed"}},
+		{name: "the default installation runs all three", want: []string{"customers-anonymisation", "customers-peppol-recheck", "customers-registry-feed"}},
 		{
-			name: "the feed worker turned off leaves the re-check worker",
+			name: "the feed worker turned off leaves the other two",
 			env:  map[string]string{"CUSTOMERS_REGISTRY_FEED_ENABLED": "0"},
-			want: []string{"customers-peppol-recheck"},
+			want: []string{"customers-anonymisation", "customers-peppol-recheck"},
 		},
 		{
-			name: "the re-check worker turned off leaves the feed worker",
+			name: "the re-check worker turned off leaves the other two",
 			env:  map[string]string{"CUSTOMERS_PEPPOL_RECHECK_ENABLED": "0"},
-			want: []string{"customers-registry-feed"},
+			want: []string{"customers-anonymisation", "customers-registry-feed"},
 		},
 		{
 			// Design D6: the re-check worker is effective only alongside the
 			// lookup it uses, and "not effective" means never started.
 			name: "the Peppol lookup turned off takes the re-check worker with it",
 			env:  map[string]string{"PEPPOL_LOOKUP_ENABLED": "0"},
-			want: []string{"customers-registry-feed"},
+			want: []string{"customers-anonymisation", "customers-registry-feed"},
 		},
 		{
-			name: "both turned off leaves none",
+			name: "the anonymisation worker turned off leaves the registry workers",
+			env:  map[string]string{"CUSTOMERS_ANONYMISATION_ENABLED": "0"},
+			want: []string{"customers-peppol-recheck", "customers-registry-feed"},
+		},
+		{
+			name: "all three turned off leaves none",
 			env: map[string]string{
 				"CUSTOMERS_REGISTRY_FEED_ENABLED":  "0",
 				"CUSTOMERS_PEPPOL_RECHECK_ENABLED": "0",
+				"CUSTOMERS_ANONYMISATION_ENABLED":  "0",
 			},
 			want: nil,
 		},
@@ -171,5 +177,18 @@ func TestModule_ThePeppolRecheckCadenceIsConfigured(t *testing.T) {
 	tuned := newHarness(t, modtest.WithEnv("CUSTOMERS_PEPPOL_RECHECK_POLL", "6h"))
 	if got := customers.NewPeppolRecheckWorker(tuned.Deps()).Interval(); got != 6*time.Hour {
 		t.Errorf("Interval = %v, want the configured 6h", got)
+	}
+}
+
+// TestModule_TheAnonymisationCadenceIsConfigured pins that the third worker's
+// runner-facing cadence is the operator's too.
+func TestModule_TheAnonymisationCadenceIsConfigured(t *testing.T) {
+	t.Parallel()
+	if got := customers.NewAnonymisationWorker(newHarness(t).Deps()).Interval(); got != 24*time.Hour {
+		t.Errorf("Interval = %v, want the 24h default", got)
+	}
+	tuned := newHarness(t, modtest.WithEnv("CUSTOMERS_ANONYMISATION_POLL", "1h"))
+	if got := customers.NewAnonymisationWorker(tuned.Deps()).Interval(); got != time.Hour {
+		t.Errorf("Interval = %v, want the configured 1h", got)
 	}
 }
