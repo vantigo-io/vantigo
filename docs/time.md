@@ -74,11 +74,14 @@ The bill rate, when the entry is billable:
    currency rule: the project has no currency of its own (the entry takes the
    customer's), or it is the customer's. The directory is asked **at most once per
    save**, and only when the chain gets this far — never for a non-billable entry, a
-   line-priced one or a project with its own default. With the customers module off,
-   a project without a customer, a customer the directory does not know or one that
-   set no rate, the step simply answers nothing; an archived customer still answers,
-   since a project of theirs can still be worked on. A directory that *fails* fails
-   the save, the way a failing list price does.
+   line-priced one or a project with its own default. For a project without a
+   customer, a customer the directory does not know or one that set no rate, the step
+   simply answers nothing; an archived customer still answers, since a project of
+   theirs can still be worked on. A directory that *fails* fails the save — the entry
+   endpoint answers a 500, the way a failing list price does — rather than quietly
+   pricing the hours at the person's rate. The directory is always there when time
+   is (time requires projects, which requires customers); the chain still treats a
+   missing one as "nothing to offer", a defensive floor rather than a mode.
 4. **The person's rate card** effective on the entry date — but **only when its
    currency is one the project bills in**: the project has no currency of its own, or
    it is the card's. A card quoted in SEK is no use to a project billed in NOK, and
@@ -403,7 +406,7 @@ Omitting `time` means the module contributes no route, no permission and no UI: 
 paths answer the `/api` catch-all 404 and the switcher tile greys out. The `time`
 schema is migrated regardless, so enabling it later needs no migration.
 
-Three startup rules to know:
+Two startup rules to know:
 
 - `time` without `projects` fails configuration with **`time requires projects`** —
   hours hang off projects, which time reads through
@@ -411,9 +414,10 @@ Three startup rules to know:
 - `products` is optional. Without it, billing lines priced `list` or `discount` have
   no price to read and the rate chain falls through to the project default, the
   customer's default or the person's card.
-- `customers` is optional too. Without it (`Deps.Directory` is nil) the rate chain's
-  customer step answers nothing, and the chain goes from the project default straight
-  to the person's card.
+
+`customers` is never off when time is on: `projects` without `customers` fails
+configuration with **`projects requires customers`**, so the rate chain's customer
+step always has a directory to ask.
 
 Time contributes **no background worker** and **no rate-limited operation**.
 

@@ -2066,7 +2066,8 @@ customers still costs exactly one — not 25 or five.
 
 ### `BillingProfile` — what an invoice needs, already resolved
 
-`BillingProfile(ctx, id)` carries what an invoice needs in one call: id, customer
+`BillingProfile(ctx, id)` carries what an invoice needs — and the default bill rate
+[Time's rate chain](time.md#the-rate-chain) prices hours with — in one call: id, customer
 number, name, type, archived, the legal identity's `country`/`id`/`name` when
 present, the resolved invoice address when any, and the billing fields below —
 **every resolution rule lives here, once**, so no consumer ever re-derives an

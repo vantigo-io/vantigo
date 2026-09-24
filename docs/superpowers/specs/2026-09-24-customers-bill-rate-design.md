@@ -45,9 +45,11 @@ its row.
 `sourcePerson`:
 
 - **When**: the entry is billable, no line rate, no usable project default, the project
-  has a customer (`ProjectEntry.CustomerID != nil`), the customers module is on
-  (`deps.Directory != nil` — Time's first read of the customer directory, nil-safe
-  like expenses' read of projects), and `Directory.BillingProfile(customerID)` answers a
+  has a customer (`ProjectEntry.CustomerID != nil`), there is a directory
+  (`deps.Directory != nil` — Time's first read of the customer directory; unlike
+  expenses' read of projects this one is never absent in a real installation, since
+  time requires projects and projects requires customers, so the nil check is a
+  defensive floor, not a mode), and `Directory.BillingProfile(customerID)` answers a
   profile with `DefaultBillRate != nil` and a `Currency`.
 - **The currency rule is the person card's, verbatim**: the rate applies when the
   project has no currency (the entry takes the customer's) or the project's currency
