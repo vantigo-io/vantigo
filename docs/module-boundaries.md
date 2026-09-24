@@ -27,8 +27,9 @@ Communications' outbox is the working example.
 3. **Contracts stay pure.** `internal/contracts` holds cross-module interfaces,
    permissions and access rules as DTOs only, never store types, so any module or a
    future extracted service can implement or consume them.
-   The one non-DTO type is `pgx.Tx` in `contracts.CustomerReferenceHolder` —
-   a platform type, never a store type, and the reason is rule 8's.
+   The one non-DTO type is `pgx.Tx`, in `contracts.CustomerReferenceHolder` and
+   `contracts.CustomerPersonalData` — a platform type, never a store type, and the
+   reason is rules 8 and 9's.
 4. **One schema per module.** Each module maps tables only into its own PostgreSQL
    schema (`identity`, `customers`, `products`, `energy`, `communications`,
    `projects`, `time`, `expenses`), and no module's migrations or queries reference
@@ -48,11 +49,14 @@ Communications' outbox is the working example.
    module's `Deps` already carries what it consumes; `Actuals` and `Expenses` are
    resolved last, after `Projects`, so those providers' *constructors* are allowed
    to read the project directory (neither does, but a future provider could).
-   Two slots are *many-provider* instead — any number of modules may fill them,
+   Three slots are *many-provider* instead — any number of modules may fill them,
    and Compose collects them in module order: `Workers` (background work, from
-   the enabled modules) and `CustomerReferences`
-   (`contracts.CustomerReferenceHolder`, rule 8, from every module Compose is
-   given, enabled or not — see [Turning a module off](#turning-a-module-off)).
+   the enabled modules), `CustomerReferences`
+   (`contracts.CustomerReferenceHolder`, rule 8) and `CustomerPersonalData`
+   (`contracts.CustomerPersonalData`, rule 9), both from every module Compose is
+   given, enabled or not — see [Turning a module off](#turning-a-module-off).
+   `module.Workers` collects `CustomerPersonalData` as well, because worker mode
+   never composes and the anonymisation worker is where rule 9's erase runs.
 6. **Never reach around the boundary.** Do not call another module's HTTP endpoints
    from inside the process, and do not reach into another module's schema.
 7. **Frontend packages are isolated too.** A module frontend package (for instance
@@ -71,8 +75,25 @@ Communications' outbox is the working example.
    happens under a lock anywhere in this codebase), and tolerates a reference
    that already points at the surviving customer. Today's holders are projects,
    energy and communications ([Merging duplicates](customers.md#merging-duplicates)).
-   Another write direction needs a design of its own, not a second
-   holder-shaped interface.
+   Another write direction needs a design of its own, not a second holder-shaped
+   interface — rule 9 is that design for the second.
+9. **A person's data, handed over and taken out.** The second sanctioned
+   cross-module direction, made for the GDPR of private-person customers:
+   `contracts.CustomerPersonalData`. A module that holds anything about a
+   customer *as a person* declares `Module.CustomerPersonalData`. Its
+   `ExportCustomerData` answers the module's section of that person's export,
+   outside any transaction of the customers module's; its `EraseCustomerData`
+   runs **inside** the customers module's anonymisation transaction, which holds
+   the customer row locked, and removes or blanks what the module holds on its
+   own schema, in its own package — the holder's rules exactly: it never begins
+   or ends a transaction, never reads a directory, reports what it did kind by
+   kind, and runs whether or not its module is enabled. It is not a method on the
+   merge holder because it is not the same promise: a merge moves references and
+   keeps everything, an anonymisation keeps the references and takes the person
+   out of them. Today's implementations are communications (the correspondence,
+   handed over and deleted), energy and projects (handed over, and kept:
+   a supply period is the metering point's history, invoiced work stays)
+   ([Personal data and anonymisation](customers.md#personal-data-and-anonymisation)).
 
 ## How they are enforced
 
@@ -109,6 +130,11 @@ Communications' outbox is the working example.
   `queries/`, so rule 4's scan covers it; each holder's own package test
   re-points real rows through a real transaction, and the customers module's
   merge tests prove that a holder's error rolls the whole merge back.
+- **Rule 9**: the same way. `EraseCustomerData` is handed the caller's `pgx.Tx`
+  and nothing else it could write with; its SQL is in its own `queries/`, so rule
+  4's scan covers it; each module's package test erases real rows through a real
+  transaction it rolls back first, and the customers module's anonymisation tests
+  prove a module's error rolls that customer's whole anonymisation back.
 
 ## Turning a module off
 
@@ -134,7 +160,9 @@ module later needs no migration. For the same reason a disabled module still
 contributes its `CustomerReferenceHolder` (rule 8): a module that was on once and is
 off now still has rows naming customers, and a merge that skipped them would leave them
 on the absorbed customer for good. A holder needs only the caller's transaction and its
-own schema, both there whatever `MODULES` says.
+own schema, both there whatever `MODULES` says. Its `CustomerPersonalData` (rule 9) is
+collected the same way and for the same reason: a switched-off module still holds what
+it held about a person, and an anonymisation must still take it out.
 
 Some modules cannot be hosted alone. Energy, Communications and Projects read
 customer data through `contracts.CustomerDirectory`, which only Customers implements,

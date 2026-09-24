@@ -126,6 +126,7 @@ type setup struct {
 	actuals      contracts.ProjectActuals
 	expenses     contracts.ProjectExpenses
 	holders      []contracts.CustomerReferenceHolder
+	personalData []contracts.CustomerPersonalDataHolder
 	smtpVerify   func(ctx context.Context, cfg config.MailConfig) error
 	smtpSend     func(ctx context.Context, cfg config.MailConfig, msg mail.Outbound) error
 	objectStore  storage.ObjectStore
@@ -249,6 +250,18 @@ func WithExpenses(p contracts.ProjectExpenses) Option {
 // accumulate in order.
 func WithCustomerReferenceHolders(holders ...contracts.CustomerReferenceHolder) Option {
 	return func(s *setup) { s.holders = append(s.holders, holders...) }
+}
+
+// WithCustomerPersonalData adds holders to Deps.CustomerPersonalData, for the
+// module that exports and anonymises a private person (customers GDPR design
+// D2) to be tested against fakes that record what they were asked, answer a
+// section, or fail — to prove an anonymisation rolls back — without composing
+// communications, energy or projects beside it: depguard keeps those out of
+// customers' tests. module.Compose and module.Workers append the given
+// modules' own after these, so a value set here survives both; given more than
+// once, the holders accumulate in order.
+func WithCustomerPersonalData(holders ...contracts.CustomerPersonalDataHolder) Option {
+	return func(s *setup) { s.personalData = append(s.personalData, holders...) }
 }
 
 // WithSMTPVerify sets the function Deps.SMTPVerify carries, for a module
@@ -419,6 +432,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		Actuals:                  s.actuals,
 		Expenses:                 s.expenses,
 		CustomerReferenceHolders: s.holders,
+		CustomerPersonalData:     s.personalData,
 		SMTPVerify:               s.smtpVerify,
 		SMTPSend:                 s.smtpSend,
 		ObjectStore:              s.objectStore,

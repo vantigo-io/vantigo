@@ -1453,3 +1453,132 @@ func TestCompose_PresetCustomerReferenceHoldersComeFirstAndAreNotWrittenThrough(
 		t.Errorf("Compose wrote %v into the caller's own backing array", spare[1])
 	}
 }
+
+// fakePersonalData is a contracts.CustomerPersonalData with only a name, so a
+// test can tell whose landed where. It is never called: Compose collects, and
+// only the customers module calls.
+type fakePersonalData struct{ name string }
+
+func (*fakePersonalData) ExportCustomerData(context.Context, int32) (any, error) { return nil, nil }
+
+func (*fakePersonalData) EraseCustomerData(context.Context, pgx.Tx, int32) ([]contracts.ErasedData, error) {
+	return nil, nil
+}
+
+// Customer personal data is the second many-provider slot (customers GDPR
+// design D2): every module given may declare one, Compose collects them all in
+// the order given, and each is filed under its module's name — the export's
+// key for that module's section. Every module's Mount sees the one list.
+func TestCompose_CollectsEveryModulesCustomerPersonalDataUnderItsName(t *testing.T) {
+	alpha, gamma := &fakePersonalData{name: "alpha"}, &fakePersonalData{name: "gamma"}
+	var inAlpha, inBeta []contracts.CustomerPersonalDataHolder
+
+	_, err := compose(Deps{Access: &fakeAccess{}},
+		fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract, "gamma": gammaContract}),
+		Module{
+			Name:                 "alpha",
+			CustomerPersonalData: func(Deps) contracts.CustomerPersonalData { return alpha },
+			Mount: func(d Deps) (http.Handler, error) {
+				inAlpha = d.CustomerPersonalData
+				return staticHandler("alpha")(d)
+			},
+		},
+		Module{Name: "beta", Mount: func(d Deps) (http.Handler, error) {
+			inBeta = d.CustomerPersonalData
+			return staticHandler("beta")(d)
+		}},
+		Module{
+			Name:                 "gamma",
+			CustomerPersonalData: func(Deps) contracts.CustomerPersonalData { return gamma },
+			Mount:                staticHandler("gamma"),
+		},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	want := []contracts.CustomerPersonalDataHolder{{Module: "alpha", Data: alpha}, {Module: "gamma", Data: gamma}}
+	if !slices.Equal(inAlpha, want) {
+		t.Errorf("alpha's Deps.CustomerPersonalData = %v, want alpha's then gamma's", inAlpha)
+	}
+	if !slices.Equal(inBeta, want) {
+		t.Errorf("beta's Deps.CustomerPersonalData = %v, want alpha's then gamma's", inBeta)
+	}
+}
+
+// A module MODULES leaves out still contributes, for the holders' reason: its
+// schema is migrated and still holds what it held about a person, and an
+// anonymisation that skipped it would leave that behind for good.
+func TestCompose_DisabledModuleStillContributesItsCustomerPersonalData(t *testing.T) {
+	var got []contracts.CustomerPersonalDataHolder
+	beta := &fakePersonalData{name: "beta"}
+
+	_, err := compose(
+		Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha"}}},
+		fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d.CustomerPersonalData
+			return staticHandler("alpha")(d)
+		}},
+		Module{
+			Name:                 "beta",
+			CustomerPersonalData: func(Deps) contracts.CustomerPersonalData { return beta },
+			Mount:                staticHandler("beta"),
+		},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if want := []contracts.CustomerPersonalDataHolder{{Module: "beta", Data: beta}}; !slices.Equal(got, want) {
+		t.Errorf("Deps.CustomerPersonalData = %v, want beta's, disabled or not", got)
+	}
+}
+
+// With nothing declared anywhere the slice stays nil.
+func TestCompose_NoCustomerPersonalDataLeavesTheSliceNil(t *testing.T) {
+	got := []contracts.CustomerPersonalDataHolder{{Module: "stale"}} // non-nil, so a no-op is caught
+
+	_, err := compose(Deps{Access: &fakeAccess{}},
+		fakeLoad(map[string]string{"alpha": alphaContract}),
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d.CustomerPersonalData
+			return staticHandler("alpha")(d)
+		}},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got != nil {
+		t.Errorf("Deps.CustomerPersonalData = %v, want nil: no module declares any", got)
+	}
+}
+
+// What a caller preset — modtest.WithCustomerPersonalData's seam — survives
+// and comes first, and Compose appends to a copy.
+func TestCompose_PresetCustomerPersonalDataComesFirstAndIsNotWrittenThrough(t *testing.T) {
+	preset := contracts.CustomerPersonalDataHolder{Module: "preset", Data: &fakePersonalData{name: "preset"}}
+	own := &fakePersonalData{name: "alpha"}
+	presetList := make([]contracts.CustomerPersonalDataHolder, 1, 4)
+	presetList[0] = preset
+	var got []contracts.CustomerPersonalDataHolder
+
+	_, err := compose(Deps{Access: &fakeAccess{}, CustomerPersonalData: presetList},
+		fakeLoad(map[string]string{"alpha": alphaContract}),
+		Module{
+			Name:                 "alpha",
+			CustomerPersonalData: func(Deps) contracts.CustomerPersonalData { return own },
+			Mount: func(d Deps) (http.Handler, error) {
+				got = d.CustomerPersonalData
+				return staticHandler("alpha")(d)
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if want := []contracts.CustomerPersonalDataHolder{preset, {Module: "alpha", Data: own}}; !slices.Equal(got, want) {
+		t.Errorf("Deps.CustomerPersonalData = %v, want the preset then alpha's", got)
+	}
+	if spare := presetList[:2]; spare[1] != (contracts.CustomerPersonalDataHolder{}) {
+		t.Errorf("Compose wrote %v into the caller's own backing array", spare[1])
+	}
+}

@@ -93,6 +93,16 @@ type Deps struct {
 	// customers calls them, and only inside its merge transaction. nil when no
 	// module given holds customer ids.
 	CustomerReferenceHolders []contracts.CustomerReferenceHolder
+	// CustomerPersonalData is every given module's
+	// contracts.CustomerPersonalData (customers GDPR design D2), enabled or
+	// not, each under its module's name, in the order the modules were given —
+	// the second many-provider contract slot, collected the holders' way and
+	// for their reason. Compose collects it before any Mount runs, for the
+	// export; Workers (workers.go) collects it too, for the anonymisation
+	// worker, because worker mode never composes. Both append to whatever the
+	// caller preset here (the seam modtest.WithCustomerPersonalData fills). nil
+	// when no module given holds anything about a person.
+	CustomerPersonalData []contracts.CustomerPersonalDataHolder
 	// HTTPTransport is the RoundTripper a module's own outbound HTTP client
 	// (customers' Brreg lookup, so far the only one) dials through. nil in
 	// production, meaning http.DefaultTransport; a test harness sets it to a
@@ -211,4 +221,14 @@ type Module struct {
 	// would lack. A module holding no customer ids leaves it nil — time and
 	// expenses reach a customer only through a project.
 	CustomerReferences func(Deps) contracts.CustomerReferenceHolder
+	// CustomerPersonalData builds this module's contracts.CustomerPersonalData,
+	// if it holds anything about a customer as a person (customers GDPR design
+	// D2). Like CustomerReferences, any number of modules may set it, and it is
+	// called for a module MODULES leaves out too, so it must need nothing of
+	// Deps a disabled module would lack. Compose and Workers both call it,
+	// before anything they build runs, and put the list on Deps as
+	// CustomerPersonalData, each under this module's Name. A module holding
+	// nothing about a person leaves it nil — time and expenses reach a customer
+	// only through a project, and products not at all.
+	CustomerPersonalData func(Deps) contracts.CustomerPersonalData
 }
