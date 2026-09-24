@@ -2,6 +2,7 @@ package customers
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -90,9 +91,10 @@ func floatPtrEqual(a, b *float64) bool {
 // store.GetCustomerBillingProfileRow and store.UpdateCustomerBillingProfileRow
 // share this shape field for field, so billing_profile.go calls this with
 // either. defaultBillRate arrives already read off its numeric column
-// (floatPtrFromNumeric), because that read can fail and this cannot; a caller
-// whose query does not select the rate — the Peppol lookups, which only derive
-// a participant from the profile — passes nil.
+// (floatPtrFromNumeric), because that read can fail and this cannot. The Peppol
+// lookups pass nil whether or not their row carries the rate: they build the
+// profile only to derive a participant from it, which the rate never touches,
+// so reading it there would be a conversion that could fail for nothing.
 func billingProfileFromRow(invoiceEmail, reminderEmail *string, paymentTermsDays *int32, currency, language, invoiceDelivery, reminderDelivery, peppolID, gln, buyerReference *string, defaultBillRate *float64) billingProfile {
 	return billingProfile{
 		InvoiceEmail: invoiceEmail, ReminderEmail: reminderEmail, PaymentTermsDays: paymentTermsDays,
@@ -105,13 +107,19 @@ func billingProfileFromRow(invoiceEmail, reminderEmail *string, paymentTermsDays
 // nil stays an invalid (SQL NULL) pgtype.Numeric, and a value is scanned from
 // its shortest decimal text — the digits the caller sent, never the binary
 // fraction a float64 happens to hold. internal/projects/values.go's own rule
-// for its money columns, duplicated because depguard forbids the import. Scan's
-// error is returned, not dropped: it can only fire for an infinity, which JSON
-// cannot carry, and discarding it would store a NULL for a number the caller
-// actually sent.
+// for its money columns, duplicated because depguard forbids the import. What
+// is not a number is refused before formatting: an infinity would fail Scan
+// anyway, but a NaN formats as "NaN" and scans without error into a numeric
+// NaN — a valid value to pgtype, and a rate nobody typed. JSON carries neither,
+// so this is a floor under the handler, not a path a request takes. Scan's own
+// error is returned, not dropped: discarding it would store a NULL for a number
+// the caller actually sent.
 func numericFromFloatPtr(v *float64) (pgtype.Numeric, error) {
 	if v == nil {
 		return pgtype.Numeric{}, nil
+	}
+	if math.IsNaN(*v) || math.IsInf(*v, 0) {
+		return pgtype.Numeric{}, fmt.Errorf("customers: %v is not a storable decimal", *v)
 	}
 	var n pgtype.Numeric
 	if err := n.Scan(strconv.FormatFloat(*v, 'f', -1, 64)); err != nil {
