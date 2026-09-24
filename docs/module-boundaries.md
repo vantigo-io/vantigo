@@ -168,9 +168,10 @@ Time consumes four contracts and provides one:
 `contracts.UserDirectory` (always there, for names and for the rate card's user
 search), `contracts.ProductCatalog` (optional — with products disabled a `list` or
 `discount` billing line simply has no price, and the rate chain falls through to the
-project default), `contracts.CustomerDirectory` (optional — the rate chain's customer
-step reads a customer's default bill rate from `BillingProfile`; with customers
-disabled the chain goes from the project default to the person) — and it provides
+project default), `contracts.CustomerDirectory` (required transitively — projects
+requires customers — for the rate chain's customer step, which reads a customer's
+default bill rate from `BillingProfile`; the chain still checks it for nil, a
+defensive floor rather than a mode) — and it provides
 `contracts.ProjectActuals` (optional for its
 consumer, above), reading its own `time` tables and never calling back into
 `contracts.ProjectDirectory` to serve it: the currency an amount is measured in
