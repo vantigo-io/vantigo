@@ -46,12 +46,16 @@ var limits = map[string]ratelimit.Policy{}
 // only ever reads another module's data through contracts.CustomerDirectory
 // (internal/contracts) and never provides one of its own — energy inventory
 // §1.2 calls it "a leaf module for cross-module purposes" — so Directory is
-// left nil, the same as products.
+// left nil, the same as products. The one thing it does provide is the
+// contracts.CustomerReferenceHolder a customer merge re-points its supply
+// periods through (customers merge design D1) — a write the customers module
+// drives, not a read anyone makes.
 func Module() module.Module {
 	return module.Module{
-		Name:        "energy",
-		Permissions: permissions,
-		Mount:       mount,
+		Name:               "energy",
+		Permissions:        permissions,
+		Mount:              mount,
+		CustomerReferences: newCustomerReferenceHolder,
 	}
 }
 
