@@ -463,7 +463,7 @@ type CustomerTag struct {
 	Name  string             `json:"name"`
 }
 
-// CustomerTagRequest A tag's name and colour (owner and tags design D2). name is 1-100 characters, trimmed; a name another tag already has, ignoring case, is a 409 with code tag_exists.
+// CustomerTagRequest A tag's name and colour (owner and tags design D2). name is 1-100 characters, trimmed, and never holds '|' (the customers file's tags cell puts it between names); a name another tag already has, ignoring case, is a 409 with code tag_exists.
 type CustomerTagRequest struct {
 	Color *string `json:"color,omitempty"`
 	Name  string  `json:"name"`

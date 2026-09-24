@@ -2,6 +2,7 @@ package customers_test
 
 import (
 	"fmt"
+	"os"
 	"testing"
 	"time"
 )
@@ -22,11 +23,19 @@ const importCapSlice = 1000
 // TestPostCustomersImport_AtTheCap is a real run of 5000 creates, every row
 // carrying contact info, a postal address, a billing profile and a tag — the
 // most a first onboarding does per row. Not parallel, so the timing is this
-// test's alone; skipped under -short. A dry run is the same transactions
-// rolled back, so it costs the same and is not timed separately.
+// test's alone. A dry run is the same transactions rolled back, so it costs the
+// same and is not timed separately.
+//
+// A measurement, not a regression test, so it is opt-in: CI runs every package
+// under -race on a shared runner, where a Go-side slowdown of several times
+// would fail a 60 s budget that says nothing about the import. Run it
+// deliberately, on the CI runner's four CPUs and without -race, against the
+// 60 s budget:
+//
+//	VANTIGO_IMPORT_TIMING=1 taskset -c 0-3 go test -count=1 -v -run TestPostCustomersImport_AtTheCap ./internal/customers/
 func TestPostCustomersImport_AtTheCap(t *testing.T) {
-	if testing.Short() {
-		t.Skip("imports 5000 customers")
+	if os.Getenv("VANTIGO_IMPORT_TIMING") == "" {
+		t.Skip("a timing run: set VANTIGO_IMPORT_TIMING=1 and run with taskset -c 0-3, without -race (60 s budget)")
 	}
 	h := newHarness(t)
 	c := authenticatedClient(t, h)

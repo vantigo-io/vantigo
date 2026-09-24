@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
@@ -42,7 +43,9 @@ import (
 //     customer.imported event: the granular events are the audit trail.
 //   - A dry run is the real run minus the commit: each row in its own
 //     transaction, rolled back when the row has run. Nothing is held past a
-//     row — no lock, no counter increment, no event. What it cannot see is an
+//     row — no lock, no customer-number counter increment, no event. (The
+//     tables' own id sequences are identity columns, which a rollback does not
+//     rewind, so internal ids skip; nothing a user sees.) What it cannot see is an
 //     earlier row's effect on a later one; the one such case a file makes
 //     likely — two rows creating one legal identity — is checked in memory
 //     before any row runs (inFileDuplicates), and any other the real run still
@@ -242,11 +245,20 @@ func importPermissionRefusal(g csvGroup, key string) string {
 }
 
 // importVocabulary is the group and tag names a file may use, read once per
-// file and matched without regard to case — the vocabularies' own uniqueness
-// (lower(name) indexes, migrations 00024 and 00027).
+// file and matched through vocabKey — without regard to case, the
+// vocabularies' own uniqueness (lower(name) indexes, migrations 00024 and
+// 00027), and in their own normal form.
 type importVocabulary struct {
 	groups map[string]groupSnapshot
 	tags   map[string]tagSnapshot
+}
+
+// vocabKey is a group or tag name as the import matches it, on both sides:
+// the vocabularies' own normal form (NFC, validateTagName and
+// validateGroupName) and their own uniqueness (lower(name)), so a name a file
+// spells decomposed or in another case still finds its word.
+func vocabKey(name string) string {
+	return strings.ToLower(norm.NFC.String(strings.TrimSpace(name)))
 }
 
 func importVocabularyFor(ctx context.Context, q *store.Queries, l importLayout) (importVocabulary, error) {
@@ -257,7 +269,7 @@ func importVocabularyFor(ctx context.Context, q *store.Queries, l importLayout) 
 			return importVocabulary{}, fmt.Errorf("customers: read the group vocabulary: %w", err)
 		}
 		for _, g := range groups {
-			vocab.groups[strings.ToLower(g.Name)] = groupSnapshot{GroupID: g.ID, Name: g.Name}
+			vocab.groups[vocabKey(g.Name)] = groupSnapshot{GroupID: g.ID, Name: g.Name}
 		}
 	}
 	if l.has(csvGroupTags) {
@@ -266,7 +278,7 @@ func importVocabularyFor(ctx context.Context, q *store.Queries, l importLayout) 
 			return importVocabulary{}, fmt.Errorf("customers: read the tag vocabulary: %w", err)
 		}
 		for _, t := range tags {
-			vocab.tags[strings.ToLower(t.Name)] = tagSnapshot{TagID: t.ID, Name: t.Name}
+			vocab.tags[vocabKey(t.Name)] = tagSnapshot{TagID: t.ID, Name: t.Name}
 		}
 	}
 	return vocab, nil
@@ -366,9 +378,14 @@ func (l importLayout) plan(rec csvRecord, vocab importVocabulary) (importPlan, [
 	} else if p.CustomerNumber == nil {
 		fail("name", "A new customer needs a name, and this file has no name column")
 	}
+	// typeFailed keeps a refused type cell to its own error: the identity
+	// below is then judged against no type rather than the business a blank
+	// cell would default to.
+	typeFailed := false
 	if v := trimmed("type"); v != "" {
 		if t, msg := validateCustomerType(v); msg != "" {
 			fail("type", msg)
+			typeFailed = true
 		} else {
 			p.Type = t
 		}
@@ -391,7 +408,7 @@ func (l importLayout) plan(rec csvRecord, vocab importVocabulary) (importPlan, [
 			failAll(func(field string) string { return identityColumns[field] }, idErrs)
 			if idErrs == nil {
 				p.Identity = &identity
-				if p.CustomerNumber == nil {
+				if p.CustomerNumber == nil && !typeFailed {
 					customerType := p.Type
 					if customerType == "" {
 						customerType = "business"
@@ -444,7 +461,7 @@ func (l importLayout) plan(rec csvRecord, vocab importVocabulary) (importPlan, [
 	if l.has(csvGroupMembership) {
 		p.HasGroup = true
 		if name := trimmed("group"); name != "" {
-			if g, ok := vocab.groups[strings.ToLower(name)]; ok {
+			if g, ok := vocab.groups[vocabKey(name)]; ok {
 				p.Group = &g
 			} else {
 				fail("group", fmt.Sprintf("No customer group is named '%s'", name))
@@ -453,11 +470,8 @@ func (l importLayout) plan(rec csvRecord, vocab importVocabulary) (importPlan, [
 	}
 
 	if l.has(csvGroupTags) {
-		// The cell is the export's: names joined by csvTagSeparator. A tag
-		// whose own name holds the separator is therefore unreachable by
-		// import — the export writes it, but the cell splits it back into
-		// pieces, and each piece that names no tag is that row's error, so
-		// the row writes nothing. A known limitation for docs/customers.md.
+		// The cell is the export's: names joined by csvTagSeparator, which no
+		// tag name may hold (validateTagName), so every piece is one name.
 		p.HasTags = true
 		seen := map[uuid.UUID]bool{}
 		for _, part := range strings.Split(l.cell(rec, "tags"), csvTagSeparator) {
@@ -465,7 +479,7 @@ func (l importLayout) plan(rec csvRecord, vocab importVocabulary) (importPlan, [
 			if name == "" {
 				continue
 			}
-			tag, ok := vocab.tags[strings.ToLower(name)]
+			tag, ok := vocab.tags[vocabKey(name)]
 			if !ok {
 				fail("tags", fmt.Sprintf("No tag is named '%s'", name))
 				continue
@@ -887,7 +901,8 @@ var errImportDryRun = errors.New("customers: import dry run rolled back")
 // run alike, the dry run's rolled back at its end instead of committed, so a
 // checked row takes the very statements, locks and events an imported one
 // does, and keeps none of them: the customer-number counter's increment rolls
-// back with the rest, and no lock outlives its row. Each row is retried on the
+// back with the rest (the row ids' identity sequences do not, so internal ids
+// skip), and no lock outlives its row. Each row is retried on the
 // deadlock a tag replace can lose to a tag delete (tagWriteAttempts, tags.go),
 // the tags PUT's own retry, in both runs.
 func (s *server) importFile(ctx context.Context, file csvFile, l importLayout, vocab importVocabulary, o importOptions, dryRun bool) (importTally, error) {
