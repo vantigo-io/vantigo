@@ -23,14 +23,16 @@ import (
 // project directory it was composed with, so a test can give a user a role
 // or take a task away.
 //
-// Deps.Projects and Deps.Products are fakes built directly against
-// internal/contracts — depguard forbids internal/time/** from importing
-// internal/projects or internal/products, even in tests. The user directory
+// Deps.Projects, Deps.Products and Deps.Directory are fakes built directly
+// against internal/contracts — depguard forbids internal/time/** from
+// importing internal/projects, internal/products or internal/customers, even
+// in tests. The user directory
 // is not stubbed: identity is always composed, and it provides the real one,
 // which names every user signIn seeds.
 type harness struct {
 	*modtest.Harness
-	projects *fakeProjects
+	projects  *fakeProjects
+	customers *fakeCustomers
 }
 
 // newHarness is a time installation with products enabled: list and
@@ -53,18 +55,23 @@ func newHarnessWithoutProducts(t *testing.T, opts ...modtest.Option) *harness {
 func newTimeHarness(t *testing.T, catalog *fakeCatalog, opts ...modtest.Option) *harness {
 	t.Helper()
 	projects := newFakeProjects()
+	customers := newFakeCustomers()
 	base := []modtest.Option{
 		modtest.WithRecorder(recorder),
 		modtest.WithModule(timetracking.Module()),
 		modtest.WithProjects(projects),
+		modtest.WithDirectory(customers),
 	}
 	if catalog != nil {
 		base = append(base, modtest.WithProducts(catalog))
 	}
-	h := &harness{Harness: modtest.New(t, append(base, opts...)...), projects: projects}
+	h := &harness{Harness: modtest.New(t, append(base, opts...)...), projects: projects, customers: customers}
 	t.Cleanup(func() {
 		if calls := projects.locked.all(); len(calls) > 0 {
 			t.Errorf("project directory called inside a locked transaction: %v", calls)
+		}
+		if calls := customers.locked.all(); len(calls) > 0 {
+			t.Errorf("customer directory called inside a locked transaction: %v", calls)
 		}
 		if catalog != nil {
 			if calls := catalog.locked.all(); len(calls) > 0 {
@@ -404,6 +411,70 @@ func (f *fakeProjects) CanLogTime(ctx context.Context, projectID int32, userID u
 	}
 	role := f.roles[roleKey{projectID, userID}]
 	return role == roleMember || role == roleManager, nil
+}
+
+// customerKraftVerket is the customer every fixture project but the internal
+// one bills to (newFakeProjects' customer) — the id a test gives a default
+// bill rate through h.customers.setBillRate.
+const customerKraftVerket = 1001
+
+// fakeCustomers is contracts.CustomerDirectory as the rate chain reads it
+// (customers bill-rate design D3): a billing profile for each customer a test
+// gave a default bill rate, (nil, nil) for every other id — so a harness
+// nobody set a rate on prices exactly as it did before the customer step
+// existed. The other four methods answer nothing; time never asks them. It
+// records calls made inside a locked transaction, like the other fakes.
+type fakeCustomers struct {
+	mu       sync.Mutex
+	profiles map[int32]contracts.CustomerBillingProfile
+	locked   lockedCalls
+}
+
+var _ contracts.CustomerDirectory = (*fakeCustomers)(nil)
+
+func newFakeCustomers() *fakeCustomers {
+	return &fakeCustomers{profiles: map[int32]contracts.CustomerBillingProfile{}}
+}
+
+// setBillRate gives customerID a default bill rate quoted in currency, as a
+// PUT of its billing profile would.
+func (f *fakeCustomers) setBillRate(customerID int32, rate float64, currency string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.profiles[customerID] = contracts.CustomerBillingProfile{
+		ID: customerID, Name: "Kraft-Verket AS", Type: "business", Currency: currency, DefaultBillRate: &rate,
+	}
+}
+
+func (f *fakeCustomers) Customer(ctx context.Context, _ int32) (*contracts.CustomerEntry, error) {
+	f.locked.note(ctx, "Customer")
+	return nil, nil
+}
+
+func (f *fakeCustomers) Customers(ctx context.Context, _ []int32) ([]contracts.CustomerEntry, error) {
+	f.locked.note(ctx, "Customers")
+	return []contracts.CustomerEntry{}, nil
+}
+
+func (f *fakeCustomers) Contact(ctx context.Context, _ int32) (*contracts.ContactEntry, error) {
+	f.locked.note(ctx, "Contact")
+	return nil, nil
+}
+
+func (f *fakeCustomers) ContactsByEmail(ctx context.Context, _ string) ([]contracts.ContactMatch, error) {
+	f.locked.note(ctx, "ContactsByEmail")
+	return []contracts.ContactMatch{}, nil
+}
+
+func (f *fakeCustomers) BillingProfile(ctx context.Context, id int32) (*contracts.CustomerBillingProfile, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.locked.note(ctx, "BillingProfile")
+	p, ok := f.profiles[id]
+	if !ok {
+		return nil, nil
+	}
+	return &p, nil
 }
 
 // fakeCatalog is contracts.ProductCatalog over the one variant the billing

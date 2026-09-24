@@ -1138,8 +1138,9 @@ Time tracking is the first consumer, and the seam is already in place:
   endpoint adds the project-visibility predicate). Combine it with
   `CanLogTime(projectID, userID)` — or `Role` — before showing or accepting a row.
 - Rates: `ProjectEntry.DefaultBillRate` is the project's step of the rate chain
-  (billing-line rule → project default → person default). It is a financial field —
-  surface it only behind a financial-viewer permission of your own.
+  (billing-line rule → project default → customer default → person default). It is
+  a financial field — surface it only behind a financial-viewer permission of your
+  own.
 - Resolve amounts yourself, or leave it to invoicing. Projects stores the rule; it
   never multiplies anything.
 

@@ -2,6 +2,7 @@ package timetracking
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -40,6 +41,50 @@ func (p *priceList) ListPrice(_ context.Context, _ int32, currency string, at ti
 		return nil, nil
 	}
 	return &contracts.Money{Amount: amount, Currency: currency}, nil
+}
+
+// customerRates is a contracts.CustomerDirectory answering one billing
+// profile per customer id and recording every id BillingProfile was asked
+// about, so a test can prove the chain asks at most once and only when it
+// reaches the customer step. fail makes every lookup an error. The other four
+// methods are what time never asks.
+type customerRates struct {
+	mu       sync.Mutex
+	profiles map[int32]contracts.CustomerBillingProfile
+	fail     bool
+	asked    []int32
+}
+
+var _ contracts.CustomerDirectory = (*customerRates)(nil)
+
+func (c *customerRates) Customer(context.Context, int32) (*contracts.CustomerEntry, error) {
+	return nil, nil
+}
+
+func (c *customerRates) Customers(context.Context, []int32) ([]contracts.CustomerEntry, error) {
+	return []contracts.CustomerEntry{}, nil
+}
+
+func (c *customerRates) Contact(context.Context, int32) (*contracts.ContactEntry, error) {
+	return nil, nil
+}
+
+func (c *customerRates) ContactsByEmail(context.Context, string) ([]contracts.ContactMatch, error) {
+	return []contracts.ContactMatch{}, nil
+}
+
+func (c *customerRates) BillingProfile(_ context.Context, id int32) (*contracts.CustomerBillingProfile, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.asked = append(c.asked, id)
+	if c.fail {
+		return nil, errors.New("customer directory unavailable")
+	}
+	p, ok := c.profiles[id]
+	if !ok {
+		return nil, nil
+	}
+	return &p, nil
 }
 
 func float(v float64) *float64 { return &v }
@@ -170,6 +215,169 @@ func TestResolveRates_PricesAListLineAtNoonOnTheEntryDate(t *testing.T) {
 	want := time.Date(2026, time.March, 2, 12, 0, 0, 0, time.UTC)
 	if len(catalog.asked) != 1 || !catalog.asked[0].Equal(want) {
 		t.Errorf("catalog asked at %v, want exactly once at %v", catalog.asked, want)
+	}
+}
+
+// TestResolveRates_CustomerStep is the chain's third step as a table (customers
+// bill-rate design D3): the customer's default bill rate prices what neither
+// the line nor the project did, under the person card's currency rule, and
+// falls through to the person whenever it cannot — customers off, no customer,
+// a customer the directory does not know, one without a rate, one in another
+// currency. An archived customer's rate still applies: the directory resolves
+// archived customers on purpose, and a project of theirs may still be worked
+// on. The directory is asked at most once, and never by an entry the chain
+// priced before the step (or that is not billable at all).
+func TestResolveRates_CustomerStep(t *testing.T) {
+	t.Parallel()
+	pool, _ := testdb.Migrated(t)
+	ctx := context.Background()
+	q := store.New(pool)
+
+	nokCard := uuid.New()  // bill 1100 / cost 650 NOK
+	euroCard := uuid.New() // bill 1000 / cost 500 EUR
+	for _, row := range []struct {
+		user       uuid.UUID
+		bill, cost float64
+		currency   string
+	}{
+		{nokCard, 1100, 650, "NOK"},
+		{euroCard, 1000, 500, "EUR"},
+	} {
+		if _, err := pool.Exec(ctx, `INSERT INTO time.person_rates (user_id, valid_from, bill_rate, cost_rate, currency, created_at, updated_at)
+		                             VALUES ($1, '2026-01-01', $2::numeric, $3::numeric, $4, now(), now())`,
+			row.user, row.bill, row.cost, row.currency); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	const (
+		nokCustomer      int32 = 7  // 1250 NOK
+		sekCustomer      int32 = 8  // 1400 SEK
+		noRateCustomer   int32 = 9  // NOK, no rate
+		archivedCustomer int32 = 10 // 1250 NOK, archived
+		unknownCustomer  int32 = 99 // the directory answers (nil, nil)
+	)
+	directory := func() *customerRates {
+		return &customerRates{profiles: map[int32]contracts.CustomerBillingProfile{
+			nokCustomer:    {ID: nokCustomer, Currency: "NOK", DefaultBillRate: float(1250)},
+			sekCustomer:    {ID: sekCustomer, Currency: "SEK", DefaultBillRate: float(1400)},
+			noRateCustomer: {ID: noRateCustomer, Currency: "NOK"},
+			// Archived customers still resolve (contracts.CustomerDirectory's own
+			// rule), and a project of theirs may still be worked on: its rate applies.
+			archivedCustomer: {ID: archivedCustomer, Archived: true, Currency: "NOK", DefaultBillRate: float(1250)},
+		}}
+	}
+	project := func(currency *string, defaultRate *float64, customer *int32) contracts.ProjectEntry {
+		return contracts.ProjectEntry{ID: 1, Code: "P1", BillingType: "time-and-materials", Currency: currency, DefaultBillRate: defaultRate, CustomerID: customer}
+	}
+	id := func(v int32) *int32 { return &v }
+	fixed := &contracts.BillingLineEntry{ID: 10, PricingMode: "fixed", FixedAmount: float(1500), VariantID: 7, Active: true}
+
+	for name, tc := range map[string]struct {
+		directory   *customerRates // nil: the customers module is off
+		user        uuid.UUID
+		billable    bool
+		project     contracts.ProjectEntry
+		line        *contracts.BillingLineEntry
+		wantSource  string
+		wantBill    *float64
+		wantBillCur *string
+		wantAsked   int
+	}{
+		"customer default when the project has none": {
+			directory: directory(), user: nokCard, billable: true, project: project(text("NOK"), nil, id(nokCustomer)),
+			wantSource: "customer", wantBill: float(1250), wantBillCur: text("NOK"), wantAsked: 1,
+		},
+		"a project default wins over the customer's": {
+			directory: directory(), user: nokCard, billable: true, project: project(text("NOK"), float(900), id(nokCustomer)),
+			wantSource: "project", wantBill: float(900), wantBillCur: text("NOK"), wantAsked: 0,
+		},
+		"a line wins over the customer's": {
+			directory: directory(), user: nokCard, billable: true, project: project(text("NOK"), nil, id(nokCustomer)), line: fixed,
+			wantSource: "line", wantBill: float(1500), wantBillCur: text("NOK"), wantAsked: 0,
+		},
+		"a project default without a currency is no default, and the customer prices it": {
+			directory: directory(), user: euroCard, billable: true, project: project(nil, float(900), id(nokCustomer)),
+			wantSource: "customer", wantBill: float(1250), wantBillCur: text("NOK"), wantAsked: 1,
+		},
+		"a currency-less project takes the customer's currency": {
+			directory: directory(), user: euroCard, billable: true, project: project(nil, nil, id(sekCustomer)),
+			wantSource: "customer", wantBill: float(1400), wantBillCur: text("SEK"), wantAsked: 1,
+		},
+		"a customer in another currency falls through to the person": {
+			directory: directory(), user: euroCard, billable: true, project: project(text("EUR"), nil, id(nokCustomer)),
+			wantSource: "person", wantBill: float(1000), wantBillCur: text("EUR"), wantAsked: 1,
+		},
+		"a customer in another currency and a card in another is no rate": {
+			directory: directory(), user: nokCard, billable: true, project: project(text("EUR"), nil, id(nokCustomer)),
+			wantSource: "none", wantAsked: 1,
+		},
+		"customers module off falls through to the person": {
+			user: nokCard, billable: true, project: project(text("NOK"), nil, id(nokCustomer)),
+			wantSource: "person", wantBill: float(1100), wantBillCur: text("NOK"),
+		},
+		"a project without a customer falls through to the person": {
+			directory: directory(), user: nokCard, billable: true, project: project(text("NOK"), nil, nil),
+			wantSource: "person", wantBill: float(1100), wantBillCur: text("NOK"), wantAsked: 0,
+		},
+		"a customer the directory does not know falls through to the person": {
+			directory: directory(), user: nokCard, billable: true, project: project(text("NOK"), nil, id(unknownCustomer)),
+			wantSource: "person", wantBill: float(1100), wantBillCur: text("NOK"), wantAsked: 1,
+		},
+		"an archived customer's rate still applies": {
+			directory: directory(), user: nokCard, billable: true, project: project(text("NOK"), nil, id(archivedCustomer)),
+			wantSource: "customer", wantBill: float(1250), wantBillCur: text("NOK"), wantAsked: 1,
+		},
+		"a customer without a rate falls through to the person": {
+			directory: directory(), user: nokCard, billable: true, project: project(text("NOK"), nil, id(noRateCustomer)),
+			wantSource: "person", wantBill: float(1100), wantBillCur: text("NOK"), wantAsked: 1,
+		},
+		"not billable never asks": {
+			directory: directory(), user: nokCard, billable: false, project: project(text("NOK"), nil, id(nokCustomer)),
+			wantSource: "none", wantAsked: 0,
+		},
+	} {
+		deps := module.Deps{}
+		if tc.directory != nil {
+			// Only a real directory: a nil *customerRates in the interface would
+			// be a non-nil Directory, which is not what "customers off" is.
+			deps.Directory = tc.directory
+		}
+		got, err := newServer(deps).resolveRates(ctx, q, rateRequest{
+			UserID: tc.user, Billable: tc.billable, Project: tc.project, Line: tc.line, Date: date(t, "2026-09-14"),
+		})
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if got.Source != tc.wantSource {
+			t.Errorf("%s: source = %q, want %q", name, got.Source, tc.wantSource)
+		}
+		if !equalPtr(got.BillRate, tc.wantBill) || !equalPtr(got.BillCurrency, tc.wantBillCur) {
+			t.Errorf("%s: bill = %v %v, want %v %v", name, show(got.BillRate), show(got.BillCurrency), show(tc.wantBill), show(tc.wantBillCur))
+		}
+		if tc.directory != nil && len(tc.directory.asked) != tc.wantAsked {
+			t.Errorf("%s: directory asked %v, want %d call(s)", name, tc.directory.asked, tc.wantAsked)
+		}
+	}
+}
+
+// TestResolveRates_CustomerDirectoryErrorIsAnError proves a failing directory
+// fails the resolve, the way a failing list price does (customers bill-rate
+// design D3): a lookup silently skipped would store the person's rate on hours
+// the customer's should have priced.
+func TestResolveRates_CustomerDirectoryErrorIsAnError(t *testing.T) {
+	t.Parallel()
+	pool, _ := testdb.Migrated(t)
+	customer := int32(7)
+	s := newServer(module.Deps{Directory: &customerRates{fail: true}})
+
+	_, err := s.resolveRates(context.Background(), store.New(pool), rateRequest{
+		UserID: uuid.New(), Billable: true,
+		Project: contracts.ProjectEntry{Currency: text("NOK"), CustomerID: &customer},
+		Date:    date(t, "2026-09-14"),
+	})
+	if err == nil {
+		t.Fatal("resolveRates with a failing directory = nil error, want the directory's error")
 	}
 }
 

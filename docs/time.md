@@ -68,25 +68,38 @@ The bill rate, when the entry is billable:
    to cents. 101.10 less 15 % is 85.94, where float arithmetic gives 85.93.
 2. **The project's `defaultBillRate`**, when the project has a currency to quote it
    in.
-3. **The person's rate card** effective on the entry date — but **only when its
+3. **The customer's default bill rate** — the `defaultBillRate` on the
+   [billing profile](customers.md#billing-profile) of the project's customer, read
+   through `contracts.CustomerDirectory.BillingProfile` — under the person card's
+   currency rule: the project has no currency of its own (the entry takes the
+   customer's), or it is the customer's. The directory is asked **at most once per
+   save**, and only when the chain gets this far — never for a non-billable entry, a
+   line-priced one or a project with its own default. With the customers module off,
+   a project without a customer, a customer the directory does not know or one that
+   set no rate, the step simply answers nothing; an archived customer still answers,
+   since a project of theirs can still be worked on. A directory that *fails* fails
+   the save, the way a failing list price does.
+4. **The person's rate card** effective on the entry date — but **only when its
    currency is one the project bills in**: the project has no currency of its own, or
    it is the card's. A card quoted in SEK is no use to a project billed in NOK, and
-   nothing here converts, so the chain ends at step 4 instead.
-4. **None.** No rate is not an error; the entry is stored with `rateSource: "none"`
+   nothing here converts, so the chain ends at step 5 instead.
+5. **None.** No rate is not an error; the entry is stored with `rateSource: "none"`
    and the hours simply have no amount.
 
 Each step falls through when it has nothing to offer: a `list` line with products
 disabled, or a variant with no price in the project's currency on that date, falls
 through to the project default the same way a project without one falls through to
-the person.
+the customer, and a customer without one to the person.
 
 The cost rate is simpler: the person's rate card effective on the entry date, or none.
 A non-billable entry gets no bill rate at all (`rateSource: "none"`), but still gets
 its cost.
 
 **Currency is never converted.** A bill rate from a line or the project carries the
-**project's** currency; a bill rate from a rate card carries the **card's**, as does
-every cost rate. Three consequences follow, and all three are the same rule:
+**project's** currency; one from the customer carries the **customer's** (the
+billing profile's `currency`, which is the project's whenever the project has one);
+one from a rate card carries the **card's**, as does every cost rate. Four
+consequences follow, and all four are the same rule:
 
 - A project with **no currency** takes no line- or project-sourced bill rate at all.
 - A rate card whose currency is **not the project's** gives no bill rate either — the
@@ -94,12 +107,16 @@ every cost rate. Three consequences follow, and all three are the same rule:
   (A project with no currency accepts the card's, because there is nothing to
   disagree with.) The **cost** rate is never held back this way: cost is the company's
   own number, in the card's currency, whatever the project bills in.
+- A customer whose currency is **not the project's** gives no bill rate either — a
+  customer quoted in SEK is no use to a project billed in NOK, and the chain falls
+  through to the person's card. (A project with no currency takes the customer's,
+  for the card's reason.)
 - Where two currencies would have to be added together — the project summary's billed
   amount — the hours are reported as *unpriced* instead of summed into a number in
   neither currency.
 
-`rateSource` is one of `line`, `project`, `person` or `none`, and it is part of the
-entry's response so the UI can say where an amount came from.
+`rateSource` is one of `line`, `project`, `customer`, `person` or `none`, and it is
+part of the entry's response so the UI can say where an amount came from.
 
 ## The state machine
 
@@ -222,11 +239,11 @@ a name rather than scrolling a list.
 ## No directory call inside a locked transaction
 
 Rule of the module, and it is enforced: **a transaction that holds a lock makes no
-contract call.** Projects, users and product prices are resolved *before* the
-transaction opens or *after* it commits, and role lookups are warmed into the caller's
-cache first. A directory call is an in-process function today, but it is a seam that
-may one day do I/O, and a slow one under a day lock or a `FOR UPDATE` would hold up
-everybody else logging hours on the same day.
+contract call.** Projects, users, product prices and customers' default bill rates
+are resolved *before* the transaction opens or *after* it commits, and role lookups
+are warmed into the caller's cache first. A directory call is an in-process function
+today, but it is a seam that may one day do I/O, and a slow one under a day lock or a
+`FOR UPDATE` would hold up everybody else logging hours on the same day.
 
 Structurally, every locked transaction goes through `withLockedTx`, which marks its
 context; the test fakes record any call made with such a context, and the harness
@@ -386,14 +403,17 @@ Omitting `time` means the module contributes no route, no permission and no UI: 
 paths answer the `/api` catch-all 404 and the switcher tile greys out. The `time`
 schema is migrated regardless, so enabling it later needs no migration.
 
-Two startup rules to know:
+Three startup rules to know:
 
 - `time` without `projects` fails configuration with **`time requires projects`** —
   hours hang off projects, which time reads through
   `contracts.ProjectDirectory`.
 - `products` is optional. Without it, billing lines priced `list` or `discount` have
-  no price to read and the rate chain falls through to the project default or the
-  person's card.
+  no price to read and the rate chain falls through to the project default, the
+  customer's default or the person's card.
+- `customers` is optional too. Without it (`Deps.Directory` is nil) the rate chain's
+  customer step answers nothing, and the chain goes from the project default straight
+  to the person's card.
 
 Time contributes **no background worker** and **no rate-limited operation**.
 

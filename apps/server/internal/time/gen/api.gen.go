@@ -164,7 +164,7 @@ type TimeEntryResponse struct {
 	ProjectId   int32              `json:"projectId"`
 	ProjectName string             `json:"projectName"`
 
-	// RateSource The step of the rate chain the bill rate came from: 'line', 'project', 'person' or 'none'.
+	// RateSource The step of the rate chain the bill rate came from: 'line', 'project', 'customer', 'person' or 'none'.
 	RateSource      string  `json:"rateSource"`
 	RejectionReason *string `json:"rejectionReason,omitempty"`
 	Revision        int32   `json:"revision"`
@@ -322,7 +322,7 @@ type TimeProjectSummaryResponse struct {
 
 // TimeRateRequest A person rate card row (§4.3). At least one of billRate and costRate; the row is in effect from validFrom until the person's next row.
 type TimeRateRequest struct {
-	// BillRate The hourly bill rate, greater than zero. Used for an entry only when no billing line or project default prices it and the card's currency is the project's.
+	// BillRate The hourly bill rate, greater than zero. Used for an entry only when no billing line, project default or customer default prices it, and the card's currency is the project's (or the project has none).
 	BillRate *float64 `json:"billRate,omitempty"`
 
 	// CostRate The hourly cost rate, greater than zero.

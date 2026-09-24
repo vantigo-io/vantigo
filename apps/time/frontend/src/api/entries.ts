@@ -8,8 +8,11 @@ export { ApiValidationError, NotFoundError } from "./request";
 
 type Schemas = components["schemas"];
 
-/** The rate chain step a billable entry's bill rate came from (design D3). */
-export type RateSource = "line" | "project" | "person" | "none";
+/**
+ * The rate chain step a billable entry's bill rate came from (design D3; the
+ * customer's default since the customers bill-rate design, D3).
+ */
+export type RateSource = "line" | "project" | "customer" | "person" | "none";
 
 /**
  * The contract declares the enumerations as plain strings (OpenAPI 3.0

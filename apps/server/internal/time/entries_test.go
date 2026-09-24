@@ -146,6 +146,34 @@ func TestPostTimeEntries_ProjectWithoutCurrency_TakesThePersonCardsCurrency(t *t
 	wantRate(t, createEntry(t, c, map[string]any{"projectId": projectNoCurrency}), 1100, "SEK", "person")
 }
 
+// The customer's default bill rate is the chain's third step (customers
+// bill-rate design D3): a project that prices nothing itself bills at it —
+// snapshotted with rateSource "customer", in the customer's currency when the
+// project has none — a customer quoted in another currency than the project's
+// is passed over for the person, and a project default still wins. A draft
+// re-resolves at its next save, so a changed customer rate reaches it.
+func TestPostTimeEntries_NoProjectDefault_UsesTheCustomerDefaultRate(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.customers.setBillRate(customerKraftVerket, 1250, "NOK")
+	c, userID := signInAs(t, h, projectNoCurrency, roleMember)
+	h.projects.addRole(projectEuro, userID, roleMember)
+	h.projects.addRole(projectKraftVerket, userID, roleMember)
+	seedRate(t, h, userID, "2026-01-01", 1100.0, 650.0, "EUR")
+
+	priced := createEntry(t, c, map[string]any{"projectId": projectNoCurrency})
+	wantRate(t, priced, 1250, "NOK", "customer")
+	wantRate(t, getEntry(t, c, priced.Id), 1250, "NOK", "customer")
+
+	// A EUR project, a NOK customer: nothing converts, so the EUR card prices it.
+	wantRate(t, createEntry(t, c, map[string]any{"projectId": projectEuro}), 1100, "EUR", "person")
+	// A project with its own default never reaches the customer.
+	wantRate(t, createEntry(t, c, nil), 900, "NOK", "project")
+
+	h.customers.setBillRate(customerKraftVerket, 1300, "NOK")
+	wantRate(t, updateEntry(t, c, priced, map[string]any{"hours": 3}), 1300, "NOK", "customer")
+}
+
 // Billable defaults from the billing type: time and materials and fixed
 // price are billable unless the caller says otherwise; non-billable never is.
 func TestPostTimeEntries_FixedPriceProject_IsBillableByDefault(t *testing.T) {
