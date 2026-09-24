@@ -1,6 +1,6 @@
 import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { CustomerDetailLayout } from "./-customer-detail-layout";
@@ -31,7 +31,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 });
 
 // The header does its own suspense-query data fetching; irrelevant to tab
-// wiring, so it is reduced to its actions slot plus the two capability props
+// wiring, so it is reduced to its actions slot plus the three capability props
 // this route computes from permissions (see the archive/restore assertions
 // below — the package's own tests cover what the header does with them).
 vi.mock("@vantigo/customers-ui/pages/customers.$customerId", () => ({
@@ -39,15 +39,18 @@ vi.mock("@vantigo/customers-ui/pages/customers.$customerId", () => ({
     actions,
     canArchive,
     canRestore,
+    canMerge,
   }: {
     actions?: ReactNode;
     canArchive?: boolean;
     canRestore?: boolean;
+    canMerge?: boolean;
   }) => (
     <div>
       {actions}
       <span data-testid="can-archive">{String(Boolean(canArchive))}</span>
       <span data-testid="can-restore">{String(Boolean(canRestore))}</span>
+      <span data-testid="can-merge">{String(Boolean(canMerge))}</span>
     </div>
   ),
 }));
@@ -121,5 +124,26 @@ describe("the customer detail route's archive/restore capability props", () => {
 
     expect(screen.getByTestId("can-archive")).toHaveTextContent("false");
     expect(screen.getByTestId("can-restore")).toHaveTextContent("true");
+  });
+
+  it("passes canMerge from customers:merge, and only from it", () => {
+    // customers:delete archives, customers:update restores; neither merges
+    // (customers merge design D2).
+    vi.mocked(useQuery).mockImplementation((options) =>
+      options.queryKey[0] === "authorization"
+        ? ({ data: { permissions: ["customers:delete", "customers:update"] }, isPending: false } as never)
+        : ({ data: { user: { id: "user-1", roles: [] } } } as never),
+    );
+    renderCustomerDetailLayout();
+    expect(screen.getByTestId("can-merge")).toHaveTextContent("false");
+    cleanup();
+
+    vi.mocked(useQuery).mockImplementation((options) =>
+      options.queryKey[0] === "authorization"
+        ? ({ data: { permissions: ["customers:merge"] }, isPending: false } as never)
+        : ({ data: { user: { id: "user-1", roles: [] } } } as never),
+    );
+    renderCustomerDetailLayout();
+    expect(screen.getByTestId("can-merge")).toHaveTextContent("true");
   });
 });

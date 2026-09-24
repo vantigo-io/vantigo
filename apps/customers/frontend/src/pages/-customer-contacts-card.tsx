@@ -50,7 +50,14 @@ import "../i18n";
  * associated with the customer and their role, with actions to add, edit and
  * remove associations.
  */
-export const CustomerContactsCard = ({ customerId }: { customerId: number }) => {
+export const CustomerContactsCard = ({
+  customerId,
+  readOnly = false,
+}: {
+  customerId: number;
+  /** A merged-away customer's card (merge design D4): the list, with nothing to add, edit or remove. */
+  readOnly?: boolean;
+}) => {
   const { t } = useI18n("customers");
   const navigate = useNavigate() as (options: unknown) => void;
   const queryClient = useQueryClient();
@@ -104,14 +111,16 @@ export const CustomerContactsCard = ({ customerId }: { customerId: number }) => 
             <IconUsersGroup size={18} stroke={1.5} />
             <Text fw={600}>{t("contacts")}</Text>
           </Group>
-          <Button
-            variant="light"
-            size="xs"
-            leftSection={<IconPlus size={14} />}
-            onClick={() => setAddModalOpened(true)}
-          >
-            {t("addContact")}
-          </Button>
+          {!readOnly && (
+            <Button
+              variant="light"
+              size="xs"
+              leftSection={<IconPlus size={14} />}
+              onClick={() => setAddModalOpened(true)}
+            >
+              {t("addContact")}
+            </Button>
+          )}
         </Group>
 
         {isPending ? (
@@ -159,44 +168,46 @@ export const CustomerContactsCard = ({ customerId }: { customerId: number }) => 
                       <ConnectionValue own={association.contact.phone} connection={association.phone} />
                     </Table.Td>
                     <Table.Td onClick={(event) => event.stopPropagation()}>
-                      <Group gap={4} wrap="nowrap">
-                        <ActionIcon
-                          variant="subtle"
-                          color="gray"
-                          aria-label={t("editConnectionFor", { name: formatContactName(association.contact) })}
-                          onClick={() =>
-                            setEditing({
-                              customerId,
-                              contactId: association.contact.id,
-                              counterpartName: formatContactName(association.contact),
-                              title: association.title,
-                              roles: association.roles,
-                              soleRoles: association.roles
-                                .filter(
-                                  (assignment) =>
-                                    !associations.some(
-                                      (other) =>
-                                        other.contact.id !== association.contact.id &&
-                                        other.roles.some((r) => r.role === assignment.role),
-                                    ),
-                                )
-                                .map((assignment) => assignment.role),
-                              phone: association.phone,
-                              email: association.email,
-                            })
-                          }
-                        >
-                          <IconPencil size={16} />
-                        </ActionIcon>
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          aria-label={t("removeNamed", { name: formatContactName(association.contact) })}
-                          onClick={() => confirmDetach(association)}
-                        >
-                          <IconUserOff size={16} />
-                        </ActionIcon>
-                      </Group>
+                      {!readOnly && (
+                        <Group gap={4} wrap="nowrap">
+                          <ActionIcon
+                            variant="subtle"
+                            color="gray"
+                            aria-label={t("editConnectionFor", { name: formatContactName(association.contact) })}
+                            onClick={() =>
+                              setEditing({
+                                customerId,
+                                contactId: association.contact.id,
+                                counterpartName: formatContactName(association.contact),
+                                title: association.title,
+                                roles: association.roles,
+                                soleRoles: association.roles
+                                  .filter(
+                                    (assignment) =>
+                                      !associations.some(
+                                        (other) =>
+                                          other.contact.id !== association.contact.id &&
+                                          other.roles.some((r) => r.role === assignment.role),
+                                      ),
+                                  )
+                                  .map((assignment) => assignment.role),
+                                phone: association.phone,
+                                email: association.email,
+                              })
+                            }
+                          >
+                            <IconPencil size={16} />
+                          </ActionIcon>
+                          <ActionIcon
+                            variant="subtle"
+                            color="red"
+                            aria-label={t("removeNamed", { name: formatContactName(association.contact) })}
+                            onClick={() => confirmDetach(association)}
+                          >
+                            <IconUserOff size={16} />
+                          </ActionIcon>
+                        </Group>
+                      )}
                     </Table.Td>
                   </Table.Tr>
                 ))}

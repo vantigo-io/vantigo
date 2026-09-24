@@ -121,12 +121,15 @@ export const CustomersPage = ({
   canEdit,
   canExport,
   canImport,
+  canMerge,
 }: {
   canEdit?: boolean;
   /** `customers:view`: download the list, as filtered and sorted, as the customers file. */
   canExport?: boolean;
   /** `customers:create`, `customers:update` and `customers:view` — the import operation's own rule. */
   canImport?: boolean;
+  /** customers:merge — the create and edit forms' duplicate-identity conflict suggests a merge (merge design D4). */
+  canMerge?: boolean;
 }) => {
   const { t, formatters } = useI18n("customers");
   const { page, search, status, type, ownerId, tagId, groupId, sortBy, sortDirection, create } = useSearch({
@@ -277,7 +280,7 @@ export const CustomersPage = ({
         }
       />
 
-      <CustomerFormModal state={modalState} onClose={closeModal} />
+      <CustomerFormModal state={modalState} onClose={closeModal} canMerge={canMerge} />
       <CustomerImportModal opened={importOpened} onClose={() => setImportOpened(false)} />
       <ManageTagsModal
         opened={manageTagsOpened}

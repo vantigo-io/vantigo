@@ -2,7 +2,7 @@ import { MantineProvider } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -40,14 +40,18 @@ const renderModal = (state: Parameters<typeof CustomerFormModal>[0]["state"], on
  * click here is a real assertion of client-side navigation, not a full
  * page reload.
  */
-const renderModalWithRouter = async (state: Parameters<typeof CustomerFormModal>[0]["state"], onClose = vi.fn()) => {
+const renderModalWithRouter = async (
+  state: Parameters<typeof CustomerFormModal>[0]["state"],
+  onClose = vi.fn(),
+  canMerge = false,
+) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const rootRoute = createRootRoute({
     component: () => (
       <MantineProvider env="test">
         <Notifications />
         <QueryClientProvider client={queryClient}>
-          <CustomerFormModal state={state} onClose={onClose} />
+          <CustomerFormModal state={state} onClose={onClose} canMerge={canMerge} />
         </QueryClientProvider>
       </MantineProvider>
     ),
@@ -170,6 +174,7 @@ describe("CustomerFormModal", () => {
         timelineSummary: { entryCount: 0, latestOccurredOn: null },
         owner: null,
         group: null,
+        mergedInto: null,
         tags: [],
       },
     });
@@ -209,6 +214,7 @@ describe("CustomerFormModal", () => {
         timelineSummary: { entryCount: 0, latestOccurredOn: null },
         owner: null,
         group: null,
+        mergedInto: null,
         tags: [],
         revision: 3,
       },
@@ -282,6 +288,7 @@ describe("CustomerFormModal", () => {
         timelineSummary: { entryCount: 0, latestOccurredOn: null },
         owner: null,
         group: null,
+        mergedInto: null,
         tags: [],
         revision: 3,
       },
@@ -365,6 +372,7 @@ describe("CustomerFormModal", () => {
         timelineSummary: { entryCount: 0, latestOccurredOn: null },
         owner: null,
         group: null,
+        mergedInto: null,
         tags: [],
         revision: 3,
       },
@@ -433,6 +441,7 @@ describe("CustomerFormModal", () => {
         timelineSummary: { entryCount: 0, latestOccurredOn: null },
         owner: null,
         group: null,
+        mergedInto: null,
         tags: [],
         revision: 3,
       },
@@ -453,6 +462,92 @@ describe("CustomerFormModal", () => {
         body: JSON.stringify({ name: "Initech", status: "active", revision: 3, allowDuplicateIdentity: true }),
       },
     ]);
+  });
+
+  it("suggests Merge… on an edit's duplicate identity, for a caller who may merge", async () => {
+    // Customers merge design D4: the duplicate is already a link; the hint says
+    // the fix may be a merge, from that customer's page — never a merge from
+    // the form. Without canMerge the line would point at a button the caller
+    // does not have.
+    const editState = (): Parameters<typeof CustomerFormModal>[0]["state"] => ({
+      mode: "edit",
+      customer: {
+        id: 1001,
+        customerNumber: 5001,
+        name: "Initech",
+        status: "active",
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+        type: "business",
+        identity: null,
+        timelineSummary: { entryCount: 0, latestOccurredOn: null },
+        owner: null,
+        group: null,
+        mergedInto: null,
+        tags: [],
+        revision: 3,
+      },
+    });
+    const conflicting = () =>
+      stubFetch(
+        vi.fn((_url: RequestInfo | URL, init?: RequestInit) =>
+          Promise.resolve(
+            init?.method === "PUT"
+              ? jsonResponse(409, {
+                  title: "Duplicate legal identity",
+                  code: "duplicate_legal_identity",
+                  detail: "Another customer already has this legal identity.",
+                  status: 409,
+                  duplicates: [{ id: 2002, customerNumber: 6002, name: "Acme Holding AS", status: "active" }],
+                })
+              : new Response(null, { status: 404 }),
+          ),
+        ),
+      );
+    const hint = /open it and use Merge… there to bring the two together/i;
+
+    conflicting();
+    await renderModalWithRouter(editState(), vi.fn(), true);
+    await userEvent.click(screen.getByRole("button", { name: /save changes/i }));
+    expect(await screen.findByText(hint)).toBeInTheDocument();
+    cleanup();
+    vi.unstubAllGlobals();
+
+    conflicting();
+    await renderModalWithRouter(editState());
+    await userEvent.click(screen.getByRole("button", { name: /save changes/i }));
+    expect(await screen.findByText("Acme Holding AS")).toBeInTheDocument();
+    expect(screen.queryByText(hint)).not.toBeInTheDocument();
+  });
+
+  it("suggests Merge… on a create's duplicate identity too, in the create's own words", async () => {
+    // D4 names both forms. A customer being created does not exist yet, so the
+    // line says to open the duplicate instead — or create anyway and merge
+    // there.
+    stubFetch(
+      vi.fn((url: RequestInfo | URL, init?: RequestInit) =>
+        Promise.resolve(
+          String(url) === "/api/v1/customers" && init?.method === "POST"
+            ? jsonResponse(409, {
+                title: "Duplicate legal identity",
+                code: "duplicate_legal_identity",
+                detail: "Another customer already has this legal identity.",
+                status: 409,
+                duplicates: [{ id: 2002, customerNumber: 6002, name: "Acme Holding AS", status: "active" }],
+              })
+            : new Response(null, { status: 404 }),
+        ),
+      ),
+    );
+
+    await renderModalWithRouter({ mode: "create" }, vi.fn(), true);
+    await userEvent.type(screen.getByLabelText(/name/i), "Acme Holding");
+    await userEvent.click(screen.getByRole("button", { name: /create customer/i }));
+
+    expect(
+      await screen.findByText(/open it instead — or create this one anyway and use Merge… there/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/open it and use Merge… there to bring the two together/i)).not.toBeInTheDocument();
   });
 
   it("clicking a duplicate's link navigates through the router (no full page reload) and closes the modal", async () => {
@@ -486,6 +581,7 @@ describe("CustomerFormModal", () => {
         timelineSummary: { entryCount: 0, latestOccurredOn: null },
         owner: null,
         group: null,
+        mergedInto: null,
         tags: [],
         revision: 3,
       },

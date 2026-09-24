@@ -90,7 +90,16 @@ const revisionOf = (state: CustomerModalState | null) => (state?.mode === "edit"
  * in Brønnøysundregistrene at all. It is not editable here: changing it later
  * is a separate, confirmed action on the customer page.
  */
-export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalState | null; onClose: () => void }) => {
+export const CustomerFormModal = ({
+  state,
+  onClose,
+  canMerge,
+}: {
+  state: CustomerModalState | null;
+  onClose: () => void;
+  /** `customers:merge`: a duplicate-identity conflict says a merge may be the fix (merge design D4). */
+  canMerge?: boolean;
+}) => {
   const queryClient = useQueryClient();
   const { t } = useI18n("customers");
   const isEdit = state?.mode === "edit";
@@ -276,6 +285,16 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
                     </Group>
                   ))}
                 </Stack>
+                {canMerge && conflict.duplicates.length > 0 && (
+                  // Both forms (merge design D4), in two wordings: the
+                  // duplicates above are already links to where Merge… lives,
+                  // and a customer being created does not exist yet, so on a
+                  // create the line says to open the duplicate instead — or
+                  // create anyway and merge there.
+                  <Text size="xs" c="dimmed">
+                    {t(isEdit ? "duplicateIdentityMergeHint" : "duplicateIdentityMergeHintCreate")}
+                  </Text>
+                )}
                 <Group justify="flex-end">
                   <Button
                     size="xs"

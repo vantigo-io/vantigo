@@ -20,15 +20,18 @@ vi.mock("@vantigo/customers-ui/pages/customers.index", () => ({
     canEdit,
     canExport,
     canImport,
+    canMerge,
   }: {
     canEdit?: boolean;
     canExport?: boolean;
     canImport?: boolean;
+    canMerge?: boolean;
   }) => (
     <>
       <span data-testid="can-edit">{String(Boolean(canEdit))}</span>
       <span data-testid="can-export">{String(Boolean(canExport))}</span>
       <span data-testid="can-import">{String(Boolean(canImport))}</span>
+      <span data-testid="can-merge">{String(Boolean(canMerge))}</span>
     </>
   ),
 }));
@@ -89,5 +92,16 @@ describe("the customers list route's capability props", () => {
     withPermissions(["customers:view", "customers:create", "customers:update"]);
     renderPage();
     expect(screen.getByTestId("can-import")).toHaveTextContent("true");
+  });
+
+  it("passes canMerge from customers:merge, since the list opens the same edit form", () => {
+    withPermissions(["customers:update", "customers:delete"]);
+    renderPage();
+    expect(screen.getByTestId("can-merge")).toHaveTextContent("false");
+    cleanup();
+
+    withPermissions(["customers:merge"]);
+    renderPage();
+    expect(screen.getByTestId("can-merge")).toHaveTextContent("true");
   });
 });

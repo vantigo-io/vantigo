@@ -68,4 +68,21 @@ describe("the admin permission catalog", () => {
       "Change expense settings, rates and categories, record expenses for a colleague, mark expenses reimbursed, and work past the period lock.",
     );
   });
+
+  // Hand-kept in step with apps/server/internal/customers/module.go, like the
+  // lists above: customers:merge is the one key this delivery adds.
+  it("names customers:merge in English and Norwegian, the English the server's own", () => {
+    const translation = hostPermissionTranslationKeys["customers:merge"];
+    expect(translation, "no catalog entry for customers:merge").toBeDefined();
+    for (const lng of ["en", "nb"] as const) {
+      const catalog = adminCatalog[lng] as Record<string, string>;
+      expect(catalog[translation.displayNameKey], `display name (${lng})`).toBeTruthy();
+      expect(catalog[translation.descriptionKey], `description (${lng})`).toBeTruthy();
+    }
+    const en = adminCatalog.en as Record<string, string>;
+    expect(en[translation.displayNameKey]).toBe("Merge customers");
+    expect(en[translation.descriptionKey]).toBe(
+      "Merge a duplicate customer into another, moving its contacts, addresses, timeline, tags and other modules' references, and archiving it.",
+    );
+  });
 });

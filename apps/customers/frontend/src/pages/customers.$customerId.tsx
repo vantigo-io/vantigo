@@ -1,15 +1,17 @@
-import { Alert, Badge, Button, Group, List, Stack, Text } from "@mantine/core";
+import { Alert, Anchor, Badge, Button, Group, List, Stack, Text } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import {
   IconArchive,
   IconArrowBackUp,
+  IconArrowMerge,
   IconArrowsExchange,
   IconBuilding,
   IconPencil,
   IconUser,
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { type ReactNode, useState } from "react";
 
@@ -37,6 +39,7 @@ import { CustomerBillingCard } from "./-customer-billing-card";
 import { CustomerContactCard } from "./-customer-contact-card";
 import { CustomerContactsCard } from "./-customer-contacts-card";
 import { CustomerFormModal, type CustomerModalState } from "./-customer-form-modal";
+import { CustomerMergeModal } from "./-customer-merge-modal";
 import { CustomerRegistryCard } from "./-customer-registry-card";
 import { CustomerRelationshipCard } from "./-customer-relationship-card";
 import { CustomerTimeline } from "./-customer-timeline";
@@ -48,36 +51,59 @@ import "../i18n";
  * customer's own actions, without this package knowing about other modules.
  * `canArchive`/`canRestore` come from the host, which reads the caller's
  * `customers:delete`/`customers:update` permissions — this package never
- * fetches permissions itself.
+ * fetches permissions itself. `canMerge` is the host's `customers:merge` check
+ * (customers merge design D4): it puts **Merge…** beside the other actions, and
+ * is handed to the edit form for its duplicate-identity hint. A merged-away
+ * customer shows where it went instead of the archived banner, and none of the
+ * actions that would edit it.
  */
 export const CustomerDetailHeader = ({
   customerId,
   actions,
   canArchive,
   canRestore,
+  canMerge,
 }: {
   customerId: number;
   actions?: ReactNode;
   canArchive?: boolean;
   canRestore?: boolean;
+  canMerge?: boolean;
 }) => {
   const { t, formatters } = useI18n("customers");
   const { data: customer } = useSuspenseQuery(customerQueryOptions(customerId));
   const [modalState, setModalState] = useState<CustomerModalState | null>(null);
+  const [merging, setMerging] = useState(false);
   const confirmTypeChange = useCustomerTypeChange(customer);
   const confirmArchive = useArchiveCustomer(customer);
   const restore = useRestoreCustomer(customer);
   const isArchived = customer.status === "archived";
+  const mergedInto = customer.mergedInto;
 
   const { data: identity } = useSuspenseQuery(legalIdentityQueryOptions(customerId));
   const TypeIcon = customer.type === "business" ? IconBuilding : IconUser;
 
   return (
     <Stack gap="lg">
-      {isArchived && (
-        <Alert color="gray" icon={<IconArchive size={16} />} title={t("archivedBannerTitle")}>
-          {t("archivedBannerMessage")}
+      {mergedInto ? (
+        <Alert
+          color="gray"
+          icon={<IconArrowMerge size={16} />}
+          title={t("mergedAwayBannerTitle", { number: mergedInto.customerNumber, name: mergedInto.name })}
+        >
+          <Stack gap={4}>
+            <Text size="sm">{t("mergedAwayBannerMessage")}</Text>
+            <Anchor size="sm" renderRoot={(props) => <Link to={`/customers/${mergedInto.id}` as never} {...props} />}>
+              {t("mergedAwayOpenSurvivor", { number: mergedInto.customerNumber, name: mergedInto.name })}
+            </Anchor>
+          </Stack>
         </Alert>
+      ) : (
+        isArchived && (
+          <Alert color="gray" icon={<IconArchive size={16} />} title={t("archivedBannerTitle")}>
+            {t("archivedBannerMessage")}
+          </Alert>
+        )
       )}
       <Stack gap="xs">
         <PageHeader
@@ -124,27 +150,41 @@ export const CustomerDetailHeader = ({
               <CopyableBadge variant="light" size="lg" tooltip={t("customerIdTooltip")} copyValue={String(customer.id)}>
                 #{customer.id}
               </CopyableBadge>
-              <Button
-                variant="default"
-                leftSection={<IconPencil size={16} />}
-                onClick={() => setModalState({ mode: "edit", customer })}
-              >
-                {t("editCustomer")}
-              </Button>
-              <Button
-                variant="subtle"
-                color="gray"
-                leftSection={<IconArrowsExchange size={16} />}
-                onClick={confirmTypeChange}
-              >
-                {t("changeCustomerType")}
-              </Button>
+              {!mergedInto && (
+                <>
+                  <Button
+                    variant="default"
+                    leftSection={<IconPencil size={16} />}
+                    onClick={() => setModalState({ mode: "edit", customer })}
+                  >
+                    {t("editCustomer")}
+                  </Button>
+                  <Button
+                    variant="subtle"
+                    color="gray"
+                    leftSection={<IconArrowsExchange size={16} />}
+                    onClick={confirmTypeChange}
+                  >
+                    {t("changeCustomerType")}
+                  </Button>
+                </>
+              )}
+              {canMerge && !mergedInto && (
+                <Button
+                  variant="subtle"
+                  color="gray"
+                  leftSection={<IconArrowMerge size={16} />}
+                  onClick={() => setMerging(true)}
+                >
+                  {t("mergeCustomer")}
+                </Button>
+              )}
               {canArchive && !isArchived && (
                 <Button variant="light" color="red" leftSection={<IconArchive size={16} />} onClick={confirmArchive}>
                   {t("archiveCustomer")}
                 </Button>
               )}
-              {canRestore && isArchived && (
+              {canRestore && isArchived && !mergedInto && (
                 <Button
                   variant="light"
                   color="teal"
@@ -166,7 +206,8 @@ export const CustomerDetailHeader = ({
         </Text>
       </Stack>
 
-      <CustomerFormModal state={modalState} onClose={() => setModalState(null)} />
+      <CustomerFormModal state={modalState} onClose={() => setModalState(null)} canMerge={canMerge} />
+      <CustomerMergeModal customer={customer} opened={merging} onClose={() => setMerging(false)} />
     </Stack>
   );
 };
@@ -335,6 +376,10 @@ const useRestoreCustomer = (customer: CustomerResponse) => {
  * closes a gap rather than adding one: the timeline card's Add, Edit and Delete
  * controls were always server-enforced, so a reader saw buttons that answered
  * 403. It also gates the new Done/Reopen control on a follow-up.
+ *
+ * A merged-away customer (merge design D4) gets every capability as false,
+ * whatever the host passed — and the contacts card, which never took one,
+ * `readOnly`.
  */
 export const CustomerOverview = ({
   customerId,
@@ -352,6 +397,11 @@ export const CustomerOverview = ({
   canManageTimeline?: boolean;
 }) => {
   const { data: customer } = useSuspenseQuery(customerQueryOptions(customerId));
+  // A merged-away customer is read-only on the page (customers merge design
+  // D4): everything it had is on the survivor, and anything written here would
+  // land on a customer nobody looks at. The API still accepts the writes — it is
+  // an archived customer like any other — so the gate is here, on every card.
+  const editable = !customer.mergedInto;
   // Enhetsregisteret answers for Norwegian businesses and nothing else, and
   // the record repeats the legal identity's organisation number — so for any
   // other customer, or any caller without that permission, the record is not
@@ -371,12 +421,22 @@ export const CustomerOverview = ({
   });
   return (
     <Stack gap="lg">
-      <CustomerRelationshipCard customerId={customerId} canEdit={canEdit} />
-      <CustomerContactCard customerId={customerId} canEdit={canEdit} registryRecord={registryRecord ?? null} />
-      {showRegistry && <CustomerRegistryCard customerId={customerId} canManageIdentity={canManageIdentity} />}
-      <CustomerBillingCard customerId={customerId} customer={customer} canManageBilling={canManageBilling} />
-      <CustomerContactsCard customerId={customerId} />
-      <CustomerTimeline customerId={customerId} canManageTimeline={canManageTimeline} />
+      <CustomerRelationshipCard customerId={customerId} canEdit={canEdit && editable} />
+      <CustomerContactCard
+        customerId={customerId}
+        canEdit={canEdit && editable}
+        registryRecord={registryRecord ?? null}
+      />
+      {showRegistry && (
+        <CustomerRegistryCard customerId={customerId} canManageIdentity={canManageIdentity && editable} />
+      )}
+      <CustomerBillingCard
+        customerId={customerId}
+        customer={customer}
+        canManageBilling={canManageBilling && editable}
+      />
+      <CustomerContactsCard customerId={customerId} readOnly={!editable} />
+      <CustomerTimeline customerId={customerId} canManageTimeline={canManageTimeline && editable} />
     </Stack>
   );
 };
