@@ -474,6 +474,52 @@ func (s *server) GetCustomers(ctx context.Context, req gen.GetCustomersRequestOb
 	}, nil
 }
 
+// newCustomer is what PostCustomers inserts, already validated: the create
+// endpoint and the CSV importer (import.go) build one from their own input and
+// insert it through insertNewCustomer, so a customer created by file is the
+// create endpoint's customer, number and event included.
+type newCustomer struct {
+	Name     string
+	Status   string
+	Type     string
+	Identity *legalIdentity
+	Contact  contactInfo
+}
+
+// insertNewCustomer is PostCustomers' transaction body: the duplicate check
+// (customers foundation design D6) first when duplicateCheck says so, and
+// before NextCounterValue, so a refused create burns no number; then the row
+// and customer.created. A conflict returns errDuplicateIdentity with the body
+// to answer it with — the transaction is rolled back by the time the caller
+// sees the error, so the body travels beside it. excludeID is 0: there is no
+// existing row to exclude on a create. nameHolders and act were resolved
+// before the transaction opened (duplicates.go, actor.go).
+func (s *server) insertNewCustomer(ctx context.Context, txq *store.Queries, c newCustomer, duplicateCheck, nameHolders bool, now time.Time, act actor) (store.InsertCustomerRow, *gen.CustomerConflictProblem, error) {
+	if duplicateCheck && c.Identity != nil {
+		problem, err := s.duplicateIdentityProblem(ctx, txq, *c.Identity, 0, nameHolders)
+		if err != nil {
+			return store.InsertCustomerRow{}, nil, err
+		}
+		if problem != nil {
+			return store.InsertCustomerRow{}, problem, errDuplicateIdentity
+		}
+	}
+	number, err := txq.NextCounterValue(ctx, "customer-number")
+	if err != nil {
+		return store.InsertCustomerRow{}, nil, err
+	}
+	legalCountry, legalID, legalName, legalSource, legalType := legalColumns(c.Identity)
+	created, err := txq.InsertCustomer(ctx, store.InsertCustomerParams{
+		CustomerNumber: number, Name: c.Name, Status: c.Status, Type: c.Type,
+		LegalCountry: legalCountry, LegalID: legalID, LegalName: legalName, LegalSource: legalSource, LegalType: legalType,
+		Now: now, Email: c.Contact.Email, Phone: c.Contact.Phone, Website: c.Contact.Website,
+	})
+	if err != nil {
+		return store.InsertCustomerRow{}, nil, err
+	}
+	return created, nil, recordCustomerCreated(ctx, txq, now, created.ID, c.Name, c.Identity, act.Kind, act.Display, act.UserID)
+}
+
 // PostCustomers Create a new customer
 // (POST /api/v1/customers)
 //
@@ -600,49 +646,14 @@ func (s *server) PostCustomers(ctx context.Context, req gen.PostCustomersRequest
 	needsDuplicateCheck := identity != nil && !allowDuplicateIdentity
 	nameHolders := needsDuplicateCheck && s.hasPermission(ctx, customersView)
 
-	legalCountry, legalID, legalName, legalSource, legalType := legalColumns(identity)
 	var created store.InsertCustomerRow
 	var conflict *gen.CustomerConflictProblem
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		txq := store.New(tx)
-		// The duplicate check (customers foundation design D6) runs first,
-		// inside this transaction, and before NextCounterValue: a conflict
-		// aborts the transaction via errDuplicateIdentity, so no number is
-		// ever allocated for a create that gets refused. excludeID is 0 —
-		// there is no existing row to exclude on a create.
-		if needsDuplicateCheck {
-			problem, err := s.duplicateIdentityProblem(ctx, txq, *identity, 0, nameHolders)
-			if err != nil {
-				return err
-			}
-			if problem != nil {
-				conflict = problem
-				return errDuplicateIdentity
-			}
-		}
-		number, err := txq.NextCounterValue(ctx, "customer-number")
-		if err != nil {
-			return err
-		}
-		created, err = txq.InsertCustomer(ctx, store.InsertCustomerParams{
-			CustomerNumber: number,
-			Name:           name,
-			Status:         status,
-			Type:           customerType,
-			LegalCountry:   legalCountry,
-			LegalID:        legalID,
-			LegalName:      legalName,
-			LegalSource:    legalSource,
-			LegalType:      legalType,
-			Now:            now,
-			Email:          contact.Email,
-			Phone:          contact.Phone,
-			Website:        contact.Website,
-		})
-		if err != nil {
-			return err
-		}
-		return recordCustomerCreated(ctx, txq, now, created.ID, name, identity, act.Kind, act.Display, act.UserID)
+		var err error
+		created, conflict, err = s.insertNewCustomer(ctx, store.New(tx),
+			newCustomer{Name: name, Status: status, Type: customerType, Identity: identity, Contact: contact},
+			needsDuplicateCheck, nameHolders, now, act)
+		return err
 	})
 	if errors.Is(err, errDuplicateIdentity) {
 		return gen.PostCustomers409ApplicationProblemPlusJSONResponse(*conflict), nil
@@ -693,6 +704,66 @@ func (s *server) GetCustomer(ctx context.Context, req gen.GetCustomerRequestObje
 		return nil, err
 	}
 	return gen.GetCustomer200JSONResponse(safeCustomerResponse(customer, includeIdentity, dec)), nil
+}
+
+// customerCore is what PUT /customers/{id} writes — the name, the status and
+// the legal identity — as one value, before and after.
+type customerCore struct {
+	Name     string
+	Status   string
+	Identity *legalIdentity
+}
+
+// writeCustomerCore is the transaction body PutCustomersById and
+// PutCustomersByIdLegalIdentity share, and the one the CSV importer
+// (import.go) writes a row's name, status and identity through: the duplicate
+// check when duplicateCheck says so (a conflict returns errDuplicateIdentity
+// and its body, before anything is written — no revision bump, no event); the
+// UPDATE, guarded when expectedRevision is set (pgx.ErrNoRows then means a
+// stale revision); the registry record's invalidation when the identity moved
+// (fix round 2, C2 — a new identity makes the record on file the old
+// company's, so it goes in the same transaction, under the customer-row lock
+// the UPDATE holds: the same lock a refresh takes first, so the two can never
+// interleave); and the events — customer.updated for a name or identity
+// change, customer.status_changed for a status change. The caller has already
+// decided the write is not a no-op and resolved act and nameHolders before
+// the transaction opened.
+func (s *server) writeCustomerCore(ctx context.Context, txq *store.Queries, id int32, customerType string, before, after customerCore, expectedRevision *int32, duplicateCheck, nameHolders bool, now time.Time, act actor) (store.UpdateCustomerRow, *gen.CustomerConflictProblem, error) {
+	if duplicateCheck && after.Identity != nil {
+		problem, err := s.duplicateIdentityProblem(ctx, txq, *after.Identity, id, nameHolders)
+		if err != nil {
+			return store.UpdateCustomerRow{}, nil, err
+		}
+		if problem != nil {
+			return store.UpdateCustomerRow{}, problem, errDuplicateIdentity
+		}
+	}
+	legalCountry, legalID, legalName, legalSource, legalType := legalColumns(after.Identity)
+	updated, err := txq.UpdateCustomer(ctx, store.UpdateCustomerParams{
+		ID: id, Name: after.Name, Status: after.Status,
+		LegalCountry: legalCountry, LegalID: legalID, LegalName: legalName, LegalSource: legalSource, LegalType: legalType,
+		UpdatedAt: now, ExpectedRevision: expectedRevision,
+	})
+	if err != nil {
+		return store.UpdateCustomerRow{}, nil, err
+	}
+	identityChanged := !identityEqual(before.Identity, after.Identity)
+	if identityChanged {
+		if err := invalidateRegistryRecord(ctx, txq, id, after.Identity, customerType); err != nil {
+			return store.UpdateCustomerRow{}, nil, err
+		}
+	}
+	if before.Name != after.Name || identityChanged {
+		if err := recordCustomerUpdated(ctx, txq, now, id, before.Name, before.Identity, after.Name, after.Identity, act.Kind, act.Display, act.UserID); err != nil {
+			return store.UpdateCustomerRow{}, nil, err
+		}
+	}
+	if before.Status != after.Status {
+		if err := recordCustomerStatusChanged(ctx, txq, now, id, before.Status, after.Status, act.Kind, act.Display, act.UserID); err != nil {
+			return store.UpdateCustomerRow{}, nil, err
+		}
+	}
+	return updated, nil, nil
 }
 
 // PutCustomersById Update a customer
@@ -862,53 +933,15 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 	// transaction opens and only when the check can run at all.
 	nameHolders := needsDuplicateCheck && s.hasPermission(ctx, customersView)
 
-	legalCountry, legalID, legalName, legalSource, legalType := legalColumns(afterIdentity)
 	var updated store.UpdateCustomerRow
 	var conflict *gen.CustomerConflictProblem
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		txq := store.New(tx)
-		// The duplicate check runs first, inside this transaction, so a
-		// conflict aborts the transaction via errDuplicateIdentity before
-		// UpdateCustomer ever runs — no revision bump, no timeline event.
-		if needsDuplicateCheck {
-			problem, err := s.duplicateIdentityProblem(ctx, txq, *afterIdentity, req.Id, nameHolders)
-			if err != nil {
-				return err
-			}
-			if problem != nil {
-				conflict = problem
-				return errDuplicateIdentity
-			}
-		}
 		var err error
-		updated, err = txq.UpdateCustomer(ctx, store.UpdateCustomerParams{
-			ID: req.Id, Name: name, Status: finalStatus,
-			LegalCountry: legalCountry, LegalID: legalID, LegalName: legalName, LegalSource: legalSource, LegalType: legalType,
-			UpdatedAt: now, ExpectedRevision: body.Revision,
-		})
-		if err != nil {
-			return err
-		}
-		// A new identity makes the record on file the old company's (fix round
-		// 2, C2): it goes in the same transaction as the write, under the
-		// customer-row lock the guarded UPDATE above already holds — the same
-		// lock a refresh takes first, so the two can never interleave.
-		if identityChanged {
-			if err := invalidateRegistryRecord(ctx, txq, req.Id, afterIdentity, existing.Type); err != nil {
-				return err
-			}
-		}
-		if changed {
-			if err := recordCustomerUpdated(ctx, txq, now, req.Id, existing.Name, beforeIdentity, name, afterIdentity, act.Kind, act.Display, act.UserID); err != nil {
-				return err
-			}
-		}
-		if statusChanged {
-			if err := recordCustomerStatusChanged(ctx, txq, now, req.Id, existing.Status, finalStatus, act.Kind, act.Display, act.UserID); err != nil {
-				return err
-			}
-		}
-		return nil
+		updated, conflict, err = s.writeCustomerCore(ctx, store.New(tx), req.Id, existing.Type,
+			customerCore{Name: existing.Name, Status: existing.Status, Identity: beforeIdentity},
+			customerCore{Name: name, Status: finalStatus, Identity: afterIdentity},
+			body.Revision, needsDuplicateCheck, nameHolders, now, act)
+		return err
 	})
 	switch {
 	case errors.Is(err, errDuplicateIdentity):
