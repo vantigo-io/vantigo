@@ -596,6 +596,9 @@ type ProjectEconomyExpenses struct {
 	// Submitted What is waiting for a decision. Absent when the project carries no currency.
 	Submitted *ProjectEconomyExpenseBucket `json:"submitted,omitempty"`
 
+	// SupplierInvoices The part of the three buckets and the totals that is supplier invoices, in the project's own currency — shown as "of which supplier invoices" beneath the totals (supplier invoices design D3). Absent when none has been recorded in the project's currency, and on a project that carries no currency. It is a sub-figure, never a split of the block's figures, so none of those changes meaning and the margin is unchanged.
+	SupplierInvoices *ProjectEconomySupplierInvoices `json:"supplierInvoices,omitempty"`
+
 	// TotalAmount What all three buckets' billable lines will charge, in the project's currency — the across-bucket figure the module that owns the expenses reports, rounded once from the unrounded whole rather than by adding the three buckets above, each of which was rounded on its own. Absent when the project carries no currency.
 	TotalAmount *float64 `json:"totalAmount,omitempty"`
 
@@ -792,6 +795,21 @@ type ProjectEconomyRowProject struct {
 	Id       int32                   `json:"id"`
 	Name     string                  `json:"name"`
 	Status   string                  `json:"status"`
+}
+
+// ProjectEconomySupplierInvoices What the project's supplier invoices in its own currency cost the company and will charge the customer, in the same three buckets as every expense and the across-bucket total, which is rounded once from the unrounded whole rather than the buckets added up. Each bucket is already inside the expenses block's bucket of that status.
+type ProjectEconomySupplierInvoices struct {
+	// Approved One bucket of recorded expenses — how many lines are in it, what they cost the company and what their billable lines will charge the customer. The bucket a line falls in is its *unit's* status, so a travel claim's line is judged through the claim somebody approved or sent back; approved carries the lines already invoiced, because invoicing is a stamp rather than a status, and draft carries the rejected ones, exactly as the three buckets of logged work do. Each amount is rounded on its own, so two buckets need not add up to the cent — that is what the totals beside them are for.
+	Approved ProjectEconomyExpenseBucket `json:"approved"`
+
+	// Draft One bucket of recorded expenses — how many lines are in it, what they cost the company and what their billable lines will charge the customer. The bucket a line falls in is its *unit's* status, so a travel claim's line is judged through the claim somebody approved or sent back; approved carries the lines already invoiced, because invoicing is a stamp rather than a status, and draft carries the rejected ones, exactly as the three buckets of logged work do. Each amount is rounded on its own, so two buckets need not add up to the cent — that is what the totals beside them are for.
+	Draft ProjectEconomyExpenseBucket `json:"draft"`
+
+	// Submitted One bucket of recorded expenses — how many lines are in it, what they cost the company and what their billable lines will charge the customer. The bucket a line falls in is its *unit's* status, so a travel claim's line is judged through the claim somebody approved or sent back; approved carries the lines already invoiced, because invoicing is a stamp rather than a status, and draft carries the rejected ones, exactly as the three buckets of logged work do. Each amount is rounded on its own, so two buckets need not add up to the cent — that is what the totals beside them are for.
+	Submitted ProjectEconomyExpenseBucket `json:"submitted"`
+
+	// Total One bucket of recorded expenses — how many lines are in it, what they cost the company and what their billable lines will charge the customer. The bucket a line falls in is its *unit's* status, so a travel claim's line is judged through the claim somebody approved or sent back; approved carries the lines already invoiced, because invoicing is a stamp rather than a status, and draft carries the rejected ones, exactly as the three buckets of logged work do. Each amount is rounded on its own, so two buckets need not add up to the cent — that is what the totals beside them are for.
+	Total ProjectEconomyExpenseBucket `json:"total"`
 }
 
 // ProjectEconomyTotals What the whole filtered set adds up to, page or no page. readyAmounts is a list rather than one number because the projects in it may be in several currencies, and two currencies never add up.

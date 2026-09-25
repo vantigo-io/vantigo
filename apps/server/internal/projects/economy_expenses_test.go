@@ -686,3 +686,108 @@ func TestGetProjectEconomy_AsksTheExpensesProviderOnceAndHoldsNoLock(t *testing.
 		t.Errorf("the project row could not be locked while the provider was called: %v — the read must hold no lock", lockErr)
 	}
 }
+
+// Supplier invoices are a sub-figure of the expenses block (supplier invoices
+// design D3): the part of each bucket that is supplier invoices, in the
+// project's own currency, shaped exactly as the block's buckets are — and
+// nothing else in the answer moves, because the buckets, the totals and the
+// margin already count every expense.
+func TestGetProjectEconomy_SupplierInvoicesAreASubFigureOfTheExpenses(t *testing.T) {
+	t.Parallel()
+	_, manager, _, expenses, project := expenseSetUp(t, "ECOSUP1000")
+	expenses.set(project.Id, recordedExpenses("2026-09-19", spentNOK(
+		spentInCurrency("NOK",
+			spentBucket(3, "1200.00", "1500.00"),
+			spentBucket(2, "800.00", "900.00"),
+			spentBucket(1, "300.00", "0.00")),
+		2, "1100.00", 1, "400.00", 0)))
+	before := rawEconomy(t, manager, project.Id)
+
+	expenses.setSupplierInvoices(project.Id, "NOK", spentSplit(
+		spentBucket(1, "1000.00", "1100.00"), spentBucket(1, "500.00", "600.00"), spentBucket(0, "0.00", "0.00")))
+
+	si := getEconomy(t, manager, project.Id).Expenses.SupplierInvoices
+	if si == nil {
+		t.Fatal("expenses.supplierInvoices is absent; the provider reported two supplier invoices in NOK")
+	}
+	for name, got := range map[string]struct{ got, want expenseBucketJSON }{
+		"approved":  {si.Approved, expenseBucketJSON{Count: 1, Cost: 1000, Amount: 1100}},
+		"submitted": {si.Submitted, expenseBucketJSON{Count: 1, Cost: 500, Amount: 600}},
+		"draft":     {si.Draft, expenseBucketJSON{Count: 0, Cost: 0, Amount: 0}},
+		"total":     {si.Total, expenseBucketJSON{Count: 2, Cost: 1500, Amount: 1700}},
+	} {
+		if got.got != got.want {
+			t.Errorf("supplierInvoices.%s = %+v, want %+v", name, got.got, got.want)
+		}
+	}
+
+	after := rawEconomy(t, manager, project.Id)
+	block, _ := after["expenses"].(map[string]any)
+	delete(block, "supplierInvoices")
+	if !reflect.DeepEqual(before, after) {
+		b, _ := json.Marshal(before)
+		a, _ := json.Marshal(after)
+		t.Errorf("the rest of the economy moved with the sub-figure.\nbefore %s\nafter  %s", b, a)
+	}
+}
+
+// Absent when none: a project whose own currency holds no supplier invoice
+// answers no key — not zeroes — even when another currency does, because the
+// sub-figure is the project's own currency's alone, like every figure beside
+// it.
+func TestGetProjectEconomy_WithoutSupplierInvoicesInItsCurrencyTheKeyIsAbsent(t *testing.T) {
+	t.Parallel()
+	_, manager, _, expenses, project := expenseSetUp(t, "ECOSUP2000")
+	eur := spentInCurrency("EUR", spentBucket(1, "90.00", "100.00"), spentBucket(0, "0.00", "0.00"), spentBucket(0, "0.00", "0.00"))
+	split := spentSplit(spentBucket(1, "90.00", "100.00"), spentBucket(0, "0.00", "0.00"), spentBucket(0, "0.00", "0.00"))
+	eur.SupplierInvoices = &split
+	expenses.set(project.Id, recordedExpenses("2026-09-19",
+		spentNOK(spentInCurrency("NOK", spentBucket(1, "100.00", "0.00"), spentBucket(0, "0.00", "0.00"), spentBucket(0, "0.00", "0.00")),
+			0, "0.00", 0, "0.00", 0),
+		eur))
+
+	block, _ := rawEconomy(t, manager, project.Id)["expenses"].(map[string]any)
+	if _, present := block["supplierInvoices"]; present {
+		t.Errorf("expenses.supplierInvoices = %v, want it absent: nothing in NOK is a supplier invoice", block["supplierInvoices"])
+	}
+}
+
+// A split whose own total disagrees with its buckets, or that claims more
+// lines than the currency has, is the provider contradicting itself: a 500,
+// exactly as a contradicting total is, rather than a sub-figure nobody can
+// trust. Both halves of the rule have a case, because a split can agree with
+// itself perfectly and still be bigger than the whole it is a share of.
+func TestGetProjectEconomy_RefusesASupplierSplitThatContradictsItself(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, code string
+		split      func() contracts.ExpenseSplit
+	}{
+		{"its total is not its buckets", "ECOSUP3000", func() contracts.ExpenseSplit {
+			split := spentSplit(spentBucket(2, "100.00", "120.00"), spentBucket(0, "0.00", "0.00"), spentBucket(0, "0.00", "0.00"))
+			// two in the buckets and three in the total: no more than the currency's
+			// three lines, so only its own sum gives it away
+			split.Total.Count = 3
+			return split
+		}},
+		{"more lines than the currency has", "ECOSUP3100", func() contracts.ExpenseSplit {
+			// four in the buckets and four in the total, but three lines in the currency
+			return spentSplit(spentBucket(4, "100.00", "120.00"), spentBucket(0, "0.00", "0.00"), spentBucket(0, "0.00", "0.00"))
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, manager, _, expenses, project := expenseSetUp(t, tc.code)
+			nok := spentInCurrency("NOK", spentBucket(2, "100.00", "120.00"), spentBucket(1, "50.00", "0.00"), spentBucket(0, "0.00", "0.00"))
+			split := tc.split()
+			nok.SupplierInvoices = &split
+			expenses.set(project.Id, recordedExpenses("2026-09-19", nok))
+
+			r := readEconomy(t, manager, project.Id,
+				modtest.SkipContract("a provider contradicting itself is an infrastructure failure, deliberately off-contract"))
+			if r.Status != http.StatusInternalServerError {
+				t.Errorf("status %d body %s, want 500", r.Status, r.Body)
+			}
+		})
+	}
+}

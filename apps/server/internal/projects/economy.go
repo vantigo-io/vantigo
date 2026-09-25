@@ -512,6 +512,16 @@ func economyExpenses(f expenseFigures) (*gen.ProjectEconomyExpenses, error) {
 		out.ReadyCount, out.ReadyAmount = &readyCount, &readyAmount
 		out.InvoicedCount, out.InvoicedAmount = &invoicedCount, &invoicedAmount
 		out.UnpricedCount = &unpricedCount
+		// The supplier invoices' share (supplier invoices design D3), in the
+		// same currency and the same bucket shape, and absent when there is
+		// none: a sub-figure of the block, never a second block, so nothing
+		// above changes meaning and the margin is untouched.
+		if split := own.SupplierInvoices; split != nil {
+			out.SupplierInvoices = &gen.ProjectEconomySupplierInvoices{
+				Approved: *bucket(split.Approved), Submitted: *bucket(split.Submitted),
+				Draft: *bucket(split.Draft), Total: *bucket(split.Total),
+			}
+		}
 	}
 	if len(f.Others) > 0 {
 		others := make([]gen.ProjectEconomyExpenseCurrency, 0, len(f.Others))
