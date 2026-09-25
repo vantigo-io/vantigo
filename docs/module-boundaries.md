@@ -194,7 +194,10 @@ other module (depguard) and no SQL of either module crosses into the other's sch
 
 `contracts.ProjectExpenses` is the third optional contract and the mirror of the
 second: **Expenses provides it, Projects optionally consumes it** — what a
-project's expenses cost and bill, beside the hours Time already reports. It is the
+project's expenses cost and bill, beside the hours Time already reports, and, per
+currency, the part of it that is supplier invoices (`CurrencyExpenses.SupplierInvoices`,
+an `ExpenseSplit` of the same buckets, nil when there are none: a sub-figure, never a
+split, so every existing figure still means everything). It is the
 first contract whose provider requires *nothing* in return: Expenses depends on
 nobody but identity, so a `MODULES=expenses` installation provides a contract
 nothing consumes, and a `MODULES=customers,projects,time` one consumes nothing of

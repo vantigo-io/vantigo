@@ -29,12 +29,13 @@ invoice is paid by the company"). Mileage and per-diem fields are refused as on 
 without the projects module the kind is refused outright with the same sentence). Column
 names avoid the outgoing stamp's `invoice_reference`/`invoiced_at`.
 
-Who is owed money is today one predicate written fifteen times — fourteen in SQL, once in
-Go — and every copy would call a supplier invoice "owed to the employee". This delivery
+Who is owed money is today one predicate written fourteen times — thirteen in SQL, once in
+Go (claims.sql's receipts-missing count reads `kind = 'outlay'` too, but asks a different
+question) — and every copy would call a supplier invoice "owed to the employee". This delivery
 folds the SQL copies into **one function**, `expenses.owes_employee(kind, paid_by)`
 (`IMMUTABLE`, in the migration), used by every query that had the predicate, and keeps the
 Go `owesEmployee` as its mirror with a comment naming the function — "one rule, written
-twice on purpose" stays true, and the count of places drops from fifteen to two. A supplier
+twice on purpose" stays true, and the count of places drops from fourteen to two. A supplier
 invoice owes nobody: it never reaches the reimbursement list, the payroll CSV, the
 unreimbursed stats or the reimbursement attention item.
 
