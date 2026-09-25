@@ -94,6 +94,16 @@ func (f *forbiddenProjects) CanLogTime(context.Context, int32, uuid.UUID) (bool,
 	return false, nil
 }
 
+func (f *forbiddenProjects) WorkType(context.Context, int32) (*contracts.WorkTypeEntry, error) {
+	f.deny("WorkType")
+	return nil, nil
+}
+
+func (f *forbiddenProjects) WorkTypes(context.Context, int32) ([]contracts.WorkTypeEntry, error) {
+	f.deny("WorkTypes")
+	return nil, nil
+}
+
 // forbiddenCatalog is the same for contracts.ProductCatalog: pricing is
 // snapshotted on the entry, so serving actuals never asks products anything
 // either.

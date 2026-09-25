@@ -1,11 +1,13 @@
 package timetracking_test
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"maps"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -170,12 +172,13 @@ const (
 // concurrent use, because the handlers of one harness read it from many
 // requests at once.
 type fakeProjects struct {
-	mu       sync.Mutex
-	projects map[int32]contracts.ProjectEntry
-	lines    map[int32]contracts.BillingLineEntry
-	tasks    map[int32]contracts.TaskEntry
-	roles    map[roleKey]string
-	locked   lockedCalls
+	mu        sync.Mutex
+	projects  map[int32]contracts.ProjectEntry
+	lines     map[int32]contracts.BillingLineEntry
+	tasks     map[int32]contracts.TaskEntry
+	workTypes map[int32]contracts.WorkTypeEntry
+	roles     map[roleKey]string
+	locked    lockedCalls
 }
 
 type roleKey struct {
@@ -247,7 +250,8 @@ func newFakeProjects() *fakeProjects {
 			taskDelivery:      {ID: taskDelivery, ProjectID: projectKraftVerket, Title: "Test leveransen", Status: "in-progress"},
 			taskForeign:       {ID: taskForeign, ProjectID: projectEuro, Title: "Oversett rapporten", Status: "todo"},
 		},
-		roles: map[roleKey]string{},
+		workTypes: map[int32]contracts.WorkTypeEntry{},
+		roles:     map[roleKey]string{},
 	}
 }
 
@@ -410,6 +414,43 @@ func (f *fakeProjects) CanLogTime(ctx context.Context, projectID int32, userID u
 	}
 	role := f.roles[roleKey{projectID, userID}]
 	return role == roleMember || role == roleManager, nil
+}
+
+// WorkType is projects' own answer: any type by id, active or not, (nil, nil)
+// for one nobody has (work types design D2).
+func (f *fakeProjects) WorkType(ctx context.Context, id int32) (*contracts.WorkTypeEntry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.noteLocked(ctx, "WorkType")
+	wt, ok := f.workTypes[id]
+	if !ok {
+		return nil, nil
+	}
+	return &wt, nil
+}
+
+// WorkTypes is the project's types in the directory's order: active first,
+// each half by name without regard to case, then by id.
+func (f *fakeProjects) WorkTypes(ctx context.Context, projectID int32) ([]contracts.WorkTypeEntry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.noteLocked(ctx, "WorkTypes")
+	var out []contracts.WorkTypeEntry
+	for _, wt := range f.workTypes {
+		if wt.ProjectID == projectID {
+			out = append(out, wt)
+		}
+	}
+	slices.SortFunc(out, func(a, b contracts.WorkTypeEntry) int {
+		if a.Active != b.Active {
+			if a.Active {
+				return -1
+			}
+			return 1
+		}
+		return cmp.Or(strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)), cmp.Compare(a.ID, b.ID))
+	})
+	return out, nil
 }
 
 // customerKraftVerket is the customer every fixture project but the internal

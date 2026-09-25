@@ -47,6 +47,21 @@ type BillingLineEntry struct {
 	Active          bool
 }
 
+// WorkTypeEntry is one of a project's work types as another module may read
+// it (work types design D1, D2): a named rule that multiplies whatever rates
+// the chain resolved for an entry that picks it. The percentages are a rule,
+// not an amount — 150 is "one and a half times the rate" — so they are here
+// beside the name for every consumer, not behind a financial-viewer check the
+// way Currency and DefaultBillRate are. Projects stores them and multiplies
+// nothing; the consumer that owns the rates does.
+type WorkTypeEntry struct {
+	ID, ProjectID         int32
+	Name                  string
+	BillMultiplierPercent float64 // > 0, ≤ 1000, two decimals; 100 is the rate as it stands
+	CostMultiplierPercent float64 // the same, applied to the cost rate
+	Active                bool
+}
+
 // ProjectDirectory is the one sanctioned way a module reads projects' data:
 // a read-only, in-process port over projects, roles and billing lines, so a
 // module can name a project, check whether a user may act on it, or price
@@ -105,4 +120,15 @@ type ProjectDirectory interface {
 	// the project must be active and userID must hold the member or
 	// manager role on it.
 	CanLogTime(ctx context.Context, projectID int32, userID uuid.UUID) (bool, error)
+	// WorkType looks up a work type by ID, active or not: an entry that
+	// picked a type before it was deactivated must still be able to name it.
+	// It returns (nil, nil) if id does not exist. The caller compares
+	// ProjectID with its own project; a type of another project is the
+	// caller's refusal to make.
+	WorkType(ctx context.Context, id int32) (*WorkTypeEntry, error)
+	// WorkTypes lists every work type on projectID, active ones first, each
+	// half by name without regard to case, then by ID. A caller offering a
+	// choice filters the active ones itself. A project with none, or one that
+	// does not exist, answers an empty result.
+	WorkTypes(ctx context.Context, projectID int32) ([]WorkTypeEntry, error)
 }

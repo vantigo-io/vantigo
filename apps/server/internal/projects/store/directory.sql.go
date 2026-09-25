@@ -473,3 +473,80 @@ func (q *Queries) DirectoryTask(ctx context.Context, id int32) (DirectoryTaskRow
 	)
 	return i, err
 }
+
+const directoryWorkType = `-- name: DirectoryWorkType :one
+SELECT id, project_id, name, bill_multiplier_percent, cost_multiplier_percent, active
+FROM projects.work_types
+WHERE id = $1
+`
+
+type DirectoryWorkTypeRow struct {
+	ID                    int32
+	ProjectID             int32
+	Name                  string
+	BillMultiplierPercent pgtype.Numeric
+	CostMultiplierPercent pgtype.Numeric
+	Active                bool
+}
+
+// DirectoryWorkType is contracts.ProjectDirectory.WorkType's row: one type by
+// id, active or not, whatever project it is on — the consumer compares the
+// project itself (work types design D2).
+func (q *Queries) DirectoryWorkType(ctx context.Context, id int32) (DirectoryWorkTypeRow, error) {
+	row := q.db.QueryRow(ctx, directoryWorkType, id)
+	var i DirectoryWorkTypeRow
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.BillMultiplierPercent,
+		&i.CostMultiplierPercent,
+		&i.Active,
+	)
+	return i, err
+}
+
+const directoryWorkTypes = `-- name: DirectoryWorkTypes :many
+SELECT id, project_id, name, bill_multiplier_percent, cost_multiplier_percent, active
+FROM projects.work_types
+WHERE project_id = $1
+ORDER BY active DESC, lower(name), id
+`
+
+type DirectoryWorkTypesRow struct {
+	ID                    int32
+	ProjectID             int32
+	Name                  string
+	BillMultiplierPercent pgtype.Numeric
+	CostMultiplierPercent pgtype.Numeric
+	Active                bool
+}
+
+// DirectoryWorkTypes is contracts.ProjectDirectory.WorkTypes' rows: every type
+// on projectID, in ListWorkTypes' order.
+func (q *Queries) DirectoryWorkTypes(ctx context.Context, projectID int32) ([]DirectoryWorkTypesRow, error) {
+	rows, err := q.db.Query(ctx, directoryWorkTypes, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DirectoryWorkTypesRow
+	for rows.Next() {
+		var i DirectoryWorkTypesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.Name,
+			&i.BillMultiplierPercent,
+			&i.CostMultiplierPercent,
+			&i.Active,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

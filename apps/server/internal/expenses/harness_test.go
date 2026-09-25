@@ -433,6 +433,17 @@ func (f *fakeProjects) CanLogTime(_ context.Context, projectID int32, userID uui
 	return role == roleMember || role == roleManager, nil
 }
 
+// WorkType and WorkTypes satisfy the interface and are never asked: work
+// types multiply time's rates (work types design D1), and an expense has
+// none.
+func (f *fakeProjects) WorkType(context.Context, int32) (*contracts.WorkTypeEntry, error) {
+	return nil, nil
+}
+
+func (f *fakeProjects) WorkTypes(context.Context, int32) ([]contracts.WorkTypeEntry, error) {
+	return nil, nil
+}
+
 // fakeObjectStore is storage.ObjectStore in memory: the receipts this module
 // uploads go here rather than to a filesystem, so no test depends on
 // filesystem permissions. It is installed by every harness, so the attachment

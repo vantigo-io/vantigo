@@ -92,6 +92,16 @@ func (f *forbiddenProjects) CanLogTime(context.Context, int32, uuid.UUID) (bool,
 	return false, nil
 }
 
+func (f *forbiddenProjects) WorkType(context.Context, int32) (*contracts.WorkTypeEntry, error) {
+	f.deny("WorkType")
+	return nil, nil
+}
+
+func (f *forbiddenProjects) WorkTypes(context.Context, int32) ([]contracts.WorkTypeEntry, error) {
+	f.deny("WorkTypes")
+	return nil, nil
+}
+
 // expensesProvider builds the provider the way module.Compose does — from the
 // harness's own Deps, so the pool is the test database's — with the project
 // directory replaced by one that may not be called.

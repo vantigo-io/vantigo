@@ -265,6 +265,63 @@ func (d *directory) BillingLines(ctx context.Context, projectID int32) ([]contra
 	return entries, nil
 }
 
+// toWorkTypeEntry converts a directory work-type row into the contract's
+// WorkTypeEntry. The two queries emit two row types with the same columns, so
+// both call sites pass the fields and this is the one mapping.
+func toWorkTypeEntry(id, projectID int32, name string, bill, cost pgtype.Numeric, active bool) (contracts.WorkTypeEntry, error) {
+	billPercent, err := floatFromNumeric(bill)
+	if err != nil {
+		return contracts.WorkTypeEntry{}, fmt.Errorf("projects: directory work type: %w", err)
+	}
+	costPercent, err := floatFromNumeric(cost)
+	if err != nil {
+		return contracts.WorkTypeEntry{}, fmt.Errorf("projects: directory work type: %w", err)
+	}
+	return contracts.WorkTypeEntry{
+		ID:                    id,
+		ProjectID:             projectID,
+		Name:                  name,
+		BillMultiplierPercent: billPercent,
+		CostMultiplierPercent: costPercent,
+		Active:                active,
+	}, nil
+}
+
+// WorkType looks up one work type by id, active or not (work types design D2):
+// an entry that picked it before it was switched off must still name it.
+func (d *directory) WorkType(ctx context.Context, id int32) (*contracts.WorkTypeEntry, error) {
+	row, err := d.q.DirectoryWorkType(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("projects: directory work type: %w", err)
+	}
+	entry, err := toWorkTypeEntry(row.ID, row.ProjectID, row.Name, row.BillMultiplierPercent, row.CostMultiplierPercent, row.Active)
+	if err != nil {
+		return nil, err
+	}
+	return &entry, nil
+}
+
+// WorkTypes lists every work type on projectID, active first, each half by
+// name without regard to case — the Billing tab's order.
+func (d *directory) WorkTypes(ctx context.Context, projectID int32) ([]contracts.WorkTypeEntry, error) {
+	rows, err := d.q.DirectoryWorkTypes(ctx, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("projects: directory work types: %w", err)
+	}
+	entries := make([]contracts.WorkTypeEntry, 0, len(rows))
+	for _, row := range rows {
+		entry, err := toWorkTypeEntry(row.ID, row.ProjectID, row.Name, row.BillMultiplierPercent, row.CostMultiplierPercent, row.Active)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
+}
+
 // directoryTaskRow is the shape every directory query resolving a task
 // shares, the same one-shared-conversion pattern directoryProjectRow uses.
 type directoryTaskRow struct {

@@ -9,6 +9,7 @@ sql:
       - ../db/migrations/00008_projects_baseline.sql
       - ../db/migrations/00009_projects_tasks.sql
       - ../db/migrations/00011_projects_milestones.sql
+      - ../db/migrations/00031_projects_work_types.sql
     queries: queries
     gen:
       go:

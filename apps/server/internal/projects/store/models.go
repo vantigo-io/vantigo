@@ -131,3 +131,14 @@ type ProjectsTimelineEntry struct {
 	ActorDisplay string
 	OccurredAt   time.Time
 }
+
+type ProjectsWorkType struct {
+	ID                    int32
+	ProjectID             int32
+	Name                  string
+	BillMultiplierPercent pgtype.Numeric
+	CostMultiplierPercent pgtype.Numeric
+	Active                bool
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
+}
