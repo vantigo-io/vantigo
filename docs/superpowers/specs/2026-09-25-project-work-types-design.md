@@ -19,7 +19,7 @@ line would have to be defined on every line of every project — the same duplic
 plan wanted to end, one level down. A work type is therefore defined **once per project**
 and applies to **every** billing line and every rate step of that project:
 `projects.work_types` (migration `00031`): `id`, `project_id` (in-module FK), `name`
-(1–100 chars, unique per project case-insensitively — 409 `work_type_exists`),
+(1–100 chars, unique per project case-insensitively — a 409 titled "Work type exists": the projects module carries no error codes of its own),
 `bill_multiplier_percent numeric(6,2)` and `cost_multiplier_percent numeric(6,2)` (each
 > 0 and ≤ 1000, at most two decimals; 100 is "as the rate says"; 150 is the classic overtime
 uplift), `active boolean` (deactivate, never delete: entries snapshot the name, but a type
@@ -32,8 +32,8 @@ project template, phase 4, is where a shared vocabulary would come from).
 `PUT /projects/{id}/work-types/{workTypeId}` for `CanManage` (the manager role or
 `projects:manage-all`). The write validates the body, inserts or updates in one
 transaction relying on the unique index for the 409, and records a project timeline entry
-(`project.work_type_added` / `project.work_type_updated`, naming the fields that changed —
-the billing lines' precedent). No project-row lock: nothing here depends on the currency,
+(`work-type-added` / `work-type-changed`, the module's own event naming, listing the fields
+that changed — the billing lines' precedent). No project-row lock: nothing here depends on the currency,
 the fixed price or the billing type. **Multipliers are visible to everyone who can see the
 project**: they are a rule ("150 %"), not an amount — the same reading that keeps
 `budgetHours` visible while `budgetAmount` is shaped away. Projects records the
