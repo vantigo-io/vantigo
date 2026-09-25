@@ -363,9 +363,11 @@ export const ProjectExpensesPanel = ({ projectId, onChanged }: ProjectExpensesPa
                                 </Text>
                               ) : (
                                 <Text size="xs">
-                                  {expense.attachmentCount === 1
-                                    ? t("oneReceipt")
-                                    : t("receiptCount", { count: expense.attachmentCount })}
+                                  {expense.kind === "supplier_invoice"
+                                    ? t("supplierInvoiceAttached")
+                                    : expense.attachmentCount === 1
+                                      ? t("oneReceipt")
+                                      : t("receiptCount", { count: expense.attachmentCount })}
                                 </Text>
                               )}
                             </Table.Td>

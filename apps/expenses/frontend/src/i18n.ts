@@ -34,6 +34,7 @@ export const expensesCatalog = {
     companyPaysSupplierInvoices: "The company pays a supplier invoice — nobody is paid anything back for it.",
     supplierInvoiceDocument: "The supplier's invoice",
     noSupplierInvoiceDocument: "The supplier's invoice is not attached",
+    supplierInvoiceAttached: "Invoice attached",
     dropSupplierInvoiceHere:
       "Drop the supplier's invoice here, or choose a file. PDF, JPEG, PNG or HEIC, at most 10 MB each.",
     attachSupplierInvoice: "Attach the supplier's invoice",
@@ -614,6 +615,7 @@ export const expensesCatalog = {
     companyPaysSupplierInvoices: "Firmaet betaler en leverandørfaktura — ingen får noe tilbakebetalt for den.",
     supplierInvoiceDocument: "Leverandørens faktura",
     noSupplierInvoiceDocument: "Leverandørens faktura er ikke lagt ved",
+    supplierInvoiceAttached: "Faktura lagt ved",
     dropSupplierInvoiceHere:
       "Slipp leverandørens faktura her, eller velg en fil. PDF, JPEG, PNG eller HEIC, høyst 10 MB hver.",
     attachSupplierInvoice: "Legg ved leverandørens faktura",

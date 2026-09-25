@@ -18,7 +18,7 @@ import {
   supplierInvoice,
 } from "../test/fixtures";
 import { renderWithProviders } from "../test/render";
-import { stubExpensesApi } from "../test/server";
+import { type ExpensesServer, stubExpensesApi } from "../test/server";
 import { ProjectExpensesPanel } from "./project-expenses-panel";
 
 const BOOKED = { id: PROJECT, code: "KVEM1000", name: "Kverneland web" };
@@ -734,6 +734,7 @@ describe("ProjectExpensesPanel", () => {
 describe("ProjectExpensesPanel — supplier invoices", () => {
   it("offers 'Record a supplier invoice' to the project's financial side, fixed to the project and the kind", async () => {
     // A finance reader: may see the money, on no team — so no "Record a cost".
+    const onChanged = vi.fn();
     const fetchMock = stubExpensesApi({
       entries: [],
       meta: meta({ categories: categoriesWithSubcontractor }),
@@ -741,7 +742,7 @@ describe("ProjectExpensesPanel — supplier invoices", () => {
       summaryProject: projectOptions[0],
       projectCurrency: "NOK",
     });
-    panel();
+    panel(onChanged);
 
     await userEvent.click(await screen.findByRole("button", { name: "Record a supplier invoice" }));
     expect(screen.queryByRole("button", { name: "Record a cost" })).not.toBeInTheDocument();
@@ -765,6 +766,36 @@ describe("ProjectExpensesPanel — supplier invoices", () => {
       billable: true,
       categoryId: 14,
     });
+    // The figures move with it: the host is told, and the tab's own summary
+    // is read again — with the supplier invoices' share in it now.
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    const share = await screen.findByTestId("project-expense-supplier-invoices-NOK");
+    expect(share).toHaveTextContent("1 expense");
+    expect(share).toHaveTextContent("12,500.00");
+  });
+
+  it("says a refusal on the kind above the form, since the button fixed the kind", async () => {
+    // The projects module goes away between the tab's /meta and the save.
+    const server: ExpensesServer = {
+      entries: [],
+      meta: meta({ categories: categoriesWithSubcontractor }),
+      canRecordSupplierInvoice: true,
+      summaryProject: projectOptions[0],
+      projectCurrency: "NOK",
+    };
+    stubExpensesApi(server);
+    panel();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Record a supplier invoice" }));
+    const dialog = await screen.findByRole("dialog", { name: "New expense" });
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Description" }), "Rørleggerarbeid");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Supplier" }), "Rør & Varme AS");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Invoice number" }), "F-1");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Amount including VAT" }), "12500");
+    server.meta = meta({ categories: categoriesWithSubcontractor, projectsAvailable: false });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save draft" }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("A supplier invoice is booked on a project");
   });
 
   it("offers no supplier invoice without the capability, and 'Record a cost' offers no such kind", async () => {
