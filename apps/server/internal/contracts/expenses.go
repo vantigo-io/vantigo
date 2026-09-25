@@ -133,6 +133,17 @@ type CurrencyExpenses struct {
 	// or the figure it shows is short by however much these lines turn out to
 	// be worth.
 	UnpricedCount int64
+	// SupplierInvoices is the part of this currency's three buckets and their
+	// total that is supplier invoices (supplier invoices design D3) — nil when
+	// the currency holds none. It is a sub-figure, never a split of the
+	// figures above: Approved, Submitted, Draft and Total keep meaning every
+	// line, supplier invoices included, so a consumer that knows nothing of
+	// this field reads exactly what it always read. Its buckets follow the
+	// same rules as those — the unit's status, rejected as draft, cost the
+	// net, bill the billable lines' stored amounts, each rounded once on its
+	// own — and its Total is rounded once from the unrounded whole, as Total
+	// is.
+	SupplierInvoices *ExpenseSplit
 }
 
 // ExpenseBucket is what one bucket of recorded expenses amounts to. The count
@@ -163,4 +174,11 @@ type ExpenseBucket struct {
 	// CurrencyExpenses.UnpricedCount instead of being read as zero. Per diem
 	// is never billable. Same text rule as CostAmount.
 	BillAmount string
+}
+
+// ExpenseSplit is one kind's share of a currency's buckets: the same three
+// buckets and the across-bucket total, over the lines of that kind alone. It
+// is only ever the supplier invoices' (CurrencyExpenses.SupplierInvoices).
+type ExpenseSplit struct {
+	Approved, Submitted, Draft, Total ExpenseBucket
 }

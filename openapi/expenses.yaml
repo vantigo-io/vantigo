@@ -1312,6 +1312,10 @@ components:
                     type: integer
                 submitted:
                     $ref: '#/components/schemas/ExpensesProjectSummaryBucket'
+                supplierInvoices:
+                    allOf:
+                        - $ref: '#/components/schemas/ExpensesProjectSummarySupplierInvoices'
+                    description: The part of the buckets and the total above that is supplier invoices (supplier invoices design D3). Absent when this currency holds none. It is a line of its own beneath the totals, never a split of them — every bucket above still counts every line.
                 total:
                     $ref: '#/components/schemas/ExpensesProjectSummaryBucket'
                 unpricedCount:
@@ -1354,6 +1358,23 @@ components:
             required:
                 - currencies
                 - capabilities
+            type: object
+        ExpensesProjectSummarySupplierInvoices:
+            description: What a project's supplier invoices in one currency cost and bill, in the same three buckets as everything else and their total — the total rounded once from the unrounded whole, never the three added up. Each bucket is already inside the currency's own bucket of that status.
+            properties:
+                approved:
+                    $ref: '#/components/schemas/ExpensesProjectSummaryBucket'
+                draft:
+                    $ref: '#/components/schemas/ExpensesProjectSummaryBucket'
+                submitted:
+                    $ref: '#/components/schemas/ExpensesProjectSummaryBucket'
+                total:
+                    $ref: '#/components/schemas/ExpensesProjectSummaryBucket'
+            required:
+                - approved
+                - submitted
+                - draft
+                - total
             type: object
         ExpensesRateOverrideRequest:
             description: A replacement rate for one submitted mileage line or per diem day (decision X8). It reprices the line's amount and nothing else — the customer's own rate per kilometre is untouched — and records who set it and what the rate table had said.

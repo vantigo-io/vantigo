@@ -20,6 +20,7 @@ SELECT e.project_id::integer AS project_id,
            WHEN 'submitted' THEN 'submitted'
            ELSE 'draft'
        END AS bucket,
+       (e.kind = 'supplier_invoice')::boolean AS supplier_invoice,
        count(*) AS line_count,
        COALESCE(SUM(e.gross_amount - COALESCE(e.vat_amount, 0)), 0)::text AS cost_amount,
        COALESCE(SUM(e.bill_amount) FILTER (WHERE e.billable), 0)::text AS bill_amount,
@@ -42,6 +43,7 @@ LEFT JOIN expenses.claims c ON c.id = e.claim_id
 WHERE e.project_id = ANY($1::integer[])
 GROUP BY e.project_id,
          e.currency,
+         (e.kind = 'supplier_invoice'),
          CASE COALESCE(c.status, e.status)
              WHEN 'approved' THEN 'approved'
              WHEN 'submitted' THEN 'submitted'
@@ -50,18 +52,19 @@ GROUP BY e.project_id,
 `
 
 type ProjectExpenseGroupsRow struct {
-	ProjectID      int32
-	Currency       string
-	Bucket         string
-	LineCount      int64
-	CostAmount     string
-	BillAmount     string
-	UnpricedCount  int64
-	ReadyCount     int64
-	ReadyAmount    string
-	InvoicedCount  int64
-	InvoicedAmount string
-	LastEntryDate  pgtype.Date
+	ProjectID       int32
+	Currency        string
+	Bucket          string
+	SupplierInvoice bool
+	LineCount       int64
+	CostAmount      string
+	BillAmount      string
+	UnpricedCount   int64
+	ReadyCount      int64
+	ReadyAmount     string
+	InvoicedCount   int64
+	InvoicedAmount  string
+	LastEntryDate   pgtype.Date
 }
 
 // What a project's expenses cost and bill, as contracts.ProjectExpenses
@@ -111,6 +114,11 @@ type ProjectExpenseGroupsRow struct {
 // and adding those is a different number from rounding the sum once, and only
 // the second is the one an invoice would show — so the rounding is Go's,
 // after the groups have been added up in exact decimals.
+//
+// supplier_invoice is the one kind the answer tells apart (supplier invoices
+// design D3): the groups are split by it so the fold can carry the supplier
+// invoices' share of each bucket beside the buckets. It splits groups and
+// changes no sum — every bucket the fold publishes is still every line.
 func (q *Queries) ProjectExpenseGroups(ctx context.Context, projectIds []int32) ([]ProjectExpenseGroupsRow, error) {
 	rows, err := q.db.Query(ctx, projectExpenseGroups, projectIds)
 	if err != nil {
@@ -124,6 +132,7 @@ func (q *Queries) ProjectExpenseGroups(ctx context.Context, projectIds []int32) 
 			&i.ProjectID,
 			&i.Currency,
 			&i.Bucket,
+			&i.SupplierInvoice,
 			&i.LineCount,
 			&i.CostAmount,
 			&i.BillAmount,

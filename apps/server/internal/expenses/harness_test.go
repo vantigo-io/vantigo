@@ -1099,6 +1099,15 @@ type (
 		InvoicedCount  int32             `json:"invoicedCount"`
 		InvoicedAmount float64           `json:"invoicedAmount"`
 		UnpricedCount  int32             `json:"unpricedCount"`
+		// SupplierInvoices is the part of the buckets that is supplier
+		// invoices, absent when the currency has none.
+		SupplierInvoices *summarySupplierInvoicesJSON `json:"supplierInvoices"`
+	}
+	summarySupplierInvoicesJSON struct {
+		Approved  summaryBucketJSON `json:"approved"`
+		Submitted summaryBucketJSON `json:"submitted"`
+		Draft     summaryBucketJSON `json:"draft"`
+		Total     summaryBucketJSON `json:"total"`
 	}
 )
 

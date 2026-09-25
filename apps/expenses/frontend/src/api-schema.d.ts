@@ -1623,6 +1623,8 @@ export interface components {
              */
             readyCount: number;
             submitted: components["schemas"]["ExpensesProjectSummaryBucket"];
+            /** @description The part of the buckets and the total above that is supplier invoices (supplier invoices design D3). Absent when this currency holds none. It is a line of its own beneath the totals, never a split of them — every bucket above still counts every line. */
+            supplierInvoices?: components["schemas"]["ExpensesProjectSummarySupplierInvoices"];
             total: components["schemas"]["ExpensesProjectSummaryBucket"];
             /**
              * Format: int32
@@ -1644,6 +1646,13 @@ export interface components {
             project?: components["schemas"]["ExpensesProjectOption"];
             /** @description The project's own currency — the entry of `currencies` with this code is the project's; every other entry is in another currency, never converted. Absent when the project carries none, in which case every entry is in another currency and the project has no figures of its own. It is answered here rather than left to a second read because the caller this endpoint exists for may hold no role on the project, and GET /api/v1/expenses/projects — which is a picker for what the caller may book on, not a lookup — answers them nothing. */
             projectCurrency?: string;
+        };
+        /** @description What a project's supplier invoices in one currency cost and bill, in the same three buckets as everything else and their total — the total rounded once from the unrounded whole, never the three added up. Each bucket is already inside the currency's own bucket of that status. */
+        ExpensesProjectSummarySupplierInvoices: {
+            approved: components["schemas"]["ExpensesProjectSummaryBucket"];
+            draft: components["schemas"]["ExpensesProjectSummaryBucket"];
+            submitted: components["schemas"]["ExpensesProjectSummaryBucket"];
+            total: components["schemas"]["ExpensesProjectSummaryBucket"];
         };
         /** @description A replacement rate for one submitted mileage line or per diem day (decision X8). It reprices the line's amount and nothing else — the customer's own rate per kilometre is untouched — and records who set it and what the rate table had said. */
         ExpensesRateOverrideRequest: {
