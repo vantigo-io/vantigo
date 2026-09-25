@@ -79,12 +79,15 @@ type ActualsBucket struct {
 	// HoursHundredths is hundredths of an hour: 1.25 h is 125. Exact.
 	HoursHundredths int64
 	// BillAmount is what the bucket's hours are worth at the bill rates the
-	// work was logged at, as decimal text with two decimals ("1234.50"),
-	// "0.00" when there is nothing. Only work logged in the requested
-	// currency is in it.
+	// work was logged at, times the work-type multiplier each entry
+	// snapshotted (100 % for none), as decimal text with two decimals
+	// ("1234.50"), "0.00" when there is nothing. Only work logged in the
+	// requested currency is in it. Hours × bill rate alone under-bills
+	// overtime: take this figure, never re-derive it.
 	BillAmount string
 	// CostAmount is the same for what the bucket's hours cost the company,
-	// at the cost rates the work was logged at. "0.00" when there is
+	// at the cost rates the work was logged at, times the cost multiplier
+	// each entry snapshotted (100 % for none). "0.00" when there is
 	// nothing, and only work whose cost is in the requested currency is in
 	// it.
 	CostAmount string
