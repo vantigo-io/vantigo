@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { jsonResponse, runQuery } from "../test/api";
 import { stubFetch } from "../test/fetch";
-import { myOpenTasksQueryOptions, myProjectsQueryOptions, projectBillingLinesQueryOptions } from "./projects";
+import {
+  myOpenTasksQueryOptions,
+  myProjectsQueryOptions,
+  projectBillingLinesQueryOptions,
+  projectWorkTypesQueryOptions,
+} from "./projects";
 
 describe("myProjectsQueryOptions", () => {
   it("lists the projects the caller holds a role on and keeps what a picker needs", async () => {
@@ -102,5 +107,41 @@ describe("myOpenTasksQueryOptions", () => {
       },
     ]);
     expect(fetchMock.actualCalls[0]?.[0]).toBe("/api/v1/projects/my-tasks");
+  });
+});
+
+describe("projectWorkTypesQueryOptions", () => {
+  it("reads the project's work types from the projects API and keeps the active ones", async () => {
+    const fetchMock = stubFetch(() =>
+      Promise.resolve(
+        jsonResponse(200, [
+          {
+            id: 6001,
+            projectId: 1001,
+            name: "Overtid 50 %",
+            billMultiplierPercent: 150,
+            costMultiplierPercent: 140,
+            active: true,
+            createdAt: "2026-09-01T08:00:00Z",
+            updatedAt: "2026-09-01T08:00:00Z",
+          },
+          {
+            id: 6003,
+            projectId: 1001,
+            name: "Gammel overtid",
+            billMultiplierPercent: 150,
+            costMultiplierPercent: 150,
+            active: false,
+            createdAt: "2026-01-01T08:00:00Z",
+            updatedAt: "2026-06-01T08:00:00Z",
+          },
+        ]),
+      ),
+    );
+
+    const options = projectWorkTypesQueryOptions(1001);
+    expect(await runQuery(options)).toEqual([{ id: 6001, name: "Overtid 50 %", active: true }]);
+    expect(options.queryKey).toEqual(["time", "options", "work-types", 1001]);
+    expect(fetchMock.actualCalls[0]?.[0]).toBe("/api/v1/projects/1001/work-types");
   });
 });

@@ -98,6 +98,33 @@ export const kvemLines: ProjectBillingLine[] = [
   { id: 3002, code: "DEV", trackableCode: "KVEM1000-DEV", productName: "Development", active: true },
 ];
 
+/**
+ * Kverneland's work types, literally as the projects API answers them — a
+ * retired one included, which the entry form must not offer.
+ */
+export const kvemWorkTypes = [
+  {
+    id: 6001,
+    projectId: 1001,
+    name: "Overtid 50 %",
+    billMultiplierPercent: 150,
+    costMultiplierPercent: 140,
+    active: true,
+    createdAt: "2026-09-01T08:00:00Z",
+    updatedAt: "2026-09-01T08:00:00Z",
+  },
+  {
+    id: 6003,
+    projectId: 1001,
+    name: "Gammel overtid",
+    billMultiplierPercent: 150,
+    costMultiplierPercent: 150,
+    active: false,
+    createdAt: "2026-01-01T08:00:00Z",
+    updatedAt: "2026-06-01T08:00:00Z",
+  },
+];
+
 export const myTasks: MyTaskOption[] = [
   { id: 5001, title: "Skriv spesifikasjonen", projectId: 1001, projectCode: "KVEM1000", projectName: "Kverneland web" },
   { id: 5003, title: "Oversett rapporten", projectId: 1004, projectCode: "EURO2026", projectName: "Euro" },

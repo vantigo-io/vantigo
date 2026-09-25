@@ -8,9 +8,12 @@ import { useState } from "react";
 import { approvalsQueryOptions, approveTimeEntries, type TimeApprovalGroup } from "../api/approvals";
 import type { TimeEntry } from "../api/entries";
 import type { ApiError } from "../api/request";
+import { RateLine } from "../components/rate-line";
 import { RefusalList } from "../components/refusal-list";
+import { WorkTypeBadge } from "../components/work-type-badge";
 import "../i18n";
 import { useHoursFormat } from "../lib/hours";
+import { billedAmount } from "../lib/money";
 import { rowLabel } from "../lib/rows";
 import { RejectModal } from "./-reject-modal";
 
@@ -306,14 +309,18 @@ const EntryRow = ({ entry, selected, onToggle, onReject }: EntryRowProps) => {
   const date = formatters.formatDate(entry.entryDate, { dateStyle: "medium", timeZone: "UTC" });
 
   // The bill rate is on the entry only for a caller who may see the project's
-  // money (D8); what it bills is that rate over the entry's own hours.
+  // money (D8); what it bills is that rate over the entry's own hours, times
+  // the work type's multiplier (work types design D3), exactly and rounded
+  // once — the figure the project's economy reports for the same hours.
   const rate = entry.billing?.billRate;
+  const value =
+    rate === undefined || rate === null ? undefined : billedAmount(rate, entry.hours, entry.billing?.multiplierPercent);
   const amount =
-    rate === undefined || rate === null
+    value === undefined
       ? undefined
       : entry.billing?.currency
-        ? formatters.formatCurrency(rate * entry.hours, entry.billing.currency)
-        : formatters.formatNumber(rate * entry.hours, { maximumFractionDigits: 2 });
+        ? formatters.formatCurrency(value, entry.billing.currency)
+        : formatters.formatNumber(value, { maximumFractionDigits: 2 });
 
   return (
     <Table.Tr>
@@ -331,12 +338,16 @@ const EntryRow = ({ entry, selected, onToggle, onReject }: EntryRowProps) => {
       <Table.Td>{date}</Table.Td>
       <Table.Td>
         <Stack gap={0}>
-          <Text size="sm" fw={600}>
-            {label}
-          </Text>
+          <Group gap={6} wrap="nowrap">
+            <Text size="sm" fw={600}>
+              {label}
+            </Text>
+            {entry.workType && <WorkTypeBadge name={entry.workType.name} />}
+          </Group>
           <Text size="xs" c="dimmed">
             {entry.projectName}
           </Text>
+          <RateLine billing={entry.billing} />
         </Stack>
       </Table.Td>
       <Table.Td ta="right">{hours.display(entry.hours)}</Table.Td>

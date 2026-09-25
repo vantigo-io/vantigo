@@ -36,6 +36,17 @@ export interface MyTaskOption {
   projectName: string;
 }
 
+/**
+ * One of a project's work types as the entry form offers it (work types
+ * design D5). The projects API answers the whole WorkTypeResponse; the form
+ * needs the id, the name and whether it may still be picked.
+ */
+export interface ProjectWorkType {
+  id: number;
+  name: string;
+  active: boolean;
+}
+
 interface ProjectListResponse {
   data: MyProject[];
 }
@@ -111,5 +122,21 @@ export const myOpenTasksQueryOptions = () =>
           projectName,
         }),
       );
+    },
+  });
+
+/**
+ * The project's work types an entry may pick: the active ones, in the
+ * server's order (by name). Projects lists deactivated types too — entries
+ * that picked one still name it — but a retired type is no choice for new
+ * work, so it is dropped here. Anyone who can see the project may read them;
+ * a multiplier is a rule, not an amount.
+ */
+export const projectWorkTypesQueryOptions = (projectId: number) =>
+  queryOptions({
+    queryKey: ["time", "options", "work-types", projectId],
+    queryFn: async ({ signal }) => {
+      const types = await request<ProjectWorkType[]>(`/api/v1/projects/${projectId}/work-types`, { signal });
+      return types.filter((type) => type.active).map(({ id, name, active }): ProjectWorkType => ({ id, name, active }));
     },
   });

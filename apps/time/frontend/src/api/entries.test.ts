@@ -109,6 +109,13 @@ describe("entry writes", () => {
 });
 
 describe("timeEntryUpdateFrom", () => {
+  it("carries the work type along, so new hours from the grid keep an entry's overtime", () => {
+    const overtime = entry({ workType: { id: 6001, name: "Overtid 50 %" } });
+
+    expect(timeEntryUpdateFrom(overtime, { hours: 8 })).toMatchObject({ hours: 8, workTypeId: 6001 });
+    expect(timeEntryUpdateFrom(entry(), { hours: 8 })).not.toHaveProperty("workTypeId");
+  });
+
   it("carries every field of the entry as it stands, with the change applied", () => {
     const current = entry({ taskId: 5001, note: "Kickoff", startTime: "08:00", endTime: "15:30", billable: false });
 

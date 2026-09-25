@@ -19,6 +19,8 @@ export interface TimeServer {
   settings?: TimeSettings;
   projects?: MyProject[];
   lines?: Record<number, ProjectBillingLine[]>;
+  /** Each project's work types as the projects API answers them; a project not named has none. */
+  workTypes?: Record<number, unknown[]>;
   tasks?: MyTaskOption[];
   /**
    * The approval queue, as its groups alone: the stub wraps them in a page.
@@ -126,5 +128,7 @@ export const stubTimeApi = (server: TimeServer = {}) =>
       const all = server.lines ?? { 1001: kvemLines };
       return Promise.resolve(jsonResponse(200, all[Number(lines[1])] ?? []));
     }
+    const types = /^\/api\/v1\/projects\/(\d+)\/work-types$/.exec(path);
+    if (types) return Promise.resolve(jsonResponse(200, server.workTypes?.[Number(types[1])] ?? []));
     return Promise.resolve(new Response(null, { status: 404 }));
   });

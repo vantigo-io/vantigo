@@ -28,6 +28,7 @@ export type TimeEntryCapabilities = Schemas["TimeEntryCapabilities"];
 export type TimeEntryBilling = Schemas["TimeEntryBilling"];
 export type TimeEntryCost = Schemas["TimeEntryCost"];
 export type TimeEntryApprover = Schemas["TimeEntryApprover"];
+export type TimeEntryWorkType = Schemas["TimeEntryWorkType"];
 export type PaginationMetadata = Schemas["PaginationMetadata"];
 
 export type TimeEntryInput = Schemas["TimeEntryRequest"];
@@ -123,5 +124,8 @@ export const timeEntryUpdateFrom = (
   note: entry.note ?? null,
   billable: entry.billable,
   revision: entry.revision,
+  // An update is a full replace: an entry logged as a work type has to say so
+  // again, or the grid's new hours would make it ordinary hours.
+  ...(entry.workType ? { workTypeId: entry.workType.id } : {}),
   ...changes,
 });

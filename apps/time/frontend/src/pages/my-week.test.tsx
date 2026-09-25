@@ -45,6 +45,75 @@ const typicalWeek = () =>
   ]);
 
 describe("MyWeekPage", () => {
+  it("names the work types a row's entries were logged as, and keeps one when its hours change", async () => {
+    const fetchMock = stubTimeApi({
+      week: week([
+        weekRow(pmRow, [entry({ id: 501, entryDate: WEEK, hours: 7.5, workType: { id: 6001, name: "Overtid 50 %" } })]),
+      ]),
+    });
+    renderRoute(`/time?week=${WEEK}`);
+
+    const monday = await findCell(PM, "Monday");
+    const row = monday.closest("tr") as HTMLElement;
+    expect(within(row).getByTestId("work-type-badge")).toHaveTextContent("Overtid 50 %");
+
+    await userEvent.clear(monday);
+    await userEvent.type(monday, "8");
+    await userEvent.tab();
+
+    await waitFor(() => expect(sent(fetchMock, "PUT").body).toMatchObject({ hours: 8, workTypeId: 6001 }));
+  });
+
+  // A row is a trackable, not a work type: typing into an empty day of a row
+  // badged "Overtid 50 %" logs ordinary hours (work types design D3 — picking
+  // a type is the entry form's, the grid writes a duration).
+  it("logs ordinary hours into an empty day of a row whose entries carry a work type", async () => {
+    const fetchMock = stubTimeApi({
+      week: week([
+        weekRow(pmRow, [entry({ id: 501, entryDate: WEEK, hours: 7.5, workType: { id: 6001, name: "Overtid 50 %" } })]),
+      ]),
+    });
+    renderRoute(`/time?week=${WEEK}`);
+
+    await userEvent.type(await findCell(PM, "Wednesday"), "3{Enter}");
+
+    await waitFor(() =>
+      expect(sent(fetchMock, "POST")).toEqual({
+        url: "/api/v1/time/entries",
+        body: { projectId: 1001, billingLineId: 3001, entryDate: "2026-09-16", hours: 3 },
+      }),
+    );
+  });
+
+  // An entry whose type was deactivated since is refused on its next save
+  // (D3). The grid has no work-type field to put that on, so it says the
+  // server's sentence in its notification and puts the saved hours back.
+  it("says why when new hours are refused because the entry's work type was retired", async () => {
+    stubTimeApi({
+      week: week([
+        weekRow(pmRow, [
+          entry({ id: 501, entryDate: WEEK, hours: 7.5, workType: { id: 6003, name: "Gammel overtid" } }),
+        ]),
+      ]),
+      write: (method) =>
+        method === "PUT"
+          ? jsonResponse(400, {
+              title: "Invalid time entry",
+              errors: { workTypeId: ["Work type is no longer active"] },
+            })
+          : undefined,
+    });
+    renderRoute(`/time?week=${WEEK}`);
+
+    const monday = await findCell(PM, "Monday");
+    await userEvent.clear(monday);
+    await userEvent.type(monday, "8{Enter}");
+
+    expect(await screen.findByText("Could not save the hours")).toBeInTheDocument();
+    expect(screen.getByText("Work type is no longer active")).toBeInTheDocument();
+    await waitFor(() => expect(cell(PM, "Monday")).toHaveValue("7.5"));
+  });
+
   afterEach(() => vi.useRealTimers());
 
   it("shows a row per trackable with its hours per day, the day totals and the week total", async () => {

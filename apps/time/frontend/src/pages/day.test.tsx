@@ -1,8 +1,8 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { sent } from "../test/api";
-import { devTaskRow, entry, pmRow, week, weekRow } from "../test/fixtures";
+import { problemResponse, sent } from "../test/api";
+import { devTaskRow, entry, kvemWorkTypes, pmRow, week, weekRow } from "../test/fixtures";
 import { renderRoute } from "../test/route-tree";
 import { stubTimeApi } from "../test/server";
 
@@ -39,6 +39,99 @@ const setTime = (dialog: HTMLElement, label: string, value: string) =>
   fireEvent.change(within(dialog).getByLabelText(label), { target: { value } });
 
 describe("DayPage", () => {
+  it("offers the project's active work types, forgets the choice when the project changes, and sends it", async () => {
+    const fetchMock = stubTimeApi({ week: dayWeek(), workTypes: { 1001: kvemWorkTypes } });
+    renderRoute(`/time/day?date=${DAY}`);
+
+    await screen.findByText("Status meeting");
+    await userEvent.click(screen.getByRole("button", { name: "Add entry" }));
+    const dialog = await screen.findByRole("dialog", { name: "Log time" });
+
+    // No project, no choice; a project without work types, none either.
+    expect(within(dialog).queryByRole("combobox", { name: "Work type" })).not.toBeInTheDocument();
+    await choose(dialog, "Project", /INTERN/);
+    expect(within(dialog).queryByRole("combobox", { name: "Work type" })).not.toBeInTheDocument();
+
+    await choose(dialog, "Project", /KVEM1000/);
+    await userEvent.click(await within(dialog).findByRole("combobox", { name: "Work type" }));
+    expect(await screen.findByRole("option", { name: "Overtid 50 %" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Gammel overtid" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("option", { name: "Overtid 50 %" }));
+    expect(within(dialog).getByRole("combobox", { name: "Work type" })).toHaveValue("Overtid 50 %");
+
+    await choose(dialog, "Project", /INTERN/);
+    await choose(dialog, "Project", /KVEM1000/);
+    const select = await within(dialog).findByRole("combobox", { name: "Work type" });
+    expect(select).toHaveValue("");
+    expect(select).toHaveAttribute("placeholder", "Ordinary hours");
+
+    await choose(dialog, "Work type", "Overtid 50 %");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Hours" }), "2");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(sent(fetchMock, "POST").body).toMatchObject({ projectId: 1001, workTypeId: 6001 }));
+  });
+
+  it("shows an entry's work type after its trackable code, its multiplied rate, and keeps the type on an edit", async () => {
+    const overtime = entry({
+      id: 610,
+      entryDate: DAY,
+      hours: 2,
+      note: "Late deploy",
+      workType: { id: 6001, name: "Overtid 50 %" },
+      billing: { billRate: 900, currency: "NOK", multiplierPercent: 150, effectiveRate: 1350 },
+    });
+    const fetchMock = stubTimeApi({ week: week([weekRow(pmRow, [overtime])]), workTypes: { 1001: kvemWorkTypes } });
+    renderRoute(`/time/day?date=${DAY}`);
+
+    const card = (await screen.findByText("Late deploy")).closest("[data-entry]") as HTMLElement;
+    expect(within(card).getByTestId("work-type-badge")).toHaveTextContent("Overtid 50 %");
+    expect(within(card).getByTestId("rate-line")).toHaveTextContent("900 × 150 % = 1,350");
+
+    await userEvent.click(within(card).getByRole("button", { name: "Edit the entry" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit time" });
+    expect(await within(dialog).findByRole("combobox", { name: "Work type" })).toHaveValue("Overtid 50 %");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(sent(fetchMock, "PUT").body).toMatchObject({ workTypeId: 6001, revision: 2 }));
+  });
+
+  // A type deactivated since the entry picked it is no choice for new work,
+  // but the entry still names it: the form shows it as the current value, and
+  // the server's refusal to keep it lands on the field (D3).
+  it("keeps a retired work type as an edited entry's value, and puts the refusal on the field", async () => {
+    const retired = entry({
+      id: 611,
+      entryDate: DAY,
+      hours: 1,
+      note: "Old overtime",
+      billable: false,
+      workType: { id: 6003, name: "Gammel overtid" },
+      // Not billable: the multiplier is snapshotted, but nothing bills at it.
+      billing: { billRate: 900, currency: "NOK", multiplierPercent: 150 },
+    });
+    stubTimeApi({
+      week: week([weekRow(pmRow, [retired])]),
+      workTypes: { 1001: kvemWorkTypes },
+      write: (method) =>
+        method === "PUT"
+          ? problemResponse(400, "Invalid time entry", { workTypeId: ["Work type is no longer active"] })
+          : undefined,
+    });
+    renderRoute(`/time/day?date=${DAY}`);
+
+    const card = (await screen.findByText("Old overtime")).closest("[data-entry]") as HTMLElement;
+    expect(within(card).getByTestId("work-type-badge")).toHaveTextContent("Gammel overtid");
+    expect(within(card).queryByTestId("rate-line")).not.toBeInTheDocument();
+
+    await userEvent.click(within(card).getByRole("button", { name: "Edit the entry" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit time" });
+    expect(await within(dialog).findByRole("combobox", { name: "Work type" })).toHaveValue("Gammel overtid");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    expect(await within(dialog).findByText("Work type is no longer active")).toBeInTheDocument();
+  });
+
   it("lists the day's own entries with their times, notes, hours and status, and the day total", async () => {
     stubTimeApi({ week: dayWeek() });
     renderRoute(`/time/day?date=${DAY}`);

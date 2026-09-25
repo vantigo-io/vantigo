@@ -21,7 +21,9 @@ import { deleteTimeEntry, type TimeEntry } from "../api/entries";
 import { isLocked, timeSettingsQueryOptions } from "../api/settings";
 import { weekQueryOptions } from "../api/weeks";
 import { EntryStatusBadge } from "../components/entry-status-badge";
+import { RateLine } from "../components/rate-line";
 import { RefusalList } from "../components/refusal-list";
+import { WorkTypeBadge } from "../components/work-type-badge";
 import "../i18n";
 import { refusalMessage } from "../lib/errors";
 import { useHoursFormat } from "../lib/hours";
@@ -208,12 +210,16 @@ const EntryCard = ({ entry, editable, onEdit }: EntryCardProps) => {
     <Card withBorder padding="md" radius="md" data-entry={entry.id}>
       <Group justify="space-between" align="flex-start" wrap="nowrap">
         <Stack gap={2} miw={0}>
-          <Text fw={600} size="sm">
-            {label}
-          </Text>
+          <Group gap={6} wrap="nowrap">
+            <Text fw={600} size="sm">
+              {label}
+            </Text>
+            {entry.workType && <WorkTypeBadge name={entry.workType.name} />}
+          </Group>
           <Text size="xs" c="dimmed">
             {entry.projectName}
           </Text>
+          <RateLine billing={entry.billing} />
           {entry.startTime && entry.endTime && (
             <Text size="sm">{t("timeRange", { start: entry.startTime, end: entry.endTime })}</Text>
           )}
