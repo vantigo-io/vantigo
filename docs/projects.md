@@ -666,6 +666,16 @@ whoever paid; `amount` is what the *billable* lines will charge.
   and never will be.
 - **`invoicedCount` / `invoicedAmount`** — how much of it has already left the
   building.
+- **`supplierInvoices`** — the part of the three buckets and the totals that is
+  **supplier invoices**, in the project's own currency, `{approved, submitted,
+  draft, total}` each `{count, cost, amount}` exactly as the block's own buckets,
+  each already inside the bucket of that status above it. It is a sub-figure,
+  never a split: every figure above still counts every line, the margin already
+  counts all expense cost and nothing reaches the budget. Absent when the
+  project's currency holds none (and on a project that carries no currency). A
+  provider whose split contradicts itself — its total count not its buckets', or
+  more lines than the currency has — is a 500, as a contradicting total is. See
+  [the supplier invoice](expenses.md#the-supplier-invoice).
 - **`lastEntryDate`** — the most recently dated line **across every currency**, so
   on a project with a foreign receipt it may be the day of a line reported under
   `otherCurrencies`.
@@ -769,8 +779,9 @@ the right to use the Expenses app, where the same caller is answered 403 for the
 module's own endpoints. `internal/projects` names neither permission anywhere.
 
 **Expense cost is not labour cost.** The whole `expenses` block, `cost` figures
-included, needs financial rights and *not* `projects:view-costs`: what a receipt
-cost the company is what somebody paid a supplier, and nothing in it can be divided
+included, needs financial rights and *not* `projects:view-costs`: what an expense
+cost the company is what it paid a supplier — on a receipt somebody handed in, or on
+the supplier's own invoice — and nothing in it can be divided
 by somebody's hours to recover their rate. The **margin** is the other way round —
 it contains the labour cost, so it stays inside the `cost` block behind the
 permission. A caller without financial rights is not asked about at all: the
@@ -1367,7 +1378,9 @@ section: the project's recorded expenses in three labelled rows — approved,
 submitted and awaiting approval, and draft (which is where a rejected one sits) —
 each with how many lines it holds, what they cost the company and what of them is
 passed on to the customer, over a total the server sends rather than the three rows
-added up. Under the table, what the figures leave out: billable lines nobody has
+added up, and beneath the total an **"Of which supplier invoices"** row — the
+supplier invoices' own count, cost and amount, when there are any. Under the table,
+what the figures leave out: billable lines nobody has
 priced yet, and one line per currency the project is not in, written in **that**
 currency and never converted. The section says in so many words that none of it is
 measured against the budget ([X12](#project-economy)), because it sits directly under

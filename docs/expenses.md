@@ -1,6 +1,6 @@
 # Expenses module
 
-The Expenses module is outlays, mileage and per diem days, standalone or
+The Expenses module is outlays, supplier invoices, mileage and per diem days, standalone or
 gathered into a travel claim, with receipts, an approval flow, two independent
 tracks after approval — paying the employee back and invoicing the customer —
 dated rates, categories and admin settings. It is a vertical-slice module
@@ -15,7 +15,8 @@ installation, and so is `MODULES=expenses` alone.
 ## What is in here
 
 - [Domain model](#domain-model) · [Money rules](#money-rules) (including what
-  **owed to the employee** means) · [The optional Projects link](#the-optional-projects-link)
+  **owed to the employee** means) · [The optional Projects link](#the-optional-projects-link) ·
+  [The supplier invoice](#the-supplier-invoice)
 - The travel claim: [the unit an expense belongs to](#the-unit-an-expense-belongs-to) ·
   [the lock order inside a claim](#the-lock-order-inside-a-claim) ·
   [the per diem day](#the-per-diem-day)
@@ -44,22 +45,28 @@ enforces what they say.
 
 ## Domain model
 
-- **Entry** (`expenses.entries`) — one money line: an **outlay**, a **mileage**
-  line or a **per diem day** (`kind`), owned by `userId`, dated `entryDate`, with a
+- **Entry** (`expenses.entries`) — one money line: an **outlay**, a **supplier
+  invoice**, a **mileage** line or a **per diem day** (`kind`), owned by `userId`, dated `entryDate`, with a
   `description`, a `status`, and the audit stamps every mutating path leaves. The id
   is a `bigint`.
   - An **outlay**: a `categoryId`, an optional `supplier`, who `paidBy` it
     (`employee` or `company`), a `currency`, a `grossAmount`, an optional
     `vatAmount`, and up to ten receipts.
+  - A **supplier invoice** (`supplier_invoice`, never inside a travel claim,
+    always on a project): the outlay's money — `categoryId`, `currency`,
+    `grossAmount`, optional `vatAmount` — plus a required `supplier`, the
+    supplier's `invoiceNumber` and an optional `dueDate`; the company always pays
+    it, and its PDF is attached as a receipt is. See "The supplier invoice" below.
   - A **mileage line**: a `distanceKm`, optional `fromPlace`/`toPlace`, `passengers`
     (0–8), and no amount of its own — the dated rate table prices it, in the
     installation's own currency, and it never carries a receipt.
   - A **per diem day** (`per_diem`, only inside a travel claim): a `perDiemType`
     and three covered-meal flags, priced by the dated table for its own date; see
     "The per diem day" below.
-  - The first two can carry a `projectId`, optionally a `billingLineId`, a
+  - An outlay and a mileage line can carry a `projectId` (a supplier invoice
+    always does), optionally a `billingLineId`, a
     `billable` flag, and — only when billable and only on the project's side — a
-    `markupPercent` (outlay) or `billRatePerKm` (mileage) and the resulting
+    `markupPercent` (outlay and supplier invoice) or `billRatePerKm` (mileage) and the resulting
     `billAmount`. A per diem day carries the claim's project and nothing else of
     that list: it is never billed on.
 - **Travel claim** (`expenses.claims`) — the container a trip's expenses sit in:
@@ -69,10 +76,11 @@ enforces what they say.
   and reimbursement columns an entry carries — because a claim is a unit of
   approval and of payroll in exactly the same way. A trip may be at most 366
   days and hold at most 200 expenses.
-- **Attachment** (`expenses.attachments`) — one receipt: the object key the bytes
+- **Attachment** (`expenses.attachments`) — one receipt, or on a supplier invoice the
+  supplier's invoice itself: the object key the bytes
   live under, the file name, the sniffed content type and size, who uploaded it and
   when. Deleting the entry cascades its receipts.
-- **Category** (`expenses.categories`) — what an outlay is booked on (`Materials`,
+- **Category** (`expenses.categories`) — what an outlay or a supplier invoice is booked on (`Materials`,
   `Subcontractor`, `Equipment hire`, `Travel`, `Accommodation`, `Meals`, `Phone and
   internet`, `Other`, seeded in that order). A category is never deleted, only
   deactivated — a line that already carries one keeps it and stays editable, but a
@@ -121,7 +129,7 @@ numbers by hand gets; this module never does either.
   together, so the whole day rounds once — floored at zero, because percentages an
   administrator set to more than a hundred between them must not make a day owe the
   company money.
-- **Markup** (a billable outlay): the net times `(1 + markupPercent / 100)`, rounded
+- **Markup** (a billable outlay or supplier invoice): the net times `(1 + markupPercent / 100)`, rounded
   once — a named markup, or the line's own kept figure, or the installation's
   `defaultMarkupPercent`.
 - **Customer rate** (billable mileage): the kilometres times the customer rate per
@@ -143,12 +151,25 @@ track is built on, and it is not the same thing as what the expense cost:
 - an **outlay the company paid** owes them **nothing**, whatever it cost;
 - a **mileage line** owes them its amount, and a **per diem day** owes them
   its amount — both are always the employee's;
+- a **supplier invoice** owes **nobody**: the company pays the supplier, so it
+  never reaches the reimbursement list, the payroll CSV, the unreimbursed figures
+  or the reimbursement attention item — whatever its `paidBy` says, and it always
+  says `company`;
 - a line whose gross rounds to nothing owes nothing, so it can never be put on
   a payroll run.
 
-One rule, written twice on purpose and kept in step: `owesEmployee` in
-`authorize.go` decides whether a single unit may be marked reimbursed, and
-`ListReimbursementRows` applies the same predicate in SQL to build the list. A
+**The SQL function and its Go mirror.** Who is owed is one rule written twice on
+purpose: `expenses.owes_employee(kind, paid_by)`, an `IMMUTABLE` SQL function
+(migration `00033`) that every query asking the question calls — the
+reimbursement list, the payroll CSV, a payroll run, the claim totals, the
+unreimbursed figures and the reimbursement attention item — and `owesEmployee`
+in `authorize.go`, its Go mirror, which decides a single row's
+`canMarkReimbursed` and `owedToEmployee` and whether a payroll run may mark it.
+`TestOwesEmployee_TheGoMirrorAgreesWithTheSQLFunction` asks both about every kind
+and every payer and fails on any pair they disagree about. "Owes something" also
+needs a gross above zero, which the SQL callers say beside the function
+(`gross_amount > 0`). Before the function the predicate was written out fourteen
+times, thirteen of them in SQL. A
 travel claim owes the **sum of what its lines owe**, and is paid as one unit
 for that sum. Nothing here is a net, a markup or a bill amount: what the
 customer is charged lives on the other track entirely and never touches this
@@ -164,6 +185,9 @@ was started with the `projects` module. Without it:
   a replace alike;
 - `GET /projects` (the picker) answers a 404 problem naming the missing module,
   rather than an empty list a client might mistake for "no projects";
+- a new **supplier invoice** is refused on `kind` ("A supplier invoice is booked on
+  a project"), since it exists only on a project; one already recorded stays
+  editable — see [The supplier invoice](#the-supplier-invoice);
 - billing never appears — `canSeeBilling`, `canSetBilling`, `canMarkInvoiced` and
   `canUndoInvoiced` are all `false`, even on a row that still carries a stored
   `projectId` from before the module was switched off, and the `billing` object is
@@ -188,6 +212,100 @@ expense's *owner*, not on whoever is recording it, because `expenses:manage` can
 record for a colleague. A project or a billing line the save is *keeping* is not
 judged again, so a project that has since been completed, or a billing line since
 deactivated, does not strand an existing link; a *changed* one is judged in full.
+A **supplier invoice** is the one exception: it is booked on the *recorder's*
+financial rights on the project, not on the owner's `CanLogTime`, and on any
+project but a cancelled one — see [The supplier invoice](#the-supplier-invoice).
+
+## The supplier invoice
+
+The invoice a supplier sends for work or goods on a project is a kind of its own,
+`supplier_invoice` (supplier invoices design D1–D4). It is recording, attesting,
+re-billing and reporting — **not accounts payable**: there is no paid/unpaid state,
+no vendor register, no inbound e-invoice and no payment export. Paying the supplier
+happens outside Vantigo.
+
+- **Its fields.** The outlay's money — a `categoryId`, a `currency` in any ISO
+  code, a `grossAmount` above zero and an optional `vatAmount` from zero to the
+  gross; the net, gross less VAT, is its cost and its markup's base — plus a
+  `description`, as on every kind but a per diem day, a **required** `supplier`
+  (at most 200 characters), a **required** `invoiceNumber` (the supplier's own,
+  trimmed, at most 100 characters, free text and not unique, since no supplier
+  record exists to make it unique under) and an optional `dueDate`, on or after
+  the entry date ("The due date cannot be before the invoice date"). A replace
+  that leaves `dueDate` out clears it. Mileage and per diem fields are refused, as
+  on an outlay; `invoiceNumber` and `dueDate` are refused on every other kind. The
+  columns are `supplier_invoice_number` and `supplier_due_date`, named clear of
+  the *outgoing* stamp `invoiced_at`/`invoice_reference`.
+- **One date.** The entry date **is the invoice date** — the one the period lock
+  judges. There is no second date column.
+- **Company-paid, always.** `paidBy` may be left out or say `company`, and is
+  stored `company`; `employee` is refused ("A supplier invoice is paid by the
+  company"). It owes nobody (see [Money rules](#money-rules)).
+- **Never in a claim, always on a project.** A `claimId` is refused ("A supplier
+  invoice is not a travel claim line"), so is a missing `projectId` ("A supplier
+  invoice is booked on a project"), and in an installation without the projects
+  module the kind itself is refused with the same sentence.
+- **Who may record one.** Whoever holds **financial rights on the project** — its
+  manager, `projects:manage-all`, or `projects:view-financials` on a project they
+  see — rather than projects' `CanLogTime`: the people who receive and re-bill
+  supplier invoices are the project's financial side, not necessarily its team.
+  The project may be **completed** — an invoice often arrives after the work — and
+  only a **cancelled** project refuses. Both refusals are on `projectId`: "This
+  project is not one you can record a supplier invoice on" is the one answer for
+  no such project and no financial rights, and "This project is cancelled, so it
+  takes no supplier invoices" is said only to a caller who holds the rights. The
+  right is the recorder's: recording one for a colleague still needs
+  `expenses:manage`, and financial rights on the project as well. The recorder is
+  the owner, as for any expense: it lists under their expenses, and they edit and
+  submit it. A project the invoice already carries is not judged again; an outlay
+  turned into a supplier invoice is, and so is a supplier invoice turned back into
+  an outlay, on the owner's `CanLogTime`.
+- **The flow is the module's.** Draft → submitted → approved | rejected, approved
+  by `expenses:approve` or the project's manager, self-approval allowed, unapprove
+  refused once invoiced. **The supplier's invoice is required on submit**: at least
+  one attachment, through the receipts mechanism, or the submit answers "Expense
+  *id* cannot be submitted yet: Attach the supplier's invoice". A draft may change
+  between outlay and supplier invoice — both carry documents, so nothing strands.
+- **Priced as an outlay.** It bills only on a billable project; the markup is the
+  one named, the one the line keeps, or the settings' default; what it bills is
+  net × (1 + markup %). The pricing door, the manual invoiced stamp and "ready to
+  invoice" apply unchanged.
+- **Visible to the project's financial side.** It carries no personal data, so
+  beside its owner, the project's manager and `expenses:view-all`/`approve`/
+  `manage`, **everyone with financial rights on its project** sees it — in the
+  list, the project's list, a single read and its document. An employee's outlay
+  on the same project keeps the ordinary rule.
+- **Counted apart.** Every figure of a project's expenses still counts it; the
+  supplier invoices' own share is reported beside them as `supplierInvoices` — see
+  [What a project's expenses come to](#what-a-projects-expenses-come-to).
+- **Without the projects module.** A new one is refused on `kind`; one already
+  recorded stays editable, its project columns carried through untouched and
+  what it bills recomputed from its kept markup, exactly as
+  [decision X2](#the-optional-projects-link) carries any line's.
+- **Its picker.** `GET /projects?kind=supplier_invoice` is the caller's own
+  projects on which they hold financial rights and that are not cancelled — the
+  projects the save would accept from them. It can only list projects the caller
+  holds a **role** on, because that is what the project directory's
+  `ProjectsForUser` answers, and it is always the caller's own (a `userId`
+  naming somebody else beside it is refused on `kind`). So a finance reader on no
+  project team — `projects:manage-all`, or `projects:view-financials` with
+  `projects:view-all` — is offered nothing there and records from the project
+  page instead, whose summary hands the project over as `project`.
+- **In the Expenses app.** The expense form offers **Supplier invoice** beside
+  Outlay and Mileage only when the projects module is there, never inside a
+  travel claim and never from the project page's "Record a cost". The form asks
+  for the supplier, the invoice number, the invoice date (the entry date), the
+  due date, the category (*Subcontractor* preselected when an active category of
+  that name exists) and gross and VAT; it has no payer control, only the sentence
+  "The company pays a supplier invoice — nobody is paid anything back for it.";
+  the project is required and billable starts on. Its project picker is the one
+  above, and when that is empty the form says so and points to the project's own
+  page. A new supplier invoice stays open as a draft once saved, so the
+  document can be attached, and "Save and submit" is disabled until it is. The
+  drawer shows the invoice number, the due date and an **Overdue** badge once the
+  due date has passed and the line has not been invoiced — informational only,
+  with no payment state behind it, so on a non-billable line, or for a reader who
+  may not see billing, it never clears.
 
 ## The unit an expense belongs to
 
@@ -580,6 +698,11 @@ Set once, on the installation's settings, as `receiptRequiredOver`:
 - **Over an amount** — an employee-paid outlay whose gross *exceeds* the threshold
   needs a receipt; a gross equal to the threshold does not.
 
+A **supplier invoice** has a rule of its own that no threshold moves: it is never
+submitted without the supplier's invoice attached (see
+[The supplier invoice](#the-supplier-invoice)), judged the same way — at submit
+time, under the entry's own row lock, on the count that transaction reads.
+
 The rule only ever applies to an **employee-paid outlay** — a company-paid outlay
 and every mileage line are exempt, because mileage takes no receipt at all. It is
 judged at submit time, under the entry's own row lock, so a receipt deleted a moment
@@ -668,7 +791,7 @@ in any order — reimbursed, invoiced, both, or neither:
 - **Reimbursed** (`expenses:manage` only) — what the employee is paid back.
   `POST /reimbursed {entryIds?, claimIds?, date, reference?}` records one payroll
   run over every named **unit** that is approved and owes its owner something (a
-  company-paid outlay owes nothing and cannot be marked, and neither can a trip
+  company-paid outlay or a supplier invoice owes nothing and cannot be marked, and neither can a trip
   whose lines come to nothing); `POST /reimbursed/undo` clears the whole stamp —
   the date, the reference and who made it — putting the units back in the waiting
   list exactly as they were. **A trip is paid as one**, for the sum of what its
@@ -721,6 +844,9 @@ currency, which may be neither its travel claim's nor its project's):
 | `lastEntryDate` | the latest entry date over every currency and status; absent when nothing has been recorded |
 | `projectCurrency` | the project's own currency, when it has one — the entry of `currencies` with this code is the project's and every other one is in another currency, never converted |
 | `capabilities.canRecord` | whether *this caller* may book a cost on the project (projects' own `CanLogTime`), so a "Record a cost" button never offers what the save would refuse |
+| `supplierInvoices` (per currency) | the part of `approved` / `submitted` / `draft` / `total` that is supplier invoices, each bucket already inside the one above it — a line of its own, never a split of them. Absent when the currency holds none |
+| `capabilities.canRecordSupplierInvoice` | whether *this caller* may record a supplier invoice on the project: financial rights (which reading the summary already needs) on a project that is not cancelled |
+| `project` | the project as a booking option — id, code, name, currency, active billing lines — present exactly when `canRecordSupplierInvoice` is true, so "Record a supplier invoice" can open for a finance reader `GET /projects` offers nothing |
 
 A project with nothing recorded answers `200` with an empty `currencies` list — not
 a 404, which is the authorization answer, and not a zeroed currency this module has
@@ -748,11 +874,13 @@ carries, so it cannot be used to read around the shaping.
 **The aggregate and the rows are gated differently, on purpose.** The summary is
 totals and follows the financial-rights rule above; the list is individual
 expenses and keeps [the visibility rule it has always had](#visibility-and-shaping)
-— your own, your projects' if you *manage* them, and everyone's for
-`expenses:view-all`/`approve`/`manage`. So somebody holding
+— your own, your projects' if you *manage* them, everyone's for
+`expenses:view-all`/`approve`/`manage`, and a project's **supplier invoices** for
+whoever holds financial rights on it. So somebody holding
 `projects:view-financials` without managing the project reads every figure on the
-tab and is shown **no expenses at all** underneath. That is deliberate: the tab
-says so rather than widening who may read a colleague's receipts.
+tab and is shown the project's supplier invoices underneath, and **no colleague's
+outlay, mileage or trip**. That is deliberate: the tab says so rather than widening
+who may read a colleague's receipts.
 
 **And the other way round**, which is the one that sounds wrong until you look at
 it: an `expenses:view-all` or `expenses:manage` administrator sees every one of a
@@ -787,7 +915,7 @@ Either half can be empty while the other is not, and the tab says which:
 | The caller | The totals | The list |
 | --- | --- | --- |
 | the project's manager | every figure | every expense on the project |
-| `projects:view-financials` without managing it | every figure | **their own expenses on the project, and nothing else** — which for most such callers is nothing at all, and the tab then says so in words: "You can see this project's totals, but not the individual expenses behind them" |
+| `projects:view-financials` without managing it | every figure | **the project's supplier invoices, and their own expenses on it** — a supplier invoice is the project's financial side's to see, a colleague's outlay is not; where there are neither, the tab says so in words: "You can see this project's totals, but not the individual expenses behind them" |
 | `expenses:view-all` / `approve` / `manage` | **absent** (the summary's 404) | every expense on the project |
 | a plain member | absent | their own |
 
@@ -837,6 +965,18 @@ were readable, and otherwise whether the project is among the ones
 [`GET /projects`](#the-optional-projects-link) says the caller may book on; nothing
 in the client re-derives it from a permission.
 
+**Record a supplier invoice** stands beside it when `capabilities.canRecordSupplierInvoice`
+is true. It opens the same form fixed to this project and to the supplier-invoice
+kind — the supplier, the invoice number, the invoice date, the due date, the
+category (Subcontractor preselected when it exists), gross and VAT, billable on to
+start with, a sentence that the company pays it, and the dropzone for the
+supplier's invoice. The project comes from the summary's own `project`, because the
+reader this button exists for is often on no project team. Each card's totals
+carry an **"Of which supplier invoices"** row beneath the total, and the list shows
+the kind like any other. When the list is shorter than the totals, its sentence
+names what it shows: your own, the supplier invoices if you may see the project's
+money, and all of them if you manage the project or may view all expenses.
+
 The project's own **Economy** tab shows the same money from the projects side (the
 costs section, the margin, and a row for what is ready to invoice, which links
 here). The two are refreshed together by the host: they read one set of figures
@@ -880,7 +1020,10 @@ money settings and can move a payroll run.
 
 Who sees an expense at all: its owner, always; the manager of its project, whoever
 recorded it; and `expenses:view-all`, `expenses:approve` and `expenses:manage`, who
-see everyone's. A travel claim follows exactly that rule, and a line is visible
+see everyone's. A **supplier invoice** is seen by one set more: everyone with
+financial rights on its project — `projects:manage-all`, or
+`projects:view-financials` on a project they see — because it carries no personal
+data and it is the project's financial side that receives and re-bills it. A travel claim follows exactly that rule, and a line is visible
 if and only if its claim is — a line carries its claim's owner and its claim's
 project, so the same predicate decides both, in SQL as in Go. Anyone else gets a **bare 404**, byte-identical to the answer an
 unknown id gets — the list applies the same predicate in SQL, so it never holds a
@@ -900,10 +1043,13 @@ row a single read of it would 404 for.
 ## Receipts
 
 A receipt is JPEG, PNG, HEIC or PDF, at most 10 MiB (10,485,760 bytes, "10 MB" the
-friendly figure the contract itself uses), and an outlay carries at most ten. Only
-an outlay takes one at all — neither a mileage line nor a per diem day ever does,
-and a save that would turn an outlay with receipts into a line of another kind is
-refused (on `kind`) rather than stranding them.
+friendly figure the contract itself uses), and an outlay or a supplier invoice
+carries at most ten. Only those two take one at all — the supplier invoice's is the
+supplier's own invoice, and it is required on submit — neither a mileage line nor a
+per diem day ever does, and a save that would turn one of those two, still
+carrying receipts, into a mileage line or a per diem day is refused (on `kind`)
+rather than stranding them. An outlay and a supplier invoice may become each other
+freely: the receipts follow.
 
 **The type is decided by the bytes, not by what the client called the file.** The
 upload is sniffed from its own leading bytes (HEIC by its ISO base-media brand,
@@ -1014,6 +1160,12 @@ owes them, a claim's lines included, and `awaitingMyApproval` counts a trip
 waiting for this approver once. The timeseries is the one figure that is per
 *line*: it is money per day, and a trip's lines each fall on their own date.
 
+**A supplier invoice counts as its recorder's.** Its recorder is its owner, so it
+is in their drafts, their submitted units, their timeseries and their
+`expenseRejected` items like any expense of theirs — a finance clerk's own figures
+are mostly supplier invoices — and never in `unreimbursed`, `myUnreimbursed` or
+`reimbursementWaiting`, because it owes nobody.
+
 Three attention types, in `GET /stats/attention`, each counted in units:
 
 | Type | Told to | `entityId` | `count` |
@@ -1067,16 +1219,16 @@ says.
 | Endpoint | Access |
 | --- | --- |
 | `GET /meta` | What this installation can do, the settings a new expense starts from (the business time zone included), the categories, and the caller's own capabilities |
-| `GET /entries` (`userId`, `projectId`, `claimId`, `standalone`, `status`, `kind`, `from`, `to`, `reimbursed`, `toInvoice`, paging) | The caller's own; a project manager also sees their projects'; view-all/approve/manage see everyone's. `toInvoice=true` additionally needs financial rights on the `projectId` named — 403 otherwise |
-| `GET /entries/{id}` | The owner, the project's manager, or view-all/approve/manage; a bare 404 otherwise |
-| `POST /entries` | Record one — your own, or (`userId`) a colleague's, with `expenses:manage`; `claimId` records it as a line of a travel claim |
+| `GET /entries` (`userId`, `projectId`, `claimId`, `standalone`, `status`, `kind` — `supplier_invoice` included, `from`, `to`, `reimbursed`, `toInvoice`, paging) | The caller's own; a project manager also sees their projects'; financial rights on a project show its supplier invoices; view-all/approve/manage see everyone's. `toInvoice=true` additionally needs financial rights on the `projectId` named — 403 otherwise |
+| `GET /entries/{id}` | The owner, the project's manager, or view-all/approve/manage — and, for a supplier invoice, financial rights on its project; a bare 404 otherwise |
+| `POST /entries` | Record one — your own, or (`userId`) a colleague's, with `expenses:manage`; `claimId` records it as a line of a travel claim. A supplier invoice needs the recorder's financial rights on a project that is not cancelled |
 | `GET /claims` (`userId`, `status`, `from`, `to`, `reimbursed`, paging) | The same visibility rule the entries' list applies, one level up |
 | `POST /claims` | Record a trip — your own, or (`userId`) a colleague's, with `expenses:manage` |
 | `GET /claims/{id}` | The claim with its lines, its totals per currency and its capabilities |
 | `POST /claims/{id}/per-diem-suggestion` | Whoever may see the claim — the days its times imply, priced; it writes nothing |
 | `PUT /claims/{id}`, `DELETE /claims/{id}` | Owner or `expenses:manage`, while draft or rejected, not past the lock |
-| `PUT /entries/{id}`, `DELETE /entries/{id}` | Owner or `expenses:manage`, while draft or rejected, not past the lock |
-| `POST /entries/{id}/attachments`, `DELETE /attachments/{id}` | Same as edit, an outlay only |
+| `PUT /entries/{id}`, `DELETE /entries/{id}` | Owner or `expenses:manage`, while draft or rejected, not past the lock; a supplier invoice moved to another project, or an outlay made one, is judged by the recorder's financial rights again |
+| `POST /entries/{id}/attachments`, `DELETE /attachments/{id}` | Same as edit, an outlay or a supplier invoice only |
 | `GET /attachments/{id}` | Whoever may see the expense |
 | `POST /submit` | Your own draft and rejected units — expenses, travel claims, or both (or anyone's, `expenses:manage`) |
 | `POST /approve`, `/reject` | `expenses:approve`, or the unit's own project's manager |
@@ -1087,7 +1239,7 @@ says.
 | `GET /entries/{id}/billing-lines` | Financial rights on the entry's project — the pricing dialog's own picker, not the caller's bookable-projects list |
 | `POST /entries/{id}/invoiced`, `.../invoiced/undo` | Financial rights on the entry's project; never a per diem day |
 | `GET /reimbursements`, `/reimbursements/export.csv`, `POST /reimbursed`, `/reimbursed/undo` | `expenses:manage`; the unit is an expense or a whole trip |
-| `GET /projects` | The caller's own bookable projects (or, `userId`, a colleague's, with `expenses:manage`) |
+| `GET /projects` (`userId`, `kind`) | The caller's own bookable projects (or, `userId`, a colleague's, with `expenses:manage`); `kind=outlay` or `mileage` is that same picker, and `kind=supplier_invoice` is the caller's own projects they hold financial rights on that are not cancelled (never with another person's `userId`) |
 | `GET /projects/{projectId}/summary` | Financial rights on the project — what its expenses cost and bill, per currency; one bare 404 for everybody else, for an unknown project and for an installation with no projects module |
 | `GET /categories` | Anyone in the app |
 | `POST /categories`, `PUT /categories/{id}` | `expenses:manage` |
@@ -1108,8 +1260,11 @@ approval](#the-two-tracks-after-approval) — and "ready to invoice" is the list
 invoice would be built from. The module that turns that list into an invoice does
 not exist yet; when it does, it owns the stamp, exactly as
 [docs/time.md](time.md#what-invoicing-will-read) says of the same column on an hour.
-**Supplier costs** are the other named gap: a project's non-hours cost today is what
-somebody put on an expense, not what a supplier invoiced — see
+**Supplier invoices** are done: a supplier's invoice is recorded as what it is —
+[the supplier invoice](#the-supplier-invoice) — attested, re-billed and counted
+apart in the project's economy. What is deliberately still not here is accounts
+payable: a paid/unpaid state, a supplier register, inbound e-invoices and a
+payment export are purchasing's, when purchasing comes — see
 [ROADMAP.md](../ROADMAP.md#projects).
 
 The project page is done, both sides: [the Expenses tab](#on-the-project-page) with

@@ -322,7 +322,8 @@ expensive the longer it waits.
 ### Later
 
 Parent company (`parentId`, seedable from Brreg's `overordnetEnhet`) · customer-is-also-supplier
-(once purchasing/supplier invoices arrive) · custom fields · credit check integration
+(once purchasing and a supplier register arrive — a supplier invoice today names
+its supplier in free text) · custom fields · credit check integration
 (Proff/Creditsafe) · credit limit and credit hold (needs receivables to mean anything)
 · per-customer dunning settings (belongs with Invoices' own dunning) · a customer
 portal (after Invoices) · saved list views.
@@ -524,7 +525,7 @@ that writes it. See [`docs/time.md`](docs/time.md).
 *Unblocks:* hours that can be invoiced, the first real consumer of billing
 lines, and a task list contractors and consultants will actually keep.
 
-### Phase 3 — Budgets, billing milestones and costs (two deliveries done)
+### Phase 3 — Budgets, billing milestones and costs (done)
 
 Decided in `docs/superpowers/specs/2026-09-19-project-economy-design.md`, two
 deliveries.
@@ -587,14 +588,29 @@ billing line. See [`docs/projects.md`](docs/projects.md#work-types) and
 *Unblocks:* overtime billed and costed at its own rate on every project,
 without a line per kind of work.
 
-**Next: supplier invoices.** Expenses landed separately — see
-[Expenses phase 3](#phase-3--expenses-on-the-project-page-done) — and a
-supplier invoice (a company-paid expense kind with supplier, invoice number
-and due date, never in a claim, split from expenses in the project's Costs
-section) is the next delivery, its own spec. Forecast /
-estimate-to-complete and original-vs-revised budgets (tracking a budget's
-own history rather than only its current value) are candidates worth
-deciding on once that lands, not committed work yet.
+**Supplier invoices (done).** Decided in
+`docs/superpowers/specs/2026-09-26-supplier-invoices-design.md`. Expenses
+landed separately — see
+[Expenses phase 3](#phase-3--expenses-on-the-project-page-done). The invoice a
+supplier sends for work or goods on a project is a fourth kind in Expenses:
+the supplier, the supplier's invoice number, the invoice date (the entry date)
+and the due date, its PDF attached and required on submit, attested through
+the module's own flow, priced and re-billed with the outlay's markup, and
+company-paid — so it owes nobody, now that who is owed money is one SQL
+function (`expenses.owes_employee`) and its Go mirror rather than fourteen
+copies. It is recorded by whoever holds the project's financial rights, on a
+completed project too, and visible to them as rows. The expenses contract
+carries it as a per-currency sub-figure, and the Economy tab's Costs section
+and the Expenses tab's cards show "Of which supplier invoices". Accounts
+payable, a supplier register and inbound e-invoices stay out of scope. See
+[`docs/expenses.md`](docs/expenses.md#the-supplier-invoice).
+
+*Unblocks:* a project's non-hours cost that is what suppliers invoiced, not
+only what somebody put on an expense.
+
+Forecast / estimate-to-complete and original-vs-revised budgets (tracking a
+budget's own history rather than only its current value) are candidates worth
+deciding on next, not committed work yet.
 
 ### Phase 4 — Delivery milestones, timeline and templates
 
@@ -712,5 +728,5 @@ list of everything waiting to go on an invoice.
 holds financial rights on the project; "ready to invoice" is the list an
 Invoices module would build from, and that module owns the stamp when it
 arrives — the same thing [`docs/time.md`](docs/time.md#what-invoicing-will-read)
-has said of an hour since phase 2. Supplier costs are the other gap already
-named, under [Projects](#projects).
+has said of an hour since phase 2. Supplier costs are no longer a gap: a
+supplier's invoice is its own kind — see [Projects](#projects).
