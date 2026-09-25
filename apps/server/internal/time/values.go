@@ -85,6 +85,14 @@ var clockPattern = regexp.MustCompile(`^([01][0-9]|2[0-3]):([0-5][0-9])$`)
 // cannot see (§4.2).
 const cannotLogTime = "You cannot log time on this project"
 
+// The two work-type refusals (work types design D3), on workTypeId. A type
+// nobody has and one on another project are the same message: which ids exist
+// on other projects is not the caller's to learn from a refusal.
+const (
+	workTypeNotOnProject = "Work type is not on this project"
+	workTypeInactive     = "Work type is no longer active"
+)
+
 // parsedEntry is one statically validated create body, in the shape the
 // references check and the insert want: the date as a UTC midnight, the hours
 // in hundredths (exact, never a float), the clock times in minutes after
@@ -98,6 +106,7 @@ type parsedEntry struct {
 	Start, End *int
 	Note       *string
 	Billable   *bool
+	WorkTypeID *int32
 }
 
 // parseEntry runs every static §4.2 rule over a body and answers the parsed
@@ -140,6 +149,7 @@ func parseEntry(body gen.TimeEntryRequest) (parsedEntry, map[string][]string) {
 		End:        end,
 		Note:       note,
 		Billable:   body.Billable,
+		WorkTypeID: body.WorkTypeId,
 	}, errs
 }
 

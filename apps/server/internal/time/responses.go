@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -151,19 +152,32 @@ func entryResponse(row store.TimeEntry, a entryAccess, names entryNames) (gen.Ti
 			DisplayName: names.users[*row.ApprovedByUserID].DisplayName,
 		}
 	}
+	// The type is not money: whoever sees the entry sees what it was logged
+	// as. Its multipliers are inside the blocks below, shaped with them.
+	if row.WorkTypeID != nil && row.WorkTypeName != nil {
+		resp.WorkType = &gen.TimeEntryWorkType{Id: *row.WorkTypeID, Name: *row.WorkTypeName}
+	}
 	if a.CanSeeBilling {
 		rate, err := floatPtrFromNumeric(row.BillRate)
 		if err != nil {
 			return gen.TimeEntryResponse{}, err
 		}
-		resp.Billing = &gen.TimeEntryBilling{BillRate: rate, Currency: row.BillCurrency}
+		billing := gen.TimeEntryBilling{BillRate: rate, Currency: row.BillCurrency}
+		if billing.MultiplierPercent, billing.EffectiveRate, err = multiplierOf(rate, row.BillMultiplierPercent); err != nil {
+			return gen.TimeEntryResponse{}, err
+		}
+		resp.Billing = &billing
 	}
 	if a.CanSeeCost {
 		rate, err := floatPtrFromNumeric(row.CostRate)
 		if err != nil {
 			return gen.TimeEntryResponse{}, err
 		}
-		resp.Cost = &gen.TimeEntryCost{CostRate: rate, Currency: row.CostCurrency}
+		cost := gen.TimeEntryCost{CostRate: rate, Currency: row.CostCurrency}
+		if cost.MultiplierPercent, cost.EffectiveRate, err = multiplierOf(rate, row.CostMultiplierPercent); err != nil {
+			return gen.TimeEntryResponse{}, err
+		}
+		resp.Cost = &cost
 	}
 	return resp, nil
 }
@@ -208,4 +222,19 @@ func (s *server) entryResponses(ctx context.Context, c *caller, rows []store.Tim
 // stand now.
 func trackableCode(projectCode, lineCode string) string {
 	return projectCode + "-" + lineCode
+}
+
+// multiplierOf is one block's work-type half (work types design D3): the
+// snapshotted multiplier, nil for ordinary hours, and the rate under it, nil
+// too when the block has no rate to multiply.
+func multiplierOf(rate *float64, stored pgtype.Numeric) (*float64, *float64, error) {
+	percent, err := floatPtrFromNumeric(stored)
+	if err != nil || percent == nil {
+		return nil, nil, err
+	}
+	if rate == nil {
+		return percent, nil, nil
+	}
+	effective := multiplied(*rate, *percent)
+	return percent, &effective, nil
 }

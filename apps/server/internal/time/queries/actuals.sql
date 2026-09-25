@@ -29,6 +29,15 @@
 -- costed_hours_hundredths and cost_amount are not qualified: non-billable
 -- work still costs the company, and leaving its cost out would make those
 -- hours look uncosted.
+--
+-- The amounts are multiplied where they are summed (work types design D3):
+-- each entry's hours × its base rate × its work type's multiplier, NULL (no
+-- type) counting as 100 %. The multiplier is applied as COALESCE(pct, 100) ×
+-- 0.01 — a multiplication, which numeric does exactly — rather than / 100, a
+-- division PostgreSQL rounds to a scale that shrinks as the value grows; the
+-- one rounding stays Go's, at the end. 333.33 × 1.5 h × 150 % is 749.9925 and
+-- is published 749.99, where multiplying the rate first (499.995 → 500.00)
+-- would bill 750.00.
 
 -- name: ProjectActualGroups :many
 SELECT project_id,
@@ -45,8 +54,8 @@ SELECT project_id,
        COALESCE(SUM(hours * 100) FILTER (WHERE billable), 0)::bigint AS billable_hours_hundredths,
        COALESCE(SUM(hours * 100) FILTER (WHERE billable AND bill_rate IS NOT NULL), 0)::bigint AS priced_hours_hundredths,
        COALESCE(SUM(hours * 100) FILTER (WHERE cost_rate IS NOT NULL), 0)::bigint AS costed_hours_hundredths,
-       COALESCE(SUM(hours * bill_rate) FILTER (WHERE billable), 0)::text AS bill_amount,
-       COALESCE(SUM(hours * cost_rate), 0)::text AS cost_amount,
+       COALESCE(SUM(hours * bill_rate * (COALESCE(bill_multiplier_percent, 100) * 0.01)) FILTER (WHERE billable), 0)::text AS bill_amount,
+       COALESCE(SUM(hours * cost_rate * (COALESCE(cost_multiplier_percent, 100) * 0.01)), 0)::text AS cost_amount,
        MAX(entry_date)::date AS last_entry_date
 FROM time.entries
 WHERE project_id = ANY(@project_ids::integer[])
@@ -60,3 +69,23 @@ GROUP BY project_id,
          END,
          bill_currency,
          cost_currency;
+
+-- name: ProjectWorkTypeActualGroups :many
+-- ProjectWorkTypeActualGroups is one project's logged work per work type
+-- (work types design D4), all buckets together: the hours, and what they
+-- bill and cost at the base rate times the multiplier each entry snapshotted,
+-- grouped per bill and cost currency so Go folds the amounts on the currency
+-- rule the buckets use. Entries without a type are not here — ordinary hours
+-- are the absence of a type, not one of them. No name: projects owns the
+-- type and names it (work types design D4, as ruled on the plan's review).
+-- COALESCE on the id only tells sqlc what the WHERE already guarantees.
+SELECT COALESCE(work_type_id, 0)::integer AS work_type_id,
+       bill_currency,
+       cost_currency,
+       SUM(hours * 100)::bigint AS hours_hundredths,
+       COALESCE(SUM(hours * bill_rate * (COALESCE(bill_multiplier_percent, 100) * 0.01)) FILTER (WHERE billable), 0)::text AS bill_amount,
+       COALESCE(SUM(hours * cost_rate * (COALESCE(cost_multiplier_percent, 100) * 0.01)), 0)::text AS cost_amount
+FROM time.entries
+WHERE project_id = @project_id AND work_type_id IS NOT NULL
+GROUP BY work_type_id, bill_currency, cost_currency
+ORDER BY work_type_id;

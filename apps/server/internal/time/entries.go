@@ -36,18 +36,21 @@ func dayKey(userID uuid.UUID, date time.Time) string {
 
 // entryRefs is what a create body's references resolved to through
 // contracts.ProjectDirectory: the project (always, once the caller may log
-// time on it), the billing line and the task's title (when given).
+// time on it), the billing line, the task's title and the work type (when
+// given).
 type entryRefs struct {
 	Project   contracts.ProjectEntry
 	Line      *contracts.BillingLineEntry
 	TaskTitle *string
+	WorkType  *contracts.WorkTypeEntry
 }
 
 // checkReferences is §4.2's rules over another module's data: the caller may
 // log time on the project (CanLogTime — active, and a member or manager), the
 // line is one of the project's and active, and the task is one of the
-// project's, whose title is snapshotted (D5). Failures are added to errs,
-// which it answers grown.
+// project's, whose title is snapshotted (D5), and the work type is one of the
+// project's and active, whose name and multipliers are snapshotted (work types
+// design D3). Failures are added to errs, which it answers grown.
 //
 // A project the caller may not log time on answers the one cannotLogTime
 // message, whatever the reason, and stops there: checking a line or a task on
@@ -94,6 +97,24 @@ func (s *server) checkReferences(ctx context.Context, userID uuid.UUID, p parsed
 		} else {
 			title := task.Title
 			refs.TaskTitle = &title
+		}
+	}
+
+	// The work type is projects' rule, read here with the project and the
+	// line — before any transaction opens (work types design D2, D3) — and
+	// snapshotted by the save that called this.
+	if p.WorkTypeID != nil {
+		wt, err := s.deps.Projects.WorkType(ctx, *p.WorkTypeID)
+		if err != nil {
+			return refs, nil, fmt.Errorf("time: look up the work type: %w", err)
+		}
+		switch {
+		case wt == nil || wt.ProjectID != p.ProjectID:
+			errs = withFieldError(errs, "workTypeId", workTypeNotOnProject)
+		case !wt.Active:
+			errs = withFieldError(errs, "workTypeId", workTypeInactive)
+		default:
+			refs.WorkType = wt
 		}
 	}
 	return refs, errs, nil
@@ -146,6 +167,10 @@ func (s *server) PostTimeEntries(ctx context.Context, req gen.PostTimeEntriesReq
 	if err != nil {
 		return nil, err
 	}
+	workType, err := snapshotWorkType(refs.WorkType)
+	if err != nil {
+		return nil, err
+	}
 
 	now := s.deps.Clock()
 	var created store.TimeEntry
@@ -160,23 +185,27 @@ func (s *server) PostTimeEntries(ctx context.Context, req gen.PostTimeEntriesReq
 			return nil
 		}
 		created, err = txq.InsertEntry(ctx, store.InsertEntryParams{
-			UserID:        c.UserID,
-			ProjectID:     parsed.ProjectID,
-			BillingLineID: parsed.LineID,
-			TaskID:        parsed.TaskID,
-			TaskTitle:     refs.TaskTitle,
-			EntryDate:     pgDate(parsed.Date),
-			Hours:         numericFromCents(parsed.HoursCents),
-			StartTime:     timeFromMinutes(parsed.Start),
-			EndTime:       timeFromMinutes(parsed.End),
-			Note:          parsed.Note,
-			Billable:      billable,
-			BillRate:      billRate,
-			BillCurrency:  rates.BillCurrency,
-			CostRate:      costRate,
-			CostCurrency:  rates.CostCurrency,
-			RateSource:    rates.Source,
-			Now:           now,
+			UserID:                c.UserID,
+			ProjectID:             parsed.ProjectID,
+			BillingLineID:         parsed.LineID,
+			TaskID:                parsed.TaskID,
+			TaskTitle:             refs.TaskTitle,
+			EntryDate:             pgDate(parsed.Date),
+			Hours:                 numericFromCents(parsed.HoursCents),
+			StartTime:             timeFromMinutes(parsed.Start),
+			EndTime:               timeFromMinutes(parsed.End),
+			Note:                  parsed.Note,
+			Billable:              billable,
+			BillRate:              billRate,
+			BillCurrency:          rates.BillCurrency,
+			CostRate:              costRate,
+			CostCurrency:          rates.CostCurrency,
+			RateSource:            rates.Source,
+			WorkTypeID:            workType.ID,
+			WorkTypeName:          workType.Name,
+			BillMultiplierPercent: workType.BillMultiplierPercent,
+			CostMultiplierPercent: workType.CostMultiplierPercent,
+			Now:                   now,
 		})
 		return err
 	})
@@ -329,6 +358,7 @@ func requestFromUpdate(body gen.TimeEntryUpdateRequest) gen.TimeEntryRequest {
 		EndTime:       body.EndTime,
 		Note:          body.Note,
 		Billable:      body.Billable,
+		WorkTypeId:    body.WorkTypeId,
 	}
 }
 
@@ -411,6 +441,10 @@ func (s *server) PutTimeEntriesById(ctx context.Context, req gen.PutTimeEntriesB
 	if err != nil {
 		return nil, err
 	}
+	workType, err := snapshotWorkType(refs.WorkType)
+	if err != nil {
+		return nil, err
+	}
 
 	now := s.deps.Clock()
 	var (
@@ -447,25 +481,29 @@ func (s *server) PutTimeEntriesById(ctx context.Context, req gen.PutTimeEntriesB
 			return nil
 		}
 		updated, err = txq.UpdateEntry(ctx, store.UpdateEntryParams{
-			ID:            current.ID,
-			Revision:      body.Revision,
-			UserID:        c.UserID,
-			ProjectID:     parsed.ProjectID,
-			BillingLineID: parsed.LineID,
-			TaskID:        parsed.TaskID,
-			TaskTitle:     refs.TaskTitle,
-			EntryDate:     pgDate(parsed.Date),
-			Hours:         numericFromCents(parsed.HoursCents),
-			StartTime:     timeFromMinutes(parsed.Start),
-			EndTime:       timeFromMinutes(parsed.End),
-			Note:          parsed.Note,
-			Billable:      billable,
-			BillRate:      billRate,
-			BillCurrency:  rates.BillCurrency,
-			CostRate:      costRate,
-			CostCurrency:  rates.CostCurrency,
-			RateSource:    rates.Source,
-			Now:           now,
+			ID:                    current.ID,
+			Revision:              body.Revision,
+			UserID:                c.UserID,
+			ProjectID:             parsed.ProjectID,
+			BillingLineID:         parsed.LineID,
+			TaskID:                parsed.TaskID,
+			TaskTitle:             refs.TaskTitle,
+			EntryDate:             pgDate(parsed.Date),
+			Hours:                 numericFromCents(parsed.HoursCents),
+			StartTime:             timeFromMinutes(parsed.Start),
+			EndTime:               timeFromMinutes(parsed.End),
+			Note:                  parsed.Note,
+			Billable:              billable,
+			BillRate:              billRate,
+			BillCurrency:          rates.BillCurrency,
+			CostRate:              costRate,
+			CostCurrency:          rates.CostCurrency,
+			RateSource:            rates.Source,
+			WorkTypeID:            workType.ID,
+			WorkTypeName:          workType.Name,
+			BillMultiplierPercent: workType.BillMultiplierPercent,
+			CostMultiplierPercent: workType.CostMultiplierPercent,
+			Now:                   now,
 		})
 		return err
 	})

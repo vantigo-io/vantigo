@@ -33,7 +33,7 @@ func (q *Queries) GetWeekSubmission(ctx context.Context, arg GetWeekSubmissionPa
 }
 
 const listWeekEntries = `-- name: ListWeekEntries :many
-SELECT id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at FROM time.entries
+SELECT id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at, work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent FROM time.entries
 WHERE user_id = $1
   AND entry_date BETWEEN $2::date AND $3::date
 ORDER BY entry_date, start_time NULLS LAST, id
@@ -84,6 +84,10 @@ func (q *Queries) ListWeekEntries(ctx context.Context, arg ListWeekEntriesParams
 			&i.Revision,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.WorkTypeID,
+			&i.WorkTypeName,
+			&i.BillMultiplierPercent,
+			&i.CostMultiplierPercent,
 		); err != nil {
 			return nil, err
 		}
@@ -96,7 +100,7 @@ func (q *Queries) ListWeekEntries(ctx context.Context, arg ListWeekEntriesParams
 }
 
 const lockWeekDrafts = `-- name: LockWeekDrafts :many
-SELECT id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at FROM time.entries
+SELECT id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at, work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent FROM time.entries
 WHERE user_id = $1
   AND entry_date BETWEEN $2::date AND $3::date
   AND status = 'draft'
@@ -150,6 +154,10 @@ func (q *Queries) LockWeekDrafts(ctx context.Context, arg LockWeekDraftsParams) 
 			&i.Revision,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.WorkTypeID,
+			&i.WorkTypeName,
+			&i.BillMultiplierPercent,
+			&i.CostMultiplierPercent,
 		); err != nil {
 			return nil, err
 		}

@@ -21,7 +21,7 @@ UPDATE time.entries SET
     revision = revision + 1,
     updated_at = $2::timestamptz
 WHERE id = ANY($3::bigint[]) AND status = 'submitted'
-RETURNING id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at
+RETURNING id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at, work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent
 `
 
 type ApproveEntriesParams struct {
@@ -70,6 +70,10 @@ func (q *Queries) ApproveEntries(ctx context.Context, arg ApproveEntriesParams) 
 			&i.Revision,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.WorkTypeID,
+			&i.WorkTypeName,
+			&i.BillMultiplierPercent,
+			&i.CostMultiplierPercent,
 		); err != nil {
 			return nil, err
 		}
@@ -82,7 +86,7 @@ func (q *Queries) ApproveEntries(ctx context.Context, arg ApproveEntriesParams) 
 }
 
 const listApprovalEntries = `-- name: ListApprovalEntries :many
-SELECT id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at FROM time.entries
+SELECT id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at, work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent FROM time.entries
 WHERE status = 'submitted'
   AND ($1::boolean OR project_id = ANY($2::integer[]))
   AND ($3::date IS NULL OR entry_date >= $3::date)
@@ -143,6 +147,10 @@ func (q *Queries) ListApprovalEntries(ctx context.Context, arg ListApprovalEntri
 			&i.Revision,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.WorkTypeID,
+			&i.WorkTypeName,
+			&i.BillMultiplierPercent,
+			&i.CostMultiplierPercent,
 		); err != nil {
 			return nil, err
 		}
@@ -210,7 +218,7 @@ UPDATE time.entries SET
     revision = revision + 1,
     updated_at = $2::timestamptz
 WHERE id = ANY($3::bigint[]) AND status = 'submitted'
-RETURNING id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at
+RETURNING id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at, work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent
 `
 
 type RejectEntriesParams struct {
@@ -258,6 +266,10 @@ func (q *Queries) RejectEntries(ctx context.Context, arg RejectEntriesParams) ([
 			&i.Revision,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.WorkTypeID,
+			&i.WorkTypeName,
+			&i.BillMultiplierPercent,
+			&i.CostMultiplierPercent,
 		); err != nil {
 			return nil, err
 		}
@@ -278,7 +290,7 @@ UPDATE time.entries SET
     revision = revision + 1,
     updated_at = $1::timestamptz
 WHERE id = ANY($2::bigint[]) AND status = 'approved'
-RETURNING id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at
+RETURNING id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at, work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent
 `
 
 type UnapproveEntriesParams struct {
@@ -325,6 +337,10 @@ func (q *Queries) UnapproveEntries(ctx context.Context, arg UnapproveEntriesPara
 			&i.Revision,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.WorkTypeID,
+			&i.WorkTypeName,
+			&i.BillMultiplierPercent,
+			&i.CostMultiplierPercent,
 		); err != nil {
 			return nil, err
 		}

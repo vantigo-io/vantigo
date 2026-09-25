@@ -1,17 +1,20 @@
 -- name: InsertEntry :one
 -- InsertEntry creates a draft entry with its rates already resolved and
--- snapshotted (D3). created_at and updated_at are the same instant, supplied
--- by the caller from Deps.Clock(); status and revision take the column
--- defaults ('draft', 1).
+-- snapshotted (D3), and its work type beside them (work types design D3: all
+-- four NULL for ordinary hours). created_at and updated_at are the same
+-- instant, supplied by the caller from Deps.Clock(); status and revision take
+-- the column defaults ('draft', 1).
 INSERT INTO time.entries (
     user_id, project_id, billing_line_id, task_id, task_title, entry_date,
     hours, start_time, end_time, note, billable,
     bill_rate, bill_currency, cost_rate, cost_currency, rate_source,
+    work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent,
     created_at, updated_at
 ) VALUES (
     @user_id, @project_id, @billing_line_id, @task_id, @task_title, @entry_date,
     @hours, @start_time, @end_time, @note, @billable,
     @bill_rate, @bill_currency, @cost_rate, @cost_currency, @rate_source,
+    @work_type_id, @work_type_name, @bill_multiplier_percent, @cost_multiplier_percent,
     @now::timestamptz, @now::timestamptz
 )
 RETURNING *;
@@ -60,6 +63,7 @@ SELECT * FROM time.entries WHERE id = @id FOR UPDATE;
 
 -- name: UpdateEntry :one
 -- UpdateEntry replaces an entry's content with its rates resolved again (D3).
+-- The work type is snapshotted again with them (work types design D3).
 -- A save always leaves a draft: a rejected entry returns to draft with its
 -- rejection reason and its submission stamp cleared (design 4.2). The
 -- revision, the status and the owner are guarded again here, although the
@@ -82,6 +86,10 @@ UPDATE time.entries SET
     cost_rate = @cost_rate,
     cost_currency = @cost_currency,
     rate_source = @rate_source,
+    work_type_id = @work_type_id,
+    work_type_name = @work_type_name,
+    bill_multiplier_percent = @bill_multiplier_percent,
+    cost_multiplier_percent = @cost_multiplier_percent,
     status = 'draft',
     rejection_reason = NULL,
     submitted_at = NULL,

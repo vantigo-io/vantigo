@@ -1770,6 +1770,42 @@ func TestProjectsWorkTypes_AppliesAndIsIdempotent(t *testing.T) {
 	}
 }
 
+// TestTimeWorkTypes_AppliesAndIsIdempotent proves 00032_time_work_types.sql
+// applies, rolls back and re-applies cleanly, and pins the entry's work-type
+// snapshot (work types design D3): the type's opaque id, its name at the
+// name column's width, and the two multipliers at the scale projects stores
+// them in — all nullable, NULL being "ordinary hours". COLLATE "C": the
+// underscore must sort as a character, not be skipped.
+func TestTimeWorkTypes_AppliesAndIsIdempotent(t *testing.T) {
+	url := testdb.URL(t)
+	applyUpDownUp(t, url, 32) // 00032_time_work_types.sql
+
+	ctx := context.Background()
+	pool, err := db.Open(ctx, url)
+	if err != nil {
+		t.Fatalf("open pool: %v", err)
+	}
+	defer pool.Close()
+
+	var columns string
+	if err := pool.QueryRow(ctx, `
+		SELECT coalesce(string_agg(column_name || ':' || data_type
+		       || CASE WHEN data_type = 'numeric' THEN '(' || numeric_precision || ',' || numeric_scale || ')'
+		               WHEN data_type = 'character varying' THEN '(' || character_maximum_length || ')'
+		               ELSE '' END
+		       || ':' || is_nullable, ',' ORDER BY column_name COLLATE "C"), 'MISSING')
+		FROM information_schema.columns
+		WHERE table_schema = 'time' AND table_name = 'entries'
+		  AND column_name IN ('work_type_id', 'work_type_name', 'bill_multiplier_percent', 'cost_multiplier_percent')`).Scan(&columns); err != nil {
+		t.Fatalf("read the work-type snapshot columns: %v", err)
+	}
+	want := "bill_multiplier_percent:numeric(6,2):YES,cost_multiplier_percent:numeric(6,2):YES," +
+		"work_type_id:integer:YES,work_type_name:character varying(100):YES"
+	if columns != want {
+		t.Errorf("snapshot columns = %q, want %q", columns, want)
+	}
+}
+
 // TestExpensesBaseline_AppliesAndIsIdempotent proves
 // 00012_expenses_baseline.sql applies, rolls back and re-applies cleanly, with
 // the five tables of design §3.1–3.5, the two unique indexes the module's

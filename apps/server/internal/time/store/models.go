@@ -12,32 +12,36 @@ import (
 )
 
 type TimeEntry struct {
-	ID               int64
-	UserID           uuid.UUID
-	ProjectID        int32
-	BillingLineID    *int32
-	TaskID           *int32
-	TaskTitle        *string
-	EntryDate        pgtype.Date
-	Hours            pgtype.Numeric
-	StartTime        pgtype.Time
-	EndTime          pgtype.Time
-	Note             *string
-	Billable         bool
-	BillRate         pgtype.Numeric
-	BillCurrency     *string
-	CostRate         pgtype.Numeric
-	CostCurrency     *string
-	RateSource       string
-	Status           string
-	RejectionReason  *string
-	SubmittedAt      *time.Time
-	ApprovedByUserID *uuid.UUID
-	ApprovedAt       *time.Time
-	InvoicedAt       *time.Time
-	Revision         int32
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID                    int64
+	UserID                uuid.UUID
+	ProjectID             int32
+	BillingLineID         *int32
+	TaskID                *int32
+	TaskTitle             *string
+	EntryDate             pgtype.Date
+	Hours                 pgtype.Numeric
+	StartTime             pgtype.Time
+	EndTime               pgtype.Time
+	Note                  *string
+	Billable              bool
+	BillRate              pgtype.Numeric
+	BillCurrency          *string
+	CostRate              pgtype.Numeric
+	CostCurrency          *string
+	RateSource            string
+	Status                string
+	RejectionReason       *string
+	SubmittedAt           *time.Time
+	ApprovedByUserID      *uuid.UUID
+	ApprovedAt            *time.Time
+	InvoicedAt            *time.Time
+	Revision              int32
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
+	WorkTypeID            *int32
+	WorkTypeName          *string
+	BillMultiplierPercent pgtype.Numeric
+	CostMultiplierPercent pgtype.Numeric
 }
 
 type TimePersonRate struct {
