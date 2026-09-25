@@ -62,6 +62,13 @@ func TestGetProjectEconomy_WithoutExpensesTheAnswerIsUnchanged(t *testing.T) {
 		t.Fatalf("expenseTracking = %v (present %v), want false: the contract is not composed", tracking, present)
 	}
 	delete(raw, "expenseTracking")
+	// workTypes (work types design D4) is the second field allowed to be new:
+	// with time tracking on and no entry logged as a type it is an empty
+	// list, and the golden body predates it.
+	if list, ok := raw["workTypes"].([]any); !ok || len(list) != 0 {
+		t.Fatalf("workTypes = %v, want an empty list: the fixture logs no work type", raw["workTypes"])
+	}
+	delete(raw, "workTypes")
 
 	var golden map[string]any
 	if err := json.Unmarshal([]byte(goldenEconomyBody), &golden); err != nil {
@@ -75,7 +82,8 @@ func TestGetProjectEconomy_WithoutExpensesTheAnswerIsUnchanged(t *testing.T) {
 
 // goldenEconomyBody is what goldenEconomyFixture's project answered before
 // this change, captured from the response itself rather than written by hand,
-// with `expenseTracking` — the one field that is allowed to be new — removed.
+// with `expenseTracking` and `workTypes` — the two fields that are allowed to
+// be new — removed.
 //
 // Every harness here runs against its own database, created from this
 // binary's template, so the two billing line ids in it are the same on every

@@ -405,6 +405,18 @@ func (f *fakeActuals) set(projectID int32, totals contracts.ActualsTotals, lines
 	f.entries[projectID] = contracts.ProjectActualsEntry{Totals: totals, Lines: lines}
 }
 
+// setWorkTypes says what was logged per work type on a project whose totals
+// set has already given — the provider's per-type split (work types design
+// D4): ids and figures, by id, as the contract promises. The names are this
+// module's own, read from projects.work_types when the economy renders them.
+func (f *fakeActuals) setWorkTypes(projectID int32, types ...contracts.WorkTypeActuals) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	entry := f.entries[projectID]
+	entry.WorkTypes = types
+	f.entries[projectID] = entry
+}
+
 // fail makes every later call answer err, the way a saturated pool or a
 // degraded time module looks from here. It is "could not read", never "there
 // is nothing".
@@ -1257,18 +1269,19 @@ func rawEconomy(t *testing.T, c *modtest.Client, projectID int32) map[string]any
 // economyJSON decodes ProjectEconomyResponse. Every shaped field is a
 // pointer, because absent is what this endpoint says instead of zero.
 type economyJSON struct {
-	TimeTracking      bool                 `json:"timeTracking"`
-	ExpenseTracking   bool                 `json:"expenseTracking"`
-	Expenses          *economyExpensesJSON `json:"expenses"`
-	Currency          *string              `json:"currency"`
-	Budget            economyBudgetJSON    `json:"budget"`
-	Actuals           *economyActualsJSON  `json:"actuals"`
-	Lines             []economyLineJSON    `json:"lines"`
-	TaskEstimateHours *float64             `json:"taskEstimateHours"`
-	BudgetUsed        *budgetUsedJSON      `json:"budgetUsed"`
-	OverBudget        bool                 `json:"overBudget"`
-	Milestones        *milestoneTotalsJSON `json:"milestones"`
-	Cost              *economyCostJSON     `json:"cost"`
+	TimeTracking      bool                  `json:"timeTracking"`
+	ExpenseTracking   bool                  `json:"expenseTracking"`
+	Expenses          *economyExpensesJSON  `json:"expenses"`
+	Currency          *string               `json:"currency"`
+	Budget            economyBudgetJSON     `json:"budget"`
+	Actuals           *economyActualsJSON   `json:"actuals"`
+	Lines             []economyLineJSON     `json:"lines"`
+	TaskEstimateHours *float64              `json:"taskEstimateHours"`
+	BudgetUsed        *budgetUsedJSON       `json:"budgetUsed"`
+	OverBudget        bool                  `json:"overBudget"`
+	Milestones        *milestoneTotalsJSON  `json:"milestones"`
+	Cost              *economyCostJSON      `json:"cost"`
+	WorkTypes         []economyWorkTypeJSON `json:"workTypes"`
 }
 
 type economyBudgetJSON struct {
