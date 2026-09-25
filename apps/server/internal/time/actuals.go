@@ -1,6 +1,7 @@
 package timetracking
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"math/big"
@@ -22,8 +23,9 @@ import (
 // from this module's own tables and nothing else: the project's currency
 // arrives in the request because asking the project directory for it while
 // serving projects' own request would be a module cycle at request time.
-// Everything the answer needs is on the entry already, rates and currencies
-// snapshotted when the work was logged (D3).
+// Everything the answer needs is on the entry already, rates, currencies and
+// work-type multipliers snapshotted when the work was logged (D3; work types
+// design D3).
 //
 // Arithmetic: hours are exact int64 hundredths all the way from SQL, and
 // amounts are exact decimals — the grouped query sums the unrounded products
@@ -47,7 +49,8 @@ func newActuals(d module.Deps) contracts.ProjectActuals {
 	return &actuals{q: store.New(d.Pool)}
 }
 
-// Actuals is one project's totals and the same totals per billing line.
+// Actuals is one project's totals, the same totals per billing line, and its
+// work per work type.
 func (a *actuals) Actuals(ctx context.Context, req contracts.ActualsRequest) (contracts.ProjectActualsEntry, error) {
 	rows, err := a.q.ProjectActualGroups(ctx, []int32{req.ProjectID})
 	if err != nil {
@@ -97,7 +100,71 @@ func (a *actuals) Actuals(ctx context.Context, req contracts.ActualsRequest) (co
 	if noLine != nil {
 		entry.Lines = append(entry.Lines, contracts.LineActuals{Totals: noLine.totals()})
 	}
+	workTypes, err := a.workTypes(ctx, req)
+	if err != nil {
+		return contracts.ProjectActualsEntry{}, err
+	}
+	entry.WorkTypes = workTypes
 	return entry, nil
+}
+
+// workTypes is one project's work per work type (work types design D4): the
+// hours of every type anything was logged as, and what they bill and cost in
+// the requested currency — the buckets' currency rule, applied the same way:
+// an amount counts only when its own currency is the one asked for, and work
+// in another currency contributes its hours and nothing else. Each type's
+// amounts are added up exactly and rounded once. By id: a type's name is
+// projects', which names the rows it renders.
+func (a *actuals) workTypes(ctx context.Context, req contracts.ActualsRequest) ([]contracts.WorkTypeActuals, error) {
+	rows, err := a.q.ProjectWorkTypeActualGroups(ctx, req.ProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("time: read the project's hours per work type: %w", err)
+	}
+	type workTypeSum struct {
+		hundredths int64
+		bill, cost big.Rat
+	}
+	sums := map[int32]*workTypeSum{}
+	var ids []int32
+	for _, row := range rows {
+		sum := sums[row.WorkTypeID]
+		if sum == nil {
+			sum = &workTypeSum{}
+			sums[row.WorkTypeID] = sum
+			ids = append(ids, row.WorkTypeID)
+		}
+		sum.hundredths += row.HoursHundredths
+		if req.Currency == nil {
+			continue
+		}
+		if row.BillCurrency != nil && *row.BillCurrency == *req.Currency {
+			amount, err := exactAmount(row.BillAmount)
+			if err != nil {
+				return nil, err
+			}
+			sum.bill.Add(&sum.bill, amount)
+		}
+		if row.CostCurrency != nil && *row.CostCurrency == *req.Currency {
+			amount, err := exactAmount(row.CostAmount)
+			if err != nil {
+				return nil, err
+			}
+			sum.cost.Add(&sum.cost, amount)
+		}
+	}
+
+	out := make([]contracts.WorkTypeActuals, 0, len(ids))
+	for _, id := range ids {
+		sum := sums[id]
+		out = append(out, contracts.WorkTypeActuals{
+			WorkTypeID:      id,
+			HoursHundredths: sum.hundredths,
+			BillAmount:      amountText(&sum.bill),
+			CostAmount:      amountText(&sum.cost),
+		})
+	}
+	slices.SortFunc(out, func(x, y contracts.WorkTypeActuals) int { return cmp.Compare(x.WorkTypeID, y.WorkTypeID) })
+	return out, nil
 }
 
 // ActualsForProjects is many projects' totals in one query. Every requested

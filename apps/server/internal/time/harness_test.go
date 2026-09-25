@@ -159,6 +159,21 @@ const (
 	taskSpecificationTitle = "Skriv spesifikasjonen"
 )
 
+// The work types the fake directory knows (work types design D1): on 1001,
+// overtime billed at 150 % and costed at 140 %, a weekend at 200 % and 150 %,
+// and a retired type; on 1004, overtime at 150 % both ways — "a type on
+// another project" for 1001, and the EUR case.
+const (
+	workTypeOvertime = 6001
+	workTypeWeekend  = 6002
+	workTypeRetired  = 6003
+	workTypeEuro     = 6004
+	workTypeUnknown  = 6999
+
+	workTypeOvertimeName = "Overtid 50 %"
+	workTypeWeekendName  = "Helg"
+)
+
 // The roles a project directory answers, as projects names them.
 const (
 	roleManager = "manager"
@@ -250,8 +265,25 @@ func newFakeProjects() *fakeProjects {
 			taskDelivery:      {ID: taskDelivery, ProjectID: projectKraftVerket, Title: "Test leveransen", Status: "in-progress"},
 			taskForeign:       {ID: taskForeign, ProjectID: projectEuro, Title: "Oversett rapporten", Status: "todo"},
 		},
-		workTypes: map[int32]contracts.WorkTypeEntry{},
-		roles:     map[roleKey]string{},
+		workTypes: map[int32]contracts.WorkTypeEntry{
+			workTypeOvertime: {
+				ID: workTypeOvertime, ProjectID: projectKraftVerket, Name: workTypeOvertimeName,
+				BillMultiplierPercent: 150, CostMultiplierPercent: 140, Active: true,
+			},
+			workTypeWeekend: {
+				ID: workTypeWeekend, ProjectID: projectKraftVerket, Name: workTypeWeekendName,
+				BillMultiplierPercent: 200, CostMultiplierPercent: 150, Active: true,
+			},
+			workTypeRetired: {
+				ID: workTypeRetired, ProjectID: projectKraftVerket, Name: "Gammel overtid",
+				BillMultiplierPercent: 150, CostMultiplierPercent: 150, Active: false,
+			},
+			workTypeEuro: {
+				ID: workTypeEuro, ProjectID: projectEuro, Name: "Overtime",
+				BillMultiplierPercent: 150, CostMultiplierPercent: 150, Active: true,
+			},
+		},
+		roles: map[roleKey]string{},
 	}
 }
 
@@ -272,6 +304,16 @@ func (f *fakeProjects) removeTask(id int32) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	delete(f.tasks, id)
+}
+
+// setWorkType changes one work type the way editing it in projects would, so
+// a test can prove what a saved entry snapshotted stays put (D3's freeze).
+func (f *fakeProjects) setWorkType(id int32, name string, bill, cost float64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	wt := f.workTypes[id]
+	wt.Name, wt.BillMultiplierPercent, wt.CostMultiplierPercent = name, bill, cost
+	f.workTypes[id] = wt
 }
 
 func (f *fakeProjects) Project(ctx context.Context, id int32) (*contracts.ProjectEntry, error) {
@@ -690,6 +732,7 @@ type entryJSON struct {
 	Capabilities    capabilitiesJSON `json:"capabilities"`
 	Billing         *billingJSON     `json:"billing"`
 	Cost            *costJSON        `json:"cost"`
+	WorkType        *workTypeJSON    `json:"workType"`
 }
 
 type approverJSON struct {
@@ -705,13 +748,23 @@ type capabilitiesJSON struct {
 }
 
 type billingJSON struct {
-	BillRate *float64 `json:"billRate"`
-	Currency *string  `json:"currency"`
+	BillRate          *float64 `json:"billRate"`
+	Currency          *string  `json:"currency"`
+	MultiplierPercent *float64 `json:"multiplierPercent"`
+	EffectiveRate     *float64 `json:"effectiveRate"`
 }
 
 type costJSON struct {
-	CostRate *float64 `json:"costRate"`
-	Currency *string  `json:"currency"`
+	CostRate          *float64 `json:"costRate"`
+	Currency          *string  `json:"currency"`
+	MultiplierPercent *float64 `json:"multiplierPercent"`
+	EffectiveRate     *float64 `json:"effectiveRate"`
+}
+
+// workTypeJSON decodes TimeEntryWorkType.
+type workTypeJSON struct {
+	Id   int32  `json:"id"`
+	Name string `json:"name"`
 }
 
 // rawEntry reads one entry as a bare JSON object, for a test whose subject is
@@ -774,6 +827,11 @@ func updateBody(e entryJSON, overrides map[string]any) map[string]any {
 				body[field] = *v
 			}
 		}
+	}
+	// A full replace: an entry logged as a work type carries it along, or the
+	// update would make it ordinary hours again.
+	if e.WorkType != nil {
+		body["workTypeId"] = e.WorkType.Id
 	}
 	maps.Copy(body, overrides)
 	for field, value := range overrides {

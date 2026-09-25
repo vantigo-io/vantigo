@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 
@@ -149,18 +150,23 @@ func actualsProvider(t *testing.T, h *harness) contracts.ProjectActuals {
 // loggedEntry is one row seeded straight into time.entries: the provider
 // reads whatever is there, whatever path put it there, and a test about
 // currencies and statuses needs combinations no create call can reach
-// (invoiced, a cost in another currency than the bill).
+// (invoiced, a cost in another currency than the bill). The four work-type
+// fields are the snapshot (work types design D3); nil is ordinary hours.
 type loggedEntry struct {
-	project      int32
-	line         *int32
-	date         string
-	hours        string
-	billable     bool
-	billRate     any
-	billCurrency any
-	costRate     any
-	costCurrency any
-	status       string
+	project        int32
+	line           *int32
+	date           string
+	hours          string
+	billable       bool
+	billRate       any
+	billCurrency   any
+	costRate       any
+	costCurrency   any
+	status         string
+	workType       any
+	workTypeName   any
+	billMultiplier any
+	costMultiplier any
 }
 
 // logEntry seeds one row, so a test reads as the list of what was logged.
@@ -172,10 +178,13 @@ func logEntry(t *testing.T, h *harness, userID uuid.UUID, e loggedEntry) {
 	}
 	h.Exec(t, `INSERT INTO time.entries
 	    (user_id, project_id, billing_line_id, entry_date, hours, billable,
-	     bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, created_at, updated_at)
-	    VALUES ($1, $2, $3, $4::date, $5::numeric, $6, $7::numeric, $8, $9::numeric, $10, $11, $12, now(), now())`,
+	     bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, created_at, updated_at,
+	     work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent)
+	    VALUES ($1, $2, $3, $4::date, $5::numeric, $6, $7::numeric, $8, $9::numeric, $10, $11, $12, now(), now(),
+	            $13::integer, $14, $15::numeric, $16::numeric)`,
 		userID, e.project, e.line, e.date, e.hours, e.billable,
-		e.billRate, e.billCurrency, e.costRate, e.costCurrency, source, e.status)
+		e.billRate, e.billCurrency, e.costRate, e.costCurrency, source, e.status,
+		e.workType, e.workTypeName, e.billMultiplier, e.costMultiplier)
 }
 
 // wantBucket fails the test unless b is exactly hours, bill and cost.
@@ -873,5 +882,91 @@ func TestActualsForProjectsAcceptsTheCap(t *testing.T) {
 	}
 	if len(got) != contracts.MaxActualsRequests {
 		t.Errorf("result has %d projects, want %d", len(got), contracts.MaxActualsRequests)
+	}
+}
+
+// D3 where the money is summed: an entry's amount is hours × base rate ×
+// multiplier, exact, rounded once. 333.33 × 1.5 h × 150 % is 749.9925, so
+// 749.99 — multiplying the rate first (499.995 → 500.00) would bill 750.00 —
+// and the cost the same way on its own multiplier: × 125 % is 624.99375,
+// 624.99. The per-type split carries the same figures.
+func TestActualsMultipliesWhereItSums(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, user := signIn(t, h)
+	p := actualsProvider(t, h)
+
+	logEntry(t, h, user, loggedEntry{project: projectEuro, date: workDay, hours: "1.50", billable: true,
+		billRate: "333.33", billCurrency: "EUR", costRate: "333.33", costCurrency: "EUR", status: "approved",
+		workType: workTypeEuro, workTypeName: "Overtime", billMultiplier: "150.00", costMultiplier: "125.00"})
+
+	got, err := p.Actuals(t.Context(), contracts.ActualsRequest{ProjectID: projectEuro, Currency: ptr("EUR")})
+	if err != nil {
+		t.Fatalf("actuals: %v", err)
+	}
+	wantBucket(t, "approved", got.Totals.Approved, 150, "749.99", "624.99")
+	wantBucket(t, "total", got.Totals.Total, 150, "749.99", "624.99")
+	want := contracts.WorkTypeActuals{WorkTypeID: workTypeEuro, HoursHundredths: 150, BillAmount: "749.99", CostAmount: "624.99"}
+	if len(got.WorkTypes) != 1 || got.WorkTypes[0] != want {
+		t.Errorf("work types = %+v, want [%+v]", got.WorkTypes, want)
+	}
+}
+
+// D4's split: one entry per type anything was logged as, by id, all buckets
+// together; ordinary hours in none of them; the amounts on the buckets'
+// currency rule, other-currency hours counted in the hours and nowhere else;
+// no currency asked, no amounts. ActualsForProjects is unchanged in shape and
+// carries the same multiplied totals.
+func TestActualsReportsEveryWorkTypeInTheProjectsCurrency(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, user := signIn(t, h)
+	p := actualsProvider(t, h)
+
+	for _, e := range []loggedEntry{
+		{project: projectKraftVerket, date: workDay, hours: "2.00", billable: true, status: "approved",
+			billRate: "900.00", billCurrency: "NOK", costRate: "400.00", costCurrency: "NOK",
+			workType: workTypeOvertime, workTypeName: workTypeOvertimeName, billMultiplier: "150.00", costMultiplier: "140.00"},
+		{project: projectKraftVerket, date: workDay, hours: "1.00", billable: true, status: "submitted",
+			billRate: "100.00", billCurrency: "SEK",
+			workType: workTypeOvertime, workTypeName: workTypeOvertimeName, billMultiplier: "150.00", costMultiplier: "140.00"},
+		{project: projectKraftVerket, date: workDay, hours: "3.00", billable: true, status: "draft",
+			billRate: "900.00", billCurrency: "NOK",
+			workType: workTypeWeekend, workTypeName: workTypeWeekendName, billMultiplier: "200.00", costMultiplier: "150.00"},
+		{project: projectKraftVerket, date: workDay, hours: "4.00", billable: true, status: "approved",
+			billRate: "900.00", billCurrency: "NOK"},
+	} {
+		logEntry(t, h, user, e)
+	}
+
+	nok, err := p.Actuals(t.Context(), contracts.ActualsRequest{ProjectID: projectKraftVerket, Currency: ptr("NOK")})
+	if err != nil {
+		t.Fatalf("actuals: %v", err)
+	}
+	want := []contracts.WorkTypeActuals{
+		{WorkTypeID: workTypeOvertime, HoursHundredths: 300, BillAmount: "2700.00", CostAmount: "1120.00"},
+		{WorkTypeID: workTypeWeekend, HoursHundredths: 300, BillAmount: "5400.00", CostAmount: "0.00"},
+	}
+	if !slices.Equal(nok.WorkTypes, want) {
+		t.Errorf("work types in NOK = %+v, want %+v", nok.WorkTypes, want)
+	}
+	// 2 h × 900 × 150 % + 3 h × 900 × 200 % + 4 h × 900; the SEK hour prices nothing here.
+	wantBucket(t, "total in NOK", nok.Totals.Total, 1000, "11700.00", "1120.00")
+
+	none, err := p.Actuals(t.Context(), contracts.ActualsRequest{ProjectID: projectKraftVerket})
+	if err != nil {
+		t.Fatalf("actuals: %v", err)
+	}
+	if len(none.WorkTypes) != 2 || none.WorkTypes[0].HoursHundredths != 300 ||
+		none.WorkTypes[0].BillAmount != "0.00" || none.WorkTypes[0].CostAmount != "0.00" {
+		t.Errorf("work types without a currency = %+v, want the hours and no amounts", none.WorkTypes)
+	}
+
+	batch, err := p.ActualsForProjects(t.Context(), []contracts.ActualsRequest{{ProjectID: projectKraftVerket, Currency: ptr("NOK")}})
+	if err != nil {
+		t.Fatalf("actuals for projects: %v", err)
+	}
+	if batch[projectKraftVerket].Total != nok.Totals.Total {
+		t.Errorf("batch total = %+v, want the single read's %+v", batch[projectKraftVerket].Total, nok.Totals.Total)
 	}
 }

@@ -71,6 +71,12 @@ type TimeEntryBilling struct {
 
 	// Currency The bill rate's currency — the project's for a line or project rate, the person rate card's for a person rate.
 	Currency *string `json:"currency,omitempty"`
+
+	// EffectiveRate billRate times multiplierPercent, rounded half up to cents — display only, what one hour of this work type bills at. Nothing stores or sums it; amounts multiply the base rate where they are summed and are rounded once (work types design D3). Absent when no work type was picked or there is no billRate.
+	EffectiveRate *float64 `json:"effectiveRate,omitempty"`
+
+	// MultiplierPercent The picked work type's bill multiplier as it was snapshotted with the rates — frozen from submitted on. billRate stays the base rate the chain resolved. Absent when no work type was picked.
+	MultiplierPercent *float64 `json:"multiplierPercent,omitempty"`
 }
 
 // TimeEntryCapabilities What the calling user may do with this entry, so the frontend never re-derives the rules.
@@ -95,6 +101,12 @@ type TimeEntryCost struct {
 
 	// Currency The person rate card's currency.
 	Currency *string `json:"currency,omitempty"`
+
+	// EffectiveRate costRate times multiplierPercent, rounded half up to cents — display only (work types design D3). Absent when no work type was picked or there is no costRate.
+	EffectiveRate *float64 `json:"effectiveRate,omitempty"`
+
+	// MultiplierPercent The picked work type's cost multiplier as it was snapshotted — kept on a non-billable entry too, since overtime costs the company whether or not it bills. Absent when no work type was picked.
+	MultiplierPercent *float64 `json:"multiplierPercent,omitempty"`
 }
 
 // TimeEntryRejectRequest The entries to reject and why, under the rules an approval follows. All or nothing — one entry that may not be rejected refuses the whole request and changes nothing.
@@ -133,6 +145,9 @@ type TimeEntryRequest struct {
 
 	// TaskId A task on the project. Its title is snapshotted on the entry, so the entry stays readable after the task is deleted.
 	TaskId *int32 `json:"taskId,omitempty"`
+
+	// WorkTypeId One of the project's active work types (work types design D3). Its name and multipliers are snapshotted with the rates; absent or null is ordinary hours.
+	WorkTypeId *int32 `json:"workTypeId,omitempty"`
 }
 
 // TimeEntryResponse One time entry. The money on it is shaped per caller (D8) rather than refused — billing and cost are absent, not null, for a caller who may not see them.
@@ -183,6 +198,9 @@ type TimeEntryResponse struct {
 	UpdatedAt       time.Time          `json:"updatedAt"`
 	UserDisplayName string             `json:"userDisplayName"`
 	UserId          openapi_types.UUID `json:"userId"`
+
+	// WorkType The work type the entry was logged as, as it was snapshotted. Absent — not null — for ordinary hours. Visible to whoever sees the entry; the multipliers are inside billing and cost.
+	WorkType *TimeEntryWorkType `json:"workType,omitempty"`
 }
 
 // TimeEntrySubmitRequest The entries to submit, each the caller's own draft. All or nothing — one entry that may not be submitted refuses the whole request and changes nothing.
@@ -226,6 +244,15 @@ type TimeEntryUpdateRequest struct {
 
 	// TaskId A task on the project. Its title is snapshotted on the entry, so the entry stays readable after the task is deleted.
 	TaskId *int32 `json:"taskId,omitempty"`
+
+	// WorkTypeId One of the project's active work types (work types design D3). A full replace, like every other field — left out, the entry is ordinary hours again.
+	WorkTypeId *int32 `json:"workTypeId,omitempty"`
+}
+
+// TimeEntryWorkType The work type an entry was logged as, by the id projects gave it and the name it had when the entry was saved.
+type TimeEntryWorkType struct {
+	Id   int32  `json:"id"`
+	Name string `json:"name"`
 }
 
 // TimePersonOverview One person's recent weeks, for the people overview.

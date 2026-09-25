@@ -171,8 +171,8 @@ type ActualsTotals struct {
 	LastEntryDate *string
 }
 
-// ProjectActualsEntry is one project's totals and the same totals per
-// billing line.
+// ProjectActualsEntry is one project's totals, the same totals per billing
+// line, and its work per work type.
 type ProjectActualsEntry struct {
 	Totals ActualsTotals
 	// Lines is one entry per billing line anything was logged on, by billing
@@ -187,6 +187,28 @@ type ProjectActualsEntry struct {
 	// its own (see ActualsBucket). Totals — and inside it Totals.Total — is
 	// the project's figure.
 	Lines []LineActuals
+	// WorkTypes is the same project's logged work per work type (work types
+	// design D4): all three buckets together, one entry per type at least one
+	// entry was logged as, by WorkTypeID ascending. Work logged as no type —
+	// ordinary hours — is in no entry. The amounts follow the buckets'
+	// currency rule: only work logged in the requested currency is in them,
+	// and other-currency work contributes its hours to HoursHundredths and
+	// nothing else. Each type is rounded once, on its own.
+	// ActualsForProjects does not carry it.
+	WorkTypes []WorkTypeActuals
+}
+
+// WorkTypeActuals is what was logged as one work type, by the type's id and
+// nothing else: the type's name is the module that owns work types' to say
+// (projects names the rows from its own table), and the provider asks the
+// project directory nothing while serving.
+type WorkTypeActuals struct {
+	WorkTypeID      int32
+	HoursHundredths int64
+	// BillAmount and CostAmount are decimal text with two decimals, at the
+	// base rate times the multiplier each entry snapshotted, "0.00" when
+	// there is nothing — the ActualsBucket shape.
+	BillAmount, CostAmount string
 }
 
 // LineActuals is what was logged on one billing line, or, with a nil

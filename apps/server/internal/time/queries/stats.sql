@@ -97,10 +97,11 @@ GROUP BY status, billing_line_id, user_id;
 -- name: ProjectBillingTotals :many
 -- ProjectBillingTotals is what one project's billable time is worth, per
 -- bill currency: the submitted, approved and invoiced billable hours at the
--- bill rate each entry snapshotted, summed exactly and rounded to cents, and
--- the hours of those entries that have no rate (bill_currency NULL, then).
+-- bill rate each entry snapshotted times its work type's bill multiplier
+-- (work types design D3), summed exactly and rounded to cents, and the hours
+-- of those entries that have no rate (bill_currency NULL, then).
 SELECT bill_currency,
-       COALESCE(ROUND(SUM(hours * bill_rate) FILTER (WHERE bill_rate IS NOT NULL), 2), 0)::numeric(14,2) AS amount,
+       COALESCE(ROUND(SUM(hours * bill_rate * (COALESCE(bill_multiplier_percent, 100) * 0.01)) FILTER (WHERE bill_rate IS NOT NULL), 2), 0)::numeric(14,2) AS amount,
        COALESCE(SUM(hours) FILTER (WHERE bill_rate IS NOT NULL), 0)::numeric(9,2) AS priced_hours,
        COALESCE(SUM(hours) FILTER (WHERE bill_rate IS NULL), 0)::numeric(9,2) AS unpriced_hours
 FROM time.entries

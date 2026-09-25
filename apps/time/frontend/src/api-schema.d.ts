@@ -435,6 +435,16 @@ export interface components {
             billRate?: number | null;
             /** @description The bill rate's currency — the project's for a line or project rate, the person rate card's for a person rate. */
             currency?: string | null;
+            /**
+             * Format: double
+             * @description billRate times multiplierPercent, rounded half up to cents — display only, what one hour of this work type bills at. Nothing stores or sums it; amounts multiply the base rate where they are summed and are rounded once (work types design D3). Absent when no work type was picked or there is no billRate.
+             */
+            effectiveRate?: number;
+            /**
+             * Format: double
+             * @description The picked work type's bill multiplier as it was snapshotted with the rates — frozen from submitted on. billRate stays the base rate the chain resolved. Absent when no work type was picked.
+             */
+            multiplierPercent?: number;
         };
         /** @description What the calling user may do with this entry, so the frontend never re-derives the rules. */
         TimeEntryCapabilities: {
@@ -456,6 +466,16 @@ export interface components {
             costRate?: number | null;
             /** @description The person rate card's currency. */
             currency?: string | null;
+            /**
+             * Format: double
+             * @description costRate times multiplierPercent, rounded half up to cents — display only (work types design D3). Absent when no work type was picked or there is no costRate.
+             */
+            effectiveRate?: number;
+            /**
+             * Format: double
+             * @description The picked work type's cost multiplier as it was snapshotted — kept on a non-billable entry too, since overtime costs the company whether or not it bills. Absent when no work type was picked.
+             */
+            multiplierPercent?: number;
         };
         /** @description The entries to reject and why, under the rules an approval follows. All or nothing — one entry that may not be rejected refuses the whole request and changes nothing. */
         TimeEntryRejectRequest: {
@@ -498,6 +518,11 @@ export interface components {
              * @description A task on the project. Its title is snapshotted on the entry, so the entry stays readable after the task is deleted.
              */
             taskId?: number | null;
+            /**
+             * Format: int32
+             * @description One of the project's active work types (work types design D3). Its name and multipliers are snapshotted with the rates; absent or null is ordinary hours.
+             */
+            workTypeId?: number | null;
         };
         /** @description One time entry. The money on it is shaped per caller (D8) rather than refused — billing and cost are absent, not null, for a caller who may not see them. */
         TimeEntryResponse: {
@@ -551,6 +576,8 @@ export interface components {
             userDisplayName: string;
             /** Format: uuid */
             userId: string;
+            /** @description The work type the entry was logged as, as it was snapshotted. Absent — not null — for ordinary hours. Visible to whoever sees the entry; the multipliers are inside billing and cost. */
+            workType?: components["schemas"]["TimeEntryWorkType"];
         };
         /** @description The entries to submit, each the caller's own draft. All or nothing — one entry that may not be submitted refuses the whole request and changes nothing. */
         TimeEntrySubmitRequest: {
@@ -600,6 +627,17 @@ export interface components {
              * @description A task on the project. Its title is snapshotted on the entry, so the entry stays readable after the task is deleted.
              */
             taskId?: number | null;
+            /**
+             * Format: int32
+             * @description One of the project's active work types (work types design D3). A full replace, like every other field — left out, the entry is ordinary hours again.
+             */
+            workTypeId?: number | null;
+        };
+        /** @description The work type an entry was logged as, by the id projects gave it and the name it had when the entry was saved. */
+        TimeEntryWorkType: {
+            /** Format: int32 */
+            id: number;
+            name: string;
         };
         /** @description One person's recent weeks, for the people overview. */
         TimePersonOverview: {

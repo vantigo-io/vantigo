@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/time/store"
@@ -240,4 +241,47 @@ func roundHalfUpCents(r *big.Rat) float64 {
 	whole := new(big.Int).Quo(cents.Num(), cents.Denom()) // truncates toward zero
 	f, _ := new(big.Rat).SetFrac(whole, big.NewInt(100)).Float64()
 	return f
+}
+
+// workTypeSnapshot is what an entry stores about the work type it was logged
+// as (work types design D3), nil and SQL NULL in every field for ordinary
+// hours. It is taken at the same save points the rates are, and so frozen
+// with them from submitted on.
+type workTypeSnapshot struct {
+	ID                    *int32
+	Name                  *string
+	BillMultiplierPercent pgtype.Numeric
+	CostMultiplierPercent pgtype.Numeric
+}
+
+// snapshotWorkType turns the directory's answer into the four columns. The
+// percentages go in through their shortest decimal text, the same text
+// projects stored them from, so the numeric(6,2) columns hold what projects
+// holds.
+func snapshotWorkType(wt *contracts.WorkTypeEntry) (workTypeSnapshot, error) {
+	if wt == nil {
+		return workTypeSnapshot{}, nil
+	}
+	bill, err := numericFromFloatPtr(&wt.BillMultiplierPercent)
+	if err != nil {
+		return workTypeSnapshot{}, err
+	}
+	cost, err := numericFromFloatPtr(&wt.CostMultiplierPercent)
+	if err != nil {
+		return workTypeSnapshot{}, err
+	}
+	id, name := wt.ID, wt.Name
+	return workTypeSnapshot{ID: &id, Name: &name, BillMultiplierPercent: bill, CostMultiplierPercent: cost}, nil
+}
+
+// multiplied is a rate under a work type's multiplier, for display (work
+// types design D3): rate × percent / 100 in exact decimal, rounded half up to
+// cents once. Nothing stores it and nothing sums it — the amounts multiply
+// the base rate where the hours are added up (queries/actuals.sql), so an
+// amount is rounded once and never from a rounded rate.
+func multiplied(rate, percent float64) float64 {
+	r := exactDecimal(rate)
+	r.Mul(r, exactDecimal(percent))
+	r.Quo(r, big.NewRat(100, 1))
+	return roundHalfUpCents(r)
 }

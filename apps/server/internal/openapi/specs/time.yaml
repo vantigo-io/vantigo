@@ -101,6 +101,14 @@ components:
                     description: The bill rate's currency — the project's for a line or project rate, the person rate card's for a person rate.
                     nullable: true
                     type: string
+                effectiveRate:
+                    description: billRate times multiplierPercent, rounded half up to cents — display only, what one hour of this work type bills at. Nothing stores or sums it; amounts multiply the base rate where they are summed and are rounded once (work types design D3). Absent when no work type was picked or there is no billRate.
+                    format: double
+                    type: number
+                multiplierPercent:
+                    description: The picked work type's bill multiplier as it was snapshotted with the rates — frozen from submitted on. billRate stays the base rate the chain resolved. Absent when no work type was picked.
+                    format: double
+                    type: number
             type: object
         TimeEntryCapabilities:
             description: What the calling user may do with this entry, so the frontend never re-derives the rules.
@@ -135,6 +143,14 @@ components:
                     description: The person rate card's currency.
                     nullable: true
                     type: string
+                effectiveRate:
+                    description: costRate times multiplierPercent, rounded half up to cents — display only (work types design D3). Absent when no work type was picked or there is no costRate.
+                    format: double
+                    type: number
+                multiplierPercent:
+                    description: The picked work type's cost multiplier as it was snapshotted — kept on a non-billable entry too, since overtime costs the company whether or not it bills. Absent when no work type was picked.
+                    format: double
+                    type: number
             type: object
         TimeEntryRejectRequest:
             description: The entries to reject and why, under the rules an approval follows. All or nothing — one entry that may not be rejected refuses the whole request and changes nothing.
@@ -192,6 +208,11 @@ components:
                     type: string
                 taskId:
                     description: A task on the project. Its title is snapshotted on the entry, so the entry stays readable after the task is deleted.
+                    format: int32
+                    nullable: true
+                    type: integer
+                workTypeId:
+                    description: One of the project's active work types (work types design D3). Its name and multipliers are snapshotted with the rates; absent or null is ordinary hours.
                     format: int32
                     nullable: true
                     type: integer
@@ -300,6 +321,10 @@ components:
                 userId:
                     format: uuid
                     type: string
+                workType:
+                    allOf:
+                        - $ref: '#/components/schemas/TimeEntryWorkType'
+                    description: The work type the entry was logged as, as it was snapshotted. Absent — not null — for ordinary hours. Visible to whoever sees the entry; the multipliers are inside billing and cost.
             required:
                 - id
                 - userId
@@ -389,11 +414,28 @@ components:
                     format: int32
                     nullable: true
                     type: integer
+                workTypeId:
+                    description: One of the project's active work types (work types design D3). A full replace, like every other field — left out, the entry is ordinary hours again.
+                    format: int32
+                    nullable: true
+                    type: integer
             required:
                 - projectId
                 - entryDate
                 - hours
                 - revision
+            type: object
+        TimeEntryWorkType:
+            description: The work type an entry was logged as, by the id projects gave it and the name it had when the entry was saved.
+            properties:
+                id:
+                    format: int32
+                    type: integer
+                name:
+                    type: string
+            required:
+                - id
+                - name
             type: object
         TimePersonOverview:
             description: One person's recent weeks, for the people overview.
