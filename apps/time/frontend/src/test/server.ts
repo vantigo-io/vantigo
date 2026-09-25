@@ -8,7 +8,7 @@ import type { TimeProjectSummary } from "../api/stats";
 import type { TimeWeek } from "../api/weeks";
 import { jsonResponse } from "./api";
 import { stubFetch } from "./fetch";
-import { entry, kvemLines, myProjects, myTasks, WEEK, week } from "./fixtures";
+import { entry, kvemLines, myProjects, myTasks, WEEK, type WorkTypeWire, week } from "./fixtures";
 
 /** A read the stub answers from a fixture, or a `Response` when the test wants a refusal. */
 type Read<T> = T | Response;
@@ -20,7 +20,7 @@ export interface TimeServer {
   projects?: MyProject[];
   lines?: Record<number, ProjectBillingLine[]>;
   /** Each project's work types as the projects API answers them; a project not named has none. */
-  workTypes?: Record<number, unknown[]>;
+  workTypes?: Record<number, WorkTypeWire[]>;
   tasks?: MyTaskOption[];
   /**
    * The approval queue, as its groups alone: the stub wraps them in a page.
