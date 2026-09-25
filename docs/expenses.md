@@ -265,7 +265,9 @@ happens outside Vantigo.
   refused once invoiced. **The supplier's invoice is required on submit**: at least
   one attachment, through the receipts mechanism, or the submit answers "Expense
   *id* cannot be submitted yet: Attach the supplier's invoice". A draft may change
-  between outlay and supplier invoice — both carry documents, so nothing strands.
+  between outlay and supplier invoice through the API — both carry documents, so
+  nothing strands; the Expenses app disables its kind control once an entry is
+  saved, so it never offers the move.
 - **Priced as an outlay.** It bills only on a billable project; the markup is the
   one named, the one the line keeps, or the settings' default; what it bills is
   net × (1 + markup %). The pricing door, the manual invoiced stamp and "ready to
@@ -1049,7 +1051,8 @@ supplier's own invoice, and it is required on submit — neither a mileage line 
 per diem day ever does, and a save that would turn one of those two, still
 carrying receipts, into a mileage line or a per diem day is refused (on `kind`)
 rather than stranding them. An outlay and a supplier invoice may become each other
-freely: the receipts follow.
+freely through the API: the receipts follow. The Expenses app does not offer the
+move — its kind control is disabled once an entry is saved.
 
 **The type is decided by the bytes, not by what the client called the file.** The
 upload is sniffed from its own leading bytes (HEIC by its ISO base-media brand,
@@ -1227,7 +1230,7 @@ says.
 | `GET /claims/{id}` | The claim with its lines, its totals per currency and its capabilities |
 | `POST /claims/{id}/per-diem-suggestion` | Whoever may see the claim — the days its times imply, priced; it writes nothing |
 | `PUT /claims/{id}`, `DELETE /claims/{id}` | Owner or `expenses:manage`, while draft or rejected, not past the lock |
-| `PUT /entries/{id}`, `DELETE /entries/{id}` | Owner or `expenses:manage`, while draft or rejected, not past the lock; a supplier invoice moved to another project, or an outlay made one, is judged by the recorder's financial rights again |
+| `PUT /entries/{id}`, `DELETE /entries/{id}` | Owner or `expenses:manage`, while draft or rejected, not past the lock; a supplier invoice moved to another project, or an outlay made one, is judged by the saving caller's financial rights again |
 | `POST /entries/{id}/attachments`, `DELETE /attachments/{id}` | Same as edit, an outlay or a supplier invoice only |
 | `GET /attachments/{id}` | Whoever may see the expense |
 | `POST /submit` | Your own draft and rejected units — expenses, travel claims, or both (or anyone's, `expenses:manage`) |
