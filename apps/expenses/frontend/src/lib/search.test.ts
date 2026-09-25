@@ -35,6 +35,10 @@ describe("validateMyExpensesSearch", () => {
     });
   });
 
+  it("keeps a supplier invoice filter, the one kind that is never inside a trip", () => {
+    expect(validateMyExpensesSearch({ kind: "supplier_invoice" }).kind).toBe("supplier_invoice");
+  });
+
   it("drops what a hand-edited link invented rather than sending the API a 400", () => {
     // `per_diem` is among the kinds an expense can be, but never among the
     // kinds "My expenses" filters by: a per diem day exists only inside a

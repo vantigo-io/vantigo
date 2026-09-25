@@ -80,6 +80,12 @@ export interface ExpensesServer {
   frozenReads?: boolean;
   projects?: Read<ExpenseProjectOption[]>;
   /**
+   * What `GET /projects?kind=supplier_invoice` answers — the projects the
+   * caller holds financial rights on, a picker of its own (supplier invoices
+   * design D2). Left out, none.
+   */
+  supplierInvoiceProjects?: Read<ExpenseProjectOption[]>;
+  /**
    * What `GET /projects/{projectId}/summary` answers.
    *
    * Left out, it is **derived from the entries store** under the server's own
@@ -101,6 +107,14 @@ export interface ExpensesServer {
   projectSummary?: Read<ProjectExpensesSummary>;
   /** What the derived summary reports as `capabilities.canRecord`; false by default. */
   canRecord?: boolean;
+  /**
+   * What the derived summary reports as `capabilities.canRecordSupplierInvoice`;
+   * false by default. True, the summary also answers `project` — `summaryProject`,
+   * or the first of `projects` — exactly as the server answers the project
+   * whenever the capability is true.
+   */
+  canRecordSupplierInvoice?: boolean;
+  summaryProject?: ExpenseProjectOption;
   /**
    * The project's own currency, as the derived summary reports it. Absent
    * models a project with no currency, where no card is the project's own.
@@ -251,9 +265,26 @@ const priced = (
   }
   const gross = input.grossAmount ?? 0;
   const vat = input.vatAmount ?? 0;
+  if (input.kind === "supplier_invoice") {
+    return {
+      currency: input.currency ?? currency,
+      supplier: input.supplier,
+      invoiceNumber: input.invoiceNumber,
+      dueDate: input.dueDate,
+      // The company pays a supplier invoice, and the server stores it so
+      // whatever the request left out.
+      paidBy: "company",
+      grossAmount: gross,
+      vatAmount: vat === 0 ? undefined : vat,
+      netAmount: round2(gross - vat),
+      owedToEmployee: 0,
+    };
+  }
   return {
     currency: input.currency ?? currency,
     supplier: input.supplier,
+    invoiceNumber: undefined,
+    dueDate: undefined,
     paidBy: input.paidBy as Expense["paidBy"],
     grossAmount: gross,
     vatAmount: vat === 0 ? undefined : vat,
@@ -384,6 +415,58 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
   /** The projects the caller may book on, as `GET /projects` answers them. */
   const projectsOf = (): ExpenseProjectOption[] => (server.projects instanceof Response ? [] : (server.projects ?? []));
 
+  /** The projects the caller may record a supplier invoice on, as `GET /projects?kind=supplier_invoice` answers them. */
+  const supplierInvoiceProjectsOf = (): ExpenseProjectOption[] =>
+    server.supplierInvoiceProjects instanceof Response ? [] : (server.supplierInvoiceProjects ?? []);
+
+  /** A project an expense names, as the server renders it on the entry: from whichever picker knew it. */
+  const projectRefOf = (id: number) => {
+    const known = [
+      ...projectsOf(),
+      ...supplierInvoiceProjectsOf(),
+      ...(server.summaryProject ? [server.summaryProject] : []),
+    ].find((one) => one.id === id);
+    return { id, code: known?.code ?? "KVEM1000", name: known?.name ?? "Kverneland web" };
+  };
+
+  /**
+   * The supplier invoice's own rules, as parseSupplierInvoice and
+   * checkSupplierInvoiceProject hold them, on a create and on a replace alike:
+   * a fake that took one without a project or a number, or on a project the
+   * caller may not record one on, would let a form that gets any of it wrong
+   * pass every test. The recorder gate is the fixture caller's: the projects
+   * `GET /projects?kind=supplier_invoice` offers them, and the summary's own
+   * `project` when it answers one. A replace keeping the project it already
+   * carries is not judged again, as on the server.
+   */
+  const supplierInvoiceRefusal = (
+    input: ExpenseInput | ExpenseUpdateInput,
+    claim: Claim | undefined,
+    current?: StoredExpense,
+  ): Record<string, string[]> | undefined => {
+    if (input.kind !== "supplier_invoice") return undefined;
+    const refused: Record<string, string[]> = {};
+    if (input.projectId === undefined) refused.projectId = ["A supplier invoice is booked on a project"];
+    if (claim) refused.claimId = ["A supplier invoice is not a travel claim line"];
+    if (!input.supplier?.trim()) refused.supplier = ["A supplier invoice names its supplier"];
+    if (!input.invoiceNumber?.trim()) {
+      refused.invoiceNumber = ["A supplier invoice carries the supplier's invoice number"];
+    }
+    if (input.paidBy === "employee") refused.paidBy = ["A supplier invoice is paid by the company"];
+    if (input.dueDate && input.dueDate < input.entryDate) {
+      refused.dueDate = ["The due date cannot be before the invoice date"];
+    }
+    const kept = current?.kind === "supplier_invoice" && current.project?.id === input.projectId;
+    const recordable = [
+      ...supplierInvoiceProjectsOf(),
+      ...(server.canRecordSupplierInvoice ? [server.summaryProject ?? projectsOf()[0]] : []),
+    ].filter((one) => one !== undefined);
+    if (input.projectId !== undefined && !kept && !recordable.some((one) => one.id === input.projectId)) {
+      refused.projectId = ["This project is not one you can record a supplier invoice on"];
+    }
+    return Object.keys(refused).length > 0 ? refused : undefined;
+  };
+
   const rateStore = server.rates instanceof Response ? [...defaultRates] : (server.rates ?? [...defaultRates]);
   const ratesOf = (): ExpenseRate[] => rateStore;
   const categoryStore = server.categories ?? [...defaultCategories];
@@ -458,7 +541,9 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
       ...(claim.reimbursement ? { reimbursement: claim.reimbursement } : {}),
       lineCount: held.length,
       totals: totalsOf(held),
-      receiptsMissing: held.filter((one) => one.kind === "outlay" && one.attachmentCount === 0).length,
+      receiptsMissing: held.filter(
+        (one) => (one.kind === "outlay" || one.kind === "supplier_invoice") && one.attachmentCount === 0,
+      ).length,
       overriddenRates: held.filter((one) => one.rateOverride !== undefined).length,
       capabilities: claim.capabilities,
     };
@@ -562,6 +647,19 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
         bucket.cost = round2(bucket.cost + entry.netAmount);
         bucket.billAmount = round2(bucket.billAmount + bills);
       }
+      // The supplier invoices' own share, beside the buckets and never
+      // instead of them — absent from a currency that holds none.
+      if (entry.kind === "supplier_invoice") {
+        if (!figures.supplierInvoices) {
+          figures.supplierInvoices = { approved: empty(), submitted: empty(), draft: empty(), total: empty() };
+        }
+        const share = figures.supplierInvoices;
+        for (const bucket of [share[bucketOf(entry)], share.total]) {
+          bucket.count += 1;
+          bucket.cost = round2(bucket.cost + entry.netAmount);
+          bucket.billAmount = round2(bucket.billAmount + bills);
+        }
+      }
       if (isReady(entry)) {
         figures.readyCount += 1;
         figures.readyAmount = round2(figures.readyAmount + bills);
@@ -583,7 +681,11 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
       currencies: [...byCurrency.values()].sort((a, b) => a.currency.localeCompare(b.currency)),
       ...(server.projectCurrency ? { projectCurrency: server.projectCurrency } : {}),
       ...(last ? { lastEntryDate: last } : {}),
-      capabilities: { canRecord: server.canRecord ?? false },
+      capabilities: {
+        canRecord: server.canRecord ?? false,
+        canRecordSupplierInvoice: server.canRecordSupplierInvoice ?? false,
+      },
+      ...(server.canRecordSupplierInvoice ? { project: server.summaryProject ?? projectsOf()[0] } : {}),
     };
   };
 
@@ -757,7 +859,13 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
 
     if (path === "/api/v1/expenses/meta")
       return maybeHold(path, Promise.resolve(answer(server.meta, defaultMeta({ categories: categoryStore }))));
-    if (path === "/api/v1/expenses/projects") return Promise.resolve(answer(server.projects, []));
+    if (path === "/api/v1/expenses/projects") {
+      // `kind=supplier_invoice` is a picker of its own — the projects whose
+      // money the caller may see — and never the bookable list.
+      const picker =
+        url.searchParams.get("kind") === "supplier_invoice" ? server.supplierInvoiceProjects : server.projects;
+      return Promise.resolve(answer(picker, []));
+    }
 
     const projectSummary = /^\/api\/v1\/expenses\/projects\/(\d+)\/summary$/.exec(path);
     if (projectSummary && method === "GET") {
@@ -1144,6 +1252,20 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
       const claimIds: number[] = body?.claimIds ?? [];
       const refusal = missing("Invalid submission", ids, claimIds);
       if (refusal) return Promise.resolve(refusal);
+      // The supplier invoice's document rule, as the server judges it at
+      // submit: never without the supplier's invoice attached.
+      const undocumented = ids
+        .map((id) => find(id))
+        .filter((entry) => entry?.kind === "supplier_invoice" && entry.attachmentCount === 0);
+      if (undocumented.length > 0) {
+        return Promise.resolve(
+          problem(400, "Invalid submission", {
+            entryIds: undocumented.map(
+              (entry) => `Expense ${entry?.id} cannot be submitted yet: Attach the supplier's invoice`,
+            ),
+          }),
+        );
+      }
       const send = (unit: Expense | Claim) => {
         unit.status = "submitted";
         unit.submittedAt = "2026-09-19T10:00:00Z";
@@ -1352,6 +1474,9 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
         const claim = entry.claimId === undefined ? undefined : findClaim(entry.claimId);
         const lockedEdit = lockRefusal(update.entryDate, claim);
         if (lockedEdit) return Promise.resolve(problem(400, "Invalid expense", lockedEdit));
+        // The same rules on a replace as on a create: the server holds both.
+        const refusedInvoice = supplierInvoiceRefusal(update, claim, entry);
+        if (refusedInvoice) return Promise.resolve(problem(400, "Invalid expense", refusedInvoice));
         if (update.kind === "per_diem") {
           if (!claim)
             return Promise.resolve(
@@ -1424,6 +1549,8 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
           problem(400, "Invalid expense", { claimId: ["A travel claim holds at most 200 expenses"] }),
         );
       }
+      const refusedInvoice = supplierInvoiceRefusal(input, claim);
+      if (refusedInvoice) return Promise.resolve(problem(400, "Invalid expense", refusedInvoice));
       let perDiem: Partial<Expense> | undefined;
       if (input.kind === "per_diem") {
         if (!claim) {
@@ -1487,6 +1614,10 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
             })
           : ownDraftCapabilities,
         ...(perDiem ?? priced(input, ratesOf(), metaOf().defaultCurrency)),
+        // A supplier invoice is always on its project, and the entry names it.
+        ...(input.kind === "supplier_invoice" && input.projectId !== undefined
+          ? { project: projectRefOf(input.projectId) }
+          : {}),
       } as StoredExpense;
       entries.push(saved);
       return Promise.resolve(jsonResponse(201, renderEntry(saved)));

@@ -3,9 +3,10 @@ import { useI18n } from "@vantigo/frontend-shell";
 import type { ReactNode } from "react";
 import type { Expense } from "../api/entries";
 import "../i18n";
+import { today } from "../lib/dates";
 import { useExpenseFormat } from "../lib/format";
 import { perDiemTypeLabelKey } from "../lib/per-diem";
-import { expenseKindLabelKey } from "../lib/status";
+import { expenseKindLabelKey, takesReceipts } from "../lib/status";
 import { ExpenseStatusBadge } from "./expense-status-badge";
 import { PerDiemDetails } from "./per-diem-details";
 import { ReceiptThumbnails } from "./receipt-thumbnails";
@@ -40,6 +41,19 @@ export const EntryDetails = ({ expense, withReceipts = true }: EntryDetailsProps
   const format = useExpenseFormat();
   const mileage = expense.kind === "mileage";
   const perDiem = expense.kind === "per_diem" ? expense.perDiem : undefined;
+  const supplierInvoice = expense.kind === "supplier_invoice";
+  /**
+   * Past its due date and not yet invoiced on — a line somebody should look
+   * at. Informational only: nothing here records whether the supplier has
+   * been paid (supplier invoices design D5). A reader who may not see billing
+   * cannot see the invoice stamp either, so the due date alone decides for
+   * them.
+   */
+  const overdue =
+    supplierInvoice &&
+    expense.dueDate !== undefined &&
+    expense.dueDate < today() &&
+    expense.billing?.invoice === undefined;
 
   return (
     <Stack gap="md">
@@ -47,6 +61,7 @@ export const EntryDetails = ({ expense, withReceipts = true }: EntryDetailsProps
         <ExpenseStatusBadge status={expense.status} />
         <Badge variant="default">{t(expenseKindLabelKey(expense.kind))}</Badge>
         {expense.rateOverride && <Badge color="orange">{t("rateOverridden")}</Badge>}
+        {overdue && <Badge color="red">{t("overdue")}</Badge>}
       </Group>
 
       {expense.decision?.status === "rejected" && expense.decision.reason && (
@@ -67,7 +82,7 @@ export const EntryDetails = ({ expense, withReceipts = true }: EntryDetailsProps
       )}
 
       <SimpleGrid cols={{ base: 2, sm: 3 }} spacing="sm">
-        <Field label={t("date")}>{format.date(expense.entryDate)}</Field>
+        <Field label={supplierInvoice ? t("invoiceDate") : t("date")}>{format.date(expense.entryDate)}</Field>
         {/* A per diem day carries no description of its own — what the day
          *is* names it, in the reader's own language. */}
         <Field label={t("description")}>{perDiem ? t(perDiemTypeLabelKey(perDiem.type)) : expense.description}</Field>
@@ -92,6 +107,14 @@ export const EntryDetails = ({ expense, withReceipts = true }: EntryDetailsProps
           <>
             <Field label={t("category")}>{expense.category?.name ?? t("notAvailable")}</Field>
             <Field label={t("supplier")}>{expense.supplier ?? t("notAvailable")}</Field>
+            {supplierInvoice && (
+              <>
+                <Field label={t("invoiceNumber")}>{expense.invoiceNumber ?? t("notAvailable")}</Field>
+                <Field label={t("dueDate")}>
+                  {expense.dueDate === undefined ? t("notAvailable") : format.date(expense.dueDate)}
+                </Field>
+              </>
+            )}
             <Field label={t("paidBy")}>{expense.paidBy === "company" ? t("paidByCompany") : t("paidByEmployee")}</Field>
             <Field label={t("vatAmount")}>
               {expense.vatAmount === undefined ? t("notAvailable") : format.money(expense.vatAmount, expense.currency)}
@@ -155,9 +178,9 @@ export const EntryDetails = ({ expense, withReceipts = true }: EntryDetailsProps
         </Stack>
       )}
 
-      {withReceipts && expense.kind === "outlay" && (
+      {withReceipts && takesReceipts(expense.kind) && (
         <Stack gap={4}>
-          <Title order={6}>{t("receipts")}</Title>
+          <Title order={6}>{supplierInvoice ? t("supplierInvoiceDocument") : t("receipts")}</Title>
           {expense.attachmentCount === 0 ? (
             <Text size="sm" c="dimmed">
               {t("noReceipts")}

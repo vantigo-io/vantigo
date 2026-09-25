@@ -44,3 +44,6 @@ export const DESCRIPTION_MAX_LENGTH = 500;
 
 /** What the contract allows in a supplier, a from-place and a to-place. */
 export const PLACE_MAX_LENGTH = 200;
+
+/** What the contract allows in a supplier's invoice number. */
+export const INVOICE_NUMBER_MAX_LENGTH = 100;

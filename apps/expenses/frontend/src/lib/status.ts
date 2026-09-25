@@ -4,16 +4,27 @@ export const expenseStatuses = ["draft", "submitted", "approved", "rejected"] as
 export type ExpenseStatus = (typeof expenseStatuses)[number];
 
 /** Every kind of money line the module records. */
-export const expenseKinds = ["outlay", "mileage", "per_diem"] as const;
+export const expenseKinds = ["outlay", "mileage", "per_diem", "supplier_invoice"] as const;
 
 export type ExpenseKind = (typeof expenseKinds)[number];
 
 /**
  * The kinds an expense of its own can be. A per diem day exists only inside a
  * travel claim, so it is never among "My expenses"' standalone list and is not
- * offered as a filter there — the trip it belongs to is the unit instead.
+ * offered as a filter there — the trip it belongs to is the unit instead. A
+ * supplier invoice is never inside a trip, so it is always one of these.
  */
-export const standaloneExpenseKinds = ["outlay", "mileage"] as const;
+export const standaloneExpenseKinds = ["outlay", "mileage", "supplier_invoice"] as const;
+
+/**
+ * Whether a kind is entered as an amount — a category, a gross and a VAT —
+ * rather than priced by the server: an outlay, and a supplier invoice, which
+ * borrows the outlay's money whole (supplier invoices design D1).
+ */
+export const entersAnAmount = (kind: ExpenseKind): boolean => kind === "outlay" || kind === "supplier_invoice";
+
+/** Whether a kind carries documents: an outlay its receipts, a supplier invoice the supplier's invoice. */
+export const takesReceipts = (kind: ExpenseKind): boolean => kind === "outlay" || kind === "supplier_invoice";
 
 /** Who is out of pocket for an outlay. Mileage carries none — it is always the employee's. */
 export const paidByValues = ["employee", "company"] as const;
@@ -51,6 +62,12 @@ export const isStandaloneExpenseKind = (value: unknown): value is (typeof standa
 export const isPaidBy = (value: unknown): value is PaidBy =>
   typeof value === "string" && (paidByValues as readonly string[]).includes(value);
 
+const kindLabelKeys: Record<ExpenseKind, string> = {
+  outlay: "kindOutlay",
+  mileage: "kindMileage",
+  per_diem: "kindPerDiem",
+  supplier_invoice: "kindSupplierInvoice",
+};
+
 /** The `expenses` catalog key naming a kind. */
-export const expenseKindLabelKey = (kind: ExpenseKind): string =>
-  kind === "mileage" ? "kindMileage" : kind === "per_diem" ? "kindPerDiem" : "kindOutlay";
+export const expenseKindLabelKey = (kind: ExpenseKind): string => kindLabelKeys[kind];
