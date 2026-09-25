@@ -85,10 +85,11 @@ bill rate × multiplier, stated in the docs.
 ### D4 — Actuals report hours and value per work type
 
 `contracts.ProjectActualsEntry` gains an additive `WorkTypes []WorkTypeActuals`:
-`{WorkTypeID int32; Name string; HoursHundredths int64; BillAmount, CostAmount string}`,
-all buckets together, the project's currency only (the same currency gate as the buckets;
-other-currency hours count in `HoursHundredths` and nowhere else), sorted by name, only
-types with at least one entry, entries without a type not listed. `ActualsForProjects`
+`{WorkTypeID int32; HoursHundredths int64; BillAmount, CostAmount string}` — no name: Projects
+names each row from its own `work_types` table, so a rename shows at once and a snapshot's
+old name never leaks through — all buckets together, the project's currency only (the same
+currency gate as the buckets; other-currency hours count in `HoursHundredths` and nowhere
+else), ordered by id, only types with at least one entry, entries without a type not listed. `ActualsForProjects`
 (the portfolio's batch read) is unchanged. `GET /projects/{id}/economy` gains
 `workTypes: [{id, name, hours, billAmount?, costAmount?}]` — `billAmount` with financial
 rights and a currency, `costAmount` with `projects:view-costs` on top, the block absent when
