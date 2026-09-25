@@ -16,6 +16,7 @@ INSERT INTO expenses.entries (
     per_diem_type, breakfast_covered, lunch_covered, dinner_covered,
     meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent,
     project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount,
+    supplier_invoice_number, supplier_due_date,
     created_at, updated_at
 ) VALUES (
     @user_id, @created_by_user_id, @claim_id, @kind, @entry_date, @description,
@@ -24,6 +25,7 @@ INSERT INTO expenses.entries (
     @per_diem_type, @breakfast_covered, @lunch_covered, @dinner_covered,
     @meal_breakfast_percent, @meal_lunch_percent, @meal_dinner_percent,
     @project_id, @billing_line_id, @billable, @markup_percent, @bill_rate_per_km, @bill_amount,
+    @supplier_invoice_number, @supplier_due_date,
     @now::timestamptz, @now::timestamptz
 )
 RETURNING *;
@@ -80,6 +82,8 @@ UPDATE expenses.entries SET
     markup_percent = @markup_percent,
     bill_rate_per_km = @bill_rate_per_km,
     bill_amount = @bill_amount,
+    supplier_invoice_number = @supplier_invoice_number,
+    supplier_due_date = @supplier_due_date,
     status = 'draft',
     rejection_reason = NULL,
     submitted_at = NULL,
@@ -125,6 +129,14 @@ WHERE expenses.entries.id = @id
 -- carries its claim's owner and its claim's project, so the same predicate
 -- makes a line visible exactly when its claim is.
 --
+-- A supplier invoice is visible to one set more (supplier invoices design D4):
+-- everyone with financial rights on its project — supplier_invoices_all for
+-- projects:manage-all, and for projects:view-financials with
+-- projects:view-all; otherwise the ids financialProjects (authorize.go)
+-- resolved through the project directory before the query, the way
+-- managed_project_ids is. It carries no personal data; an employee's outlay
+-- on the same project keeps the rule above.
+--
 -- The status and the reimbursed filters read the **unit** the entry belongs
 -- to, which for a line is its claim (unitOf in authorize.go) — the status the
 -- line is rendered with, so the filter and the rendering can never disagree.
@@ -151,7 +163,9 @@ SELECT count(*) FROM expenses.entries e
 LEFT JOIN expenses.claims c ON c.id = e.claim_id
 WHERE (@see_all::boolean
        OR e.user_id = @caller_id::uuid
-       OR (e.project_id IS NOT NULL AND e.project_id = ANY(@managed_project_ids::integer[])))
+       OR (e.project_id IS NOT NULL AND e.project_id = ANY(@managed_project_ids::integer[]))
+       OR (e.kind = 'supplier_invoice' AND e.project_id IS NOT NULL
+           AND (@supplier_invoices_all::boolean OR e.project_id = ANY(@financial_project_ids::integer[]))))
   AND (sqlc.narg(user_id)::uuid IS NULL OR e.user_id = sqlc.narg(user_id)::uuid)
   AND (sqlc.narg(project_id)::integer IS NULL OR e.project_id = sqlc.narg(project_id)::integer)
   AND (sqlc.narg(claim_id)::bigint IS NULL OR e.claim_id = sqlc.narg(claim_id)::bigint)
@@ -176,7 +190,9 @@ SELECT e.* FROM expenses.entries e
 LEFT JOIN expenses.claims c ON c.id = e.claim_id
 WHERE (@see_all::boolean
        OR e.user_id = @caller_id::uuid
-       OR (e.project_id IS NOT NULL AND e.project_id = ANY(@managed_project_ids::integer[])))
+       OR (e.project_id IS NOT NULL AND e.project_id = ANY(@managed_project_ids::integer[]))
+       OR (e.kind = 'supplier_invoice' AND e.project_id IS NOT NULL
+           AND (@supplier_invoices_all::boolean OR e.project_id = ANY(@financial_project_ids::integer[]))))
   AND (sqlc.narg(user_id)::uuid IS NULL OR e.user_id = sqlc.narg(user_id)::uuid)
   AND (sqlc.narg(project_id)::integer IS NULL OR e.project_id = sqlc.narg(project_id)::integer)
   AND (sqlc.narg(claim_id)::bigint IS NULL OR e.claim_id = sqlc.narg(claim_id)::bigint)

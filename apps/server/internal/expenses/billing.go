@@ -95,7 +95,7 @@ func resolveBilling(ctx context.Context, q *store.Queries, in billingInput) (bil
 		return f, nil
 	}
 	switch in.Kind {
-	case kindOutlay:
+	case kindOutlay, kindSupplierInvoice:
 		f.Markup = firstRat(in.NamedMarkup, in.StoredMarkup, in.DefaultMarkup)
 		if f.Markup != nil && in.Gross != nil {
 			f.BillAmount = outlayBillAmount(netOf(in.Gross, in.Vat), f.Markup)
@@ -317,8 +317,8 @@ func (s *server) priceEntry(ctx context.Context, q *store.Queries, c *caller, ro
 	if body.MarkupPercent != nil {
 		if msg := validateDecimal("A markup", *body.MarkupPercent, 0, maxMarkupPercent); msg != "" {
 			add("markupPercent", msg)
-		} else if row.Kind != kindOutlay || !body.Billable {
-			add("markupPercent", "A markup belongs to a billable outlay")
+		} else if !marksUp(row.Kind) || !body.Billable {
+			add("markupPercent", "A markup belongs to a billable outlay or supplier invoice")
 		} else {
 			named = ratFromFloat(*body.MarkupPercent)
 		}

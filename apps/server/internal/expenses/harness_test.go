@@ -1054,6 +1054,10 @@ type entryJSON struct {
 	Owner           entryOwnerJSON          `json:"owner"`
 	Revision        int32                   `json:"revision"`
 	Capabilities    entryCapabilitiesJSON   `json:"capabilities"`
+	// The supplier invoice's two fields (supplier invoices design D1),
+	// absent on every other kind.
+	InvoiceNumber *string `json:"invoiceNumber"`
+	DueDate       *string `json:"dueDate"`
 }
 
 // entryPageJSON decodes PaginatedResponseOfExpensesEntryResponse.
@@ -1108,7 +1112,13 @@ type projectSummaryJSON struct {
 	ProjectCurrency *string `json:"projectCurrency"`
 	Capabilities    struct {
 		CanRecord bool `json:"canRecord"`
+		// CanRecordSupplierInvoice is a pointer: optional in the contract,
+		// so a test can tell false from not answered.
+		CanRecordSupplierInvoice *bool `json:"canRecordSupplierInvoice"`
 	} `json:"capabilities"`
+	// Project is the booking option the summary answers exactly when
+	// canRecordSupplierInvoice is true (supplier invoices design D2).
+	Project *projectOptionJSON `json:"project"`
 }
 
 // projectSummaryPath is where one project's expenses are summed up.

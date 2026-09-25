@@ -299,8 +299,8 @@ func receiptPart(mr *multipart.Reader) (data []byte, fileName, declared string, 
 // upload and the delete report it on entryId, because the expense is the thing
 // that refuses and the thing the caller can do something about.
 func entryTakesReceipts(c *caller, entry store.ExpensesEntry, unit entryUnit) string {
-	if entry.Kind != kindOutlay {
-		return "Only an outlay carries a receipt; a mileage line and a per diem day have none"
+	if !takesReceipts(entry.Kind) {
+		return "Only an outlay carries a receipt, and a supplier invoice its invoice; a mileage line and a per diem day have none"
 	}
 	_, msg := entryStateRefusal(c, unit)
 	return msg
@@ -308,8 +308,9 @@ func entryTakesReceipts(c *caller, entry store.ExpensesEntry, unit entryUnit) st
 
 // receiptsStranded is the message a save carries when it would change the kind
 // of an expense that still holds receipts. It is the other side of
-// entryTakesReceipts: a receipt belongs to an outlay and to nothing else, so a
-// line that stopped being one would leave its receipts where no door of this
+// entryTakesReceipts: a receipt belongs to an outlay or a supplier invoice and
+// to nothing else — the two may become each other, and the documents follow —
+// so a line that stopped being either would leave its receipts where no door of this
 // module reaches them — the upload and the delete both refuse a mileage line,
 // and the owner's only way out would be deleting the whole expense. Removing
 // them here instead would put an object-store call in the update path, which
@@ -325,7 +326,7 @@ const receiptsStranded = "Remove this expense's receipts before making it a line
 // expense's own row lock, where an upload that committed in between is counted
 // too — the upload takes that same lock, so the two cannot interleave.
 func changeStrandsReceipts(ctx context.Context, q *store.Queries, current store.ExpensesEntry, kind string) (bool, error) {
-	if current.Kind != kindOutlay || kind == kindOutlay {
+	if !takesReceipts(current.Kind) || takesReceipts(kind) {
 		return false, nil
 	}
 	count, err := q.CountAttachmentsForEntry(ctx, current.ID)

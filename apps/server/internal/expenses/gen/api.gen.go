@@ -482,7 +482,7 @@ type ExpensesEntryReimbursement struct {
 	Reference *string `json:"reference,omitempty"`
 }
 
-// ExpensesEntryRequest One money line (design §3.1). The fields a kind does not carry are refused on their own field rather than ignored: an outlay carries a category, a payer, a currency and a gross amount with optional VAT; a mileage line carries a distance, optional places and passengers, and is priced by the server from the dated rate table; a per diem day carries a type and three covered-meal flags, and is priced the same way. claimId records it as a line of a travel claim instead of a standalone expense, which is the only place a per diem day exists.
+// ExpensesEntryRequest One money line (design §3.1). The fields a kind does not carry are refused on their own field rather than ignored: an outlay carries a category, a payer, a currency and a gross amount with optional VAT; a supplier invoice carries the outlay's money, a supplier, the supplier's invoice number and an optional due date, is always paid by the company, always on a project and never in a travel claim (supplier invoices design D1); a mileage line carries a distance, optional places and passengers, and is priced by the server from the dated rate table; a per diem day carries a type and three covered-meal flags, and is priced the same way. claimId records it as a line of a travel claim instead of a standalone expense, which is the only place a per diem day exists.
 type ExpensesEntryRequest struct {
 	// BillRatePerKm What the customer is charged per kilometre on billable mileage. Only a caller with financial rights on the project — the ones who are sent the billing object — may name it; anyone else is refused on this field. Left out, a save keeps whatever the line already carries, and a line that carries none takes the mileage_customer rate in force on the entry date. When there is no such rate and the caller could not have named one, the line is saved billable with no customer rate and nothing billed, for whoever can see the project's money to fill in. Refused on anything but billable mileage, and on a project that bills nothing.
 	BillRatePerKm *float64 `json:"billRatePerKm,omitempty"`
@@ -496,13 +496,13 @@ type ExpensesEntryRequest struct {
 	// BreakfastCovered Whether somebody else paid for that day's breakfast, which deducts the meal_breakfast_percent rate in force on the entry date. Per diem only; absent means false.
 	BreakfastCovered *bool `json:"breakfastCovered,omitempty"`
 
-	// CategoryId Required on an outlay, and must be an active category. Refused on a mileage line and on a per diem day.
+	// CategoryId Required on an outlay and on a supplier invoice, and must be an active category. Refused on a mileage line and on a per diem day.
 	CategoryId *int32 `json:"categoryId,omitempty"`
 
 	// ClaimId The travel claim this expense is a line of. The caller must be allowed to change that claim, and it must still be a draft or rejected; the line takes the claim's owner and its project, so userId naming somebody else and projectId naming another project are both refused. A per diem day is refused without one: it belongs to a travel claim and exists nowhere else.
 	ClaimId *int64 `json:"claimId,omitempty"`
 
-	// Currency A three-letter ISO 4217 code. Required on an outlay. A mileage line takes the installation's default currency and refuses any other; a per diem day refuses it outright and takes the installation's currency, or the claim's own abroadCurrency on a trip abroad.
+	// Currency A three-letter ISO 4217 code. Required on an outlay and on a supplier invoice. A mileage line takes the installation's default currency and refuses any other; a per diem day refuses it outright and takes the installation's currency, or the claim's own abroadCurrency on a trip abroad.
 	Currency *string `json:"currency,omitempty"`
 
 	// Description 1 to 500 characters. Required on an outlay and on a mileage line. A per diem day may be left without one and then carries the empty string — what the day *is* is its perDiemType, and a name the server invented would sit in the column in one language for ever, so the client renders the label instead.
@@ -511,19 +511,25 @@ type ExpensesEntryRequest struct {
 	// DinnerCovered Whether somebody else paid for that day's dinner, which deducts the meal_dinner_percent rate in force on the entry date. Per diem only; absent means false.
 	DinnerCovered *bool `json:"dinnerCovered,omitempty"`
 
-	// DistanceKm Mileage's distance — greater than zero, at most 9999.9, at most one decimal. Refused on an outlay and on a per diem day.
+	// DistanceKm Mileage's distance — greater than zero, at most 9999.9, at most one decimal. Refused on an outlay, a supplier invoice and a per diem day.
 	DistanceKm *float64 `json:"distanceKm,omitempty"`
 
-	// EntryDate The day the money was spent or the distance driven. Nothing before the period lock may be recorded except by expenses:manage. On a per diem day it is the day of the trip, which must fall between the claim's departure day and its return day, and no two per diem days of one claim may share it.
+	// DueDate When the supplier wants paying — a supplier invoice's, optional, on or after entryDate (supplier invoices design D1). Informational only; nothing here records whether the supplier has been paid. Refused on every other kind.
+	DueDate *openapi_types.Date `json:"dueDate,omitempty"`
+
+	// EntryDate The day the money was spent or the distance driven — on a supplier invoice, the invoice date, the one date the period lock judges. Nothing before the period lock may be recorded except by expenses:manage. On a per diem day it is the day of the trip, which must fall between the claim's departure day and its return day, and no two per diem days of one claim may share it.
 	EntryDate openapi_types.Date `json:"entryDate"`
 
 	// FromPlace At most 200 characters. Mileage only.
 	FromPlace *string `json:"fromPlace,omitempty"`
 
-	// GrossAmount An outlay's amount including VAT — greater than zero, at most 9999999999.99, at most two decimals. Refused on a mileage line and on a per diem day, whose amounts the server computes.
+	// GrossAmount An outlay's or a supplier invoice's amount including VAT — greater than zero, at most 9999999999.99, at most two decimals. Refused on a mileage line and on a per diem day, whose amounts the server computes.
 	GrossAmount *float64 `json:"grossAmount,omitempty"`
 
-	// Kind 'outlay', 'mileage' or 'per_diem'. A per diem day exists only inside a travel claim, so it is refused without a claimId.
+	// InvoiceNumber The supplier's own number for the invoice — required on a supplier invoice, at most 100 characters, trimmed. Free text and not unique, because there is no supplier record to make it unique under. Refused on every other kind.
+	InvoiceNumber *string `json:"invoiceNumber,omitempty"`
+
+	// Kind 'outlay', 'mileage', 'per_diem' or 'supplier_invoice'. A per diem day exists only inside a travel claim, so it is refused without a claimId. A supplier invoice is never in a travel claim, is always on a project, and is refused outright in an installation with no projects module.
 	Kind string `json:"kind"`
 
 	// LunchCovered Whether somebody else paid for that day's lunch, which deducts the meal_lunch_percent rate in force on the entry date. Per diem only; absent means false.
@@ -532,7 +538,7 @@ type ExpensesEntryRequest struct {
 	// MarkupPercent A billable outlay's markup on the net, 0 to 1000 with at most two decimals. Only a caller with financial rights on the project — the ones who are sent the billing object — may name it; anyone else is refused on this field. Left out, a save keeps whatever the line already carries, and a line that carries none takes the settings' default. Refused on anything but a billable outlay.
 	MarkupPercent *float64 `json:"markupPercent,omitempty"`
 
-	// PaidBy 'employee' or 'company'. Required on an outlay, refused on a mileage line and on a per diem day — both are always owed to the employee.
+	// PaidBy 'employee' or 'company'. Required on an outlay, refused on a mileage line and on a per diem day — both are always owed to the employee. A supplier invoice is paid by the company: it may be left out or say 'company', and 'employee' is refused.
 	PaidBy *string `json:"paidBy,omitempty"`
 
 	// Passengers 0 to 8. Mileage only; each one adds the passenger supplement per kilometre.
@@ -541,10 +547,10 @@ type ExpensesEntryRequest struct {
 	// PerDiemType 'day_6_12', 'day_over_12', 'overnight_hotel' or 'overnight_other'. Required on a per diem day and refused on every other kind. It names the per_diem_* rate the day is priced at; a type with no rate in force on the entry date is refused on this field, which is what a day of type overnight_other gets until an administrator enters the company's own rate for it. On a claim abroad the day rate is the claim's own abroadDayRate and the type is recorded rather than priced from.
 	PerDiemType *string `json:"perDiemType,omitempty"`
 
-	// ProjectId The project to book the expense on. The person it concerns must be allowed to book on it — what logging time needs. Refused when this installation has no projects module.
+	// ProjectId The project to book the expense on. The person it concerns must be allowed to book on it — what logging time needs. A supplier invoice needs one, and it is judged instead by the recorder's financial rights on the project (the manager role, projects:manage-all, or projects:view-financials on a project they see), on any project that is not cancelled (supplier invoices design D2). Refused when this installation has no projects module.
 	ProjectId *int32 `json:"projectId,omitempty"`
 
-	// Supplier At most 200 characters. Outlays only.
+	// Supplier At most 200 characters. Optional on an outlay, required on a supplier invoice; refused on a mileage line and on a per diem day.
 	Supplier *string `json:"supplier,omitempty"`
 
 	// ToPlace At most 200 characters. Mileage only.
@@ -588,19 +594,25 @@ type ExpensesEntryResponse struct {
 	Description string                 `json:"description"`
 
 	// DistanceKm Mileage's distance. Absent on an outlay.
-	DistanceKm *float64           `json:"distanceKm,omitempty"`
-	EntryDate  openapi_types.Date `json:"entryDate"`
-	FromPlace  *string            `json:"fromPlace,omitempty"`
+	DistanceKm *float64 `json:"distanceKm,omitempty"`
+
+	// DueDate A supplier invoice's due date. Absent on every other kind, and on a supplier invoice that carries none.
+	DueDate   *openapi_types.Date `json:"dueDate,omitempty"`
+	EntryDate openapi_types.Date  `json:"entryDate"`
+	FromPlace *string             `json:"fromPlace,omitempty"`
 
 	// GrossAmount An outlay's amount as entered, VAT included; a mileage line's or a per diem day's computed amount.
 	GrossAmount float64 `json:"grossAmount"`
 	Id          int64   `json:"id"`
-	Kind        string  `json:"kind"`
+
+	// InvoiceNumber A supplier invoice's number, as the supplier wrote it. Absent on every other kind. Not the outgoing invoice stamp, which is billing.invoice.
+	InvoiceNumber *string `json:"invoiceNumber,omitempty"`
+	Kind          string  `json:"kind"`
 
 	// NetAmount The gross less the VAT — the project's cost and the markup's base.
 	NetAmount float64 `json:"netAmount"`
 
-	// OwedToEmployee What the owner gets back — the gross of an outlay they paid, a mileage line's amount, a per diem day's amount, and nothing at all for an outlay the company paid.
+	// OwedToEmployee What the owner gets back — the gross of an outlay they paid, a mileage line's amount, a per diem day's amount, and nothing at all for an outlay the company paid or for a supplier invoice, which the company pays.
 	OwedToEmployee float64 `json:"owedToEmployee"`
 
 	// Owner The person the expense concerns — who gets the money back — which is not always who recorded it.
@@ -662,12 +674,18 @@ type ExpensesEntryUpdateRequest struct {
 	DinnerCovered *bool    `json:"dinnerCovered,omitempty"`
 	DistanceKm    *float64 `json:"distanceKm,omitempty"`
 
+	// DueDate See the create request: a supplier invoice's, on or after entryDate. Left out, it is cleared.
+	DueDate *openapi_types.Date `json:"dueDate,omitempty"`
+
 	// EntryDate Neither the day the entry had nor the day it is given may fall before the period lock, except for expenses:manage.
 	EntryDate   openapi_types.Date `json:"entryDate"`
 	FromPlace   *string            `json:"fromPlace,omitempty"`
 	GrossAmount *float64           `json:"grossAmount,omitempty"`
 
-	// Kind Changing an outlay that still carries receipts into a line of another kind is refused on this field: a receipt belongs to an outlay, so the change would leave them where nothing can reach them. Remove them first.
+	// InvoiceNumber See the create request: required on a supplier invoice, refused on every other kind.
+	InvoiceNumber *string `json:"invoiceNumber,omitempty"`
+
+	// Kind Changing an outlay or a supplier invoice that still carries attachments into a mileage line or a per diem day is refused on this field: only those two kinds carry documents, so the change would leave them where nothing can reach them. Remove them first. A draft may change between outlay and supplier invoice — both carry documents, so nothing strands — and the refusals say what the new kind needs.
 	Kind string `json:"kind"`
 
 	// LunchCovered See the create request: per diem only, absent means false.
@@ -824,6 +842,9 @@ type ExpensesProjectSummaryBucket struct {
 type ExpensesProjectSummaryCapabilities struct {
 	// CanRecord Whether the caller may book an expense on this project — projects' own CanLogTime, the rule a create is judged by (decision X9), so a "Record a cost" button can never offer what the save would refuse. It is false for somebody who may read these figures without being on the project's team.
 	CanRecord bool `json:"canRecord"`
+
+	// CanRecordSupplierInvoice Whether the caller may record a supplier invoice on this project — financial rights on it, which reading the summary already requires, on a project that is not cancelled (supplier invoices design D2). A "Record a supplier invoice" button opens on it. Always answered; optional only because this schema's required list is never extended.
+	CanRecordSupplierInvoice *bool `json:"canRecordSupplierInvoice,omitempty"`
 }
 
 // ExpensesProjectSummaryCurrency One currency's figures for the project. A line carries its own currency, which may be neither its travel claim's nor its project's, so the figures are reported per currency and **nothing is ever converted**: the entry whose code is projectCurrency is the project's own, and every other entry is money spent in a currency the project is not in. The three status buckets are the **unit's** status — a travel claim's line is judged by its claim — and a **rejected** expense counts as draft, because it is back with its owner to fix and resubmit, exactly as Time buckets a rejected entry. There is no invoiced bucket: invoicing is a stamp, not a status, so an invoiced line is still an approved one.
@@ -869,6 +890,9 @@ type ExpensesProjectSummaryResponse struct {
 
 	// LastEntryDate The entry date of the project's most recent expense, over every currency and every status. Absent when nothing has been recorded.
 	LastEntryDate *openapi_types.Date `json:"lastEntryDate,omitempty"`
+
+	// Project The project as a booking option — its code, its name, its currency and its active billing lines — present exactly when capabilities.canRecordSupplierInvoice is true. It is what a "Record a supplier invoice" form is opened on, because the caller that button exists for is often on no project team, and GET /projects, a picker of what the caller may log time on, answers them nothing.
+	Project *ExpensesProjectOption `json:"project,omitempty"`
 
 	// ProjectCurrency The project's own currency — the entry of `currencies` with this code is the project's; every other entry is in another currency, never converted. Absent when the project carries none, in which case every entry is in another currency and the project has no figures of its own. It is answered here rather than left to a second read because the caller this endpoint exists for may hold no role on the project, and GET /api/v1/expenses/projects — which is a picker for what the caller may book on, not a lookup — answers them nothing.
 	ProjectCurrency *string `json:"projectCurrency,omitempty"`
@@ -1130,7 +1154,7 @@ type GetExpensesEntriesParams struct {
 	// Status 'draft', 'submitted', 'approved' or 'rejected'. On a claim's line it is the claim's own status that is matched, because that is the status the line is rendered with.
 	Status *string `form:"status,omitempty" json:"status,omitempty"`
 
-	// Kind 'outlay', 'mileage' or 'per_diem'.
+	// Kind 'outlay', 'mileage', 'per_diem' or 'supplier_invoice'.
 	Kind *string `form:"kind,omitempty" json:"kind,omitempty"`
 
 	// From The earliest entry date to include.
@@ -1155,6 +1179,9 @@ type PostExpensesEntriesByIdAttachmentsMultipartBody struct {
 
 // GetExpensesProjectsParams defines parameters for GetExpensesProjects.
 type GetExpensesProjectsParams struct {
+	// Kind Which kind of expense the picker is for. Left out, 'outlay' or 'mileage', it is the projects the person may book on — what logging time needs. 'supplier_invoice' is instead the caller's own projects on which they hold financial rights and that are not cancelled — what recording a supplier invoice needs (supplier invoices design D2) — and cannot be combined with a userId naming somebody else, because the right to record one is the recorder's. It lists projects the caller holds a role on; a projects:manage-all holder on no team records from the project page, whose summary answers the project. Any other value is refused on this field.
+	Kind *string `form:"kind,omitempty" json:"kind,omitempty"`
+
 	// UserId The person the expense is being recorded for. Naming anybody but the caller needs expenses:manage, the permission that lets one record for somebody else; left out, it is the caller's own projects.
 	UserId *openapi_types.UUID `form:"userId,omitempty" json:"userId,omitempty"`
 }
@@ -2265,6 +2292,19 @@ func (siw *ServerInterfaceWrapper) GetExpensesProjects(w http.ResponseWriter, r 
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetExpensesProjectsParams
+
+	// ------------- Optional query parameter "kind" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "kind", r.URL.Query(), &params.Kind, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "kind"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "kind", Err: err})
+		}
+		return
+	}
 
 	// ------------- Optional query parameter "userId" -------------
 

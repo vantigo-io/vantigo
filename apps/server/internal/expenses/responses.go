@@ -360,6 +360,15 @@ func entryResponse(row store.ExpensesEntry, unit entryUnit, a entryAccess, names
 	if vat != nil {
 		resp.VatAmount = ptrTo(floatOfRat(vat))
 	}
+	// The supplier invoice's own two fields (supplier invoices design D1),
+	// shown to everyone who may see the line: they are the supplier's, not
+	// the project's money.
+	if row.Kind == kindSupplierInvoice {
+		resp.InvoiceNumber = row.SupplierInvoiceNumber
+		if row.SupplierDueDate.Valid {
+			resp.DueDate = &openapi_types.Date{Time: row.SupplierDueDate.Time}
+		}
+	}
 	if row.Kind == kindMileage {
 		if resp.DistanceKm, err = floatPtrFromNumeric(row.DistanceKm); err != nil {
 			return gen.ExpensesEntryResponse{}, err
