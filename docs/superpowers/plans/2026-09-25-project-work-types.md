@@ -40,13 +40,13 @@
 1. **The duplicate-name 409 is a bare `ProblemDetails`, title "Work type exists".** D1 names it `work_type_exists`; `projects/errors.go` says in so many words that this module "may [not] grow a machine-readable error code of its own" and every refusal here is a bare RFC 7807 problem. So `work_type_exists` is the condition and the helper's name (`workTypeExists`), the wire says it by status and title, and the frontend puts it on the name field on any 409 from the two writes — the only 409 they answer.
 2. **The timeline event types are `work-type-added` and `work-type-changed`**, in the module's own kebab vocabulary (`line-added`, `line-changed`), not D1's dotted `project.work_type_added`/`_updated` spelling, which no project event uses. Payload `{workTypeId, name, fields}`; a change of `active` is one of `work-type-changed`'s fields (D1 names two events, so there is no separate deactivated entry); a change that moved nothing writes nothing.
 3. **No Time proxy endpoint.** Time's UI already reads Projects' HTTP API for projects, billing lines and tasks (`apps/time/frontend/src/api/projects.ts`: "Time never imports the projects frontend; it calls the projects HTTP API"); the frontend isolation rule is about imports, not HTTP. So the entry form reads `GET /api/v1/projects/{id}/work-types` — which D1 already opens to anyone who sees the project — and Time's contract gains no operation.
-4. **`WorkTypeActuals.Name` is the name the most recently saved entry of the type snapshotted** — the provider asks the directory nothing (its rule), and a type is never named by a name nobody logged under.
+4. **The per-type split is named by Projects, from its own table** (controller ruling on the pre-flight review, overruling this plan's first draft). `contracts.WorkTypeActuals` carries `WorkTypeID`, `HoursHundredths`, `BillAmount`, `CostAmount` and no name: an entry's `updated_at` moves on submit, approve and reject, so a "latest snapshot" name would flip back to a pre-rename name whenever an old entry was approved, and would disagree with the Billing card right after a rename. Projects owns `projects.work_types`, reads it in-module (no contract call, not money) and names each row by id, skipping an id it does not know. The provider orders by id; Projects orders the rows by name.
 5. **The multiplier enters SQL as `× (COALESCE(pct, 100) × 0.01)`** — multiplication, which PostgreSQL's `numeric` does exactly, where `/ 100` is a division rounded to a scale that shrinks as the value grows.
 6. **The project summary's billed amount multiplies too** (`ProjectBillingTotals`, `queries/stats.sql`). D3 names `actuals.sql`; the summary is the other place Time sums bill amounts, and the Time tab and the Economy tab would otherwise disagree about the same hours.
 7. **A non-billable entry snapshots both multipliers.** The bill multiplier multiplies nothing there (the amount is filtered on `billable`, and the chain gives no rate); `billing.multiplierPercent` is present whenever a type was picked and the block is visible, `effectiveRate` only when the block also has a rate.
 8. **A full replace without `workTypeId` clears the type**, like every other optional field of the PUT — so the week grid's `timeEntryUpdateFrom` carries `workTypeId` along, or typing new hours into a cell would drop an entry's overtime.
 9. **The economy's "Hours by work type" table is Task 6's** (it is the projects frontend's), not Task 7's.
-10. **My week's rows are per trackable**, not per work type (the row key is unchanged), so a row shows, after its label, a badge for each distinct work type its week's entries were logged as.
+10. **My week's rows are per trackable**, not per work type (the row key is unchanged), so a row shows, after its label, a badge for each distinct work type its week's entries were logged as; typing into an empty day of such a row logs ordinary hours (the grid writes a duration; picking a type is the entry form's), and an hours edit on an entry whose type was since retired is refused on `workTypeId`, which the grid reports in its notification.
 11. **The approval queue's amount is computed exactly** with the multiplier (`lib/money.ts`, BigInt cents): its float `rate * hours` would show 750.00 for 333.33 × 1.5 h at 150 % where every other surface says 749.99.
 12. **The rate line appears only when a multiplier applies** — nothing in Time's UI shows a bare rate today, and D5's line is the multiplied one.
 13. **Small ones:** `POST` ignores `active` (a type starts active); deactivating is the edit form's Active switch, the billing line's precedent; the Work types card shows whether or not products is enabled (types do not depend on it); the create form defaults both multipliers to 100 ("as the rate says"); both lists order active first, then by `lower(name)`, then id; no CHECK constraints and no new index (house style; `ix_entries_project_id_entry_date` already serves the per-type read's `project_id`).
@@ -66,7 +66,7 @@
 | `openapi/time.yaml` (+ generated `internal/openapi/specs/time.yaml`, `internal/time/gen/api.gen.go`, `apps/time/frontend/src/api-schema.d.ts`) | `workTypeId`, `workType`, the multiplier fields (Task 2) |
 | `apps/server/internal/time/values.go`, `entries.go`, `rates.go`, `responses.go`, `actuals.go`, `harness_test.go`, `actuals_test.go`, `work_types_test.go` | resolution, snapshot, shaping, folding (Task 2) |
 | `apps/server/internal/contracts/actuals.go` | `WorkTypeActuals`, `ProjectActualsEntry.WorkTypes` (Task 2) |
-| `apps/server/internal/projects/economy.go`, `harness_test.go`, `economy_work_types_test.go` | the economy's `workTypes` block (Task 3) |
+| `apps/server/internal/projects/economy.go`, `harness_test.go`, `economy_work_types_test.go`, `economy_expenses_test.go` | the economy's `workTypes` block, named from projects' own table; the golden test's second allowed field (Task 3) |
 | `apps/server/internal/integration/work_types_test.go` | projects + time composed for real (Task 4) |
 | `docs/projects.md`, `docs/time.md`, `docs/module-boundaries.md`, `ROADMAP.md` | D6 (Task 5) |
 | `apps/projects/frontend/src/{api/projects.ts,api/work-types.ts,api/work-types.test.ts,api/economy.ts,pages/project-billing.tsx,pages/project-billing.test.tsx,pages/-work-type-form-modal.tsx,pages/-work-type-form-modal.test.tsx,pages/project-economy.tsx,pages/project-economy.test.tsx,pages/-project-timeline.tsx,pages/-project-timeline.test.tsx,i18n.ts}` | the card, the modal, the timeline, the economy table (Task 6) |
@@ -1644,7 +1644,10 @@ func (d *directory) WorkTypes(ctx context.Context, projectID int32) ([]contracts
 ```bash
 cd /home/anders/projects/vantigo/vantigo/apps/server
 export TEST_DATABASE_URL='postgres://vantigo:vantigo@127.0.0.1:55442/vantigo_test?sslmode=disable'
-mise exec -- gofmt -l internal && mise exec -- go vet ./... && mise exec -- go build ./...
+# The pre-commit hook refuses the commit when `gofmt -l apps/server` prints anything, and `-l` alone exits 0:
+# write the formatting (the new workTypes field realigns time's fakeProjects literal), then check it is empty.
+mise exec -- gofmt -w internal/projects internal/time internal/expenses internal/module internal/contracts internal/db
+test -z "$(mise exec -- gofmt -l internal)" && mise exec -- go vet ./... && mise exec -- go build ./...
 mise exec -- go test -count=1 ./internal/projects/... ./internal/openapi/... ./internal/db/... ./internal/module/... ./internal/time/... ./internal/expenses/...
 cd /home/anders/projects/vantigo/vantigo && mise exec -- bun run gen:client && git status --short
 cd apps/server && mise exec -- go run ./internal/openapi/cmd/contract coverage -corpus ../../openapi/testdata/exchanges -out ../../openapi/COVERAGE.md
@@ -1700,12 +1703,12 @@ git show --stat HEAD && git status --short
 **Files:**
 - Create: `apps/server/internal/db/migrations/00032_time_work_types.sql`, `apps/server/internal/time/work_types_test.go`
 - Modify: `apps/server/internal/time/sqlc.yaml`, `apps/server/internal/db/schema_test.go`, `apps/server/internal/time/queries/entries.sql`, `apps/server/internal/time/queries/actuals.sql`, `apps/server/internal/time/queries/stats.sql`, `openapi/time.yaml`, `apps/server/internal/contracts/actuals.go`, `apps/server/internal/time/values.go`, `apps/server/internal/time/entries.go`, `apps/server/internal/time/rates.go`, `apps/server/internal/time/responses.go`, `apps/server/internal/time/actuals.go`, `apps/server/internal/time/harness_test.go`, `apps/server/internal/time/actuals_test.go`, `openapi/COVERAGE.md` (if it moves)
-- Generated (commit them): `apps/server/internal/openapi/specs/time.yaml`, `apps/server/internal/time/gen/api.gen.go`, `apps/server/internal/time/store/models.go`, `apps/server/internal/time/store/entries.sql.go`, `apps/server/internal/time/store/actuals.sql.go`, `apps/server/internal/time/store/stats.sql.go`, `apps/time/frontend/src/api-schema.d.ts`
+- Generated (commit them): `apps/server/internal/openapi/specs/time.yaml`, `apps/server/internal/time/gen/api.gen.go`, `apps/server/internal/time/store/models.go`, `apps/server/internal/time/store/entries.sql.go`, `apps/server/internal/time/store/actuals.sql.go`, `apps/server/internal/time/store/stats.sql.go`, `apps/server/internal/time/store/approvals.sql.go`, `apps/server/internal/time/store/weeks.sql.go` (their `RETURNING *`/`SELECT *` now carry the four columns) — and every other file `git status` shows under `apps/server/internal/time/store/` after `go generate` — plus `apps/time/frontend/src/api-schema.d.ts`
 - Read first (do not change): `time/entries.go:37-190,340-470` (`checkReferences`, the two saves), `time/rates.go` whole, `time/responses.go:88-170` (`entryResponse`), `time/actuals.go:175-300` (`actualsSum.add`, `amountText`), `time/queries/actuals.sql` header, `time/harness_test.go:122-420,470-640` (fixtures, `fakeProjects`, `entryBody`, `updateBody`, `entryJSON`), `time/actuals_test.go:120-175` (`actualsProvider`, `loggedEntry`, `logEntry`, `wantBucket`), `time/stats_test.go:374-420` (`projectSummaryJSON`, `readProjectSummary`), `time/approval_queue_test.go:1-45` (`getApprovals`)
 
 **Interfaces:**
 - Consumes: `contracts.WorkTypeEntry`, `ProjectDirectory.WorkType` (Task 1).
-- Produces Go: `contracts.WorkTypeActuals{WorkTypeID int32; Name string; HoursHundredths int64; BillAmount, CostAmount string}`, `contracts.ProjectActualsEntry.WorkTypes []WorkTypeActuals`; `parsedEntry.WorkTypeID *int32`, `entryRefs.WorkType *contracts.WorkTypeEntry`, `workTypeNotOnProject`, `workTypeInactive`, `workTypeSnapshot`, `snapshotWorkType(*contracts.WorkTypeEntry) (workTypeSnapshot, error)`, `multiplied(rate, percent float64) float64`, `multiplierOf(rate *float64, stored pgtype.Numeric) (percent, effective *float64, err error)`, `(*actuals).workTypes`; `store.TimeEntry` gains `WorkTypeID *int32`, `WorkTypeName *string`, `BillMultiplierPercent`, `CostMultiplierPercent pgtype.Numeric`; `store.ProjectWorkTypeActualGroups(ctx, projectID int32)`.
+- Produces Go: `contracts.WorkTypeActuals{WorkTypeID int32; HoursHundredths int64; BillAmount, CostAmount string}` (no name — Projects names the rows, Task 3), `contracts.ProjectActualsEntry.WorkTypes []WorkTypeActuals`; `parsedEntry.WorkTypeID *int32`, `entryRefs.WorkType *contracts.WorkTypeEntry`, `workTypeNotOnProject`, `workTypeInactive`, `workTypeSnapshot`, `snapshotWorkType(*contracts.WorkTypeEntry) (workTypeSnapshot, error)`, `multiplied(rate, percent float64) float64`, `multiplierOf(rate *float64, stored pgtype.Numeric) (percent, effective *float64, err error)`, `(*actuals).workTypes`; `store.TimeEntry` gains `WorkTypeID *int32`, `WorkTypeName *string`, `BillMultiplierPercent`, `CostMultiplierPercent pgtype.Numeric`; `store.ProjectWorkTypeActualGroups(ctx, projectID int32)`.
 - Wire: `TimeEntryRequest`/`TimeEntryUpdateRequest` gain optional `workTypeId` (int32, nullable) — 400 on `workTypeId`: "Work type is not on this project" (unknown, or another project's) / "Work type is no longer active"; `TimeEntryResponse.workType?` `{id, name}` (new required-field schema `TimeEntryWorkType`); `TimeEntryBilling.multiplierPercent?`/`effectiveRate?`, `TimeEntryCost.multiplierPercent?`/`effectiveRate?` — present with a type (the effective rate only when the block has a rate), absent otherwise, shaped with their blocks. The project summary's `billing.amount` multiplies.
 
 - [ ] **Step 1: Pin the migration, see it fail, write it**
@@ -2058,29 +2061,19 @@ and append to the file:
 -- bill and cost at the base rate times the multiplier each entry snapshotted,
 -- grouped per bill and cost currency so Go folds the amounts on the currency
 -- rule the buckets use. Entries without a type are not here — ordinary hours
--- are the absence of a type, not one of them.
---
--- The name is the one the most recently saved entry of the type snapshotted
--- (the named CTE): the provider asks projects nothing while serving, and a
--- type is never reported under a name nobody logged it under. COALESCE on
--- the id and the name only tells sqlc what the WHERE already guarantees.
-WITH named AS (
-    SELECT DISTINCT ON (work_type_id) work_type_id, work_type_name
-    FROM time.entries
-    WHERE project_id = @project_id AND work_type_id IS NOT NULL
-    ORDER BY work_type_id, updated_at DESC, id DESC
-)
-SELECT COALESCE(e.work_type_id, 0)::integer AS work_type_id,
-       COALESCE(n.work_type_name, '')::text AS work_type_name,
-       e.bill_currency,
-       e.cost_currency,
-       SUM(e.hours * 100)::bigint AS hours_hundredths,
-       COALESCE(SUM(e.hours * e.bill_rate * (COALESCE(e.bill_multiplier_percent, 100) * 0.01)) FILTER (WHERE e.billable), 0)::text AS bill_amount,
-       COALESCE(SUM(e.hours * e.cost_rate * (COALESCE(e.cost_multiplier_percent, 100) * 0.01)), 0)::text AS cost_amount
-FROM time.entries e
-JOIN named n ON n.work_type_id = e.work_type_id
-WHERE e.project_id = @project_id AND e.work_type_id IS NOT NULL
-GROUP BY e.work_type_id, n.work_type_name, e.bill_currency, e.cost_currency;
+-- are the absence of a type, not one of them. No name: projects owns the
+-- type and names it (work types design D4, as ruled on the plan's review).
+-- COALESCE on the id only tells sqlc what the WHERE already guarantees.
+SELECT COALESCE(work_type_id, 0)::integer AS work_type_id,
+       bill_currency,
+       cost_currency,
+       SUM(hours * 100)::bigint AS hours_hundredths,
+       COALESCE(SUM(hours * bill_rate * (COALESCE(bill_multiplier_percent, 100) * 0.01)) FILTER (WHERE billable), 0)::text AS bill_amount,
+       COALESCE(SUM(hours * cost_rate * (COALESCE(cost_multiplier_percent, 100) * 0.01)), 0)::text AS cost_amount
+FROM time.entries
+WHERE project_id = @project_id AND work_type_id IS NOT NULL
+GROUP BY work_type_id, bill_currency, cost_currency
+ORDER BY work_type_id;
 ```
 
 In `apps/server/internal/time/queries/stats.sql`, `ProjectBillingTotals`: replace `-- bill rate each entry snapshotted, summed exactly and rounded to cents, and` with `-- bill rate each entry snapshotted times its work type's bill multiplier (work types design D3), summed exactly and rounded to cents, and`, and replace
@@ -2108,21 +2101,21 @@ In `apps/server/internal/contracts/actuals.go`, replace
 	Lines []LineActuals
 	// WorkTypes is the same project's logged work per work type (work types
 	// design D4): all three buckets together, one entry per type at least one
-	// entry was logged as, sorted by name without regard to case (then by
-	// id). Work logged as no type — ordinary hours — is in no entry. The
-	// amounts follow the buckets' currency rule: only work logged in the
-	// requested currency is in them, and other-currency work contributes its
-	// hours to HoursHundredths and nothing else. Each type is rounded once, on
-	// its own. ActualsForProjects does not carry it.
+	// entry was logged as, by WorkTypeID ascending. Work logged as no type —
+	// ordinary hours — is in no entry. The amounts follow the buckets'
+	// currency rule: only work logged in the requested currency is in them,
+	// and other-currency work contributes its hours to HoursHundredths and
+	// nothing else. Each type is rounded once, on its own.
+	// ActualsForProjects does not carry it.
 	WorkTypes []WorkTypeActuals
 }
 
-// WorkTypeActuals is what was logged as one work type. Name is the one the
-// most recently saved entry of the type snapshotted — the provider asks the
+// WorkTypeActuals is what was logged as one work type, by the type's id and
+// nothing else: the type's name is the module that owns work types' to say
+// (projects names the rows from its own table), and the provider asks the
 // project directory nothing while serving.
 type WorkTypeActuals struct {
 	WorkTypeID      int32
-	Name            string
 	HoursHundredths int64
 	// BillAmount and CostAmount are decimal text with two decimals, at the
 	// base rate times the multiplier each entry snapshotted, "0.00" when
@@ -2135,7 +2128,7 @@ type WorkTypeActuals struct {
 cd /home/anders/projects/vantigo/vantigo/apps/server
 mise exec -- go generate ./... && mise exec -- go generate ./... && git status --short
 ```
-Expected: the generated files listed under **Files** change; the build still passes (nothing reads the new fields yet). sqlc should emit `InsertEntryParams`/`UpdateEntryParams` fields `WorkTypeID *int32`, `WorkTypeName *string`, `BillMultiplierPercent`, `CostMultiplierPercent pgtype.Numeric`, and `ProjectWorkTypeActualGroupsRow{WorkTypeID int32; WorkTypeName string; BillCurrency, CostCurrency *string; HoursHundredths int64; BillAmount, CostAmount string}`, with `ProjectWorkTypeActualGroups(ctx, projectID int32)`; oapi-codegen `gen.TimeEntryRequest.WorkTypeId *int32`, `gen.TimeEntryResponse.WorkType *gen.TimeEntryWorkType`, `gen.TimeEntryBilling.MultiplierPercent`/`EffectiveRate *float64`, the same on `gen.TimeEntryCost`. If a name differs, use the generated one and say so.
+Expected: the generated files listed under **Files** change; the build still passes (nothing reads the new fields yet). sqlc should emit `InsertEntryParams`/`UpdateEntryParams` fields `WorkTypeID *int32`, `WorkTypeName *string`, `BillMultiplierPercent`, `CostMultiplierPercent pgtype.Numeric`, and `ProjectWorkTypeActualGroupsRow{WorkTypeID int32; BillCurrency, CostCurrency *string; HoursHundredths int64; BillAmount, CostAmount string}`, with `ProjectWorkTypeActualGroups(ctx, projectID int32)`; oapi-codegen `gen.TimeEntryRequest.WorkTypeId *int32`, `gen.TimeEntryResponse.WorkType *gen.TimeEntryWorkType`, `gen.TimeEntryBilling.MultiplierPercent`/`EffectiveRate *float64`, the same on `gen.TimeEntryCost`. If a name differs, use the generated one and say so.
 
 - [ ] **Step 4: The fixtures and the decoders**
 
@@ -2318,13 +2311,13 @@ func TestActualsMultipliesWhereItSums(t *testing.T) {
 	}
 	wantBucket(t, "approved", got.Totals.Approved, 150, "749.99", "624.99")
 	wantBucket(t, "total", got.Totals.Total, 150, "749.99", "624.99")
-	want := contracts.WorkTypeActuals{WorkTypeID: workTypeEuro, Name: "Overtime", HoursHundredths: 150, BillAmount: "749.99", CostAmount: "624.99"}
+	want := contracts.WorkTypeActuals{WorkTypeID: workTypeEuro, HoursHundredths: 150, BillAmount: "749.99", CostAmount: "624.99"}
 	if len(got.WorkTypes) != 1 || got.WorkTypes[0] != want {
 		t.Errorf("work types = %+v, want [%+v]", got.WorkTypes, want)
 	}
 }
 
-// D4's split: one entry per type anything was logged as, by name, all buckets
+// D4's split: one entry per type anything was logged as, by id, all buckets
 // together; ordinary hours in none of them; the amounts on the buckets'
 // currency rule, other-currency hours counted in the hours and nowhere else;
 // no currency asked, no amounts. ActualsForProjects is unchanged in shape and
@@ -2356,8 +2349,8 @@ func TestActualsReportsEveryWorkTypeInTheProjectsCurrency(t *testing.T) {
 		t.Fatalf("actuals: %v", err)
 	}
 	want := []contracts.WorkTypeActuals{
-		{WorkTypeID: workTypeWeekend, Name: workTypeWeekendName, HoursHundredths: 300, BillAmount: "5400.00", CostAmount: "0.00"},
-		{WorkTypeID: workTypeOvertime, Name: workTypeOvertimeName, HoursHundredths: 300, BillAmount: "2700.00", CostAmount: "1120.00"},
+		{WorkTypeID: workTypeOvertime, HoursHundredths: 300, BillAmount: "2700.00", CostAmount: "1120.00"},
+		{WorkTypeID: workTypeWeekend, HoursHundredths: 300, BillAmount: "5400.00", CostAmount: "0.00"},
 	}
 	if !slices.Equal(nok.WorkTypes, want) {
 		t.Errorf("work types in NOK = %+v, want %+v", nok.WorkTypes, want)
@@ -2369,8 +2362,8 @@ func TestActualsReportsEveryWorkTypeInTheProjectsCurrency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("actuals: %v", err)
 	}
-	if len(none.WorkTypes) != 2 || none.WorkTypes[1].HoursHundredths != 300 ||
-		none.WorkTypes[1].BillAmount != "0.00" || none.WorkTypes[1].CostAmount != "0.00" {
+	if len(none.WorkTypes) != 2 || none.WorkTypes[0].HoursHundredths != 300 ||
+		none.WorkTypes[0].BillAmount != "0.00" || none.WorkTypes[0].CostAmount != "0.00" {
 		t.Errorf("work types without a currency = %+v, want the hours and no amounts", none.WorkTypes)
 	}
 
@@ -2380,27 +2373,6 @@ func TestActualsReportsEveryWorkTypeInTheProjectsCurrency(t *testing.T) {
 	}
 	if batch[projectKraftVerket].Total != nok.Totals.Total {
 		t.Errorf("batch total = %+v, want the single read's %+v", batch[projectKraftVerket].Total, nok.Totals.Total)
-	}
-}
-
-// A type is named by the name its most recently saved entry snapshotted.
-func TestActualsNamesAWorkTypeByItsLatestSnapshot(t *testing.T) {
-	t.Parallel()
-	h := newHarness(t)
-	_, user := signIn(t, h)
-	p := actualsProvider(t, h)
-
-	logEntry(t, h, user, loggedEntry{project: projectKraftVerket, date: workDay, hours: "1.00", billable: true, status: "approved",
-		workType: workTypeOvertime, workTypeName: "Overtid", billMultiplier: "150.00", costMultiplier: "140.00"})
-	logEntry(t, h, user, loggedEntry{project: projectKraftVerket, date: workDay, hours: "2.00", billable: true, status: "draft",
-		workType: workTypeOvertime, workTypeName: workTypeOvertimeName, billMultiplier: "150.00", costMultiplier: "140.00"})
-
-	got, err := p.Actuals(t.Context(), contracts.ActualsRequest{ProjectID: projectKraftVerket, Currency: ptr("NOK")})
-	if err != nil {
-		t.Fatalf("actuals: %v", err)
-	}
-	if len(got.WorkTypes) != 1 || got.WorkTypes[0].Name != workTypeOvertimeName || got.WorkTypes[0].HoursHundredths != 300 {
-		t.Errorf("work types = %+v, want one, named %q, with 3 h", got.WorkTypes, workTypeOvertimeName)
 	}
 }
 ```
@@ -2545,6 +2517,45 @@ func TestTimeEntries_WithoutAWorkType_StoreAndAnswerNone(t *testing.T) {
 	}
 }
 
+// D3 on a non-billable entry: it keeps its cost multiplier — overtime costs
+// the company whether or not it bills — and bills nothing. Both multipliers
+// are snapshotted; the billing block carries the bill one and no effective
+// rate, since the chain gives a non-billable entry no rate to multiply; and
+// actuals cost the hours multiplied and bill them at 0.00.
+func TestWorkTypes_ANonBillableEntryKeepsItsCostMultiplier(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, ownerID := signInAs(t, h, projectKraftVerket, roleMember, "time:manage")
+	seedRate(t, h, ownerID, "2026-01-01", nil, 400.0, "NOK")
+
+	e := createEntry(t, owner, map[string]any{"billable": false, "workTypeId": workTypeOvertime})
+
+	if got := snapshotOf(t, h, e.Id); got != "6001|Overtid 50 %|150.00|140.00" {
+		t.Errorf("snapshot = %q, want both multipliers kept", got)
+	}
+	if c := e.Cost; c == nil || deref(c.MultiplierPercent) != 140.0 || deref(c.EffectiveRate) != 560.0 {
+		t.Errorf("cost = %+v, want 400 at 140 %%, 560 an hour", e.Cost)
+	}
+	raw := rawEntry(t, owner, e.Id)
+	billing, ok := raw["billing"].(map[string]any)
+	if !ok {
+		t.Fatalf("billing = %v, want the owner's block", raw["billing"])
+	}
+	if _, has := billing["effectiveRate"]; has {
+		t.Errorf("billing.effectiveRate = %v, want it absent: a non-billable entry has no rate to multiply", billing["effectiveRate"])
+	}
+	if billing["multiplierPercent"] != 150.0 {
+		t.Errorf("billing.multiplierPercent = %v, want the snapshotted 150", billing["multiplierPercent"])
+	}
+
+	got, err := actualsProvider(t, h).Actuals(t.Context(), contracts.ActualsRequest{ProjectID: projectKraftVerket, Currency: ptr("NOK")})
+	if err != nil {
+		t.Fatalf("actuals: %v", err)
+	}
+	// 2 h × 400 × 140 % = 1120.00; nothing is billed.
+	wantBucket(t, "draft", got.Totals.Draft, 200, "0.00", "1120.00")
+}
+
 // D3's freeze: a multiplier changed in projects after submit does not move a
 // submitted entry; a rejected entry is a draft again, and its next save
 // snapshots the type as it now stands.
@@ -2649,7 +2660,7 @@ func TestGetTimeProjectSummary_BillsTheWorkTypesMultiplier(t *testing.T) {
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo/apps/server
-mise exec -- go test -count=1 -run 'WorkType|TestActualsMultipliesWhereItSums|TestActualsReportsEveryWorkTypeInTheProjectsCurrency|TestActualsNamesAWorkTypeByItsLatestSnapshot|TestGetTimeApprovals_CarriesTheWorkType|TestGetTimeProjectSummary_BillsTheWorkTypesMultiplier|TestPostTimeEntries_TheEffectiveRateIsForDisplay' ./internal/time/
+mise exec -- go test -count=1 -run 'WorkType|TestActualsMultipliesWhereItSums|TestActualsReportsEveryWorkTypeInTheProjectsCurrency|TestGetTimeApprovals_CarriesTheWorkType|TestGetTimeProjectSummary_BillsTheWorkTypesMultiplier|TestPostTimeEntries_TheEffectiveRateIsForDisplay' ./internal/time/
 ```
 Expected: FAIL — `workTypeId` is ignored (no `workType` on the entry, snapshot `-|-|-|-`, no 400s), the actuals bill `750.00`/`2700` unmultiplied as `1800.00`, and `WorkTypes` is empty.
 
@@ -2880,7 +2891,7 @@ func multiplierOf(rate *float64, stored pgtype.Numeric) (*float64, *float64, err
 }
 ```
 
-In `apps/server/internal/time/actuals.go`, add `"cmp"` and `"strings"` to the imports; replace
+In `apps/server/internal/time/actuals.go`, add `"cmp"` to the imports; replace
 
 ```go
 	if noLine != nil {
@@ -2909,15 +2920,14 @@ with
 // the requested currency — the buckets' currency rule, applied the same way:
 // an amount counts only when its own currency is the one asked for, and work
 // in another currency contributes its hours and nothing else. Each type's
-// amounts are added up exactly and rounded once. By name without regard to
-// case, then id, so two types a manager named alike still come in one order.
+// amounts are added up exactly and rounded once. By id: a type's name is
+// projects', which names the rows it renders.
 func (a *actuals) workTypes(ctx context.Context, req contracts.ActualsRequest) ([]contracts.WorkTypeActuals, error) {
 	rows, err := a.q.ProjectWorkTypeActualGroups(ctx, req.ProjectID)
 	if err != nil {
 		return nil, fmt.Errorf("time: read the project's hours per work type: %w", err)
 	}
 	type workTypeSum struct {
-		name       string
 		hundredths int64
 		bill, cost big.Rat
 	}
@@ -2926,7 +2936,7 @@ func (a *actuals) workTypes(ctx context.Context, req contracts.ActualsRequest) (
 	for _, row := range rows {
 		sum := sums[row.WorkTypeID]
 		if sum == nil {
-			sum = &workTypeSum{name: row.WorkTypeName}
+			sum = &workTypeSum{}
 			sums[row.WorkTypeID] = sum
 			ids = append(ids, row.WorkTypeID)
 		}
@@ -2955,15 +2965,12 @@ func (a *actuals) workTypes(ctx context.Context, req contracts.ActualsRequest) (
 		sum := sums[id]
 		out = append(out, contracts.WorkTypeActuals{
 			WorkTypeID:      id,
-			Name:            sum.name,
 			HoursHundredths: sum.hundredths,
 			BillAmount:      amountText(&sum.bill),
 			CostAmount:      amountText(&sum.cost),
 		})
 	}
-	slices.SortFunc(out, func(x, y contracts.WorkTypeActuals) int {
-		return cmp.Or(strings.Compare(strings.ToLower(x.Name), strings.ToLower(y.Name)), cmp.Compare(x.WorkTypeID, y.WorkTypeID))
-	})
+	slices.SortFunc(out, func(x, y contracts.WorkTypeActuals) int { return cmp.Compare(x.WorkTypeID, y.WorkTypeID) })
 	return out, nil
 }
 ```
@@ -2973,7 +2980,8 @@ func (a *actuals) workTypes(ctx context.Context, req contracts.ActualsRequest) (
 ```bash
 cd /home/anders/projects/vantigo/vantigo/apps/server
 export TEST_DATABASE_URL='postgres://vantigo:vantigo@127.0.0.1:55442/vantigo_test?sslmode=disable'
-mise exec -- gofmt -w internal/time && mise exec -- gofmt -l internal && mise exec -- go vet ./... && mise exec -- go build ./...
+mise exec -- gofmt -w internal/time internal/contracts internal/db
+test -z "$(mise exec -- gofmt -l internal)" && mise exec -- go vet ./... && mise exec -- go build ./...
 mise exec -- go test -count=1 ./internal/time/... ./internal/projects/... ./internal/openapi/... ./internal/db/... ./internal/integration/...
 cd /home/anders/projects/vantigo/vantigo && mise exec -- bun run gen:client && git status --short
 cd apps/server && mise exec -- go run ./internal/openapi/cmd/contract coverage -corpus ../../openapi/testdata/exchanges -out ../../openapi/COVERAGE.md
@@ -3007,13 +3015,14 @@ PATHS="apps/server/internal/db/migrations/00032_time_work_types.sql apps/server/
  apps/server/internal/time/queries/actuals.sql apps/server/internal/time/queries/stats.sql \
  apps/server/internal/time/store/models.go apps/server/internal/time/store/entries.sql.go \
  apps/server/internal/time/store/actuals.sql.go apps/server/internal/time/store/stats.sql.go \
+ apps/server/internal/time/store/approvals.sql.go apps/server/internal/time/store/weeks.sql.go \
  openapi/time.yaml apps/server/internal/openapi/specs/time.yaml apps/server/internal/time/gen/api.gen.go \
  apps/time/frontend/src/api-schema.d.ts apps/server/internal/contracts/actuals.go \
  apps/server/internal/time/values.go apps/server/internal/time/entries.go apps/server/internal/time/rates.go \
  apps/server/internal/time/responses.go apps/server/internal/time/actuals.go \
  apps/server/internal/time/harness_test.go apps/server/internal/time/actuals_test.go \
  apps/server/internal/time/work_types_test.go"
-git status --short   # add openapi/COVERAGE.md to PATHS if it moved
+git status --short   # add openapi/COVERAGE.md to PATHS if it moved, and every file listed under apps/server/internal/time/store/ that PATHS does not name yet
 git add $PATHS && git commit -F /tmp/claude-1000/msg-wt-2.txt -- $PATHS
 git show --stat HEAD && git status --short
 ```
@@ -3022,18 +3031,18 @@ git show --stat HEAD && git status --short
 
 ### Task 3: The economy reports hours and value per work type (D4)
 
-`GET /projects/{id}/economy` gains `workTypes: [{id, name, hours, billAmount?, costAmount?}]` from `ProjectActualsEntry.WorkTypes` — hours for everyone who sees the project, `billAmount` with financial rights and a currency, `costAmount` with `projects:view-costs` on top, the block absent without time tracking and empty when no entry picked a type. Nothing else in the economy moves: budget used, the margin and the portfolio already read the multiplied buckets.
+`GET /projects/{id}/economy` gains `workTypes: [{id, name, hours, billAmount?, costAmount?}]` from `ProjectActualsEntry.WorkTypes` — hours for everyone who sees the project, `billAmount` with financial rights and a currency, `costAmount` with `projects:view-costs` on top, the block absent without time tracking and empty when no entry picked a type. Each row is **named from Projects' own `work_types` table** by id (the contract carries no name — controller ruling on the pre-flight review), so a renamed type reads by its new name at once, and an id the project does not know is skipped. Nothing else in the economy moves: budget used, the margin and the portfolio already read the multiplied buckets.
 
 **Files:**
 - Create: `apps/server/internal/projects/economy_work_types_test.go`
-- Modify: `openapi/projects.yaml`, `apps/server/internal/projects/economy.go`, `apps/server/internal/projects/harness_test.go`
+- Modify: `openapi/projects.yaml`, `apps/server/internal/projects/economy.go`, `apps/server/internal/projects/harness_test.go`, `apps/server/internal/projects/economy_expenses_test.go` (the golden test learns the one new allowed field)
 - Generated (commit them): `apps/server/internal/openapi/specs/projects.yaml`, `apps/server/internal/projects/gen/api.gen.go`, `apps/projects/frontend/src/api-schema.d.ts`
-- Read first (do not change): `projects/economy.go:176-270` (`economyResponse`, `seesAmounts`), `projects/authorize.go:115-125` (`canSeeCosts`), `projects/economy_math.go:279,568-590` (`exactHours`, `exactAmount`, `decimalNumber`), `projects/harness_test.go:370-500,1215-1320` (`fakeActuals`, `economyJSON`, `rawEconomy`)
+- Read first (do not change): `projects/economy.go:64-270` (the handler, `economyResponse`, `seesAmounts`), `projects/authorize.go:115-125` (`canSeeCosts`), `projects/economy_math.go:279,568-590` (`exactHours`, `exactAmount`, `decimalNumber`), `projects/harness_test.go:370-500,1215-1320` (`fakeActuals`, `economyJSON`, `rawEconomy`), `projects/economy_expenses_test.go:45-80` (the golden body and its one allowed new field), `projects/work_types_test.go` (Task 1's `createWorkType`, `changeWorkType`, `workTypeBody`, `workTypeJSON`)
 
 **Interfaces:**
-- Consumes: `contracts.WorkTypeActuals`, `ProjectActualsEntry.WorkTypes` (Task 2).
-- Produces Go: `economyWorkTypes(types []contracts.WorkTypeActuals, seesAmounts, seesCosts bool) (*[]gen.ProjectEconomyWorkType, error)`; `(*fakeActuals).setWorkTypes(projectID int32, types ...contracts.WorkTypeActuals)`.
-- Wire: new schema `ProjectEconomyWorkType {id, name, hours, billAmount?, costAmount?}`; `ProjectEconomyResponse.workTypes?` (optional — never added to `required:`).
+- Consumes: `contracts.WorkTypeActuals{WorkTypeID, HoursHundredths, BillAmount, CostAmount}`, `ProjectActualsEntry.WorkTypes` (Task 2); `store.ListWorkTypes`, `store.ProjectsWorkType` (Task 1).
+- Produces Go: `economyWorkTypes(logged []contracts.WorkTypeActuals, known []store.ProjectsWorkType, seesAmounts, seesCosts bool) (*[]gen.ProjectEconomyWorkType, error)`; `economyResponse` gains a last `workTypes []store.ProjectsWorkType` parameter; `(*fakeActuals).setWorkTypes(projectID int32, types ...contracts.WorkTypeActuals)`.
+- Wire: new schema `ProjectEconomyWorkType {id, name, hours, billAmount?, costAmount?}`; `ProjectEconomyResponse.workTypes?` (optional — never added to `required:`); rows by name without regard to case, then id.
 
 - [ ] **Step 1: The contract**
 
@@ -3065,7 +3074,7 @@ with
                     format: int32
                     type: integer
                 name:
-                    description: The name the type's most recently saved entry was logged under.
+                    description: The type's name as the project's own work types list has it now — a renamed type reads by its new name.
                     type: string
             required:
                 - id
@@ -3094,7 +3103,7 @@ with
 ```yaml
                     type: boolean
                 workTypes:
-                    description: One row per work type at least one entry was logged as, by name; ordinary hours are in no row. Absent exactly when timeTracking is false, and an empty list when no entry picked a type.
+                    description: One row per work type at least one entry was logged as, by name as the project's work types list has it; ordinary hours are in no row. Absent exactly when timeTracking is false, and an empty list when no entry picked a type.
                     items:
                         $ref: '#/components/schemas/ProjectEconomyWorkType'
                     type: array
@@ -3114,14 +3123,15 @@ mise exec -- go generate ./... && mise exec -- go generate ./... && git status -
 ```
 Expected: `gen.ProjectEconomyWorkType{Id int32; Name string; Hours float64; BillAmount, CostAmount *float64}` and `gen.ProjectEconomyResponse.WorkTypes *[]ProjectEconomyWorkType` (the `OtherCurrencies` shape); the build passes.
 
-- [ ] **Step 2: The fake, the decoder, and the failing tests**
+- [ ] **Step 2: The fake, the decoder, the golden test, and the failing tests**
 
 In `apps/server/internal/projects/harness_test.go`, directly after `fakeActuals.set`'s closing brace, add:
 
 ```go
 // setWorkTypes says what was logged per work type on a project whose totals
 // set has already given — the provider's per-type split (work types design
-// D4), by name, as the contract promises.
+// D4): ids and figures, by id, as the contract promises. The names are this
+// module's own, read from projects.work_types when the economy renders them.
 func (f *fakeActuals) setWorkTypes(projectID int32, types ...contracts.WorkTypeActuals) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -3131,7 +3141,32 @@ func (f *fakeActuals) setWorkTypes(projectID int32, types ...contracts.WorkTypeA
 }
 ```
 
-and add to `economyJSON`, after the `Cost *economyCostJSON` field, `WorkTypes []economyWorkTypeJSON \`json:"workTypes"\``.
+and add to `economyJSON`, after the `Cost *economyCostJSON` field, `WorkTypes []economyWorkTypeJSON \`json:"workTypes"\`` (the `gofmt -w` in Step 4 realigns the struct).
+
+In `apps/server/internal/projects/economy_expenses_test.go`, `TestGetProjectEconomy_WithoutExpensesTheAnswerIsUnchanged`, replace
+
+```go
+	delete(raw, "expenseTracking")
+
+	var golden map[string]any
+```
+
+with
+
+```go
+	delete(raw, "expenseTracking")
+	// workTypes (work types design D4) is the second field allowed to be new:
+	// with time tracking on and no entry logged as a type it is an empty
+	// list, and the golden body predates it.
+	if list, ok := raw["workTypes"].([]any); !ok || len(list) != 0 {
+		t.Fatalf("workTypes = %v, want an empty list: the fixture logs no work type", raw["workTypes"])
+	}
+	delete(raw, "workTypes")
+
+	var golden map[string]any
+```
+
+and in the comment above `goldenEconomyBody`, replace ``with `expenseTracking` — the one field that is allowed to be new — removed.`` with ``with `expenseTracking` and `workTypes` — the two fields that are allowed to be new — removed.``
 
 Create `apps/server/internal/projects/economy_work_types_test.go`:
 
@@ -3142,13 +3177,14 @@ import (
 	"testing"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
 // The economy's work-type split (work types design D4): what the provider
-// reports per type, shaped by the rules every other figure here follows —
-// hours for everyone who sees the project, the value with financial rights
-// and a currency, the cost with projects:view-costs on top, absent without
-// time tracking.
+// reports per type, named from this module's own work types and shaped by the
+// rules every other figure here follows — hours for everyone who sees the
+// project, the value with financial rights and a currency, the cost with
+// projects:view-costs on top, absent without time tracking.
 
 // economyWorkTypeJSON decodes ProjectEconomyWorkType. The amounts are
 // pointers because absence is the shaping; the assertions whose subject is
@@ -3159,14 +3195,6 @@ type economyWorkTypeJSON struct {
 	Hours      float64  `json:"hours"`
 	BillAmount *float64 `json:"billAmount"`
 	CostAmount *float64 `json:"costAmount"`
-}
-
-// loggedWorkTypes is two types' split, by name, as the provider answers it.
-func loggedWorkTypes() []contracts.WorkTypeActuals {
-	return []contracts.WorkTypeActuals{
-		{WorkTypeID: 1101, Name: "Helg", HoursHundredths: 300, BillAmount: "5400.00", CostAmount: "1800.00"},
-		{WorkTypeID: 1102, Name: "Overtid 50 %", HoursHundredths: 250, BillAmount: "3375.00", CostAmount: "1400.00"},
-	}
 }
 
 // workTypeRows is the raw workTypes array, failing the test when there is none.
@@ -3184,17 +3212,31 @@ func workTypeRows(t *testing.T, raw map[string]any) []map[string]any {
 	return rows
 }
 
-// A member sees each type's hours and no amount; the manager (financial
-// rights, a currency) the value too; a manager with projects:view-costs the
-// cost as well.
+// twoTypesLogged gives the project two work types through the real API — so
+// the economy has names to read — and has the fake provider report work on
+// both, by id as the contract orders them: overtime first, then the weekend.
+func twoTypesLogged(t *testing.T, c *modtest.Client, actuals *fakeActuals, projectID int32) (overtime, weekend workTypeJSON) {
+	t.Helper()
+	overtime = createWorkType(t, c, projectID, nil)
+	weekend = createWorkType(t, c, projectID, map[string]any{"name": "Helg", "billMultiplierPercent": 200})
+	actuals.set(projectID, loggedTotals(loggedBucket(5.5, "8775.00", "3200.00"), loggedBucket(0, "0.00", "0.00"), loggedBucket(0, "0.00", "0.00")))
+	actuals.setWorkTypes(projectID,
+		contracts.WorkTypeActuals{WorkTypeID: overtime.Id, HoursHundredths: 250, BillAmount: "3375.00", CostAmount: "1400.00"},
+		contracts.WorkTypeActuals{WorkTypeID: weekend.Id, HoursHundredths: 300, BillAmount: "5400.00", CostAmount: "1800.00"},
+	)
+	return overtime, weekend
+}
+
+// A member sees each type's name and hours and no amount; the manager
+// (financial rights, a currency) the value too; a manager with
+// projects:view-costs the cost as well. Rows come by name.
 func TestGetProjectsByIdEconomy_WorkTypes_AreShapedPerCaller(t *testing.T) {
 	t.Parallel()
 	actuals := newFakeActuals()
 	h := newHarnessWithActuals(t, actuals)
 	manager, _ := signIn(t, h, "projects:create")
 	project := createProject(t, manager, map[string]any{"code": "WTE1000", "currency": "NOK"})
-	actuals.set(project.Id, loggedTotals(loggedBucket(5.5, "8775.00", "3200.00"), loggedBucket(0, "0.00", "0.00"), loggedBucket(0, "0.00", "0.00")))
-	actuals.setWorkTypes(project.Id, loggedWorkTypes()...)
+	overtime, weekend := twoTypesLogged(t, manager, actuals, project.Id)
 	member, memberID := signIn(t, h)
 	addRole(t, h, project.Id, memberID, "member")
 	costs, costsID := signIn(t, h, "projects:view-costs")
@@ -3208,9 +3250,10 @@ func TestGetProjectsByIdEconomy_WorkTypes_AreShapedPerCaller(t *testing.T) {
 		}
 	}
 	memberView := getEconomy(t, member, project.Id)
-	if len(memberView.WorkTypes) != 2 || memberView.WorkTypes[0].Name != "Helg" || memberView.WorkTypes[0].Hours != 3 ||
-		memberView.WorkTypes[1].Id != 1102 || memberView.WorkTypes[1].Hours != 2.5 {
-		t.Errorf("member's work types = %+v, want Helg 3 h and Overtid 50 %% 2.5 h", memberView.WorkTypes)
+	if len(memberView.WorkTypes) != 2 ||
+		memberView.WorkTypes[0].Id != weekend.Id || memberView.WorkTypes[0].Name != "Helg" || memberView.WorkTypes[0].Hours != 3 ||
+		memberView.WorkTypes[1].Id != overtime.Id || memberView.WorkTypes[1].Name != "Overtid 50 %" || memberView.WorkTypes[1].Hours != 2.5 {
+		t.Errorf("member's work types = %+v, want Helg 3 h then Overtid 50 %% 2.5 h", memberView.WorkTypes)
 	}
 
 	managerView := getEconomy(t, manager, project.Id)
@@ -3225,6 +3268,31 @@ func TestGetProjectsByIdEconomy_WorkTypes_AreShapedPerCaller(t *testing.T) {
 	}
 }
 
+// The names are this module's own (the controller's ruling on D4): a type
+// renamed on the Billing tab reads by its new name at once, a deactivated one
+// keeps its row, and an id the project does not know is left out rather than
+// shown nameless.
+func TestGetProjectsByIdEconomy_WorkTypes_AreNamedFromTheProjectsOwnTypes(t *testing.T) {
+	t.Parallel()
+	actuals := newFakeActuals()
+	h := newHarnessWithActuals(t, actuals)
+	manager, _ := signIn(t, h, "projects:create")
+	project := createProject(t, manager, map[string]any{"code": "WTE1004", "currency": "NOK"})
+	overtime, weekend := twoTypesLogged(t, manager, actuals, project.Id)
+	changeWorkType(t, manager, project.Id, overtime.Id, workTypeBody(map[string]any{"name": "Overtid 100 %"}))
+	changeWorkType(t, manager, project.Id, weekend.Id, workTypeBody(map[string]any{"name": "Helg", "billMultiplierPercent": 200, "active": false}))
+	actuals.setWorkTypes(project.Id,
+		contracts.WorkTypeActuals{WorkTypeID: overtime.Id, HoursHundredths: 250, BillAmount: "3375.00", CostAmount: "1400.00"},
+		contracts.WorkTypeActuals{WorkTypeID: weekend.Id, HoursHundredths: 300, BillAmount: "5400.00", CostAmount: "1800.00"},
+		contracts.WorkTypeActuals{WorkTypeID: 999999, HoursHundredths: 100, BillAmount: "900.00", CostAmount: "0.00"},
+	)
+
+	got := getEconomy(t, manager, project.Id).WorkTypes
+	if len(got) != 2 || got[0].Name != "Helg" || got[1].Name != "Overtid 100 %" {
+		t.Errorf("work types = %+v, want Helg (deactivated, still named) and the new name Overtid 100 %%, and no unknown id", got)
+	}
+}
+
 // A project with no currency is an hours-only answer for everybody, cost
 // rights or not — an amount in no currency is a number nobody can read.
 func TestGetProjectsByIdEconomy_WorkTypes_HoursOnlyWithoutACurrency(t *testing.T) {
@@ -3233,8 +3301,7 @@ func TestGetProjectsByIdEconomy_WorkTypes_HoursOnlyWithoutACurrency(t *testing.T
 	h := newHarnessWithActuals(t, actuals)
 	manager, _ := signIn(t, h, "projects:create", "projects:view-costs")
 	project := createProject(t, manager, map[string]any{"code": "WTE1001"})
-	actuals.set(project.Id, loggedTotals(loggedBucket(5.5, "0.00", "0.00"), loggedBucket(0, "0.00", "0.00"), loggedBucket(0, "0.00", "0.00")))
-	actuals.setWorkTypes(project.Id, loggedWorkTypes()...)
+	twoTypesLogged(t, manager, actuals, project.Id)
 
 	rows := workTypeRows(t, rawEconomy(t, manager, project.Id))
 	if len(rows) != 2 {
@@ -3275,13 +3342,73 @@ func TestGetProjectsByIdEconomy_WorkTypes_AbsentWithoutTimeTrackingEmptyWithNone
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo/apps/server
-mise exec -- go test -count=1 -run 'WorkTypes' ./internal/projects/
+export TEST_DATABASE_URL='postgres://vantigo:vantigo@127.0.0.1:55442/vantigo_test?sslmode=disable'
+mise exec -- go test -count=1 -run 'WorkTypes|TestGetProjectEconomy_WithoutExpensesTheAnswerIsUnchanged' ./internal/projects/
 ```
-Expected: FAIL — `workTypes = <nil>, want an array` (the block is never set).
+Expected: FAIL — `workTypes = <nil>, want an array` (the block is never set), and the golden test's `want an empty list`.
 
 - [ ] **Step 3: Implement**
 
-In `apps/server/internal/projects/economy.go`, replace
+In `apps/server/internal/projects/economy.go`, add `"cmp"`, `"slices"` and `"strings"` to the imports.
+
+In `GetProjectsByIdEconomy`, replace
+
+```go
+	estimate, err := q.ProjectTaskEstimateHours(ctx, project.ID)
+	if err != nil {
+		return nil, fmt.Errorf("projects: sum the project's task estimates: %w", err)
+	}
+```
+
+with
+
+```go
+	estimate, err := q.ProjectTaskEstimateHours(ctx, project.ID)
+	if err != nil {
+		return nil, fmt.Errorf("projects: sum the project's task estimates: %w", err)
+	}
+	// The work-type split is named from this module's own table (work types
+	// design D4): the provider reports ids and figures, and the name a type
+	// has is Projects' to say — a rename reads at once, whatever the entries
+	// snapshotted. It is only needed when there is a provider to split.
+	var workTypes []store.ProjectsWorkType
+	if s.deps.Actuals != nil {
+		if workTypes, err = q.ListWorkTypes(ctx, project.ID); err != nil {
+			return nil, fmt.Errorf("projects: list the project's work types: %w", err)
+		}
+	}
+```
+
+replace
+
+```go
+	resp, err := s.economyResponse(ctx, project, a, lines, milestones, estimate, logged, spent)
+```
+
+with
+
+```go
+	resp, err := s.economyResponse(ctx, project, a, lines, milestones, estimate, logged, spent, workTypes)
+```
+
+replace
+
+```go
+	logged *contracts.ProjectActualsEntry,
+	spent *contracts.ProjectExpenseTotals,
+) (gen.ProjectEconomyResponse, error) {
+```
+
+with
+
+```go
+	logged *contracts.ProjectActualsEntry,
+	spent *contracts.ProjectExpenseTotals,
+	workTypes []store.ProjectsWorkType,
+) (gen.ProjectEconomyResponse, error) {
+```
+
+and replace
 
 ```go
 	resp.Lines, err = economyLines(lines, logged.Lines, seesAmounts)
@@ -3299,7 +3426,7 @@ with
 	if err != nil {
 		return gen.ProjectEconomyResponse{}, err
 	}
-	resp.WorkTypes, err = economyWorkTypes(logged.WorkTypes, seesAmounts, a.canSeeCosts() && project.Currency != nil)
+	resp.WorkTypes, err = economyWorkTypes(logged.WorkTypes, workTypes, seesAmounts, a.canSeeCosts() && project.Currency != nil)
 	if err != nil {
 		return gen.ProjectEconomyResponse{}, err
 	}
@@ -3309,17 +3436,28 @@ with
 // economyWorkTypes is the work-type split (work types design D4) as this
 // caller may see it: every type's hours — planning data, the way the buckets'
 // hours are — its value with seesAmounts, its cost with the cost rights on
-// top. The provider's figures are already multiplied and are already inside
-// every total above, so nothing here adds them to anything; it renders them.
-// It is only reached with time tracking on, and answers an empty list, never
-// nil, when no entry picked a type: "none" and "cannot say" are different
-// answers.
-func economyWorkTypes(types []contracts.WorkTypeActuals, seesAmounts, seesCosts bool) (*[]gen.ProjectEconomyWorkType, error) {
-	out := make([]gen.ProjectEconomyWorkType, 0, len(types))
-	for _, wt := range types {
+// top. Each row is named from known, the project's own work types; a type the
+// provider reports that the project does not have (which should never happen)
+// is left out rather than shown without a name. The provider's figures are
+// already multiplied and already inside every total above, so nothing here
+// adds them to anything; it renders them. It is only reached with time
+// tracking on, and answers an empty list, never nil, when no entry picked a
+// type: "none" and "cannot say" are different answers. Rows come by name
+// without regard to case, then id — the Billing tab's reading order.
+func economyWorkTypes(logged []contracts.WorkTypeActuals, known []store.ProjectsWorkType, seesAmounts, seesCosts bool) (*[]gen.ProjectEconomyWorkType, error) {
+	names := make(map[int32]string, len(known))
+	for _, wt := range known {
+		names[wt.ID] = wt.Name
+	}
+	out := make([]gen.ProjectEconomyWorkType, 0, len(logged))
+	for _, wt := range logged {
+		name, ok := names[wt.WorkTypeID]
+		if !ok {
+			continue
+		}
 		row := gen.ProjectEconomyWorkType{
 			Id:    wt.WorkTypeID,
-			Name:  wt.Name,
+			Name:  name,
 			Hours: decimalNumber(exactHours(wt.HoursHundredths)),
 		}
 		if seesAmounts {
@@ -3340,24 +3478,29 @@ func economyWorkTypes(types []contracts.WorkTypeActuals, seesAmounts, seesCosts 
 		}
 		out = append(out, row)
 	}
+	slices.SortFunc(out, func(x, y gen.ProjectEconomyWorkType) int {
+		return cmp.Or(strings.Compare(strings.ToLower(x.Name), strings.ToLower(y.Name)), cmp.Compare(x.Id, y.Id))
+	})
 	return &out, nil
 }
 ```
 
-and add to the file's opening comment, at the end of the "**Shaping by absence.**" paragraph: `The work-type split follows the same three levels: hours, value, cost (work types design D4).`
+and add to the file's opening comment, at the end of the "**Shaping by absence.**" paragraph: `The work-type split follows the same three levels — hours, value, cost — and is named from this module's own work types, not by the provider (work types design D4).`
 
 - [ ] **Step 4: Run everything, show it can fail, regenerate, commit**
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo/apps/server
 export TEST_DATABASE_URL='postgres://vantigo:vantigo@127.0.0.1:55442/vantigo_test?sslmode=disable'
-mise exec -- gofmt -l internal && mise exec -- go vet ./... && mise exec -- go build ./...
+# The new WorkTypes field realigns economyJSON in harness_test.go; the hook refuses unformatted files.
+mise exec -- gofmt -w internal/projects
+test -z "$(mise exec -- gofmt -l internal)" && mise exec -- go vet ./... && mise exec -- go build ./...
 mise exec -- go test -count=1 ./internal/projects/... ./internal/openapi/... ./internal/integration/...
 cd /home/anders/projects/vantigo/vantigo && mise exec -- bun run gen:client && git status --short
 ```
-Expected: PASS — every existing economy test unchanged (their fake actuals carry no work types, so `workTypes` is `[]`, which nothing there reads).
+Expected: PASS — the golden test with its second allowed field, every other economy test unchanged (their fake actuals carry no work types, so `workTypes` is `[]`, which nothing else there reads).
 
-Prove the tests can fail, restoring after each: pass `true` for `seesAmounts` in the call — the member's row carries `billAmount`, red; pass `seesAmounts` for `seesCosts` — the manager's Helg carries a cost, red; return `nil` for an empty list — the empty-list test goes red. Say what each printed.
+Prove the tests can fail, restoring after each: pass `true` for `seesAmounts` in the call — the member's row carries `billAmount`, red; pass `seesAmounts` for `seesCosts` — the manager's Helg carries a cost, red; drop the `if !ok { continue }` — the unknown id shows as a nameless row and the naming test goes red; return `nil` for an empty list — the empty-list and golden tests go red. Say what each printed.
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo
@@ -3365,17 +3508,19 @@ cat > /tmp/claude-1000/msg-wt-3.txt <<'EOF'
 feat(projects): a project's economy splits its logged work by work type
 
 GET /projects/{id}/economy gains workTypes: one row per work type an
-entry was logged as, with its hours for everyone who sees the project,
-its value with financial rights and a currency, and its cost with
-projects:view-costs on top — absent without time tracking, an empty
-list when no entry picked a type. The figures come multiplied from
-Time's actuals; budget used, the margin and the portfolio are unchanged.
+entry was logged as, named from the project's own work types, with its
+hours for everyone who sees the project, its value with financial
+rights and a currency, and its cost with projects:view-costs on top —
+absent without time tracking, an empty list when no entry picked a
+type. The figures come multiplied from Time's actuals; budget used, the
+margin and the portfolio are unchanged.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 EOF
 PATHS="openapi/projects.yaml apps/server/internal/openapi/specs/projects.yaml apps/server/internal/projects/gen/api.gen.go \
  apps/projects/frontend/src/api-schema.d.ts apps/server/internal/projects/economy.go \
- apps/server/internal/projects/harness_test.go apps/server/internal/projects/economy_work_types_test.go"
+ apps/server/internal/projects/harness_test.go apps/server/internal/projects/economy_work_types_test.go \
+ apps/server/internal/projects/economy_expenses_test.go"
 git status --short
 git add $PATHS && git commit -F /tmp/claude-1000/msg-wt-3.txt -- $PATHS
 git show --stat HEAD && git status --short
@@ -3412,7 +3557,8 @@ import (
 // design end to end (D1–D4): the real projects module stores a work type, the
 // real time module reads it through Compose's project directory — not Time's
 // own fake of it — and snapshots it onto an entry, and the real economy reads
-// the multiplied value back through the real actuals provider. The project's
+// the multiplied value back through the real actuals provider, naming the row
+// from projects' own work types (a rename reads at once). The project's
 // default bill rate prices the hours and the person's card costs them, so the
 // arithmetic is one line per figure:
 //
@@ -3500,6 +3646,16 @@ func TestWorkTypes_APickedTypeMultipliesTheProjectsEconomy(t *testing.T) {
 		got.BillAmount == nil || *got.BillAmount != 3000 || got.CostAmount == nil || *got.CostAmount != 1440 {
 		t.Errorf("work type row = %+v, want 2 h worth 3000 costing 1440", got)
 	}
+
+	// The row is named from projects' own work types (work types design D4,
+	// as ruled on the plan's review): a rename reads at once, though the
+	// entry snapshotted the old name.
+	okJSON(t, admin, http.MethodPut, fmt.Sprintf("%s/%d/work-types/%d", projectsPath, project.Id, workType.Id),
+		map[string]any{"name": "Overtid 100 %", "billMultiplierPercent": 150, "costMultiplierPercent": 120}, nil)
+	okJSON(t, admin, http.MethodGet, fmt.Sprintf(projectEconomyPath, project.Id), nil, &economy)
+	if len(economy.WorkTypes) != 1 || economy.WorkTypes[0].Name != "Overtid 100 %" {
+		t.Errorf("work types after a rename = %+v, want the one row under its new name", economy.WorkTypes)
+	}
 }
 ```
 
@@ -3508,6 +3664,7 @@ func TestWorkTypes_APickedTypeMultipliesTheProjectsEconomy(t *testing.T) {
 ```bash
 cd /home/anders/projects/vantigo/vantigo/apps/server
 export TEST_DATABASE_URL='postgres://vantigo:vantigo@127.0.0.1:55442/vantigo_test?sslmode=disable'
+mise exec -- gofmt -w internal/integration && test -z "$(mise exec -- gofmt -l internal)"
 mise exec -- go test -count=1 -run 'TestWorkTypes_APickedTypeMultipliesTheProjectsEconomy' ./internal/integration/
 mise exec -- go test -count=1 ./internal/integration/...
 ```
@@ -3617,7 +3774,9 @@ Directly before the line `### Shaping — who sees what`, add:
 
 `workTypes` splits the logged work by the [work type](#work-types) each entry was
 logged as: `{id, name, hours, billAmount?, costAmount?}` per type, every bucket
-together, by name — ordinary hours are in no row. The figures come from Time already
+together, by name — ordinary hours are in no row. Time reports ids and figures only;
+Projects names each row from its own work types, so a renamed type reads by its new
+name at once, whatever the entries snapshotted. The figures come from Time already
 multiplied and are already inside every total above, so the list is a split, never an
 addition: budget used, the margin and the portfolio read the same multiplied buckets
 they always read. `hours` is for everyone who sees the project; `billAmount` needs
@@ -3739,9 +3898,9 @@ In "## What Time reports to other modules", directly before the bullet that begi
   exactly and rounded once — in the buckets, per line, and in the project summary's
   billed amount alike.
 - **The work per work type.** `ProjectActualsEntry.WorkTypes` is one entry per work
-  type anything was logged as — `WorkTypeID`, `Name` (the name its most recently
-  saved entry snapshotted), `HoursHundredths`, `BillAmount`, `CostAmount` — every
-  bucket together, by name. Ordinary hours are in none. The amounts follow the
+  type anything was logged as — `WorkTypeID`, `HoursHundredths`, `BillAmount`,
+  `CostAmount` — every bucket together, by id. No name: a type is Projects', which
+  names the rows it renders. Ordinary hours are in none. The amounts follow the
   currency rule above; work in another currency counts in the hours and in no amount.
   `ActualsForProjects` does not carry it.
 ```
@@ -3787,8 +3946,8 @@ as percentages of the rate — and they apply to every billing line of it; a
 person picks one when logging time. Time multiplies whatever rate the chain
 resolved, keeps the base rates and snapshots the multipliers beside them,
 freezes them on submit, and multiplies where it sums, exactly; the actuals
-contract gains the work per type, and the Economy tab shows "Hours by work
-type". The Norwegian overtime case no longer needs a duplicate billing line.
+contract gains the work per type (ids and figures; Projects names the rows),
+and the Economy tab shows "Hours by work type". The Norwegian overtime case no longer needs a duplicate billing line.
 See [`docs/projects.md`](docs/projects.md#work-types) and
 [`docs/time.md`](docs/time.md#the-work-types-multiplier).
 
@@ -3813,6 +3972,7 @@ grep -n 'work-type-added\|work-type-changed' apps/server/internal/projects/timel
 grep -n 'Work type exists\|Work type is not on this project\|Work type is no longer active' apps/server/internal/projects/errors.go apps/server/internal/time/values.go docs/projects.md docs/time.md
 grep -n 'COALESCE(bill_multiplier_percent, 100) \* 0.01' apps/server/internal/time/queries/actuals.sql apps/server/internal/time/queries/stats.sql
 grep -n '(#work-types)\|(#hours-by-work-type)\|#the-work-types-multiplier' docs/projects.md docs/time.md ROADMAP.md
+grep -n -A6 'type WorkTypeActuals struct' apps/server/internal/contracts/actuals.go   # no Name field: the docs must not promise one
 ```
 Every string the docs quote must be found in the code; every anchor must resolve to a heading (`## Work types` → `#work-types`, `### The work type's multiplier` → `#the-work-types-multiplier`). Then:
 
@@ -3850,9 +4010,10 @@ In `apps/projects/frontend/src/api/projects.ts`, directly after the line `export
 
 /**
  * One of the project's work types (work types design D1): a name and two
- * multipliers, percentages of the rate. A rule, not an amount — everyone who
- * sees the project reads it. Every field is required on the wire, so nothing
- * needs normalising here.
+ * multipliers, percentages of the rate. A rule, not an amount — the API
+ * answers it to everyone who sees the project, though this package shows it
+ * only on the Billing tab, behind financial rights. Every field is required
+ * on the wire, so nothing needs normalising here.
  */
 export type WorkType = Schemas["WorkTypeResponse"];
 
@@ -4500,7 +4661,9 @@ and directly before `const LineRow = ({` add:
  * The project's work types (work types design D5): each a name and two
  * multipliers, applying to every billing line of the project. A manager adds,
  * edits and deactivates them — there is no delete, because entries that
- * picked a type still name it.
+ * picked a type still name it. The card sits on the Billing tab, which is
+ * behind financial rights (D5 accepts that); a member without them reads the
+ * multipliers only through the API — Time's entry form — not here.
  */
 const WorkTypesCard = ({ projectId, canManage }: { projectId: number; canManage: boolean }) => {
   const { t, formatters } = useI18n("projects");
@@ -4602,7 +4765,12 @@ In `apps/projects/frontend/src/pages/-project-timeline.test.tsx`, add inside `de
 ```tsx
   it("names a work type and the fields a change of it moved, never its percentages", async () => {
     stubTimeline([
-      entry({ id: 21, eventType: "work-type-added", payload: { workTypeId: 11, name: "Overtid 50 %", fields: ["name"] } }),
+      // Literally what the server writes: an added type names all three fields.
+      entry({
+        id: 21,
+        eventType: "work-type-added",
+        payload: { workTypeId: 11, name: "Overtid 50 %", fields: ["name", "billMultiplierPercent", "costMultiplierPercent"] },
+      }),
       entry({
         id: 22,
         eventType: "work-type-changed",
@@ -5065,7 +5233,7 @@ and directly before the final `    return Promise.resolve(new Response(null, { s
 
 ```ts
     const types = /^\/api\/v1\/projects\/(\d+)\/work-types$/.exec(path);
-    if (types) return Promise.resolve(jsonResponse(200, (server.workTypes ?? {})[Number(types[1])] ?? []));
+    if (types) return Promise.resolve(jsonResponse(200, server.workTypes?.[Number(types[1])] ?? []));
 ```
 
 In `apps/time/frontend/src/i18n.ts`, replace
@@ -5358,12 +5526,53 @@ In `apps/time/frontend/src/pages/my-week.test.tsx`, add inside `describe("MyWeek
 
     await waitFor(() => expect(sent(fetchMock, "PUT").body).toMatchObject({ hours: 8, workTypeId: 6001 }));
   });
+
+  // A row is a trackable, not a work type: typing into an empty day of a row
+  // badged "Overtid 50 %" logs ordinary hours (work types design D3 — picking
+  // a type is the entry form's, the grid writes a duration).
+  it("logs ordinary hours into an empty day of a row whose entries carry a work type", async () => {
+    const fetchMock = stubTimeApi({
+      week: week([weekRow(pmRow, [entry({ id: 501, entryDate: WEEK, hours: 7.5, workType: { id: 6001, name: "Overtid 50 %" } })])]),
+    });
+    renderRoute(`/time?week=${WEEK}`);
+
+    await userEvent.type(await findCell(PM, "Wednesday"), "3{Enter}");
+
+    await waitFor(() =>
+      expect(sent(fetchMock, "POST")).toEqual({
+        url: "/api/v1/time/entries",
+        body: { projectId: 1001, billingLineId: 3001, entryDate: "2026-09-16", hours: 3 },
+      }),
+    );
+  });
+
+  // An entry whose type was deactivated since is refused on its next save
+  // (D3). The grid has no work-type field to put that on, so it says the
+  // server's sentence in its notification and puts the saved hours back.
+  it("says why when new hours are refused because the entry's work type was retired", async () => {
+    stubTimeApi({
+      week: week([weekRow(pmRow, [entry({ id: 501, entryDate: WEEK, hours: 7.5, workType: { id: 6003, name: "Gammel overtid" } })])]),
+      write: (method) =>
+        method === "PUT"
+          ? jsonResponse(400, { title: "Invalid time entry", errors: { workTypeId: ["Work type is no longer active"] } })
+          : undefined,
+    });
+    renderRoute(`/time?week=${WEEK}`);
+
+    const monday = await findCell(PM, "Monday");
+    await userEvent.clear(monday);
+    await userEvent.type(monday, "8{Enter}");
+
+    expect(await screen.findByText("Could not save the hours")).toBeInTheDocument();
+    expect(screen.getByText("Work type is no longer active")).toBeInTheDocument();
+    await waitFor(() => expect(cell(PM, "Monday")).toHaveValue("7.5"));
+  });
 ```
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo && mise exec -- bun run --cwd apps/time/frontend test -- src/pages/approvals.test.tsx src/pages/my-week.test.tsx
 ```
-Expected: FAIL — no badge, the queue shows 750.00, no rate line (the grid's PUT already carries `workTypeId` from Step 1).
+Expected: FAIL — no badge, the queue shows 750.00, no rate line (the grid's PUT already carries `workTypeId` from Step 1, and the two grid cases below the badge case already pass: they pin behaviour this delivery must not change — a grid-created entry is ordinary hours, and a refusal on `workTypeId` reaches the notification through `refusalMessage`'s first-field fallback).
 
 In `apps/time/frontend/src/pages/approvals.tsx`, add the imports `import { RateLine } from "../components/rate-line";`, `import { WorkTypeBadge } from "../components/work-type-badge";` and `import { billedAmount } from "../lib/money";`; replace
 
@@ -5485,7 +5694,7 @@ mise exec -- bun run translations:check && mise exec -- bun run i18n:test
 ```
 Expected: PASS — the existing day and my-week cases unchanged (their bodies carry no `workTypeId`, since none was picked).
 
-Prove the tests can fail, restoring after each: remove `workTypeId: null` from `pickProject` — the "forgets the choice" assertion goes red; remove the `.filter((type) => type.active)` — "Gammel overtid" is offered, red; compute the queue's value as `(entry.billing?.effectiveRate ?? rate) * entry.hours` — it shows 750.00 and the exact-amount case goes red; remove the `workTypeId` spread from `timeEntryUpdateFrom` — the grid case goes red. Say what each printed.
+Prove the tests can fail, restoring after each: remove `workTypeId: null` from `pickProject` — the "forgets the choice" assertion goes red; remove the `.filter((type) => type.active)` — "Gammel overtid" is offered, red; compute the queue's value as `(entry.billing?.effectiveRate ?? rate) * entry.hours` — it shows 750.00 and the exact-amount case goes red; remove the `workTypeId` spread from `timeEntryUpdateFrom` — the grid case goes red; make `WeekCell`'s create spread the row's first entry's `workTypeId` — the ordinary-hours case goes red. Say what each printed.
 
 ```bash
 cat > /tmp/claude-1000/msg-wt-7.txt <<'EOF'
@@ -5526,7 +5735,7 @@ git show --stat HEAD && git status --short
 cd /home/anders/projects/vantigo/vantigo && gh run list --branch main --limit 5   # is main already red? say so in the report if it is
 cd /home/anders/projects/vantigo/vantigo/apps/server
 export TEST_DATABASE_URL='postgres://vantigo:vantigo@127.0.0.1:55442/vantigo_test?sslmode=disable'
-mise exec -- gofmt -l internal cmd && mise exec -- go vet ./... && mise exec -- go build ./...
+test -z "$(mise exec -- gofmt -l internal cmd)" && mise exec -- go vet ./... && mise exec -- go build ./...   # the pre-commit hook runs the same check
 mise exec -- golangci-lint run ./...   # depguard: no module imports another; the integration package is the one exception
 taskset -c 0-3 mise exec -- go test -count=1 ./... 2>&1 | tail -40; echo "exit ${PIPESTATUS[0]}"
 mise exec -- go generate ./... >/dev/null 2>&1; cd /home/anders/projects/vantigo/vantigo && git status --short   # clean but for go.mod/go.sum
@@ -5601,8 +5810,8 @@ corpus touched (neither module has one).
 Decisions on the record for review: the 409 is a bare problem titled "Work type exists"
 (this module grows no error codes); the timeline types are `work-type-added` /
 `work-type-changed`; Time's UI reads Projects' own work-types endpoint, as it reads
-billing lines, so Time gained no operation; a type is named in actuals by its latest
-snapshotted name; the multiplier enters SQL as `× (pct × 0.01)`; the project summary
+billing lines, so Time gained no operation; the per-type actuals carry ids and
+figures only and Projects names the rows from its own table; the multiplier enters SQL as `× (pct × 0.01)`; the project summary
 multiplies too; a non-billable entry keeps both multipliers; a full replace without
 `workTypeId` clears the type (the grid carries it); my week's rows stay per trackable
 and badge the types their entries carry; the approval queue's amount is computed
@@ -5624,7 +5833,7 @@ Say: the PR's number and URL and CI's state; each test shown able to fail and wh
 - the duplicate-name 409 is a bare `ProblemDetails` titled "Work type exists" — `projects/errors.go` forbids this module an error code — and the UI puts any 409 from the two writes on the name field;
 - the timeline types are `work-type-added` / `work-type-changed` (the module's kebab vocabulary), payload `{workTypeId, name, fields}`, `active` one of the fields;
 - no Time proxy endpoint: Time's entry form reads `GET /projects/{id}/work-types`, the way it already reads billing lines;
-- `WorkTypeActuals.Name` is the latest snapshotted name; the provider asks the directory nothing;
+- (controller ruling) `WorkTypeActuals` carries no name; the economy names each row from `projects.work_types` by id and skips an id it does not know;
 - the multiplier enters SQL as `× (COALESCE(pct, 100) × 0.01)`, exact multiplication rather than a rounded division;
 - the project summary's billed amount multiplies too, so the Time tab and the Economy tab agree;
 - a non-billable entry snapshots both multipliers; `effectiveRate` only when the block has a rate;
@@ -5648,13 +5857,13 @@ Say: the PR's number and URL and CI's state; each test shown able to fail and wh
 | D2 `WorkTypeEntry`, `WorkType` (nil, nil), `WorkTypes` (active first, by name); no directory call in a locked tx | Task 1 Steps 3, 6; `TestDirectory_WorkType`, `TestDirectory_WorkTypes`; Time reads it in `checkReferences` before `withLockedTx` (Task 2 Step 6), enforced by the harness's `noteLocked` |
 | D3 `workTypeId` on both requests; exists / on project / active refusals with the exact messages; snapshot columns (`00032`); frozen from submit; base rates untouched; non-billable keeps cost multiplier; `rateSource` untouched | Task 2 Steps 1–3, 6; tests `…_SnapshotsTheWorkTypeBesideTheBaseRates`, `…_RefuseAWorkTypeNotOnTheProjectOrRetired`, `…_FrozenFromSubmit_AndSnapshottedAgainWhenRejected`, `…_WithoutAWorkType_StoreAndAnswerNone` |
 | D3 `actuals.sql` multiplied, `::text`, rounded once; `workType?`, `billing/cost.multiplierPercent?` + `effectiveRate?` shaped with their blocks | Task 2 Steps 2, 3, 6; `TestActualsMultipliesWhereItSums` (333.33 × 1.5 h × 150 % = 749.99), `…_TheEffectiveRateIsForDisplay`, `…_TheMultipliersAreShapedWithTheirBlocks` |
-| D4 `WorkTypeActuals` on `ProjectActualsEntry`, all buckets, currency-gated, other-currency hours in hours only, by name, only types with entries; `ActualsForProjects` unchanged | Task 2 Steps 3, 6; `TestActualsReportsEveryWorkTypeInTheProjectsCurrency`, `TestActualsNamesAWorkTypeByItsLatestSnapshot` |
+| D4 `WorkTypeActuals` on `ProjectActualsEntry`, all buckets, currency-gated, other-currency hours in hours only, only types with entries; `ActualsForProjects` unchanged; named by Projects from its own table (controller ruling), by name | Task 2 Steps 3, 6 (`TestActualsReportsEveryWorkTypeInTheProjectsCurrency`); Task 3 (`…_AreNamedFromTheProjectsOwnTypes`, the golden test); Task 4 (the rename) |
 | D4 economy `workTypes` shaping (no rights, financial, view-costs, no currency, time tracking off, empty) | Task 3; the three `…_WorkTypes_…` tests |
 | D5 Billing tab card (list, add, edit, deactivate, 409 on name, helper line, viewer no buttons) | Task 6 Steps 3, 4 |
-| D5 entry form select (shown only with active types, reset on project change, "Ordinary hours", sent as `workTypeId`); badges in my week, day, approvals; rate line; economy table; en + nb | Task 7 Steps 3, 4; Task 6 Step 6; Task 6/7 Step 2 (catalogs) |
+| D5 entry form select (shown only with active types, reset on project change, "Ordinary hours", sent as `workTypeId`); badges in my week, day, approvals; rate line; economy table; the week grid (keeps a type on an hours edit, creates ordinary hours, reports a retired type's refusal); en + nb | Task 7 Steps 3, 4; Task 6 Step 6; Task 6/7 Step 2 (catalogs) |
 | D6 docs: projects.md Work types section, economy block, API list; time.md rate chain step, snapshot fields, freeze, invoicing corrected, per-type list; module-boundaries directory methods; ROADMAP | Task 5 Steps 1–3 |
 | Testing: modtest CRUD, validation, 409 in any case, deactivate, canManage vs viewer 403, 404s, member sees multipliers, timeline, directory methods, economy shaping via fake actuals, contract coverage | Tasks 1, 3 (coverage via `RequireCoverage`, Task 1 Step 7) |
-| Testing: Time create/update with a type, foreign/inactive refused, none → NULLs, freeze and re-snapshot, blocks shaped, approval queue, actuals exact to the cent, per-type with currency gating, `ActualsForProjects` unchanged | Task 2 Step 5 |
+| Testing: Time create/update with a type, foreign/inactive refused, none → NULLs, a non-billable entry keeping its cost multiplier, freeze and re-snapshot, blocks shaped, approval queue, actuals exact to the cent, per-type with currency gating, `ActualsForProjects` unchanged | Task 2 Step 5 (`…_ANonBillableEntryKeepsItsCostMultiplier` among them) |
 | Testing: integration | Task 4 |
 | Testing: frontend card, form, badges, rate line, economy table, both catalogs; docs against the code | Tasks 6, 7, 5 Step 4 |
 | Out of scope (no automatic overtime, no payroll, no per-line restriction, no expenses, no catalog, no re-resolve after submit, no billable flip, no supplier invoices, no forecast) | nothing in Tasks 1–7 adds any; `ROADMAP.md` names supplier invoices as next |
