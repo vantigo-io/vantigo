@@ -130,7 +130,10 @@ type projectExpenseSum struct {
 }
 
 // currencyExpenseSum is one currency's figures while they are being added up:
-// the three buckets, and the four figures that span them.
+// the three buckets, the four figures that span them, and the supplier
+// invoices' share of the buckets (supplier invoices design D3), summed beside
+// them rather than instead of them — every bucket above keeps meaning every
+// line.
 type currencyExpenseSum struct {
 	approved, submitted, draft expenseBucketSum
 	readyCount                 int64
@@ -138,6 +141,12 @@ type currencyExpenseSum struct {
 	invoicedCount              int64
 	invoiced                   big.Rat
 	unpricedCount              int64
+	supplier                   splitSum
+}
+
+// splitSum is one kind's share of the three buckets while it is being added up.
+type splitSum struct {
+	approved, submitted, draft expenseBucketSum
 }
 
 // expenseBucketSum is one bucket while it is being added up. The count is an
@@ -157,26 +166,25 @@ func (s *projectExpenseSum) add(row store.ProjectExpenseGroupsRow) error {
 		s.currencies[row.Currency] = currency
 	}
 
-	bucket := &currency.draft
-	switch row.Bucket {
-	case statusApproved:
-		bucket = &currency.approved
-	case statusSubmitted:
-		bucket = &currency.submitted
-	}
-	bucket.count += row.LineCount
-
 	cost, err := exactDecimal(row.CostAmount)
 	if err != nil {
 		return err
 	}
-	bucket.cost.Add(&bucket.cost, cost)
-
 	bill, err := exactDecimal(row.BillAmount)
 	if err != nil {
 		return err
 	}
-	bucket.bill.Add(&bucket.bill, bill)
+	// A supplier invoice's group lands in its bucket like any other and, a
+	// second time, in the supplier invoices' own share of that bucket.
+	into := []*expenseBucketSum{pickBucket(row.Bucket, &currency.approved, &currency.submitted, &currency.draft)}
+	if row.SupplierInvoice {
+		into = append(into, pickBucket(row.Bucket, &currency.supplier.approved, &currency.supplier.submitted, &currency.supplier.draft))
+	}
+	for _, bucket := range into {
+		bucket.count += row.LineCount
+		bucket.cost.Add(&bucket.cost, cost)
+		bucket.bill.Add(&bucket.bill, bill)
+	}
 
 	// Ready and invoiced span the buckets: only an approved unit is ever
 	// ready, and an invoiced line is still an approved one, so both are
@@ -237,6 +245,8 @@ func (c *currencyExpenseSum) currency(code string) contracts.CurrencyExpenses {
 		InvoicedCount:  c.invoicedCount,
 		InvoicedAmount: expenseAmountText(&c.invoiced),
 		UnpricedCount:  c.unpricedCount,
+
+		SupplierInvoices: c.supplier.split(),
 	}
 }
 
@@ -247,13 +257,48 @@ func (c *currencyExpenseSum) currency(code string) contracts.CurrencyExpenses {
 // altogether, and a consumer adding them would report 0.03; that is the whole
 // reason the contract carries the field.
 func (c *currencyExpenseSum) total() contracts.ExpenseBucket {
+	whole := sumOf(&c.approved, &c.submitted, &c.draft)
+	return whole.bucket()
+}
+
+// split renders the supplier invoices' share for the contract, nil when there
+// is none — "absent when none" is the provider's answer, so every consumer's
+// shaping by absence starts here. Its Total is the three buckets as one
+// unrounded sum, rounded once, for the reason total gives.
+func (s *splitSum) split() *contracts.ExpenseSplit {
+	whole := sumOf(&s.approved, &s.submitted, &s.draft)
+	if whole.count == 0 {
+		return nil
+	}
+	return &contracts.ExpenseSplit{
+		Approved:  s.approved.bucket(),
+		Submitted: s.submitted.bucket(),
+		Draft:     s.draft.bucket(),
+		Total:     whole.bucket(),
+	}
+}
+
+// sumOf is buckets added up exactly, before anything is rounded.
+func sumOf(buckets ...*expenseBucketSum) *expenseBucketSum {
 	var whole expenseBucketSum
-	for _, bucket := range []*expenseBucketSum{&c.approved, &c.submitted, &c.draft} {
+	for _, bucket := range buckets {
 		whole.count += bucket.count
 		whole.cost.Add(&whole.cost, &bucket.cost)
 		whole.bill.Add(&whole.bill, &bucket.bill)
 	}
-	return whole.bucket()
+	return &whole
+}
+
+// pickBucket is the bucket a group's unit status puts it in; anything that is
+// neither approved nor submitted — a draft or a rejected unit — is a draft.
+func pickBucket(status string, approved, submitted, draft *expenseBucketSum) *expenseBucketSum {
+	switch status {
+	case statusApproved:
+		return approved
+	case statusSubmitted:
+		return submitted
+	}
+	return draft
 }
 
 // bucket renders one bucket for the contract.

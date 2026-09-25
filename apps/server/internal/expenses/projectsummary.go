@@ -151,6 +151,25 @@ func projectSummaryResponse(totals contracts.ProjectExpenseTotals, projectCurren
 		if published.InvoicedAmount, err = summaryAmount(currency.InvoicedAmount); err != nil {
 			return gen.ExpensesProjectSummaryResponse{}, err
 		}
+		// The supplier invoices' own line (supplier invoices design D3),
+		// absent when the currency holds none — the contract's nil.
+		if split := currency.SupplierInvoices; split != nil {
+			line := gen.ExpensesProjectSummarySupplierInvoices{}
+			for _, bucket := range []struct {
+				from contracts.ExpenseBucket
+				into *gen.ExpensesProjectSummaryBucket
+			}{
+				{split.Approved, &line.Approved},
+				{split.Submitted, &line.Submitted},
+				{split.Draft, &line.Draft},
+				{split.Total, &line.Total},
+			} {
+				if *bucket.into, err = summaryBucket(bucket.from); err != nil {
+					return gen.ExpensesProjectSummaryResponse{}, err
+				}
+			}
+			published.SupplierInvoices = &line
+		}
 		currencies = append(currencies, published)
 	}
 
