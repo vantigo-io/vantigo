@@ -541,9 +541,7 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
       ...(claim.reimbursement ? { reimbursement: claim.reimbursement } : {}),
       lineCount: held.length,
       totals: totalsOf(held),
-      receiptsMissing: held.filter(
-        (one) => (one.kind === "outlay" || one.kind === "supplier_invoice") && one.attachmentCount === 0,
-      ).length,
+      receiptsMissing: held.filter((one) => one.kind === "outlay" && one.attachmentCount === 0).length,
       overriddenRates: held.filter((one) => one.rateOverride !== undefined).length,
       capabilities: claim.capabilities,
     };

@@ -183,7 +183,7 @@ export const EntryDetails = ({ expense, withReceipts = true }: EntryDetailsProps
           <Title order={6}>{supplierInvoice ? t("supplierInvoiceDocument") : t("receipts")}</Title>
           {expense.attachmentCount === 0 ? (
             <Text size="sm" c="dimmed">
-              {t("noReceipts")}
+              {supplierInvoice ? t("noSupplierInvoiceDocument") : t("noReceipts")}
             </Text>
           ) : (
             <ReceiptThumbnails attachments={expense.attachments} size={72} />

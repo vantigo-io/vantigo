@@ -20,7 +20,7 @@ import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, useI18n } from "@vantigo/frontend-shell";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { deleteReceipt } from "../api/attachments";
 import type { Claim } from "../api/claims";
 import {
@@ -262,6 +262,24 @@ const ExpenseForm = ({
    * to make it something the button did not promise.
    */
   const kindFixed = state.mode === "create" && state.kind === "supplier_invoice" && fixedProject !== undefined;
+
+  /**
+   * What switching to a supplier invoice overrode, and what it set in its
+   * place — so switching away restores the defaults it replaced. A form that
+   * starts as a supplier invoice replaced the outlay's own: not billable, no
+   * category.
+   */
+  const overridden = useRef<{
+    billable: boolean;
+    categoryId: string | null;
+    setBillable: boolean;
+    setCategoryId: string | null;
+  }>({
+    billable: false,
+    categoryId: null,
+    setBillable: true,
+    setCategoryId: subcontractorOf(meta?.categories) ?? null,
+  });
 
   const form = useForm<ExpenseFormValues>({
     initialValues: {
@@ -613,11 +631,28 @@ const ExpenseForm = ({
                 form.setFieldValue("kind", kind);
                 // A new supplier invoice starts billable and under
                 // Subcontractor when there is one; a category already chosen
-                // stays.
+                // stays. What it overrode is remembered, so switching back
+                // gives the other kind its own defaults again rather than a
+                // billable outlay under Subcontractor nobody chose.
                 if (kind === "supplier_invoice" && saved === undefined) {
-                  form.setFieldValue("billable", true);
                   const subcontractor = subcontractorOf(meta.categories);
-                  if (!values.categoryId && subcontractor) form.setFieldValue("categoryId", subcontractor);
+                  const category = !values.categoryId && subcontractor ? subcontractor : values.categoryId;
+                  overridden.current = {
+                    billable: values.billable,
+                    categoryId: values.categoryId,
+                    setBillable: true,
+                    setCategoryId: category,
+                  };
+                  form.setValues({ billable: true, categoryId: category });
+                }
+                // Only what is still as the supplier invoice left it is put
+                // back: a switch or a category the person changed stays theirs.
+                if (values.kind === "supplier_invoice" && kind !== "supplier_invoice" && saved === undefined) {
+                  const before = overridden.current;
+                  form.setValues({
+                    ...(values.billable === before.setBillable ? { billable: before.billable } : {}),
+                    ...(values.categoryId === before.setCategoryId ? { categoryId: before.categoryId } : {}),
+                  });
                 }
                 // The two kinds of picker offer different projects: a choice
                 // the new one does not offer is dropped rather than sent to a
@@ -937,6 +972,7 @@ const ExpenseForm = ({
               )}
               <ReceiptThumbnails attachments={attachments} onRemove={(id) => removeReceipt.mutate(id)} />
               <ReceiptDropzone
+                supplierInvoice={values.kind === "supplier_invoice"}
                 entryId={saved?.id}
                 attachmentCount={attachments.length}
                 onUploaded={(one) => {

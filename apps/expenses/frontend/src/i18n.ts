@@ -30,9 +30,12 @@ export const expensesCatalog = {
     dueDateBeforeInvoiceDate: "The due date cannot be before the invoice date",
     supplierInvoiceNeedsProject: "A supplier invoice is booked on a project",
     noSupplierInvoiceProjects:
-      "There is no open project you are on whose money you may see. Record a supplier invoice from the project's own page instead.",
+      "There is no open project you are on whose money you may see. Record a supplier invoice from the project's own page instead, if you may see its money.",
     companyPaysSupplierInvoices: "The company pays a supplier invoice — nobody is paid anything back for it.",
     supplierInvoiceDocument: "The supplier's invoice",
+    noSupplierInvoiceDocument: "The supplier's invoice is not attached",
+    dropSupplierInvoiceHere:
+      "Drop the supplier's invoice here, or choose a file. PDF, JPEG, PNG or HEIC, at most 10 MB each.",
     attachSupplierInvoice: "Attach the supplier's invoice",
     recordASupplierInvoice: "Record a supplier invoice",
     ofWhichSupplierInvoices: "Of which supplier invoices",
@@ -607,9 +610,12 @@ export const expensesCatalog = {
     dueDateBeforeInvoiceDate: "Forfallsdatoen kan ikke være før fakturadatoen",
     supplierInvoiceNeedsProject: "En leverandørfaktura føres på et prosjekt",
     noSupplierInvoiceProjects:
-      "Du er ikke på noe åpent prosjekt der du kan se økonomien. Før leverandørfakturaen fra prosjektets egen side i stedet.",
+      "Du er ikke på noe åpent prosjekt der du kan se økonomien. Før leverandørfakturaen fra prosjektets egen side i stedet, hvis du kan se økonomien der.",
     companyPaysSupplierInvoices: "Firmaet betaler en leverandørfaktura — ingen får noe tilbakebetalt for den.",
     supplierInvoiceDocument: "Leverandørens faktura",
+    noSupplierInvoiceDocument: "Leverandørens faktura er ikke lagt ved",
+    dropSupplierInvoiceHere:
+      "Slipp leverandørens faktura her, eller velg en fil. PDF, JPEG, PNG eller HEIC, høyst 10 MB hver.",
     attachSupplierInvoice: "Legg ved leverandørens faktura",
     recordASupplierInvoice: "Før en leverandørfaktura",
     ofWhichSupplierInvoices: "Herav leverandørfakturaer",

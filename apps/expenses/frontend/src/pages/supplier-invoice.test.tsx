@@ -117,7 +117,7 @@ describe("a supplier invoice in the expense form", () => {
     expect(within(dialog).getByRole("button", { name: "Save and submit" })).toBeDisabled();
     expect(within(dialog).getByTestId("submit-needs-invoice")).toHaveTextContent("then it can be submitted");
     await userEvent.upload(
-      await within(dialog).findByLabelText("Add receipts"),
+      await within(dialog).findByLabelText("Attach the supplier's invoice"),
       new File(["%PDF-1.7"], "faktura.pdf", { type: "application/pdf" }),
     );
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "Save and submit" })).toBeEnabled());
@@ -149,6 +149,51 @@ describe("a supplier invoice in the expense form", () => {
     await choose(dialog, "Project", /KVEM1000/);
     await userEvent.click(within(dialog).getByRole("radio", { name: "Supplier invoice" }));
     expect(await within(dialog).findByRole("combobox", { name: "Project" })).toHaveValue("KVEM1000 · Kverneland web");
+  });
+
+  it("gives an outlay its own defaults back when the kind is switched away again", async () => {
+    const { dialog } = await openNew({
+      entries: [outlay()],
+      meta: withSubcontractor,
+      projects: projectOptions,
+      supplierInvoiceProjects: projectOptions,
+    });
+
+    await choose(dialog, "Project", /KVEM1000/);
+    expect(within(dialog).getByRole("switch", { name: "Billable" })).not.toBeChecked();
+    await userEvent.click(within(dialog).getByRole("radio", { name: "Supplier invoice" }));
+    expect(within(dialog).getByRole("switch", { name: "Billable" })).toBeChecked();
+    expect(within(dialog).getByRole("combobox", { name: "Category" })).toHaveValue("Subcontractor");
+
+    await userEvent.click(within(dialog).getByRole("radio", { name: "Outlay" }));
+    expect(within(dialog).getByRole("switch", { name: "Billable" })).not.toBeChecked();
+    expect(within(dialog).getByRole("combobox", { name: "Category" })).toHaveValue("");
+    // Its dropzone speaks of receipts again.
+    expect(within(dialog).queryByLabelText("Attach the supplier's invoice")).not.toBeInTheDocument();
+  });
+
+  it("keeps what the person chose themselves when the kind is switched away", async () => {
+    const { dialog } = await openNew({
+      entries: [outlay()],
+      meta: withSubcontractor,
+      projects: projectOptions,
+      supplierInvoiceProjects: projectOptions,
+    });
+
+    await choose(dialog, "Project", /KVEM1000/);
+    await userEvent.click(within(dialog).getByRole("radio", { name: "Supplier invoice" }));
+    await choose(dialog, "Category", "Travel");
+    await userEvent.click(within(dialog).getByRole("radio", { name: "Outlay" }));
+    expect(within(dialog).getByRole("combobox", { name: "Category" })).toHaveValue("Travel");
+  });
+
+  it("says where else to go when the caller holds no project's money", async () => {
+    const { dialog } = await openNew({ entries: [outlay()], meta: withSubcontractor, supplierInvoiceProjects: [] });
+
+    await userEvent.click(within(dialog).getByRole("radio", { name: "Supplier invoice" }));
+    expect(
+      await within(dialog).findByText(/from the project's own page instead, if you may see its money/),
+    ).toBeInTheDocument();
   });
 
   it("refuses to save without the supplier, the invoice number and the project", async () => {
@@ -196,7 +241,7 @@ describe("a supplier invoice in the expense form", () => {
 
 describe("a supplier invoice read out", () => {
   it("names the supplier's number and due date, and says when it is past due and not invoiced", () => {
-    renderWithProviders(<EntryDetails expense={supplierInvoice({ dueDate: "2026-01-02" })} />);
+    renderWithProviders(<EntryDetails expense={supplierInvoice({ entryDate: "2025-12-15", dueDate: "2026-01-02" })} />);
 
     expect(screen.getByText("Supplier invoice")).toBeInTheDocument();
     expect(screen.getByText("Invoice date")).toBeInTheDocument();
@@ -204,6 +249,9 @@ describe("a supplier invoice read out", () => {
     expect(screen.getByText("Due date")).toBeInTheDocument();
     expect(screen.getByText("Overdue")).toBeInTheDocument();
     expect(screen.getByText("The supplier's invoice")).toBeInTheDocument();
+    // Its document is the supplier's invoice, and its absence is said so.
+    expect(screen.getByText("The supplier's invoice is not attached")).toBeInTheDocument();
+    expect(screen.queryByText("No receipts")).not.toBeInTheDocument();
   });
 
   it("says nothing of overdue before the due date, or once the line is invoiced", () => {
@@ -214,6 +262,7 @@ describe("a supplier invoice read out", () => {
     renderWithProviders(
       <EntryDetails
         expense={supplierInvoice({
+          entryDate: "2025-12-15",
           dueDate: "2026-01-02",
           capabilities: capabilities({ canSeeBilling: true }),
           billing: { billAmount: 10000, invoice: { at: "2026-02-01T10:00:00Z", by: APPROVER } },
