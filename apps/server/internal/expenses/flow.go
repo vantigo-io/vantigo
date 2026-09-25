@@ -377,6 +377,12 @@ func (s *server) PostExpensesSubmit(ctx context.Context, req gen.PostExpensesSub
 					return err
 				}
 			}
+			if msg == "" {
+				msg, err = supplierInvoiceDocumentRefusal(ctx, txq, row)
+				if err != nil {
+					return err
+				}
+			}
 			if msg != "" {
 				refusals = append(refusals, msg)
 				continue
@@ -819,6 +825,27 @@ func receiptRefusal(ctx context.Context, txq *store.Queries, c *caller, row stor
 	}
 	return fmt.Sprintf("Expense %d needs a receipt: an outlay the employee paid for more than %s cannot be submitted without one",
 		row.ID, decimalText(threshold, moneyPlaces)), nil
+}
+
+// supplierInvoiceDocumentRefusal is the supplier invoice's own document rule
+// (supplier invoices design D2): whatever the receipt threshold says, a
+// supplier invoice is submitted only with the supplier's invoice attached — at
+// least one attachment, through the receipts mechanism. It is judged where the
+// receipt rule is, under the entry's own row lock and on the count this
+// transaction reads, so an attachment deleted a moment ago cannot let it
+// through. A travel claim never holds one, so the claim's submit never asks.
+func supplierInvoiceDocumentRefusal(ctx context.Context, txq *store.Queries, row store.ExpensesEntry) (string, error) {
+	if row.Kind != kindSupplierInvoice {
+		return "", nil
+	}
+	count, err := txq.CountAttachmentsForEntry(ctx, row.ID)
+	if err != nil {
+		return "", fmt.Errorf("expenses: count a supplier invoice's attachments: %w", err)
+	}
+	if count > 0 {
+		return "", nil
+	}
+	return fmt.Sprintf("Expense %d cannot be submitted yet: Attach the supplier's invoice", row.ID), nil
 }
 
 // decision is one move a batch makes over expenses that are already approved

@@ -70,6 +70,22 @@ func (s *server) GetExpensesProjectsByProjectIdSummary(ctx context.Context, req 
 	if err != nil {
 		return nil, fmt.Errorf("expenses: check the caller may book on the project: %w", err)
 	}
+	// A supplier invoice is recorded by whoever holds the project's financial
+	// rights — which this caller does, or the summary would already have
+	// answered 404 — on any project but a cancelled one (supplier invoices
+	// design D2). The project comes with it as a booking option, because the
+	// caller the button exists for is often on no project team, and
+	// GET /projects, a picker of what the caller may log time on, offers them
+	// nothing to open the form with.
+	canRecordSupplierInvoice := project.Status != projectCancelled
+	var option *gen.ExpensesProjectOption
+	if canRecordSupplierInvoice {
+		one, err := s.projectOption(ctx, *project)
+		if err != nil {
+			return nil, err
+		}
+		option = &one
+	}
 
 	totals, err := projectExpenseTotals(ctx, q, []int32{req.ProjectId})
 	if err != nil {
@@ -79,7 +95,9 @@ func (s *server) GetExpensesProjectsByProjectIdSummary(ctx context.Context, req 
 	// here it is a project with no expenses yet: an empty list of currencies
 	// and no last entry date, never a 404 — which would say the caller may not
 	// see it — and never a zeroed currency this module has no business naming.
-	response, err := projectSummaryResponse(totals[req.ProjectId], project.Currency, canRecord)
+	response, err := projectSummaryResponse(totals[req.ProjectId], project.Currency,
+		gen.ExpensesProjectSummaryCapabilities{CanRecord: canRecord, CanRecordSupplierInvoice: &canRecordSupplierInvoice},
+		option)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +121,7 @@ func (s *server) GetExpensesProjectsByProjectIdSummary(ctx context.Context, req 
 // currencies is the project's and which are "in another currency", which is
 // the one thing the per-currency shape exists to let it say.
 func projectSummaryResponse(totals contracts.ProjectExpenseTotals, projectCurrency *string,
-	canRecord bool,
+	capabilities gen.ExpensesProjectSummaryCapabilities, project *gen.ExpensesProjectOption,
 ) (gen.ExpensesProjectSummaryResponse, error) {
 	currencies := make([]gen.ExpensesProjectSummaryCurrency, 0, len(totals.Currencies))
 	for _, currency := range totals.Currencies {
@@ -139,7 +157,8 @@ func projectSummaryResponse(totals contracts.ProjectExpenseTotals, projectCurren
 	response := gen.ExpensesProjectSummaryResponse{
 		Currencies:      currencies,
 		ProjectCurrency: projectCurrency,
-		Capabilities:    gen.ExpensesProjectSummaryCapabilities{CanRecord: canRecord},
+		Capabilities:    capabilities,
+		Project:         project,
 	}
 	if totals.LastEntryDate != nil {
 		day, err := time.Parse(time.DateOnly, *totals.LastEntryDate)

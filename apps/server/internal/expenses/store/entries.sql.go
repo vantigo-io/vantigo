@@ -18,18 +18,20 @@ SELECT count(*) FROM expenses.entries e
 LEFT JOIN expenses.claims c ON c.id = e.claim_id
 WHERE ($1::boolean
        OR e.user_id = $2::uuid
-       OR (e.project_id IS NOT NULL AND e.project_id = ANY($3::integer[])))
-  AND ($4::uuid IS NULL OR e.user_id = $4::uuid)
-  AND ($5::integer IS NULL OR e.project_id = $5::integer)
-  AND ($6::bigint IS NULL OR e.claim_id = $6::bigint)
-  AND ($7::boolean IS NULL OR (e.claim_id IS NULL) = $7::boolean)
-  AND ($8::text IS NULL OR COALESCE(c.status, e.status) = $8::text)
-  AND ($9::text IS NULL OR e.kind = $9::text)
-  AND ($10::date IS NULL OR e.entry_date >= $10::date)
-  AND ($11::date IS NULL OR e.entry_date <= $11::date)
-  AND ($12::boolean IS NULL
-       OR (COALESCE(c.reimbursed_at, e.reimbursed_at) IS NOT NULL) = $12::boolean)
-  AND ($13::boolean IS NOT TRUE
+       OR (e.project_id IS NOT NULL AND e.project_id = ANY($3::integer[]))
+       OR (e.kind = 'supplier_invoice' AND e.project_id IS NOT NULL
+           AND ($4::boolean OR e.project_id = ANY($5::integer[]))))
+  AND ($6::uuid IS NULL OR e.user_id = $6::uuid)
+  AND ($7::integer IS NULL OR e.project_id = $7::integer)
+  AND ($8::bigint IS NULL OR e.claim_id = $8::bigint)
+  AND ($9::boolean IS NULL OR (e.claim_id IS NULL) = $9::boolean)
+  AND ($10::text IS NULL OR COALESCE(c.status, e.status) = $10::text)
+  AND ($11::text IS NULL OR e.kind = $11::text)
+  AND ($12::date IS NULL OR e.entry_date >= $12::date)
+  AND ($13::date IS NULL OR e.entry_date <= $13::date)
+  AND ($14::boolean IS NULL
+       OR (COALESCE(c.reimbursed_at, e.reimbursed_at) IS NOT NULL) = $14::boolean)
+  AND ($15::boolean IS NOT TRUE
        OR (COALESCE(c.status, e.status) = 'approved'
            AND e.billable
            AND e.kind <> 'per_diem'
@@ -38,19 +40,21 @@ WHERE ($1::boolean
 `
 
 type CountEntriesParams struct {
-	SeeAll            bool
-	CallerID          uuid.UUID
-	ManagedProjectIds []int32
-	UserID            *uuid.UUID
-	ProjectID         *int32
-	ClaimID           *int64
-	Standalone        *bool
-	Status            *string
-	Kind              *string
-	FromDate          pgtype.Date
-	ToDate            pgtype.Date
-	Reimbursed        *bool
-	ToInvoice         *bool
+	SeeAll              bool
+	CallerID            uuid.UUID
+	ManagedProjectIds   []int32
+	SupplierInvoicesAll bool
+	FinancialProjectIds []int32
+	UserID              *uuid.UUID
+	ProjectID           *int32
+	ClaimID             *int64
+	Standalone          *bool
+	Status              *string
+	Kind                *string
+	FromDate            pgtype.Date
+	ToDate              pgtype.Date
+	Reimbursed          *bool
+	ToInvoice           *bool
 }
 
 // CountEntries counts what ListEntries pages through, under exactly the same
@@ -62,6 +66,14 @@ type CountEntriesParams struct {
 // directory before the query rather than filtered after it. A claim's line
 // carries its claim's owner and its claim's project, so the same predicate
 // makes a line visible exactly when its claim is.
+//
+// A supplier invoice is visible to one set more (supplier invoices design D4):
+// everyone with financial rights on its project — supplier_invoices_all for
+// projects:manage-all, and for projects:view-financials with
+// projects:view-all; otherwise the ids financialProjects (authorize.go)
+// resolved through the project directory before the query, the way
+// managed_project_ids is. It carries no personal data; an employee's outlay
+// on the same project keeps the rule above.
 //
 // The status and the reimbursed filters read the **unit** the entry belongs
 // to, which for a line is its claim (unitOf in authorize.go) — the status the
@@ -90,6 +102,8 @@ func (q *Queries) CountEntries(ctx context.Context, arg CountEntriesParams) (int
 		arg.SeeAll,
 		arg.CallerID,
 		arg.ManagedProjectIds,
+		arg.SupplierInvoicesAll,
+		arg.FinancialProjectIds,
 		arg.UserID,
 		arg.ProjectID,
 		arg.ClaimID,
@@ -211,6 +225,7 @@ INSERT INTO expenses.entries (
     per_diem_type, breakfast_covered, lunch_covered, dinner_covered,
     meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent,
     project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount,
+    supplier_invoice_number, supplier_due_date,
     created_at, updated_at
 ) VALUES (
     $1, $2, $3, $4, $5, $6,
@@ -219,44 +234,47 @@ INSERT INTO expenses.entries (
     $19, $20, $21, $22,
     $23, $24, $25,
     $26, $27, $28, $29, $30, $31,
-    $32::timestamptz, $32::timestamptz
+    $32, $33,
+    $34::timestamptz, $34::timestamptz
 )
 RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent, supplier_invoice_number, supplier_due_date
 `
 
 type InsertEntryParams struct {
-	UserID               uuid.UUID
-	CreatedByUserID      uuid.UUID
-	ClaimID              *int64
-	Kind                 string
-	EntryDate            pgtype.Date
-	Description          string
-	CategoryID           *int32
-	Supplier             *string
-	PaidBy               *string
-	Currency             string
-	GrossAmount          pgtype.Numeric
-	VatAmount            pgtype.Numeric
-	DistanceKm           pgtype.Numeric
-	FromPlace            *string
-	ToPlace              *string
-	Passengers           int16
-	Rate                 pgtype.Numeric
-	PassengerRate        pgtype.Numeric
-	PerDiemType          *string
-	BreakfastCovered     bool
-	LunchCovered         bool
-	DinnerCovered        bool
-	MealBreakfastPercent pgtype.Numeric
-	MealLunchPercent     pgtype.Numeric
-	MealDinnerPercent    pgtype.Numeric
-	ProjectID            *int32
-	BillingLineID        *int32
-	Billable             bool
-	MarkupPercent        pgtype.Numeric
-	BillRatePerKm        pgtype.Numeric
-	BillAmount           pgtype.Numeric
-	Now                  time.Time
+	UserID                uuid.UUID
+	CreatedByUserID       uuid.UUID
+	ClaimID               *int64
+	Kind                  string
+	EntryDate             pgtype.Date
+	Description           string
+	CategoryID            *int32
+	Supplier              *string
+	PaidBy                *string
+	Currency              string
+	GrossAmount           pgtype.Numeric
+	VatAmount             pgtype.Numeric
+	DistanceKm            pgtype.Numeric
+	FromPlace             *string
+	ToPlace               *string
+	Passengers            int16
+	Rate                  pgtype.Numeric
+	PassengerRate         pgtype.Numeric
+	PerDiemType           *string
+	BreakfastCovered      bool
+	LunchCovered          bool
+	DinnerCovered         bool
+	MealBreakfastPercent  pgtype.Numeric
+	MealLunchPercent      pgtype.Numeric
+	MealDinnerPercent     pgtype.Numeric
+	ProjectID             *int32
+	BillingLineID         *int32
+	Billable              bool
+	MarkupPercent         pgtype.Numeric
+	BillRatePerKm         pgtype.Numeric
+	BillAmount            pgtype.Numeric
+	SupplierInvoiceNumber *string
+	SupplierDueDate       pgtype.Date
+	Now                   time.Time
 }
 
 // InsertEntry records one expense as a draft, with every amount already
@@ -302,6 +320,8 @@ func (q *Queries) InsertEntry(ctx context.Context, arg InsertEntryParams) (Expen
 		arg.MarkupPercent,
 		arg.BillRatePerKm,
 		arg.BillAmount,
+		arg.SupplierInvoiceNumber,
+		arg.SupplierDueDate,
 		arg.Now,
 	)
 	var i ExpensesEntry
@@ -367,43 +387,47 @@ SELECT e.id, e.user_id, e.created_by_user_id, e.claim_id, e.kind, e.entry_date, 
 LEFT JOIN expenses.claims c ON c.id = e.claim_id
 WHERE ($1::boolean
        OR e.user_id = $2::uuid
-       OR (e.project_id IS NOT NULL AND e.project_id = ANY($3::integer[])))
-  AND ($4::uuid IS NULL OR e.user_id = $4::uuid)
-  AND ($5::integer IS NULL OR e.project_id = $5::integer)
-  AND ($6::bigint IS NULL OR e.claim_id = $6::bigint)
-  AND ($7::boolean IS NULL OR (e.claim_id IS NULL) = $7::boolean)
-  AND ($8::text IS NULL OR COALESCE(c.status, e.status) = $8::text)
-  AND ($9::text IS NULL OR e.kind = $9::text)
-  AND ($10::date IS NULL OR e.entry_date >= $10::date)
-  AND ($11::date IS NULL OR e.entry_date <= $11::date)
-  AND ($12::boolean IS NULL
-       OR (COALESCE(c.reimbursed_at, e.reimbursed_at) IS NOT NULL) = $12::boolean)
-  AND ($13::boolean IS NOT TRUE
+       OR (e.project_id IS NOT NULL AND e.project_id = ANY($3::integer[]))
+       OR (e.kind = 'supplier_invoice' AND e.project_id IS NOT NULL
+           AND ($4::boolean OR e.project_id = ANY($5::integer[]))))
+  AND ($6::uuid IS NULL OR e.user_id = $6::uuid)
+  AND ($7::integer IS NULL OR e.project_id = $7::integer)
+  AND ($8::bigint IS NULL OR e.claim_id = $8::bigint)
+  AND ($9::boolean IS NULL OR (e.claim_id IS NULL) = $9::boolean)
+  AND ($10::text IS NULL OR COALESCE(c.status, e.status) = $10::text)
+  AND ($11::text IS NULL OR e.kind = $11::text)
+  AND ($12::date IS NULL OR e.entry_date >= $12::date)
+  AND ($13::date IS NULL OR e.entry_date <= $13::date)
+  AND ($14::boolean IS NULL
+       OR (COALESCE(c.reimbursed_at, e.reimbursed_at) IS NOT NULL) = $14::boolean)
+  AND ($15::boolean IS NOT TRUE
        OR (COALESCE(c.status, e.status) = 'approved'
            AND e.billable
            AND e.kind <> 'per_diem'
            AND e.bill_amount IS NOT NULL
            AND e.invoiced_at IS NULL))
 ORDER BY e.entry_date DESC, e.id DESC
-LIMIT $15 OFFSET $14
+LIMIT $17 OFFSET $16
 `
 
 type ListEntriesParams struct {
-	SeeAll            bool
-	CallerID          uuid.UUID
-	ManagedProjectIds []int32
-	UserID            *uuid.UUID
-	ProjectID         *int32
-	ClaimID           *int64
-	Standalone        *bool
-	Status            *string
-	Kind              *string
-	FromDate          pgtype.Date
-	ToDate            pgtype.Date
-	Reimbursed        *bool
-	ToInvoice         *bool
-	PageOffset        int32
-	PageSize          int32
+	SeeAll              bool
+	CallerID            uuid.UUID
+	ManagedProjectIds   []int32
+	SupplierInvoicesAll bool
+	FinancialProjectIds []int32
+	UserID              *uuid.UUID
+	ProjectID           *int32
+	ClaimID             *int64
+	Standalone          *bool
+	Status              *string
+	Kind                *string
+	FromDate            pgtype.Date
+	ToDate              pgtype.Date
+	Reimbursed          *bool
+	ToInvoice           *bool
+	PageOffset          int32
+	PageSize            int32
 }
 
 // ListEntries is one page of CountEntries' expenses, the latest day first and,
@@ -413,6 +437,8 @@ func (q *Queries) ListEntries(ctx context.Context, arg ListEntriesParams) ([]Exp
 		arg.SeeAll,
 		arg.CallerID,
 		arg.ManagedProjectIds,
+		arg.SupplierInvoicesAll,
+		arg.FinancialProjectIds,
 		arg.UserID,
 		arg.ProjectID,
 		arg.ClaimID,
@@ -598,15 +624,17 @@ UPDATE expenses.entries SET
     markup_percent = $26,
     bill_rate_per_km = $27,
     bill_amount = $28,
+    supplier_invoice_number = $29,
+    supplier_due_date = $30,
     status = 'draft',
     rejection_reason = NULL,
     submitted_at = NULL,
     decided_at = NULL,
     decided_by_user_id = NULL,
     revision = revision + 1,
-    updated_at = $29::timestamptz
-WHERE expenses.entries.id = $30
-  AND expenses.entries.revision = $31
+    updated_at = $31::timestamptz
+WHERE expenses.entries.id = $32
+  AND expenses.entries.revision = $33
   -- The status guarded is the **unit's** (unitOf in authorize.go): a line
   -- inside a travel claim is editable exactly while its claim is, and its own
   -- column stays at its default 'draft'. The handler holds the claim's row lock
@@ -614,44 +642,46 @@ WHERE expenses.entries.id = $30
   AND COALESCE(
         (SELECT c.status FROM expenses.claims c WHERE c.id = expenses.entries.claim_id),
         expenses.entries.status) IN ('draft', 'rejected')
-  AND ($32::boolean OR expenses.entries.user_id = $33::uuid)
+  AND ($34::boolean OR expenses.entries.user_id = $35::uuid)
 RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent, supplier_invoice_number, supplier_due_date
 `
 
 type UpdateEntryParams struct {
-	Kind                 string
-	EntryDate            pgtype.Date
-	Description          string
-	CategoryID           *int32
-	Supplier             *string
-	PaidBy               *string
-	Currency             string
-	GrossAmount          pgtype.Numeric
-	VatAmount            pgtype.Numeric
-	DistanceKm           pgtype.Numeric
-	FromPlace            *string
-	ToPlace              *string
-	Passengers           int16
-	Rate                 pgtype.Numeric
-	PassengerRate        pgtype.Numeric
-	PerDiemType          *string
-	BreakfastCovered     bool
-	LunchCovered         bool
-	DinnerCovered        bool
-	MealBreakfastPercent pgtype.Numeric
-	MealLunchPercent     pgtype.Numeric
-	MealDinnerPercent    pgtype.Numeric
-	ProjectID            *int32
-	BillingLineID        *int32
-	Billable             bool
-	MarkupPercent        pgtype.Numeric
-	BillRatePerKm        pgtype.Numeric
-	BillAmount           pgtype.Numeric
-	Now                  time.Time
-	ID                   int64
-	Revision             int32
-	AnyOwner             bool
-	UserID               uuid.UUID
+	Kind                  string
+	EntryDate             pgtype.Date
+	Description           string
+	CategoryID            *int32
+	Supplier              *string
+	PaidBy                *string
+	Currency              string
+	GrossAmount           pgtype.Numeric
+	VatAmount             pgtype.Numeric
+	DistanceKm            pgtype.Numeric
+	FromPlace             *string
+	ToPlace               *string
+	Passengers            int16
+	Rate                  pgtype.Numeric
+	PassengerRate         pgtype.Numeric
+	PerDiemType           *string
+	BreakfastCovered      bool
+	LunchCovered          bool
+	DinnerCovered         bool
+	MealBreakfastPercent  pgtype.Numeric
+	MealLunchPercent      pgtype.Numeric
+	MealDinnerPercent     pgtype.Numeric
+	ProjectID             *int32
+	BillingLineID         *int32
+	Billable              bool
+	MarkupPercent         pgtype.Numeric
+	BillRatePerKm         pgtype.Numeric
+	BillAmount            pgtype.Numeric
+	SupplierInvoiceNumber *string
+	SupplierDueDate       pgtype.Date
+	Now                   time.Time
+	ID                    int64
+	Revision              int32
+	AnyOwner              bool
+	UserID                uuid.UUID
 }
 
 // UpdateEntry replaces an expense's content, its amounts computed again (a
@@ -690,6 +720,8 @@ func (q *Queries) UpdateEntry(ctx context.Context, arg UpdateEntryParams) (Expen
 		arg.MarkupPercent,
 		arg.BillRatePerKm,
 		arg.BillAmount,
+		arg.SupplierInvoiceNumber,
+		arg.SupplierDueDate,
 		arg.Now,
 		arg.ID,
 		arg.Revision,

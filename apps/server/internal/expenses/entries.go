@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -170,8 +171,12 @@ func (s *server) checkProject(ctx context.Context, ownerID uuid.UUID, p parsedEn
 	if p.ProjectID == nil || !s.projectsAvailable() {
 		return nil, false, nil
 	}
+	// A supplier invoice's project was judged by its recorder's financial
+	// rights, not by the owner's CanLogTime, so turning one into an outlay
+	// is a new booking of this kind and is judged in full.
 	keptProject := inherited ||
-		(current != nil && current.ProjectID != nil && *current.ProjectID == *p.ProjectID)
+		(current != nil && current.Kind != kindSupplierInvoice &&
+			current.ProjectID != nil && *current.ProjectID == *p.ProjectID)
 	if !keptProject {
 		allowed, err := s.projectsCanLogTime(ctx, *p.ProjectID, ownerID)
 		if err != nil {
@@ -194,19 +199,101 @@ func (s *server) checkProject(ctx context.Context, ownerID uuid.UUID, p parsedEn
 		return nil, false, nil
 	}
 
+	if err := s.checkLine(ctx, p, current, keptProject, add); err != nil {
+		return nil, false, err
+	}
+	return project, false, nil
+}
+
+// checkLine is the billing-line half of both project checks: a line the save
+// keeps on a project it keeps is not judged again, and any other must be one
+// of the project's active lines.
+func (s *server) checkLine(ctx context.Context, p parsedEntry, current *store.ExpensesEntry, keptProject bool,
+	add func(field, msg string),
+) error {
 	keptLine := keptProject && p.LineID != nil && current != nil &&
 		current.BillingLineID != nil && *current.BillingLineID == *p.LineID
-	if p.LineID != nil && !keptLine {
-		line, err := s.projectsBillingLine(ctx, *p.ProjectID, *p.LineID)
+	if p.LineID == nil || keptLine {
+		return nil
+	}
+	line, err := s.projectsBillingLine(ctx, *p.ProjectID, *p.LineID)
+	if err != nil {
+		return fmt.Errorf("expenses: look up the billing line: %w", err)
+	}
+	switch {
+	case line == nil:
+		add("billingLineId", fmt.Sprintf("Billing line %d is not one of this project's", *p.LineID))
+	case !line.Active:
+		add("billingLineId", fmt.Sprintf("Billing line %d is inactive", *p.LineID))
+	}
+	return nil
+}
+
+// projectCancelled is the one project status that takes no supplier invoice
+// (supplier invoices design D2). An invoice often arrives after the work, so
+// a completed project takes one, and so does every other status.
+const projectCancelled = "cancelled"
+
+// The two projectId sentences a supplier invoice's recorder can hear. The
+// first is the one answer for "no such project" and "no financial rights on
+// it", so it tells nobody which project ids exist or whose money they are;
+// the second is said only to someone who holds the rights, for whom the
+// project's status is no secret.
+const (
+	cannotRecordSupplierInvoice       = "This project is not one you can record a supplier invoice on"
+	supplierInvoiceOnCancelledProject = "This project is cancelled, so it takes no supplier invoices"
+)
+
+// checkSupplierInvoiceProject is checkProject for a supplier invoice
+// (supplier invoices design D2). Who may book one is not the owner's
+// CanLogTime but the *recorder's* financial rights on the project — the
+// manager role, projects:manage-all, or projects:view-financials on a project
+// they see — because the people who receive and re-bill supplier invoices are
+// the project's financial side, not necessarily its team. The rights can only
+// be the caller's: seesProjectFinancials reads the permissions of whoever is
+// asking, so expenses:manage recording one for a colleague needs them too.
+//
+// A project the invoice already carries is not judged again, the way
+// checkProject grandfathers one — but only when the row being replaced is
+// itself a supplier invoice: an outlay turned into one is a new booking of
+// this kind and is judged in full. The project and the caller's role are read
+// here, before any transaction, and the role lands in the cache the response
+// shaping reads.
+func (s *server) checkSupplierInvoiceProject(ctx context.Context, c *caller, p parsedEntry,
+	current *store.ExpensesEntry, add func(field, msg string),
+) (*contracts.ProjectEntry, bool, error) {
+	if p.ProjectID == nil || !s.projectsAvailable() {
+		return nil, false, nil
+	}
+	kept := current != nil && current.Kind == kindSupplierInvoice &&
+		current.ProjectID != nil && *current.ProjectID == *p.ProjectID
+	project, err := s.projectsProject(ctx, *p.ProjectID)
+	if err != nil {
+		return nil, false, fmt.Errorf("expenses: look up the project: %w", err)
+	}
+	if project == nil {
+		if kept {
+			return nil, true, nil
+		}
+		add("projectId", cannotRecordSupplierInvoice)
+		return nil, false, nil
+	}
+	if !kept {
+		role, err := c.role(ctx, s, project.ID)
 		if err != nil {
-			return nil, false, fmt.Errorf("expenses: look up the billing line: %w", err)
+			return nil, false, err
 		}
-		switch {
-		case line == nil:
-			add("billingLineId", fmt.Sprintf("Billing line %d is not one of this project's", *p.LineID))
-		case !line.Active:
-			add("billingLineId", fmt.Sprintf("Billing line %d is inactive", *p.LineID))
+		if !c.seesProjectFinancials(role) {
+			add("projectId", cannotRecordSupplierInvoice)
+			return nil, false, nil
 		}
+		if project.Status == projectCancelled {
+			add("projectId", supplierInvoiceOnCancelledProject)
+			return nil, false, nil
+		}
+	}
+	if err := s.checkLine(ctx, p, current, kept, add); err != nil {
+		return nil, false, err
 	}
 	return project, false, nil
 }
@@ -341,7 +428,7 @@ func (s *server) resolveValues(ctx context.Context, q *store.Queries, c *caller,
 	}
 
 	switch p.Kind {
-	case kindOutlay:
+	case kindOutlay, kindSupplierInvoice:
 		v.MarkupPercent = p.MarkupPercent
 		if v.MarkupPercent == nil {
 			kept, err := storedBillingFigure(sc.Current, func(e store.ExpensesEntry) pgtype.Numeric { return e.MarkupPercent })
@@ -440,7 +527,7 @@ func carriedBillAmount(p prepared, row store.ExpensesEntry) (*big.Rat, error) {
 		return nil, nil
 	}
 	switch p.Parsed.Kind {
-	case kindOutlay:
+	case kindOutlay, kindSupplierInvoice:
 		markup, err := ratPtrFromNumeric(row.MarkupPercent)
 		if err != nil || markup == nil || p.Values.Gross == nil {
 			return nil, err
@@ -524,7 +611,8 @@ func (s *server) prepare(ctx context.Context, q *store.Queries, c *caller, body 
 	}
 
 	inClaim := body.ClaimID != nil || (current != nil && current.ClaimID != nil)
-	parsed, parseErrs := parseEntry(body, c.Settings.DefaultCurrency, s.projectsAvailable(), inClaim)
+	parsed, parseErrs := parseEntry(body, c.Settings.DefaultCurrency, s.projectsAvailable(), inClaim,
+		current != nil && current.Kind == kindSupplierInvoice)
 	for field, messages := range parseErrs {
 		for _, msg := range messages {
 			add(field, msg)
@@ -582,7 +670,13 @@ func (s *server) prepare(ctx context.Context, q *store.Queries, c *caller, body 
 	}
 
 	inheritedProject := claim != nil && sameProject(parsed.ProjectID, claim.ProjectID)
-	project, projectLost, err := s.checkProject(ctx, owner, parsed, current, inheritedProject, add)
+	var project *contracts.ProjectEntry
+	var projectLost bool
+	if parsed.Kind == kindSupplierInvoice {
+		project, projectLost, err = s.checkSupplierInvoiceProject(ctx, c, parsed, current, add)
+	} else {
+		project, projectLost, err = s.checkProject(ctx, owner, parsed, current, inheritedProject, add)
+	}
 	if err != nil {
 		return prepared{}, err
 	}
@@ -690,6 +784,9 @@ func (s *server) PostExpensesEntries(ctx context.Context, req gen.PostExpensesEn
 		BillRatePerKm: p.Columns.BillRatePerKm,
 		BillAmount:    p.Columns.BillAmount,
 		Now:           s.deps.Clock(),
+
+		SupplierInvoiceNumber: p.Parsed.InvoiceNumber,
+		SupplierDueDate:       optionalPgDate(p.Parsed.DueDate),
 	}
 
 	var created store.ExpensesEntry
@@ -990,6 +1087,9 @@ func (s *server) PutExpensesEntriesById(ctx context.Context, req gen.PutExpenses
 			BillRatePerKm: p.Columns.BillRatePerKm,
 			BillAmount:    p.Columns.BillAmount,
 			Now:           s.deps.Clock(),
+
+			SupplierInvoiceNumber: p.Parsed.InvoiceNumber,
+			SupplierDueDate:       optionalPgDate(p.Parsed.DueDate),
 		}
 		if p.CarryProject {
 			// Decision X2: an installation that no longer has the projects
@@ -1228,10 +1328,11 @@ func filterValue(raw *string) *string {
 //
 // Visibility is a predicate of the query itself — the same rule entryAccess
 // applies to one expense: everything for expenses:view-all, expenses:approve
-// and expenses:manage, the caller's own, and everything on the projects the
-// caller manages. So the total is the number of expenses the caller may see,
-// every page is full but the last, and the list never holds an expense its own
-// read answers 404 for.
+// and expenses:manage, the caller's own, everything on the projects the
+// caller manages, and the supplier invoices on the projects whose money they
+// may see (supplier invoices design D4). So the total is the number of
+// expenses the caller may see, every page is full but the last, and the list
+// never holds an expense its own read answers 404 for.
 //
 // The projects the caller manages are resolved through the project directory
 // before the query rather than filtered after it, because a filter after the
@@ -1277,8 +1378,12 @@ func (s *server) GetExpensesEntries(ctx context.Context, req gen.GetExpensesEntr
 		}
 	}
 	managed := []int32{}
+	financial := projectScope{ids: []int32{}}
 	if !c.seesEveryone() {
 		if managed, err = c.managedProjects(ctx, s); err != nil {
+			return nil, err
+		}
+		if financial, err = c.financialProjects(ctx, s); err != nil {
 			return nil, err
 		}
 	}
@@ -1297,6 +1402,9 @@ func (s *server) GetExpensesEntries(ctx context.Context, req gen.GetExpensesEntr
 		ToDate:            optionalDate(p.To),
 		Reimbursed:        p.Reimbursed,
 		ToInvoice:         p.ToInvoice,
+
+		SupplierInvoicesAll: financial.all,
+		FinancialProjectIds: financial.ids,
 	}
 	total, err := q.CountEntries(ctx, filter)
 	if err != nil {
@@ -1317,7 +1425,10 @@ func (s *server) GetExpensesEntries(ctx context.Context, req gen.GetExpensesEntr
 		Reimbursed:        filter.Reimbursed,
 		ToInvoice:         filter.ToInvoice,
 		PageSize:          pageSize,
-		PageOffset:        (page - 1) * pageSize,
+
+		SupplierInvoicesAll: filter.SupplierInvoicesAll,
+		FinancialProjectIds: filter.FinancialProjectIds,
+		PageOffset:          (page - 1) * pageSize,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("expenses: list expenses: %w", err)
@@ -1331,6 +1442,15 @@ func (s *server) GetExpensesEntries(ctx context.Context, req gen.GetExpensesEntr
 		Data:       data,
 		Pagination: apicommon.Pagination(page, pageSize, int32(total)),
 	}, nil
+}
+
+// optionalPgDate is an optional calendar date as a nullable date column wants
+// it: invalid (NULL) when there is none.
+func optionalPgDate(d *time.Time) pgtype.Date {
+	if d == nil {
+		return pgtype.Date{}
+	}
+	return pgDate(*d)
 }
 
 // optionalDate is a date filter as the column wants it, invalid (no filter)

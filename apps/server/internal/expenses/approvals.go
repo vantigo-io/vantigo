@@ -136,9 +136,11 @@ func approvalGroups(userIDs []uuid.UUID, rows []store.ExpensesEntry,
 		if err := addToTotals(g.totals, row); err != nil {
 			return nil, err
 		}
-		// A receipt is what an approver checks an outlay against; mileage and a
-		// per diem day take none and are never counted as missing one.
-		if row.Kind == kindOutlay && entries[i].AttachmentCount == 0 {
+		// A receipt is what an approver checks an outlay against, and the
+		// supplier's invoice what they check a supplier invoice against;
+		// mileage and a per diem day take none and are never counted as
+		// missing one.
+		if takesReceipts(row.Kind) && entries[i].AttachmentCount == 0 {
 			g.missing++
 		}
 		if row.RateOverriddenByUserID != nil {

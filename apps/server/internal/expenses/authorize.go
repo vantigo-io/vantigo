@@ -212,6 +212,56 @@ func (c *caller) managedProjects(ctx context.Context, s *server) ([]int32, error
 	return managed, nil
 }
 
+// projectScope is a set of projects as a list's query filters on it: every
+// project there is (all), or the ones named.
+type projectScope struct {
+	all bool
+	ids []int32
+}
+
+// financialProjects is the projects whose supplier invoices the caller sees as
+// rows (supplier invoices design D4): the ones they hold financial rights on.
+// projects:manage-all is financial rights everywhere, and
+// projects:view-financials is financial rights on every project the caller
+// sees — with projects:view-all, every project — so both are all, and no
+// project is asked about. Otherwise it is the caller's own projects on which
+// seesProjectFinancials holds, read through role so the answers are cached
+// beside the ones accessFor shapes the rows with: the list filtered on these
+// ids and the read of any one of them can never disagree. Without
+// view-financials the only financial right is the manager role, whose projects
+// managedProjects already puts in the list whole, so nothing is asked. Without
+// the projects module there are none.
+//
+// It is managedProjects' N+1 again, for the same reason and at the same price:
+// ProjectsForUser answers no roles. A caller who sees every expense never asks.
+func (c *caller) financialProjects(ctx context.Context, s *server) (projectScope, error) {
+	scope := projectScope{ids: []int32{}}
+	if !s.projectsAvailable() {
+		return scope, nil
+	}
+	if c.ProjectsManageAll || (c.ProjectsFinancials && c.ProjectsViewAll) {
+		scope.all = true
+		return scope, nil
+	}
+	if !c.ProjectsFinancials {
+		return scope, nil
+	}
+	projects, err := s.projectsForUser(ctx, c.UserID)
+	if err != nil {
+		return projectScope{}, fmt.Errorf("expenses: list the caller's projects: %w", err)
+	}
+	for _, p := range projects {
+		role, err := c.role(ctx, s, p.ID)
+		if err != nil {
+			return projectScope{}, err
+		}
+		if c.seesProjectFinancials(role) {
+			scope.ids = append(scope.ids, p.ID)
+		}
+	}
+	return scope, nil
+}
+
 // warmRoles reads c's role on every one of projectIDs into the cache, so a
 // decision made later inside a locked transaction needs no directory call. nil
 // ids — expenses on no project at all — are skipped.
@@ -498,7 +548,10 @@ const roleManager = "manager"
 // entryAccess is what one caller may do with one expense.
 //
 // CanSee is design §5's visibility: its owner, a manager of its project, and
-// expenses:view-all, expenses:approve and expenses:manage; anyone else gets
+// expenses:view-all, expenses:approve and expenses:manage — and, for a
+// supplier invoice alone, everyone with financial rights on its project
+// (supplier invoices design D4: it carries no personal data, and it is the
+// project's financial side that receives and re-bills it); anyone else gets
 // the bare 404 an unknown id gets. The list applies the same rule in SQL
 // (CountEntries and ListEntries), so it never holds an expense a read of it
 // would answer 404 for.
@@ -588,7 +641,8 @@ func (c *caller) accessFor(entry store.ExpensesEntry, unit entryUnit, role strin
 	}
 	standalone := !unit.isClaimLine()
 	a.IsApprover = a.IsManager || c.Approve
-	a.CanSee = a.IsOwner || a.IsManager || c.seesEveryone()
+	a.CanSee = a.IsOwner || a.IsManager || c.seesEveryone() ||
+		(entry.Kind == kindSupplierInvoice && c.ProjectsOn && entry.ProjectID != nil && c.seesProjectFinancials(role))
 	// Every billing answer is the projects module's, so none of them is true
 	// without it (decision X2). A row that still carries a project_id from
 	// before the module was switched off is exactly the case: the four doors

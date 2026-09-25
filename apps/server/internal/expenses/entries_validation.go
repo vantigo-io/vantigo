@@ -35,9 +35,31 @@ const (
 )
 
 // entryKinds is every kind a request may carry, in the order design §3.1 names
-// them. It is also what the list's kind filter accepts, so the two can never
-// drift.
-var entryKinds = []string{kindOutlay, kindMileage, kindPerDiem}
+// them and the supplier invoice after them. It is also what the list's kind
+// filter accepts, so the two can never drift.
+var entryKinds = []string{kindOutlay, kindMileage, kindPerDiem, kindSupplierInvoice}
+
+// marksUp reports whether a billable line of this kind is priced as its net
+// plus a markup: an outlay, and a supplier invoice, which borrows the outlay's
+// money whole (supplier invoices design D3). Mileage bills per kilometre and a
+// per diem day bills nothing.
+func marksUp(kind string) bool { return kind == kindOutlay || kind == kindSupplierInvoice }
+
+// takesReceipts reports whether a line of this kind carries documents: an
+// outlay its receipts, a supplier invoice the supplier's invoice itself
+// (design D2). Mileage and a per diem day carry none.
+func takesReceipts(kind string) bool { return kind == kindOutlay || kind == kindSupplierInvoice }
+
+// The supplier invoice's own limit and refusals (supplier invoices design D1).
+// One project sentence serves both "no project named" and "no projects module
+// at all", because the fact the caller can act on is the same: this kind lives
+// on a project and nowhere else.
+const (
+	invoiceNumberMaxLength       = 100
+	supplierInvoiceNeedsProject  = "A supplier invoice is booked on a project"
+	supplierInvoiceNotInClaim    = "A supplier invoice is not a travel claim line"
+	supplierInvoicePaidByCompany = "A supplier invoice is paid by the company"
+)
 
 // Who paid an outlay (design §3.1). Mileage is always owed to the employee and
 // carries neither value.
@@ -100,6 +122,11 @@ type entryBody struct {
 	MarkupPercent *float64
 	BillRatePerKm *float64
 	ClaimID       *int64
+
+	// InvoiceNumber and DueDate are the supplier invoice's own two fields
+	// (supplier invoices design D1), refused on every other kind.
+	InvoiceNumber *string
+	DueDate       *openapi_types.Date
 }
 
 // bodyOfCreate is a create request as one entryBody.
@@ -113,6 +140,7 @@ func bodyOfCreate(b gen.ExpensesEntryRequest) entryBody {
 		DistanceKm: b.DistanceKm, FromPlace: b.FromPlace, ToPlace: b.ToPlace, Passengers: b.Passengers,
 		ProjectID: b.ProjectId, BillingLineID: b.BillingLineId, Billable: b.Billable,
 		MarkupPercent: b.MarkupPercent, BillRatePerKm: b.BillRatePerKm, ClaimID: b.ClaimId,
+		InvoiceNumber: b.InvoiceNumber, DueDate: b.DueDate,
 	}
 }
 
@@ -127,6 +155,7 @@ func bodyOfUpdate(b gen.ExpensesEntryUpdateRequest) entryBody {
 		DistanceKm: b.DistanceKm, FromPlace: b.FromPlace, ToPlace: b.ToPlace, Passengers: b.Passengers,
 		ProjectID: b.ProjectId, BillingLineID: b.BillingLineId, Billable: b.Billable,
 		MarkupPercent: b.MarkupPercent, BillRatePerKm: b.BillRatePerKm, ClaimID: b.ClaimId,
+		InvoiceNumber: b.InvoiceNumber, DueDate: b.DueDate,
 	}
 }
 
@@ -161,6 +190,11 @@ type parsedEntry struct {
 	Billable      bool
 	MarkupPercent *big.Rat
 	BillRatePerKm *big.Rat
+
+	// InvoiceNumber and DueDate are a supplier invoice's, nil on every other
+	// kind. DueDate is a calendar date at UTC midnight, like Date.
+	InvoiceNumber *string
+	DueDate       *time.Time
 }
 
 // parseEntry runs design §3.1's rules over a body. defaultCurrency is the
@@ -171,8 +205,10 @@ type parsedEntry struct {
 // only relaxes what may be left out here: the claim's project is the line's, so
 // a billing line or a billable flag need not repeat it. Whether the caller may
 // put a line in that claim at all is asked afterwards, outside any transaction
-// (resolveClaimLine).
-func parseEntry(body entryBody, defaultCurrency string, projectsOn, inClaim bool) (parsedEntry, map[string][]string) {
+// (resolveClaimLine). keptSupplierInvoice says the row being replaced is
+// already a supplier invoice, which is what keeps one editable in an
+// installation that has since lost the projects module (decision X2).
+func parseEntry(body entryBody, defaultCurrency string, projectsOn, inClaim, keptSupplierInvoice bool) (parsedEntry, map[string][]string) {
 	var errs map[string][]string
 	add := func(field, msg string) {
 		if msg != "" {
@@ -203,6 +239,15 @@ func parseEntry(body entryBody, defaultCurrency string, projectsOn, inClaim bool
 			if given {
 				add(field, notOnKind(field, p.Kind))
 			}
+		}
+	}
+
+	if p.Kind != kindSupplierInvoice {
+		if body.InvoiceNumber != nil {
+			add("invoiceNumber", notOnKind("invoiceNumber", p.Kind))
+		}
+		if body.DueDate != nil {
+			add("dueDate", notOnKind("dueDate", p.Kind))
 		}
 	}
 
@@ -244,6 +289,8 @@ func parseEntry(body entryBody, defaultCurrency string, projectsOn, inClaim bool
 	}
 
 	switch p.Kind {
+	case kindSupplierInvoice:
+		parseSupplierInvoice(&p, body, projectsOn, inClaim, keptSupplierInvoice, add)
 	case kindOutlay:
 		parseOutlay(&p, body, add)
 	case kindMileage:
@@ -264,11 +311,7 @@ func parseEntry(body entryBody, defaultCurrency string, projectsOn, inClaim bool
 // fields are refused rather than ignored, so a client that sent the wrong
 // shape hears about it.
 func parseOutlay(p *parsedEntry, body entryBody, add func(field, msg string)) {
-	if body.CategoryID == nil {
-		add("categoryId", "An outlay needs a category")
-	} else {
-		p.CategoryID = body.CategoryID
-	}
+	parseAmounts(p, body, "An outlay", add)
 	if msg := optionalText(body.Supplier, "A supplier", supplierMaxLength, &p.Supplier); msg != "" {
 		add("supplier", msg)
 	}
@@ -280,6 +323,19 @@ func parseOutlay(p *parsedEntry, body entryBody, add func(field, msg string)) {
 	default:
 		p.PaidBy = &paidBy
 	}
+	refuseMileageFields(body, kindOutlay, add)
+}
+
+// parseAmounts is the money an outlay and a supplier invoice share (supplier
+// invoices design D1): a category, a currency in any ISO code, a gross above
+// zero and an optional VAT from zero to that gross. what names the kind in the
+// two sentences that say something is missing.
+func parseAmounts(p *parsedEntry, body entryBody, what string, add func(field, msg string)) {
+	if body.CategoryID == nil {
+		add("categoryId", what+" needs a category")
+	} else {
+		p.CategoryID = body.CategoryID
+	}
 
 	currency, msg := validateCurrency(derefString(body.Currency))
 	add("currency", msg)
@@ -288,7 +344,7 @@ func parseOutlay(p *parsedEntry, body entryBody, add func(field, msg string)) {
 	}
 
 	if body.GrossAmount == nil {
-		add("grossAmount", "An outlay needs an amount")
+		add("grossAmount", what+" needs an amount")
 	} else if msg := validateAboveZero("An amount", *body.GrossAmount, maxMoney); msg != "" {
 		add("grossAmount", msg)
 	} else {
@@ -303,8 +359,65 @@ func parseOutlay(p *parsedEntry, body entryBody, add func(field, msg string)) {
 			p.Vat = ratFromFloat(*body.VatAmount)
 		}
 	}
+}
 
-	refuseMileageFields(body, kindOutlay, add)
+// parseSupplierInvoice is the supplier invoice (supplier invoices design D1):
+// the outlay's money, a supplier and the supplier's invoice number that are
+// both required, an optional due date on or after the entry date — which on
+// this kind *is* the invoice date, the one the period lock judges — and a
+// payer that is always the company. It never sits in a travel claim and
+// always sits on a project, and in an installation without the projects
+// module there is no such kind at all. Whether the recorder may book it on
+// the project is asked afterwards, of the directory, outside any transaction
+// (checkSupplierInvoiceProject).
+func parseSupplierInvoice(p *parsedEntry, body entryBody, projectsOn, inClaim, kept bool, add func(field, msg string)) {
+	switch {
+	case !projectsOn && kept:
+		// Decision X2 for this kind: an installation that has lost the
+		// projects module keeps what was booked. A supplier invoice already
+		// recorded stays editable, its project columns carried through from
+		// the row (prepared.CarryProject) — refusing the kind here would
+		// leave its owner able to submit or delete it and nothing else.
+	case !projectsOn:
+		add("kind", supplierInvoiceNeedsProject)
+	case body.ProjectID == nil:
+		add("projectId", supplierInvoiceNeedsProject)
+	}
+	if inClaim {
+		add("claimId", supplierInvoiceNotInClaim)
+	}
+	parseAmounts(p, body, "A supplier invoice", add)
+	if msg := optionalText(body.Supplier, "A supplier", supplierMaxLength, &p.Supplier); msg != "" {
+		add("supplier", msg)
+	} else if p.Supplier == nil {
+		add("supplier", "A supplier invoice names its supplier")
+	}
+	if msg := optionalText(body.InvoiceNumber, "An invoice number", invoiceNumberMaxLength, &p.InvoiceNumber); msg != "" {
+		add("invoiceNumber", msg)
+	} else if p.InvoiceNumber == nil {
+		add("invoiceNumber", "A supplier invoice carries the supplier's invoice number")
+	}
+	if body.DueDate != nil {
+		due := utcDay(body.DueDate.Time)
+		if !p.Date.IsZero() && due.Before(p.Date) {
+			add("dueDate", "The due date cannot be before the invoice date")
+		} else {
+			p.DueDate = &due
+		}
+	}
+	// The company pays the supplier, so the payer is not the caller's to say:
+	// left out or 'company' it is stored as company-paid, which is what the
+	// owes-the-employee rule and every payroll surface read.
+	switch paidBy := strings.TrimSpace(derefString(body.PaidBy)); paidBy {
+	case "", paidByCompany:
+		company := paidByCompany
+		p.PaidBy = &company
+	case paidByEmployee:
+		add("paidBy", supplierInvoicePaidByCompany)
+	default:
+		add("paidBy", fmt.Sprintf("'%s' is not a payer; a supplier invoice is paid by the company", paidBy))
+	}
+	refuseMileageFields(body, kindSupplierInvoice, add)
 }
 
 // parseMileage is the mileage half of design §3.1: how far, from where to
@@ -402,8 +515,8 @@ func parseProjectFields(p *parsedEntry, body entryBody, inClaim bool, add func(f
 	if body.MarkupPercent != nil {
 		if msg := validateDecimal("A markup", *body.MarkupPercent, 0, maxMarkupPercent); msg != "" {
 			add("markupPercent", msg)
-		} else if p.Kind != kindOutlay || !requested {
-			add("markupPercent", "A markup belongs to a billable outlay")
+		} else if !marksUp(p.Kind) || !requested {
+			add("markupPercent", "A markup belongs to a billable outlay or supplier invoice")
 		} else {
 			p.MarkupPercent = ratFromFloat(*body.MarkupPercent)
 		}
@@ -455,11 +568,14 @@ func notOnKind(field, kind string) string {
 	return fmt.Sprintf("A %s line carries no %s", kindLabel(kind), field)
 }
 
-// kindLabel names a kind the way a refusal says it out loud. Only the per diem
-// day's stored value is not already a word.
+// kindLabel names a kind the way a refusal says it out loud. The per diem
+// day's and the supplier invoice's stored values are not already words.
 func kindLabel(kind string) string {
-	if kind == kindPerDiem {
+	switch kind {
+	case kindPerDiem:
 		return "per diem"
+	case kindSupplierInvoice:
+		return "supplier invoice"
 	}
 	return kind
 }
