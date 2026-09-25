@@ -50,6 +50,9 @@ const fieldKeys: Record<string, string> = {
   plannedDate: "plannedDate",
   amount: "amount",
   percent: "percent",
+  billMultiplierPercent: "billMultiplier",
+  costMultiplierPercent: "costMultiplier",
+  active: "active",
 };
 
 const fieldList = (t: Translate, value: unknown): string =>
@@ -123,6 +126,12 @@ const describeEntry = (t: Translate, entry: TimelineEntry): string => {
       return t("timelineMilestoneCancelled", { name: text(payload.name) });
     case "milestone-reopened":
       return t("timelineMilestoneReopened", { name: text(payload.name) });
+    // The work-type events name the type and the fields a change moved,
+    // never a percentage (work types design D1).
+    case "work-type-added":
+      return t("timelineWorkTypeAdded", { name: text(payload.name) });
+    case "work-type-changed":
+      return t("timelineWorkTypeChanged", { name: text(payload.name), fields: fieldList(t, payload.fields) });
     default:
       return entry.eventType;
   }

@@ -20,6 +20,13 @@ export type EconomyActuals = Schemas["ProjectEconomyActuals"];
 export type EconomyBudget = Schemas["ProjectEconomyBudget"];
 export type EconomyCost = Schemas["ProjectEconomyCost"];
 export type EconomyLine = Schemas["ProjectEconomyLine"];
+/**
+ * One work type's share of the logged work (work types design D4): hours for
+ * everyone, `billAmount` with the project's money, `costAmount` with costs on
+ * top — absent, never zero, when the caller may not see them. The list itself
+ * is absent without time tracking.
+ */
+export type EconomyWorkType = Schemas["ProjectEconomyWorkType"];
 
 /**
  * What the project's expenses cost and will bill. The block is there when the

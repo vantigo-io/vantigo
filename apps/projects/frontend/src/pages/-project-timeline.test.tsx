@@ -41,6 +41,30 @@ const stubTimeline = (entries: TimelineEntry[], status = 200, totalPages = 1) =>
   });
 
 describe("ProjectTimeline", () => {
+  it("names a work type and the fields a change of it moved, never its percentages", async () => {
+    stubTimeline([
+      // Literally what the server writes: an added type names all three fields.
+      entry({
+        id: 21,
+        eventType: "work-type-added",
+        payload: {
+          workTypeId: 11,
+          name: "Overtid 50 %",
+          fields: ["name", "billMultiplierPercent", "costMultiplierPercent"],
+        },
+      }),
+      entry({
+        id: 22,
+        eventType: "work-type-changed",
+        payload: { workTypeId: 11, name: "Overtid 50 %", fields: ["costMultiplierPercent", "active"] },
+      }),
+    ]);
+    renderWithProviders(<ProjectTimeline projectId={7} />);
+
+    expect(await screen.findByText("Work type Overtid 50 % was added.")).toBeInTheDocument();
+    expect(screen.getByText("Work type Overtid 50 % changed: Cost multiplier, Active.")).toBeInTheDocument();
+  });
+
   it("reads a code change as the codes it went from and to", async () => {
     stubTimeline([entry({ eventType: "code-changed", payload: { old: "KVEWEB", new: "KVEWEBS" } })]);
     renderWithProviders(<ProjectTimeline projectId={7} />);

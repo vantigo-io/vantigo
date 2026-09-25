@@ -110,6 +110,17 @@ const ownCurrencyFigures = [
  */
 const asTheServerWouldSend = (body: Economy): Economy => {
   const block = body.expenses;
+  // The work-type split (work types design D4): rows only with time
+  // tracking, a value only in a currency, a cost only beside a value.
+  if (!body.timeTracking && body.workTypes !== undefined) {
+    throw new Error("Without timeTracking there is no work type split");
+  }
+  if (body.workTypes?.some((row) => row.billAmount != null) && !body.currency) {
+    throw new Error("A work type's value needs the project's currency");
+  }
+  if (body.workTypes?.some((row) => row.costAmount != null && row.billAmount == null)) {
+    throw new Error("A work type's cost comes only beside its value");
+  }
   if (!body.expenseTracking && (block !== undefined || body.cost?.expenseCost != null)) {
     throw new Error("Without expenseTracking there is no expenses block and no cost.expenseCost");
   }
@@ -1461,5 +1472,69 @@ describe("ProjectEconomy — the budget half", () => {
 
     await screen.findByTestId("project-expenses");
     expect(screen.queryByTestId("expenses-ready-to-invoice")).not.toBeInTheDocument();
+  });
+});
+
+describe("Hours by work type", () => {
+  // Literally the rows the server sends a caller who may see costs.
+  const types = [
+    { id: 11, name: "Helg", hours: 3, billAmount: 5400, costAmount: 1800 },
+    { id: 12, name: "Overtid 50 %", hours: 2.5, billAmount: 3375, costAmount: 1400 },
+  ];
+
+  it("lists each type's hours and value, and no cost for a caller without costs", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: economy({
+        workTypes: types.map(({ id, name, hours, billAmount }) => ({ id, name, hours, billAmount })),
+      }),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const table = await screen.findByRole("table", { name: "Hours by work type" });
+    const weekend = within(table).getByText("Helg").closest("tr") as HTMLElement;
+    expect(weekend).toHaveTextContent("3 h");
+    expect(weekend).toHaveTextContent(money(5400));
+    expect(within(table).getByRole("columnheader", { name: "Value" })).toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: "Cost" })).not.toBeInTheDocument();
+  });
+
+  it("adds the cost for a caller who may see costs", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, { economy: economy({ workTypes: types }) });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const table = await screen.findByRole("table", { name: "Hours by work type" });
+    expect(within(table).getByRole("columnheader", { name: "Cost" })).toBeInTheDocument();
+    const overtime = within(table).getByText("Overtid 50 %").closest("tr") as HTMLElement;
+    expect(overtime).toHaveTextContent("2.5 h");
+    expect(overtime).toHaveTextContent(money(3375));
+    expect(overtime).toHaveTextContent(money(1400));
+  });
+
+  it("shows hours alone to a caller the answer gives no amounts", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: economy({ workTypes: types.map(({ id, name, hours }) => ({ id, name, hours })) }),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const table = await screen.findByRole("table", { name: "Hours by work type" });
+    expect(within(table).queryByRole("columnheader", { name: "Value" })).not.toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: "Cost" })).not.toBeInTheDocument();
+    expect(within(table).getByText("Helg").closest("tr")).toHaveTextContent("3 h");
+  });
+
+  it("shows nothing when no entry picked a type", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, { economy: economy({ workTypes: [] }) });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    await screen.findByTestId("budget-headline");
+    expect(screen.queryByText("Hours by work type")).not.toBeInTheDocument();
+  });
+
+  it("shows nothing when the answer carries no split at all, as without time tracking", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, { economy: economy() });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    await screen.findByTestId("budget-headline");
+    expect(screen.queryByText("Hours by work type")).not.toBeInTheDocument();
   });
 });
