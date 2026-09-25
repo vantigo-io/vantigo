@@ -480,6 +480,25 @@ const ExpensesSection = ({ projectId }: { projectId: number }) => {
                         </Text>
                       </Table.Td>
                     </Table.Tr>
+                    {/* The supplier invoices' share of the totals above — the
+                        server's own figures, never derived here, and a line of
+                        its own: the totals are still every expense. */}
+                    {expenses.supplierInvoices && (
+                      <Table.Tr data-testid="expense-supplier-invoices">
+                        <Table.Td>
+                          <Text size="sm">{t("expensesOfWhichSupplierInvoices")}</Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="sm">{formatters.formatNumber(expenses.supplierInvoices.total.count)}</Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="sm">{money(expenses.supplierInvoices.total.cost)}</Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="sm">{money(expenses.supplierInvoices.total.amount)}</Text>
+                        </Table.Td>
+                      </Table.Tr>
+                    )}
                   </Table.Tbody>
                 </Table>
               </Table.ScrollContainer>
