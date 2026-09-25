@@ -5,18 +5,18 @@ import { ContentSkeleton, EmptyState, type LocaleFormatters, useI18n } from "@va
 import { useId, useState } from "react";
 import { type BillingLine, billingLinesQueryOptions } from "../api/lines";
 import { type Project, projectQueryOptions } from "../api/projects";
+import { workTypesQueryOptions } from "../api/work-types";
 import { Field } from "../components/field";
 import "../i18n";
-import { workTypesQueryOptions } from "../api/work-types";
 import { billingTypeLabelKey, pricingModeLabelKey } from "../lib/billing";
 import { BillingLineFormModal, type BillingLineModalState } from "./-billing-line-form-modal";
 import { WorkTypeFormModal, type WorkTypeModalState } from "./-work-type-form-modal";
 
 /**
- * The Billing tab (design §8.2): the financial summary, the billing lines and
- * the project's work types (work types design D5). Financial fields are shaped out of the
- * response for a caller who may not see them (D12), so the tab asks the
- * project first and reads nothing else when the answer is no.
+ * The Billing tab (design §8.2): the financial summary, the billing lines
+ * and the project's work types (work types design D5). Financial fields are
+ * shaped out of the response for a caller who may not see them (D12), so the
+ * tab asks the project first and reads nothing else when the answer is no.
  */
 export const ProjectBilling = ({ projectId }: { projectId: number }) => {
   const { t } = useI18n("projects");

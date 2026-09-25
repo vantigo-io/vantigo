@@ -308,10 +308,12 @@ const BudgetSection = ({ projectId }: { projectId: number }) => {
  * project's entries were logged as, and — when the answer carries them —
  * what they are worth and what they cost. Ordinary hours are the absence of
  * a type, so they are no row, and the figures are already inside every total
- * above, multiplied where Time summed them: this is a split, never a sum. The
- * list is absent without time tracking and empty when no entry picked a type,
- * and both draw nothing. A column is drawn when the answer carries its
- * figure, the way the cost panel follows the cost block.
+ * above, multiplied where Time summed them: this is a split, never a sum.
+ * The rows come in the order of the project's work types list (active first,
+ * each half by name) and are drawn as they come. The list is absent without
+ * time tracking and empty when no entry picked a type, and both draw nothing.
+ * A column is drawn when the answer carries its figure, the way the cost
+ * panel follows the cost block.
  */
 const WorkTypeTable = ({ economy, currency }: { economy: Economy; currency?: string }) => {
   const { t } = useI18n("projects");
