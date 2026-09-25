@@ -27,6 +27,22 @@ SELECT id, customer_number, name, type, status, revision, merged_into_customer_i
 FROM customers.customers
 WHERE id = @id;
 
+-- name: CustomersMergedIntoForPersonalData :many
+-- CustomersMergedIntoForPersonalData is the export's mergedFrom (design D3):
+-- every duplicate merged into this customer, with what its own row still holds
+-- — the merge moves what hangs off a duplicate, not the row's own values, and
+-- they are the same person's data. FlattenMergedIntoChain keeps every marker
+-- one hop long, so this one level is all of them; ix_customers_merged_into
+-- finds them. Oldest first.
+SELECT id, customer_number, name, status,
+       legal_country, legal_id, legal_name, legal_source, legal_type,
+       email, phone, website,
+       invoice_email, reminder_email, payment_terms_days, currency, language,
+       invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference, default_bill_rate
+FROM customers.customers
+WHERE merged_into_customer_id = @customer_id::int
+ORDER BY id;
+
 -- name: ListTimelineEntriesForExport :many
 -- ListTimelineEntriesForExport is every timeline entry of one customer for its
 -- export (design D3): deleted ones included — a soft-deleted note is still held

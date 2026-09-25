@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
+	"github.com/vantigo-io/vantigo/server/internal/peppol"
 )
 
 // This file is PUT and DELETE /customers/{id}/anonymisation (customers GDPR
@@ -123,7 +124,10 @@ func TestPutCustomersByIdAnonymisation_SchedulesAnArchivedPerson(t *testing.T) {
 
 // TestPutCustomersByIdAnonymisation_RefusesInOrder: the date is validated
 // first, then the customer is looked up, then the read-only rule, a business,
-// a customer that is not archived. None of them writes anything.
+// a customer that is not archived. Each refusal on its own, and then the
+// pairs that prove the order: a bad date for a customer that does not exist
+// is the 400, and a merged-away business is customer_merged. None of them
+// writes anything.
 func TestPutCustomersByIdAnonymisation_RefusesInOrder(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -145,6 +149,10 @@ func TestPutCustomersByIdAnonymisation_RefusesInOrder(t *testing.T) {
 	if r := putAnonymisation(t, scheduler, 999999, day(h, 1)); r.Status != http.StatusNotFound {
 		t.Errorf("unknown customer: status %d, want 404", r.Status)
 	}
+	// The date before the lookup.
+	if r := putAnonymisation(t, scheduler, 999999, "31.01.2027"); r.Status != http.StatusBadRequest {
+		t.Errorf("a bad date for an unknown customer: status %d body %s, want 400", r.Status, r.Body)
+	}
 
 	business := createCustomer(t, c, "Acme AS")
 	c.Do(http.MethodDelete, fmt.Sprintf("/api/v1/customers/%d", business.Id), nil)
@@ -159,6 +167,11 @@ func TestPutCustomersByIdAnonymisation_RefusesInOrder(t *testing.T) {
 	survivor := createCustomerOfType(t, c, "Kari N.", "person")
 	mergeOK(t, mergeClient(t, h), survivor.Id, person.Id)
 	refusedWith(t, putAnonymisation(t, scheduler, person.Id, day(h, 1)), "customer_merged")
+	// The read-only rule before the type: a merged-away business is told it
+	// was merged, not that it is a business.
+	mergedBusiness := createCustomer(t, c, "Acme Norge AS")
+	mergeOK(t, mergeClient(t, h), createCustomer(t, c, "Acme Holding AS").Id, mergedBusiness.Id)
+	refusedWith(t, putAnonymisation(t, scheduler, mergedBusiness.Id, day(h, 1)), "customer_merged")
 
 	if n := h.Count(t, `SELECT count(*) FROM customers.customers WHERE anonymise_on IS NOT NULL`); n != 0 {
 		t.Errorf("%d customers were scheduled by a refused request", n)
@@ -197,6 +210,11 @@ func TestDeleteCustomersByIdAnonymisation_CallsItOff(t *testing.T) {
 	}
 	if r := deleteAnonymisation(t, scheduler, 999999); r.Status != http.StatusNotFound {
 		t.Errorf("unknown customer: status %d, want 404", r.Status)
+	}
+	for _, keys := range [][]string{{"customers:view", "customers:update", "customers:delete"}, {"customers:personal-data"}} {
+		if r := deleteAnonymisation(t, h.SignIn(t, keys...), person.Id); r.Status != http.StatusForbidden {
+			t.Errorf("%v: status %d, want 403", keys, r.Status)
+		}
 	}
 }
 
@@ -270,31 +288,50 @@ func TestAScheduleMadeBeforeAMergeCanStillBeCalledOff(t *testing.T) {
 // TestAnAnonymisedCustomerIsReadOnly is design D4's read-only rule, through the
 // same lock-time check a merged-away customer's refusal comes from: every write
 // answers customer_anonymised — its schedule's included — a CSV row naming it
-// is refused, it cannot be absorbed by a merge, archiving it again is the
-// no-op it is for any archived customer, and its export still answers.
+// is refused, it can neither be absorbed by a merge nor absorb one (not "restore
+// it first": the restore is refused too), archiving it again is the no-op it is
+// for any archived customer, and its export still answers. The association
+// writes, the Peppol lookup and the registry refresh answer before any lock,
+// through refuseReadOnlyCustomer's pool read: the association the anonymisation
+// detached is simply not there to look up.
 func TestAnAnonymisedCustomerIsReadOnly(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t)
+	peppolCalls := &peppolLookupCalls{}
+	h := newHarness(t,
+		modtest.WithPeppolLookup(stubPeppolLookup(peppolCalls, peppol.Result{}, nil)),
+		modtest.WithTransport(registryStatus(http.StatusInternalServerError, `{}`)))
 	c := mergeClient(t, h)
 	person := archivedPerson(t, c, "Anonymised person")
+	detached := createContact(t, c, map[string]any{"firstName": "Per", "lastName": "Nordmann"})
+	attachContact(t, c, person.Id, detached.Id, "Ektefelle")
 	markAnonymised(t, h, person.Id)
+	// The worker detaches every association (anonymisation.go).
+	h.Exec(t, `DELETE FROM customers.customers_contacts WHERE customer_id = $1`, person.Id)
 	id := person.Id
+	association := fmt.Sprintf("/api/v1/customers/%d/contacts/%d", id, detached.Id)
 
 	writes := map[string]*modtest.Response{
-		"restore":          c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d", id), map[string]any{"name": "Kari Nordmann", "status": "active"}),
-		"contact info":     putContactInfo(t, c, id, map[string]any{"email": "kari@example.test"}),
-		"address":          c.Do(http.MethodPost, fmt.Sprintf("/api/v1/customers/%d/addresses", id), fullAddressBody("postal", nil)),
-		"tags":             putCustomerTags(t, c, id, []string{createTag(t, c, map[string]any{"name": "Nabo"}).Id}),
-		"timeline entry":   c.Do(http.MethodPost, fmt.Sprintf("/api/v1/customers/%d/timeline", id), map[string]any{"eventType": "note", "occurredOn": day(h, 0), "note": "Ringte"}),
-		"schedule":         putAnonymisation(t, personalDataClient(t, h), id, day(h, 1)),
-		"cancel":           deleteAnonymisation(t, personalDataClient(t, h), id),
-		"merged elsewhere": postMerge(t, c, createCustomerOfType(t, c, "Kari N.", "person").Id, map[string]any{"sourceId": id}),
+		"restore":            c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d", id), map[string]any{"name": "Kari Nordmann", "status": "active"}),
+		"contact info":       putContactInfo(t, c, id, map[string]any{"email": "kari@example.test"}),
+		"address":            c.Do(http.MethodPost, fmt.Sprintf("/api/v1/customers/%d/addresses", id), fullAddressBody("postal", nil)),
+		"tags":               putCustomerTags(t, c, id, []string{createTag(t, c, map[string]any{"name": "Nabo"}).Id}),
+		"timeline entry":     c.Do(http.MethodPost, fmt.Sprintf("/api/v1/customers/%d/timeline", id), map[string]any{"eventType": "note", "occurredOn": day(h, 0), "note": "Ringte"}),
+		"schedule":           putAnonymisation(t, personalDataClient(t, h), id, day(h, 1)),
+		"cancel":             deleteAnonymisation(t, personalDataClient(t, h), id),
+		"merged elsewhere":   postMerge(t, c, createCustomerOfType(t, c, "Kari N.", "person").Id, map[string]any{"sourceId": id}),
+		"merged into it":     postMerge(t, c, id, map[string]any{"sourceId": createCustomerOfType(t, c, "Kari N.", "person").Id}),
+		"update association": c.Do(http.MethodPut, association, map[string]any{"title": "Ektefelle"}),
+		"detach":             c.Do(http.MethodDelete, association, nil),
+		"peppol lookup":      c.Do(http.MethodPost, fmt.Sprintf("/api/v1/customers/%d/peppol-lookup", id), nil),
+		"registry refresh":   c.Do(http.MethodPost, fmt.Sprintf("/api/v1/customers/%d/registry-refresh", id), nil),
 	}
 	for name, r := range writes {
-		problem := refusedWith(t, r, "customer_anonymised")
-		if problem.Title != "Customer was anonymised" || !strings.Contains(problem.Detail, "anonymised on "+day(h, 0)) {
-			t.Errorf("%s: problem = %+v", name, problem)
-		}
+		t.Run(name, func(t *testing.T) {
+			problem := refusedWith(t, r, "customer_anonymised")
+			if problem.Title != "Customer was anonymised" || !strings.Contains(problem.Detail, "anonymised on "+day(h, 0)) {
+				t.Errorf("problem = %+v", problem)
+			}
+		})
 	}
 
 	result := importResultOf(t, postImport(t, c, "?dryRun=false", csvFileOf(
@@ -316,5 +353,8 @@ func TestAnAnonymisedCustomerIsReadOnly(t *testing.T) {
 	}
 	if n := h.Count(t, `SELECT count(*) FROM customers.customers WHERE id = $1 AND status = 'archived' AND email IS NULL`, id); n != 1 {
 		t.Error("a refused write changed the anonymised customer")
+	}
+	if got := peppolCalls.all(); len(got) != 0 {
+		t.Errorf("the Peppol network was asked about an anonymised customer: %v", got)
 	}
 }

@@ -49,13 +49,17 @@ type anonymisedPayloadJSON struct {
 }
 
 // personalTraces counts a customer's timeline rows — entries or revisions —
-// whose text still says anything a fixture put there about the person.
+// whose text still says anything a fixture put there about the person: every
+// value of TakesThePersonOutAndKeepsTheBookkeeping's fixture — the names, the
+// emails, the buyer reference, the identity, the phone, the addresses' street
+// and label, the shared contact's name. Whole words where a short one could
+// sit inside an unrelated one ("anne" in "planned").
 func personalTraces(t *testing.T, h *modtest.Harness, table string, customerID int32) int {
 	t.Helper()
 	return h.Count(t, `SELECT count(*) FROM customers.`+pgx.Identifier{table}.Sanitize()+`
 	                   WHERE customer_id = $1
 	                     AND (summary || coalesce(note, '') || coalesce(source_url, '') || coalesce(payload_json::text, ''))
-	                         ~* '(kari|nordmann|per@|faktura@|purring@|KARI-1|19800101)'`, customerID)
+	                         ~* '(kari|nordmann|per@|faktura@|purring@|KARI-1|19800101|storgata|900 00|\mHQ\M|\manne\M|hansen)'`, customerID)
 }
 
 // TestAnonymisationWorker_TakesThePersonOutAndKeepsTheBookkeeping is design D4's
@@ -118,7 +122,12 @@ func TestAnonymisationWorker_TakesThePersonOutAndKeepsTheBookkeeping(t *testing.
 	orphan := createContact(t, c, map[string]any{"firstName": "Per", "lastName": "Nordmann", "email": "per@example.test"})
 	attachContact(t, c, person.Id, orphan.Id, "Ektefelle")
 	shared := createContact(t, c, map[string]any{"firstName": "Anne", "lastName": "Hansen"})
-	attachContact(t, c, person.Id, shared.Id, "Nabo")
+	// Linked with the association's own phone, so contact_attached carries one.
+	if r := c.Do(http.MethodPost, fmt.Sprintf("/api/v1/customers/%d/contacts", person.Id), map[string]any{
+		"contactId": shared.Id, "title": "Nabo", "phone": "+47 900 00 111",
+	}); r.Status != http.StatusOK {
+		t.Fatalf("attach the shared contact: status %d body %s", r.Status, r.Body)
+	}
 	neighbour := createCustomer(t, c, "Hansen Rør AS")
 	attachContact(t, c, neighbour.Id, shared.Id, "Daglig leder")
 	entry := createWithFollowUp(t, c, person.Id, day(h, 0), "Kari ringte om strømmen", map[string]any{"dueOn": day(h, 7)})
@@ -247,13 +256,18 @@ func TestAnonymisationWorker_TakesThePersonOutAndKeepsTheBookkeeping(t *testing.
 		created.CustomerId != person.Id || created.CustomerName != "[anonymised]" || str(ev[0].Summary) != "[anonymised]" {
 		t.Errorf("customer.created = %+v (%+v), want its id kept and its name gone", ev, created)
 	}
-	var attached struct {
-		ContactId   int32  `json:"contactId"`
-		DisplayName string `json:"displayName"`
+	attachedEvents := entriesOfType(entries, "customer.contact_attached")
+	if len(attachedEvents) != 2 {
+		t.Errorf("contact_attached = %+v, want both attachments kept", attachedEvents)
 	}
-	if ev := entriesOfType(entries, "customer.contact_attached"); len(ev) != 2 || json.Unmarshal(ev[0].Payload, &attached) != nil ||
-		attached.ContactId == 0 || attached.DisplayName != "[anonymised]" {
-		t.Errorf("contact_attached = %+v (%+v), want the contact's id kept and its name gone", ev, attached)
+	for _, ev := range attachedEvents {
+		var attached struct {
+			ContactId   int32  `json:"contactId"`
+			DisplayName string `json:"displayName"`
+		}
+		if json.Unmarshal(ev.Payload, &attached) != nil || attached.ContactId == 0 || attached.DisplayName != "[anonymised]" {
+			t.Errorf("contact_attached %s, want the contact's id kept and its name gone", ev.Payload)
+		}
 	}
 
 	// The other module, inside the transaction, before the row was cleared.
@@ -286,8 +300,8 @@ func TestAnonymisationWorker_TakesThePersonOutAndKeepsTheBookkeeping(t *testing.
 	}
 }
 
-// Not due, not archived, not a person, already anonymised: none of them is
-// touched however far the clock moves.
+// Not due, not archived, not a person: none of them is touched however far the
+// clock moves. (A customer already anonymised is AnonymisesACustomerOnce's.)
 func TestAnonymisationWorker_TakesOnlyWhatIsDue(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -344,6 +358,33 @@ func TestAnonymisationWorker_AnonymisesTheWholeMergeChain(t *testing.T) {
 	}
 	if got := fake.erasesSoFar(); !slices.Equal(got, []int32{survivor.Id, absorbed.Id}) {
 		t.Errorf("erases = %v, want the survivor then the customer merged into it", got)
+	}
+}
+
+// A chain member due on the same day as its survivor is anonymised once
+// (design D4): the survivor, first in the batch by its lower id, anonymises it
+// as part of its chain, and when its own turn in the same batch comes the
+// under-lock re-check finds it done — no second customer.anonymised, no second
+// call to any module, no second revision.
+func TestAnonymisationWorker_AChainMemberDueTheSameDayIsAnonymisedOnce(t *testing.T) {
+	t.Parallel()
+	fake := &fakePersonalData{}
+	h := newHarness(t, modtest.WithCustomerPersonalData(contracts.CustomerPersonalDataHolder{Module: "fake", Data: fake}))
+	c := mergeClient(t, h)
+	survivor := createCustomerOfType(t, c, "Kari N.", "person")
+	absorbed := archivedPerson(t, c, "Kari Nordmann")
+	scheduleOn(t, h, absorbed.Id, day(h, 0))
+	mergeOK(t, c, survivor.Id, absorbed.Id)
+	c.Do(http.MethodDelete, fmt.Sprintf("/api/v1/customers/%d", survivor.Id), nil)
+	scheduleOn(t, h, survivor.Id, day(h, 0))
+
+	runAnonymisation(t, h)
+
+	if n := len(entriesOfType(timelineOf(t, c, absorbed.Id), "customer.anonymised")); n != 1 {
+		t.Errorf("the merged-away customer has %d customer.anonymised events, want 1", n)
+	}
+	if got := fake.erasesSoFar(); !slices.Equal(got, []int32{survivor.Id, absorbed.Id}) {
+		t.Errorf("erases = %v, want the survivor then the customer merged into it, once each", got)
 	}
 }
 

@@ -69,7 +69,9 @@ func (d personalDataDownload) VisitGetCustomersByIdPersonalDataResponse(w http.R
 // (2) the decoration and the follow-up assignees from the pool, after the
 // snapshot, since both ask the user directory; (3) each module's section,
 // outside any transaction of this module's (rule 9), a nil one leaving its key
-// out. An anonymised customer's file is what is left of it.
+// out. One module failing fails the whole export with a 500: a file with that
+// module's section quietly missing would claim to be complete. An anonymised
+// customer's file is what is left of it.
 func (s *server) GetCustomersByIdPersonalData(ctx context.Context, req gen.GetCustomersByIdPersonalDataRequestObject) (gen.GetCustomersByIdPersonalDataResponseObject, error) {
 	var (
 		row       store.CustomerForPersonalDataRow
@@ -78,6 +80,7 @@ func (s *server) GetCustomersByIdPersonalData(ctx context.Context, req gen.GetCu
 		contacts  []store.ListContactAssociationsForCustomerRow
 		roleRows  []store.ContactRolesForCustomerRow
 		entries   []store.CustomersCustomersTimelineEntry
+		merged    []store.CustomersMergedIntoForPersonalDataRow
 	)
 	err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
@@ -101,6 +104,9 @@ func (s *server) GetCustomersByIdPersonalData(ctx context.Context, req gen.GetCu
 			return err
 		}
 		if roleRows, err = txq.ContactRolesForCustomer(ctx, req.Id); err != nil {
+			return err
+		}
+		if merged, err = txq.CustomersMergedIntoForPersonalData(ctx, req.Id); err != nil {
 			return err
 		}
 		entries, err = txq.ListTimelineEntriesForExport(ctx, req.Id)
@@ -146,10 +152,9 @@ func (s *server) GetCustomersByIdPersonalData(ctx context.Context, req gen.GetCu
 	if err != nil {
 		return nil, err
 	}
-	var identity *gen.LegalIdentityResponse
-	if id := identityFromRow(row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType); id != nil {
-		answer := legalIdentityResponse(*id)
-		identity = &answer
+	mergedFrom, err := mergedFromResponse(merged)
+	if err != nil {
+		return nil, err
 	}
 	exportedAddresses := make([]gen.CustomerAddress, 0, len(addresses))
 	for _, a := range addresses {
@@ -184,7 +189,7 @@ func (s *server) GetCustomersByIdPersonalData(ctx context.Context, req gen.GetCu
 			Customer: gen.CustomerPersonalDataCustomer{
 				Id: row.ID, CustomerNumber: row.CustomerNumber, Name: row.Name, Type: row.Type, Status: row.Status,
 				CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
-				Identity:    identity,
+				Identity:    personalDataIdentity(row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType),
 				ContactInfo: gen.CustomerContactInfo{Email: row.Email, Phone: row.Phone, Website: row.Website},
 				Addresses:   exportedAddresses,
 				BillingProfile: gen.CustomerPersonalDataBillingProfile{
@@ -197,6 +202,7 @@ func (s *server) GetCustomersByIdPersonalData(ctx context.Context, req gen.GetCu
 				Group:         dec.group(row.ID),
 				Tags:          dec.tagsFor(row.ID),
 				MergedInto:    dec.merged(row.ID),
+				MergedFrom:    mergedFrom,
 				Anonymisation: dec.anonymisationOf(row.ID),
 			},
 			Contacts: exportedContacts,
@@ -204,4 +210,45 @@ func (s *server) GetCustomersByIdPersonalData(ctx context.Context, req gen.GetCu
 			Modules:  sections,
 		},
 	}, nil
+}
+
+// personalDataIdentity is a row's legal identity as the file carries it: in
+// full, whatever the caller's legal-identity keys (design D3), absent when the
+// row has none.
+func personalDataIdentity(country, id, name, source, typ *string) *gen.LegalIdentityResponse {
+	identity := identityFromRow(country, id, name, source, typ)
+	if identity == nil {
+		return nil
+	}
+	answer := legalIdentityResponse(*identity)
+	return &answer
+}
+
+// mergedFromResponse is the file's mergedFrom: each duplicate merged into the
+// customer, its own row as it stands — the merge moved what hung off it, not
+// the row's values, and they are the same person's data. nil when nothing was
+// merged in, so the key is left out.
+func mergedFromResponse(rows []store.CustomersMergedIntoForPersonalDataRow) (*[]gen.CustomerPersonalDataMergedCustomer, error) {
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	merged := make([]gen.CustomerPersonalDataMergedCustomer, 0, len(rows))
+	for _, r := range rows {
+		rate, err := floatPtrFromNumeric(r.DefaultBillRate)
+		if err != nil {
+			return nil, err
+		}
+		merged = append(merged, gen.CustomerPersonalDataMergedCustomer{
+			Id: r.ID, CustomerNumber: r.CustomerNumber, Name: r.Name, Status: r.Status,
+			Identity:    personalDataIdentity(r.LegalCountry, r.LegalID, r.LegalName, r.LegalSource, r.LegalType),
+			ContactInfo: gen.CustomerContactInfo{Email: r.Email, Phone: r.Phone, Website: r.Website},
+			BillingProfile: gen.CustomerPersonalDataBillingProfile{
+				InvoiceEmail: r.InvoiceEmail, ReminderEmail: r.ReminderEmail, PaymentTermsDays: r.PaymentTermsDays,
+				Currency: r.Currency, Language: r.Language, InvoiceDelivery: r.InvoiceDelivery,
+				ReminderDelivery: r.ReminderDelivery, PeppolId: r.PeppolID, Gln: r.Gln,
+				BuyerReference: r.BuyerReference, DefaultBillRate: rate,
+			},
+		})
+	}
+	return &merged, nil
 }

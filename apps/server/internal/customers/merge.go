@@ -226,10 +226,10 @@ func customerTypePhrase(customerType string) string {
 }
 
 // mergeRefusal is design D2's ladder after the 404s, read from the two rows
-// under their locks, in its order: the same customer twice, two types, an
-// archived survivor, an absorbed customer that was anonymised, an absorbed
-// customer merged away before, then the survivor's stale revision. nil, nil
-// lets the merge go ahead.
+// under their locks, in its order: the same customer twice, two types, a
+// survivor that was anonymised, an archived survivor, an absorbed customer that
+// was anonymised, an absorbed customer merged away before, then the survivor's
+// stale revision. nil, nil lets the merge go ahead.
 func mergeRefusal(ctx context.Context, txq *store.Queries, survivor, absorbed store.CustomerForMergeRow, expected *int32) (*gen.CustomerConflictProblem, error) {
 	switch {
 	case survivor.ID == absorbed.ID:
@@ -240,6 +240,11 @@ func mergeRefusal(ctx context.Context, txq *store.Queries, survivor, absorbed st
 			"%s is %s and %s is %s. A merge never changes what a customer is; change one of their types first.",
 			customerLabel(absorbed.CustomerNumber, absorbed.Name), customerTypePhrase(absorbed.Type),
 			customerLabel(survivor.CustomerNumber, survivor.Name), customerTypePhrase(survivor.Type))), nil
+	case survivor.AnonymisedAt != nil:
+		// Before the archived survivor's refusal, whose advice — restore it
+		// first — the restore itself would then refuse: an anonymised customer
+		// is read-only (customers GDPR design D4), and absorbing writes it.
+		return &customerAnonymised(*survivor.AnonymisedAt).problem, nil
 	case survivor.Status == "archived":
 		return mergeConflict("Customer is archived", "merge_into_archived", fmt.Sprintf(
 			"%s is archived. Restore it before merging another customer into it.",

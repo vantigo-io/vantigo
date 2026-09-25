@@ -1381,6 +1381,7 @@ absorbed customer needs none: it is going away.
 | 404 | either customer does not exist |
 | 409 `merge_self` | the same customer twice |
 | 409 `merge_type_mismatch` | a person and a business — a merge never changes what a customer is |
+| 409 `customer_anonymised` | the survivor was anonymised — asked before the archived survivor's refusal, whose "restore it first" the restore would refuse too |
 | 409 `merge_into_archived` | the survivor is archived; restore it first |
 | 409 `customer_anonymised` | the absorbed customer was anonymised — it takes no more writes ([Personal data and anonymisation](#personal-data-and-anonymisation)) |
 | 409 `merge_already_merged` | the absorbed customer was merged away before; the detail names where |
@@ -1513,7 +1514,7 @@ shape, with `exportedAt` saying when it was made:
 
 | Part | What it holds |
 | --- | --- |
-| `customer` | id, number, name, type, status, created and updated, legal identity, contact info, addresses, the billing profile's own stored values (not the resolved profile), owner, group, tags, `mergedInto`, `anonymisation` |
+| `customer` | id, number, name, type, status, created and updated, legal identity, contact info, addresses, the billing profile's own stored values (not the resolved profile), owner, group, tags, `mergedInto`, `anonymisation`, and `mergedFrom` — each duplicate merged into this customer as its own row still holds it: id, number, name, status, legal identity, contact info and billing values, since that row is the same person's data (absent when nothing was merged in) |
 | `contacts` | every contact linked to the customer as the contact is stored, with the association's title, phone, email and roles |
 | `timeline` | every entry, oldest first, deleted ones included (their `state` says so), each with its summary, its note — internal notes included: a note staff wrote about the person is data held about them — its payload, actor and follow-up; revisions are not in the file |
 | `modules` | each other module's section under its name — `communications` (the person's conversations: subject, status, dates, each message's direction, subject, date, text and HTML body, each when present, and its attachment names), `energy` (supply periods with the metering point's GSRN and address), `projects` (code, name, status, dates); a module holding nothing for the customer has no key |
