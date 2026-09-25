@@ -1380,10 +1380,14 @@ func (s *server) GetExpensesEntries(ctx context.Context, req gen.GetExpensesEntr
 	managed := []int32{}
 	financial := projectScope{ids: []int32{}}
 	if !c.seesEveryone() {
-		if managed, err = c.managedProjects(ctx, s); err != nil {
+		projects, err := c.ownProjects(ctx, s)
+		if err != nil {
 			return nil, err
 		}
-		if financial, err = c.financialProjects(ctx, s); err != nil {
+		if managed, err = c.managedAmong(ctx, s, projects); err != nil {
+			return nil, err
+		}
+		if financial, err = c.financialProjects(ctx, s, projects); err != nil {
 			return nil, err
 		}
 	}

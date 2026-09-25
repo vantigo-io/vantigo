@@ -192,14 +192,32 @@ func (c *caller) seesEveryone() bool { return c.ViewAll || c.Approve || c.Manage
 // worth adding the day delivery C widens contracts.ProjectDirectory anyway and
 // is not worth widening it for on its own.
 func (c *caller) managedProjects(ctx context.Context, s *server) ([]int32, error) {
-	managed := []int32{}
+	projects, err := c.ownProjects(ctx, s)
+	if err != nil {
+		return nil, err
+	}
+	return c.managedAmong(ctx, s, projects)
+}
+
+// ownProjects is every project the caller holds any role on, as the directory
+// lists them: none without the projects module. It is the one ProjectsForUser
+// read a list makes; managedAmong and financialProjects both derive their ids
+// from it, so a list that needs both scopes asks for it once.
+func (c *caller) ownProjects(ctx context.Context, s *server) ([]contracts.ProjectEntry, error) {
 	if !s.projectsAvailable() {
-		return managed, nil
+		return nil, nil
 	}
 	projects, err := s.projectsForUser(ctx, c.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("expenses: list the caller's projects: %w", err)
 	}
+	return projects, nil
+}
+
+// managedAmong is managedProjects over a list ownProjects already read: the
+// ones of projects the caller holds the manager role on.
+func (c *caller) managedAmong(ctx context.Context, s *server, projects []contracts.ProjectEntry) ([]int32, error) {
+	managed := []int32{}
 	for _, p := range projects {
 		role, err := c.role(ctx, s, p.ID)
 		if err != nil {
@@ -232,9 +250,12 @@ type projectScope struct {
 // managedProjects already puts in the list whole, so nothing is asked. Without
 // the projects module there are none.
 //
-// It is managedProjects' N+1 again, for the same reason and at the same price:
-// ProjectsForUser answers no roles. A caller who sees every expense never asks.
-func (c *caller) financialProjects(ctx context.Context, s *server) (projectScope, error) {
+// It takes the caller's projects as ownProjects read them, the same list
+// managedAmong is given, so a list asks the directory for them once. It is
+// managedProjects' N+1 of Role calls again, for the same reason and at the
+// same price — ProjectsForUser answers no roles — though every role it reads
+// managedAmong has already cached. A caller who sees every expense never asks.
+func (c *caller) financialProjects(ctx context.Context, s *server, projects []contracts.ProjectEntry) (projectScope, error) {
 	scope := projectScope{ids: []int32{}}
 	if !s.projectsAvailable() {
 		return scope, nil
@@ -245,10 +266,6 @@ func (c *caller) financialProjects(ctx context.Context, s *server) (projectScope
 	}
 	if !c.ProjectsFinancials {
 		return scope, nil
-	}
-	projects, err := s.projectsForUser(ctx, c.UserID)
-	if err != nil {
-		return projectScope{}, fmt.Errorf("expenses: list the caller's projects: %w", err)
 	}
 	for _, p := range projects {
 		role, err := c.role(ctx, s, p.ID)

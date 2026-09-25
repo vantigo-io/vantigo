@@ -2332,7 +2332,7 @@ paths:
             x-vantigo-access: permission:expenses:access
     /api/v1/expenses/entries:
         get:
-            description: Expenses, the latest day first, and only where the caller may see them — their own, everything on a project they manage, and everyone's for expenses:view-all, expenses:approve and expenses:manage. The same rule a single read applies, so the list never holds an entry its own read would answer 404 for and its total counts only what the caller may see.
+            description: Expenses, the latest day first, and only where the caller may see them — their own, everything on a project they manage, everyone's for expenses:view-all, expenses:approve and expenses:manage, and a supplier invoice to anyone with financial rights on its project. The same rule a single read applies, so the list never holds an entry its own read would answer 404 for and its total counts only what the caller may see.
             operationId: getExpensesEntries
             parameters:
                 - description: 'Narrows the list to one person''s expenses. It never widens it: a caller sees only what they may see anyway.'
@@ -2595,7 +2595,7 @@ paths:
             x-vantigo-access: permission:expenses:access
     /api/v1/expenses/entries/{id}/attachments:
         post:
-            description: 'Attaches one receipt to an outlay: a JPEG, PNG, HEIC or PDF of at most 10 MB, and at most ten per expense. The type is read from the file''s own bytes and has to agree with what the client called it. Only whoever may change the expense may attach to it, and only while it is a draft or rejected.'
+            description: 'Attaches one receipt to an outlay, or the supplier''s invoice to a supplier invoice: a JPEG, PNG, HEIC or PDF of at most 10 MB, and at most ten per expense. The type is read from the file''s own bytes and has to agree with what the client called it. Only whoever may change the expense may attach to it, and only while it is a draft or rejected.'
             operationId: postExpensesEntriesByIdAttachments
             parameters:
                 - in: path
@@ -3710,7 +3710,7 @@ paths:
             x-vantigo-access: permission:expenses:access
     /api/v1/expenses/submit:
         post:
-            description: 'Submits units for approval (decision X4): standalone expenses, travel claims, or both. Each must be the caller''s own draft or rejected unit — expenses:manage submits on somebody else''s behalf — and none may be dated before the period lock unless the caller holds expenses:manage, a claim on the day it departed. This is where the figures freeze: the mileage rate, the passenger supplement, a per diem day''s day rate and meal percentages, the amounts they make and what the customer is billed are computed one last time from the tables in force on each line''s own date, stored, and never computed again. Submitting a claim freezes every one of its lines, in one transaction: a claim with no lines at all, a line whose rate has vanished from the table, a per diem day left outside the trip by a change of the installation''s time zone, or an employee-paid outlay over the receipt threshold with no receipt each refuse the whole submit and name what is wrong.'
+            description: 'Submits units for approval (decision X4): standalone expenses, travel claims, or both. Each must be the caller''s own draft or rejected unit — expenses:manage submits on somebody else''s behalf — and none may be dated before the period lock unless the caller holds expenses:manage, a claim on the day it departed. This is where the figures freeze: the mileage rate, the passenger supplement, a per diem day''s day rate and meal percentages, the amounts they make and what the customer is billed are computed one last time from the tables in force on each line''s own date, stored, and never computed again. Submitting a claim freezes every one of its lines, in one transaction: a claim with no lines at all, a line whose rate has vanished from the table, a per diem day left outside the trip by a change of the installation''s time zone, or an employee-paid outlay over the receipt threshold with no receipt each refuse the whole submit and name what is wrong; a supplier invoice with no document attached refuses it as "Expense N cannot be submitted yet: Attach the supplier''s invoice".'
             operationId: postExpensesSubmit
             requestBody:
                 content:
