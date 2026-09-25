@@ -82,9 +82,10 @@ WHERE id = @id;
 
 -- name: DropCustomerAnonymiseOn :exec
 -- DropCustomerAnonymiseOn calls a schedule off as part of another write to the
--- row — a restore, a change of type (cancelAnonymisationSchedule,
--- anonymisation.go) — whose own UPDATE has already advanced the revision in the
--- same transaction, so this one does not advance it a second time.
+-- row — a restore, a change of type, a merge of it into another customer
+-- (cancelAnonymisationSchedule, anonymisation.go) — whose own UPDATE has
+-- already advanced the revision in the same transaction, so this one does not
+-- advance it a second time.
 UPDATE customers.customers SET anonymise_on = NULL WHERE id = @id;
 
 -- name: CustomerAnonymisedAt :one

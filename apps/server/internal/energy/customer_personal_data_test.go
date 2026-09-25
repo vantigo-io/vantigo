@@ -102,6 +102,40 @@ func TestCustomerPersonalData_ExportsTheConsumptionInsideEachPeriod(t *testing.T
 	}
 }
 
+// A cancelled supply period never supplied anybody, and the overlap rule
+// ignores it, so another customer's live period can cover the same dates on
+// the same point: its readings are theirs. The cancelled period is handed over
+// — it is still held — with no consumption.
+func TestCustomerPersonalData_ACancelledPeriodHandsOverNoConsumption(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	point := createMeteringPoint(t, h.SignIn(t, allEnergyPermissions...))
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	h.Exec(t, `INSERT INTO energy.supply_periods (metering_point_id, customer_id, start, "end", status)
+	           VALUES ($1, 1001, $2, $3, 'Cancelled')`, point.Id, start, start.AddDate(0, 2, 0))
+	insertActiveSupplyPeriod(t, h, point.Id, 1002, start, start.AddDate(0, 2, 0))
+	addElhubConsumption(t, h, point.Id, utc(2026, time.January, 5, 1), utc(2026, time.January, 5, 2), 2.5)
+
+	section, err := energyPersonalData(t, h).ExportCustomerData(context.Background(), 1001)
+	if err != nil {
+		t.Fatalf("ExportCustomerData: %v", err)
+	}
+	body, _ := json.Marshal(section)
+	var got struct {
+		SupplyPeriods []struct {
+			Status      string            `json:"status"`
+			Consumption []json.RawMessage `json:"consumption"`
+		} `json:"supplyPeriods"`
+	}
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatalf("decode %s: %v", body, err)
+	}
+	if len(got.SupplyPeriods) != 1 || got.SupplyPeriods[0].Status != "Cancelled" || got.SupplyPeriods[0].Consumption == nil ||
+		len(got.SupplyPeriods[0].Consumption) != 0 {
+		t.Errorf("section = %s, want the cancelled period with consumption [] — the readings are customer 1002's", body)
+	}
+}
+
 // Erasing keeps everything (design D2): a supply period is the metering
 // point's history, and its address is the point's, not the person's; the
 // period keeps pointing at the anonymised customer. It still says it was asked.

@@ -39,7 +39,8 @@ type exportedSupplyPeriod struct {
 	Status        string                `json:"status"`
 	MeteringPoint exportedMeteringPoint `json:"meteringPoint"`
 	// Consumption is the point's metered kWh inside the period, one element a
-	// month, oldest first; empty when nothing was metered.
+	// month, oldest first; empty when nothing was metered, and always for a
+	// cancelled period, which supplied nobody.
 	Consumption []exportedMonthlyConsumption `json:"consumption"`
 }
 

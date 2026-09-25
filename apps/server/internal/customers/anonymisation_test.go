@@ -279,7 +279,7 @@ func TestAMergeCallsTheDuplicatesScheduleOff(t *testing.T) {
 	c := authenticatedClient(t, h)
 	scheduler := personalDataClient(t, h)
 	absorbed := archivedPerson(t, c, "Kari Nordmann")
-	customerAnswer(t, putAnonymisation(t, scheduler, absorbed.Id, day(h, 30)))
+	scheduled := customerAnswer(t, putAnonymisation(t, scheduler, absorbed.Id, day(h, 30)))
 	survivor := createCustomerOfType(t, c, "Kari N.", "person")
 	merger, mergerID := h.SignInUser(t, mergeKeys...)
 	setDisplayName(t, h, mergerID, "Siri Saksbehandler")
@@ -288,6 +288,11 @@ func TestAMergeCallsTheDuplicatesScheduleOff(t *testing.T) {
 	got := customerAnswer(t, c.Do(http.MethodGet, fmt.Sprintf("/api/v1/customers/%d", absorbed.Id), nil))
 	if got.Anonymisation != nil || got.MergedInto == nil || got.MergedInto.Id != survivor.Id {
 		t.Errorf("the duplicate = anonymisation %+v, merged into %+v; want nothing scheduled and merged into %d", got.Anonymisation, got.MergedInto, survivor.Id)
+	}
+	// One write to the duplicate's row, one revision: the merge's own; calling
+	// the schedule off inside it does not advance it again.
+	if got.Revision != scheduled.Revision+1 {
+		t.Errorf("the duplicate's revision = %d (was %d), want exactly one on", got.Revision, scheduled.Revision)
 	}
 	events := entriesOfType(timelineOf(t, c, absorbed.Id), "customer.anonymisation_cancelled")
 	if len(events) != 1 || str(events[0].Summary) != "Anonymisation cancelled; it was scheduled for "+day(h, 30) ||

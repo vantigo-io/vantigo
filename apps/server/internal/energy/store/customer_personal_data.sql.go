@@ -77,6 +77,7 @@ SELECT to_char(date_trunc('month', c."start" AT TIME ZONE $1::text), 'YYYY-MM'):
 FROM energy.consumption_intervals c
 JOIN energy.supply_periods p ON p.metering_point_id = c.metering_point_id
 WHERE p.id = $2::integer
+  AND p.status <> 'Cancelled'
   AND c.is_current
   AND c."start" >= p."start"
   AND (p."end" IS NULL OR c."end" <= p."end")
@@ -97,11 +98,16 @@ type SupplyPeriodConsumptionByMonthRow struct {
 // SupplyPeriodConsumptionByMonth is one supply period's consumption for a
 // private person's export (customers GDPR design D2, widened by the
 // whole-branch review): a household's meter readings are the person's data.
-// Monthly sums of the current intervals inside the period's dates — the
-// containment ListConsumptionByCustomer uses — each month a calendar month in
-// the metering point's market zone, AggregateConsumptionByMeteringPoint's
-// double AT TIME ZONE idiom. Monthly rather than hourly keeps a file for years
-// of supply readable; the hourly series stays energy's own endpoint's.
+// Monthly sums of the current intervals inside the period's dates, for a
+// period that is not cancelled — ListConsumptionByCustomer's containment and
+// its cancelled filter: the overlap rule ignores a cancelled period, so another
+// customer's live one can cover the same dates on the same point, and those
+// readings are theirs. A cancelled period answers no rows. Each month is a
+// calendar month in the metering point's market zone: the interval's start
+// read as local wall-clock time (one AT TIME ZONE) and truncated there, and
+// only the label is answered, so the bucket is never converted back. Monthly
+// rather than hourly keeps a file for years of supply readable; the hourly
+// series stays energy's own endpoint's.
 func (q *Queries) SupplyPeriodConsumptionByMonth(ctx context.Context, arg SupplyPeriodConsumptionByMonthParams) ([]SupplyPeriodConsumptionByMonthRow, error) {
 	rows, err := q.db.Query(ctx, supplyPeriodConsumptionByMonth, arg.TimeZone, arg.SupplyPeriodID)
 	if err != nil {
