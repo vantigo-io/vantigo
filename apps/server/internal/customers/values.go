@@ -192,6 +192,11 @@ func nationalIDCheckDigit(digits string, weights []int) int {
 // number the register issues is caught by the one rule. A false positive costs
 // somebody whose foreign id happens to have the shape one retyped value; a
 // false negative would store the one number this module promises never to hold.
+//
+// This is today's rule. Skatteetaten has announced a new format for numbers
+// issued from 2032 that relaxes the first check digit (several remainders
+// pass, so k1 is no longer unique); once that rule is final this refusal must
+// widen to it — k2 passing and k1 any accepted value — or it will miss them.
 func isNorwegianNationalID(s string) bool {
 	digits := strings.Map(func(r rune) rune {
 		if unicode.IsSpace(r) || r == '-' || r == '.' {

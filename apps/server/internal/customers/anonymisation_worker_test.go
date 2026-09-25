@@ -365,7 +365,9 @@ func TestAnonymisationWorker_AnonymisesTheWholeMergeChain(t *testing.T) {
 // (design D4): the survivor, first in the batch by its lower id, anonymises it
 // as part of its chain, and when its own turn in the same batch comes the
 // under-lock re-check finds it done — no second customer.anonymised, no second
-// call to any module, no second revision.
+// call to any module, no second revision. A merge calls the member's own
+// schedule off, so the row is given its day directly: the worker must hold
+// whatever a row says.
 func TestAnonymisationWorker_AChainMemberDueTheSameDayIsAnonymisedOnce(t *testing.T) {
 	t.Parallel()
 	fake := &fakePersonalData{}
@@ -373,8 +375,8 @@ func TestAnonymisationWorker_AChainMemberDueTheSameDayIsAnonymisedOnce(t *testin
 	c := mergeClient(t, h)
 	survivor := createCustomerOfType(t, c, "Kari N.", "person")
 	absorbed := archivedPerson(t, c, "Kari Nordmann")
-	scheduleOn(t, h, absorbed.Id, day(h, 0))
 	mergeOK(t, c, survivor.Id, absorbed.Id)
+	h.Exec(t, `UPDATE customers.customers SET anonymise_on = $2 WHERE id = $1`, absorbed.Id, day(h, 0))
 	c.Do(http.MethodDelete, fmt.Sprintf("/api/v1/customers/%d", survivor.Id), nil)
 	scheduleOn(t, h, survivor.Id, day(h, 0))
 
@@ -388,19 +390,22 @@ func TestAnonymisationWorker_AChainMemberDueTheSameDayIsAnonymisedOnce(t *testin
 	}
 }
 
-// A customer scheduled and then merged away is anonymised on its day as itself
+// A merged-away customer due on its own is anonymised on its day as itself
 // (design D4): its row, and its snapshot on the survivor's customer.merged
 // entry. Nothing else of the survivor's changes — its own name and history, and
-// the history that moved to it with the merge, which is the survivor's now.
+// the history that moved to it with the merge, which is the survivor's now. A
+// merge calls the duplicate's schedule off (merge.go), so only a row given its
+// day directly — or scheduled before that rule — gets here; the worker still
+// does the right thing with it.
 func TestAnonymisationWorker_AMergedAwayCustomerTakesItsSnapshotOffTheSurvivor(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	c := mergeClient(t, h)
 	absorbed := archivedPerson(t, c, "Kari Nordmann")
-	scheduleOn(t, h, absorbed.Id, day(h, 0))
 	survivor := createCustomerOfType(t, c, "Kari N.", "person")
 	putContactInfo(t, c, survivor.Id, map[string]any{"email": "kari.n@example.test"})
 	mergeOK(t, c, survivor.Id, absorbed.Id)
+	h.Exec(t, `UPDATE customers.customers SET anonymise_on = $2 WHERE id = $1`, absorbed.Id, day(h, 0))
 
 	runAnonymisation(t, h)
 
@@ -473,6 +478,81 @@ func TestAnonymisationWorker_AFailingModuleRollsThatCustomerBack(t *testing.T) {
 	runAnonymisation(t, h)
 	if n := h.Count(t, `SELECT count(*) FROM customers.customers WHERE id = $1 AND anonymised_at IS NOT NULL`, first.Id); n != 1 {
 		t.Error("the next cycle did not try the failed customer again")
+	}
+}
+
+// A module that panics is that customer's failure like any other (design D4:
+// the worker logs and moves on): its transaction rolls back, the panic is
+// logged with the customer's id and the stack, the cycle counts it as failed,
+// and the next customer is still anonymised — a panic that escaped would stop
+// the worker until a restart, and every restart would die on the same
+// customer, first in the batch.
+func TestAnonymisationWorker_APanickingModuleIsThatCustomersFailure(t *testing.T) {
+	t.Parallel()
+	var panicFor atomic.Int32
+	fake := &fakePersonalData{during: func(_ context.Context, _ pgx.Tx, id int32) error {
+		if id == panicFor.Load() {
+			panic("the module has a bug")
+		}
+		return nil
+	}}
+	h := newHarness(t, modtest.WithCustomerPersonalData(contracts.CustomerPersonalDataHolder{Module: "fake", Data: fake}))
+	c := authenticatedClient(t, h)
+	first := archivedPerson(t, c, "Kari Nordmann")
+	second := archivedPerson(t, c, "Ola Nordmann")
+	scheduleOn(t, h, first.Id, day(h, 0))
+	scheduleOn(t, h, second.Id, day(h, 0))
+	panicFor.Store(first.Id)
+
+	runAnonymisation(t, h)
+
+	if n := h.Count(t, `SELECT count(*) FROM customers.customers WHERE id = $1 AND name = 'Kari Nordmann' AND anonymised_at IS NULL`, first.Id); n != 1 {
+		t.Error("the customer whose module panicked changed: its run was not rolled back")
+	}
+	if n := h.Count(t, `SELECT count(*) FROM customers.customers WHERE id = $1 AND anonymised_at IS NOT NULL`, second.Id); n != 1 {
+		t.Error("the next customer was not anonymised: the panic stopped the cycle")
+	}
+	logs := h.Logs()
+	if !strings.Contains(logs, "anonymising a customer failed") || !strings.Contains(logs, fmt.Sprintf(`"customerId":%d`, first.Id)) ||
+		!strings.Contains(logs, "the module has a bug") || !strings.Contains(logs, "goroutine") {
+		t.Errorf("logs = %s, want the panic logged with its customer and the stack", logs)
+	}
+	if !strings.Contains(logs, `"anonymised":1,"failed":1`) {
+		t.Errorf("logs = %s, want the cycle to count one anonymised and one failed", logs)
+	}
+}
+
+// An open follow-up on the person's timeline is closed by the anonymisation,
+// at the run's instant, its day kept: an anonymised customer takes no more
+// writes, so one left open could never be marked done and would sit overdue on
+// somebody's Follow-ups page for ever. One already done keeps its own instant.
+func TestAnonymisationWorker_ClosesTheOpenFollowUps(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	person := createCustomerOfType(t, c, "Kari Nordmann", "person")
+	open := createWithFollowUp(t, c, person.Id, day(h, 0), "Ring tilbake", map[string]any{"dueOn": day(h, 7)})
+	done := createWithFollowUp(t, c, person.Id, day(h, 0), "Send avtalen", map[string]any{"dueOn": day(h, 3)})
+	if r := followUpDone(t, c, person.Id, done.Id, true); r.Status != http.StatusOK {
+		t.Fatalf("mark done: status %d body %s", r.Status, r.Body)
+	}
+	doneAt := modtest.One[time.Time](t, h, `SELECT follow_up_done_at FROM customers.customers_timeline_entries WHERE id = $1`, done.Id)
+	if r := c.Do(http.MethodDelete, fmt.Sprintf("/api/v1/customers/%d", person.Id), nil); r.Status != http.StatusNoContent {
+		t.Fatalf("archive: status %d body %s", r.Status, r.Body)
+	}
+	scheduleOn(t, h, person.Id, day(h, 0))
+	h.Advance(time.Hour)
+
+	runAnonymisation(t, h)
+
+	got := modtest.One[string](t, h, `SELECT follow_up_on::text || '|' || coalesce(follow_up_done_at::text, 'open')
+	                                  FROM customers.customers_timeline_entries WHERE id = $1`, open.Id)
+	closedAt := modtest.One[time.Time](t, h, `SELECT follow_up_done_at FROM customers.customers_timeline_entries WHERE id = $1`, open.Id)
+	if !strings.HasPrefix(got, day(h, 7)+"|") || !closedAt.Equal(h.Now()) {
+		t.Errorf("the open follow-up = %s (closed at %v), want its day kept and closed at the run, %v", got, closedAt, h.Now())
+	}
+	if again := modtest.One[time.Time](t, h, `SELECT follow_up_done_at FROM customers.customers_timeline_entries WHERE id = $1`, done.Id); !again.Equal(doneAt) {
+		t.Errorf("the done follow-up's instant = %v, want %v kept", again, doneAt)
 	}
 }
 

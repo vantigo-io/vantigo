@@ -231,6 +231,28 @@ func (q *Queries) AnonymiseTimelineRevisions(ctx context.Context, arg AnonymiseT
 	return err
 }
 
+const closeAnonymisedFollowUps = `-- name: CloseAnonymisedFollowUps :exec
+UPDATE customers.customers_timeline_entries
+SET follow_up_done_at = $1::timestamptz
+WHERE customer_id = $2::int AND follow_up_on IS NOT NULL AND follow_up_done_at IS NULL
+`
+
+type CloseAnonymisedFollowUpsParams struct {
+	Now        time.Time
+	CustomerID int32
+}
+
+// CloseAnonymisedFollowUps marks every open follow-up of an anonymised
+// customer done at the run's instant (design D4, widened by the whole-branch
+// review): the customer takes no more writes, so a follow-up left open could
+// never be marked done and would sit overdue on somebody's Follow-ups page for
+// ever. The day and the assignee stay; one already done keeps its own instant.
+// Not an edit, so no revision is written — the rewrite's reasoning.
+func (q *Queries) CloseAnonymisedFollowUps(ctx context.Context, arg CloseAnonymisedFollowUpsParams) error {
+	_, err := q.db.Exec(ctx, closeAnonymisedFollowUps, arg.Now, arg.CustomerID)
+	return err
+}
+
 const customerAnonymisedAt = `-- name: CustomerAnonymisedAt :one
 SELECT anonymised_at FROM customers.customers WHERE id = $1
 `
@@ -572,8 +594,8 @@ ORDER BY occurred_on, occurred_at NULLS FIRST, id
 
 // ListTimelineEntriesForExport is every timeline entry of one customer for its
 // export (design D3): deleted ones included — a soft-deleted note is still held
-// — oldest first, the order a person reads their own history in. Revisions are
-// not part of the file.
+// — oldest first, the order a person reads their own history in. Each entry's
+// earlier revisions come from ListTimelineRevisionsForExport.
 func (q *Queries) ListTimelineEntriesForExport(ctx context.Context, customerID int32) ([]CustomersCustomersTimelineEntry, error) {
 	rows, err := q.db.Query(ctx, listTimelineEntriesForExport, customerID)
 	if err != nil {
@@ -585,6 +607,69 @@ func (q *Queries) ListTimelineEntriesForExport(ctx context.Context, customerID i
 		var i CustomersCustomersTimelineEntry
 		if err := rows.Scan(
 			&i.ID,
+			&i.CustomerID,
+			&i.Provenance,
+			&i.Producer,
+			&i.EventType,
+			&i.OccurredOn,
+			&i.OccurredAt,
+			&i.Summary,
+			&i.Note,
+			&i.SourceUrl,
+			&i.PayloadJson,
+			&i.PayloadVersion,
+			&i.CurrentRevision,
+			&i.State,
+			&i.ActorKind,
+			&i.ActorDisplay,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.ActorUserID,
+			&i.FollowUpOn,
+			&i.FollowUpAssigneeUserID,
+			&i.FollowUpDoneAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTimelineRevisionsForExport = `-- name: ListTimelineRevisionsForExport :many
+SELECT r.id, r.customer_timeline_entry_id, r.revision_number, r.customer_id, r.provenance, r.producer, r.event_type,
+       r.occurred_on, r.occurred_at, r.summary, r.note, r.source_url, r.payload_json, r.payload_version, r.current_revision,
+       r.state, r.actor_kind, r.actor_display, r.created_at, r.updated_at, r.deleted_at, r.actor_user_id,
+       r.follow_up_on, r.follow_up_assignee_user_id, r.follow_up_done_at
+FROM customers.customers_timeline_entries_revisions r
+JOIN customers.customers_timeline_entries e ON e.id = r.customer_timeline_entry_id
+WHERE e.customer_id = $1 AND r.revision_number < e.current_revision
+ORDER BY r.customer_timeline_entry_id, r.revision_number
+`
+
+// ListTimelineRevisionsForExport is every earlier revision of one customer's
+// timeline entries for the export (design D3, widened by the whole-branch
+// review): an edited note's earlier text is still held — staff read it through
+// the entry's revisions, and the anonymisation rewrites it — so the file
+// carries it. The current revision is the entry itself and is left out. Found
+// through the entries: the revisions' own customer_id is not indexed.
+func (q *Queries) ListTimelineRevisionsForExport(ctx context.Context, customerID int32) ([]CustomersCustomersTimelineEntriesRevision, error) {
+	rows, err := q.db.Query(ctx, listTimelineRevisionsForExport, customerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CustomersCustomersTimelineEntriesRevision
+	for rows.Next() {
+		var i CustomersCustomersTimelineEntriesRevision
+		if err := rows.Scan(
+			&i.ID,
+			&i.CustomerTimelineEntryID,
+			&i.RevisionNumber,
 			&i.CustomerID,
 			&i.Provenance,
 			&i.Producer,

@@ -89,8 +89,8 @@ func (s *server) customerAfterWrite(ctx context.Context, id int32) (gen.SafeCust
 
 // cancelAnonymisationSchedule calls a schedule off as part of another write
 // that takes the customer out of what may be anonymised — a restore
-// (writeCustomerCore) or a change of type away from person (customer_type.go)
-// — in that write's transaction, under the lock it already holds, and records
+// (writeCustomerCore), a change of type away from person (customer_type.go)
+// or its merge into another customer (merge.go) — in that write's transaction, under the lock it already holds, and records
 // it (design D4, this plan's reading): left in place, a date would fire the
 // night the customer was archived again, months after anybody meant it. The
 // caller's own UPDATE advanced the revision; DropCustomerAnonymiseOn does not
@@ -200,8 +200,9 @@ func (s *server) putAnonymisationAnswer(ctx context.Context, id int32) (gen.PutC
 // nothing scheduled — answered as it is, before the actor; (2) the actor; (3)
 // under the lock, the same two again, the write and the event. It takes
 // LockCustomer, not lockWritableCustomer: calling a schedule off is the one
-// write a merged-away customer takes, since one made before its merge would
-// otherwise be irrevocable — and the merge refusal is the only thing
+// write a merged-away customer takes — a merge calls a schedule off itself,
+// but a day already on a merged-away row (one scheduled before that rule)
+// would otherwise be irrevocable — and the merge refusal is the only thing
 // lockWritableCustomer would add besides the anonymised one asked here.
 func (s *server) DeleteCustomersByIdAnonymisation(ctx context.Context, req gen.DeleteCustomersByIdAnonymisationRequestObject) (gen.DeleteCustomersByIdAnonymisationResponseObject, error) {
 	current, err := store.New(s.deps.Pool).CustomerForPersonalData(ctx, req.Id)
@@ -397,12 +398,12 @@ func (s *server) anonymiseInTx(ctx context.Context, tx pgx.Tx, id int32, now tim
 // constraints and the event want: what hangs off the row (addresses, the
 // Peppol answer, the registry record a person never has but a retyped business
 // might), the contacts (associations detached, the contacts they alone held
-// deleted), the timeline and its revisions rewritten, every module's eraser in
-// Compose order on this transaction, then the row — cleared, marked, its
-// revision advanced — and last the event, which is recorded after the rewrite
-// and so keeps its words. on is the day the anonymisation was scheduled for:
-// a customer merged into the one scheduled takes that day, whatever its own
-// schedule said.
+// deleted), the timeline and its revisions rewritten and its open follow-ups
+// closed, every module's eraser in Compose order on this transaction, then the
+// row — cleared, marked, its revision advanced — and last the event, which is
+// recorded after the rewrite and so keeps its words. on is the day the
+// anonymisation was scheduled for: a customer merged into the one scheduled
+// takes that day, whatever its own schedule said.
 func (s *server) anonymiseOne(ctx context.Context, tx pgx.Tx, txq *store.Queries, id int32, on pgtype.Date, now time.Time) error {
 	addresses, err := txq.DeleteAllCustomerAddresses(ctx, id)
 	if err != nil {
@@ -436,6 +437,9 @@ func (s *server) anonymiseOne(ctx context.Context, tx pgx.Tx, txq *store.Queries
 	}
 	if err := txq.AnonymiseTimelineRevisions(ctx, store.AnonymiseTimelineRevisionsParams(rewrite)); err != nil {
 		return fmt.Errorf("rewrite customer %d's timeline revisions: %w", id, err)
+	}
+	if err := txq.CloseAnonymisedFollowUps(ctx, store.CloseAnonymisedFollowUpsParams{CustomerID: id, Now: now}); err != nil {
+		return fmt.Errorf("close customer %d's open follow-ups: %w", id, err)
 	}
 
 	erased := []contracts.ErasedData{

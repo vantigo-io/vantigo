@@ -1441,7 +1441,7 @@ own SQL, on its own schema, from its own package:
 | Holder | What it re-points (kind) |
 | --- | --- |
 | projects | `projects.projects.customer_id` (`projects.projects`). Each moved project's revision advances; no project timeline entry is written. Time and expenses reach a customer only through a project, so they hold nothing. |
-| energy | `energy.supply_periods.customer_id` (`energy.supplyPeriods`). The overlap constraint is per metering point, so a re-point cannot violate it. Energy has no module doc of its own; this row is its paragraph. Its personal data (rule 9) is the supply periods with the metering point's address, handed over in the export and kept by an anonymisation. |
+| energy | `energy.supply_periods.customer_id` (`energy.supplyPeriods`). The overlap constraint is per metering point, so a re-point cannot violate it. Energy has no module doc of its own; this row is its paragraph. Its personal data (rule 9) is the supply periods with the metering point's address and the point's consumption inside each period — monthly kWh sums of the current intervals within the period's dates, each month a calendar month in the point's market zone (hourly for years would make a file nobody reads; energy's consumption endpoints keep the series) — handed over in the export and kept by an anonymisation: the period is the point's history and the readings are needed for settlement. The period keeps pointing at the anonymised customer, so its dates and the point's address — for a private person most likely their home — stay linked to "Anonymised person #1234": for that link this is pseudonymisation, not removal. |
 | communications | `conversations.customer_id` (`communications.conversations`), `conversations.suggested_customer_id` (`communications.conversationSuggestions`), and the candidate list (`communications.conversationCandidates`), where a conversation that already lists the survivor keeps it once. |
 
 Any error, a holder's included, rolls back everything: nothing moved, no marker, no
@@ -1516,8 +1516,8 @@ shape, with `exportedAt` saying when it was made:
 | --- | --- |
 | `customer` | id, number, name, type, status, created and updated, legal identity, contact info, addresses, the billing profile's own stored values (not the resolved profile), owner, group, tags, `mergedInto`, `anonymisation`, and `mergedFrom` — each duplicate merged into this customer as its own row still holds it: id, number, name, status, legal identity, contact info and billing values, since that row is the same person's data (absent when nothing was merged in) |
 | `contacts` | every contact linked to the customer as the contact is stored, with the association's title, phone, email and roles |
-| `timeline` | every entry, oldest first, deleted ones included (their `state` says so), each with its summary, its note — internal notes included: a note staff wrote about the person is data held about them — its payload, actor and follow-up; revisions are not in the file |
-| `modules` | each other module's section under its name — `communications` (the person's conversations: subject, status, dates, each message's direction, subject, date, text and HTML body, each when present, and its attachment names), `energy` (supply periods with the metering point's GSRN and address), `projects` (code, name, status, dates); a module holding nothing for the customer has no key |
+| `timeline` | every entry, oldest first, deleted ones included (their `state` says so), each with its summary, its note — internal notes included: a note staff wrote about the person is data held about them — its payload, actor and follow-up, and — on an entry that was ever changed — its earlier `revisions`, oldest first: an edited note's earlier text is still held (staff read it under the entry's history, and the anonymisation rewrites it), so it is data held about the person too |
+| `modules` | each other module's section under its name — `communications` (the person's conversations: subject, status, dates, each message's direction, subject, date, text and HTML body, each when present, and its attachment names), `energy` (supply periods with the metering point's GSRN and address, and each period's `consumption` as monthly kWh sums), `projects` (code, name, status, dates); a module holding nothing for the customer has no key |
 
 It is shaped by nothing but `customers:personal-data`: that key means "may hand this
 person their data", so the legal identity and the contacts are in the file without
@@ -1529,7 +1529,16 @@ transaction of this module's. **The file is all or nothing**: a module whose exp
 fails fails the request with a 500, never a file with that module's section quietly
 missing — a person handed a partial file would take it for the whole. The body is
 encoded before a header is written, so a failure is never half a file either. An
-anonymised customer's file is what is left.
+anonymised customer's file is what is left. A merged-away customer's file is a shell —
+its records moved with the merge — so export its survivor, whose file names it under
+`mergedFrom`.
+
+Communications' section leaves out the addressing metadata — participants' addresses and
+display names, each delivery's recipient address, a message's channel headers — though
+its erase deletes them with the conversations
+([communications](communications.md#in-process-customer-integration)). Its suppressions, the
+opt-out addresses, are neither exported nor erased: honouring an opt-out needs the
+address.
 
 ### Scheduling
 
@@ -1567,12 +1576,14 @@ every retention period that applies to this customer has passed.
 What takes a customer out of what may be anonymised calls its schedule off in the same
 transaction, recorded as `customer.anonymisation_cancelled` attributed to whoever made
 that write: restoring it (`PUT /customers/{id}` or a CSV row with a status other than
-archived) or changing its type away from person. Left in place, a day would fire the
-night the customer was archived again, months after anybody meant it. A merged-away
-customer cannot be scheduled (409 `customer_merged` — schedule its survivor), but a
-schedule made before its merge can still be called off: `DELETE …/anonymisation` is the
-one write a merged-away customer takes, since that schedule would otherwise be
-irrevocable. An anonymised customer's DELETE answers `customer_anonymised`.
+archived), changing its type away from person, or merging it into another customer —
+there it is recorded on the duplicate, by whoever merged. Left in place, a day would
+fire the night the customer was archived again, months after anybody meant it; on a
+duplicate it would anonymise an empty shell and the survivor's record of what it
+absorbed, everything the day was for having moved to the survivor, which is the one to
+schedule. A merged-away customer cannot be scheduled (409 `customer_merged` — schedule
+its survivor); `DELETE …/anonymisation` is still the one write it takes, for a schedule
+that predates this rule. An anonymised customer's DELETE answers `customer_anonymised`.
 
 ### What the worker does
 
@@ -1587,12 +1598,14 @@ landed since the batch was selected — and one no longer due is left alone:
 | The row | `name` → "Anonymised person"; the **customer number stays** — it is the bookkeeping reference. The legal identity, contact info (email, phone, website) and the billing profile's identifiers (`invoiceEmail`, `reminderEmail`, `peppolId`, `gln`, `buyerReference`) are cleared; the payment terms, currency, language, delivery methods and default bill rate stay — they say how the customer was invoiced, not who it was. Owner and tags stay: staff and vocabulary. The customer leaves its group, as a merged-away one does: it refuses every write, the group PUT included, so a group it still counted in could never be deleted. Status stays archived, and `anonymise_on` stays set beside the new `anonymised_at` — the day it was scheduled for is part of the record. |
 | Addresses, Peppol answer, registry record | Deleted. |
 | Contacts | Every association detached, its roles with it; a contact linked to no other customer afterwards is deleted — it existed for this person alone. One another customer still links stays, theirs too. |
-| Timeline | Every entry **stays**, deleted ones included — its type, its day, its state and its follow-up's day and assignee as they were; an open follow-up is not closed — with its content anonymised: a manual entry's summary and note become "[anonymised]" and its source URL goes; a generated entry's summary does too, unless its type's summary is built from nothing personal (`customer.status_changed`, `customer.type_changed`, `customer.contact_info_updated`, `customer.billing_profile_updated`, `customer.peppol_lookup`, `customer.tags_changed`, `customer.group_changed`, `customer.owner_changed` and the three anonymisation events — an allow-list, so an event type added later is anonymised until somebody decides otherwise); in every payload the top-level keys that carry the person — `name`, `customerName`, `identity`, `legalIdentity`, `contactInfo`, `billingProfile`, `before`, `after`, `changes`, `absorbed`, `into`, and a contact's or address's `displayName`, `firstName`, `middleName`, `lastName`, `title`, `phone`, `email`, `label`, `display` — become "[anonymised]", each replaced whole — on every event alike, so a status change's `before` and `after` go too, rather than a per-event list a new event type could slip past — and the rest (`customerId`, ids, dates, counts, statuses) is kept. Revisions the same. The author of each entry (`actorDisplay`) is staff, and stays. One set-based statement per table, in SQL. |
-| Other modules | Each `contracts.CustomerPersonalData.EraseCustomerData`, inside the same transaction, in the order the installation composes them: communications deletes the person's conversations, every message and the rows under it through the retention worker's own deletes (a message still waiting in the outbox goes with its job), queues every object key — attachments, raw payloads and staged uploads — on the cleanup ledger for the cleanup worker to delete after commit, and clears a suggestion or candidate row naming them on another conversation; energy keeps the supply periods (a period is the metering point's history, the address the point's); projects keeps the projects (invoiced work stays, no customer name is stored there). |
+| Timeline | Every entry **stays**, deleted ones included — its type, its day, its state and its follow-up's day and assignee as they were; an open follow-up is closed, done at the run's instant — the customer takes no more writes, so it could never be marked done and would stay overdue on somebody's Follow-ups page for ever; one already done keeps its own instant — with its content anonymised: a manual entry's summary and note become "[anonymised]" and its source URL goes; a generated entry's summary does too, unless its type's summary is built from nothing personal (`customer.status_changed`, `customer.type_changed`, `customer.contact_info_updated`, `customer.billing_profile_updated`, `customer.peppol_lookup`, `customer.tags_changed`, `customer.group_changed`, `customer.owner_changed` and the three anonymisation events — an allow-list, so an event type added later is anonymised until somebody decides otherwise); in every payload the top-level keys that carry the person — `name`, `customerName`, `identity`, `legalIdentity`, `contactInfo`, `billingProfile`, `before`, `after`, `changes`, `absorbed`, `into`, and a contact's or address's `displayName`, `firstName`, `middleName`, `lastName`, `title`, `phone`, `email`, `label`, `display` — become "[anonymised]", each replaced whole — on every event alike, so a status change's `before` and `after` go too, rather than a per-event list a new event type could slip past — and the rest (`customerId`, ids, dates, counts, statuses) is kept. Revisions the same. The author of each entry (`actorDisplay`) is staff, and stays. One set-based statement per table, in SQL. |
+| Other modules | Each `contracts.CustomerPersonalData.EraseCustomerData`, inside the same transaction, in the order the installation composes them: communications deletes the person's conversations, every message and the rows under it through the retention worker's own deletes (a message still waiting in the outbox goes with its job), queues every object key — attachments, raw payloads and staged uploads — on the cleanup ledger for the cleanup worker to delete after commit, and clears a suggestion or candidate row naming them on another conversation; energy keeps the supply periods and the consumption (a period is the metering point's history, the address the point's, the readings are needed for settlement — the period's link to the customer stays, pseudonymised, see the [holder table](#what-moves-what-stays-what-is-recorded)); projects keeps the projects (invoiced work stays, no customer name is stored there). |
 | Last | `anonymised_at` is set, the revision advances, and `customer.anonymised` is recorded — after the rewrite, so the one event that keeps its words: `{customerId, erased: [{kind, count}]}`, this module's four kinds first (`customers.addresses`, `customers.contactAssociations`, `customers.contacts`, `customers.timelineEntries`) and then each module's — `communications.conversations`, `communications.messages`, `communications.objects`, `communications.conversationSuggestions`, `communications.conversationCandidates`, `energy.supplyPeriods`, `projects.projects` — a module that kept everything listed at zero; the actor is the system. |
 
-**A failing customer is logged and tried again.** A module's error — or a deadlock
-lost three times — rolls that customer's whole run back; the worker logs it at error
+**A failing customer is logged and tried again.** A module's error — a panic
+included, logged with its stack, since the runner never restarts a worker that panicked
+and the customer that did is first in every later batch — or a deadlock lost three
+times rolls that customer's whole run back; the worker logs it at error
 level with its `customerId` ("anonymising a customer failed; it is tried again next
 cycle"), moves on to the next, and takes it again next cycle, and each cycle ends with
 an info line counting `anonymised` and `failed`. A customer that fails every time — a
@@ -1605,8 +1618,9 @@ would fill every batch, and the customers behind them would wait.
 **A merge chain is one person.** Customers merged into the one that is due are
 anonymised in the same transaction, each with its own row, its own `customer.anonymised`
 and the chain's day as its `anonymiseOn`; the `customer.merged` entries describing them
-are on the due customer's timeline and go with the rest of it. A customer scheduled and
-then merged away is anonymised on its day as itself, and its snapshot comes off its
+are on the due customer's timeline and go with the rest of it. A merge calls a
+duplicate's schedule off, but a merged-away customer whose row still carries a day — one
+scheduled before that rule — is anonymised on it as itself, and its snapshot comes off its
 survivor's `customer.merged` entry (the `absorbed` block and the summary naming it);
 nothing else of the survivor's changes — the history that moved to it with the merge is
 the survivor's now, and is anonymised with the survivor.
@@ -1624,9 +1638,18 @@ its detail naming the day — through the same lock-time check that answers
 so the list of writes is that one, its schedule's two included: it cannot be scheduled
 again. Anonymised is asked first, so a customer both merged away and anonymised
 answers `customer_anonymised`. A CSV row naming its number is refused on
-`customerNumber`; a merge will not absorb it (the refusal comes after
-`merge_into_archived`, [The refusals, in order](#the-refusals-in-order)); `DELETE
-/customers/{id}` is the archived no-op. It stays archived, and its export still answers.
+`customerNumber`; a merge will neither absorb it nor merge anything into it (as the
+survivor it is refused before `merge_into_archived`, whose "restore it first" the
+restore would refuse too; as the absorbed customer after it — [The refusals, in
+order](#the-refusals-in-order)); `DELETE /customers/{id}` is the archived no-op. It
+stays archived, and its export still answers.
+
+The worker never comes back for a customer it anonymised. The other modules resolve
+customers through the [directory](#contractscustomerdirectory), which answers archived
+ones, so energy and communications can still link a new supply period or conversation
+to an anonymised customer afterwards; linking data to it after its day is the linker's
+responsibility — the standing the merge gives a merged-away id. The UI refuses to offer
+it (the host's Projects and Energy tabs are read-only for one).
 
 **Configuration**, read once at startup by `internal/config`:
 
@@ -2655,8 +2678,10 @@ of its caller: Products phase 4's customer-group prices are the intended reader.
   linking there, and shows no edit action anywhere: the header hides Edit, Change
   type, Archive, Restore and Merge, and every card — owner, tags and group, contact
   info and addresses, the registry record, the billing profile, contacts, the
-  timeline — is handed its capability as `canX && !customer.mergedInto` (the contacts
-  card, which had none, takes `readOnly`). The create and edit forms'
+  timeline — is handed its capability as `canX && editable`, `editable` being
+  `!isReadOnlyCustomer(customer)`: the shared predicate (`src/lib/customer-read-only.ts`)
+  that answers merged away or anonymised (the contacts card, which had none, takes
+  `readOnly`). The create and edit forms'
   duplicate-identity conflict adds a line suggesting Merge… on the duplicate it
   already links to, for a caller who may merge — the list page passes `canMerge`
   too, since it opens the same form.
@@ -2676,7 +2701,10 @@ of its caller: Products phase 4's customer-group prices are the intended reader.
   calls a schedule off on the server's side. A scheduled customer's page shows a yellow
   banner "Anonymisation scheduled for …"; an anonymised one's a grey "Anonymised on …"
   and, the merged-away banner's way, no edit action anywhere — the header hides Edit,
-  Change type, Restore and Merge, and every card gets `canX && !readOnly`. The timeline
+  Change type, Restore and Merge, every card gets `canX && editable` through the same
+  `isReadOnlyCustomer`, the customer list hides its edit pencil for the row, and the
+  host's Projects and Energy tabs are read-only for it (no new project or supply period
+  on an anonymised shell). The timeline
   labels the three new events, shows under a `customer.anonymised` entry what was taken
   out ("Removed: kind: count · …", the kinds as the server names them, so a new module's
   show as they come), and renders "[anonymised]" content as the plain text it is; an

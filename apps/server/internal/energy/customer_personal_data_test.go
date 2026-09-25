@@ -61,6 +61,47 @@ func TestCustomerPersonalData_ExportsSupplyPeriodsWithTheirAddress(t *testing.T)
 	}
 }
 
+// A supply period carries its metering point's consumption while it ran
+// (customers GDPR design D2, widened by the whole-branch review): household
+// meter readings are the person's data. Monthly sums, in the point's market
+// zone, of the intervals inside the period's dates — one outside them, before
+// or after, is somebody else's or nobody's.
+func TestCustomerPersonalData_ExportsTheConsumptionInsideEachPeriod(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	point := createMeteringPoint(t, h.SignIn(t, allEnergyPermissions...))
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	insertActiveSupplyPeriod(t, h, point.Id, 1001, start, start.AddDate(0, 2, 0))
+	addElhubConsumption(t, h, point.Id, utc(2026, time.January, 5, 1), utc(2026, time.January, 5, 2), 2.5)
+	addElhubConsumption(t, h, point.Id, utc(2026, time.January, 10, 1), utc(2026, time.January, 10, 2), 1.25)
+	addElhubConsumption(t, h, point.Id, utc(2026, time.February, 3, 1), utc(2026, time.February, 3, 2), 4)
+	// After the period ended: not the person's.
+	addElhubConsumption(t, h, point.Id, utc(2026, time.March, 3, 1), utc(2026, time.March, 3, 2), 100)
+
+	section, err := energyPersonalData(t, h).ExportCustomerData(context.Background(), 1001)
+	if err != nil {
+		t.Fatalf("ExportCustomerData: %v", err)
+	}
+	body, _ := json.Marshal(section)
+	var got struct {
+		SupplyPeriods []struct {
+			Consumption []struct {
+				Month string  `json:"month"`
+				Kwh   float64 `json:"kwh"`
+			} `json:"consumption"`
+		} `json:"supplyPeriods"`
+	}
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatalf("decode %s: %v", body, err)
+	}
+	if len(got.SupplyPeriods) != 1 {
+		t.Fatalf("section = %s, want one period", body)
+	}
+	if c := got.SupplyPeriods[0].Consumption; len(c) != 2 || c[0].Month != "2026-01" || c[0].Kwh != 3.75 || c[1].Month != "2026-02" || c[1].Kwh != 4 {
+		t.Errorf("consumption = %+v, want 2026-01 3.75 and 2026-02 4, and nothing from after the period", c)
+	}
+}
+
 // Erasing keeps everything (design D2): a supply period is the metering
 // point's history, and its address is the point's, not the person's; the
 // period keeps pointing at the anonymised customer. It still says it was asked.

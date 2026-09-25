@@ -406,10 +406,10 @@ type CustomerPersonalData struct {
 	Customer   CustomerPersonalDataCustomer `json:"customer"`
 	ExportedAt time.Time                    `json:"exportedAt"`
 
-	// Modules Each other module's section, under the module's name — communications (the person's conversations: subject, dates, each message's direction, date, and text and HTML body (each when present), attachment names), energy (supply periods with the metering point's address), projects (code, name, status and dates). A module holding nothing for the customer has no key.
+	// Modules Each other module's section, under the module's name — communications (the person's conversations: subject, dates, each message's direction, date, and text and HTML body (each when present), attachment names), energy (supply periods with the metering point's address and its consumption inside each period, summed by calendar month in the point's market zone), projects (code, name, status and dates). A module holding nothing for the customer has no key.
 	Modules map[string]interface{} `json:"modules"`
 
-	// Timeline Every timeline entry, oldest first, deleted ones included (state says which), each with its payload, actor and follow-up. Revisions are not part of the file.
+	// Timeline Every timeline entry, oldest first, deleted ones included (state says which), each with its payload, actor and follow-up, and — on an entry that was ever changed — its earlier revisions, an edited note's earlier text being data held about the person too.
 	Timeline []TimelineResponse `json:"timeline"`
 }
 
@@ -854,10 +854,13 @@ type TimelineResponse struct {
 	Payload    *externalRef0.JsonElement `json:"payload,omitempty"`
 	Producer   string                    `json:"producer"`
 	Provenance string                    `json:"provenance"`
-	SourceUrl  *string                   `json:"sourceUrl,omitempty"`
-	State      string                    `json:"state"`
-	Summary    *string                   `json:"summary,omitempty"`
-	UpdatedAt  time.Time                 `json:"updatedAt"`
+
+	// Revisions The entry's earlier revisions, oldest first, the current one being the entry itself (customers GDPR design D3). Only a personal-data file carries them, and only on an entry that was ever changed; everywhere else the key is absent and GET .../timeline/{entryId}/revisions reads them.
+	Revisions *[]TimelineRevisionResponse `json:"revisions,omitempty"`
+	SourceUrl *string                     `json:"sourceUrl,omitempty"`
+	State     string                      `json:"state"`
+	Summary   *string                     `json:"summary,omitempty"`
+	UpdatedAt time.Time                   `json:"updatedAt"`
 }
 
 // TimelineRevisionListResponse defines model for TimelineRevisionListResponse.

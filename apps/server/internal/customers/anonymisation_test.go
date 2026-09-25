@@ -268,9 +268,12 @@ func TestLeavingTheArchiveCallsTheScheduleOff(t *testing.T) {
 	}
 }
 
-// A schedule made before the customer was merged away can still be called off:
-// cancelling is the one write a merged-away customer takes.
-func TestAScheduleMadeBeforeAMergeCanStillBeCalledOff(t *testing.T) {
+// A merge calls the duplicate's schedule off, recorded on the duplicate and
+// attributed to whoever merged: everything the date was for moves to the
+// survivor, and on its day it would have anonymised an empty shell and the
+// survivor's record of what it absorbed. Cancelling is still the one write a
+// merged-away customer takes — a no-op now, with nothing left to call off.
+func TestAMergeCallsTheDuplicatesScheduleOff(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	c := authenticatedClient(t, h)
@@ -278,10 +281,24 @@ func TestAScheduleMadeBeforeAMergeCanStillBeCalledOff(t *testing.T) {
 	absorbed := archivedPerson(t, c, "Kari Nordmann")
 	customerAnswer(t, putAnonymisation(t, scheduler, absorbed.Id, day(h, 30)))
 	survivor := createCustomerOfType(t, c, "Kari N.", "person")
-	mergeOK(t, mergeClient(t, h), survivor.Id, absorbed.Id)
+	merger, mergerID := h.SignInUser(t, mergeKeys...)
+	setDisplayName(t, h, mergerID, "Siri Saksbehandler")
+	mergeOK(t, merger, survivor.Id, absorbed.Id)
 
-	if got := customerAnswer(t, deleteAnonymisation(t, scheduler, absorbed.Id)); got.Anonymisation != nil || got.MergedInto == nil {
-		t.Errorf("cancelled = %+v merged into %+v, want nothing scheduled and still merged away", got.Anonymisation, got.MergedInto)
+	got := customerAnswer(t, c.Do(http.MethodGet, fmt.Sprintf("/api/v1/customers/%d", absorbed.Id), nil))
+	if got.Anonymisation != nil || got.MergedInto == nil || got.MergedInto.Id != survivor.Id {
+		t.Errorf("the duplicate = anonymisation %+v, merged into %+v; want nothing scheduled and merged into %d", got.Anonymisation, got.MergedInto, survivor.Id)
+	}
+	events := entriesOfType(timelineOf(t, c, absorbed.Id), "customer.anonymisation_cancelled")
+	if len(events) != 1 || str(events[0].Summary) != "Anonymisation cancelled; it was scheduled for "+day(h, 30) ||
+		str(events[0].ActorDisplay) != "Siri Saksbehandler" {
+		t.Errorf("cancelled events on the duplicate = %+v, want one, by the merger", events)
+	}
+	if n := len(entriesOfType(timelineOf(t, c, survivor.Id), "customer.anonymisation_cancelled")); n != 0 {
+		t.Errorf("the survivor has %d cancellations, want none: the schedule was the duplicate's", n)
+	}
+	if again := customerAnswer(t, deleteAnonymisation(t, scheduler, absorbed.Id)); again.Anonymisation != nil || again.Revision != got.Revision {
+		t.Errorf("cancel afterwards = %+v at revision %d, want the no-op at %d", again.Anonymisation, again.Revision, got.Revision)
 	}
 }
 

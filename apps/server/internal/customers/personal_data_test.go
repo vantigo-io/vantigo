@@ -133,6 +133,10 @@ type personalDataJSON struct {
 		FollowUp *struct {
 			DueOn string `json:"dueOn"`
 		} `json:"followUp"`
+		Revisions []struct {
+			Revision int32   `json:"revision"`
+			Note     *string `json:"note"`
+		} `json:"revisions"`
 	} `json:"timeline"`
 	Modules map[string]json.RawMessage `json:"modules"`
 }
@@ -289,6 +293,50 @@ func TestGetCustomersByIdPersonalData_NamesTheDuplicatesMergedIntoIt(t *testing.
 	if got.Identity == nil || got.Identity.Country != "se" || got.Identity.Id != "19800101-1234" ||
 		str(got.ContactInfo.Email) != "kari.n@example.test" || str(got.BillingProfile.InvoiceEmail) != "faktura.n@example.test" {
 		t.Errorf("mergedFrom[0] = %+v, want its identity, contact info and billing values", got)
+	}
+}
+
+// An edited note's earlier text is still held — staff read it through the
+// entry's revisions, and the anonymisation rewrites it — so the file carries it
+// too: each entry's earlier revisions, oldest first, beside the entry as it
+// stands now. An entry never changed has none and no key.
+func TestGetCustomersByIdPersonalData_CarriesEachEntrysEarlierRevisions(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	person := createCustomerOfType(t, c, "Kari Nordmann", "person")
+	edited := createManual(t, c, person.Id, day(h, 0), "Ringte om strømavtalen")
+	if r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/timeline/%d", person.Id, edited.Id), map[string]any{
+		"eventType": "note", "occurredOn": day(h, 0), "note": "Ringte om fakturaen", "expectedRevision": edited.CurrentRevision,
+	}); r.Status != http.StatusOK {
+		t.Fatalf("edit the note: status %d body %s", r.Status, r.Body)
+	}
+	untouched := createManual(t, c, person.Id, day(h, 0), "Sendte brev")
+
+	r := getPersonalData(t, personalDataClient(t, h), person.Id)
+	if r.Status != http.StatusOK {
+		t.Fatalf("personal data: status %d body %s", r.Status, r.Body)
+	}
+	var file personalDataJSON
+	r.JSON(&file)
+	var sawEdited, sawUntouched bool
+	for _, e := range file.Timeline {
+		switch e.Id {
+		case edited.Id:
+			sawEdited = true
+			if str(e.Note) != "Ringte om fakturaen" || len(e.Revisions) != 1 || e.Revisions[0].Revision != 1 ||
+				str(e.Revisions[0].Note) != "Ringte om strømavtalen" {
+				t.Errorf("edited entry = note %q, revisions %+v; want the new text and the earlier one beside it", str(e.Note), e.Revisions)
+			}
+		case untouched.Id:
+			sawUntouched = true
+			if e.Revisions != nil {
+				t.Errorf("untouched entry revisions = %+v, want no key", e.Revisions)
+			}
+		}
+	}
+	if !sawEdited || !sawUntouched {
+		t.Errorf("timeline = %+v, want both notes", file.Timeline)
 	}
 }
 
