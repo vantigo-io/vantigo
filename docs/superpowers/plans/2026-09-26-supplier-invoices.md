@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Branch `feat/project-supplier-invoices` (HEAD is the committed spec, `eb97f087`). Never commit to `main`, never merge, never `--no-verify`.
+- Branch `feat/project-supplier-invoices` (HEAD is this plan's commit, `789e155b`, on the spec commit `eb97f087`). Never commit to `main`, never merge, never `--no-verify`.
 - `export TEST_DATABASE_URL='postgres://vantigo:vantigo@127.0.0.1:55442/vantigo_test?sslmode=disable'` for every `go test`. Port 55432 belongs to another project — never touch it.
 - The untracked `go.mod`/`go.sum` in the repo root are not ours: never add, edit or delete them.
 - **Forbidden git commands:** `git add -A`, `git add .`, `git stash`, `git checkout -- .`, `git restore .`, `git clean`, `git reset --hard`, `git commit --amend`, `--no-verify`. Commit by pathspec (`git add <files>` then `git commit -F <msgfile> -- <files>`), then check `git show --stat HEAD` and that `git status --short` shows nothing of yours left. Concurrent agents share ONE index: never commit a path you did not change.
@@ -508,7 +508,7 @@ mise exec -- go generate ./... && git -C ../.. diff --stat   # a second run move
 mise exec -- gofmt -l internal/expenses internal/db
 mise exec -- go test -count=1 -run 'TestOwesEmployee_TheGoMirrorAgreesWithTheSQLFunction' ./internal/expenses/
 ```
-Expected: PASS. **If sqlc refuses the function in a query** (`function expenses.owes_employee(character varying, character varying) does not exist`, or an unknown return type): change the function's two parameter types from `text` to `character varying` in the migration (the columns are `varchar(20)`), keep the body, change the Down to `DROP FUNCTION expenses.owes_employee(character varying, character varying);` and the schema test's `$1::text, $2::text` casts to `$1::varchar, $2::varchar`, and regenerate — `projects.visible` (00008) is the precedent that sqlc resolves a schema-qualified SQL function in a `WHERE`, and its arguments are typed exactly as the columns passed to it. Report which form it took.
+Expected: PASS. **If sqlc refuses the function in a query** (`function expenses.owes_employee(character varying, character varying) does not exist`, or an unknown return type): change the function's two parameter types from `text` to `character varying` in the migration (the columns are `varchar(20)`), keep the body, change the Down to `DROP FUNCTION expenses.owes_employee(character varying, character varying);`, and the mirror test's `$1::text, $2::text` casts (`owes_employee_test.go`) to `$1::varchar, $2::varchar` (the schema test passes untyped parameters and needs no change), and regenerate — `projects.visible` (00008) is the precedent that sqlc resolves a schema-qualified SQL function in a `WHERE`, and its arguments are typed exactly as the columns passed to it. Report which form it took.
 
 - [ ] **Step 4: Every former predicate site is still exercised, and green**
 
@@ -564,7 +564,7 @@ The fourth kind end to end inside Expenses: the request vocabulary and its field
 
 **Interfaces:**
 - Consumes: `kindSupplierInvoice`, `owesEmployee`, the two columns (Task 1).
-- Produces Go: `entryKinds` with `kindSupplierInvoice`; `marksUp(kind) bool`, `takesReceipts(kind) bool`; `invoiceNumberMaxLength = 100`; `supplierInvoiceNeedsProject`, `supplierInvoiceNotInClaim`, `supplierInvoicePaidByCompany`; `entryBody.InvoiceNumber *string`, `.DueDate *openapi_types.Date`; `parsedEntry.InvoiceNumber *string`, `.DueDate *time.Time`; `parseAmounts`, `parseSupplierInvoice`; `(*server).checkLine`, `(*server).checkSupplierInvoiceProject`, `projectCancelled = "cancelled"`, `cannotRecordSupplierInvoice`, `supplierInvoiceOnCancelledProject`, `optionalPgDate`; `projectScope{all bool; ids []int32}`, `(*caller).financialProjects`; `supplierInvoiceDocumentRefusal`; `(*server).projectOption`, `(*server).supplierInvoiceProjects`; `projectSummaryResponse(totals, projectCurrency, capabilities gen.ExpensesProjectSummaryCapabilities, project *gen.ExpensesProjectOption)`; `store.InsertEntryParams`/`UpdateEntryParams` gain `SupplierInvoiceNumber *string`, `SupplierDueDate pgtype.Date`; `store.CountEntriesParams`/`ListEntriesParams` gain `SupplierInvoicesAll bool`, `FinancialProjectIds []int32`.
+- Produces Go: `entryKinds` with `kindSupplierInvoice`; `marksUp(kind) bool`, `takesReceipts(kind) bool`; `invoiceNumberMaxLength = 100`; `supplierInvoiceNeedsProject`, `supplierInvoiceNotInClaim`, `supplierInvoicePaidByCompany`; `entryBody.InvoiceNumber *string`, `.DueDate *openapi_types.Date`; `parsedEntry.InvoiceNumber *string`, `.DueDate *time.Time`; `parseEntry(body, defaultCurrency, projectsOn, inClaim, keptSupplierInvoice bool)`, `parseAmounts`, `parseSupplierInvoice`; `(*server).checkLine`, `(*server).checkSupplierInvoiceProject`, `projectCancelled = "cancelled"`, `cannotRecordSupplierInvoice`, `supplierInvoiceOnCancelledProject`, `optionalPgDate`; `projectScope{all bool; ids []int32}`, `(*caller).financialProjects`; `supplierInvoiceDocumentRefusal`; `(*server).projectOption`, `(*server).supplierInvoiceProjects`; `projectSummaryResponse(totals, projectCurrency, capabilities gen.ExpensesProjectSummaryCapabilities, project *gen.ExpensesProjectOption)`; `store.InsertEntryParams`/`UpdateEntryParams` gain `SupplierInvoiceNumber *string`, `SupplierDueDate pgtype.Date`; `store.CountEntriesParams`/`ListEntriesParams` gain `SupplierInvoicesAll bool`, `FinancialProjectIds []int32`.
 - Wire: `ExpensesEntryRequest`/`ExpensesEntryUpdateRequest` gain optional `invoiceNumber` (string) and `dueDate` (date); `ExpensesEntryResponse` gains optional `invoiceNumber`, `dueDate` (present on a supplier invoice when set); `kind` accepts `supplier_invoice` on both writes and on `GET /entries`; `GET /projects` gains optional `kind`; `ExpensesProjectSummaryCapabilities.canRecordSupplierInvoice` (optional boolean); `ExpensesProjectSummaryResponse.project` (optional `ExpensesProjectOption`). Refusals (400, `Invalid expense`): `kind` "A supplier invoice is booked on a project" (no projects module); `projectId` the same sentence (none named), "This project is not one you can record a supplier invoice on", "This project is cancelled, so it takes no supplier invoices"; `claimId` "A supplier invoice is not a travel claim line"; `paidBy` "A supplier invoice is paid by the company"; `supplier` "A supplier invoice names its supplier"; `invoiceNumber` "A supplier invoice carries the supplier's invoice number" / "An invoice number can be at most 100 characters"; `dueDate` "The due date cannot be before the invoice date"; `categoryId` "A supplier invoice needs a category"; `grossAmount` "A supplier invoice needs an amount"; `invoiceNumber`/`dueDate` on another kind "A <kind> line carries no <field>". Submit (400, `Invalid submission`, `entryIds`): "Expense <id> cannot be submitted yet: Attach the supplier's invoice".
 
 - [ ] **Step 1: The contract**
@@ -1103,6 +1103,40 @@ func TestSupplierInvoices_WithoutProjectsTheKindIsRefusedOutright(t *testing.T) 
 	}
 }
 
+// An installation that loses the projects module keeps what was booked
+// (decision X2): a supplier invoice already recorded stays editable, its
+// project columns carried from the row and what it bills recomputed from the
+// kept markup — while a new one is still refused outright.
+func TestSupplierInvoices_WithoutProjectsAnExistingOneStaysEditable(t *testing.T) {
+	t.Parallel()
+	h := newHarnessWithoutProjects(t)
+	c, owner := signIn(t, h)
+	id := modtest.One[int64](t, h.Harness, `INSERT INTO expenses.entries
+	    (user_id, created_by_user_id, kind, entry_date, description, category_id, supplier,
+	     supplier_invoice_number, paid_by, currency, gross_amount, project_id, billable,
+	     markup_percent, bill_amount, created_at, updated_at)
+	    VALUES ($1, $1, 'supplier_invoice', DATE '2026-03-10', 'Rørleggerarbeid', $2, 'Rør & Varme AS',
+	            'F-1', 'company', 'NOK', 1250.00, $3, true, 10.00, 1375.00, now(), now())
+	    RETURNING id`, owner, int32(subcontractorCategory), int32(projectKraftVerket))
+
+	changed := updateEntry(t, c, id, supplierInvoiceBody(map[string]any{
+		"projectId": nil, "billable": nil, "vatAmount": nil, "grossAmount": 2500.00,
+		"invoiceNumber": "F-2", "revision": 1}))
+	if changed.Kind != "supplier_invoice" || changed.InvoiceNumber == nil || *changed.InvoiceNumber != "F-2" {
+		t.Errorf("after the edit: kind %q number %v, want the supplier invoice renumbered F-2", changed.Kind, changed.InvoiceNumber)
+	}
+	if project := modtest.One[int32](t, h.Harness, `SELECT project_id FROM expenses.entries WHERE id = $1`, id); project != projectKraftVerket {
+		t.Errorf("project_id after the edit = %d, want %d carried through", project, projectKraftVerket)
+	}
+	if billed := modtest.One[string](t, h.Harness, `SELECT bill_amount::text FROM expenses.entries WHERE id = $1`, id); billed != "2750.00" {
+		t.Errorf("bill_amount after the edit = %s, want 2750.00: the kept 10 %% on the new net", billed)
+	}
+	errs := refusedEntry(t, c, http.MethodPost, entriesPath, supplierInvoiceBody(map[string]any{"projectId": nil, "billable": nil}))
+	if !mentions(errs["kind"], "A supplier invoice is booked on a project") {
+		t.Errorf("a new one without projects: kind = %v, want it refused", errs["kind"])
+	}
+}
+
 func TestSupplierInvoices_TheRecordersFinancialRightsDecide(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -1609,6 +1643,22 @@ with
 Replace
 
 ```go
+// (resolveClaimLine).
+func parseEntry(body entryBody, defaultCurrency string, projectsOn, inClaim bool) (parsedEntry, map[string][]string) {
+```
+
+with
+
+```go
+// (resolveClaimLine). keptSupplierInvoice says the row being replaced is
+// already a supplier invoice, which is what keeps one editable in an
+// installation that has since lost the projects module (decision X2).
+func parseEntry(body entryBody, defaultCurrency string, projectsOn, inClaim, keptSupplierInvoice bool) (parsedEntry, map[string][]string) {
+```
+
+Replace
+
+```go
 	if body.EntryDate.IsZero() {
 		add("entryDate", "A date is required")
 ```
@@ -1642,7 +1692,7 @@ with
 ```go
 	switch p.Kind {
 	case kindSupplierInvoice:
-		parseSupplierInvoice(&p, body, projectsOn, inClaim, add)
+		parseSupplierInvoice(&p, body, projectsOn, inClaim, keptSupplierInvoice, add)
 	case kindOutlay:
 		parseOutlay(&p, body, add)
 ```
@@ -1714,8 +1764,14 @@ func parseAmounts(p *parsedEntry, body entryBody, what string, add func(field, m
 // module there is no such kind at all. Whether the recorder may book it on
 // the project is asked afterwards, of the directory, outside any transaction
 // (checkSupplierInvoiceProject).
-func parseSupplierInvoice(p *parsedEntry, body entryBody, projectsOn, inClaim bool, add func(field, msg string)) {
+func parseSupplierInvoice(p *parsedEntry, body entryBody, projectsOn, inClaim, kept bool, add func(field, msg string)) {
 	switch {
+	case !projectsOn && kept:
+		// Decision X2 for this kind: an installation that has lost the
+		// projects module keeps what was booked. A supplier invoice already
+		// recorded stays editable, its project columns carried through from
+		// the row (prepared.CarryProject) — refusing the kind here would
+		// leave its owner able to submit or delete it and nothing else.
 	case !projectsOn:
 		add("kind", supplierInvoiceNeedsProject)
 	case body.ProjectID == nil:
@@ -1805,6 +1861,19 @@ func kindLabel(kind string) string {
 - [ ] **Step 4: The recorder gate, the pricing and the two columns**
 
 In `apps/server/internal/expenses/entries.go`, replace
+
+```go
+	parsed, parseErrs := parseEntry(body, c.Settings.DefaultCurrency, s.projectsAvailable(), inClaim)
+```
+
+with
+
+```go
+	parsed, parseErrs := parseEntry(body, c.Settings.DefaultCurrency, s.projectsAvailable(), inClaim,
+		current != nil && current.Kind == kindSupplierInvoice)
+```
+
+Replace
 
 ```go
 	keptProject := inherited ||
@@ -2859,7 +2928,7 @@ cd /home/anders/projects/vantigo/vantigo && git diff --stat -- openapi/COVERAGE.
 ```
 Expected: PASS — every `TestSupplierInvoices_…` test, every existing expenses test unchanged, and the module's coverage gate (`RequireCoverage` in `main_test.go`, no new operation). `COVERAGE.md` may not move; commit it only if it did.
 
-Prove the tests can fail, restoring after each: drop `kindSupplierInvoice` from `entryKinds` — every supplier-invoice test goes red on `kind`; in `parseSupplierInvoice` store `body.PaidBy` as given — `…_TheBodyIsRefused…` goes red on `paidBy=employee` and `…_OweNobody` stays green only because the function answers false for the kind (then also swap the function's `THEN false` for `THEN true` in a scratch migration to see `…_OweNobody` go red on all five surfaces); replace `!c.seesProjectFinancials(role)` with `false` in `checkSupplierInvoiceProject` — the member and "not seen" cases go red; delete the `project.Status == projectCancelled` refusal — the cancelled case goes red; delete the `supplierInvoiceDocumentRefusal` call — `…_SubmitNeeds…` goes red; delete the supplier-invoice disjunct in `accessFor` — the detail, the document and the forbidden-delete of `…_FinancialSide…` go red (and the SQL one — the list assertions); use `row.Kind == kindOutlay` in `approvals.go` again — `…_TheQueueCounts…` goes red; `case kindOutlay:` alone in `resolveValues` — the recorded invoice bills nothing and `…_ARecordedInvoice…` goes red; drop the `projectCancelled` skip in `supplierInvoiceProjects` — the picker test goes red with 1006. Say what each printed.
+Prove the tests can fail, restoring after each: drop `kindSupplierInvoice` from `entryKinds` — every supplier-invoice test goes red on `kind`; in `parseSupplierInvoice` store `body.PaidBy` as given — `…_TheBodyIsRefused…` goes red on `paidBy=employee` and `…_OweNobody` stays green only because the function answers false for the kind (then also swap the function's `THEN false` for `THEN true` in a scratch migration to see `…_OweNobody` go red on all five surfaces); replace `!c.seesProjectFinancials(role)` with `false` in `checkSupplierInvoiceProject` — the member and "not seen" cases go red; delete the `project.Status == projectCancelled` refusal — the cancelled case goes red; delete the `supplierInvoiceDocumentRefusal` call — `…_SubmitNeeds…` goes red; delete the supplier-invoice disjunct in `accessFor` — the detail, the document and the forbidden-delete of `…_FinancialSide…` go red (and the SQL one — the list assertions); use `row.Kind == kindOutlay` in `approvals.go` again — `…_TheQueueCounts…` goes red; `case kindOutlay:` alone in `resolveValues` — the recorded invoice bills nothing and `…_ARecordedInvoice…` goes red; drop the `projectCancelled` skip in `supplierInvoiceProjects` — the picker test goes red with 1006; delete the `case !projectsOn && kept:` arm — `…_WithoutProjectsAnExistingOneStaysEditable` goes red on `kind`. Say what each printed.
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo
@@ -4169,7 +4238,7 @@ happens outside Vantigo.
   judges. There is no second date column.
 - **Company-paid, always.** `paidBy` may be left out or say `company`, and is
   stored `company`; `employee` is refused ("A supplier invoice is paid by the
-  company"). It owes nobody (see "What owed to the employee is").
+  company"). It owes nobody (see [Money rules](#money-rules)).
 - **Never in a claim, always on a project.** A `claimId` is refused ("A supplier
   invoice is not a travel claim line"), so is a missing `projectId` ("A supplier
   invoice is booked on a project"), and in an installation without the projects
@@ -4202,6 +4271,10 @@ happens outside Vantigo.
 - **Counted apart.** Every figure of a project's expenses still counts it; the
   supplier invoices' own share is reported beside them as `supplierInvoices` — see
   [What a project's expenses come to](#what-a-projects-expenses-come-to).
+- **Without the projects module.** A new one is refused on `kind`; one already
+  recorded stays editable, its project columns carried through untouched and
+  what it bills recomputed from its kept markup, exactly as
+  [decision X2](#the-optional-projects-link) carries any line's.
 - **Its picker.** `GET /projects?kind=supplier_invoice` is the caller's own
   projects on which they hold financial rights and that are not cancelled — the
   projects the save would accept from them. A `projects:manage-all` holder on no
@@ -4224,6 +4297,39 @@ submitted without the supplier's invoice attached (see
 time, under the entry's own row lock, on the count that transaction reads.
 
 The rule only ever applies to an **employee-paid outlay**
+```
+
+Replace
+
+```markdown
+deactivated, does not strand an existing link; a *changed* one is judged in full.
+```
+
+with
+
+```markdown
+deactivated, does not strand an existing link; a *changed* one is judged in full.
+A **supplier invoice** is the one exception: it is booked on the *recorder's*
+financial rights on the project, not on the owner's `CanLogTime`, and on any
+project but a cancelled one — see [The supplier invoice](#the-supplier-invoice).
+```
+
+Replace
+
+```markdown
+*line*: it is money per day, and a trip's lines each fall on their own date.
+```
+
+with
+
+```markdown
+*line*: it is money per day, and a trip's lines each fall on their own date.
+
+**A supplier invoice counts as its recorder's.** Its recorder is its owner, so it
+is in their drafts, their submitted units, their timeseries and their
+`expenseRejected` items like any expense of theirs — a finance clerk's own figures
+are mostly supplier invoices — and never in `unreimbursed`, `myUnreimbursed` or
+`reimbursementWaiting`, because it owes nobody.
 ```
 
 - [ ] **Step 2: `docs/expenses.md` — the figures, the page, visibility, receipts, the API, what comes next**
@@ -4314,6 +4420,32 @@ supplier's own invoice, and it is required on submit — neither a mileage line 
 per diem day ever does, and a save that would turn a line with receipts into one of
 those two is refused (on `kind`) rather than stranding them. An outlay and a
 supplier invoice may become each other freely: the receipts follow.
+```
+
+Replace
+
+```markdown
+| `GET /entries/{id}` | The owner, the project's manager, or view-all/approve/manage; a bare 404 otherwise |
+| `POST /entries` | Record one — your own, or (`userId`) a colleague's, with `expenses:manage`; `claimId` records it as a line of a travel claim |
+```
+
+with
+
+```markdown
+| `GET /entries/{id}` | The owner, the project's manager, or view-all/approve/manage — and, for a supplier invoice, financial rights on its project; a bare 404 otherwise |
+| `POST /entries` | Record one — your own, or (`userId`) a colleague's, with `expenses:manage`; `claimId` records it as a line of a travel claim. A supplier invoice needs the recorder's financial rights on a project that is not cancelled |
+```
+
+Replace
+
+```markdown
+| `PUT /entries/{id}`, `DELETE /entries/{id}` | Owner or `expenses:manage`, while draft or rejected, not past the lock |
+```
+
+with
+
+```markdown
+| `PUT /entries/{id}`, `DELETE /entries/{id}` | Owner or `expenses:manage`, while draft or rejected, not past the lock; a supplier invoice moved to another project, or an outlay made one, is judged by the recorder's financial rights again |
 ```
 
 Replace
@@ -4561,7 +4693,7 @@ git show --stat HEAD && git status --short
 **Interfaces:**
 - Consumes: the regenerated `api-schema.d.ts` (Tasks 2, 3); `GET /projects?kind=supplier_invoice`; the summary's `capabilities.canRecordSupplierInvoice`, `project`, `currencies[].supplierInvoices`.
 - Produces TS: `ExpenseKind` gains `"supplier_invoice"`; `standaloneExpenseKinds` gains it; `entersAnAmount(kind)`, `takesReceipts(kind)`; `INVOICE_NUMBER_MAX_LENGTH = 100`; `ProjectPicker = "supplier_invoice"`, `expenseProjectsQueryOptions(kind?)`, `useProjectOptions(stored, enabled, kind?)`; `ProjectExpensesSupplierInvoices`; fixtures `supplierInvoice()`, `categoriesWithSubcontractor`; fake options `supplierInvoiceProjects`, `canRecordSupplierInvoice`, `summaryProject`.
-- i18n keys (both catalogs): `kindSupplierInvoice`, `invoiceNumber`, `invoiceDate`, `dueDate`, `overdue`, `supplierRequired`, `invoiceNumberRequired`, `invoiceNumberTooLong`, `dueDateBeforeInvoiceDate`, `supplierInvoiceNeedsProject`, `noSupplierInvoiceProjects`, `companyPaysSupplierInvoices`, `supplierInvoiceDocument`, `attachSupplierInvoice`, `recordASupplierInvoice`, `ofWhichSupplierInvoices`; `totalsCoverMoreThanTheList` reworded.
+- i18n keys (both catalogs): `kindSupplierInvoice`, `invoiceNumber`, `invoiceDate`, `dueDate`, `overdue`, `supplierRequired`, `invoiceNumberRequired`, `invoiceNumberTooLong`, `dueDateBeforeInvoiceDate`, `supplierInvoiceNeedsProject`, `noSupplierInvoiceProjects`, `companyPaysSupplierInvoices`, `supplierInvoiceDocument`, `attachSupplierInvoice`, `attachSupplierInvoiceToSubmit`, `recordASupplierInvoice`, `ofWhichSupplierInvoices`; `totalsCoverMoreThanTheList` reworded.
 
 - [ ] **Step 1: The vocabulary, the catalogs, the api layer, the fixtures and the fake**
 
@@ -4676,6 +4808,7 @@ with
     attachSupplierInvoice: "Attach the supplier's invoice",
     recordASupplierInvoice: "Record a supplier invoice",
     ofWhichSupplierInvoices: "Of which supplier invoices",
+    attachSupplierInvoiceToSubmit: "Attach the supplier's invoice, and then it can be submitted.",
 ```
 
 Replace
@@ -4705,6 +4838,7 @@ with
     attachSupplierInvoice: "Legg ved leverandørens faktura",
     recordASupplierInvoice: "Før en leverandørfaktura",
     ofWhichSupplierInvoices: "Herav leverandørfakturaer",
+    attachSupplierInvoiceToSubmit: "Legg ved leverandørens faktura, så kan den sendes inn.",
 ```
 
 Replace
@@ -4982,6 +5116,44 @@ with
     );
     return { id, code: known?.code ?? "KVEM1000", name: known?.name ?? "Kverneland web" };
   };
+
+  /**
+   * The supplier invoice's own rules, as parseSupplierInvoice and
+   * checkSupplierInvoiceProject hold them, on a create and on a replace alike:
+   * a fake that took one without a project or a number, or on a project the
+   * caller may not record one on, would let a form that gets any of it wrong
+   * pass every test. The recorder gate is the fixture caller's: the projects
+   * `GET /projects?kind=supplier_invoice` offers them, and the summary's own
+   * `project` when it answers one. A replace keeping the project it already
+   * carries is not judged again, as on the server.
+   */
+  const supplierInvoiceRefusal = (
+    input: ExpenseInput | ExpenseUpdateInput,
+    claim: Claim | undefined,
+    current?: StoredExpense,
+  ): Record<string, string[]> | undefined => {
+    if (input.kind !== "supplier_invoice") return undefined;
+    const refused: Record<string, string[]> = {};
+    if (input.projectId === undefined) refused.projectId = ["A supplier invoice is booked on a project"];
+    if (claim) refused.claimId = ["A supplier invoice is not a travel claim line"];
+    if (!input.supplier?.trim()) refused.supplier = ["A supplier invoice names its supplier"];
+    if (!input.invoiceNumber?.trim()) {
+      refused.invoiceNumber = ["A supplier invoice carries the supplier's invoice number"];
+    }
+    if (input.paidBy === "employee") refused.paidBy = ["A supplier invoice is paid by the company"];
+    if (input.dueDate && input.dueDate < input.entryDate) {
+      refused.dueDate = ["The due date cannot be before the invoice date"];
+    }
+    const kept = current?.kind === "supplier_invoice" && current.project?.id === input.projectId;
+    const recordable = [
+      ...supplierInvoiceProjectsOf(),
+      ...(server.canRecordSupplierInvoice ? [server.summaryProject ?? projectsOf()[0]] : []),
+    ].filter((one) => one !== undefined);
+    if (input.projectId !== undefined && !kept && !recordable.some((one) => one.id === input.projectId)) {
+      refused.projectId = ["This project is not one you can record a supplier invoice on"];
+    }
+    return Object.keys(refused).length > 0 ? refused : undefined;
+  };
 ```
 
 Replace
@@ -5107,24 +5279,26 @@ Replace
 with
 
 ```ts
-      // The supplier invoice's own rules, as parseSupplierInvoice holds them:
-      // a fake that took one without a project or a number would let a form
-      // that forgets either pass every test.
-      if (input.kind === "supplier_invoice") {
-        const refused: Record<string, string[]> = {};
-        if (input.projectId === undefined) refused.projectId = ["A supplier invoice is booked on a project"];
-        if (claim) refused.claimId = ["A supplier invoice is not a travel claim line"];
-        if (!input.supplier?.trim()) refused.supplier = ["A supplier invoice names its supplier"];
-        if (!input.invoiceNumber?.trim()) {
-          refused.invoiceNumber = ["A supplier invoice carries the supplier's invoice number"];
-        }
-        if (input.paidBy === "employee") refused.paidBy = ["A supplier invoice is paid by the company"];
-        if (input.dueDate && input.dueDate < input.entryDate) {
-          refused.dueDate = ["The due date cannot be before the invoice date"];
-        }
-        if (Object.keys(refused).length > 0) return Promise.resolve(problem(400, "Invalid expense", refused));
-      }
+      const refusedInvoice = supplierInvoiceRefusal(input, claim);
+      if (refusedInvoice) return Promise.resolve(problem(400, "Invalid expense", refusedInvoice));
       let perDiem: Partial<Expense> | undefined;
+```
+
+Replace
+
+```ts
+        const lockedEdit = lockRefusal(update.entryDate, claim);
+        if (lockedEdit) return Promise.resolve(problem(400, "Invalid expense", lockedEdit));
+```
+
+with
+
+```ts
+        const lockedEdit = lockRefusal(update.entryDate, claim);
+        if (lockedEdit) return Promise.resolve(problem(400, "Invalid expense", lockedEdit));
+        // The same rules on a replace as on a create: the server holds both.
+        const refusedInvoice = supplierInvoiceRefusal(update, claim, entry);
+        if (refusedInvoice) return Promise.resolve(problem(400, "Invalid expense", refusedInvoice));
 ```
 
 Replace
@@ -5163,12 +5337,15 @@ import { EntryDetails } from "../components/entry-details";
 import { sent } from "../test/api";
 import {
   APPROVER,
+  attachment,
   capabilities,
   categoriesWithSubcontractor,
   meta,
+  OTHER,
   outlay,
   projectOptions,
   supplierInvoice,
+  withReceipts,
 } from "../test/fixtures";
 import { renderWithProviders } from "../test/render";
 import { renderRoute } from "../test/route-tree";
@@ -5268,6 +5445,29 @@ describe("a supplier invoice in the expense form", () => {
       "Attach the supplier's invoice",
     );
     expect(within(dialog).getByText("The supplier's invoice")).toBeInTheDocument();
+    // The submit would be refused without the document, so it is not offered.
+    expect(within(dialog).getByRole("button", { name: "Save and submit" })).toBeDisabled();
+    expect(within(dialog).getByTestId("submit-needs-invoice")).toHaveTextContent("then it can be submitted");
+    await userEvent.upload(
+      await within(dialog).findByLabelText("Add receipts"),
+      new File(["%PDF-1.7"], "faktura.pdf", { type: "application/pdf" }),
+    );
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Save and submit" })).toBeEnabled());
+    expect(within(dialog).queryByTestId("submit-needs-invoice")).not.toBeInTheDocument();
+  });
+
+  it("drops a project the supplier-invoice picker does not offer when the kind changes", async () => {
+    const { dialog } = await openNew({
+      entries: [outlay()],
+      meta: withSubcontractor,
+      projects: projectOptions,
+      supplierInvoiceProjects: [projectOptions[1]],
+    });
+
+    await choose(dialog, "Project", /KVEM1000/);
+    await userEvent.click(within(dialog).getByRole("radio", { name: "Supplier invoice" }));
+    const project = await within(dialog).findByRole("combobox", { name: "Project" });
+    await waitFor(() => expect(project).toHaveValue(""));
   });
 
   it("refuses to save without the supplier, the invoice number and the project", async () => {
@@ -5343,6 +5543,32 @@ describe("a supplier invoice read out", () => {
   });
 });
 
+describe("a supplier invoice in the approval queue", () => {
+  it("is labelled by its kind", async () => {
+    stubExpensesApi({
+      meta: meta({ capabilities: { canApprove: true, canViewAll: false, canManage: false } }),
+      entries: [
+        withReceipts(
+          supplierInvoice({
+            id: 701,
+            status: "submitted",
+            submittedAt: "2026-09-19T10:00:00Z",
+            owner: { userId: OTHER, displayName: "Grace Hopper", active: true },
+            capabilities: capabilities({ canApprove: true }),
+          }),
+          [attachment({ fileName: "faktura.pdf", contentType: "application/pdf" })],
+        ),
+      ],
+    });
+    renderRoute("/expenses/approvals");
+
+    const table = await screen.findByRole("table", { name: "Grace Hopper's expenses" });
+    const line = within(table).getByText("Rørleggerarbeid, uke 38").closest("tr") as HTMLElement;
+    expect(within(line).getByText("Supplier invoice")).toBeInTheDocument();
+    expect(within(line).getByText("1 receipt")).toBeInTheDocument();
+  });
+});
+
 describe("a supplier invoice in My expenses", () => {
   it("is listed under its own kind, paid by the company, and is a kind the list filters by", async () => {
     stubExpensesApi({ entries: [outlay(), supplierInvoice()] });
@@ -5394,6 +5620,8 @@ import {
   categoriesWithSubcontractor,
   claim,
   meta,
+  OTHER,
+  supplierInvoice,
 ```
 
 and append at the end of the file:
@@ -5444,6 +5672,37 @@ describe("ProjectExpensesPanel — supplier invoices", () => {
     const dialog = await screen.findByRole("dialog", { name: "New expense" });
     expect(within(dialog).getByRole("radio", { name: "Outlay" })).toBeInTheDocument();
     expect(within(dialog).queryByRole("radio", { name: "Supplier invoice" })).not.toBeInTheDocument();
+  });
+
+  it("shows a finance reader the project's supplier invoices, and says the totals cover more than them", async () => {
+    // The totals hold three lines; the one this reader may open is a
+    // colleague's supplier invoice (design D4) — the outlays behind the rest
+    // are not theirs.
+    stubExpensesApi({
+      entries: [
+        supplierInvoice({
+          owner: { userId: OTHER, displayName: "Grace Hopper", active: true },
+          capabilities: capabilities(),
+        }),
+      ],
+      projectSummary: projectSummary({
+        projectCurrency: "NOK",
+        currencies: [
+          summaryCurrency({
+            approved: summaryBucket({ count: 3, cost: 11000, billAmount: 11000 }),
+            total: summaryBucket({ count: 3, cost: 11000, billAmount: 11000 }),
+          }),
+        ],
+      }),
+    });
+    panel();
+
+    const found = await row("Rørleggerarbeid, uke 38");
+    expect(within(found).getByText("Supplier invoice")).toBeInTheDocument();
+    expect(within(found).getByText("Grace Hopper")).toBeInTheDocument();
+    expect(await screen.findByTestId("project-expenses-partial")).toHaveTextContent(
+      "the supplier invoices if you may see the project's money",
+    );
   });
 
   it("writes the supplier invoices' share beneath a currency's total, and nothing where there is none", async () => {
@@ -5519,6 +5778,18 @@ import {
   DESCRIPTION_MAX_LENGTH,
   INVOICE_NUMBER_MAX_LENGTH,
   MAX_DISTANCE_KM,
+```
+
+Replace
+
+```ts
+import type { ExpenseProjectOption } from "../api/projects";
+```
+
+with
+
+```ts
+import { type ExpenseProjectOption, expenseProjectsQueryOptions } from "../api/projects";
 ```
 
 Replace
@@ -5902,6 +6173,17 @@ with
                   const subcontractor = subcontractorOf(meta.categories);
                   if (!values.categoryId && subcontractor) form.setFieldValue("categoryId", subcontractor);
                 }
+                // The two kinds of picker offer different projects: a choice
+                // the new one does not offer is dropped rather than sent to a
+                // save that refuses it. What it offers is read from the cache;
+                // a picker not read yet offers nothing, so the choice goes.
+                const pickerOf = (one: ExpenseKind) => (one === "supplier_invoice" ? "supplier_invoice" : undefined);
+                if (fixedProject === undefined && values.projectId && pickerOf(kind) !== pickerOf(values.kind)) {
+                  const offered = queryClient.getQueryData(expenseProjectsQueryOptions(pickerOf(kind)).queryKey);
+                  if (!offered?.some((project) => String(project.id) === values.projectId)) {
+                    form.setValues({ projectId: null, billingLineId: null });
+                  }
+                }
               }}
               data={[
                 { value: "outlay", label: t("kindOutlay") },
@@ -6103,6 +6385,43 @@ with
                 </Text>
               )}
               {needsReceipt && (
+```
+
+Replace
+
+```tsx
+          {claim === undefined && (
+            <Button type="button" variant="light" loading={save.isPending} onClick={() => submit(true)()}>
+              {t("saveAndSubmit")}
+            </Button>
+          )}
+        </SimpleGrid>
+```
+
+with
+
+```tsx
+          {claim === undefined && (
+            <Button
+              type="button"
+              variant="light"
+              loading={save.isPending}
+              // A supplier invoice without its document is refused at submit
+              // (design D2), and a new one cannot have its document yet — so
+              // the button does not offer a refusal; the sentence under it
+              // says what it waits for.
+              disabled={needsInvoiceDocument}
+              onClick={() => submit(true)()}
+            >
+              {t("saveAndSubmit")}
+            </Button>
+          )}
+        </SimpleGrid>
+        {claim === undefined && needsInvoiceDocument && (
+          <Text size="xs" c="dimmed" ta="right" data-testid="submit-needs-invoice">
+            {t("attachSupplierInvoiceToSubmit")}
+          </Text>
+        )}
 ```
 
 - [ ] **Step 4: The drawer's details, the project page's button and line**
@@ -6327,7 +6646,7 @@ mise exec -- bun run --cwd apps/host/frontend test && mise exec -- bun run --cwd
 ```
 Expected: PASS — the new tests and every existing expenses test (the form's outlay and mileage tests, the panel's "Record a cost" tests, the approval tables through `expenseKindLabelKey`). If Mantine's `DateInput` is not a `textbox` by its label in this version, query it as the existing claim test does (`getByRole("textbox", { name: "Date" })` works today, so it is) and report otherwise.
 
-Prove the tests can fail, restoring after each: drop the `supplier_invoice` option from the kind control's `data` — the form tests go red; send `paidBy` for every kind (`return { ...money, paidBy: values.paidBy }` unconditionally) — the two payload tests go red on `not.toHaveProperty("paidBy")`; remove the `projectId` validator — the refusal test goes red (a POST is sent and the fake answers 400 on `projectId`, which is not the client sentence); use `useProjectOptions(opened?.project, …)` without the kind — the picker assertion goes red; drop `kindFixed` from the control's condition — the panel's "no kind to choose" assertion goes red; remove `expense.billing?.invoice === undefined` from `overdue` — the invoiced case goes red; render the share row unconditionally with `figures.total` — the EUR assertion goes red. Say what each printed.
+Prove the tests can fail, restoring after each: drop the `supplier_invoice` option from the kind control's `data` — the form tests go red; send `paidBy` for every kind (`return { ...money, paidBy: values.paidBy }` unconditionally) — the two payload tests go red on `not.toHaveProperty("paidBy")`; remove the `projectId` validator — the refusal test goes red (a POST is sent and the fake answers 400 on `projectId`, which is not the client sentence); use `useProjectOptions(opened?.project, …)` without the kind — the picker assertion goes red; drop `kindFixed` from the control's condition — the panel's "no kind to choose" assertion goes red; remove `expense.billing?.invoice === undefined` from `overdue` — the invoiced case goes red; render the share row unconditionally with `figures.total` — the EUR assertion goes red; drop `disabled={needsInvoiceDocument}` — the "Save and submit" assertion goes red; delete the kind switch's `setValues({ projectId: null, … })` — the dropped-project test goes red with `KVEM1000 · Kverneland web`; drop the recorder gate from `supplierInvoiceRefusal` and post a project outside `supplierInvoiceProjects` from the form test — it saves where the server would refuse; put `totalsCoverMoreThanTheList`'s old wording back — the panel's finance-reader test goes red. Say what each printed.
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo
@@ -6588,7 +6907,7 @@ grep -rn "kindOutlay" apps/server/internal/expenses/*.go | grep -v _test   # eac
 cd apps/server && mise exec -- go test -count=1 -run 'TestNoModuleReferencesAnotherModulesSchema|TestSqlcSchemaListsOnlyTheModulesOwnMigrations|TestServeMuxConflictsArePinned' ./internal/db/ ./internal/openapi/ && cd ../..
 grep -rn "supplier invoice\|supplier_invoice\|supplierInvoices\|owes_employee" docs/expenses.md docs/projects.md docs/module-boundaries.md ROADMAP.md | head -40   # the docs say what the code does
 ```
-Check, by eye: the spec commit plus eight task commits, each trailer exactly `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`; nothing under `openapi/testdata/exchanges/`; `go.mod`/`go.sum` still untracked; no existing `required:` list changed in either yaml (the diff adds `required:` only inside `ExpensesProjectSummarySupplierInvoices` and `ProjectEconomySupplierInvoices`); one migration, `00033` (expenses); no expenses file imports projects or the reverse; no query names another module's schema; no `float64` multiplied into money anywhere in the diff; no new operation (`git diff main..HEAD -- openapi/*.yaml | grep -c operationId` prints 0); every directory call the diff adds (`checkSupplierInvoiceProject`, `financialProjects`, `supplierInvoiceProjects`, `projectOption` from the summary) runs before any `withLockedTx`, which the harness's locked-call check has already proven on every test.
+Check, by eye: the spec commit, the plan commit and eight task commits, each trailer exactly `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`; nothing under `openapi/testdata/exchanges/`; `go.mod`/`go.sum` still untracked; no existing `required:` list changed in either yaml (the diff adds `required:` only inside `ExpensesProjectSummarySupplierInvoices` and `ProjectEconomySupplierInvoices`); one migration, `00033` (expenses); no expenses file imports projects or the reverse; no query names another module's schema; no `float64` multiplied into money anywhere in the diff; no new operation (`git diff main..HEAD -- openapi/*.yaml | grep -c operationId` prints 0); every directory call the diff adds (`checkSupplierInvoiceProject`, `financialProjects`, `supplierInvoiceProjects`, `projectOption` from the summary) runs before any `withLockedTx`, which the harness's locked-call check has already proven on every test.
 
 - [ ] **Step 3: Open the PR**
 
@@ -6706,7 +7025,8 @@ Say: the PR's number and URL and CI's state; each test shown able to fail and wh
 | D3 `CurrencyExpenses.SupplierInvoices *ExpenseSplit{Approved, Submitted, Draft, Total}`, nil when none, existing figures still everything | Task 3 Steps 1–2; `TestProjectExpenses_SupplierInvoicesAreASubFigureOfEveryBucket` |
 | D3 economy `expenses.supplierInvoices {approved, submitted, draft, total: {count, cost, amount}}`, own currency, absent when none; margin, budget, portfolio, alerts unchanged | Task 4; `TestGetProjectEconomy_SupplierInvoicesAreASubFigureOfTheExpenses` (the rest of the answer byte-equal), `…_WithoutSupplierInvoicesInItsCurrencyTheKeyIsAbsent`, the two golden tests |
 | D3 the Costs section's and the Expenses tab's "of which supplier invoices" | Task 8; Task 7 Step 4 (the currency card) |
-| D4 visible to financial-rights holders on its project (list, detail, panel); outlays unchanged; the "totals, not rows" note no longer applies to these rows | Task 2 Step 6 (`accessFor`, the list's SQL, `financialProjects`); `…_TheProjectsFinancialSideSeesTheRows`; Task 7 Step 1 (the note's wording) |
+| D4 visible to financial-rights holders on its project (list, detail, panel); outlays unchanged; the "totals, not rows" note no longer applies to these rows | Task 2 Step 6 (`accessFor`, the list's SQL, `financialProjects`); `…_TheProjectsFinancialSideSeesTheRows`; Task 7 Step 1 (the note's wording) and the panel's finance-reader test |
+| Pre-flight rulings: the fake models the kind's rules and the recorder gate on POST and PUT; "Save and submit" waits for the document; a kind switch drops a project the new picker does not offer; an existing supplier invoice stays editable without the projects module; the docs' API rows, "who may book", Stats sentence and Money rules link; the approval-tables label | Task 7 Steps 1–3 (`supplierInvoiceRefusal`, the footer, the kind `onChange`) and their tests; Task 2 Steps 3–4 (`keptSupplierInvoice`) and `…_WithoutProjectsAnExistingOneStaysEditable`; Task 6 Steps 1–2; `supplier-invoice.test.tsx` "in the approval queue" |
 | D5 kind control (outside claims, only with projects), the fields, Subcontractor preselected, billable on, no paid-by control with a line, receipts with "Attach the supplier's invoice" | Task 7 Step 3; `supplier-invoice.test.tsx` "a supplier invoice in the expense form" |
 | D5 list filter, labels, drawer (number, due date, overdue), approval tables | Task 7 Steps 1, 4 (`standaloneExpenseKinds`, `expenseKindLabelKey`, `EntryDetails`); the "read out" and "My expenses" tests; the approval tables read `expenseKindLabelKey` and `attachmentCount` unchanged |
 | D5 project page: **Record a supplier invoice** beside **Record a cost**, behind `canRecordSupplierInvoice`; the panel's list shows the kind | Task 2 Step 7 (the capability and `project`), Task 7 Step 4; the panel tests |
@@ -6729,4 +7049,4 @@ Say: the PR's number and URL and CI's state; each test shown able to fail and wh
 
 **Name consistency.** Go: `kindSupplierInvoice`, `marksUp`, `takesReceipts`, `parseAmounts`, `parseSupplierInvoice`, `invoiceNumberMaxLength`, `supplierInvoiceNeedsProject`, `supplierInvoiceNotInClaim`, `supplierInvoicePaidByCompany`, `checkLine`, `checkSupplierInvoiceProject`, `projectCancelled`, `cannotRecordSupplierInvoice`, `supplierInvoiceOnCancelledProject`, `optionalPgDate`, `projectScope`, `financialProjects`, `supplierInvoiceDocumentRefusal`, `projectOption`, `supplierInvoiceProjects`, `owesEmployee`/`OwesEmployee`, `splitSum`, `sumOf`, `pickBucket`, `split`, `contracts.ExpenseSplit`, `CurrencyExpenses.SupplierInvoices`, `expenseSplit`, `expenseSplitOf`, `setSupplierInvoices`, `spentSplit`. SQL: `expenses.owes_employee(kind, paid_by)`, `supplier_invoice_number`, `supplier_due_date`, `@supplier_invoices_all`, `@financial_project_ids`, `supplier_invoice` (the grouped flag). Wire: `invoiceNumber`, `dueDate`, `kind=supplier_invoice`, `canRecordSupplierInvoice`, `project`, `supplierInvoices`, `ExpensesProjectSummarySupplierInvoices`, `ProjectEconomySupplierInvoices`. TS: `ExpenseKind` `"supplier_invoice"`, `entersAnAmount`, `takesReceipts`, `INVOICE_NUMBER_MAX_LENGTH`, `ProjectPicker`, `expenseProjectsQueryOptions(kind)`, `useProjectOptions(…, kind)`, `ProjectExpensesSupplierInvoices`, `EconomySupplierInvoices`, `supplierInvoice()`, `categoriesWithSubcontractor`, `supplierInvoiceProjects`, `canRecordSupplierInvoice`, `summaryProject`. Test ids: `company-pays`, `attach-supplier-invoice`, `project-expense-supplier-invoices-<CUR>`, `expense-supplier-invoices`. The refusal sentences are the same words in `entries_validation.go`/`entries.go`/`flow.go`, the Go tests, the fetch fake, the i18n catalogs (where the client says them itself) and `docs/expenses.md`.
 
-**Real paths, numbers and commands.** Checked on the branch before writing: the latest migration is `00032_time_work_types.sql`, so `00033` is free; `apps/server/internal/expenses/sqlc.yaml` lists 00012–00014; every file under **Modify** exists (`ls`), every file under **Create** does not; `openapi/testdata/exchanges/` holds no `expenses.jsonl` or `projects.jsonl`; `apps/server/internal/openapi/cmd/contract` exists; `bun run gen:client`, `translations:check` and `i18n:test` are root `package.json` scripts; `test`, `typecheck` and `lint` are both packages' scripts; `/tmp/claude-1000/` exists; the seeded settings row has no receipt threshold and a 0 % default markup (00012), so the tests' outlays need no receipt and a supplier invoice bills its net; the second seeded category is `Subcontractor`, id 1002; `projects.visible` (00008) is the precedent for a schema-qualified SQL function in an sqlc query. **Every edit anchor was checked by a script** (`/tmp/claude-1000/anchorcheck.py`) that applies the plan's replacements in order to copies of the files — Task 1's `sed` included — and asserts each anchor occurs exactly once in its file at the moment it is applied: 186 anchors, none missing, none ambiguous. The same script then wrote the result — every replacement, every **Create**, the appends and the two whole-block replacements — into a scratch worktree of the spec commit, where `go generate ./...`, `gofmt`, `go vet`, `golangci-lint` (0 issues), the expenses, projects, customers, openapi, db, module and integration suites, `bun run gen:client`, both frontend packages' typecheck, lint and tests (expenses 234 tests, projects' economy 73) and `translations:check`/`i18n:test` all passed; that run is how the integration test's object store (Task 5) and the `time` import (Task 2 Step 4) came to be in this plan. `biome check --write` reformatted three of the touched frontend files there, which Task 7 Step 5 does as a matter of course. The two whole-block replacements it does not apply by text (`parseOutlay`, from its doc comment to `refuseMileageFields(body, kindOutlay, add)`; and `projectoptions.go`, replaced whole) were checked by hand: both bounds occur once.
+**Real paths, numbers and commands.** Checked on the branch before writing: the latest migration is `00032_time_work_types.sql`, so `00033` is free; `apps/server/internal/expenses/sqlc.yaml` lists 00012–00014; every file under **Modify** exists (`ls`), every file under **Create** does not; `openapi/testdata/exchanges/` holds no `expenses.jsonl` or `projects.jsonl`; `apps/server/internal/openapi/cmd/contract` exists; `bun run gen:client`, `translations:check` and `i18n:test` are root `package.json` scripts; `test`, `typecheck` and `lint` are both packages' scripts; `/tmp/claude-1000/` exists; the seeded settings row has no receipt threshold and a 0 % default markup (00012), so the tests' outlays need no receipt and a supplier invoice bills its net; the second seeded category is `Subcontractor`, id 1002; `projects.visible` (00008) is the precedent for a schema-qualified SQL function in an sqlc query. **Every edit anchor was checked by a script** (`/tmp/claude-1000/anchorcheck.py`) that applies the plan's replacements in order to copies of the files — Task 1's `sed` included — and asserts each anchor occurs exactly once in its file at the moment it is applied: 195 anchors, none missing, none ambiguous. The same script then wrote the result — every replacement, every **Create**, the appends and the two whole-block replacements — into a scratch worktree of the spec commit, where `go generate ./...`, `gofmt`, `go vet`, `golangci-lint` (0 issues), the expenses, projects, customers, openapi, db, module and integration suites, `bun run gen:client`, both frontend packages' typecheck, lint and tests (expenses 237 tests, projects' economy 73) and `translations:check`/`i18n:test` all passed; that run is how the integration test's object store (Task 5) and the `time` import (Task 2 Step 4) came to be in this plan. `biome check --write` reformatted three of the touched frontend files there, which Task 7 Step 5 does as a matter of course. The two whole-block replacements it does not apply by text (`parseOutlay`, from its doc comment to `refuseMileageFields(body, kindOutlay, add)`; and `projectoptions.go`, replaced whole) were checked by hand: both bounds occur once.
