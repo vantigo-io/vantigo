@@ -1,13 +1,10 @@
 package projects
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"math/big"
-	"slices"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -302,23 +299,26 @@ func (s *server) economyResponse(
 // It is only reached with time tracking on, and answers an empty list, never
 // nil, when no entry picked a type — whether the provider said so with an
 // empty slice or a nil one: "none" and "cannot say" are different answers.
-// Rows come by name without regard to case, then id — the work types list's
-// order without its active-first split, since a deactivated type's hours are
-// no less logged.
+// Rows come in known's order, which is ListWorkTypes' — active first, each
+// half by lower(name) under the database's collation, then id — so the split
+// and the Billing tab's list can never disagree, as they could if this sorted
+// again in Go: strings.ToLower and a byte compare order Æ, Ø and Å (and any
+// other non-ASCII name) differently from the collation. A deactivated type's
+// row therefore comes after the active ones, where the list puts it.
 func economyWorkTypes(logged []contracts.WorkTypeActuals, known []store.ProjectsWorkType, seesAmounts, seesCosts bool) (*[]gen.ProjectEconomyWorkType, error) {
-	names := make(map[int32]string, len(known))
-	for _, wt := range known {
-		names[wt.ID] = wt.Name
+	byID := make(map[int32]contracts.WorkTypeActuals, len(logged))
+	for _, wt := range logged {
+		byID[wt.WorkTypeID] = wt
 	}
 	out := make([]gen.ProjectEconomyWorkType, 0, len(logged))
-	for _, wt := range logged {
-		name, ok := names[wt.WorkTypeID]
+	for _, kt := range known {
+		wt, ok := byID[kt.ID]
 		if !ok {
 			continue
 		}
 		row := gen.ProjectEconomyWorkType{
 			Id:    wt.WorkTypeID,
-			Name:  name,
+			Name:  kt.Name,
 			Hours: decimalNumber(exactHours(wt.HoursHundredths)),
 		}
 		if seesAmounts {
@@ -339,9 +339,6 @@ func economyWorkTypes(logged []contracts.WorkTypeActuals, known []store.Projects
 		}
 		out = append(out, row)
 	}
-	slices.SortFunc(out, func(x, y gen.ProjectEconomyWorkType) int {
-		return cmp.Or(strings.Compare(strings.ToLower(x.Name), strings.ToLower(y.Name)), cmp.Compare(x.Id, y.Id))
-	})
 	return &out, nil
 }
 

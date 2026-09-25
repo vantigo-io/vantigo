@@ -1356,7 +1356,7 @@ export interface components {
             taskEstimateHours?: number | null;
             /** @description Whether this installation has a module that reports what has been logged against projects. False means the budgets and the invoice plan are still here and there are no actuals to compare them with — not that nothing has been logged. */
             timeTracking: boolean;
-            /** @description One row per work type at least one entry was logged as, by name as the project's work types list has it; ordinary hours are in no row. Absent exactly when timeTracking is false, and an empty list when no entry picked a type. */
+            /** @description One row per work type at least one entry was logged as, in the order the project's work types list has them (active first, each half by name) and by the name it has there; ordinary hours are in no row. Absent exactly when timeTracking is false, and an empty list when no entry picked a type. */
             workTypes?: components["schemas"]["ProjectEconomyWorkType"][];
         };
         /** @description One project in the economy portfolio. Every row is a project the caller has financial rights on — the project's manager, projects:manage-all, or projects:view-financials on a project they can see — so the amounts are never shaped away here the way they are on the per-project economy; a caller who may not see a project's money does not get its row at all. There is no cost or margin in the portfolio — that block is the per-project read's, behind projects:view-costs. */
@@ -1467,12 +1467,12 @@ export interface components {
         ProjectEconomyWorkType: {
             /**
              * Format: double
-             * @description What the type's hours bill at, in the response's currency. Absent without financial rights on the project, and when the project carries no currency.
+             * @description What the type's hours bill at, in the response's currency. Absent without financial rights on the project, and when the project carries no currency. Render the column on the figure being present, not on capabilities.canSeeFinancials.
              */
             billAmount?: number;
             /**
              * Format: double
-             * @description What the type's hours cost the company. Absent unless billAmount is present and the caller also holds projects:view-costs.
+             * @description What the type's hours cost the company. Absent unless billAmount is present and the caller also holds projects:view-costs. Render the column on the figure being present, not on capabilities.canSeeCosts.
              */
             costAmount?: number;
             /**

@@ -2,6 +2,7 @@ package projects_test
 
 import (
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -137,8 +138,28 @@ func TestPostProjectsByIdWorkTypes_AddsATypeAndRecordsIt(t *testing.T) {
 	if fields := payloadFields(t, payload); !slices.Equal(fields, []string{"name", "billMultiplierPercent", "costMultiplierPercent"}) {
 		t.Errorf("work-type-added fields = %v, want name and both multipliers", fields)
 	}
-	if text := lastPayloadText(t, h, project.Id, "work-type-added"); strings.Contains(text, "137.5") || strings.Contains(text, "150") {
-		t.Errorf("payload %s carries a multiplier; the timeline names fields, never their values", text)
+	// The key set, not a search for "150" in the text: the id is in the
+	// payload too, and a number search would trip on an id that held the
+	// digits.
+	if keys := slices.Sorted(maps.Keys(payload)); !slices.Equal(keys, []string{"fields", "name", "workTypeId"}) {
+		t.Errorf("work-type-added payload keys = %v, want exactly [fields name workTypeId]; the timeline names fields, never their values", keys)
+	}
+}
+
+// POST adds a type active whatever the body says: `active` is PUT's, and a
+// create that forwarded it would add a type nobody can pick.
+func TestPostProjectsByIdWorkTypes_IgnoresActive(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "WT1009"})
+
+	created := createWorkType(t, c, project.Id, map[string]any{"active": false})
+	if !created.Active {
+		t.Errorf("created = %+v, want it active: POST does not read active", created)
+	}
+	if got := listWorkTypes(t, c, project.Id); len(got) != 1 || !got[0].Active {
+		t.Errorf("list = %+v, want the one type, active", got)
 	}
 }
 
@@ -179,10 +200,20 @@ func TestPostProjectsByIdWorkTypes_InvalidBody_Returns400OnTheField(t *testing.T
 			}
 		})
 	}
+	// PUT shares the rules; one case shows its 400 is wired too.
+	wt := createWorkType(t, c, project.Id, map[string]any{"name": "Helg"})
+	r := putWorkType(t, c, project.Id, wt.Id, workTypeBody(map[string]any{"name": "Helg", "billMultiplierPercent": 0}))
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if r.Status != http.StatusBadRequest || problem.Title != "Invalid project" ||
+		!slices.Equal(problem.Errors["billMultiplierPercent"], []string{"The bill multiplier must be greater than zero"}) {
+		t.Errorf("PUT zero bill multiplier: status %d body %s, want 400 on billMultiplierPercent", r.Status, r.Body)
+	}
+	changeWorkType(t, c, project.Id, wt.Id, workTypeBody(map[string]any{"name": "Helg", "active": false}))
 	// 1000 exactly and two decimals are inside the rule.
 	createWorkType(t, c, project.Id, map[string]any{"name": "Maks", "billMultiplierPercent": 1000, "costMultiplierPercent": 0.01})
-	if got := workTypeNames(listWorkTypes(t, c, project.Id)); !slices.Equal(got, []string{"Maks"}) {
-		t.Errorf("names = %v, want only the valid type stored", got)
+	if got := workTypeNames(listWorkTypes(t, c, project.Id)); !slices.Equal(got, []string{"Maks", "Helg"}) {
+		t.Errorf("names = %v, want only the valid types stored, the PUT's refused change not applied", got)
 	}
 }
 
@@ -212,6 +243,16 @@ func TestWorkTypes_ANameTakenInAnyCase_Returns409(t *testing.T) {
 	}
 	if got := workTypeNames(listWorkTypes(t, c, project.Id)); !slices.Equal(got, []string{"Helg", "Overtid 50 %"}) {
 		t.Errorf("names = %v, want both types as they were", got)
+	}
+
+	// A type's own name in another case is not taken: the index holds the
+	// name on this row, so the rename is a change of name like any other.
+	renamed := changeWorkType(t, c, project.Id, weekend.Id, workTypeBody(map[string]any{"name": "HELG", "billMultiplierPercent": 200}))
+	if renamed.Name != "HELG" {
+		t.Errorf("renamed = %+v, want the name HELG", renamed)
+	}
+	if fields := payloadFields(t, lastPayload(t, h, project.Id, "work-type-changed")); !slices.Equal(fields, []string{"name"}) {
+		t.Errorf("fields = %v, want [name]", fields)
 	}
 }
 

@@ -719,7 +719,7 @@ type ProjectEconomyResponse struct {
 	// TimeTracking Whether this installation has a module that reports what has been logged against projects. False means the budgets and the invoice plan are still here and there are no actuals to compare them with — not that nothing has been logged.
 	TimeTracking bool `json:"timeTracking"`
 
-	// WorkTypes One row per work type at least one entry was logged as, by name as the project's work types list has it; ordinary hours are in no row. Absent exactly when timeTracking is false, and an empty list when no entry picked a type.
+	// WorkTypes One row per work type at least one entry was logged as, in the order the project's work types list has them (active first, each half by name) and by the name it has there; ordinary hours are in no row. Absent exactly when timeTracking is false, and an empty list when no entry picked a type.
 	WorkTypes *[]ProjectEconomyWorkType `json:"workTypes,omitempty"`
 }
 
@@ -817,10 +817,10 @@ type ProjectEconomyTotals struct {
 
 // ProjectEconomyWorkType What was logged as one of the project's work types (work types design D4), every bucket together. The amounts are the work's value and cost at the base rates times the type's multipliers, as Time snapshotted them; they are already inside every total of this response, so this is a split, never an addition.
 type ProjectEconomyWorkType struct {
-	// BillAmount What the type's hours bill at, in the response's currency. Absent without financial rights on the project, and when the project carries no currency.
+	// BillAmount What the type's hours bill at, in the response's currency. Absent without financial rights on the project, and when the project carries no currency. Render the column on the figure being present, not on capabilities.canSeeFinancials.
 	BillAmount *float64 `json:"billAmount,omitempty"`
 
-	// CostAmount What the type's hours cost the company. Absent unless billAmount is present and the caller also holds projects:view-costs.
+	// CostAmount What the type's hours cost the company. Absent unless billAmount is present and the caller also holds projects:view-costs. Render the column on the figure being present, not on capabilities.canSeeCosts.
 	CostAmount *float64 `json:"costAmount,omitempty"`
 
 	// Hours Every hour logged as the type, whatever currency it was priced in. Planning data, visible to everyone who sees the project.

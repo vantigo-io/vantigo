@@ -190,6 +190,15 @@ func TestWorkTypes_FrozenFromSubmit_AndSnapshottedAgainWhenRejected(t *testing.T
 	if got := snapshotOf(t, h, e.Id); got != "6001|Overtid 50 %|150.00|140.00" {
 		t.Errorf("snapshot = %q, want it untouched", got)
 	}
+	// The one writer of the snapshot is the save, and it refuses a submitted
+	// entry: picking another type now is a 403 that leaves the columns as
+	// they were submitted.
+	if r := owner.Do(http.MethodPut, entryPath(e.Id), updateBody(e, map[string]any{"workTypeId": workTypeWeekend})); r.Status != http.StatusForbidden {
+		t.Errorf("PUT a submitted entry's type: status %d body %s, want 403", r.Status, r.Body)
+	}
+	if got := snapshotOf(t, h, e.Id); got != "6001|Overtid 50 %|150.00|140.00" {
+		t.Errorf("snapshot after a refused PUT = %q, want it untouched", got)
+	}
 
 	rejected := rejectEntries(t, approver, "Wrong day", e.Id)[0]
 	resaved := updateEntry(t, owner, rejected, nil)
