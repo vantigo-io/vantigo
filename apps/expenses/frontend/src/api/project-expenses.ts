@@ -30,6 +30,13 @@ export type ProjectExpensesBucket = Schemas["ExpensesProjectSummaryBucket"];
 export type ProjectExpensesCapabilities = Schemas["ExpensesProjectSummaryCapabilities"];
 
 /**
+ * The part of one currency's buckets that is supplier invoices (supplier
+ * invoices design D3) — a line of its own beneath the total, never a split of
+ * it. Absent when the currency holds none.
+ */
+export type ProjectExpensesSupplierInvoices = Schemas["ExpensesProjectSummarySupplierInvoices"];
+
+/**
  * Whether a failed read is worth asking again.
  *
  * A 4xx is the server's **answer** — this is not yours, that query

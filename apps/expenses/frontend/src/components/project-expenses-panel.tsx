@@ -13,7 +13,7 @@ import {
   Text,
   UnstyledButton,
 } from "@mantine/core";
-import { IconAlertCircle, IconPlus, IconReceipt } from "@tabler/icons-react";
+import { IconAlertCircle, IconFileInvoice, IconPlus, IconReceipt } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, EmptyState, useI18n, useShellLink } from "@vantigo/frontend-shell";
 import { useRef, useState } from "react";
@@ -126,6 +126,14 @@ export const ProjectExpensesPanel = ({ projectId, onChanged }: ProjectExpensesPa
    */
   const mayRecord = totals ? totals.capabilities.canRecord : summaryMissing;
   const showRecord = mayRecord && bookable !== undefined;
+  /**
+   * Who may record a supplier invoice, and on what. The project's financial
+   * side books one and is often on no project team, so both come off the
+   * summary — its capability and its own `project` — because `GET /projects`
+   * offers such a reader nothing to open the form with (supplier invoices
+   * design D2, D5).
+   */
+  const supplierInvoiceProject = totals?.capabilities.canRecordSupplierInvoice ? totals.project : undefined;
 
   const currencies = totals?.currencies ?? [];
   const own = totals?.projectCurrency;
@@ -240,15 +248,29 @@ export const ProjectExpensesPanel = ({ projectId, onChanged }: ProjectExpensesPa
                 {t("projectExpensesDescription")}
               </Text>
             </Stack>
-            {showRecord && (
-              <Button
-                h={40}
-                leftSection={<IconPlus size={16} />}
-                onClick={() => setRecording({ mode: "create", project: bookable })}
-              >
-                {t("recordACost")}
-              </Button>
-            )}
+            <Group gap="sm">
+              {showRecord && (
+                <Button
+                  h={40}
+                  leftSection={<IconPlus size={16} />}
+                  onClick={() => setRecording({ mode: "create", project: bookable })}
+                >
+                  {t("recordACost")}
+                </Button>
+              )}
+              {supplierInvoiceProject && (
+                <Button
+                  h={40}
+                  variant="light"
+                  leftSection={<IconFileInvoice size={16} />}
+                  onClick={() =>
+                    setRecording({ mode: "create", kind: "supplier_invoice", project: supplierInvoiceProject })
+                  }
+                >
+                  {t("recordASupplierInvoice")}
+                </Button>
+              )}
+            </Group>
           </Group>
 
           {/* Offered only when the totals were readable **and say there is
@@ -498,7 +520,19 @@ const CurrencyCard = ({
               {bucket(t("bucketSubmitted"), figures.submitted)}
               {bucket(t("bucketDraft"), figures.draft)}
             </Table.Tbody>
-            <Table.Tfoot>{bucket(t("bucketTotal"), figures.total)}</Table.Tfoot>
+            <Table.Tfoot>
+              {bucket(t("bucketTotal"), figures.total)}
+              {/* The supplier invoices' share of the total above it — a line
+                  of its own, never a split: the total is still every line. */}
+              {figures.supplierInvoices && (
+                <Table.Tr data-testid={`project-expense-supplier-invoices-${currency}`}>
+                  <Table.Td>{t("ofWhichSupplierInvoices")}</Table.Td>
+                  <Table.Td ta="right">{count(figures.supplierInvoices.total.count)}</Table.Td>
+                  <Table.Td ta="right">{format.money(figures.supplierInvoices.total.cost, currency)}</Table.Td>
+                  <Table.Td ta="right">{format.money(figures.supplierInvoices.total.billAmount, currency)}</Table.Td>
+                </Table.Tr>
+              )}
+            </Table.Tfoot>
           </Table>
         </Table.ScrollContainer>
 

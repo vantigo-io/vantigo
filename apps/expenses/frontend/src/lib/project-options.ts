@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
-import { type ExpenseProjectOption, expenseProjectsQueryOptions } from "../api/projects";
+import { type ExpenseProjectOption, expenseProjectsQueryOptions, type ProjectPicker } from "../api/projects";
 import "../i18n";
 
 /** The project an expense or a travel claim is already booked on, as the server renders it. */
@@ -35,9 +35,13 @@ export interface ProjectOptions {
  * this, and twenty lines with a loading-state invariant in them are the sort
  * of thing that drifts when it is copied.
  */
-export const useProjectOptions = (stored: StoredProject | undefined, enabled: boolean): ProjectOptions => {
+export const useProjectOptions = (
+  stored: StoredProject | undefined,
+  enabled: boolean,
+  kind?: ProjectPicker,
+): ProjectOptions => {
   const { t } = useI18n("expenses");
-  const { data: projects } = useQuery({ ...expenseProjectsQueryOptions(), enabled });
+  const { data: projects } = useQuery({ ...expenseProjectsQueryOptions(kind), enabled });
 
   const kept =
     stored && projects !== undefined && !projects.some((project) => project.id === stored.id) ? stored : undefined;

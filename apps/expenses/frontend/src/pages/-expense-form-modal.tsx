@@ -33,8 +33,8 @@ import {
   submitExpenses,
   updateExpense,
 } from "../api/entries";
-import { expensesMetaQueryOptions } from "../api/meta";
-import type { ExpenseProjectOption } from "../api/projects";
+import { type ExpensesMeta, expensesMetaQueryOptions } from "../api/meta";
+import { type ExpenseProjectOption, expenseProjectsQueryOptions } from "../api/projects";
 import { expenseRatesQueryOptions } from "../api/rates";
 import { type ApiError, EXPENSES_QUERY_KEY } from "../api/request";
 import { EntryDetails } from "../components/entry-details";
@@ -48,6 +48,7 @@ import { refusalMessage, refusalMessages } from "../lib/errors";
 import { useDecimalSeparator, useExpenseFormat } from "../lib/format";
 import {
   DESCRIPTION_MAX_LENGTH,
+  INVOICE_NUMBER_MAX_LENGTH,
   MAX_DISTANCE_KM,
   MAX_GROSS,
   MAX_PASSENGERS,
@@ -58,7 +59,7 @@ import {
 } from "../lib/money";
 import { useProjectOptions } from "../lib/project-options";
 import { mileagePreview } from "../lib/rates";
-import type { ExpenseKind, PaidBy } from "../lib/status";
+import { type ExpenseKind, entersAnAmount, type PaidBy, takesReceipts } from "../lib/status";
 import { zoneCalendarDate } from "../lib/time-zone";
 
 /**
@@ -73,6 +74,12 @@ import { zoneCalendarDate } from "../lib/time-zone";
  * and pointing it somewhere else would be a different action; the billing
  * line is picked from that project's lines. It is still an expense of its
  * own, so it can be saved and submitted in one go.
+ *
+ * A `kind` of `supplier_invoice` with a `project` is **a supplier invoice
+ * recorded from that project's page** (supplier invoices design D5): the kind
+ * is fixed as well as the project — the button said which — and the project
+ * is the summary's own option, because the finance reader it is for is often
+ * on no project team.
  */
 export type ExpenseModalState =
   | { mode: "create"; kind?: ExpenseKind; claim?: Claim; project?: ExpenseProjectOption }
@@ -95,6 +102,8 @@ interface ExpenseFormValues {
   description: string;
   categoryId: string | null;
   supplier: string;
+  invoiceNumber: string;
+  dueDate: string | null;
   grossAmount: number | string;
   vatAmount: number | string;
   paidBy: PaidBy;
@@ -114,6 +123,8 @@ const formFields = new Set([
   "description",
   "categoryId",
   "supplier",
+  "invoiceNumber",
+  "dueDate",
   "grossAmount",
   "vatAmount",
   "paidBy",
@@ -132,6 +143,20 @@ const numeric = (value: number | string): number | undefined => {
   if (trimmed === "") return undefined;
   const parsed = Number(trimmed);
   return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+/**
+ * The category a new supplier invoice starts under: Subcontractor, when the
+ * installation has an active one by that name (in English or Norwegian —
+ * categories are free text an administrator may rename), and nothing
+ * otherwise.
+ */
+const SUBCONTRACTOR_NAMES = ["subcontractor", "underleverandør"];
+const subcontractorOf = (categories: ExpensesMeta["categories"] | undefined): string | undefined => {
+  const found = categories?.find(
+    (category) => category.active && SUBCONTRACTOR_NAMES.includes(category.name.trim().toLowerCase()),
+  );
+  return found ? String(found.id) : undefined;
 };
 
 /**
@@ -210,7 +235,6 @@ const ExpenseForm = ({
   const [vatChoice, setVatChoice] = useState<VatChoice>("none");
 
   const { data: meta } = useQuery(expensesMetaQueryOptions());
-  const { projects, options: projectOptions } = useProjectOptions(opened?.project, meta?.projectsAvailable === true);
   const { data: rates } = useQuery(expenseRatesQueryOptions());
 
   const readOnly = saved !== undefined && !saved.capabilities.canEdit;
@@ -231,14 +255,28 @@ const ExpenseForm = ({
    */
   const startsOn = claim ? zoneCalendarDate(claim.departureAt, meta?.timeZone ?? "UTC") : today();
 
+  const startingKind: ExpenseKind = opened?.kind ?? (state.mode === "create" ? (state.kind ?? "outlay") : "outlay");
+  /**
+   * A supplier invoice opened from a project's page books that kind on that
+   * project and nothing else: the button said so, so the form does not offer
+   * to make it something the button did not promise.
+   */
+  const kindFixed = state.mode === "create" && state.kind === "supplier_invoice" && fixedProject !== undefined;
+
   const form = useForm<ExpenseFormValues>({
     initialValues: {
-      kind: opened?.kind ?? (state.mode === "create" ? (state.kind ?? "outlay") : "outlay"),
+      kind: startingKind,
       entryDate: opened?.entryDate ?? startsOn,
       description: opened?.description ?? "",
-      categoryId: opened?.category ? String(opened.category.id) : null,
+      categoryId: opened?.category
+        ? String(opened.category.id)
+        : startingKind === "supplier_invoice"
+          ? (subcontractorOf(meta?.categories) ?? null)
+          : null,
       supplier: opened?.supplier ?? "",
-      grossAmount: opened && opened.kind === "outlay" ? opened.grossAmount : "",
+      invoiceNumber: opened?.invoiceNumber ?? "",
+      dueDate: opened?.dueDate ?? null,
+      grossAmount: opened && entersAnAmount(opened.kind) ? opened.grossAmount : "",
       vatAmount: opened?.vatAmount ?? "",
       // A cost booked from a project's own page is the company's spending on
       // it far more often than somebody's own pocket, so that is what it
@@ -250,7 +288,8 @@ const ExpenseForm = ({
       passengers: opened?.passengers ?? 0,
       projectId: opened?.project ? String(opened.project.id) : fixedProject ? String(fixedProject.id) : null,
       billingLineId: opened?.billingLine ? String(opened.billingLine.id) : null,
-      billable: opened?.billable ?? false,
+      // What a supplier invoiced is usually billed on, so a new one starts billable.
+      billable: opened?.billable ?? startingKind === "supplier_invoice",
     },
     validate: {
       entryDate: (value) => (value ? null : t("dateRequired")),
@@ -259,18 +298,34 @@ const ExpenseForm = ({
         if (!description) return t("descriptionRequired");
         return description.length > DESCRIPTION_MAX_LENGTH ? t("descriptionTooLong") : null;
       },
-      categoryId: (value, values) => (values.kind === "outlay" && !value ? t("categoryRequired") : null),
-      supplier: (value) => (value.trim().length > PLACE_MAX_LENGTH ? t("supplierTooLong") : null),
+      categoryId: (value, values) => (entersAnAmount(values.kind) && !value ? t("categoryRequired") : null),
+      supplier: (value, values) => {
+        const supplier = value.trim();
+        if (!supplier && values.kind === "supplier_invoice") return t("supplierRequired");
+        return supplier.length > PLACE_MAX_LENGTH ? t("supplierTooLong") : null;
+      },
+      invoiceNumber: (value, values) => {
+        if (values.kind !== "supplier_invoice") return null;
+        const number = value.trim();
+        if (!number) return t("invoiceNumberRequired");
+        return number.length > INVOICE_NUMBER_MAX_LENGTH ? t("invoiceNumberTooLong") : null;
+      },
+      dueDate: (value, values) =>
+        values.kind === "supplier_invoice" && value && values.entryDate && value < values.entryDate
+          ? t("dueDateBeforeInvoiceDate")
+          : null,
+      projectId: (value, values) =>
+        values.kind === "supplier_invoice" && !value ? t("supplierInvoiceNeedsProject") : null,
       fromPlace: (value) => (value.trim().length > PLACE_MAX_LENGTH ? t("placeTooLong") : null),
       toPlace: (value) => (value.trim().length > PLACE_MAX_LENGTH ? t("placeTooLong") : null),
       grossAmount: (value, values) => {
-        if (values.kind !== "outlay") return null;
+        if (!entersAnAmount(values.kind)) return null;
         const gross = numeric(value);
         if (gross === undefined || gross <= 0) return t("grossRequired");
         return gross > MAX_GROSS ? t("grossTooLarge") : null;
       },
       vatAmount: (value, values) => {
-        if (values.kind !== "outlay") return null;
+        if (!entersAnAmount(values.kind)) return null;
         const vat = numeric(value);
         const gross = numeric(values.grossAmount) ?? 0;
         return vat !== undefined && vat > gross ? t("vatNotAboveGross") : null;
@@ -289,7 +344,35 @@ const ExpenseForm = ({
     },
   });
 
+  /**
+   * Subcontractor is preselected once the categories are known. `/meta` may
+   * answer after the form mounted — its initial values were fixed then — so
+   * a new supplier invoice that started without it is given it when it
+   * arrives, once, adjusted during render the way React documents.
+   */
+  const [preselected, setPreselected] = useState(opened !== undefined || startingKind !== "supplier_invoice");
+  if (!preselected && meta) {
+    setPreselected(true);
+    const subcontractor = subcontractorOf(meta.categories);
+    if (subcontractor && form.values.categoryId === null) form.setFieldValue("categoryId", subcontractor);
+  }
+
   const values = form.values;
+  // A supplier invoice has a picker of its own: the projects whose money the
+  // caller may see, which is who may record one — not the ones they log on.
+  const { projects, options: projectOptions } = useProjectOptions(
+    opened?.project,
+    meta?.projectsAvailable === true,
+    values.kind === "supplier_invoice" ? "supplier_invoice" : undefined,
+  );
+  // The other picker is read ahead while the kind may still change, so a
+  // switch can tell whether the project already chosen is on it — rather than
+  // dropping a project both offer only because the new list was not read yet.
+  useQuery({
+    ...expenseProjectsQueryOptions(values.kind === "supplier_invoice" ? undefined : "supplier_invoice"),
+    enabled:
+      meta?.projectsAvailable === true && claim === undefined && fixedProject === undefined && saved === undefined,
+  });
   const gross = numeric(values.grossAmount) ?? 0;
   const distance = numeric(values.distanceKm) ?? 0;
   const passengers = numeric(values.passengers) ?? 0;
@@ -325,6 +408,8 @@ const ExpenseForm = ({
     meta?.receiptRequiredOver !== undefined &&
     gross > meta.receiptRequiredOver &&
     attachments.length === 0;
+  /** A supplier invoice is never submitted without the supplier's invoice attached (design D2). */
+  const needsInvoiceDocument = values.kind === "supplier_invoice" && attachments.length === 0;
 
   /**
    * The payload for the kind on screen. Project, line and billable go along
@@ -365,15 +450,24 @@ const ExpenseForm = ({
       };
     }
     const vat = numeric(values.vatAmount);
-    return {
+    const money = {
       ...shared,
       currency,
       categoryId: Number(values.categoryId),
-      paidBy: values.paidBy,
       grossAmount: gross,
       ...(vat !== undefined ? { vatAmount: vat } : {}),
       ...(values.supplier.trim() ? { supplier: values.supplier.trim() } : {}),
     };
+    // A supplier invoice names no payer — the company pays it, and the server
+    // stores it so — and carries the supplier's number and its due date.
+    if (values.kind === "supplier_invoice") {
+      return {
+        ...money,
+        invoiceNumber: values.invoiceNumber.trim(),
+        ...(values.dueDate ? { dueDate: values.dueDate } : {}),
+      };
+    }
+    return { ...money, paidBy: values.paidBy };
   };
 
   const onRefusal = (error: Error) => {
@@ -429,10 +523,11 @@ const ExpenseForm = ({
     onSuccess: async ({ stored, submitted }) => {
       setRefusals([]);
       await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
-      // A new outlay stays open once it is a draft: its receipts can only be
-      // attached to something that exists, and asking somebody to reopen the
-      // form they just filled in to add them would be a poor trade.
-      const keepOpen = !submitted && saved === undefined && stored.kind === "outlay";
+      // A new outlay or supplier invoice stays open once it is a draft: its
+      // documents can only be attached to something that exists, and asking
+      // somebody to reopen the form they just filled in to add them would be a
+      // poor trade.
+      const keepOpen = !submitted && saved === undefined && takesReceipts(stored.kind);
       onSaved?.(stored);
       setSaved(stored);
       setRevision(stored.revision);
@@ -505,7 +600,7 @@ const ExpenseForm = ({
         )}
         <RefusalList messages={refusals} />
 
-        {claim === undefined && (
+        {claim === undefined && !kindFixed && (
           <Input.Wrapper label={t("kind")} labelElement="div">
             <SegmentedControl
               fullWidth
@@ -513,10 +608,38 @@ const ExpenseForm = ({
               disabled={saved !== undefined}
               aria-label={t("kind")}
               value={values.kind}
-              onChange={(next) => form.setFieldValue("kind", next as ExpenseKind)}
+              onChange={(next) => {
+                const kind = next as ExpenseKind;
+                form.setFieldValue("kind", kind);
+                // A new supplier invoice starts billable and under
+                // Subcontractor when there is one; a category already chosen
+                // stays.
+                if (kind === "supplier_invoice" && saved === undefined) {
+                  form.setFieldValue("billable", true);
+                  const subcontractor = subcontractorOf(meta.categories);
+                  if (!values.categoryId && subcontractor) form.setFieldValue("categoryId", subcontractor);
+                }
+                // The two kinds of picker offer different projects: a choice
+                // the new one does not offer is dropped rather than sent to a
+                // save that refuses it. What it offers is read from the cache;
+                // a picker not read yet offers nothing, so the choice goes.
+                const pickerOf = (one: ExpenseKind) => (one === "supplier_invoice" ? "supplier_invoice" : undefined);
+                if (fixedProject === undefined && values.projectId && pickerOf(kind) !== pickerOf(values.kind)) {
+                  const offered = queryClient.getQueryData(expenseProjectsQueryOptions(pickerOf(kind)).queryKey);
+                  if (!offered?.some((project) => String(project.id) === values.projectId)) {
+                    form.setValues({ projectId: null, billingLineId: null });
+                  }
+                }
+              }}
               data={[
                 { value: "outlay", label: t("kindOutlay") },
                 { value: "mileage", label: t("kindMileage") },
+                // Only where projects exist — the kind lives on a project —
+                // and not on a project page's "Record a cost", which has a
+                // button of its own for it. One already saved keeps its label.
+                ...((meta.projectsAvailable && fixedProject === undefined) || values.kind === "supplier_invoice"
+                  ? [{ value: "supplier_invoice", label: t("kindSupplierInvoice") }]
+                  : []),
               ]}
             />
           </Input.Wrapper>
@@ -524,7 +647,7 @@ const ExpenseForm = ({
 
         <Group grow align="start">
           <DateInput
-            label={t("date")}
+            label={values.kind === "supplier_invoice" ? t("invoiceDate") : t("date")}
             valueFormat={t("dateInputFormat")}
             withAsterisk
             minDate={lockedBefore}
@@ -534,8 +657,20 @@ const ExpenseForm = ({
           <TextInput label={t("description")} withAsterisk data-autofocus {...form.getInputProps("description")} />
         </Group>
 
-        {values.kind === "outlay" ? (
+        {entersAnAmount(values.kind) ? (
           <Stack>
+            {values.kind === "supplier_invoice" && (
+              <Group grow align="start">
+                <TextInput label={t("invoiceNumber")} withAsterisk {...form.getInputProps("invoiceNumber")} />
+                <DateInput
+                  label={t("dueDate")}
+                  valueFormat={t("dateInputFormat")}
+                  clearable
+                  minDate={values.entryDate ?? undefined}
+                  {...form.getInputProps("dueDate")}
+                />
+              </Group>
+            )}
             <Group grow align="start">
               <Select
                 label={t("category")}
@@ -545,7 +680,11 @@ const ExpenseForm = ({
                 data={categoryOptions}
                 {...form.getInputProps("categoryId")}
               />
-              <TextInput label={t("supplier")} {...form.getInputProps("supplier")} />
+              <TextInput
+                label={t("supplier")}
+                withAsterisk={values.kind === "supplier_invoice"}
+                {...form.getInputProps("supplier")}
+              />
             </Group>
             <Group grow align="start">
               <NumberInput
@@ -576,18 +715,27 @@ const ExpenseForm = ({
                 onChange={(next) => form.setFieldValue("vatAmount", next)}
               />
             </Group>
-            <Input.Wrapper label={t("paidBy")} labelElement="div">
-              <SegmentedControl
-                mt={4}
-                aria-label={t("paidBy")}
-                value={values.paidBy}
-                onChange={(next) => form.setFieldValue("paidBy", next as PaidBy)}
-                data={[
-                  { value: "employee", label: t("paidByEmployee") },
-                  { value: "company", label: t("paidByCompany") },
-                ]}
-              />
-            </Input.Wrapper>
+            {values.kind === "supplier_invoice" ? (
+              // Nobody is paid back for a supplier invoice: the company pays
+              // the supplier and the server stores it so, and a control here
+              // would offer a choice the save refuses.
+              <Text size="sm" c="dimmed" data-testid="company-pays">
+                {t("companyPaysSupplierInvoices")}
+              </Text>
+            ) : (
+              <Input.Wrapper label={t("paidBy")} labelElement="div">
+                <SegmentedControl
+                  mt={4}
+                  aria-label={t("paidBy")}
+                  value={values.paidBy}
+                  onChange={(next) => form.setFieldValue("paidBy", next as PaidBy)}
+                  data={[
+                    { value: "employee", label: t("paidByEmployee") },
+                    { value: "company", label: t("paidByCompany") },
+                  ]}
+                />
+              </Input.Wrapper>
+            )}
           </Stack>
         ) : (
           <Stack>
@@ -708,16 +856,19 @@ const ExpenseForm = ({
           <>
             <Divider />
             {projectOptions.length === 0 && !values.projectId ? (
-              <Text size="sm" c="dimmed">
-                {t("noBookableProjects")}
-              </Text>
+              <Input.Wrapper error={form.errors.projectId}>
+                <Text size="sm" c="dimmed">
+                  {values.kind === "supplier_invoice" ? t("noSupplierInvoiceProjects") : t("noBookableProjects")}
+                </Text>
+              </Input.Wrapper>
             ) : (
               <Stack gap="xs">
                 <Group grow align="start">
                   <Select
                     label={t("project")}
                     placeholder={t("chooseProject")}
-                    clearable
+                    withAsterisk={values.kind === "supplier_invoice"}
+                    clearable={values.kind !== "supplier_invoice"}
                     searchable
                     data={projectOptions}
                     value={values.projectId}
@@ -765,11 +916,18 @@ const ExpenseForm = ({
           </>
         )}
 
-        {values.kind === "outlay" && (
+        {takesReceipts(values.kind) && (
           <>
             <Divider />
             <Stack gap="xs">
-              <Title order={6}>{t("receipts")}</Title>
+              <Title order={6}>
+                {values.kind === "supplier_invoice" ? t("supplierInvoiceDocument") : t("receipts")}
+              </Title>
+              {needsInvoiceDocument && (
+                <Text size="sm" c="orange" data-testid="attach-supplier-invoice">
+                  {t("attachSupplierInvoice")}
+                </Text>
+              )}
               {needsReceipt && (
                 <Text size="sm" c="dimmed">
                   {t("receiptRequiredHint", {
@@ -802,11 +960,26 @@ const ExpenseForm = ({
           {/* A trip is submitted whole, lines and all, so a line inside one is
               never sent for approval on its own. */}
           {claim === undefined && (
-            <Button type="button" variant="light" loading={save.isPending} onClick={() => submit(true)()}>
+            <Button
+              type="button"
+              variant="light"
+              loading={save.isPending}
+              // A supplier invoice without its document is refused at submit
+              // (design D2), and a new one cannot have its document yet — so
+              // the button does not offer a refusal; the sentence under it
+              // says what it waits for.
+              disabled={needsInvoiceDocument}
+              onClick={() => submit(true)()}
+            >
               {t("saveAndSubmit")}
             </Button>
           )}
         </SimpleGrid>
+        {claim === undefined && needsInvoiceDocument && (
+          <Text size="xs" c="dimmed" ta="right" data-testid="submit-needs-invoice">
+            {t("attachSupplierInvoiceToSubmit")}
+          </Text>
+        )}
       </Stack>
     </form>
   );

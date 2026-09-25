@@ -130,6 +130,40 @@ export const mileage = (overrides: Partial<StoredExpense> = {}): StoredExpense =
   ...overrides,
 });
 
+/**
+ * A supplier invoice as the server answers one — a wire literal: the caller's
+ * own draft on the panel's project, company-paid and owed to nobody, with the
+ * supplier's number and its due date, under Subcontractor. Billing is not on
+ * it: an owner's capabilities here cannot see it.
+ */
+export const supplierInvoice = (overrides: Partial<StoredExpense> = {}): StoredExpense => ({
+  id: 551,
+  kind: "supplier_invoice",
+  entryDate: DAY,
+  description: "Rørleggerarbeid, uke 38",
+  supplier: "Rør & Varme AS",
+  invoiceNumber: "F-20260918",
+  dueDate: "2026-10-18",
+  category: { id: 14, name: "Subcontractor" },
+  currency: "NOK",
+  paidBy: "company",
+  grossAmount: 12500,
+  vatAmount: 2500,
+  netAmount: 10000,
+  owedToEmployee: 0,
+  billable: true,
+  project: { id: 1001, code: "KVEM1000", name: "Kverneland web" },
+  status: "draft",
+  attachmentCount: 0,
+  attachments: [],
+  owner: owner(),
+  revision: 1,
+  createdAt: "2026-09-18T08:00:00Z",
+  updatedAt: "2026-09-18T08:00:00Z",
+  capabilities: ownDraftCapabilities,
+  ...overrides,
+});
+
 export const attachment = (overrides: Partial<ExpenseAttachment> = {}): ExpenseAttachment => ({
   id: 9001,
   fileName: "receipt.jpg",
@@ -149,6 +183,12 @@ export const categories: ExpensesMeta["categories"] = [
   { id: 11, name: "Travel", active: true, position: 1 },
   { id: 12, name: "Meals", active: true, position: 2 },
   { id: 13, name: "Old category", active: false, position: 3 },
+];
+
+/** The categories with Subcontractor among them, which a new supplier invoice starts under. */
+export const categoriesWithSubcontractor: ExpensesMeta["categories"] = [
+  ...categories,
+  { id: 14, name: "Subcontractor", active: true, position: 4 },
 ];
 
 /** The installation as the app finds it: projects on, no lock, a receipt threshold. */

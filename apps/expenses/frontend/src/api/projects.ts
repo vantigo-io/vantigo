@@ -18,8 +18,20 @@ export type ExpenseProjectBillingLine = Schemas["ExpensesProjectOptionBillingLin
  * projects module the endpoint answers 404, exactly as a path that is not
  * there, and there is no project block to draw.
  */
-export const expenseProjectsQueryOptions = () =>
+export const expenseProjectsQueryOptions = (kind?: ProjectPicker) =>
   queryOptions({
-    queryKey: [EXPENSES_QUERY_KEY, "projects"],
-    queryFn: ({ signal }) => request<ExpenseProjectOption[]>("/api/v1/expenses/projects", { signal }),
+    queryKey: kind ? [EXPENSES_QUERY_KEY, "projects", kind] : [EXPENSES_QUERY_KEY, "projects"],
+    queryFn: ({ signal }) =>
+      request<ExpenseProjectOption[]>(kind ? `/api/v1/expenses/projects?kind=${kind}` : "/api/v1/expenses/projects", {
+        signal,
+      }),
   });
+
+/**
+ * Which picker. Left out, the projects the caller may book on — what logging
+ * time needs. `supplier_invoice` is the projects they hold financial rights on
+ * and that are not cancelled, which is what recording a supplier invoice needs
+ * (supplier invoices design D2) and a different list altogether: a finance
+ * reader logs time on nothing and may still record one.
+ */
+export type ProjectPicker = "supplier_invoice";

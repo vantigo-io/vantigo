@@ -4,15 +4,18 @@ import { describe, expect, it, vi } from "vitest";
 import { jsonResponse, problemResponse, sent } from "../test/api";
 import {
   capabilities,
+  categoriesWithSubcontractor,
   claim,
   meta,
   mileage,
+  OTHER,
   outlay,
   PROJECT,
   projectOptions,
   projectSummary,
   summaryBucket,
   summaryCurrency,
+  supplierInvoice,
 } from "../test/fixtures";
 import { renderWithProviders } from "../test/render";
 import { stubExpensesApi } from "../test/server";
@@ -725,5 +728,120 @@ describe("ProjectExpensesPanel", () => {
 
     expect(await screen.findByText("Projects are not enabled")).toBeInTheDocument();
     expect(screen.queryByTestId("project-expense-totals")).not.toBeInTheDocument();
+  });
+});
+
+describe("ProjectExpensesPanel — supplier invoices", () => {
+  it("offers 'Record a supplier invoice' to the project's financial side, fixed to the project and the kind", async () => {
+    // A finance reader: may see the money, on no team — so no "Record a cost".
+    const fetchMock = stubExpensesApi({
+      entries: [],
+      meta: meta({ categories: categoriesWithSubcontractor }),
+      canRecordSupplierInvoice: true,
+      summaryProject: projectOptions[0],
+      projectCurrency: "NOK",
+    });
+    panel();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Record a supplier invoice" }));
+    expect(screen.queryByRole("button", { name: "Record a cost" })).not.toBeInTheDocument();
+    const dialog = await screen.findByRole("dialog", { name: "New expense" });
+    // The button named its kind, so there is no kind to choose.
+    expect(within(dialog).queryByRole("radio", { name: "Outlay" })).not.toBeInTheDocument();
+    expect(within(dialog).getByText("Booked on KVEM1000 · Kverneland web")).toBeInTheDocument();
+    expect(within(dialog).getByRole("switch", { name: "Billable" })).toBeChecked();
+    expect(within(dialog).getByRole("combobox", { name: "Category" })).toHaveValue("Subcontractor");
+
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Description" }), "Rørleggerarbeid");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Supplier" }), "Rør & Varme AS");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Invoice number" }), "F-1");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Amount including VAT" }), "12500");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save draft" }));
+
+    await waitFor(() => expect(sent(fetchMock, "POST").url).toBe("/api/v1/expenses/entries"));
+    expect(sent(fetchMock, "POST").body).toMatchObject({
+      kind: "supplier_invoice",
+      projectId: PROJECT,
+      billable: true,
+      categoryId: 14,
+    });
+  });
+
+  it("offers no supplier invoice without the capability, and 'Record a cost' offers no such kind", async () => {
+    stubExpensesApi({ entries: [], projects: projectOptions, canRecord: true, canRecordSupplierInvoice: false });
+    panel();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Record a cost" }));
+    expect(screen.queryByRole("button", { name: "Record a supplier invoice" })).not.toBeInTheDocument();
+    const dialog = await screen.findByRole("dialog", { name: "New expense" });
+    expect(within(dialog).getByRole("radio", { name: "Outlay" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("radio", { name: "Supplier invoice" })).not.toBeInTheDocument();
+  });
+
+  it("shows a finance reader the project's supplier invoices, and says the totals cover more than them", async () => {
+    // The totals hold three lines; the one this reader may open is a
+    // colleague's supplier invoice (design D4) — the outlays behind the rest
+    // are not theirs.
+    stubExpensesApi({
+      entries: [
+        supplierInvoice({
+          owner: { userId: OTHER, displayName: "Grace Hopper", active: true },
+          capabilities: capabilities(),
+        }),
+      ],
+      projectSummary: projectSummary({
+        projectCurrency: "NOK",
+        currencies: [
+          summaryCurrency({
+            approved: summaryBucket({ count: 3, cost: 11000, billAmount: 11000 }),
+            total: summaryBucket({ count: 3, cost: 11000, billAmount: 11000 }),
+          }),
+        ],
+      }),
+    });
+    panel();
+
+    const found = await row("Rørleggerarbeid, uke 38");
+    expect(within(found).getByText("Supplier invoice")).toBeInTheDocument();
+    expect(within(found).getByText("Grace Hopper")).toBeInTheDocument();
+    expect(await screen.findByTestId("project-expenses-partial")).toHaveTextContent(
+      "the supplier invoices if you may see the project's money",
+    );
+  });
+
+  it("writes the supplier invoices' share beneath a currency's total, and nothing where there is none", async () => {
+    stubExpensesApi({
+      entries: [],
+      projectSummary: projectSummary({
+        projectCurrency: "NOK",
+        currencies: [
+          summaryCurrency({
+            currency: "EUR",
+            approved: summaryBucket({ count: 1, cost: 90, billAmount: 100 }),
+            total: summaryBucket({ count: 1, cost: 90, billAmount: 100 }),
+          }),
+          summaryCurrency({
+            approved: summaryBucket({ count: 3, cost: 14000, billAmount: 15400 }),
+            total: summaryBucket({ count: 3, cost: 14000, billAmount: 15400 }),
+            supplierInvoices: {
+              approved: summaryBucket({ count: 1, cost: 10000, billAmount: 11000 }),
+              submitted: summaryBucket(),
+              draft: summaryBucket(),
+              total: summaryBucket({ count: 1, cost: 10000, billAmount: 11000 }),
+            },
+          }),
+        ],
+      }),
+    });
+    panel();
+
+    const share = await screen.findByTestId("project-expense-supplier-invoices-NOK");
+    expect(share).toHaveTextContent("Of which supplier invoices");
+    expect(share).toHaveTextContent("1 expense");
+    expect(share).toHaveTextContent("10,000.00");
+    expect(share).toHaveTextContent("11,000.00");
+    // The total above it is still every line.
+    expect(screen.getByTestId("project-expense-currency-NOK")).toHaveTextContent("14,000.00");
+    expect(screen.queryByTestId("project-expense-supplier-invoices-EUR")).not.toBeInTheDocument();
   });
 });
