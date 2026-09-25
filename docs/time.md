@@ -133,6 +133,11 @@ An entry may pick one of its project's [work types](projects.md#work-types) —
 "Work type is not on this project") and active ("Work type is no longer active"). The
 type is read through `contracts.ProjectDirectory.WorkType` with the project and the
 line, **before** the saving transaction opens, like every other directory read.
+The window between that read and the write is accepted, not an oversight: a type
+deactivated or re-priced in it leaves a draft snapshotted as the type was read, the
+draft's next save checks it again, a submitted entry is never re-resolved, and billing
+lines and rate cards have the same window — so it is never closed by reading the
+directory inside the transaction.
 
 The multiplier is **the last step, applied to whatever the chain resolved**: a
 billing line's rule, the project's default, the customer's or the person's — the type

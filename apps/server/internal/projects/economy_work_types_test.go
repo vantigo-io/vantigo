@@ -56,7 +56,8 @@ func twoTypesLogged(t *testing.T, c *modtest.Client, actuals *fakeActuals, proje
 
 // A member sees each type's name and hours and no amount; the manager
 // (financial rights, a currency) the value too; a manager with
-// projects:view-costs the cost as well. Rows come by name.
+// projects:view-costs the cost as well. Rows come in the project's list
+// order: active types first, then by name, then by id.
 func TestGetProjectsByIdEconomy_WorkTypes_AreShapedPerCaller(t *testing.T) {
 	t.Parallel()
 	actuals := newFakeActuals()

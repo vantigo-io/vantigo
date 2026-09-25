@@ -679,7 +679,7 @@ export interface components {
         TimeProjectBilling: {
             /**
              * Format: double
-             * @description The submitted, approved and invoiced billable hours at the bill rate each entry snapshotted, summed in the currency. Drafts are not counted until they are submitted, rejected entries never.
+             * @description The submitted, approved and invoiced billable hours at the bill rate each entry snapshotted, times the work-type multiplier it snapshotted (100 % for none), summed in the currency. Drafts are not counted until they are submitted, rejected entries never.
              */
             amount: number;
             /** @description The project's currency. Absent when the project has none and its priced entries do not share one currency either. */

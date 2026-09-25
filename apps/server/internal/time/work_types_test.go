@@ -1,12 +1,19 @@
 package timetracking_test
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
+	"github.com/vantigo-io/vantigo/server/internal/time/store"
 )
 
 // An entry and its work type (work types design D3): checked and snapshotted
@@ -75,11 +82,14 @@ func TestPostTimeEntries_TheEffectiveRateIsForDisplay(t *testing.T) {
 }
 
 // D3's refusals, on the field: a type nobody has and one on another project
-// are the one message, a retired one its own — on a create and an update.
+// are the one message, a retired one its own — on a create and an update;
+// and an update that moves an entry to another project while keeping the
+// old project's type is checked against the project it moves to.
 func TestTimeEntries_RefuseAWorkTypeNotOnTheProjectOrRetired(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	owner, _ := signInAs(t, h, projectKraftVerket, roleMember)
+	owner, ownerID := signInAs(t, h, projectKraftVerket, roleMember)
+	h.projects.addRole(projectEuro, ownerID, roleMember)
 
 	for id, want := range map[int32]string{
 		workTypeEuro:    "Work type is not on this project",
@@ -98,6 +108,17 @@ func TestTimeEntries_RefuseAWorkTypeNotOnTheProjectOrRetired(t *testing.T) {
 	r.JSON(&problem)
 	if r.Status != http.StatusBadRequest || !slices.Equal(problem.Errors["workTypeId"], []string{"Work type is no longer active"}) {
 		t.Errorf("update to a retired type: status %d body %s, want 400 on workTypeId", r.Status, r.Body)
+	}
+
+	typed := createEntry(t, owner, map[string]any{"entryDate": "2026-09-15", "workTypeId": workTypeOvertime})
+	r = owner.Do(http.MethodPut, entryPath(typed.Id), updateBody(typed, map[string]any{"projectId": projectEuro, "workTypeId": workTypeOvertime}))
+	problem = validationProblemJSON{}
+	r.JSON(&problem)
+	if r.Status != http.StatusBadRequest || !slices.Equal(problem.Errors["workTypeId"], []string{"Work type is not on this project"}) || len(problem.Errors) != 1 {
+		t.Errorf("move to %d keeping %d's type: status %d body %s, want 400 on workTypeId alone", projectEuro, projectKraftVerket, r.Status, r.Body)
+	}
+	if got := snapshotOf(t, h, typed.Id); got != "6001|Overtid 50 %|150.00|140.00" {
+		t.Errorf("snapshot after a refused move = %q, want it untouched", got)
 	}
 }
 
@@ -208,6 +229,60 @@ func TestWorkTypes_FrozenFromSubmit_AndSnapshottedAgainWhenRejected(t *testing.T
 	}
 	if got := snapshotOf(t, h, e.Id); got != "6001|Overtid|175.00|160.00" {
 		t.Errorf("snapshot = %q, want it taken again", got)
+	}
+}
+
+// D3's freeze at the writer itself. The HTTP test above stops at CanEdit's
+// 403 and never reaches UpdateEntry; this drives the sqlc writer straight at
+// a submitted entry — its own revision and owner, a different type — so that
+// only the statement's status guard stands between it and the snapshot: no
+// row is updated and the columns stay as submitted. The same call on the
+// entry once rejected writes, so the refusal is the status and nothing else.
+func TestUpdateEntry_WritesNoRowOnceSubmitted(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, ownerID := signInAs(t, h, projectKraftVerket, roleMember)
+	approver, _ := signIn(t, h, "time:approve")
+	e := submittedEntry(t, owner, map[string]any{"workTypeId": workTypeOvertime})
+
+	q := store.New(h.Pool())
+	params := func(revision int32) store.UpdateEntryParams {
+		var bill, cost, hours pgtype.Numeric
+		for n, text := range map[*pgtype.Numeric]string{&bill: "200", &cost: "180", &hours: "2"} {
+			if err := n.Scan(text); err != nil {
+				t.Fatalf("numeric %s: %v", text, err)
+			}
+		}
+		return store.UpdateEntryParams{
+			ProjectID:             projectKraftVerket,
+			EntryDate:             pgtype.Date{Time: time.Date(2026, 9, 14, 0, 0, 0, 0, time.UTC), Valid: true},
+			Hours:                 hours,
+			Billable:              true,
+			RateSource:            "none",
+			WorkTypeID:            ptr[int32](workTypeWeekend),
+			WorkTypeName:          ptr("Helg"),
+			BillMultiplierPercent: bill,
+			CostMultiplierPercent: cost,
+			Now:                   h.Now(),
+			ID:                    e.Id,
+			Revision:              revision,
+			UserID:                ownerID,
+		}
+	}
+
+	if _, err := q.UpdateEntry(t.Context(), params(e.Revision)); !errors.Is(err, pgx.ErrNoRows) {
+		t.Errorf("UpdateEntry on a submitted entry: err %v, want pgx.ErrNoRows — no row updated", err)
+	}
+	if got := snapshotOf(t, h, e.Id); got != "6001|Overtid 50 %|150.00|140.00" {
+		t.Errorf("snapshot = %q, want it as submitted", got)
+	}
+
+	rejected := rejectEntries(t, approver, "Wrong day", e.Id)[0]
+	if _, err := q.UpdateEntry(t.Context(), params(rejected.Revision)); err != nil {
+		t.Fatalf("UpdateEntry on the rejected entry: %v, want it written", err)
+	}
+	if got := snapshotOf(t, h, e.Id); got != fmt.Sprintf("%d|Helg|200.00|180.00", workTypeWeekend) {
+		t.Errorf("snapshot after the rejected save = %q, want the new type", got)
 	}
 }
 

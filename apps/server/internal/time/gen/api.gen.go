@@ -284,7 +284,7 @@ type TimePersonWeek struct {
 
 // TimeProjectBilling The money in a project's time (D8), present only for callers who may see the project's financials — its managers, callers with projects:manage-all, and callers with projects:view-financials on a project they can otherwise see (a role on it, projects:view-all, or projects:manage-all). A time permission alone never adds it, even one that lets the caller read every entry's hours on this project.
 type TimeProjectBilling struct {
-	// Amount The submitted, approved and invoiced billable hours at the bill rate each entry snapshotted, summed in the currency. Drafts are not counted until they are submitted, rejected entries never.
+	// Amount The submitted, approved and invoiced billable hours at the bill rate each entry snapshotted, times the work-type multiplier it snapshotted (100 % for none), summed in the currency. Drafts are not counted until they are submitted, rejected entries never.
 	Amount float64 `json:"amount"`
 
 	// Currency The project's currency. Absent when the project has none and its priced entries do not share one currency either.
