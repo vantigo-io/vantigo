@@ -124,7 +124,7 @@ SELECT
     count(*)::bigint AS line_count,
     SUM(gross_amount)::numeric(14,2) AS gross,
     SUM(CASE
-        WHEN gross_amount > 0 AND NOT (kind = 'outlay' AND (paid_by IS NULL OR paid_by <> 'employee'))
+        WHEN gross_amount > 0 AND expenses.owes_employee(kind, paid_by)
         THEN gross_amount ELSE 0
     END)::numeric(14,2) AS owed_to_employee,
     SUM(CASE WHEN billable THEN COALESCE(bill_amount, 0) ELSE 0 END)::numeric(14,2) AS bill_amount,

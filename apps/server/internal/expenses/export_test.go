@@ -1,6 +1,23 @@
 package expenses
 
-import "context"
+import (
+	"context"
+	"math/big"
+
+	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/vantigo-io/vantigo/server/internal/expenses/store"
+)
+
+// OwesEmployee is owesEmployee asked about a row of this kind and payer with a
+// gross above zero, so the test holding it against expenses.owes_employee
+// compares the rule and not the arithmetic.
+func OwesEmployee(kind string, paidBy *string) bool {
+	return owesEmployee(store.ExpensesEntry{
+		Kind: kind, PaidBy: paidBy,
+		GrossAmount: pgtype.Numeric{Int: big.NewInt(100), Valid: true},
+	})
+}
 
 // InLockedTx exposes inLockedTx to the external tests, whose contract-call
 // hook uses it to tell a call made from inside one of this module's locked

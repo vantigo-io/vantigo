@@ -728,13 +728,25 @@ func (c *caller) claimAccessFor(claim store.ExpensesClaim, role string, f claimF
 }
 
 // owesEmployee reports whether the expense owes its owner anything at all —
-// owedToEmployee above zero, decided without doing the arithmetic. It is the
-// Go half of the predicate queries/reimbursements.sql applies in SQL, and the
-// two must stay one rule: an outlay the company paid for itself owes nothing,
-// and neither does a line whose gross rounds to nothing.
+// owedToEmployee above zero, decided without doing the arithmetic.
+//
+// It is the Go mirror of expenses.owes_employee, the SQL function migration
+// 00033 defines and every query that asks the question calls — one rule,
+// written twice on purpose (supplier invoices design D1), and
+// TestOwesEmployee_TheGoMirrorAgreesWithTheSQLFunction holds the two together
+// on every kind and payer. An outlay the company paid for itself owes
+// nothing; a supplier invoice owes nobody, whatever its paid_by says, because
+// the company pays the supplier; and a line whose gross rounds to nothing owes
+// nothing either, which is the half of the question the SQL callers ask
+// beside the function (gross_amount > 0).
 func owesEmployee(entry store.ExpensesEntry) bool {
-	if entry.Kind == kindOutlay && (entry.PaidBy == nil || *entry.PaidBy != paidByEmployee) {
+	switch entry.Kind {
+	case kindSupplierInvoice:
 		return false
+	case kindOutlay:
+		if entry.PaidBy == nil || *entry.PaidBy != paidByEmployee {
+			return false
+		}
 	}
 	return entry.GrossAmount.Valid && !entry.GrossAmount.NaN &&
 		entry.GrossAmount.Int != nil && entry.GrossAmount.Int.Sign() > 0

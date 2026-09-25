@@ -49,7 +49,7 @@ FROM expenses.entries e
 LEFT JOIN expenses.claims c ON c.id = e.claim_id
 WHERE e.user_id = @user_id
   AND e.gross_amount > 0
-  AND NOT (e.kind = 'outlay' AND (e.paid_by IS NULL OR e.paid_by <> 'employee'))
+  AND expenses.owes_employee(e.kind, e.paid_by)
   AND COALESCE(c.status, e.status) = 'approved'
   AND COALESCE(c.reimbursed_at, e.reimbursed_at) IS NULL
 GROUP BY e.currency
@@ -170,7 +170,7 @@ WITH units AS (
       AND claim_id IS NULL
       AND reimbursed_at IS NULL
       AND gross_amount > 0
-      AND NOT (kind = 'outlay' AND (paid_by IS NULL OR paid_by <> 'employee'))
+      AND expenses.owes_employee(kind, paid_by)
     UNION ALL
     SELECT c.decided_at, c.updated_at FROM expenses.claims c
     WHERE c.status = 'approved'
@@ -179,7 +179,7 @@ WITH units AS (
           SELECT 1 FROM expenses.entries e
           WHERE e.claim_id = c.id
             AND e.gross_amount > 0
-            AND NOT (e.kind = 'outlay' AND (e.paid_by IS NULL OR e.paid_by <> 'employee')))
+            AND expenses.owes_employee(e.kind, e.paid_by))
 )
 SELECT count(*)::bigint AS waiting,
        COALESCE(MIN(decided_at), MIN(updated_at))::timestamptz AS oldest_decided_at
