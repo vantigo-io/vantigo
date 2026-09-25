@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { problemResponse, sent } from "../test/api";
-import { approvalGroups } from "../test/fixtures";
+import { approvalGroups, ME, submittedEntry, WEEK } from "../test/fixtures";
 import { renderRoute } from "../test/route-tree";
 import { stubTimeApi } from "../test/server";
 
@@ -17,6 +17,36 @@ const open = async (person: string): Promise<HTMLElement> => {
 };
 
 describe("ApprovalsPage", () => {
+  it("shows an entry's work type and bills its hours at the multiplied rate, exactly", async () => {
+    stubTimeApi({
+      approvals: [
+        {
+          userId: ME,
+          displayName: "Ada Lovelace",
+          weekStart: WEEK,
+          hours: 1.5,
+          entries: [
+            submittedEntry({
+              id: 720,
+              hours: 1.5,
+              note: "Night shift",
+              workType: { id: 6001, name: "Overtid 50 %" },
+              billing: { billRate: 333.33, currency: "NOK", multiplierPercent: 150, effectiveRate: 500 },
+            }),
+          ],
+        },
+      ],
+    });
+    renderRoute("/time/approvals");
+
+    const ada = await open("Ada Lovelace");
+    const row = (await within(ada).findByText("Night shift")).closest("tr") as HTMLElement;
+    expect(within(row).getByTestId("work-type-badge")).toHaveTextContent("Overtid 50 %");
+    // 333.33 × 1.5 h × 150 % is 749.99 — not 1.5 × the 500.00 an hour shows.
+    expect(row).toHaveTextContent("749.99");
+    expect(within(row).getByTestId("rate-line")).toHaveTextContent("333.33 × 150 % = 500");
+  });
+
   it("lists a group per person and week, and its entries once the group is opened", async () => {
     stubTimeApi({ approvals: approvalGroups });
     renderRoute("/time/approvals");

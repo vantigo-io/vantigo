@@ -17,6 +17,7 @@ import {
   myProjectsQueryOptions,
   NON_BILLABLE,
   projectBillingLinesQueryOptions,
+  projectWorkTypesQueryOptions,
 } from "../api/projects";
 import "../i18n";
 import { refusalMessage } from "../lib/errors";
@@ -39,6 +40,7 @@ interface EntryFormValues {
   projectId: string | null;
   billingLineId: string | null;
   taskId: string | null;
+  workTypeId: string | null;
   entryDate: string | null;
   hours: string;
   startTime: string;
@@ -52,6 +54,7 @@ const formFields = new Set([
   "projectId",
   "billingLineId",
   "taskId",
+  "workTypeId",
   "entryDate",
   "hours",
   "startTime",
@@ -67,9 +70,9 @@ const withCurrent = (options: Option[], current: Option | null): Option[] =>
 
 /**
  * Adds an entry or edits one (design D1): a project with an optional line and
- * task, the day, and the duration — typed as hours, or given as a start and
- * an end time from which the hours are worked out, exactly as the server
- * will work them out again. The form lives in `EntryForm`, which the modal
+ * task, and a work type when the project has one, the day, and the duration —
+ * typed as hours, or given as a start and an end time from which the hours
+ * are worked out, exactly as the server will work them out again. The form lives in `EntryForm`, which the modal
  * mounts fresh every time it opens, so no previous entry's values survive.
  */
 export const EntryFormModal = ({ state, onClose }: EntryFormModalProps) => {
@@ -99,6 +102,7 @@ const EntryForm = ({ state, onClose }: { state: EntryModalState; onClose: () => 
           projectId: String(editing.projectId),
           billingLineId: editing.billingLineId == null ? null : String(editing.billingLineId),
           taskId: editing.taskId == null ? null : String(editing.taskId),
+          workTypeId: editing.workType ? String(editing.workType.id) : null,
           entryDate: editing.entryDate,
           hours: format.input(editing.hours),
           startTime: editing.startTime ?? "",
@@ -110,6 +114,7 @@ const EntryForm = ({ state, onClose }: { state: EntryModalState; onClose: () => 
           projectId: null,
           billingLineId: null,
           taskId: null,
+          workTypeId: null,
           entryDate: state.mode === "create" ? state.date : null,
           hours: "",
           startTime: "",
@@ -139,6 +144,12 @@ const EntryForm = ({ state, onClose }: { state: EntryModalState; onClose: () => 
   const { data: projects } = useQuery(myProjectsQueryOptions());
   const { data: lines } = useQuery({ ...projectBillingLinesQueryOptions(projectId ?? 0), enabled: projectId !== null });
   const { data: tasks } = useQuery(myOpenTasksQueryOptions());
+  // The project's active work types (work types design D5). Only a project
+  // that has one shows the select; ordinary hours are the empty choice.
+  const { data: workTypes } = useQuery({
+    ...projectWorkTypesQueryOptions(projectId ?? 0),
+    enabled: projectId !== null,
+  });
 
   const project = projects?.find((candidate) => candidate.id === projectId);
   // The billable switch is offered only when the project's billing type is
@@ -169,9 +180,16 @@ const EntryForm = ({ state, onClose }: { state: EntryModalState; onClose: () => 
       ? { value: String(editing.taskId), label: editing.taskTitle ?? String(editing.taskId) }
       : null,
   );
+  // An entry keeps its own type even once it is retired, so the form shows
+  // what it was logged as; the server refuses it on save until another is
+  // picked, and that refusal lands on this field.
+  const workTypeOptions = withCurrent(
+    (workTypes ?? []).map((type) => ({ value: String(type.id), label: type.name })),
+    sameProject && editing.workType ? { value: String(editing.workType.id), label: editing.workType.name } : null,
+  );
 
   const pickProject = (value: string | null) => {
-    form.setValues({ projectId: value, billingLineId: null, taskId: null });
+    form.setValues({ projectId: value, billingLineId: null, taskId: null, workTypeId: null });
   };
 
   const billableToSend = (): boolean | undefined => {
@@ -192,6 +210,7 @@ const EntryForm = ({ state, onClose }: { state: EntryModalState; onClose: () => 
         startTime: times ? values.startTime : null,
         endTime: times ? values.endTime : null,
         note: values.note.trim() || null,
+        ...(values.workTypeId === null ? {} : { workTypeId: Number(values.workTypeId) }),
       };
       const billable = billableToSend();
       if (billable !== undefined) input.billable = billable;
@@ -250,6 +269,15 @@ const EntryForm = ({ state, onClose }: { state: EntryModalState; onClose: () => 
             {...form.getInputProps("taskId")}
           />
         </Group>
+        {workTypeOptions.length > 0 && (
+          <Select
+            label={t("workType")}
+            placeholder={t("ordinaryHours")}
+            clearable
+            data={workTypeOptions}
+            {...form.getInputProps("workTypeId")}
+          />
+        )}
         <DateInput
           label={t("date")}
           valueFormat={t("dateInputFormat")}

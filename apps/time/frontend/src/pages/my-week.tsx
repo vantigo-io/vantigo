@@ -18,6 +18,7 @@ import { isLoggable, myOpenTasksQueryOptions, myProjectsQueryOptions } from "../
 import { isLocked, type TimeSettings, timeSettingsQueryOptions } from "../api/settings";
 import { submitWeek, type TimeWeek, type TimeWeekRow, weekQueryOptions } from "../api/weeks";
 import { HoursCell } from "../components/hours-cell";
+import { WorkTypeBadge } from "../components/work-type-badge";
 import "../i18n";
 import { refusalMessage } from "../lib/errors";
 import { useHoursFormat } from "../lib/hours";
@@ -305,6 +306,19 @@ const DayLink = ({ date }: { date: string }) => {
 
 const sum = (entries: TimeEntry[]) => entries.reduce((total, entry) => total + entry.hours, 0);
 
+/**
+ * The work types a row's entries were logged as this week, each once, by
+ * name. A row is one trackable (project, line, task) — the key the server
+ * groups by — so a work type is a fact about its entries, and the row says
+ * which ones it holds (work types design D5).
+ */
+const workTypesOf = (row: TimeWeekRow): string[] =>
+  [
+    ...new Set(
+      row.days.flatMap((day) => day.entries.flatMap((entry) => (entry.workType ? [entry.workType.name] : []))),
+    ),
+  ].sort((a, b) => a.localeCompare(b));
+
 interface WeekRowViewProps {
   row: TimeWeekRow;
   days: string[];
@@ -323,9 +337,14 @@ const WeekRowView = ({ row, days, settings, onKeep }: WeekRowViewProps) => {
     <Table.Tr>
       <Table.Td>
         <Stack gap={0}>
-          <Text size="sm" fw={600}>
-            {label}
-          </Text>
+          <Group gap={6} wrap="nowrap">
+            <Text size="sm" fw={600}>
+              {label}
+            </Text>
+            {workTypesOf(row).map((name) => (
+              <WorkTypeBadge key={name} name={name} />
+            ))}
+          </Group>
           <Text size="xs" c="dimmed">
             {row.projectName}
           </Text>

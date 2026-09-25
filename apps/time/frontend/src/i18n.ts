@@ -211,6 +211,9 @@ export const timeCatalog = {
     byLine: "By line",
     byPerson: "By person",
     unpricedHours: "{{hours}} h without a rate",
+    workType: "Work type",
+    ordinaryHours: "Ordinary hours",
+    rateTimesMultiplier: "{{rate}} × {{percent}} % = {{effective}}",
   },
   nb: {
     time: "Timer",
@@ -423,6 +426,9 @@ export const timeCatalog = {
     byLine: "Per linje",
     byPerson: "Per person",
     unpricedHours: "{{hours}} t uten pris",
+    workType: "Arbeidstype",
+    ordinaryHours: "Ordinære timer",
+    rateTimesMultiplier: "{{rate}} × {{percent}} % = {{effective}}",
   },
 } satisfies CatalogResources;
 
