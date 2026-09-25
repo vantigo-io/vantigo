@@ -38,6 +38,12 @@ export type EconomyWorkType = Schemas["ProjectEconomyWorkType"];
 export type EconomyExpenses = Schemas["ProjectEconomyExpenses"];
 export type EconomyExpenseBucket = Schemas["ProjectEconomyExpenseBucket"];
 export type EconomyExpenseCurrency = Schemas["ProjectEconomyExpenseCurrency"];
+/**
+ * The part of the expenses block that is supplier invoices, in the project's
+ * own currency — a line beneath the totals, never a split of them. Absent
+ * when there are none (supplier invoices design D3).
+ */
+export type EconomySupplierInvoices = Schemas["ProjectEconomySupplierInvoices"];
 
 /**
  * A project's budget against what has been logged on it. Every optional field

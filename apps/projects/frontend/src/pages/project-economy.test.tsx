@@ -139,6 +139,9 @@ const asTheServerWouldSend = (body: Economy): Economy => {
     if (present.length > 0 && !body.currency) {
       throw new Error("A project with no currency has no own-currency figures");
     }
+    if (block.supplierInvoices && block.approved === undefined) {
+      throw new Error("supplierInvoices is the project's own currency's share, so it comes only with those figures");
+    }
     if (block.otherCurrencies?.length === 0) throw new Error("otherCurrencies is absent when it is empty");
     if (block.otherCurrencies?.some((entry) => entry.currency === body.currency)) {
       throw new Error("The project's own currency is never in otherCurrencies");
@@ -1213,6 +1216,39 @@ describe("ProjectEconomy — the budget half", () => {
     expect(total).toHaveTextContent(money(3000.02));
     expect(total).not.toHaveTextContent(money(9999.99));
     expect(total).not.toHaveTextContent(money(3000.03));
+  });
+
+  it("writes the supplier invoices' share beneath the totals, and keeps the totals everything", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: tracked(
+        expenses({
+          supplierInvoices: {
+            approved: bucket(1, 4000, 4400),
+            submitted: bucket(0, 0, 0),
+            draft: bucket(0, 0, 0),
+            total: bucket(1, 4000, 4400),
+          },
+        }),
+      ),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const share = await screen.findByTestId("expense-supplier-invoices");
+    expect(share).toHaveTextContent("Of which supplier invoices");
+    expect(share).toHaveTextContent("1");
+    expect(share).toHaveTextContent(money(4000));
+    expect(share).toHaveTextContent(money(4400));
+    const total = within(screen.getByTestId("project-expenses")).getByText("Total").closest("tr") as HTMLElement;
+    expect(total).toHaveTextContent(money(5500));
+    expect(total).toHaveTextContent(money(6000));
+  });
+
+  it("draws no supplier-invoice row when the block carries none", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, { economy: tracked(expenses()) });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    await screen.findByTestId("project-expenses");
+    expect(screen.queryByTestId("expense-supplier-invoices")).not.toBeInTheDocument();
   });
 
   it("says out loud that the expenses are not measured against the budget", async () => {
