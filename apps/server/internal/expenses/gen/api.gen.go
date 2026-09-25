@@ -74,7 +74,7 @@ type ExpensesBillingRequest struct {
 	// BillingLineId An active billing line of the entry's own project, or absent to book it against none. Refused on a per diem day, which bills nobody anything.
 	BillingLineId *int32 `json:"billingLineId,omitempty"`
 
-	// MarkupPercent A billable outlay's markup on the net, 0 to 1000 with at most two decimals. Left out, the line keeps whatever it carries, and a line that carries none takes the settings' default. Refused on a project that bills nothing, rather than accepted and cleared.
+	// MarkupPercent A billable outlay's or supplier invoice's markup on the net, 0 to 1000 with at most two decimals. Left out, the line keeps whatever it carries, and a line that carries none takes the settings' default. Refused on a project that bills nothing, rather than accepted and cleared.
 	MarkupPercent *float64 `json:"markupPercent,omitempty"`
 
 	// Revision The revision the expense was read at. A revision that has moved on is a 409.
@@ -334,7 +334,7 @@ type ExpensesEntryBilling struct {
 	// Invoice What the customer has been billed for this line (decision X5). Absent until somebody marks it invoiced. It sits inside billing on purpose — an invoice number is the project's business, not the employee's.
 	Invoice *ExpensesEntryInvoice `json:"invoice,omitempty"`
 
-	// MarkupPercent A billable outlay's markup on the net. Absent otherwise.
+	// MarkupPercent A billable outlay's or supplier invoice's markup on the net. Absent otherwise.
 	MarkupPercent *float64 `json:"markupPercent,omitempty"`
 }
 
@@ -505,7 +505,7 @@ type ExpensesEntryRequest struct {
 	// Currency A three-letter ISO 4217 code. Required on an outlay and on a supplier invoice. A mileage line takes the installation's default currency and refuses any other; a per diem day refuses it outright and takes the installation's currency, or the claim's own abroadCurrency on a trip abroad.
 	Currency *string `json:"currency,omitempty"`
 
-	// Description 1 to 500 characters. Required on an outlay and on a mileage line. A per diem day may be left without one and then carries the empty string — what the day *is* is its perDiemType, and a name the server invented would sit in the column in one language for ever, so the client renders the label instead.
+	// Description 1 to 500 characters. Required on an outlay, on a supplier invoice and on a mileage line. A per diem day may be left without one and then carries the empty string — what the day *is* is its perDiemType, and a name the server invented would sit in the column in one language for ever, so the client renders the label instead.
 	Description *string `json:"description,omitempty"`
 
 	// DinnerCovered Whether somebody else paid for that day's dinner, which deducts the meal_dinner_percent rate in force on the entry date. Per diem only; absent means false.
@@ -535,7 +535,7 @@ type ExpensesEntryRequest struct {
 	// LunchCovered Whether somebody else paid for that day's lunch, which deducts the meal_lunch_percent rate in force on the entry date. Per diem only; absent means false.
 	LunchCovered *bool `json:"lunchCovered,omitempty"`
 
-	// MarkupPercent A billable outlay's markup on the net, 0 to 1000 with at most two decimals. Only a caller with financial rights on the project — the ones who are sent the billing object — may name it; anyone else is refused on this field. Left out, a save keeps whatever the line already carries, and a line that carries none takes the settings' default. Refused on anything but a billable outlay.
+	// MarkupPercent A billable outlay's or supplier invoice's markup on the net, 0 to 1000 with at most two decimals. Only a caller with financial rights on the project — the ones who are sent the billing object — may name it; anyone else is refused on this field. Left out, a save keeps whatever the line already carries, and a line that carries none takes the settings' default. Refused on anything but a billable outlay or supplier invoice.
 	MarkupPercent *float64 `json:"markupPercent,omitempty"`
 
 	// PaidBy 'employee' or 'company'. Required on an outlay, refused on a mileage line and on a per diem day — both are always owed to the employee. A supplier invoice is paid by the company: it may be left out or say 'company', and 'employee' is refused.
@@ -559,7 +559,7 @@ type ExpensesEntryRequest struct {
 	// UserId The person the expense concerns. Absent means the caller; naming somebody else needs expenses:manage, and they must be a user identity still has as active.
 	UserId *openapi_types.UUID `json:"userId,omitempty"`
 
-	// VatAmount An outlay's VAT, from zero to its gross. Refused on a mileage line and on a per diem day, neither of which carries VAT.
+	// VatAmount An outlay's or supplier invoice's VAT, from zero to its gross. Refused on a mileage line and on a per diem day, neither of which carries VAT.
 	VatAmount *float64 `json:"vatAmount,omitempty"`
 }
 
@@ -765,7 +765,7 @@ type ExpensesMetaResponse struct {
 	// DefaultCurrency The currency a new expense starts in.
 	DefaultCurrency string `json:"defaultCurrency"`
 
-	// DefaultMarkupPercent The markup a new billable outlay starts with. Present only for expenses:manage, as on GET /settings — the server applies the default itself, so no form needs the number.
+	// DefaultMarkupPercent The markup a new billable outlay or supplier invoice starts with. Present only for expenses:manage, as on GET /settings — the server applies the default itself, so no form needs the number.
 	DefaultMarkupPercent *float64 `json:"defaultMarkupPercent,omitempty"`
 
 	// LockedBefore The period lock — nothing dated before it may be touched except by expenses:manage. Absent when no lock is set.
@@ -1030,7 +1030,7 @@ type ExpensesSettingsRequest struct {
 type ExpensesSettingsResponse struct {
 	DefaultCurrency string `json:"defaultCurrency"`
 
-	// DefaultMarkupPercent The markup a new billable outlay starts with. Present only for expenses:manage — what the company adds to a supplier cost before invoicing it on is a commercial figure (design §5). No form needs it: the server applies the default itself when a billable outlay names no markup.
+	// DefaultMarkupPercent The markup a new billable outlay or supplier invoice starts with. Present only for expenses:manage — what the company adds to a supplier cost before invoicing it on is a commercial figure (design §5). No form needs it: the server applies the default itself when a billable outlay or supplier invoice names no markup.
 	DefaultMarkupPercent *float64 `json:"defaultMarkupPercent,omitempty"`
 
 	// LockedBefore Absent when no lock is set.
@@ -1197,7 +1197,7 @@ type PostExpensesEntriesByIdAttachmentsMultipartBody struct {
 
 // GetExpensesProjectsParams defines parameters for GetExpensesProjects.
 type GetExpensesProjectsParams struct {
-	// Kind Which kind of expense the picker is for. Left out, 'outlay' or 'mileage', it is the projects the person may book on — what logging time needs. 'supplier_invoice' is instead the caller's own projects on which they hold financial rights and that are not cancelled — what recording a supplier invoice needs (supplier invoices design D2) — and cannot be combined with a userId naming somebody else, because the right to record one is the recorder's. It lists projects the caller holds a role on; a projects:manage-all holder on no team records from the project page, whose summary answers the project. Any other value is refused on this field.
+	// Kind Which kind of expense the picker is for. Left out, 'outlay' or 'mileage', it is the projects the person may book on — what logging time needs. 'supplier_invoice' is instead the caller's own projects on which they hold financial rights and that are not cancelled — what recording a supplier invoice needs (supplier invoices design D2) — and cannot be combined with a userId naming somebody else, because the right to record one is the recorder's. It lists projects the caller holds a role on; a holder of projects:manage-all, or of projects:view-financials with projects:view-all, on no team records from the project page, whose summary answers the project. Any other value is refused on this field.
 	Kind *string `form:"kind,omitempty" json:"kind,omitempty"`
 
 	// UserId The person the expense is being recorded for. Naming anybody but the caller needs expenses:manage, the permission that lets one record for somebody else; left out, it is the caller's own projects.

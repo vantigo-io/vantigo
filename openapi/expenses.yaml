@@ -89,7 +89,7 @@ components:
                     format: int32
                     type: integer
                 markupPercent:
-                    description: A billable outlay's markup on the net, 0 to 1000 with at most two decimals. Left out, the line keeps whatever it carries, and a line that carries none takes the settings' default. Refused on a project that bills nothing, rather than accepted and cleared.
+                    description: A billable outlay's or supplier invoice's markup on the net, 0 to 1000 with at most two decimals. Left out, the line keeps whatever it carries, and a line that carries none takes the settings' default. Refused on a project that bills nothing, rather than accepted and cleared.
                     format: double
                     type: number
                 revision:
@@ -519,7 +519,7 @@ components:
                         - $ref: '#/components/schemas/ExpensesEntryInvoice'
                     description: What the customer has been billed for this line (decision X5). Absent until somebody marks it invoiced. It sits inside billing on purpose — an invoice number is the project's business, not the employee's.
                 markupPercent:
-                    description: A billable outlay's markup on the net. Absent otherwise.
+                    description: A billable outlay's or supplier invoice's markup on the net. Absent otherwise.
                     format: double
                     type: number
             required:
@@ -777,7 +777,7 @@ components:
                     description: A three-letter ISO 4217 code. Required on an outlay and on a supplier invoice. A mileage line takes the installation's default currency and refuses any other; a per diem day refuses it outright and takes the installation's currency, or the claim's own abroadCurrency on a trip abroad.
                     type: string
                 description:
-                    description: 1 to 500 characters. Required on an outlay and on a mileage line. A per diem day may be left without one and then carries the empty string — what the day *is* is its perDiemType, and a name the server invented would sit in the column in one language for ever, so the client renders the label instead.
+                    description: 1 to 500 characters. Required on an outlay, on a supplier invoice and on a mileage line. A per diem day may be left without one and then carries the empty string — what the day *is* is its perDiemType, and a name the server invented would sit in the column in one language for ever, so the client renders the label instead.
                     type: string
                 dinnerCovered:
                     description: Whether somebody else paid for that day's dinner, which deducts the meal_dinner_percent rate in force on the entry date. Per diem only; absent means false.
@@ -811,7 +811,7 @@ components:
                     description: Whether somebody else paid for that day's lunch, which deducts the meal_lunch_percent rate in force on the entry date. Per diem only; absent means false.
                     type: boolean
                 markupPercent:
-                    description: 'A billable outlay''s markup on the net, 0 to 1000 with at most two decimals. Only a caller with financial rights on the project — the ones who are sent the billing object — may name it; anyone else is refused on this field. Left out, a save keeps whatever the line already carries, and a line that carries none takes the settings'' default. Refused on anything but a billable outlay.'
+                    description: 'A billable outlay''s or supplier invoice''s markup on the net, 0 to 1000 with at most two decimals. Only a caller with financial rights on the project — the ones who are sent the billing object — may name it; anyone else is refused on this field. Left out, a save keeps whatever the line already carries, and a line that carries none takes the settings'' default. Refused on anything but a billable outlay or supplier invoice.'
                     format: double
                     type: number
                 paidBy:
@@ -839,7 +839,7 @@ components:
                     format: uuid
                     type: string
                 vatAmount:
-                    description: An outlay's VAT, from zero to its gross. Refused on a mileage line and on a per diem day, neither of which carries VAT.
+                    description: An outlay's or supplier invoice's VAT, from zero to its gross. Refused on a mileage line and on a per diem day, neither of which carries VAT.
                     format: double
                     type: number
             required:
@@ -1156,7 +1156,7 @@ components:
                     description: The currency a new expense starts in.
                     type: string
                 defaultMarkupPercent:
-                    description: The markup a new billable outlay starts with. Present only for expenses:manage, as on GET /settings — the server applies the default itself, so no form needs the number.
+                    description: The markup a new billable outlay or supplier invoice starts with. Present only for expenses:manage, as on GET /settings — the server applies the default itself, so no form needs the number.
                     format: double
                     type: number
                 lockedBefore:
@@ -1573,7 +1573,7 @@ components:
                 defaultCurrency:
                     type: string
                 defaultMarkupPercent:
-                    description: 'The markup a new billable outlay starts with. Present only for expenses:manage — what the company adds to a supplier cost before invoicing it on is a commercial figure (design §5). No form needs it: the server applies the default itself when a billable outlay names no markup.'
+                    description: 'The markup a new billable outlay or supplier invoice starts with. Present only for expenses:manage — what the company adds to a supplier cost before invoicing it on is a commercial figure (design §5). No form needs it: the server applies the default itself when a billable outlay or supplier invoice names no markup.'
                     format: double
                     type: number
                 lockedBefore:
@@ -2959,7 +2959,7 @@ paths:
             description: 'The projects the caller may book an expense on, with their active billing lines, so the expense form needs no code of the projects module''s own. With userId it is the projects that person may book on instead, which is what a form recording an expense for somebody else needs: the save is judged on the owner''s own bookability, so a picker offering the caller''s would offer projects the save then refuses. Answers 404 in an installation with no projects module (decision X2) — the same answer as a path that is not there.'
             operationId: getExpensesProjects
             parameters:
-                - description: 'Which kind of expense the picker is for. Left out, ''outlay'' or ''mileage'', it is the projects the person may book on — what logging time needs. ''supplier_invoice'' is instead the caller''s own projects on which they hold financial rights and that are not cancelled — what recording a supplier invoice needs (supplier invoices design D2) — and cannot be combined with a userId naming somebody else, because the right to record one is the recorder''s. It lists projects the caller holds a role on; a projects:manage-all holder on no team records from the project page, whose summary answers the project. Any other value is refused on this field.'
+                - description: 'Which kind of expense the picker is for. Left out, ''outlay'' or ''mileage'', it is the projects the person may book on — what logging time needs. ''supplier_invoice'' is instead the caller''s own projects on which they hold financial rights and that are not cancelled — what recording a supplier invoice needs (supplier invoices design D2) — and cannot be combined with a userId naming somebody else, because the right to record one is the recorder''s. It lists projects the caller holds a role on; a holder of projects:manage-all, or of projects:view-financials with projects:view-all, on no team records from the project page, whose summary answers the project. Any other value is refused on this field.'
                   in: query
                   name: kind
                   schema:
