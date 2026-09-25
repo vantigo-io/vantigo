@@ -394,11 +394,20 @@ type expenseSum struct {
 type currencyExpenses struct {
 	Currency                          string
 	Approved, Submitted, Draft, Total expenseSum
-	ReadyCount                        int64
-	ReadyAmount                       *big.Rat
-	InvoicedCount                     int64
-	InvoicedAmount                    *big.Rat
-	UnpricedCount                     int64
+	// SupplierInvoices is the supplier invoices' share of the buckets and the
+	// total (supplier invoices design D3), nil when the provider reported none.
+	SupplierInvoices *expenseSplit
+	ReadyCount       int64
+	ReadyAmount      *big.Rat
+	InvoicedCount    int64
+	InvoicedAmount   *big.Rat
+	UnpricedCount    int64
+}
+
+// expenseSplit is one kind's share of a currency's buckets, as exact decimals:
+// the three buckets and the provider's own across-bucket total.
+type expenseSplit struct {
+	Approved, Submitted, Draft, Total expenseSum
 }
 
 // expenseFigures is one project's expenses split the way every surface here
@@ -507,6 +516,47 @@ func currencyExpensesOf(c contracts.CurrencyExpenses) (currencyExpenses, error) 
 		return currencyExpenses{}, err
 	}
 	out.ReadyAmount, out.InvoicedAmount = ready, invoiced
+	if c.SupplierInvoices != nil {
+		split, err := expenseSplitOf(c.Currency, *c.SupplierInvoices, c.Total.Count)
+		if err != nil {
+			return currencyExpenses{}, err
+		}
+		out.SupplierInvoices = split
+	}
+	return out, nil
+}
+
+// expenseSplitOf converts the supplier invoices' share of one currency. The
+// counts are exact, so the provider's split contradicts itself — and is
+// refused, as currencyExpensesOf refuses a contradicting total — when its
+// total is not its buckets added up, or when it claims more lines than the
+// currency holds at all: a share bigger than the whole is not a share.
+func expenseSplitOf(currency string, s contracts.ExpenseSplit, lines int64) (*expenseSplit, error) {
+	if buckets := s.Approved.Count + s.Submitted.Count + s.Draft.Count; s.Total.Count != buckets || s.Total.Count > lines {
+		return nil, fmt.Errorf(
+			"projects: the expenses provider reports %d %s supplier invoices in total, %d across their buckets and %d lines in the currency",
+			s.Total.Count, currency, buckets, lines)
+	}
+	out := &expenseSplit{}
+	for _, pair := range []struct {
+		from contracts.ExpenseBucket
+		to   *expenseSum
+	}{
+		{s.Approved, &out.Approved},
+		{s.Submitted, &out.Submitted},
+		{s.Draft, &out.Draft},
+		{s.Total, &out.Total},
+	} {
+		cost, err := exactAmount(pair.from.CostAmount)
+		if err != nil {
+			return nil, err
+		}
+		bill, err := exactAmount(pair.from.BillAmount)
+		if err != nil {
+			return nil, err
+		}
+		pair.to.Count, pair.to.Cost, pair.to.Bill = pair.from.Count, cost, bill
+	}
 	return out, nil
 }
 

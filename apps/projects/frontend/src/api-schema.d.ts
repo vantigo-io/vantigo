@@ -1227,6 +1227,8 @@ export interface components {
             readyCount?: number | null;
             /** @description What is waiting for a decision. Absent when the project carries no currency. */
             submitted?: components["schemas"]["ProjectEconomyExpenseBucket"];
+            /** @description The part of the three buckets and the totals that is supplier invoices, in the project's own currency — shown as "of which supplier invoices" beneath the totals (supplier invoices design D3). Absent when none has been recorded in the project's currency, and on a project that carries no currency. It is a sub-figure, never a split of the block's figures, so none of those changes meaning and the margin is unchanged. */
+            supplierInvoices?: components["schemas"]["ProjectEconomySupplierInvoices"];
             /**
              * Format: double
              * @description What all three buckets' billable lines will charge, in the project's currency — the across-bucket figure the module that owns the expenses reports, rounded once from the unrounded whole rather than by adding the three buckets above, each of which was rounded on its own. Absent when the project carries no currency.
@@ -1432,6 +1434,13 @@ export interface components {
             id: number;
             name: string;
             status: string;
+        };
+        /** @description What the project's supplier invoices in its own currency cost the company and will charge the customer, in the same three buckets as every expense and the across-bucket total, which is rounded once from the unrounded whole rather than the buckets added up. Each bucket is already inside the expenses block's bucket of that status. */
+        ProjectEconomySupplierInvoices: {
+            approved: components["schemas"]["ProjectEconomyExpenseBucket"];
+            draft: components["schemas"]["ProjectEconomyExpenseBucket"];
+            submitted: components["schemas"]["ProjectEconomyExpenseBucket"];
+            total: components["schemas"]["ProjectEconomyExpenseBucket"];
         };
         /** @description What the whole filtered set adds up to, page or no page. readyAmounts is a list rather than one number because the projects in it may be in several currencies, and two currencies never add up. */
         ProjectEconomyTotals: {

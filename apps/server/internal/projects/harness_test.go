@@ -537,6 +537,38 @@ func (f *fakeExpenses) set(projectID int32, totals contracts.ProjectExpenseTotal
 	f.entries[projectID] = totals
 }
 
+// setSupplierInvoices says which part of one currency's figures, already set
+// for projectID, is supplier invoices (supplier invoices design D3) — the
+// sub-figure the real provider carries beside the buckets and leaves nil when
+// a currency has none. set comes first; this only adds the split to it.
+func (f *fakeExpenses) setSupplierInvoices(projectID int32, currency string, split contracts.ExpenseSplit) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	totals := f.entries[projectID]
+	currencies := slices.Clone(totals.Currencies)
+	for i := range currencies {
+		if currencies[i].Currency == currency {
+			one := split
+			currencies[i].SupplierInvoices = &one
+		}
+	}
+	totals.Currencies = currencies
+	f.entries[projectID] = totals
+}
+
+// spentSplit is a supplier-invoice split with Total derived from its three
+// buckets, the way spentInCurrency derives a currency's.
+func spentSplit(approved, submitted, draft contracts.ExpenseBucket) contracts.ExpenseSplit {
+	return contracts.ExpenseSplit{
+		Approved: approved, Submitted: submitted, Draft: draft,
+		Total: contracts.ExpenseBucket{
+			Count:      approved.Count + submitted.Count + draft.Count,
+			CostAmount: addedAmounts(approved.CostAmount, submitted.CostAmount, draft.CostAmount),
+			BillAmount: addedAmounts(approved.BillAmount, submitted.BillAmount, draft.BillAmount),
+		},
+	}
+}
+
 // fail makes every later call answer err. It is "could not be read", never
 // "there is nothing" — the distinction the contract's own doc comment turns
 // into a 500 rather than a project that has apparently spent nothing.
@@ -1356,6 +1388,17 @@ type economyExpensesJSON struct {
 	UnpricedCount   *int32                `json:"unpricedCount"`
 	OtherCurrencies []expenseCurrencyJSON `json:"otherCurrencies"`
 	LastEntryDate   *string               `json:"lastEntryDate"`
+	// SupplierInvoices is the part of the buckets that is supplier invoices,
+	// absent when there are none.
+	SupplierInvoices *economySupplierInvoicesJSON `json:"supplierInvoices"`
+}
+
+// economySupplierInvoicesJSON decodes ProjectEconomySupplierInvoices.
+type economySupplierInvoicesJSON struct {
+	Approved  expenseBucketJSON `json:"approved"`
+	Submitted expenseBucketJSON `json:"submitted"`
+	Draft     expenseBucketJSON `json:"draft"`
+	Total     expenseBucketJSON `json:"total"`
 }
 
 // expenseBucketJSON decodes ProjectEconomyExpenseBucket: a count of lines,
