@@ -60,6 +60,14 @@ func (silentDirectory) CanLogTime(context.Context, int32, uuid.UUID) (bool, erro
 	return false, nil
 }
 
+func (silentDirectory) WorkType(context.Context, int32) (*contracts.WorkTypeEntry, error) {
+	return nil, nil
+}
+
+func (silentDirectory) WorkTypes(context.Context, int32) ([]contracts.WorkTypeEntry, error) {
+	return nil, nil
+}
+
 type silentUsers struct{}
 
 var _ contracts.UserDirectory = silentUsers{}

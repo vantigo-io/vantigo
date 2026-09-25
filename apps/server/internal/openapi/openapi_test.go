@@ -206,6 +206,7 @@ var KnownServeMuxConflicts = []string{
 	"GET /api/v1/projects/milestones/{milestoneId} ⟷ GET /api/v1/projects/{id}/roles",
 	"GET /api/v1/projects/milestones/{milestoneId} ⟷ GET /api/v1/projects/{id}/tasks",
 	"GET /api/v1/projects/milestones/{milestoneId} ⟷ GET /api/v1/projects/{id}/timeline",
+	"GET /api/v1/projects/milestones/{milestoneId} ⟷ GET /api/v1/projects/{id}/work-types",
 	"GET /api/v1/projects/tasks/{taskId} ⟷ GET /api/v1/projects/{id}/assignable-users",
 	"GET /api/v1/projects/tasks/{taskId} ⟷ GET /api/v1/projects/{id}/billing-lines",
 	"GET /api/v1/projects/tasks/{taskId} ⟷ GET /api/v1/projects/{id}/economy",
@@ -213,6 +214,7 @@ var KnownServeMuxConflicts = []string{
 	"GET /api/v1/projects/tasks/{taskId} ⟷ GET /api/v1/projects/{id}/roles",
 	"GET /api/v1/projects/tasks/{taskId} ⟷ GET /api/v1/projects/{id}/tasks",
 	"GET /api/v1/projects/tasks/{taskId} ⟷ GET /api/v1/projects/{id}/timeline",
+	"GET /api/v1/projects/tasks/{taskId} ⟷ GET /api/v1/projects/{id}/work-types",
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/anonymisation",
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/billing-profile",
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/contact-info",
@@ -240,9 +242,11 @@ var KnownServeMuxConflicts = []string{
 	"PUT /api/v1/projects/milestones/{milestoneId} ⟷ PUT /api/v1/projects/{id}/status",
 	"PUT /api/v1/projects/milestones/{milestoneId}/position ⟷ PUT /api/v1/projects/{id}/billing-lines/{lineId}",
 	"PUT /api/v1/projects/milestones/{milestoneId}/position ⟷ PUT /api/v1/projects/{id}/roles/{userId}",
+	"PUT /api/v1/projects/milestones/{milestoneId}/position ⟷ PUT /api/v1/projects/{id}/work-types/{workTypeId}",
 	"PUT /api/v1/projects/tasks/{taskId} ⟷ PUT /api/v1/projects/{id}/status",
 	"PUT /api/v1/projects/tasks/{taskId}/position ⟷ PUT /api/v1/projects/{id}/billing-lines/{lineId}",
 	"PUT /api/v1/projects/tasks/{taskId}/position ⟷ PUT /api/v1/projects/{id}/roles/{userId}",
+	"PUT /api/v1/projects/tasks/{taskId}/position ⟷ PUT /api/v1/projects/{id}/work-types/{workTypeId}",
 }
 
 // TestServeMuxConflictsArePinned checks every pair of operations across every

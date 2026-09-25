@@ -120,7 +120,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `POST /api/v1/communications/tags` (postCommunicationsTags)
 - `PUT /api/v1/communications/conversations/{id}/tags/{tagId}` (putCommunicationsConversationsByIdTagsByTagId)
 
-## projects (42 uncovered)
+## projects (45 uncovered)
 
 - `DELETE /api/v1/projects/milestones/{milestoneId}` (deleteProjectsMilestonesByMilestoneId)
 - `DELETE /api/v1/projects/tasks/{taskId}/checklist/{itemId}` (deleteProjectsTasksByTaskIdChecklistByItemId)
@@ -145,6 +145,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `GET /api/v1/projects/{id}/roles` (getProjectsByIdRoles)
 - `GET /api/v1/projects/{id}/tasks` (getProjectsByIdTasks)
 - `GET /api/v1/projects/{id}/timeline` (getProjectsByIdTimeline)
+- `GET /api/v1/projects/{id}/work-types` (getProjectsByIdWorkTypes)
 - `GET /api/v1/projects/{id}` (getProjectsById)
 - `GET /api/v1/projects` (getProjects)
 - `POST /api/v1/projects/milestones/{milestoneId}/status` (postProjectsMilestonesByMilestoneIdStatus)
@@ -153,6 +154,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `POST /api/v1/projects/{id}/billing-lines` (postProjectsByIdBillingLines)
 - `POST /api/v1/projects/{id}/milestones` (postProjectsByIdMilestones)
 - `POST /api/v1/projects/{id}/tasks` (postProjectsByIdTasks)
+- `POST /api/v1/projects/{id}/work-types` (postProjectsByIdWorkTypes)
 - `POST /api/v1/projects` (postProjects)
 - `PUT /api/v1/projects/milestones/{milestoneId}/position` (putProjectsMilestonesByMilestoneIdPosition)
 - `PUT /api/v1/projects/milestones/{milestoneId}` (putProjectsMilestonesByMilestoneId)
@@ -163,6 +165,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/projects/{id}/billing-lines/{lineId}` (putProjectsByIdBillingLinesByLineId)
 - `PUT /api/v1/projects/{id}/roles/{userId}` (putProjectsByIdRolesByUserId)
 - `PUT /api/v1/projects/{id}/status` (putProjectsByIdStatus)
+- `PUT /api/v1/projects/{id}/work-types/{workTypeId}` (putProjectsByIdWorkTypesByWorkTypeId)
 - `PUT /api/v1/projects/{id}` (putProjectsById)
 
 ## time (25 uncovered)
@@ -241,4 +244,4 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/expenses/rates/{id}` (putExpensesRatesById)
 - `PUT /api/v1/expenses/settings` (putExpensesSettings)
 
-Total: 215 of 350 operations have no recorded exchange.
+Total: 218 of 353 operations have no recorded exchange.

@@ -322,6 +322,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{id}/work-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a project's work types
+         * @description Every work type of the project (work types design D1), deactivated ones included — an entry that picked one still names it — the active ones first, each half by name. Anyone who sees the project reads them: a multiplier is a rule, not an amount.
+         */
+        get: operations["getProjectsByIdWorkTypes"];
+        put?: never;
+        /**
+         * Add a work type to a project
+         * @description Adds a work type to the project (work types design D1). Manager only. The write takes no project lock — nothing about a work type depends on the currency, the fixed price or the billing type — and records work-type-added on the project timeline, naming the fields and never their values.
+         */
+        post: operations["postProjectsByIdWorkTypes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/work-types/{workTypeId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change a project's work type
+         * @description Changes one of the project's work types, active included (work types design D1). Manager only. Records work-type-changed naming the fields that moved; a change that moved nothing records nothing. A multiplier changed here moves no entry already submitted: Time froze it with the rates.
+         */
+        put: operations["putProjectsByIdWorkTypesByWorkTypeId"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/stats": {
         parameters: {
             query?: never;
@@ -1757,6 +1801,40 @@ export interface components {
             occurredAt: string;
             /** @description The event's own fields. Billing events name which fields changed and never their amounts, so a timeline needs no financial shaping. */
             payload: Record<string, never>;
+        };
+        /** @description A project's work type as it should stand (work types design D1): a name and two multipliers, each a percentage of the rate the time entry's rate chain resolved — 100 is the rate as it stands, 150 the classic overtime uplift. Projects stores the percentages and multiplies nothing; Time multiplies an entry's rates by them. active is the one field a PUT may leave out; a POST ignores it, and a new type is active. */
+        WorkTypeRequest: {
+            /** @description PUT only. Absent leaves the type as it stands. There is no DELETE — entries that picked a type still name it — so a type is deactivated, and a deactivated type is offered for no new entry. */
+            active?: boolean | null;
+            /**
+             * Format: double
+             * @description What an hour of this type bills at, as a percentage of the bill rate the chain resolved. Greater than zero, at most 1000, at most two decimals.
+             */
+            billMultiplierPercent: number;
+            /**
+             * Format: double
+             * @description What an hour of this type costs the company, as a percentage of the person's cost rate. Greater than zero, at most 1000, at most two decimals.
+             */
+            costMultiplierPercent: number;
+            /** @description Trimmed; 1 to 100 characters, and unique within the project without regard to case — a taken name answers 409. */
+            name: string;
+        };
+        /** @description One of a project's work types (work types design D1). The multipliers are a rule, not an amount, so everyone who can see the project sees them, the way budgetHours is visible while budgetAmount is shaped away. */
+        WorkTypeResponse: {
+            active: boolean;
+            /** Format: double */
+            billMultiplierPercent: number;
+            /** Format: double */
+            costMultiplierPercent: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int32 */
+            id: number;
+            name: string;
+            /** Format: int32 */
+            projectId: number;
+            /** Format: date-time */
+            updatedAt: string;
         };
         PaginationMetadata: {
             hasNextPage: boolean;
@@ -3284,6 +3362,192 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getProjectsByIdWorkTypes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkTypeResponse"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the project does not exist, or the caller holds no role on it and no view-all/manage-all permission. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postProjectsByIdWorkTypes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkTypeRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkTypeResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the project does not exist, or the caller holds no role on it and no view-all/manage-all permission. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — the project already has a work type of that name, compared without regard to case (title "Work type exists"). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    putProjectsByIdWorkTypesByWorkTypeId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                workTypeId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkTypeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkTypeResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the project does not exist, the caller holds no role on it and no view-all/manage-all permission, or the project has no such work type. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — another work type of the project already has that name, compared without regard to case (title "Work type exists"). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
             };
         };
     };

@@ -114,3 +114,19 @@ SELECT EXISTS (
       AND r.user_id = @user_id
       AND r.role IN ('member', 'manager')
 );
+
+-- name: DirectoryWorkType :one
+-- DirectoryWorkType is contracts.ProjectDirectory.WorkType's row: one type by
+-- id, active or not, whatever project it is on — the consumer compares the
+-- project itself (work types design D2).
+SELECT id, project_id, name, bill_multiplier_percent, cost_multiplier_percent, active
+FROM projects.work_types
+WHERE id = @id;
+
+-- name: DirectoryWorkTypes :many
+-- DirectoryWorkTypes is contracts.ProjectDirectory.WorkTypes' rows: every type
+-- on projectID, in ListWorkTypes' order.
+SELECT id, project_id, name, bill_multiplier_percent, cost_multiplier_percent, active
+FROM projects.work_types
+WHERE project_id = @project_id
+ORDER BY active DESC, lower(name), id;

@@ -1714,6 +1714,62 @@ func TestProjectsMilestones_AppliesAndIsIdempotent(t *testing.T) {
 	}
 }
 
+// TestProjectsWorkTypes_AppliesAndIsIdempotent proves
+// 00031_projects_work_types.sql applies, rolls back and re-applies cleanly,
+// and pins what the work types design (D1) rests on: both percentages at
+// numeric(6,2) — greater than zero and at most 1000 with two decimals is Go's
+// rule, the column is what holds it — the in-module foreign key to the
+// project, and the unique index on the project and the name's lower case,
+// whose 23505 is the duplicate-name 409. A plain (project_id, name) index
+// would let "Overtid" and "overtid" both in.
+func TestProjectsWorkTypes_AppliesAndIsIdempotent(t *testing.T) {
+	url := testdb.URL(t)
+	applyUpDownUp(t, url, 31) // 00031_projects_work_types.sql
+
+	ctx := context.Background()
+	pool, err := db.Open(ctx, url)
+	if err != nil {
+		t.Fatalf("open pool: %v", err)
+	}
+	defer pool.Close()
+
+	var columns string
+	if err := pool.QueryRow(ctx, `
+		SELECT coalesce(string_agg(column_name || ':' || data_type
+		       || CASE WHEN data_type = 'numeric' THEN '(' || numeric_precision || ',' || numeric_scale || ')'
+		               WHEN data_type = 'character varying' THEN '(' || character_maximum_length || ')'
+		               ELSE '' END
+		       || ':' || is_nullable, ',' ORDER BY ordinal_position), 'MISSING')
+		FROM information_schema.columns
+		WHERE table_schema = 'projects' AND table_name = 'work_types'`).Scan(&columns); err != nil {
+		t.Fatalf("read projects.work_types columns: %v", err)
+	}
+	want := "id:integer:NO,project_id:integer:NO,name:character varying(100):NO," +
+		"bill_multiplier_percent:numeric(6,2):NO,cost_multiplier_percent:numeric(6,2):NO," +
+		"active:boolean:NO,created_at:timestamp with time zone:NO,updated_at:timestamp with time zone:NO"
+	if columns != want {
+		t.Errorf("projects.work_types columns = %q, want %q", columns, want)
+	}
+
+	var projectKeys int
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*) FROM pg_constraint c
+		JOIN pg_class t ON t.oid = c.conrelid
+		JOIN pg_namespace n ON n.oid = t.relnamespace
+		JOIN pg_class r ON r.oid = c.confrelid
+		WHERE n.nspname = 'projects' AND t.relname = 'work_types' AND c.contype = 'f' AND r.relname = 'projects'`).Scan(&projectKeys); err != nil {
+		t.Fatalf("count the work types' foreign keys: %v", err)
+	}
+	if projectKeys != 1 {
+		t.Errorf("foreign keys from work_types to projects = %d, want 1", projectKeys)
+	}
+
+	def := indexDefinition(t, ctx, pool, "projects", "ux_work_types_project_id_name")
+	if !strings.Contains(def, "CREATE UNIQUE INDEX") || !strings.Contains(def, "(project_id, lower((name)::text))") {
+		t.Errorf("ux_work_types_project_id_name = %q, want UNIQUE on (project_id, lower(name))", def)
+	}
+}
+
 // TestExpensesBaseline_AppliesAndIsIdempotent proves
 // 00012_expenses_baseline.sql applies, rolls back and re-applies cleanly, with
 // the five tables of design §3.1–3.5, the two unique indexes the module's

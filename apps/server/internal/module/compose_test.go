@@ -890,6 +890,14 @@ func (*fakeProjectDirectory) CanLogTime(context.Context, int32, uuid.UUID) (bool
 	return false, nil
 }
 
+func (*fakeProjectDirectory) WorkType(context.Context, int32) (*contracts.WorkTypeEntry, error) {
+	return nil, nil
+}
+
+func (*fakeProjectDirectory) WorkTypes(context.Context, int32) ([]contracts.WorkTypeEntry, error) {
+	return nil, nil
+}
+
 type fakeProjectActuals struct {
 	projects contracts.ProjectDirectory // whatever Deps carried when it was built
 }

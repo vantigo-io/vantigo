@@ -3,6 +3,7 @@ package projects_test
 import (
 	"context"
 	"net/http"
+	"slices"
 	"testing"
 	"time"
 
@@ -642,5 +643,76 @@ func TestDirectory_ProjectEntryCarriesCurrencyAndDefaultBillRate(t *testing.T) {
 	}
 	if got == nil || got.DefaultBillRate == nil || *got.DefaultBillRate != 950.0 {
 		t.Errorf("Project.DefaultBillRate = %v, want 950", got)
+	}
+}
+
+// TestDirectory_WorkType is D2's single read: a type resolves with its
+// percentages, a deactivated one still resolves (an entry that picked it must
+// still name it), and one nobody has is (nil, nil).
+func TestDirectory_WorkType(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "DIR1100"})
+	wt := createWorkType(t, c, project.Id, map[string]any{"name": "Helg", "billMultiplierPercent": 200, "costMultiplierPercent": 162.5})
+	dir := newDirectory(t, h)
+	ctx := context.Background()
+
+	got, err := dir.WorkType(ctx, wt.Id)
+	if err != nil {
+		t.Fatalf("WorkType: %v", err)
+	}
+	want := contracts.WorkTypeEntry{
+		ID: wt.Id, ProjectID: project.Id, Name: "Helg", BillMultiplierPercent: 200, CostMultiplierPercent: 162.5, Active: true,
+	}
+	if got == nil || *got != want {
+		t.Errorf("WorkType = %+v, want %+v", got, want)
+	}
+
+	changeWorkType(t, c, project.Id, wt.Id, workTypeBody(map[string]any{
+		"name": "Helg", "billMultiplierPercent": 200, "costMultiplierPercent": 162.5, "active": false,
+	}))
+	if got, err := dir.WorkType(ctx, wt.Id); err != nil || got == nil || got.Active {
+		t.Errorf("WorkType(deactivated) = %+v, %v, want it resolved and inactive", got, err)
+	}
+	if missing, err := dir.WorkType(ctx, 999999); err != nil || missing != nil {
+		t.Errorf("WorkType(unknown) = %+v, %v, want (nil, nil)", missing, err)
+	}
+}
+
+// TestDirectory_WorkTypes is D2's list: every type of the one project, active
+// first, each half by name without regard to case; nothing of another
+// project's; and an empty answer, not an error, for a project with none.
+func TestDirectory_WorkTypes(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "DIR1101"})
+	other := createProject(t, c, map[string]any{"code": "DIR1102"})
+	createWorkType(t, c, project.Id, map[string]any{"name": "Zeta"})
+	alfa := createWorkType(t, c, project.Id, map[string]any{"name": "Alfa"})
+	createWorkType(t, c, project.Id, map[string]any{"name": "beta"})
+	changeWorkType(t, c, project.Id, alfa.Id, workTypeBody(map[string]any{"name": "Alfa", "active": false}))
+	createWorkType(t, c, other.Id, map[string]any{"name": "Annet"})
+	dir := newDirectory(t, h)
+	ctx := context.Background()
+
+	got, err := dir.WorkTypes(ctx, project.Id)
+	if err != nil {
+		t.Fatalf("WorkTypes: %v", err)
+	}
+	var names []string
+	for _, wt := range got {
+		names = append(names, wt.Name)
+		if wt.ProjectID != project.Id {
+			t.Errorf("WorkTypes answered %+v, a type of another project", wt)
+		}
+	}
+	if want := []string{"beta", "Zeta", "Alfa"}; !slices.Equal(names, want) {
+		t.Errorf("WorkTypes names = %v, want %v", names, want)
+	}
+	empty := createProject(t, c, map[string]any{"code": "DIR1103"})
+	if none, err := dir.WorkTypes(ctx, empty.Id); err != nil || len(none) != 0 {
+		t.Errorf("WorkTypes(none) = %v, %v, want an empty answer", none, err)
 	}
 }

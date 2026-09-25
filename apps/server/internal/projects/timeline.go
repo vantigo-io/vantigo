@@ -49,6 +49,9 @@ const (
 	eventMilestoneInvoiceUndone = "milestone-invoice-undone"
 	eventMilestoneCancelled     = "milestone-cancelled"
 	eventMilestoneReopened      = "milestone-reopened"
+
+	eventWorkTypeAdded   = "work-type-added"
+	eventWorkTypeChanged = "work-type-changed"
 )
 
 // recordEvent inserts one generated timeline entry. The actor's display name
@@ -226,6 +229,55 @@ func recordLineUpdated(ctx context.Context, q *store.Queries, now time.Time, d l
 		return recordEvent(ctx, q, now, projectID, eventLineReactivated, map[string]any{"code": code}, by)
 	}
 	return nil
+}
+
+// The two work-type entries (work types design D1). Each names the type by
+// its id and its name as it now stands, and the fields a change moved — never
+// a multiplier's value, the billing lines' rule, so a timeline stays one
+// thing for every reader. A change of `active` is one of the fields: D1 has
+// no entry of its own for switching a type off.
+func recordWorkTypeAdded(ctx context.Context, q *store.Queries, now time.Time, projectID int32, wt store.ProjectsWorkType, by actor) error {
+	payload := map[string]any{
+		"workTypeId": wt.ID,
+		"name":       wt.Name,
+		"fields":     []string{"name", "billMultiplierPercent", "costMultiplierPercent"},
+	}
+	return recordEvent(ctx, q, now, projectID, eventWorkTypeAdded, payload, by)
+}
+
+// diffWorkTypes names what one change to a type moved, in the contract's
+// camelCase, comparing the percentages the way the response renders them
+// (numericChanged), so 150 and 150.00 are one number.
+func diffWorkTypes(before, after store.ProjectsWorkType) ([]string, error) {
+	var fields []string
+	if before.Name != after.Name {
+		fields = append(fields, "name")
+	}
+	changed, err := numericChanged(before.BillMultiplierPercent, after.BillMultiplierPercent)
+	if err != nil {
+		return nil, err
+	}
+	if changed {
+		fields = append(fields, "billMultiplierPercent")
+	}
+	changed, err = numericChanged(before.CostMultiplierPercent, after.CostMultiplierPercent)
+	if err != nil {
+		return nil, err
+	}
+	if changed {
+		fields = append(fields, "costMultiplierPercent")
+	}
+	if before.Active != after.Active {
+		fields = append(fields, "active")
+	}
+	return fields, nil
+}
+
+// recordWorkTypeUpdated writes work-type-changed for a change that moved
+// something; the caller skips it when diffWorkTypes answered nothing.
+func recordWorkTypeUpdated(ctx context.Context, q *store.Queries, now time.Time, projectID int32, wt store.ProjectsWorkType, fields []string, by actor) error {
+	payload := map[string]any{"workTypeId": wt.ID, "name": wt.Name, "fields": fields}
+	return recordEvent(ctx, q, now, projectID, eventWorkTypeChanged, payload, by)
 }
 
 // recordMilestoneEvent writes one of the nine milestone entries (design

@@ -86,3 +86,18 @@ func productsDisabled() apicommon.ProblemDetails {
 		"Billing lines are pinned to product variants, and the products module is not enabled in this installation.",
 		http.StatusConflict)
 }
+
+// workTypeExistsTitle is the title of the 409 a work type's create or rename
+// answers when the project already has a type of that name (work types design
+// D1's work_type_exists). It is a conflict rather than a field error because
+// the body is valid — it is the project that already holds the name — and it
+// carries no code of its own, like every refusal here: the status and the
+// title say it.
+const workTypeExistsTitle = "Work type exists"
+
+// workTypeExists is that 409's body, naming the name as the caller typed it.
+func workTypeExists(name string) apicommon.ProblemDetails {
+	return apicommon.ProblemStatus(workTypeExistsTitle,
+		fmt.Sprintf("This project already has a work type named '%s'; names are compared without regard to case.", name),
+		http.StatusConflict)
+}

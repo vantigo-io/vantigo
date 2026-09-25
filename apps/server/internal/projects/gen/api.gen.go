@@ -1094,6 +1094,33 @@ type TimelineEntryResponse struct {
 	Payload map[string]interface{} `json:"payload"`
 }
 
+// WorkTypeRequest A project's work type as it should stand (work types design D1): a name and two multipliers, each a percentage of the rate the time entry's rate chain resolved — 100 is the rate as it stands, 150 the classic overtime uplift. Projects stores the percentages and multiplies nothing; Time multiplies an entry's rates by them. active is the one field a PUT may leave out; a POST ignores it, and a new type is active.
+type WorkTypeRequest struct {
+	// Active PUT only. Absent leaves the type as it stands. There is no DELETE — entries that picked a type still name it — so a type is deactivated, and a deactivated type is offered for no new entry.
+	Active *bool `json:"active,omitempty"`
+
+	// BillMultiplierPercent What an hour of this type bills at, as a percentage of the bill rate the chain resolved. Greater than zero, at most 1000, at most two decimals.
+	BillMultiplierPercent float64 `json:"billMultiplierPercent"`
+
+	// CostMultiplierPercent What an hour of this type costs the company, as a percentage of the person's cost rate. Greater than zero, at most 1000, at most two decimals.
+	CostMultiplierPercent float64 `json:"costMultiplierPercent"`
+
+	// Name Trimmed; 1 to 100 characters, and unique within the project without regard to case — a taken name answers 409.
+	Name string `json:"name"`
+}
+
+// WorkTypeResponse One of a project's work types (work types design D1). The multipliers are a rule, not an amount, so everyone who can see the project sees them, the way budgetHours is visible while budgetAmount is shaped away.
+type WorkTypeResponse struct {
+	Active                bool      `json:"active"`
+	BillMultiplierPercent float64   `json:"billMultiplierPercent"`
+	CostMultiplierPercent float64   `json:"costMultiplierPercent"`
+	CreatedAt             time.Time `json:"createdAt"`
+	Id                    int32     `json:"id"`
+	Name                  string    `json:"name"`
+	ProjectId             int32     `json:"projectId"`
+	UpdatedAt             time.Time `json:"updatedAt"`
+}
+
 // GetProjectsParams defines parameters for GetProjects.
 type GetProjectsParams struct {
 	Page     *int32 `form:"page,omitempty" json:"page,omitempty"`
@@ -1238,6 +1265,12 @@ type PutProjectsByIdStatusJSONRequestBody = ProjectStatusChangeRequest
 // PostProjectsByIdTasksJSONRequestBody defines body for PostProjectsByIdTasks for application/json ContentType.
 type PostProjectsByIdTasksJSONRequestBody = TaskRequest
 
+// PostProjectsByIdWorkTypesJSONRequestBody defines body for PostProjectsByIdWorkTypes for application/json ContentType.
+type PostProjectsByIdWorkTypesJSONRequestBody = WorkTypeRequest
+
+// PutProjectsByIdWorkTypesByWorkTypeIdJSONRequestBody defines body for PutProjectsByIdWorkTypesByWorkTypeId for application/json ContentType.
+type PutProjectsByIdWorkTypesByWorkTypeIdJSONRequestBody = WorkTypeRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// GetProjects List projects
@@ -1366,6 +1399,15 @@ type ServerInterface interface {
 	// GetProjectsByIdTimeline List a project's timeline
 	// (GET /api/v1/projects/{id}/timeline)
 	GetProjectsByIdTimeline(w http.ResponseWriter, r *http.Request, id int32, params GetProjectsByIdTimelineParams)
+	// GetProjectsByIdWorkTypes List a project's work types
+	// (GET /api/v1/projects/{id}/work-types)
+	GetProjectsByIdWorkTypes(w http.ResponseWriter, r *http.Request, id int32)
+	// PostProjectsByIdWorkTypes Add a work type to a project
+	// (POST /api/v1/projects/{id}/work-types)
+	PostProjectsByIdWorkTypes(w http.ResponseWriter, r *http.Request, id int32)
+	// PutProjectsByIdWorkTypesByWorkTypeId Change a project's work type
+	// (PUT /api/v1/projects/{id}/work-types/{workTypeId})
+	PutProjectsByIdWorkTypesByWorkTypeId(w http.ResponseWriter, r *http.Request, id int32, workTypeId int32)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -2843,6 +2885,93 @@ func (siw *ServerInterfaceWrapper) GetProjectsByIdTimeline(w http.ResponseWriter
 	handler.ServeHTTP(w, r)
 }
 
+// GetProjectsByIdWorkTypes operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectsByIdWorkTypes(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectsByIdWorkTypes(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostProjectsByIdWorkTypes operation middleware
+func (siw *ServerInterfaceWrapper) PostProjectsByIdWorkTypes(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostProjectsByIdWorkTypes(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutProjectsByIdWorkTypesByWorkTypeId operation middleware
+func (siw *ServerInterfaceWrapper) PutProjectsByIdWorkTypesByWorkTypeId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workTypeId" -------------
+	var workTypeId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workTypeId", r.PathValue("workTypeId"), &workTypeId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workTypeId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutProjectsByIdWorkTypesByWorkTypeId(w, r, id, workTypeId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -2989,6 +3118,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}/tasks", wrapper.GetProjectsByIdTasks)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{id}/tasks", wrapper.PostProjectsByIdTasks)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}/timeline", wrapper.GetProjectsByIdTimeline)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}/work-types", wrapper.GetProjectsByIdWorkTypes)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{id}/work-types", wrapper.PostProjectsByIdWorkTypes)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{id}/work-types/{workTypeId}", wrapper.PutProjectsByIdWorkTypesByWorkTypeId)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/stats", wrapper.GetProjectsStats)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/stats/attention", wrapper.GetProjectsStatsAttention)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/stats/summary", wrapper.GetProjectsStatsSummary)
@@ -5843,6 +5975,239 @@ func (response GetProjectsByIdTimeline404Response) VisitGetProjectsByIdTimelineR
 	return nil
 }
 
+type GetProjectsByIdWorkTypesRequestObject struct {
+	Id int32 `json:"id"`
+}
+
+type GetProjectsByIdWorkTypesResponseObject interface {
+	VisitGetProjectsByIdWorkTypesResponse(w http.ResponseWriter) error
+}
+
+type GetProjectsByIdWorkTypes200JSONResponse []WorkTypeResponse
+
+func (response GetProjectsByIdWorkTypes200JSONResponse) VisitGetProjectsByIdWorkTypesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsByIdWorkTypes401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsByIdWorkTypes401JSONResponse) VisitGetProjectsByIdWorkTypesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsByIdWorkTypes403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsByIdWorkTypes403JSONResponse) VisitGetProjectsByIdWorkTypesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsByIdWorkTypes404Response struct {
+}
+
+func (response GetProjectsByIdWorkTypes404Response) VisitGetProjectsByIdWorkTypesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostProjectsByIdWorkTypesRequestObject struct {
+	Id   int32 `json:"id"`
+	Body *PostProjectsByIdWorkTypesJSONRequestBody
+}
+
+type PostProjectsByIdWorkTypesResponseObject interface {
+	VisitPostProjectsByIdWorkTypesResponse(w http.ResponseWriter) error
+}
+
+type PostProjectsByIdWorkTypes201JSONResponse WorkTypeResponse
+
+func (response PostProjectsByIdWorkTypes201JSONResponse) VisitPostProjectsByIdWorkTypesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsByIdWorkTypes400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostProjectsByIdWorkTypes400ApplicationProblemPlusJSONResponse) VisitPostProjectsByIdWorkTypesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsByIdWorkTypes401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostProjectsByIdWorkTypes401JSONResponse) VisitPostProjectsByIdWorkTypesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsByIdWorkTypes403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostProjectsByIdWorkTypes403JSONResponse) VisitPostProjectsByIdWorkTypesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsByIdWorkTypes404Response struct {
+}
+
+func (response PostProjectsByIdWorkTypes404Response) VisitPostProjectsByIdWorkTypesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostProjectsByIdWorkTypes409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PostProjectsByIdWorkTypes409ApplicationProblemPlusJSONResponse) VisitPostProjectsByIdWorkTypesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsByIdWorkTypesByWorkTypeIdRequestObject struct {
+	Id         int32 `json:"id"`
+	WorkTypeId int32 `json:"workTypeId"`
+	Body       *PutProjectsByIdWorkTypesByWorkTypeIdJSONRequestBody
+}
+
+type PutProjectsByIdWorkTypesByWorkTypeIdResponseObject interface {
+	VisitPutProjectsByIdWorkTypesByWorkTypeIdResponse(w http.ResponseWriter) error
+}
+
+type PutProjectsByIdWorkTypesByWorkTypeId200JSONResponse WorkTypeResponse
+
+func (response PutProjectsByIdWorkTypesByWorkTypeId200JSONResponse) VisitPutProjectsByIdWorkTypesByWorkTypeIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsByIdWorkTypesByWorkTypeId400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutProjectsByIdWorkTypesByWorkTypeId400ApplicationProblemPlusJSONResponse) VisitPutProjectsByIdWorkTypesByWorkTypeIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsByIdWorkTypesByWorkTypeId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutProjectsByIdWorkTypesByWorkTypeId401JSONResponse) VisitPutProjectsByIdWorkTypesByWorkTypeIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsByIdWorkTypesByWorkTypeId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutProjectsByIdWorkTypesByWorkTypeId403JSONResponse) VisitPutProjectsByIdWorkTypesByWorkTypeIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsByIdWorkTypesByWorkTypeId404Response struct {
+}
+
+func (response PutProjectsByIdWorkTypesByWorkTypeId404Response) VisitPutProjectsByIdWorkTypesByWorkTypeIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutProjectsByIdWorkTypesByWorkTypeId409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PutProjectsByIdWorkTypesByWorkTypeId409ApplicationProblemPlusJSONResponse) VisitPutProjectsByIdWorkTypesByWorkTypeIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// GetProjects List projects
@@ -5971,6 +6336,15 @@ type StrictServerInterface interface {
 	// GetProjectsByIdTimeline List a project's timeline
 	// (GET /api/v1/projects/{id}/timeline)
 	GetProjectsByIdTimeline(ctx context.Context, request GetProjectsByIdTimelineRequestObject) (GetProjectsByIdTimelineResponseObject, error)
+	// GetProjectsByIdWorkTypes List a project's work types
+	// (GET /api/v1/projects/{id}/work-types)
+	GetProjectsByIdWorkTypes(ctx context.Context, request GetProjectsByIdWorkTypesRequestObject) (GetProjectsByIdWorkTypesResponseObject, error)
+	// PostProjectsByIdWorkTypes Add a work type to a project
+	// (POST /api/v1/projects/{id}/work-types)
+	PostProjectsByIdWorkTypes(ctx context.Context, request PostProjectsByIdWorkTypesRequestObject) (PostProjectsByIdWorkTypesResponseObject, error)
+	// PutProjectsByIdWorkTypesByWorkTypeId Change a project's work type
+	// (PUT /api/v1/projects/{id}/work-types/{workTypeId})
+	PutProjectsByIdWorkTypesByWorkTypeId(ctx context.Context, request PutProjectsByIdWorkTypesByWorkTypeIdRequestObject) (PutProjectsByIdWorkTypesByWorkTypeIdResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -7219,6 +7593,99 @@ func (sh *strictHandler) GetProjectsByIdTimeline(w http.ResponseWriter, r *http.
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetProjectsByIdTimelineResponseObject); ok {
 		if err := validResponse.VisitGetProjectsByIdTimelineResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProjectsByIdWorkTypes operation middleware
+func (sh *strictHandler) GetProjectsByIdWorkTypes(w http.ResponseWriter, r *http.Request, id int32) {
+	var request GetProjectsByIdWorkTypesRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjectsByIdWorkTypes(ctx, request.(GetProjectsByIdWorkTypesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjectsByIdWorkTypes")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectsByIdWorkTypesResponseObject); ok {
+		if err := validResponse.VisitGetProjectsByIdWorkTypesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostProjectsByIdWorkTypes operation middleware
+func (sh *strictHandler) PostProjectsByIdWorkTypes(w http.ResponseWriter, r *http.Request, id int32) {
+	var request PostProjectsByIdWorkTypesRequestObject
+
+	request.Id = id
+
+	var body PostProjectsByIdWorkTypesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostProjectsByIdWorkTypes(ctx, request.(PostProjectsByIdWorkTypesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostProjectsByIdWorkTypes")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostProjectsByIdWorkTypesResponseObject); ok {
+		if err := validResponse.VisitPostProjectsByIdWorkTypesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutProjectsByIdWorkTypesByWorkTypeId operation middleware
+func (sh *strictHandler) PutProjectsByIdWorkTypesByWorkTypeId(w http.ResponseWriter, r *http.Request, id int32, workTypeId int32) {
+	var request PutProjectsByIdWorkTypesByWorkTypeIdRequestObject
+
+	request.Id = id
+	request.WorkTypeId = workTypeId
+
+	var body PutProjectsByIdWorkTypesByWorkTypeIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutProjectsByIdWorkTypesByWorkTypeId(ctx, request.(PutProjectsByIdWorkTypesByWorkTypeIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutProjectsByIdWorkTypesByWorkTypeId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutProjectsByIdWorkTypesByWorkTypeIdResponseObject); ok {
+		if err := validResponse.VisitPutProjectsByIdWorkTypesByWorkTypeIdResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
