@@ -17,6 +17,11 @@ export interface ReceiptDropzoneProps {
   attachmentCount: number;
   /** Called with each receipt as it lands, so the form can show it at once. */
   onUploaded: (attachment: ExpenseAttachment) => void;
+  /**
+   * Whether the document is a supplier's invoice rather than receipts. The
+   * mechanism is the same; the words say what is being attached.
+   */
+  supplierInvoice?: boolean;
 }
 
 const refusalKey: Record<ReceiptRefusal, string> = {
@@ -37,7 +42,7 @@ interface Pending {
  * an upload that will be refused — but the server sniffs the bytes and has
  * the last word, and whatever it says is shown against the file it is about.
  */
-export const ReceiptDropzone = ({ entryId, attachmentCount, onUploaded }: ReceiptDropzoneProps) => {
+export const ReceiptDropzone = ({ entryId, attachmentCount, onUploaded, supplierInvoice }: ReceiptDropzoneProps) => {
   const { t } = useI18n("expenses");
   const [pending, setPending] = useState<Pending[]>([]);
   const [busy, setBusy] = useState(false);
@@ -121,10 +126,16 @@ export const ReceiptDropzone = ({ entryId, attachmentCount, onUploaded }: Receip
       >
         <Stack gap="xs">
           <Text size="sm" c="dimmed">
-            {t("dropReceiptsHere")}
+            {supplierInvoice ? t("dropSupplierInvoiceHere") : t("dropReceiptsHere")}
           </Text>
           <Group gap="sm" wrap="wrap">
-            <input type="file" multiple accept={RECEIPT_ACCEPT} aria-label={t("addReceipts")} onChange={pick} />
+            <input
+              type="file"
+              multiple
+              accept={RECEIPT_ACCEPT}
+              aria-label={supplierInvoice ? t("attachSupplierInvoice") : t("addReceipts")}
+              onChange={pick}
+            />
             <input type="file" accept="image/*" capture="environment" aria-label={t("takePhoto")} onChange={pick} />
           </Group>
         </Stack>
