@@ -718,6 +718,9 @@ type ProjectEconomyResponse struct {
 
 	// TimeTracking Whether this installation has a module that reports what has been logged against projects. False means the budgets and the invoice plan are still here and there are no actuals to compare them with — not that nothing has been logged.
 	TimeTracking bool `json:"timeTracking"`
+
+	// WorkTypes One row per work type at least one entry was logged as, by name as the project's work types list has it; ordinary hours are in no row. Absent exactly when timeTracking is false, and an empty list when no entry picked a type.
+	WorkTypes *[]ProjectEconomyWorkType `json:"workTypes,omitempty"`
 }
 
 // ProjectEconomyRow One project in the economy portfolio. Every row is a project the caller has financial rights on — the project's manager, projects:manage-all, or projects:view-financials on a project they can see — so the amounts are never shaped away here the way they are on the per-project economy; a caller who may not see a project's money does not get its row at all. There is no cost or margin in the portfolio — that block is the per-project read's, behind projects:view-costs.
@@ -810,6 +813,22 @@ type ProjectEconomyTotals struct {
 
 	// ReadyExpenseOtherCurrencyCount How many of those projects have something ready to invoice in a currency that is not their own — projects, not lines, because amounts in different currencies do not add up and the only honest headline figure is how many places have money waiting somewhere else. Each project's own Economy tab reports the amounts, per currency and never converted. Absent exactly when expenseTracking is false.
 	ReadyExpenseOtherCurrencyCount *int32 `json:"readyExpenseOtherCurrencyCount,omitempty"`
+}
+
+// ProjectEconomyWorkType What was logged as one of the project's work types (work types design D4), every bucket together. The amounts are the work's value and cost at the base rates times the type's multipliers, as Time snapshotted them; they are already inside every total of this response, so this is a split, never an addition.
+type ProjectEconomyWorkType struct {
+	// BillAmount What the type's hours bill at, in the response's currency. Absent without financial rights on the project, and when the project carries no currency.
+	BillAmount *float64 `json:"billAmount,omitempty"`
+
+	// CostAmount What the type's hours cost the company. Absent unless billAmount is present and the caller also holds projects:view-costs.
+	CostAmount *float64 `json:"costAmount,omitempty"`
+
+	// Hours Every hour logged as the type, whatever currency it was priced in. Planning data, visible to everyone who sees the project.
+	Hours float64 `json:"hours"`
+	Id    int32   `json:"id"`
+
+	// Name The type's name as the project's own work types list has it now — a renamed type reads by its new name.
+	Name string `json:"name"`
 }
 
 // ProjectFinancials The project's financial fields, present only when the caller may see them (capabilities.canSeeFinancials) and then always present, possibly with no fields inside, so a client can tell "may see, nothing entered" from "may not see".

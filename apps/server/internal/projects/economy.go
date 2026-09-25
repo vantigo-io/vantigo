@@ -1,10 +1,13 @@
 package projects
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -48,7 +51,9 @@ import (
 // totals need financial rights on the project, and the cost block needs
 // projects:view-costs on top of them (design §2 E7). What a caller may not
 // see is simply not in their copy — absent, never null and never zero, the
-// module's rule everywhere else.
+// module's rule everywhere else. The work-type split follows the same three
+// levels — hours, value, cost — and is named from this module's own work
+// types, not by the provider (work types design D4).
 //
 // **One definition of the arithmetic.** Every percentage, ratio and sum is
 // economy_math.go's, and the milestone totals are milestonePlanTotals' — the
@@ -89,6 +94,16 @@ func (s *server) GetProjectsByIdEconomy(ctx context.Context, req gen.GetProjects
 	if err != nil {
 		return nil, fmt.Errorf("projects: sum the project's task estimates: %w", err)
 	}
+	// The work-type split is named from this module's own table (work types
+	// design D4): the provider reports ids and figures, and the name a type
+	// has is Projects' to say — a rename reads at once, whatever the entries
+	// snapshotted. It is only needed when there is a provider to split.
+	var workTypes []store.ProjectsWorkType
+	if s.deps.Actuals != nil {
+		if workTypes, err = q.ListWorkTypes(ctx, project.ID); err != nil {
+			return nil, fmt.Errorf("projects: list the project's work types: %w", err)
+		}
+	}
 	// The invoice plan is read only for a caller who may see it, so a member's
 	// request does not pay for rows their answer cannot carry.
 	var milestones []store.ProjectsBillingMilestone
@@ -107,7 +122,7 @@ func (s *server) GetProjectsByIdEconomy(ctx context.Context, req gen.GetProjects
 		return nil, err
 	}
 
-	resp, err := s.economyResponse(ctx, project, a, lines, milestones, estimate, logged, spent)
+	resp, err := s.economyResponse(ctx, project, a, lines, milestones, estimate, logged, spent, workTypes)
 	if err != nil {
 		return nil, err
 	}
@@ -182,6 +197,7 @@ func (s *server) economyResponse(
 	estimate pgtype.Numeric,
 	logged *contracts.ProjectActualsEntry,
 	spent *contracts.ProjectExpenseTotals,
+	workTypes []store.ProjectsWorkType,
 ) (gen.ProjectEconomyResponse, error) {
 	seesAmounts := a.CanSeeFinancials && project.Currency != nil
 
@@ -266,7 +282,67 @@ func (s *server) economyResponse(
 	if err != nil {
 		return gen.ProjectEconomyResponse{}, err
 	}
+	resp.WorkTypes, err = economyWorkTypes(logged.WorkTypes, workTypes, seesAmounts, a.canSeeCosts() && project.Currency != nil)
+	if err != nil {
+		return gen.ProjectEconomyResponse{}, err
+	}
 	return resp, nil
+}
+
+// economyWorkTypes is the work-type split (work types design D4) as this
+// caller may see it: every type's hours — planning data, the way the buckets'
+// hours are — its value with seesAmounts, its cost with the cost rights on
+// top. Each row is named from known, the project's own work types; a type the
+// provider reports that the project does not have (which should never happen)
+// is left out rather than shown without a name. The provider's figures are
+// already multiplied and already inside every total above, so nothing here
+// adds them to anything; it renders them. Nor does it check them against the
+// totals: the provider rounds each type's amounts once, per type, so the rows
+// need not add up to a bucket to the cent, and ordinary hours are in no row.
+// It is only reached with time tracking on, and answers an empty list, never
+// nil, when no entry picked a type — whether the provider said so with an
+// empty slice or a nil one: "none" and "cannot say" are different answers.
+// Rows come by name without regard to case, then id — the work types list's
+// order without its active-first split, since a deactivated type's hours are
+// no less logged.
+func economyWorkTypes(logged []contracts.WorkTypeActuals, known []store.ProjectsWorkType, seesAmounts, seesCosts bool) (*[]gen.ProjectEconomyWorkType, error) {
+	names := make(map[int32]string, len(known))
+	for _, wt := range known {
+		names[wt.ID] = wt.Name
+	}
+	out := make([]gen.ProjectEconomyWorkType, 0, len(logged))
+	for _, wt := range logged {
+		name, ok := names[wt.WorkTypeID]
+		if !ok {
+			continue
+		}
+		row := gen.ProjectEconomyWorkType{
+			Id:    wt.WorkTypeID,
+			Name:  name,
+			Hours: decimalNumber(exactHours(wt.HoursHundredths)),
+		}
+		if seesAmounts {
+			bill, err := exactAmount(wt.BillAmount)
+			if err != nil {
+				return nil, err
+			}
+			value := decimalNumber(bill)
+			row.BillAmount = &value
+		}
+		if seesCosts {
+			cost, err := exactAmount(wt.CostAmount)
+			if err != nil {
+				return nil, err
+			}
+			value := decimalNumber(cost)
+			row.CostAmount = &value
+		}
+		out = append(out, row)
+	}
+	slices.SortFunc(out, func(x, y gen.ProjectEconomyWorkType) int {
+		return cmp.Or(strings.Compare(strings.ToLower(x.Name), strings.ToLower(y.Name)), cmp.Compare(x.Id, y.Id))
+	})
+	return &out, nil
 }
 
 // economyBudget is the planning half of the answer, and the basis the
