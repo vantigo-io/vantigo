@@ -329,7 +329,13 @@ const EntryRow = ({ entry, selected, onToggle, onReject }: EntryRowProps) => {
             cannot act on would refuse the whole all-or-nothing request. */}
         {entry.capabilities.canApprove && (
           <Checkbox
-            aria-label={t("selectEntry", { trackable: label, date })}
+            // Work types make ordinary hours and overtime on one line and day
+            // common; the type tells their checkboxes apart.
+            aria-label={
+              entry.workType
+                ? t("selectEntryAs", { trackable: label, workType: entry.workType.name, date })
+                : t("selectEntry", { trackable: label, date })
+            }
             checked={selected}
             onChange={(event) => onToggle([entry.id], event.currentTarget.checked)}
           />

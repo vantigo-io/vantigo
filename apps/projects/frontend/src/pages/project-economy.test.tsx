@@ -1551,6 +1551,30 @@ describe("Hours by work type", () => {
     expect(within(table).getByText("Helg").closest("tr")).toHaveTextContent("3 h");
   });
 
+  it("keeps the server's order of the rows, which is not by name", async () => {
+    // Active first, each half by name: the active "Overtid 50 %" comes before
+    // the retired "Aften", which a sort by name would turn round.
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: economy({
+        workTypes: [
+          { id: 12, name: "Overtid 50 %", hours: 2.5, billAmount: 3375, costAmount: 1400 },
+          { id: 13, name: "Aften", hours: 1, billAmount: 1500, costAmount: 700 },
+        ],
+      }),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const table = await screen.findByRole("table", { name: "Hours by work type" });
+    const [body] = within(table).getAllByRole("rowgroup").slice(1);
+    expect(
+      within(body)
+        .getAllByRole("row")
+        .map((row) => row.firstElementChild?.textContent),
+    ).toEqual(["Overtid 50 %", "Aften"]);
+    // The caption is a heading too, so heading navigation reaches the table.
+    expect(screen.getByRole("heading", { name: "Hours by work type" })).toBeInTheDocument();
+  });
+
   it("shows nothing when no entry picked a type", async () => {
     stubEconomy(project(), plan([milestone()]), 200, { economy: economy({ workTypes: [] }) });
     renderWithProviders(<ProjectEconomy projectId={7} />);

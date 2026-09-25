@@ -326,7 +326,7 @@ const WorkTypeTable = ({ economy, currency }: { economy: Economy; currency?: str
 
   return (
     <Stack gap="xs">
-      <Text fw={600} size="sm" id={headingId}>
+      <Text fw={600} size="sm" component="h4" id={headingId}>
         {t("hoursByWorkType")}
       </Text>
       <Table.ScrollContainer minWidth={480}>

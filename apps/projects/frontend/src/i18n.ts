@@ -944,7 +944,7 @@ export const projectsCatalog = {
     costMultiplier: "Kostnadsfaktor",
     multiplierHelp: "150 % fakturerer og koster halvannen gang satsen; 100 % er satsen slik den er.",
     multiplierValue: "{{percent}} %",
-    noWorkTypes: "Ingen arbeidstyper ennå. Timer ført her faktureres og koster etter vanlig sats.",
+    noWorkTypes: "Ingen arbeidstyper ennå. Timer ført her faktureres og kostnadsføres til vanlig sats.",
     failedToLoadWorkTypes: "Kunne ikke laste arbeidstypene",
     workTypeSaved: "Arbeidstypen er lagret",
     couldNotSaveWorkType: "Kunne ikke lagre arbeidstypen",
