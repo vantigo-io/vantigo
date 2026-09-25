@@ -111,12 +111,16 @@ const ownCurrencyFigures = [
 const asTheServerWouldSend = (body: Economy): Economy => {
   const block = body.expenses;
   // The work-type split (work types design D4): rows only with time
-  // tracking, a value only in a currency, a cost only beside a value.
+  // tracking, a value exactly when the answer carries a currency (one gate,
+  // seesAmounts, sets both), a cost only beside a value.
   if (!body.timeTracking && body.workTypes !== undefined) {
     throw new Error("Without timeTracking there is no work type split");
   }
   if (body.workTypes?.some((row) => row.billAmount != null) && !body.currency) {
     throw new Error("A work type's value needs the project's currency");
+  }
+  if (body.currency && body.workTypes?.some((row) => row.billAmount == null)) {
+    throw new Error("An answer with a currency gives every work type its value");
   }
   if (body.workTypes?.some((row) => row.costAmount != null && row.billAmount == null)) {
     throw new Error("A work type's cost comes only beside its value");
@@ -1476,7 +1480,8 @@ describe("ProjectEconomy — the budget half", () => {
 });
 
 describe("Hours by work type", () => {
-  // Literally the rows the server sends a caller who may see costs.
+  // Literally the rows the server sends a caller who may see costs, in the
+  // order of the project's work types list: active first, each half by name.
   const types = [
     { id: 11, name: "Helg", hours: 3, billAmount: 5400, costAmount: 1800 },
     { id: 12, name: "Overtid 50 %", hours: 2.5, billAmount: 3375, costAmount: 1400 },
@@ -1511,9 +1516,33 @@ describe("Hours by work type", () => {
   });
 
   it("shows hours alone to a caller the answer gives no amounts", async () => {
-    stubEconomy(project(), plan([milestone()]), 200, {
-      economy: economy({ workTypes: types.map(({ id, name, hours }) => ({ id, name, hours })) }),
-    });
+    // A member without financial rights: no currency, no amount anywhere —
+    // the hours-only body the server sends them (and anyone, on a project
+    // with no currency).
+    stubEconomy(
+      project({
+        capabilities: {
+          canManage: false,
+          canContribute: true,
+          canSeeFinancials: false,
+          canManageMilestones: false,
+          canSeeCosts: false,
+        },
+        financials: undefined,
+      }),
+      plan([milestone()]),
+      200,
+      {
+        economy: economy({
+          currency: undefined,
+          budget: { hours: 400 },
+          actuals: work(210, 62, 40),
+          budgetUsed: { basis: "hours", percent: 78, approvedPercent: 52.5 },
+          milestones: undefined,
+          workTypes: types.map(({ id, name, hours }) => ({ id, name, hours })),
+        }),
+      },
+    );
     renderWithProviders(<ProjectEconomy projectId={7} />);
 
     const table = await screen.findByRole("table", { name: "Hours by work type" });

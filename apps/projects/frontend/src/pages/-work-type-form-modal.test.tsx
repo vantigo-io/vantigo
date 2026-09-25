@@ -119,7 +119,38 @@ describe("WorkTypeFormModal", () => {
     await userEvent.click(screen.getByRole("button", { name: "Create" }));
 
     expect(await screen.findByText("Give the work type a name")).toBeInTheDocument();
-    expect(screen.getByText("More than 0 % and at most 1000 %")).toBeInTheDocument();
+    expect(screen.getByText("Must be greater than zero")).toBeInTheDocument();
     expect(fetchMock.actualCalls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
+
+  it("refuses a multiplier above ten times the rate in the server's words", async () => {
+    const fetchMock = stubWrites();
+    renderModal({ mode: "create" });
+
+    await userEvent.type(screen.getByRole("textbox", { name: "Name" }), "Helg");
+    await setNumber("Cost multiplier", "1001");
+    await userEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    expect(await screen.findByText("Cannot be more than 1000 %")).toBeInTheDocument();
+    expect(fetchMock.actualCalls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
+
+  // The server counts a name in characters (runes), not UTF-16 code units:
+  // an emoji is one character here as there, though it is two units long.
+  it("counts a name in characters, the way the server does", async () => {
+    const fetchMock = stubWrites();
+    renderModal({ mode: "create" });
+    const name = screen.getByRole("textbox", { name: "Name" });
+
+    await userEvent.click(name);
+    await userEvent.paste("🌙".repeat(101));
+    await userEvent.click(screen.getByRole("button", { name: "Create" }));
+    expect(await screen.findByText("A work type name cannot be longer than 100 characters")).toBeInTheDocument();
+    expect(fetchMock.actualCalls.some(([, init]) => init?.method === "POST")).toBe(false);
+
+    await userEvent.clear(name);
+    await userEvent.paste("🌙".repeat(100));
+    await userEvent.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(written(fetchMock, "POST").body).toMatchObject({ name: "🌙".repeat(100) }));
   });
 });

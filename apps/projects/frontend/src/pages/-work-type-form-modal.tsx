@@ -6,13 +6,10 @@ import { useI18n } from "@vantigo/frontend-shell";
 import { ApiConflictError, ApiValidationError } from "../api/request";
 import { createWorkType, updateWorkType, type WorkType, type WorkTypeInput } from "../api/work-types";
 import "../i18n";
+import { MAX_WORK_TYPE_NAME, multiplierProblem, nameLength } from "../lib/work-types";
 
 /** Adding a type, or editing the one the caller just read off the card. */
 export type WorkTypeModalState = { mode: "create" } | { mode: "edit"; workType: WorkType };
-
-/** The server's rules (work types design D1), mirrored so a typo is caught before a round trip. */
-const MAX_NAME = 100;
-const MAX_MULTIPLIER = 1000;
 
 interface WorkTypeFormValues {
   name: string;
@@ -57,11 +54,10 @@ const WorkTypeForm = ({ projectId, state, onClose }: WorkTypeFormModalProps & { 
   const { t } = useI18n("projects");
   const queryClient = useQueryClient();
   const workType = state.mode === "edit" ? state.workType : undefined;
+  // The server's rules and words, so a typo is caught before a round trip.
   const multiplier = (value: number | string) => {
-    const parsed = percent(value);
-    return parsed === undefined || Number.isNaN(parsed) || parsed <= 0 || parsed > MAX_MULTIPLIER
-      ? t("multiplierOutOfRange")
-      : null;
+    const problem = multiplierProblem(value);
+    return problem ? t(problem) : null;
   };
 
   const form = useForm<WorkTypeFormValues>({
@@ -77,7 +73,7 @@ const WorkTypeForm = ({ projectId, state, onClose }: WorkTypeFormModalProps & { 
       name: (value) => {
         const name = value.trim();
         if (!name) return t("workTypeNameRequired");
-        return name.length > MAX_NAME ? t("workTypeNameTooLong") : null;
+        return nameLength(name) > MAX_WORK_TYPE_NAME ? t("workTypeNameTooLong") : null;
       },
       billMultiplierPercent: multiplier,
       costMultiplierPercent: multiplier,
