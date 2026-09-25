@@ -1207,6 +1207,8 @@ export interface components {
             /** Format: int32 */
             id: number;
             identity?: components["schemas"]["LegalIdentityResponse"];
+            /** @description Every customer merged into this one, as its own row still holds it — a merge moves what hangs off a duplicate, not its row's values, and they are the same person's data. Absent when nothing was merged in. */
+            mergedFrom?: components["schemas"]["CustomerPersonalDataMergedCustomer"][];
             mergedInto?: components["schemas"]["CustomerReference"];
             name: string;
             owner?: components["schemas"]["CustomerOwner"];
@@ -1215,6 +1217,18 @@ export interface components {
             type: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        /** @description A duplicate merged into the exported customer (customers GDPR design D3), its own row as it stands — shaped, like the rest of the file, by customers:personal-data alone, so its legal identity is here whatever the caller's legal-identity permission. */
+        CustomerPersonalDataMergedCustomer: {
+            billingProfile: components["schemas"]["CustomerPersonalDataBillingProfile"];
+            contactInfo: components["schemas"]["CustomerContactInfo"];
+            /** Format: int64 */
+            customerNumber: number;
+            /** Format: int32 */
+            id: number;
+            identity?: components["schemas"]["LegalIdentityResponse"];
+            name: string;
+            status: string;
         };
         CustomerReference: {
             /** Format: int64 */

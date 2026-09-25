@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -104,6 +105,20 @@ type personalDataJSON struct {
 		Group         *groupRefJSON      `json:"group"`
 		Tags          []tagJSON          `json:"tags"`
 		Anonymisation *anonymisationJSON `json:"anonymisation"`
+		MergedFrom    []struct {
+			Id             int32  `json:"id"`
+			CustomerNumber int64  `json:"customerNumber"`
+			Name           string `json:"name"`
+			Status         string `json:"status"`
+			Identity       *struct {
+				Country string `json:"country"`
+				Id      string `json:"id"`
+			} `json:"identity"`
+			ContactInfo    contactInfoJSON `json:"contactInfo"`
+			BillingProfile struct {
+				InvoiceEmail *string `json:"invoiceEmail"`
+			} `json:"billingProfile"`
+		} `json:"mergedFrom"`
 	} `json:"customer"`
 	Contacts []struct {
 		Contact struct {
@@ -226,11 +241,54 @@ func TestGetCustomersByIdPersonalData_HandsAPersonEverythingInOneFile(t *testing
 	if string(file.Modules["alpha"]) != `{"things":["one"]}` {
 		t.Errorf("modules.alpha = %s, want the fake's section", file.Modules["alpha"])
 	}
+	// Nobody was merged into her, so the file has no duplicates to name.
+	if strings.Contains(string(r.Body), `"mergedFrom"`) {
+		t.Errorf("file = %s, want no mergedFrom key: nothing was merged into her", r.Body)
+	}
 	if _, ok := file.Modules["quiet"]; ok || len(file.Modules) != 1 {
 		t.Errorf("modules = %v, want alpha's alone: a module with nothing has no key", file.Modules)
 	}
 	if !slices.Equal(alpha.exports, []int32{person.Id}) || !slices.Equal(quiet.exports, []int32{person.Id}) {
 		t.Errorf("exports asked for = %v / %v, want the one customer each", alpha.exports, quiet.exports)
+	}
+}
+
+// A duplicate merged into the person keeps its own row — its name, identity,
+// contact info and billing values — and that row is the same person's data, so
+// the survivor's file names it as it stands (the merge's one-hop markers make
+// it every customer whose marker points here).
+func TestGetCustomersByIdPersonalData_NamesTheDuplicatesMergedIntoIt(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := mergeClient(t, h)
+	survivor := createCustomerOfType(t, c, "Kari Nordmann", "person")
+	duplicate := createCustomerOfType(t, c, "Kari N.", "person")
+	setPersonIdentity(t, h, duplicate.Id)
+	if r := putContactInfo(t, c, duplicate.Id, map[string]any{"email": "kari.n@example.test"}); r.Status != http.StatusOK {
+		t.Fatalf("contact info: status %d body %s", r.Status, r.Body)
+	}
+	if r := putBillingProfile(t, c, duplicate.Id, map[string]any{"invoiceEmail": "faktura.n@example.test"}); r.Status != http.StatusOK {
+		t.Fatalf("billing profile: status %d body %s", r.Status, r.Body)
+	}
+	mergeOK(t, c, survivor.Id, duplicate.Id)
+
+	r := getPersonalData(t, personalDataClient(t, h), survivor.Id)
+	if r.Status != http.StatusOK {
+		t.Fatalf("personal data: status %d body %s, want 200", r.Status, r.Body)
+	}
+	var file personalDataJSON
+	r.JSON(&file)
+	merged := file.Customer.MergedFrom
+	if len(merged) != 1 {
+		t.Fatalf("mergedFrom = %+v, want the one duplicate", merged)
+	}
+	got := merged[0]
+	if got.Id != duplicate.Id || got.CustomerNumber != duplicate.CustomerNumber || got.Name != "Kari N." || got.Status != "archived" {
+		t.Errorf("mergedFrom[0] = %+v, want the duplicate's row, archived by the merge", got)
+	}
+	if got.Identity == nil || got.Identity.Country != "se" || got.Identity.Id != "19800101-1234" ||
+		str(got.ContactInfo.Email) != "kari.n@example.test" || str(got.BillingProfile.InvoiceEmail) != "faktura.n@example.test" {
+		t.Errorf("mergedFrom[0] = %+v, want its identity, contact info and billing values", got)
 	}
 }
 

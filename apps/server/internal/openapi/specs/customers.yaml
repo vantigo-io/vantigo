@@ -873,6 +873,11 @@ components:
                     type: integer
                 identity:
                     $ref: '#/components/schemas/LegalIdentityResponse'
+                mergedFrom:
+                    description: Every customer merged into this one, as its own row still holds it — a merge moves what hangs off a duplicate, not its row's values, and they are the same person's data. Absent when nothing was merged in.
+                    items:
+                        $ref: '#/components/schemas/CustomerPersonalDataMergedCustomer'
+                    type: array
                 mergedInto:
                     $ref: '#/components/schemas/CustomerReference'
                 name:
@@ -902,6 +907,33 @@ components:
                 - addresses
                 - billingProfile
                 - tags
+            type: object
+        CustomerPersonalDataMergedCustomer:
+            description: A duplicate merged into the exported customer (customers GDPR design D3), its own row as it stands — shaped, like the rest of the file, by customers:personal-data alone, so its legal identity is here whatever the caller's legal-identity permission.
+            properties:
+                billingProfile:
+                    $ref: '#/components/schemas/CustomerPersonalDataBillingProfile'
+                contactInfo:
+                    $ref: '#/components/schemas/CustomerContactInfo'
+                customerNumber:
+                    format: int64
+                    type: integer
+                id:
+                    format: int32
+                    type: integer
+                identity:
+                    $ref: '#/components/schemas/LegalIdentityResponse'
+                name:
+                    type: string
+                status:
+                    type: string
+            required:
+                - id
+                - customerNumber
+                - name
+                - status
+                - contactInfo
+                - billingProfile
             type: object
         CustomerReference:
             properties:

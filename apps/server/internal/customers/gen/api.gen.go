@@ -444,11 +444,14 @@ type CustomerPersonalDataCustomer struct {
 	CustomerNumber int64               `json:"customerNumber"`
 
 	// Group The group a customer belongs to (customer groups design D3): its id and its name, and nothing else — a client that needs the group's default payment term reads it from GET /customers/groups or from the billing profile's own groupDefault, where it is already resolved against the customer.
-	Group      *CustomerGroupRef      `json:"group,omitempty"`
-	Id         int32                  `json:"id"`
-	Identity   *LegalIdentityResponse `json:"identity,omitempty"`
-	MergedInto *CustomerReference     `json:"mergedInto,omitempty"`
-	Name       string                 `json:"name"`
+	Group    *CustomerGroupRef      `json:"group,omitempty"`
+	Id       int32                  `json:"id"`
+	Identity *LegalIdentityResponse `json:"identity,omitempty"`
+
+	// MergedFrom Every customer merged into this one, as its own row still holds it — a merge moves what hangs off a duplicate, not its row's values, and they are the same person's data. Absent when nothing was merged in.
+	MergedFrom *[]CustomerPersonalDataMergedCustomer `json:"mergedFrom,omitempty"`
+	MergedInto *CustomerReference                    `json:"mergedInto,omitempty"`
+	Name       string                                `json:"name"`
 
 	// Owner The single user accountable for the customer relationship (owner and tags design D1). displayName is resolved from the user directory at read time, never stored on the customer; a user the directory no longer knows is reported as "Unknown user" with active false, and an owner disabled after being assigned keeps the customer and is reported with active false. Absent when the customer is unowned.
 	Owner     *CustomerOwner `json:"owner,omitempty"`
@@ -456,6 +459,20 @@ type CustomerPersonalDataCustomer struct {
 	Tags      []CustomerTag  `json:"tags"`
 	Type      string         `json:"type"`
 	UpdatedAt time.Time      `json:"updatedAt"`
+}
+
+// CustomerPersonalDataMergedCustomer A duplicate merged into the exported customer (customers GDPR design D3), its own row as it stands — shaped, like the rest of the file, by customers:personal-data alone, so its legal identity is here whatever the caller's legal-identity permission.
+type CustomerPersonalDataMergedCustomer struct {
+	// BillingProfile The billing profile's own stored values (customers GDPR design D3) — what the customer row holds, not the resolved profile GET .../billing-profile answers with its warnings and its group's default. Unset, a field is absent.
+	BillingProfile CustomerPersonalDataBillingProfile `json:"billingProfile"`
+
+	// ContactInfo A customer's own contact details (invoice-ready customer design D2) — what reaches the customer itself, not one of its contacts. Each field is optional; a blank value is stored as null, but the response never sends null back — a field with none is simply absent.
+	ContactInfo    CustomerContactInfo    `json:"contactInfo"`
+	CustomerNumber int64                  `json:"customerNumber"`
+	Id             int32                  `json:"id"`
+	Identity       *LegalIdentityResponse `json:"identity,omitempty"`
+	Name           string                 `json:"name"`
+	Status         string                 `json:"status"`
 }
 
 // CustomerReference defines model for CustomerReference.

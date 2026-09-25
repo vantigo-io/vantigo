@@ -366,6 +366,93 @@ func (q *Queries) CustomersMergedInto(ctx context.Context, customerID int32) ([]
 	return items, nil
 }
 
+const customersMergedIntoForPersonalData = `-- name: CustomersMergedIntoForPersonalData :many
+SELECT id, customer_number, name, status,
+       legal_country, legal_id, legal_name, legal_source, legal_type,
+       email, phone, website,
+       invoice_email, reminder_email, payment_terms_days, currency, language,
+       invoice_delivery, reminder_delivery, peppol_id, gln, buyer_reference, default_bill_rate
+FROM customers.customers
+WHERE merged_into_customer_id = $1::int
+ORDER BY id
+`
+
+type CustomersMergedIntoForPersonalDataRow struct {
+	ID               int32
+	CustomerNumber   int64
+	Name             string
+	Status           string
+	LegalCountry     *string
+	LegalID          *string
+	LegalName        *string
+	LegalSource      *string
+	LegalType        *string
+	Email            *string
+	Phone            *string
+	Website          *string
+	InvoiceEmail     *string
+	ReminderEmail    *string
+	PaymentTermsDays *int32
+	Currency         *string
+	Language         *string
+	InvoiceDelivery  *string
+	ReminderDelivery *string
+	PeppolID         *string
+	Gln              *string
+	BuyerReference   *string
+	DefaultBillRate  pgtype.Numeric
+}
+
+// CustomersMergedIntoForPersonalData is the export's mergedFrom (design D3):
+// every duplicate merged into this customer, with what its own row still holds
+// — the merge moves what hangs off a duplicate, not the row's own values, and
+// they are the same person's data. FlattenMergedIntoChain keeps every marker
+// one hop long, so this one level is all of them; ix_customers_merged_into
+// finds them. Oldest first.
+func (q *Queries) CustomersMergedIntoForPersonalData(ctx context.Context, customerID int32) ([]CustomersMergedIntoForPersonalDataRow, error) {
+	rows, err := q.db.Query(ctx, customersMergedIntoForPersonalData, customerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CustomersMergedIntoForPersonalDataRow
+	for rows.Next() {
+		var i CustomersMergedIntoForPersonalDataRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CustomerNumber,
+			&i.Name,
+			&i.Status,
+			&i.LegalCountry,
+			&i.LegalID,
+			&i.LegalName,
+			&i.LegalSource,
+			&i.LegalType,
+			&i.Email,
+			&i.Phone,
+			&i.Website,
+			&i.InvoiceEmail,
+			&i.ReminderEmail,
+			&i.PaymentTermsDays,
+			&i.Currency,
+			&i.Language,
+			&i.InvoiceDelivery,
+			&i.ReminderDelivery,
+			&i.PeppolID,
+			&i.Gln,
+			&i.BuyerReference,
+			&i.DefaultBillRate,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const deleteAllCustomerAddresses = `-- name: DeleteAllCustomerAddresses :execrows
 DELETE FROM customers.customer_addresses WHERE customer_id = $1
 `
