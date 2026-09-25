@@ -36,6 +36,7 @@ import {
   LegalTypeBadge,
   LegalValueBadge,
 } from "../components/legal-badges";
+import { isReadOnlyCustomer } from "../lib/customer-read-only";
 import { customerWriteErrorMessage } from "../lib/customer-write-error";
 import { formatDateOnly } from "../lib/format-date-only";
 import { getLegalSource } from "../lib/legal-sources";
@@ -94,14 +95,28 @@ export const CustomerDetailHeader = ({
   const anonymisedAt = anonymisation?.anonymisedAt ?? null;
   // Merged away or anonymised: either way the customer takes no more changes
   // (merge design D2, GDPR design D4), so the page offers none.
-  const readOnly = Boolean(mergedInto) || Boolean(anonymisedAt);
+  const readOnly = isReadOnlyCustomer(customer);
 
   const { data: identity } = useSuspenseQuery(legalIdentityQueryOptions(customerId));
   const TypeIcon = customer.type === "business" ? IconBuilding : IconUser;
 
   return (
     <Stack gap="lg">
-      {mergedInto ? (
+      {/* One banner, the strongest first — the order the server asks in (GDPR
+          design D4): anonymised before merged, since the merged-away members of
+          an anonymised chain are anonymised with it and their survivor link
+          leads only to another anonymised shell. A merged-away customer still
+          only scheduled keeps its merged banner, with the day in it: the page
+          shows Cancel anonymisation, so it says what would be cancelled. */}
+      {anonymisedAt ? (
+        <Alert
+          color="gray"
+          icon={<IconUserOff size={16} />}
+          title={t("anonymisedBannerTitle", { date: formatters.formatDate(anonymisedAt) })}
+        >
+          {t("anonymisedBannerMessage")}
+        </Alert>
+      ) : mergedInto ? (
         <Alert
           color="gray"
           icon={<IconArrowMerge size={16} />}
@@ -109,18 +124,17 @@ export const CustomerDetailHeader = ({
         >
           <Stack gap={4}>
             <Text size="sm">{t("mergedAwayBannerMessage")}</Text>
+            {anonymisation && (
+              <Text size="sm">
+                {t("anonymisationScheduledBannerTitle", {
+                  date: formatDateOnly(formatters, anonymisation.anonymiseOn),
+                })}
+              </Text>
+            )}
             <Anchor size="sm" renderRoot={(props) => <Link to={`/customers/${mergedInto.id}` as never} {...props} />}>
               {t("mergedAwayOpenSurvivor", { number: mergedInto.customerNumber, name: mergedInto.name })}
             </Anchor>
           </Stack>
-        </Alert>
-      ) : anonymisedAt ? (
-        <Alert
-          color="gray"
-          icon={<IconUserOff size={16} />}
-          title={t("anonymisedBannerTitle", { date: formatters.formatDate(anonymisedAt) })}
-        >
-          {t("anonymisedBannerMessage")}
         </Alert>
       ) : anonymisation ? (
         <Alert
@@ -448,7 +462,7 @@ export const CustomerOverview = ({
   // D4, GDPR design D5), as it is on the server: everything a merged-away one
   // had is on the survivor, and what an anonymised one has left is kept for
   // bookkeeping — anything written here would be refused.
-  const editable = !customer.mergedInto && !customer.anonymisation?.anonymisedAt;
+  const editable = !isReadOnlyCustomer(customer);
   // Enhetsregisteret answers for Norwegian businesses and nothing else, and
   // the record repeats the legal identity's organisation number — so for any
   // other customer, or any caller without that permission, the record is not

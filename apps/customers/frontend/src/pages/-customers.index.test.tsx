@@ -383,6 +383,28 @@ describe("CustomersPage", () => {
     expect(screen.getByText("Equinor Gammel")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit Equinor Gammel" })).not.toBeInTheDocument();
   });
+
+  it("offers no edit pencil on an anonymised customer's row, and keeps it on a scheduled one", async () => {
+    // Literally the list's rows: the scheduled one carries no anonymisedAt yet.
+    stubFetch([
+      { ...defaultRow, type: "person", status: "archived", anonymisation: { anonymiseOn: "2099-01-31" } },
+      {
+        ...defaultRow,
+        id: 1002,
+        customerNumber: 5002,
+        name: "Anonymised person",
+        type: "person",
+        status: "archived",
+        anonymisation: { anonymiseOn: "2026-09-12", anonymisedAt: "2026-09-12T02:00:00Z" },
+      },
+    ]);
+    router.search = { page: 1, search: "", status: "archived" };
+    renderPage({ canEdit: true });
+
+    expect(await screen.findByRole("button", { name: "Edit Equinor" })).toBeInTheDocument();
+    expect(screen.getByText("Anonymised person")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit Anonymised person" })).not.toBeInTheDocument();
+  });
 });
 
 // ownedRow is the wire body for a customer with an owner and one tag —

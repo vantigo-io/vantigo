@@ -32,14 +32,21 @@ const page = {
       status: "archived",
       mergedInto: { id: 1002, customerNumber: 2, name: "Acme AS" },
     }),
+    // Anonymised (customers GDPR design D4): nothing of a person is left to
+    // fold in, and the merge refuses it.
+    wire(1009, 9, "Anonymised person", {
+      status: "archived",
+      type: "person",
+      anonymisation: { anonymiseOn: "2026-09-12", anonymisedAt: "2026-09-12T02:00:00Z" },
+    }),
   ],
-  pagination: { page: 1, pageSize: 20, totalCount: 3, totalPages: 1, hasNextPage: false, hasPreviousPage: false },
+  pagination: { page: 1, pageSize: 20, totalCount: 4, totalPages: 1, hasNextPage: false, hasPreviousPage: false },
 };
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("CustomerPicker", () => {
-  it("searches archived customers too, and offers neither the customer it is for nor one merged away", async () => {
+  it("searches archived customers too, and offers neither the customer it is for nor one merged away or anonymised", async () => {
     const fetchMock = vi.fn<(url: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(() =>
       Promise.resolve(jsonResponse(page)),
     );
@@ -59,6 +66,7 @@ describe("CustomerPicker", () => {
 
     expect(screen.queryByRole("option", { name: "#2 Acme AS" })).not.toBeInTheDocument();
     expect(screen.queryByRole("option", { name: /Acme Gammel AS/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Anonymised person/ })).not.toBeInTheDocument();
     expect(
       fetchMock.mock.calls.some(([url]) => String(url) === "/api/v1/customers?page=1&pageSize=20&includeArchived=true"),
     ).toBe(true);

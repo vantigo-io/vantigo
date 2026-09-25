@@ -5,6 +5,7 @@ import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { type CustomerResponse, customersQueryOptions } from "../api/customers";
 import "../i18n";
+import { isReadOnlyCustomer } from "../lib/customer-read-only";
 import { SEARCH_DEBOUNCE_MS } from "../lib/search";
 
 /** How many customers one search offers: the projects picker's twenty. */
@@ -21,9 +22,10 @@ const CUSTOMER_PICKER_PAGE_SIZE = 20;
  *    happen to it, and checks its type, before anything is sent.
  *  - The search reaches archived customers (`includeArchived`): an archived
  *    duplicate is the usual thing to absorb.
- *  - `excludeId` (the customer being merged into) and every customer already
- *    merged away are left out — the server refuses both. They are dropped here,
- *    after the search, so a page of twenty can show nineteen.
+ *  - `excludeId` (the customer being merged into) and every customer that takes
+ *    no more changes — merged away, or anonymised (`isReadOnlyCustomer`) — are
+ *    left out: the server refuses them all. They are dropped here, after the
+ *    search, so a page of twenty can show nineteen.
  *
  * The chosen customer stays on the option list whatever the next search
  * returns, so its name never turns into a bare id; and Mantine's own filter is
@@ -69,7 +71,7 @@ export const CustomerPicker = ({
       : `#${customer.customerNumber} ${customer.name}`;
   const offered = new Map<number, CustomerResponse>();
   for (const customer of data?.data ?? []) {
-    if (customer.id !== excludeId && customer.mergedInto === null) offered.set(customer.id, customer);
+    if (customer.id !== excludeId && !isReadOnlyCustomer(customer)) offered.set(customer.id, customer);
   }
   if (value) offered.set(value.id, value);
 

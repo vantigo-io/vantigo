@@ -34,14 +34,18 @@ vi.mock("@vantigo/energy-ui", () => ({
 }));
 
 // The customer as the layout's loader cached it: normalised, so an unmerged
-// one carries mergedInto: null.
-const customer = (mergedInto: { id: number; customerNumber: number; name: string } | null = null) => ({
+// one carries mergedInto: null, and one never anonymised anonymisation: null.
+const customer = (
+  mergedInto: { id: number; customerNumber: number; name: string } | null = null,
+  anonymisation: { anonymiseOn: string; anonymisedAt: string | null } | null = null,
+) => ({
   id: 42,
   customerNumber: 7,
   name: "Acme AS",
-  status: mergedInto ? "archived" : "active",
+  status: mergedInto || anonymisation ? "archived" : "active",
   type: "business",
   mergedInto,
+  anonymisation,
 });
 
 const renderTab = (cached: ReturnType<typeof customer>, modules?: string[]) => {
@@ -71,6 +75,18 @@ describe("the customer page's energy tab", () => {
 
     cleanup();
     renderTab(customer({ id: 2, customerNumber: 2, name: "Acme" }));
+    expect(screen.getByText("customer 42 canAttach false")).toBeInTheDocument();
+  });
+
+  it("attaches nothing to an anonymised customer, while one only scheduled still takes it", () => {
+    // A supply period carries its metering point's address, and the worker
+    // never comes back to a customer it has anonymised (customers GDPR design
+    // D4): anything attached afterwards would stay for good.
+    renderTab(customer(null, { anonymiseOn: "2099-01-31", anonymisedAt: null }));
+    expect(screen.getByText("customer 42 canAttach true")).toBeInTheDocument();
+
+    cleanup();
+    renderTab(customer(null, { anonymiseOn: "2026-09-12", anonymisedAt: "2026-09-12T02:00:00Z" }));
     expect(screen.getByText("customer 42 canAttach false")).toBeInTheDocument();
   });
 
