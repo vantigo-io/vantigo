@@ -74,13 +74,13 @@ company whether or not it bills). `rateSource` is untouched: the work type is or
 which step won.
 
 Amounts multiply where they are summed, exactly: `actuals.sql` becomes
-`SUM(hours × bill_rate × COALESCE(bill_multiplier_percent, 100) / 100)` and the same for
+`SUM(hours × bill_rate × COALESCE(bill_multiplier_percent, 100) × 0.01 (exact))` and the same for
 cost, still `::text` decimal and rounded once at the end by the existing folding. The
 entry response gains `workType?: {id, name}` (whoever sees the entry) and, inside the shaped
 blocks, `billing.multiplierPercent?` + `billing.effectiveRate?` (rate × multiplier, half-up
 to cents, display only) and `cost.multiplierPercent?` + `cost.effectiveRate?` — absent when
 no type is picked, shaped with their blocks. "What invoicing will read" becomes hours ×
-bill rate × multiplier, stated in the docs.
+bill rate × multiplier percent × 0.01 (exact), stated in the docs.
 
 ### D4 — Actuals report hours and value per work type
 

@@ -28,6 +28,10 @@ percent-of-price arithmetic behind the invoice plan below — and nothing more.
   one pricing rule (`list`, `fixed` or `discount`). A line can be deactivated, never
   deleted. It may also carry a `budgetHours` and a `budgetAmount` — see
   [Billing lines and the optional Products dependency](#billing-lines-and-the-optional-products-dependency).
+- **Work type** — a name and two multipliers, `billMultiplierPercent` and
+  `costMultiplierPercent`, defined once per project and applying to every billing line
+  of it; a time entry may pick one, and Time multiplies its rates. Deactivated, never
+  deleted — see [Work types](#work-types).
 - **Billing milestone** — a named step of a project's invoice plan, priced as a flat
   amount or a share of the fixed price, moving through `planned → ready → invoiced`
   with `cancelled` off to the side — see
@@ -44,8 +48,8 @@ percent-of-price arithmetic behind the invoice plan below — and nothing more.
   `role-changed`, `role-removed`, `line-added`, `line-changed`, `line-deactivated`,
   `line-reactivated`, `milestone-added`, `milestone-changed`, `milestone-removed`,
   `milestone-ready`, `milestone-planned`, `milestone-invoiced`,
-  `milestone-invoice-undone`, `milestone-cancelled`, `milestone-reopened`. There are
-  no manual notes.
+  `milestone-invoice-undone`, `milestone-cancelled`, `milestone-reopened`,
+  `work-type-added`, `work-type-changed`. There are no manual notes.
 
 `status` is one of `planned`, `active`, `on-hold`, `completed`, `cancelled`, and
 **every transition is allowed**, reopening included. Only `active` means "open for
@@ -495,6 +499,71 @@ read by everyone who can see the project, financial rights or not.
 The seven milestone operations are in the [API](#api) table below, alongside the
 rest of the module's endpoints.
 
+## Work types
+
+Overtime is commonly billed at 150 % and paid with an uplift, and before work types
+the only way to say so was a duplicate billing line — "Consulting (overtime)" at a
+separate product price — on every project, for every kind of work. A **work type**
+ends that: a project defines its types once ("Overtid 50 %", "Overtid 100 %",
+"Helg"), a person picks one when logging time, and Time multiplies whatever rates the
+chain resolved (see [the work type's multiplier](time.md#the-work-types-multiplier)).
+
+- **A rule, not an amount.** A type is a `name` (1–100 characters once trimmed,
+  unique in the project without regard to case), a `billMultiplierPercent` and a
+  `costMultiplierPercent` (each greater than zero, at most 1000, at most two decimals;
+  100 is "as the rate says", 150 the classic overtime uplift) and `active`. Projects
+  stores the percentages and **multiplies nothing**; every amount is computed in Time.
+  For the same reason the multipliers are **visible to everyone who can see the
+  project** — the reading that keeps `budgetHours` visible while `budgetAmount` is
+  shaped away.
+- **Per project, on every line.** A type is defined once per project and applies to
+  every billing line and every step of the rate chain — a rule per line would recreate
+  the duplication one level down. There is no installation-wide catalog; a shared
+  vocabulary is what project templates (phase 4) are for.
+- **No default, no delete.** "Ordinary hours" is the absence of a type, not a row.
+  Entries snapshot a type's name, but a type that was ever picked stays readable, so a
+  type is deactivated (`PUT … active: false`, and reactivated the same way) — a
+  deactivated type is offered for no new entry, and a draft that picked it is refused
+  on its next save until it picks another. A `POST` ignores `active`: a new type is
+  active.
+- **The API.** `GET /projects/{id}/work-types` for anyone who sees the project — every
+  type, deactivated ones included, active first and each half by name without regard
+  to case; `POST` and `PUT /projects/{id}/work-types/{workTypeId}` for a manager
+  (`CanManage`: the manager role or `projects:manage-all`; 403 for anyone else who
+  sees the project, the bare 404 for an outsider). A name the project already has, in
+  any case, answers **409** with the title "Work type exists" and no code of its own —
+  the unique index on `(project_id, lower(name))` (`ux_work_types_project_id_name`)
+  decides it, not a read-then-write check, so two managers adding the same name at once
+  get one type and one 409.
+- **The timeline.** `work-type-added` and `work-type-changed`, each carrying the
+  type's id (`workTypeId`), its name as it now stands and `fields`, the fields that
+  moved (`name`, `billMultiplierPercent`, `costMultiplierPercent`, `active`; an add
+  names the first three) — never a value, the billing lines' rule. Switching a type
+  off is a `work-type-changed` naming `active`, not an event of its own. A change that
+  moved nothing writes nothing.
+- **No project lock.** A work type's write takes **no project-row lock**: the lock
+  guards writes whose validity depends on the project's currency, fixed price or
+  billing type (see [Locking](#locking)), and a percentage depends on none of them.
+  Each write is one plain transaction; a change locks the type's own row, so the
+  timeline names the fields that moved against the row nobody else could move
+  meanwhile.
+- **Changing a multiplier rewrites no history.** Time freezes the multipliers with the
+  rates when an entry is submitted; a type changed afterwards moves only drafts and
+  rejected entries, on their next save.
+
+In the apps:
+
+- The Billing tab — gated on financial rights like the rest of it — shows a **Work
+  types** card below the billing lines: name, both multipliers and status, with
+  **Add work type** and an edit form (whose **Active** switch deactivates and
+  reactivates) for a manager. A taken name is shown on the name field. A member
+  without financial rights never sees the card; they meet the types in Time's entry
+  form.
+- The Economy tab shows [Hours by work type](#hours-by-work-type) in its budget
+  section.
+- Time's entry form, week grid, day view and approval queue pick and show the type —
+  see [the Time app](time.md#the-time-app).
+
 ## Project economy
 
 The Economy tab's second half: a project's budget against what has actually been
@@ -657,6 +726,29 @@ line** — an empty one would read as a line somebody created. Work the provider
 attributes to a billing line id this project does not have (which should never
 happen) folds into that same no-line row rather than being dropped, because an hour
 somebody logged must appear somewhere.
+
+### Hours by work type
+
+`workTypes` splits the logged work by the [work type](#work-types) each entry was
+logged as: `{id, name, hours, billAmount?, costAmount?}` per type anything was logged
+as, every bucket together, in the order the project's work types list has them
+(active first, each half by name) — ordinary hours are in no row. Time reports ids
+and figures only; Projects names each row from its own work types, so a renamed type
+reads by its new name at once, whatever the entries snapshotted (a type the provider
+reports that the project does not have, which should never happen, is left out
+rather than shown without a name). The figures come from Time already multiplied and
+are already inside every total above, so the list is a split, never an addition:
+budget used, the margin and the portfolio read the same multiplied buckets they
+always read. Time rounds each type's amounts once, on their own, and reads the split
+separately from the totals, so the rows need not add up to a bucket to the cent, and
+nothing here checks that they do.
+
+`hours` is for everyone who sees the project; `billAmount` needs financial rights and
+a currency; `costAmount` needs `projects:view-costs` on top. The block is absent when
+`timeTracking` is false and an empty list when no entry picked a type. Hours priced in
+another currency than the project's count in `hours` and in no amount. The Economy
+tab shows "Hours by work type" under the per-line table when the list is not empty,
+with a value and a cost column each drawn when the answer carries that figure.
 
 ### Shaping — who sees what
 
@@ -942,6 +1034,8 @@ cleared in the same instant: whichever transaction locks the row first wins, and
 other re-validates against what the winner left behind. One lock mode everywhere, and
 always taken in the same order relative to any other lock a transaction needs (the
 project row, then a line's or a milestone's own row) — so nothing can deadlock.
+A work type's create and change take no project lock at all: nothing about a
+percentage depends on the project's currency, fixed price or billing type.
 
 `FOR NO KEY UPDATE` rather than `FOR UPDATE` on purpose. The weaker mode still
 conflicts with itself and with the row lock the project's own `UPDATE` takes, so every
@@ -1076,7 +1170,10 @@ missing row is `(nil, nil)`, never an error.
   ascending and at most `contracts.MaxActualsRequests` — the batch a consumer asks
   the time and expenses providers about next; the customer page's
   [Customer 360](customers.md#customer-360) is its reader), `Task`,
-  `OpenTasksForUser` and `CanLogTime(projectID, userID)`. **Cancelled projects and
+  `OpenTasksForUser`, `CanLogTime(projectID, userID)`, and `WorkType(id)` /
+  `WorkTypes(projectID)` — a project's [work types](#work-types) as `WorkTypeEntry` (id,
+  project, name, both multipliers, active; `WorkType` answers an inactive type too,
+  `WorkTypes` lists every type, active first, each half by name). **Cancelled projects and
   inactive lines still resolve**, so a consumer can read old work. `ProjectEntry`
   carries `Currency` and `DefaultBillRate`, which are financial fields: only a
   consumer that gates on a financial-viewer permission of its own should surface
@@ -1089,7 +1186,8 @@ missing row is `(nil, nil)`, never an error.
   Projects has already decided who may see the project and its money — and reports
   hours in three buckets (approved, submitted, draft) — plus `Invoiced`, the part of
   approved already billed, which Projects' economy does not read — and bill and cost amounts,
-  each counted only when logged in the currency Projects asked for. See
+  each counted only when logged in the currency Projects asked for, and `WorkTypes` —
+  the same work split per work type, by id, for the economy's `workTypes`. See
   [Project economy](#project-economy) and [what Time reports](time.md#what-time-reports-to-other-modules).
 - **`contracts.ProjectExpenses`** — provided by *expenses*, **nil when expenses is
   disabled** (the third optional contract, and the second Projects consumes).
@@ -1160,6 +1258,10 @@ Time tracking is the first consumer, and the seam is already in place:
   (billing-line rule → project default → customer default → person default). It is
   a financial field — surface it only behind a financial-viewer permission of your
   own.
+- Work types: `WorkType(id)` for the one an entry picked — check its `ProjectID` and
+  `Active` yourself — and snapshot its name and multipliers with the rates, before the
+  saving transaction opens. The multipliers are rules, not amounts: surface them to
+  whoever sees the entry.
 - Resolve amounts yourself, or leave it to invoicing. Projects stores the rule; it
   never multiplies anything.
 
@@ -1187,6 +1289,9 @@ create additionally requires `projects:create`.
 | `GET /api/v1/projects/{id}/billing-lines` | The project's lines, pricing shaped (`budgetAmount` included). 409 when products is off |
 | `POST /api/v1/projects/{id}/billing-lines` | Add a line, `budgetHours`/`budgetAmount` included. Manager only |
 | `PUT /api/v1/projects/{id}/billing-lines/{lineId}` | Update a line, `active` and budgets included. Manager only |
+| `GET /api/v1/projects/{id}/work-types` | The project's work types, deactivated ones included, active first, by name, multipliers included. Anyone who sees the project |
+| `POST /api/v1/projects/{id}/work-types` | Add a work type; a taken name (any case) answers 409. Manager only |
+| `PUT /api/v1/projects/{id}/work-types/{workTypeId}` | Change a work type, `active` included; there is no delete. Manager only |
 | `GET /api/v1/projects/{id}/milestones` | The invoice plan, position order, cancelled last, with totals. Financial rights |
 | `POST /api/v1/projects/{id}/milestones` | Add a milestone; appended last. Manager only |
 | `GET /api/v1/projects/milestones/{milestoneId}` | One milestone. Financial rights |
@@ -1194,7 +1299,7 @@ create additionally requires `projects:create`.
 | `DELETE /api/v1/projects/milestones/{milestoneId}` | Only `planned` and never moved; otherwise 400. Manager only |
 | `PUT /api/v1/projects/milestones/{milestoneId}/position` | Renumber the plan 1..n; carries `revision` (checked, not bumped). Manager only |
 | `POST /api/v1/projects/milestones/{milestoneId}/status` | One move through the status flow — see [Billing milestones and the invoice plan](#billing-milestones-and-the-invoice-plan) |
-| `GET /api/v1/projects/{id}/economy` | Budget vs. logged, per line and in total, plus what the expenses cost and will bill; hours for anyone who sees the project, amounts and the `expenses` block need financial rights, cost and margin need `projects:view-costs` too — see [Project economy](#project-economy) |
+| `GET /api/v1/projects/{id}/economy` | Budget vs. logged, per line, per work type and in total, plus what the expenses cost and will bill; hours for anyone who sees the project, amounts and the `expenses` block need financial rights, cost and margin need `projects:view-costs` too — see [Project economy](#project-economy) |
 | `GET /api/v1/projects/economy` | The portfolio: one row per project the caller has financial rights on. `projects:access`; paged, filtered and sorted — see [Project economy](#project-economy) |
 | `GET /api/v1/projects/{id}/tasks` | The project's task tree, with checklist counts and comment counts. Anyone who sees the project |
 | `POST /api/v1/projects/{id}/tasks` | Add a task. Member or manager |
@@ -1241,7 +1346,7 @@ like every other module package; module packages never import each other.
 | `/projects/$projectId` | Detail → Overview tab (details, budget hours, timeline) |
 | `/projects/$projectId/tasks` | Tasks tab (list and board, task drawer); `?task={id}` deep-links one task |
 | `/projects/$projectId/people` | People tab (assignments, role badges, add/change/remove for managers) |
-| `/projects/$projectId/billing` | Billing tab, gated on `capabilities.canSeeFinancials` |
+| `/projects/$projectId/billing` | Billing tab (financial summary, billing lines, work types), gated on `capabilities.canSeeFinancials` |
 | `/projects/$projectId/economy` | Economy tab (invoice plan and budget vs. logged), between Billing and Time; shown to everyone who sees the project — unlike Billing, it carries no capability gate, because it has an hours-only half for a caller without financial rights |
 | `/projects/$projectId/expenses` | **Expenses** tab, from `@vantigo/expenses-ui`; last, after Time, and only when the expenses module is mounted and the caller holds `expenses:access`. It carries no project capability: a plain member sees their own expenses on the project, and the expenses API decides who reads the totals above the list |
 | `/projects/economy` | The economy portfolio, one row per project the caller has financial rights on; sidebar entry "Project economy" behind `projects:access` (the page's own empty state covers a caller with nothing to see) |
