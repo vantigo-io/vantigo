@@ -63,19 +63,20 @@ type WorkTypeEntry struct {
 }
 
 // ProjectDirectory is the one sanctioned way a module reads projects' data:
-// a read-only, in-process port over projects, roles and billing lines, so a
-// module can name a project, check whether a user may act on it, or price
-// one of its billing lines, without either importing the projects package
-// (barred by depguard) or reading its PostgreSQL schema (barred by
-// internal/db/schema_test.go). projects implements it; Compose wires that
-// implementation into every module's Deps before any Mount runs (see
-// Module.Projects). It is nil when projects is disabled.
+// a read-only, in-process port over projects, roles, billing lines and work
+// types, so a module can name a project, check whether a user may act on it,
+// price one of its billing lines, or read a work type's multipliers, without
+// either importing the projects package (barred by depguard) or reading its
+// PostgreSQL schema (barred by internal/db/schema_test.go). projects
+// implements it; Compose wires that implementation into every module's Deps
+// before any Mount runs (see Module.Projects). It is nil when projects is
+// disabled.
 //
-// A missing row is (nil, nil) from Project and BillingLine — never an
-// error. A caller tells "does not exist" from "the lookup failed" by
-// checking err, never by treating a nil result as failure. Role instead
-// answers "" for "no role", since "" is not itself a valid role name and so
-// cannot be confused with one.
+// A missing row is (nil, nil) from Project, BillingLine, Task, ProjectByCode
+// and WorkType — never an error. A caller tells "does not exist" from "the
+// lookup failed" by checking err, never by treating a nil result as failure.
+// Role instead answers "" for "no role", since "" is not itself a valid role
+// name and so cannot be confused with one.
 type ProjectDirectory interface {
 	// Project looks up a project by ID. It returns (nil, nil) if id does
 	// not exist.

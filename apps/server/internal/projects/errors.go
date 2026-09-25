@@ -95,7 +95,8 @@ func productsDisabled() apicommon.ProblemDetails {
 // title say it.
 const workTypeExistsTitle = "Work type exists"
 
-// workTypeExists is that 409's body, naming the name as the caller typed it.
+// workTypeExists is that 409's body, naming the name as it would have been
+// stored (trimmed).
 func workTypeExists(name string) apicommon.ProblemDetails {
 	return apicommon.ProblemStatus(workTypeExistsTitle,
 		fmt.Sprintf("This project already has a work type named '%s'; names are compared without regard to case.", name),

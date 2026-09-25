@@ -409,6 +409,8 @@ func (f *fakeActuals) set(projectID int32, totals contracts.ActualsTotals, lines
 // set has already given — the provider's per-type split (work types design
 // D4): ids and figures, by id, as the contract promises. The names are this
 // module's own, read from projects.work_types when the economy renders them.
+// Call it after set, which replaces the whole entry and so drops a split
+// given before it.
 func (f *fakeActuals) setWorkTypes(projectID int32, types ...contracts.WorkTypeActuals) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

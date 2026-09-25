@@ -68,27 +68,45 @@ func TestGetProjectsByIdEconomy_WorkTypes_AreShapedPerCaller(t *testing.T) {
 	addRole(t, h, project.Id, memberID, "member")
 	costs, costsID := signIn(t, h, "projects:view-costs")
 	addRole(t, h, project.Id, costsID, "manager")
+	// projects:view-costs is the cost half only: a member holding it has no
+	// financial rights on the project, so no value, so no cost either.
+	costsMember, costsMemberID := signIn(t, h, "projects:view-costs")
+	addRole(t, h, project.Id, costsMemberID, "member")
 
-	for _, row := range workTypeRows(t, rawEconomy(t, member, project.Id)) {
-		for _, key := range []string{"billAmount", "costAmount"} {
-			if _, ok := row[key]; ok {
-				t.Errorf("member's row %v carries %s, want hours alone", row, key)
+	for name, c := range map[string]*modtest.Client{"member": member, "member with view-costs": costsMember} {
+		rows := workTypeRows(t, rawEconomy(t, c, project.Id))
+		if len(rows) != 2 {
+			t.Fatalf("%s's rows = %v, want both types", name, rows)
+		}
+		for _, row := range rows {
+			for _, key := range []string{"billAmount", "costAmount"} {
+				if _, ok := row[key]; ok {
+					t.Errorf("%s's row %v carries %s, want hours alone", name, row, key)
+				}
 			}
 		}
 	}
 	memberView := getEconomy(t, member, project.Id)
-	if len(memberView.WorkTypes) != 2 ||
-		memberView.WorkTypes[0].Id != weekend.Id || memberView.WorkTypes[0].Name != "Helg" || memberView.WorkTypes[0].Hours != 3 ||
+	if len(memberView.WorkTypes) != 2 {
+		t.Fatalf("member's work types = %+v, want two rows", memberView.WorkTypes)
+	}
+	if memberView.WorkTypes[0].Id != weekend.Id || memberView.WorkTypes[0].Name != "Helg" || memberView.WorkTypes[0].Hours != 3 ||
 		memberView.WorkTypes[1].Id != overtime.Id || memberView.WorkTypes[1].Name != "Overtid 50 %" || memberView.WorkTypes[1].Hours != 2.5 {
 		t.Errorf("member's work types = %+v, want Helg 3 h then Overtid 50 %% 2.5 h", memberView.WorkTypes)
 	}
 
 	managerView := getEconomy(t, manager, project.Id)
+	if len(managerView.WorkTypes) != 2 {
+		t.Fatalf("manager's work types = %+v, want two rows", managerView.WorkTypes)
+	}
 	if managerView.WorkTypes[0].BillAmount == nil || *managerView.WorkTypes[0].BillAmount != 5400 || managerView.WorkTypes[0].CostAmount != nil {
 		t.Errorf("manager's Helg = %+v, want the value and no cost", managerView.WorkTypes[0])
 	}
 
 	costView := getEconomy(t, costs, project.Id)
+	if len(costView.WorkTypes) != 2 {
+		t.Fatalf("view-costs' work types = %+v, want two rows", costView.WorkTypes)
+	}
 	if costView.WorkTypes[1].BillAmount == nil || *costView.WorkTypes[1].BillAmount != 3375 ||
 		costView.WorkTypes[1].CostAmount == nil || *costView.WorkTypes[1].CostAmount != 1400 {
 		t.Errorf("view-costs' Overtid = %+v, want 3375 and 1400", costView.WorkTypes[1])
@@ -97,8 +115,8 @@ func TestGetProjectsByIdEconomy_WorkTypes_AreShapedPerCaller(t *testing.T) {
 
 // The names are this module's own (the controller's ruling on D4): a type
 // renamed on the Billing tab reads by its new name at once, a deactivated one
-// keeps its row, and an id the project does not know is left out rather than
-// shown nameless.
+// keeps its row — after the active ones, where the work types list puts it —
+// and an id the project does not know is left out rather than shown nameless.
 func TestGetProjectsByIdEconomy_WorkTypes_AreNamedFromTheProjectsOwnTypes(t *testing.T) {
 	t.Parallel()
 	actuals := newFakeActuals()
@@ -115,8 +133,8 @@ func TestGetProjectsByIdEconomy_WorkTypes_AreNamedFromTheProjectsOwnTypes(t *tes
 	)
 
 	got := getEconomy(t, manager, project.Id).WorkTypes
-	if len(got) != 2 || got[0].Name != "Helg" || got[1].Name != "Overtid 100 %" {
-		t.Errorf("work types = %+v, want Helg (deactivated, still named) and the new name Overtid 100 %%, and no unknown id", got)
+	if len(got) != 2 || got[0].Name != "Overtid 100 %" || got[1].Name != "Helg" {
+		t.Errorf("work types = %+v, want the new name Overtid 100 %% then Helg (deactivated, still named, listed last), and no unknown id", got)
 	}
 }
 
