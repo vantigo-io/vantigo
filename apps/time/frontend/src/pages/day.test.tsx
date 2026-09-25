@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { problemResponse, sent } from "../test/api";
@@ -40,7 +40,9 @@ const setTime = (dialog: HTMLElement, label: string, value: string) =>
 
 describe("DayPage", () => {
   it("offers the project's active work types, forgets the choice when the project changes, and sends it", async () => {
-    const fetchMock = stubTimeApi({ week: dayWeek(), workTypes: { 1001: kvemWorkTypes } });
+    // Internal has only a retired type: its list answers, and still offers nothing.
+    const internRetired = { ...kvemWorkTypes[1], id: 6004, projectId: 1002, name: "Utgått overtid" };
+    const fetchMock = stubTimeApi({ week: dayWeek(), workTypes: { 1001: kvemWorkTypes, 1002: [internRetired] } });
     renderRoute(`/time/day?date=${DAY}`);
 
     await screen.findByText("Status meeting");
@@ -50,6 +52,11 @@ describe("DayPage", () => {
     // No project, no choice; a project without work types, none either.
     expect(within(dialog).queryByRole("combobox", { name: "Work type" })).not.toBeInTheDocument();
     await choose(dialog, "Project", /INTERN/);
+    // Asserted only once Internal's list has answered, or it would hold before any did.
+    await waitFor(() =>
+      expect(fetchMock.actualCalls.some(([url]) => String(url).endsWith("/projects/1002/work-types"))).toBe(true),
+    );
+    await act(async () => {});
     expect(within(dialog).queryByRole("combobox", { name: "Work type" })).not.toBeInTheDocument();
 
     await choose(dialog, "Project", /KVEM1000/);

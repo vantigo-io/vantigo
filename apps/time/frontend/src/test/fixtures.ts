@@ -99,6 +99,23 @@ export const kvemLines: ProjectBillingLine[] = [
 ];
 
 /**
+ * A work type in full, as the projects API's WorkTypeResponse sends it. Time's
+ * generated schema holds only its own module's contract, so the wire shape is
+ * spelled out here; the fixtures below are checked against it, the way
+ * `kvemLines` is checked against `ProjectBillingLine`.
+ */
+export interface WorkTypeWire {
+  id: number;
+  projectId: number;
+  name: string;
+  billMultiplierPercent: number;
+  costMultiplierPercent: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
  * Kverneland's work types, literally as the projects API answers them — a
  * retired one included, which the entry form must not offer.
  */
@@ -123,7 +140,7 @@ export const kvemWorkTypes = [
     createdAt: "2026-01-01T08:00:00Z",
     updatedAt: "2026-06-01T08:00:00Z",
   },
-];
+] satisfies WorkTypeWire[];
 
 export const myTasks: MyTaskOption[] = [
   { id: 5001, title: "Skriv spesifikasjonen", projectId: 1001, projectCode: "KVEM1000", projectName: "Kverneland web" },

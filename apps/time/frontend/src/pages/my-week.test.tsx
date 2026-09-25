@@ -64,6 +64,27 @@ describe("MyWeekPage", () => {
     await waitFor(() => expect(sent(fetchMock, "PUT").body).toMatchObject({ hours: 8, workTypeId: 6001 }));
   });
 
+  it("badges each work type a row holds once, in name order, however many days carry it", async () => {
+    const overtime = { id: 6001, name: "Overtid 50 %" };
+    stubTimeApi({
+      week: week([
+        weekRow(pmRow, [
+          entry({ id: 501, entryDate: WEEK, hours: 2, workType: overtime }),
+          entry({ id: 502, entryDate: "2026-09-15", hours: 2, workType: overtime }),
+          entry({ id: 503, entryDate: "2026-09-16", hours: 3, workType: { id: 6002, name: "Helg 100 %" } }),
+        ]),
+      ]),
+    });
+    renderRoute(`/time?week=${WEEK}`);
+
+    const row = (await findCell(PM, "Monday")).closest("tr") as HTMLElement;
+    expect(
+      within(row)
+        .getAllByTestId("work-type-badge")
+        .map((badge) => badge.textContent),
+    ).toEqual(["Helg 100 %", "Overtid 50 %"]);
+  });
+
   // A row is a trackable, not a work type: typing into an empty day of a row
   // badged "Overtid 50 %" logs ordinary hours (work types design D3 — picking
   // a type is the entry form's, the grid writes a duration).

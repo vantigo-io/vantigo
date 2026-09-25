@@ -17,4 +17,10 @@ describe("billedAmount", () => {
     // 0.01 × 0.5 h = 0.005
     expect(billedAmount(0.01, 0.5)).toBe(0.01);
   });
+
+  it("rounds a negative half cent away from zero, the way the server does", () => {
+    // -0.01 × 0.5 h = -0.005; truncating division alone would say 0.
+    expect(billedAmount(-0.01, 0.5)).toBe(-0.01);
+    expect(billedAmount(-333.33, 1.5, 150)).toBe(-749.99);
+  });
 });

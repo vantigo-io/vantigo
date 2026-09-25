@@ -72,8 +72,9 @@ const withCurrent = (options: Option[], current: Option | null): Option[] =>
  * Adds an entry or edits one (design D1): a project with an optional line and
  * task, and a work type when the project has one, the day, and the duration —
  * typed as hours, or given as a start and an end time from which the hours
- * are worked out, exactly as the server will work them out again. The form lives in `EntryForm`, which the modal
- * mounts fresh every time it opens, so no previous entry's values survive.
+ * are worked out, exactly as the server will work them out again. The form
+ * lives in `EntryForm`, which the modal mounts fresh every time it opens, so
+ * no previous entry's values survive.
  */
 export const EntryFormModal = ({ state, onClose }: EntryFormModalProps) => {
   const { t } = useI18n("time");
