@@ -207,6 +207,72 @@ describe("customer detail header — personal data", () => {
     await vi.waitFor(() => expect(screen.queryByText(/^Anonymisation scheduled for /)).not.toBeInTheDocument());
   });
 
+  it("seeds Change anonymisation date… with the day already scheduled, and sends the day it is moved to", async () => {
+    const moved = utcDay(60);
+    const fetchMock = await renderHeader(
+      person({ status: "archived", anonymisation: { anonymiseOn: "2099-01-31" } }),
+      { canManagePersonalData: true },
+      (url, init) =>
+        url === "/api/v1/customers/1005/anonymisation" && init?.method === "PUT"
+          ? json(200, person({ status: "archived", revision: 5, anonymisation: { anonymiseOn: moved } }))
+          : undefined,
+    );
+    await openMenu();
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Change anonymisation date…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Schedule anonymisation" });
+    const field = within(dialog).getByRole("textbox", { name: /anonymise on/i });
+    expect(field).toHaveValue("2099-01-31");
+    await userEvent.clear(field);
+    await userEvent.type(field, moved);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Schedule anonymisation" }));
+    await vi.waitFor(() => expect(callsTo(fetchMock, "PUT", "/api/v1/customers/1005/anonymisation")).toHaveLength(1));
+    const [, init] = callsTo(fetchMock, "PUT", "/api/v1/customers/1005/anonymisation")[0];
+    expect(JSON.parse(String(init?.body))).toEqual({ anonymiseOn: moved });
+  });
+
+  it("keeps every action on a customer only scheduled for anonymisation", async () => {
+    // Scheduled is not anonymised (GDPR design D4): until the day, the customer
+    // is an archived one like any other, and restoring it calls the day off.
+    await renderHeader(person({ status: "archived", anonymisation: { anonymiseOn: "2099-01-31" } }), {
+      canManagePersonalData: true,
+      canRestore: true,
+      canMerge: true,
+    });
+    for (const action of ["Edit customer", "Change type", "Restore customer", "Merge…"]) {
+      expect(screen.getByRole("button", { name: action })).toBeInTheDocument();
+    }
+  });
+
+  it("says a merged-away customer's scheduled day beside where it went", async () => {
+    await renderHeader(
+      person({
+        status: "archived",
+        mergedInto: { id: 1002, customerNumber: 2, name: "Kari Nordmann" },
+        anonymisation: { anonymiseOn: "2099-01-31" },
+      }),
+      { canManagePersonalData: true },
+    );
+    const banner = screen.getByRole("alert", { name: "Merged into #2 Kari Nordmann" });
+    expect(within(banner).getByText(/^Anonymisation scheduled for /)).toBeInTheDocument();
+    expect(within(banner).getByRole("link", { name: "Open #2 Kari Nordmann" })).toBeInTheDocument();
+  });
+
+  it("says anonymised first on a merged-away member of an anonymised chain", async () => {
+    // The worker anonymises the customers merged into a person in the same run,
+    // and the server answers such a shell "anonymised" before "merged".
+    await renderHeader(
+      person({
+        name: "Anonymised person",
+        status: "archived",
+        mergedInto: { id: 1002, customerNumber: 2, name: "Anonymised person" },
+        anonymisation: { anonymiseOn: "2026-09-12", anonymisedAt: "2026-09-12T02:00:00Z" },
+      }),
+      { canManagePersonalData: true },
+    );
+    expect(screen.getByText(/^Anonymised on /)).toBeInTheDocument();
+    expect(screen.queryByText("Merged into #2 Anonymised person")).not.toBeInTheDocument();
+  });
+
   it("shows an anonymised customer's banner and none of the actions that would edit it", async () => {
     await renderHeader(
       person({

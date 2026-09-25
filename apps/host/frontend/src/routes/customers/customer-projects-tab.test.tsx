@@ -34,14 +34,18 @@ vi.mock("@vantigo/projects-ui", () => ({
 }));
 
 // The customer as the layout's loader cached it: normalised, so an unmerged
-// one carries mergedInto: null.
-const customer = (mergedInto: { id: number; customerNumber: number; name: string } | null = null) => ({
+// one carries mergedInto: null, and one never anonymised anonymisation: null.
+const customer = (
+  mergedInto: { id: number; customerNumber: number; name: string } | null = null,
+  anonymisation: { anonymiseOn: string; anonymisedAt: string | null } | null = null,
+) => ({
   id: 42,
   customerNumber: 7,
   name: "Acme AS",
-  status: mergedInto ? "archived" : "active",
+  status: mergedInto || anonymisation ? "archived" : "active",
   type: "business",
   mergedInto,
+  anonymisation,
 });
 
 const renderTab = (permissions: string[], modules?: string[], cached = customer()) => {
@@ -80,6 +84,23 @@ describe("the customer page's projects tab", () => {
 
   it("offers no create on a merged-away customer, whatever the caller may do", () => {
     renderTab(["projects:access", "projects:create"], undefined, customer({ id: 2, customerNumber: 2, name: "Acme" }));
+    expect(screen.getByText("customer 42 canCreate false")).toBeInTheDocument();
+  });
+
+  it("offers no create on an anonymised customer, while one only scheduled still offers it", () => {
+    renderTab(
+      ["projects:access", "projects:create"],
+      undefined,
+      customer(null, { anonymiseOn: "2099-01-31", anonymisedAt: null }),
+    );
+    expect(screen.getByText("customer 42 canCreate true")).toBeInTheDocument();
+
+    cleanup();
+    renderTab(
+      ["projects:access", "projects:create"],
+      undefined,
+      customer(null, { anonymiseOn: "2026-09-12", anonymisedAt: "2026-09-12T02:00:00Z" }),
+    );
     expect(screen.getByText("customer 42 canCreate false")).toBeInTheDocument();
   });
 

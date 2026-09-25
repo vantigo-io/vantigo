@@ -52,6 +52,7 @@ import { downloadCustomersCsv, isSessionExpired, saveCsv } from "../api/import-e
 import { customerTagsQueryOptions } from "../api/tags";
 import { TagBadge } from "../components/tag-badge";
 import "../i18n";
+import { isReadOnlyCustomer } from "../lib/customer-read-only";
 import { CustomerFormModal, type CustomerModalState } from "./-customer-form-modal";
 import { CustomerImportModal } from "./-customer-import-modal";
 import { ManageGroupsModal } from "./-manage-groups-modal";
@@ -522,10 +523,11 @@ export const CustomersPage = ({
                         )}
                         <Table.Td>{formatters.formatDate(customer.createdAt)}</Table.Td>
                         <Table.Td onClick={(event) => event.stopPropagation()}>
-                          {/* A merged-away customer is read-only (customers merge design D4):
-                              everything it had moved, so an edit here would land on a
-                              customer nobody looks at, and no later merge re-points it. */}
-                          {!customer.mergedInto && (
+                          {/* A merged-away or anonymised customer is read-only (customers
+                              merge design D4, GDPR design D5): everything a merged-away one
+                              had moved, and what an anonymised one has left is kept for
+                              bookkeeping — the server refuses the edit either way. */}
+                          {!isReadOnlyCustomer(customer) && (
                             <ActionIcon
                               variant="subtle"
                               color="gray"
