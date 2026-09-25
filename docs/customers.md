@@ -1591,7 +1591,10 @@ The `customers-anonymisation` worker takes every archived private person whose d
 come (UTC) and who is not anonymised yet, at most fifty a cycle, oldest day first, each
 in **one transaction** with the customer row locked, retried on a deadlock. Under the
 lock it reads the customer again — a cancel, a restore or a change of type may have
-landed since the batch was selected — and one no longer due is left alone:
+landed since the batch was selected — and one no longer due is left alone. A cycle runs
+on **one connection**, the one its advisory lease holds — the batch's select and every
+customer's transaction included — so it never waits on the pool for a second while
+holding the first, which on a small pool is a deadlock with the other lease workers:
 
 | | |
 | --- | --- |

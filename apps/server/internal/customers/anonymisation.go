@@ -320,12 +320,14 @@ const anonymisationWriteAttempts = 3
 // one transaction, retried on a deadlock, answering whether it anonymised
 // anything: false when, under the lock, the customer turned out not to be due
 // after all. The actor is the system's, verbatim — a worker has no principal,
-// and resolving one would be a directory call for nothing.
-func (s *server) anonymiseCustomer(ctx context.Context, id int32) (bool, error) {
+// and resolving one would be a directory call for nothing. The transaction
+// opens on on — the worker's lease connection, never the pool (see
+// underLease).
+func (s *server) anonymiseCustomer(ctx context.Context, on db.TxBeginner, id int32) (bool, error) {
 	now := s.deps.Clock()
 	var done bool
 	err := db.RetrySerializable(ctx, anonymisationWriteAttempts, func() error {
-		return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		return db.WithTx(ctx, on, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			var err error
 			done, err = s.anonymiseInTx(ctx, tx, id, now)
 			return err

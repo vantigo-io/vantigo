@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
@@ -98,11 +99,11 @@ func (w *AnonymisationWorker) Run(ctx context.Context) error {
 
 // RunCycle is one cycle under the advisory lease, reporting whether it ran:
 // the due customers, at most anonymisationBatch, oldest day first, each in its
-// own transaction.
+// own transaction — all of it on the lease's connection.
 func (w *AnonymisationWorker) RunCycle(ctx context.Context) (bool, error) {
-	return w.underLease(ctx, func(ctx context.Context) error {
+	return w.underLease(ctx, func(ctx context.Context, conn *pgxpool.Conn) error {
 		today := pgtype.Date{Time: civilDate(w.now()), Valid: true}
-		due, err := store.New(w.deps.Pool).DueAnonymisations(ctx, store.DueAnonymisationsParams{Today: today, RowLimit: anonymisationBatch})
+		due, err := store.New(conn).DueAnonymisations(ctx, store.DueAnonymisationsParams{Today: today, RowLimit: anonymisationBatch})
 		if err != nil {
 			return fmt.Errorf("customers: select the customers due for anonymisation: %w", err)
 		}
@@ -111,7 +112,7 @@ func (w *AnonymisationWorker) RunCycle(ctx context.Context) (bool, error) {
 			if ctx.Err() != nil {
 				return nil
 			}
-			done, err := w.anonymiseRecovering(ctx, id)
+			done, err := w.anonymiseRecovering(ctx, conn, id)
 			if err != nil {
 				if ctx.Err() == nil {
 					w.logger().Error("customers: anonymising a customer failed; it is tried again next cycle",
@@ -133,20 +134,27 @@ func (w *AnonymisationWorker) RunCycle(ctx context.Context) (bool, error) {
 // customer's error, the stack in it: the transaction's deferred rollback has
 // already run by the time the panic reaches here, so nothing of the customer
 // changed, and the cycle logs it and moves on like any other failure.
-func (w *AnonymisationWorker) anonymiseRecovering(ctx context.Context, id int32) (done bool, err error) {
+func (w *AnonymisationWorker) anonymiseRecovering(ctx context.Context, conn *pgxpool.Conn, id int32) (done bool, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			done, err = false, fmt.Errorf("panic: %v\n%s", r, debug.Stack())
 		}
 	}()
-	return w.srv.anonymiseCustomer(ctx, id)
+	return w.srv.anonymiseCustomer(ctx, conn, id)
 }
 
 // underLease is the registry workers' lease (peppol_recheck_worker.go, and
 // communications/retention.go for why the unlock runs on a context stripped of
 // cancellation and why a failed unlock discards the connection), on this
 // worker's own key.
-func (w *AnonymisationWorker) underLease(ctx context.Context, action func(context.Context) error) (bool, error) {
+//
+// The lease's connection is the cycle's only connection: action receives it and
+// runs the due query and every customer's transaction on it, never on the pool.
+// A cycle that held this one and asked the pool for another deadlocked the api
+// at startup (PR #124): four lease workers on pgxpool's default of four
+// connections each held one and waited for a second, and the readiness ping
+// queued behind them. One connection a cycle, whatever the pool's size.
+func (w *AnonymisationWorker) underLease(ctx context.Context, action func(context.Context, *pgxpool.Conn) error) (bool, error) {
 	conn, err := w.deps.Pool.Acquire(ctx)
 	if err != nil {
 		return false, fmt.Errorf("customers: acquire a connection for the anonymisation lease: %w", err)
@@ -170,7 +178,7 @@ func (w *AnonymisationWorker) underLease(ctx context.Context, action func(contex
 			_ = conn.Conn().Close(release)
 		}
 	}()
-	return true, action(ctx)
+	return true, action(ctx, conn)
 }
 
 // now is the worker's clock, so tests control time exactly as they do for the

@@ -11,11 +11,26 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// WithTx runs fn inside a transaction opened on pool with opts. It commits
+// TxBeginner is whatever a transaction can be opened on: the pool (a pooled
+// connection taken for the transaction's length), one pooled connection a
+// caller already holds (*pgxpool.Conn), or a bare *pgx.Conn. A caller holding a
+// connection — a lease worker, whose advisory lock lives on it — opens its
+// transactions there rather than asking the pool for a second one.
+type TxBeginner interface {
+	BeginTx(ctx context.Context, opts pgx.TxOptions) (pgx.Tx, error)
+}
+
+var (
+	_ TxBeginner = (*pgxpool.Pool)(nil)
+	_ TxBeginner = (*pgxpool.Conn)(nil)
+	_ TxBeginner = (*pgx.Conn)(nil)
+)
+
+// WithTx runs fn inside a transaction opened on on with opts. It commits
 // when fn returns nil and rolls back otherwise; a rollback after a
 // successful commit is a no-op, so the deferred Rollback is unconditional.
-func WithTx(ctx context.Context, pool *pgxpool.Pool, opts pgx.TxOptions, fn func(pgx.Tx) error) error {
-	tx, err := pool.BeginTx(ctx, opts)
+func WithTx(ctx context.Context, on TxBeginner, opts pgx.TxOptions, fn func(pgx.Tx) error) error {
+	tx, err := on.BeginTx(ctx, opts)
 	if err != nil {
 		return fmt.Errorf("db: begin transaction: %w", err)
 	}
