@@ -64,7 +64,7 @@ SELECT
     count(*)::bigint AS line_count,
     SUM(gross_amount)::numeric(14,2) AS gross,
     SUM(CASE
-        WHEN gross_amount > 0 AND NOT (kind = 'outlay' AND (paid_by IS NULL OR paid_by <> 'employee'))
+        WHEN gross_amount > 0 AND expenses.owes_employee(kind, paid_by)
         THEN gross_amount ELSE 0
     END)::numeric(14,2) AS owed_to_employee,
     SUM(CASE WHEN billable THEN COALESCE(bill_amount, 0) ELSE 0 END)::numeric(14,2) AS bill_amount,
@@ -440,7 +440,7 @@ func (q *Queries) ListAttachmentKeysForClaim(ctx context.Context, claimID *int64
 }
 
 const listClaimLines = `-- name: ListClaimLines :many
-SELECT id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent FROM expenses.entries WHERE claim_id = $1 ORDER BY entry_date, id
+SELECT id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent, supplier_invoice_number, supplier_due_date FROM expenses.entries WHERE claim_id = $1 ORDER BY entry_date, id
 `
 
 // ListClaimLines is one claim's expenses in the order the claim renders them:
@@ -505,6 +505,8 @@ func (q *Queries) ListClaimLines(ctx context.Context, claimID *int64) ([]Expense
 			&i.MealBreakfastPercent,
 			&i.MealLunchPercent,
 			&i.MealDinnerPercent,
+			&i.SupplierInvoiceNumber,
+			&i.SupplierDueDate,
 		); err != nil {
 			return nil, err
 		}
@@ -641,7 +643,7 @@ func (q *Queries) LockClaim(ctx context.Context, id int64) (ExpensesClaim, error
 }
 
 const lockClaimLines = `-- name: LockClaimLines :many
-SELECT id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent FROM expenses.entries WHERE claim_id = $1 ORDER BY id FOR UPDATE
+SELECT id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent, supplier_invoice_number, supplier_due_date FROM expenses.entries WHERE claim_id = $1 ORDER BY id FOR UPDATE
 `
 
 // LockClaimLines holds every one of a claim's lines, in id order — the second
@@ -708,6 +710,8 @@ func (q *Queries) LockClaimLines(ctx context.Context, claimID *int64) ([]Expense
 			&i.MealBreakfastPercent,
 			&i.MealLunchPercent,
 			&i.MealDinnerPercent,
+			&i.SupplierInvoiceNumber,
+			&i.SupplierDueDate,
 		); err != nil {
 			return nil, err
 		}

@@ -2246,6 +2246,111 @@ func TestExpensesToInvoiceIndex_ReplacesTheOneNoReadCouldUse(t *testing.T) {
 	}
 }
 
+// TestExpensesSupplierInvoices_AppliesAndIsIdempotent proves
+// 00033_expenses_supplier_invoices.sql applies, rolls back and re-applies
+// cleanly, and pins what the supplier invoices design (D1) rests on: the two
+// columns at their widths, and expenses.owes_employee — IMMUTABLE, boolean,
+// and the whole truth table of the rule every owes-the-employee query calls
+// instead of writing it out. The Down is pinned as well: a supplier invoice
+// left behind becomes the company-paid outlay the old inline predicate owes
+// nobody for, and the function and the columns are gone.
+func TestExpensesSupplierInvoices_AppliesAndIsIdempotent(t *testing.T) {
+	url := testdb.URL(t)
+	applyUpDownUp(t, url, 33) // 00033_expenses_supplier_invoices.sql
+
+	ctx := context.Background()
+	pool, err := db.Open(ctx, url)
+	if err != nil {
+		t.Fatalf("open pool: %v", err)
+	}
+	defer pool.Close()
+
+	var columns string
+	if err := pool.QueryRow(ctx, `
+		SELECT coalesce(string_agg(column_name || ':' || data_type
+		       || CASE WHEN data_type = 'character varying' THEN '(' || character_maximum_length || ')'
+		               ELSE '' END
+		       || ':' || is_nullable, ',' ORDER BY column_name COLLATE "C"), 'MISSING')
+		FROM information_schema.columns
+		WHERE table_schema = 'expenses' AND table_name = 'entries'
+		  AND column_name IN ('supplier_invoice_number', 'supplier_due_date')`).Scan(&columns); err != nil {
+		t.Fatalf("read the supplier invoice columns: %v", err)
+	}
+	if want := "supplier_due_date:date:YES,supplier_invoice_number:character varying(100):YES"; columns != want {
+		t.Errorf("supplier invoice columns = %q, want %q", columns, want)
+	}
+
+	var volatility, returns string
+	if err := pool.QueryRow(ctx, `
+		SELECT p.provolatile::text, pg_catalog.format_type(p.prorettype, NULL)
+		FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+		WHERE n.nspname = 'expenses' AND p.proname = 'owes_employee'`).Scan(&volatility, &returns); err != nil {
+		t.Fatalf("read expenses.owes_employee: %v", err)
+	}
+	if volatility != "i" || returns != "boolean" {
+		t.Errorf("expenses.owes_employee is volatility %q returning %q, want IMMUTABLE (i) returning boolean", volatility, returns)
+	}
+
+	employee, company := "employee", "company"
+	for _, c := range []struct {
+		kind   string
+		paidBy *string
+		want   bool
+	}{
+		{"outlay", &employee, true},
+		{"outlay", &company, false},
+		{"outlay", nil, false},
+		{"mileage", nil, true},
+		{"per_diem", nil, true},
+		{"supplier_invoice", &company, false},
+		{"supplier_invoice", &employee, false},
+		{"supplier_invoice", nil, false},
+	} {
+		var got bool
+		if err := pool.QueryRow(ctx, `SELECT expenses.owes_employee($1, $2)`, c.kind, c.paidBy).Scan(&got); err != nil {
+			t.Fatalf("expenses.owes_employee(%s): %v", c.kind, err)
+		}
+		if got != c.want {
+			payer := "NULL"
+			if c.paidBy != nil {
+				payer = *c.paidBy
+			}
+			t.Errorf("expenses.owes_employee(%s, %s) = %v, want %v", c.kind, payer, got, c.want)
+		}
+	}
+
+	// A supplier invoice recorded before a rollback is still nobody's money
+	// after it: the Down makes it the company-paid outlay it would have been.
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO expenses.entries (user_id, created_by_user_id, kind, entry_date, description,
+		    currency, gross_amount, paid_by, supplier, supplier_invoice_number, project_id,
+		    created_at, updated_at)
+		VALUES ($1, $1, 'supplier_invoice', DATE '2026-03-10', 'Rørleggerarbeid', 'NOK', 1000.00,
+		    'company', 'Rør & Varme AS', 'F-1', 1001, now(), now())`, uuid.New()); err != nil {
+		t.Fatalf("seed a supplier invoice: %v", err)
+	}
+	migrateTo(t, url, 32)
+	var kind, paidBy string
+	if err := pool.QueryRow(ctx, `SELECT kind, paid_by FROM expenses.entries WHERE description = 'Rørleggerarbeid'`).Scan(&kind, &paidBy); err != nil {
+		t.Fatalf("read the rolled-back invoice: %v", err)
+	}
+	if kind != "outlay" || paidBy != "company" {
+		t.Errorf("after the rollback the invoice is kind %q paid by %q, want a company-paid outlay", kind, paidBy)
+	}
+	var functions, left int
+	if err := pool.QueryRow(ctx, `
+		SELECT (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+		        WHERE n.nspname = 'expenses' AND p.proname = 'owes_employee'),
+		       (SELECT count(*) FROM information_schema.columns
+		        WHERE table_schema = 'expenses' AND table_name = 'entries'
+		          AND column_name IN ('supplier_invoice_number', 'supplier_due_date'))`).Scan(&functions, &left); err != nil {
+		t.Fatalf("read what the rollback left: %v", err)
+	}
+	if functions != 0 || left != 0 {
+		t.Errorf("after the rollback %d owes_employee functions and %d supplier columns remain, want none", functions, left)
+	}
+}
+
 // TestCustomersRevision_AppliesWithANonUniqueLegalIdentityIndex proves
 // 00016_customers_revision.sql applies, rolls back and re-applies cleanly, and
 // pins the one thing about its index that is a design decision rather than a
@@ -2400,6 +2505,11 @@ var expensesColumns = map[string][]expensesColumn{
 		{"meal_breakfast_percent", "numeric", "YES"},
 		{"meal_lunch_percent", "numeric", "YES"},
 		{"meal_dinner_percent", "numeric", "YES"},
+		// The supplier invoice's own two facts, 00033's (supplier invoices
+		// design D1): the supplier's number for the invoice and the day it is
+		// due. The entry date is the invoice date, so there is no third.
+		{"supplier_invoice_number", "character varying", "YES"},
+		{"supplier_due_date", "date", "YES"},
 	},
 	"claims": {
 		{"id", "bigint", "NO"},

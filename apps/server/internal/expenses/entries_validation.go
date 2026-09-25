@@ -23,12 +23,15 @@ import (
 // Every failure is collected, so one round trip reports every problem with a
 // body rather than the first.
 
-// The kinds of money line (decision X3). The per diem day is the one that
-// exists only inside a travel claim; the other two stand alone or inside one.
+// The kinds of money line (decision X3, and supplier invoices design D1). The
+// per diem day is the one that exists only inside a travel claim; the supplier
+// invoice the one that never does and always sits on a project; the outlay
+// and mileage stand alone or inside one.
 const (
-	kindOutlay  = "outlay"
-	kindMileage = "mileage"
-	kindPerDiem = "per_diem"
+	kindOutlay          = "outlay"
+	kindMileage         = "mileage"
+	kindPerDiem         = "per_diem"
+	kindSupplierInvoice = "supplier_invoice"
 )
 
 // entryKinds is every kind a request may carry, in the order design §3.1 names

@@ -1,13 +1,16 @@
 -- Decision X5's first track: what the employee is owed back. Every query here
 -- shares one predicate — an approved expense that owes its owner something —
--- written out in full each time rather than hidden in a view, so the count,
--- the page, the export and the update can never disagree about which expenses
--- a payroll run is about.
+-- written out in every query rather than hidden in a view, so the count, the
+-- page, the export and the update can never disagree about which expenses a
+-- payroll run is about.
 --
--- "Owes its owner something" is owedToEmployee (responses.go) in SQL: the
--- gross of an outlay the employee paid, the whole of a mileage line, and
--- nothing at all for an outlay the company paid. A gross that rounds to zero
--- owes nothing either, which is why gross_amount > 0 is part of it.
+-- "Owes its owner something" is two halves. Who is owed is
+-- expenses.owes_employee(kind, paid_by), the function migration 00033 defines
+-- and owesEmployee (authorize.go) mirrors: the gross of an outlay the employee
+-- paid, the whole of a mileage line and of a per diem day, and nothing at all
+-- for an outlay the company paid or for a supplier invoice, which the company
+-- pays and which is nobody's to be paid back for (supplier invoices design
+-- D1). How much is gross_amount > 0: a gross that rounds to zero owes nothing.
 
 -- The predicate, written out once in words and then in full in every query
 -- below: a **unit** — a standalone expense, or a whole travel claim — that is
@@ -23,7 +26,7 @@ SELECT count(*) FROM (
     WHERE status = 'approved'
       AND claim_id IS NULL
       AND gross_amount > 0
-      AND NOT (kind = 'outlay' AND (paid_by IS NULL OR paid_by <> 'employee'))
+      AND expenses.owes_employee(kind, paid_by)
       AND (@reimbursed::boolean = (reimbursed_at IS NOT NULL))
       AND (sqlc.narg(user_id)::uuid IS NULL OR user_id = sqlc.narg(user_id)::uuid)
       AND (sqlc.narg(from_date)::date IS NULL OR entry_date >= sqlc.narg(from_date)::date)
@@ -36,7 +39,7 @@ SELECT count(*) FROM (
           SELECT 1 FROM expenses.entries e
           WHERE e.claim_id = c.id
             AND e.gross_amount > 0
-            AND NOT (e.kind = 'outlay' AND (e.paid_by IS NULL OR e.paid_by <> 'employee')))
+            AND expenses.owes_employee(e.kind, e.paid_by))
       AND (sqlc.narg(user_id)::uuid IS NULL OR c.user_id = sqlc.narg(user_id)::uuid)
       AND (sqlc.narg(from_date)::date IS NULL
            OR (c.departure_at AT TIME ZONE @time_zone::text)::date >= sqlc.narg(from_date)::date)
@@ -60,7 +63,7 @@ WITH units AS (
     WHERE status = 'approved'
       AND claim_id IS NULL
       AND gross_amount > 0
-      AND NOT (kind = 'outlay' AND (paid_by IS NULL OR paid_by <> 'employee'))
+      AND expenses.owes_employee(kind, paid_by)
       AND (@reimbursed::boolean = (reimbursed_at IS NOT NULL))
       AND (sqlc.narg(user_id)::uuid IS NULL OR user_id = sqlc.narg(user_id)::uuid)
       AND (sqlc.narg(from_date)::date IS NULL OR entry_date >= sqlc.narg(from_date)::date)
@@ -74,7 +77,7 @@ WITH units AS (
           SELECT 1 FROM expenses.entries e
           WHERE e.claim_id = c.id
             AND e.gross_amount > 0
-            AND NOT (e.kind = 'outlay' AND (e.paid_by IS NULL OR e.paid_by <> 'employee')))
+            AND expenses.owes_employee(e.kind, e.paid_by))
       AND (sqlc.narg(user_id)::uuid IS NULL OR c.user_id = sqlc.narg(user_id)::uuid)
       AND (sqlc.narg(from_date)::date IS NULL
            OR (c.departure_at AT TIME ZONE @time_zone::text)::date >= sqlc.narg(from_date)::date)
@@ -97,7 +100,7 @@ SELECT * FROM expenses.entries
 WHERE status = 'approved'
   AND claim_id IS NULL
   AND gross_amount > 0
-  AND NOT (kind = 'outlay' AND (paid_by IS NULL OR paid_by <> 'employee'))
+  AND expenses.owes_employee(kind, paid_by)
   AND (@reimbursed::boolean = (reimbursed_at IS NOT NULL))
   AND user_id = ANY(@user_ids::uuid[])
   AND (sqlc.narg(from_date)::date IS NULL OR entry_date >= sqlc.narg(from_date)::date)
@@ -115,7 +118,7 @@ WHERE c.status = 'approved'
       SELECT 1 FROM expenses.entries e
       WHERE e.claim_id = c.id
         AND e.gross_amount > 0
-        AND NOT (e.kind = 'outlay' AND (e.paid_by IS NULL OR e.paid_by <> 'employee')))
+        AND expenses.owes_employee(e.kind, e.paid_by))
   AND (sqlc.narg(from_date)::date IS NULL
        OR (c.departure_at AT TIME ZONE @time_zone::text)::date >= sqlc.narg(from_date)::date)
   AND (sqlc.narg(to_date)::date IS NULL
@@ -150,7 +153,7 @@ SELECT sqlc.embed(e), c.purpose AS claim_purpose,
 FROM expenses.entries e
 LEFT JOIN expenses.claims c ON c.id = e.claim_id
 WHERE e.gross_amount > 0
-  AND NOT (e.kind = 'outlay' AND (e.paid_by IS NULL OR e.paid_by <> 'employee'))
+  AND expenses.owes_employee(e.kind, e.paid_by)
   AND (
       (e.claim_id IS NULL AND e.status = 'approved'
        AND (@by_ids::boolean OR @reimbursed::boolean = (e.reimbursed_at IS NOT NULL)))
@@ -186,7 +189,7 @@ WHERE id = ANY(@ids::bigint[])
   AND claim_id IS NULL
   AND reimbursed_at IS NULL
   AND gross_amount > 0
-  AND NOT (kind = 'outlay' AND (paid_by IS NULL OR paid_by <> 'employee'))
+  AND expenses.owes_employee(kind, paid_by)
   -- claim_id IS NULL is the rule this operation is about: a payroll run covers
   -- a standalone expense or a whole travel claim, never one of a claim's lines
   -- (unitOf in authorize.go). Go refuses a line by id before this ever runs, so
@@ -234,7 +237,7 @@ WHERE id = ANY(@ids::bigint[])
       SELECT 1 FROM expenses.entries e
       WHERE e.claim_id = expenses.claims.id
         AND e.gross_amount > 0
-        AND NOT (e.kind = 'outlay' AND (e.paid_by IS NULL OR e.paid_by <> 'employee')))
+        AND expenses.owes_employee(e.kind, e.paid_by))
 RETURNING *;
 
 -- name: UnmarkClaimsReimbursed :many
