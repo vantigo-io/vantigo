@@ -347,8 +347,8 @@ picking another is refused with "Work type is no longer active" on the select. M
 week, the day view and the approval queue show a small badge with the type's name —
 the entry's snapshot, never the multiplier — after the trackable code (on the week
 grid, a row badges every type its entries hold that week). Where the billing block is
-visible, the day view and the approval queue add a rate line, "900 × 150 % = 1 350",
-formatted in the reader's locale (en "900 × 150 % = 1,350"). The week grid's hours
+visible, the day view and the approval queue add a rate line, "900 × 150 % = 1 350,00",
+formatted in the reader's locale (en "900 × 150 % = 1,350.00"; always two decimals). The week grid's hours
 edit keeps an entry's type (an update is a full replace, so it sends `workTypeId`
 again), while typing hours into an empty day of a badged row logs **ordinary hours**
 — a new entry picks its type in the form; a grid edit of an entry whose type was
