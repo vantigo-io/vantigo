@@ -19,7 +19,9 @@ invoice and holds no invoice line.
   `projectId`, optional `billingLineId` and `taskId` with a `taskTitle` snapshot,
   `entryDate`, `hours`, optional `startTime`/`endTime`, a `note`, `billable`, the
   frozen `billRate`/`billCurrency` and `costRate`/`costCurrency` with the
-  `rateSource` that produced them, a `status`, a `rejectionReason`, the
+  `rateSource` that produced them, the picked work type's snapshot (`workTypeId`, its
+  name, `billMultiplierPercent` and `costMultiplierPercent`; all empty for ordinary
+  hours), a `status`, a `rejectionReason`, the
   `submittedAt`/`approvedAt`/`approvedBy`/`invoicedAt` stamps, and `revision` for
   concurrent edits. The id is a `bigint`.
 - **Person rate card** (`time.person_rates`) — one row per person per `validFrom`
@@ -56,7 +58,9 @@ start/end comparison depends on float rounding.
 Rates are resolved **at every save while the entry is `draft` or `rejected`**, and
 **frozen from the moment it is submitted**. Changing a rate card never rewrites hours
 that are already on their way to an invoice; re-editing a rejected entry re-resolves
-them, because it is a draft again.
+them, because it is a draft again. The chain below picks the base rates; a
+[work type](#the-work-types-multiplier), when the entry picked one, is the last step,
+a multiplier kept beside them.
 
 The bill rate, when the entry is billable:
 
@@ -120,6 +124,42 @@ consequences follow, and all four are the same rule:
 
 `rateSource` is one of `line`, `project`, `customer`, `person` or `none`, and it is
 part of the entry's response so the UI can say where an amount came from.
+
+### The work type's multiplier
+
+An entry may pick one of its project's [work types](projects.md#work-types) —
+`workTypeId` on the create and the update, checked at every save while `draft` or
+`rejected`: the type must be one of the entry's project's (else 400 on `workTypeId`,
+"Work type is not on this project") and active ("Work type is no longer active"). The
+type is read through `contracts.ProjectDirectory.WorkType` with the project and the
+line, **before** the saving transaction opens, like every other directory read.
+
+The multiplier is **the last step, applied to whatever the chain resolved**: a
+billing line's rule, the project's default, the customer's or the person's — the type
+is orthogonal to which step won, and `rateSource` still names the step. It is **kept
+beside the rates, never baked into them**: `billRate` and `costRate` stay the base
+rates the chain resolved, and the entry snapshots the type's name,
+`billMultiplierPercent` and `costMultiplierPercent` next to them. A non-billable entry
+keeps its cost multiplier: overtime costs the company whether or not it bills. Picking
+none is ordinary hours; an update is a full replace, so leaving `workTypeId` out makes
+the entry ordinary hours again.
+
+**The snapshot is frozen with the rates**, by the same rule and at the same save
+points: taken at every save while `draft` or `rejected`, never touched from
+`submitted` on. A type whose multiplier changes afterwards moves no submitted,
+approved or invoiced entry. A rejected entry keeps its snapshot until it is edited,
+and that save takes the type afresh. An entry **unapproved** back to `draft` keeps
+the rates and the snapshot it was approved with until it is next saved —
+unapprove moves the status and nothing else — and that save re-resolves both, refusing
+a type deactivated meanwhile, exactly as it re-resolves a rate card changed meanwhile.
+
+The entry answers `workType: {id, name}` to whoever sees it, and inside the shaped
+blocks `billing.multiplierPercent` + `billing.effectiveRate` and
+`cost.multiplierPercent` + `cost.effectiveRate` — absent for ordinary hours, and the
+effective rate absent when the block has no rate. The effective rate is
+**display only**: rate × multiplier, half up to cents. Amounts are multiplied where
+they are summed — hours × base rate × multiplier, exact, rounded once — so 1.5 hours
+at 333.33 and 150 % is worth 749.99 (749.9925), not 1.5 × 500.00.
 
 ## The state machine
 
@@ -294,6 +334,21 @@ manager without it reaches the same queue from the dashboard's attention list or
 URL, so its *route guard* asks only for `time:access` (the nav item says so with
 `guardPermissions`) and the backend refuses a caller who approves nothing.
 
+**Work types in the app.** The entry form shows a **Work type** select when the
+chosen project has an active work type — active types only, "Ordinary hours" as the
+empty choice, cleared when the project changes. An entry logged as a type that has
+since been deactivated still shows it as the current value, and saving it without
+picking another is refused with "Work type is no longer active" on the select. My
+week, the day view and the approval queue show a small badge with the type's name —
+the entry's snapshot, never the multiplier — after the trackable code (on the week
+grid, a row badges every type its entries hold that week). Where the billing block is
+visible, the day view and the approval queue add a rate line, "900 × 150 % = 1 350",
+formatted in the reader's locale (en "900 × 150 % = 1,350"). The week grid's hours
+edit keeps an entry's type (an update is a full replace, so it sends `workTypeId`
+again), while typing hours into an empty day of a badged row logs **ordinary hours**
+— a new entry picks its type in the form; a grid edit of an entry whose type was
+deactivated is refused with the same sentence.
+
 Spotlight has a **Log time** quick action; the dashboard has a Time card (hours this
 week, and how much waits for the caller's approval), the `hours` metric, and attention
 items for an unsubmitted week and for a submission that has waited a week — those two
@@ -306,8 +361,15 @@ Time provides **no contract yet**; the module it is waiting for is invoicing, an
 seam is already the right shape for it:
 
 - **Approved, billable entries with a bill rate** are the invoiceable set: `hours ×
-  billRate` in `billCurrency`, grouped by project and by the **trackable code**
-  `<project>-<line>` the billing line gives them.
+  billRate × billMultiplierPercent / 100` (100 % for ordinary hours) in
+  `billCurrency`, computed exactly — the queries multiply by
+  `COALESCE(bill_multiplier_percent, 100) * 0.01`, which numeric does without
+  rounding — and rounded once per invoice line, never
+  from the display-only `effectiveRate`. Grouped by project and by the **trackable
+  code** `<project>-<line>` the billing line gives them — and, within a line, by work
+  type, since an overtime hour is billed at its own price.
+- The multiplier is a **snapshot** beside the rate, frozen with it, so a type whose
+  percentage changes after the hours were submitted bills them at what was promised.
 - The rate is a **snapshot**, so an invoice built next month from last month's hours
   bills what was promised, not what the rate card says today.
 - `unpricedHours` on the project summary is what an invoice cannot price: billable
@@ -377,6 +439,20 @@ caller to shape.
 - **Uncosted hours** are the same idea for cost, but across *every* bucket, billable
   or not: work nobody is billed for still costs the company, so a consumer showing a
   margin has to know how many of its hours it left out of that number.
+- **Every amount is multiplied where it is summed.** Each entry's bill and cost amount
+  is its hours × its base rate × its work type's multiplier (100 % for none), summed
+  exactly and rounded once — in the buckets, per line, per work type, and in the
+  project summary's billed amount alike.
+- **The work per work type.** `ProjectActualsEntry.WorkTypes` is one
+  `WorkTypeActuals` per work type anything was logged as — `WorkTypeID`,
+  `HoursHundredths`, `BillAmount`, `CostAmount` — every bucket together, by id. **No
+  name**: a type is Projects', which names the rows it renders from its own table.
+  Ordinary hours are in none. The amounts follow the currency rule above; work in
+  another currency counts in the hours and in no amount. Each type's amounts are
+  rounded once, on their own, so the per-type amounts need not add up to a bucket or
+  to `Total` to the cent — and the totals and the split are **two reads** of the
+  entries, not one snapshot, so a save landing between them can show in one and not
+  yet in the other. `ActualsForProjects` does not carry it.
 - **No authorization, ever.** `Actuals`/`ActualsForProjects` answer whatever was
   logged; they never consult a role, a permission or the caller's identity, because
   the caller has already made that decision for its own surface.

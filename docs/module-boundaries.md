@@ -223,7 +223,11 @@ which a provider contract cannot see or grant on its behalf. See
 returns.
 
 Time consumes four contracts and provides one:
-`contracts.ProjectDirectory` (required — hence the config check),
+`contracts.ProjectDirectory` (required — hence the config check — including
+`WorkType`, the project's work type an entry picked, whose multipliers the rate
+chain's last step applies and which is read before a save's transaction opens like
+every other directory read; `WorkTypes` lists a project's types for a consumer that
+offers a choice),
 `contracts.UserDirectory` (always there, for names and for the rate card's user
 search), `contracts.ProductCatalog` (optional — with products disabled a `list` or
 `discount` billing line simply has no price, and the rate chain falls through to the

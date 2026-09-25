@@ -524,7 +524,7 @@ that writes it. See [`docs/time.md`](docs/time.md).
 *Unblocks:* hours that can be invoiced, the first real consumer of billing
 lines, and a task list contractors and consultants will actually keep.
 
-### Phase 3 — Budgets, billing milestones and costs (first delivery done)
+### Phase 3 — Budgets, billing milestones and costs (two deliveries done)
 
 Decided in `docs/superpowers/specs/2026-09-19-project-economy-design.md`, two
 deliveries.
@@ -568,13 +568,33 @@ contract Time implements.
 
 *Unblocks:* profitability and budget alerts, a project portfolio view.
 
-**Next: supplier costs, overtime and work-type multipliers.** Expenses landed
-separately — see [Expenses phase 3](#phase-3--expenses-on-the-project-page-done)
-— and the rest were out of scope for this delivery and stay the concrete next
-steps for project economics. Forecast / estimate-to-complete and
-original-vs-revised budgets (tracking a budget's own history rather than
-only its current value) are candidates worth deciding on once those land,
-not committed work yet.
+**Work types and overtime multipliers (done).** Decided in
+`docs/superpowers/specs/2026-09-25-project-work-types-design.md`. A project
+defines its work types once — a name, a bill multiplier and a cost multiplier,
+as percentages of the rate — and they apply to every billing line of it; a
+person picks one when logging time. It is a project-level rule rather than a
+multiplier per billing line on purpose: overtime is overtime whatever the
+work, and a rule per line would recreate, one level down, the duplicate
+"(overtime)" lines it replaces. Projects stores the percentages and computes
+no money; Time multiplies whatever rate the chain resolved, keeps the base
+rates and snapshots the multipliers beside them, freezes them on submit, and
+multiplies where it sums, exactly; the actuals contract gains the work per
+type (ids and figures; Projects names the rows), and the Economy tab shows
+"Hours by work type". The Norwegian overtime case no longer needs a duplicate
+billing line. See [`docs/projects.md`](docs/projects.md#work-types) and
+[`docs/time.md`](docs/time.md#the-work-types-multiplier).
+
+*Unblocks:* overtime billed and costed at its own rate on every project,
+without a line per kind of work.
+
+**Next: supplier invoices.** Expenses landed separately — see
+[Expenses phase 3](#phase-3--expenses-on-the-project-page-done) — and a
+supplier invoice (a company-paid expense kind with supplier, invoice number
+and due date, never in a claim, split from expenses in the project's Costs
+section) is the next delivery, its own spec. Forecast /
+estimate-to-complete and original-vs-revised budgets (tracking a budget's
+own history rather than only its current value) are candidates worth
+deciding on once that lands, not committed work yet.
 
 ### Phase 4 — Delivery milestones, timeline and templates
 
