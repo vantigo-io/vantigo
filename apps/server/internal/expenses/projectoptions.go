@@ -108,8 +108,9 @@ func (s *server) GetExpensesProjects(ctx context.Context, req gen.GetExpensesPro
 // cancelled — exactly the projects checkSupplierInvoiceProject would let this
 // caller record one on, so the picker never offers what the save refuses. It
 // can only list projects the caller holds a role on, because that is what
-// ProjectsForUser answers; a projects:manage-all holder on no team records
-// from the project page instead, whose summary hands the project over.
+// ProjectsForUser answers; a holder of projects:manage-all, or of
+// projects:view-financials with projects:view-all, on no team records from
+// the project page instead, whose summary hands the project over.
 func (s *server) supplierInvoiceProjects(ctx context.Context, c *caller) (gen.GetExpensesProjectsResponseObject, error) {
 	projects, err := s.projectsForUser(ctx, c.UserID)
 	if err != nil {

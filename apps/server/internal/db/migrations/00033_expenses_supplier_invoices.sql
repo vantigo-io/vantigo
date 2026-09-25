@@ -27,9 +27,9 @@ ALTER TABLE expenses.entries
 -- employee's. "Owes something" still needs gross_amount > 0 beside it: that
 -- half is about the amount, and every caller already says it.
 --
--- IMMUTABLE and PARALLEL SAFE: it reads nothing but its arguments, so the
--- planner may inline it into every query that calls it — the predicate costs
--- what the inline one did.
+-- IMMUTABLE and PARALLEL SAFE because it reads nothing but its arguments; a
+-- one-SELECT SQL function the planner inlines, so the predicate costs what the
+-- inline one did.
 -- +goose StatementBegin
 CREATE FUNCTION expenses.owes_employee(kind text, paid_by text)
 RETURNS boolean LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
@@ -43,10 +43,12 @@ $$;
 
 -- +goose Down
 -- A supplier invoice becomes the company-paid outlay it would have been
--- before this migration: paid_by is 'company' on every one, so the inline
--- predicate the older queries carry owes nobody for it, exactly as the
--- function did. Its number and due date go with their columns.
-UPDATE expenses.entries SET kind = 'outlay' WHERE kind = 'supplier_invoice';
+-- before this migration, and is made the company's, so the inline predicate
+-- the older queries carry owes nobody for it, exactly as the function did —
+-- whatever paid_by a row was written with. It is one-way: a later Up leaves
+-- the row an outlay, and its number and due date go with their columns.
+UPDATE expenses.entries SET kind = 'outlay', paid_by = 'company'
+WHERE kind = 'supplier_invoice';
 DROP FUNCTION expenses.owes_employee(text, text);
 ALTER TABLE expenses.entries
     DROP COLUMN supplier_invoice_number,

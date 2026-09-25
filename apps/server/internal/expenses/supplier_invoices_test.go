@@ -130,6 +130,7 @@ func TestSupplierInvoices_TheBodyIsRefusedFieldByField(t *testing.T) {
 		{"no amount", finance, supplierInvoiceBody(map[string]any{"grossAmount": nil, "vatAmount": nil}), "grossAmount", "A supplier invoice needs an amount"},
 		{"VAT above the amount", finance, supplierInvoiceBody(map[string]any{"vatAmount": 20000.00}), "vatAmount", "VAT cannot be more than the amount it is part of"},
 		{"paid by the employee", finance, supplierInvoiceBody(map[string]any{"paidBy": "employee"}), "paidBy", "A supplier invoice is paid by the company"},
+		{"paid by no one the module knows", finance, supplierInvoiceBody(map[string]any{"paidBy": "supplier"}), "paidBy", "'supplier' is not a payer; a supplier invoice is paid by the company"},
 		{"no project", finance, supplierInvoiceBody(map[string]any{"projectId": nil, "billable": nil}), "projectId", "A supplier invoice is booked on a project"},
 		{"a due date before the invoice date", finance, supplierInvoiceBody(map[string]any{"dueDate": "2026-03-09"}), "dueDate", "The due date cannot be before the invoice date"},
 		{"a distance", finance, supplierInvoiceBody(map[string]any{"distanceKm": 12.0}), "distanceKm", "A supplier invoice line carries no distanceKm"},
@@ -148,7 +149,7 @@ func TestSupplierInvoices_TheBodyIsRefusedFieldByField(t *testing.T) {
 	errs := refusedEntry(t, finance, http.MethodPost, entriesPath,
 		outlayBody(map[string]any{"invoiceNumber": "F-1", "dueDate": "2026-04-09"}))
 	for _, field := range []string{"invoiceNumber", "dueDate"} {
-		if !mentions(errs[field], "line carries no "+field) {
+		if !mentions(errs[field], "An outlay line carries no "+field) {
 			t.Errorf("an outlay with %s: %v, want it refused on the field", field, errs[field])
 		}
 	}
@@ -313,6 +314,26 @@ func TestSupplierInvoices_ADraftChangesBetweenOutlayAndSupplierInvoice(t *testin
 	errs = refusedEntry(t, manager, http.MethodPut, entryPath(back.Id), mileageBody(map[string]any{"revision": back.Revision}))
 	if !mentions(errs["kind"], "Remove this expense's receipts") {
 		t.Errorf("an outlay with an attachment made mileage: kind = %v", errs["kind"])
+	}
+}
+
+// The way back is a new booking: a supplier invoice's project was judged by
+// its recorder's financial rights, so an outlay on the same project is judged
+// on the owner's CanLogTime in full — and a finance reader on no team may not
+// book one there, however long the invoice has sat on it.
+func TestSupplierInvoices_TurnedIntoAnOutlayTheProjectIsJudgedAgain(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	finance, _ := financeReader(t, h)
+	invoice := createEntry(t, finance, supplierInvoiceBody(nil))
+
+	errs := refusedEntry(t, finance, http.MethodPut, entryPath(invoice.Id), outlayBody(map[string]any{
+		"projectId": projectKraftVerket, "paidBy": "company", "revision": invoice.Revision}))
+	if !mentions(errs["projectId"], "This project is not one the expense's owner can book on") {
+		t.Errorf("a finance reader's supplier invoice made an outlay: projectId = %v, want the booking refusal", errs["projectId"])
+	}
+	if got := getEntry(t, finance, invoice.Id); got.Kind != "supplier_invoice" || got.Revision != invoice.Revision {
+		t.Errorf("after the refusal: kind %q revision %d, want the supplier invoice untouched", got.Kind, got.Revision)
 	}
 }
 

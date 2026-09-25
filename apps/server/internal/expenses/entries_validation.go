@@ -565,7 +565,11 @@ func derefString(v *string) string {
 
 // notOnKind is the message a field carries when the kind does not have it.
 func notOnKind(field, kind string) string {
-	return fmt.Sprintf("A %s line carries no %s", kindLabel(kind), field)
+	article := "A"
+	if kind == kindOutlay {
+		article = "An"
+	}
+	return fmt.Sprintf("%s %s line carries no %s", article, kindLabel(kind), field)
 }
 
 // kindLabel names a kind the way a refusal says it out loud. The per diem

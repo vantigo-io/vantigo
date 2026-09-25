@@ -540,10 +540,11 @@ func attachmentsOf(names entryNames, entryID int64) []gen.ExpensesAttachmentResp
 }
 
 // owedToEmployee is what the owner gets back (design §3.1): the gross of an
-// outlay they paid themselves, a mileage line's whole amount, and nothing at
-// all for an outlay the company paid or for a supplier invoice. owesEmployee
-// (authorize.go) is the same rule as a yes or no, and expenses.owes_employee,
-// which the reimbursement queries call, is that rule in SQL.
+// outlay they paid themselves, a mileage line's or a per diem day's whole
+// amount, and nothing at all for an outlay the company paid or for a supplier
+// invoice. owesEmployee (authorize.go) is the same rule as a yes or no, and
+// expenses.owes_employee, which the reimbursement queries call, is that rule
+// in SQL.
 func owedToEmployee(row store.ExpensesEntry, gross *big.Rat) *big.Rat {
 	if !owesEmployee(row) {
 		return new(big.Rat)
