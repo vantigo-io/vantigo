@@ -43,7 +43,7 @@ describe("DayPage", () => {
     // Internal has only a retired type: its list answers, and still offers nothing.
     const internRetired = { ...kvemWorkTypes[1], id: 6004, projectId: 1002, name: "Utgått overtid" };
     const fetchMock = stubTimeApi({ week: dayWeek(), workTypes: { 1001: kvemWorkTypes, 1002: [internRetired] } });
-    renderRoute(`/time/day?date=${DAY}`);
+    const { queryClient } = renderRoute(`/time/day?date=${DAY}`);
 
     await screen.findByText("Status meeting");
     await userEvent.click(screen.getByRole("button", { name: "Add entry" }));
@@ -52,11 +52,14 @@ describe("DayPage", () => {
     // No project, no choice; a project without work types, none either.
     expect(within(dialog).queryByRole("combobox", { name: "Work type" })).not.toBeInTheDocument();
     await choose(dialog, "Project", /INTERN/);
-    // Asserted only once Internal's list has answered, or it would hold before any did.
+    // Asserted only once Internal's list has loaded and reached the form, or
+    // it would hold before any answer did. The query notifies its observers
+    // on a zero timeout, so one more macrotask inside act lets the form render
+    // what it was told.
     await waitFor(() =>
-      expect(fetchMock.actualCalls.some(([url]) => String(url).endsWith("/projects/1002/work-types"))).toBe(true),
+      expect(queryClient.getQueryState(["time", "options", "work-types", 1002])?.status).toBe("success"),
     );
-    await act(async () => {});
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
     expect(within(dialog).queryByRole("combobox", { name: "Work type" })).not.toBeInTheDocument();
 
     await choose(dialog, "Project", /KVEM1000/);
@@ -93,7 +96,7 @@ describe("DayPage", () => {
 
     const card = (await screen.findByText("Late deploy")).closest("[data-entry]") as HTMLElement;
     expect(within(card).getByTestId("work-type-badge")).toHaveTextContent("Overtid 50 %");
-    expect(within(card).getByTestId("rate-line")).toHaveTextContent("900 × 150 % = 1,350");
+    expect(within(card).getByTestId("rate-line")).toHaveTextContent("900.00 × 150 % = 1,350.00");
 
     await userEvent.click(within(card).getByRole("button", { name: "Edit the entry" }));
     const dialog = await screen.findByRole("dialog", { name: "Edit time" });
@@ -114,8 +117,9 @@ describe("DayPage", () => {
       note: "Old overtime",
       billable: false,
       workType: { id: 6003, name: "Gammel overtid" },
-      // Not billable: the multiplier is snapshotted, but nothing bills at it.
-      billing: { billRate: 900, currency: "NOK", multiplierPercent: 150 },
+      // Not billable: the server sends the snapshotted multiplier, but no
+      // rate and so nothing an hour bills at.
+      billing: { currency: "NOK", multiplierPercent: 150 },
     });
     stubTimeApi({
       week: week([weekRow(pmRow, [retired])]),

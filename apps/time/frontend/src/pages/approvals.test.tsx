@@ -44,7 +44,34 @@ describe("ApprovalsPage", () => {
     expect(within(row).getByTestId("work-type-badge")).toHaveTextContent("Overtid 50 %");
     // 333.33 × 1.5 h × 150 % is 749.99 — not 1.5 × the 500.00 an hour shows.
     expect(row).toHaveTextContent("749.99");
-    expect(within(row).getByTestId("rate-line")).toHaveTextContent("333.33 × 150 % = 500");
+    expect(within(row).getByTestId("rate-line")).toHaveTextContent("333.33 × 150 % = 500.00");
+  });
+
+  it("tells apart the checkboxes of ordinary hours and overtime on one line and day", async () => {
+    stubTimeApi({
+      approvals: [
+        {
+          userId: ME,
+          displayName: "Ada Lovelace",
+          weekStart: WEEK,
+          hours: 9.5,
+          entries: [
+            submittedEntry({ id: 721, hours: 7.5, note: "Day shift" }),
+            submittedEntry({ id: 722, hours: 2, note: "Evening", workType: { id: 6001, name: "Overtid 50 %" } }),
+          ],
+        },
+      ],
+    });
+    renderRoute("/time/approvals");
+
+    const ada = await open("Ada Lovelace");
+    const ordinary = (await within(ada).findByText("Day shift")).closest("tr") as HTMLElement;
+    const overtime = within(ada).getByText("Evening").closest("tr") as HTMLElement;
+    const ordinaryName = within(ordinary).getByRole("checkbox").getAttribute("aria-label");
+    expect(ordinaryName).toMatch(/^Select KVEM1000 › PM on /);
+    expect(within(overtime).getByRole("checkbox")).toHaveAccessibleName(
+      ordinaryName?.replace("KVEM1000 › PM on", "KVEM1000 › PM as Overtid 50 % on"),
+    );
   });
 
   it("lists a group per person and week, and its entries once the group is opened", async () => {

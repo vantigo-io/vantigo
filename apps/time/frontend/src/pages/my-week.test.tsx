@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { jsonResponse, sent } from "../test/api";
+import { problemResponse, sent } from "../test/api";
 import { devTaskRow, entry, pmRow, WEEK, week, weekRow } from "../test/fixtures";
 import { renderRoute } from "../test/route-tree";
 import { stubTimeApi } from "../test/server";
@@ -118,10 +118,7 @@ describe("MyWeekPage", () => {
       ]),
       write: (method) =>
         method === "PUT"
-          ? jsonResponse(400, {
-              title: "Invalid time entry",
-              errors: { workTypeId: ["Work type is no longer active"] },
-            })
+          ? problemResponse(400, "Invalid time entry", { workTypeId: ["Work type is no longer active"] })
           : undefined,
     });
     renderRoute(`/time?week=${WEEK}`);
@@ -336,9 +333,8 @@ describe("MyWeekPage", () => {
       week: typicalWeek(),
       write: (method) =>
         method === "POST"
-          ? jsonResponse(400, {
-              title: "Invalid time entry",
-              errors: { hours: ["Your hours on 2026-09-17 would total 25, and a day holds at most 24"] },
+          ? problemResponse(400, "Invalid time entry", {
+              hours: ["Your hours on 2026-09-17 would total 25, and a day holds at most 24"],
             })
           : undefined,
     });
