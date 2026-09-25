@@ -242,7 +242,11 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
               placeholder={t("allKinds")}
               clearable
               w={170}
-              data={standaloneExpenseKinds.map((kind) => ({ value: kind, label: t(expenseKindLabelKey(kind)) }))}
+              // A supplier invoice lives on a project, so without the projects
+              // module it is not a kind anybody can have recorded here.
+              data={standaloneExpenseKinds
+                .filter((kind) => kind !== "supplier_invoice" || meta?.projectsAvailable === true)
+                .map((kind) => ({ value: kind, label: t(expenseKindLabelKey(kind)) }))}
               value={filters.kind ?? null}
               onChange={(value) => filterBy({ kind: (value ?? undefined) as MyExpensesSearch["kind"] })}
             />
@@ -525,7 +529,7 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
                         <Table.Td>
                           {expense.attachmentCount === 0 ? (
                             <Text size="xs" c="dimmed">
-                              {t("noReceipts")}
+                              {expense.kind === "supplier_invoice" ? t("noSupplierInvoiceDocument") : t("noReceipts")}
                             </Text>
                           ) : (
                             <ReceiptThumbnails attachments={expense.attachments} size={32} />

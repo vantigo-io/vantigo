@@ -20,7 +20,7 @@ import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, useI18n } from "@vantigo/frontend-shell";
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { deleteReceipt } from "../api/attachments";
 import type { Claim } from "../api/claims";
 import {
@@ -332,8 +332,14 @@ const ExpenseForm = ({
         values.kind === "supplier_invoice" && value && values.entryDate && value < values.entryDate
           ? t("dueDateBeforeInvoiceDate")
           : null,
+      // Judged only where there is a project block to choose one in. Without
+      // the projects module a supplier invoice already recorded stays
+      // editable — the server carries its project through (decision X2) —
+      // and a rule no block can show would leave "Save" doing nothing.
       projectId: (value, values) =>
-        values.kind === "supplier_invoice" && !value ? t("supplierInvoiceNeedsProject") : null,
+        values.kind === "supplier_invoice" && meta?.projectsAvailable === true && !value
+          ? t("supplierInvoiceNeedsProject")
+          : null,
       fromPlace: (value) => (value.trim().length > PLACE_MAX_LENGTH ? t("placeTooLong") : null),
       toPlace: (value) => (value.trim().length > PLACE_MAX_LENGTH ? t("placeTooLong") : null),
       grossAmount: (value, values) => {
@@ -428,6 +434,7 @@ const ExpenseForm = ({
     attachments.length === 0;
   /** A supplier invoice is never submitted without the supplier's invoice attached (design D2). */
   const needsInvoiceDocument = values.kind === "supplier_invoice" && attachments.length === 0;
+  const submitHintId = useId();
 
   /**
    * The payload for the kind on screen. Project, line and billable go along
@@ -490,7 +497,13 @@ const ExpenseForm = ({
 
   const onRefusal = (error: Error) => {
     if (error instanceof ApiValidationError) {
-      const fields = Object.fromEntries(Object.entries(error.fieldErrors).filter(([field]) => formFields.has(field)));
+      // A refusal on `kind` lands under the kind control — and where there is
+      // none (a trip's line, or the project page's supplier invoice, whose
+      // kind the button fixed) it is said in the list above the form instead.
+      const kindShown = claim === undefined && !kindFixed;
+      const fields = Object.fromEntries(
+        Object.entries(error.fieldErrors).filter(([field]) => formFields.has(field) && (field !== "kind" || kindShown)),
+      );
       if (Object.keys(fields).length > 0) {
         form.setErrors(fields);
         return;
@@ -619,7 +632,7 @@ const ExpenseForm = ({
         <RefusalList messages={refusals} />
 
         {claim === undefined && !kindFixed && (
-          <Input.Wrapper label={t("kind")} labelElement="div">
+          <Input.Wrapper label={t("kind")} labelElement="div" error={form.errors.kind}>
             <SegmentedControl
               fullWidth
               mt={4}
@@ -891,11 +904,18 @@ const ExpenseForm = ({
           <>
             <Divider />
             {projectOptions.length === 0 && !values.projectId ? (
-              <Input.Wrapper error={form.errors.projectId}>
+              // No control to attach an error to, so a refusal on the project
+              // is announced on its own rather than hung on a sentence.
+              <Stack gap={2}>
                 <Text size="sm" c="dimmed">
                   {values.kind === "supplier_invoice" ? t("noSupplierInvoiceProjects") : t("noBookableProjects")}
                 </Text>
-              </Input.Wrapper>
+                {form.errors.projectId && (
+                  <Text size="sm" c="red" role="alert">
+                    {form.errors.projectId}
+                  </Text>
+                )}
+              </Stack>
             ) : (
               <Stack gap="xs">
                 <Group grow align="start">
@@ -1003,16 +1023,22 @@ const ExpenseForm = ({
               // A supplier invoice without its document is refused at submit
               // (design D2), and a new one cannot have its document yet — so
               // the button does not offer a refusal; the sentence under it
-              // says what it waits for.
-              disabled={needsInvoiceDocument}
-              onClick={() => submit(true)()}
+              // says what it waits for. Marked unavailable rather than
+              // disabled, so it stays in the tab order and a keyboard or
+              // screen-reader user meets the sentence it is described by.
+              data-disabled={needsInvoiceDocument || undefined}
+              aria-disabled={needsInvoiceDocument || undefined}
+              aria-describedby={needsInvoiceDocument ? submitHintId : undefined}
+              onClick={() => {
+                if (!needsInvoiceDocument) submit(true)();
+              }}
             >
               {t("saveAndSubmit")}
             </Button>
           )}
         </SimpleGrid>
         {claim === undefined && needsInvoiceDocument && (
-          <Text size="xs" c="dimmed" ta="right" data-testid="submit-needs-invoice">
+          <Text size="xs" c="dimmed" ta="right" id={submitHintId} data-testid="submit-needs-invoice">
             {t("attachSupplierInvoiceToSubmit")}
           </Text>
         )}

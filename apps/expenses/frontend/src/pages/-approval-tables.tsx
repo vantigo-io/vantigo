@@ -204,9 +204,11 @@ export const EntryTable = ({
                   </Text>
                 ) : (
                   <Text size="xs">
-                    {entry.attachmentCount === 1
-                      ? t("oneReceipt")
-                      : t("receiptCount", { count: entry.attachmentCount })}
+                    {entry.kind === "supplier_invoice"
+                      ? t("supplierInvoiceAttached")
+                      : entry.attachmentCount === 1
+                        ? t("oneReceipt")
+                        : t("receiptCount", { count: entry.attachmentCount })}
                   </Text>
                 )}
               </Table.Td>

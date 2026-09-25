@@ -116,6 +116,12 @@ export interface ExpensesServer {
   canRecordSupplierInvoice?: boolean;
   summaryProject?: ExpenseProjectOption;
   /**
+   * Projects the caller holds financial rights on that are cancelled: a
+   * supplier invoice booked on one is refused with the server's own sentence
+   * for it. Left out, none.
+   */
+  cancelledProjects?: number[];
+  /**
    * The project's own currency, as the derived summary reports it. Absent
    * models a project with no currency, where no card is the project's own.
    */
@@ -430,39 +436,58 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
   };
 
   /**
-   * The supplier invoice's own rules, as parseSupplierInvoice and
+   * The supplier invoice's own rules, as parseEntry, parseSupplierInvoice and
    * checkSupplierInvoiceProject hold them, on a create and on a replace alike:
    * a fake that took one without a project or a number, or on a project the
    * caller may not record one on, would let a form that gets any of it wrong
    * pass every test. The recorder gate is the fixture caller's: the projects
    * `GET /projects?kind=supplier_invoice` offers them, and the summary's own
-   * `project` when it answers one. A replace keeping the project it already
-   * carries is not judged again, as on the server.
+   * `project` when it answers one; a project in `cancelledProjects` is one
+   * they hold the rights on, so they are told it is cancelled. A replace
+   * keeping the project it already carries is not judged again, as on the
+   * server — and without the projects module one already recorded stays
+   * editable with no project named at all (decision X2), while a new one is
+   * refused on its kind. The other kinds carry neither of its two fields.
    */
   const supplierInvoiceRefusal = (
     input: ExpenseInput | ExpenseUpdateInput,
     claim: Claim | undefined,
     current?: StoredExpense,
   ): Record<string, string[]> | undefined => {
-    if (input.kind !== "supplier_invoice") return undefined;
     const refused: Record<string, string[]> = {};
-    if (input.projectId === undefined) refused.projectId = ["A supplier invoice is booked on a project"];
+    if (input.kind !== "supplier_invoice") {
+      const article = input.kind === "outlay" ? "An" : "A";
+      const label = input.kind === "per_diem" ? "per diem" : input.kind;
+      if (input.invoiceNumber !== undefined)
+        refused.invoiceNumber = [`${article} ${label} line carries no invoiceNumber`];
+      if (input.dueDate !== undefined) refused.dueDate = [`${article} ${label} line carries no dueDate`];
+      return Object.keys(refused).length > 0 ? refused : undefined;
+    }
+    const projectsOn = metaOf().projectsAvailable;
+    const keptKind = current?.kind === "supplier_invoice";
+    if (!projectsOn && !keptKind) refused.kind = ["A supplier invoice is booked on a project"];
+    else if (projectsOn && input.projectId === undefined)
+      refused.projectId = ["A supplier invoice is booked on a project"];
     if (claim) refused.claimId = ["A supplier invoice is not a travel claim line"];
     if (!input.supplier?.trim()) refused.supplier = ["A supplier invoice names its supplier"];
-    if (!input.invoiceNumber?.trim()) {
-      refused.invoiceNumber = ["A supplier invoice carries the supplier's invoice number"];
-    }
+    const number = input.invoiceNumber?.trim() ?? "";
+    if (!number) refused.invoiceNumber = ["A supplier invoice carries the supplier's invoice number"];
+    else if ([...number].length > 100) refused.invoiceNumber = ["An invoice number can be at most 100 characters"];
     if (input.paidBy === "employee") refused.paidBy = ["A supplier invoice is paid by the company"];
     if (input.dueDate && input.dueDate < input.entryDate) {
       refused.dueDate = ["The due date cannot be before the invoice date"];
     }
-    const kept = current?.kind === "supplier_invoice" && current.project?.id === input.projectId;
-    const recordable = [
-      ...supplierInvoiceProjectsOf(),
-      ...(server.canRecordSupplierInvoice ? [server.summaryProject ?? projectsOf()[0]] : []),
-    ].filter((one) => one !== undefined);
-    if (input.projectId !== undefined && !kept && !recordable.some((one) => one.id === input.projectId)) {
-      refused.projectId = ["This project is not one you can record a supplier invoice on"];
+    if (projectsOn && input.projectId !== undefined) {
+      const kept = keptKind && current?.project?.id === input.projectId;
+      const recordable = [
+        ...supplierInvoiceProjectsOf(),
+        ...(server.canRecordSupplierInvoice ? [server.summaryProject ?? projectsOf()[0]] : []),
+      ].filter((one) => one !== undefined);
+      if (!kept && server.cancelledProjects?.includes(input.projectId)) {
+        refused.projectId = ["This project is cancelled, so it takes no supplier invoices"];
+      } else if (!kept && !recordable.some((one) => one.id === input.projectId)) {
+        refused.projectId = ["This project is not one you can record a supplier invoice on"];
+      }
     }
     return Object.keys(refused).length > 0 ? refused : undefined;
   };
@@ -1516,7 +1541,13 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
           entryDate: update.entryDate,
           description: update.description,
           category: update.categoryId ? categoryStore.find((one) => one.id === update.categoryId) : undefined,
-          billable: update.billable ?? false,
+          // Without the projects module the project columns are not this
+          // save's to write — the request could not name them — so what was
+          // booked is carried, billable flag and all (decision X2).
+          billable: metaOf().projectsAvailable ? (update.billable ?? false) : entry.billable,
+          ...(metaOf().projectsAvailable && update.kind === "supplier_invoice" && update.projectId !== undefined
+            ? { project: projectRefOf(update.projectId) }
+            : {}),
           revision: entry.revision + 1,
           supplier: undefined,
           paidBy: undefined,
