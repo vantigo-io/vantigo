@@ -16,6 +16,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/customers"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
@@ -640,5 +641,39 @@ func TestAnonymisationWorker_ReleasesTheLeaseAfterEveryCycle(t *testing.T) {
 	}
 	if n := h.Count(t, `SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`); n != 0 {
 		t.Errorf("advisory locks still held on this database = %d, want 0", n)
+	}
+}
+
+// A cycle needs exactly one pooled connection, the one its lease holds (PR
+// #124's smoke failure): four lease workers on the api's pool of four each
+// held one and waited for a second, and nothing ever finished. On a pool of
+// one, a cycle that reached for a second connection would wait for itself; the
+// deadline turns that hang into this test's failure rather than a stuck run.
+func TestAnonymisationWorker_RunsTheCycleOnTheOneConnectionItHolds(t *testing.T) {
+	t.Parallel()
+	fake := &fakePersonalData{}
+	h := newHarness(t, modtest.WithCustomerPersonalData(contracts.CustomerPersonalDataHolder{Module: "fake", Data: fake}))
+	c := authenticatedClient(t, h)
+	person := archivedPerson(t, c, "Kari Nordmann")
+	scheduleOn(t, h, person.Id, day(h, 0))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	one, err := db.Open(ctx, h.Pool().Config().ConnString(), db.WithMaxConns(1))
+	if err != nil {
+		t.Fatalf("open a pool of one: %v", err)
+	}
+	defer one.Close()
+	deps := h.Deps()
+	deps.Pool = one
+
+	if ran, err := customers.NewAnonymisationWorker(deps).RunCycle(ctx); err != nil || !ran {
+		t.Fatalf("RunCycle on a pool of one = %v, %v; want true, nil", ran, err)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM customers.customers WHERE id = $1 AND anonymised_at IS NOT NULL`, person.Id); n != 1 {
+		t.Errorf("customer %d anonymised = %d, want 1", person.Id, n)
+	}
+	if got := fake.erasesSoFar(); len(got) != 1 {
+		t.Errorf("erases = %v, want one", got)
 	}
 }
