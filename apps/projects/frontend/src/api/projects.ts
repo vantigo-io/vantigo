@@ -52,6 +52,18 @@ export type BillingLine = Omit<Schemas["BillingLineResponse"], "pricing"> & { pr
 
 export type BillingLineInput = Omit<Schemas["BillingLineRequest"], "pricingMode"> & { pricingMode: PricingMode };
 
+/**
+ * One of the project's work types (work types design D1): a name and two
+ * multipliers, percentages of the rate. A rule, not an amount — the API
+ * answers it to everyone who sees the project, though this package shows it
+ * only on the Billing tab, behind financial rights. Every field is required
+ * on the wire, so nothing needs normalising here.
+ */
+export type WorkType = Schemas["WorkTypeResponse"];
+
+/** A work type as it should stand. `active` is the one field a PUT may leave out; a POST never sends it. */
+export type WorkTypeInput = Schemas["WorkTypeRequest"];
+
 export interface PaginatedResponse<T> {
   data: T[];
   pagination: PaginationMetadata;

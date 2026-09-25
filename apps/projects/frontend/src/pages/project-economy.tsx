@@ -296,8 +296,60 @@ const BudgetSection = ({ projectId }: { projectId: number }) => {
             </Table>
           </Table.ScrollContainer>
         )}
+
+        <WorkTypeTable economy={economy} currency={currency} />
       </Stack>
     </Card>
+  );
+};
+
+/**
+ * "Hours by work type" (work types design D4): the hours of each type the
+ * project's entries were logged as, and — when the answer carries them —
+ * what they are worth and what they cost. Ordinary hours are the absence of
+ * a type, so they are no row, and the figures are already inside every total
+ * above, multiplied where Time summed them: this is a split, never a sum. The
+ * list is absent without time tracking and empty when no entry picked a type,
+ * and both draw nothing. A column is drawn when the answer carries its
+ * figure, the way the cost panel follows the cost block.
+ */
+const WorkTypeTable = ({ economy, currency }: { economy: Economy; currency?: string }) => {
+  const { t } = useI18n("projects");
+  const { hours, money } = useEconomyFormat(currency);
+  const headingId = useId();
+  const workTypes = economy.workTypes ?? [];
+  if (workTypes.length === 0) return null;
+  const showValue = workTypes.some((row) => row.billAmount != null);
+  const showCost = workTypes.some((row) => row.costAmount != null);
+
+  return (
+    <Stack gap="xs">
+      <Text fw={600} size="sm" id={headingId}>
+        {t("hoursByWorkType")}
+      </Text>
+      <Table.ScrollContainer minWidth={480}>
+        <Table striped aria-labelledby={headingId}>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>{t("workTypeColumn")}</Table.Th>
+              <Table.Th>{t("workTypeHoursColumn")}</Table.Th>
+              {showValue && <Table.Th>{t("workTypeValueColumn")}</Table.Th>}
+              {showCost && <Table.Th>{t("workTypeCostColumn")}</Table.Th>}
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {workTypes.map((row) => (
+              <Table.Tr key={row.id}>
+                <Table.Td>{row.name}</Table.Td>
+                <Table.Td>{hours(row.hours)}</Table.Td>
+                {showValue && <Table.Td>{money(row.billAmount)}</Table.Td>}
+                {showCost && <Table.Td>{money(row.costAmount)}</Table.Td>}
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      </Table.ScrollContainer>
+    </Stack>
   );
 };
 

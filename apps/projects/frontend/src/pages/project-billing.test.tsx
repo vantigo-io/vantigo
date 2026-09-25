@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import type { BillingLine, Project } from "../api/projects";
+import type { BillingLine, Project, WorkType } from "../api/projects";
 import { stubFetch } from "../test/fetch";
 import { renderWithProviders } from "../test/render";
 import { ProjectBilling } from "./project-billing";
@@ -58,11 +58,25 @@ const line = (overrides: Partial<BillingLine> = {}): BillingLine => ({
   ...overrides,
 });
 
-const stubBilling = (row: Project, lines: BillingLine[] = [line()]) =>
+/** Literally what the server sends for a work type. */
+const workType = (overrides: Partial<WorkType> = {}): WorkType => ({
+  id: 11,
+  projectId: 7,
+  name: "Overtid 50 %",
+  billMultiplierPercent: 150,
+  costMultiplierPercent: 140,
+  active: true,
+  createdAt: "2026-09-01T08:00:00Z",
+  updatedAt: "2026-09-01T08:00:00Z",
+  ...overrides,
+});
+
+const stubBilling = (row: Project, lines: BillingLine[] = [line()], workTypes: WorkType[] = []) =>
   stubFetch((input: RequestInfo | URL) => {
     const url = new URL(String(input), "http://localhost");
     if (url.pathname === "/api/v1/projects/7") return Promise.resolve(jsonResponse(200, row));
     if (url.pathname === "/api/v1/projects/7/billing-lines") return Promise.resolve(jsonResponse(200, lines));
+    if (url.pathname === "/api/v1/projects/7/work-types") return Promise.resolve(jsonResponse(200, workTypes));
     if (url.pathname === "/api/v1/products") return Promise.resolve(jsonResponse(200, { data: [] }));
     return Promise.resolve(new Response(null, { status: 404 }));
   });
@@ -325,5 +339,65 @@ describe("ProjectBilling", () => {
     renderWithProviders(<ProjectBilling projectId={7} />);
 
     expect(await screen.findByText("No billing lines yet.")).toBeInTheDocument();
+  });
+
+  describe("the Work types card", () => {
+    const types = [workType(), workType({ id: 12, name: "Gammel overtid", costMultiplierPercent: 150, active: false })];
+
+    it("lists each type's name, both multipliers and whether it is active", async () => {
+      stubBilling(project(), [line()], types);
+      renderWithProviders(<ProjectBilling projectId={7} />);
+
+      const table = await screen.findByRole("table", { name: "Work types" });
+      const overtime = within(table).getByText("Overtid 50 %").closest("tr") as HTMLElement;
+      expect(overtime).toHaveTextContent("150 %");
+      expect(overtime).toHaveTextContent("140 %");
+      expect(within(overtime).getByText("Active")).toBeInTheDocument();
+      const retired = within(table).getByText("Gammel overtid").closest("tr") as HTMLElement;
+      expect(within(retired).getByText("Inactive")).toBeInTheDocument();
+    });
+
+    it("offers a manager Add and a named edit button, opening the form", async () => {
+      stubBilling(project(), [line()], types);
+      renderWithProviders(<ProjectBilling projectId={7} />);
+
+      await userEvent.click(await screen.findByRole("button", { name: "Edit work type Overtid 50 %" }));
+      const dialog = await screen.findByRole("dialog", { name: "Edit work type" });
+      expect(within(dialog).getByRole("textbox", { name: "Name" })).toHaveValue("Overtid 50 %");
+      await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+      await userEvent.click(screen.getByRole("button", { name: "Add work type" }));
+      expect(await screen.findByRole("dialog", { name: "Add work type" })).toBeInTheDocument();
+    });
+
+    it("offers no buttons to someone who sees the amounts but may not manage the project", async () => {
+      stubBilling(
+        project({
+          capabilities: {
+            canManage: false,
+            canContribute: false,
+            canSeeFinancials: true,
+            canManageMilestones: false,
+            canSeeCosts: false,
+          },
+        }),
+        [line()],
+        types,
+      );
+      renderWithProviders(<ProjectBilling projectId={7} />);
+
+      await screen.findByRole("table", { name: "Work types" });
+      expect(screen.queryByRole("button", { name: "Add work type" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Edit work type Overtid 50 %" })).not.toBeInTheDocument();
+    });
+
+    it("says so when the project has none, even with the products module off", async () => {
+      stubBilling(project({ billingLinesAvailable: false }));
+      renderWithProviders(<ProjectBilling projectId={7} />);
+
+      expect(
+        await screen.findByText("No work types yet. Hours logged here bill and cost at the plain rate."),
+      ).toBeInTheDocument();
+    });
   });
 });

@@ -7,11 +7,14 @@ import { type BillingLine, billingLinesQueryOptions } from "../api/lines";
 import { type Project, projectQueryOptions } from "../api/projects";
 import { Field } from "../components/field";
 import "../i18n";
+import { workTypesQueryOptions } from "../api/work-types";
 import { billingTypeLabelKey, pricingModeLabelKey } from "../lib/billing";
 import { BillingLineFormModal, type BillingLineModalState } from "./-billing-line-form-modal";
+import { WorkTypeFormModal, type WorkTypeModalState } from "./-work-type-form-modal";
 
 /**
- * The Billing tab (design §8.2). Financial fields are shaped out of the
+ * The Billing tab (design §8.2): the financial summary, the billing lines and
+ * the project's work types (work types design D5). Financial fields are shaped out of the
  * response for a caller who may not see them (D12), so the tab asks the
  * project first and reads nothing else when the answer is no.
  */
@@ -51,6 +54,9 @@ export const ProjectBilling = ({ projectId }: { projectId: number }) => {
           {t("billingLinesUnavailable")}
         </Text>
       )}
+      {/* Work types need no product: they multiply whatever rate an entry
+          resolves, so the card stands whether or not products is enabled. */}
+      <WorkTypesCard projectId={projectId} canManage={project.capabilities.canManage} />
     </Stack>
   );
 };
@@ -163,6 +169,99 @@ const BillingLinesCard = ({ projectId, project }: { projectId: number; project: 
         state={modalState}
         onClose={() => setModalState(null)}
       />
+    </Card>
+  );
+};
+
+/**
+ * The project's work types (work types design D5): each a name and two
+ * multipliers, applying to every billing line of the project. A manager adds,
+ * edits and deactivates them — there is no delete, because entries that
+ * picked a type still name it. The card sits on the Billing tab, which is
+ * behind financial rights (D5 accepts that); a member without them reads the
+ * multipliers only through the API — Time's entry form — not here.
+ */
+const WorkTypesCard = ({ projectId, canManage }: { projectId: number; canManage: boolean }) => {
+  const { t, formatters } = useI18n("projects");
+  const { data: workTypes, isPending, isError, error } = useQuery(workTypesQueryOptions(projectId));
+  const [modalState, setModalState] = useState<WorkTypeModalState | null>(null);
+  const headingId = useId();
+  const multiplier = (value: number) => t("multiplierValue", { percent: formatters.formatNumber(value) });
+
+  return (
+    <Card withBorder padding="lg" radius="md">
+      <Stack gap="md">
+        <Group justify="space-between" wrap="wrap">
+          <Stack gap={2}>
+            <Text fw={600} component="h3" id={headingId}>
+              {t("workTypes")}
+            </Text>
+            <Text size="sm" c="dimmed">
+              {t("workTypesDescription")}
+            </Text>
+          </Stack>
+          {canManage && (
+            <Button size="xs" leftSection={<IconPlus size={14} />} onClick={() => setModalState({ mode: "create" })}>
+              {t("addWorkType")}
+            </Button>
+          )}
+        </Group>
+
+        {isError && (
+          <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadWorkTypes")}>
+            {error.message}
+          </Alert>
+        )}
+        {isPending && <ContentSkeleton rows={2} rowHeight={40} />}
+        {workTypes && workTypes.length === 0 && <EmptyState title={t("noWorkTypes")} size="sm" />}
+
+        {workTypes && workTypes.length > 0 && (
+          <Table.ScrollContainer minWidth={520}>
+            <Table striped highlightOnHover aria-labelledby={headingId}>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{t("workTypeName")}</Table.Th>
+                  <Table.Th>{t("billMultiplier")}</Table.Th>
+                  <Table.Th>{t("costMultiplier")}</Table.Th>
+                  <Table.Th>{t("status")}</Table.Th>
+                  {canManage && <Table.Th>{t("actions")}</Table.Th>}
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {workTypes.map((workType) => (
+                  <Table.Tr key={workType.id}>
+                    <Table.Td>
+                      <Text size="sm" fw={600}>
+                        {workType.name}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>{multiplier(workType.billMultiplierPercent)}</Table.Td>
+                    <Table.Td>{multiplier(workType.costMultiplierPercent)}</Table.Td>
+                    <Table.Td>
+                      <Badge variant="light" color={workType.active ? "teal" : "gray"}>
+                        {workType.active ? t("active") : t("inactive")}
+                      </Badge>
+                    </Table.Td>
+                    {canManage && (
+                      <Table.Td>
+                        <ActionIcon
+                          variant="subtle"
+                          aria-label={t("editWorkTypeFor", { name: workType.name })}
+                          onClick={() => setModalState({ mode: "edit", workType })}
+                        >
+                          <IconPencil size={16} />
+                        </ActionIcon>
+                      </Table.Td>
+                    )}
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        )}
+      </Stack>
+
+      <WorkTypeFormModal projectId={projectId} state={modalState} onClose={() => setModalState(null)} />
     </Card>
   );
 };
