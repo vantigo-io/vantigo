@@ -344,11 +344,16 @@ func moveOwnRecords(ctx context.Context, txq *store.Queries, from, into int32, n
 // the attempt back and the handler still has something to answer with.
 func (s *server) mergeCustomers(ctx context.Context, tx pgx.Tx, into, from int32, expected *int32, now time.Time, act actor) ([]contracts.RepointedReferences, *gen.CustomerConflictProblem, error) {
 	txq := store.New(tx)
+	var absorbedLocked store.LockCustomerRow
 	for _, id := range mergeLockOrder(into, from) {
-		if _, err := txq.LockCustomer(ctx, id); errors.Is(err, pgx.ErrNoRows) {
+		locked, err := txq.LockCustomer(ctx, id)
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil, errMergeCustomerNotFound
 		} else if err != nil {
 			return nil, nil, fmt.Errorf("lock customer %d: %w", id, err)
+		}
+		if id == from {
+			absorbedLocked = locked
 		}
 	}
 	// Read only now, under both locks: a merge that queued behind another merge
@@ -398,6 +403,15 @@ func (s *server) mergeCustomers(ctx context.Context, tx pgx.Tx, into, from int32
 		return nil, nil, fmt.Errorf("customer %d changed under its own lock", into)
 	}
 	if err := txq.MarkCustomerMerged(ctx, store.MarkCustomerMergedParams{ID: from, IntoCustomerID: into, Now: now}); err != nil {
+		return nil, nil, err
+	}
+	// A duplicate scheduled for anonymisation (customers GDPR design D4) has
+	// just handed everything the date was for to the survivor: left in place,
+	// the date would anonymise an empty shell and the survivor's record of
+	// what it absorbed. It is called off, on the duplicate's timeline and by
+	// whoever merged — MarkCustomerMerged advanced the revision already. A
+	// person's data now on the survivor is the survivor's to schedule.
+	if err := cancelAnonymisationSchedule(ctx, txq, from, absorbedLocked, now, act); err != nil {
 		return nil, nil, err
 	}
 	if err := txq.FlattenMergedIntoChain(ctx, store.FlattenMergedIntoChainParams{FromCustomerID: from, IntoCustomerID: into, Now: now}); err != nil {

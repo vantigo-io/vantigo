@@ -1052,6 +1052,26 @@ func TestValidateContactTitle_MirrorsTheRoleRuleUnderItsOwnNoun(t *testing.T) {
 	}
 }
 
+// NationalIDForTest refuses a birth date in a real month: only Skatteetaten's
+// synthetic months (the month plus 80) can build a number nobody holds.
+func TestNationalIDForTest_RefusesARealBirthMonth(t *testing.T) {
+	for _, birth := range []string{"010190", "311290", "018090"} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("NationalIDForTest(%q) built a number: a real month could be a real person's", birth)
+				}
+			}()
+			NationalIDForTest(birth, 100, false)
+		}()
+	}
+	for _, birth := range []string{"018190", "319299"} {
+		if got := NationalIDForTest(birth, 100, false); len(got) != 11 {
+			t.Errorf("NationalIDForTest(%q) = %q, want eleven digits", birth, got)
+		}
+	}
+}
+
 // TestValidateLegalIdentity_RefusesANorwegianNationalIdentityNumber is customers
 // GDPR design D1: for a Norwegian private person, eleven digits whose two
 // mod-11 check digits pass are refused — a fødselsnummer and a D-number alike,

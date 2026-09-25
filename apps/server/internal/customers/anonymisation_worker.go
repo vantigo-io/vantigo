@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"runtime/debug"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -22,7 +23,10 @@ import (
 // One customer failing — another module's eraser, a deadlock it kept losing —
 // rolls that customer back and is logged, and the cycle moves on to the next:
 // a cycle that stopped at the first failure would hold every later customer
-// hostage to one module's bad day. The failed one is due again next cycle.
+// hostage to one module's bad day. The failed one is due again next cycle. A
+// panic is such a failure too (anonymiseRecovering): the runner recovers a
+// worker's panic but never restarts it, and the customer that panicked is
+// first in every later batch, so one bug would stop the worker for good.
 
 const (
 	// anonymisationWorkerName is what the runner logs this worker as, in the
@@ -107,7 +111,7 @@ func (w *AnonymisationWorker) RunCycle(ctx context.Context) (bool, error) {
 			if ctx.Err() != nil {
 				return nil
 			}
-			done, err := w.srv.anonymiseCustomer(ctx, id)
+			done, err := w.anonymiseRecovering(ctx, id)
 			if err != nil {
 				if ctx.Err() == nil {
 					w.logger().Error("customers: anonymising a customer failed; it is tried again next cycle",
@@ -123,6 +127,19 @@ func (w *AnonymisationWorker) RunCycle(ctx context.Context) (bool, error) {
 		w.logger().Info("anonymisation cycle finished", "worker", anonymisationWorkerName, "anonymised", anonymised, "failed", failed)
 		return nil
 	})
+}
+
+// anonymiseRecovering is anonymiseCustomer with a panic turned into that
+// customer's error, the stack in it: the transaction's deferred rollback has
+// already run by the time the panic reaches here, so nothing of the customer
+// changed, and the cycle logs it and moves on like any other failure.
+func (w *AnonymisationWorker) anonymiseRecovering(ctx context.Context, id int32) (done bool, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			done, err = false, fmt.Errorf("panic: %v\n%s", r, debug.Stack())
+		}
+	}()
+	return w.srv.anonymiseCustomer(ctx, id)
 }
 
 // underLease is the registry workers' lease (peppol_recheck_worker.go, and

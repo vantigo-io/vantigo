@@ -8,11 +8,13 @@ package store
 import (
 	"context"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const customerSupplyPeriodsForExport = `-- name: CustomerSupplyPeriodsForExport :many
 SELECT sp.id, sp.start, sp."end", sp.status,
-       mp.gsrn, mp.street_address, mp.postal_code, mp.city, mp.country_code
+       mp.gsrn, mp.street_address, mp.postal_code, mp.city, mp.country_code, mp.price_area
 FROM energy.supply_periods sp
 JOIN energy.metering_points mp ON mp.id = sp.metering_point_id
 WHERE sp.customer_id = $1::integer
@@ -29,6 +31,7 @@ type CustomerSupplyPeriodsForExportRow struct {
 	PostalCode    string
 	City          string
 	CountryCode   string
+	PriceArea     string
 }
 
 // CustomerSupplyPeriodsForExport is a private person's supply periods for
@@ -56,7 +59,59 @@ func (q *Queries) CustomerSupplyPeriodsForExport(ctx context.Context, customerID
 			&i.PostalCode,
 			&i.City,
 			&i.CountryCode,
+			&i.PriceArea,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const supplyPeriodConsumptionByMonth = `-- name: SupplyPeriodConsumptionByMonth :many
+SELECT to_char(date_trunc('month', c."start" AT TIME ZONE $1::text), 'YYYY-MM')::text AS month,
+       SUM(c.quantity_kwh)::numeric AS quantity_kwh
+FROM energy.consumption_intervals c
+JOIN energy.supply_periods p ON p.metering_point_id = c.metering_point_id
+WHERE p.id = $2::integer
+  AND c.is_current
+  AND c."start" >= p."start"
+  AND (p."end" IS NULL OR c."end" <= p."end")
+GROUP BY 1
+ORDER BY 1
+`
+
+type SupplyPeriodConsumptionByMonthParams struct {
+	TimeZone       string
+	SupplyPeriodID int32
+}
+
+type SupplyPeriodConsumptionByMonthRow struct {
+	Month       string
+	QuantityKwh pgtype.Numeric
+}
+
+// SupplyPeriodConsumptionByMonth is one supply period's consumption for a
+// private person's export (customers GDPR design D2, widened by the
+// whole-branch review): a household's meter readings are the person's data.
+// Monthly sums of the current intervals inside the period's dates — the
+// containment ListConsumptionByCustomer uses — each month a calendar month in
+// the metering point's market zone, AggregateConsumptionByMeteringPoint's
+// double AT TIME ZONE idiom. Monthly rather than hourly keeps a file for years
+// of supply readable; the hourly series stays energy's own endpoint's.
+func (q *Queries) SupplyPeriodConsumptionByMonth(ctx context.Context, arg SupplyPeriodConsumptionByMonthParams) ([]SupplyPeriodConsumptionByMonthRow, error) {
+	rows, err := q.db.Query(ctx, supplyPeriodConsumptionByMonth, arg.TimeZone, arg.SupplyPeriodID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SupplyPeriodConsumptionByMonthRow
+	for rows.Next() {
+		var i SupplyPeriodConsumptionByMonthRow
+		if err := rows.Scan(&i.Month, &i.QuantityKwh); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

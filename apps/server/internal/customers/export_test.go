@@ -106,6 +106,10 @@ func SetImportHeldHook(f func(context.Context) context.Context) func() {
 // Skatteetaten keeps for test persons — so nothing built here is a real
 // person's number.
 func NationalIDForTest(birth string, individual int, dNumber bool) string {
+	// Enforced, not trusted: a real month would mint a number somebody may hold.
+	if len(birth) != 6 || birth[2:4] < "81" {
+		panic("NationalIDForTest: " + birth + " is not a synthetic birth date (the month plus 80)")
+	}
 	firstWeights := []int{3, 7, 6, 1, 8, 9, 4, 5, 2}
 	secondWeights := []int{5, 4, 3, 2, 7, 6, 5, 4, 3, 2}
 	check := func(digits, weights []int) int {

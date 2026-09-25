@@ -69,7 +69,11 @@ It also hands over and takes out what it holds about a private person —
 A person's export carries every conversation about them, with each message's
 direction, date and body — the text body and the HTML body, each when the message has
 it, so an HTML-only message is not left empty — and each attachment's name
-(`modules.communications`).
+(`modules.communications`). It leaves out the addressing metadata — each participant's
+address and display name, each delivery's recipient address, a message's channel
+headers — although the erase below deletes all of it with the conversations. The
+suppressions, the opt-out addresses, are neither exported nor erased: honouring an
+opt-out needs the address, so it is kept on purpose.
 Their anonymisation deletes those conversations inside the customers module's
 transaction, through the retention worker's own deletes: every message and the rows
 under it in the order `message_events`' RESTRICT allows, each attachment, raw payload

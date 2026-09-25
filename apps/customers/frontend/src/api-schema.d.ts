@@ -91,7 +91,7 @@ export interface paths {
         post?: never;
         /**
          * Cancel a private person's anonymisation
-         * @description Calls off a private person's scheduled anonymisation (customers GDPR design D4) and records customer.anonymisation_cancelled. With nothing scheduled it writes nothing and answers the customer as it is. It is the one write a merged-away customer takes: a schedule made before its merge would otherwise be irrevocable. 404 when the customer does not exist; 409 customer_anonymised once the anonymisation has run — there is nothing left to call off.
+         * @description Calls off a private person's scheduled anonymisation (customers GDPR design D4) and records customer.anonymisation_cancelled. With nothing scheduled it writes nothing and answers the customer as it is. It is the one write a merged-away customer takes: a merge calls the schedule off itself, but a day already on a merged-away customer would otherwise be irrevocable. 404 when the customer does not exist; 409 customer_anonymised once the anonymisation has run — there is nothing left to call off.
          */
         delete: operations["deleteCustomersByIdAnonymisation"];
         options?: never;
@@ -217,7 +217,7 @@ export interface paths {
         put?: never;
         /**
          * Merge another customer into this one
-         * @description This customer absorbs another (customers merge design D2, D3). sourceId's contacts (roles unioned, a role's primary resolved), addresses (a primary of a type this customer already has demoted), timeline entries with their revisions and follow-ups, and tags move here; every other module's reference to it — projects, supply periods, conversations — is re-pointed here in the same transaction; its registry record and Peppol answer are deleted; and it is archived with mergedInto naming this customer. This customer keeps every field of its own row: nothing is filled in from the other, whose own values are recorded in the customer.merged timeline event. Both customers' revisions advance. revision is this customer's, optional; present and stale, a 409 without a code. 404 when either customer does not exist. 409 with code merge_self (the same customer twice), merge_type_mismatch (a person and a business: a merge never changes what a customer is), merge_into_archived (this customer is archived — restore it first) or merge_already_merged (sourceId was merged away before; the detail names where). An archived sourceId may be absorbed.
+         * @description This customer absorbs another (customers merge design D2, D3). sourceId's contacts (roles unioned, a role's primary resolved), addresses (a primary of a type this customer already has demoted), timeline entries with their revisions and follow-ups, and tags move here; every other module's reference to it — projects, supply periods, conversations — is re-pointed here in the same transaction; its registry record and Peppol answer are deleted; and it is archived with mergedInto naming this customer. This customer keeps every field of its own row: nothing is filled in from the other, whose own values are recorded in the customer.merged timeline event. Both customers' revisions advance. revision is this customer's, optional; present and stale, a 409 without a code. 404 when either customer does not exist. 409 with code merge_self (the same customer twice), merge_type_mismatch (a person and a business: a merge never changes what a customer is), merge_into_archived (this customer is archived — restore it first) or merge_already_merged (sourceId was merged away before; the detail names where); customer_anonymised when either customer was anonymised (customers GDPR design D4) — this customer's refusal comes before merge_into_archived, sourceId's before merge_already_merged. An archived sourceId may be absorbed; a schedule for its anonymisation is called off and recorded as customer.anonymisation_cancelled on it, since everything the date was for moves here.
          */
         post: operations["postCustomersByIdMerge"];
         delete?: never;
@@ -1170,11 +1170,11 @@ export interface components {
             customer: components["schemas"]["CustomerPersonalDataCustomer"];
             /** Format: date-time */
             exportedAt: string;
-            /** @description Each other module's section, under the module's name — communications (the person's conversations: subject, dates, each message's direction, date, and text and HTML body (each when present), attachment names), energy (supply periods with the metering point's address), projects (code, name, status and dates). A module holding nothing for the customer has no key. */
+            /** @description Each other module's section, under the module's name — communications (the person's conversations: subject, dates, each message's direction, date, and text and HTML body (each when present), attachment names), energy (supply periods with the metering point's address and its consumption inside each period, summed by calendar month in the point's market zone), projects (code, name, status and dates). A module holding nothing for the customer has no key. */
             modules: {
                 [key: string]: unknown;
             };
-            /** @description Every timeline entry, oldest first, deleted ones included (state says which), each with its payload, actor and follow-up. Revisions are not part of the file. */
+            /** @description Every timeline entry, oldest first, deleted ones included (state says which), each with its payload, actor and follow-up, and — on an entry that was ever changed — its earlier revisions, an edited note's earlier text being data held about the person too. */
             timeline: components["schemas"]["TimelineResponse"][];
         };
         /** @description The billing profile's own stored values (customers GDPR design D3) — what the customer row holds, not the resolved profile GET .../billing-profile answers with its warnings and its group's default. Unset, a field is absent. */
@@ -1588,6 +1588,8 @@ export interface components {
             payload?: components["schemas"]["JsonElement"] | null;
             producer: string;
             provenance: string;
+            /** @description The entry's earlier revisions, oldest first, the current one being the entry itself (customers GDPR design D3). Only a personal-data file carries them, and only on an entry that was ever changed; everywhere else the key is absent and GET .../timeline/{entryId}/revisions reads them. */
+            revisions?: components["schemas"]["TimelineRevisionResponse"][];
             sourceUrl?: string | null;
             state: string;
             summary?: string | null;
@@ -1911,7 +1913,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only: a merged-away customer takes no more changes, and the detail names the one its records went to; nor does an anonymised one, and the detail names the day. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2074,7 +2076,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            /** @description Conflict: customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only: a merged-away customer takes no more changes, and the detail names the one its records went to; nor does an anonymised one, and the detail names the day. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2144,7 +2146,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            /** @description Conflict: customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only: a merged-away customer takes no more changes, and the detail names the one its records went to; nor does an anonymised one, and the detail names the day. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2199,7 +2201,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            /** @description Conflict: customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only: a merged-away customer takes no more changes, and the detail names the one its records went to; nor does an anonymised one, and the detail names the day. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2440,7 +2442,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only: a merged-away customer takes no more changes, and the detail names the one its records went to; nor does an anonymised one, and the detail names the day. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2509,7 +2511,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only: a merged-away customer takes no more changes, and the detail names the one its records went to; nor does an anonymised one, and the detail names the day. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2625,7 +2627,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only: a merged-away customer takes no more changes, and the detail names the one its records went to; nor does an anonymised one, and the detail names the day. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2695,7 +2697,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            /** @description Conflict: customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only: a merged-away customer takes no more changes, and the detail names the one its records went to; nor does an anonymised one, and the detail names the day. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2750,7 +2752,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            /** @description Conflict: customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only: a merged-away customer takes no more changes, and the detail names the one its records went to; nor does an anonymised one, and the detail names the day. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2819,7 +2821,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only: a merged-away customer takes no more changes, and the detail names the one its records went to; nor does an anonymised one, and the detail names the day. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2942,7 +2944,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only: a merged-away customer takes no more changes, and the detail names the one its records went to; nor does an anonymised one, and the detail names the day. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2996,7 +2998,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            /** @description Conflict: customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only: a merged-away customer takes no more changes, and the detail names the one its records went to; nor does an anonymised one, and the detail names the day. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3181,7 +3183,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only: a merged-away customer takes no more changes, and the detail names the one its records went to; nor does an anonymised one, and the detail names the day. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3237,7 +3239,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            /** @description Conflict: customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only: a merged-away customer takes no more changes, and the detail names the one its records went to; nor does an anonymised one, and the detail names the day. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3421,7 +3423,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only: a merged-away customer takes no more changes, and the detail names the one its records went to; nor does an anonymised one, and the detail names the day. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3499,7 +3501,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            /** @description Conflict: customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only: a merged-away customer takes no more changes, and the detail names the one its records went to; nor does an anonymised one, and the detail names the day. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3568,7 +3570,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            /** @description Conflict. Among its codes: customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only: a merged-away customer takes no more changes, and the detail names the one its records went to; nor does an anonymised one, and the detail names the day. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3700,7 +3702,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict: customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            /** @description Conflict: customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only: a merged-away customer takes no more changes, and the detail names the one its records went to; nor does an anonymised one, and the detail names the day. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3818,7 +3820,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict: the timeline entry's own refusals, which carry no code, or customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            /** @description Conflict: the timeline entry's own refusals, which carry no code, or customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only: a merged-away customer takes no more changes, and the detail names the one its records went to; nor does an anonymised one, and the detail names the day. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3875,7 +3877,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict: the timeline entry's own refusals, which carry no code, or customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            /** @description Conflict: the timeline entry's own refusals, which carry no code, or customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only: a merged-away customer takes no more changes, and the detail names the one its records went to; nor does an anonymised one, and the detail names the day. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3932,7 +3934,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict: the timeline entry's own refusals, which carry no code, or customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            /** @description Conflict: the timeline entry's own refusals, which carry no code, or customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only: a merged-away customer takes no more changes, and the detail names the one its records went to; nor does an anonymised one, and the detail names the day. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3989,7 +3991,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict: the timeline entry's own refusals, which carry no code, or customer_merged (customers merge design D2) when this customer was merged into another: a merged-away customer takes no more changes, and the detail names the one its records went to. */
+            /** @description Conflict: the timeline entry's own refusals, which carry no code, or customer_merged (customers merge design D2) or customer_anonymised (customers GDPR design D4) when the customer is read-only: a merged-away customer takes no more changes, and the detail names the one its records went to; nor does an anonymised one, and the detail names the day. */
             409: {
                 headers: {
                     [name: string]: unknown;

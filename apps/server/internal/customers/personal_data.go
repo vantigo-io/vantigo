@@ -80,6 +80,7 @@ func (s *server) GetCustomersByIdPersonalData(ctx context.Context, req gen.GetCu
 		contacts  []store.ListContactAssociationsForCustomerRow
 		roleRows  []store.ContactRolesForCustomerRow
 		entries   []store.CustomersCustomersTimelineEntry
+		revisions []store.CustomersCustomersTimelineEntriesRevision
 		merged    []store.CustomersMergedIntoForPersonalDataRow
 	)
 	err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
@@ -109,7 +110,10 @@ func (s *server) GetCustomersByIdPersonalData(ctx context.Context, req gen.GetCu
 		if merged, err = txq.CustomersMergedIntoForPersonalData(ctx, req.Id); err != nil {
 			return err
 		}
-		entries, err = txq.ListTimelineEntriesForExport(ctx, req.Id)
+		if entries, err = txq.ListTimelineEntriesForExport(ctx, req.Id); err != nil {
+			return err
+		}
+		revisions, err = txq.ListTimelineRevisionsForExport(ctx, req.Id)
 		return err
 	})
 	switch {
@@ -130,6 +134,11 @@ func (s *server) GetCustomersByIdPersonalData(ctx context.Context, req gen.GetCu
 	for _, e := range entries {
 		if e.FollowUpAssigneeUserID != nil {
 			assignees = append(assignees, *e.FollowUpAssigneeUserID)
+		}
+	}
+	for _, r := range revisions {
+		if r.FollowUpAssigneeUserID != nil {
+			assignees = append(assignees, *r.FollowUpAssigneeUserID)
 		}
 	}
 	followUps, err := s.decorateFollowUpAssignees(ctx, assignees)
@@ -177,9 +186,18 @@ func (s *server) GetCustomersByIdPersonalData(ctx context.Context, req gen.GetCu
 			Phone: r.AssociationPhone, Email: r.AssociationEmail,
 		})
 	}
+	// The rows arrive grouped by entry, oldest revision first.
+	earlier := make(map[int32][]gen.TimelineRevisionResponse)
+	for _, r := range revisions {
+		earlier[r.CustomerTimelineEntryID] = append(earlier[r.CustomerTimelineEntryID], timelineRevisionResponse(r, followUps))
+	}
 	exportedTimeline := make([]gen.TimelineResponse, 0, len(entries))
 	for _, e := range entries {
-		exportedTimeline = append(exportedTimeline, timelineResponse(e, followUps))
+		entry := timelineResponse(e, followUps)
+		if revs, ok := earlier[e.ID]; ok {
+			entry.Revisions = &revs
+		}
+		exportedTimeline = append(exportedTimeline, entry)
 	}
 
 	return personalDataDownload{
