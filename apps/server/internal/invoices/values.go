@@ -42,7 +42,7 @@ func wireDate(d time.Time) openapi_types.Date { return openapi_types.Date{Time: 
 
 // floatFromNumeric reads a NOT NULL numeric column onto the wire as a JSON
 // number. Money never goes the other way through a float: amounts enter
-// through ratFromFloat's decimal text (money.go).
+// through ratFromFloat's decimal text (decimal.go).
 func floatFromNumeric(n pgtype.Numeric) (float64, error) {
 	if !n.Valid {
 		return 0, nil
@@ -52,4 +52,10 @@ func floatFromNumeric(n pgtype.Numeric) (float64, error) {
 		return 0, fmt.Errorf("invoices: read a stored decimal: %w", err)
 	}
 	return f.Float64, nil
+}
+
+// utcDay is a wire date as the UTC midnight every date here is compared at.
+func utcDay(d time.Time) time.Time {
+	d = d.UTC()
+	return time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.UTC)
 }

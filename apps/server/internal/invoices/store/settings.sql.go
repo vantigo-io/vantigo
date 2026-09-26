@@ -7,6 +7,7 @@ package store
 
 import (
 	"context"
+	"time"
 )
 
 const getSettings = `-- name: GetSettings :one
@@ -18,6 +19,137 @@ SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregistere
 // it, so this always answers a row.
 func (q *Queries) GetSettings(ctx context.Context) (InvoicesSetting, error) {
 	row := q.db.QueryRow(ctx, getSettings)
+	var i InvoicesSetting
+	err := row.Scan(
+		&i.ID,
+		&i.LegalName,
+		&i.OrganisationNumber,
+		&i.VatRegistered,
+		&i.InForetaksregisteret,
+		&i.AddressLine1,
+		&i.AddressLine2,
+		&i.PostalCode,
+		&i.City,
+		&i.Country,
+		&i.BankAccount,
+		&i.Iban,
+		&i.Bic,
+		&i.Email,
+		&i.DefaultPaymentTermsDays,
+		&i.DefaultCurrency,
+		&i.FooterText,
+		&i.SeriesStart,
+		&i.UpdatedAt,
+		&i.Revision,
+	)
+	return i, err
+}
+
+const lockSettings = `-- name: LockSettings :one
+SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision FROM invoices.settings WHERE id = 1 FOR UPDATE
+`
+
+// LockSettings takes the settings row FOR UPDATE: PUT /settings and every rate
+// change wait here behind an issue in flight, which holds the row FOR SHARE
+// until it commits (D2, D3). What they read after it is final.
+func (q *Queries) LockSettings(ctx context.Context) (InvoicesSetting, error) {
+	row := q.db.QueryRow(ctx, lockSettings)
+	var i InvoicesSetting
+	err := row.Scan(
+		&i.ID,
+		&i.LegalName,
+		&i.OrganisationNumber,
+		&i.VatRegistered,
+		&i.InForetaksregisteret,
+		&i.AddressLine1,
+		&i.AddressLine2,
+		&i.PostalCode,
+		&i.City,
+		&i.Country,
+		&i.BankAccount,
+		&i.Iban,
+		&i.Bic,
+		&i.Email,
+		&i.DefaultPaymentTermsDays,
+		&i.DefaultCurrency,
+		&i.FooterText,
+		&i.SeriesStart,
+		&i.UpdatedAt,
+		&i.Revision,
+	)
+	return i, err
+}
+
+const updateSettings = `-- name: UpdateSettings :one
+UPDATE invoices.settings SET
+    legal_name = $1,
+    organisation_number = $2,
+    vat_registered = $3,
+    in_foretaksregisteret = $4,
+    address_line1 = $5,
+    address_line2 = $6,
+    postal_code = $7,
+    city = $8,
+    country = $9,
+    bank_account = $10,
+    iban = $11,
+    bic = $12,
+    email = $13,
+    default_payment_terms_days = $14,
+    default_currency = $15,
+    footer_text = $16,
+    series_start = $17,
+    updated_at = $18::timestamptz,
+    revision = revision + 1
+WHERE id = 1
+RETURNING id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision
+`
+
+type UpdateSettingsParams struct {
+	LegalName               string
+	OrganisationNumber      string
+	VatRegistered           bool
+	InForetaksregisteret    bool
+	AddressLine1            string
+	AddressLine2            string
+	PostalCode              string
+	City                    string
+	Country                 string
+	BankAccount             string
+	Iban                    string
+	Bic                     string
+	Email                   string
+	DefaultPaymentTermsDays int32
+	DefaultCurrency         string
+	FooterText              string
+	SeriesStart             int64
+	Now                     time.Time
+}
+
+// UpdateSettings replaces the seller record and the series start, and moves
+// the revision on. The caller holds the row (LockSettings) and has checked the
+// revision and the series lock.
+func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) (InvoicesSetting, error) {
+	row := q.db.QueryRow(ctx, updateSettings,
+		arg.LegalName,
+		arg.OrganisationNumber,
+		arg.VatRegistered,
+		arg.InForetaksregisteret,
+		arg.AddressLine1,
+		arg.AddressLine2,
+		arg.PostalCode,
+		arg.City,
+		arg.Country,
+		arg.BankAccount,
+		arg.Iban,
+		arg.Bic,
+		arg.Email,
+		arg.DefaultPaymentTermsDays,
+		arg.DefaultCurrency,
+		arg.FooterText,
+		arg.SeriesStart,
+		arg.Now,
+	)
 	var i InvoicesSetting
 	err := row.Scan(
 		&i.ID,
