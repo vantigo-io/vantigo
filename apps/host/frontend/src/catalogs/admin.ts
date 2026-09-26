@@ -345,6 +345,30 @@ export const hostPermissionTranslationKeys = {
     displayNameKey: "admin.permission.expensesManage",
     descriptionKey: "admin.permission.expensesManageDescription",
   },
+  "invoices:access": {
+    moduleKey: "admin.permission.module.invoices",
+    categoryKey: "admin.permission.category.invoices",
+    displayNameKey: "admin.permission.invoicesAccess",
+    descriptionKey: "admin.permission.invoicesAccessDescription",
+  },
+  "invoices:create": {
+    moduleKey: "admin.permission.module.invoices",
+    categoryKey: "admin.permission.category.invoices",
+    displayNameKey: "admin.permission.invoicesCreate",
+    descriptionKey: "admin.permission.invoicesCreateDescription",
+  },
+  "invoices:issue": {
+    moduleKey: "admin.permission.module.invoices",
+    categoryKey: "admin.permission.category.invoices",
+    displayNameKey: "admin.permission.invoicesIssue",
+    descriptionKey: "admin.permission.invoicesIssueDescription",
+  },
+  "invoices:manage": {
+    moduleKey: "admin.permission.module.invoices",
+    categoryKey: "admin.permission.category.invoices",
+    displayNameKey: "admin.permission.invoicesManage",
+    descriptionKey: "admin.permission.invoicesManageDescription",
+  },
 } as const;
 
 export const getHostPermissionTranslation = (permissionKey: string) =>
@@ -433,6 +457,7 @@ const en = {
   "admin.permission.module.projects": "Projects",
   "admin.permission.module.time": "Time",
   "admin.permission.module.expenses": "Expenses",
+  "admin.permission.module.invoices": "Invoices",
   "admin.permission.category.administration": "Administration",
   "admin.permission.category.customers": "Customers",
   "admin.permission.category.legalIdentity": "Legal identity",
@@ -451,6 +476,7 @@ const en = {
   "admin.permission.category.projects": "Projects",
   "admin.permission.category.time": "Time",
   "admin.permission.category.expenses": "Expenses",
+  "admin.permission.category.invoices": "Invoices",
   "admin.permission.identityManage": "Manage identity",
   "admin.permission.identityManageDescription": "Manage accounts, roles, and access.",
   "admin.permission.customersView": "View customers",
@@ -576,6 +602,17 @@ const en = {
   "admin.permission.expensesManage": "Manage expenses",
   "admin.permission.expensesManageDescription":
     "Change expense settings, rates and categories, record expenses for a colleague, mark expenses reimbursed, and work past the period lock.",
+  "admin.permission.invoicesAccess": "Use Invoices",
+  "admin.permission.invoicesAccessDescription":
+    "Use the Invoices app and read every invoice, credit note, PDF and the invoice journal.",
+  "admin.permission.invoicesCreate": "Create invoices",
+  "admin.permission.invoicesCreateDescription": "Create, edit and delete invoice drafts, and preview a draft as PDF.",
+  "admin.permission.invoicesIssue": "Issue invoices",
+  "admin.permission.invoicesIssueDescription":
+    "Issue a draft into a numbered document that can never be changed, and create credit notes.",
+  "admin.permission.invoicesManage": "Manage invoicing",
+  "admin.permission.invoicesManageDescription":
+    "Change the seller record, the number series start, and the VAT codes and their rates.",
   "admin.accountExists": "An account already exists for this email address.",
   "admin.filterUsers": "Filter users by {{label}}",
   "admin.searchUsers": "Search users",
@@ -778,6 +815,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.module.projects": "Prosjekter",
   "admin.permission.module.time": "Timer",
   "admin.permission.module.expenses": "Utlegg",
+  "admin.permission.module.invoices": "Fakturaer",
   "admin.permission.category.administration": "Administrasjon",
   "admin.permission.category.customers": "Kunder",
   "admin.permission.category.legalIdentity": "Juridisk identitet",
@@ -796,6 +834,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.category.projects": "Prosjekter",
   "admin.permission.category.time": "Timer",
   "admin.permission.category.expenses": "Utlegg",
+  "admin.permission.category.invoices": "Fakturaer",
   "admin.permission.identityManage": "Administrer identitet",
   "admin.permission.identityManageDescription": "Administrer kontoer, roller og tilgang.",
   "admin.permission.customersView": "Se kunder",
@@ -923,6 +962,18 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.expensesManage": "Administrer utlegg",
   "admin.permission.expensesManageDescription":
     "Endre utleggsinnstillinger, satser og kategorier, før utlegg for en kollega, merk utlegg som refundert, og arbeid forbi periodelåsen.",
+  "admin.permission.invoicesAccess": "Bruke Fakturaer",
+  "admin.permission.invoicesAccessDescription":
+    "Bruke Fakturaer-appen og lese alle fakturaer, kreditnotaer, PDF-er og fakturajournalen.",
+  "admin.permission.invoicesCreate": "Lage fakturaer",
+  "admin.permission.invoicesCreateDescription":
+    "Lage, endre og slette fakturautkast, og forhåndsvise et utkast som PDF.",
+  "admin.permission.invoicesIssue": "Utstede fakturaer",
+  "admin.permission.invoicesIssueDescription":
+    "Utstede et utkast som et nummerert dokument som aldri kan endres, og lage kreditnotaer.",
+  "admin.permission.invoicesManage": "Administrere fakturering",
+  "admin.permission.invoicesManageDescription":
+    "Endre selgeropplysningene, startnummeret for nummerserien, og mva-kodene og satsene deres.",
   "admin.accountExists": "Det finnes allerede en konto for denne e-postadressen.",
   "admin.filterUsers": "Filtrer brukere etter {{label}}",
   "admin.searchUsers": "Søk etter brukere",

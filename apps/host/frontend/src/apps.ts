@@ -7,6 +7,7 @@ import {
   IconCategory,
   IconChecklist,
   IconClock,
+  IconFileInvoice,
   IconFlag,
   IconInbox,
   IconLayoutDashboard,
@@ -229,6 +230,17 @@ export const apps: readonly AppDefinition[] = [
       to: "/expenses/settings",
       icon: IconAdjustments,
       requiredPermissions: ["expenses:manage"],
+    },
+  ]),
+  moduleApp("invoices", "navigation.invoices", IconFileInvoice, "/invoices", [
+    {
+      // Invoicing is a finance job, not per-customer (invoices foundation
+      // design D1): invoices:access reads every document, so the list is the
+      // whole app's entry.
+      label: "navigation.invoices",
+      to: "/invoices",
+      icon: IconFileInvoice,
+      requiredPermissions: ["invoices:access"],
     },
   ]),
   moduleApp("communications", "navigation.communications", IconInbox, "/communications", [

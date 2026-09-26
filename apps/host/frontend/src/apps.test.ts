@@ -12,7 +12,16 @@ import {
   switcherTiles,
 } from "./apps";
 
-const allModules = ["communications", "customers", "energy", "expenses", "products", "projects", "time"] as const;
+const allModules = [
+  "communications",
+  "customers",
+  "energy",
+  "expenses",
+  "invoices",
+  "products",
+  "projects",
+  "time",
+] as const;
 
 describe("the app registry", () => {
   it("lists Home first, without a module, and every module app once", () => {
@@ -24,6 +33,7 @@ describe("the app registry", () => {
       "projects",
       "time",
       "expenses",
+      "invoices",
       "communications",
       "products",
       "energy",
@@ -59,6 +69,7 @@ describe("the app registry", () => {
       "/expenses/approvals",
       "/expenses/reimbursements",
       "/expenses/settings",
+      "/invoices",
       "/communications/inbox",
       "/communications/channels",
       "/communications/suppressions",
@@ -222,6 +233,7 @@ describe("the administration areas", () => {
       "projects",
       "time",
       "expenses",
+      "invoices",
       "communications",
       "products",
       "energy",
@@ -312,6 +324,7 @@ describe("switcherTiles", () => {
       ["projects", false],
       ["time", false],
       ["expenses", false],
+      ["invoices", false],
       ["communications", false],
       ["products", false],
       ["energy", false],

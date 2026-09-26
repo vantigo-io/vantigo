@@ -5,6 +5,7 @@ import { type CatalogResources, registerCatalog } from "@vantigo/frontend-shell"
 import "@vantigo/communications-ui/i18n";
 import "@vantigo/customers-ui/i18n";
 import "@vantigo/energy-ui/i18n";
+import "@vantigo/invoices-ui/i18n";
 import "@vantigo/products-ui/i18n";
 import "@vantigo/projects-ui/i18n";
 import "@vantigo/time-ui/i18n";

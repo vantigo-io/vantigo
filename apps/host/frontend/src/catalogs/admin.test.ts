@@ -23,6 +23,10 @@ const projectsPermissionKeys = [
 // cannot read the server's permission catalog from a unit test.
 const expensesPermissionKeys = ["expenses:access", "expenses:approve", "expenses:view-all", "expenses:manage"] as const;
 
+// Hand-kept in step with `apps/server/internal/invoices/module.go` (`var
+// permissions`), for the same reason.
+const invoicesPermissionKeys = ["invoices:access", "invoices:create", "invoices:issue", "invoices:manage"] as const;
+
 describe("the admin permission catalog", () => {
   it("has a display name and a description, in English and Norwegian, for these six projects permissions", () => {
     for (const key of projectsPermissionKeys) {
@@ -46,6 +50,38 @@ describe("the admin permission catalog", () => {
         expect(catalog[translation.descriptionKey], `${key} description (${lng})`).toBeTruthy();
       }
     }
+  });
+
+  it("has a display name and a description, in English and Norwegian, for the four invoices permissions", () => {
+    for (const key of invoicesPermissionKeys) {
+      const translation = hostPermissionTranslationKeys[key as keyof typeof hostPermissionTranslationKeys];
+      expect(translation, `no catalog entry for ${key}`).toBeDefined();
+      for (const lng of ["en", "nb"] as const) {
+        const catalog = adminCatalog[lng] as Record<string, string>;
+        expect(catalog[translation.displayNameKey], `${key} display name (${lng})`).toBeTruthy();
+        expect(catalog[translation.descriptionKey], `${key} description (${lng})`).toBeTruthy();
+      }
+    }
+  });
+
+  it("matches the server's exact English display names and descriptions for invoices permissions", () => {
+    const en = adminCatalog.en as Record<string, string>;
+    expect(en["admin.permission.invoicesAccess"]).toBe("Use Invoices");
+    expect(en["admin.permission.invoicesAccessDescription"]).toBe(
+      "Use the Invoices app and read every invoice, credit note, PDF and the invoice journal.",
+    );
+    expect(en["admin.permission.invoicesCreate"]).toBe("Create invoices");
+    expect(en["admin.permission.invoicesCreateDescription"]).toBe(
+      "Create, edit and delete invoice drafts, and preview a draft as PDF.",
+    );
+    expect(en["admin.permission.invoicesIssue"]).toBe("Issue invoices");
+    expect(en["admin.permission.invoicesIssueDescription"]).toBe(
+      "Issue a draft into a numbered document that can never be changed, and create credit notes.",
+    );
+    expect(en["admin.permission.invoicesManage"]).toBe("Manage invoicing");
+    expect(en["admin.permission.invoicesManageDescription"]).toBe(
+      "Change the seller record, the number series start, and the VAT codes and their rates.",
+    );
   });
 
   // The English text is pinned verbatim against the server's own strings

@@ -8,27 +8,27 @@ import tseslint from "typescript-eslint";
 const forbiddenModuleImports = [
   "@vantigo/customers-ui",
   "@vantigo/customers-ui/**",
-  "@vantigo/communications-ui",
-  "@vantigo/communications-ui/**",
   "@vantigo/expenses-ui",
   "@vantigo/expenses-ui/**",
+  "@vantigo/communications-ui",
+  "@vantigo/communications-ui/**",
   "@vantigo/energy-ui",
   "@vantigo/energy-ui/**",
   "@vantigo/products-ui",
   "@vantigo/products-ui/**",
+  "@vantigo/projects-ui",
+  "@vantigo/projects-ui/**",
   "@vantigo/time-ui",
   "@vantigo/time-ui/**",
-  "@vantigo/invoices-ui",
-  "@vantigo/invoices-ui/**",
   "@vantigo/app",
   "@vantigo/app/**",
   "../../../customers/**",
-  "../../../communications/**",
   "../../../expenses/**",
+  "../../../communications/**",
   "../../../energy/**",
   "../../../products/**",
+  "../../../projects/**",
   "../../../time/**",
-  "../../../invoices/**",
   "../../../host/**",
 ];
 
@@ -57,14 +57,6 @@ export default defineConfig([
           ],
         },
       ],
-    },
-  },
-  {
-    // TanStack Router route files export a `Route` object rather than the component
-    // itself; the router plugin handles HMR for these files.
-    files: ["src/routes/**/*.tsx"],
-    rules: {
-      "react-refresh/only-export-components": "off",
     },
   },
 ]);
