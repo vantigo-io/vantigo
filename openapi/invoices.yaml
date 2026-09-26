@@ -1524,5 +1524,103 @@ paths:
             tags:
                 - Invoices
             x-vantigo-access: permission:invoices:access+invoices:issue
+    /api/v1/invoices/{id}/pdf:
+        get:
+            description: 'An issued document''s PDF (D7), always the stored object: rendered and stored once when it has no hash yet, then streamed; otherwise read whole and verified against its SHA-256. It is never re-rendered once stored. Named faktura-<number>.pdf or kreditnota-<number>.pdf, invoice-<number>.pdf or credit-note-<number>.pdf in English.'
+            operationId: getInvoicesByIdPdf
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/pdf:
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK — the PDF, with a Content-Disposition naming it.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no document has that id.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesConflictProblem'
+                    description: Conflict — invoice_draft; a draft is previewed, not downloaded.
+                "500":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Internal Server Error — the stored object is gone, or its bytes no longer match the hash. It is never papered over by rendering again.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesConflictProblem'
+                    description: Service Unavailable — storage_unavailable, the object store is not configured or could not be read.
+            summary: Download an issued document's PDF
+            tags:
+                - Invoices
+            x-vantigo-access: permission:invoices:access
+    /api/v1/invoices/{id}/preview.pdf:
+        get:
+            description: 'A draft rendered on demand (D4), never stored: the watermark "UTKAST — ikke et salgsdokument", no number, today as the would-be issue date, the current settings, the customer''s current billing profile for an invoice draft and the copied snapshot for a credit-note draft.'
+            operationId: getInvoicesByIdPreviewPdf
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/pdf:
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK — the PDF, with a Content-Disposition naming it.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no document has that id.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesConflictProblem'
+                    description: Conflict — invoice_issued; an issued document is downloaded, not previewed.
+            summary: Preview a draft as PDF
+            tags:
+                - Invoices
+            x-vantigo-access: permission:invoices:access+invoices:create
 servers:
     - url: /

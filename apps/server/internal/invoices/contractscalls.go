@@ -2,6 +2,7 @@ package invoices
 
 import (
 	"context"
+	"io"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 )
@@ -46,4 +47,20 @@ func (s *server) customerEntries(ctx context.Context, ids []int32) ([]contracts.
 	}
 	noteContractCall(ctx, "Directory.Customers")
 	return s.deps.Directory.Customers(ctx, ids)
+}
+
+// objectPut, objectGet and objectExists are the object store.
+func (s *server) objectPut(ctx context.Context, key string, r io.Reader, contentType string) error {
+	noteContractCall(ctx, "ObjectStore.Put")
+	return s.objects.Put(ctx, key, r, contentType)
+}
+
+func (s *server) objectGet(ctx context.Context, key string) (io.ReadCloser, error) {
+	noteContractCall(ctx, "ObjectStore.Get")
+	return s.objects.Get(ctx, key)
+}
+
+func (s *server) objectExists(ctx context.Context, key string) (bool, error) {
+	noteContractCall(ctx, "ObjectStore.Exists")
+	return s.objects.Exists(ctx, key)
 }

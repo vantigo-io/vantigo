@@ -690,6 +690,29 @@ func (q *Queries) LockInvoice(ctx context.Context, id int64) (InvoicesInvoice, e
 	return i, err
 }
 
+const setDocumentPDF = `-- name: SetDocumentPDF :execrows
+UPDATE invoices.invoices SET pdf_object_key = $1, pdf_sha256 = $2
+WHERE id = $3 AND status = 'issued' AND pdf_sha256 IS NULL
+`
+
+type SetDocumentPDFParams struct {
+	PdfObjectKey *string
+	PdfSha256    *string
+	ID           int64
+}
+
+// SetDocumentPDF records where an issued document's PDF is stored and the hash
+// of its bytes, once (D7): the first writer wins, and a loser of a race sees
+// no row and streams the winner's object instead. The trigger allows exactly
+// this change, from NULL, and never another (D9).
+func (q *Queries) SetDocumentPDF(ctx context.Context, arg SetDocumentPDFParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setDocumentPDF, arg.PdfObjectKey, arg.PdfSha256, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const updateDraft = `-- name: UpdateDraft :one
 UPDATE invoices.invoices SET
     customer_id = $1,

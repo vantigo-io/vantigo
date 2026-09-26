@@ -378,6 +378,9 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 	if err != nil {
 		return nil, err
 	}
+	// After the commit, the PDF is stored once (D7). A failure there is
+	// logged and never fails the issue; pdfStored says so.
+	issued = s.storeAfterIssue(ctx, q, issued)
 	resp, err := s.invoiceResponse(ctx, q, issued, nil)
 	if err != nil {
 		return nil, err

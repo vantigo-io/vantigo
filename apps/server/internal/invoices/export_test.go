@@ -23,3 +23,12 @@ func SetIssueAfterAllocation(hook func(ctx context.Context, invoiceID int64) err
 	issueAfterAllocation = hook
 	return func() { issueAfterAllocation = nil }
 }
+
+// SetAfterPDFRender installs a hook the store-once path calls with each
+// rendered PDF, answering the bytes it stores, and answers the function that
+// removes it. A test using it does not run in parallel: the hook is the
+// package's.
+func SetAfterPDFRender(hook func(ctx context.Context, body []byte) []byte) func() {
+	afterPDFRender = hook
+	return func() { afterPDFRender = nil }
+}

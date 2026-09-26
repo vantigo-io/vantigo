@@ -134,3 +134,11 @@ UPDATE invoices.invoices SET
     revision = revision + 1
 WHERE id = @id AND status = 'draft'
 RETURNING *;
+
+-- name: SetDocumentPDF :execrows
+-- SetDocumentPDF records where an issued document's PDF is stored and the hash
+-- of its bytes, once (D7): the first writer wins, and a loser of a race sees
+-- no row and streams the winner's object instead. The trigger allows exactly
+-- this change, from NULL, and never another (D9).
+UPDATE invoices.invoices SET pdf_object_key = @pdf_object_key, pdf_sha256 = @pdf_sha256
+WHERE id = @id AND status = 'issued' AND pdf_sha256 IS NULL;
