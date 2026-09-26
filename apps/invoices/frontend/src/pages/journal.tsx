@@ -75,7 +75,7 @@ export const JournalPage = () => {
       )}
       {/* The range starts from meta's today, so without meta the journal is never asked for. */}
       {!meta.isError && journal.isPending && <ContentSkeleton rows={4} rowHeight={40} />}
-      {data && (
+      {data && meta.data && (
         <>
           {!checked ? (
             <Alert color="gray" icon={<IconCircleCheck size={16} />}>
@@ -105,6 +105,7 @@ export const JournalPage = () => {
               </Stack>
             </Alert>
           )}
+          {/* The totals are in the installation's currency, meta's — each row keeps its own. */}
           <Title order={4}>{t("totalsByCode")}</Title>
           <Table>
             <Table.Thead>
@@ -122,17 +123,17 @@ export const JournalPage = () => {
                   <Table.Td>{c.safTCode}</Table.Td>
                   <Table.Td>{c.category}</Table.Td>
                   <Table.Td ta="right">{number(c.ratePercent, 2)}</Table.Td>
-                  <Table.Td ta="right">{money(c.taxableAmount, "NOK")}</Table.Td>
-                  <Table.Td ta="right">{money(c.vatAmount, "NOK")}</Table.Td>
+                  <Table.Td ta="right">{money(c.taxableAmount, meta.data.currency)}</Table.Td>
+                  <Table.Td ta="right">{money(c.vatAmount, meta.data.currency)}</Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>
           </Table>
           <Text fw={600}>
             {t("journalTotals", {
-              net: money(data.totals.netTotal, "NOK"),
-              vat: money(data.totals.vatTotal, "NOK"),
-              gross: money(data.totals.grossTotal, "NOK"),
+              net: money(data.totals.netTotal, meta.data.currency),
+              vat: money(data.totals.vatTotal, meta.data.currency),
+              gross: money(data.totals.grossTotal, meta.data.currency),
             })}
           </Text>
           <Table>

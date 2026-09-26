@@ -109,7 +109,8 @@ describe("the invoice settings", () => {
     renderWithProviders(<SettingsPage />);
 
     const row = (await screen.findByText("Utgående mva 25 %")).closest("tr") as HTMLElement;
-    expect(within(row).getByText("25 %")).toBeInTheDocument();
+    // Written by the locale's percent format, not a suffix: "25%" in en.
+    expect(within(row).getByText("25%")).toBeInTheDocument();
     await userEvent.click(within(row).getByRole("button", { name: "Rate periods" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Jan 1, 2026 – Dec 31, 2026")).toBeInTheDocument();

@@ -417,6 +417,21 @@ describe("what the editor offers", () => {
   });
 });
 
+describe("an issued document's header", () => {
+  // Each "label: value" is one catalog entry, so a language that writes it
+  // differently — a space before the colon, another order — can.
+  it("words each fact through the catalog, the colon included", async () => {
+    server({ 1001: issued({ deliveryDate: undefined, deliveryFrom: "2026-09-01", deliveryTo: "2026-09-10" }) });
+    renderRoute("/invoices/1001");
+
+    expect(await screen.findByText("Issue date: Sep 12, 2026")).toBeInTheDocument();
+    expect(screen.getByText("Due date: Oct 12, 2026")).toBeInTheDocument();
+    expect(screen.getByText("Delivery period: Sep 1, 2026 – Sep 10, 2026")).toBeInTheDocument();
+    expect(screen.getByText("Your reference: PO-77")).toBeInTheDocument();
+    expect(screen.getByText(/^Left to credit: NOK\s?124\.99$/)).toBeInTheDocument();
+  });
+});
+
 describe("an issued document's buyer", () => {
   it("shows a foreign buyer's id", async () => {
     const buyer = {

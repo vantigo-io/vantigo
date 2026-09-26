@@ -1,6 +1,6 @@
 import { queryOptions } from "@tanstack/react-query";
 import { appUrl } from "@vantigo/frontend-shell";
-import type { components } from "../api-schema";
+import type { components, operations } from "../api-schema";
 import { INVOICES_QUERY_KEY, json, readJson, request } from "./request";
 
 type Schemas = components["schemas"];
@@ -17,17 +17,8 @@ export type DeliveryAddress = Schemas["InvoicesDeliveryAddress"];
 /** A refusal's body: the rule's code, and the dates or the line it names. */
 export type InvoicesConflict = Schemas["InvoicesConflictProblem"];
 
-/** The list's filters (D4). Every one is optional; paging is page/pageSize. */
-export interface InvoiceListFilters {
-  status?: "draft" | "issued";
-  kind?: "invoice" | "credit_note";
-  customerId?: number;
-  search?: string;
-  from?: string;
-  to?: string;
-  page?: number;
-  pageSize?: number;
-}
+/** The list's filters (D4), as GET /invoices takes them. Every one is optional; paging is page/pageSize. */
+export type InvoiceListFilters = NonNullable<operations["getInvoices"]["parameters"]["query"]>;
 
 const listQuery = (filters: InvoiceListFilters): string => {
   const params = new URLSearchParams();
@@ -92,11 +83,11 @@ export const fetchPdf = async (url: string): Promise<FetchedPdf> => {
     const disposition = response.headers.get("Content-Disposition") ?? "";
     return { blob: await response.blob(), fileName: /filename="([^"]+)"/.exec(disposition)?.[1] };
   }
-  const problem = await readJson<Record<string, unknown>>(response).catch(() => ({}) as Record<string, unknown>);
-  const message = String(problem.detail ?? problem.title ?? response.statusText);
+  const problem = await readJson<InvoicesConflict>(response).catch((): InvoicesConflict => ({}));
+  const message = problem.detail ?? problem.title ?? response.statusText;
   throw Object.assign(new Error(message), {
     status: response.status,
-    code: typeof problem.code === "string" ? problem.code : undefined,
+    code: problem.code ?? undefined,
     problem,
   });
 };

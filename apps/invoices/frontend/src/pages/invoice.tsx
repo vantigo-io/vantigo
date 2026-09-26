@@ -467,7 +467,7 @@ const DraftEditor = ({
           {credit || !canViewCustomers ? (
             <Text>
               <Text span fw={600}>
-                {t("customer")}:
+                {t("customerLabel")}
               </Text>{" "}
               {draft.customerName ?? t("unknownCustomer")}
             </Text>
@@ -876,41 +876,17 @@ const IssuedDocument = ({ document: doc, canIssue }: { document: InvoiceDocument
             {doc.buyer?.foreignId && <Text size="sm">{t("foreignId", { id: doc.buyer.foreignId })}</Text>}
           </Stack>
           <Stack gap={2}>
-            <Text size="sm">
-              {t("issueDate")}: {doc.issueDate ? date(doc.issueDate) : ""}
-            </Text>
-            {doc.dueDate && (
-              <Text size="sm">
-                {t("dueDate")}: {date(doc.dueDate)}
-              </Text>
-            )}
-            {doc.deliveryDate && (
-              <Text size="sm">
-                {t("deliveryDate")}: {date(doc.deliveryDate)}
-              </Text>
-            )}
+            <Text size="sm">{t("issueDateIs", { date: doc.issueDate ? date(doc.issueDate) : "" })}</Text>
+            {doc.dueDate && <Text size="sm">{t("dueDateIs", { date: date(doc.dueDate) })}</Text>}
+            {doc.deliveryDate && <Text size="sm">{t("deliveryDateIs", { date: date(doc.deliveryDate) })}</Text>}
             {doc.deliveryFrom && doc.deliveryTo && (
-              <Text size="sm">
-                {t("deliveryPeriod")}: {date(doc.deliveryFrom)} – {date(doc.deliveryTo)}
-              </Text>
+              <Text size="sm">{t("deliveryPeriodIs", { from: date(doc.deliveryFrom), to: date(doc.deliveryTo) })}</Text>
             )}
           </Stack>
           <Stack gap={2}>
-            {doc.yourReference && (
-              <Text size="sm">
-                {t("yourReference")}: {doc.yourReference}
-              </Text>
-            )}
-            {doc.ourReference && (
-              <Text size="sm">
-                {t("ourReference")}: {doc.ourReference}
-              </Text>
-            )}
-            {doc.orderReference && (
-              <Text size="sm">
-                {t("orderReference")}: {doc.orderReference}
-              </Text>
-            )}
+            {doc.yourReference && <Text size="sm">{t("yourReferenceIs", { reference: doc.yourReference })}</Text>}
+            {doc.ourReference && <Text size="sm">{t("ourReferenceIs", { reference: doc.ourReference })}</Text>}
+            {doc.orderReference && <Text size="sm">{t("orderReferenceIs", { reference: doc.orderReference })}</Text>}
           </Stack>
         </SimpleGrid>
       </Card>
@@ -973,9 +949,7 @@ const IssuedDocument = ({ document: doc, canIssue }: { document: InvoiceDocument
                 </Group>
               ))
             )}
-            <Text size="sm">
-              {t("uncreditedAmount")}: {money(doc.uncreditedAmount ?? 0, doc.currency)}
-            </Text>
+            <Text size="sm">{t("uncreditedAmountIs", { amount: money(doc.uncreditedAmount ?? 0, doc.currency) })}</Text>
           </Stack>
         </Card>
       )}

@@ -39,6 +39,7 @@ import { StaleAlert } from "../components/stale-alert";
 import { invoicesCatalog } from "../i18n";
 import { refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
+import { rateOn } from "../lib/vat";
 
 /** The seller fields issuing needs, in the form's order (D2). */
 const requiredSellerFields = [
@@ -333,12 +334,11 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
 type CodeModal = { mode: "create" } | { mode: "edit"; code: VatCode } | { mode: "rates"; code: VatCode } | null;
 
 const VatCodesSection = () => {
-  const { t, number, date } = useInvoiceFormat();
+  const { t, percent, date } = useInvoiceFormat();
   const codes = useQuery(vatCodesQueryOptions());
   const meta = useQuery(invoicesMetaQueryOptions());
   const [modal, setModal] = useState<CodeModal>(null);
   const today = meta.data?.today ?? "";
-  const current = (code: VatCode) => code.rates.find((r) => r.validFrom <= today && (!r.validTo || r.validTo >= today));
   return (
     <Card withBorder>
       <Stack>
@@ -368,7 +368,7 @@ const VatCodesSection = () => {
             </Table.Thead>
             <Table.Tbody>
               {codes.data.map((code) => {
-                const rate = current(code);
+                const rate = rateOn(code, today);
                 return (
                   <Table.Tr key={code.id}>
                     <Table.Td>{code.code}</Table.Td>
@@ -377,7 +377,7 @@ const VatCodesSection = () => {
                     </Table.Td>
                     <Table.Td>{code.ehfCategory}</Table.Td>
                     <Table.Td>{code.safTCode}</Table.Td>
-                    <Table.Td ta="right">{rate ? `${number(rate.ratePercent, 2)} %` : t("notAvailable")}</Table.Td>
+                    <Table.Td ta="right">{rate === undefined ? t("notAvailable") : percent(rate)}</Table.Td>
                     <Table.Td>
                       <Group gap={4} justify="flex-end" wrap="nowrap">
                         <Button size="xs" variant="subtle" onClick={() => setModal({ mode: "rates", code })}>
@@ -540,7 +540,7 @@ const RatePeriods = ({
   date: (d: string) => string;
   onClose: () => void;
 }) => {
-  const { t, number } = useInvoiceFormat();
+  const { t, percent } = useInvoiceFormat();
   const queryClient = useQueryClient();
   const [ratePercent, setRatePercent] = useState<number | string>(defaultRate(code.ehfCategory));
   const [validFrom, setValidFrom] = useState<string | null>(null);
@@ -565,7 +565,7 @@ const RatePeriods = ({
           <Table.Tbody>
             {code.rates.map((r) => (
               <Table.Tr key={r.id}>
-                <Table.Td>{`${number(r.ratePercent, 2)} %`}</Table.Td>
+                <Table.Td>{percent(r.ratePercent)}</Table.Td>
                 <Table.Td>
                   {r.validTo
                     ? t("periodClosed", { from: date(r.validFrom), to: date(r.validTo) })
