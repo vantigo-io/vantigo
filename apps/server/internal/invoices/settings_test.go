@@ -124,6 +124,7 @@ func TestSettings_EveryRuleIsA400OnItsField(t *testing.T) {
 		{"defaultPaymentTermsDays", -1},
 		{"defaultCurrency", "EUR"},
 		{"seriesStart", 0},
+		{"seriesStart", int64(1) << 53},
 		{"legalName", string(make([]byte, 201))},
 		{"footerText", string(make([]byte, 501))},
 	} {

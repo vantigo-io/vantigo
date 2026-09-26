@@ -87,7 +87,12 @@ Scope names are canonical lowercase ASCII `[a-z0-9-]`, at most 64 characters, wi
 slashes or dots. Communications uses the scope `communications`, so one of its
 attachments lands at `communications/<relative-key>`. Expenses uses the scope
 `expenses`: a receipt's relative key is `receipts/<entryId>/<uuid>`, so its
-physical key is `expenses/receipts/<entryId>/<uuid>`. A scoped store refuses a
+physical key is `expenses/receipts/<entryId>/<uuid>`. Invoices uses the scope
+`invoices`: an issued document's PDF has the relative key
+`documents/<id>/<number>-<sha256>.pdf`, so its physical key is
+`invoices/documents/<id>/<number>-<sha256>.pdf` — stored once after the issue
+commits and never deleted or overwritten, since an issued document is bookkeeping
+material ([Invoices](invoices.md#the-pdf)). A scoped store refuses a
 relative key that equals its scope or already begins with `{scope}/`: callers pass
 relative keys only and must never construct the prefix themselves.
 

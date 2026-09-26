@@ -160,8 +160,9 @@ func addressOf(line1, line2, postalCode, city, region, country *string) *exporte
 	return &a
 }
 
-// buyerOf is an issued document's buyer snapshot, nil on a draft, which has
-// none: the snapshot is written at issue (D4).
+// buyerOf is a document's buyer snapshot: an issued document's, written at
+// issue (D4), and a credit-note draft's, the one it copied from its original
+// (D8); nil on an invoice draft, which has none yet.
 func buyerOf(d store.InvoicesInvoice) *exportedBuyer {
 	b := exportedBuyer{
 		CustomerNumber: d.BuyerCustomerNumber, Type: orEmpty(d.BuyerType), Name: orEmpty(d.BuyerName),

@@ -29,6 +29,11 @@ const (
 // which this phase does not model yet.
 const onlyNOK = "Only NOK in this phase"
 
+// maxSeriesStart is the highest start a series may have: 2^53 − 1, the
+// largest integer a JavaScript client reads exactly, and far below where the
+// counter's bigint would overflow on the first issue.
+const maxSeriesStart = 1<<53 - 1
+
 var bicPattern = regexp.MustCompile(`^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$`)
 
 // maxLength is the rule for a varchar(n) column: n characters, as Postgres
@@ -191,8 +196,11 @@ func parseSettings(body gen.InvoicesSettingsRequest) (parsedSettings, map[string
 		add("defaultCurrency", onlyNOK)
 	}
 	add("footerText", maxLength("The footer text", p.FooterText, 500))
-	if p.SeriesStart < 1 {
+	switch {
+	case p.SeriesStart < 1:
 		add("seriesStart", "The series starts at 1 or later")
+	case p.SeriesStart > maxSeriesStart:
+		add("seriesStart", "The series starts at 9007199254740991 at the latest")
 	}
 	return p, errs
 }

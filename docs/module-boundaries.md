@@ -74,7 +74,7 @@ Communications' outbox is the working example.
    begins or ends a transaction, never reads a directory (no in-process lookup
    happens under a lock anywhere in this codebase), and tolerates a reference
    that already points at the surviving customer. Today's holders are projects,
-   energy and communications ([Merging duplicates](customers.md#merging-duplicates)).
+   energy, communications and invoices ([Merging duplicates](customers.md#merging-duplicates)).
    Another write direction needs a design of its own, not a second holder-shaped
    interface — rule 9 is that design for the second.
 9. **A person's data, handed over and taken out.** The second sanctioned
@@ -92,7 +92,9 @@ Communications' outbox is the working example.
    keeps everything, an anonymisation keeps the references and takes the person
    out of them. Today's implementations are communications (the correspondence,
    handed over and deleted), energy and projects (handed over, and kept:
-   a supply period is the metering point's history, invoiced work stays)
+   a supply period is the metering point's history, invoiced work stays) and
+   invoices (handed over; drafts deleted, issued documents kept as
+   bookkeeping material)
    ([Personal data and anonymisation](customers.md#personal-data-and-anonymisation)).
 
 ## How they are enforced

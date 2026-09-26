@@ -29,7 +29,12 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
   API (409 `invoice_issued`) and by the database: triggers refuse any change to an
   issued row but the merge's `customer_id` and the PDF columns set once, and any write
   to its lines or VAT summaries (SQLSTATE `P0001`, "invoices: issued document is
-  immutable").
+  immutable"). The child-row trigger reads the document `FOR SHARE` before it judges
+  it, so a line written beside an issue that has not committed yet waits for it and is
+  then refused. CHECKs hold the rest of the shape: an issued row carries `issued_at`,
+  both parties' names and its rate date, an invoice has a due date exactly when issued,
+  a credit note has none and no terms, and a credit note credits an original line at
+  most once (`ux_lines_credit_once`).
 - **Correction (§ 5-2-7).** A credit note in the same series reverses the original,
   in full or in part.
 - **VAT per rate (§ 5-1-5, Peppol BR-CO-17).** VAT is computed per (category, rate) on
@@ -41,7 +46,9 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
   no holiday calendar. On top of that no document may be dated before the latest issued
   one, so numbers and dates are both monotone — a guard the law does not ask for.
 - **Late issue (§ 5-2-2).** More than a month after delivery the issue still succeeds
-  and warns `issued_late`: refusing would leave the sale undocumented.
+  and warns `issued_late`: refusing would leave the sale undocumented. It is judged on
+  the day the document was actually issued (`issued_at`), not the date it carries: one
+  issued on the 14th and dated the last of the previous month is judged on the 14th.
 - **Delivery (§ 5-1-1 nr. 4).** A day or a period is required to issue; a place of
   delivery is optional and printed only when it is not the buyer's address. Whether the
   buyer address is enough as the place of delivery for services is **unconfirmed** — no
@@ -109,8 +116,9 @@ every rule — the counter row is what serialises two issues, so every check tha
 depends on other documents runs after it. The directory is read before the transaction
 and the object store is used after it; neither is ever called under a lock. The lock
 order is always document → settings → counter → original, and nothing takes them in
-another order: `PUT /settings` and the rate operations take only the settings row, and
-the merge holder locks the documents it re-points **newest first** before it writes
+another order: `PUT /settings` takes only the settings row, the rate operations the
+settings row and then the VAT code, and `PUT /vat-codes/{id}` only the code — no issue
+locks a code — and the merge holder locks the documents it re-points **newest first** before it writes
 them — a credit note's issue holds the credit note and then locks its older original,
 and an UPDATE alone could lock the original first, a deadlock. This is the module's one
 lock invariant, and every multi-row lock inside it keeps to it: **take locks in
@@ -133,9 +141,10 @@ A merge that re-points the draft between the directory read and the lock is
 ## Credit notes
 
 `POST /invoices/{id}/credit` makes a credit-note draft of an issued invoice: the
-customer, currency, rate, delivery, references and the **buyer snapshot** are copied —
-no directory is read, so an anonymised customer's correction names the person the
-original named — with every line, its VAT code and the line it credits. A credit draft
+customer, currency, rate and the date it was taken on, delivery, references and the
+**buyer snapshot** are copied — no directory is read, so an anonymised customer's
+correction names the person the original named — with every line, its VAT code and
+the line it credits. A credit draft
 may remove lines, lower a quantity or a unit price, and edit a description and the
 notes; anything else is a 400 on the field. The caps are decided at issue under the
 original's lock: per original line, the quantity and net credited by the issued credit
@@ -167,6 +176,11 @@ discount is never squared: its credit was a choice, not a rounding, and squaring
 it would credit the reduction again. Whatever is squared, every note's line nets sum to
 its net total (EN 16931 BR-CO-10), so no credit note is one an EHF could not carry.
 
+**A free line needs no return.** An original line with no money in it — "Frakt 0,-" —
+does not have to be credited for the last note to be the final one: leaving it out of
+the last note (the natural edit) still squares the VAT rows, where it would otherwise
+leave an øre that the headline cap then refuses.
+
 **A price reduction uses up the line's quantity.** The per-line cap counts quantity as
 well as net, so a prisavslag credit of a line's full quantity at a lower price uses the
 line's whole quantity cap: a later return of goods on that line is refused
@@ -181,6 +195,11 @@ note against the same invoice issues and changes what a line has left; the draft
 page, its preview and its issue always total it afresh.
 
 ## The PDF
+
+**The currency is on the page** (§ 5-1-1 nr. 6): the line amounts' header reads
+"Beløp (NOK)" / "Amount (NOK)", the VAT column "MVA (NOK)" / "VAT (NOK)", and the
+amount to pay "NOK 15 045,00" — the document's own currency, which is NOK only in this
+phase.
 
 Rendered with maroto v2 (pure Go; the runtime image has no fonts) in **Noto Sans**,
 embedded, under the SIL Open Font License 1.1 — its text is
@@ -300,11 +319,11 @@ All under `/api/v1/invoices`, every one behind `invoices:access`.
 | `GET /{id}` | | 404 |
 | `PUT /{id}` | `invoices:create` | 404; 400; 409 `invoice_issued`, the customer gates, a stale revision |
 | `DELETE /{id}` | `invoices:create` | 404; 409 `invoice_issued` |
-| `POST /{id}/issue` | `invoices:issue` | 404; 409 every code under [Issuing](#issuing); 503 `storage_unavailable` |
+| `POST /{id}/issue` | `invoices:issue` | 400 a body that does not decode (none, or an `issueDate` that is no calendar day); 404; 409 every code under [Issuing](#issuing); 503 `storage_unavailable` |
 | `POST /{id}/credit` | `invoices:issue` | 404; 409 `invoice_draft`, `credit_note_not_creditable`, `invoice_fully_credited` |
 | `GET /{id}/pdf` | | 404; 409 `invoice_draft`; 500 a missing or altered stored object, or a render that fails; 503 `storage_unavailable` |
 | `GET /{id}/preview.pdf` | `invoices:create` | 404; 409 `invoice_issued` |
-| `GET /journal` | | 400 `from` after `to`, paging |
+| `GET /journal` | | 400 `from` or `to` missing or not a calendar date, `from` after `to`, paging |
 
 ## What comes next
 
