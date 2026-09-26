@@ -63,12 +63,18 @@ export const JournalPage = () => {
           }}
         />
       </Group>
+      {meta.isError && (
+        <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadMeta")}>
+          {refusalMessage(meta.error, t, date)}
+        </Alert>
+      )}
       {journal.isError && (
         <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadJournal")}>
           {refusalMessage(journal.error, t, date)}
         </Alert>
       )}
-      {journal.isPending && <ContentSkeleton rows={4} rowHeight={40} />}
+      {/* The range starts from meta's today, so without meta the journal is never asked for. */}
+      {!meta.isError && journal.isPending && <ContentSkeleton rows={4} rowHeight={40} />}
       {data && (
         <>
           {!checked ? (

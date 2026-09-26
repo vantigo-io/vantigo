@@ -11,9 +11,15 @@
  * for the draft as saved, and these, labelled an estimate, only while editing.
  */
 
-/** v at `places` decimals as an integer: 12.5 at 2 is 1250n. */
+/**
+ * v at `places` decimals as an integer: 12.5 at 2 is 1250n. From 1e21 up
+ * `toFixed` writes exponent notation, which BigInt refuses — a number typed
+ * into an input before it clamps would crash the editor — but every double
+ * that large is a whole number, so it is scaled as one.
+ */
 export const scaled = (v: number, places: number): bigint => {
   if (!Number.isFinite(v)) return 0n;
+  if (Math.abs(v) >= 1e21) return BigInt(v) * 10n ** BigInt(places);
   return BigInt(v.toFixed(places).replace(".", ""));
 };
 

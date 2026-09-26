@@ -49,6 +49,7 @@ import { vatCodesQueryOptions } from "../api/vat-codes";
 import { CustomerPicker } from "../components/customer-picker";
 import { DocumentLink } from "../components/document-link";
 import { PdfButton } from "../components/pdf-button";
+import { StaleAlert } from "../components/stale-alert";
 import "../i18n";
 import { refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
@@ -143,6 +144,14 @@ const numberOf = (v: number | string): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+/**
+ * The largest quantity and unit price a line's columns hold (numeric(12,3) and
+ * numeric(14,4)), which the server refuses past. The inputs clamp to them;
+ * the arithmetic in lib/money copes with anything typed before the clamp.
+ */
+const MAX_QUANTITY = 999999999.999;
+const MAX_UNIT_PRICE = 9999999999.9999;
+
 let lineKeys = 0;
 const nextKey = () => `line-${++lineKeys}`;
 
@@ -186,7 +195,7 @@ const DraftEditor = ({
   // server does.
   const allCodes = useQuery(vatCodesQueryOptions());
   const queryClient = useQueryClient();
-  const navigate = useNavigate() as (options: unknown) => void;
+  const navigate = useNavigate() as (options: unknown) => Promise<void>;
   const heading = useHeading(draft);
   const credit = draft.kind === "credit_note";
   const original = useQuery({
@@ -349,9 +358,14 @@ const DraftEditor = ({
   });
   const remove = useMutation({
     mutationFn: () => deleteInvoice(draft.id),
+    // Away first, then the cache: invalidated while the page still showed it,
+    // the deleted draft would be fetched again and the page would flash "Could
+    // not load the document" on the way out. Its own entry is dropped, never
+    // refetched.
     onSuccess: async () => {
+      await navigate({ to: "/invoices" });
+      queryClient.removeQueries({ queryKey: invoiceQueryOptions(draft.id).queryKey, exact: true });
       await queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY] });
-      navigate({ to: "/invoices" });
     },
     onError: (error) =>
       notifications.show({ color: "red", title: t("couldNotDelete"), message: refusalMessage(error, t, date) }),
@@ -386,7 +400,16 @@ const DraftEditor = ({
         actions={
           <Group>
             {canCreate && (
-              <PdfButton url={previewUrl(draft.id)} mode="open" variant="default" leftSection={<IconEye size={16} />}>
+              // The preview renders the draft as saved, so while there are
+              // unsaved edits it is held back as Issue is: it would show
+              // something other than what is on screen.
+              <PdfButton
+                url={previewUrl(draft.id)}
+                mode="open"
+                variant="default"
+                disabled={dirty}
+                leftSection={<IconEye size={16} />}
+              >
                 {t("preview")}
               </PdfButton>
             )}
@@ -410,31 +433,17 @@ const DraftEditor = ({
       />
       <CreditsLink doc={draft} />
       {stale && (
-        <Alert color="yellow" icon={<IconAlertCircle size={16} />} title={t("draftChangedTitle")}>
-          <Stack gap="xs">
-            <Text size="sm">{t("draftChangedMessage")}</Text>
-            {reloadFailed && (
-              <Text size="sm" c="red">
-                {t("couldNotReload")}
-              </Text>
-            )}
-            <Group justify="flex-end">
-              <Button
-                size="xs"
-                variant="light"
-                color="yellow"
-                loading={reload.isPending}
-                onClick={() => reload.mutate()}
-              >
-                {t("reload")}
-              </Button>
-            </Group>
-          </Stack>
-        </Alert>
+        <StaleAlert
+          title={t("draftChangedTitle")}
+          message={t("draftChangedMessage")}
+          reloadFailedMessage={reloadFailed ? t("couldNotReload") : undefined}
+          reloading={reload.isPending}
+          onReload={() => reload.mutate()}
+        />
       )}
-      {dirty && canIssue && (
+      {dirty && (
         <Text size="sm" c="dimmed">
-          {t("saveBeforeIssue")}
+          {canIssue ? t("saveBeforePreviewOrIssue") : t("saveBeforePreview")}
         </Text>
       )}
       {!storageAvailable && canIssue && (
@@ -619,7 +628,7 @@ const DraftEditor = ({
                       aria-label={t("lineQuantity", { n: i + 1 })}
                       decimalScale={3}
                       min={0}
-                      max={credit ? originalLine(l)?.quantity : undefined}
+                      max={credit ? originalLine(l)?.quantity : MAX_QUANTITY}
                       readOnly={!editable}
                       value={l.quantity}
                       onChange={(v) => setLine(l.key, { quantity: v })}
@@ -638,7 +647,7 @@ const DraftEditor = ({
                       aria-label={t("lineUnitPrice", { n: i + 1 })}
                       decimalScale={4}
                       min={0}
-                      max={credit ? originalLine(l)?.unitPrice : undefined}
+                      max={credit ? originalLine(l)?.unitPrice : MAX_UNIT_PRICE}
                       readOnly={!editable}
                       value={l.unitPrice}
                       onChange={(v) => setLine(l.key, { unitPrice: v })}
@@ -818,7 +827,7 @@ const Totals = ({ currency, rates, net, vat, gross }: TotalsProps) => {
  * download stores it.
  */
 const IssuedDocument = ({ document: doc, canIssue }: { document: InvoiceDocument; canIssue: boolean }) => {
-  const { t, money, date, number } = useInvoiceFormat();
+  const { t, money, unitPrice, date, number } = useInvoiceFormat();
   const queryClient = useQueryClient();
   const navigate = useNavigate() as (options: unknown) => void;
   const heading = useHeading(doc);
@@ -924,7 +933,7 @@ const IssuedDocument = ({ document: doc, canIssue }: { document: InvoiceDocument
                 <Table.Td>{l.description}</Table.Td>
                 <Table.Td ta="right">{number(l.quantity)}</Table.Td>
                 <Table.Td>{l.unit}</Table.Td>
-                <Table.Td ta="right">{money(l.unitPrice, doc.currency)}</Table.Td>
+                <Table.Td ta="right">{unitPrice(l.unitPrice, doc.currency)}</Table.Td>
                 <Table.Td ta="right">{number(l.discountPercent, 2)}</Table.Td>
                 <Table.Td ta="right">{number(l.vatRatePercent ?? 0, 2)}</Table.Td>
                 <Table.Td ta="right">{money(l.lineNet, doc.currency)}</Table.Td>

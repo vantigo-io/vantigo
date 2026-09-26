@@ -13,6 +13,9 @@ export const useInvoiceFormat = () => {
   return {
     t,
     money: (amount: number, currency: string) => formatters.formatCurrency(amount, currency),
+    /** A unit price, which has up to four decimals (numeric(14,4)): 33.3333 stays 33.3333, 100 is 100.00. */
+    unitPrice: (amount: number, currency: string) =>
+      formatters.formatCurrency(amount, currency, { minimumFractionDigits: 2, maximumFractionDigits: 4 }),
     number: (value: number, maxDecimals = 3) => formatters.formatNumber(value, { maximumFractionDigits: maxDecimals }),
     date: (date: string) => formatters.formatDate(toUtc(date), { dateStyle: "medium", timeZone: "UTC" }),
   };

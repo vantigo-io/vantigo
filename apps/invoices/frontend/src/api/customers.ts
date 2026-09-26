@@ -24,14 +24,17 @@ interface CustomerListAnswer {
 /**
  * A search of the customers. A buyer is picked among the active ones only —
  * the gates refuse the rest — while the list's filter offers every customer
- * not archived (`anyOpen`): a disabled customer still has documents to find.
+ * (`anyStatus`), a disabled or an archived one too: their issued documents
+ * are kept for the years the bookkeeping act (§ 13) asks, and are still found
+ * by who they were for.
  */
-export const customerSearchQueryOptions = (search: string, anyOpen = false) =>
+export const customerSearchQueryOptions = (search: string, anyStatus = false) =>
   queryOptions({
-    queryKey: [INVOICES_QUERY_KEY, "customers", search, anyOpen],
+    queryKey: [INVOICES_QUERY_KEY, "customers", search, anyStatus],
     queryFn: async ({ signal }) => {
       const params = new URLSearchParams({ pageSize: "20" });
-      if (!anyOpen) params.set("status", "active");
+      if (anyStatus) params.set("includeArchived", "true");
+      else params.set("status", "active");
       if (search.trim()) params.set("search", search.trim());
       const answer = await request<CustomerListAnswer>(`/api/v1/customers?${params.toString()}`, { signal });
       return answer.data;

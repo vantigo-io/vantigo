@@ -25,7 +25,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
 import { type ChangeEvent, useState } from "react";
 import { invoicesMetaQueryOptions } from "../api/meta";
-import { INVOICES_QUERY_KEY } from "../api/request";
+import { ApiConflictError, ApiValidationError, INVOICES_QUERY_KEY } from "../api/request";
 import { type InvoiceSettings, invoiceSettingsQueryOptions, updateInvoiceSettings } from "../api/settings";
 import {
   addVatCodeRate,
@@ -35,7 +35,8 @@ import {
   type VatCode,
   vatCodesQueryOptions,
 } from "../api/vat-codes";
-import "../i18n";
+import { StaleAlert } from "../components/stale-alert";
+import { invoicesCatalog } from "../i18n";
 import { refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 
@@ -50,6 +51,9 @@ const requiredSellerFields = [
 ] as const;
 
 const categories = ["S", "Z", "E", "AE", "G", "O", "K"];
+
+/** The rate a new code or period starts at: 25 % for S, the standard rate; 0 % for every other category. */
+const defaultRate = (category: string): number => (category === "S" ? 25 : 0);
 
 /**
  * Invoice settings (D12), `invoices:manage`'s: the seller record with the
@@ -86,6 +90,12 @@ export const SettingsPage = () => {
 const Settings = () => {
   const { t, date } = useInvoiceFormat();
   const settings = useQuery(invoiceSettingsQueryOptions());
+  // The settings the unsaved edits were made on. While there are any, the form
+  // keeps them rather than remounting on a newer revision a refetch brings in:
+  // the person's edits are never thrown away unasked, and the form says the
+  // settings changed — the draft editor's rule.
+  const [editedFrom, setEditedFrom] = useState<InvoiceSettings | null>(null);
+  const shown = editedFrom ?? settings.data;
   return (
     <>
       {settings.isError && (
@@ -94,18 +104,71 @@ const Settings = () => {
         </Alert>
       )}
       {settings.isPending && <ContentSkeleton rows={6} rowHeight={48} />}
-      {settings.data && <SellerForm key={settings.data.revision} settings={settings.data} />}
+      {shown && settings.data && (
+        <SellerForm
+          key={shown.revision}
+          settings={shown}
+          latestRevision={settings.data.revision}
+          dirty={shown === editedFrom}
+          onDirtyChange={(dirty) => setEditedFrom((current) => (dirty ? (current ?? shown) : null))}
+        />
+      )}
       <VatCodesSection />
     </>
   );
 };
 
-const SellerForm = ({ settings }: { settings: InvoiceSettings }) => {
+/** The seller fields that have an input, which a 400 naming them is shown on. */
+const sellerInputs = new Set([
+  "legalName",
+  "organisationNumber",
+  "addressLine1",
+  "addressLine2",
+  "postalCode",
+  "city",
+  "country",
+  "email",
+  "bankAccount",
+  "iban",
+  "bic",
+  "defaultPaymentTermsDays",
+  "footerText",
+  "seriesStart",
+]);
+
+interface SellerFormProps {
+  settings: InvoiceSettings;
+  /** The revision the server last answered: newer than the form's when someone else saved meanwhile. */
+  latestRevision: number;
+  /** Whether there are unsaved edits; the page holds it, so a refetch does not remount the form under them. */
+  dirty: boolean;
+  onDirtyChange: (dirty: boolean) => void;
+}
+
+/**
+ * The seller record and the series start. A 400 puts each field's refusal on
+ * its own input, worded by the catalog — every seller field has one rule, so
+ * its words say what the server checked — and only a refusal no input shows
+ * is a notification. A save refused as stale, or a newer revision seen while
+ * editing, says the settings changed and offers Reload.
+ */
+const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }: SellerFormProps) => {
   const { t, date } = useInvoiceFormat();
   const queryClient = useQueryClient();
   const [values, setValues] = useState(settings);
-  const set = <K extends keyof InvoiceSettings>(key: K, value: InvoiceSettings[K]) =>
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [conflict, setConflict] = useState(false);
+  const [reloadFailed, setReloadFailed] = useState(false);
+  const stale = conflict || latestRevision > settings.revision;
+  const set = <K extends keyof InvoiceSettings>(key: K, value: InvoiceSettings[K]) => {
     setValues((v) => ({ ...v, [key]: value }));
+    setErrors((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+    setDirty(true);
+  };
   const save = useMutation({
     mutationFn: () =>
       updateInvoiceSettings({
@@ -130,11 +193,39 @@ const SellerForm = ({ settings }: { settings: InvoiceSettings }) => {
       }),
     onSuccess: async (saved) => {
       queryClient.setQueryData(invoiceSettingsQueryOptions().queryKey, saved);
+      // The saved revision replaces the edited one: the form remounts on it.
+      setDirty(false);
       await queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY] });
       notifications.show({ color: "green", message: t("saved") });
     },
-    onError: (error) =>
-      notifications.show({ color: "red", title: t("couldNotSaveSettings"), message: refusalMessage(error, t, date) }),
+    onError: (error) => {
+      if (error instanceof ApiConflictError && !error.code) {
+        setConflict(true);
+        return;
+      }
+      if (error instanceof ApiValidationError) {
+        const onInputs: Record<string, string> = {};
+        const elsewhere: string[] = [];
+        for (const [field, message] of Object.entries(error.fieldErrors)) {
+          const key = `fieldInvalid.${field}`;
+          if (sellerInputs.has(field)) onInputs[field] = key in invoicesCatalog.en ? t(key) : message;
+          else elsewhere.push(message);
+        }
+        setErrors(onInputs);
+        if (elsewhere.length === 0) return;
+        notifications.show({ color: "red", title: t("couldNotSaveSettings"), message: elsewhere.join(" ") });
+        return;
+      }
+      notifications.show({ color: "red", title: t("couldNotSaveSettings"), message: refusalMessage(error, t, date) });
+    },
+  });
+  // Reload drops the unsaved edits for the latest revision, which the form
+  // then remounts on.
+  const reload = useMutation({
+    mutationFn: () => queryClient.fetchQuery({ ...invoiceSettingsQueryOptions(), staleTime: 0 }),
+    onMutate: () => setReloadFailed(false),
+    onSuccess: () => setDirty(false),
+    onError: () => setReloadFailed(true),
   });
   const text = (
     key:
@@ -152,12 +243,22 @@ const SellerForm = ({ settings }: { settings: InvoiceSettings }) => {
   ) => ({
     label: t(`field.${key}`),
     value: values[key],
+    error: errors[key],
     onChange: (e: ChangeEvent<HTMLInputElement>) => set(key, e.currentTarget.value),
   });
   return (
     <Card withBorder>
       <Stack>
         <Title order={4}>{t("seller")}</Title>
+        {stale && (
+          <StaleAlert
+            title={t("settingsChangedTitle")}
+            message={t("settingsChangedMessage")}
+            reloadFailedMessage={reloadFailed ? t("couldNotReloadSettings") : undefined}
+            reloading={reload.isPending}
+            onReload={() => reload.mutate()}
+          />
+        )}
         <List spacing={4} size="sm" aria-label={t("completeness")}>
           {requiredSellerFields.map((field) => {
             const missing = settings.missingSellerFields.includes(field);
@@ -187,6 +288,7 @@ const SellerForm = ({ settings }: { settings: InvoiceSettings }) => {
             label={t("field.defaultPaymentTermsDays")}
             min={0}
             max={365}
+            error={errors.defaultPaymentTermsDays}
             value={values.defaultPaymentTermsDays}
             onChange={(v) => set("defaultPaymentTermsDays", typeof v === "number" ? v : Number(v) || 0)}
           />
@@ -205,6 +307,7 @@ const SellerForm = ({ settings }: { settings: InvoiceSettings }) => {
         </Group>
         <Textarea
           label={t("field.footerText")}
+          error={errors.footerText}
           value={values.footerText}
           onChange={(e) => set("footerText", e.currentTarget.value)}
         />
@@ -213,11 +316,12 @@ const SellerForm = ({ settings }: { settings: InvoiceSettings }) => {
           description={settings.seriesLocked ? t("seriesLocked") : t("seriesStartHint")}
           disabled={settings.seriesLocked}
           min={1}
+          error={errors.seriesStart}
           value={values.seriesStart}
           onChange={(v) => set("seriesStart", typeof v === "number" ? v : Number(v) || 1)}
         />
         <Group justify="flex-end">
-          <Button loading={save.isPending} onClick={() => save.mutate()}>
+          <Button loading={save.isPending} disabled={!dirty} onClick={() => save.mutate()}>
             {t("save")}
           </Button>
         </Group>
@@ -244,6 +348,11 @@ const VatCodesSection = () => {
             {t("addVatCode")}
           </Button>
         </Group>
+        {codes.isError && (
+          <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadVatCodes")}>
+            {refusalMessage(codes.error, t, date)}
+          </Alert>
+        )}
         {codes.isPending && <ContentSkeleton rows={4} rowHeight={36} />}
         {codes.data && (
           <Table>
@@ -315,7 +424,7 @@ const VatCodeForm = ({ code, today, onClose }: { code?: VatCode; today: string; 
     ehfCategory: code?.ehfCategory ?? "S",
     exemptionReason: code?.exemptionReason ?? "",
     active: code?.active ?? true,
-    ratePercent: 25 as number | string,
+    ratePercent: defaultRate(code?.ehfCategory ?? "S") as number | string,
     validFrom: (today || null) as string | null,
   });
   const save = useMutation({
@@ -362,7 +471,13 @@ const VatCodeForm = ({ code, today, onClose }: { code?: VatCode; today: string; 
           disabled={code?.inUse}
           data={categories}
           value={values.ehfCategory}
-          onChange={(v) => setValues({ ...values, ehfCategory: v ?? "S" })}
+          onChange={(v) => {
+            const category = v ?? "S";
+            // A new code's first rate follows the category, as a new period's
+            // does: only S is taxed at a rate above 0 %, and the server
+            // refuses any other category a rate that is not.
+            setValues({ ...values, ehfCategory: category, ...(code ? {} : { ratePercent: defaultRate(category) }) });
+          }}
         />
         {code?.inUse && (
           <Text size="sm" c="dimmed">
@@ -427,7 +542,7 @@ const RatePeriods = ({
 }) => {
   const { t, number } = useInvoiceFormat();
   const queryClient = useQueryClient();
-  const [ratePercent, setRatePercent] = useState<number | string>(code.ehfCategory === "S" ? 25 : 0);
+  const [ratePercent, setRatePercent] = useState<number | string>(defaultRate(code.ehfCategory));
   const [validFrom, setValidFrom] = useState<string | null>(null);
   const done = async () => queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY] });
   const fail = (error: Error) =>

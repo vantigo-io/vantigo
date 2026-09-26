@@ -15,8 +15,8 @@ export interface CustomerPickerProps {
   error?: string;
   required?: boolean;
   readOnly?: boolean;
-  /** Offer every customer not archived, not only the active ones: the list's filter. */
-  anyOpen?: boolean;
+  /** Offer every customer, archived ones too, not only the active ones: the list's filter. */
+  anyStatus?: boolean;
 }
 
 /**
@@ -32,12 +32,12 @@ export const CustomerPicker = ({
   error,
   required,
   readOnly,
-  anyOpen,
+  anyStatus,
 }: CustomerPickerProps) => {
   const { t } = useI18n("invoices");
   const [search, setSearch] = useState("");
   const [debounced] = useDebouncedValue(search, 250);
-  const customers = useQuery(customerSearchQueryOptions(debounced, anyOpen));
+  const customers = useQuery(customerSearchQueryOptions(debounced, anyStatus));
   const data = (customers.data ?? []).map((c) => ({ value: String(c.id), label: `${c.name} (${c.customerNumber})` }));
   if (value !== null && selectedName && !data.some((d) => d.value === String(value))) {
     data.unshift({ value: String(value), label: selectedName });

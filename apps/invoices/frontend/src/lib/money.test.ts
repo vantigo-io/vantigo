@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { documentTotals, lineAmounts } from "./money";
+import { documentTotals, lineAmounts, scaled } from "./money";
 
 // The server's own hand-computed cases (drafts_test.go TestDrafts_TheMoney),
 // so the editor's live totals and the saved draft cannot disagree.
@@ -36,5 +36,13 @@ describe("the editor's money", () => {
       ["Z", 0, 50.5, 0],
     ]);
     expect(totals.gross).toBe(405.51);
+  });
+
+  // A number typed into an input before it clamps: toFixed writes 1e21 as
+  // "1e+21", which BigInt refuses, and the editor would crash in render.
+  it("scales a number of 1e21 or more without exponent notation", () => {
+    expect(scaled(1e21, 3)).toBe(10n ** 24n);
+    expect(scaled(-2e22, 2)).toBe(-2n * 10n ** 24n);
+    expect(() => lineAmounts(1e21, 1, 0)).not.toThrow();
   });
 });
