@@ -82,11 +82,22 @@ describe("the invoice list", () => {
     expect(customers.every((url) => !url.includes("status=") && url.includes("includeArchived=true"))).toBe(true);
   });
 
-  it("offers New invoice only to a caller who may create drafts and pick a buyer", async () => {
-    server();
-    renderRoute("/invoices", { canViewCustomers: false });
+  it.each([
+    ["may pick no buyer", true, false],
+    ["may create no drafts", false, true],
+  ] as const)("offers no New invoice to a caller who %s", async (_who, canCreate, canViewCustomers) => {
+    server({ canCreate });
+    const { queryClient } = renderRoute("/invoices", { canViewCustomers });
     await screen.findByText("Kari Nordmann");
+    // Only once meta has answered does the page know what the caller may do.
+    await waitFor(() => expect(queryClient.getQueryState(["invoices", "meta"])?.status).toBe("success"));
     expect(screen.queryByRole("button", { name: "New invoice" })).not.toBeInTheDocument();
+  });
+
+  it("offers New invoice to a caller who may create drafts and pick a buyer", async () => {
+    server();
+    renderRoute("/invoices");
+    expect(await screen.findByRole("button", { name: "New invoice" })).toBeInTheDocument();
   });
 
   it("creates a draft for the picked customer, prefilled with today and our reference, and opens it", async () => {

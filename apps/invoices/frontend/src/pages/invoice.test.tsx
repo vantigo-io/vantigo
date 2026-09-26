@@ -96,16 +96,43 @@ const server = (
         });
       }
       const errors: Record<string, string[]> = {};
+      // A credit note changes only what a correction may (credits.go's
+      // putCreditDraft): every field it copied from its original is compared
+      // with the draft's own, each line with the original line it credits.
       if (doc.kind === "credit_note") {
         const originals = (doc.credits && documents[doc.credits.id]?.lines) || [];
+        const add = (field: string, message: string) => {
+          errors[field] = [message];
+        };
+        if (body.customerId !== doc.customerId) add("customerId", "A credit note's customer is its original's");
+        if (body.paymentTermsDays !== undefined) add("paymentTermsDays", "A credit note has no payment terms");
+        if (
+          body.deliveryDate !== doc.deliveryDate ||
+          body.deliveryFrom !== doc.deliveryFrom ||
+          body.deliveryTo !== doc.deliveryTo
+        )
+          add("deliveryDate", "A credit note keeps its original's delivery");
+        const place = (a?: InvoiceInput["deliveryAddress"]) =>
+          [a?.line1, a?.line2, a?.postalCode, a?.city, a?.country].map((v) => v ?? "").join("|");
+        if (place(body.deliveryAddress) !== place(doc.deliveryAddress))
+          add("deliveryAddress", "A credit note keeps its original's place of delivery");
+        for (const field of ["yourReference", "ourReference", "orderReference"] as const) {
+          if ((body[field] ?? "") !== doc[field]) add(field, "A credit note keeps its original's references");
+        }
         body.lines.forEach((l, i) => {
           const o = originals.find((ol) => ol.id === l.creditsLineId);
-          if (!o)
-            errors[`lines[${i}].creditsLineId`] = ["A credit note only credits the original's lines; it adds none"];
-          else if (l.quantity > o.quantity) errors[`lines[${i}].quantity`] = ["A credit note may lower a quantity"];
-          else if (l.unitPrice > o.unitPrice) errors[`lines[${i}].unitPrice`] = ["A credit note may lower a price"];
+          const field = (name: string) => `lines[${i}].${name}`;
+          if (!o) {
+            add(field("creditsLineId"), "A credit note only credits the original's lines; it adds none");
+            return;
+          }
+          if (l.vatCodeId !== o.vatCodeId) add(field("vatCodeId"), "A credit note keeps the original line's VAT code");
+          if ((l.unit ?? "") !== o.unit) add(field("unit"), "A credit note keeps the original line's unit");
+          if (l.quantity > o.quantity) add(field("quantity"), "A credit note may lower a quantity, never raise it");
+          if (l.unitPrice > o.unitPrice) add(field("unitPrice"), "A credit note may lower a price, never raise it");
+          if ((l.discountPercent ?? 0) < o.discountPercent)
+            add(field("discountPercent"), "A credit note may not lower a discount");
         });
-        if (body.paymentTermsDays !== undefined) errors.paymentTermsDays = ["A credit note has no payment terms"];
       }
       if (Object.keys(errors).length > 0) return jsonResponse(400, { title: "Invalid", status: 400, errors });
       return jsonResponse(200, {
@@ -235,9 +262,21 @@ describe("an issued document", () => {
   });
 });
 
+/**
+ * A day on which code 3's rate is 26 % (its period from 2027) while the
+ * original invoice was issued at 25 %: a credit note reverses at the
+ * original line's snapshot rate, never the code's rate today, and only a day
+ * like this tells the two apart.
+ */
+const afterTheRateChange = { today: "2027-01-05" };
+
 describe("a credit-note draft", () => {
   it("names its original, adds no lines, keeps the VAT codes, and shows the cap warnings", async () => {
-    server({ 1002: creditDraft({ warnings: ["credit_exceeds_line"] }), 1001: issued() });
+    server(
+      { 1002: creditDraft({ warnings: ["credit_exceeds_line"] }), 1001: issued() },
+      {},
+      { meta: afterTheRateChange },
+    );
     renderRoute("/invoices/1002");
 
     expect(await screen.findByText("Credit note for invoice")).toBeInTheDocument();
@@ -245,7 +284,10 @@ describe("a credit-note draft", () => {
     expect(screen.queryByRole("button", { name: "Add a line" })).not.toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Line 1 VAT code" })).toBeDisabled();
     expect(screen.getByText(/credits more than the original line had left/)).toBeInTheDocument();
-    // At the original line's own 25 %.
+    // The estimate while editing is at the original line's own 25 % — 8.33 —
+    // not the code's 26 % today, which would be 8.67.
+    await userEvent.type(screen.getByRole("textbox", { name: "Line 1 description" }), " retur");
+    expect(screen.getByText(/An estimate while you edit/)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId("vat-total")).toHaveTextContent("8.33"));
   });
 
@@ -315,7 +357,10 @@ describe("the PDF", () => {
   it("downloads the stored PDF behind a button", async () => {
     const createObjectURL = vi.fn(() => "blob:pdf");
     vi.stubGlobal("URL", Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));
-    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const clicked: HTMLAnchorElement[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      clicked.push(this);
+    });
     const fetchMock = server(
       { 1001: issued() },
       {},
@@ -337,7 +382,33 @@ describe("the PDF", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Download PDF" }));
     await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
     expect(fetchMock.actualCalls.some(([url]) => path(url) === "/api/v1/invoices/1001/pdf")).toBe(true);
-    expect(click).toHaveBeenCalled();
+    // Saved under the name the server gives it, from the blob it fetched.
+    expect(clicked).toHaveLength(1);
+    expect(clicked[0].download).toBe("faktura-1000.pdf");
+    expect(clicked[0].href).toBe("blob:pdf");
+  });
+
+  it("saves a PDF the server names no file for under the catalog's name", async () => {
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:pdf"), revokeObjectURL: vi.fn() }));
+    const clicked: HTMLAnchorElement[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      clicked.push(this);
+    });
+    server(
+      { 1001: issued() },
+      {},
+      {
+        answers: {
+          "GET /api/v1/invoices/1001/pdf": () =>
+            new Response("%PDF-1.7", { status: 200, headers: { "Content-Type": "application/pdf" } }),
+        },
+      },
+    );
+    renderRoute("/invoices/1001");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Download PDF" }));
+    await waitFor(() => expect(clicked).toHaveLength(1));
+    expect(clicked[0].download).toBe("document.pdf");
   });
 
   it("says a refusal as a notification, never the problem JSON in the browser", async () => {
@@ -483,14 +554,15 @@ describe("the lines table", () => {
 
 describe("saving a credit-note draft", () => {
   it("sends a lowered quantity with the line it credits, and no payment terms", async () => {
-    const fetchMock = server({ 1002: creditDraft(), 1001: issued() });
+    const fetchMock = server({ 1002: creditDraft(), 1001: issued() }, {}, { meta: afterTheRateChange });
     renderRoute("/invoices/1002");
 
     await waitFor(() => expect(screen.getByTestId("vat-total")).toHaveTextContent("8.33"));
     const quantity = screen.getByRole("textbox", { name: "Line 1 quantity" });
     await userEvent.clear(quantity);
     await userEvent.type(quantity, "0.5");
-    // 0.5 × 33.33 = 16.665 → 16.67; its VAT 4.1675 → 4.17.
+    // 0.5 × 33.33 = 16.665 → 16.67; its VAT at the original's 25 % 4.1675 →
+    // 4.17 (at the code's 26 % today it would be 4.33).
     expect(screen.getByTestId("net-total")).toHaveTextContent("16.67");
     expect(screen.getByTestId("vat-total")).toHaveTextContent("4.17");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -506,6 +578,56 @@ describe("saving a credit-note draft", () => {
         unit: "timer",
         unitPrice: 33.33,
         discountPercent: 0,
+        vatCodeId: 1,
+        creditsLineId: 5001,
+      },
+    ]);
+  });
+});
+
+describe("a credit note's fixed fields", () => {
+  // The server refuses, field by field, any change to what a credit note
+  // copied from its original; the editor sends each back exactly as it came.
+  it("are sent back as they came, a delivery period, a place of delivery and a discount included", async () => {
+    const base = issued();
+    const discounted = { ...base.lines[0], discountPercent: 10, lineAllowance: 3.33, lineNet: 30 };
+    const original = issued({ lines: [discounted, ...base.lines.slice(1)] });
+    const note = creditDraft({
+      deliveryDate: undefined,
+      deliveryFrom: "2026-09-01",
+      deliveryTo: "2026-09-10",
+      deliveryAddress: { line1: "Byggeplass 4", postalCode: "5003", city: "Bergen", country: "NO" },
+      orderReference: "O-5",
+      lines: [{ ...discounted, id: 6001, creditsLineId: 5001 }],
+    });
+    const fetchMock = server({ 1002: note, 1001: original });
+    renderRoute("/invoices/1002");
+
+    const quantity = await screen.findByRole("textbox", { name: "Line 1 quantity" });
+    await userEvent.clear(quantity);
+    await userEvent.type(quantity, "0.5");
+    await userEvent.type(screen.getByRole("textbox", { name: "Line 1 description" }), " (halv)");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
+    expect(screen.queryByText("Could not save the draft")).not.toBeInTheDocument();
+    const body = sent(fetchMock, "PUT").body;
+    expect(body).toMatchObject({
+      customerId: 2001,
+      deliveryFrom: "2026-09-01",
+      deliveryTo: "2026-09-10",
+      deliveryAddress: { line1: "Byggeplass 4", postalCode: "5003", city: "Bergen", country: "NO" },
+      yourReference: "PO-77",
+      ourReference: "Ola Nordmann",
+      orderReference: "O-5",
+    });
+    expect(body.lines).toEqual([
+      {
+        description: "Tredjedel 1 (halv)",
+        quantity: 0.5,
+        unit: "timer",
+        unitPrice: 33.33,
+        discountPercent: 10,
         vatCodeId: 1,
         creditsLineId: 5001,
       },
@@ -619,7 +741,7 @@ describe("the totals the page shows", () => {
       vatTotalNok: 8.34,
       grossTotal: 41.67,
     });
-    server({ 1002: last, 1001: issued() });
+    server({ 1002: last, 1001: issued() }, {}, { meta: afterTheRateChange });
     renderRoute("/invoices/1002");
 
     expect(await screen.findByTestId("vat-total")).toHaveTextContent("8.34");
