@@ -265,6 +265,23 @@ such a row carries those six columns through untouched instead of refusing the
 edit. See [Expenses](expenses.md) for the model, and for what changes with and
 without Projects.
 
+**Invoices requires customers.** `MODULES` refuses `invoices` without `customers`
+(`internal/config`): the buyer, its billing profile and its invoice address come
+from `contracts.CustomerDirectory.BillingProfile`, read before any issue or save
+takes a lock and never under one. It reads nothing else — products, projects,
+time, expenses and energy are not read in phase 1A — and provides no single-provider
+contract. It fills both many-provider slots: as a `CustomerReferenceHolder` it
+re-points every document of a merged-away customer, drafts and issued alike
+(`invoices.invoices`), the immutability trigger allowing exactly `customer_id` to
+change on an issued one; as `CustomerPersonalData` it exports a person's documents
+and drafts and, on anonymisation, deletes the drafts (`invoices.drafts`) and keeps
+the issued documents under bokføringsloven § 13 (`invoices.documents`, at 0).
+For those gates `contracts.CustomerBillingProfile` carries the customer's `Status`
+(`active`, `disabled`, `archived`) and `MergedInto`, the one change to the
+customers contract Invoices made: `disabled` is "blocked for invoicing", and an
+archived or merged-away customer still resolves, so a past invoice can be shown and
+credited. See [Invoices](invoices.md).
+
 ## Adding a module
 
 **Backend**
