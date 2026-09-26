@@ -70,6 +70,8 @@ describe("the app registry", () => {
       "/expenses/reimbursements",
       "/expenses/settings",
       "/invoices",
+      "/invoices/journal",
+      "/invoices/settings",
       "/communications/inbox",
       "/communications/channels",
       "/communications/suppressions",
@@ -180,6 +182,21 @@ describe("the app registry", () => {
       ["navigation.expenseApprovals", "/expenses/approvals", ["expenses:approve"], ["expenses:access"]],
       ["navigation.reimbursements", "/expenses/reimbursements", ["expenses:manage"], undefined],
       ["navigation.expensesSettings", "/expenses/settings", ["expenses:manage"], undefined],
+    ]);
+  });
+
+  // Invoices is three destinations: the list and the journal for anyone who
+  // reads invoices, the settings for invoices:manage (invoices foundation
+  // design D12).
+  it("gives Invoices the list, the journal and the settings", () => {
+    const invoices = appForKey("invoices");
+    expect(invoices).toMatchObject({ module: "invoices", label: "navigation.invoices", home: "/invoices" });
+    expect(invoices.requiredPermissions).toEqual(["invoices:access", "invoices:manage"]);
+    const items = invoices.navSections.flatMap((section) => section.items);
+    expect(items.map((item) => [item.label, item.to, item.requiredPermissions])).toEqual([
+      ["navigation.invoices", "/invoices", ["invoices:access"]],
+      ["navigation.invoiceJournal", "/invoices/journal", ["invoices:access"]],
+      ["navigation.invoiceSettings", "/invoices/settings", ["invoices:manage"]],
     ]);
   });
 

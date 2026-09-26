@@ -6,8 +6,8 @@ import { refusalMessage } from "./errors";
 
 /**
  * Every code the list, the editor, the issue dialog, the credit flow and the
- * PDF buttons can meet (openapi/invoices.yaml's InvoicesConflictProblem, less
- * the six settings codes Task 13's pages meet). A code without a key would
+ * PDF buttons can meet, and the six the settings page meets — together
+ * openapi/invoices.yaml's InvoicesConflictProblem. A code without a key would
  * fall through to the server's English detail, which an nb reader then sees.
  */
 const documentCodes = [
@@ -36,6 +36,15 @@ const documentCodes = [
   "storage_unavailable",
 ];
 
+const settingsCodes = [
+  "series_locked",
+  "vat_code_in_use",
+  "rate_change_in_past",
+  "rate_period_not_latest",
+  "rate_period_last",
+  "rate_period_in_use",
+];
+
 /** A refusal as the shared client throws it for a 409 problem. */
 const conflict = (code: string, problem: Record<string, unknown> = {}) =>
   new ApiConflictError("The server's English.", {
@@ -51,7 +60,7 @@ const translate = (language: "en" | "nb") => {
 };
 
 describe("a refusal's words", () => {
-  it.each(documentCodes)("has a key for %s in both catalogs", (code) => {
+  it.each([...documentCodes, ...settingsCodes])("has a key for %s in both catalogs", (code) => {
     expect(invoicesCatalog.en).toHaveProperty([`refusal.${code}`]);
     expect(invoicesCatalog.nb).toHaveProperty([`refusal.${code}`]);
   });
