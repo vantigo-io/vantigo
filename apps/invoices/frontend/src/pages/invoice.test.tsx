@@ -957,47 +957,88 @@ describe("an issued document's lines", () => {
 });
 
 describe("changing the buyer", () => {
-  // Mantine reports the picked option's label as a search; the customers API
-  // finds nothing for "Bygg AS (10003)", and the picker then labelled the new
-  // id with the draft's old buyer's name.
-  it("shows the customer picked, keeps it through the searches after, and saves its id", async () => {
+  /**
+   * Runs a test on a fake clock, with userEvent's direct calls told so
+   * (setup() would claim the clipboard the test setup stubs), and a `settle`
+   * that advances past every debounced search until no new one is asked for
+   * and every answer is in — so what a test then asserts is where the picker
+   * rests, not a moment in a cycle.
+   */
+  const onFakeClock = async (
+    body: (tools: {
+      user: {
+        clear: (el: Element) => Promise<void>;
+        type: (el: Element, text: string) => Promise<void>;
+        click: (el: Element) => Promise<void>;
+      };
+      settle: () => Promise<void>;
+      searches: () => string[];
+      fetchMock: ReturnType<typeof server>;
+    }) => Promise<void>,
+  ) => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
-      // userEvent's direct calls, told the clock is fake; setup() would claim the clipboard the test setup stubs.
       const timers = { advanceTimers: vi.advanceTimersByTime };
       const user = {
-        clear: (el: Element) => userEvent.clear(el, timers),
+        clear: (el: Element) => userEvent.clear(el),
         type: (el: Element, text: string) => userEvent.type(el, text, timers),
         click: (el: Element) => userEvent.click(el, timers),
       };
       const fetchMock = server({ 1001: draft() });
       const { queryClient } = renderRoute("/invoices/1001");
-      // Every debounced search has run and been answered.
+      const searches = () =>
+        fetchMock.actualCalls.map(([url]) => path(url)).filter((url) => url.startsWith("/api/v1/customers?"));
       const settle = async () => {
-        await act(async () => {
-          await vi.advanceTimersByTimeAsync(1000);
-        });
-        await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+        for (let round = 0; round < 8; round++) {
+          const before = searches().length;
+          await act(async () => {
+            await vi.advanceTimersByTimeAsync(1000);
+          });
+          await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+          if (searches().length === before) return;
+        }
+        throw new Error("the buyer picker never stopped searching");
       };
+      await body({ user, settle, searches, fetchMock });
+    } finally {
+      vi.useRealTimers();
+    }
+  };
 
+  // Mantine reports the selected option's label as a search whenever it sets
+  // it. Read as a search, "Acme AS (10001)" found nothing, the picker fell
+  // back to the draft's "Acme AS", which Mantine reported in turn: a request
+  // every debounce, for ever, over whatever the person typed.
+  it("rests on the draft's buyer, and never searches for its label", async () => {
+    await onFakeClock(async ({ settle, searches }) => {
+      await screen.findByRole("combobox", { name: "Customer" });
+      await settle();
+      expect(screen.getByRole("combobox", { name: "Customer" })).toHaveValue("Acme AS (10001)");
+      await settle();
+      expect(screen.getByRole("combobox", { name: "Customer" })).toHaveValue("Acme AS (10001)");
+      expect(searches().filter((url) => url.includes("10001"))).toEqual([]);
+    });
+  });
+
+  // Mantine reports the picked option's label as a search; the customers API
+  // finds nothing for "Bygg AS (10003)", and the picker then labelled the new
+  // id with the draft's old buyer's name.
+  it("shows the customer picked, keeps it through the searches after, and saves its id", async () => {
+    await onFakeClock(async ({ user, settle, searches, fetchMock }) => {
       const buyer = await screen.findByRole("combobox", { name: "Customer" });
-      expect(buyer).toHaveValue("Acme AS");
+      await settle();
       await user.clear(buyer);
       await user.type(buyer, "Bygg");
       await settle();
       await user.click(await screen.findByRole("option", { name: "Bygg AS (10003)" }));
       await settle();
-      await settle();
       expect(screen.getByRole("combobox", { name: "Customer" })).toHaveValue("Bygg AS (10003)");
-      const searches = fetchMock.actualCalls.map(([url]) => path(url)).filter((url) => url.includes("search="));
-      expect(searches.some((url) => url.includes("10003"))).toBe(false);
+      expect(searches().some((url) => url.includes("10003"))).toBe(false);
 
       await user.click(screen.getByRole("button", { name: "Save" }));
       expect(await screen.findByText("Saved")).toBeInTheDocument();
       expect(sent(fetchMock, "PUT").body.customerId).toBe(2003);
-    } finally {
-      vi.useRealTimers();
-    }
+    });
   });
 
   it("never offers to clear the buyer of a draft", async () => {
@@ -1031,6 +1072,55 @@ describe("moving between documents", () => {
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Preview" })).toBeEnabled();
     expect(screen.queryByText(/An estimate while you edit/)).not.toBeInTheDocument();
+  });
+});
+
+describe("a refusal on a field not on screen", () => {
+  // The day input is not rendered while a period is chosen: its refusal is
+  // said in a notification, never put on an input nobody sees.
+  it("is said in a notification rather than swallowed", async () => {
+    server(
+      { 1001: draft({ deliveryDate: undefined, deliveryFrom: "2026-09-01", deliveryTo: "2026-09-10" }) },
+      {},
+      {
+        answers: {
+          "PUT /api/v1/invoices/1001": jsonResponse(400, {
+            title: "Invalid invoice",
+            status: 400,
+            errors: { deliveryDate: ["A delivery is a day or a period, not both"] },
+          }),
+        },
+      },
+    );
+    renderRoute("/invoices/1001");
+
+    await userEvent.type(await screen.findByRole("textbox", { name: "Line 1 description" }), " endret");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Could not save the draft")).toBeInTheDocument();
+    expect(
+      screen.getByText("A delivery is a day or a period, not both; a credit note keeps its original's."),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("another draft at the same revision", () => {
+  // The editor is keyed by the document and its revision: two drafts at
+  // revision 3 are still two editors, never one holding the first's lines.
+  it("gets an editor of its own", async () => {
+    const other = draft({
+      id: 1003,
+      lines: [{ ...draft().lines[0], id: 5101, description: "Befaring" }],
+    });
+    server({ 1001: draft(), 1003: other });
+    const { router, queryClient } = renderRoute("/invoices/1001");
+
+    expect(await screen.findByRole("textbox", { name: "Line 1 description" })).toHaveValue("Tredjedel 1");
+    // Already read, as a draft opened earlier is: the page draws it at once,
+    // with no skeleton between the two editors.
+    queryClient.setQueryData(["invoices", "document", 1003], other);
+    await act(() => router.navigate({ to: "/invoices/$invoiceId", params: { invoiceId: "1003" } }));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Line 1 description" })).toHaveValue("Befaring"));
+    expect(screen.queryByRole("textbox", { name: "Line 2 description" })).not.toBeInTheDocument();
   });
 });
 

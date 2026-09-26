@@ -49,11 +49,12 @@ export const refusalMessage = (error: unknown, t: Translate, date: (day: string)
 };
 
 /**
- * A 400's refusals split by where they are shown: each field an input shows
- * (`hasInput`) worded by the catalog's `fieldInvalid.<field>` — a line's
- * `lines[2].quantity` by `fieldInvalid.line.quantity` — and the server's own
- * sentence only for a field the catalog has no words for; every refusal no
- * input shows, as the server wrote it, for a notification. Each field's
+ * A 400's refusals split by where they are shown: each field an input on
+ * screen shows (`hasInput`), and every other one for a notification — a field
+ * whose input is not rendered just now is never swallowed. Each is worded by
+ * the catalog's `fieldInvalid.<field>` — a line's `lines[2].quantity` by
+ * `fieldInvalid.line.quantity` — and by the server's own sentence only where
+ * the catalog has no words for the field. Each field's
  * catalog sentence covers every rule the server checks on it, so it says what
  * was refused in the reader's language.
  */
@@ -66,8 +67,9 @@ export const fieldRefusals = (
   const elsewhere: string[] = [];
   for (const [field, message] of Object.entries(error.fieldErrors)) {
     const key = `fieldInvalid.${field.replace(/^lines\[\d+\]\./, "line.")}`;
-    if (hasInput(field)) onInputs[field] = key in invoicesCatalog.en ? t(key) : message;
-    else elsewhere.push(message);
+    const words = key in invoicesCatalog.en ? t(key) : message;
+    if (hasInput(field)) onInputs[field] = words;
+    else elsewhere.push(words);
   }
   return { onInputs, elsewhere };
 };

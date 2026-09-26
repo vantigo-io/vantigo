@@ -56,16 +56,15 @@ export const CustomerPicker = ({
   const customers = useQuery(customerSearchQueryOptions(debounced, anyStatus));
   const optionLabel = (c: CustomerOption) => t("customerOption", { name: c.name, number: c.customerNumber });
   const data = (customers.data ?? []).map((c) => ({ value: String(c.id), label: optionLabel(c) }));
-  // The chosen customer's label: the one picked here, or the draft's own
-  // buyer by name, or the option the current search returned.
+  // The chosen customer's label: the option the current search returned
+  // first — Mantine shows, and reports as a search, the label of the option
+  // it finds — then the one picked here, then the draft's own buyer by name
+  // until a search brings its option. Whichever it is, it reads as no search.
   const selectedLabel =
     value === null
       ? undefined
-      : picked?.id === value
-        ? optionLabel(picked)
-        : selected?.id === value && selected.name
-          ? selected.name
-          : data.find((d) => d.value === String(value))?.label;
+      : (data.find((d) => d.value === String(value))?.label ??
+        (picked?.id === value ? optionLabel(picked) : selected?.id === value ? selected.name : undefined));
   if (value !== null && selectedLabel && !data.some((d) => d.value === String(value))) {
     data.unshift({ value: String(value), label: selectedLabel });
   }

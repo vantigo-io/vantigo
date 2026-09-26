@@ -104,7 +104,7 @@ export const InvoicePage = ({ invoiceId, canViewCustomers }: InvoicePageProps) =
   const shown = editedFrom ?? document.data;
   return shown.status === "draft" ? (
     <DraftEditor
-      key={shown.revision}
+      key={`${shown.id}:${shown.revision}`}
       draft={shown}
       latestRevision={document.data.revision}
       dirty={shown === editedFrom}
@@ -162,9 +162,10 @@ const MAX_QUANTITY = 999999999.999;
 const MAX_UNIT_PRICE = 9999999999.9999;
 
 /**
- * The fields of a draft's PUT the editor has an input for, which a 400 naming
- * them is shown on; the rest — the lines as a whole, a credit note's place of
- * delivery, the currency — are a notification.
+ * The fields of a draft's PUT the editor can have an input for. Whether it is
+ * on screen now is the editor's `rendered`; a 400 naming a field whose input
+ * is not — the lines as a whole, a credit note's place of delivery, the
+ * currency, a delivery day while a period is chosen — is a notification.
  */
 const editorInputs =
   /^(customerId|deliveryDate|deliveryFrom|deliveryTo|deliveryAddress\.(line1|line2|postalCode|city|country)|yourReference|ourReference|orderReference|paymentTermsDays|note|internalNote|lines\[\d+\]\.(description|quantity|unit|unitPrice|discountPercent|vatCodeId))$/;
@@ -284,6 +285,18 @@ const DraftEditor = ({
   // A line moved or removed renumbers the ones after it, so no line's refusal
   // stays on a line it was not about.
   const renumbered = () => clearErrors((field) => field.startsWith("lines["));
+  /** Whether the input a refused field is shown on is on screen now. */
+  const rendered = (field: string): boolean => {
+    if (!editorInputs.test(field)) return false;
+    const line = /^lines\[(\d+)\]\./.exec(field);
+    if (line) return Number(line[1]) < lines.length;
+    if (field === "customerId") return !credit && canViewCustomers;
+    if (field === "deliveryDate") return deliveryMode === "date";
+    if (field === "deliveryFrom" || field === "deliveryTo") return deliveryMode === "period";
+    if (field.startsWith("deliveryAddress.")) return elsewhere;
+    if (field === "paymentTermsDays") return !credit;
+    return true;
+  };
   const move = (index: number, by: number) => {
     renumbered();
     setLines((current) => {
@@ -381,7 +394,7 @@ const DraftEditor = ({
         return;
       }
       if (error instanceof ApiValidationError) {
-        const { onInputs, elsewhere } = fieldRefusals(error, t, (field) => editorInputs.test(field));
+        const { onInputs, elsewhere } = fieldRefusals(error, t, rendered);
         setErrors(onInputs);
         if (elsewhere.length > 0)
           notifications.show({ color: "red", title: t("couldNotSave"), message: elsewhere.join(" ") });
