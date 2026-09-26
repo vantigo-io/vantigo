@@ -70,12 +70,10 @@ WHERE c.credits_invoice_id = @original_id AND c.status = 'issued' AND l.credits_
 GROUP BY l.credits_line_id;
 
 -- name: CreditedVatPerRate :many
--- CreditedVatPerRate is, per (category, rate) row of an invoice, the taxable
--- amount and the VAT its issued credit notes reversed: what a final credit
--- note takes from the original's row, so the credits sum to what was charged,
--- øre for øre (D8).
+-- CreditedVatPerRate is, per (category, rate) row of an invoice, the VAT its
+-- issued credit notes reversed: what a final credit note takes from the
+-- original's row, so the credits sum to what was charged, øre for øre (D8).
 SELECT s.vat_category, s.rate_percent,
-       sum(s.taxable_amount)::numeric(14,2) AS taxable,
        sum(s.vat_amount)::numeric(14,2) AS vat,
        sum(s.vat_amount_nok)::numeric(14,2) AS vat_nok
 FROM invoices.vat_summaries s
@@ -84,9 +82,10 @@ WHERE c.credits_invoice_id = @original_id AND c.status = 'issued'
 GROUP BY s.vat_category, s.rate_percent;
 
 -- name: SquareCreditLine :exec
--- SquareCreditLine gives a final credit note's line what its original line has
--- left — gross, allowance and net — in place of its own rounding (D8). It runs
--- while the credit note is still a draft; the trigger refuses it afterwards.
+-- SquareCreditLine gives a credit note's line that returns its original line's
+-- last unit what that line has left — gross, allowance and net — in place of
+-- its own rounding (D8). It runs while the credit note is still a draft; the
+-- trigger refuses it afterwards.
 UPDATE invoices.lines SET
     line_gross = @line_gross,
     line_allowance = @line_allowance,

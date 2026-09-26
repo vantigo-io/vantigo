@@ -462,23 +462,17 @@ func (s *server) renderPreview(ctx context.Context, q *store.Queries, inv store.
 	taxed := taxedLines(lines, codes)
 	summaries, totals, _ := summarize(taxed, big.NewRat(1, 1))
 	var squared []lineAmounts
+	var original *store.InvoicesInvoice // a credit note's, for its "til faktura" line
 	if inv.Kind == kindCreditNote {
 		// As the draft's response does: a credit note reverses its
 		// original's treatment, with the original lines' snapshot rates,
-		// never today's, and a final full reversal takes what is left (D8).
-		cd, err := readCreditDraft(ctx, q, inv, stored)
+		// never today's, and what a line or the invoice has left squared (D8).
+		cd, err := readCreditDraft(ctx, q, inv, stored, nil)
 		if err != nil {
 			return nil, err
 		}
 		taxed, summaries, totals, squared = cd.totals.taxed, cd.totals.rows, cd.totals.totals, cd.totals.amounts
-	}
-	var original *store.InvoicesInvoice
-	if inv.CreditsInvoiceID != nil {
-		o, err := q.GetInvoice(ctx, *inv.CreditsInvoiceID)
-		if err != nil {
-			return nil, err
-		}
-		original = &o
+		original = &cd.book.original
 	}
 	doc, err := pdfDocumentOf(draft, stored, nil, original)
 	if err != nil {
