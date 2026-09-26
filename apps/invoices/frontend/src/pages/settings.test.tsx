@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { InvoiceSettings } from "../api/settings";
-import type { VatCode } from "../api/vat-codes";
+import type { VatCode, VatCodeCreateInput, VatCodeUpdateInput } from "../api/vat-codes";
 import { jsonResponse, sent } from "../test/api";
 import { stubFetch } from "../test/fetch";
 import { meta, settings, vatCodes } from "../test/fixtures";
@@ -54,7 +54,46 @@ const server = (refuse: Record<string, Response> = {}, state: World = world()) =
       return jsonResponse(200, state.settings);
     }
     if (url === "/api/v1/invoices/settings") return jsonResponse(200, state.settings);
-    if (url === "/api/v1/invoices/vat-codes") return jsonResponse(200, state.codes);
+    if (url === "/api/v1/invoices/vat-codes" && method === "GET") return jsonResponse(200, state.codes);
+    const body = init?.body ? JSON.parse(String(init.body)) : {};
+    if (url === "/api/v1/invoices/vat-codes" && method === "POST") {
+      const { ratePercent, validFrom, ...own } = body as VatCodeCreateInput;
+      const created: VatCode = {
+        ...own,
+        id: 100 + state.codes.length,
+        active: true,
+        inUse: false,
+        revision: 1,
+        rates: [{ id: 2000 + state.codes.length, ratePercent, validFrom }],
+      };
+      state.codes = [...state.codes, created];
+      return jsonResponse(201, created);
+    }
+    const one = /^\/api\/v1\/invoices\/vat-codes\/(\d+)$/.exec(url);
+    if (one && method === "PUT") {
+      const { revision, ...own } = body as VatCodeUpdateInput;
+      const code = state.codes.find((c) => c.id === Number(one[1]));
+      if (!code) return new Response(null, { status: 404 });
+      const updated: VatCode = { ...code, ...own, revision: revision + 1 };
+      state.codes = state.codes.map((c) => (c.id === code.id ? updated : c));
+      return jsonResponse(200, updated);
+    }
+    // A new period: the open one closes the day before it starts (D3).
+    const rates = /^\/api\/v1\/invoices\/vat-codes\/(\d+)\/rates$/.exec(url);
+    if (rates && method === "POST") {
+      const { ratePercent, validFrom } = body as { ratePercent: number; validFrom: string };
+      const dayBefore = new Date(Date.parse(`${validFrom}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+      state.codes = state.codes.map((c) => {
+        if (c.id !== Number(rates[1])) return c;
+        const open = { ...c.rates[c.rates.length - 1], validTo: dayBefore };
+        const added = { id: 3000 + c.rates.length, ratePercent, validFrom };
+        return { ...c, rates: [...c.rates.slice(0, -1), open, added], revision: c.revision + 1 };
+      });
+      return jsonResponse(
+        201,
+        state.codes.find((c) => c.id === Number(rates[1])),
+      );
+    }
     const period = /^\/api\/v1\/invoices\/vat-codes\/(\d+)\/rates\/(\d+)$/.exec(url);
     if (period && method === "DELETE") {
       const [id, rateId] = [Number(period[1]), Number(period[2])];
@@ -115,6 +154,23 @@ describe("the invoice settings", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Jan 1, 2026 – Dec 31, 2026")).toBeInTheDocument();
     expect(within(dialog).getByText("From Jan 1, 2027")).toBeInTheDocument();
+
+    // A new period from a date: the open one closes the day before.
+    const rate = within(dialog).getByRole("textbox", { name: "New rate %" });
+    await userEvent.clear(rate);
+    await userEvent.type(rate, "27");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Valid from" }), "Jun 1, 2027");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Change the rate from this date" }));
+    await waitFor(() => expect(sent(fetchMock, "POST").url).toBe("/api/v1/invoices/vat-codes/1/rates"));
+    expect(sent(fetchMock, "POST").body).toEqual({ ratePercent: 27, validFrom: "2027-06-01" });
+    expect(await within(dialog).findByText("Jan 1, 2027 – May 31, 2027")).toBeInTheDocument();
+    expect(within(dialog).getByText("From Jun 1, 2027")).toBeInTheDocument();
+    expect(within(dialog).getByText("27%")).toBeInTheDocument();
+
+    // It is the latest and still ahead, so it may go; the one before reopens.
+    await userEvent.click(within(dialog).getByRole("button", { name: "Remove this period" }));
+    expect(await within(dialog).findByText("From Jan 1, 2027")).toBeInTheDocument();
+    expect(within(dialog).queryByText("From Jun 1, 2027")).not.toBeInTheDocument();
 
     await userEvent.click(within(dialog).getByRole("button", { name: "Remove this period" }));
     await waitFor(() =>
@@ -308,5 +364,60 @@ describe("the invoice settings", () => {
     await userEvent.click(within(dialog).getByRole("combobox", { name: "Category" }));
     await userEvent.click(await screen.findByRole("option", { name: "S" }));
     expect(within(dialog).getByRole("textbox", { name: "Rate %" })).toHaveValue("25");
+  });
+
+  it("creates a code with its first period, at the category's rate", async () => {
+    const fetchMock = server();
+    renderWithProviders(<SettingsPage />);
+    await screen.findByText("Utgående mva 25 %");
+
+    await userEvent.click(screen.getByRole("button", { name: "Add a VAT code" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Code" }), "6");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Name" }), "Utenfor mva-loven");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "SAF-T code" }), "6");
+    await userEvent.click(within(dialog).getByRole("combobox", { name: "Category" }));
+    await userEvent.click(await screen.findByRole("option", { name: "O" }));
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Exemption reason" }), "Utenfor mva-loven");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(sent(fetchMock, "POST").url).toBe("/api/v1/invoices/vat-codes"));
+    expect(sent(fetchMock, "POST").body).toEqual({
+      code: "6",
+      name: "Utenfor mva-loven",
+      safTCode: "6",
+      ehfCategory: "O",
+      exemptionReason: "Utenfor mva-loven",
+      ratePercent: 0,
+      validFrom: "2026-09-12",
+    });
+    const row = (await screen.findByText("Utenfor mva-loven")).closest("tr") as HTMLElement;
+    expect(within(row).getByText("0%")).toBeInTheDocument();
+  });
+
+  it("edits a code with its revision, and a code no longer offered says so", async () => {
+    const fetchMock = server();
+    renderWithProviders(<SettingsPage />);
+    await screen.findByText("Utgående mva 15 %");
+
+    await userEvent.click(screen.getByRole("button", { name: "Edit VAT code 31" }));
+    const dialog = await screen.findByRole("dialog");
+    const name = within(dialog).getByRole("textbox", { name: "Name" });
+    await userEvent.clear(name);
+    await userEvent.type(name, "Utgående mva 15 % (næringsmidler)");
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Offered for new lines" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(sent(fetchMock, "PUT").url).toBe("/api/v1/invoices/vat-codes/2"));
+    expect(sent(fetchMock, "PUT").body).toEqual({
+      code: "31",
+      name: "Utgående mva 15 % (næringsmidler)",
+      safTCode: "31",
+      ehfCategory: "S",
+      active: false,
+      revision: 1,
+    });
+    const row = (await screen.findByText("Utgående mva 15 % (næringsmidler)")).closest("tr") as HTMLElement;
+    expect(within(row).getByText("Inactive")).toBeInTheDocument();
   });
 });
