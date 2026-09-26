@@ -2,6 +2,7 @@ import {
   IconAddressBook,
   IconAdjustments,
   IconBolt,
+  IconBook,
   IconBriefcase,
   IconCashBanknote,
   IconCategory,
@@ -241,6 +242,20 @@ export const apps: readonly AppDefinition[] = [
       to: "/invoices",
       icon: IconFileInvoice,
       requiredPermissions: ["invoices:access"],
+    },
+    {
+      // The journal proves the series has no gaps (D11); everyone who reads
+      // invoices reads it.
+      label: "navigation.invoiceJournal",
+      to: "/invoices/journal",
+      icon: IconBook,
+      requiredPermissions: ["invoices:access"],
+    },
+    {
+      label: "navigation.invoiceSettings",
+      to: "/invoices/settings",
+      icon: IconAdjustments,
+      requiredPermissions: ["invoices:manage"],
     },
   ]),
   moduleApp("communications", "navigation.communications", IconInbox, "/communications", [

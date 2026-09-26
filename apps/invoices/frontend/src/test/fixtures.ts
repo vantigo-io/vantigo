@@ -1,5 +1,7 @@
 import type { InvoiceDocument, InvoiceList } from "../api/invoices";
+import type { InvoiceJournal } from "../api/journal";
 import type { InvoicesMeta } from "../api/meta";
+import type { InvoiceSettings } from "../api/settings";
 import type { VatCode } from "../api/vat-codes";
 
 /**
@@ -262,3 +264,90 @@ export const vatCodes = (): VatCode[] => [
     rates: [{ id: 1009, ratePercent: 25, validFrom: "2020-01-01" }],
   },
 ];
+
+/** The settings as the server sends them: a seller lacking two fields, the series locked. */
+export const settings = (overrides: Partial<InvoiceSettings> = {}): InvoiceSettings => ({
+  legalName: "Kraft-Verket AS",
+  organisationNumber: "974760673",
+  vatRegistered: true,
+  inForetaksregisteret: true,
+  addressLine1: "Storgata 1",
+  addressLine2: "",
+  postalCode: "",
+  city: "Oslo",
+  country: "NO",
+  bankAccount: "",
+  iban: "",
+  bic: "",
+  email: "faktura@kraft-verket.no",
+  defaultPaymentTermsDays: 14,
+  defaultCurrency: "NOK",
+  footerText: "",
+  seriesStart: 1000,
+  seriesLocked: true,
+  missingSellerFields: ["postalCode", "bankAccount"],
+  revision: 5,
+  updatedAt: "2026-09-12T10:00:00Z",
+  ...overrides,
+});
+
+/** A month's journal: numbers 1000 to 1002, a credit note signed negative. */
+export const journal = (overrides: Partial<InvoiceJournal> = {}): InvoiceJournal => ({
+  data: [
+    {
+      id: 1,
+      number: 1000,
+      kind: "invoice",
+      issueDate: "2026-09-02",
+      currency: "NOK",
+      buyerName: "Acme Norge AS",
+      netTotal: 1000,
+      vatTotal: 250,
+      grossTotal: 1250,
+      vatSummaries: [{ safTCode: "3", category: "S", ratePercent: 25, taxableAmount: 1000, vatAmount: 250 }],
+    },
+    {
+      id: 2,
+      number: 1001,
+      kind: "invoice",
+      issueDate: "2026-09-05",
+      currency: "NOK",
+      buyerName: "Kari Nordmann",
+      netTotal: 200,
+      vatTotal: 0,
+      grossTotal: 200,
+      vatSummaries: [{ safTCode: "5", category: "Z", ratePercent: 0, taxableAmount: 200, vatAmount: 0 }],
+    },
+    {
+      id: 3,
+      number: 1002,
+      kind: "credit_note",
+      issueDate: "2026-09-10",
+      currency: "NOK",
+      buyerName: "Acme Norge AS",
+      netTotal: -400,
+      vatTotal: -100,
+      grossTotal: -500,
+      creditsNumber: 1000,
+      vatSummaries: [{ safTCode: "3", category: "S", ratePercent: 25, taxableAmount: -400, vatAmount: -100 }],
+    },
+  ],
+  pagination: { page: 1, pageSize: 25, totalCount: 3, totalPages: 1, hasNextPage: false, hasPreviousPage: false },
+  totals: {
+    byCode: [
+      { safTCode: "3", category: "S", ratePercent: 25, taxableAmount: 600, vatAmount: 150 },
+      { safTCode: "5", category: "Z", ratePercent: 0, taxableAmount: 200, vatAmount: 0 },
+    ],
+    netTotal: 800,
+    vatTotal: 150,
+    grossTotal: 950,
+  },
+  gaps: [],
+  gapsTruncated: false,
+  seriesStart: 1000,
+  counterLast: 1002,
+  highestIssued: 1002,
+  checkedFrom: 1000,
+  checkedTo: 1002,
+  ...overrides,
+});

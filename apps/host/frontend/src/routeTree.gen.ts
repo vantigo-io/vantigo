@@ -45,6 +45,8 @@ import { Route as ExpensesSettingsRouteImport } from './routes/expenses/settings
 import { Route as InvitationsAcceptRouteImport } from './routes/invitations/accept'
 import { Route as InvoicesIndexRouteImport } from './routes/invoices/index'
 import { Route as InvoicesInvoiceIdRouteImport } from './routes/invoices/$invoiceId'
+import { Route as InvoicesJournalRouteImport } from './routes/invoices/journal'
+import { Route as InvoicesSettingsRouteImport } from './routes/invoices/settings'
 import { Route as ProductsIndexRouteImport } from './routes/products/index'
 import { Route as ProductsProductIdRouteImport } from './routes/products/$productId'
 import { Route as ProductsCategoriesRouteImport } from './routes/products/categories'
@@ -261,6 +263,16 @@ const InvoicesIndexRoute = InvoicesIndexRouteImport.update({
 const InvoicesInvoiceIdRoute = InvoicesInvoiceIdRouteImport.update({
   id: '/$invoiceId',
   path: '/$invoiceId',
+  getParentRoute: () => InvoicesRoute,
+} as any)
+const InvoicesJournalRoute = InvoicesJournalRouteImport.update({
+  id: '/journal',
+  path: '/journal',
+  getParentRoute: () => InvoicesRoute,
+} as any)
+const InvoicesSettingsRoute = InvoicesSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => InvoicesRoute,
 } as any)
 const ProductsIndexRoute = ProductsIndexRouteImport.update({
@@ -484,6 +496,8 @@ export interface FileRoutesByFullPath {
   '/expenses/settings': typeof ExpensesSettingsRoute
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/invoices/$invoiceId': typeof InvoicesInvoiceIdRoute
+  '/invoices/journal': typeof InvoicesJournalRoute
+  '/invoices/settings': typeof InvoicesSettingsRoute
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
   '/products/tax-categories': typeof ProductsTaxCategoriesRoute
@@ -546,6 +560,8 @@ export interface FileRoutesByTo {
   '/expenses/settings': typeof ExpensesSettingsRoute
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/invoices/$invoiceId': typeof InvoicesInvoiceIdRoute
+  '/invoices/journal': typeof InvoicesJournalRoute
+  '/invoices/settings': typeof InvoicesSettingsRoute
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
   '/products/tax-categories': typeof ProductsTaxCategoriesRoute
@@ -620,6 +636,8 @@ export interface FileRoutesById {
   '/expenses/settings': typeof ExpensesSettingsRoute
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/invoices/$invoiceId': typeof InvoicesInvoiceIdRoute
+  '/invoices/journal': typeof InvoicesJournalRoute
+  '/invoices/settings': typeof InvoicesSettingsRoute
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
   '/products/tax-categories': typeof ProductsTaxCategoriesRoute
@@ -696,6 +714,8 @@ export interface FileRouteTypes {
     | '/expenses/settings'
     | '/invitations/accept'
     | '/invoices/$invoiceId'
+    | '/invoices/journal'
+    | '/invoices/settings'
     | '/products/$productId'
     | '/products/categories'
     | '/products/tax-categories'
@@ -758,6 +778,8 @@ export interface FileRouteTypes {
     | '/expenses/settings'
     | '/invitations/accept'
     | '/invoices/$invoiceId'
+    | '/invoices/journal'
+    | '/invoices/settings'
     | '/products/$productId'
     | '/products/categories'
     | '/products/tax-categories'
@@ -831,6 +853,8 @@ export interface FileRouteTypes {
     | '/expenses/settings'
     | '/invitations/accept'
     | '/invoices/$invoiceId'
+    | '/invoices/journal'
+    | '/invoices/settings'
     | '/products/$productId'
     | '/products/categories'
     | '/products/tax-categories'
@@ -1151,6 +1175,20 @@ declare module '@tanstack/react-router' {
       path: '/$invoiceId'
       fullPath: '/invoices/$invoiceId'
       preLoaderRoute: typeof InvoicesInvoiceIdRouteImport
+      parentRoute: typeof InvoicesRoute
+    }
+    '/invoices/journal': {
+      id: '/invoices/journal'
+      path: '/journal'
+      fullPath: '/invoices/journal'
+      preLoaderRoute: typeof InvoicesJournalRouteImport
+      parentRoute: typeof InvoicesRoute
+    }
+    '/invoices/settings': {
+      id: '/invoices/settings'
+      path: '/settings'
+      fullPath: '/invoices/settings'
+      preLoaderRoute: typeof InvoicesSettingsRouteImport
       parentRoute: typeof InvoicesRoute
     }
     '/products/': {
@@ -1509,11 +1547,15 @@ const ExpensesRouteWithChildren = ExpensesRoute._addFileChildren(
 
 interface InvoicesRouteChildren {
   InvoicesInvoiceIdRoute: typeof InvoicesInvoiceIdRoute
+  InvoicesJournalRoute: typeof InvoicesJournalRoute
+  InvoicesSettingsRoute: typeof InvoicesSettingsRoute
   InvoicesIndexRoute: typeof InvoicesIndexRoute
 }
 
 const InvoicesRouteChildren: InvoicesRouteChildren = {
   InvoicesInvoiceIdRoute: InvoicesInvoiceIdRoute,
+  InvoicesJournalRoute: InvoicesJournalRoute,
+  InvoicesSettingsRoute: InvoicesSettingsRoute,
   InvoicesIndexRoute: InvoicesIndexRoute,
 }
 

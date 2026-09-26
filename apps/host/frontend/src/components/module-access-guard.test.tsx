@@ -154,6 +154,21 @@ describe("ModuleAccessGuard", () => {
     expect(screen.getByText("Allowed content")).toBeInTheDocument();
   });
 
+  // Invoices' journal is for every reader, its settings for invoices:manage
+  // alone (invoices foundation design D12).
+  it.each([
+    ["/invoices", ["invoices:access"]],
+    ["/invoices/journal", ["invoices:access"]],
+    ["/invoices/settings", ["invoices:manage"]],
+  ])("guards %s behind %s", (pathname, permissions) => {
+    renderGuardFor(pathname, []);
+    expect(screen.getByRole("heading", { name: "Access denied" })).toBeInTheDocument();
+
+    cleanup();
+    renderGuardFor(pathname, permissions);
+    expect(screen.getByText("Allowed content")).toBeInTheDocument();
+  });
+
   // Expenses' approval queue is Time's own seam again: the sidebar entry is
   // for expenses:approve holders, but a project manager approves their own
   // project's expenses through their role alone and reaches the queue from the
