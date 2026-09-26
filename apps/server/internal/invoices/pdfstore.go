@@ -460,6 +460,14 @@ func (s *server) renderPreview(ctx context.Context, q *store.Queries, inv store.
 		return nil, err
 	}
 	taxed := taxedLines(lines, codes)
+	if inv.Kind == kindCreditNote {
+		// As the draft's response does: a credit note reverses its
+		// original's treatment, with the original lines' snapshot rates,
+		// never today's (D8).
+		if taxed, err = creditDraftTaxedLines(ctx, q, *inv.CreditsInvoiceID, stored, lines); err != nil {
+			return nil, err
+		}
+	}
 	summaries, totals, _ := summarize(taxed, big.NewRat(1, 1))
 	var original *store.InvoicesInvoice
 	if inv.CreditsInvoiceID != nil {
@@ -477,8 +485,16 @@ func (s *server) renderPreview(ctx context.Context, q *store.Queries, inv store.
 		doc.lines[i].rate = taxed[i].rate
 	}
 	doc.summaries, doc.totals, doc.preview = summaries, totals, true
+	if previewRendered != nil {
+		previewRendered(inv.ID, doc.totals.vat)
+	}
 	return renderPDF(buildPDFModel(doc))
 }
+
+// previewRendered, when a test sets it, is told each preview's VAT total: no
+// PDF text extractor in this module's dependencies reads the words back
+// (pdf_internal_test.go), so a preview's arithmetic is asserted here.
+var previewRendered func(invoiceID int64, vatTotal *big.Rat)
 
 // copyIssueParams puts a would-be issue's snapshots on a draft's row, for its
 // preview.

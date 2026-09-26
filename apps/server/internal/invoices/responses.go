@@ -234,21 +234,35 @@ func (s *server) invoiceResponse(ctx context.Context, q *store.Queries, inv stor
 			}
 		}
 		resp.PdfStored = ptr(inv.PdfSha256 != nil)
-		if issuedLate(inv.IssueDate.Time, deliveryEndOf(inv)) {
+		if inv.Kind == kindInvoice && issuedLate(inv.IssueDate.Time, deliveryEndOf(inv)) {
 			resp.Warnings = append(resp.Warnings, warningIssuedLate)
 		}
-		return resp, nil
+		return resp, creditLinks(ctx, q, inv, &resp)
 	}
 
-	codes, err := vatCodesOn(ctx, q, pgDate(today))
-	if err != nil {
-		return gen.InvoicesInvoiceResponse{}, err
-	}
 	lines, err := storedDraftLines(stored)
 	if err != nil {
 		return gen.InvoicesInvoiceResponse{}, err
 	}
-	rows, totals, _ := summarize(taxedLines(lines, codes), big.NewRat(1, 1))
+	var taxed []taxedLine
+	if inv.Kind == kindCreditNote {
+		if taxed, err = creditDraftTaxedLines(ctx, q, *inv.CreditsInvoiceID, stored, lines); err != nil {
+			return gen.InvoicesInvoiceResponse{}, err
+		}
+	} else {
+		codes, err := vatCodesOn(ctx, q, pgDate(today))
+		if err != nil {
+			return gen.InvoicesInvoiceResponse{}, err
+		}
+		taxed = taxedLines(lines, codes)
+		for _, l := range lines {
+			if c, ok := codes[l.vatCodeID]; ok && c.rate == nil {
+				resp.Warnings = append(resp.Warnings, warningVatCodeNotValid)
+				break
+			}
+		}
+	}
+	rows, totals, _ := summarize(taxed, big.NewRat(1, 1))
 	for _, r := range rows {
 		resp.VatSummaries = append(resp.VatSummaries, summaryResponse(r))
 	}
@@ -257,13 +271,9 @@ func (s *server) invoiceResponse(ctx context.Context, q *store.Queries, inv stor
 	if profile != nil && profile.Currency != "" && profile.Currency != inv.Currency {
 		resp.Warnings = append(resp.Warnings, warningCustomerCurrencyDiffers)
 	}
-	for _, l := range lines {
-		if c, ok := codes[l.vatCodeID]; ok && c.rate == nil {
-			resp.Warnings = append(resp.Warnings, warningVatCodeNotValid)
-			break
-		}
-	}
-	if issuedLate(today, deliveryEndOf(inv)) {
+	// A credit note keeps its original's delivery and is issued after it by
+	// nature: issued_late would always hold and say nothing (D8).
+	if inv.Kind == kindInvoice && issuedLate(today, deliveryEndOf(inv)) {
 		resp.Warnings = append(resp.Warnings, warningIssuedLate)
 	}
 	latest, err := q.LatestIssueDate(ctx)
@@ -275,5 +285,5 @@ func (s *server) invoiceResponse(ctx context.Context, q *store.Queries, inv stor
 		allowed = append(allowed, wireDate(d))
 	}
 	resp.AllowedIssueDates = &allowed
-	return resp, nil
+	return resp, creditLinks(ctx, q, inv, &resp)
 }

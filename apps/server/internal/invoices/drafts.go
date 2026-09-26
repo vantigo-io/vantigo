@@ -476,6 +476,9 @@ func (s *server) PutInvoicesById(ctx context.Context, req gen.PutInvoicesByIdReq
 		return gen.PutInvoicesById400ApplicationProblemPlusJSONResponse(invalid(invalidInvoiceTitle,
 			fieldError("revision", "A replace carries the revision it was read at"))), nil
 	}
+	if current.Kind == kindCreditNote {
+		return s.putCreditDraft(ctx, q, current, *req.Body)
+	}
 	settings, err := q.GetSettings(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read the settings: %w", err)
