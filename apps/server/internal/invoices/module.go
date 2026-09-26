@@ -52,12 +52,16 @@ var permissions = []contracts.Permission{
 }
 
 // Module is invoices as a platform module: its contract mounted under
-// /api/v1/invoices/ and its four permissions in the composed catalog.
+// /api/v1/invoices/, its four permissions in the composed catalog, and the two
+// slots every module holding customer ids fills (customer_slots.go): the merge
+// holder and the personal-data provider.
 func Module() module.Module {
 	return module.Module{
-		Name:        "invoices",
-		Permissions: permissions,
-		Mount:       mount,
+		Name:                 "invoices",
+		Permissions:          permissions,
+		Mount:                mount,
+		CustomerReferences:   newCustomerReferenceHolder,
+		CustomerPersonalData: newCustomerPersonalData,
 	}
 }
 
