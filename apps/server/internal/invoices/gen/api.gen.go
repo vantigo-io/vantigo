@@ -190,6 +190,69 @@ type InvoicesIssueRequest struct {
 	IssueDate *openapi_types.Date `json:"issueDate,omitempty"`
 }
 
+// InvoicesJournalCode One (SAF-T code, category, rate) of the journal's VAT, credit notes signed negative.
+type InvoicesJournalCode struct {
+	Category      string  `json:"category"`
+	RatePercent   float64 `json:"ratePercent"`
+	SafTCode      string  `json:"safTCode"`
+	TaxableAmount float64 `json:"taxableAmount"`
+	VatAmount     float64 `json:"vatAmount"`
+}
+
+// InvoicesJournalResponse The invoice journal (D11) over issue dates from-to: the issued documents in number order, a page at a time; the totals over the whole range, per SAF-T code, category and rate, credit notes signed negative; and the gap check — the numbers from the one after the issued document before the range's first (never below the series start) to the range's last that no issued document holds, at most 1000 listed.
+type InvoicesJournalResponse struct {
+	// CheckedFrom The first number the gap check covered — one past the issued document before the range's first, or the series start; absent when the range holds no document.
+	CheckedFrom *int64 `json:"checkedFrom,omitempty"`
+
+	// CheckedTo The last number the gap check covered, the range's last; absent when the range holds no document.
+	CheckedTo *int64 `json:"checkedTo,omitempty"`
+
+	// CounterLast The counter's last allocated number; absent when nothing was ever issued. When it is not highestIssued, a number was allocated without a document.
+	CounterLast   *int64               `json:"counterLast,omitempty"`
+	Data          []InvoicesJournalRow `json:"data"`
+	Gaps          []int64              `json:"gaps"`
+	GapsTruncated bool                 `json:"gapsTruncated"`
+
+	// HighestIssued The highest number any issued document holds, whatever its date; absent when nothing is issued.
+	HighestIssued *int64                          `json:"highestIssued,omitempty"`
+	Pagination    externalRef0.PaginationMetadata `json:"pagination"`
+	SeriesStart   int64                           `json:"seriesStart"`
+
+	// Totals The journal's totals over the whole range, not the page, credit notes signed negative.
+	Totals InvoicesJournalTotals `json:"totals"`
+}
+
+// InvoicesJournalRow One issued document in the journal, credit notes signed negative in every amount.
+type InvoicesJournalRow struct {
+	BuyerCustomerNumber     *int64  `json:"buyerCustomerNumber,omitempty"`
+	BuyerName               *string `json:"buyerName,omitempty"`
+	BuyerOrganisationNumber *string `json:"buyerOrganisationNumber,omitempty"`
+
+	// CreditsNumber On a credit note, the number of the invoice it credits.
+	CreditsNumber *int64                `json:"creditsNumber,omitempty"`
+	Currency      string                `json:"currency"`
+	DeliveryDate  *openapi_types.Date   `json:"deliveryDate,omitempty"`
+	DeliveryFrom  *openapi_types.Date   `json:"deliveryFrom,omitempty"`
+	DeliveryTo    *openapi_types.Date   `json:"deliveryTo,omitempty"`
+	DueDate       *openapi_types.Date   `json:"dueDate,omitempty"`
+	GrossTotal    float64               `json:"grossTotal"`
+	Id            int64                 `json:"id"`
+	IssueDate     openapi_types.Date    `json:"issueDate"`
+	Kind          string                `json:"kind"`
+	NetTotal      float64               `json:"netTotal"`
+	Number        int64                 `json:"number"`
+	VatSummaries  []InvoicesJournalCode `json:"vatSummaries"`
+	VatTotal      float64               `json:"vatTotal"`
+}
+
+// InvoicesJournalTotals The journal's totals over the whole range, not the page, credit notes signed negative.
+type InvoicesJournalTotals struct {
+	ByCode     []InvoicesJournalCode `json:"byCode"`
+	GrossTotal float64               `json:"grossTotal"`
+	NetTotal   float64               `json:"netTotal"`
+	VatTotal   float64               `json:"vatTotal"`
+}
+
 // InvoicesLine One line (D4, D5). lineGross is quantity × unitPrice rounded to øre, lineAllowance the discount of it rounded, lineNet their difference. The VAT fields are the issue snapshot, absent on a draft.
 type InvoicesLine struct {
 	// CreditsLineId On a credit note's line, the original line it credits.
@@ -434,6 +497,14 @@ type GetInvoicesParams struct {
 	PageSize   *int32              `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
 
+// GetInvoicesJournalParams defines parameters for GetInvoicesJournal.
+type GetInvoicesJournalParams struct {
+	From     openapi_types.Date `form:"from" json:"from"`
+	To       openapi_types.Date `form:"to" json:"to"`
+	Page     *int32             `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int32             `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
 // PostInvoicesJSONRequestBody defines body for PostInvoices for application/json ContentType.
 type PostInvoicesJSONRequestBody = InvoicesInvoiceRequest
 
@@ -463,6 +534,9 @@ type ServerInterface interface {
 	// PostInvoices Create an invoice draft
 	// (POST /api/v1/invoices)
 	PostInvoices(w http.ResponseWriter, r *http.Request)
+	// GetInvoicesJournal The invoice journal
+	// (GET /api/v1/invoices/journal)
+	GetInvoicesJournal(w http.ResponseWriter, r *http.Request, params GetInvoicesJournalParams)
 	// GetInvoicesMeta Get the Invoices metadata
 	// (GET /api/v1/invoices/meta)
 	GetInvoicesMeta(w http.ResponseWriter, r *http.Request)
@@ -648,6 +722,78 @@ func (siw *ServerInterfaceWrapper) PostInvoices(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostInvoices(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInvoicesJournal operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoicesJournal(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetInvoicesJournalParams
+
+	// ------------- Required query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoicesJournal(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1133,6 +1279,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/{id}/pdf", wrapper.GetInvoicesByIdPdf)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/{id}/preview.pdf", wrapper.GetInvoicesByIdPreviewPdf)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/credit", wrapper.PostInvoicesByIdCredit)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/journal", wrapper.GetInvoicesJournal)
 
 	return m
 }
@@ -1275,6 +1422,70 @@ func (response PostInvoices409ApplicationProblemPlusJSONResponse) VisitPostInvoi
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesJournalRequestObject struct {
+	Params GetInvoicesJournalParams
+}
+
+type GetInvoicesJournalResponseObject interface {
+	VisitGetInvoicesJournalResponse(w http.ResponseWriter) error
+}
+
+type GetInvoicesJournal200JSONResponse InvoicesJournalResponse
+
+func (response GetInvoicesJournal200JSONResponse) VisitGetInvoicesJournalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesJournal400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetInvoicesJournal400ApplicationProblemPlusJSONResponse) VisitGetInvoicesJournalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesJournal401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesJournal401JSONResponse) VisitGetInvoicesJournalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesJournal403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesJournal403JSONResponse) VisitGetInvoicesJournalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -2377,6 +2588,9 @@ type StrictServerInterface interface {
 	// PostInvoices Create an invoice draft
 	// (POST /api/v1/invoices)
 	PostInvoices(ctx context.Context, request PostInvoicesRequestObject) (PostInvoicesResponseObject, error)
+	// GetInvoicesJournal The invoice journal
+	// (GET /api/v1/invoices/journal)
+	GetInvoicesJournal(ctx context.Context, request GetInvoicesJournalRequestObject) (GetInvoicesJournalResponseObject, error)
 	// GetInvoicesMeta Get the Invoices metadata
 	// (GET /api/v1/invoices/meta)
 	GetInvoicesMeta(ctx context.Context, request GetInvoicesMetaRequestObject) (GetInvoicesMetaResponseObject, error)
@@ -2513,6 +2727,32 @@ func (sh *strictHandler) PostInvoices(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostInvoicesResponseObject); ok {
 		if err := validResponse.VisitPostInvoicesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInvoicesJournal operation middleware
+func (sh *strictHandler) GetInvoicesJournal(w http.ResponseWriter, r *http.Request, params GetInvoicesJournalParams) {
+	var request GetInvoicesJournalRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoicesJournal(ctx, request.(GetInvoicesJournalRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoicesJournal")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoicesJournalResponseObject); ok {
+		if err := validResponse.VisitGetInvoicesJournalResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
