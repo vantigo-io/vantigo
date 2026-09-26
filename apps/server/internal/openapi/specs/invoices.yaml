@@ -1622,5 +1622,47 @@ paths:
             tags:
                 - Invoices
             x-vantigo-access: permission:invoices:access+invoices:create
+    /api/v1/invoices/{id}/credit:
+        post:
+            description: 'Creates a draft credit note for an issued invoice (D8, § 5-2-7): the customer, currency and rate, the delivery, the references and the buyer snapshot are copied from the original, and every line with its VAT code, pointing at the line it credits. It reads no directory. Several credit-note drafts may exist at once; the caps are decided at issue.'
+            operationId: postInvoicesByIdCredit
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesInvoiceResponse'
+                    description: Created — the credit-note draft.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no document has that id.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesConflictProblem'
+                    description: Conflict — invoice_draft (the original is not issued), credit_note_not_creditable (a credit note is never credited) or invoice_fully_credited.
+            summary: Create a credit-note draft
+            tags:
+                - Invoices
+            x-vantigo-access: permission:invoices:access+invoices:issue
 servers:
     - url: /

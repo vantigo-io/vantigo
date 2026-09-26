@@ -297,6 +297,8 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 		switch locked.Kind {
 		case kindInvoice:
 			plan, refusal, err = invoiceIssueChecks(ctx, txq, profile, settings, issueDate, lines)
+		case kindCreditNote:
+			plan, refusal, err = creditIssueChecks(ctx, txq, locked, lines)
 		default:
 			return fmt.Errorf("invoices: document %d is a %s, which this module cannot issue", locked.ID, locked.Kind)
 		}

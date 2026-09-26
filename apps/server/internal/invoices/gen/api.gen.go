@@ -496,6 +496,9 @@ type ServerInterface interface {
 	// PutInvoicesById Replace a draft
 	// (PUT /api/v1/invoices/{id})
 	PutInvoicesById(w http.ResponseWriter, r *http.Request, id int64)
+	// PostInvoicesByIdCredit Create a credit-note draft
+	// (POST /api/v1/invoices/{id}/credit)
+	PostInvoicesByIdCredit(w http.ResponseWriter, r *http.Request, id int64)
 	// PostInvoicesByIdIssue Issue a draft
 	// (POST /api/v1/invoices/{id}/issue)
 	PostInvoicesByIdIssue(w http.ResponseWriter, r *http.Request, id int64)
@@ -889,6 +892,32 @@ func (siw *ServerInterfaceWrapper) PutInvoicesById(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// PostInvoicesByIdCredit operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesByIdCredit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesByIdCredit(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostInvoicesByIdIssue operation middleware
 func (siw *ServerInterfaceWrapper) PostInvoicesByIdIssue(w http.ResponseWriter, r *http.Request) {
 
@@ -1103,6 +1132,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/issue", wrapper.PostInvoicesByIdIssue)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/{id}/pdf", wrapper.GetInvoicesByIdPdf)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/{id}/preview.pdf", wrapper.GetInvoicesByIdPreviewPdf)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/credit", wrapper.PostInvoicesByIdCredit)
 
 	return m
 }
@@ -1996,6 +2026,78 @@ func (response PutInvoicesById409ApplicationProblemPlusJSONResponse) VisitPutInv
 	return err
 }
 
+type PostInvoicesByIdCreditRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type PostInvoicesByIdCreditResponseObject interface {
+	VisitPostInvoicesByIdCreditResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesByIdCredit201JSONResponse InvoicesInvoiceResponse
+
+func (response PostInvoicesByIdCredit201JSONResponse) VisitPostInvoicesByIdCreditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdCredit401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesByIdCredit401JSONResponse) VisitPostInvoicesByIdCreditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdCredit403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesByIdCredit403JSONResponse) VisitPostInvoicesByIdCreditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdCredit404Response struct {
+}
+
+func (response PostInvoicesByIdCredit404Response) VisitPostInvoicesByIdCreditResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInvoicesByIdCredit409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesByIdCredit409ApplicationProblemPlusJSONResponse) VisitPostInvoicesByIdCreditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostInvoicesByIdIssueRequestObject struct {
 	Id   int64 `json:"id"`
 	Body *PostInvoicesByIdIssueJSONRequestBody
@@ -2308,6 +2410,9 @@ type StrictServerInterface interface {
 	// PutInvoicesById Replace a draft
 	// (PUT /api/v1/invoices/{id})
 	PutInvoicesById(ctx context.Context, request PutInvoicesByIdRequestObject) (PutInvoicesByIdResponseObject, error)
+	// PostInvoicesByIdCredit Create a credit-note draft
+	// (POST /api/v1/invoices/{id}/credit)
+	PostInvoicesByIdCredit(ctx context.Context, request PostInvoicesByIdCreditRequestObject) (PostInvoicesByIdCreditResponseObject, error)
 	// PostInvoicesByIdIssue Issue a draft
 	// (POST /api/v1/invoices/{id}/issue)
 	PostInvoicesByIdIssue(ctx context.Context, request PostInvoicesByIdIssueRequestObject) (PostInvoicesByIdIssueResponseObject, error)
@@ -2720,6 +2825,32 @@ func (sh *strictHandler) PutInvoicesById(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutInvoicesByIdResponseObject); ok {
 		if err := validResponse.VisitPutInvoicesByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesByIdCredit operation middleware
+func (sh *strictHandler) PostInvoicesByIdCredit(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostInvoicesByIdCreditRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesByIdCredit(ctx, request.(PostInvoicesByIdCreditRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesByIdCredit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesByIdCreditResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesByIdCreditResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

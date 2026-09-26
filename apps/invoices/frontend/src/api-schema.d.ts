@@ -242,6 +242,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/{id}/credit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a credit-note draft
+         * @description Creates a draft credit note for an issued invoice (D8, § 5-2-7): the customer, currency and rate, the delivery, the references and the buyer snapshot are copied from the original, and every line with its VAT code, pointing at the line it credits. It reads no directory. Several credit-note drafts may exist at once; the caps are decided at issue.
+         */
+        post: operations["postInvoicesByIdCredit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1635,6 +1655,62 @@ export interface operations {
                 content?: never;
             };
             /** @description Conflict — invoice_issued; an issued document is downloaded, not previewed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesByIdCredit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Created — the credit-note draft. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesInvoiceResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — invoice_draft (the original is not issued), credit_note_not_creditable (a credit note is never credited) or invoice_fully_credited. */
             409: {
                 headers: {
                     [name: string]: unknown;
