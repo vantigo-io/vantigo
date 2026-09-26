@@ -330,10 +330,10 @@ portal (after Invoices) · saved list views.
 
 **Deliberately not planned inside Customers:** a sales pipeline or quotes (its own
 module, if ever), email/calendar sync, marketing automation and a consent centre,
-lead/health scoring, account teams, and territories. A Norwegian B2B e-invoicing
-mandate has been discussed for 2027-01-01, but that date is indicative — sourced from
-advisory-firm summaries, not a published regulation — and nothing here is scheduled
-against it.
+lead/health scoring, account teams, and territories. The Norwegian B2B e-invoicing
+duty is now law (Lov 19. juni 2026 nr. 39: sending in electronic invoice format between
+bokføringspliktige from 2027-01-01, the format regulation — expected to name EHF — due
+by December 2026); it is scheduled against under [Invoices](#invoices), not here.
 
 ## Energy
 
@@ -730,3 +730,86 @@ Invoices module would build from, and that module owns the stamp when it
 arrives — the same thing [`docs/time.md`](docs/time.md#what-invoicing-will-read)
 has said of an hour since phase 2. Supplier costs are no longer a gap: a
 supplier's invoice is its own kind — see [Projects](#projects).
+
+## Invoices
+
+A new module, researched in
+[`docs/superpowers/research/2026-09-26-invoices-module.md`](docs/superpowers/research/2026-09-26-invoices-module.md).
+Four roadmaps converge on it: Projects (milestones' `invoiced` status), Time (an hour's
+`invoiced` column, "what invoicing will read"), Expenses (the manual invoiced stamp,
+"next: invoicing") and Energy phase 4 (consumption billing). Customers has laid the
+groundwork since its phase 2: the billing profile (invoice e-mail, payment terms,
+currency, language, delivery preference, Peppol id, GLN, buyer reference) and the
+Peppol capability lookup. Two facts shape the order below. Norwegian law makes the
+sales document a strict thing — machine-assigned, gap-free numbers assigned at issue,
+never edited or deleted, corrected only by a numbered credit note, VAT per rate in NOK,
+kept five years — and the B2B e-invoicing duty is law from 2027-01-01, so EHF cannot be
+a late phase. Vantigo stays a sub-ledger: it issues, sends, tracks and exports; it keeps
+no general ledger.
+
+### Phase 1 — The sales document
+
+The seller record (legal name, organisation number, VAT registration, Foretaksregisteret,
+address, bank account), a dated VAT-code table seeded with the SAF-T output codes, one
+number series with a start set once and gap-free allocation inside the issue
+transaction, and the invoice itself: a draft with lines (description, quantity, unit,
+unit price, discount, VAT code), issued into an immutable document with a buyer
+snapshot taken from the billing profile, VAT summarised per rate, a deterministic PDF
+rendered once and stored, e-mail delivery, full and partial credit notes, manual
+payment registration with partial payments and a derived open/overdue status, an
+invoice journal proving the series has no gaps, and a CSV export for the accountant.
+Currency and exchange rate are modelled from day one even though the UI starts NOK-only.
+
+*Unblocks:* everything below; nothing else is lawful without numbering, immutability
+and credit notes.
+
+### Phase 2 — EHF over Peppol, and KID
+
+UBL 2.1 Invoice and CreditNote per Peppol BIS Billing 3.0 with the Norwegian rules,
+validated before sending; an access-point port with one provider adapter, credentials
+in `secrets`; the receiver's capability re-checked against ELMA at send (the customers
+lookup already exists); delivery status and receipts; the PDF embedded; KID generated
+under the tenant's bank agreement and carried in the payment id. Channel precedence:
+EHF when the receiver accepts the document type, otherwise the billing profile's
+preference.
+
+*Unblocks:* B2G invoicing (mandatory since 2019) and the B2B duty from 2027-01-01.
+
+### Phase 3 — Work becomes invoices
+
+An "uninvoiced work" view per customer and project (approved hours, re-billable
+expenses and supplier invoices, ready milestones) and a wizard that turns it into lines
+with a chosen grouping (per project, work type, person, date, or itemised) and an
+optional timesheet attachment; expense markup; milestone and a-konto invoices with a
+final settlement deducting earlier ones. The write-back — hours, expenses and milestones
+marked invoiced with the invoice's id and number inside the issue transaction, and
+released again when a credit note reverses them — is a third sanctioned cross-module
+write direction and gets its own contract design under
+[`docs/module-boundaries.md`](docs/module-boundaries.md) before any code.
+
+*Unblocks:* project invoicing end to end; Time's and Expenses' "next: invoicing".
+
+### Phase 4 — Payments and reminders
+
+OCR giro and camt.054 imports matched on KID with an exception queue; an overdue list
+and reminder runs (purring, inkassovarsel) that enforce the 14-day rules and the fee cap
+from a dated rates table (the inkassosats, the late-interest rate); the B2B standard
+compensation; per-customer reminder settings; an inkasso hand-off export.
+
+*Unblocks:* receivables without a spreadsheet.
+
+### Phase 5 — Energy consumption billing
+
+Periodic invoices per supply point and period from Energy's figures, tariff and price
+lines, batch issuing, the utilities' periodic-invoicing rules — with Energy phase 4's
+consumption contract.
+
+*Unblocks:* the energy business's core revenue.
+
+### Later
+
+Recurring invoices and retainers (a subscription may be invoiced up to a year ahead) ·
+eFaktura and AvtaleGiro for consumers · a customer portal · a bank API for payments ·
+several legal entities per tenant, each with its own series · a posting export in
+SAF-T-friendly form to Tripletex, Fiken or PowerOffice.
+
