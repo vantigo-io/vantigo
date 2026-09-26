@@ -83,25 +83,97 @@ type invoicesSection struct {
 }
 
 type exportedDocument struct {
-	Number         *int64         `json:"number,omitempty"`
-	Kind           string         `json:"kind"`
-	IssueDate      *string        `json:"issueDate,omitempty"`
-	DeliveryDate   *string        `json:"deliveryDate,omitempty"`
-	DeliveryFrom   *string        `json:"deliveryFrom,omitempty"`
-	DeliveryTo     *string        `json:"deliveryTo,omitempty"`
-	DueDate        *string        `json:"dueDate,omitempty"`
-	Currency       string         `json:"currency"`
-	NetTotal       string         `json:"netTotal"`
-	VatTotal       string         `json:"vatTotal"`
-	GrossTotal     string         `json:"grossTotal"`
-	BuyerName      *string        `json:"buyerName,omitempty"`
-	BuyerAddress   []string       `json:"buyerAddress,omitempty"`
-	YourReference  string         `json:"yourReference,omitempty"`
-	OurReference   string         `json:"ourReference,omitempty"`
-	OrderReference string         `json:"orderReference,omitempty"`
-	Note           string         `json:"note,omitempty"`
-	InternalNote   string         `json:"internalNote,omitempty"`
-	Lines          []exportedLine `json:"lines"`
+	Number          *int64           `json:"number,omitempty"`
+	Kind            string           `json:"kind"`
+	Credits         *exportedCredits `json:"credits,omitempty"`
+	IssueDate       *string          `json:"issueDate,omitempty"`
+	DeliveryDate    *string          `json:"deliveryDate,omitempty"`
+	DeliveryFrom    *string          `json:"deliveryFrom,omitempty"`
+	DeliveryTo      *string          `json:"deliveryTo,omitempty"`
+	DeliveryAddress *exportedAddress `json:"deliveryAddress,omitempty"`
+	DueDate         *string          `json:"dueDate,omitempty"`
+	Currency        string           `json:"currency"`
+	NetTotal        string           `json:"netTotal"`
+	VatTotal        string           `json:"vatTotal"`
+	GrossTotal      string           `json:"grossTotal"`
+	Buyer           *exportedBuyer   `json:"buyer,omitempty"`
+	YourReference   string           `json:"yourReference,omitempty"`
+	OurReference    string           `json:"ourReference,omitempty"`
+	OrderReference  string           `json:"orderReference,omitempty"`
+	Note            string           `json:"note,omitempty"`
+	InternalNote    string           `json:"internalNote,omitempty"`
+	Lines           []exportedLine   `json:"lines"`
+}
+
+// exportedCredits is the issued invoice a credit note credits, as it was
+// printed: its number and issue date.
+type exportedCredits struct {
+	Number    *int64  `json:"number,omitempty"`
+	IssueDate *string `json:"issueDate,omitempty"`
+}
+
+// exportedBuyer is an issued document's whole buyer snapshot — what it
+// printed about the person, and so what is held about them for as long as
+// the document is kept. An unset optional field is omitted, as the wire
+// omits it.
+type exportedBuyer struct {
+	CustomerNumber     *int64           `json:"customerNumber,omitempty"`
+	Type               string           `json:"type,omitempty"`
+	Name               string           `json:"name,omitempty"`
+	OrganisationNumber string           `json:"organisationNumber,omitempty"`
+	ForeignID          string           `json:"foreignId,omitempty"`
+	Address            *exportedAddress `json:"address,omitempty"`
+	PeppolID           string           `json:"peppolId,omitempty"`
+	GLN                string           `json:"gln,omitempty"`
+	Language           string           `json:"language,omitempty"`
+}
+
+// exportedAddress is the buyer's address or the place of delivery, each part
+// in its own field; a place of delivery has no region.
+type exportedAddress struct {
+	Line1      string `json:"line1,omitempty"`
+	Line2      string `json:"line2,omitempty"`
+	PostalCode string `json:"postalCode,omitempty"`
+	City       string `json:"city,omitempty"`
+	Region     string `json:"region,omitempty"`
+	Country    string `json:"country,omitempty"`
+}
+
+// orEmpty is an optional column's value verbatim, "" when unset (optionalText
+// trims, which an export must not).
+func orEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// addressOf is an address from its columns, nil when every one is unset.
+func addressOf(line1, line2, postalCode, city, region, country *string) *exportedAddress {
+	a := exportedAddress{
+		Line1: orEmpty(line1), Line2: orEmpty(line2), PostalCode: orEmpty(postalCode),
+		City: orEmpty(city), Region: orEmpty(region), Country: orEmpty(country),
+	}
+	if a == (exportedAddress{}) {
+		return nil
+	}
+	return &a
+}
+
+// buyerOf is an issued document's buyer snapshot, nil on a draft, which has
+// none: the snapshot is written at issue (D4).
+func buyerOf(d store.InvoicesInvoice) *exportedBuyer {
+	b := exportedBuyer{
+		CustomerNumber: d.BuyerCustomerNumber, Type: orEmpty(d.BuyerType), Name: orEmpty(d.BuyerName),
+		OrganisationNumber: orEmpty(d.BuyerOrganisationNumber), ForeignID: orEmpty(d.BuyerForeignID),
+		Address: addressOf(d.BuyerAddressLine1, d.BuyerAddressLine2, d.BuyerPostalCode,
+			d.BuyerCity, d.BuyerRegion, d.BuyerCountry),
+		PeppolID: orEmpty(d.BuyerPeppolID), GLN: orEmpty(d.BuyerGln), Language: orEmpty(d.BuyerLanguage),
+	}
+	if b == (exportedBuyer{}) {
+		return nil
+	}
+	return &b
 }
 
 type exportedLine struct {
@@ -133,8 +205,9 @@ func decimalOf(n pgtype.Numeric, places int) (string, error) {
 }
 
 // ExportCustomerData answers nil for a customer with no document. Otherwise
-// every issued document and every draft, with the internal note: the
-// customers export treats staff-written notes as data held about the person.
+// every issued document and every draft, with the buyer snapshot, the place
+// of delivery and the internal note: the customers export treats
+// staff-written notes as data held about the person.
 func (p customerPersonalData) ExportCustomerData(ctx context.Context, customerID int32) (any, error) {
 	q := store.New(p.pool)
 	docs, err := q.CustomerDocuments(ctx, customerID)
@@ -156,18 +229,30 @@ func (p customerPersonalData) ExportCustomerData(ctx context.Context, customerID
 	for _, l := range lines {
 		byDoc[l.InvoiceID] = append(byDoc[l.InvoiceID], l)
 	}
+	// A credit note's customer is its original's (credits.go), so the
+	// original is almost always among docs; one that is not is read.
+	byID := make(map[int64]store.InvoicesInvoice, len(docs))
+	for _, d := range docs {
+		byID[d.ID] = d
+	}
 	section := invoicesSection{Documents: []exportedDocument{}, Drafts: []exportedDocument{}}
 	for _, d := range docs {
 		e := exportedDocument{
 			Number: d.Number, Kind: d.Kind, IssueDate: dateText(d.IssueDate), DeliveryDate: dateText(d.DeliveryDate),
 			DeliveryFrom: dateText(d.DeliveryFrom), DeliveryTo: dateText(d.DeliveryTo), DueDate: dateText(d.DueDate),
-			Currency: d.Currency, BuyerName: d.BuyerName, YourReference: d.YourReference, OurReference: d.OurReference,
+			DeliveryAddress: addressOf(d.DeliveryAddressLine1, d.DeliveryAddressLine2, d.DeliveryPostalCode,
+				d.DeliveryCity, nil, d.DeliveryCountry),
+			Currency: d.Currency, Buyer: buyerOf(d), YourReference: d.YourReference, OurReference: d.OurReference,
 			OrderReference: d.OrderReference, Note: d.Note, InternalNote: d.InternalNote, Lines: []exportedLine{},
 		}
-		for _, part := range []*string{d.BuyerAddressLine1, d.BuyerAddressLine2, d.BuyerPostalCode, d.BuyerCity, d.BuyerCountry} {
-			if part != nil && *part != "" {
-				e.BuyerAddress = append(e.BuyerAddress, *part)
+		if d.CreditsInvoiceID != nil {
+			original, ok := byID[*d.CreditsInvoiceID]
+			if !ok {
+				if original, err = q.GetInvoice(ctx, *d.CreditsInvoiceID); err != nil {
+					return nil, fmt.Errorf("invoices: read credit note %d's original: %w", d.ID, err)
+				}
 			}
+			e.Credits = &exportedCredits{Number: original.Number, IssueDate: dateText(original.IssueDate)}
 		}
 		for _, c := range []struct {
 			dst *string

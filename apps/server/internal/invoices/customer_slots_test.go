@@ -151,7 +151,9 @@ func TestCustomerReferences_ARepointRacingACreditNoteIssueNeverDeadlocks(t *test
 }
 
 // The export (D10): nil when nothing is held; every issued document and draft
-// otherwise, the internal notes included.
+// otherwise, the internal notes included, each issued one with its whole buyer
+// snapshot, a place of delivery when one is set, and a credit note naming the
+// invoice it credits.
 func TestCustomerPersonalData_Export(t *testing.T) {
 	t.Parallel()
 	h := readyToIssue(t)
@@ -159,23 +161,53 @@ func TestCustomerPersonalData_Export(t *testing.T) {
 	if none, err := data.ExportCustomerData(context.Background(), customerPerson); err != nil || none != nil {
 		t.Fatalf("a customer with nothing = %v, %v; want nil", none, err)
 	}
+	h.customers.edit(customerPerson, func(p *contracts.CustomerBillingProfile) { p.InvoiceAddress.Region = "Vestland" })
 	body := draftBody(customerPerson, line("Konsultasjon", 1.5, 800, vat25))
 	body["internalNote"] = "Ringte to ganger"
+	body["deliveryAddress"] = map[string]any{"line1": "Hytta", "postalCode": "3580", "city": "Geilo", "country": "NO"}
 	issued(t, h, createDraft(t, h, body).ID)
 	body["internalNote"] = "Utkast til neste måned"
+	delete(body, "deliveryAddress")
 	createDraft(t, h, body)
 
-	section, err := data.ExportCustomerData(context.Background(), customerPerson)
-	if err != nil {
-		t.Fatalf("ExportCustomerData: %v", err)
+	export := func(customer int32) string {
+		t.Helper()
+		section, err := data.ExportCustomerData(context.Background(), customer)
+		if err != nil {
+			t.Fatalf("ExportCustomerData: %v", err)
+		}
+		raw, _ := json.Marshal(section)
+		return string(raw)
 	}
-	raw, _ := json.Marshal(section)
+	raw := export(customerPerson)
 	for _, want := range []string{
 		`"documents":[{"number":1,"kind":"invoice","issueDate":"2026-09-12"`, `"grossTotal":"1500.00"`,
-		`"buyerName":"Kari Nordmann"`, `"buyerAddress":["Hjemveien 5","5003","Bergen","NO"]`, `"internalNote":"Ringte to ganger"`,
+		`"buyer":{"customerNumber":10002,"type":"person","name":"Kari Nordmann",` +
+			`"address":{"line1":"Hjemveien 5","postalCode":"5003","city":"Bergen","region":"Vestland","country":"NO"},"language":"en"}`,
+		`"deliveryAddress":{"line1":"Hytta","postalCode":"3580","city":"Geilo","country":"NO"}`, `"internalNote":"Ringte to ganger"`,
 		`"vatRatePercent":"25.00"`, `"drafts":[{"kind":"invoice"`, `"internalNote":"Utkast til neste måned"`, `"quantity":"1.500"`,
 	} {
-		if !strings.Contains(string(raw), want) {
+		if !strings.Contains(raw, want) {
+			t.Errorf("export %s has no %s", raw, want)
+		}
+	}
+	if n := strings.Count(raw, `"deliveryAddress"`); n != 1 {
+		t.Errorf("export %s has %d places of delivery, want the issued one's only", raw, n)
+	}
+	if n := strings.Count(raw, `"buyer"`); n != 1 {
+		t.Errorf("export %s has %d buyers, want the issued one's only: a draft has no snapshot", raw, n)
+	}
+
+	// A business's snapshot carries what a person's does not, and a credit
+	// note names the invoice it credits.
+	original := issued(t, h, createDraft(t, h, draftBody(customerAcme, line("A", 1, 100, vat25))).ID)
+	creditDraft(t, h, original.ID)
+	raw = export(customerAcme)
+	for _, want := range []string{
+		`"organisationNumber":"923609016"`, `"peppolId":"0192:923609016"`, `"gln":"7080000000001"`,
+		`"drafts":[{"kind":"credit_note","credits":{"number":2,"issueDate":"2026-09-12"}`,
+	} {
+		if !strings.Contains(raw, want) {
 			t.Errorf("export %s has no %s", raw, want)
 		}
 	}
