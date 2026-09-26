@@ -1,21 +1,16 @@
 import { queryOptions } from "@tanstack/react-query";
 import { appUrl } from "@vantigo/frontend-shell";
 import type { components, operations } from "../api-schema";
-import { INVOICES_QUERY_KEY, json, readJson, request } from "./request";
+import { INVOICES_QUERY_KEY, json, readJson, request, sessionExpired } from "./request";
 
 type Schemas = components["schemas"];
 
 /** One invoice or credit note as the server answers it (D4). */
 export type InvoiceDocument = Schemas["InvoicesInvoiceResponse"];
-export type InvoiceLine = Schemas["InvoicesLine"];
-export type InvoiceVatSummary = Schemas["InvoicesVatSummary"];
-export type InvoiceListItem = Schemas["InvoicesInvoiceListItem"];
 export type InvoiceList = Schemas["PaginatedResponseOfInvoicesInvoiceListItem"];
 export type InvoiceInput = Schemas["InvoicesInvoiceRequest"];
-export type InvoiceLineInput = Schemas["InvoicesLineRequest"];
-export type DeliveryAddress = Schemas["InvoicesDeliveryAddress"];
 /** A refusal's body: the rule's code, and the dates or the line it names. */
-export type InvoicesConflict = Schemas["InvoicesConflictProblem"];
+type InvoicesConflict = Schemas["InvoicesConflictProblem"];
 
 /** The list's filters (D4), as GET /invoices takes them. Every one is optional; paging is page/pageSize. */
 export type InvoiceListFilters = NonNullable<operations["getInvoices"]["parameters"]["query"]>;
@@ -66,7 +61,7 @@ export const pdfUrl = (id: number): string => appUrl(`/api/v1/invoices/${id}/pdf
 export const previewUrl = (id: number): string => appUrl(`/api/v1/invoices/${id}/preview.pdf`);
 
 /** A fetched PDF and the name the server gives it. */
-export interface FetchedPdf {
+interface FetchedPdf {
   blob: Blob;
   fileName?: string;
 }
@@ -79,6 +74,7 @@ export interface FetchedPdf {
  */
 export const fetchPdf = async (url: string): Promise<FetchedPdf> => {
   const response = await fetch(url, { credentials: "include" });
+  if (response.status === 401) await sessionExpired();
   if (response.ok) {
     const disposition = response.headers.get("Content-Disposition") ?? "";
     return { blob: await response.blob(), fileName: /filename="([^"]+)"/.exec(disposition)?.[1] };

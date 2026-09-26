@@ -44,14 +44,14 @@ import {
   replaceInvoice,
 } from "../api/invoices";
 import { type InvoicesMeta, invoicesMetaQueryOptions } from "../api/meta";
-import { ApiConflictError, INVOICES_QUERY_KEY } from "../api/request";
+import { ApiConflictError, ApiValidationError, INVOICES_QUERY_KEY } from "../api/request";
 import { vatCodesQueryOptions } from "../api/vat-codes";
 import { CustomerPicker } from "../components/customer-picker";
 import { DocumentLink } from "../components/document-link";
 import { PdfButton } from "../components/pdf-button";
 import { StaleAlert } from "../components/stale-alert";
 import "../i18n";
-import { refusalMessage } from "../lib/errors";
+import { fieldRefusals, refusalMessage, warningMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 import { documentTotals, lineAmounts } from "../lib/money";
 import { invoiceLinkOptions } from "../lib/routes";
@@ -77,6 +77,15 @@ export const InvoicePage = ({ invoiceId, canViewCustomers }: InvoicePageProps) =
   // brings in (coming back from the Preview tab is enough): the person's edits
   // are never thrown away unasked, and the editor says the draft changed.
   const [editedFrom, setEditedFrom] = useState<InvoiceDocument | null>(null);
+  // The route keeps this page mounted from one document to the next, and the
+  // editor under it does not survive the move: its edits are gone, so the
+  // snapshot they were made on goes too. Kept, it would come back as a dirty
+  // editor with none of the edits when the person returns to the draft.
+  const [shownId, setShownId] = useState(invoiceId);
+  if (shownId !== invoiceId) {
+    setShownId(invoiceId);
+    setEditedFrom(null);
+  }
   if (meta.isError) {
     return (
       <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadMeta")}>
@@ -92,7 +101,7 @@ export const InvoicePage = ({ invoiceId, canViewCustomers }: InvoicePageProps) =
     );
   }
   if (!document.data || !meta.data) return <ContentSkeleton rows={6} rowHeight={48} />;
-  const shown = editedFrom?.id === invoiceId ? editedFrom : document.data;
+  const shown = editedFrom ?? document.data;
   return shown.status === "draft" ? (
     <DraftEditor
       key={shown.revision}
@@ -112,7 +121,7 @@ export const InvoicePage = ({ invoiceId, canViewCustomers }: InvoicePageProps) =
 const useHeading = (doc: InvoiceDocument) => {
   const { t } = useInvoiceFormat();
   const kind = doc.kind === "credit_note" ? t("kindCreditNote") : t("kindInvoice");
-  return doc.number ? `${kind} ${doc.number}` : `${kind} — ${t("statusDraft")}`;
+  return doc.number ? t("documentNumbered", { kind, number: doc.number }) : t("documentDraft", { kind });
 };
 
 /** A credit note's link to its original: "Credit note for invoice N". */
@@ -151,6 +160,14 @@ const numberOf = (v: number | string): number => {
  */
 const MAX_QUANTITY = 999999999.999;
 const MAX_UNIT_PRICE = 9999999999.9999;
+
+/**
+ * The fields of a draft's PUT the editor has an input for, which a 400 naming
+ * them is shown on; the rest — the lines as a whole, a credit note's place of
+ * delivery, the currency — are a notification.
+ */
+const editorInputs =
+  /^(customerId|deliveryDate|deliveryFrom|deliveryTo|deliveryAddress\.(line1|line2|postalCode|city|country)|yourReference|ourReference|orderReference|paymentTermsDays|note|internalNote|lines\[\d+\]\.(description|quantity|unit|unitPrice|discountPercent|vatCodeId))$/;
 
 let lineKeys = 0;
 const nextKey = () => `line-${++lineKeys}`;
@@ -240,17 +257,35 @@ const DraftEditor = ({
   const [conflict, setConflict] = useState(false);
   const [reloadFailed, setReloadFailed] = useState(false);
   const stale = conflict || latestRevision > draft.revision;
+  // The delivery the chosen mode gives: a day, or a period with both ends.
+  // Half a period is never saved as none — Save waits, and the empty end
+  // says why — since the server would take the draft as having no delivery.
+  const deliveryGiven = deliveryMode === "date" ? Boolean(deliveryDate) : Boolean(deliveryFrom && deliveryTo);
+  const halfPeriod = deliveryMode === "period" && Boolean(deliveryFrom) !== Boolean(deliveryTo);
+  // A 400's refusals by the server's field name — `yourReference`,
+  // `lines[1].quantity` — each shown on its input until the person changes it.
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const fieldError = (field: string): string | undefined => errors[field];
+  const clearErrors = (matches: (field: string) => boolean) =>
+    setErrors((current) => Object.fromEntries(Object.entries(current).filter(([field]) => !matches(field))));
   const touch =
-    <T,>(setter: (v: T) => void) =>
+    <T,>(setter: (v: T) => void, ...fields: string[]) =>
     (v: T) => {
       setter(v);
       setDirty(true);
+      if (fields.length > 0) clearErrors((field) => fields.some((f) => field === f || field.startsWith(`${f}.`)));
     };
   const setLine = (key: string, change: Partial<EditorLine>) => {
+    const index = lines.findIndex((l) => l.key === key);
     setLines((current) => current.map((l) => (l.key === key ? { ...l, ...change } : l)));
     setDirty(true);
+    clearErrors((field) => Object.keys(change).some((name) => field === `lines[${index}].${name}`));
   };
+  // A line moved or removed renumbers the ones after it, so no line's refusal
+  // stays on a line it was not about.
+  const renumbered = () => clearErrors((field) => field.startsWith("lines["));
   const move = (index: number, by: number) => {
+    renumbered();
     setLines((current) => {
       const next = [...current];
       const [line] = next.splice(index, 1);
@@ -345,6 +380,13 @@ const DraftEditor = ({
         setConflict(true);
         return;
       }
+      if (error instanceof ApiValidationError) {
+        const { onInputs, elsewhere } = fieldRefusals(error, t, (field) => editorInputs.test(field));
+        setErrors(onInputs);
+        if (elsewhere.length > 0)
+          notifications.show({ color: "red", title: t("couldNotSave"), message: elsewhere.join(" ") });
+        return;
+      }
       notifications.show({ color: "red", title: t("couldNotSave"), message: refusalMessage(error, t, date) });
     },
   });
@@ -382,11 +424,14 @@ const DraftEditor = ({
   // The codes in force today, and any code a line carries that they no
   // longer list — deactivated or expired — by its name, so it never shows
   // blank.
-  const vatOptions = vatCodes.map((c) => ({ value: String(c.id), label: `${c.code} — ${c.name}` }));
+  const vatOptions = vatCodes.map((c) => ({
+    value: String(c.id),
+    label: t("vatCodeOption", { code: c.code, name: c.name }),
+  }));
   for (const id of new Set(lines.map((l) => l.vatCodeId))) {
     if (id === null || vatOptions.some((o) => o.value === String(id))) continue;
     const code = allCodes.data?.find((c) => c.id === id);
-    const name = code ? `${code.code} — ${code.name}` : String(id);
+    const name = code ? t("vatCodeOption", { code: code.code, name: code.name }) : String(id);
     vatOptions.push({ value: String(id), label: t("vatCodeNotOffered", { label: name }) });
   }
   const editable = canCreate;
@@ -419,7 +464,12 @@ const DraftEditor = ({
               </Button>
             )}
             {canCreate && (
-              <Button variant="default" loading={save.isPending} disabled={!dirty} onClick={() => save.mutate()}>
+              <Button
+                variant="default"
+                loading={save.isPending}
+                disabled={!dirty || halfPeriod}
+                onClick={() => save.mutate()}
+              >
                 {t("save")}
               </Button>
             )}
@@ -456,7 +506,7 @@ const DraftEditor = ({
           <Stack gap={4}>
             {draft.warnings.map((w) => (
               <Text key={w} size="sm">
-                {t(`warning.${w}`)}
+                {warningMessage(w, t)}
               </Text>
             ))}
           </Stack>
@@ -475,8 +525,11 @@ const DraftEditor = ({
             <CustomerPicker
               value={customerId}
               readOnly={!editable}
-              onChange={touch(setCustomerId)}
-              selectedName={draft.customerName}
+              // A draft always has a buyer: it can be changed, never cleared.
+              clearable={false}
+              error={fieldError("customerId")}
+              onChange={(id) => id !== null && touch(setCustomerId, "customerId")(id)}
+              selected={{ id: draft.customerId, name: draft.customerName }}
               required
             />
           )}
@@ -497,7 +550,8 @@ const DraftEditor = ({
                 valueFormat={t("dateInputFormat")}
                 disabled={fixed}
                 value={deliveryDate}
-                onChange={touch(setDeliveryDate)}
+                error={fieldError("deliveryDate")}
+                onChange={touch(setDeliveryDate, "deliveryDate")}
               />
             ) : (
               <>
@@ -506,19 +560,21 @@ const DraftEditor = ({
                   valueFormat={t("dateInputFormat")}
                   disabled={fixed}
                   value={deliveryFrom}
-                  onChange={touch(setDeliveryFrom)}
+                  error={halfPeriod && !deliveryFrom ? t("periodNeedsBothEnds") : fieldError("deliveryFrom")}
+                  onChange={touch(setDeliveryFrom, "deliveryFrom", "deliveryDate")}
                 />
                 <DateInput
                   label={t("deliveryTo")}
                   valueFormat={t("dateInputFormat")}
                   disabled={fixed}
                   value={deliveryTo}
-                  onChange={touch(setDeliveryTo)}
+                  error={halfPeriod && !deliveryTo ? t("periodNeedsBothEnds") : fieldError("deliveryTo")}
+                  onChange={touch(setDeliveryTo, "deliveryTo", "deliveryDate")}
                 />
               </>
             )}
           </Group>
-          {!deliveryDate && !(deliveryFrom && deliveryTo) && (
+          {!deliveryGiven && (
             <Text size="sm" c="orange">
               {t("deliveryRequiredToIssue")}
             </Text>
@@ -535,31 +591,47 @@ const DraftEditor = ({
                 label={t("addressLine1")}
                 disabled={fixed}
                 value={address.line1}
-                onChange={(e) => touch(setAddress)({ ...address, line1: e.currentTarget.value })}
+                error={fieldError("deliveryAddress.line1")}
+                onChange={(e) =>
+                  touch(setAddress, "deliveryAddress.line1")({ ...address, line1: e.currentTarget.value })
+                }
               />
               <TextInput
                 label={t("addressLine2")}
                 disabled={fixed}
                 value={address.line2}
-                onChange={(e) => touch(setAddress)({ ...address, line2: e.currentTarget.value })}
+                error={fieldError("deliveryAddress.line2")}
+                onChange={(e) =>
+                  touch(setAddress, "deliveryAddress.line2")({ ...address, line2: e.currentTarget.value })
+                }
               />
               <TextInput
                 label={t("postalCode")}
                 disabled={fixed}
                 value={address.postalCode}
-                onChange={(e) => touch(setAddress)({ ...address, postalCode: e.currentTarget.value })}
+                error={fieldError("deliveryAddress.postalCode")}
+                onChange={(e) =>
+                  touch(setAddress, "deliveryAddress.postalCode")({ ...address, postalCode: e.currentTarget.value })
+                }
               />
               <TextInput
                 label={t("city")}
                 disabled={fixed}
                 value={address.city}
-                onChange={(e) => touch(setAddress)({ ...address, city: e.currentTarget.value })}
+                error={fieldError("deliveryAddress.city")}
+                onChange={(e) => touch(setAddress, "deliveryAddress.city")({ ...address, city: e.currentTarget.value })}
               />
               <TextInput
                 label={t("country")}
                 disabled={fixed}
                 value={address.country}
-                onChange={(e) => touch(setAddress)({ ...address, country: e.currentTarget.value.toUpperCase() })}
+                error={fieldError("deliveryAddress.country")}
+                onChange={(e) =>
+                  touch(
+                    setAddress,
+                    "deliveryAddress.country",
+                  )({ ...address, country: e.currentTarget.value.toUpperCase() })
+                }
               />
             </SimpleGrid>
           )}
@@ -568,20 +640,23 @@ const DraftEditor = ({
               label={t("yourReference")}
               disabled={fixed}
               value={yourReference}
-              onChange={(e) => touch(setYourReference)(e.currentTarget.value)}
+              error={fieldError("yourReference")}
+              onChange={(e) => touch(setYourReference, "yourReference")(e.currentTarget.value)}
               description={yourReference === "" ? t("yourReferenceNudge") : undefined}
             />
             <TextInput
               label={t("ourReference")}
               disabled={fixed}
               value={ourReference}
-              onChange={(e) => touch(setOurReference)(e.currentTarget.value)}
+              error={fieldError("ourReference")}
+              onChange={(e) => touch(setOurReference, "ourReference")(e.currentTarget.value)}
             />
             <TextInput
               label={t("orderReference")}
               disabled={fixed}
               value={orderReference}
-              onChange={(e) => touch(setOrderReference)(e.currentTarget.value)}
+              error={fieldError("orderReference")}
+              onChange={(e) => touch(setOrderReference, "orderReference")(e.currentTarget.value)}
             />
             {!credit && (
               <NumberInput
@@ -590,7 +665,8 @@ const DraftEditor = ({
                 max={365}
                 readOnly={!editable}
                 value={terms}
-                onChange={touch(setTerms)}
+                error={fieldError("paymentTermsDays")}
+                onChange={touch(setTerms, "paymentTermsDays")}
               />
             )}
           </SimpleGrid>
@@ -620,6 +696,7 @@ const DraftEditor = ({
                       aria-label={t("lineDescription", { n: i + 1 })}
                       readOnly={!editable}
                       value={l.description}
+                      error={fieldError(`lines[${i}].description`)}
                       onChange={(e) => setLine(l.key, { description: e.currentTarget.value })}
                     />
                   </Table.Td>
@@ -631,6 +708,7 @@ const DraftEditor = ({
                       max={credit ? originalLine(l)?.quantity : MAX_QUANTITY}
                       readOnly={!editable}
                       value={l.quantity}
+                      error={fieldError(`lines[${i}].quantity`)}
                       onChange={(v) => setLine(l.key, { quantity: v })}
                     />
                   </Table.Td>
@@ -639,6 +717,7 @@ const DraftEditor = ({
                       aria-label={t("lineUnit", { n: i + 1 })}
                       disabled={fixed}
                       value={l.unit}
+                      error={fieldError(`lines[${i}].unit`)}
                       onChange={(e) => setLine(l.key, { unit: e.currentTarget.value })}
                     />
                   </Table.Td>
@@ -650,6 +729,7 @@ const DraftEditor = ({
                       max={credit ? originalLine(l)?.unitPrice : MAX_UNIT_PRICE}
                       readOnly={!editable}
                       value={l.unitPrice}
+                      error={fieldError(`lines[${i}].unitPrice`)}
                       onChange={(v) => setLine(l.key, { unitPrice: v })}
                     />
                   </Table.Td>
@@ -661,6 +741,7 @@ const DraftEditor = ({
                       max={100}
                       disabled={fixed}
                       value={l.discountPercent}
+                      error={fieldError(`lines[${i}].discountPercent`)}
                       onChange={(v) => setLine(l.key, { discountPercent: v })}
                     />
                   </Table.Td>
@@ -670,6 +751,7 @@ const DraftEditor = ({
                       disabled={fixed}
                       data={vatOptions}
                       value={l.vatCodeId === null ? null : String(l.vatCodeId)}
+                      error={fieldError(`lines[${i}].vatCodeId`)}
                       onChange={(v) => setLine(l.key, { vatCodeId: v === null ? null : Number(v) })}
                     />
                   </Table.Td>
@@ -698,6 +780,7 @@ const DraftEditor = ({
                           color="red"
                           aria-label={t("removeLine", { n: i + 1 })}
                           onClick={() => {
+                            renumbered();
                             setLines((c) => c.filter((x) => x.key !== l.key));
                             setDirty(true);
                           }}
@@ -757,14 +840,16 @@ const DraftEditor = ({
             description={t("noteHint")}
             readOnly={!editable}
             value={note}
-            onChange={(e) => touch(setNote)(e.currentTarget.value)}
+            error={fieldError("note")}
+            onChange={(e) => touch(setNote, "note")(e.currentTarget.value)}
           />
           <Textarea
             label={t("internalNote")}
             description={t("internalNoteHint")}
             readOnly={!editable}
             value={internalNote}
-            onChange={(e) => touch(setInternalNote)(e.currentTarget.value)}
+            error={fieldError("internalNote")}
+            onChange={(e) => touch(setInternalNote, "internalNote")(e.currentTarget.value)}
           />
         </SimpleGrid>
       </Card>
@@ -868,7 +953,9 @@ const IssuedDocument = ({ document: doc, canIssue }: { document: InvoiceDocument
             <Text fw={600}>{doc.buyer?.name}</Text>
             {doc.buyer?.addressLine1 && <Text size="sm">{doc.buyer.addressLine1}</Text>}
             {(doc.buyer?.postalCode || doc.buyer?.city) && (
-              <Text size="sm">{`${doc.buyer?.postalCode ?? ""} ${doc.buyer?.city ?? ""}`.trim()}</Text>
+              <Text size="sm">
+                {t("postalPlace", { postalCode: doc.buyer?.postalCode ?? "", city: doc.buyer?.city ?? "" }).trim()}
+              </Text>
             )}
             {doc.buyer?.organisationNumber && (
               <Text size="sm">{t("orgNumber", { number: doc.buyer.organisationNumber })}</Text>
@@ -942,7 +1029,9 @@ const IssuedDocument = ({ document: doc, canIssue }: { document: InvoiceDocument
               (doc.creditNotes ?? []).map((c) => (
                 <Group key={c.id} gap="xs">
                   <DocumentLink invoiceId={c.id}>
-                    {c.number ? `${t("kindCreditNote")} ${c.number}` : `${t("kindCreditNote")} — ${t("statusDraft")}`}
+                    {c.number
+                      ? t("documentNumbered", { kind: t("kindCreditNote"), number: c.number })
+                      : t("documentDraft", { kind: t("kindCreditNote") })}
                   </DocumentLink>
                   {c.status === "draft" && <Badge variant="light">{t("statusDraft")}</Badge>}
                   <Text size="sm">{money(c.grossTotal, doc.currency)}</Text>

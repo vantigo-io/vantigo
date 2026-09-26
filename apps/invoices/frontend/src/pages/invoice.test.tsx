@@ -1,8 +1,10 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { setLanguagePreference } from "@vantigo/frontend-shell";
 import { describe, expect, it, vi } from "vitest";
 import type { InvoiceDocument, InvoiceInput } from "../api/invoices";
-import { jsonResponse, sent } from "../test/api";
+import { setUnauthorizedHandler } from "../api/request";
+import { customerSearch, jsonResponse, listedCustomers, sent } from "../test/api";
 import { stubFetch } from "../test/fetch";
 import { creditDraft, draft, issued, listPage, meta, vatCodes } from "../test/fixtures";
 import { renderRoute } from "../test/route-tree";
@@ -58,7 +60,7 @@ const server = (
     if (url === "/api/v1/invoices/vat-codes") return jsonResponse(200, vatCodes());
     const answer = answers[`${method} ${url}`];
     if (answer) return jsonResponse(method === "POST" && url.endsWith("/credit") ? 201 : 200, answer);
-    if (url.startsWith("/api/v1/customers?")) return jsonResponse(200, { data: [] });
+    if (url.startsWith("/api/v1/customers?")) return customerSearch(url);
 
     const match = /^\/api\/v1\/invoices\/(\d+)(\/issue|\/credit)?$/.exec(url);
     if (!match) return new Response(null, { status: 404 });
@@ -75,7 +77,8 @@ const server = (
       const issueDate = bodyOf(init).issueDate ?? allowed[allowed.length - 1];
       if (!allowed.includes(issueDate)) return refusal(409, "issue_date_not_allowed", { allowedIssueDates: allowed });
       if (doc.lines.length === 0) return refusal(409, "no_lines");
-      return jsonResponse(200, issued({ id, issueDate }));
+      documents[id] = issued({ id, issueDate });
+      return jsonResponse(200, documents[id]);
     }
     if (action === "POST /credit") {
       if (doc.status === "draft") return refusal(409, "invoice_draft");
@@ -137,6 +140,8 @@ const server = (
       if (Object.keys(errors).length > 0) return jsonResponse(400, { title: "Invalid", status: 400, errors });
       return jsonResponse(200, {
         ...doc,
+        customerId: body.customerId,
+        customerName: listedCustomers.find((c) => c.id === body.customerId)?.name ?? doc.customerName,
         revision: doc.revision + 1,
         lines: body.lines.map((l, i) => ({
           ...doc.lines[0],
@@ -193,6 +198,16 @@ describe("the draft editor", () => {
     });
   });
 
+  // A warning a newer server added is said in general words; a key the
+  // catalog lacks would throw outside production and take the editor down.
+  it("says a warning it has no words for, rather than failing", async () => {
+    server({ 1001: draft({ warnings: ["something_new"] }) });
+    renderRoute("/invoices/1001");
+    expect(
+      await screen.findByText("The server flags something this version has no words for (something_new)."),
+    ).toBeInTheDocument();
+  });
+
   it("nudges when the buyer's reference is empty and shows the draft's warnings", async () => {
     server({ 1001: draft({ yourReference: "", warnings: ["issued_late"] }) });
     renderRoute("/invoices/1001");
@@ -221,6 +236,19 @@ describe("the issue dialog", () => {
     await waitFor(() => expect(sent(fetchMock, "POST").body).toEqual({ issueDate: "2026-08-31" }));
     expect(await screen.findByText("Issued as number 1000")).toBeInTheDocument();
     expect(await screen.findByText(/the law asks for the invoice within a month/)).toBeInTheDocument();
+  });
+
+  it("shows the issued document once it is issued", async () => {
+    const fetchMock = server({ 1001: draft() });
+    renderRoute("/invoices/1001");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Issue" }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Issue" }));
+
+    expect(await screen.findByRole("heading", { name: "Invoice 1000" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Download PDF" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    expect(sent(fetchMock, "POST").body).toEqual({ issueDate: "2026-09-12" });
   });
 
   it("offers today alone after the 15th", async () => {
@@ -411,6 +439,22 @@ describe("the PDF", () => {
     expect(clicked[0].download).toBe("document.pdf");
   });
 
+  // A PDF is a blob, so it cannot go through the shared client; a 401 still
+  // reaches the host's handler, which signs the person in again.
+  it("hands an expired session to the host, as every other request does", async () => {
+    const expired = vi.fn();
+    setUnauthorizedHandler(expired);
+    server(
+      { 1001: issued() },
+      {},
+      { answers: { "GET /api/v1/invoices/1001/pdf": jsonResponse(401, { title: "Unauthorized", status: 401 }) } },
+    );
+    renderRoute("/invoices/1001");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Download PDF" }));
+    await waitFor(() => expect(expired).toHaveBeenCalledTimes(1));
+  });
+
   it("says a refusal as a notification, never the problem JSON in the browser", async () => {
     server(
       { 1001: issued() },
@@ -500,6 +544,23 @@ describe("an issued document's header", () => {
     expect(screen.getByText("Delivery period: Sep 1, 2026 – Sep 10, 2026")).toBeInTheDocument();
     expect(screen.getByText("Your reference: PO-77")).toBeInTheDocument();
     expect(screen.getByText(/^Left to credit: NOK\s?124\.99$/)).toBeInTheDocument();
+  });
+
+  // The same facts in Norwegian: each "label: value" is the nb catalog's own.
+  it("words each fact in Norwegian from the nb catalog", async () => {
+    setLanguagePreference("nb");
+    try {
+      server({ 1001: issued({ deliveryDate: undefined, deliveryFrom: "2026-09-01", deliveryTo: "2026-09-10" }) });
+      renderRoute("/invoices/1001");
+
+      expect(await screen.findByText("Fakturadato: 12. sep. 2026")).toBeInTheDocument();
+      expect(screen.getByText("Forfallsdato: 12. okt. 2026")).toBeInTheDocument();
+      expect(screen.getByText("Leveringsperiode: 1. sep. 2026 – 10. sep. 2026")).toBeInTheDocument();
+      expect(screen.getByText("Deres referanse: PO-77")).toBeInTheDocument();
+      expect(screen.getByText(/^Igjen å kreditere: 124,99\s?kr$/)).toBeInTheDocument();
+    } finally {
+      setLanguagePreference("auto");
+    }
   });
 });
 
@@ -892,5 +953,161 @@ describe("an issued document's lines", () => {
     expect(within(first).getByText(/33\.3333/)).toBeInTheDocument();
     const second = screen.getByText("Tredjedel 2").closest("tr") as HTMLElement;
     expect(within(second).getAllByText(/33\.33$/).length).toBeGreaterThan(0);
+  });
+});
+
+describe("changing the buyer", () => {
+  // Mantine reports the picked option's label as a search; the customers API
+  // finds nothing for "Bygg AS (10003)", and the picker then labelled the new
+  // id with the draft's old buyer's name.
+  it("shows the customer picked, keeps it through the searches after, and saves its id", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      // userEvent's direct calls, told the clock is fake; setup() would claim the clipboard the test setup stubs.
+      const timers = { advanceTimers: vi.advanceTimersByTime };
+      const user = {
+        clear: (el: Element) => userEvent.clear(el, timers),
+        type: (el: Element, text: string) => userEvent.type(el, text, timers),
+        click: (el: Element) => userEvent.click(el, timers),
+      };
+      const fetchMock = server({ 1001: draft() });
+      const { queryClient } = renderRoute("/invoices/1001");
+      // Every debounced search has run and been answered.
+      const settle = async () => {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(1000);
+        });
+        await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+      };
+
+      const buyer = await screen.findByRole("combobox", { name: "Customer" });
+      expect(buyer).toHaveValue("Acme AS");
+      await user.clear(buyer);
+      await user.type(buyer, "Bygg");
+      await settle();
+      await user.click(await screen.findByRole("option", { name: "Bygg AS (10003)" }));
+      await settle();
+      await settle();
+      expect(screen.getByRole("combobox", { name: "Customer" })).toHaveValue("Bygg AS (10003)");
+      const searches = fetchMock.actualCalls.map(([url]) => path(url)).filter((url) => url.includes("search="));
+      expect(searches.some((url) => url.includes("10003"))).toBe(false);
+
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      expect(await screen.findByText("Saved")).toBeInTheDocument();
+      expect(sent(fetchMock, "PUT").body.customerId).toBe(2003);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("never offers to clear the buyer of a draft", async () => {
+    server({ 1001: draft() });
+    renderRoute("/invoices/1001");
+    await screen.findByRole("combobox", { name: "Customer" });
+    // Mantine's clear button is aria-hidden, so it is found by its class.
+    expect(document.querySelector(".mantine-InputClearButton-root")).toBeNull();
+  });
+});
+
+describe("moving between documents", () => {
+  // The route keeps the page mounted from one document to the next. The
+  // editor's edits go when the person leaves the draft; the snapshot they were
+  // made on went with them only by accident, and came back as a dirty editor
+  // with none of the edits.
+  it("leaves no phantom edits on a draft the person comes back to", async () => {
+    const original = issued({ creditNotes: [{ id: 1002, status: "draft", grossTotal: 41.66 }] });
+    server({ 1002: creditDraft(), 1001: original });
+    const { router } = renderRoute("/invoices/1002");
+
+    await userEvent.type(await screen.findByRole("textbox", { name: "Line 1 description" }), " retur");
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+    await userEvent.click(screen.getByRole("link", { name: "1000" }));
+    expect(await screen.findByRole("heading", { name: "Invoice 1000" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("link", { name: "Credit note — Draft" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/invoices/1002"));
+
+    const description = await screen.findByRole("textbox", { name: "Line 1 description" });
+    expect(description).toHaveValue("Tredjedel 1");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Preview" })).toBeEnabled();
+    expect(screen.queryByText(/An estimate while you edit/)).not.toBeInTheDocument();
+  });
+});
+
+describe("the delivery", () => {
+  // The hint and the save follow the mode chosen: a date left behind in the
+  // other mode is not a delivery, and half a period is never saved as none.
+  it("follows the chosen mode, and a half-entered period waits for its other end", async () => {
+    const fetchMock = server({ 1001: draft() });
+    renderRoute("/invoices/1001");
+
+    await userEvent.click(await screen.findByRole("radio", { name: "Delivery period" }));
+    expect(screen.getByText(/A delivery date or period is needed/)).toBeInTheDocument();
+    await userEvent.type(screen.getByRole("textbox", { name: "Delivered from" }), "Sep 1, 2026");
+    expect(screen.getByText(/A delivery date or period is needed/)).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Delivered to" })).toHaveAccessibleDescription(
+      "Give both the first and the last day, or choose a single day.",
+    );
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+
+    await userEvent.type(screen.getByRole("textbox", { name: "Delivered to" }), "Sep 10, 2026");
+    expect(screen.queryByText(/A delivery date or period is needed/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(sent(fetchMock, "PUT").body).toBeDefined());
+    const body = sent(fetchMock, "PUT").body;
+    expect(body.deliveryFrom).toBe("2026-09-01");
+    expect(body.deliveryTo).toBe("2026-09-10");
+    expect(body.deliveryDate).toBeUndefined();
+  });
+});
+
+describe("a refused save", () => {
+  // Each refusal lands on its input in the catalog's words, never the
+  // server's English one at a time in a notification.
+  it("puts each field's words on its input, a line's on that line's", async () => {
+    server(
+      { 1001: draft() },
+      {},
+      {
+        answers: {
+          "PUT /api/v1/invoices/1001": jsonResponse(400, {
+            title: "Invalid invoice",
+            status: 400,
+            errors: {
+              "lines[0].description": ["A line needs a description"],
+              "lines[1].quantity": ["A quantity has at most 3 decimals"],
+              yourReference: ["A reference is at most 100 characters"],
+            },
+          }),
+        },
+      },
+    );
+    renderRoute("/invoices/1001");
+
+    await userEvent.clear(await screen.findByRole("textbox", { name: "Line 1 description" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("textbox", { name: "Line 1 description" })).toHaveAccessibleDescription(
+        "A line needs a description of at most 500 characters.",
+      ),
+    );
+    expect(screen.getByRole("textbox", { name: "Line 2 quantity" })).toHaveAccessibleDescription(
+      "More than 0 and at most 999999999.999, with up to three decimals; a credit note may only lower it.",
+    );
+    expect(screen.getByRole("textbox", { name: "Your reference" })).toHaveAccessibleDescription(
+      "At most 100 characters; a credit note keeps its original's.",
+    );
+    expect(screen.queryByText(/A quantity has at most 3 decimals/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Could not save the draft")).not.toBeInTheDocument();
+
+    // Changing a field takes its refusal away; the others stay.
+    await userEvent.type(screen.getByRole("textbox", { name: "Line 1 description" }), "Rådgivning");
+    expect(screen.getByRole("textbox", { name: "Line 1 description" })).not.toHaveAccessibleDescription(
+      "A line needs a description of at most 500 characters.",
+    );
+    expect(screen.getByRole("textbox", { name: "Line 2 quantity" })).toHaveAccessibleDescription(
+      "More than 0 and at most 999999999.999, with up to three decimals; a credit note may only lower it.",
+    );
   });
 });

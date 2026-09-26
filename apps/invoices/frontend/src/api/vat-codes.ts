@@ -6,7 +6,6 @@ type Schemas = components["schemas"];
 
 /** A VAT code with every rate period it has had (D3). */
 export type VatCode = Schemas["InvoicesVatCode"];
-export type VatCodeRate = Schemas["InvoicesVatCodeRate"];
 export type VatCodeCreateInput = Schemas["InvoicesVatCodeCreateRequest"];
 export type VatCodeUpdateInput = Schemas["InvoicesVatCodeUpdateRequest"];
 

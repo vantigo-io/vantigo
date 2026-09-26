@@ -15,7 +15,7 @@ import { DateInput } from "@mantine/dates";
 import { useDebouncedValue } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconPlus } from "@tabler/icons-react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
@@ -49,7 +49,12 @@ export const InvoicesPage = ({ canViewCustomers, userDisplayName }: InvoicesPage
   // The search is sent once the typing pauses, not per keystroke.
   const [search, setSearch] = useState("");
   const [debouncedSearch] = useDebouncedValue(search, 300);
-  const list = useQuery(invoiceListQueryOptions({ ...filters, search: debouncedSearch.trim() || undefined }));
+  // The page shown stays while the next filter's is fetched: the table does
+  // not flash to a skeleton on every chip, date or page.
+  const list = useQuery({
+    ...invoiceListQueryOptions({ ...filters, search: debouncedSearch.trim() || undefined }),
+    placeholderData: keepPreviousData,
+  });
   const [creating, setCreating] = useState(false);
   const set = (next: Partial<InvoiceListFilters>) =>
     setFilters((current) => ({ ...current, ...next, page: next.page ?? 1 }));

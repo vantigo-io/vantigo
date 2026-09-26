@@ -36,8 +36,8 @@ import {
   vatCodesQueryOptions,
 } from "../api/vat-codes";
 import { StaleAlert } from "../components/stale-alert";
-import { invoicesCatalog } from "../i18n";
-import { refusalMessage } from "../lib/errors";
+import "../i18n";
+import { fieldRefusals, refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 import { rateOn } from "../lib/vat";
 
@@ -205,13 +205,7 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
         return;
       }
       if (error instanceof ApiValidationError) {
-        const onInputs: Record<string, string> = {};
-        const elsewhere: string[] = [];
-        for (const [field, message] of Object.entries(error.fieldErrors)) {
-          const key = `fieldInvalid.${field}`;
-          if (sellerInputs.has(field)) onInputs[field] = key in invoicesCatalog.en ? t(key) : message;
-          else elsewhere.push(message);
-        }
+        const { onInputs, elsewhere } = fieldRefusals(error, t, (field) => sellerInputs.has(field));
         setErrors(onInputs);
         if (elsewhere.length === 0) return;
         notifications.show({ color: "red", title: t("couldNotSaveSettings"), message: elsewhere.join(" ") });
@@ -400,7 +394,16 @@ const VatCodesSection = () => {
         )}
       </Stack>
       {modal?.mode === "create" && <VatCodeForm today={today} onClose={() => setModal(null)} />}
-      {modal?.mode === "edit" && <VatCodeForm code={modal.code} today={today} onClose={() => setModal(null)} />}
+      {modal?.mode === "edit" && (
+        <VatCodeForm
+          key={modal.code.revision}
+          code={modal.code}
+          latestRevision={codes.data?.find((c) => c.id === modal.code.id)?.revision}
+          today={today}
+          onReloaded={(latest) => setModal({ mode: "edit", code: latest })}
+          onClose={() => setModal(null)}
+        />
+      )}
       {modal?.mode === "rates" && (
         <RatePeriods
           code={codes.data?.find((c) => c.id === modal.code.id) ?? modal.code}
@@ -414,9 +417,39 @@ const VatCodesSection = () => {
 };
 
 /** A new code's first period starts today in Oslo unless the person picks another day. */
-const VatCodeForm = ({ code, today, onClose }: { code?: VatCode; today: string; onClose: () => void }) => {
+interface VatCodeFormProps {
+  /** The code being edited; none for a new one. */
+  code?: VatCode;
+  /** The revision the codes list last answered for it: newer when someone else saved meanwhile. */
+  latestRevision?: number;
+  today: string;
+  /** Called with the latest version of the code after Reload; the form remounts on it. */
+  onReloaded?: (latest: VatCode) => void;
+  onClose: () => void;
+}
+
+/**
+ * A VAT code's own fields. An edit refused as stale, or a newer revision seen
+ * while the form is open, says the code changed and offers Reload, as the
+ * seller form does — never the server's English revision sentence.
+ */
+const VatCodeForm = ({ code, latestRevision, today, onReloaded, onClose }: VatCodeFormProps) => {
   const { t, date } = useInvoiceFormat();
   const queryClient = useQueryClient();
+  const [conflict, setConflict] = useState(false);
+  const [reloadFailed, setReloadFailed] = useState(false);
+  const stale = Boolean(code) && (conflict || (latestRevision ?? 0) > (code?.revision ?? 0));
+  const reload = useMutation({
+    mutationFn: async () => {
+      const codes = await queryClient.fetchQuery({ ...vatCodesQueryOptions(), staleTime: 0 });
+      const latest = codes.find((c) => c.id === code?.id);
+      if (!latest) throw new Error("gone");
+      return latest;
+    },
+    onMutate: () => setReloadFailed(false),
+    onSuccess: (latest) => onReloaded?.(latest),
+    onError: () => setReloadFailed(true),
+  });
   const [values, setValues] = useState({
     code: code?.code ?? "",
     name: code?.name ?? "",
@@ -444,12 +477,26 @@ const VatCodeForm = ({ code, today, onClose }: { code?: VatCode; today: string; 
       await queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY] });
       onClose();
     },
-    onError: (error) =>
-      notifications.show({ color: "red", title: t("couldNotSaveVatCode"), message: refusalMessage(error, t, date) }),
+    onError: (error) => {
+      if (error instanceof ApiConflictError && !error.code) {
+        setConflict(true);
+        return;
+      }
+      notifications.show({ color: "red", title: t("couldNotSaveVatCode"), message: refusalMessage(error, t, date) });
+    },
   });
   return (
     <Modal opened onClose={onClose} title={code ? t("editVatCode", { code: code.code }) : t("addVatCode")}>
       <Stack>
+        {stale && (
+          <StaleAlert
+            title={t("vatCodeChangedTitle")}
+            message={t("vatCodeChangedMessage")}
+            reloadFailedMessage={reloadFailed ? t("couldNotReloadVatCode") : undefined}
+            reloading={reload.isPending}
+            onReload={() => reload.mutate()}
+          />
+        )}
         <TextInput
           label={t("code")}
           value={values.code}
