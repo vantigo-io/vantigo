@@ -1245,7 +1245,8 @@ var defaultModules = knownModules
 // set. energy depends on customers, and so do communications and projects:
 // enabling any of them without customers is its own problem, naming both.
 // time depends on projects the same way (it reads contracts.ProjectDirectory,
-// which only projects provides). Identity is always mounted and is never
+// which only projects provides), and invoices on customers (its buyer comes
+// from contracts.CustomerDirectory). Identity is always mounted and is never
 // listed here.
 func modules(p *problems, env map[string]string) []string {
 	v := env["MODULES"]
@@ -1277,6 +1278,9 @@ func modules(p *problems, env map[string]string) []string {
 	}
 	if slices.Contains(out, "time") && !slices.Contains(out, "projects") {
 		p.add("MODULES", "time requires projects")
+	}
+	if slices.Contains(out, "invoices") && !slices.Contains(out, "customers") {
+		p.add("MODULES", "invoices requires customers")
 	}
 
 	return out
