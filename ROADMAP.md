@@ -22,9 +22,9 @@ transport instead of in-process handlers; event contracts stay unchanged.
 
 ## Customers
 
-Customers is the hub Energy, Projects, Time, Expenses and (eventually) Invoices all
-hang off — a project has a `customerId`, a supply period has a customer, an invoice
-will too — not a sales pipeline of its own. Research and priorities are in
+Customers is the hub Energy, Projects, Time, Expenses and Invoices all hang off — a
+project has a `customerId`, a supply period has a customer, an invoice snapshots its
+buyer from one — not a sales pipeline of its own. Research and priorities are in
 [`docs/superpowers/research/2026-09-21-customers-module-next.md`](docs/superpowers/research/2026-09-21-customers-module-next.md),
 comparing this module against the Nordic ERP/accounting field (Tripletex, PowerOffice,
 Visma, Fiken, Fortnox, e-conomic) and international CRM/PSA tools (HubSpot, Pipedrive,
