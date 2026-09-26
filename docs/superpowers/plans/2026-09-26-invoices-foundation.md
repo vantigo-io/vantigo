@@ -12,9 +12,9 @@
 
 ## Global Constraints
 
-- Branch `feat/invoices-foundation`; HEAD is the spec commit `d77fc256` (commit this plan on top of it before Task 1). Never commit to `main`, never merge, never `--no-verify`.
+- Branch `feat/invoices-foundation`; HEAD carries the spec (`d77fc256`) and this plan. Never commit to `main`, never merge, never `--no-verify`.
 - `export TEST_DATABASE_URL=postgres://vantigo:vantigo@127.0.0.1:55442/vantigo_test?sslmode=disable` for every `go test`. Never port 55432 — it belongs to another project.
-- Never the untracked root `go.mod`/`go.sum`: they are not ours, never add, edit or delete them. The server's module is `apps/server/go.mod`; `go get` runs there (Task 5).
+- Never the untracked root `go.mod`/`go.sum`: they are not ours, never add, edit or delete them. The server's module is `apps/server/go.mod`; `go get` runs there (Task 7).
 - Never edit `openapi/testdata/exchanges/*.jsonl`. Invoices has no corpus file; `contracttest.RequireCoverage` in `internal/invoices/main_test.go` gates it — every operation must answer 2xx in the module's own tests. The customers corpus must still validate after the contract change: the change is to the Go struct `contracts.CustomerBillingProfile`, not to `openapi/customers.yaml`.
 - Existing schemas change additively: no existing OpenAPI schema is touched at all, `contracts.CustomerBillingProfile` only gains two fields, and no other module's migration changes.
 - After any `openapi/*.yaml`, `queries/*.sql`, `sqlc.yaml` or migration change: `cd apps/server && mise exec -- go generate ./...` — **never package-scoped**; a second run must show no new diff. Then, from the repository root, `mise exec -- bun run gen:client`, and regenerate `openapi/COVERAGE.md` with `cd apps/server && mise exec -- go run ./internal/openapi/cmd/contract coverage -corpus ../../openapi/testdata/exchanges -out ../../openapi/COVERAGE.md`. Commit every generated file.
@@ -30,30 +30,34 @@
 - Every new test must be shown able to fail (break the guard it pins, see red, restore). Say so in the report.
 - **One implementer commits at a time.** If two agents ever share the tree, the second writes and verifies but does not commit; the controller commits by pathspec.
 
-**Parallelism.** Tasks 1 → 8 are sequential: each builds on the previous one's contract, queries and generated code. Task 9 (docs) touches only `docs/`, `ROADMAP.md`, `CONTRIBUTING.md` and `deploy/compose/`, and may run beside Tasks 5–8 once Task 4 is in. Task 10 (frontend: list, editor, issue, credit) needs the generated `apps/invoices/frontend/src/api-schema.d.ts` of Task 6 and may run beside Tasks 7–9; Task 11 (frontend: settings, journal) needs Task 8's and follows Task 10 (it extends the same `i18n.ts`, `index.ts` and `test/fixtures.ts`). The trees are disjoint (`apps/server` / `docs`+`ROADMAP.md`+`CONTRIBUTING.md`+`deploy` / `apps/invoices/frontend`+`apps/host/frontend`); the one-committer rule still holds.
+**Parallelism.** The server tasks run in order — 1, 3, 4, 5, 6, 7, 8, 9, 10 — each on the previous one's contract, queries and generated code. Task 2 (the frontend package and the host) needs Task 1's contract and may run beside Task 3, but is committed before Task 3's last step: Task 3 runs `gen:client`, which writes `apps/invoices/frontend/src/api-schema.d.ts` only once Task 2 has listed the package in `tools/openapi/gen-client.ts`. Task 4 (the customers contract change) is its own commit, before the drafts. Task 11 (docs) touches only `docs/`, `ROADMAP.md`, `CONTRIBUTING.md` and `deploy/compose/`; it may be written beside Tasks 7–10 once Task 6 is in, but its Step 3 check and its commit run after Task 10 — the check needs every code the Go writes and all 18 operations. Task 12 (frontend: list, editor, issue, credit) needs the `api-schema.d.ts` Task 8 commits and may run beside Tasks 9–11. **The trees are not disjoint**: Tasks 3, 5–8 and 10 regenerate and commit `apps/invoices/frontend/src/api-schema.d.ts`, so the Task 12 implementer never runs `gen:client` and never commits that file (Task 12 uses nothing Task 10 adds to it), and keeps `i18n.ts` balanced and biome-clean between edits — the pre-commit hook runs biome over the whole repository, so a half-edited catalog fails another task's commit. Task 13 (frontend: settings, journal) follows Tasks 10 and 12: it reads Task 10's journal fields and extends Task 12's `i18n.ts`, `index.ts` and `test/fixtures.ts`. The one-committer rule holds throughout.
 
 ---
 
-**How this plan reads the spec where it leaves a choice open.** Each is on the record for the user's verdict (Task 12 Step 4 repeats them):
+**How this plan reads the spec where it leaves a choice open.** Each is on the record for the user's verdict (Task 14 Step 4 repeats them); 14 and 19 are wording clarifications of the spec to put to the user:
 
 1. **409 bodies.** One schema, `InvoicesConflictProblem` — ProblemDetails plus `code`, the customers module's `CustomerConflictProblem` precedent — with three optional fields a refusal may need: `mergedInto` (`customer_merged`), `linePosition` (`vat_code_inactive`, `vat_code_not_valid`, `credit_exceeds_line`) and `allowedIssueDates` (`issue_date_not_allowed`). The 503 `storage_unavailable` uses it too, so the code is in the same place. A stale revision carries no code, as the codebase's revision conflicts do.
 2. **"A store is configured"** is `Deps.ObjectStore` set (the test seam) or `Config.StorageProvider` non-empty; with neither the module builds the real fail-closed store, and meta says `storageAvailable: false`.
 3. **`GET /meta` also answers `today`** (Oslo). The journal's default range and a new draft's delivery prefill read it; no client computes Oslo's date.
 4. **A draft's response carries `allowedIssueDates`**, computed by the same function the issue enforces (`issuedate.go`) against the latest issue date read without a lock; the issue dialog offers exactly those dates and re-derives nothing. The issue re-reads the latest date under the counter lock.
-5. **A draft's totals and VAT summaries are computed with the rates in force today** — stored on save for the list, recomputed on every read — and a code with no period covering today counts at 0 % until the issue refuses it (`vat_code_not_valid`). A save accepts any active code.
+5. **A draft's totals and VAT summaries are computed with the rates in force today** — stored on save for the list, recomputed on every read. A code with no period covering today counts at 0 %, and the draft carries the warning `vat_code_not_valid` — never a refusal; the issue refuses it. A save accepts any active code. The editor totals a line as the server does, a code no longer offered that still has a period today included (it counts at its rate; the issue refuses it as `vat_code_inactive`).
 6. **`PUT /invoices/{id}` on an invoice draft** is a full replace: `paymentTermsDays` is required (400 on it), an omitted reference is cleared, the customer may change (the gates run on the new one); the create-time prefills apply to `POST` only. `invoice_changed` is the issue's alone.
 7. **A credit-note draft** keeps everything D8 does not list as changeable — customer, currency, delivery and its place, the three references, each line's VAT code, unit and original line — each attempt a 400 on the field; its note and internal note start empty (a correction's own words). Its live totals and VAT summaries use the original lines' snapshot rates, never today's.
 8. **`creditedAmount`, `uncreditedAmount` and `creditNotes` are on an issued invoice only** — a draft invoice cannot have credit notes, and money is absent rather than zero.
 9. **The rate operations** (`POST …/rates`, `DELETE …/rates/{rateId}`) take the settings row `FOR UPDATE` before the code, so an issue in flight commits first and "after the latest issue date" is read final — the same mechanism `PUT /settings` uses. `PUT /vat-codes/{id}` changing a category also checks that every existing period's rate fits it (400 on `ehfCategory`); an S code may carry an exemption reason (the CHECK allows it), which is never printed.
 10. **The seeded codes have fixed ids 1–9**; the identity starts at 1001. Settings' text columns are `NOT NULL DEFAULT ''`, `''` meaning "not set", and the row is `CHECK (id = 1)`.
-11. **The PDF test.** No Go library in the dependency graph reads text back out of an embedded-subset TrueType font, so what a document says is asserted on the renderer's intermediate model (`buildPDFModel`), and the bytes on reproducibility: two renders a second apart are identical, and carry the fixed `/ModDate (D:20260101000000` and `/CreationDate` = `issued_at`. The fixed modification date is `2026-01-01T00:00:00Z`.
+11. **The PDF test.** No Go library in the dependency graph reads text back out of an embedded-subset TrueType font, so what a document says is asserted on the renderer's intermediate model (`buildPDFModel`), and the bytes on reproducibility: two renders a second apart are identical, and carry the fixed `/ModDate (D:20260101000000` and `/CreationDate` = `issued_at`; and the SHA-256 of one fixed render is pinned in-process (`pinnedRenderSHA256`), which catalog sorting left off breaks every time. The pin may change when maroto, gofpdf or the font is upgraded — in the upgrade's own commit; stored PDFs are never rendered again. The fixed modification date is `2026-01-01T00:00:00Z`.
 12. **`Content-Disposition` is not declared in the contract**: `contracttest` hands kin-openapi only the `Content-Type` header, so a declared required header fails every exchange; the header is set by a `Visit` wrapper, as expenses' receipt download does.
 13. **The merge holder takes `Deps.Clock`** besides nothing else (projects' precedent) for a draft's `updated_at`; "needs only the pool" is read as "needs nothing a disabled module's Deps lacks". The export's amounts are exact decimal strings.
-14. **The gap check is literal**: `[max(first − 1, series_start) … last]` — the number just before the range's first is checked; numbers before that belong to the previous range's check.
+14. **The gap check starts one past the issued document before the range's first**: `[greatest(coalesce(the highest issued number below first, series_start − 1) + 1, series_start) … last]`, so every number missing between the previous issued document and the range's first is listed, not only the one just before it — a hole straddling two ranges is listed in full by the later one. This is how "the first document of the range is checked against the one before it" (D11) is read, and the response names the range it checked (`checkedFrom`, `checkedTo`).
 15. **"Third-party notices" and "the release note"** have no file in this repository: the font's licence ships as `apps/server/internal/invoices/fonts/LICENSE` and `docs/invoices.md` names it, and the release note is a paragraph in `deploy/compose/README.md` "Upgrading". `vantigo.env.example` lists `invoices` in its explicit `MODULES`.
 16. **The fonts are vendored** from pinned commits (Noto Sans Regular and Bold from `notofonts/notofonts.github.io@28b15b4b`, `OFL.txt` from `notofonts/latin-greek-cyrillic@4bc63d7e`) with their SHA-256 checked; the build needs no network.
 17. **sqlc** mis-parses `@name::type + 1` ("syntax error at or near N"), so the counter and the journal use `sqlc.arg(name)::type`.
-18. **The frontend is two tasks** (10: list, editor, issue, credit; 11: settings, journal). The host passes `canViewCustomers` and the user's display name through small wrappers (`routes/invoices/-invoice-access.tsx`), the pattern of expenses' `-my-expenses.tsx`.
+18. **The frontend is two tasks after the skeleton** (12: list, editor, issue, credit; 13: settings, journal). The host passes `canViewCustomers` and the user's display name through small wrappers (`routes/invoices/-invoice-access.tsx`), the pattern of expenses' `-my-expenses.tsx`. A PDF is fetched behind a button, so a 409 or 503 is a notification in the reader's language rather than the problem JSON opened in the browser.
+19. **The merge holder locks the documents it re-points newest first** (`SELECT id … WHERE customer_id IN (from, into) ORDER BY id DESC FOR UPDATE`) before its `UPDATE`: a credit note's issue holds the credit note and then locks its older original, and an `UPDATE` alone may lock the original first — the deadlock `TestCustomerReferences_ARepointRacingACreditNoteIssueNeverDeadlocks` reproduces without the lock. D6's "the merge holder updates documents only" is read as "…locks and updates documents only, newest first".
+20. **`issued_late` is never on a credit note**: it keeps its original's delivery and is issued after it by nature, so the warning would always hold and say nothing. A credit draft over both caps carries both warnings; the issue refuses with the line's.
+21. **The journal answers `highestIssued`** — the highest number any issued document holds, whatever its date; absent when nothing is issued — and `checkedFrom`/`checkedTo`, so the page compares the counter with the series and names the range the check covered, never the rows of the page it shows.
+22. **A first download whose store-once fails** answers 503 only when the object store failed; a render or a database failure is a 500 — retrying does not mend it.
 
 ## File Structure
 
@@ -61,36 +65,35 @@
 | --- | --- |
 | `apps/server/internal/db/migrations/00034_invoices_baseline.sql` | every 1A table, the checks, the exclusion, the immutability triggers, the seed (Task 1) |
 | `apps/server/internal/invoices/{module,server,values,seller,meta}.go`, `sqlc.yaml`, `queries/{settings,counters,vatcodes}.sql` | the module, its store and `GET /meta` (Task 1) |
-| `openapi/invoices.yaml`, `apps/server/internal/openapi/gen/cfg-invoices.yaml`, `apps/server/generate.go`, `internal/openapi/openapi.go`, `cmd/vantigo/main.go`, `internal/config/config.go`, `.golangci.yml`, `internal/db/schema_test.go`, `internal/module/compose_test.go` | the module in the platform (Task 1; the contract grows every task) |
-| `apps/server/internal/invoices/{errors,decimal,settings,vatcodes}.go` | the seller record, the series start, VAT codes and rate periods (Task 2) |
-| `apps/server/internal/contracts/directory.go`, `internal/customers/{directory.go,queries/customers.sql,directory_test.go}` | `Status` and `MergedInto` on the billing profile (Task 3) |
-| `apps/server/internal/invoices/{contractscalls,money,issuedate,drafts,responses,list}.go`, `queries/{invoices,lines}.sql` | drafts, the money, the list (Task 3) |
-| `apps/server/internal/invoices/issue.go` | the issue (Task 4) |
-| `apps/server/internal/invoices/{pdf,pdfstore}.go`, `fonts/*`, `apps/server/go.mod`, `go.sum` | the PDF, store-once, download and preview (Task 5) |
-| `apps/server/internal/invoices/credits.go`, `queries/credits.sql` | credit notes (Task 6) |
-| `apps/server/internal/invoices/customer_slots.go`, `queries/customers.sql` | the merge holder and personal data (Task 7) |
-| `apps/server/internal/invoices/journal.go`, `queries/journal.sql` | the journal (Task 8) |
-| `docs/invoices.md`, `docs/{module-boundaries,customers,README}.md`, `ROADMAP.md`, `CONTRIBUTING.md`, `deploy/compose/{README.md,vantigo.env.example}` | D13 (Task 9) |
-| `apps/invoices/frontend/**` | `@vantigo/invoices-ui` (skeleton Task 1; list, editor, issue, credit Task 10; settings, journal Task 11) |
-| `apps/host/frontend/src/{navigation,apps,i18n}.ts`, `catalogs/{admin,navigation}.ts`, `routes/invoices*` | the app in the host (Tasks 1, 10, 11) |
+| `openapi/invoices.yaml`, `apps/server/internal/openapi/gen/cfg-invoices.yaml`, `apps/server/generate.go`, `internal/openapi/openapi.go`, `cmd/vantigo/main.go`, `internal/config/config.go`, `.golangci.yml`, `internal/db/schema_test.go`, `internal/module/compose_test.go` | the module in the platform (Task 1; the contract grows in every server task) |
+| `apps/server/internal/invoices/{errors,decimal,settings,vatcodes}.go` | the seller record, the series start, VAT codes and rate periods (Task 3) |
+| `apps/server/internal/contracts/directory.go`, `internal/customers/{directory.go,queries/customers.sql,directory_test.go}` | `Status` and `MergedInto` on the billing profile (Task 4) |
+| `apps/server/internal/invoices/{contractscalls,money,issuedate,drafts,responses,list}.go`, `queries/{invoices,lines}.sql` | drafts, the money, the list (Task 5) |
+| `apps/server/internal/invoices/issue.go` | the issue (Task 6) |
+| `apps/server/internal/invoices/{pdf,pdfstore}.go`, `fonts/*`, `apps/server/go.mod`, `go.sum` | the PDF, store-once, download and preview (Task 7) |
+| `apps/server/internal/invoices/credits.go`, `queries/credits.sql` | credit notes (Task 8) |
+| `apps/server/internal/invoices/customer_slots.go`, `queries/customers.sql` | the merge holder and personal data (Task 9) |
+| `apps/server/internal/invoices/journal.go`, `queries/journal.sql` | the journal (Task 10) |
+| `docs/invoices.md`, `docs/{module-boundaries,customers,README}.md`, `ROADMAP.md`, `CONTRIBUTING.md`, `deploy/compose/{README.md,vantigo.env.example}` | D13 (Task 11) |
+| `apps/invoices/frontend/**` | `@vantigo/invoices-ui` (skeleton Task 2; list, editor, issue, credit Task 12; settings, journal Task 13) |
+| `apps/host/frontend/src/{navigation,apps,i18n}.ts`, `catalogs/{admin,navigation}.ts`, `routes/invoices*` | the app in the host (Tasks 2, 12, 13) |
 
 ---
 
-### Task 1: The module skeleton: an empty Invoices app that mounts, generates and passes coverage (D1, the D2–D4 and D9 schema)
+### Task 1: The module skeleton: the schema, GET /meta and the module in the platform (D1, the D2–D4 and D9 schema)
 
-The whole phase-1A schema lands now — settings, counters, VAT codes and their rate periods, documents, lines and VAT summaries, the CHECKs, the exclusion constraint and the three immutability triggers — so no later task adds a migration. The contract has one operation, `GET /invoices/meta`, which already answers everything the pages need to start (it reads the seeded settings row, the seeded codes and the counter row). The module is wired into every list the checklist in `docs/module-boundaries.md` "Adding a module" names, and the frontend package and the host's app entry exist with one page that reads meta.
+The whole phase-1A schema lands now — settings, counters, VAT codes and their rate periods, documents, lines and VAT summaries, the CHECKs, the exclusion constraint and the three immutability triggers — so no later task adds a migration. The contract has one operation, `GET /invoices/meta`, which already answers everything the pages need to start (it reads the seeded settings row, the seeded codes and the counter row). The module is wired into every list the checklist in `docs/module-boundaries.md` "Adding a module" names. Task 2 adds the frontend package and the host's app entry.
 
 **Files:**
-- Create: `apps/host/frontend/src/routes/invoices.tsx`, `apps/host/frontend/src/routes/invoices/index.tsx`, `apps/invoices/frontend/.gitignore`, `apps/invoices/frontend/eslint.config.js`, `apps/invoices/frontend/package.json`, `apps/invoices/frontend/src/api/meta.ts`, `apps/invoices/frontend/src/api/request.ts`, `apps/invoices/frontend/src/i18n.ts`, `apps/invoices/frontend/src/index.ts`, `apps/invoices/frontend/src/pages/invoices.test.tsx`, `apps/invoices/frontend/src/pages/invoices.tsx`, `apps/invoices/frontend/src/test/api.ts`, `apps/invoices/frontend/src/test/fetch.ts`, `apps/invoices/frontend/src/test/render.tsx`, `apps/invoices/frontend/src/test/setup.ts`, `apps/invoices/frontend/tsconfig.app.json`, `apps/invoices/frontend/tsconfig.json`, `apps/invoices/frontend/tsconfig.node.json`, `apps/invoices/frontend/vite.config.ts`, `apps/server/internal/db/migrations/00034_invoices_baseline.sql`, `apps/server/internal/invoices/harness_test.go`, `apps/server/internal/invoices/main_test.go`, `apps/server/internal/invoices/meta.go`, `apps/server/internal/invoices/meta_test.go`, `apps/server/internal/invoices/module.go`, `apps/server/internal/invoices/module_internal_test.go`, `apps/server/internal/invoices/queries/counters.sql`, `apps/server/internal/invoices/queries/settings.sql`, `apps/server/internal/invoices/queries/vatcodes.sql`, `apps/server/internal/invoices/seller.go`, `apps/server/internal/invoices/server.go`, `apps/server/internal/invoices/sqlc.yaml`, `apps/server/internal/invoices/values.go`, `apps/server/internal/openapi/gen/cfg-invoices.yaml`, `openapi/invoices.yaml`
-- Modify: `apps/communications/frontend/eslint.config.js`, `apps/customers/frontend/eslint.config.js`, `apps/energy/frontend/eslint.config.js`, `apps/expenses/frontend/eslint.config.js`, `apps/host/frontend/package.json`, `apps/host/frontend/src/apps.test.ts`, `apps/host/frontend/src/apps.ts`, `apps/host/frontend/src/catalogs/admin.test.ts`, `apps/host/frontend/src/catalogs/admin.ts`, `apps/host/frontend/src/catalogs/navigation.ts`, `apps/host/frontend/src/i18n.ts`, `apps/host/frontend/src/navigation.ts`, `apps/products/frontend/eslint.config.js`, `apps/projects/frontend/eslint.config.js`, `apps/server/.golangci.yml`, `apps/server/cmd/vantigo/main.go`, `apps/server/generate.go`, `apps/server/internal/config/config.go`, `apps/server/internal/config/config_test.go`, `apps/server/internal/db/schema_test.go`, `apps/server/internal/module/compose_test.go`, `apps/server/internal/openapi/openapi.go`, `apps/time/frontend/eslint.config.js`, `tools/openapi/gen-client.test.ts`, `tools/openapi/gen-client.ts`
-- Generated (commit them; never edit by hand): `apps/host/frontend/src/routeTree.gen.ts`, `apps/invoices/frontend/src/api-schema.d.ts`, `apps/server/internal/invoices/gen/api.gen.go`, `apps/server/internal/invoices/store/counters.sql.go`, `apps/server/internal/invoices/store/db.go`, `apps/server/internal/invoices/store/models.go`, `apps/server/internal/invoices/store/settings.sql.go`, `apps/server/internal/invoices/store/vatcodes.sql.go`, `apps/server/internal/openapi/specs/invoices.yaml`, `bun.lock`, `openapi/COVERAGE.md`
-- Read first (do not change): `docs/module-boundaries.md:268-318`, `apps/server/internal/expenses/{module.go,server.go,main_test.go,harness_test.go}`, `db/migrations/00005_energy_baseline.sql:11-16,85-100` (the exclusion), `00033_expenses_supplier_invoices.sql` (plpgsql in goose), `internal/db/schema_test.go:24-218,2393-2433`, `internal/config/config.go:1223-1283`, `apps/expenses/frontend/{package.json,eslint.config.js,vite.config.ts,src/api/request.ts,src/test/*}`, `apps/host/frontend/src/{apps.ts,navigation.ts,i18n.ts,catalogs/admin.ts,routes/expenses.tsx}`
+- Create: `apps/server/internal/db/migrations/00034_invoices_baseline.sql`, `apps/server/internal/invoices/harness_test.go`, `apps/server/internal/invoices/main_test.go`, `apps/server/internal/invoices/meta.go`, `apps/server/internal/invoices/meta_test.go`, `apps/server/internal/invoices/module.go`, `apps/server/internal/invoices/module_internal_test.go`, `apps/server/internal/invoices/queries/counters.sql`, `apps/server/internal/invoices/queries/settings.sql`, `apps/server/internal/invoices/queries/vatcodes.sql`, `apps/server/internal/invoices/seller.go`, `apps/server/internal/invoices/server.go`, `apps/server/internal/invoices/sqlc.yaml`, `apps/server/internal/invoices/values.go`, `apps/server/internal/openapi/gen/cfg-invoices.yaml`, `openapi/invoices.yaml`
+- Modify: `apps/server/.golangci.yml`, `apps/server/cmd/vantigo/main.go`, `apps/server/generate.go`, `apps/server/internal/config/config.go`, `apps/server/internal/config/config_test.go`, `apps/server/internal/db/schema_test.go`, `apps/server/internal/module/compose_test.go`, `apps/server/internal/openapi/openapi.go`
+- Generated (commit them; never edit by hand): `apps/server/internal/invoices/gen/api.gen.go`, `apps/server/internal/invoices/store/counters.sql.go`, `apps/server/internal/invoices/store/db.go`, `apps/server/internal/invoices/store/models.go`, `apps/server/internal/invoices/store/settings.sql.go`, `apps/server/internal/invoices/store/vatcodes.sql.go`, `apps/server/internal/openapi/specs/invoices.yaml`, `openapi/COVERAGE.md`
+- Read first (do not change): `docs/module-boundaries.md:268-318`, `apps/server/internal/expenses/{module.go,server.go,main_test.go,harness_test.go}`, `db/migrations/00005_energy_baseline.sql:11-16,85-100` (the exclusion), `00033_expenses_supplier_invoices.sql` (plpgsql in goose), `internal/db/schema_test.go:24-218,2393-2433`, `internal/config/config.go:1223-1283`
 
 **Interfaces:**
 - Produces SQL: schema `invoices` with `settings` (one row, id 1), `counters`, `vat_codes` (seeded ids 1–9), `vat_code_rates` (`ex_vat_code_rates_no_overlap`), `invoices`, `lines`, `vat_summaries`; functions `invoices.refuse_issued_document_change()`, `invoices.refuse_issued_child_change()`; triggers `tr_invoices_immutable`, `tr_lines_immutable`, `tr_vat_summaries_immutable` (SQLSTATE `P0001`, message `invoices: issued document is immutable`).
 - Produces Go: `invoices.Module()` (Name `invoices`, four permissions, `Mount` refusing a nil `Deps.Directory`); `businessDay(time.Time) time.Time` (Oslo); `sellerMissingFields(store.InvoicesSetting) []string`; `anythingIssued(ctx, *store.Queries) (bool, error)`; the store's `GetSettings`, `CounterNextValue`, `VatCodesInForce`.
 - Produces wire: `GET /api/v1/invoices/meta` → `InvoicesMetaResponse {currency, defaultPaymentTermsDays, sellerComplete, missingSellerFields, anythingIssued, seriesStart, storageAvailable, today, vatCodes[], capabilities{canCreate, canIssue, canManage}}`.
-- Produces TS: `@vantigo/invoices-ui` with `InvoicesPage`, `invoicesMetaQueryOptions`, `invoicesCatalog`; host `moduleKeys` + `"invoices"`, `moduleApp("invoices", …)`, route `/invoices`.
 - Consumes: `contracts.CustomerDirectory` (required, not yet called), `storage.ObjectStore`.
 
 - [ ] **Step 1: Pin the module in the platform's own tests, and see them fail**
@@ -246,7 +249,7 @@ var moduleSchemas = []string{"identity", "customers", "products", "energy", "com
 
 // TestInvoicesBaseline_AppliesAndIsIdempotent proves
 // 00034_invoices_baseline.sql applies, rolls back and re-applies cleanly, and
-// pins what the invoices foundation design rests on: the six tables, the one
+// pins what the invoices foundation design rests on: the seven tables, the one
 // settings row and its CHECK, no counter row until something is issued (D2),
 // the nine seeded VAT codes with one open 2026 period each — 6 as E and 7 as O
 // — and the rules the database holds itself: the rate periods' exclusion (D3),
@@ -1064,7 +1067,7 @@ This writes `internal/openapi/specs/invoices.yaml`, `internal/invoices/gen/api.g
 
 - [ ] **Step 4: The module's tests: the harness, the coverage gate, meta and the catalog**
 
-The fake directory is built against `internal/contracts` (depguard keeps `internal/customers` out); the fake store records every `Delete`, which the module must never call. Task 3 gives the fake its fixtures and the locked-call hook.
+The fake directory is built against `internal/contracts` (depguard keeps `internal/customers` out); the fake store records every `Delete`, which the module must never call. Task 5 gives the fake its fixtures and the locked-call hook.
 
 **Create** `apps/server/internal/invoices/main_test.go`:
 
@@ -1964,7 +1967,56 @@ mise exec -- golangci-lint run ./...   # 0 issues.
 cd ../..
 ```
 
-- [ ] **Step 7: The frontend package skeleton**
+- [ ] **Step 7: Verify and commit**
+
+**Run**, from the repository root:
+
+```bash
+cd apps/server && mise exec -- go run ./internal/openapi/cmd/contract coverage -corpus ../../openapi/testdata/exchanges -out ../../openapi/COVERAGE.md && cd ../..
+git diff --stat -- openapi/COVERAGE.md   # the invoices section, one operation
+```
+
+Commit:
+
+```bash
+cat > /tmp/claude-1000/msg-invoices-task1.txt <<'MSG'
+feat(invoices): a new module — the schema and GET /meta
+
+The Invoices module (invoices foundation design D1): internal/invoices with its
+four permissions, mounted from openapi/invoices.yaml, requiring customers
+(MODULES refuses it without), in businessModules, openapi.Modules, depguard,
+moduleSchemas and the default module set. Migration 00034 creates the whole
+phase-1A schema at once — the settings row, the counter, the VAT codes and
+their dated rate periods with the exclusion, documents, lines and VAT
+summaries with their CHECKs, and the triggers that make an issued document
+immutable in SQL too (D9) — and seeds the nine SAF-T output codes, 6 as E
+and 7 as O. GET /meta answers what every page needs; RequireCoverage gates
+the contract.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+MSG
+git add -- 'apps/server/.golangci.yml' 'apps/server/cmd/vantigo/main.go' 'apps/server/generate.go' 'apps/server/internal/config/config.go' 'apps/server/internal/config/config_test.go' 'apps/server/internal/db/migrations/00034_invoices_baseline.sql' 'apps/server/internal/db/schema_test.go' 'apps/server/internal/invoices/gen/api.gen.go' 'apps/server/internal/invoices/harness_test.go' 'apps/server/internal/invoices/main_test.go' 'apps/server/internal/invoices/meta.go' 'apps/server/internal/invoices/meta_test.go' 'apps/server/internal/invoices/module.go' 'apps/server/internal/invoices/module_internal_test.go' 'apps/server/internal/invoices/queries/counters.sql' 'apps/server/internal/invoices/queries/settings.sql' 'apps/server/internal/invoices/queries/vatcodes.sql' 'apps/server/internal/invoices/seller.go' 'apps/server/internal/invoices/server.go' 'apps/server/internal/invoices/sqlc.yaml' 'apps/server/internal/invoices/store/counters.sql.go' 'apps/server/internal/invoices/store/db.go' 'apps/server/internal/invoices/store/models.go' 'apps/server/internal/invoices/store/settings.sql.go' 'apps/server/internal/invoices/store/vatcodes.sql.go' 'apps/server/internal/invoices/values.go' 'apps/server/internal/module/compose_test.go' 'apps/server/internal/openapi/gen/cfg-invoices.yaml' 'apps/server/internal/openapi/openapi.go' 'apps/server/internal/openapi/specs/invoices.yaml' 'openapi/COVERAGE.md' 'openapi/invoices.yaml'
+git commit -F /tmp/claude-1000/msg-invoices-task1.txt -- 'apps/server/.golangci.yml' 'apps/server/cmd/vantigo/main.go' 'apps/server/generate.go' 'apps/server/internal/config/config.go' 'apps/server/internal/config/config_test.go' 'apps/server/internal/db/migrations/00034_invoices_baseline.sql' 'apps/server/internal/db/schema_test.go' 'apps/server/internal/invoices/gen/api.gen.go' 'apps/server/internal/invoices/harness_test.go' 'apps/server/internal/invoices/main_test.go' 'apps/server/internal/invoices/meta.go' 'apps/server/internal/invoices/meta_test.go' 'apps/server/internal/invoices/module.go' 'apps/server/internal/invoices/module_internal_test.go' 'apps/server/internal/invoices/queries/counters.sql' 'apps/server/internal/invoices/queries/settings.sql' 'apps/server/internal/invoices/queries/vatcodes.sql' 'apps/server/internal/invoices/seller.go' 'apps/server/internal/invoices/server.go' 'apps/server/internal/invoices/sqlc.yaml' 'apps/server/internal/invoices/store/counters.sql.go' 'apps/server/internal/invoices/store/db.go' 'apps/server/internal/invoices/store/models.go' 'apps/server/internal/invoices/store/settings.sql.go' 'apps/server/internal/invoices/store/vatcodes.sql.go' 'apps/server/internal/invoices/values.go' 'apps/server/internal/module/compose_test.go' 'apps/server/internal/openapi/gen/cfg-invoices.yaml' 'apps/server/internal/openapi/openapi.go' 'apps/server/internal/openapi/specs/invoices.yaml' 'openapi/COVERAGE.md' 'openapi/invoices.yaml'
+git show --stat HEAD && git status --short   # nothing of yours left; go.mod/go.sum at the root untracked as before
+```
+
+---
+
+### Task 2: The Invoices app's skeleton: the package and its place in the host (D1, D12)
+
+The frontend package `@vantigo/invoices-ui` and the host's app entry, with one page that reads `GET /meta`. It needs Task 1's contract (the generated client reads `openapi/invoices.yaml`) and may run beside Task 3; commit it before Task 3's last step, which runs `gen:client` over the package this task lists in `tools/openapi/gen-client.ts`.
+
+**Files:**
+- Create: `apps/host/frontend/src/routes/invoices.tsx`, `apps/host/frontend/src/routes/invoices/index.tsx`, `apps/invoices/frontend/.gitignore`, `apps/invoices/frontend/eslint.config.js`, `apps/invoices/frontend/package.json`, `apps/invoices/frontend/src/api/meta.ts`, `apps/invoices/frontend/src/api/request.ts`, `apps/invoices/frontend/src/i18n.ts`, `apps/invoices/frontend/src/index.ts`, `apps/invoices/frontend/src/pages/invoices.test.tsx`, `apps/invoices/frontend/src/pages/invoices.tsx`, `apps/invoices/frontend/src/test/api.ts`, `apps/invoices/frontend/src/test/fetch.ts`, `apps/invoices/frontend/src/test/render.tsx`, `apps/invoices/frontend/src/test/setup.ts`, `apps/invoices/frontend/tsconfig.app.json`, `apps/invoices/frontend/tsconfig.json`, `apps/invoices/frontend/tsconfig.node.json`, `apps/invoices/frontend/vite.config.ts`
+- Modify: `apps/communications/frontend/eslint.config.js`, `apps/customers/frontend/eslint.config.js`, `apps/energy/frontend/eslint.config.js`, `apps/expenses/frontend/eslint.config.js`, `apps/host/frontend/package.json`, `apps/host/frontend/src/apps.test.ts`, `apps/host/frontend/src/apps.ts`, `apps/host/frontend/src/catalogs/admin.test.ts`, `apps/host/frontend/src/catalogs/admin.ts`, `apps/host/frontend/src/catalogs/navigation.ts`, `apps/host/frontend/src/i18n.ts`, `apps/host/frontend/src/navigation.ts`, `apps/products/frontend/eslint.config.js`, `apps/projects/frontend/eslint.config.js`, `apps/time/frontend/eslint.config.js`, `tools/openapi/gen-client.test.ts`, `tools/openapi/gen-client.ts`
+- Generated (commit them; never edit by hand): `apps/host/frontend/src/routeTree.gen.ts`, `apps/invoices/frontend/src/api-schema.d.ts`, `bun.lock`
+- Read first (do not change): `apps/expenses/frontend/{package.json,eslint.config.js,vite.config.ts,src/api/request.ts,src/test/*}`, `apps/host/frontend/src/{apps.ts,navigation.ts,i18n.ts,catalogs/admin.ts,routes/expenses.tsx}`
+
+**Interfaces:**
+- Produces TS: `@vantigo/invoices-ui` with `InvoicesPage`, `invoicesMetaQueryOptions`, `invoicesCatalog`, and `setUnauthorizedHandler`/`setAuthStateClearer` handed to the shared client; host `moduleKeys` + `"invoices"`, `moduleApp("invoices", …)`, route `/invoices`.
+- Consumes wire: `GET /api/v1/invoices/meta` (Task 1).
+
+- [ ] **Step 1: The frontend package skeleton**
 
 Eight files are the expenses package's own, byte for byte (the tsconfig trio, `.gitignore`, and the test helpers — `setup.ts` imports `setAuthStateClearer`/`setUnauthorizedHandler` from `../api/request`, which this package's `request.ts` exports too). **Run**, from the repository root:
 
@@ -2136,34 +2188,16 @@ export type { ApiError, RequestOptions } from "@vantigo/frontend-api-client";
 export { ApiValidationError, NotFoundError, readJson } from "@vantigo/frontend-api-client";
 
 /**
- * The host's session handling, kept here as well as handed to the client.
- *
- * Two requests in this package cannot go through `request` — the PDF download
- * and the draft preview, whose bodies are files — and an expired session on
- * either must still sign the person out rather than show them a raw problem.
- * Holding the two callbacks lets `handleUnauthorized` do exactly what the
- * client does.
+ * The host's session handling, handed to the shared client: the host installs
+ * both when it mounts the package, and the test setup clears them after each
+ * test.
  */
-let onUnauthorized: (() => void | Promise<void>) | undefined;
-let clearAuthState: (() => void | Promise<void>) | undefined;
-
 export const setUnauthorizedHandler = (handler: (() => void | Promise<void>) | undefined) => {
-  onUnauthorized = handler;
   client.setUnauthorizedHandler(handler);
 };
 
 export const setAuthStateClearer = (clearer: (() => void | Promise<void>) | undefined) => {
-  clearAuthState = clearer;
   client.setAuthStateClearer(clearer);
-};
-
-/** What the shared client does on a 401: clear the session, then tell the host. */
-export const handleUnauthorized = async (): Promise<void> => {
-  try {
-    await clearAuthState?.();
-  } finally {
-    await onUnauthorized?.();
-  }
 };
 
 /** Every write in this package sends JSON and carries the session cookie. */
@@ -2410,7 +2444,7 @@ mise exec -- bun install
 mise exec -- bun run gen:client   # writes apps/invoices/frontend/src/api-schema.d.ts
 ```
 
-- [ ] **Step 8: Mount the app in the host**
+- [ ] **Step 2: Mount the app in the host**
 
 The module key, the app (after Expenses in the switcher), its layout route and first page, the i18n import, the navigation label, and one admin catalog entry per permission key in both languages — the English pinned to the server's own words.
 
@@ -3030,12 +3064,11 @@ mise exec -- bun install
 mise exec -- bun run --cwd apps/host/frontend test
 ```
 
-- [ ] **Step 9: Verify and commit**
+- [ ] **Step 3: Verify and commit**
 
 **Run**, from the repository root:
 
 ```bash
-cd apps/server && mise exec -- go run ./internal/openapi/cmd/contract coverage -corpus ../../openapi/testdata/exchanges -out ../../openapi/COVERAGE.md && cd ../..
 mise exec -- bunx biome check --write apps/invoices/frontend apps/host/frontend/src tools/openapi
 ```
 
@@ -3044,37 +3077,30 @@ mise exec -- bun run --cwd apps/invoices/frontend typecheck && mise exec -- bun 
 mise exec -- bun run --cwd apps/host/frontend typecheck && mise exec -- bun run --cwd apps/host/frontend lint && mise exec -- bun run --cwd apps/host/frontend test
 for m in communications customers energy expenses products projects time; do mise exec -- bun run --cwd apps/$m/frontend lint || echo "LINT FAILED: $m"; done
 mise exec -- bun run translations:check && mise exec -- bun run gen:client:test
-git diff --stat -- openapi/COVERAGE.md   # the invoices section, one operation
 ```
 
 Commit:
 
 ```bash
-cat > /tmp/claude-1000/msg-invoices-task1.txt <<'MSG'
-feat(invoices): a new module — the schema, GET /meta and an empty app
+cat > /tmp/claude-1000/msg-invoices-task2.txt <<'MSG'
+feat(invoices-ui): the Invoices app's package and its place in the host
 
-The Invoices module (invoices foundation design D1): internal/invoices with its
-four permissions, mounted from openapi/invoices.yaml, requiring customers
-(MODULES refuses it without), in businessModules, openapi.Modules, depguard,
-moduleSchemas and the default module set. Migration 00034 creates the whole
-phase-1A schema at once — the settings row, the counter, the VAT codes and
-their dated rate periods with the exclusion, documents, lines and VAT
-summaries with their CHECKs, and the triggers that make an issued document
-immutable in SQL too (D9) — and seeds the nine SAF-T output codes, 6 as E
-and 7 as O. GET /meta answers what every page needs; RequireCoverage gates
-the contract. @vantigo/invoices-ui is the app's package, mounted by the host
-with its permission labels in en and nb.
+@vantigo/invoices-ui is the Invoices app's package (invoices foundation
+design D1, D12): the expenses package's skeleton, its generated client from
+openapi/invoices.yaml, and one page that reads GET /meta. The host mounts it
+under /invoices after Expenses in the switcher, with its permission labels
+in en and nb, and every other package's lint keeps it out of their imports.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 MSG
-git add -- 'apps/communications/frontend/eslint.config.js' 'apps/customers/frontend/eslint.config.js' 'apps/energy/frontend/eslint.config.js' 'apps/expenses/frontend/eslint.config.js' 'apps/host/frontend/package.json' 'apps/host/frontend/src/apps.test.ts' 'apps/host/frontend/src/apps.ts' 'apps/host/frontend/src/catalogs/admin.test.ts' 'apps/host/frontend/src/catalogs/admin.ts' 'apps/host/frontend/src/catalogs/navigation.ts' 'apps/host/frontend/src/i18n.ts' 'apps/host/frontend/src/navigation.ts' 'apps/host/frontend/src/routeTree.gen.ts' 'apps/host/frontend/src/routes/invoices.tsx' 'apps/host/frontend/src/routes/invoices/index.tsx' 'apps/invoices/frontend/.gitignore' 'apps/invoices/frontend/eslint.config.js' 'apps/invoices/frontend/package.json' 'apps/invoices/frontend/src/api-schema.d.ts' 'apps/invoices/frontend/src/api/meta.ts' 'apps/invoices/frontend/src/api/request.ts' 'apps/invoices/frontend/src/i18n.ts' 'apps/invoices/frontend/src/index.ts' 'apps/invoices/frontend/src/pages/invoices.test.tsx' 'apps/invoices/frontend/src/pages/invoices.tsx' 'apps/invoices/frontend/src/test/api.ts' 'apps/invoices/frontend/src/test/fetch.ts' 'apps/invoices/frontend/src/test/render.tsx' 'apps/invoices/frontend/src/test/setup.ts' 'apps/invoices/frontend/tsconfig.app.json' 'apps/invoices/frontend/tsconfig.json' 'apps/invoices/frontend/tsconfig.node.json' 'apps/invoices/frontend/vite.config.ts' 'apps/products/frontend/eslint.config.js' 'apps/projects/frontend/eslint.config.js' 'apps/server/.golangci.yml' 'apps/server/cmd/vantigo/main.go' 'apps/server/generate.go' 'apps/server/internal/config/config.go' 'apps/server/internal/config/config_test.go' 'apps/server/internal/db/migrations/00034_invoices_baseline.sql' 'apps/server/internal/db/schema_test.go' 'apps/server/internal/invoices/gen/api.gen.go' 'apps/server/internal/invoices/harness_test.go' 'apps/server/internal/invoices/main_test.go' 'apps/server/internal/invoices/meta.go' 'apps/server/internal/invoices/meta_test.go' 'apps/server/internal/invoices/module.go' 'apps/server/internal/invoices/module_internal_test.go' 'apps/server/internal/invoices/queries/counters.sql' 'apps/server/internal/invoices/queries/settings.sql' 'apps/server/internal/invoices/queries/vatcodes.sql' 'apps/server/internal/invoices/seller.go' 'apps/server/internal/invoices/server.go' 'apps/server/internal/invoices/sqlc.yaml' 'apps/server/internal/invoices/store/counters.sql.go' 'apps/server/internal/invoices/store/db.go' 'apps/server/internal/invoices/store/models.go' 'apps/server/internal/invoices/store/settings.sql.go' 'apps/server/internal/invoices/store/vatcodes.sql.go' 'apps/server/internal/invoices/values.go' 'apps/server/internal/module/compose_test.go' 'apps/server/internal/openapi/gen/cfg-invoices.yaml' 'apps/server/internal/openapi/openapi.go' 'apps/server/internal/openapi/specs/invoices.yaml' 'apps/time/frontend/eslint.config.js' 'bun.lock' 'openapi/COVERAGE.md' 'openapi/invoices.yaml' 'tools/openapi/gen-client.test.ts' 'tools/openapi/gen-client.ts'
-git commit -F /tmp/claude-1000/msg-invoices-task1.txt -- 'apps/communications/frontend/eslint.config.js' 'apps/customers/frontend/eslint.config.js' 'apps/energy/frontend/eslint.config.js' 'apps/expenses/frontend/eslint.config.js' 'apps/host/frontend/package.json' 'apps/host/frontend/src/apps.test.ts' 'apps/host/frontend/src/apps.ts' 'apps/host/frontend/src/catalogs/admin.test.ts' 'apps/host/frontend/src/catalogs/admin.ts' 'apps/host/frontend/src/catalogs/navigation.ts' 'apps/host/frontend/src/i18n.ts' 'apps/host/frontend/src/navigation.ts' 'apps/host/frontend/src/routeTree.gen.ts' 'apps/host/frontend/src/routes/invoices.tsx' 'apps/host/frontend/src/routes/invoices/index.tsx' 'apps/invoices/frontend/.gitignore' 'apps/invoices/frontend/eslint.config.js' 'apps/invoices/frontend/package.json' 'apps/invoices/frontend/src/api-schema.d.ts' 'apps/invoices/frontend/src/api/meta.ts' 'apps/invoices/frontend/src/api/request.ts' 'apps/invoices/frontend/src/i18n.ts' 'apps/invoices/frontend/src/index.ts' 'apps/invoices/frontend/src/pages/invoices.test.tsx' 'apps/invoices/frontend/src/pages/invoices.tsx' 'apps/invoices/frontend/src/test/api.ts' 'apps/invoices/frontend/src/test/fetch.ts' 'apps/invoices/frontend/src/test/render.tsx' 'apps/invoices/frontend/src/test/setup.ts' 'apps/invoices/frontend/tsconfig.app.json' 'apps/invoices/frontend/tsconfig.json' 'apps/invoices/frontend/tsconfig.node.json' 'apps/invoices/frontend/vite.config.ts' 'apps/products/frontend/eslint.config.js' 'apps/projects/frontend/eslint.config.js' 'apps/server/.golangci.yml' 'apps/server/cmd/vantigo/main.go' 'apps/server/generate.go' 'apps/server/internal/config/config.go' 'apps/server/internal/config/config_test.go' 'apps/server/internal/db/migrations/00034_invoices_baseline.sql' 'apps/server/internal/db/schema_test.go' 'apps/server/internal/invoices/gen/api.gen.go' 'apps/server/internal/invoices/harness_test.go' 'apps/server/internal/invoices/main_test.go' 'apps/server/internal/invoices/meta.go' 'apps/server/internal/invoices/meta_test.go' 'apps/server/internal/invoices/module.go' 'apps/server/internal/invoices/module_internal_test.go' 'apps/server/internal/invoices/queries/counters.sql' 'apps/server/internal/invoices/queries/settings.sql' 'apps/server/internal/invoices/queries/vatcodes.sql' 'apps/server/internal/invoices/seller.go' 'apps/server/internal/invoices/server.go' 'apps/server/internal/invoices/sqlc.yaml' 'apps/server/internal/invoices/store/counters.sql.go' 'apps/server/internal/invoices/store/db.go' 'apps/server/internal/invoices/store/models.go' 'apps/server/internal/invoices/store/settings.sql.go' 'apps/server/internal/invoices/store/vatcodes.sql.go' 'apps/server/internal/invoices/values.go' 'apps/server/internal/module/compose_test.go' 'apps/server/internal/openapi/gen/cfg-invoices.yaml' 'apps/server/internal/openapi/openapi.go' 'apps/server/internal/openapi/specs/invoices.yaml' 'apps/time/frontend/eslint.config.js' 'bun.lock' 'openapi/COVERAGE.md' 'openapi/invoices.yaml' 'tools/openapi/gen-client.test.ts' 'tools/openapi/gen-client.ts'
+git add -- 'apps/communications/frontend/eslint.config.js' 'apps/customers/frontend/eslint.config.js' 'apps/energy/frontend/eslint.config.js' 'apps/expenses/frontend/eslint.config.js' 'apps/host/frontend/package.json' 'apps/host/frontend/src/apps.test.ts' 'apps/host/frontend/src/apps.ts' 'apps/host/frontend/src/catalogs/admin.test.ts' 'apps/host/frontend/src/catalogs/admin.ts' 'apps/host/frontend/src/catalogs/navigation.ts' 'apps/host/frontend/src/i18n.ts' 'apps/host/frontend/src/navigation.ts' 'apps/host/frontend/src/routeTree.gen.ts' 'apps/host/frontend/src/routes/invoices.tsx' 'apps/host/frontend/src/routes/invoices/index.tsx' 'apps/invoices/frontend/.gitignore' 'apps/invoices/frontend/eslint.config.js' 'apps/invoices/frontend/package.json' 'apps/invoices/frontend/src/api-schema.d.ts' 'apps/invoices/frontend/src/api/meta.ts' 'apps/invoices/frontend/src/api/request.ts' 'apps/invoices/frontend/src/i18n.ts' 'apps/invoices/frontend/src/index.ts' 'apps/invoices/frontend/src/pages/invoices.test.tsx' 'apps/invoices/frontend/src/pages/invoices.tsx' 'apps/invoices/frontend/src/test/api.ts' 'apps/invoices/frontend/src/test/fetch.ts' 'apps/invoices/frontend/src/test/render.tsx' 'apps/invoices/frontend/src/test/setup.ts' 'apps/invoices/frontend/tsconfig.app.json' 'apps/invoices/frontend/tsconfig.json' 'apps/invoices/frontend/tsconfig.node.json' 'apps/invoices/frontend/vite.config.ts' 'apps/products/frontend/eslint.config.js' 'apps/projects/frontend/eslint.config.js' 'apps/time/frontend/eslint.config.js' 'bun.lock' 'tools/openapi/gen-client.test.ts' 'tools/openapi/gen-client.ts'
+git commit -F /tmp/claude-1000/msg-invoices-task2.txt -- 'apps/communications/frontend/eslint.config.js' 'apps/customers/frontend/eslint.config.js' 'apps/energy/frontend/eslint.config.js' 'apps/expenses/frontend/eslint.config.js' 'apps/host/frontend/package.json' 'apps/host/frontend/src/apps.test.ts' 'apps/host/frontend/src/apps.ts' 'apps/host/frontend/src/catalogs/admin.test.ts' 'apps/host/frontend/src/catalogs/admin.ts' 'apps/host/frontend/src/catalogs/navigation.ts' 'apps/host/frontend/src/i18n.ts' 'apps/host/frontend/src/navigation.ts' 'apps/host/frontend/src/routeTree.gen.ts' 'apps/host/frontend/src/routes/invoices.tsx' 'apps/host/frontend/src/routes/invoices/index.tsx' 'apps/invoices/frontend/.gitignore' 'apps/invoices/frontend/eslint.config.js' 'apps/invoices/frontend/package.json' 'apps/invoices/frontend/src/api-schema.d.ts' 'apps/invoices/frontend/src/api/meta.ts' 'apps/invoices/frontend/src/api/request.ts' 'apps/invoices/frontend/src/i18n.ts' 'apps/invoices/frontend/src/index.ts' 'apps/invoices/frontend/src/pages/invoices.test.tsx' 'apps/invoices/frontend/src/pages/invoices.tsx' 'apps/invoices/frontend/src/test/api.ts' 'apps/invoices/frontend/src/test/fetch.ts' 'apps/invoices/frontend/src/test/render.tsx' 'apps/invoices/frontend/src/test/setup.ts' 'apps/invoices/frontend/tsconfig.app.json' 'apps/invoices/frontend/tsconfig.json' 'apps/invoices/frontend/tsconfig.node.json' 'apps/invoices/frontend/vite.config.ts' 'apps/products/frontend/eslint.config.js' 'apps/projects/frontend/eslint.config.js' 'apps/time/frontend/eslint.config.js' 'bun.lock' 'tools/openapi/gen-client.test.ts' 'tools/openapi/gen-client.ts'
 git show --stat HEAD && git status --short   # nothing of yours left; go.mod/go.sum at the root untracked as before
 ```
 
 ---
 
-### Task 2: The seller record, the series start, and VAT codes with dated rate periods (D2, D3)
+### Task 3: The seller record, the series start, and VAT codes with dated rate periods (D2, D3)
 
 `GET/PUT /settings` (full replace with revision; both mod-11 checks, IBAN mod-97, BIC, "Only NOK in this phase"; `series_locked` once the counter row exists, decided after taking the settings row `FOR UPDATE`, which waits behind an issue's `FOR SHARE`), and the VAT codes: list, create with a first open period, replace (the in-use rule on category and SAF-T code), and the rate periods (the rate-change rule and removing the latest future period). `withLockedTx` arrives with its first user.
 
@@ -3642,6 +3668,29 @@ func TestVatCodes_RemovingTheLatestFuturePeriodReopensThePrevious(t *testing.T) 
 	res.JSON(&after)
 	if got := periods(after); got != "[15 2026-01-01..open]" {
 		t.Errorf("periods after the removal = %s, want the 2026 period open again", got)
+	}
+}
+
+// Every write to the VAT codes needs invoices:manage besides invoices:access
+// (D3): a reader is refused with the access layer's 403 and nothing moves.
+func TestVatCodes_EveryWriteNeedsManage(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	reader := h.SignIn(t, "invoices:access", "invoices:create", "invoices:issue")
+	for _, c := range []struct {
+		method, path string
+		body         any
+	}{
+		{http.MethodPut, fmt.Sprintf("%s/%d", vatCodesPath, vat25), map[string]any{"code": "3", "name": "X", "safTCode": "3", "ehfCategory": "S", "active": true, "revision": 1}},
+		{http.MethodPost, fmt.Sprintf("%s/%d/rates", vatCodesPath, vat25), map[string]any{"ratePercent": 26, "validFrom": "2027-01-01"}},
+		{http.MethodDelete, fmt.Sprintf("%s/%d/rates/%d", vatCodesPath, vat25, 1001), nil},
+	} {
+		if res := reader.Do(c.method, c.path, c.body); res.Status != http.StatusForbidden {
+			t.Errorf("%s %s without invoices:manage = %d, want 403", c.method, c.path, res.Status)
+		}
+	}
+	if c := listVatCodes(t, h)[vat25]; c.Revision != 1 || periods(c) != "[25 2026-01-01..open]" {
+		t.Errorf("code 3 after the refused writes = %+v, want it untouched", c)
 	}
 }
 ```
@@ -5378,7 +5427,7 @@ cd ../..
 Commit:
 
 ```bash
-cat > /tmp/claude-1000/msg-invoices-task2.txt <<'MSG'
+cat > /tmp/claude-1000/msg-invoices-task3.txt <<'MSG'
 feat(invoices): the seller record, the series start, and VAT codes with dated rates
 
 The settings (invoices foundation design D2): the seller record with both
@@ -5394,26 +5443,24 @@ latest future period.
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 MSG
 git add -- 'apps/invoices/frontend/src/api-schema.d.ts' 'apps/server/internal/invoices/decimal.go' 'apps/server/internal/invoices/errors.go' 'apps/server/internal/invoices/gen/api.gen.go' 'apps/server/internal/invoices/queries/counters.sql' 'apps/server/internal/invoices/queries/settings.sql' 'apps/server/internal/invoices/queries/vatcodes.sql' 'apps/server/internal/invoices/server.go' 'apps/server/internal/invoices/settings.go' 'apps/server/internal/invoices/settings_internal_test.go' 'apps/server/internal/invoices/settings_test.go' 'apps/server/internal/invoices/store/counters.sql.go' 'apps/server/internal/invoices/store/settings.sql.go' 'apps/server/internal/invoices/store/vatcodes.sql.go' 'apps/server/internal/invoices/values.go' 'apps/server/internal/invoices/vatcodes.go' 'apps/server/internal/invoices/vatcodes_test.go' 'apps/server/internal/openapi/specs/invoices.yaml' 'openapi/COVERAGE.md' 'openapi/invoices.yaml'
-git commit -F /tmp/claude-1000/msg-invoices-task2.txt -- 'apps/invoices/frontend/src/api-schema.d.ts' 'apps/server/internal/invoices/decimal.go' 'apps/server/internal/invoices/errors.go' 'apps/server/internal/invoices/gen/api.gen.go' 'apps/server/internal/invoices/queries/counters.sql' 'apps/server/internal/invoices/queries/settings.sql' 'apps/server/internal/invoices/queries/vatcodes.sql' 'apps/server/internal/invoices/server.go' 'apps/server/internal/invoices/settings.go' 'apps/server/internal/invoices/settings_internal_test.go' 'apps/server/internal/invoices/settings_test.go' 'apps/server/internal/invoices/store/counters.sql.go' 'apps/server/internal/invoices/store/settings.sql.go' 'apps/server/internal/invoices/store/vatcodes.sql.go' 'apps/server/internal/invoices/values.go' 'apps/server/internal/invoices/vatcodes.go' 'apps/server/internal/invoices/vatcodes_test.go' 'apps/server/internal/openapi/specs/invoices.yaml' 'openapi/COVERAGE.md' 'openapi/invoices.yaml'
+git commit -F /tmp/claude-1000/msg-invoices-task3.txt -- 'apps/invoices/frontend/src/api-schema.d.ts' 'apps/server/internal/invoices/decimal.go' 'apps/server/internal/invoices/errors.go' 'apps/server/internal/invoices/gen/api.gen.go' 'apps/server/internal/invoices/queries/counters.sql' 'apps/server/internal/invoices/queries/settings.sql' 'apps/server/internal/invoices/queries/vatcodes.sql' 'apps/server/internal/invoices/server.go' 'apps/server/internal/invoices/settings.go' 'apps/server/internal/invoices/settings_internal_test.go' 'apps/server/internal/invoices/settings_test.go' 'apps/server/internal/invoices/store/counters.sql.go' 'apps/server/internal/invoices/store/settings.sql.go' 'apps/server/internal/invoices/store/vatcodes.sql.go' 'apps/server/internal/invoices/values.go' 'apps/server/internal/invoices/vatcodes.go' 'apps/server/internal/invoices/vatcodes_test.go' 'apps/server/internal/openapi/specs/invoices.yaml' 'openapi/COVERAGE.md' 'openapi/invoices.yaml'
 git show --stat HEAD && git status --short   # nothing of yours left; go.mod/go.sum at the root untracked as before
 ```
 
 ---
 
-### Task 3: Drafts, the money and the list — and Status and MergedInto on the customers contract (D4, D5, D10's contract change)
+### Task 4: The customers contract: Status and MergedInto on the billing profile (D10's contract change)
 
-The customers change comes first, inside this task: `contracts.CustomerBillingProfile` gains `Status` and `MergedInto`, the customers directory fills them from its billing-profile query, and its test proves both — a disabled and a merged-away customer included. Every other module's fake of `CustomerDirectory` compiles unchanged (the fields are new); the invoices fake models both. Then drafts: create (with the prefills), replace with revision, delete, the customer gates in their order on create and on every save, the delivery and money rules, `GET /invoices/{id}` and the list. `contractscalls.go` becomes the one door to the directory, and the harness fails any test that walks through it under a lock.
+`contracts.CustomerBillingProfile` gains `Status` and `MergedInto`; the customers directory fills them from its billing-profile query, and its test proves both — a disabled and a merged-away customer included. Every other module's fake of `CustomerDirectory` compiles unchanged (the fields are new); Task 5's invoices fake models both. This is its own commit, before the drafts that read it.
 
 **Files:**
-- Create: `apps/server/internal/invoices/contractscalls.go`, `apps/server/internal/invoices/drafts.go`, `apps/server/internal/invoices/drafts_test.go`, `apps/server/internal/invoices/export_test.go`, `apps/server/internal/invoices/issuedate.go`, `apps/server/internal/invoices/list.go`, `apps/server/internal/invoices/list_test.go`, `apps/server/internal/invoices/money.go`, `apps/server/internal/invoices/queries/invoices.sql`, `apps/server/internal/invoices/queries/lines.sql`, `apps/server/internal/invoices/responses.go`
-- Modify: `apps/server/internal/contracts/directory.go`, `apps/server/internal/customers/directory.go`, `apps/server/internal/customers/directory_test.go`, `apps/server/internal/customers/queries/customers.sql`, `apps/server/internal/invoices/harness_test.go`, `apps/server/internal/invoices/main_test.go`, `apps/server/internal/invoices/queries/vatcodes.sql`, `apps/server/internal/invoices/server.go`, `openapi/invoices.yaml`
-- Generated (commit them; never edit by hand): `apps/invoices/frontend/src/api-schema.d.ts`, `apps/server/internal/customers/store/customers.sql.go`, `apps/server/internal/invoices/gen/api.gen.go`, `apps/server/internal/invoices/store/invoices.sql.go`, `apps/server/internal/invoices/store/lines.sql.go`, `apps/server/internal/invoices/store/vatcodes.sql.go`, `apps/server/internal/openapi/specs/invoices.yaml`, `openapi/COVERAGE.md`
-- Read first (do not change): `apps/server/internal/contracts/directory.go:61-174`, `apps/server/internal/customers/directory.go:119-239`, `customers/queries/customers.sql:587-611`, `customers/directory_test.go:1-60,327-360`, `apps/server/internal/expenses/{contractscalls.go,entries.go:1455-1510,money.go}`
+- Modify: `apps/server/internal/contracts/directory.go`, `apps/server/internal/customers/directory.go`, `apps/server/internal/customers/directory_test.go`, `apps/server/internal/customers/queries/customers.sql`
+- Generated (commit them; never edit by hand): `apps/server/internal/customers/store/customers.sql.go`
+- Read first (do not change): `apps/server/internal/contracts/directory.go:61-174`, `apps/server/internal/customers/directory.go:119-239`, `customers/queries/customers.sql:587-611`, `customers/directory_test.go:1-60,327-360`
 
 **Interfaces:**
 - Produces Go contract: `contracts.CustomerBillingProfile.Status string` (`active` | `disabled` | `archived`), `.MergedInto *int32`.
-- Produces wire: `POST/GET /invoices`, `GET/PUT/DELETE /invoices/{id}`; `InvoicesInvoiceRequest`, `InvoicesLineRequest`, `InvoicesDeliveryAddress`, `InvoicesInvoiceResponse` (with `warnings`, `allowedIssueDates`, and the credit and snapshot fields later tasks fill), `InvoicesLine`, `InvoicesVatSummary`, `InvoicesBuyer`, `InvoicesSeller`, `InvoicesCreditNoteRef`, `InvoicesCreditsRef`, `InvoicesInvoiceListItem`, `PaginatedResponseOfInvoicesInvoiceListItem`.
-- Produces Go: `customerGate(*contracts.CustomerBillingProfile) *gen.InvoicesConflictProblem` (codes `customer_merged` with `mergedInto`, `customer_archived`, `customer_blocked`, `customer_missing`); `invoiceIssued()`; `parseDraft`, `draftLine`, `draftInput`, `vatCodesOn`, `taxedLines`, `checkInvoiceLines`, `checkTotal`, `numerics`, `writeLines`, `saveDraft`; `computeLine`, `summarize`, `round2`, `ratFromNumeric`, `floatFromRat`; `allowedIssueDates(today, deliveryEnd, latest)`, `issuedLate(issueDate, deliveryEnd)`; `invoiceResponse`, `deliveryEndOf`, `buyerResponse`, `sellerResponse`; `customerProfile`, `customerEntries`; `callerID`, `inLockedTx`; test exports `InLockedTx`, `SetContractCallHook`.
+- Produces SQL (customers): the billing-profile query answers `status` and `merged_into_id`.
 
 - [ ] **Step 1: The customers contract change, tested in customers**
 
@@ -5657,7 +5704,54 @@ cd apps/server && export TEST_DATABASE_URL='postgres://vantigo:vantigo@127.0.0.1
 ```
 Break `resolved.Status = row.Status` and see `TestDirectory_BillingProfile_CarriesStatusAndMergedInto` fail; restore.
 
-- [ ] **Step 2: The drafts' tests, the fake's fixtures and the locked-call hook**
+- [ ] **Step 2: Verify and commit**
+
+```bash
+cd apps/server && export TEST_DATABASE_URL='postgres://vantigo:vantigo@127.0.0.1:55442/vantigo_test?sslmode=disable'
+mise exec -- go build ./... && mise exec -- go vet ./internal/contracts/ ./internal/customers/...
+mise exec -- go test -count=1 ./internal/customers/... ./internal/integration/ ./internal/openapi/
+mise exec -- golangci-lint run ./internal/contracts/... ./internal/customers/...
+cd ../..
+git diff --stat -- openapi/testdata/exchanges openapi/customers.yaml   # must print nothing
+```
+
+Commit:
+
+```bash
+cat > /tmp/claude-1000/msg-invoices-task4.txt <<'MSG'
+feat(customers): the billing profile carries the customer's status and merge marker
+
+The customers contract change the invoices foundation design names (D10):
+CustomerBillingProfile gains Status and MergedInto, filled by the customers
+directory, so one read answers every gate an invoice keeps and its snapshot.
+The contract comment now says archived customers still resolve so a past
+invoice can be shown and credited, and Invoices refuses new ones. No
+OpenAPI schema and no corpus change: the struct is Go only.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+MSG
+git add -- 'apps/server/internal/contracts/directory.go' 'apps/server/internal/customers/directory.go' 'apps/server/internal/customers/directory_test.go' 'apps/server/internal/customers/queries/customers.sql' 'apps/server/internal/customers/store/customers.sql.go'
+git commit -F /tmp/claude-1000/msg-invoices-task4.txt -- 'apps/server/internal/contracts/directory.go' 'apps/server/internal/customers/directory.go' 'apps/server/internal/customers/directory_test.go' 'apps/server/internal/customers/queries/customers.sql' 'apps/server/internal/customers/store/customers.sql.go'
+git show --stat HEAD && git status --short   # nothing of yours left; go.mod/go.sum at the root untracked as before
+```
+
+---
+
+### Task 5: Drafts, the money and the list (D4, D5)
+
+Drafts: create (with the prefills), replace with revision, delete, the customer gates in their order on create and on every save — read from Task 4's `Status` and `MergedInto`, which the invoices fake of the directory now models — the delivery and money rules, `GET /invoices/{id}` and the list. A draft is totalled at today's rates; a line whose code has no rate period today counts at 0 % and the draft warns `vat_code_not_valid`, which the issue refuses. `contractscalls.go` becomes the one door to the directory, and the harness fails any test that walks through it under a lock.
+
+**Files:**
+- Create: `apps/server/internal/invoices/contractscalls.go`, `apps/server/internal/invoices/drafts.go`, `apps/server/internal/invoices/drafts_test.go`, `apps/server/internal/invoices/export_test.go`, `apps/server/internal/invoices/issuedate.go`, `apps/server/internal/invoices/list.go`, `apps/server/internal/invoices/list_test.go`, `apps/server/internal/invoices/money.go`, `apps/server/internal/invoices/queries/invoices.sql`, `apps/server/internal/invoices/queries/lines.sql`, `apps/server/internal/invoices/responses.go`
+- Modify: `apps/server/internal/invoices/harness_test.go`, `apps/server/internal/invoices/main_test.go`, `apps/server/internal/invoices/queries/vatcodes.sql`, `apps/server/internal/invoices/server.go`, `openapi/invoices.yaml`
+- Generated (commit them; never edit by hand): `apps/invoices/frontend/src/api-schema.d.ts`, `apps/server/internal/invoices/gen/api.gen.go`, `apps/server/internal/invoices/store/invoices.sql.go`, `apps/server/internal/invoices/store/lines.sql.go`, `apps/server/internal/invoices/store/vatcodes.sql.go`, `apps/server/internal/openapi/specs/invoices.yaml`, `openapi/COVERAGE.md`
+- Read first (do not change): `apps/server/internal/contracts/directory.go:61-174` (as Task 4 left it), `apps/server/internal/expenses/{contractscalls.go,entries.go:1455-1510,money.go}`
+
+**Interfaces:**
+- Produces wire: `POST/GET /invoices`, `GET/PUT/DELETE /invoices/{id}`; `InvoicesInvoiceRequest`, `InvoicesLineRequest`, `InvoicesDeliveryAddress`, `InvoicesInvoiceResponse` (with `warnings` — `customer_currency_differs`, `issued_late`, `vat_code_not_valid` — `allowedIssueDates`, and the credit and snapshot fields later tasks fill), `InvoicesLine`, `InvoicesVatSummary`, `InvoicesBuyer`, `InvoicesSeller`, `InvoicesCreditNoteRef`, `InvoicesCreditsRef`, `InvoicesInvoiceListItem`, `PaginatedResponseOfInvoicesInvoiceListItem`.
+- Produces Go: `customerGate(*contracts.CustomerBillingProfile) *gen.InvoicesConflictProblem` (codes `customer_merged` with `mergedInto`, `customer_archived`, `customer_blocked`, `customer_missing`); `invoiceIssued()`; `parseDraft`, `draftLine`, `draftInput`, `vatCodesOn`, `taxedLines`, `checkInvoiceLines`, `checkTotal`, `numerics`, `writeLines`, `saveDraft`; `computeLine`, `summarize`, `round2`, `ratFromNumeric`, `floatFromRat`; `allowedIssueDates(today, deliveryEnd, latest)`, `issuedLate(issueDate, deliveryEnd)`; `invoiceResponse`, `deliveryEndOf`, `buyerResponse`, `sellerResponse`; `customerProfile`, `customerEntries`; `callerID`, `inLockedTx`; test exports `InLockedTx`, `SetContractCallHook`.
+
+- [ ] **Step 1: The drafts' tests, the fake's fixtures and the locked-call hook**
 
 **Replace** in `apps/server/internal/invoices/main_test.go`:
 
@@ -6433,6 +6527,42 @@ func TestDrafts_AnInactiveCodeAndNoLines(t *testing.T) {
 		t.Errorf("an empty draft = %+v", inv)
 	}
 }
+
+// A line whose code has no rate period covering today is a warning on the
+// draft, never a refusal: the draft totals it at 0 %, and the issue would
+// refuse it (vat_code_not_valid).
+func TestDrafts_ACodeWithNoRateTodayWarns(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	var future vatCodeJSON
+	manager(t, h).Do(http.MethodPost, vatCodesPath, map[string]any{
+		"code": "25N", "name": "Ny sats", "safTCode": "3", "ehfCategory": "S", "ratePercent": 25, "validFrom": "2026-10-01",
+	}).JSON(&future)
+
+	inv := createDraft(t, h, draftBody(customerAcme, line("Fremtid", 1, 100, future.ID), line("Nå", 1, 100, vat25)))
+	if !slices.Equal(inv.Warnings, []string{"vat_code_not_valid"}) || inv.VatTotal != 25 {
+		t.Errorf("warnings %v, VAT %v; want vat_code_not_valid and only the 25 %% line's VAT", inv.Warnings, inv.VatTotal)
+	}
+}
+
+// Changing or deleting a draft needs invoices:create besides invoices:access.
+func TestDrafts_ReplaceAndDeleteNeedCreate(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	draft := createDraft(t, h, draftBody(customerAcme, line("A", 1, 100, vat25)))
+	reader := h.SignIn(t, "invoices:access", "invoices:issue", "invoices:manage")
+	body := draftBody(customerAcme)
+	body["paymentTermsDays"], body["revision"] = 14, draft.Revision
+	if res := reader.Do(http.MethodPut, invoicePath(draft.ID), body); res.Status != http.StatusForbidden {
+		t.Errorf("PUT without invoices:create = %d, want 403", res.Status)
+	}
+	if res := reader.Do(http.MethodDelete, invoicePath(draft.ID), nil); res.Status != http.StatusForbidden {
+		t.Errorf("DELETE without invoices:create = %d, want 403", res.Status)
+	}
+	if got := getInvoice(t, h, draft.ID); got.Revision != draft.Revision || len(got.Lines) != 1 {
+		t.Errorf("the draft after the refusals = %+v, want it untouched", got)
+	}
+}
 ```
 
 **Create** `apps/server/internal/invoices/list_test.go`:
@@ -6583,7 +6713,7 @@ func TestList_Filters(t *testing.T) {
 cd apps/server && export TEST_DATABASE_URL='postgres://vantigo:vantigo@127.0.0.1:55442/vantigo_test?sslmode=disable' && mise exec -- go test -count=1 ./internal/invoices/ ; cd ../..   # FAIL: undefined invoices.InLockedTx
 ```
 
-- [ ] **Step 3: The contract and the queries**
+- [ ] **Step 2: The contract and the queries**
 
 **Insert** into `openapi/invoices.yaml`, immediately before the line `info:`:
 
@@ -6772,7 +6902,7 @@ cd apps/server && export TEST_DATABASE_URL='postgres://vantigo:vantigo@127.0.0.1
                 - lines
             type: object
         InvoicesInvoiceResponse:
-            description: 'One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed with the rates in force today — the issue resolves them again for the issue date — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late, credit_exceeds_invoice, credit_exceeds_line. An invoice carries creditedAmount (its issued credit notes'' gross), uncreditedAmount and creditNotes; a credit note carries credits.'
+            description: 'One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed with the rates in force today — the issue resolves them again for the issue date — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original''s delivery), vat_code_not_valid (a line''s code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line. An invoice carries creditedAmount (its issued credit notes'' gross), uncreditedAmount and creditNotes; a credit note carries credits.'
             properties:
                 allowedIssueDates:
                     items:
@@ -7481,7 +7611,7 @@ ORDER BY c.id;
 cd apps/server && mise exec -- go generate ./... && cd ../..
 ```
 
-- [ ] **Step 4: The directory door, the money, the issue-date rule, drafts, responses and the list**
+- [ ] **Step 3: The directory door, the money, the issue-date rule, drafts, responses and the list**
 
 **Create** `apps/server/internal/invoices/contractscalls.go`:
 
@@ -8448,6 +8578,10 @@ import (
 const (
 	warningCustomerCurrencyDiffers = "customer_currency_differs"
 	warningIssuedLate              = "issued_late"
+	// warningVatCodeNotValid is a draft line whose code has no rate period
+	// covering today: the draft totals it at 0 %, and the issue would refuse
+	// it (vat_code_not_valid), so the editor is told before the dialog is.
+	warningVatCodeNotValid = "vat_code_not_valid"
 )
 
 // wireDateOf is a date column onto the wire, nil for NULL.
@@ -8678,6 +8812,12 @@ func (s *server) invoiceResponse(ctx context.Context, q *store.Queries, inv stor
 	if profile != nil && profile.Currency != "" && profile.Currency != inv.Currency {
 		resp.Warnings = append(resp.Warnings, warningCustomerCurrencyDiffers)
 	}
+	for _, l := range lines {
+		if c, ok := codes[l.vatCodeID]; ok && c.rate == nil {
+			resp.Warnings = append(resp.Warnings, warningVatCodeNotValid)
+			break
+		}
+	}
 	if issuedLate(today, deliveryEndOf(inv)) {
 		resp.Warnings = append(resp.Warnings, warningIssuedLate)
 	}
@@ -8850,7 +8990,7 @@ func (s *server) GetInvoices(ctx context.Context, req gen.GetInvoicesRequestObje
 }
 ```
 
-- [ ] **Step 5: Verify and commit**
+- [ ] **Step 4: Verify and commit**
 
 **Run**, from the repository root:
 
@@ -8865,42 +9005,37 @@ mise exec -- go build ./... && mise exec -- go vet ./...
 mise exec -- go test -count=1 ./internal/invoices/ ./internal/customers/... ./internal/openapi/ ./internal/integration/
 mise exec -- golangci-lint run ./...
 cd ../..
-git diff --stat -- openapi/testdata/exchanges openapi/customers.yaml   # must print nothing
 ```
 
 Commit:
 
 ```bash
-cat > /tmp/claude-1000/msg-invoices-task3.txt <<'MSG'
-feat(invoices): drafts, the money and the list; Status and MergedInto on the billing profile
+cat > /tmp/claude-1000/msg-invoices-task5.txt <<'MSG'
+feat(invoices): drafts, the money and the list
 
-The customers contract change (invoices foundation design D10):
-CustomerBillingProfile gains Status and MergedInto, filled by the customers
-directory, so one read answers every gate an invoice keeps and its snapshot.
-The contract comment now says archived customers still resolve so a past
-invoice can be shown and credited, and Invoices refuses new ones.
-
-Drafts (D4): created with the prefills from the billing profile read before
-anything is written, replaced whole with their revision, deleted; the
-customer gates in their order on create and every save; a day or a period
-of delivery; only NOK. The money (D5): exact decimals from the JSON number's
-text, gross less allowance per line, VAT per rate on the sum of the nets,
-the bounds as 400s. GET /invoices/{id} and the list on the codebase's
-page/pageSize. Every directory call goes through contractscalls.go, and the
-harness fails a test that makes one under a lock.
+Drafts (invoices foundation design D4): created with the prefills from the
+billing profile read before anything is written, replaced whole with their
+revision, deleted; the customer gates in their order on create and every
+save; a day or a period of delivery; only NOK. The money (D5): exact
+decimals from the JSON number's text, gross less allowance per line, VAT per
+rate on the sum of the nets at today's rates, the bounds as 400s; a line
+whose code has no rate today warns vat_code_not_valid. GET /invoices/{id}
+and the list on the codebase's page/pageSize. Every directory call goes
+through contractscalls.go, and the harness fails a test that makes one
+under a lock.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 MSG
-git add -- 'apps/invoices/frontend/src/api-schema.d.ts' 'apps/server/internal/contracts/directory.go' 'apps/server/internal/customers/directory.go' 'apps/server/internal/customers/directory_test.go' 'apps/server/internal/customers/queries/customers.sql' 'apps/server/internal/customers/store/customers.sql.go' 'apps/server/internal/invoices/contractscalls.go' 'apps/server/internal/invoices/drafts.go' 'apps/server/internal/invoices/drafts_test.go' 'apps/server/internal/invoices/export_test.go' 'apps/server/internal/invoices/gen/api.gen.go' 'apps/server/internal/invoices/harness_test.go' 'apps/server/internal/invoices/issuedate.go' 'apps/server/internal/invoices/list.go' 'apps/server/internal/invoices/list_test.go' 'apps/server/internal/invoices/main_test.go' 'apps/server/internal/invoices/money.go' 'apps/server/internal/invoices/queries/invoices.sql' 'apps/server/internal/invoices/queries/lines.sql' 'apps/server/internal/invoices/queries/vatcodes.sql' 'apps/server/internal/invoices/responses.go' 'apps/server/internal/invoices/server.go' 'apps/server/internal/invoices/store/invoices.sql.go' 'apps/server/internal/invoices/store/lines.sql.go' 'apps/server/internal/invoices/store/vatcodes.sql.go' 'apps/server/internal/openapi/specs/invoices.yaml' 'openapi/COVERAGE.md' 'openapi/invoices.yaml'
-git commit -F /tmp/claude-1000/msg-invoices-task3.txt -- 'apps/invoices/frontend/src/api-schema.d.ts' 'apps/server/internal/contracts/directory.go' 'apps/server/internal/customers/directory.go' 'apps/server/internal/customers/directory_test.go' 'apps/server/internal/customers/queries/customers.sql' 'apps/server/internal/customers/store/customers.sql.go' 'apps/server/internal/invoices/contractscalls.go' 'apps/server/internal/invoices/drafts.go' 'apps/server/internal/invoices/drafts_test.go' 'apps/server/internal/invoices/export_test.go' 'apps/server/internal/invoices/gen/api.gen.go' 'apps/server/internal/invoices/harness_test.go' 'apps/server/internal/invoices/issuedate.go' 'apps/server/internal/invoices/list.go' 'apps/server/internal/invoices/list_test.go' 'apps/server/internal/invoices/main_test.go' 'apps/server/internal/invoices/money.go' 'apps/server/internal/invoices/queries/invoices.sql' 'apps/server/internal/invoices/queries/lines.sql' 'apps/server/internal/invoices/queries/vatcodes.sql' 'apps/server/internal/invoices/responses.go' 'apps/server/internal/invoices/server.go' 'apps/server/internal/invoices/store/invoices.sql.go' 'apps/server/internal/invoices/store/lines.sql.go' 'apps/server/internal/invoices/store/vatcodes.sql.go' 'apps/server/internal/openapi/specs/invoices.yaml' 'openapi/COVERAGE.md' 'openapi/invoices.yaml'
+git add -- 'apps/invoices/frontend/src/api-schema.d.ts' 'apps/server/internal/invoices/contractscalls.go' 'apps/server/internal/invoices/drafts.go' 'apps/server/internal/invoices/drafts_test.go' 'apps/server/internal/invoices/export_test.go' 'apps/server/internal/invoices/gen/api.gen.go' 'apps/server/internal/invoices/harness_test.go' 'apps/server/internal/invoices/issuedate.go' 'apps/server/internal/invoices/list.go' 'apps/server/internal/invoices/list_test.go' 'apps/server/internal/invoices/main_test.go' 'apps/server/internal/invoices/money.go' 'apps/server/internal/invoices/queries/invoices.sql' 'apps/server/internal/invoices/queries/lines.sql' 'apps/server/internal/invoices/queries/vatcodes.sql' 'apps/server/internal/invoices/responses.go' 'apps/server/internal/invoices/server.go' 'apps/server/internal/invoices/store/invoices.sql.go' 'apps/server/internal/invoices/store/lines.sql.go' 'apps/server/internal/invoices/store/vatcodes.sql.go' 'apps/server/internal/openapi/specs/invoices.yaml' 'openapi/COVERAGE.md' 'openapi/invoices.yaml'
+git commit -F /tmp/claude-1000/msg-invoices-task5.txt -- 'apps/invoices/frontend/src/api-schema.d.ts' 'apps/server/internal/invoices/contractscalls.go' 'apps/server/internal/invoices/drafts.go' 'apps/server/internal/invoices/drafts_test.go' 'apps/server/internal/invoices/export_test.go' 'apps/server/internal/invoices/gen/api.gen.go' 'apps/server/internal/invoices/harness_test.go' 'apps/server/internal/invoices/issuedate.go' 'apps/server/internal/invoices/list.go' 'apps/server/internal/invoices/list_test.go' 'apps/server/internal/invoices/main_test.go' 'apps/server/internal/invoices/money.go' 'apps/server/internal/invoices/queries/invoices.sql' 'apps/server/internal/invoices/queries/lines.sql' 'apps/server/internal/invoices/queries/vatcodes.sql' 'apps/server/internal/invoices/responses.go' 'apps/server/internal/invoices/server.go' 'apps/server/internal/invoices/store/invoices.sql.go' 'apps/server/internal/invoices/store/lines.sql.go' 'apps/server/internal/invoices/store/vatcodes.sql.go' 'apps/server/internal/openapi/specs/invoices.yaml' 'openapi/COVERAGE.md' 'openapi/invoices.yaml'
 git show --stat HEAD && git status --short   # nothing of yours left; go.mod/go.sum at the root untracked as before
 ```
 
 ---
 
-### Task 4: Issue, in one serialised transaction, and immutability proven in SQL (D6, D9)
+### Task 6: Issue, in one serialised transaction, and immutability proven in SQL (D6, D9)
 
-`POST /invoices/{id}/issue` in the spec's exact order: before the transaction the draft (404, `invoice_issued`), the store (503 `storage_unavailable`, before any number exists) and, for an invoice, the billing profile; inside it the document `FOR UPDATE`, `invoice_changed` when a merge re-pointed it meanwhile, the settings `FOR SHARE`, the number, and only then every check — the issue-date rule with § 5-1-3's fifteen-days exception read after the counter lock — then the line snapshots, the summaries and last the row. The tests race issues, inject a failure after the allocation, race a settings write deterministically behind the lock, and bypass the handlers to prove the triggers.
+`POST /invoices/{id}/issue` in the spec's exact order: before the transaction the draft (404, `invoice_issued`), the store (503 `storage_unavailable`, before any number exists) and, for an invoice, the billing profile; inside it the document `FOR UPDATE`, `invoice_changed` when a merge re-pointed it meanwhile, the settings `FOR SHARE`, the number, and only then every check — the issue-date rule with § 5-1-3's fifteen-days exception read after the counter lock — then the line snapshots, the summaries and last the row. The tests race issues, inject a failure after the allocation, race a settings write deterministically on either side of the lock, and bypass the handlers to prove the triggers.
 
 **Files:**
 - Create: `apps/server/internal/invoices/issue.go`, `apps/server/internal/invoices/issue_test.go`
@@ -9531,10 +9666,12 @@ func TestIssue_ASettingsReplaceRacingTheFirstIssueWaitsAndIsRefused(t *testing.T
 	}
 }
 
-// A merge re-pointing documents and a settings write racing issues finish,
-// every one, without a deadlock: the lock order is the document, the
-// settings, the counter.
-func TestIssue_NoDeadlockBesideAMergeAndASettingsWrite(t *testing.T) {
+// Invoice issues racing a settings write and a bulk update of the documents'
+// customer_id all finish without a deadlock: an invoice issue takes the
+// document, then the settings row, then the counter, and the other two take
+// one of those each. The merge holder against a credit-note issue — the one
+// pair that locks two documents — is raced in customer_slots_test.go.
+func TestIssue_NoDeadlockBesideASettingsWriteAndACustomerUpdate(t *testing.T) {
 	t.Parallel()
 	h := readyToIssue(t)
 	var drafts []int64
@@ -9611,6 +9748,38 @@ func TestIssue_AnIssuedDocumentIsImmutableInSQL(t *testing.T) {
 	h.Exec(t, `DELETE FROM invoices.invoices WHERE id = $1`, draft.ID)
 	if n := h.Count(t, `SELECT count(*) FROM invoices.lines WHERE invoice_id = $1`, draft.ID); n != 0 {
 		t.Errorf("a deleted draft's lines = %d, want the cascade to take them", n)
+	}
+}
+
+// The other half of the race (D2): a settings replace that holds the row when
+// the first issue arrives commits first, and the issue waits and then uses
+// the new start. The replace is held open by hand — the lock PUT /settings
+// takes, the update it makes — so the order is not left to the scheduler.
+func TestIssue_ASettingsReplaceThatCommitsFirstSetsTheStartTheIssueUses(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	draft := createDraft(t, h, draftBody(customerAcme, line("A", 1, 100, vat25)))
+	ctx := context.Background()
+	tx, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `SELECT 1 FROM invoices.settings WHERE id = 1 FOR UPDATE`); err != nil {
+		t.Fatalf("lock the settings: %v", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE invoices.settings SET series_start = 5000, revision = revision + 1 WHERE id = 1`); err != nil {
+		t.Fatalf("change the start: %v", err)
+	}
+
+	done := make(chan invoiceJSON)
+	go func() { done <- issued(t, h, draft.ID) }()
+	waitForALockWaiter(t, h)
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	if inv := <-done; *inv.Number != 5000 {
+		t.Errorf("number = %d, want the start the replace committed, 5000", *inv.Number)
 	}
 }
 ```
@@ -10247,7 +10416,7 @@ cd ../..
 Commit:
 
 ```bash
-cat > /tmp/claude-1000/msg-invoices-task4.txt <<'MSG'
+cat > /tmp/claude-1000/msg-invoices-task6.txt <<'MSG'
 feat(invoices): issue a draft into the next number, and prove it immutable in SQL
 
 The issue (invoices foundation design D6): the draft, the object store and
@@ -10258,21 +10427,22 @@ today or, while the calendar day is at most 15, the last day of the previous
 month when the delivery ended by then, and never before the latest issued
 document. The lines' VAT snapshots and the summaries are written before the
 row, which the triggers require (D9); the tests race issues, a settings
-write and a merge, inject a failure after the allocation, and bypass the
-handlers to prove an issued document cannot change.
+write on either side of the first issue and a bulk update of the documents'
+customer, inject a failure after the allocation, and bypass the handlers to
+prove an issued document cannot change.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 MSG
 git add -- 'apps/invoices/frontend/src/api-schema.d.ts' 'apps/server/internal/invoices/export_test.go' 'apps/server/internal/invoices/gen/api.gen.go' 'apps/server/internal/invoices/harness_test.go' 'apps/server/internal/invoices/issue.go' 'apps/server/internal/invoices/issue_test.go' 'apps/server/internal/invoices/queries/counters.sql' 'apps/server/internal/invoices/queries/invoices.sql' 'apps/server/internal/invoices/queries/lines.sql' 'apps/server/internal/invoices/queries/settings.sql' 'apps/server/internal/invoices/store/counters.sql.go' 'apps/server/internal/invoices/store/invoices.sql.go' 'apps/server/internal/invoices/store/lines.sql.go' 'apps/server/internal/invoices/store/settings.sql.go' 'apps/server/internal/openapi/specs/invoices.yaml' 'openapi/COVERAGE.md' 'openapi/invoices.yaml'
-git commit -F /tmp/claude-1000/msg-invoices-task4.txt -- 'apps/invoices/frontend/src/api-schema.d.ts' 'apps/server/internal/invoices/export_test.go' 'apps/server/internal/invoices/gen/api.gen.go' 'apps/server/internal/invoices/harness_test.go' 'apps/server/internal/invoices/issue.go' 'apps/server/internal/invoices/issue_test.go' 'apps/server/internal/invoices/queries/counters.sql' 'apps/server/internal/invoices/queries/invoices.sql' 'apps/server/internal/invoices/queries/lines.sql' 'apps/server/internal/invoices/queries/settings.sql' 'apps/server/internal/invoices/store/counters.sql.go' 'apps/server/internal/invoices/store/invoices.sql.go' 'apps/server/internal/invoices/store/lines.sql.go' 'apps/server/internal/invoices/store/settings.sql.go' 'apps/server/internal/openapi/specs/invoices.yaml' 'openapi/COVERAGE.md' 'openapi/invoices.yaml'
+git commit -F /tmp/claude-1000/msg-invoices-task6.txt -- 'apps/invoices/frontend/src/api-schema.d.ts' 'apps/server/internal/invoices/export_test.go' 'apps/server/internal/invoices/gen/api.gen.go' 'apps/server/internal/invoices/harness_test.go' 'apps/server/internal/invoices/issue.go' 'apps/server/internal/invoices/issue_test.go' 'apps/server/internal/invoices/queries/counters.sql' 'apps/server/internal/invoices/queries/invoices.sql' 'apps/server/internal/invoices/queries/lines.sql' 'apps/server/internal/invoices/queries/settings.sql' 'apps/server/internal/invoices/store/counters.sql.go' 'apps/server/internal/invoices/store/invoices.sql.go' 'apps/server/internal/invoices/store/lines.sql.go' 'apps/server/internal/invoices/store/settings.sql.go' 'apps/server/internal/openapi/specs/invoices.yaml' 'openapi/COVERAGE.md' 'openapi/invoices.yaml'
 git show --stat HEAD && git status --short   # nothing of yours left; go.mod/go.sum at the root untracked as before
 ```
 
 ---
 
-### Task 5: The PDF: rendered from the snapshot, stored once, downloaded as stored, and a watermarked preview (D7)
+### Task 7: The PDF: rendered from the snapshot, stored once, downloaded as stored, and a watermarked preview (D7)
 
-maroto v2 renders the model `buildPDFModel` builds from an issued document's own rows and snapshots; Noto Sans Regular and Bold are vendored and embedded. `storeOnce` renders, hashes, keys the object by the hash, puts it unless it exists and records it on the row once; the issue calls it after the commit and answers `pdfStored: false` when it fails. The download streams the stored object, verified against its hash, and never renders again once a hash is set; the preview renders a draft on demand with the watermark and stores nothing.
+maroto v2 renders the model `buildPDFModel` builds from an issued document's own rows and snapshots; Noto Sans Regular and Bold are vendored and embedded. `storeOnce` renders, hashes, keys the object by the hash, puts it unless it exists and records it on the row once; the issue calls it after the commit and answers `pdfStored: false` when it fails. The download streams the stored object, verified against its hash, and never renders again once a hash is set — a first download that cannot reach the store is a 503, one that cannot render the document a 500; the preview renders a draft on demand with the watermark and stores nothing.
 
 **Files:**
 - Create: `apps/server/internal/invoices/fonts/LICENSE`, `apps/server/internal/invoices/fonts/NotoSans-Bold.ttf`, `apps/server/internal/invoices/fonts/NotoSans-Regular.ttf`, `apps/server/internal/invoices/pdf.go`, `apps/server/internal/invoices/pdf_internal_test.go`, `apps/server/internal/invoices/pdfstore.go`, `apps/server/internal/invoices/pdfstore_test.go`
@@ -10281,9 +10451,9 @@ maroto v2 renders the model `buildPDFModel` builds from an issued document's own
 - Read first (do not change): `apps/server/internal/expenses/attachments.go:508-613` (the Visit wrapper and the download), `internal/storage/storage.go`, `docs/storage.md`, `$(go env GOMODCACHE)/github.com/phpdave11/gofpdf@v1.4.3/fpdf.go:3795-3840` (`SetDefaultCatalogSort`, `SetDefaultModificationDate`), `$(go env GOMODCACHE)/github.com/johnfercher/maroto/v2@v2.4.2/pkg/{config/builder.go,fontrepository/fontrepository.go}`
 
 **Interfaces:**
-- Produces wire: `GET /invoices/{id}/pdf` (200 `application/pdf` with `Content-Disposition: attachment; filename="faktura-<n>.pdf"` / `kreditnota-<n>.pdf` / `invoice-<n>.pdf` / `credit-note-<n>.pdf`; 409 `invoice_draft`; 500; 503 `storage_unavailable`), `GET /invoices/{id}/preview.pdf` (200 `inline; filename="utkast-<id>.pdf"`; 409 `invoice_issued`).
+- Produces wire: `GET /invoices/{id}/pdf` (200 `application/pdf` with `Content-Disposition: attachment; filename="faktura-<n>.pdf"` / `kreditnota-<n>.pdf` / `invoice-<n>.pdf` / `credit-note-<n>.pdf`; 409 `invoice_draft`; 500 a missing or altered object or a render that fails; 503 `storage_unavailable`), `GET /invoices/{id}/preview.pdf` (200 `inline; filename="utkast-<id>.pdf"`; 409 `invoice_issued`).
 - Produces SQL: `SetDocumentPDF` (`WHERE pdf_sha256 IS NULL`, `:execrows`).
-- Produces Go: `pdfDocument`, `pdfModel`, `buildPDFModel`, `renderPDF`, `pdfDocumentOf`, `renderIssued`, `storeOnce`, `storeAfterIssue`, `fileName`, `renderPreview`; `objectPut`, `objectGet`, `objectExists`.
+- Produces Go: `pdfDocument`, `pdfModel`, `buildPDFModel`, `renderPDF`, `pdfDocumentOf`, `renderIssued`, `storeOnce`, `errObjectStore`, `storeOnceFailed`, `storeAfterIssue`, `fileName`, `renderPreview`; `objectPut`, `objectGet`, `objectExists`.
 
 - [ ] **Step 1: The dependency and the font**
 
@@ -10303,7 +10473,7 @@ SUMS
 ```
 `LICENSE` is the SIL Open Font License 1.1 text ("Copyright 2022 The Noto Project Authors"). `go mod tidy` runs in Step 4, once the code imports the packages; it moves both to direct requires and adds their indirect dependencies (`pdfcpu`, `go-tree`, `golang.org/x/image`, …) to `go.mod` and `go.sum`.
 
-- [ ] **Step 2: The tests: the model, reproducibility, store-once and every failure mode**
+- [ ] **Step 2: The tests: the model, reproducibility and the pinned render, store-once and every failure mode**
 
 **Replace** in `apps/server/internal/invoices/harness_test.go`:
 
@@ -10447,11 +10617,17 @@ package invoices
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
 	"math/big"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 )
 
 // This file tests the PDF through its model: no PDF text extractor in this
@@ -10630,6 +10806,31 @@ func TestRenderPDF_IsReproducible(t *testing.T) {
 		if !strings.Contains(string(first), want) {
 			t.Errorf("the PDF has no %s", want)
 		}
+	}
+	// One fixed render, pinned: a change here means every re-render of an
+	// unstored document would hash differently from a render before it. The
+	// pin may change on an upgrade of maroto, gofpdf or the font — update it
+	// then, in the upgrade's commit; stored PDFs are never re-rendered.
+	sum := sha256.Sum256(first)
+	if got := hex.EncodeToString(sum[:]); got != pinnedRenderSHA256 {
+		t.Errorf("the fixed render's SHA-256 = %s, want %s", got, pinnedRenderSHA256)
+	}
+}
+
+const pinnedRenderSHA256 = "0a4817fc89b7841163410f204a030cce25705faba105f05375553372a7d18830"
+
+// A download whose store-once path fails answers a 503 only for the object
+// store's failure: a document that cannot be rendered, or a database that
+// fails, is a 500 — retrying does not mend it.
+func TestStoreOnceFailed_OnlyTheObjectStoreIsA503(t *testing.T) {
+	t.Parallel()
+	res, err := storeOnceFailed(fmt.Errorf("%w: %w", errObjectStore, errors.New("disk full")))
+	if _, ok := res.(gen.GetInvoicesByIdPdf503ApplicationProblemPlusJSONResponse); !ok || err != nil {
+		t.Errorf("an object-store failure = %T, %v; want the 503", res, err)
+	}
+	render := fmt.Errorf("invoices: render document 7: %w", errors.New("font"))
+	if res, err := storeOnceFailed(render); res != nil || !errors.Is(err, render) {
+		t.Errorf("a render failure = %T, %v; want the error, which the server answers with a 500", res, err)
 	}
 }
 ```
@@ -11697,9 +11898,13 @@ func renderIssued(ctx context.Context, q *store.Queries, inv store.InvoicesInvoi
 	}
 	doc, err := pdfDocumentOf(inv, lines, sums, original)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invoices: render document %d: %w", inv.ID, err)
 	}
-	return renderPDF(buildPDFModel(doc))
+	body, err := renderPDF(buildPDFModel(doc))
+	if err != nil {
+		return nil, fmt.Errorf("invoices: render document %d: %w", inv.ID, err)
+	}
+	return body, nil
 }
 
 // storedPDF is where an issued document's PDF is, and, when this call stored
@@ -11708,6 +11913,12 @@ type storedPDF struct {
 	key, sha256 string
 	body        []byte
 }
+
+// errObjectStore marks a store-once failure that is the object store's: a
+// download answers it with a 503 to retry. Anything else storeOnce returns —
+// a render that fails, a database read or write — is a 500: retrying does not
+// mend a document that cannot be rendered.
+var errObjectStore = errors.New("invoices: the object store failed")
 
 // storeOnce is D7's store-once path: render, hash, key the object by the
 // hash, put it unless it is there, and record it on the row only while the
@@ -11724,11 +11935,11 @@ func (s *server) storeOnce(ctx context.Context, q *store.Queries, inv store.Invo
 	key := fmt.Sprintf("documents/%d/%d-%s.pdf", inv.ID, *inv.Number, hash)
 	exists, err := s.objectExists(ctx, key)
 	if err != nil {
-		return storedPDF{}, err
+		return storedPDF{}, fmt.Errorf("%w: %w", errObjectStore, err)
 	}
 	if !exists {
 		if err := s.objectPut(ctx, key, bytes.NewReader(body), "application/pdf"); err != nil {
-			return storedPDF{}, err
+			return storedPDF{}, fmt.Errorf("%w: %w", errObjectStore, err)
 		}
 	}
 	n, err := q.SetDocumentPDF(ctx, store.SetDocumentPDFParams{ID: inv.ID, PdfObjectKey: &key, PdfSha256: &hash})
@@ -11776,6 +11987,17 @@ func fileName(inv store.InvoicesInvoice) string {
 		return fmt.Sprintf("invoice-%d.pdf", *inv.Number)
 	}
 	return fmt.Sprintf("faktura-%d.pdf", *inv.Number)
+}
+
+// storeOnceFailed answers a download whose store-once path failed: the
+// object store's failure is a 503 to retry, and anything else — a render, a
+// database read or write — an error the server answers with a 500.
+func storeOnceFailed(err error) (gen.GetInvoicesByIdPdfResponseObject, error) {
+	if !errors.Is(err, errObjectStore) {
+		return nil, err
+	}
+	return gen.GetInvoicesByIdPdf503ApplicationProblemPlusJSONResponse(storageUnavailable(
+		"The document store could not be reached. Try again.")), nil
 }
 
 // storageUnavailable is the 503 a download answers when the store is not
@@ -11848,8 +12070,7 @@ func (s *server) GetInvoicesByIdPdf(ctx context.Context, req gen.GetInvoicesById
 	if inv.PdfSha256 == nil {
 		if found, err = s.storeOnce(ctx, q, inv); err != nil {
 			s.deps.Logger.ErrorContext(ctx, "invoices: a PDF could not be stored on download", "invoice_id", inv.ID, "error", err.Error())
-			return gen.GetInvoicesByIdPdf503ApplicationProblemPlusJSONResponse(storageUnavailable(
-				"The document store could not be reached. Try again.")), nil
+			return storeOnceFailed(err)
 		}
 	} else {
 		found = storedPDF{key: *inv.PdfObjectKey, sha256: *inv.PdfSha256}
@@ -12042,7 +12263,7 @@ cd ../..
 Commit:
 
 ```bash
-cat > /tmp/claude-1000/msg-invoices-task5.txt <<'MSG'
+cat > /tmp/claude-1000/msg-invoices-task7.txt <<'MSG'
 feat(invoices): the PDF, rendered from the snapshot and stored once
 
 The document's PDF (invoices foundation design D7), in maroto v2 over gofpdf
@@ -12052,35 +12273,85 @@ documents/<id>/<number>-<sha256>.pdf in the invoices scope and recorded on
 the row the first time. The issue stores it after its commit and answers
 pdfStored false if that fails; every download streams the stored object,
 verified, and never renders a stored document again; a missing or altered
-object is a 500, a store that cannot be read a 503. The draft preview
-carries the watermark and no number and stores nothing. Catalog sorting and
-a fixed modification date make the bytes reproducible in-process.
+object, or a render that fails, is a 500, a store that cannot be reached or
+read a 503. The draft preview carries the watermark and no number and
+stores nothing. Catalog sorting and a fixed modification date make the bytes
+reproducible in-process, and one fixed render's SHA-256 is pinned.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 MSG
 git add -- 'apps/invoices/frontend/src/api-schema.d.ts' 'apps/server/go.mod' 'apps/server/go.sum' 'apps/server/internal/invoices/contractscalls.go' 'apps/server/internal/invoices/fonts/LICENSE' 'apps/server/internal/invoices/fonts/NotoSans-Bold.ttf' 'apps/server/internal/invoices/fonts/NotoSans-Regular.ttf' 'apps/server/internal/invoices/gen/api.gen.go' 'apps/server/internal/invoices/harness_test.go' 'apps/server/internal/invoices/issue.go' 'apps/server/internal/invoices/pdf.go' 'apps/server/internal/invoices/pdf_internal_test.go' 'apps/server/internal/invoices/pdfstore.go' 'apps/server/internal/invoices/pdfstore_test.go' 'apps/server/internal/invoices/queries/invoices.sql' 'apps/server/internal/invoices/store/invoices.sql.go' 'apps/server/internal/openapi/specs/invoices.yaml' 'openapi/COVERAGE.md' 'openapi/invoices.yaml'
-git commit -F /tmp/claude-1000/msg-invoices-task5.txt -- 'apps/invoices/frontend/src/api-schema.d.ts' 'apps/server/go.mod' 'apps/server/go.sum' 'apps/server/internal/invoices/contractscalls.go' 'apps/server/internal/invoices/fonts/LICENSE' 'apps/server/internal/invoices/fonts/NotoSans-Bold.ttf' 'apps/server/internal/invoices/fonts/NotoSans-Regular.ttf' 'apps/server/internal/invoices/gen/api.gen.go' 'apps/server/internal/invoices/harness_test.go' 'apps/server/internal/invoices/issue.go' 'apps/server/internal/invoices/pdf.go' 'apps/server/internal/invoices/pdf_internal_test.go' 'apps/server/internal/invoices/pdfstore.go' 'apps/server/internal/invoices/pdfstore_test.go' 'apps/server/internal/invoices/queries/invoices.sql' 'apps/server/internal/invoices/store/invoices.sql.go' 'apps/server/internal/openapi/specs/invoices.yaml' 'openapi/COVERAGE.md' 'openapi/invoices.yaml'
+git commit -F /tmp/claude-1000/msg-invoices-task7.txt -- 'apps/invoices/frontend/src/api-schema.d.ts' 'apps/server/go.mod' 'apps/server/go.sum' 'apps/server/internal/invoices/contractscalls.go' 'apps/server/internal/invoices/fonts/LICENSE' 'apps/server/internal/invoices/fonts/NotoSans-Bold.ttf' 'apps/server/internal/invoices/fonts/NotoSans-Regular.ttf' 'apps/server/internal/invoices/gen/api.gen.go' 'apps/server/internal/invoices/harness_test.go' 'apps/server/internal/invoices/issue.go' 'apps/server/internal/invoices/pdf.go' 'apps/server/internal/invoices/pdf_internal_test.go' 'apps/server/internal/invoices/pdfstore.go' 'apps/server/internal/invoices/pdfstore_test.go' 'apps/server/internal/invoices/queries/invoices.sql' 'apps/server/internal/invoices/store/invoices.sql.go' 'apps/server/internal/openapi/specs/invoices.yaml' 'openapi/COVERAGE.md' 'openapi/invoices.yaml'
 git show --stat HEAD && git status --short   # nothing of yours left; go.mod/go.sum at the root untracked as before
 ```
 
 ---
 
-### Task 6: Credit notes: the draft copy, what it may change, and the caps under the original's lock (D8)
+### Task 8: Credit notes: the draft copy, what it may change, and the caps under the original's lock (D8)
 
-`POST /invoices/{id}/credit` copies an issued invoice into a credit-note draft — the buyer snapshot included, no directory read — with every line pointing at the line it credits. A credit draft's `PUT` allows only what D8 lists; its totals use the original lines' snapshot rates. At issue the original is locked after the counter and both caps decide; a credit note skips every gate meant for new invoices. Responses link both ways.
+`POST /invoices/{id}/credit` copies an issued invoice into a credit-note draft — the buyer snapshot included, no directory read — with every line pointing at the line it credits. A credit draft's `PUT` allows only what D8 lists; its totals — in its response and in its preview alike — use the original lines' snapshot rates, and it never warns `issued_late` (it keeps its original's delivery). A draft over both caps warns both. At issue the original is locked after the counter and both caps decide; a credit note skips every gate meant for new invoices. Responses link both ways.
 
 **Files:**
 - Create: `apps/server/internal/invoices/credits.go`, `apps/server/internal/invoices/credits_test.go`, `apps/server/internal/invoices/queries/credits.sql`
-- Modify: `apps/server/internal/invoices/drafts.go`, `apps/server/internal/invoices/issue.go`, `apps/server/internal/invoices/responses.go`, `openapi/invoices.yaml`
+- Modify: `apps/server/internal/invoices/drafts.go`, `apps/server/internal/invoices/export_test.go`, `apps/server/internal/invoices/issue.go`, `apps/server/internal/invoices/pdfstore.go`, `apps/server/internal/invoices/responses.go`, `openapi/invoices.yaml`
 - Generated (commit them; never edit by hand): `apps/invoices/frontend/src/api-schema.d.ts`, `apps/server/internal/invoices/gen/api.gen.go`, `apps/server/internal/invoices/store/credits.sql.go`, `apps/server/internal/openapi/specs/invoices.yaml`, `openapi/COVERAGE.md`
 - Read first (do not change): `apps/server/internal/invoices/{issue.go,drafts.go,responses.go}`
 
 **Interfaces:**
-- Produces wire: `POST /invoices/{id}/credit` → 201 `InvoicesInvoiceResponse` (a credit-note draft); 409 `invoice_draft`, `credit_note_not_creditable`, `invoice_fully_credited`; at issue 409 `credit_exceeds_line` (+`linePosition`), `credit_exceeds_invoice`; the response's `creditedAmount`, `uncreditedAmount`, `creditNotes`, `credits`; warnings `credit_exceeds_line`, `credit_exceeds_invoice`.
+- Produces wire: `POST /invoices/{id}/credit` → 201 `InvoicesInvoiceResponse` (a credit-note draft); 409 `invoice_draft`, `credit_note_not_creditable`, `invoice_fully_credited`; at issue 409 `credit_exceeds_line` (+`linePosition`), `credit_exceeds_invoice`; the response's `creditedAmount`, `uncreditedAmount`, `creditNotes`, `credits`; warnings `credit_exceeds_line`, `credit_exceeds_invoice` (both when both caps are passed); never `issued_late` on a credit note.
 - Produces SQL: `InsertCreditDraft`, `CopyLinesToCredit`, `CreditNotesOf`, `CreditedGross`, `CreditedPerLine`.
-- Produces Go: `putCreditDraft`, `creditIssueChecks`, `creditCaps`, `creditTaxedLines`, `creditLinks`, `uncredited`, `originalLines`, `snapshotOf`.
+- Produces Go: `putCreditDraft`, `creditIssueChecks`, `creditCaps` → `[]capBreach`, `creditTaxedLines`, `creditDraftTaxedLines`, `creditLinks`, `uncredited`, `originalLines`, `snapshotOf`; the test seam `previewRendered` (export `SetPreviewRendered`).
 
-- [ ] **Step 1: The tests: the copy, what a draft may change, both caps, the race**
+- [ ] **Step 1: The tests: the copy, what a draft may change, both caps, the race, the customers and codes changed since, the preview's rates**
+
+**Replace** in `apps/server/internal/invoices/export_test.go`:
+
+```go
+package invoices
+
+import "context"
+
+// InLockedTx exposes inLockedTx to the external tests, whose contract-call
+// hook uses it to tell a call made from inside one of this module's locked
+```
+
+**with**:
+
+```go
+package invoices
+
+import (
+	"context"
+	"math/big"
+)
+
+// InLockedTx exposes inLockedTx to the external tests, whose contract-call
+// hook uses it to tell a call made from inside one of this module's locked
+```
+
+**Replace** in `apps/server/internal/invoices/export_test.go`:
+
+```go
+	issueAfterAllocation = hook
+	return func() { issueAfterAllocation = nil }
+}
+```
+
+**with**:
+
+```go
+	issueAfterAllocation = hook
+	return func() { issueAfterAllocation = nil }
+}
+
+// SetPreviewRendered installs a hook every preview reports its VAT total to,
+// as a two-decimal string, and answers the function that removes it. A test
+// using it does not run in parallel: the hook is the package's.
+func SetPreviewRendered(hook func(invoiceID int64, vatTotal string)) func() {
+	previewRendered = func(id int64, vat *big.Rat) { hook(id, vat.FloatString(2)) }
+	return func() { previewRendered = nil }
+}
+```
 
 **Create** `apps/server/internal/invoices/credits_test.go`:
 
@@ -12093,9 +12364,12 @@ import (
 	"slices"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
@@ -12331,6 +12605,119 @@ func TestCredit_RacingCreditNotesKeepTheCap(t *testing.T) {
 	if !slices.Equal(statuses, []int{http.StatusOK, http.StatusConflict}) {
 		t.Errorf("statuses = %v, want one issued and one refused", statuses)
 	}
+}
+
+// A credit note corrects an invoice whatever became of its customer since —
+// disabled, merged away or anonymised — and the credit note shows the buyer
+// the original named (D8): the gates for new invoices never apply to it.
+func TestCredit_ACustomerDisabledMergedOrAnonymisedSince(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name   string
+		change func(*contracts.CustomerBillingProfile)
+	}{
+		{"disabled", func(p *contracts.CustomerBillingProfile) { p.Status = "disabled" }},
+		{"merged away", func(p *contracts.CustomerBillingProfile) {
+			into := int32(customerEuro)
+			p.Status, p.Archived, p.MergedInto = "archived", true, &into
+		}},
+		{"anonymised", func(p *contracts.CustomerBillingProfile) {
+			p.Status, p.Archived, p.Name, p.LegalName, p.InvoiceAddress = "archived", true, "Anonymisert", "", nil
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			h := readyToIssue(t)
+			original := issued(t, h, createDraft(t, h, draftBody(customerAcme, line("A", 1, 1000, vat25))).ID)
+			h.customers.edit(customerAcme, c.change)
+
+			credit := issued(t, h, creditDraft(t, h, original.ID).ID)
+			if credit.Buyer == nil || credit.Buyer.Name != original.Buyer.Name || credit.GrossTotal != original.GrossTotal {
+				t.Errorf("the credit note = buyer %+v gross %v, want the original's %q and %v", credit.Buyer, credit.GrossTotal, original.Buyer.Name, original.GrossTotal)
+			}
+		})
+	}
+}
+
+// A credit note keeps its original's rate for a code whose last period has
+// ended since: it re-looks up no rate, so an expired code is no refusal (D8).
+func TestCredit_ACodeExpiredSince(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	original := issued(t, h, createDraft(t, h, draftBody(customerAcme, line("A", 1, 1000, vat25))).ID)
+	h.Exec(t, `UPDATE invoices.vat_code_rates SET valid_to = '2026-09-12' WHERE vat_code_id = $1 AND valid_to IS NULL`, vat25)
+	h.Advance(24 * time.Hour)
+
+	c := creditDraft(t, h, original.ID)
+	if slices.Contains(c.Warnings, "vat_code_not_valid") {
+		t.Errorf("warnings = %v: a credit note's line keeps its original's rate", c.Warnings)
+	}
+	credit := issued(t, h, c.ID)
+	if credit.VatTotal != 250 || *credit.Lines[0].VatRatePercent != 25 {
+		t.Errorf("the credit note = VAT %v at %v %%, want the original's 250 at 25 %%", credit.VatTotal, *credit.Lines[0].VatRatePercent)
+	}
+}
+
+// A credit draft's preview totals its lines as its response and its issue do,
+// at the original lines' snapshot rates, after the code's rate changed: never
+// at today's (D8). Not parallel: the preview hook is the package's.
+func TestCredit_ThePreviewUsesTheOriginalsRates(t *testing.T) {
+	h := readyToIssue(t)
+	original := issued(t, h, createDraft(t, h, draftBody(customerAcme, line("A", 1, 1000, vat25))).ID)
+	res := manager(t, h).Do(http.MethodPost, fmt.Sprintf("%s/%d/rates", vatCodesPath, vat25), map[string]any{"ratePercent": 26, "validFrom": "2026-09-13"})
+	if res.Status != http.StatusCreated {
+		t.Fatalf("rate change = %d %s", res.Status, res.Body)
+	}
+	h.Advance(24 * time.Hour)
+	c := creditDraft(t, h, original.ID)
+
+	var vat string
+	defer invoices.SetPreviewRendered(func(id int64, v string) {
+		if id == c.ID {
+			vat = v
+		}
+	})()
+	if res := creator(t, h).Do(http.MethodGet, previewPath(c.ID), nil); res.Status != http.StatusOK {
+		t.Fatalf("preview = %d %s", res.Status, res.Body)
+	}
+	if vat != "250.00" || c.VatTotal != 250 {
+		t.Errorf("the credit draft's VAT = preview %s, response %v; want the original's 250.00 at 25 %%, not 260 at today's 26 %%", vat, c.VatTotal)
+	}
+}
+
+// A credit note is issued after its original by nature and keeps its
+// delivery, so issued_late would always hold and say nothing: neither its
+// draft nor the issued credit note carries it (D8).
+func TestCredit_NeverWarnsIssuedLate(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	body := draftBody(customerAcme, line("A", 1, 1000, vat25))
+	body["deliveryDate"] = "2026-06-01"
+	original := issued(t, h, createDraft(t, h, body).ID)
+	if !slices.Contains(original.Warnings, "issued_late") {
+		t.Fatalf("the original's warnings = %v, want issued_late, or the fixture proves nothing", original.Warnings)
+	}
+	c := creditDraft(t, h, original.ID)
+	if slices.Contains(c.Warnings, "issued_late") {
+		t.Errorf("the credit draft's warnings = %v, want no issued_late", c.Warnings)
+	}
+	if credit := issued(t, h, c.ID); slices.Contains(credit.Warnings, "issued_late") {
+		t.Errorf("the credit note's warnings = %v, want no issued_late", credit.Warnings)
+	}
+}
+
+// A credit draft over both caps warns of both; the issue refuses with the
+// line's (D8).
+func TestCredit_BothCapsWarn(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	original := issued(t, h, createDraft(t, h, draftBody(customerAcme, line("A", 1, 1000, vat25))).ID)
+	first, second := creditDraft(t, h, original.ID), creditDraft(t, h, original.ID)
+	issued(t, h, first.ID)
+	if got := getInvoice(t, h, second.ID); !slices.Contains(got.Warnings, "credit_exceeds_line") || !slices.Contains(got.Warnings, "credit_exceeds_invoice") {
+		t.Errorf("warnings = %v, want credit_exceeds_line and credit_exceeds_invoice", got.Warnings)
+	}
+	refusedWith(t, h, second.ID, "", "credit_exceeds_line")
 }
 ```
 
@@ -12620,33 +13007,51 @@ func creditTaxedLines(lines []draftLine, credits []*int64, originals map[int64]s
 	return out, nil
 }
 
+// creditDraftTaxedLines taxes a credit-note draft's lines as its issue will:
+// it reverses its original's treatment, so each line takes the original
+// line's snapshot rate, never today's (D8). The draft's response and its
+// preview both total it so.
+func creditDraftTaxedLines(ctx context.Context, q *store.Queries, originalID int64, stored []store.InvoicesLine, lines []draftLine) ([]taxedLine, error) {
+	originals, err := originalLines(ctx, q, originalID)
+	if err != nil {
+		return nil, err
+	}
+	credits := make([]*int64, 0, len(stored))
+	for _, l := range stored {
+		credits = append(credits, l.CreditsLineID)
+	}
+	return creditTaxedLines(lines, credits, originals)
+}
+
 // creditCaps is D8's two caps over a credit note's lines: per original line,
 // the quantity and the net credited by the issued credit notes and this one
 // may not pass the original's; and the headline, this one's gross may not pass
-// what the original has left. It answers the refusal code, the credit note's
-// line position the line cap names, and the message; "" when both hold.
-func creditCaps(ctx context.Context, q *store.Queries, original store.InvoicesInvoice, lines []store.InvoicesLine, gross *big.Rat) (string, *int32, string, error) {
+// what the original has left. It answers every cap the lines breach — the
+// first line over its cap, then the headline — so a draft warns of both and
+// the issue refuses with the first; none when both hold.
+func creditCaps(ctx context.Context, q *store.Queries, original store.InvoicesInvoice, lines []store.InvoicesLine, gross *big.Rat) ([]capBreach, error) {
 	originals, err := originalLines(ctx, q, original.ID)
 	if err != nil {
-		return "", nil, "", err
+		return nil, err
 	}
 	rows, err := q.CreditedPerLine(ctx, &original.ID)
 	if err != nil {
-		return "", nil, "", fmt.Errorf("invoices: read what document %d's lines are credited: %w", original.ID, err)
+		return nil, fmt.Errorf("invoices: read what document %d's lines are credited: %w", original.ID, err)
 	}
 	type credited struct{ quantity, net *big.Rat }
 	already := map[int64]credited{}
 	for _, r := range rows {
 		qty, err := ratFromNumeric(r.Quantity)
 		if err != nil {
-			return "", nil, "", err
+			return nil, err
 		}
 		net, err := ratFromNumeric(r.Net)
 		if err != nil {
-			return "", nil, "", err
+			return nil, err
 		}
 		already[r.LineID] = credited{qty, net}
 	}
+	var breaches []capBreach
 	for _, l := range lines {
 		if l.CreditsLineID == nil {
 			continue
@@ -12657,11 +13062,11 @@ func creditCaps(ctx context.Context, q *store.Queries, original store.InvoicesIn
 		}
 		qty, net, err := numericPair(l.Quantity, l.LineNet)
 		if err != nil {
-			return "", nil, "", err
+			return nil, err
 		}
 		maxQty, maxNet, err := numericPair(o.Quantity, o.LineNet)
 		if err != nil {
-			return "", nil, "", err
+			return nil, err
 		}
 		if a, ok := already[o.ID]; ok {
 			qty.Add(qty, a.quantity)
@@ -12669,19 +13074,28 @@ func creditCaps(ctx context.Context, q *store.Queries, original store.InvoicesIn
 		}
 		if qty.Cmp(maxQty) > 0 || net.Cmp(maxNet) > 0 {
 			position := l.Position
-			return codeCreditExceedsLine, &position, fmt.Sprintf(
-				"Line %d credits more of the original's line %d than it had, counting the credit notes already issued.", l.Position, o.Position), nil
+			breaches = append(breaches, capBreach{codeCreditExceedsLine, &position, fmt.Sprintf(
+				"Line %d credits more of the original's line %d than it had, counting the credit notes already issued.", l.Position, o.Position)})
+			break
 		}
 	}
 	_, left, err := uncredited(ctx, q, original)
 	if err != nil {
-		return "", nil, "", err
+		return nil, err
 	}
 	if gross.Cmp(left) > 0 {
-		return codeCreditExceedsInvoice, nil, fmt.Sprintf(
-			"This credit note is %s, and the invoice has %s left to credit.", gross.FloatString(2), left.FloatString(2)), nil
+		breaches = append(breaches, capBreach{codeCreditExceedsInvoice, nil, fmt.Sprintf(
+			"This credit note is %s, and the invoice has %s left to credit.", gross.FloatString(2), left.FloatString(2))})
 	}
-	return "", nil, "", nil
+	return breaches, nil
+}
+
+// capBreach is one cap a credit note's lines breach: the refusal code, the
+// credit note's line position a line cap names, and the message.
+type capBreach struct {
+	code     string
+	position *int32
+	detail   string
 }
 
 // numericPair reads two numeric columns.
@@ -12731,13 +13145,13 @@ func creditIssueChecks(ctx context.Context, txq *store.Queries, locked store.Inv
 		return issuePlan{}, nil, err
 	}
 	_, totals, _ := summarize(taxed, exchangeRate)
-	code, position, detail, err := creditCaps(ctx, txq, original, lines, totals.gross)
+	breaches, err := creditCaps(ctx, txq, original, lines, totals.gross)
 	if err != nil {
 		return issuePlan{}, nil, err
 	}
-	if code != "" {
-		r := cannotIssue(code, detail)
-		r.LinePosition = position
+	if len(breaches) > 0 {
+		r := cannotIssue(breaches[0].code, breaches[0].detail)
+		r.LinePosition = breaches[0].position
 		return issuePlan{}, r, nil
 	}
 	return plan, nil, nil
@@ -12914,12 +13328,12 @@ func creditLinks(ctx context.Context, q *store.Queries, inv store.InvoicesInvoic
 	if err != nil {
 		return err
 	}
-	code, _, _, err := creditCaps(ctx, q, original, lines, ratFromFloat(resp.GrossTotal))
+	breaches, err := creditCaps(ctx, q, original, lines, ratFromFloat(resp.GrossTotal))
 	if err != nil {
 		return err
 	}
-	if code != "" {
-		resp.Warnings = append(resp.Warnings, code)
+	for _, b := range breaches {
+		resp.Warnings = append(resp.Warnings, b.code)
 	}
 	return nil
 }
@@ -12977,6 +13391,9 @@ func creditLinks(ctx context.Context, q *store.Queries, inv store.InvoicesInvoic
 **Replace** in `apps/server/internal/invoices/responses.go`:
 
 ```go
+			}
+		}
+		resp.PdfStored = ptr(inv.PdfSha256 != nil)
 		if issuedLate(inv.IssueDate.Time, deliveryEndOf(inv)) {
 			resp.Warnings = append(resp.Warnings, warningIssuedLate)
 		}
@@ -13000,7 +13417,10 @@ func creditLinks(ctx context.Context, q *store.Queries, inv store.InvoicesInvoic
 **with**:
 
 ```go
-		if issuedLate(inv.IssueDate.Time, deliveryEndOf(inv)) {
+			}
+		}
+		resp.PdfStored = ptr(inv.PdfSha256 != nil)
+		if inv.Kind == kindInvoice && issuedLate(inv.IssueDate.Time, deliveryEndOf(inv)) {
 			resp.Warnings = append(resp.Warnings, warningIssuedLate)
 		}
 		return resp, creditLinks(ctx, q, inv, &resp)
@@ -13012,17 +13432,7 @@ func creditLinks(ctx context.Context, q *store.Queries, inv store.InvoicesInvoic
 	}
 	var taxed []taxedLine
 	if inv.Kind == kindCreditNote {
-		// A credit note reverses its original's treatment: its lines are taxed
-		// with the original lines' snapshots, never today's rates (D8).
-		originals, err := originalLines(ctx, q, *inv.CreditsInvoiceID)
-		if err != nil {
-			return gen.InvoicesInvoiceResponse{}, err
-		}
-		credits := make([]*int64, 0, len(stored))
-		for _, l := range stored {
-			credits = append(credits, l.CreditsLineID)
-		}
-		if taxed, err = creditTaxedLines(lines, credits, originals); err != nil {
+		if taxed, err = creditDraftTaxedLines(ctx, q, *inv.CreditsInvoiceID, stored, lines); err != nil {
 			return gen.InvoicesInvoiceResponse{}, err
 		}
 	} else {
@@ -13031,11 +13441,49 @@ func creditLinks(ctx context.Context, q *store.Queries, inv store.InvoicesInvoic
 			return gen.InvoicesInvoiceResponse{}, err
 		}
 		taxed = taxedLines(lines, codes)
+		for _, l := range lines {
+			if c, ok := codes[l.vatCodeID]; ok && c.rate == nil {
+				resp.Warnings = append(resp.Warnings, warningVatCodeNotValid)
+				break
+			}
+		}
 	}
 	rows, totals, _ := summarize(taxed, big.NewRat(1, 1))
 	for _, r := range rows {
 		resp.VatSummaries = append(resp.VatSummaries, summaryResponse(r))
 	}
+```
+
+**Replace** in `apps/server/internal/invoices/responses.go`:
+
+```go
+	if profile != nil && profile.Currency != "" && profile.Currency != inv.Currency {
+		resp.Warnings = append(resp.Warnings, warningCustomerCurrencyDiffers)
+	}
+	for _, l := range lines {
+		if c, ok := codes[l.vatCodeID]; ok && c.rate == nil {
+			resp.Warnings = append(resp.Warnings, warningVatCodeNotValid)
+			break
+		}
+	}
+	if issuedLate(today, deliveryEndOf(inv)) {
+		resp.Warnings = append(resp.Warnings, warningIssuedLate)
+	}
+	latest, err := q.LatestIssueDate(ctx)
+```
+
+**with**:
+
+```go
+	if profile != nil && profile.Currency != "" && profile.Currency != inv.Currency {
+		resp.Warnings = append(resp.Warnings, warningCustomerCurrencyDiffers)
+	}
+	// A credit note keeps its original's delivery and is issued after it by
+	// nature: issued_late would always hold and say nothing (D8).
+	if inv.Kind == kindInvoice && issuedLate(today, deliveryEndOf(inv)) {
+		resp.Warnings = append(resp.Warnings, warningIssuedLate)
+	}
+	latest, err := q.LatestIssueDate(ctx)
 ```
 
 **Replace** in `apps/server/internal/invoices/responses.go`:
@@ -13058,6 +13506,70 @@ func creditLinks(ctx context.Context, q *store.Queries, inv store.InvoicesInvoic
 }
 ```
 
+**Replace** in `apps/server/internal/invoices/pdfstore.go`:
+
+```go
+		return nil, err
+	}
+	taxed := taxedLines(lines, codes)
+	summaries, totals, _ := summarize(taxed, big.NewRat(1, 1))
+	var original *store.InvoicesInvoice
+	if inv.CreditsInvoiceID != nil {
+```
+
+**with**:
+
+```go
+		return nil, err
+	}
+	taxed := taxedLines(lines, codes)
+	if inv.Kind == kindCreditNote {
+		// As the draft's response does: a credit note reverses its
+		// original's treatment, with the original lines' snapshot rates,
+		// never today's (D8).
+		if taxed, err = creditDraftTaxedLines(ctx, q, *inv.CreditsInvoiceID, stored, lines); err != nil {
+			return nil, err
+		}
+	}
+	summaries, totals, _ := summarize(taxed, big.NewRat(1, 1))
+	var original *store.InvoicesInvoice
+	if inv.CreditsInvoiceID != nil {
+```
+
+**Replace** in `apps/server/internal/invoices/pdfstore.go`:
+
+```go
+		doc.lines[i].rate = taxed[i].rate
+	}
+	doc.summaries, doc.totals, doc.preview = summaries, totals, true
+	return renderPDF(buildPDFModel(doc))
+}
+
+// copyIssueParams puts a would-be issue's snapshots on a draft's row, for its
+// preview.
+```
+
+**with**:
+
+```go
+		doc.lines[i].rate = taxed[i].rate
+	}
+	doc.summaries, doc.totals, doc.preview = summaries, totals, true
+	if previewRendered != nil {
+		previewRendered(inv.ID, doc.totals.vat)
+	}
+	return renderPDF(buildPDFModel(doc))
+}
+
+// previewRendered, when a test sets it, is told each preview's VAT total: no
+// PDF text extractor in this module's dependencies reads the words back
+// (pdf_internal_test.go), so a preview's arithmetic is asserted here.
+var previewRendered func(invoiceID int64, vatTotal *big.Rat)
+
+// copyIssueParams puts a would-be issue's snapshots on a draft's row, for its
+// preview.
+```
+
 - [ ] **Step 4: Verify and commit**
 
 **Run**, from the repository root:
@@ -13077,7 +13589,7 @@ cd ../..
 Commit:
 
 ```bash
-cat > /tmp/claude-1000/msg-invoices-task6.txt <<'MSG'
+cat > /tmp/claude-1000/msg-invoices-task8.txt <<'MSG'
 feat(invoices): credit notes in the same series, capped per line and on the headline
 
 The correction (invoices foundation design D8, § 5-2-7): an issued invoice
@@ -13085,23 +13597,24 @@ is copied into a credit-note draft — the customer, currency and rate,
 delivery, references and the buyer snapshot, with no directory read, and
 every line pointing at the line it credits. The draft may only remove
 lines, lower a quantity or a price, and edit descriptions and notes; its
-totals are the original lines' own rates. At issue the original is locked
+totals, in the response and the preview, are the original lines' own rates,
+and it never warns issued_late. At issue the original is locked
 after the counter and the caps decide — per original line and against what
 the invoice has left — while every gate meant for new invoices is skipped.
 The documents link both ways.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 MSG
-git add -- 'apps/invoices/frontend/src/api-schema.d.ts' 'apps/server/internal/invoices/credits.go' 'apps/server/internal/invoices/credits_test.go' 'apps/server/internal/invoices/drafts.go' 'apps/server/internal/invoices/gen/api.gen.go' 'apps/server/internal/invoices/issue.go' 'apps/server/internal/invoices/queries/credits.sql' 'apps/server/internal/invoices/responses.go' 'apps/server/internal/invoices/store/credits.sql.go' 'apps/server/internal/openapi/specs/invoices.yaml' 'openapi/COVERAGE.md' 'openapi/invoices.yaml'
-git commit -F /tmp/claude-1000/msg-invoices-task6.txt -- 'apps/invoices/frontend/src/api-schema.d.ts' 'apps/server/internal/invoices/credits.go' 'apps/server/internal/invoices/credits_test.go' 'apps/server/internal/invoices/drafts.go' 'apps/server/internal/invoices/gen/api.gen.go' 'apps/server/internal/invoices/issue.go' 'apps/server/internal/invoices/queries/credits.sql' 'apps/server/internal/invoices/responses.go' 'apps/server/internal/invoices/store/credits.sql.go' 'apps/server/internal/openapi/specs/invoices.yaml' 'openapi/COVERAGE.md' 'openapi/invoices.yaml'
+git add -- 'apps/invoices/frontend/src/api-schema.d.ts' 'apps/server/internal/invoices/credits.go' 'apps/server/internal/invoices/credits_test.go' 'apps/server/internal/invoices/drafts.go' 'apps/server/internal/invoices/export_test.go' 'apps/server/internal/invoices/gen/api.gen.go' 'apps/server/internal/invoices/issue.go' 'apps/server/internal/invoices/pdfstore.go' 'apps/server/internal/invoices/queries/credits.sql' 'apps/server/internal/invoices/responses.go' 'apps/server/internal/invoices/store/credits.sql.go' 'apps/server/internal/openapi/specs/invoices.yaml' 'openapi/COVERAGE.md' 'openapi/invoices.yaml'
+git commit -F /tmp/claude-1000/msg-invoices-task8.txt -- 'apps/invoices/frontend/src/api-schema.d.ts' 'apps/server/internal/invoices/credits.go' 'apps/server/internal/invoices/credits_test.go' 'apps/server/internal/invoices/drafts.go' 'apps/server/internal/invoices/export_test.go' 'apps/server/internal/invoices/gen/api.gen.go' 'apps/server/internal/invoices/issue.go' 'apps/server/internal/invoices/pdfstore.go' 'apps/server/internal/invoices/queries/credits.sql' 'apps/server/internal/invoices/responses.go' 'apps/server/internal/invoices/store/credits.sql.go' 'apps/server/internal/openapi/specs/invoices.yaml' 'openapi/COVERAGE.md' 'openapi/invoices.yaml'
 git show --stat HEAD && git status --short   # nothing of yours left; go.mod/go.sum at the root untracked as before
 ```
 
 ---
 
-### Task 7: The two customer slots: the merge holder and the person's data (D10)
+### Task 9: The two customer slots: the merge holder and the person's data (D10)
 
-`CustomerReferences.RepointCustomer` moves every document of the absorbed customer inside the merge's transaction — drafts' revisions advance, issued documents change only their `customer_id` (the one column the trigger allows) and keep their buyer snapshot. `CustomerPersonalData` exports the person's documents and drafts, internal notes included, and on anonymisation deletes the drafts and keeps the issued documents under bokføringsloven § 13. `contracts.ErasedData` has no reason field and does not grow one (the spec's ruling): the reason is written in `docs/invoices.md` and `docs/customers.md` (Task 9). Both constructors need nothing a disabled module's Deps lacks; `module.Compose` and `module.Workers` collect them from `Module()`.
+`CustomerReferences.RepointCustomer` moves every document of the absorbed customer inside the merge's transaction, locking the two customers' documents newest first before it writes — the order a credit note's issue takes them in, so the two never deadlock — drafts' revisions advance, issued documents change only their `customer_id` (the one column the trigger allows) and keep their buyer snapshot. `CustomerPersonalData` exports the person's documents and drafts, internal notes included, and on anonymisation deletes the drafts and keeps the issued documents under bokføringsloven § 13. `contracts.ErasedData` has no reason field and does not grow one (the spec's ruling): the reason is written in `docs/invoices.md` and `docs/customers.md` (Task 11). Both constructors need nothing a disabled module's Deps lacks; `module.Compose` and `module.Workers` collect them from `Module()`.
 
 **Files:**
 - Create: `apps/server/internal/invoices/customer_slots.go`, `apps/server/internal/invoices/customer_slots_test.go`, `apps/server/internal/invoices/queries/customers.sql`
@@ -13111,9 +13624,9 @@ git show --stat HEAD && git status --short   # nothing of yours left; go.mod/go.
 
 **Interfaces:**
 - Produces Go: `Module().CustomerReferences` → `*customerReferenceHolder` (`RepointCustomer`, kind `invoices.invoices`); `Module().CustomerPersonalData` → `customerPersonalData` (`ExportCustomerData` → `{documents, drafts}` or nil; `EraseCustomerData` → `invoices.drafts` n, `invoices.documents` 0).
-- Produces SQL: `RepointCustomer :execrows`, `CustomerDocuments`, `LinesOf`, `DeleteCustomerDrafts :execrows`.
+- Produces SQL: `LockCustomerDocuments` (`ORDER BY id DESC FOR UPDATE`), `RepointCustomer :execrows`, `CustomerDocuments`, `LinesOf`, `DeleteCustomerDrafts :execrows`.
 
-- [ ] **Step 1: The tests, with the module disabled and the caller's transaction rolled back**
+- [ ] **Step 1: The tests, with the module disabled, the caller's transaction rolled back, and a merge racing a credit note's issue**
 
 **Create** `apps/server/internal/invoices/customer_slots_test.go`:
 
@@ -13123,6 +13636,7 @@ package invoices_test
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"slices"
 	"strings"
 	"testing"
@@ -13214,6 +13728,61 @@ func TestCustomerReferences_RepointMovesDraftsAndIssuedDocuments(t *testing.T) {
 	}
 }
 
+// A merge racing a credit note's issue never deadlocks (D10): the issue
+// holds the credit note and is about to lock its older original, and the
+// merge — the holder inside the customers module's transaction — starts
+// then. An UPDATE alone would lock the original first and wait on the credit
+// note, a deadlock Postgres breaks by aborting one; locking newest first, the
+// merge waits on the credit note holding nothing, and both finish. Not
+// parallel: the issue hook is the package's.
+func TestCustomerReferences_ARepointRacingACreditNoteIssueNeverDeadlocks(t *testing.T) {
+	h := readyToIssue(t)
+	original := issued(t, h, createDraft(t, h, draftBody(customerAcme, line("A", 2, 1000, vat25))).ID)
+	credit := creditDraft(t, h, original.ID)
+	holder := invoices.Module().CustomerReferences(disabledDeps(h))
+
+	mergeErr := make(chan error, 1)
+	restore := invoices.SetIssueAfterAllocation(func(_ context.Context, id int64) error {
+		if id != credit.ID {
+			return nil
+		}
+		go func() {
+			ctx := context.Background()
+			tx, err := h.Pool().Begin(ctx)
+			if err != nil {
+				mergeErr <- err
+				return
+			}
+			defer func() { _ = tx.Rollback(ctx) }()
+			if _, err := holder.RepointCustomer(ctx, tx, customerAcme, customerNoTerms); err != nil {
+				mergeErr <- err
+				return
+			}
+			mergeErr <- tx.Commit(ctx)
+		}()
+		// The merge is waiting on a document this issue holds before the
+		// issue goes on to lock the original.
+		waitForALockWaiter(t, h)
+		return nil
+	})
+	res := issueWith(t, h, credit.ID, "")
+	restore()
+	if res.Status != http.StatusOK {
+		t.Fatalf("the credit note's issue = %d %s, want 200 — a deadlock aborts one side", res.Status, res.Body)
+	}
+	if err := <-mergeErr; err != nil {
+		t.Fatalf("the merge = %v, want it committed — a deadlock aborts one side", err)
+	}
+	after, note := getInvoice(t, h, original.ID), getInvoice(t, h, credit.ID)
+	if after.CustomerID != customerNoTerms || note.CustomerID != customerNoTerms {
+		t.Errorf("customers = original %d, credit note %d; want both moved to %d", after.CustomerID, note.CustomerID, customerNoTerms)
+	}
+	if note.Status != "issued" || after.CreditedAmount == nil || *after.CreditedAmount != note.GrossTotal || *after.UncreditedAmount != 0 {
+		t.Errorf("after the race = credit note %s, original credited %v uncredited %v; want issued and the original credited in full",
+			note.Status, after.CreditedAmount, after.UncreditedAmount)
+	}
+}
+
 // The export (D10): nil when nothing is held; every issued document and draft
 // otherwise, the internal notes included.
 func TestCustomerPersonalData_Export(t *testing.T) {
@@ -13299,6 +13868,19 @@ cd apps/server && export TEST_DATABASE_URL='postgres://vantigo:vantigo@127.0.0.1
 **Create** `apps/server/internal/invoices/queries/customers.sql`:
 
 ```sql
+-- name: LockCustomerDocuments :exec
+-- LockCustomerDocuments locks every document of the two customers a merge
+-- touches, newest first, before RepointCustomer writes them (D10). A
+-- credit note's issue locks the credit note, then its older original; an
+-- UPDATE locks in whatever order it scans, which can be the original first —
+-- and a merge holding the original while waiting on the credit note, beside
+-- an issue holding the credit note while waiting on the original, is a
+-- deadlock. Locking id-descending takes them in the issue's order.
+SELECT id FROM invoices.invoices
+WHERE customer_id IN (sqlc.arg(from_customer_id)::integer, sqlc.arg(into_customer_id)::integer)
+ORDER BY id DESC
+FOR UPDATE;
+
 -- name: RepointCustomer :execrows
 -- RepointCustomer moves every document of one customer to another (D10), the
 -- merge holder's one write, inside the merge's transaction. A draft's revision
@@ -13386,12 +13968,18 @@ func newCustomerReferenceHolder(d module.Deps) contracts.CustomerReferenceHolder
 }
 
 // RepointCustomer moves every document of from to into, inside the caller's
-// transaction. from == into writes nothing and reports zero.
+// transaction. from == into writes nothing and reports zero. It locks the
+// documents newest first before it writes them: the order a credit note's
+// issue takes them in (LockCustomerDocuments), so the two never deadlock.
 func (h *customerReferenceHolder) RepointCustomer(ctx context.Context, tx pgx.Tx, from, into int32) ([]contracts.RepointedReferences, error) {
 	if from == into {
 		return []contracts.RepointedReferences{{Kind: kindInvoicesInvoices, Count: 0}}, nil
 	}
-	n, err := store.New(tx).RepointCustomer(ctx, store.RepointCustomerParams{
+	q := store.New(tx)
+	if err := q.LockCustomerDocuments(ctx, store.LockCustomerDocumentsParams{FromCustomerID: from, IntoCustomerID: into}); err != nil {
+		return nil, fmt.Errorf("invoices: lock customer %d's and %d's documents: %w", from, into, err)
+	}
+	n, err := q.RepointCustomer(ctx, store.RepointCustomerParams{
 		FromCustomerID: from, IntoCustomerID: into, Now: h.clock(),
 	})
 	if err != nil {
@@ -13606,19 +14194,23 @@ func Module() module.Module {
 cd apps/server && export TEST_DATABASE_URL='postgres://vantigo:vantigo@127.0.0.1:55442/vantigo_test?sslmode=disable'
 mise exec -- go test -count=1 ./internal/invoices/ ./internal/module/ ./internal/integration/ ./internal/customers/
 mise exec -- golangci-lint run ./internal/invoices/...
+CC=/tmp/claude-1000/zigcc.sh CGO_ENABLED=1 taskset -c 0-3 mise exec -- go test -race -count=1 -run TestCustomerReferences ./internal/invoices/
 cd ../..
 ```
 
 Commit:
 
 ```bash
-cat > /tmp/claude-1000/msg-invoices-task7.txt <<'MSG'
+cat > /tmp/claude-1000/msg-invoices-task9.txt <<'MSG'
 feat(invoices): the merge holder and the person's data
 
 Both many-provider customer slots (invoices foundation design D10). A merge
 re-points every document of the absorbed customer, drafts and issued alike;
 an issued document keeps its buyer snapshot and its revision, and the
-immutability trigger allows exactly its customer_id to change. A person's
+immutability trigger allows exactly its customer_id to change. The holder
+locks the documents newest first before it writes them — a credit note's
+issue locks the credit note and then its older original, so an UPDATE
+alone could deadlock beside it; the race test proves it cannot. A person's
 export holds every issued document and draft with its lines and notes;
 their anonymisation deletes the drafts (invoices.drafts) and keeps the
 issued documents under bokføringsloven § 13 (invoices.documents, 0).
@@ -13626,15 +14218,15 @@ issued documents under bokføringsloven § 13 (invoices.documents, 0).
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 MSG
 git add -- 'apps/server/internal/invoices/customer_slots.go' 'apps/server/internal/invoices/customer_slots_test.go' 'apps/server/internal/invoices/module.go' 'apps/server/internal/invoices/queries/customers.sql' 'apps/server/internal/invoices/store/customers.sql.go'
-git commit -F /tmp/claude-1000/msg-invoices-task7.txt -- 'apps/server/internal/invoices/customer_slots.go' 'apps/server/internal/invoices/customer_slots_test.go' 'apps/server/internal/invoices/module.go' 'apps/server/internal/invoices/queries/customers.sql' 'apps/server/internal/invoices/store/customers.sql.go'
+git commit -F /tmp/claude-1000/msg-invoices-task9.txt -- 'apps/server/internal/invoices/customer_slots.go' 'apps/server/internal/invoices/customer_slots_test.go' 'apps/server/internal/invoices/module.go' 'apps/server/internal/invoices/queries/customers.sql' 'apps/server/internal/invoices/store/customers.sql.go'
 git show --stat HEAD && git status --short   # nothing of yours left; go.mod/go.sum at the root untracked as before
 ```
 
 ---
 
-### Task 8: The journal and its gap check (D11)
+### Task 10: The journal and its gap check (D11)
 
-`GET /invoices/journal?from&to&page&pageSize`: the issued documents with an issue date in the range in number order, credit notes signed negative in every amount, totals per SAF-T code, category and rate over the whole range, the gap check from the number before the range's first (never below the series start) to its last, at most 1000 listed, and the counter's last number — all from one repeatable-read, read-only snapshot.
+`GET /invoices/journal?from&to&page&pageSize`: the issued documents with an issue date in the range in number order, credit notes signed negative in every amount, totals per SAF-T code, category and rate over the whole range, the gap check from one past the issued document before the range's first (the series start when there is none) to the range's last, at most 1000 listed, with the range it checked (`checkedFrom`, `checkedTo`), the counter's last number and the highest issued number (`highestIssued`) — all from one repeatable-read, read-only snapshot.
 
 **Files:**
 - Create: `apps/server/internal/invoices/journal.go`, `apps/server/internal/invoices/journal_test.go`, `apps/server/internal/invoices/queries/journal.sql`
@@ -13643,10 +14235,10 @@ git show --stat HEAD && git status --short   # nothing of yours left; go.mod/go.
 - Read first (do not change): `apps/server/internal/invoices/{list.go,queries/counters.sql}`
 
 **Interfaces:**
-- Produces wire: `GET /invoices/journal` → `InvoicesJournalResponse {data[InvoicesJournalRow], pagination, totals{byCode[InvoicesJournalCode], netTotal, vatTotal, grossTotal}, gaps[], gapsTruncated, seriesStart, counterLast?}`.
-- Produces SQL: `JournalPage`, `JournalCount`, `JournalSummaries`, `JournalTotalsByCode`, `JournalTotals`, `JournalGaps`.
+- Produces wire: `GET /invoices/journal` → `InvoicesJournalResponse {data[InvoicesJournalRow], pagination, totals{byCode[InvoicesJournalCode], netTotal, vatTotal, grossTotal}, gaps[], gapsTruncated, seriesStart, counterLast?, highestIssued?, checkedFrom?, checkedTo?}`; the totals are plain `numeric`, never a width a year of large documents overflows.
+- Produces SQL: `JournalPage`, `JournalCount`, `JournalSummaries`, `JournalTotalsByCode`, `JournalTotals`, `JournalCheckedRange`, `JournalGaps`, `HighestIssuedNumber`.
 
-- [ ] **Step 1: The tests: order, signs, whole-range totals, the gaps**
+- [ ] **Step 1: The tests: order, signs, whole-range totals, the gaps and the range checked, a past range over two pages**
 
 **Create** `apps/server/internal/invoices/journal_test.go`:
 
@@ -13696,7 +14288,13 @@ type journalJSON struct {
 	GapsTruncated bool    `json:"gapsTruncated"`
 	SeriesStart   int64   `json:"seriesStart"`
 	CounterLast   *int64  `json:"counterLast"`
+	HighestIssued *int64  `json:"highestIssued"`
+	CheckedFrom   *int64  `json:"checkedFrom"`
+	CheckedTo     *int64  `json:"checkedTo"`
 }
+
+// is reports whether p holds want.
+func is(p *int64, want int64) bool { return p != nil && *p == want }
 
 const journalPath = "/api/v1/invoices/journal"
 
@@ -13744,8 +14342,12 @@ func TestJournal_TheRangeInNumberOrder(t *testing.T) {
 		j.Totals.ByCode[1].Category != "Z" || j.Totals.ByCode[1].TaxableAmount != 200 {
 		t.Errorf("by code = %+v", j.Totals.ByCode)
 	}
-	if len(j.Gaps) != 0 || j.GapsTruncated || j.SeriesStart != 1 || j.CounterLast == nil || *j.CounterLast != 3 {
-		t.Errorf("gaps %v truncated %v start %d counter %v; want none, 1 and 3", j.Gaps, j.GapsTruncated, j.SeriesStart, j.CounterLast)
+	if len(j.Gaps) != 0 || j.GapsTruncated || j.SeriesStart != 1 || !is(j.CounterLast, 3) || !is(j.HighestIssued, 3) {
+		t.Errorf("gaps %v truncated %v start %d counter %v highest %v; want none, 1, 3 and 3",
+			j.Gaps, j.GapsTruncated, j.SeriesStart, j.CounterLast, j.HighestIssued)
+	}
+	if !is(j.CheckedFrom, 1) || !is(j.CheckedTo, 3) {
+		t.Errorf("checked %v to %v, want 1 to 3", j.CheckedFrom, j.CheckedTo)
 	}
 
 	paged := journal(t, h, "?from=2026-09-01&to=2026-09-30&pageSize=1&page=2")
@@ -13759,9 +14361,10 @@ func TestJournal_TheRangeInNumberOrder(t *testing.T) {
 	}
 }
 
-// A gap planted behind the handlers' backs is reported, at the range's first
-// number against the one before it too; a number below the series start never
-// is; at most 1000 are listed.
+// A gap planted behind the handlers' backs is reported: every number missing
+// between the issued document before the range's first and the range's last,
+// so a hole straddling two ranges is listed in full by the later one; a
+// number below the series start never is; at most 1000 are listed (D11).
 func TestJournal_TheGapCheck(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -13771,20 +14374,52 @@ func TestJournal_TheGapCheck(t *testing.T) {
 	plantIssuedDocument(t, h, 6, "2026-09-03")
 	plantIssuedDocument(t, h, 9, "2026-09-10")
 
-	// September's first is 5, checked against 4 before it; 3 is the range
-	// before's to check. Inside, 7 and 8 are missing.
-	if j := journal(t, h, "?from=2026-09-01&to=2026-09-30"); !slices.Equal(j.Gaps, []int64{4, 7, 8}) {
-		t.Errorf("September's gaps = %v, want 4 before its first, 7 and 8 inside", j.Gaps)
+	// September's first is 5, and the issued document before it is 2: 3 and 4
+	// are missing before its first, 7 and 8 inside.
+	if j := journal(t, h, "?from=2026-09-01&to=2026-09-30"); !slices.Equal(j.Gaps, []int64{3, 4, 7, 8}) ||
+		!is(j.CheckedFrom, 3) || !is(j.CheckedTo, 9) {
+		t.Errorf("September = gaps %v checked %v to %v, want 3 and 4 before its first, 7 and 8 inside, checked 3 to 9",
+			j.Gaps, j.CheckedFrom, j.CheckedTo)
 	}
-	if j := journal(t, h, "?from=2026-08-01&to=2026-08-31"); len(j.Gaps) != 0 {
-		t.Errorf("August's gaps = %v, want none", j.Gaps)
+	if j := journal(t, h, "?from=2026-08-01&to=2026-08-31"); len(j.Gaps) != 0 || !is(j.CheckedFrom, 1) || !is(j.CheckedTo, 2) {
+		t.Errorf("August = gaps %v checked %v to %v, want none, checked 1 (the series start) to 2", j.Gaps, j.CheckedFrom, j.CheckedTo)
 	}
-	if j := journal(t, h, "?from=2026-10-01&to=2026-10-31"); len(j.Gaps) != 0 || len(j.Data) != 0 {
-		t.Errorf("an empty range = %+v", j)
+	if j := journal(t, h, "?from=2026-10-01&to=2026-10-31"); len(j.Gaps) != 0 || len(j.Data) != 0 || j.CheckedFrom != nil || j.CheckedTo != nil {
+		t.Errorf("an empty range = %+v, want no gaps, no rows and no checked range", j)
 	}
 	plantIssuedDocument(t, h, 1012, "2026-11-02")
-	if j := journal(t, h, "?from=2026-09-01&to=2026-11-30"); len(j.Gaps) != 1000 || !j.GapsTruncated || j.Gaps[0] != 4 {
-		t.Errorf("a long gap = %d listed, truncated %v, first %v; want 1000, true, 4", len(j.Gaps), j.GapsTruncated, j.Gaps[0])
+	if j := journal(t, h, "?from=2026-09-01&to=2026-11-30"); len(j.Gaps) != 1000 || !j.GapsTruncated || j.Gaps[0] != 3 {
+		t.Errorf("a long gap = %d listed, truncated %v, first %v; want 1000, true, 3", len(j.Gaps), j.GapsTruncated, j.Gaps[0])
+	}
+}
+
+// A past range, a page at a time: the page is the range's, while the checked
+// range and highestIssued are the range's and the series' — not the page's —
+// so a counter ahead of the range but level with the series is no warning,
+// on either page (D11).
+func TestJournal_APastRangeOverTwoPages(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	for n, day := range map[int64]string{1: "2026-08-03", 2: "2026-08-10", 3: "2026-08-17", 4: "2026-08-24", 5: "2026-09-02", 6: "2026-09-03"} {
+		plantIssuedDocument(t, h, n, day)
+	}
+	h.Exec(t, `INSERT INTO invoices.counters (counter_name, next_value) VALUES ('documents', 7)`)
+
+	for page, want := range map[string][]int64{"1": {1, 2}, "2": {3, 4}} {
+		j := journal(t, h, "?from=2026-08-01&to=2026-08-31&pageSize=2&page="+page)
+		var numbers []int64
+		for _, d := range j.Data {
+			numbers = append(numbers, d.Number)
+		}
+		if !slices.Equal(numbers, want) || j.Pagination.TotalCount != 4 {
+			t.Errorf("page %s = %v of %d, want %v of 4", page, numbers, j.Pagination.TotalCount, want)
+		}
+		if !is(j.CheckedFrom, 1) || !is(j.CheckedTo, 4) || len(j.Gaps) != 0 {
+			t.Errorf("page %s = checked %v to %v gaps %v, want the range's 1 to 4 and none", page, j.CheckedFrom, j.CheckedTo, j.Gaps)
+		}
+		if !is(j.HighestIssued, 6) || !is(j.CounterLast, 6) {
+			t.Errorf("page %s = highest %v counter %v, want both 6: the series', not the page's", page, j.HighestIssued, j.CounterLast)
+		}
 	}
 }
 
@@ -13793,6 +14428,9 @@ func TestJournal_TheGapCheck(t *testing.T) {
 func TestJournal_TheSeriesStartAndTheCounter(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
+	if j := journal(t, h, "?from=2026-09-01&to=2026-09-30"); j.HighestIssued != nil || j.CounterLast != nil {
+		t.Errorf("nothing issued = highest %v counter %v, want both absent", j.HighestIssued, j.CounterLast)
+	}
 	body := completeSeller(1)
 	body["seriesStart"] = 100
 	saveSeller(t, h, body)
@@ -13804,8 +14442,14 @@ func TestJournal_TheSeriesStartAndTheCounter(t *testing.T) {
 	if len(j.Gaps) != 0 || j.SeriesStart != 100 {
 		t.Errorf("gaps = %v with the series at 100, want none", j.Gaps)
 	}
-	if j.CounterLast == nil || *j.CounterLast != 102 {
-		t.Errorf("counterLast = %v, want 102 — ahead of the highest document, 101", j.CounterLast)
+	if !is(j.CounterLast, 102) || !is(j.HighestIssued, 101) {
+		t.Errorf("counterLast = %v, highestIssued %v; want 102 — ahead of the highest document, 101", j.CounterLast, j.HighestIssued)
+	}
+	if !is(j.CheckedFrom, 100) {
+		t.Errorf("checkedFrom = %v, want the series start, 100", j.CheckedFrom)
+	}
+	if j := journal(t, h, "?from=2026-10-01&to=2026-10-31"); !is(j.HighestIssued, 101) {
+		t.Errorf("an empty range's highestIssued = %v, want the series' 101", j.HighestIssued)
 	}
 }
 ```
@@ -13839,10 +14483,18 @@ func TestJournal_TheSeriesStartAndTheCounter(t *testing.T) {
                 - vatAmount
             type: object
         InvoicesJournalResponse:
-            description: 'The invoice journal (D11) over issue dates from-to: the issued documents in number order, a page at a time; the totals over the whole range, per SAF-T code, category and rate, credit notes signed negative; and the gap check — the numbers from the one before the range''s first (never below the series start) to its last that no issued document holds, at most 1000 listed.'
+            description: 'The invoice journal (D11) over issue dates from-to: the issued documents in number order, a page at a time; the totals over the whole range, per SAF-T code, category and rate, credit notes signed negative; and the gap check — the numbers from the one after the issued document before the range''s first (never below the series start) to the range''s last that no issued document holds, at most 1000 listed.'
             properties:
+                checkedFrom:
+                    description: The first number the gap check covered — one past the issued document before the range's first, or the series start; absent when the range holds no document.
+                    format: int64
+                    type: integer
+                checkedTo:
+                    description: The last number the gap check covered, the range's last; absent when the range holds no document.
+                    format: int64
+                    type: integer
                 counterLast:
-                    description: The counter's last allocated number; absent when nothing was ever issued. When it is not the highest issued number, a number was allocated without a document.
+                    description: The counter's last allocated number; absent when nothing was ever issued. When it is not highestIssued, a number was allocated without a document.
                     format: int64
                     type: integer
                 data:
@@ -13856,6 +14508,10 @@ func TestJournal_TheSeriesStartAndTheCounter(t *testing.T) {
                     type: array
                 gapsTruncated:
                     type: boolean
+                highestIssued:
+                    description: The highest number any issued document holds, whatever its date; absent when nothing is issued.
+                    format: int64
+                    type: integer
                 pagination:
                     $ref: common.yaml#/components/schemas/PaginationMetadata
                 seriesStart:
@@ -14049,8 +14705,8 @@ ORDER BY invoice_id, rate_percent DESC, vat_category;
 -- over every document in it, not the page — credit notes subtracted: they are
 -- stored positive, and a journal that summed them would overstate revenue.
 SELECT s.saf_t_code, s.vat_category, s.rate_percent,
-       sum(CASE WHEN i.kind = 'credit_note' THEN -s.taxable_amount ELSE s.taxable_amount END)::numeric(14,2) AS taxable_amount,
-       sum(CASE WHEN i.kind = 'credit_note' THEN -s.vat_amount ELSE s.vat_amount END)::numeric(14,2) AS vat_amount
+       sum(CASE WHEN i.kind = 'credit_note' THEN -s.taxable_amount ELSE s.taxable_amount END)::numeric AS taxable_amount,
+       sum(CASE WHEN i.kind = 'credit_note' THEN -s.vat_amount ELSE s.vat_amount END)::numeric AS vat_amount
 FROM invoices.vat_summaries s
 JOIN invoices.invoices i ON i.id = s.invoice_id
 WHERE i.status = 'issued' AND i.issue_date BETWEEN sqlc.arg(issued_from)::date AND sqlc.arg(issued_to)::date
@@ -14059,28 +14715,43 @@ ORDER BY s.rate_percent DESC, s.vat_category, s.saf_t_code;
 
 -- name: JournalTotals :one
 -- JournalTotals is the range's net, VAT and gross, credit notes subtracted.
-SELECT coalesce(sum(CASE WHEN kind = 'credit_note' THEN -net_total ELSE net_total END), 0)::numeric(14,2) AS net_total,
-       coalesce(sum(CASE WHEN kind = 'credit_note' THEN -vat_total ELSE vat_total END), 0)::numeric(14,2) AS vat_total,
-       coalesce(sum(CASE WHEN kind = 'credit_note' THEN -gross_total ELSE gross_total END), 0)::numeric(14,2) AS gross_total
+SELECT coalesce(sum(CASE WHEN kind = 'credit_note' THEN -net_total ELSE net_total END), 0)::numeric AS net_total,
+       coalesce(sum(CASE WHEN kind = 'credit_note' THEN -vat_total ELSE vat_total END), 0)::numeric AS vat_total,
+       coalesce(sum(CASE WHEN kind = 'credit_note' THEN -gross_total ELSE gross_total END), 0)::numeric AS gross_total
 FROM invoices.invoices
 WHERE status = 'issued' AND issue_date BETWEEN sqlc.arg(issued_from)::date AND sqlc.arg(issued_to)::date;
 
--- name: JournalGaps :many
--- JournalGaps is the gap check (D11): every number from the one before the
--- range's first — never below the series start — to the range's last that no
--- issued document holds. The first document of the range is thereby checked
--- against the one before it. At most limit are listed; a caller asking for
--- one more than it shows learns there are more.
-WITH bounds AS (
+-- name: JournalCheckedRange :one
+-- JournalCheckedRange is the numbers the gap check covers (D11): from one past
+-- the issued document before the range's first — the series start when there
+-- is none — to the range's last. Every number missing between the previous
+-- issued document and the range's first is thereby listed, not only the one
+-- just before it. No row when the range holds no document.
+SELECT greatest(
+           coalesce((SELECT max(p.number) FROM invoices.invoices p WHERE p.status = 'issued' AND p.number < b.first_number),
+                    sqlc.arg(series_start)::bigint - 1) + 1,
+           sqlc.arg(series_start)::bigint)::bigint AS checked_from,
+       b.last_number::bigint AS checked_to
+FROM (
     SELECT min(number) AS first_number, max(number) AS last_number FROM invoices.invoices
     WHERE status = 'issued' AND issue_date BETWEEN sqlc.arg(issued_from)::date AND sqlc.arg(issued_to)::date
-)
+) b
+WHERE b.first_number IS NOT NULL;
+
+-- name: JournalGaps :many
+-- JournalGaps is the gap check (D11): every number of the checked range that
+-- no issued document holds. At most max_gaps are listed; a caller asking for
+-- one more than it shows learns there are more.
 SELECT g::bigint AS missing
-FROM bounds, generate_series(greatest(bounds.first_number - 1, sqlc.arg(series_start)::bigint), bounds.last_number) AS g
-WHERE bounds.first_number IS NOT NULL
-  AND NOT EXISTS (SELECT 1 FROM invoices.invoices d WHERE d.number = g AND d.status = 'issued')
+FROM generate_series(sqlc.arg(checked_from)::bigint, sqlc.arg(checked_to)::bigint) AS g
+WHERE NOT EXISTS (SELECT 1 FROM invoices.invoices d WHERE d.number = g AND d.status = 'issued')
 ORDER BY g
 LIMIT sqlc.arg(max_gaps);
+
+-- name: HighestIssuedNumber :one
+-- HighestIssuedNumber is the highest number an issued document holds; no row
+-- when nothing is issued. The journal compares the counter with it (D11).
+SELECT number FROM invoices.invoices WHERE status = 'issued' ORDER BY number DESC LIMIT 1;
 ```
 
 **Run**, from the repository root:
@@ -14244,19 +14915,37 @@ func (s *server) GetInvoicesJournal(ctx context.Context, req gen.GetInvoicesJour
 			}
 		}
 
-		gaps, err := q.JournalGaps(ctx, store.JournalGapsParams{
-			IssuedFrom: from, IssuedTo: to, SeriesStart: settings.SeriesStart, MaxGaps: maxJournalGaps + 1,
+		checked, err := q.JournalCheckedRange(ctx, store.JournalCheckedRangeParams{
+			IssuedFrom: from, IssuedTo: to, SeriesStart: settings.SeriesStart,
 		})
-		if err != nil {
-			return fmt.Errorf("invoices: check the series for gaps: %w", err)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+		case err != nil:
+			return fmt.Errorf("invoices: find the range the gap check covers: %w", err)
+		default:
+			resp.CheckedFrom, resp.CheckedTo = ptr(checked.CheckedFrom), ptr(checked.CheckedTo)
+			gaps, err := q.JournalGaps(ctx, store.JournalGapsParams{
+				CheckedFrom: checked.CheckedFrom, CheckedTo: checked.CheckedTo, MaxGaps: maxJournalGaps + 1,
+			})
+			if err != nil {
+				return fmt.Errorf("invoices: check the series for gaps: %w", err)
+			}
+			resp.GapsTruncated = len(gaps) > maxJournalGaps
+			if resp.GapsTruncated {
+				gaps = gaps[:maxJournalGaps]
+			}
+			resp.Gaps = gaps
 		}
-		resp.GapsTruncated = len(gaps) > maxJournalGaps
-		if resp.GapsTruncated {
-			gaps = gaps[:maxJournalGaps]
-		}
-		resp.Gaps = gaps
 		if resp.Gaps == nil {
 			resp.Gaps = []int64{}
+		}
+		highest, err := q.HighestIssuedNumber(ctx)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+		case err != nil:
+			return fmt.Errorf("invoices: read the highest issued number: %w", err)
+		default:
+			resp.HighestIssued = highest
 		}
 		resp.SeriesStart = settings.SeriesStart
 		next, err := q.CounterNextValue(ctx)
@@ -14295,27 +14984,28 @@ cd ../..
 Commit:
 
 ```bash
-cat > /tmp/claude-1000/msg-invoices-task8.txt <<'MSG'
+cat > /tmp/claude-1000/msg-invoices-task10.txt <<'MSG'
 feat(invoices): the invoice journal and its gap check
 
 The journal (invoices foundation design D11), what proves complete
 registration: the range's issued documents in number order with credit
 notes signed negative, totals per SAF-T code over the whole range, and the
-gap check from the number before the range's first to its last, never below
-the series start; counterLast shows a number taken without a document.
+gap check from one past the issued document before the range's first to
+the range's last, never below the series start, with the range it checked;
+counterLast against highestIssued shows a number taken without a document.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 MSG
 git add -- 'apps/invoices/frontend/src/api-schema.d.ts' 'apps/server/internal/invoices/gen/api.gen.go' 'apps/server/internal/invoices/journal.go' 'apps/server/internal/invoices/journal_test.go' 'apps/server/internal/invoices/queries/journal.sql' 'apps/server/internal/invoices/store/journal.sql.go' 'apps/server/internal/openapi/specs/invoices.yaml' 'openapi/COVERAGE.md' 'openapi/invoices.yaml'
-git commit -F /tmp/claude-1000/msg-invoices-task8.txt -- 'apps/invoices/frontend/src/api-schema.d.ts' 'apps/server/internal/invoices/gen/api.gen.go' 'apps/server/internal/invoices/journal.go' 'apps/server/internal/invoices/journal_test.go' 'apps/server/internal/invoices/queries/journal.sql' 'apps/server/internal/invoices/store/journal.sql.go' 'apps/server/internal/openapi/specs/invoices.yaml' 'openapi/COVERAGE.md' 'openapi/invoices.yaml'
+git commit -F /tmp/claude-1000/msg-invoices-task10.txt -- 'apps/invoices/frontend/src/api-schema.d.ts' 'apps/server/internal/invoices/gen/api.gen.go' 'apps/server/internal/invoices/journal.go' 'apps/server/internal/invoices/journal_test.go' 'apps/server/internal/invoices/queries/journal.sql' 'apps/server/internal/invoices/store/journal.sql.go' 'apps/server/internal/openapi/specs/invoices.yaml' 'openapi/COVERAGE.md' 'openapi/invoices.yaml'
 git show --stat HEAD && git status --short   # nothing of yours left; go.mod/go.sum at the root untracked as before
 ```
 
 ---
 
-### Task 9: The docs (D13)
+### Task 11: The docs (D13)
 
-`docs/invoices.md` is new: the law in one page (numbering, immutability, credit notes, VAT per rate, the issue-date rule and that "calendar day ≤ 15" is stricter than the law, delivery, NOK only), the model, drafts, issuing with every code, credit notes, the PDF and store-once, the journal, retention (§ 13; the object store's backup is part of it; nothing purged; the 2027 wording unconfirmed), why anonymisation erases drafts only, permissions with the `customers:view` note, every endpoint and its refusals, and the plain warning that phase 1A meets neither the B2G nor the 2027 B2B duty. The other docs gain what the module changed.
+`docs/invoices.md` is new: the law in one page (numbering, immutability, credit notes, VAT per rate, the issue-date rule and that "calendar day ≤ 15" is stricter than the law, delivery, NOK only), the model, drafts, issuing with every code, credit notes, the PDF and store-once, the journal, retention (§ 13; the object store's backup is part of it; nothing purged; the 2027 wording unconfirmed), why anonymisation erases drafts only, permissions with the `customers:view` note, every endpoint and its refusals, and the plain warning that phase 1A meets neither the B2G nor the 2027 B2B duty. The other docs gain what the module changed. It may be written beside Tasks 7–10 once Task 6 is in; Step 3's check and the commit run after Task 10 (see Parallelism).
 
 **Files:**
 - Create: `docs/invoices.md`
@@ -14414,10 +15104,15 @@ else the settings' default. The customer gates, in order: merged away (409
 `customer_merged` with `mergedInto`), archived — which includes an anonymised person —
 (`customer_archived`), disabled — "blocked for invoicing" — (`customer_blocked`), and no
 customer at all (`customer_missing`). They run on create, on every save and again at
-issue; never on a credit note, and never on a read. A draft's totals are computed with
-the rates in force today; the issue computes them again for the issue date. Warnings
-never refuse: `customer_currency_differs`, `issued_late`, `credit_exceeds_invoice`,
-`credit_exceeds_line`.
+issue; never on a credit note, and never on a read. An invoice draft's totals are
+computed with the rates in force today — a line whose code has no rate period covering
+today counts at 0 % and the draft warns `vat_code_not_valid`, which the issue would
+refuse — and the issue computes them again for the issue date. A credit-note draft is
+totalled at its original lines' rates, in its response and its preview alike. Warnings
+never refuse: `customer_currency_differs`, `issued_late` (never on a credit note, which
+keeps its original's delivery and is late by nature), `vat_code_not_valid`,
+`credit_exceeds_invoice`, `credit_exceeds_line` — a credit draft over both caps carries
+both.
 
 ## Issuing
 
@@ -14427,8 +15122,10 @@ every rule — the counter row is what serialises two issues, so every check tha
 depends on other documents runs after it. The directory is read before the transaction
 and the object store is used after it; neither is ever called under a lock. The lock
 order is always document → settings → counter → original, and nothing takes them in
-another order: `PUT /settings` and the rate operations take only the settings row, the
-merge holder updates documents only.
+another order: `PUT /settings` and the rate operations take only the settings row, and
+the merge holder locks the documents it re-points **newest first** before it writes
+them — a credit note's issue holds the credit note and then locks its older original,
+and an UPDATE alone could lock the original first, a deadlock.
 
 The checks, each a 409 that rolls the number back: `seller_incomplete`, `no_lines`,
 `delivery_date_missing`, `issue_date_not_allowed` (with `allowedIssueDates`); for an
@@ -14476,23 +15173,29 @@ never fails the issue: the response says `pdfStored: false` and the first downlo
 it. Every download streams the stored object, verified against its hash; a document whose
 hash is set is never rendered again, and the module never deletes an object. A stored
 object that is gone or no longer matches its hash is a 500 logged at error — an operator
-problem, never papered over. Reproducible bytes are a nice-to-have: catalog sorting and a
+problem, never papered over. A first download that cannot reach the store is a 503 to
+retry; one that cannot render the document is a 500, since retrying does not mend it. Reproducible bytes are a nice-to-have: catalog sorting and a
 fixed modification date are set process-wide and the creation date is the issue instant,
 but the bytes may change with a maroto, gofpdf or font upgrade; stored PDFs never do.
 
 `GET /invoices/{id}/preview.pdf` renders a draft on demand with the watermark
-"UTKAST — ikke et salgsdokument", no number, today's date, the current settings and the
-customer's current profile. It is never stored.
+"UTKAST — ikke et salgsdokument", no number, today's date, the current settings and,
+for an invoice draft, the customer's current profile at today's rates; a credit-note
+draft keeps its copied buyer and its original lines' rates. It is never stored.
 
 ## The journal
 
 `GET /invoices/journal?from&to` lists the issued documents with an issue date in the
 range in number order, credit notes **signed negative** in every amount (they are stored
 positive), totals per SAF-T code, category and rate over the whole range, and the gap
-check: every number from the one before the range's first (never below the series start)
-to its last that no issued document holds — at most 1000 listed. `counterLast` is the
-counter's last allocated number; when it is not the highest issued number, a number was
-allocated without a document. This is what shows "det ikke er brudd i nummerserien".
+check: every number from one past the issued document before the range's first (the
+series start when there is none) to the range's last that no issued document holds — at
+most 1000 listed. A hole straddling two ranges is thereby listed in full by the later
+one, not only the number just before its first. `checkedFrom` and `checkedTo` are the
+numbers the check covered. `counterLast` is the counter's last allocated number and
+`highestIssued` the highest number an issued document holds, whatever its date; when
+they differ, a number was allocated without a document. This is what shows "det ikke er
+brudd i nummerserien".
 
 ## Retention and personal data
 
@@ -14554,7 +15257,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access`.
 | `DELETE /{id}` | `invoices:create` | 404; 409 `invoice_issued` |
 | `POST /{id}/issue` | `invoices:issue` | 404; 409 every code under [Issuing](#issuing); 503 `storage_unavailable` |
 | `POST /{id}/credit` | `invoices:issue` | 404; 409 `invoice_draft`, `credit_note_not_creditable`, `invoice_fully_credited` |
-| `GET /{id}/pdf` | | 404; 409 `invoice_draft`; 500 a missing or altered stored object; 503 `storage_unavailable` |
+| `GET /{id}/pdf` | | 404; 409 `invoice_draft`; 500 a missing or altered stored object, or a render that fails; 503 `storage_unavailable` |
 | `GET /{id}/preview.pdf` | `invoices:create` | 404; 409 `invoice_issued` |
 | `GET /journal` | | 400 `from` after `to`, paging |
 
@@ -15112,7 +15815,7 @@ MODULES=customers,products,energy,communications,projects,time,expenses,invoices
 # (outbox delivery, retention, attachment cleanup) in-process alongside
 ```
 
-- [ ] **Step 3: Check the docs against the code, and commit**
+- [ ] **Step 3: After Task 10: check the docs against the code, and commit**
 
 Every code the Go writes is in `docs/invoices.md`, and every code the docs name is in the Go (the two leftovers are a kind value, a column and an index name):
 
@@ -15126,7 +15829,7 @@ grep -c 'x-vantigo-access' openapi/invoices.yaml   # 18, the rows of the endpoin
 Commit:
 
 ```bash
-cat > /tmp/claude-1000/msg-invoices-task9.txt <<'MSG'
+cat > /tmp/claude-1000/msg-invoices-task11.txt <<'MSG'
 docs(invoices): the sales document, and what it changed elsewhere
 
 docs/invoices.md (invoices foundation design D13): the law in one page, the
@@ -15142,26 +15845,30 @@ installation with MODULES unset gets Invoices on upgrade.
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 MSG
 git add -- 'CONTRIBUTING.md' 'ROADMAP.md' 'deploy/compose/README.md' 'deploy/compose/vantigo.env.example' 'docs/README.md' 'docs/customers.md' 'docs/invoices.md' 'docs/module-boundaries.md'
-git commit -F /tmp/claude-1000/msg-invoices-task9.txt -- 'CONTRIBUTING.md' 'ROADMAP.md' 'deploy/compose/README.md' 'deploy/compose/vantigo.env.example' 'docs/README.md' 'docs/customers.md' 'docs/invoices.md' 'docs/module-boundaries.md'
+git commit -F /tmp/claude-1000/msg-invoices-task11.txt -- 'CONTRIBUTING.md' 'ROADMAP.md' 'deploy/compose/README.md' 'deploy/compose/vantigo.env.example' 'docs/README.md' 'docs/customers.md' 'docs/invoices.md' 'docs/module-boundaries.md'
 git show --stat HEAD && git status --short   # nothing of yours left; go.mod/go.sum at the root untracked as before
 ```
 
 ---
 
-### Task 10: The Invoices app: the list, the draft editor with live totals, the issue dialog and the credit flow (D12)
+### Task 12: The Invoices app: the list, the draft editor with live totals, the issue dialog and the credit flow (D12)
 
 The list (status and kind chips, customer filter, search, issue-date range, paging, drafts first) with "New invoice" — offered to `canCreate` callers who hold `customers:view`, creating a draft for the picked buyer prefilled with today's delivery and the user's name as "Vår ref." and opening it. The document page: a draft's editor (buyer, delivery day or period with the optional place, references with the "Deres ref." nudge, terms, lines with add, remove and reorder, a VAT code per line from the codes in force today, live totals per rate by D5's exact rule, warnings, Save, Preview, Issue, Delete); the issue dialog offering the server's `allowedIssueDates`; an issued document's page (header, lines, VAT, credit notes, Download PDF, Credit); a credit-note draft linking its original and offering only what D8 allows. The host passes `canViewCustomers` and the display name.
 
+What the review asked of it, each with its test: a refusal names what the server's body names — the dates (`{{dates}}`), the line (`{{line}}`), the customer merged into (`{{mergedInto}}`) — in both languages; every code the page can meet has a catalog key (`invoice_draft`, `credit_note_not_creditable` among them); Issue is disabled with a hint when meta says `storageAvailable: false`; a meta that fails to load is an alert; the PDF and the preview are fetched behind buttons (`components/pdf-button.tsx`), so a 409 or 503 is a notification; a line's code is named even when it is no longer offered or has expired, and totalled as the server does (`lib/vat.ts` over `GET /vat-codes`); a caller without `canCreate` sees the draft read-only; a credit line's quantity and price carry the original's as their `max`; the list's search is debounced and its customer filter offers every customer not archived; the issued page shows a foreign buyer's id; the fixtures are the wire's (`seller`, `issuedAt`, `issuedByUserId`).
+
+**When it runs beside Tasks 9–11:** never run `gen:client` and never commit `apps/invoices/frontend/src/api-schema.d.ts` — Tasks 9 and 10 regenerate and commit it — and keep `i18n.ts` balanced and biome-clean between edits: the pre-commit hook runs biome over the whole repository.
+
 **Files:**
-- Create: `apps/host/frontend/src/routes/invoices/$invoiceId.tsx`, `apps/host/frontend/src/routes/invoices/-invoice-access.tsx`, `apps/host/frontend/src/routes/invoices/-invoices-list.test.tsx`, `apps/host/frontend/src/routes/invoices/-invoices-list.tsx`, `apps/invoices/frontend/src/api/customers.ts`, `apps/invoices/frontend/src/api/invoices.ts`, `apps/invoices/frontend/src/components/customer-picker.tsx`, `apps/invoices/frontend/src/components/document-link.tsx`, `apps/invoices/frontend/src/lib/errors.ts`, `apps/invoices/frontend/src/lib/format.ts`, `apps/invoices/frontend/src/lib/money.test.ts`, `apps/invoices/frontend/src/lib/money.ts`, `apps/invoices/frontend/src/lib/routes.ts`, `apps/invoices/frontend/src/pages/-issue-modal.tsx`, `apps/invoices/frontend/src/pages/invoice.test.tsx`, `apps/invoices/frontend/src/pages/invoice.tsx`, `apps/invoices/frontend/src/test/fixtures.ts`, `apps/invoices/frontend/src/test/invoice-route.tsx`, `apps/invoices/frontend/src/test/route-tree.tsx`
+- Create: `apps/host/frontend/src/routes/invoices/$invoiceId.tsx`, `apps/host/frontend/src/routes/invoices/-invoice-access.tsx`, `apps/host/frontend/src/routes/invoices/-invoices-list.test.tsx`, `apps/host/frontend/src/routes/invoices/-invoices-list.tsx`, `apps/invoices/frontend/src/api/customers.ts`, `apps/invoices/frontend/src/api/invoices.ts`, `apps/invoices/frontend/src/api/vat-codes.ts`, `apps/invoices/frontend/src/components/customer-picker.tsx`, `apps/invoices/frontend/src/components/document-link.tsx`, `apps/invoices/frontend/src/components/pdf-button.tsx`, `apps/invoices/frontend/src/lib/errors.ts`, `apps/invoices/frontend/src/lib/format.ts`, `apps/invoices/frontend/src/lib/money.test.ts`, `apps/invoices/frontend/src/lib/money.ts`, `apps/invoices/frontend/src/lib/routes.ts`, `apps/invoices/frontend/src/lib/vat.ts`, `apps/invoices/frontend/src/pages/-issue-modal.tsx`, `apps/invoices/frontend/src/pages/invoice.test.tsx`, `apps/invoices/frontend/src/pages/invoice.tsx`, `apps/invoices/frontend/src/test/fixtures.ts`, `apps/invoices/frontend/src/test/invoice-route.tsx`, `apps/invoices/frontend/src/test/route-tree.tsx`
 - Modify: `apps/host/frontend/src/routes/invoices/index.tsx`, `apps/invoices/frontend/src/i18n.ts`, `apps/invoices/frontend/src/index.ts`, `apps/invoices/frontend/src/pages/invoices.test.tsx`, `apps/invoices/frontend/src/pages/invoices.tsx`
 - Generated (commit them; never edit by hand): `apps/host/frontend/src/routeTree.gen.ts`
 - Read first (do not change): `apps/expenses/frontend/src/{lib/routes.ts,test/route-tree.tsx,test/claim-route.tsx,pages/my-expenses.tsx}`, `apps/host/frontend/src/routes/expenses/{claims.$claimId.tsx,-my-expenses.tsx,-my-expenses.test.tsx}`, `packages/frontend-api-client/src/index.ts:27-90` (`ApiConflictError.code`/`.problem`)
 
 **Interfaces:**
-- Produces TS: `api/invoices.ts` (`invoiceListQueryOptions`, `invoiceQueryOptions`, `createInvoice`, `replaceInvoice`, `deleteInvoice`, `issueInvoice`, `creditInvoice`, `pdfUrl`, `previewUrl`), `api/customers.ts` (`customerSearchQueryOptions`), `lib/money.ts` (`lineAmounts`, `documentTotals` — BigInt, half away from zero), `lib/routes.ts` (`INVOICE_ROUTE_PATH = "/invoices/$invoiceId"`), `lib/errors.ts` (`refusalMessage`, `refusalCode`), `components/{customer-picker,document-link}.tsx`, `pages/{invoices,invoice,-issue-modal}.tsx` (`InvoicesPage {canViewCustomers, userDisplayName?}`, `InvoicePage {invoiceId, canViewCustomers}`); host routes `/invoices/` and `/invoices/$invoiceId` over `useInvoiceAccess()`.
+- Produces TS: `api/invoices.ts` (`invoiceListQueryOptions`, `invoiceQueryOptions`, `createInvoice`, `replaceInvoice`, `deleteInvoice`, `issueInvoice`, `creditInvoice`, `pdfUrl`, `previewUrl`, `fetchPdf`), `api/vat-codes.ts` (`vatCodesQueryOptions` and the VAT-code writes Task 13 uses), `api/customers.ts` (`customerSearchQueryOptions(search, anyOpen)`), `lib/money.ts` (`lineAmounts`, `documentTotals` — BigInt, half away from zero), `lib/routes.ts` (`INVOICE_ROUTE_PATH = "/invoices/$invoiceId"`), `lib/errors.ts` (`refusalMessage(error, t, date)`, `refusalCode`, `refusalProblem`), `lib/vat.ts` (`rateOn`, `draftRate`), `components/{customer-picker,document-link,pdf-button}.tsx`, `pages/{invoices,invoice,-issue-modal}.tsx` (`InvoicesPage {canViewCustomers, userDisplayName?}`, `InvoicePage {invoiceId, canViewCustomers}`); host routes `/invoices/` and `/invoices/$invoiceId` over `useInvoiceAccess()`.
 
-- [ ] **Step 1: The tests: the money against the server's own cases, the list, the editor, the dialog, the credit flow**
+- [ ] **Step 1: The tests: the money against the server's own cases, the list, the editor, the dialog, the credit flow, the refusals, the PDF**
 
 **Create** `apps/invoices/frontend/src/lib/money.test.ts`:
 
@@ -15213,6 +15920,7 @@ describe("the editor's money", () => {
 ```ts
 import type { InvoiceDocument, InvoiceList } from "../api/invoices";
 import type { InvoicesMeta } from "../api/meta";
+import type { VatCode } from "../api/vat-codes";
 
 /**
  * GET /meta as the server sends it — a wire literal: a complete seller, the
@@ -15299,12 +16007,36 @@ export const issued = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocumen
     dueDate: "2026-10-12",
     exchangeRateDate: "2026-09-12",
     customerName: "Acme Norge AS",
+    issuedAt: "2026-09-12T10:30:00Z",
+    issuedByUserId: "0b6e4c1a-5f7d-4d8e-9a3b-2c1d0e9f8a7b",
     buyer: {
       customerNumber: 10001,
       type: "business",
       name: "Acme Norge AS",
       organisationNumber: "923609016",
+      addressLine1: "Kundeveien 2",
+      postalCode: "0150",
+      city: "Oslo",
+      country: "NO",
+      peppolId: "0192:923609016",
+      gln: "7080000000001",
       language: "nb",
+    },
+    seller: {
+      legalName: "Kraft-Verket AS",
+      organisationNumber: "974760673",
+      vatRegistered: true,
+      inForetaksregisteret: true,
+      addressLine1: "Storgata 1",
+      addressLine2: "",
+      postalCode: "0155",
+      city: "Oslo",
+      country: "NO",
+      bankAccount: "15032080119",
+      iban: "",
+      bic: "",
+      email: "faktura@kraft-verket.no",
+      footerText: "",
     },
     lines: base.lines.map((l) => ({ ...l, vatRatePercent: 25, vatCategory: "S", safTCode: "3" })),
     allowedIssueDates: undefined,
@@ -15394,6 +16126,62 @@ export const listPage = (overrides: Partial<InvoiceList["pagination"]> = {}): In
     ...overrides,
   },
 });
+
+/**
+ * GET /vat-codes as the server sends it: every code, inactive ones included.
+ * Code 3 is at 25 % with a change to 26 % from 2027, not yet in force; code 9
+ * is no longer offered but still has a period covering today.
+ */
+export const vatCodes = (): VatCode[] => [
+  {
+    id: 1,
+    code: "3",
+    name: "Utgående mva 25 %",
+    safTCode: "3",
+    ehfCategory: "S",
+    active: true,
+    inUse: true,
+    revision: 1,
+    rates: [
+      { id: 1001, ratePercent: 25, validFrom: "2026-01-01", validTo: "2026-12-31" },
+      { id: 1002, ratePercent: 26, validFrom: "2027-01-01" },
+    ],
+  },
+  {
+    id: 2,
+    code: "31",
+    name: "Utgående mva 15 %",
+    safTCode: "31",
+    ehfCategory: "S",
+    active: true,
+    inUse: false,
+    revision: 1,
+    rates: [{ id: 1003, ratePercent: 15, validFrom: "2026-01-01" }],
+  },
+  {
+    id: 5,
+    code: "5",
+    name: "Fritatt innenlands 0 %",
+    safTCode: "5",
+    ehfCategory: "Z",
+    exemptionReason: "Fritatt for merverdiavgift",
+    active: true,
+    inUse: false,
+    revision: 1,
+    rates: [{ id: 1005, ratePercent: 0, validFrom: "2026-01-01" }],
+  },
+  {
+    id: 9,
+    code: "3G",
+    name: "Gammel sats",
+    safTCode: "3",
+    ehfCategory: "S",
+    active: false,
+    inUse: true,
+    revision: 2,
+    rates: [{ id: 1009, ratePercent: 25, validFrom: "2020-01-01" }],
+  },
+];
 ```
 
 **Create** `apps/invoices/frontend/src/test/invoice-route.tsx`:
@@ -15535,6 +16323,32 @@ describe("the invoice list", () => {
     await waitFor(() => expect(fetchMock.actualCalls.some(([url]) => path(url).includes("page=2"))).toBe(true));
   });
 
+  it("searches once the typing pauses, not per keystroke", async () => {
+    const fetchMock = server();
+    renderRoute("/invoices");
+    await screen.findByText("Kari Nordmann");
+
+    await userEvent.type(screen.getByRole("textbox", { name: "Search" }), "Acme");
+    await waitFor(() => expect(fetchMock.actualCalls.some(([url]) => path(url).includes("search=Acme"))).toBe(true));
+    const searches = fetchMock.actualCalls.filter(([url]) => /^\/api\/v1\/invoices\?.*search=/.test(path(url)));
+    expect(searches.map(([url]) => path(url))).toEqual(["/api/v1/invoices?page=1&search=Acme"]);
+  });
+
+  it("filters by any customer not archived, a disabled one too", async () => {
+    const fetchMock = server();
+    renderRoute("/invoices");
+    await screen.findByText("Kari Nordmann");
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Customer" }));
+    await waitFor(() =>
+      expect(fetchMock.actualCalls.some(([url]) => path(url).startsWith("/api/v1/customers?"))).toBe(true),
+    );
+    const customers = fetchMock.actualCalls
+      .map(([url]) => path(url))
+      .filter((url) => url.startsWith("/api/v1/customers?"));
+    expect(customers.every((url) => !url.includes("status="))).toBe(true);
+  });
+
   it("offers New invoice only to a caller who may create drafts and pick a buyer", async () => {
     server();
     renderRoute("/invoices", { canViewCustomers: false });
@@ -15578,27 +16392,51 @@ describe("the invoice list", () => {
 ```tsx
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { InvoiceDocument } from "../api/invoices";
 import { jsonResponse, sent } from "../test/api";
 import { stubFetch } from "../test/fetch";
-import { creditDraft, draft, issued, meta } from "../test/fixtures";
+import { creditDraft, draft, issued, meta, vatCodes } from "../test/fixtures";
 import { renderRoute } from "../test/route-tree";
 
 const path = (input: RequestInfo | URL) => String(input);
 
+/** Beyond the documents: the meta to answer, and any other answer by "METHOD url". */
+interface ServerOptions {
+  meta?: Parameters<typeof meta>[0];
+  answers?: Record<string, Response | (() => Response)>;
+}
+
 /** The fetch fake over a set of documents by id, answering what each write answers. */
-const server = (documents: Record<number, InvoiceDocument>, answers: Record<string, InvoiceDocument> = {}) =>
+const server = (
+  documents: Record<number, InvoiceDocument>,
+  answers: Record<string, InvoiceDocument> = {},
+  options: ServerOptions = {},
+) =>
   stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
     const url = path(input);
     const method = init?.method ?? "GET";
-    if (url === "/api/v1/invoices/meta") return jsonResponse(200, meta());
+    const other = options.answers?.[`${method} ${url}`];
+    if (other) return typeof other === "function" ? other() : other.clone();
+    if (url === "/api/v1/invoices/meta") return jsonResponse(200, meta(options.meta));
+    if (url === "/api/v1/invoices/vat-codes") return jsonResponse(200, vatCodes());
     const answer = answers[`${method} ${url}`];
     if (answer) return jsonResponse(method === "POST" && url.endsWith("/credit") ? 201 : 200, answer);
     const match = /^\/api\/v1\/invoices\/(\d+)$/.exec(url);
     if (match && method === "GET" && documents[Number(match[1])]) return jsonResponse(200, documents[Number(match[1])]);
     if (url.startsWith("/api/v1/customers?")) return jsonResponse(200, { data: [] });
     return new Response(null, { status: 404 });
+  });
+
+/** A refusal as the server answers it: the invoices conflict problem. */
+const refusal = (status: number, code: string, extra: Record<string, unknown> = {}) =>
+  jsonResponse(status, {
+    type: "about:blank",
+    title: "Refused",
+    status,
+    code,
+    detail: "The server's English.",
+    ...extra,
   });
 
 describe("the draft editor", () => {
@@ -15693,7 +16531,6 @@ describe("an issued document", () => {
     const { router } = renderRoute("/invoices/1001");
 
     expect(await screen.findByRole("heading", { name: "Invoice 1000" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Download PDF" })).toHaveAttribute("href", "/api/v1/invoices/1001/pdf");
     expect(screen.getByText(/It is stored the first time it is downloaded/)).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Credit" }));
@@ -15725,6 +16562,177 @@ describe("a credit-note draft", () => {
     expect(screen.getByText(/credits more than the original line had left/)).toBeInTheDocument();
     // At the original line's own 25 %.
     await waitFor(() => expect(screen.getByTestId("vat-total")).toHaveTextContent("8.33"));
+  });
+
+  it("names a code deactivated since, and never raises a quantity past the original's", async () => {
+    const base = creditDraft();
+    server({ 1002: creditDraft({ lines: [{ ...base.lines[0], vatCodeId: 9 }] }), 1001: issued() });
+    renderRoute("/invoices/1002");
+
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: "Line 1 VAT code" })).toHaveValue(
+        "3G — Gammel sats (no longer offered)",
+      ),
+    );
+    const quantity = screen.getByRole("textbox", { name: "Line 1 quantity" });
+    await waitFor(() => expect(screen.getByTestId("vat-total")).toHaveTextContent("8.33"));
+    await userEvent.clear(quantity);
+    await userEvent.type(quantity, "5");
+    await userEvent.tab();
+    expect(quantity).toHaveValue("1");
+  });
+});
+
+describe("refusals", () => {
+  it("names the line a refusal names, in the reader's language", async () => {
+    server(
+      { 1001: draft() },
+      {},
+      { answers: { "POST /api/v1/invoices/1001/issue": refusal(409, "vat_code_inactive", { linePosition: 2 }) } },
+    );
+    renderRoute("/invoices/1001");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Issue" }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Issue" }));
+    expect(await screen.findByText("The VAT code on line 2 is no longer offered.")).toBeInTheDocument();
+    expect(screen.queryByText("The server's English.")).not.toBeInTheDocument();
+  });
+
+  it("names the dates an issue may take", async () => {
+    server(
+      { 1001: draft() },
+      {},
+      {
+        answers: {
+          "POST /api/v1/invoices/1001/issue": refusal(409, "issue_date_not_allowed", {
+            allowedIssueDates: ["2026-09-12"],
+          }),
+        },
+      },
+    );
+    renderRoute("/invoices/1001");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Issue" }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Issue" }));
+    expect(
+      await screen.findByText("That issue date is not allowed today. It may be: Sep 12, 2026."),
+    ).toBeInTheDocument();
+  });
+
+  it("says when the metadata cannot be loaded", async () => {
+    server({ 1001: draft() }, {}, { answers: { "GET /api/v1/invoices/meta": jsonResponse(500, { title: "Boom" }) } });
+    renderRoute("/invoices/1001");
+    expect(await screen.findByText("Could not load Invoices")).toBeInTheDocument();
+  });
+});
+
+describe("the PDF", () => {
+  it("downloads the stored PDF behind a button", async () => {
+    const createObjectURL = vi.fn(() => "blob:pdf");
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const fetchMock = server(
+      { 1001: issued() },
+      {},
+      {
+        answers: {
+          "GET /api/v1/invoices/1001/pdf": () =>
+            new Response("%PDF-1.7", {
+              status: 200,
+              headers: {
+                "Content-Type": "application/pdf",
+                "Content-Disposition": 'attachment; filename="faktura-1000.pdf"',
+              },
+            }),
+        },
+      },
+    );
+    renderRoute("/invoices/1001");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Download PDF" }));
+    await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
+    expect(fetchMock.actualCalls.some(([url]) => path(url) === "/api/v1/invoices/1001/pdf")).toBe(true);
+    expect(click).toHaveBeenCalled();
+  });
+
+  it("says a refusal as a notification, never the problem JSON in the browser", async () => {
+    server(
+      { 1001: issued() },
+      {},
+      { answers: { "GET /api/v1/invoices/1001/pdf": refusal(503, "storage_unavailable") } },
+    );
+    renderRoute("/invoices/1001");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Download PDF" }));
+    expect(await screen.findByText("Could not open the PDF")).toBeInTheDocument();
+    expect(
+      screen.getByText("The document store is unavailable, so nothing can be issued or downloaded now."),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("what the editor offers", () => {
+  it("offers no issue without an object store, and says why", async () => {
+    server({ 1001: draft() }, {}, { meta: { storageAvailable: false } });
+    renderRoute("/invoices/1001");
+
+    expect(await screen.findByRole("button", { name: "Issue" })).toBeDisabled();
+    expect(screen.getByText("This installation has no document store, so nothing can be issued.")).toBeInTheDocument();
+  });
+
+  it("is read-only to a caller who may not create drafts", async () => {
+    server({ 1001: draft() }, {}, { meta: { capabilities: { canCreate: false, canIssue: false, canManage: false } } });
+    renderRoute("/invoices/1001");
+
+    expect(await screen.findByRole("textbox", { name: "Line 1 description" })).toHaveAttribute("readonly");
+    expect(screen.getByRole("textbox", { name: "Line 1 quantity" })).toHaveAttribute("readonly");
+    expect(screen.getByRole("combobox", { name: "Line 1 VAT code" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add a line" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove line 1" })).not.toBeInTheDocument();
+  });
+
+  it("names and totals a line whose code is no longer offered as the server does", async () => {
+    const lines = draft().lines.map((l) => ({ ...l, vatCodeId: 9 }));
+    server({ 1001: draft({ lines }) });
+    renderRoute("/invoices/1001");
+
+    // Code 9 is deactivated but still has 25 % today: the server totals it at
+    // 25 % (and refuses it at issue), so the editor does too.
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: "Line 1 VAT code" })).toHaveValue(
+        "3G — Gammel sats (no longer offered)",
+      ),
+    );
+    await waitFor(() => expect(screen.getByTestId("vat-total")).toHaveTextContent("25.00"));
+  });
+
+  it("totals a line whose code has no rate today at 0 %, as the server does, with its warning", async () => {
+    const lines = draft().lines.map((l) => ({ ...l, vatCodeId: 1 }));
+    server({ 1001: draft({ lines, warnings: ["vat_code_not_valid"] }) }, {}, { meta: { today: "2025-06-01" } });
+    renderRoute("/invoices/1001");
+
+    expect(await screen.findByText(/has no rate today, so it counts at 0 %/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("vat-total")).toHaveTextContent("0.00"));
+  });
+});
+
+describe("an issued document's buyer", () => {
+  it("shows a foreign buyer's id", async () => {
+    const buyer = {
+      customerNumber: 10003,
+      type: "business",
+      name: "Svenska Aktiebolaget AB",
+      foreignId: "SE556677889901",
+      addressLine1: "Storgatan 1",
+      postalCode: "111 22",
+      city: "Stockholm",
+      country: "SE",
+      language: "en",
+    };
+    server({ 1001: issued({ buyer }) });
+    renderRoute("/invoices/1001");
+    expect(await screen.findByText("Foreign ID SE556677889901")).toBeInTheDocument();
   });
 });
 ```
@@ -15761,11 +16769,17 @@ interface CustomerListAnswer {
   data: CustomerOption[];
 }
 
-export const customerSearchQueryOptions = (search: string) =>
+/**
+ * A search of the customers. A buyer is picked among the active ones only —
+ * the gates refuse the rest — while the list's filter offers every customer
+ * not archived (`anyOpen`): a disabled customer still has documents to find.
+ */
+export const customerSearchQueryOptions = (search: string, anyOpen = false) =>
   queryOptions({
-    queryKey: [INVOICES_QUERY_KEY, "customers", search],
+    queryKey: [INVOICES_QUERY_KEY, "customers", search, anyOpen],
     queryFn: async ({ signal }) => {
-      const params = new URLSearchParams({ pageSize: "20", status: "active" });
+      const params = new URLSearchParams({ pageSize: "20" });
+      if (!anyOpen) params.set("status", "active");
       if (search.trim()) params.set("search", search.trim());
       const answer = await request<CustomerListAnswer>(`/api/v1/customers?${params.toString()}`, { signal });
       return answer.data;
@@ -15779,7 +16793,7 @@ export const customerSearchQueryOptions = (search: string) =>
 import { queryOptions } from "@tanstack/react-query";
 import { appUrl } from "@vantigo/frontend-shell";
 import type { components } from "../api-schema";
-import { INVOICES_QUERY_KEY, json, request } from "./request";
+import { INVOICES_QUERY_KEY, json, readJson, request } from "./request";
 
 type Schemas = components["schemas"];
 
@@ -15851,6 +16865,69 @@ export const pdfUrl = (id: number): string => appUrl(`/api/v1/invoices/${id}/pdf
 
 /** Where a draft's watermarked preview renders. */
 export const previewUrl = (id: number): string => appUrl(`/api/v1/invoices/${id}/preview.pdf`);
+
+/** A fetched PDF and the name the server gives it. */
+export interface FetchedPdf {
+  blob: Blob;
+  fileName?: string;
+}
+
+/**
+ * Fetches a PDF with the session cookie. A refusal — 409 `invoice_draft` or
+ * `invoice_issued`, 503 `storage_unavailable`, a 500 — throws an error carrying
+ * the problem's `code` and body, as the shared client's errors do, so the page
+ * words it like any other refusal rather than the browser opening raw JSON.
+ */
+export const fetchPdf = async (url: string): Promise<FetchedPdf> => {
+  const response = await fetch(url, { credentials: "include" });
+  if (response.ok) {
+    const disposition = response.headers.get("Content-Disposition") ?? "";
+    return { blob: await response.blob(), fileName: /filename="([^"]+)"/.exec(disposition)?.[1] };
+  }
+  const problem = await readJson<Record<string, unknown>>(response).catch(() => ({}) as Record<string, unknown>);
+  const message = String(problem.detail ?? problem.title ?? response.statusText);
+  throw Object.assign(new Error(message), {
+    status: response.status,
+    code: typeof problem.code === "string" ? problem.code : undefined,
+    problem,
+  });
+};
+```
+
+**Create** `apps/invoices/frontend/src/api/vat-codes.ts`:
+
+```ts
+import { queryOptions } from "@tanstack/react-query";
+import type { components } from "../api-schema";
+import { INVOICES_QUERY_KEY, json, request } from "./request";
+
+type Schemas = components["schemas"];
+
+/** A VAT code with every rate period it has had (D3). */
+export type VatCode = Schemas["InvoicesVatCode"];
+export type VatCodeRate = Schemas["InvoicesVatCodeRate"];
+export type VatCodeCreateInput = Schemas["InvoicesVatCodeCreateRequest"];
+export type VatCodeUpdateInput = Schemas["InvoicesVatCodeUpdateRequest"];
+
+export const vatCodesQueryOptions = () =>
+  queryOptions({
+    queryKey: [INVOICES_QUERY_KEY, "vat-codes"],
+    queryFn: ({ signal }) => request<VatCode[]>("/api/v1/invoices/vat-codes", { signal }),
+  });
+
+export const createVatCode = (input: VatCodeCreateInput): Promise<VatCode> =>
+  request<VatCode>("/api/v1/invoices/vat-codes", json("POST", input));
+
+export const updateVatCode = (id: number, input: VatCodeUpdateInput): Promise<VatCode> =>
+  request<VatCode>(`/api/v1/invoices/vat-codes/${id}`, json("PUT", input));
+
+/** The rate-change rule: the open period closes the day before validFrom. */
+export const addVatCodeRate = (id: number, ratePercent: number, validFrom: string): Promise<VatCode> =>
+  request<VatCode>(`/api/v1/invoices/vat-codes/${id}/rates`, json("POST", { ratePercent, validFrom }));
+
+/** Removes the latest, mistaken period and reopens the one before it. */
+export const deleteVatCodeRate = (id: number, rateId: number): Promise<VatCode> =>
+  request<VatCode>(`/api/v1/invoices/vat-codes/${id}/rates/${rateId}`, { method: "DELETE" });
 ```
 
 **Create** `apps/invoices/frontend/src/lib/errors.ts`:
@@ -15859,7 +16936,7 @@ export const previewUrl = (id: number): string => appUrl(`/api/v1/invoices/${id}
 import { ApiValidationError } from "../api/request";
 
 /** A translation function, as `useI18n` hands one out. */
-type Translate = (key: string) => string;
+type Translate = (key: string, values?: Record<string, unknown>) => string;
 
 /**
  * The refusal's code, when the error is one of this module's 409s or its 503
@@ -15877,14 +16954,23 @@ export const refusalProblem = (error: unknown): Record<string, unknown> =>
 
 /**
  * What a refusal says to a person. A coded refusal is worded by its code, in
- * the reader's language, never the server's English detail; a validation
- * error says its first field's message; anything else, the error's own.
+ * the reader's language, never the server's English detail — with what the
+ * refusal names put into the words: the dates an issue may take
+ * (`{{dates}}`, each written by `date`), the line (`{{line}}`) and the
+ * customer a merged one went into (`{{mergedInto}}`). A validation error says
+ * its first field's message; anything else, the error's own.
  */
-export const refusalMessage = (error: unknown, t: Translate): string => {
+export const refusalMessage = (error: unknown, t: Translate, date: (day: string) => string = (d) => d): string => {
   const code = refusalCode(error);
   if (code) {
     const key = `refusal.${code}`;
-    const text = t(key);
+    const problem = refusalProblem(error);
+    const dates = Array.isArray(problem.allowedIssueDates) ? (problem.allowedIssueDates as string[]) : [];
+    const text = t(key, {
+      dates: dates.map(date).join(", "),
+      line: problem.linePosition ?? "",
+      mergedInto: problem.mergedInto ?? "",
+    });
     if (text !== key) return text;
   }
   if (error instanceof ApiValidationError) {
@@ -16033,6 +17119,27 @@ export const invoiceLinkOptions = (invoiceId: number) => ({
 export const invoiceHref = (invoiceId: number): string => INVOICE_ROUTE_PATH.replace("$invoiceId", String(invoiceId));
 ```
 
+**Create** `apps/invoices/frontend/src/lib/vat.ts`:
+
+```ts
+import type { VatCode } from "../api/vat-codes";
+
+/** The rate a VAT code has on a day: the period covering it, or none. */
+export const rateOn = (code: VatCode, day: string): number | undefined =>
+  code.rates.find((r) => r.validFrom <= day && (!r.validTo || r.validTo >= day))?.ratePercent;
+
+/**
+ * A line's category and rate as the server totals a draft (D5): the code's
+ * rate in force today, whether or not the code is still offered, and 0 % when
+ * no period covers today — the draft then carries the warning
+ * `vat_code_not_valid`, and the issue refuses it.
+ */
+export const draftRate = (code: VatCode | undefined, today: string): { category: string; ratePercent: number } => ({
+  category: code?.ehfCategory ?? "",
+  ratePercent: code ? (rateOn(code, today) ?? 0) : 0,
+});
+```
+
 **Create** `apps/invoices/frontend/src/components/customer-picker.tsx`:
 
 ```tsx
@@ -16052,6 +17159,9 @@ export interface CustomerPickerProps {
   label?: string;
   error?: string;
   required?: boolean;
+  readOnly?: boolean;
+  /** Offer every customer not archived, not only the active ones: the list's filter. */
+  anyOpen?: boolean;
 }
 
 /**
@@ -16059,11 +17169,20 @@ export interface CustomerPickerProps {
  * person types. Only a caller holding `customers:view` is offered it — the
  * page decides that; the picker assumes it.
  */
-export const CustomerPicker = ({ value, onChange, selectedName, label, error, required }: CustomerPickerProps) => {
+export const CustomerPicker = ({
+  value,
+  onChange,
+  selectedName,
+  label,
+  error,
+  required,
+  readOnly,
+  anyOpen,
+}: CustomerPickerProps) => {
   const { t } = useI18n("invoices");
   const [search, setSearch] = useState("");
   const [debounced] = useDebouncedValue(search, 250);
-  const customers = useQuery(customerSearchQueryOptions(debounced));
+  const customers = useQuery(customerSearchQueryOptions(debounced, anyOpen));
   const data = (customers.data ?? []).map((c) => ({ value: String(c.id), label: `${c.name} (${c.customerNumber})` }));
   if (value !== null && selectedName && !data.some((d) => d.value === String(value))) {
     data.unshift({ value: String(value), label: selectedName });
@@ -16075,6 +17194,7 @@ export const CustomerPicker = ({ value, onChange, selectedName, label, error, re
       searchable
       clearable
       required={required}
+      readOnly={readOnly}
       data={data}
       value={value === null ? null : String(value)}
       searchValue={search}
@@ -16114,6 +17234,65 @@ export const DocumentLink = ({ invoiceId, children }: { invoiceId: number; child
     >
       {children}
     </Anchor>
+  );
+};
+```
+
+**Create** `apps/invoices/frontend/src/components/pdf-button.tsx`:
+
+```tsx
+import { Button, type ButtonProps } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
+import { type ReactNode, useState } from "react";
+import { fetchPdf } from "../api/invoices";
+import "../i18n";
+import { refusalMessage } from "../lib/errors";
+import { useInvoiceFormat } from "../lib/format";
+
+export interface PdfButtonProps extends ButtonProps {
+  /** Where the PDF is: pdfUrl for a download, previewUrl for a preview. */
+  url: string;
+  /** "download" saves the file under the server's name; "open" shows it in a new tab. */
+  mode: "download" | "open";
+  children: ReactNode;
+}
+
+/**
+ * A PDF behind a button rather than a bare link: the PDF is fetched first, so
+ * a refusal — a draft's download, a store that is down — is a notification in
+ * the reader's language, never the problem JSON opened in the browser.
+ */
+export const PdfButton = ({ url, mode, children, ...button }: PdfButtonProps) => {
+  const { t, date } = useInvoiceFormat();
+  const [loading, setLoading] = useState(false);
+  const open = async () => {
+    // A tab opened after the fetch would be a pop-up the browser blocks: it is
+    // opened now, with the click, and pointed at the PDF once it is here.
+    const tab = mode === "open" ? window.open("", "_blank") : null;
+    setLoading(true);
+    try {
+      const pdf = await fetchPdf(url);
+      const objectUrl = URL.createObjectURL(pdf.blob);
+      if (tab) {
+        tab.location.href = objectUrl;
+      } else {
+        const anchor = document.createElement("a");
+        anchor.href = objectUrl;
+        anchor.download = pdf.fileName ?? "document.pdf";
+        anchor.click();
+      }
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (error) {
+      tab?.close();
+      notifications.show({ color: "red", title: t("couldNotOpenPdf"), message: refusalMessage(error, t, date) });
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <Button {...button} loading={loading} onClick={open}>
+      {children}
+    </Button>
   );
 };
 ```
@@ -16159,7 +17338,7 @@ export const IssueModal = ({ draft, onClose }: IssueModalProps) => {
       onClose();
     },
     onError: (error) =>
-      notifications.show({ color: "red", title: t("couldNotIssue"), message: refusalMessage(error, t) }),
+      notifications.show({ color: "red", title: t("couldNotIssue"), message: refusalMessage(error, t, date) }),
   });
   return (
     <Modal opened onClose={onClose} title={draft.kind === "credit_note" ? t("issueCreditNote") : t("issueInvoice")}>
@@ -16240,15 +17419,18 @@ import {
   previewUrl,
   replaceInvoice,
 } from "../api/invoices";
-import { invoicesMetaQueryOptions, type VatCodeInForce } from "../api/meta";
+import { type InvoicesMeta, invoicesMetaQueryOptions } from "../api/meta";
 import { INVOICES_QUERY_KEY } from "../api/request";
+import { vatCodesQueryOptions } from "../api/vat-codes";
 import { CustomerPicker } from "../components/customer-picker";
 import { DocumentLink } from "../components/document-link";
+import { PdfButton } from "../components/pdf-button";
 import "../i18n";
 import { refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 import { documentTotals, lineAmounts } from "../lib/money";
 import { invoiceLinkOptions } from "../lib/routes";
+import { draftRate } from "../lib/vat";
 import { IssueModal } from "./-issue-modal";
 
 export interface InvoicePageProps {
@@ -16262,13 +17444,20 @@ export interface InvoicePageProps {
  * route owns the id and hands it over as a number.
  */
 export const InvoicePage = ({ invoiceId, canViewCustomers }: InvoicePageProps) => {
-  const { t } = useInvoiceFormat();
+  const { t, date } = useInvoiceFormat();
   const meta = useQuery(invoicesMetaQueryOptions());
   const document = useQuery(invoiceQueryOptions(invoiceId));
+  if (meta.isError) {
+    return (
+      <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadMeta")}>
+        {refusalMessage(meta.error, t, date)}
+      </Alert>
+    );
+  }
   if (document.isError) {
     return (
       <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadInvoice")}>
-        {refusalMessage(document.error, t)}
+        {refusalMessage(document.error, t, date)}
       </Alert>
     );
   }
@@ -16277,9 +17466,7 @@ export const InvoicePage = ({ invoiceId, canViewCustomers }: InvoicePageProps) =
     <DraftEditor
       key={document.data.revision}
       draft={document.data}
-      vatCodes={meta.data.vatCodes}
-      canCreate={meta.data.capabilities.canCreate}
-      canIssue={meta.data.capabilities.canIssue}
+      meta={meta.data}
       canViewCustomers={canViewCustomers}
     />
   ) : (
@@ -16328,9 +17515,8 @@ const nextKey = () => `line-${++lineKeys}`;
 
 interface DraftEditorProps {
   draft: InvoiceDocument;
-  vatCodes: VatCodeInForce[];
-  canCreate: boolean;
-  canIssue: boolean;
+  /** The codes a new line may take, today, the capabilities and whether a store exists. */
+  meta: InvoicesMeta;
   canViewCustomers: boolean;
 }
 
@@ -16340,10 +17526,18 @@ interface DraftEditorProps {
  * "Deres ref." is empty, the terms, the lines with a VAT code each from the
  * codes in force today, live totals per rate by D5's rule, the draft's
  * warnings, and Save, Preview, Issue and Delete. A credit-note draft offers
- * only what D8 allows: removing lines and lowering quantities and prices.
+ * only what D8 allows: removing lines and lowering quantities and prices, never
+ * past the original line's. A caller who may not create drafts sees it read-only;
+ * without an object store nothing is issued, so Issue is not offered then.
  */
-const DraftEditor = ({ draft, vatCodes, canCreate, canIssue, canViewCustomers }: DraftEditorProps) => {
-  const { t, money } = useInvoiceFormat();
+const DraftEditor = ({ draft, meta, canViewCustomers }: DraftEditorProps) => {
+  const { t, money, date } = useInvoiceFormat();
+  const { vatCodes, today, storageAvailable } = meta;
+  const { canCreate, canIssue } = meta.capabilities;
+  // Every code, inactive and expired ones too: a line may carry one the
+  // codes in force no longer list, and it is named and totalled as the
+  // server does.
+  const allCodes = useQuery(vatCodesQueryOptions());
   const queryClient = useQueryClient();
   const navigate = useNavigate() as (options: unknown) => void;
   const heading = useHeading(draft);
@@ -16406,15 +17600,19 @@ const DraftEditor = ({ draft, vatCodes, canCreate, canIssue, canViewCustomers }:
     setDirty(true);
   };
 
-  // Live totals by D5's rule: an invoice's lines at today's rates, a credit
-  // note's at its original lines' own.
+  // Live totals by D5's rule, as the server totals the draft: an invoice's
+  // lines at the rate each code has today — offered or not, 0 % without a
+  // period today — and a credit note's at its original lines' own.
+  const originalLine = (line: EditorLine) => original.data?.lines.find((ol) => ol.id === line.creditsLineId);
   const rateOf = (line: EditorLine): { category: string; ratePercent: number } => {
     if (credit) {
-      const o = original.data?.lines.find((ol) => ol.id === line.creditsLineId);
+      const o = originalLine(line);
       return { category: o?.vatCategory ?? "", ratePercent: o?.vatRatePercent ?? 0 };
     }
-    const code = vatCodes.find((c) => c.id === line.vatCodeId);
-    return { category: code?.ehfCategory ?? "", ratePercent: code?.ratePercent ?? 0 };
+    const code = allCodes.data?.find((c) => c.id === line.vatCodeId);
+    if (code) return draftRate(code, today);
+    const inForce = vatCodes.find((c) => c.id === line.vatCodeId);
+    return { category: inForce?.ehfCategory ?? "", ratePercent: inForce?.ratePercent ?? 0 };
   };
   const amounts = lines.map((l) =>
     lineAmounts(numberOf(l.quantity), numberOf(l.unitPrice), numberOf(l.discountPercent)),
@@ -16462,7 +17660,7 @@ const DraftEditor = ({ draft, vatCodes, canCreate, canIssue, canViewCustomers }:
       notifications.show({ color: "green", message: t("saved") });
     },
     onError: (error) =>
-      notifications.show({ color: "red", title: t("couldNotSave"), message: refusalMessage(error, t) }),
+      notifications.show({ color: "red", title: t("couldNotSave"), message: refusalMessage(error, t, date) }),
   });
   const remove = useMutation({
     mutationFn: () => deleteInvoice(draft.id),
@@ -16471,7 +17669,7 @@ const DraftEditor = ({ draft, vatCodes, canCreate, canIssue, canViewCustomers }:
       navigate({ to: "/invoices" });
     },
     onError: (error) =>
-      notifications.show({ color: "red", title: t("couldNotDelete"), message: refusalMessage(error, t) }),
+      notifications.show({ color: "red", title: t("couldNotDelete"), message: refusalMessage(error, t, date) }),
   });
   const confirmDelete = () =>
     modals.openConfirmModal({
@@ -16482,8 +17680,18 @@ const DraftEditor = ({ draft, vatCodes, canCreate, canIssue, canViewCustomers }:
       onConfirm: () => remove.mutate(),
     });
 
+  // The codes in force today, and any code a line carries that they no
+  // longer list — deactivated or expired — by its name, so it never shows
+  // blank.
   const vatOptions = vatCodes.map((c) => ({ value: String(c.id), label: `${c.code} — ${c.name}` }));
+  for (const id of new Set(lines.map((l) => l.vatCodeId))) {
+    if (id === null || vatOptions.some((o) => o.value === String(id))) continue;
+    const code = allCodes.data?.find((c) => c.id === id);
+    const name = code ? `${code.code} — ${code.name}` : String(id);
+    vatOptions.push({ value: String(id), label: t("vatCodeNotOffered", { label: name }) });
+  }
   const editable = canCreate;
+  const fixed = credit || !editable;
 
   return (
     <Stack gap="lg">
@@ -16493,15 +17701,9 @@ const DraftEditor = ({ draft, vatCodes, canCreate, canIssue, canViewCustomers }:
         actions={
           <Group>
             {canCreate && (
-              <Button
-                component="a"
-                href={previewUrl(draft.id)}
-                target="_blank"
-                variant="default"
-                leftSection={<IconEye size={16} />}
-              >
+              <PdfButton url={previewUrl(draft.id)} mode="open" variant="default" leftSection={<IconEye size={16} />}>
                 {t("preview")}
-              </Button>
+              </PdfButton>
             )}
             {canCreate && (
               <Button variant="default" color="red" leftSection={<IconTrash size={16} />} onClick={confirmDelete}>
@@ -16514,7 +17716,7 @@ const DraftEditor = ({ draft, vatCodes, canCreate, canIssue, canViewCustomers }:
               </Button>
             )}
             {canIssue && (
-              <Button disabled={dirty} onClick={() => setIssuing(true)}>
+              <Button disabled={dirty || !storageAvailable} onClick={() => setIssuing(true)}>
                 {t("issue")}
               </Button>
             )}
@@ -16525,6 +17727,11 @@ const DraftEditor = ({ draft, vatCodes, canCreate, canIssue, canViewCustomers }:
       {dirty && canIssue && (
         <Text size="sm" c="dimmed">
           {t("saveBeforeIssue")}
+        </Text>
+      )}
+      {!storageAvailable && canIssue && (
+        <Text size="sm" c="dimmed">
+          {t("storageUnavailableHint")}
         </Text>
       )}
       {draft.warnings.length > 0 && (
@@ -16550,6 +17757,7 @@ const DraftEditor = ({ draft, vatCodes, canCreate, canIssue, canViewCustomers }:
           ) : (
             <CustomerPicker
               value={customerId}
+              readOnly={!editable}
               onChange={touch(setCustomerId)}
               selectedName={draft.customerName}
               required
@@ -16558,7 +17766,7 @@ const DraftEditor = ({ draft, vatCodes, canCreate, canIssue, canViewCustomers }:
           <Group align="flex-end">
             <SegmentedControl
               aria-label={t("delivery")}
-              disabled={credit || !editable}
+              disabled={fixed}
               value={deliveryMode}
               onChange={(v) => touch(setDeliveryMode)(v as "date" | "period")}
               data={[
@@ -16570,7 +17778,7 @@ const DraftEditor = ({ draft, vatCodes, canCreate, canIssue, canViewCustomers }:
               <DateInput
                 label={t("deliveryDate")}
                 valueFormat={t("dateInputFormat")}
-                disabled={credit}
+                disabled={fixed}
                 value={deliveryDate}
                 onChange={touch(setDeliveryDate)}
               />
@@ -16579,14 +17787,14 @@ const DraftEditor = ({ draft, vatCodes, canCreate, canIssue, canViewCustomers }:
                 <DateInput
                   label={t("deliveryFrom")}
                   valueFormat={t("dateInputFormat")}
-                  disabled={credit}
+                  disabled={fixed}
                   value={deliveryFrom}
                   onChange={touch(setDeliveryFrom)}
                 />
                 <DateInput
                   label={t("deliveryTo")}
                   valueFormat={t("dateInputFormat")}
-                  disabled={credit}
+                  disabled={fixed}
                   value={deliveryTo}
                   onChange={touch(setDeliveryTo)}
                 />
@@ -16600,7 +17808,7 @@ const DraftEditor = ({ draft, vatCodes, canCreate, canIssue, canViewCustomers }:
           )}
           <Checkbox
             label={t("deliverElsewhere")}
-            disabled={credit}
+            disabled={fixed}
             checked={elsewhere}
             onChange={(e) => touch(setElsewhere)(e.currentTarget.checked)}
           />
@@ -16608,31 +17816,31 @@ const DraftEditor = ({ draft, vatCodes, canCreate, canIssue, canViewCustomers }:
             <SimpleGrid cols={{ base: 1, sm: 3 }}>
               <TextInput
                 label={t("addressLine1")}
-                disabled={credit}
+                disabled={fixed}
                 value={address.line1}
                 onChange={(e) => touch(setAddress)({ ...address, line1: e.currentTarget.value })}
               />
               <TextInput
                 label={t("addressLine2")}
-                disabled={credit}
+                disabled={fixed}
                 value={address.line2}
                 onChange={(e) => touch(setAddress)({ ...address, line2: e.currentTarget.value })}
               />
               <TextInput
                 label={t("postalCode")}
-                disabled={credit}
+                disabled={fixed}
                 value={address.postalCode}
                 onChange={(e) => touch(setAddress)({ ...address, postalCode: e.currentTarget.value })}
               />
               <TextInput
                 label={t("city")}
-                disabled={credit}
+                disabled={fixed}
                 value={address.city}
                 onChange={(e) => touch(setAddress)({ ...address, city: e.currentTarget.value })}
               />
               <TextInput
                 label={t("country")}
-                disabled={credit}
+                disabled={fixed}
                 value={address.country}
                 onChange={(e) => touch(setAddress)({ ...address, country: e.currentTarget.value.toUpperCase() })}
               />
@@ -16641,25 +17849,32 @@ const DraftEditor = ({ draft, vatCodes, canCreate, canIssue, canViewCustomers }:
           <SimpleGrid cols={{ base: 1, sm: 4 }}>
             <TextInput
               label={t("yourReference")}
-              disabled={credit}
+              disabled={fixed}
               value={yourReference}
               onChange={(e) => touch(setYourReference)(e.currentTarget.value)}
               description={yourReference === "" ? t("yourReferenceNudge") : undefined}
             />
             <TextInput
               label={t("ourReference")}
-              disabled={credit}
+              disabled={fixed}
               value={ourReference}
               onChange={(e) => touch(setOurReference)(e.currentTarget.value)}
             />
             <TextInput
               label={t("orderReference")}
-              disabled={credit}
+              disabled={fixed}
               value={orderReference}
               onChange={(e) => touch(setOrderReference)(e.currentTarget.value)}
             />
             {!credit && (
-              <NumberInput label={t("paymentTermsDays")} min={0} max={365} value={terms} onChange={touch(setTerms)} />
+              <NumberInput
+                label={t("paymentTermsDays")}
+                min={0}
+                max={365}
+                readOnly={!editable}
+                value={terms}
+                onChange={touch(setTerms)}
+              />
             )}
           </SimpleGrid>
         </Stack>
@@ -16686,6 +17901,7 @@ const DraftEditor = ({ draft, vatCodes, canCreate, canIssue, canViewCustomers }:
                   <Table.Td>
                     <TextInput
                       aria-label={t("lineDescription", { n: i + 1 })}
+                      readOnly={!editable}
                       value={l.description}
                       onChange={(e) => setLine(l.key, { description: e.currentTarget.value })}
                     />
@@ -16695,6 +17911,8 @@ const DraftEditor = ({ draft, vatCodes, canCreate, canIssue, canViewCustomers }:
                       aria-label={t("lineQuantity", { n: i + 1 })}
                       decimalScale={3}
                       min={0}
+                      max={credit ? originalLine(l)?.quantity : undefined}
+                      readOnly={!editable}
                       value={l.quantity}
                       onChange={(v) => setLine(l.key, { quantity: v })}
                     />
@@ -16702,7 +17920,7 @@ const DraftEditor = ({ draft, vatCodes, canCreate, canIssue, canViewCustomers }:
                   <Table.Td>
                     <TextInput
                       aria-label={t("lineUnit", { n: i + 1 })}
-                      disabled={credit}
+                      disabled={fixed}
                       value={l.unit}
                       onChange={(e) => setLine(l.key, { unit: e.currentTarget.value })}
                     />
@@ -16712,6 +17930,8 @@ const DraftEditor = ({ draft, vatCodes, canCreate, canIssue, canViewCustomers }:
                       aria-label={t("lineUnitPrice", { n: i + 1 })}
                       decimalScale={4}
                       min={0}
+                      max={credit ? originalLine(l)?.unitPrice : undefined}
+                      readOnly={!editable}
                       value={l.unitPrice}
                       onChange={(v) => setLine(l.key, { unitPrice: v })}
                     />
@@ -16722,7 +17942,7 @@ const DraftEditor = ({ draft, vatCodes, canCreate, canIssue, canViewCustomers }:
                       decimalScale={2}
                       min={0}
                       max={100}
-                      disabled={credit}
+                      disabled={fixed}
                       value={l.discountPercent}
                       onChange={(v) => setLine(l.key, { discountPercent: v })}
                     />
@@ -16730,7 +17950,7 @@ const DraftEditor = ({ draft, vatCodes, canCreate, canIssue, canViewCustomers }:
                   <Table.Td>
                     <Select
                       aria-label={t("lineVatCode", { n: i + 1 })}
-                      disabled={credit}
+                      disabled={fixed}
                       data={vatOptions}
                       value={l.vatCodeId === null ? null : String(l.vatCodeId)}
                       onChange={(v) => setLine(l.key, { vatCodeId: v === null ? null : Number(v) })}
@@ -16738,41 +17958,43 @@ const DraftEditor = ({ draft, vatCodes, canCreate, canIssue, canViewCustomers }:
                   </Table.Td>
                   <Table.Td ta="right">{money(amounts[i].net, draft.currency)}</Table.Td>
                   <Table.Td>
-                    <Group gap={4} wrap="nowrap">
-                      <ActionIcon
-                        variant="subtle"
-                        aria-label={t("moveLineUp", { n: i + 1 })}
-                        disabled={i === 0}
-                        onClick={() => move(i, -1)}
-                      >
-                        <IconArrowUp size={16} />
-                      </ActionIcon>
-                      <ActionIcon
-                        variant="subtle"
-                        aria-label={t("moveLineDown", { n: i + 1 })}
-                        disabled={i === lines.length - 1}
-                        onClick={() => move(i, 1)}
-                      >
-                        <IconArrowDown size={16} />
-                      </ActionIcon>
-                      <ActionIcon
-                        variant="subtle"
-                        color="red"
-                        aria-label={t("removeLine", { n: i + 1 })}
-                        onClick={() => {
-                          setLines((c) => c.filter((x) => x.key !== l.key));
-                          setDirty(true);
-                        }}
-                      >
-                        <IconTrash size={16} />
-                      </ActionIcon>
-                    </Group>
+                    {editable && (
+                      <Group gap={4} wrap="nowrap">
+                        <ActionIcon
+                          variant="subtle"
+                          aria-label={t("moveLineUp", { n: i + 1 })}
+                          disabled={i === 0}
+                          onClick={() => move(i, -1)}
+                        >
+                          <IconArrowUp size={16} />
+                        </ActionIcon>
+                        <ActionIcon
+                          variant="subtle"
+                          aria-label={t("moveLineDown", { n: i + 1 })}
+                          disabled={i === lines.length - 1}
+                          onClick={() => move(i, 1)}
+                        >
+                          <IconArrowDown size={16} />
+                        </ActionIcon>
+                        <ActionIcon
+                          variant="subtle"
+                          color="red"
+                          aria-label={t("removeLine", { n: i + 1 })}
+                          onClick={() => {
+                            setLines((c) => c.filter((x) => x.key !== l.key));
+                            setDirty(true);
+                          }}
+                        >
+                          <IconTrash size={16} />
+                        </ActionIcon>
+                      </Group>
+                    )}
                   </Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>
           </Table>
-          {!credit && (
+          {!fixed && (
             <Group>
               <Button
                 variant="light"
@@ -16811,12 +18033,14 @@ const DraftEditor = ({ draft, vatCodes, canCreate, canIssue, canViewCustomers }:
           <Textarea
             label={t("note")}
             description={t("noteHint")}
+            readOnly={!editable}
             value={note}
             onChange={(e) => touch(setNote)(e.currentTarget.value)}
           />
           <Textarea
             label={t("internalNote")}
             description={t("internalNoteHint")}
+            readOnly={!editable}
             value={internalNote}
             onChange={(e) => touch(setInternalNote)(e.currentTarget.value)}
           />
@@ -16892,7 +18116,7 @@ const IssuedDocument = ({ document: doc, canIssue }: { document: InvoiceDocument
       navigate(invoiceLinkOptions(draft.id));
     },
     onError: (error) =>
-      notifications.show({ color: "red", title: t("couldNotCredit"), message: refusalMessage(error, t) }),
+      notifications.show({ color: "red", title: t("couldNotCredit"), message: refusalMessage(error, t, date) }),
   });
   const creditable = doc.kind === "invoice" && canIssue && (doc.uncreditedAmount ?? 0) > 0;
   return (
@@ -16902,9 +18126,9 @@ const IssuedDocument = ({ document: doc, canIssue }: { document: InvoiceDocument
         title={heading}
         actions={
           <Group>
-            <Button component="a" href={pdfUrl(doc.id)} download leftSection={<IconDownload size={16} />}>
+            <PdfButton url={pdfUrl(doc.id)} mode="download" leftSection={<IconDownload size={16} />}>
               {t("downloadPdf")}
-            </Button>
+            </PdfButton>
             {creditable && (
               <Button variant="default" loading={credit.isPending} onClick={() => credit.mutate()}>
                 {t("credit")}
@@ -16927,6 +18151,7 @@ const IssuedDocument = ({ document: doc, canIssue }: { document: InvoiceDocument
             {doc.buyer?.organisationNumber && (
               <Text size="sm">{t("orgNumber", { number: doc.buyer.organisationNumber })}</Text>
             )}
+            {doc.buyer?.foreignId && <Text size="sm">{t("foreignId", { id: doc.buyer.foreignId })}</Text>}
           </Stack>
           <Stack gap={2}>
             <Text size="sm">
@@ -17054,6 +18279,7 @@ import {
   TextInput,
 } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
+import { useDebouncedValue } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -17087,7 +18313,10 @@ export const InvoicesPage = ({ canViewCustomers, userDisplayName }: InvoicesPage
   const { t, money, date } = useInvoiceFormat();
   const meta = useQuery(invoicesMetaQueryOptions());
   const [filters, setFilters] = useState<InvoiceListFilters>({ page: 1 });
-  const list = useQuery(invoiceListQueryOptions(filters));
+  // The search is sent once the typing pauses, not per keystroke.
+  const [search, setSearch] = useState("");
+  const [debouncedSearch] = useDebouncedValue(search, 300);
+  const list = useQuery(invoiceListQueryOptions({ ...filters, search: debouncedSearch.trim() || undefined }));
   const [creating, setCreating] = useState(false);
   const set = (next: Partial<InvoiceListFilters>) =>
     setFilters((current) => ({ ...current, ...next, page: next.page ?? 1 }));
@@ -17106,6 +18335,11 @@ export const InvoicesPage = ({ canViewCustomers, userDisplayName }: InvoicesPage
           )
         }
       />
+      {meta.isError && (
+        <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadMeta")}>
+          {refusalMessage(meta.error, t, date)}
+        </Alert>
+      )}
       {meta.data && !meta.data.sellerComplete && meta.data.capabilities.canIssue && (
         <Alert color="yellow" icon={<IconAlertCircle size={16} />} title={t("sellerIncompleteTitle")}>
           {t("sellerIncomplete")}
@@ -17135,6 +18369,7 @@ export const InvoicesPage = ({ canViewCustomers, userDisplayName }: InvoicesPage
         {canViewCustomers && (
           <CustomerPicker
             label={t("customerFilter")}
+            anyOpen
             value={filters.customerId ?? null}
             onChange={(id) => set({ customerId: id ?? undefined })}
           />
@@ -17142,8 +18377,11 @@ export const InvoicesPage = ({ canViewCustomers, userDisplayName }: InvoicesPage
         <TextInput
           label={t("search")}
           placeholder={t("searchPlaceholder")}
-          value={filters.search ?? ""}
-          onChange={(e) => set({ search: e.currentTarget.value })}
+          value={search}
+          onChange={(e) => {
+            setSearch(e.currentTarget.value);
+            set({}); // a new search starts on page 1
+          }}
         />
         <DateInput
           label={t("issuedFrom")}
@@ -17162,7 +18400,7 @@ export const InvoicesPage = ({ canViewCustomers, userDisplayName }: InvoicesPage
       </Group>
       {list.isError && (
         <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadInvoices")}>
-          {refusalMessage(list.error, t)}
+          {refusalMessage(list.error, t, date)}
         </Alert>
       )}
       {list.isPending && <ContentSkeleton rows={5} rowHeight={40} />}
@@ -17232,7 +18470,7 @@ interface NewInvoiceModalProps {
  * the UI prefills today, which the editor lets the person change (D4).
  */
 const NewInvoiceModal = ({ userDisplayName, deliveryDate, onClose }: NewInvoiceModalProps) => {
-  const { t } = useInvoiceFormat();
+  const { t, date } = useInvoiceFormat();
   const queryClient = useQueryClient();
   const navigate = useNavigate() as (options: unknown) => void;
   const [customerId, setCustomerId] = useState<number | null>(null);
@@ -17250,7 +18488,7 @@ const NewInvoiceModal = ({ userDisplayName, deliveryDate, onClose }: NewInvoiceM
       navigate(invoiceLinkOptions(draft.id));
     },
     onError: (error) =>
-      notifications.show({ color: "red", title: t("couldNotCreate"), message: refusalMessage(error, t) }),
+      notifications.show({ color: "red", title: t("couldNotCreate"), message: refusalMessage(error, t, date) }),
   });
   return (
     <Modal opened onClose={onClose} title={t("newInvoice")}>
@@ -17379,6 +18617,8 @@ export const invoicesCatalog = {
       "This credit note is more than the invoice has left to credit; it cannot be issued as it stands.",
     "warning.credit_exceeds_line":
       "A line credits more than the original line had left; it cannot be issued as it stands.",
+    "warning.vat_code_not_valid":
+      "A line's VAT code has no rate today, so it counts at 0 %; it cannot be issued as it stands.",
     preview: "Preview",
     issue: "Issue",
     saveBeforeIssue: "Save the changes before issuing.",
@@ -17401,29 +18641,36 @@ export const invoicesCatalog = {
     pdfNotStoredYet:
       "The PDF could not be stored when the document was issued. It is stored the first time it is downloaded.",
     orgNumber: "Org. no. {{number}}",
+    foreignId: "Foreign ID {{id}}",
+    couldNotOpenPdf: "Could not open the PDF",
+    storageUnavailableHint: "This installation has no document store, so nothing can be issued.",
+    vatCodeNotOffered: "{{label}} (no longer offered)",
 
     "refusal.seller_incomplete": "The seller record is not complete. Fill it in under the settings.",
     "refusal.no_lines": "A document needs at least one line.",
     "refusal.delivery_date_missing": "Give the delivery date or period first.",
-    "refusal.issue_date_not_allowed": "That issue date is not allowed today.",
-    "refusal.customer_merged": "The customer was merged into another; invoice that one instead.",
+    "refusal.issue_date_not_allowed": "That issue date is not allowed today. It may be: {{dates}}.",
+    "refusal.customer_merged":
+      "The customer was merged into another (customer id {{mergedInto}}); invoice that one instead.",
     "refusal.customer_archived": "The customer is archived and is not invoiced.",
     "refusal.customer_blocked": "The customer is blocked for invoicing.",
     "refusal.customer_missing": "The customer no longer exists.",
     "refusal.buyer_incomplete": "The buyer has neither a complete address nor an organisation number.",
-    "refusal.vat_code_inactive": "A line's VAT code is no longer offered.",
-    "refusal.vat_code_not_valid": "A line's VAT code has no rate on the issue date.",
+    "refusal.vat_code_inactive": "The VAT code on line {{line}} is no longer offered.",
+    "refusal.vat_code_not_valid": "The VAT code on line {{line}} has no rate on the issue date.",
     "refusal.vat_not_registered":
       "The seller is not VAT-registered, so every line must be outside the VAT act (code 7).",
     "refusal.category_o_not_allowed": "The seller is VAT-registered, so no line may be outside the VAT act.",
     "refusal.reverse_charge_needs_org_number": "Reverse charge needs the buyer's organisation number.",
     "refusal.vat_codes_ambiguous": "Two lines share a VAT rate but carry different SAF-T codes.",
-    "refusal.credit_exceeds_line": "A line credits more than the original line had left.",
+    "refusal.credit_exceeds_line": "Line {{line}} credits more than the original line had left.",
     "refusal.credit_exceeds_invoice": "The credit note is more than the invoice has left to credit.",
     "refusal.invoice_issued": "The document is already issued.",
     "refusal.invoice_changed": "The invoice changed; try again.",
     "refusal.invoice_fully_credited": "The invoice is already credited in full.",
-    "refusal.storage_unavailable": "The document store is unavailable, so nothing can be issued.",
+    "refusal.storage_unavailable": "The document store is unavailable, so nothing can be issued or downloaded now.",
+    "refusal.invoice_draft": "A draft has no document yet; preview it instead.",
+    "refusal.credit_note_not_creditable": "A credit note cannot itself be credited.",
   },
   nb: {
     invoices: "Fakturaer",
@@ -17528,6 +18775,8 @@ export const invoicesCatalog = {
       "Kreditnotaen er på mer enn fakturaen har igjen å kreditere; den kan ikke utstedes slik den er.",
     "warning.credit_exceeds_line":
       "En linje krediterer mer enn den opprinnelige linjen hadde igjen; den kan ikke utstedes slik den er.",
+    "warning.vat_code_not_valid":
+      "En linjes mva-kode har ingen sats i dag, så den teller som 0 %; den kan ikke utstedes slik den er.",
     preview: "Forhåndsvis",
     issue: "Utsted",
     saveBeforeIssue: "Lagre endringene før du utsteder.",
@@ -17549,28 +18798,34 @@ export const invoicesCatalog = {
     uncreditedAmount: "Igjen å kreditere",
     pdfNotStoredYet: "PDF-en kunne ikke lagres da dokumentet ble utstedt. Den lagres første gang den lastes ned.",
     orgNumber: "Org.nr. {{number}}",
+    foreignId: "Utenlandsk ID {{id}}",
+    couldNotOpenPdf: "Kunne ikke åpne PDF-en",
+    storageUnavailableHint: "Denne installasjonen har ikke noe dokumentlager, så ingenting kan utstedes.",
+    vatCodeNotOffered: "{{label}} (tilbys ikke lenger)",
 
     "refusal.seller_incomplete": "Selgeropplysningene er ikke fullstendige. Fyll dem ut i innstillingene.",
     "refusal.no_lines": "Et dokument må ha minst én linje.",
     "refusal.delivery_date_missing": "Oppgi leveringsdato eller -periode først.",
-    "refusal.issue_date_not_allowed": "Den fakturadatoen er ikke tillatt i dag.",
-    "refusal.customer_merged": "Kunden er slått sammen med en annen; fakturer den i stedet.",
+    "refusal.issue_date_not_allowed": "Den fakturadatoen er ikke tillatt i dag. Den kan være: {{dates}}.",
+    "refusal.customer_merged": "Kunden er slått sammen med en annen (kunde-id {{mergedInto}}); fakturer den i stedet.",
     "refusal.customer_archived": "Kunden er arkivert og faktureres ikke.",
     "refusal.customer_blocked": "Kunden er sperret for fakturering.",
     "refusal.customer_missing": "Kunden finnes ikke lenger.",
     "refusal.buyer_incomplete": "Kjøperen har verken fullstendig adresse eller organisasjonsnummer.",
-    "refusal.vat_code_inactive": "En linjes mva-kode tilbys ikke lenger.",
-    "refusal.vat_code_not_valid": "En linjes mva-kode har ingen sats på fakturadatoen.",
+    "refusal.vat_code_inactive": "Mva-koden på linje {{line}} tilbys ikke lenger.",
+    "refusal.vat_code_not_valid": "Mva-koden på linje {{line}} har ingen sats på fakturadatoen.",
     "refusal.vat_not_registered": "Selgeren er ikke mva-registrert, så alle linjer må være utenfor mva-loven (kode 7).",
     "refusal.category_o_not_allowed": "Selgeren er mva-registrert, så ingen linje kan være utenfor mva-loven.",
     "refusal.reverse_charge_needs_org_number": "Omvendt avgiftsplikt krever kjøperens organisasjonsnummer.",
     "refusal.vat_codes_ambiguous": "To linjer har samme mva-sats, men ulike SAF-T-koder.",
-    "refusal.credit_exceeds_line": "En linje krediterer mer enn den opprinnelige linjen hadde igjen.",
+    "refusal.credit_exceeds_line": "Linje {{line}} krediterer mer enn den opprinnelige linjen hadde igjen.",
     "refusal.credit_exceeds_invoice": "Kreditnotaen er på mer enn fakturaen har igjen å kreditere.",
     "refusal.invoice_issued": "Dokumentet er allerede utstedt.",
     "refusal.invoice_changed": "Fakturaen er endret; prøv igjen.",
     "refusal.invoice_fully_credited": "Fakturaen er allerede kreditert i sin helhet.",
-    "refusal.storage_unavailable": "Dokumentlageret er utilgjengelig, så ingenting kan utstedes.",
+    "refusal.storage_unavailable": "Dokumentlageret er utilgjengelig, så ingenting kan utstedes eller lastes ned nå.",
+    "refusal.invoice_draft": "Et utkast har ikke noe dokument ennå; forhåndsvis det i stedet.",
+    "refusal.credit_note_not_creditable": "En kreditnota kan ikke selv krediteres.",
   },
 } satisfies CatalogResources;
 
@@ -17770,7 +19025,7 @@ mise exec -- bun run translations:check
 Commit:
 
 ```bash
-cat > /tmp/claude-1000/msg-invoices-task10.txt <<'MSG'
+cat > /tmp/claude-1000/msg-invoices-task12.txt <<'MSG'
 feat(invoices-ui): the list, the draft editor, the issue dialog and the credit flow
 
 The Invoices app (invoices foundation design D12): the list with its chips,
@@ -17778,40 +19033,43 @@ filters and paging; "New invoice" through the customers list for callers
 who hold customers:view; the draft editor with live totals per rate by the
 server's exact rule; the issue dialog offering the dates the server allows;
 an issued document with its PDF and credit notes; and a credit-note draft
-that offers only what D8 allows. en and nb.
+that offers only what D8 allows. A refusal names the dates, the line or the
+customer its body names; a PDF is fetched behind a button, so a refusal is
+a notification; codes no longer offered are named and totalled as the
+server does. en and nb.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 MSG
-git add -- 'apps/host/frontend/src/routeTree.gen.ts' 'apps/host/frontend/src/routes/invoices/$invoiceId.tsx' 'apps/host/frontend/src/routes/invoices/-invoice-access.tsx' 'apps/host/frontend/src/routes/invoices/-invoices-list.test.tsx' 'apps/host/frontend/src/routes/invoices/-invoices-list.tsx' 'apps/host/frontend/src/routes/invoices/index.tsx' 'apps/invoices/frontend/src/api/customers.ts' 'apps/invoices/frontend/src/api/invoices.ts' 'apps/invoices/frontend/src/components/customer-picker.tsx' 'apps/invoices/frontend/src/components/document-link.tsx' 'apps/invoices/frontend/src/i18n.ts' 'apps/invoices/frontend/src/index.ts' 'apps/invoices/frontend/src/lib/errors.ts' 'apps/invoices/frontend/src/lib/format.ts' 'apps/invoices/frontend/src/lib/money.test.ts' 'apps/invoices/frontend/src/lib/money.ts' 'apps/invoices/frontend/src/lib/routes.ts' 'apps/invoices/frontend/src/pages/-issue-modal.tsx' 'apps/invoices/frontend/src/pages/invoice.test.tsx' 'apps/invoices/frontend/src/pages/invoice.tsx' 'apps/invoices/frontend/src/pages/invoices.test.tsx' 'apps/invoices/frontend/src/pages/invoices.tsx' 'apps/invoices/frontend/src/test/fixtures.ts' 'apps/invoices/frontend/src/test/invoice-route.tsx' 'apps/invoices/frontend/src/test/route-tree.tsx'
-git commit -F /tmp/claude-1000/msg-invoices-task10.txt -- 'apps/host/frontend/src/routeTree.gen.ts' 'apps/host/frontend/src/routes/invoices/$invoiceId.tsx' 'apps/host/frontend/src/routes/invoices/-invoice-access.tsx' 'apps/host/frontend/src/routes/invoices/-invoices-list.test.tsx' 'apps/host/frontend/src/routes/invoices/-invoices-list.tsx' 'apps/host/frontend/src/routes/invoices/index.tsx' 'apps/invoices/frontend/src/api/customers.ts' 'apps/invoices/frontend/src/api/invoices.ts' 'apps/invoices/frontend/src/components/customer-picker.tsx' 'apps/invoices/frontend/src/components/document-link.tsx' 'apps/invoices/frontend/src/i18n.ts' 'apps/invoices/frontend/src/index.ts' 'apps/invoices/frontend/src/lib/errors.ts' 'apps/invoices/frontend/src/lib/format.ts' 'apps/invoices/frontend/src/lib/money.test.ts' 'apps/invoices/frontend/src/lib/money.ts' 'apps/invoices/frontend/src/lib/routes.ts' 'apps/invoices/frontend/src/pages/-issue-modal.tsx' 'apps/invoices/frontend/src/pages/invoice.test.tsx' 'apps/invoices/frontend/src/pages/invoice.tsx' 'apps/invoices/frontend/src/pages/invoices.test.tsx' 'apps/invoices/frontend/src/pages/invoices.tsx' 'apps/invoices/frontend/src/test/fixtures.ts' 'apps/invoices/frontend/src/test/invoice-route.tsx' 'apps/invoices/frontend/src/test/route-tree.tsx'
+git add -- 'apps/host/frontend/src/routeTree.gen.ts' 'apps/host/frontend/src/routes/invoices/$invoiceId.tsx' 'apps/host/frontend/src/routes/invoices/-invoice-access.tsx' 'apps/host/frontend/src/routes/invoices/-invoices-list.test.tsx' 'apps/host/frontend/src/routes/invoices/-invoices-list.tsx' 'apps/host/frontend/src/routes/invoices/index.tsx' 'apps/invoices/frontend/src/api/customers.ts' 'apps/invoices/frontend/src/api/invoices.ts' 'apps/invoices/frontend/src/api/vat-codes.ts' 'apps/invoices/frontend/src/components/customer-picker.tsx' 'apps/invoices/frontend/src/components/document-link.tsx' 'apps/invoices/frontend/src/components/pdf-button.tsx' 'apps/invoices/frontend/src/i18n.ts' 'apps/invoices/frontend/src/index.ts' 'apps/invoices/frontend/src/lib/errors.ts' 'apps/invoices/frontend/src/lib/format.ts' 'apps/invoices/frontend/src/lib/money.test.ts' 'apps/invoices/frontend/src/lib/money.ts' 'apps/invoices/frontend/src/lib/routes.ts' 'apps/invoices/frontend/src/lib/vat.ts' 'apps/invoices/frontend/src/pages/-issue-modal.tsx' 'apps/invoices/frontend/src/pages/invoice.test.tsx' 'apps/invoices/frontend/src/pages/invoice.tsx' 'apps/invoices/frontend/src/pages/invoices.test.tsx' 'apps/invoices/frontend/src/pages/invoices.tsx' 'apps/invoices/frontend/src/test/fixtures.ts' 'apps/invoices/frontend/src/test/invoice-route.tsx' 'apps/invoices/frontend/src/test/route-tree.tsx'
+git commit -F /tmp/claude-1000/msg-invoices-task12.txt -- 'apps/host/frontend/src/routeTree.gen.ts' 'apps/host/frontend/src/routes/invoices/$invoiceId.tsx' 'apps/host/frontend/src/routes/invoices/-invoice-access.tsx' 'apps/host/frontend/src/routes/invoices/-invoices-list.test.tsx' 'apps/host/frontend/src/routes/invoices/-invoices-list.tsx' 'apps/host/frontend/src/routes/invoices/index.tsx' 'apps/invoices/frontend/src/api/customers.ts' 'apps/invoices/frontend/src/api/invoices.ts' 'apps/invoices/frontend/src/api/vat-codes.ts' 'apps/invoices/frontend/src/components/customer-picker.tsx' 'apps/invoices/frontend/src/components/document-link.tsx' 'apps/invoices/frontend/src/components/pdf-button.tsx' 'apps/invoices/frontend/src/i18n.ts' 'apps/invoices/frontend/src/index.ts' 'apps/invoices/frontend/src/lib/errors.ts' 'apps/invoices/frontend/src/lib/format.ts' 'apps/invoices/frontend/src/lib/money.test.ts' 'apps/invoices/frontend/src/lib/money.ts' 'apps/invoices/frontend/src/lib/routes.ts' 'apps/invoices/frontend/src/lib/vat.ts' 'apps/invoices/frontend/src/pages/-issue-modal.tsx' 'apps/invoices/frontend/src/pages/invoice.test.tsx' 'apps/invoices/frontend/src/pages/invoice.tsx' 'apps/invoices/frontend/src/pages/invoices.test.tsx' 'apps/invoices/frontend/src/pages/invoices.tsx' 'apps/invoices/frontend/src/test/fixtures.ts' 'apps/invoices/frontend/src/test/invoice-route.tsx' 'apps/invoices/frontend/src/test/route-tree.tsx'
 git show --stat HEAD && git status --short   # nothing of yours left; go.mod/go.sum at the root untracked as before
 ```
 
 ---
 
-### Task 11: The Invoices app: settings with the completeness checklist and the VAT codes, and the journal (D12)
+### Task 13: The Invoices app: settings with the completeness checklist and the VAT codes, and the journal (D12)
 
-Settings (`invoices:manage`): the seller record with the checklist from `missingSellerFields`, the series start read-only once `seriesLocked`, and the VAT codes — add, edit (category and SAF-T fixed while in use), deactivate, and the rate periods (add from a date, remove the latest while it lies in the future). The journal: a date range (this month by default), the gap check in words ("No gaps between N and M" or the missing numbers), the counter warning, the per-code totals, the documents with credit notes signed negative, paging. The host gains the two sidebar entries and routes.
+Settings (`invoices:manage`): the seller record with the checklist from `missingSellerFields`, the series start read-only once `seriesLocked`, and the VAT codes — add, edit (category and SAF-T fixed while in use), deactivate, and the rate periods (add from a date, remove the latest while it lies in the future). The journal: a date range (this month by default), the gap check in words ("No gaps between N and M" over the range the server checked, `checkedFrom`–`checkedTo`, or the missing numbers), the counter warning against the series' `highestIssued` — never the page's rows, so a past range over two pages warns of nothing — the per-code totals, the documents with credit notes signed negative, paging. A new code's first period starts today (meta's `today`); the six settings refusals have catalog keys (`series_locked`, `vat_code_in_use`, `rate_change_in_past`, `rate_period_not_latest`, `rate_period_last`, `rate_period_in_use`); the fetch fake models the server's rule that removing the latest period reopens the one before. The host gains the two sidebar entries and routes.
 
 **Files:**
-- Create: `apps/host/frontend/src/routes/invoices/journal.tsx`, `apps/host/frontend/src/routes/invoices/settings.tsx`, `apps/invoices/frontend/src/api/journal.ts`, `apps/invoices/frontend/src/api/settings.ts`, `apps/invoices/frontend/src/api/vat-codes.ts`, `apps/invoices/frontend/src/pages/journal.test.tsx`, `apps/invoices/frontend/src/pages/journal.tsx`, `apps/invoices/frontend/src/pages/settings.test.tsx`, `apps/invoices/frontend/src/pages/settings.tsx`
+- Create: `apps/host/frontend/src/routes/invoices/journal.tsx`, `apps/host/frontend/src/routes/invoices/settings.tsx`, `apps/invoices/frontend/src/api/journal.ts`, `apps/invoices/frontend/src/api/settings.ts`, `apps/invoices/frontend/src/pages/journal.test.tsx`, `apps/invoices/frontend/src/pages/journal.tsx`, `apps/invoices/frontend/src/pages/settings.test.tsx`, `apps/invoices/frontend/src/pages/settings.tsx`
 - Modify: `apps/host/frontend/src/apps.test.ts`, `apps/host/frontend/src/apps.ts`, `apps/host/frontend/src/catalogs/navigation.ts`, `apps/invoices/frontend/src/i18n.ts`, `apps/invoices/frontend/src/index.ts`, `apps/invoices/frontend/src/test/fixtures.ts`
 - Generated (commit them; never edit by hand): `apps/host/frontend/src/routeTree.gen.ts`
 - Read first (do not change): `apps/expenses/frontend/src/pages/settings.tsx`, `apps/host/frontend/src/apps.ts` (the Invoices entry from Task 1)
 
 **Interfaces:**
-- Produces TS: `api/settings.ts`, `api/vat-codes.ts`, `api/journal.ts`, `pages/settings.tsx` (`SettingsPage`), `pages/journal.tsx` (`JournalPage`); host routes `/invoices/settings`, `/invoices/journal`; sidebar entries `navigation.invoiceJournal` (`invoices:access`) and `navigation.invoiceSettings` (`invoices:manage`).
+- Produces TS: `api/settings.ts`, `api/journal.ts`, `pages/settings.tsx` (`SettingsPage`), `pages/journal.tsx` (`JournalPage`); host routes `/invoices/settings`, `/invoices/journal`; sidebar entries `navigation.invoiceJournal` (`invoices:access`) and `navigation.invoiceSettings` (`invoices:manage`).
 
-- [ ] **Step 1: The tests: the checklist, the locked start, the rate periods, the gap message**
+- [ ] **Step 1: The tests: the checklist, the locked start, the rate periods over a fake that reopens, the refusals, the gap message, a past range over two pages**
 
 **Replace** in `apps/invoices/frontend/src/test/fixtures.ts`:
 
 ```ts
 import type { InvoiceDocument, InvoiceList } from "../api/invoices";
 import type { InvoicesMeta } from "../api/meta";
+import type { VatCode } from "../api/vat-codes";
 
 /**
- * GET /meta as the server sends it — a wire literal: a complete seller, the
 ```
 
 **with**:
@@ -17824,23 +19082,22 @@ import type { InvoiceSettings } from "../api/settings";
 import type { VatCode } from "../api/vat-codes";
 
 /**
- * GET /meta as the server sends it — a wire literal: a complete seller, the
 ```
 
 **Replace** in `apps/invoices/frontend/src/test/fixtures.ts`:
 
 ```ts
-    ...overrides,
+    rates: [{ id: 1009, ratePercent: 25, validFrom: "2020-01-01" }],
   },
-});
+];
 ```
 
 **with**:
 
 ```ts
-    ...overrides,
+    rates: [{ id: 1009, ratePercent: 25, validFrom: "2020-01-01" }],
   },
-});
+];
 
 /** The settings as the server sends them: a seller lacking two fields, the series locked. */
 export const settings = (overrides: Partial<InvoiceSettings> = {}): InvoiceSettings => ({
@@ -17868,36 +19125,6 @@ export const settings = (overrides: Partial<InvoiceSettings> = {}): InvoiceSetti
   ...overrides,
 });
 
-/** Code 3 at 25 % with a change to 26 % from 2027, not yet in force. */
-export const vatCodes = (): VatCode[] => [
-  {
-    id: 1,
-    code: "3",
-    name: "Utgående mva 25 %",
-    safTCode: "3",
-    ehfCategory: "S",
-    active: true,
-    inUse: true,
-    revision: 1,
-    rates: [
-      { id: 1001, ratePercent: 25, validFrom: "2026-01-01", validTo: "2026-12-31" },
-      { id: 1002, ratePercent: 26, validFrom: "2027-01-01" },
-    ],
-  },
-  {
-    id: 5,
-    code: "5",
-    name: "Fritatt innenlands 0 %",
-    safTCode: "5",
-    ehfCategory: "Z",
-    exemptionReason: "Fritatt for merverdiavgift",
-    active: true,
-    inUse: false,
-    revision: 1,
-    rates: [{ id: 1005, ratePercent: 0, validFrom: "2026-01-01" }],
-  },
-];
-
 /** A month's journal: numbers 1000 to 1002, a credit note signed negative. */
 export const journal = (overrides: Partial<InvoiceJournal> = {}): InvoiceJournal => ({
   data: [
@@ -17911,7 +19138,7 @@ export const journal = (overrides: Partial<InvoiceJournal> = {}): InvoiceJournal
       netTotal: 1000,
       vatTotal: 250,
       grossTotal: 1250,
-      vatSummaries: [],
+      vatSummaries: [{ safTCode: "3", category: "S", ratePercent: 25, taxableAmount: 1000, vatAmount: 250 }],
     },
     {
       id: 2,
@@ -17923,7 +19150,7 @@ export const journal = (overrides: Partial<InvoiceJournal> = {}): InvoiceJournal
       netTotal: 200,
       vatTotal: 0,
       grossTotal: 200,
-      vatSummaries: [],
+      vatSummaries: [{ safTCode: "5", category: "Z", ratePercent: 0, taxableAmount: 200, vatAmount: 0 }],
     },
     {
       id: 3,
@@ -17936,7 +19163,7 @@ export const journal = (overrides: Partial<InvoiceJournal> = {}): InvoiceJournal
       vatTotal: -100,
       grossTotal: -500,
       creditsNumber: 1000,
-      vatSummaries: [],
+      vatSummaries: [{ safTCode: "3", category: "S", ratePercent: 25, taxableAmount: -400, vatAmount: -100 }],
     },
   ],
   pagination: { page: 1, pageSize: 25, totalCount: 3, totalPages: 1, hasNextPage: false, hasPreviousPage: false },
@@ -17953,6 +19180,9 @@ export const journal = (overrides: Partial<InvoiceJournal> = {}): InvoiceJournal
   gapsTruncated: false,
   seriesStart: 1000,
   counterLast: 1002,
+  highestIssued: 1002,
+  checkedFrom: 1000,
+  checkedTo: 1002,
   ...overrides,
 });
 ```
@@ -17963,6 +19193,7 @@ export const journal = (overrides: Partial<InvoiceJournal> = {}): InvoiceJournal
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import type { VatCode } from "../api/vat-codes";
 import { jsonResponse, sent } from "../test/api";
 import { stubFetch } from "../test/fetch";
 import { meta, settings, vatCodes } from "../test/fixtures";
@@ -17971,18 +19202,42 @@ import { SettingsPage } from "./settings";
 
 const path = (input: RequestInfo | URL) => String(input);
 
-const server = () =>
-  stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
+/**
+ * The fetch fake, a small model of the rules the page relies on: the codes are
+ * state, and removing the latest period reopens the one before it, as the
+ * server does (D3). `refuse` answers a "METHOD url" with a refusal instead.
+ */
+const server = (refuse: Record<string, Response> = {}) => {
+  let codes: VatCode[] = vatCodes();
+  return stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
     const url = path(input);
     const method = init?.method ?? "GET";
+    const refusal = refuse[`${method} ${url}`];
+    if (refusal) return refusal.clone();
     if (url === "/api/v1/invoices/meta") return jsonResponse(200, meta());
     if (url === "/api/v1/invoices/settings")
       return jsonResponse(200, method === "PUT" ? settings({ revision: 6 }) : settings());
-    if (url === "/api/v1/invoices/vat-codes") return jsonResponse(200, vatCodes());
-    if (url.startsWith("/api/v1/invoices/vat-codes/1/rates"))
-      return jsonResponse(method === "POST" ? 201 : 200, vatCodes()[0]);
+    if (url === "/api/v1/invoices/vat-codes") return jsonResponse(200, codes);
+    const period = /^\/api\/v1\/invoices\/vat-codes\/(\d+)\/rates\/(\d+)$/.exec(url);
+    if (period && method === "DELETE") {
+      const [id, rateId] = [Number(period[1]), Number(period[2])];
+      codes = codes.map((c) => {
+        if (c.id !== id) return c;
+        const rates = c.rates.filter((r) => r.id !== rateId);
+        const reopened = { ...rates[rates.length - 1], validTo: undefined };
+        return { ...c, rates: [...rates.slice(0, -1), reopened], revision: c.revision + 1 };
+      });
+      return jsonResponse(
+        200,
+        codes.find((c) => c.id === id),
+      );
+    }
     return new Response(null, { status: 404 });
   });
+};
+
+const refusal = (code: string) =>
+  jsonResponse(409, { type: "about:blank", title: "Refused", status: 409, code, detail: "The server's English." });
 
 describe("the invoice settings", () => {
   it("lists what issuing still needs and saves the seller with its revision", async () => {
@@ -18032,6 +19287,34 @@ describe("the invoice settings", () => {
         ),
       ).toBe(true),
     );
+    // The period before it is open again, and the future one is gone.
+    expect(await within(dialog).findByText("From Jan 1, 2026")).toBeInTheDocument();
+    expect(within(dialog).queryByText("From Jan 1, 2027")).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Remove this period" })).not.toBeInTheDocument();
+  });
+
+  it("words a refused period removal in the reader's language", async () => {
+    server({ "DELETE /api/v1/invoices/vat-codes/1/rates/1002": refusal("rate_period_in_use") });
+    renderWithProviders(<SettingsPage />);
+
+    const row = (await screen.findByText("Utgående mva 25 %")).closest("tr") as HTMLElement;
+    await userEvent.click(within(row).getByRole("button", { name: "Rate periods" }));
+    await userEvent.click(
+      within(await screen.findByRole("dialog")).getByRole("button", { name: "Remove this period" }),
+    );
+    expect(
+      await screen.findByText("A document is issued on or after this period's start, so the period stays."),
+    ).toBeInTheDocument();
+  });
+
+  it("starts a new code's first period today", async () => {
+    server();
+    renderWithProviders(<SettingsPage />);
+    await screen.findByText("Utgående mva 25 %");
+
+    await userEvent.click(screen.getByRole("button", { name: "Add a VAT code" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("textbox", { name: "Valid from" })).toHaveValue("Sep 12, 2026");
   });
 });
 ```
@@ -18040,6 +19323,7 @@ describe("the invoice settings", () => {
 
 ```tsx
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { InvoiceJournal } from "../api/journal";
 import { jsonResponse } from "../test/api";
@@ -18050,11 +19334,13 @@ import { JournalPage } from "./journal";
 
 const path = (input: RequestInfo | URL) => String(input);
 
-const server = (answer: InvoiceJournal) =>
+const server = (answer: InvoiceJournal | ((url: string) => InvoiceJournal)) =>
   stubFetch((input: RequestInfo | URL) => {
     const url = path(input);
     if (url === "/api/v1/invoices/meta") return jsonResponse(200, meta());
-    if (url.startsWith("/api/v1/invoices/journal?")) return jsonResponse(200, answer);
+    if (url.startsWith("/api/v1/invoices/journal?")) {
+      return jsonResponse(200, typeof answer === "function" ? answer(url) : answer);
+    }
     return new Response(null, { status: 404 });
   });
 
@@ -18070,11 +19356,53 @@ describe("the invoice journal", () => {
   });
 
   it("names the missing numbers, and warns when the counter ran ahead of every document", async () => {
-    server(journal({ gaps: [1004, 1005], counterLast: 1006 }));
+    server(journal({ gaps: [1004, 1005], counterLast: 1006, checkedTo: 1006 }));
     renderWithProviders(<JournalPage />);
 
     expect(await screen.findByText("Missing numbers: 1004, 1005.")).toBeInTheDocument();
     expect(screen.getByText(/The counter is at 1006 but the highest document is 1002/)).toBeInTheDocument();
+  });
+
+  it("reads a past range over two pages from the server's facts, not the page's", async () => {
+    // August: 1000 to 1003 over two pages of two; the series has gone on to
+    // 1010 since, and the counter with it — no warning, on either page.
+    const pagination = {
+      page: 1,
+      pageSize: 2,
+      totalCount: 4,
+      totalPages: 2,
+      hasNextPage: true,
+      hasPreviousPage: false,
+    };
+    const rows = journal().data;
+    const pageOf = (url: string): InvoiceJournal => {
+      const second = url.includes("page=2");
+      return journal({
+        data: second
+          ? [
+              { ...rows[1], id: 12, number: 1002 },
+              { ...rows[1], id: 13, number: 1003 },
+            ]
+          : [
+              { ...rows[0], id: 10, number: 1000 },
+              { ...rows[1], id: 11, number: 1001 },
+            ],
+        pagination: second ? { ...pagination, page: 2, hasNextPage: false, hasPreviousPage: true } : pagination,
+        checkedFrom: 1000,
+        checkedTo: 1003,
+        highestIssued: 1010,
+        counterLast: 1010,
+      });
+    };
+    server(pageOf);
+    renderWithProviders(<JournalPage />);
+
+    expect(await screen.findByText("No gaps between 1000 and 1003.")).toBeInTheDocument();
+    expect(screen.queryByText(/The counter is at/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "2" }));
+    expect(await screen.findByText("1003")).toBeInTheDocument();
+    expect(screen.getByText("No gaps between 1000 and 1003.")).toBeInTheDocument();
+    expect(screen.queryByText(/The counter is at/)).not.toBeInTheDocument();
   });
 });
 ```
@@ -18124,42 +19452,6 @@ export const invoiceSettingsQueryOptions = () =>
 /** A full replace with the revision the settings were read at. */
 export const updateInvoiceSettings = (input: InvoiceSettingsInput): Promise<InvoiceSettings> =>
   request<InvoiceSettings>("/api/v1/invoices/settings", json("PUT", input));
-```
-
-**Create** `apps/invoices/frontend/src/api/vat-codes.ts`:
-
-```ts
-import { queryOptions } from "@tanstack/react-query";
-import type { components } from "../api-schema";
-import { INVOICES_QUERY_KEY, json, request } from "./request";
-
-type Schemas = components["schemas"];
-
-/** A VAT code with every rate period it has had (D3). */
-export type VatCode = Schemas["InvoicesVatCode"];
-export type VatCodeRate = Schemas["InvoicesVatCodeRate"];
-export type VatCodeCreateInput = Schemas["InvoicesVatCodeCreateRequest"];
-export type VatCodeUpdateInput = Schemas["InvoicesVatCodeUpdateRequest"];
-
-export const vatCodesQueryOptions = () =>
-  queryOptions({
-    queryKey: [INVOICES_QUERY_KEY, "vat-codes"],
-    queryFn: ({ signal }) => request<VatCode[]>("/api/v1/invoices/vat-codes", { signal }),
-  });
-
-export const createVatCode = (input: VatCodeCreateInput): Promise<VatCode> =>
-  request<VatCode>("/api/v1/invoices/vat-codes", json("POST", input));
-
-export const updateVatCode = (id: number, input: VatCodeUpdateInput): Promise<VatCode> =>
-  request<VatCode>(`/api/v1/invoices/vat-codes/${id}`, json("PUT", input));
-
-/** The rate-change rule: the open period closes the day before validFrom. */
-export const addVatCodeRate = (id: number, ratePercent: number, validFrom: string): Promise<VatCode> =>
-  request<VatCode>(`/api/v1/invoices/vat-codes/${id}/rates`, json("POST", { ratePercent, validFrom }));
-
-/** Removes the latest, mistaken period and reopens the one before it. */
-export const deleteVatCodeRate = (id: number, rateId: number): Promise<VatCode> =>
-  request<VatCode>(`/api/v1/invoices/vat-codes/${id}/rates/${rateId}`, { method: "DELETE" });
 ```
 
 **Create** `apps/invoices/frontend/src/pages/settings.tsx`:
@@ -18224,14 +19516,14 @@ const categories = ["S", "Z", "E", "AE", "G", "O", "K"];
  * once anything is issued, and the VAT codes with their rate periods.
  */
 export const SettingsPage = () => {
-  const { t } = useInvoiceFormat();
+  const { t, date } = useInvoiceFormat();
   const settings = useQuery(invoiceSettingsQueryOptions());
   return (
     <Stack gap="lg">
       <PageHeader title={t("invoiceSettings")} description={t("invoiceSettingsDescription")} />
       {settings.isError && (
         <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadSettings")}>
-          {refusalMessage(settings.error, t)}
+          {refusalMessage(settings.error, t, date)}
         </Alert>
       )}
       {settings.isPending && <ContentSkeleton rows={6} rowHeight={48} />}
@@ -18242,7 +19534,7 @@ export const SettingsPage = () => {
 };
 
 const SellerForm = ({ settings }: { settings: InvoiceSettings }) => {
-  const { t } = useInvoiceFormat();
+  const { t, date } = useInvoiceFormat();
   const queryClient = useQueryClient();
   const [values, setValues] = useState(settings);
   const set = <K extends keyof InvoiceSettings>(key: K, value: InvoiceSettings[K]) =>
@@ -18275,7 +19567,7 @@ const SellerForm = ({ settings }: { settings: InvoiceSettings }) => {
       notifications.show({ color: "green", message: t("saved") });
     },
     onError: (error) =>
-      notifications.show({ color: "red", title: t("couldNotSaveSettings"), message: refusalMessage(error, t) }),
+      notifications.show({ color: "red", title: t("couldNotSaveSettings"), message: refusalMessage(error, t, date) }),
   });
   const text = (
     key:
@@ -18431,8 +19723,8 @@ const VatCodesSection = () => {
           </Table>
         )}
       </Stack>
-      {modal?.mode === "create" && <VatCodeForm onClose={() => setModal(null)} />}
-      {modal?.mode === "edit" && <VatCodeForm code={modal.code} onClose={() => setModal(null)} />}
+      {modal?.mode === "create" && <VatCodeForm today={today} onClose={() => setModal(null)} />}
+      {modal?.mode === "edit" && <VatCodeForm code={modal.code} today={today} onClose={() => setModal(null)} />}
       {modal?.mode === "rates" && (
         <RatePeriods
           code={codes.data?.find((c) => c.id === modal.code.id) ?? modal.code}
@@ -18445,8 +19737,9 @@ const VatCodesSection = () => {
   );
 };
 
-const VatCodeForm = ({ code, onClose }: { code?: VatCode; onClose: () => void }) => {
-  const { t } = useInvoiceFormat();
+/** A new code's first period starts today in Oslo unless the person picks another day. */
+const VatCodeForm = ({ code, today, onClose }: { code?: VatCode; today: string; onClose: () => void }) => {
+  const { t, date } = useInvoiceFormat();
   const queryClient = useQueryClient();
   const [values, setValues] = useState({
     code: code?.code ?? "",
@@ -18456,7 +19749,7 @@ const VatCodeForm = ({ code, onClose }: { code?: VatCode; onClose: () => void })
     exemptionReason: code?.exemptionReason ?? "",
     active: code?.active ?? true,
     ratePercent: 25 as number | string,
-    validFrom: "2026-01-01" as string | null,
+    validFrom: (today || null) as string | null,
   });
   const save = useMutation({
     mutationFn: () => {
@@ -18476,7 +19769,7 @@ const VatCodeForm = ({ code, onClose }: { code?: VatCode; onClose: () => void })
       onClose();
     },
     onError: (error) =>
-      notifications.show({ color: "red", title: t("couldNotSaveVatCode"), message: refusalMessage(error, t) }),
+      notifications.show({ color: "red", title: t("couldNotSaveVatCode"), message: refusalMessage(error, t, date) }),
   });
   return (
     <Modal opened onClose={onClose} title={code ? t("editVatCode", { code: code.code }) : t("addVatCode")}>
@@ -18571,7 +19864,7 @@ const RatePeriods = ({
   const [validFrom, setValidFrom] = useState<string | null>(null);
   const done = async () => queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY] });
   const fail = (error: Error) =>
-    notifications.show({ color: "red", title: t("couldNotChangeRate"), message: refusalMessage(error, t) });
+    notifications.show({ color: "red", title: t("couldNotChangeRate"), message: refusalMessage(error, t, date) });
   const add = useMutation({
     mutationFn: () => addVatCodeRate(code.id, Number(ratePercent) || 0, validFrom ?? ""),
     onSuccess: done,
@@ -18668,7 +19961,10 @@ export const JournalPage = () => {
     enabled: Boolean(rangeFrom && rangeTo),
   });
   const data = journal.data;
-  const highest = data?.data.length ? Math.max(...data.data.map((d) => d.number)) : undefined;
+  // The server's own facts, never the page's: the numbers the gap check
+  // covered, and the highest number issued in the whole series, which the
+  // counter must equal (D11).
+  const highest = data?.highestIssued;
 
   return (
     <Stack gap="lg">
@@ -18695,16 +19991,17 @@ export const JournalPage = () => {
       </Group>
       {journal.isError && (
         <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadJournal")}>
-          {refusalMessage(journal.error, t)}
+          {refusalMessage(journal.error, t, date)}
         </Alert>
       )}
       {journal.isPending && <ContentSkeleton rows={4} rowHeight={40} />}
       {data && (
         <>
           {data.gaps.length === 0 ? (
-            data.data.length > 0 && (
+            data.checkedFrom !== undefined &&
+            data.checkedTo !== undefined && (
               <Alert color="green" icon={<IconCircleCheck size={16} />}>
-                {t("noGaps", { first: data.data[0].number, last: highest })}
+                {t("noGaps", { first: data.checkedFrom, last: data.checkedTo })}
               </Alert>
             )
           ) : (
@@ -18713,14 +20010,11 @@ export const JournalPage = () => {
               {data.gapsTruncated && ` ${t("gapsTruncated")}`}
             </Alert>
           )}
-          {data.counterLast !== undefined &&
-            highest !== undefined &&
-            data.counterLast !== highest &&
-            page === data.pagination.totalPages && (
-              <Alert color="yellow" icon={<IconAlertTriangle size={16} />}>
-                {t("counterAhead", { counter: data.counterLast, highest })}
-              </Alert>
-            )}
+          {data.counterLast !== undefined && data.counterLast !== (highest ?? data.seriesStart - 1) && (
+            <Alert color="yellow" icon={<IconAlertTriangle size={16} />}>
+              {t("counterAhead", { counter: data.counterLast, highest: highest ?? t("notAvailable") })}
+            </Alert>
+          )}
           <Title order={4}>{t("totalsByCode")}</Title>
           <Table>
             <Table.Thead>
@@ -18792,20 +20086,19 @@ export const JournalPage = () => {
 **Replace** in `apps/invoices/frontend/src/i18n.ts`:
 
 ```ts
-    pdfNotStoredYet:
-      "The PDF could not be stored when the document was issued. It is stored the first time it is downloaded.",
-    orgNumber: "Org. no. {{number}}",
+    storageUnavailableHint: "This installation has no document store, so nothing can be issued.",
+    vatCodeNotOffered: "{{label}} (no longer offered)",
 
     "refusal.seller_incomplete": "The seller record is not complete. Fill it in under the settings.",
     "refusal.no_lines": "A document needs at least one line.",
+    "refusal.delivery_date_missing": "Give the delivery date or period first.",
 ```
 
 **with**:
 
 ```ts
-    pdfNotStoredYet:
-      "The PDF could not be stored when the document was issued. It is stored the first time it is downloaded.",
-    orgNumber: "Org. no. {{number}}",
+    storageUnavailableHint: "This installation has no document store, so nothing can be issued.",
+    vatCodeNotOffered: "{{label}} (no longer offered)",
 
     invoiceSettings: "Invoice settings",
     invoiceSettingsDescription:
@@ -18873,13 +20166,43 @@ export const JournalPage = () => {
 
     "refusal.seller_incomplete": "The seller record is not complete. Fill it in under the settings.",
     "refusal.no_lines": "A document needs at least one line.",
+    "refusal.delivery_date_missing": "Give the delivery date or period first.",
 ```
 
 **Replace** in `apps/invoices/frontend/src/i18n.ts`:
 
 ```ts
-    pdfNotStoredYet: "PDF-en kunne ikke lagres da dokumentet ble utstedt. Den lagres første gang den lastes ned.",
-    orgNumber: "Org.nr. {{number}}",
+    "refusal.storage_unavailable": "The document store is unavailable, so nothing can be issued or downloaded now.",
+    "refusal.invoice_draft": "A draft has no document yet; preview it instead.",
+    "refusal.credit_note_not_creditable": "A credit note cannot itself be credited.",
+  },
+  nb: {
+    invoices: "Fakturaer",
+```
+
+**with**:
+
+```ts
+    "refusal.storage_unavailable": "The document store is unavailable, so nothing can be issued or downloaded now.",
+    "refusal.invoice_draft": "A draft has no document yet; preview it instead.",
+    "refusal.credit_note_not_creditable": "A credit note cannot itself be credited.",
+    "refusal.series_locked": "Documents are issued from this series, so its start can no longer change.",
+    "refusal.vat_code_in_use":
+      "Lines carry this code, so its category and SAF-T code can no longer change. Deactivate it and create a new one.",
+    "refusal.rate_change_in_past": "A document is already issued on or after that day; choose a later date.",
+    "refusal.rate_period_not_latest": "Only the latest rate period can be removed.",
+    "refusal.rate_period_last": "A VAT code always has a rate, so its only period cannot be removed.",
+    "refusal.rate_period_in_use": "A document is issued on or after this period's start, so the period stays.",
+  },
+  nb: {
+    invoices: "Fakturaer",
+```
+
+**Replace** in `apps/invoices/frontend/src/i18n.ts`:
+
+```ts
+    storageUnavailableHint: "Denne installasjonen har ikke noe dokumentlager, så ingenting kan utstedes.",
+    vatCodeNotOffered: "{{label}} (tilbys ikke lenger)",
 
     "refusal.seller_incomplete": "Selgeropplysningene er ikke fullstendige. Fyll dem ut i innstillingene.",
     "refusal.no_lines": "Et dokument må ha minst én linje.",
@@ -18889,8 +20212,8 @@ export const JournalPage = () => {
 **with**:
 
 ```ts
-    pdfNotStoredYet: "PDF-en kunne ikke lagres da dokumentet ble utstedt. Den lagres første gang den lastes ned.",
-    orgNumber: "Org.nr. {{number}}",
+    storageUnavailableHint: "Denne installasjonen har ikke noe dokumentlager, så ingenting kan utstedes.",
+    vatCodeNotOffered: "{{label}} (tilbys ikke lenger)",
 
     invoiceSettings: "Fakturainnstillinger",
     invoiceSettingsDescription:
@@ -18959,6 +20282,35 @@ export const JournalPage = () => {
     "refusal.seller_incomplete": "Selgeropplysningene er ikke fullstendige. Fyll dem ut i innstillingene.",
     "refusal.no_lines": "Et dokument må ha minst én linje.",
     "refusal.delivery_date_missing": "Oppgi leveringsdato eller -periode først.",
+```
+
+**Replace** in `apps/invoices/frontend/src/i18n.ts`:
+
+```ts
+    "refusal.storage_unavailable": "Dokumentlageret er utilgjengelig, så ingenting kan utstedes eller lastes ned nå.",
+    "refusal.invoice_draft": "Et utkast har ikke noe dokument ennå; forhåndsvis det i stedet.",
+    "refusal.credit_note_not_creditable": "En kreditnota kan ikke selv krediteres.",
+  },
+} satisfies CatalogResources;
+
+```
+
+**with**:
+
+```ts
+    "refusal.storage_unavailable": "Dokumentlageret er utilgjengelig, så ingenting kan utstedes eller lastes ned nå.",
+    "refusal.invoice_draft": "Et utkast har ikke noe dokument ennå; forhåndsvis det i stedet.",
+    "refusal.credit_note_not_creditable": "En kreditnota kan ikke selv krediteres.",
+    "refusal.series_locked": "Det er utstedt dokumenter i denne serien, så startnummeret kan ikke lenger endres.",
+    "refusal.vat_code_in_use":
+      "Linjer bruker denne koden, så kategorien og SAF-T-koden kan ikke lenger endres. Deaktiver den og opprett en ny.",
+    "refusal.rate_change_in_past": "Et dokument er allerede utstedt på eller etter den dagen; velg en senere dato.",
+    "refusal.rate_period_not_latest": "Bare den siste satsperioden kan fjernes.",
+    "refusal.rate_period_last": "En mva-kode har alltid en sats, så den eneste perioden kan ikke fjernes.",
+    "refusal.rate_period_in_use": "Et dokument er utstedt på eller etter periodens start, så perioden blir stående.",
+  },
+} satisfies CatalogResources;
+
 ```
 
 **Replace the whole of** `apps/invoices/frontend/src/index.ts` with:
@@ -19195,7 +20547,7 @@ mise exec -- bun run translations:check && mise exec -- bun run i18n:test
 Commit:
 
 ```bash
-cat > /tmp/claude-1000/msg-invoices-task11.txt <<'MSG'
+cat > /tmp/claude-1000/msg-invoices-task13.txt <<'MSG'
 feat(invoices-ui): settings with the VAT codes, and the journal
 
 Invoice settings (invoices foundation design D12): the seller record with
@@ -19206,14 +20558,14 @@ order. The host gains both sidebar entries. en and nb.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 MSG
-git add -- 'apps/host/frontend/src/apps.test.ts' 'apps/host/frontend/src/apps.ts' 'apps/host/frontend/src/catalogs/navigation.ts' 'apps/host/frontend/src/routeTree.gen.ts' 'apps/host/frontend/src/routes/invoices/journal.tsx' 'apps/host/frontend/src/routes/invoices/settings.tsx' 'apps/invoices/frontend/src/api/journal.ts' 'apps/invoices/frontend/src/api/settings.ts' 'apps/invoices/frontend/src/api/vat-codes.ts' 'apps/invoices/frontend/src/i18n.ts' 'apps/invoices/frontend/src/index.ts' 'apps/invoices/frontend/src/pages/journal.test.tsx' 'apps/invoices/frontend/src/pages/journal.tsx' 'apps/invoices/frontend/src/pages/settings.test.tsx' 'apps/invoices/frontend/src/pages/settings.tsx' 'apps/invoices/frontend/src/test/fixtures.ts'
-git commit -F /tmp/claude-1000/msg-invoices-task11.txt -- 'apps/host/frontend/src/apps.test.ts' 'apps/host/frontend/src/apps.ts' 'apps/host/frontend/src/catalogs/navigation.ts' 'apps/host/frontend/src/routeTree.gen.ts' 'apps/host/frontend/src/routes/invoices/journal.tsx' 'apps/host/frontend/src/routes/invoices/settings.tsx' 'apps/invoices/frontend/src/api/journal.ts' 'apps/invoices/frontend/src/api/settings.ts' 'apps/invoices/frontend/src/api/vat-codes.ts' 'apps/invoices/frontend/src/i18n.ts' 'apps/invoices/frontend/src/index.ts' 'apps/invoices/frontend/src/pages/journal.test.tsx' 'apps/invoices/frontend/src/pages/journal.tsx' 'apps/invoices/frontend/src/pages/settings.test.tsx' 'apps/invoices/frontend/src/pages/settings.tsx' 'apps/invoices/frontend/src/test/fixtures.ts'
+git add -- 'apps/host/frontend/src/apps.test.ts' 'apps/host/frontend/src/apps.ts' 'apps/host/frontend/src/catalogs/navigation.ts' 'apps/host/frontend/src/routeTree.gen.ts' 'apps/host/frontend/src/routes/invoices/journal.tsx' 'apps/host/frontend/src/routes/invoices/settings.tsx' 'apps/invoices/frontend/src/api/journal.ts' 'apps/invoices/frontend/src/api/settings.ts' 'apps/invoices/frontend/src/i18n.ts' 'apps/invoices/frontend/src/index.ts' 'apps/invoices/frontend/src/pages/journal.test.tsx' 'apps/invoices/frontend/src/pages/journal.tsx' 'apps/invoices/frontend/src/pages/settings.test.tsx' 'apps/invoices/frontend/src/pages/settings.tsx' 'apps/invoices/frontend/src/test/fixtures.ts'
+git commit -F /tmp/claude-1000/msg-invoices-task13.txt -- 'apps/host/frontend/src/apps.test.ts' 'apps/host/frontend/src/apps.ts' 'apps/host/frontend/src/catalogs/navigation.ts' 'apps/host/frontend/src/routeTree.gen.ts' 'apps/host/frontend/src/routes/invoices/journal.tsx' 'apps/host/frontend/src/routes/invoices/settings.tsx' 'apps/invoices/frontend/src/api/journal.ts' 'apps/invoices/frontend/src/api/settings.ts' 'apps/invoices/frontend/src/i18n.ts' 'apps/invoices/frontend/src/index.ts' 'apps/invoices/frontend/src/pages/journal.test.tsx' 'apps/invoices/frontend/src/pages/journal.tsx' 'apps/invoices/frontend/src/pages/settings.test.tsx' 'apps/invoices/frontend/src/pages/settings.tsx' 'apps/invoices/frontend/src/test/fixtures.ts'
 git show --stat HEAD && git status --short   # nothing of yours left; go.mod/go.sum at the root untracked as before
 ```
 
 ---
 
-### Task 12: Verify the whole branch and open the PR
+### Task 14: Verify the whole branch and open the PR
 
 - [ ] **Step 1: The whole suite, as CI runs it**
 
@@ -19234,7 +20586,7 @@ mise exec -- bun run --cwd apps/invoices/frontend test && mise exec -- bun run -
 mise exec -- bun run translations:check && mise exec -- bun run i18n:test && mise exec -- bun run gen:client:test
 mise exec -- bunx biome check .
 cd apps/server && mise exec -- go run ./internal/openapi/cmd/contract coverage -corpus ../../openapi/testdata/exchanges -out ../../openapi/COVERAGE.md && cd ../..
-git status --short -- openapi/COVERAGE.md   # committed in Tasks 1-8: must print nothing
+git status --short -- openapi/COVERAGE.md   # committed in Tasks 1, 3 and 5–10: must print nothing
 ```
 `taskset -c 0-3` because the CI runner has four CPUs. Run the frontend packages one at a time, not through `bun --filter`. `main` may already be red for reasons that are not ours — if a failure is in a module this branch never touched, check it against `git log origin/main` and say so rather than fixing it here. Parallel packages' logs interleave: read a failure's own `--- FAIL` block.
 
@@ -19247,10 +20599,10 @@ git diff main..HEAD -- apps/server/internal/contracts apps/server/internal/custo
 git diff main..HEAD -- openapi/testdata/exchanges openapi/customers.yaml   # must print nothing
 git diff main..HEAD -- 'openapi/*.yaml' | grep -c '^+.*operationId'          # 18, all in invoices.yaml
 grep -rn '"github.com/vantigo-io/vantigo/server/internal/\(customers\|projects\|expenses\|time\|energy\|products\|communications\|identity\)' apps/server/internal/invoices/   # must print nothing
-grep -rn 'CURRENT_DATE\|now()::date\|SetFloat64' apps/server/internal/invoices/   # must print nothing
+grep -rnE 'CURRENT_DATE|now\(\)::date|SetFloat64' apps/server/internal/invoices/ | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|--)'   # must print nothing: no code line uses them (a comment may name them)
 cd apps/server && mise exec -- go test -count=1 -run 'TestNoModuleReferencesAnotherModulesSchema|TestSqlcSchemaListsOnlyTheModulesOwnMigrations|TestServeMuxConflictsArePinned|TestInvoices' ./internal/db/ ./internal/openapi/ && cd ../..
 ```
-Check, by eye: the spec commit, the plan commit and eleven task commits, each trailer exactly `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`; nothing under `openapi/testdata/exchanges/`; the root `go.mod`/`go.sum` still untracked; one migration, `00034`; `contracts.CustomerBillingProfile` changed only by the two new fields; every `customerProfile`/`customerEntries`/`object*` call outside `withLockedTx` (the harness's locked-call check has already proven it on every test); the fonts' SHA-256 as Task 5 lists them.
+Check, by eye: the spec commit, the plan commit and thirteen task commits, each trailer exactly `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`; nothing under `openapi/testdata/exchanges/`; the root `go.mod`/`go.sum` still untracked; one migration, `00034`; `contracts.CustomerBillingProfile` changed only by the two new fields; every `customerProfile`/`customerEntries`/`object*` call outside `withLockedTx` (the harness's locked-call check has already proven it on every test); the fonts' SHA-256 as Task 7 lists them.
 
 - [ ] **Step 3: Open the PR**
 
@@ -19302,8 +20654,10 @@ conflict schema with the code; "store configured"; `today` on meta;
 what a credit draft keeps; credit amounts on issued invoices only; the rate
 operations take the settings lock; fixed seed ids; the PDF tested through
 its model; Content-Disposition set outside the contract; the merge holder's
-clock; the literal gap range; no notices file or changelog; vendored fonts;
-sqlc.arg; two frontend tasks).
+clock; the gap range from the issued document before the range's first; no
+notices file or changelog; vendored fonts; sqlc.arg; two frontend tasks;
+the merge holder's newest-first lock; issued_late never on a credit note;
+highestIssued and the range checked on the journal; a render failure a 500).
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 MSG
@@ -19316,7 +20670,7 @@ gh pr checks --watch
 
 - [ ] **Step 4: Report**
 
-Say: the PR's number and URL and CI's state; each test shown able to fail and what the mutation printed; anything a generator disagreed with this plan about; whether `main` was already red; and the eighteen readings of the spec in the preamble, for the user's verdict.
+Say: the PR's number and URL and CI's state; each test shown able to fail and what the mutation printed; anything a generator disagreed with this plan about; whether `main` was already red; and the twenty-two readings of the spec in the preamble, for the user's verdict — 14 (the gap range) and 19 (the merge holder's lock order) as wording clarifications of the spec.
 
 ---
 
@@ -19326,33 +20680,35 @@ Say: the PR's number and URL and CI's state; each test shown able to fail and wh
 
 | Spec | Where |
 | --- | --- |
-| D1 the module, its four permissions, `invoices requires customers`, the checklist of `docs/module-boundaries.md` | Task 1 (every step); `TestPermissions_AreTheCatalogTheDesignNames`, `TestMount_RefusesAnInstallationWithoutCustomers`, `TestLoad_Modules`; Task 11 Step 3 (the sidebar) |
-| D1 the Oslo business day from `Deps.Clock()`, never `CURRENT_DATE` | Task 1 `values.go`; `TestMeta_TodayIsTheBusinessDayInOslo`; Task 12 Step 2's grep |
-| D1 `customers:view` for the picker; the API checks none | Task 10 (`-invoice-access.tsx`, `canViewCustomers`); `-invoices-list.test.tsx`; the list test "offers New invoice only to…" |
-| D2 the settings row, both mod-11 checks, IBAN/BIC, NOK only, the revision, completeness, the counter, `series_locked` after `FOR UPDATE` | Task 1 migration; Task 2 `settings.go`; `TestSellerNumbers_TheCheckDigitRules`, `TestSettings_*`; Task 4 `TestIssue_ASettingsReplaceRacingTheFirstIssueWaitsAndIsRefused` |
+| D1 the module, its four permissions, `invoices requires customers`, the checklist of `docs/module-boundaries.md` | Task 1 (every step); `TestPermissions_AreTheCatalogTheDesignNames`, `TestMount_RefusesAnInstallationWithoutCustomers`, `TestLoad_Modules`; Task 2 (the package and the host); Task 13 Step 3 (the sidebar) |
+| D1 the Oslo business day from `Deps.Clock()`, never `CURRENT_DATE` | Task 1 `values.go`; `TestMeta_TodayIsTheBusinessDayInOslo`; Task 14 Step 2's grep |
+| D1 `customers:view` for the picker; the API checks none | Task 12 (`-invoice-access.tsx`, `canViewCustomers`); `-invoices-list.test.tsx`; the list test "offers New invoice only to…" |
+| D2 the settings row, both mod-11 checks, IBAN/BIC, NOK only, the revision, completeness, the counter, `series_locked` after `FOR UPDATE` | Task 1 migration; Task 3 `settings.go`; `TestSellerNumbers_TheCheckDigitRules`, `TestSettings_*`; Task 6 `TestIssue_ASettingsReplaceRacingTheFirstIssueWaitsAndIsRefused` and `TestIssue_ASettingsReplaceThatCommitsFirstSetsTheStartTheIssueUses` |
 | D2 no reserved column names | `TestInvoicesSchema_NamesNoColumnWithAReservedWord` |
 | D2 `GET /meta` | Task 1; `TestMeta_*` |
-| D3 codes and dated periods, the exclusion, the seed (6 E, 7 O), rate rules per category, in use, deactivation, the rate-change rule and period removal | Task 1 migration, `TestInvoicesBaseline_AppliesAndIsIdempotent`; Task 2 `vatcodes.go`; `TestVatCodes_*`; Task 4 `TestIssue_TheSeriesStartAndARateChange` (old rate the day before, new after) |
-| D4 the tables, delivery CHECK, snapshots, drafts, prefills, the gates in order, validation, warnings, preview, the list, the response | Task 1 migration; Task 3 `drafts.go`, `responses.go`, `list.go`; `TestDrafts_*`, `TestList_*`; Task 4 `TestIssue_TheSnapshots`; Task 5 `TestPDF_ThePreview` |
-| D5 the float path, decimals per field, gross − allowance, VAT per rate, bounds, NOK only, `vat_total_nok` | Task 3 `money.go`, `decimal.go`; `TestDrafts_TheMoney`; `TestIssue_AnInvoice`; frontend `lib/money.test.ts` |
-| D6 the order before and inside the transaction, every refusal, the issue-date rule and the exception, `issued_late`, the lock order | Task 4 `issue.go`, `issuedate.go`; `TestIssue_*` (the date rule, the refusals, `invoice_changed`, no store, racing numbers, racing dates, a failure after allocation, the settings race, no deadlock) |
-| D7 maroto v2, the fixed defaults, the font, store-once, the key, the download's failure modes, the preview, the layout | Task 5; `TestPDFModel_*`, `TestRenderPDF_IsReproducible`, `TestPDF_*` |
-| D8 the credit draft, what it may change, both caps under the lock, what it skips, links | Task 6; `TestCredit_*` |
+| D3 codes and dated periods, the exclusion, the seed (6 E, 7 O), rate rules per category, in use, deactivation, the rate-change rule and period removal, `invoices:manage` on every write | Task 1 migration, `TestInvoicesBaseline_AppliesAndIsIdempotent`; Task 3 `vatcodes.go`; `TestVatCodes_*` (`TestVatCodes_EveryWriteNeedsManage`); Task 6 `TestIssue_TheSeriesStartAndARateChange` (old rate the day before, new after) |
+| D4 the tables, delivery CHECK, snapshots, drafts, prefills, the gates in order, validation, warnings (`vat_code_not_valid` for a code with no rate today), preview, the list, the response, `invoices:create` on every write | Task 1 migration; Task 5 `drafts.go`, `responses.go`, `list.go`; `TestDrafts_*` (`TestDrafts_ACodeWithNoRateTodayWarns`, `TestDrafts_ReplaceAndDeleteNeedCreate`), `TestList_*`; Task 6 `TestIssue_TheSnapshots`; Task 7 `TestPDF_ThePreview` |
+| D5 the float path, decimals per field, gross − allowance, VAT per rate, bounds, NOK only, `vat_total_nok` | Task 5 `money.go`, `decimal.go`; `TestDrafts_TheMoney`; `TestIssue_AnInvoice`; frontend `lib/money.test.ts` and the editor's totals tests |
+| D6 the order before and inside the transaction, every refusal, the issue-date rule and the exception, `issued_late`, the lock order | Task 6 `issue.go`, `issuedate.go`; `TestIssue_*` (the date rule, the refusals, `invoice_changed`, no store, racing numbers, racing dates, a failure after allocation, the settings race from both sides, no deadlock); Task 9 `TestCustomerReferences_ARepointRacingACreditNoteIssueNeverDeadlocks` (the merge holder's lock order) |
+| D7 maroto v2, the fixed defaults, the font, store-once, the key, the download's failure modes, the preview, the layout | Task 7; `TestPDFModel_*`, `TestRenderPDF_IsReproducible` (with the pinned SHA-256), `TestStoreOnceFailed_OnlyTheObjectStoreIsA503`, `TestPDF_*` |
+| D8 the credit draft, what it may change, both caps under the lock, what it skips, its rates in the response and the preview, links | Task 8; `TestCredit_*` (`TestCredit_ACustomerDisabledMergedOrAnonymisedSince`, `TestCredit_ACodeExpiredSince`, `TestCredit_ThePreviewUsesTheOriginalsRates`, `TestCredit_NeverWarnsIssuedLate`, `TestCredit_BothCapsWarn`) |
 | D9 the triggers | Task 1 migration; `TestInvoicesBaseline_…` (they exist); `TestIssue_AnIssuedDocumentIsImmutableInSQL` |
-| D10 the contract change; `RepointCustomer`; the export and the erase | Task 3 Step 1 (`TestDirectory_BillingProfile_CarriesStatusAndMergedInto`); Task 7; `TestCustomerReferences_*`, `TestCustomerPersonalData_*` |
-| D11 the journal | Task 8; `TestJournal_*` |
-| D12 the frontend | Tasks 1, 10, 11 |
-| D13 the docs, checked against the code | Task 9 |
-| Out of scope | nothing in Tasks 1–11 adds payments, delivery, EHF, KID, a CSV, a dashboard card, a customer tab, a logo, a purge or a sweeper |
+| D10 the contract change; `RepointCustomer`; the export and the erase | Task 4 (`TestDirectory_BillingProfile_CarriesStatusAndMergedInto`); Task 9; `TestCustomerReferences_*`, `TestCustomerPersonalData_*` |
+| D11 the journal | Task 10; `TestJournal_*` (`TestJournal_APastRangeOverTwoPages`) |
+| D12 the frontend | Tasks 2, 12, 13 |
+| D13 the docs, checked against the code | Task 11 |
+| Out of scope | nothing in Tasks 1–13 adds payments, delivery, EHF, KID, a CSV, a dashboard card, a customer tab, a logo, a purge or a sweeper |
 
 **Placeholder scan.** Every step carries its code, SQL, yaml, test and command, or the exact command that writes a generated file. No "TBD", no "similar to Task N".
 
 **Name consistency.** SQL: `invoices.settings/counters/vat_codes/vat_code_rates/invoices/lines/vat_summaries`, `refuse_issued_document_change`, `refuse_issued_child_change`, `ex_vat_code_rates_no_overlap`, `ux_vat_codes_code_lower`, `ux_invoices_number`. Go: `customerGate`, `invoiceIssued`, `parseDraft`, `computeLine`, `summarize`, `allowedIssueDates`, `issuedLate`, `invoiceIssueChecks`, `creditIssueChecks`, `creditCaps`, `storeOnce`, `buildPDFModel`, `renderPDF`, `customerReferenceHolder`, `customerPersonalData`. Wire: `InvoicesConflictProblem.{code,mergedInto,linePosition,allowedIssueDates}`, every operationId `*Invoices*`. Kinds: `invoices.invoices`, `invoices.drafts`, `invoices.documents`. TS: `INVOICE_ROUTE_PATH`, `lineAmounts`, `documentTotals`, `refusalMessage`, `useInvoiceAccess`.
 
-**The scratch run.** The plan was written from a working implementation and then applied, mechanically, to a fresh copy of the spec commit `d77fc256` (`cp -r` into `/tmp/claude-1000/plan-apply/`, never `git worktree`) by a script (`/tmp/claude-1000/gen/apply_plan.py`) that performs every instruction in order — 89 Create, 94 Replace (each anchor asserted to occur exactly once at the moment it is applied), 11 Append, 6 Replace-the-whole-of, 10 Insert into `openapi/invoices.yaml` and all 24 Run blocks (the `cp`s, `curl` + `sha256sum -c` of the fonts, `go get` and `go mod tidy`, `go generate ./...`, the coverage report, `bun install`, `bun run gen:client`, the depguard and eslint scripts, `biome --write`, the host test run that regenerates `routeTree.gen.ts`). The result was **byte-identical** to the implementation tree (`diff -rq` excluding `node_modules` and `.git`), generated files, `go.mod`/`go.sum`, the fonts, `bun.lock` and `routeTree.gen.ts` included. On that tree, with `TEST_DATABASE_URL` on port 55442: `go generate ./...` (exit 0; a second run and `bun run gen:client` changed nothing), `gofmt -l` empty, `go build ./...` and `go vet ./...` (exit 0), `golangci-lint run ./...` (0 issues), `taskset -c 0-3 go test -count=1` over `internal/invoices/...`, `internal/customers/...`, `internal/db/...`, `internal/openapi/...`, `internal/module/...`, `internal/integration/...`, `internal/config/...` and `cmd/...` (all ok), `@vantigo/invoices-ui` typecheck, lint and tests (5 files, 22 tests), the host's tests (46 files, 324 tests, run by the plan itself) and `translations:check` all passed. On the implementation tree before that: the whole `go test ./...` on four CPUs (every package ok), `go test -race` over `internal/invoices` through `zig cc` on four CPUs (ok), every frontend package's lint, `gen:client:test`, `i18n:test` and `biome check .` (clean).
+**The scratch run.** The plan was written from a working implementation — a per-task history in a scratch copy, re-cut into these thirteen tasks after the pre-flight review — and then applied, mechanically, to a fresh `cp -r` copy of `65856b7f` (the spec and this plan's previous version; never `git worktree`) by `/tmp/claude-1000/gen/apply_plan.py`, which performs every instruction in order: 91 Create, 101 Replace (each anchor asserted to occur exactly once at the moment it is applied), 11 Append, 6 Replace-the-whole-of, 10 Insert into `openapi/invoices.yaml` and all 25 Run blocks (the `cp`s, `curl` + `sha256sum -c` of the fonts, `go get` and `go mod tidy`, `go generate ./...`, the coverage report, `bun install`, `bun run gen:client`, the depguard and eslint scripts, `biome --write`, the host test runs that regenerate `routeTree.gen.ts`). The result was **byte-identical** to the implementation tree (`diff -rq` excluding `node_modules` and `.git`), generated files, `go.mod`/`go.sum`, the fonts, `bun.lock` and `routeTree.gen.ts` included. On that applied tree, with `TEST_DATABASE_URL` on port 55442: `go generate ./...` and `bun run gen:client` again changed nothing (`diff -rq` still empty); `gofmt -l` empty; `go build ./...` and `go vet ./...` (exit 0); `golangci-lint run ./...` (0 issues); the whole `taskset -c 0-3 go test -count=1 ./...` (every package ok); `go test -race` over `internal/invoices` and `internal/customers` through `zig cc` on four CPUs (ok); every frontend package's typecheck and lint (invoices, host, expenses, customers, projects, time, products, energy, communications); `@vantigo/invoices-ui`'s tests (5 files, 38 tests); the host's tests (46 files, 324 tests); `translations:check`, `i18n:test`, `gen:client:test` and `biome check .` (clean); Task 11 Step 3's docs check (exactly the four expected leftovers, 18 `x-vantigo-access` lines) and Task 14 Step 2's greps.
 
-**Tests shown able to fail** (each mutation run, seen red, restored): the series lock removed → `TestSettings_TheSeriesStartLocksAtTheFirstIssue`; VAT summed per line instead of per rate → `TestDrafts_TheMoney`; the per-line credit cap disabled → `TestCredit_ThePerLineCap` and `TestCredit_RacingCreditNotesKeepTheCap`; the gap range starting at the first number instead of the one before → `TestJournal_TheGapCheck`; the issue-date check removed → `TestIssue_TheIssueDateRule`; a directory call marked as made under a lock → the harness's locked-call check failed `TestDrafts_CreateFillsWhatItWasNotTold`; `resolved.Status` not set → `TestDirectory_BillingProfile_CarriesStatusAndMergedInto`.
+**Tests shown able to fail** (each mutation run, seen red, restored): the series lock removed → `TestSettings_TheSeriesStartLocksAtTheFirstIssue`; VAT summed per line instead of per rate → `TestDrafts_TheMoney`; the per-line credit cap disabled → `TestCredit_ThePerLineCap` and `TestCredit_RacingCreditNotesKeepTheCap`; the issue-date check removed → `TestIssue_TheIssueDateRule`; a directory call marked as made under a lock → the harness's locked-call check failed `TestDrafts_CreateFillsWhatItWasNotTold`; `resolved.Status` not set → `TestDirectory_BillingProfile_CarriesStatusAndMergedInto`. After the review: `RepointCustomer` without `LockCustomerDocuments` → `TestCustomerReferences_ARepointRacingACreditNoteIssueNeverDeadlocks` (`ERROR: deadlock detected (SQLSTATE 40P01)`); the credit preview taxed at today's rates → `TestCredit_ThePreviewUsesTheOriginalsRates` (preview 260.00, not 250.00); the gap range started at `greatest(first − 1, series_start)` → `TestJournal_TheGapCheck` (September lists 4, 7, 8 and not 3).
 
-**What the scratch run changed in this plan** before it passed: sqlc rejects `@series_start::bigint + 1` ("syntax error at or near N"), so the counter and the journal use `sqlc.arg(...)`; the credit copy's `INSERT … SELECT` needed its source aliased (`column reference "invoice_id" is ambiguous`); a `Content-Disposition` declared as a required response header failed every download's contract validation (contracttest passes kin-openapi only `Content-Type`), so it is set by a `Visit` wrapper; Mantine's `Textarea autosize` throws in jsdom, so the notes are plain `Textarea`s; `<Anchor component={Link} {...options}>` does not type-check against an untyped route, so `DocumentLink` navigates; a VAT-code `Select` is found as a `combobox`; a route helper component moved to `test/invoice-route.tsx` for `react-refresh/only-export-components`; `gofmt` realigned `contracts.CustomerBillingProfile`; staticcheck's De Morgan rewrite in `validIBAN`; the gap test's first expectation was wrong (the literal range checks only the number before the first); an unused helper went; the `i18next` type import was replaced by a local `Translate` type.
+**What the pre-flight review changed.** B1: the merge holder locks the two customers' documents id-descending before its `UPDATE` (Task 9), and a real race replaces the vacuous no-deadlock test. I1: a credit draft's preview uses the original lines' snapshot rates (Task 8, through `creditDraftTaxedLines`, shared with the response). I2: the gap range starts one past the issued document before the range's first (reading 14 overruled). I3: `highestIssued`, `checkedFrom` and `checkedTo` on the journal, used by Task 13's page, with a two-page test on each side. I4/I5: refusals interpolate `{{dates}}`, `{{line}}` and `{{mergedInto}}`, and every code has a key in both catalogs. I6/M14: the parallelism note. Softened #5: `vat_code_not_valid` as a draft warning, and the editor totals as the server does. M4: a pinned SHA-256. M1: Task 14's grep skips comments. M2: plain `numeric` journal totals. M3: no `issued_late` on a credit note. M5: the credit tests for a disabled, merged and anonymised customer and an expired code. M6: the settings race's other half. M7: 403 tests for the draft replace and delete and every VAT-code write. M9: "the seven tables". M12: both cap warnings. M13: a render failure is a 500. Frontend 1–12 in Tasks 12 and 13. Sizing: Task 1 split into 1 and 2, the customers change its own Task 4, everything after renumbered.
+
+**What the scratch run changed in this plan** before it passed: sqlc rejects `@series_start::bigint + 1` ("syntax error at or near N"), so the counter and the journal use `sqlc.arg(...)`; the credit copy's `INSERT … SELECT` needed its source aliased (`column reference "invoice_id" is ambiguous`); a `Content-Disposition` declared as a required response header failed every download's contract validation (contracttest passes kin-openapi only `Content-Type`), so it is set by a `Visit` wrapper; Mantine's `Textarea autosize` throws in jsdom, so the notes are plain `Textarea`s; `<Anchor component={Link} {...options}>` does not type-check against an untyped route, so `DocumentLink` navigates; a VAT-code `Select` is found as a `combobox` and a `DateInput` as a `textbox`; a route helper component moved to `test/invoice-route.tsx` for `react-refresh/only-export-components`; `gofmt` realigned `contracts.CustomerBillingProfile`; staticcheck's De Morgan rewrite in `validIBAN`; an unused helper went; the `i18next` type import was replaced by a local `Translate` type. After the review: a debounced search through `useEffect` tripped `react-hooks/set-state-in-effect`, so the debounced value feeds the query and a new search resets the page in its `onChange`; a test's non-null assertion became a wire literal of a foreign buyer; the vat-codes-only-after-load assertions wait (`waitFor`); a package-scoped `go generate` does not run sqlc — the plan never uses one.
 
 The scratch copies were deleted afterwards.
