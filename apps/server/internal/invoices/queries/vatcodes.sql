@@ -77,3 +77,14 @@ DELETE FROM invoices.vat_code_rates WHERE id = @id;
 -- ReopenVatCodeRate makes a period open-ended again, after the one that
 -- followed it was removed.
 UPDATE invoices.vat_code_rates SET valid_to = NULL WHERE id = @id;
+
+-- name: VatCodesOnDay :many
+-- VatCodesOnDay is every code with the rate of the period covering day, NULL
+-- when none covers it: what a draft's lines are checked and totalled against
+-- (D3, D4). Inactive codes are in it, so a line can be told "inactive" rather
+-- than "unknown".
+SELECT c.id, c.code, c.active, c.saf_t_code, c.ehf_category, c.exemption_reason, r.rate_percent
+FROM invoices.vat_codes c
+LEFT JOIN invoices.vat_code_rates r
+    ON r.vat_code_id = c.id AND r.valid_from <= @day::date AND (r.valid_to IS NULL OR r.valid_to >= @day::date)
+ORDER BY c.id;

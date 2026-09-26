@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
@@ -82,4 +83,20 @@ func (s *server) withLockedTx(ctx context.Context, fn func(ctx context.Context, 
 	return db.WithTx(locked, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		return fn(locked, store.New(tx))
 	})
+}
+
+// callerID is the signed-in caller of one request. The router has already
+// authenticated every operation (invoices:access), so a handler always has one.
+func callerID(ctx context.Context) uuid.UUID {
+	p, _ := contracts.PrincipalFrom(ctx)
+	return p.UserID
+}
+
+// inLockedTx reports whether ctx is one withLockedTx marked. Nothing in the
+// module branches on it; the tests' contract-call hook does
+// (contractscalls.go), to prove that no call into another module or the
+// object store is ever made while locks are held.
+func inLockedTx(ctx context.Context) bool {
+	locked, _ := ctx.Value(lockedTxKey{}).(bool)
+	return locked
 }

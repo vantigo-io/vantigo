@@ -409,3 +409,53 @@ func (q *Queries) VatCodesInUse(ctx context.Context) ([]int32, error) {
 	}
 	return items, nil
 }
+
+const vatCodesOnDay = `-- name: VatCodesOnDay :many
+SELECT c.id, c.code, c.active, c.saf_t_code, c.ehf_category, c.exemption_reason, r.rate_percent
+FROM invoices.vat_codes c
+LEFT JOIN invoices.vat_code_rates r
+    ON r.vat_code_id = c.id AND r.valid_from <= $1::date AND (r.valid_to IS NULL OR r.valid_to >= $1::date)
+ORDER BY c.id
+`
+
+type VatCodesOnDayRow struct {
+	ID              int32
+	Code            string
+	Active          bool
+	SafTCode        string
+	EhfCategory     string
+	ExemptionReason *string
+	RatePercent     pgtype.Numeric
+}
+
+// VatCodesOnDay is every code with the rate of the period covering day, NULL
+// when none covers it: what a draft's lines are checked and totalled against
+// (D3, D4). Inactive codes are in it, so a line can be told "inactive" rather
+// than "unknown".
+func (q *Queries) VatCodesOnDay(ctx context.Context, day pgtype.Date) ([]VatCodesOnDayRow, error) {
+	rows, err := q.db.Query(ctx, vatCodesOnDay, day)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []VatCodesOnDayRow
+	for rows.Next() {
+		var i VatCodesOnDayRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Active,
+			&i.SafTCode,
+			&i.EhfCategory,
+			&i.ExemptionReason,
+			&i.RatePercent,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
