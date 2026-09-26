@@ -42,6 +42,7 @@ func issued(t *testing.T, h *harness, id int64) invoiceJSON {
 	}
 	var inv invoiceJSON
 	res.JSON(&inv)
+	addsUp(t, inv)
 	return inv
 }
 

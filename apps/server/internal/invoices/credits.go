@@ -223,59 +223,75 @@ func storedCreditedLines(lines []store.InvoicesLine) ([]creditedLine, error) {
 	return out, nil
 }
 
-// finalReversal reports whether a credit note is the invoice's last: with the
-// issued credit notes before it, it credits every line's whole quantity —
-// exactly, never past it — and every credit of every line, theirs and its
-// own, is a return at the line's own price and discount. Only then is what the parts miss of the whole the
-// øre their roundings lost. A price reduction ("prisavslag") is never part of
-// a final reversal: its credit was a choice, not a rounding, and squaring
-// after it would credit the reduction again.
-func (b creditBook) finalReversal(lines []creditedLine) (bool, error) {
+// isReturn reports whether a credit line returns its original line's units at
+// the line's own price and discount. A price reduction ("prisavslag") or a
+// higher discount is not a return: its credit was a choice, not a rounding,
+// and squaring after it would credit the reduction again.
+func isReturn(l creditedLine, o store.InvoicesLine) (bool, error) {
+	if l.quantity == nil || l.unitPrice == nil || l.discount == nil {
+		return false, nil
+	}
+	price, discount, err := numericPair(o.UnitPrice, o.DiscountPercent)
+	if err != nil {
+		return false, err
+	}
+	return l.unitPrice.Cmp(price) == 0 && l.discount.Cmp(discount) == 0, nil
+}
+
+// lastReturn reports whether l is the credit that returns its original
+// line's last unit: with the issued credit notes before it, the line's whole
+// quantity is credited — exactly, never past it, which the line cap refuses —
+// and every credit of the line, theirs and l, is a return (isReturn). Only
+// then is what the parts miss of the line the øre their roundings lost, and
+// l takes it (creditBook.remaining).
+func (b creditBook) lastReturn(l creditedLine, o store.InvoicesLine) (bool, error) {
+	ok, err := isReturn(l, o)
+	if err != nil || !ok {
+		return false, err
+	}
+	total := new(big.Rat).Set(l.quantity)
+	if c, credited := b.credited[o.ID]; credited {
+		if !c.returns {
+			return false, nil
+		}
+		total.Add(total, c.quantity)
+	}
+	want, err := ratFromNumeric(o.Quantity)
+	if err != nil {
+		return false, err
+	}
+	return total.Cmp(want) == 0, nil
+}
+
+// finalReversal reports whether a credit note is the invoice's last: every
+// line of the original is returned in full, each either by an earlier note
+// that returned its last unit or by this note's last return of it (lastReturn).
+// squared is, per line of the note, whether it is its line's last return.
+func (b creditBook) finalReversal(lines []creditedLine, squared []bool) (bool, error) {
 	if len(b.lines) == 0 {
 		return false, nil
 	}
-	quantity := map[int64]*big.Rat{}
-	for _, l := range lines {
-		if l.creditsLineID == nil || l.quantity == nil || l.unitPrice == nil || l.discount == nil {
+	here := map[int64]bool{}
+	for i, l := range lines {
+		if l.creditsLineID == nil || !squared[i] {
 			return false, nil
 		}
-		o, ok := b.lines[*l.creditsLineID]
-		if !ok {
-			return false, nil
-		}
-		price, err := ratFromNumeric(o.UnitPrice)
-		if err != nil {
-			return false, err
-		}
-		discount, err := ratFromNumeric(o.DiscountPercent)
-		if err != nil {
-			return false, err
-		}
-		if l.unitPrice.Cmp(price) != 0 || l.discount.Cmp(discount) != 0 {
-			return false, nil
-		}
-		if quantity[o.ID] == nil {
-			quantity[o.ID] = new(big.Rat)
-		}
-		quantity[o.ID].Add(quantity[o.ID], l.quantity)
+		here[*l.creditsLineID] = true
 	}
 	for id, o := range b.lines {
-		total := new(big.Rat)
-		if q, ok := quantity[id]; ok {
-			total.Add(total, q)
+		if here[id] {
+			continue
 		}
-		if c, ok := b.credited[id]; ok {
-			if !c.returns {
-				return false, nil
-			}
-			total.Add(total, c.quantity)
+		c, ok := b.credited[id]
+		if !ok || !c.returns {
+			return false, nil
 		}
 		want, err := ratFromNumeric(o.Quantity)
 		if err != nil {
 			return false, err
 		}
-		if total.Cmp(want) != 0 {
-			return false, nil // short of it, or past it, which the line cap refuses
+		if c.quantity.Cmp(want) != 0 {
+			return false, nil
 		}
 	}
 	return true, nil
@@ -296,9 +312,11 @@ func (b creditBook) remaining(o store.InvoicesLine) (lineAmounts, error) {
 }
 
 // creditTotals is a credit note as it will be issued: each line's amounts,
-// taxed at its original line's snapshot, the VAT rows and the totals.
+// whether it was squared (its line's last return), each line taxed at its
+// original line's snapshot, the VAT rows and the totals.
 type creditTotals struct {
 	amounts   []lineAmounts
+	squared   []bool
 	taxed     []taxedLine
 	rows      []vatSummary
 	totals    documentTotals
@@ -308,32 +326,35 @@ type creditTotals struct {
 
 // total is a credit note's amounts and VAT (D5, D8). A credit note rounds as
 // any document does: each line on its own quantity and price, the VAT per rate
-// on the sum of its lines' nets. The final reversal (finalReversal) is the
-// exception, because each partial credit was rounded on its own and those
-// roundings need not add up to the original's — 3 × 31.66 is not 94.99. So
-// the last credit note takes the rest: each of its lines the gross, allowance
-// and net its original line has left, and each row of the original the
-// taxable amount and the VAT (NOK too) the original charged less what the
-// issued credit notes reversed. A row every line of which was credited before
-// still carries what is left of it, on no line of this note. The credits then
-// sum to exactly what was charged, øre for øre. The response, the preview, the
-// save and the issue all total a credit note here; the issue under the
-// original's lock.
+// on the sum of its lines' nets. Two exceptions square what the parts'
+// roundings lost — 3 × 31.66 is not 94.99 — so that the credits sum to exactly
+// what was charged, øre for øre, and every note still adds up (its lines' nets
+// are its net total, EN 16931 BR-CO-10):
+//   - the line that returns its original line's last unit (lastReturn) takes
+//     the gross, allowance and net that line has left, whatever the note's
+//     other lines do;
+//   - the final note (finalReversal) takes per row of the original the VAT and
+//     the NOK VAT it charged less what the issued credit notes reversed, on its
+//     own lines' taxable amount; a row whose lines were all returned before
+//     still carries a VAT remainder that is not zero, on nothing taxable.
+//
+// The response, the preview, the save and the issue all total a credit note
+// here; the issue under the original's lock.
 func (b creditBook) total(ctx context.Context, q *store.Queries, lines []creditedLine, exchangeRate *big.Rat) (creditTotals, error) {
-	final, err := b.finalReversal(lines)
-	if err != nil {
-		return creditTotals{}, err
-	}
-	out := creditTotals{final: final}
+	var out creditTotals
 	for _, l := range lines {
-		amounts := l.amounts
+		amounts, squared := l.amounts, false
 		var taxed taxedLine
 		if l.creditsLineID != nil {
 			if o, ok := b.lines[*l.creditsLineID]; ok {
+				var err error
 				if taxed, err = snapshotOf(o); err != nil {
 					return creditTotals{}, err
 				}
-				if final {
+				if squared, err = b.lastReturn(l, o); err != nil {
+					return creditTotals{}, err
+				}
+				if squared {
 					if amounts, err = b.remaining(o); err != nil {
 						return creditTotals{}, err
 					}
@@ -345,10 +366,15 @@ func (b creditBook) total(ctx context.Context, q *store.Queries, lines []credite
 		}
 		taxed.net = amounts.net
 		out.amounts = append(out.amounts, amounts)
+		out.squared = append(out.squared, squared)
 		out.taxed = append(out.taxed, taxed)
 	}
+	var err error
+	if out.final, err = b.finalReversal(lines, out.squared); err != nil {
+		return creditTotals{}, err
+	}
 	out.rows, out.totals, out.ambiguous = summarize(out.taxed, exchangeRate)
-	if !final {
+	if !out.final {
 		return out, nil
 	}
 	if out.rows, out.totals, err = b.remainingRows(ctx, q, out.rows); err != nil {
@@ -357,10 +383,11 @@ func (b creditBook) total(ctx context.Context, q *store.Queries, lines []credite
 	return out, nil
 }
 
-// remainingRows are a final credit note's VAT rows: per row of the original,
-// what it charged less what the issued credit notes reversed. own, the rows
-// the note's own lines make, is kept for a row the original lacks, which
-// cannot happen: every line carries its original line's treatment.
+// remainingRows are a final credit note's VAT rows: its own rows, each with
+// the VAT and the NOK VAT its row of the original charged less what the issued
+// credit notes reversed on it, and a row of the original the note has no line
+// on when a remainder is left on it, on a taxable amount of 0. The taxable
+// amounts stay its own lines' nets.
 func (b creditBook) remainingRows(ctx context.Context, q *store.Queries, own []vatSummary) ([]vatSummary, documentTotals, error) {
 	charged, err := q.VatSummaries(ctx, b.original.ID)
 	if err != nil {
@@ -371,57 +398,50 @@ func (b creditBook) remainingRows(ctx context.Context, q *store.Queries, own []v
 		return nil, documentTotals{}, fmt.Errorf("invoices: read what document %d's VAT is credited: %w", b.original.ID, err)
 	}
 	type key struct{ category, rate string }
-	back := map[key]store.CreditedVatPerRateRow{}
+	type remainder struct{ vat, vatNOK *big.Rat }
+	left := map[key]remainder{}
+	for _, c := range charged {
+		rate, err := ratFromNumeric(c.RatePercent)
+		if err != nil {
+			return nil, documentTotals{}, err
+		}
+		vat, vatNOK, err := numericPair(c.VatAmount, c.VatAmountNok)
+		if err != nil {
+			return nil, documentTotals{}, err
+		}
+		k := key{c.VatCategory, rate.FloatString(2)}
+		left[k] = remainder{vat, vatNOK}
+		if !rowOf(own, k.category, k.rate) {
+			own = append(own, vatSummary{category: c.VatCategory, rate: rate, safT: c.SafTCode, reason: c.ExemptionReason, taxable: new(big.Rat)})
+		}
+	}
 	for _, r := range reversed {
 		rate, err := ratFromNumeric(r.RatePercent)
 		if err != nil {
 			return nil, documentTotals{}, err
 		}
-		back[key{r.VatCategory, rate.FloatString(2)}] = r
+		vat, vatNOK, err := numericPair(r.Vat, r.VatNok)
+		if err != nil {
+			return nil, documentTotals{}, err
+		}
+		k := key{r.VatCategory, rate.FloatString(2)}
+		if l, ok := left[k]; ok {
+			left[k] = remainder{l.vat.Sub(l.vat, vat), l.vatNOK.Sub(l.vatNOK, vatNOK)}
+		}
 	}
 	var rows []vatSummary
-	seen := map[key]bool{}
-	for _, c := range charged {
-		row := vatSummary{category: c.VatCategory, safT: c.SafTCode, reason: c.ExemptionReason}
-		if row.rate, err = ratFromNumeric(c.RatePercent); err != nil {
-			return nil, documentTotals{}, err
+	totals := documentTotals{net: new(big.Rat), vat: new(big.Rat), gross: new(big.Rat), vatNOK: new(big.Rat)}
+	for _, r := range own {
+		if l, ok := left[key{r.category, r.rate.FloatString(2)}]; ok {
+			r.vat, r.vatNOK = l.vat, l.vatNOK
 		}
-		if row.taxable, err = ratFromNumeric(c.TaxableAmount); err != nil {
-			return nil, documentTotals{}, err
-		}
-		if row.vat, row.vatNOK, err = numericPair(c.VatAmount, c.VatAmountNok); err != nil {
-			return nil, documentTotals{}, err
-		}
-		k := key{row.category, row.rate.FloatString(2)}
-		seen[k] = true
-		if r, ok := back[k]; ok {
-			taxable, err := ratFromNumeric(r.Taxable)
-			if err != nil {
-				return nil, documentTotals{}, err
-			}
-			vat, vatNOK, err := numericPair(r.Vat, r.VatNok)
-			if err != nil {
-				return nil, documentTotals{}, err
-			}
-			row.taxable.Sub(row.taxable, taxable)
-			row.vat.Sub(row.vat, vat)
-			row.vatNOK.Sub(row.vatNOK, vatNOK)
-		}
-		if row.taxable.Sign() == 0 && row.vat.Sign() == 0 && row.vatNOK.Sign() == 0 && !rowOf(own, row.category, k.rate) {
+		if r.taxable.Sign() == 0 && r.vat.Sign() == 0 && r.vatNOK.Sign() == 0 {
 			continue // a row the credits before squared already
 		}
-		rows = append(rows, row)
-	}
-	for _, r := range own {
-		if !seen[key{r.category, r.rate.FloatString(2)}] {
-			rows = append(rows, r)
-		}
-	}
-	totals := documentTotals{net: new(big.Rat), vat: new(big.Rat), gross: new(big.Rat), vatNOK: new(big.Rat)}
-	for _, r := range rows {
 		totals.net.Add(totals.net, r.taxable)
 		totals.vat.Add(totals.vat, r.vat)
 		totals.vatNOK.Add(totals.vatNOK, r.vatNOK)
+		rows = append(rows, r)
 	}
 	totals.gross.Add(totals.net, totals.vat)
 	sortSummaries(rows)
@@ -447,12 +467,17 @@ type creditDraft struct {
 	breaches []capBreach
 }
 
-// readCreditDraft totals a stored credit-note draft, reading its original's
+// readCreditDraft totals a stored credit-note draft with book, its
+// original's credit book when the caller has read it already, nil to read it
+// here once.
 // credit book once.
-func readCreditDraft(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, stored []store.InvoicesLine) (creditDraft, error) {
-	book, err := bookOf(ctx, q, inv)
-	if err != nil {
-		return creditDraft{}, err
+func readCreditDraft(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, stored []store.InvoicesLine, book *creditBook) (creditDraft, error) {
+	if book == nil {
+		b, err := bookOf(ctx, q, inv)
+		if err != nil {
+			return creditDraft{}, err
+		}
+		book = &b
 	}
 	lines, err := storedCreditedLines(stored)
 	if err != nil {
@@ -470,7 +495,7 @@ func readCreditDraft(ctx context.Context, q *store.Queries, inv store.InvoicesIn
 	if err != nil {
 		return creditDraft{}, err
 	}
-	return creditDraft{book: book, totals: totals, breaches: breaches}, nil
+	return creditDraft{book: *book, totals: totals, breaches: breaches}, nil
 }
 
 // caps is D8's two caps over a credit note's lines, as total amounts them:
@@ -580,7 +605,7 @@ func creditIssueChecks(ctx context.Context, txq *store.Queries, locked store.Inv
 	plan := issuePlan{summary: &planSummary{rows: t.rows, totals: t.totals, ambiguous: t.ambiguous}}
 	for i, l := range lines {
 		issued := issuedLine{id: l.ID, position: l.Position, taxed: t.taxed[i]}
-		if t.final {
+		if t.squared[i] {
 			issued.amounts = &t.amounts[i]
 		}
 		plan.lines = append(plan.lines, issued)
@@ -690,9 +715,14 @@ func (s *server) putCreditDraft(ctx context.Context, q *store.Queries, current s
 	if err != nil {
 		return nil, err
 	}
-	// The lines are stored as total amounts them: a final note's with what
-	// their original lines have left. A credit note issued in between may
-	// change that; the issue totals it again under the original's lock.
+	// The lines are stored as total amounts them, a line's last return with
+	// what its original line has left. What is stored can never be seen or
+	// issued stale: the response and the preview total the draft afresh, and
+	// the issue totals it again under the original's lock and writes a
+	// squared line's amounts itself (SquareCreditLine). Nor can a squared
+	// line lose its squaring to a credit note issued in between without
+	// becoming a refusal: that note credited the same line, so this one now
+	// passes the line's quantity and the line cap refuses it.
 	for i := range in.lines {
 		in.lines[i].amounts = t.amounts[i]
 	}
@@ -703,7 +733,7 @@ func (s *server) putCreditDraft(ctx context.Context, q *store.Queries, current s
 	if refusal != nil {
 		return gen.PutInvoicesById409ApplicationProblemPlusJSONResponse(*refusal), nil
 	}
-	resp, err := s.invoiceResponse(ctx, q, saved, nil)
+	resp, err := s.creditDraftResponse(ctx, q, saved, &book)
 	if err != nil {
 		return nil, err
 	}

@@ -64,8 +64,9 @@ type issuedLine struct {
 	id       int64
 	position int32
 	taxed    taxedLine
-	// amounts, when set, replace the line's own: a final credit note's line
-	// takes what its original line has left (creditBook.total).
+	// amounts, when set, replace the line's own: a credit note's line that
+	// returns its original line's last unit takes what that line has left
+	// (creditBook.total).
 	amounts *lineAmounts
 }
 

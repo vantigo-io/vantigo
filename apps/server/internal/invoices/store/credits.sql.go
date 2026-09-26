@@ -150,7 +150,6 @@ func (q *Queries) CreditedPerLine(ctx context.Context, originalID *int64) ([]Cre
 
 const creditedVatPerRate = `-- name: CreditedVatPerRate :many
 SELECT s.vat_category, s.rate_percent,
-       sum(s.taxable_amount)::numeric(14,2) AS taxable,
        sum(s.vat_amount)::numeric(14,2) AS vat,
        sum(s.vat_amount_nok)::numeric(14,2) AS vat_nok
 FROM invoices.vat_summaries s
@@ -162,15 +161,13 @@ GROUP BY s.vat_category, s.rate_percent
 type CreditedVatPerRateRow struct {
 	VatCategory string
 	RatePercent pgtype.Numeric
-	Taxable     pgtype.Numeric
 	Vat         pgtype.Numeric
 	VatNok      pgtype.Numeric
 }
 
-// CreditedVatPerRate is, per (category, rate) row of an invoice, the taxable
-// amount and the VAT its issued credit notes reversed: what a final credit
-// note takes from the original's row, so the credits sum to what was charged,
-// øre for øre (D8).
+// CreditedVatPerRate is, per (category, rate) row of an invoice, the VAT its
+// issued credit notes reversed: what a final credit note takes from the
+// original's row, so the credits sum to what was charged, øre for øre (D8).
 func (q *Queries) CreditedVatPerRate(ctx context.Context, originalID *int64) ([]CreditedVatPerRateRow, error) {
 	rows, err := q.db.Query(ctx, creditedVatPerRate, originalID)
 	if err != nil {
@@ -183,7 +180,6 @@ func (q *Queries) CreditedVatPerRate(ctx context.Context, originalID *int64) ([]
 		if err := rows.Scan(
 			&i.VatCategory,
 			&i.RatePercent,
-			&i.Taxable,
 			&i.Vat,
 			&i.VatNok,
 		); err != nil {
@@ -319,9 +315,10 @@ type SquareCreditLineParams struct {
 	ID            int64
 }
 
-// SquareCreditLine gives a final credit note's line what its original line has
-// left — gross, allowance and net — in place of its own rounding (D8). It runs
-// while the credit note is still a draft; the trigger refuses it afterwards.
+// SquareCreditLine gives a credit note's line that returns its original line's
+// last unit what that line has left — gross, allowance and net — in place of
+// its own rounding (D8). It runs while the credit note is still a draft; the
+// trigger refuses it afterwards.
 func (q *Queries) SquareCreditLine(ctx context.Context, arg SquareCreditLineParams) error {
 	_, err := q.db.Exec(ctx, squareCreditLine,
 		arg.LineGross,

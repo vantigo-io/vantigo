@@ -165,6 +165,18 @@ func sellerResponse(inv store.InvoicesInvoice) *gen.InvoicesSeller {
 // caller already read for an invoice draft (for its current name and the
 // currency warning), nil otherwise; this function reads no directory itself.
 func (s *server) invoiceResponse(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, profile *contracts.CustomerBillingProfile) (gen.InvoicesInvoiceResponse, error) {
+	return s.renderInvoice(ctx, q, inv, profile, nil)
+}
+
+// creditDraftResponse renders a credit-note draft with the credit book its
+// caller has read already, so a save reads its original's once.
+func (s *server) creditDraftResponse(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, book *creditBook) (gen.InvoicesInvoiceResponse, error) {
+	return s.renderInvoice(ctx, q, inv, nil, book)
+}
+
+// renderInvoice is invoiceResponse, with book the credit book of a credit
+// note's original when the caller has it, nil otherwise.
+func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, profile *contracts.CustomerBillingProfile, book *creditBook) (gen.InvoicesInvoiceResponse, error) {
 	stored, err := q.Lines(ctx, inv.ID)
 	if err != nil {
 		return gen.InvoicesInvoiceResponse{}, fmt.Errorf("invoices: read document %d's lines: %w", inv.ID, err)
@@ -250,7 +262,7 @@ func (s *server) invoiceResponse(ctx context.Context, q *store.Queries, inv stor
 	if inv.Kind == kindCreditNote {
 		// Totalled as its issue will total it (creditBook.total): a final
 		// note's lines show what their original lines have left.
-		cd, err := readCreditDraft(ctx, q, inv, stored)
+		cd, err := readCreditDraft(ctx, q, inv, stored, book)
 		if err != nil {
 			return gen.InvoicesInvoiceResponse{}, err
 		}

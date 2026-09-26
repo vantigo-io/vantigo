@@ -2,6 +2,7 @@ package invoices_test
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"slices"
 	"sync"
@@ -26,7 +27,23 @@ func creditDraft(t *testing.T, h *harness, original int64) invoiceJSON {
 	}
 	var inv invoiceJSON
 	res.JSON(&inv)
+	addsUp(t, inv)
 	return inv
+}
+
+// addsUp asserts EN 16931 BR-CO-10 on a document: its lines' nets sum to its
+// net total, øre for øre. Every document the credit tests see is held to it
+// (issued, creditDraft, saveCredit), so no credit note is ever one an EHF
+// could not carry.
+func addsUp(t *testing.T, inv invoiceJSON) {
+	t.Helper()
+	var sum int64
+	for _, l := range inv.Lines {
+		sum += int64(math.Round(l.LineNet * 100))
+	}
+	if net := int64(math.Round(inv.NetTotal * 100)); sum != net {
+		t.Errorf("document %d: its lines' nets sum to %d øre, its net total is %d (BR-CO-10)", inv.ID, sum, net)
+	}
 }
 
 // creditBody is a replace of a credit draft keeping everything but lines.
@@ -60,6 +77,7 @@ func saveCredit(t *testing.T, h *harness, c invoiceJSON, body map[string]any) in
 	}
 	var inv invoiceJSON
 	res.JSON(&inv)
+	addsUp(t, inv)
 	return inv
 }
 
@@ -555,28 +573,89 @@ func TestCredit_AForeignFinalNoteSquaresTheNOK(t *testing.T) {
 	}
 }
 
-// A line credited to its last quantity by earlier notes may still have an øre
-// of net left, and the final note need not carry it: the note that credits
-// the invoice's last quantity squares that row too, on the øre, so nothing is
-// stranded (fix round 2).
-func TestCredit_AnOreLeftOnALineTheFinalNoteDoesNotCarry(t *testing.T) {
+// Each line is squared by the note that returns its last unit, whether or not
+// that note finishes the invoice (fix round 3): 3 × 33.33 at 5 % off beside
+// freight, the food returned a unit at a time, the third food note takes the
+// 31.67 its line has left although the freight is uncredited; the freight's
+// note, the final one, then carries no row for the food's rate at all.
+func TestCredit_TheNoteReturningALinesLastUnitSquaresIt(t *testing.T) {
 	t.Parallel()
 	h := readyToIssue(t)
 	disc := line("Matvare", 3, 33.33, vat15)
 	disc["discountPercent"] = 5
 	original := issued(t, h, createDraft(t, h, draftBody(customerAcme, disc, line("Frakt", 1, 100, vat25))).ID)
-	creditEach(t, h, original.ID, 1, 1, 1) // 3 × 31.66 = 94.98 of 94.99
+	food := creditEach(t, h, original.ID, 1, 1, 1)
+	for i, want := range []float64{31.66, 31.66, 31.67} {
+		if c := food[i]; c.Lines[0].LineNet != want || c.VatTotal != 4.75 {
+			t.Errorf("food note %d = line %v VAT %v, want %v and 4.75", i+1, c.Lines[0].LineNet, c.VatTotal, want)
+		}
+	}
 	last := creditDraft(t, h, original.ID)
 	credit := issued(t, h, saveCredit(t, h, last, creditBody(last, creditLine(last.Lines[1]))).ID)
-	want := []summaryJSON{
-		{VatCategory: "S", RatePercent: 25, SafTCode: "3", TaxableAmount: 100, VatAmount: 25, VatAmountNok: 25},
-		{VatCategory: "S", RatePercent: 15, SafTCode: "31", TaxableAmount: 0.01, VatAmount: 0, VatAmountNok: 0},
-	}
-	if !slices.Equal(credit.VatSummaries, want) || credit.GrossTotal != 125.01 {
-		t.Errorf("the freight credit = gross %v summaries %+v, want 125.01 and %+v", credit.GrossTotal, credit.VatSummaries, want)
+	want := []summaryJSON{{VatCategory: "S", RatePercent: 25, SafTCode: "3", TaxableAmount: 100, VatAmount: 25, VatAmountNok: 25}}
+	if !slices.Equal(credit.VatSummaries, want) || credit.GrossTotal != 125 {
+		t.Errorf("the freight note = gross %v summaries %+v, want 125 and %+v: no phantom row", credit.GrossTotal, credit.VatSummaries, want)
 	}
 	if after := getInvoice(t, h, original.ID); *after.UncreditedAmount != 0 {
 		t.Errorf("the original has %v left, want 0", *after.UncreditedAmount)
+	}
+}
+
+// The issue squares a line the draft did not: a draft saved for the last unit
+// before the other units' notes were issued was, at its save, no line's last
+// return, and is stored at its own 31.66. Issued after them, it is, and it is
+// issued with the 31.67 the line has left.
+func TestCredit_TheIssueSquaresALineTheSaveDidNot(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	disc := line("Matvare", 3, 33.33, vat15)
+	disc["discountPercent"] = 5
+	original := issued(t, h, createDraft(t, h, draftBody(customerAcme, disc)).ID)
+	early := creditUnits(t, h, original.ID, 1)
+	if early.Lines[0].LineNet != 31.66 {
+		t.Fatalf("the early draft = %v, want 31.66: it is no last return yet", early.Lines[0].LineNet)
+	}
+	creditEach(t, h, original.ID, 1, 1)
+	credit := issued(t, h, early.ID)
+	stored := modtest.One[string](t, h.Harness, `SELECT line_net::text FROM invoices.lines WHERE invoice_id = $1`, early.ID)
+	if credit.Lines[0].LineNet != 31.67 || stored != "31.67" || credit.NetTotal != 31.67 {
+		t.Errorf("the early draft issued = line %v, stored %s, net %v; want 31.67 throughout", credit.Lines[0].LineNet, stored, credit.NetTotal)
+	}
+	if after := getInvoice(t, h, original.ID); *after.UncreditedAmount != 0 {
+		t.Errorf("the original has %v left, want 0", *after.UncreditedAmount)
+	}
+}
+
+// A return at a higher discount is no return at the line's own terms, so it
+// is never squared — neither when an earlier note was (the SQL's half of the
+// guard) nor when this one is (the Go's): 2 × 100 at 10 % off is 180 net.
+func TestCredit_AHigherDiscountIsNeverSquared(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name          string
+		first, second float64 // each unit's discount
+		wantSecond    float64
+	}{
+		{"an earlier note at 20 %", 20, 10, 90},
+		{"this note at 20 %", 10, 20, 80},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			h := readyToIssue(t)
+			disc := line("Vare", 2, 100, vat25)
+			disc["discountPercent"] = 10
+			original := issued(t, h, createDraft(t, h, draftBody(customerAcme, disc)).ID)
+			note := func(discount float64) invoiceJSON {
+				d := creditDraft(t, h, original.ID)
+				l := creditLine(d.Lines[0])
+				l["quantity"], l["discountPercent"] = 1, discount
+				return issued(t, h, saveCredit(t, h, d, creditBody(d, l)).ID)
+			}
+			note(c.first)
+			if second := note(c.second); second.Lines[0].LineNet != c.wantSecond {
+				t.Errorf("the second unit's note = %v, want its own %v, not what the line has left", second.Lines[0].LineNet, c.wantSecond)
+			}
+		})
 	}
 }
 
@@ -590,9 +669,9 @@ func sameSummaries(a, b []summaryJSON) bool {
 	})
 }
 
-// A price reduction is never squared as rounding: 2 × 100 reduced by 90 on one
-// unit (a credit of 1 × 10), then its other unit returned, credits 100 for
-// that unit — not the 190 the line has left. The quantity is credited in
+// A price reduction is never squared as rounding: 2 × 100 with one unit's
+// price reduced by 10 (a credit of 1 × 10), then its other unit returned,
+// credits 100 for that unit — not the 190 the line has left. The quantity is credited in
 // full, but the parts were a choice, not a rounding (fix round 2).
 func TestCredit_APriceReductionIsNeverSquared(t *testing.T) {
 	t.Parallel()
