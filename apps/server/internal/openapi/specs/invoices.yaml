@@ -97,6 +97,302 @@ components:
                 - ehfCategory
                 - ratePercent
             type: object
+        InvoicesConflictProblem:
+            description: 'ProblemDetails plus this module''s refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited. A revision conflict carries no code; its detail names both revisions.'
+            properties:
+                allowedIssueDates:
+                    description: On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise.
+                    items:
+                        format: date
+                        type: string
+                    type: array
+                code:
+                    nullable: true
+                    type: string
+                detail:
+                    nullable: true
+                    type: string
+                instance:
+                    nullable: true
+                    type: string
+                linePosition:
+                    description: On a refusal about one line (vat_code_inactive, vat_code_not_valid, credit_exceeds_line), the line's position, 1-based. Absent otherwise.
+                    format: int32
+                    type: integer
+                mergedInto:
+                    description: On customer_merged, the customer the draft's customer was merged into. Absent otherwise.
+                    format: int32
+                    type: integer
+                status:
+                    format: int32
+                    nullable: true
+                    type: integer
+                title:
+                    nullable: true
+                    type: string
+                type:
+                    nullable: true
+                    type: string
+            type: object
+        InvoicesSettingsRequest:
+            description: 'PUT /settings'' body, a full replace (D2). Every text field is trimmed; an empty string is "not set". organisationNumber is nine digits with a valid mod-11 check digit; bankAccount eleven digits with a valid mod-11 check digit (spaces and dots are dropped); iban passes mod-97 and bic is 8 or 11 characters, both optional; country is ISO 3166-1 alpha-2; defaultPaymentTermsDays is 0-365; defaultCurrency is NOK and only NOK in this phase; seriesStart is 1 or more and cannot change once anything is issued (409 series_locked). revision is the one the caller read: a stale one is a 409 naming both.'
+            properties:
+                addressLine1:
+                    type: string
+                addressLine2:
+                    type: string
+                bankAccount:
+                    type: string
+                bic:
+                    type: string
+                city:
+                    type: string
+                country:
+                    type: string
+                defaultCurrency:
+                    type: string
+                defaultPaymentTermsDays:
+                    format: int32
+                    type: integer
+                email:
+                    type: string
+                footerText:
+                    type: string
+                iban:
+                    type: string
+                inForetaksregisteret:
+                    type: boolean
+                legalName:
+                    type: string
+                organisationNumber:
+                    type: string
+                postalCode:
+                    type: string
+                revision:
+                    format: int32
+                    type: integer
+                seriesStart:
+                    format: int64
+                    type: integer
+                vatRegistered:
+                    type: boolean
+            required:
+                - legalName
+                - organisationNumber
+                - vatRegistered
+                - inForetaksregisteret
+                - addressLine1
+                - postalCode
+                - city
+                - country
+                - bankAccount
+                - defaultPaymentTermsDays
+                - defaultCurrency
+                - seriesStart
+                - revision
+            type: object
+        InvoicesSettingsResponse:
+            description: The seller record and the series start (D2). A text field that is not set is the empty string. seriesLocked is true once anything is issued; from then on seriesStart cannot change, and every other field still can — issued documents keep their own seller snapshot.
+            properties:
+                addressLine1:
+                    type: string
+                addressLine2:
+                    type: string
+                bankAccount:
+                    type: string
+                bic:
+                    type: string
+                city:
+                    type: string
+                country:
+                    type: string
+                defaultCurrency:
+                    type: string
+                defaultPaymentTermsDays:
+                    format: int32
+                    type: integer
+                email:
+                    type: string
+                footerText:
+                    type: string
+                iban:
+                    type: string
+                inForetaksregisteret:
+                    type: boolean
+                legalName:
+                    type: string
+                missingSellerFields:
+                    description: What issuing still needs, as GET /meta names it.
+                    items:
+                        type: string
+                    type: array
+                organisationNumber:
+                    type: string
+                postalCode:
+                    type: string
+                revision:
+                    format: int32
+                    type: integer
+                seriesLocked:
+                    type: boolean
+                seriesStart:
+                    format: int64
+                    type: integer
+                updatedAt:
+                    format: date-time
+                    type: string
+                vatRegistered:
+                    type: boolean
+            required:
+                - legalName
+                - organisationNumber
+                - vatRegistered
+                - inForetaksregisteret
+                - addressLine1
+                - addressLine2
+                - postalCode
+                - city
+                - country
+                - bankAccount
+                - iban
+                - bic
+                - email
+                - defaultPaymentTermsDays
+                - defaultCurrency
+                - footerText
+                - seriesStart
+                - seriesLocked
+                - missingSellerFields
+                - revision
+                - updatedAt
+            type: object
+        InvoicesVatCode:
+            description: One VAT code with every rate period it has had (D3). inUse is true once any line, draft or issued, carries the code; from then on its category and SAF-T code cannot change (409 vat_code_in_use).
+            properties:
+                active:
+                    type: boolean
+                code:
+                    type: string
+                ehfCategory:
+                    type: string
+                exemptionReason:
+                    description: Absent when the code has none (category S).
+                    type: string
+                id:
+                    format: int32
+                    type: integer
+                inUse:
+                    type: boolean
+                name:
+                    type: string
+                rates:
+                    description: Every period, the earliest first. The last is open-ended (validTo absent).
+                    items:
+                        $ref: '#/components/schemas/InvoicesVatCodeRate'
+                    type: array
+                revision:
+                    format: int32
+                    type: integer
+                safTCode:
+                    type: string
+            required:
+                - id
+                - code
+                - name
+                - safTCode
+                - ehfCategory
+                - active
+                - inUse
+                - revision
+                - rates
+            type: object
+        InvoicesVatCodeCreateRequest:
+            description: A code and its first, open period (D3). code is 1-10 characters and unique ignoring case; name 1-100; safTCode 1-5; ehfCategory S, Z, E, AE, G, O or K; exemptionReason up to 200 and required unless the category is S; ratePercent greater than 0 and at most 100 for S, exactly 0 for every other category, with at most two decimals.
+            properties:
+                code:
+                    type: string
+                ehfCategory:
+                    type: string
+                exemptionReason:
+                    type: string
+                name:
+                    type: string
+                ratePercent:
+                    format: double
+                    type: number
+                safTCode:
+                    type: string
+                validFrom:
+                    format: date
+                    type: string
+            required:
+                - code
+                - name
+                - safTCode
+                - ehfCategory
+                - ratePercent
+                - validFrom
+            type: object
+        InvoicesVatCodeRate:
+            description: One rate period of a VAT code, inclusive at both ends.
+            properties:
+                id:
+                    format: int32
+                    type: integer
+                ratePercent:
+                    format: double
+                    type: number
+                validFrom:
+                    format: date
+                    type: string
+                validTo:
+                    description: Absent for the open-ended period.
+                    format: date
+                    type: string
+            required:
+                - id
+                - ratePercent
+                - validFrom
+            type: object
+        InvoicesVatCodeRateRequest:
+            description: 'A rate change (D3): the open period closes the day before validFrom and a new open period starts on it. validFrom must be after the open period''s own start (400 on validFrom) and after the latest issue date of any issued document (409 rate_change_in_past). ratePercent follows the category''s rule.'
+            properties:
+                ratePercent:
+                    format: double
+                    type: number
+                validFrom:
+                    format: date
+                    type: string
+            required:
+                - ratePercent
+                - validFrom
+            type: object
+        InvoicesVatCodeUpdateRequest:
+            description: A full replace of a code's own fields (D3). A code is never deleted; active false stops it being offered for new lines. A code in use keeps its ehfCategory and safTCode (409 vat_code_in_use); its code, name and reason stay editable. The rates change only through the rate operations.
+            properties:
+                active:
+                    type: boolean
+                code:
+                    type: string
+                ehfCategory:
+                    type: string
+                exemptionReason:
+                    type: string
+                name:
+                    type: string
+                revision:
+                    format: int32
+                    type: integer
+                safTCode:
+                    type: string
+            required:
+                - code
+                - name
+                - safTCode
+                - ehfCategory
+                - active
+                - revision
+            type: object
 info:
     title: Vantigo Invoices API
     version: "1"
@@ -129,5 +425,299 @@ paths:
             tags:
                 - Invoices
             x-vantigo-access: permission:invoices:access
+    /api/v1/invoices/settings:
+        get:
+            description: The seller record and the series start. Every invoices:access holder may read them — they are what every document prints.
+            operationId: getInvoicesSettings
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesSettingsResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get the invoice settings
+            tags:
+                - Invoices
+            x-vantigo-access: permission:invoices:access
+        put:
+            description: Replaces the seller record and the series start (D2). It takes the settings row FOR UPDATE, so it waits behind an issue in flight; the series start is refused once the counter row exists (409 series_locked). Every other field stays editable after the first issue — issued documents keep their seller snapshot.
+            operationId: putInvoicesSettings
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/InvoicesSettingsRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesSettingsResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — a field did not pass; the errors name it.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesConflictProblem'
+                    description: Conflict — series_locked, or a stale revision (no code; the detail names both revisions).
+            summary: Change the invoice settings
+            tags:
+                - Invoices
+            x-vantigo-access: permission:invoices:access+invoices:manage
+    /api/v1/invoices/vat-codes:
+        get:
+            description: Every VAT code, inactive ones included, with every rate period it has had (D3).
+            operationId: getInvoicesVatCodes
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/InvoicesVatCode'
+                                type: array
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: List the VAT codes
+            tags:
+                - Invoices
+            x-vantigo-access: permission:invoices:access
+        post:
+            description: Creates a VAT code with its first, open rate period (D3).
+            operationId: postInvoicesVatCodes
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/InvoicesVatCodeCreateRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesVatCode'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — a field did not pass, or the code already exists (on code).
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Create a VAT code
+            tags:
+                - Invoices
+            x-vantigo-access: permission:invoices:access+invoices:manage
+    /api/v1/invoices/vat-codes/{id}:
+        put:
+            description: Replaces a VAT code's own fields (D3). A code in use keeps its category and SAF-T code.
+            operationId: putInvoicesVatCodesById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/InvoicesVatCodeUpdateRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesVatCode'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — a field did not pass, or the code already exists (on code).
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no VAT code has that id.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesConflictProblem'
+                    description: Conflict — vat_code_in_use, or a stale revision.
+            summary: Change a VAT code
+            tags:
+                - Invoices
+            x-vantigo-access: permission:invoices:access+invoices:manage
+    /api/v1/invoices/vat-codes/{id}/rates:
+        post:
+            description: The rate-change rule (D3). The open period closes the day before validFrom and a new open period starts on it. It waits behind any issue in flight, so the latest issue date it reads is final.
+            operationId: postInvoicesVatCodesByIdRates
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/InvoicesVatCodeRateRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesVatCode'
+                    description: Created — the code with its periods.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — on ratePercent, or on validFrom when it is not after the open period's start.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no VAT code has that id.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesConflictProblem'
+                    description: Conflict — rate_change_in_past, when validFrom is on or before the latest issue date of any issued document.
+            summary: Change a VAT code's rate from a date
+            tags:
+                - Invoices
+            x-vantigo-access: permission:invoices:access+invoices:manage
+    /api/v1/invoices/vat-codes/{id}/rates/{rateId}:
+        delete:
+            description: Removes a mistaken future period and reopens the previous one (D3). Only the latest period may go, never the only one, and only while no issued document is dated on or after its start.
+            operationId: deleteInvoicesVatCodesByIdRatesByRateId
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+                - in: path
+                  name: rateId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesVatCode'
+                    description: OK — the code with the periods it has left.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such code, or no such period on it.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesConflictProblem'
+                    description: Conflict — rate_period_not_latest, rate_period_last or rate_period_in_use.
+            summary: Remove a VAT code's latest rate period
+            tags:
+                - Invoices
+            x-vantigo-access: permission:invoices:access+invoices:manage
 servers:
     - url: /

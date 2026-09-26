@@ -7,9 +7,332 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const closeOpenVatCodeRate = `-- name: CloseOpenVatCodeRate :exec
+UPDATE invoices.vat_code_rates SET valid_to = $1
+WHERE vat_code_id = $2 AND valid_to IS NULL
+`
+
+type CloseOpenVatCodeRateParams struct {
+	ValidTo   pgtype.Date
+	VatCodeID int32
+}
+
+// CloseOpenVatCodeRate ends the code's open period on valid_to (D3's
+// rate-change rule: the day before the new period starts).
+func (q *Queries) CloseOpenVatCodeRate(ctx context.Context, arg CloseOpenVatCodeRateParams) error {
+	_, err := q.db.Exec(ctx, closeOpenVatCodeRate, arg.ValidTo, arg.VatCodeID)
+	return err
+}
+
+const deleteVatCodeRate = `-- name: DeleteVatCodeRate :exec
+DELETE FROM invoices.vat_code_rates WHERE id = $1
+`
+
+func (q *Queries) DeleteVatCodeRate(ctx context.Context, id int32) error {
+	_, err := q.db.Exec(ctx, deleteVatCodeRate, id)
+	return err
+}
+
+const getVatCode = `-- name: GetVatCode :one
+SELECT id, code, name, saf_t_code, ehf_category, exemption_reason, active, created_at, updated_at, revision FROM invoices.vat_codes WHERE id = $1
+`
+
+func (q *Queries) GetVatCode(ctx context.Context, id int32) (InvoicesVatCode, error) {
+	row := q.db.QueryRow(ctx, getVatCode, id)
+	var i InvoicesVatCode
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.SafTCode,
+		&i.EhfCategory,
+		&i.ExemptionReason,
+		&i.Active,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Revision,
+	)
+	return i, err
+}
+
+const insertVatCode = `-- name: InsertVatCode :one
+INSERT INTO invoices.vat_codes (code, name, saf_t_code, ehf_category, exemption_reason, active, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, true, $6::timestamptz, $6::timestamptz)
+RETURNING id, code, name, saf_t_code, ehf_category, exemption_reason, active, created_at, updated_at, revision
+`
+
+type InsertVatCodeParams struct {
+	Code            string
+	Name            string
+	SafTCode        string
+	EhfCategory     string
+	ExemptionReason *string
+	Now             time.Time
+}
+
+func (q *Queries) InsertVatCode(ctx context.Context, arg InsertVatCodeParams) (InvoicesVatCode, error) {
+	row := q.db.QueryRow(ctx, insertVatCode,
+		arg.Code,
+		arg.Name,
+		arg.SafTCode,
+		arg.EhfCategory,
+		arg.ExemptionReason,
+		arg.Now,
+	)
+	var i InvoicesVatCode
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.SafTCode,
+		&i.EhfCategory,
+		&i.ExemptionReason,
+		&i.Active,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Revision,
+	)
+	return i, err
+}
+
+const insertVatCodeRate = `-- name: InsertVatCodeRate :one
+INSERT INTO invoices.vat_code_rates (vat_code_id, rate_percent, valid_from, valid_to, created_at)
+VALUES ($1, $2, $3, NULL, $4::timestamptz)
+RETURNING id, vat_code_id, rate_percent, valid_from, valid_to, created_at
+`
+
+type InsertVatCodeRateParams struct {
+	VatCodeID   int32
+	RatePercent pgtype.Numeric
+	ValidFrom   pgtype.Date
+	Now         time.Time
+}
+
+func (q *Queries) InsertVatCodeRate(ctx context.Context, arg InsertVatCodeRateParams) (InvoicesVatCodeRate, error) {
+	row := q.db.QueryRow(ctx, insertVatCodeRate,
+		arg.VatCodeID,
+		arg.RatePercent,
+		arg.ValidFrom,
+		arg.Now,
+	)
+	var i InvoicesVatCodeRate
+	err := row.Scan(
+		&i.ID,
+		&i.VatCodeID,
+		&i.RatePercent,
+		&i.ValidFrom,
+		&i.ValidTo,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const listVatCodeRates = `-- name: ListVatCodeRates :many
+SELECT id, vat_code_id, rate_percent, valid_from, valid_to, created_at FROM invoices.vat_code_rates ORDER BY vat_code_id, valid_from
+`
+
+// ListVatCodeRates is every period of every code, each code's the earliest
+// first.
+func (q *Queries) ListVatCodeRates(ctx context.Context) ([]InvoicesVatCodeRate, error) {
+	rows, err := q.db.Query(ctx, listVatCodeRates)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InvoicesVatCodeRate
+	for rows.Next() {
+		var i InvoicesVatCodeRate
+		if err := rows.Scan(
+			&i.ID,
+			&i.VatCodeID,
+			&i.RatePercent,
+			&i.ValidFrom,
+			&i.ValidTo,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listVatCodes = `-- name: ListVatCodes :many
+SELECT id, code, name, saf_t_code, ehf_category, exemption_reason, active, created_at, updated_at, revision FROM invoices.vat_codes ORDER BY lower(code), id
+`
+
+// ListVatCodes is every code, inactive ones included, in the order GET
+// /vat-codes answers them.
+func (q *Queries) ListVatCodes(ctx context.Context) ([]InvoicesVatCode, error) {
+	rows, err := q.db.Query(ctx, listVatCodes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InvoicesVatCode
+	for rows.Next() {
+		var i InvoicesVatCode
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.SafTCode,
+			&i.EhfCategory,
+			&i.ExemptionReason,
+			&i.Active,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Revision,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockVatCode = `-- name: LockVatCode :one
+SELECT id, code, name, saf_t_code, ehf_category, exemption_reason, active, created_at, updated_at, revision FROM invoices.vat_codes WHERE id = $1 FOR UPDATE
+`
+
+// LockVatCode takes the code FOR UPDATE, which also waits for any draft save
+// whose new line references it (the foreign key's KEY SHARE lock), so the
+// in-use check after it sees every committed line.
+func (q *Queries) LockVatCode(ctx context.Context, id int32) (InvoicesVatCode, error) {
+	row := q.db.QueryRow(ctx, lockVatCode, id)
+	var i InvoicesVatCode
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.SafTCode,
+		&i.EhfCategory,
+		&i.ExemptionReason,
+		&i.Active,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Revision,
+	)
+	return i, err
+}
+
+const reopenVatCodeRate = `-- name: ReopenVatCodeRate :exec
+UPDATE invoices.vat_code_rates SET valid_to = NULL WHERE id = $1
+`
+
+// ReopenVatCodeRate makes a period open-ended again, after the one that
+// followed it was removed.
+func (q *Queries) ReopenVatCodeRate(ctx context.Context, id int32) error {
+	_, err := q.db.Exec(ctx, reopenVatCodeRate, id)
+	return err
+}
+
+const updateVatCode = `-- name: UpdateVatCode :one
+UPDATE invoices.vat_codes SET
+    code = $1,
+    name = $2,
+    saf_t_code = $3,
+    ehf_category = $4,
+    exemption_reason = $5,
+    active = $6,
+    updated_at = $7::timestamptz,
+    revision = revision + 1
+WHERE id = $8
+RETURNING id, code, name, saf_t_code, ehf_category, exemption_reason, active, created_at, updated_at, revision
+`
+
+type UpdateVatCodeParams struct {
+	Code            string
+	Name            string
+	SafTCode        string
+	EhfCategory     string
+	ExemptionReason *string
+	Active          bool
+	Now             time.Time
+	ID              int32
+}
+
+func (q *Queries) UpdateVatCode(ctx context.Context, arg UpdateVatCodeParams) (InvoicesVatCode, error) {
+	row := q.db.QueryRow(ctx, updateVatCode,
+		arg.Code,
+		arg.Name,
+		arg.SafTCode,
+		arg.EhfCategory,
+		arg.ExemptionReason,
+		arg.Active,
+		arg.Now,
+		arg.ID,
+	)
+	var i InvoicesVatCode
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.SafTCode,
+		&i.EhfCategory,
+		&i.ExemptionReason,
+		&i.Active,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Revision,
+	)
+	return i, err
+}
+
+const vatCodeInUse = `-- name: VatCodeInUse :one
+SELECT EXISTS (SELECT 1 FROM invoices.lines WHERE vat_code_id = $1)::boolean AS in_use
+`
+
+// VatCodeInUse is whether any line, draft or issued, carries the code.
+func (q *Queries) VatCodeInUse(ctx context.Context, vatCodeID int32) (bool, error) {
+	row := q.db.QueryRow(ctx, vatCodeInUse, vatCodeID)
+	var in_use bool
+	err := row.Scan(&in_use)
+	return in_use, err
+}
+
+const vatCodeRates = `-- name: VatCodeRates :many
+SELECT id, vat_code_id, rate_percent, valid_from, valid_to, created_at FROM invoices.vat_code_rates WHERE vat_code_id = $1 ORDER BY valid_from
+`
+
+// VatCodeRates is one code's periods, the earliest first.
+func (q *Queries) VatCodeRates(ctx context.Context, vatCodeID int32) ([]InvoicesVatCodeRate, error) {
+	rows, err := q.db.Query(ctx, vatCodeRates, vatCodeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InvoicesVatCodeRate
+	for rows.Next() {
+		var i InvoicesVatCodeRate
+		if err := rows.Scan(
+			&i.ID,
+			&i.VatCodeID,
+			&i.RatePercent,
+			&i.ValidFrom,
+			&i.ValidTo,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
 
 const vatCodesInForce = `-- name: VatCodesInForce :many
 SELECT c.id, c.code, c.name, c.saf_t_code, c.ehf_category, c.exemption_reason, r.rate_percent
@@ -55,6 +378,31 @@ func (q *Queries) VatCodesInForce(ctx context.Context, day pgtype.Date) ([]VatCo
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const vatCodesInUse = `-- name: VatCodesInUse :many
+SELECT DISTINCT vat_code_id FROM invoices.lines ORDER BY vat_code_id
+`
+
+// VatCodesInUse is every code a line carries, draft or issued (D3's "in use").
+func (q *Queries) VatCodesInUse(ctx context.Context) ([]int32, error) {
+	rows, err := q.db.Query(ctx, vatCodesInUse)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int32
+	for rows.Next() {
+		var vat_code_id int32
+		if err := rows.Scan(&vat_code_id); err != nil {
+			return nil, err
+		}
+		items = append(items, vat_code_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

@@ -4,9 +4,13 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
+	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/storage"
 )
@@ -59,4 +63,23 @@ func newServer(d module.Deps) (*server, error) {
 // the way the router evaluates an operation's rule. It fails closed.
 func (s *server) has(ctx context.Context, key string) bool {
 	return contracts.HasPermission(ctx, s.deps.Access, key)
+}
+
+// lockedTxKey marks a context as belonging to a transaction that may hold row
+// locks (withLockedTx).
+type lockedTxKey struct{}
+
+// withLockedTx runs fn in one READ COMMITTED transaction on the module's pool —
+// every write here that takes a row lock goes through it. fn gets a context
+// marked as locked and its queries bound to the transaction.
+//
+// The rule the mark carries: nothing inside fn calls another module or the
+// object store (docs/module-boundaries.md, docs/expenses.md). Whatever a
+// decision inside fn needs from the customer directory is read before the
+// transaction, and a PDF is stored after it has committed.
+func (s *server) withLockedTx(ctx context.Context, fn func(ctx context.Context, txq *store.Queries) error) error {
+	locked := context.WithValue(ctx, lockedTxKey{}, true)
+	return db.WithTx(locked, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+		return fn(locked, store.New(tx))
+	})
 }

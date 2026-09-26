@@ -7,6 +7,8 @@ package store
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const counterNextValue = `-- name: CounterNextValue :one
@@ -22,4 +24,19 @@ func (q *Queries) CounterNextValue(ctx context.Context) (int64, error) {
 	var next_value int64
 	err := row.Scan(&next_value)
 	return next_value, err
+}
+
+const latestIssueDate = `-- name: LatestIssueDate :one
+SELECT max(issue_date)::date AS latest FROM invoices.invoices WHERE status = 'issued'
+`
+
+// LatestIssueDate is the latest issue date of any issued document, NULL when
+// nothing is issued. A rate change must start after it (D3), and an issue may
+// not be dated before it (D6); both read it after the lock that makes it
+// final.
+func (q *Queries) LatestIssueDate(ctx context.Context) (pgtype.Date, error) {
+	row := q.db.QueryRow(ctx, latestIssueDate)
+	var latest pgtype.Date
+	err := row.Scan(&latest)
+	return latest, err
 }
