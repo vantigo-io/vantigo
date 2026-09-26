@@ -108,6 +108,26 @@ func TestPDF_APutFailingAfterTheCommitIsStoredByTheNextDownload(t *testing.T) {
 	}
 }
 
+// The key and the hash are one fact (D7): the schema refuses a row with one
+// and not the other, so no download ever finds a hash without the object it
+// names. Set together, once, they are allowed.
+func TestPDF_TheKeyAndTheHashAreSetTogether(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	h.objects.failPuts(errors.New("offline"))
+	inv := issuedAcme(t, h)
+	ctx := context.Background()
+	for _, sql := range []string{
+		`UPDATE invoices.invoices SET pdf_sha256 = repeat('a', 64) WHERE id = $1`,
+		`UPDATE invoices.invoices SET pdf_object_key = 'documents/x.pdf' WHERE id = $1`,
+	} {
+		if _, err := h.Pool().Exec(ctx, sql, inv.ID); err == nil || !strings.Contains(err.Error(), "ck_invoices_pdf") {
+			t.Errorf("%s: %v, want ck_invoices_pdf to refuse it", sql, err)
+		}
+	}
+	h.Exec(t, `UPDATE invoices.invoices SET pdf_object_key = 'documents/x.pdf', pdf_sha256 = repeat('a', 64) WHERE id = $1`, inv.ID)
+}
+
 // Two downloads racing for an unstored PDF store one hash and both stream the
 // same bytes.
 func TestPDF_RacingDownloadsStoreOneHash(t *testing.T) {

@@ -119,6 +119,7 @@ func TestSettings_EveryRuleIsA400OnItsField(t *testing.T) {
 		{"bic", "DNB"},
 		{"email", "not an address"},
 		{"country", "Norway"},
+		{"country", "ZZ"},
 		{"defaultPaymentTermsDays", 366},
 		{"defaultPaymentTermsDays", -1},
 		{"defaultCurrency", "EUR"},

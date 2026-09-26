@@ -1,6 +1,7 @@
 package invoices_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"slices"
@@ -326,6 +327,9 @@ func TestDrafts_Delivery(t *testing.T) {
 		{"a place without a city", func(b map[string]any) {
 			b["deliveryAddress"] = map[string]any{"line1": "Byggeplassen", "city": "", "country": "NO"}
 		}, "deliveryAddress.city"},
+		{"a country ISO never assigned", func(b map[string]any) {
+			b["deliveryAddress"] = map[string]any{"line1": "Byggeplassen", "city": "Oslo", "country": "ZZ"}
+		}, "deliveryAddress.country"},
 	} {
 		body := draftBody(customerAcme)
 		bad.edit(body)
@@ -516,5 +520,44 @@ func TestDrafts_ReplaceAndDeleteNeedCreate(t *testing.T) {
 	}
 	if got := getInvoice(t, h, draft.ID); got.Revision != draft.Revision || len(got.Lines) != 1 {
 		t.Errorf("the draft after the refusals = %+v, want it untouched", got)
+	}
+}
+
+// A draft deleted between the PUT's first read and its lock is the PUT's 404,
+// never a 500: two users, one deleting and one saving, is a real race. The
+// delete lands after the billing-profile read, which runs between the two.
+func TestDrafts_AReplaceRacingADeleteIsNotFound(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	draft := createDraft(t, h, draftBody(customerAcme, line("A", 1, 100, vat25)))
+	h.customers.afterProfileRead(func(int32) {
+		// The handler's goroutine: t.Errorf, never a t.Fatal.
+		if _, err := h.Pool().Exec(context.Background(), `DELETE FROM invoices.invoices WHERE id = $1`, draft.ID); err != nil {
+			t.Errorf("delete the draft: %v", err)
+		}
+	})
+
+	body := draftBody(customerAcme, line("B", 1, 200, vat25))
+	body["paymentTermsDays"], body["revision"] = 14, draft.Revision
+	if res := creator(t, h).Do(http.MethodPut, invoicePath(draft.ID), body); res.Status != http.StatusNotFound {
+		t.Errorf("a replace of a draft deleted under it = %d %s, want 404", res.Status, res.Body)
+	}
+}
+
+// A draft in another currency shows its VAT in NOK at its own exchange rate,
+// as its issue will write it (D5) — never at 1. Only NOK is accepted in this
+// phase, so the currency and the rate are planted.
+func TestDrafts_VatInNOKIsAtTheDraftsRate(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	draft := createDraft(t, h, draftBody(customerAcme, line("A", 1, 100, vat25)))
+	h.Exec(t, `UPDATE invoices.invoices SET currency = 'EUR', exchange_rate = 11.5 WHERE id = $1`, draft.ID)
+
+	inv := getInvoice(t, h, draft.ID)
+	if inv.VatTotal != 25 || inv.VatTotalNok != 287.5 {
+		t.Errorf("a EUR draft at 11.5 = VAT %v, NOK %v, want 25.00 and 287.50", inv.VatTotal, inv.VatTotalNok)
+	}
+	if len(inv.VatSummaries) != 1 || inv.VatSummaries[0].VatAmountNok != 287.5 {
+		t.Errorf("summaries = %+v, want one row with 287.50 NOK", inv.VatSummaries)
 	}
 }

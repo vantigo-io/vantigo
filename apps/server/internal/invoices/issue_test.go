@@ -327,12 +327,37 @@ func TestIssue_AMergeInBetweenIsInvoiceChanged(t *testing.T) {
 	h := readyToIssue(t)
 	draft := createDraft(t, h, draftBody(customerAcme, line("A", 1, 100, vat25)))
 	h.customers.afterProfileRead(func(id int32) {
-		if id == customerAcme {
-			h.Exec(t, `UPDATE invoices.invoices SET customer_id = $1 WHERE id = $2`, customerNoTerms, draft.ID)
+		// The handler's goroutine: t.Errorf, never a t.Fatal.
+		if id != customerAcme {
+			return
+		}
+		if _, err := h.Pool().Exec(context.Background(), `UPDATE invoices.invoices SET customer_id = $1 WHERE id = $2`, customerNoTerms, draft.ID); err != nil {
+			t.Errorf("re-point the draft: %v", err)
 		}
 	})
 
 	refusedWith(t, h, draft.ID, "", "invoice_changed")
+	if n := counterNext(t, h); n != 0 {
+		t.Errorf("counter = %d, want no number taken", n)
+	}
+}
+
+// A draft deleted between the directory read and the transaction is the
+// issue's 404 under the lock, never a 500, and takes no number.
+func TestIssue_ADeleteInBetweenIsNotFound(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	draft := createDraft(t, h, draftBody(customerAcme, line("A", 1, 100, vat25)))
+	h.customers.afterProfileRead(func(int32) {
+		// The handler's goroutine: t.Errorf, never a t.Fatal.
+		if _, err := h.Pool().Exec(context.Background(), `DELETE FROM invoices.invoices WHERE id = $1`, draft.ID); err != nil {
+			t.Errorf("delete the draft: %v", err)
+		}
+	})
+
+	if res := issueWith(t, h, draft.ID, ""); res.Status != http.StatusNotFound {
+		t.Errorf("issue of a draft deleted under it = %d %s, want 404", res.Status, res.Body)
+	}
 	if n := counterNext(t, h); n != 0 {
 		t.Errorf("counter = %d, want no number taken", n)
 	}

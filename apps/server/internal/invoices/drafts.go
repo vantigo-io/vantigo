@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"regexp"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -98,8 +97,6 @@ type draftInput struct {
 	note, internalNote                     string
 	lines                                  []draftLine
 }
-
-var addressCountry = regexp.MustCompile(`^[A-Z]{2}$`)
 
 // amount is one number of a line: finite, at least minimum (above it when
 // strict), at most places decimals, and within the column. It answers the
@@ -215,7 +212,7 @@ func parseDraft(body gen.InvoicesInvoiceRequest, currency string) (draftInput, m
 			add("deliveryAddress.city", "A place of delivery needs a city")
 		}
 		add("deliveryAddress.city", maxLength("A city", addr.City, 100))
-		if !addressCountry.MatchString(addr.Country) {
+		if !validCountry(addr.Country) {
 			add("deliveryAddress.country", "A country is a two-letter ISO 3166-1 code, such as NO")
 		}
 		in.address = &addr
@@ -502,12 +499,19 @@ func (s *server) PutInvoicesById(ctx context.Context, req gen.PutInvoicesByIdReq
 		return nil, err
 	}
 	errs = checkInvoiceLines(in.lines, codes, errs)
-	_, totals, _ := summarize(taxedLines(in.lines, codes), big.NewRat(1, 1))
+	exchangeRate, err := ratFromNumeric(current.ExchangeRate)
+	if err != nil {
+		return nil, err
+	}
+	_, totals, _ := summarize(taxedLines(in.lines, codes), exchangeRate)
 	errs = checkTotal(totals, errs)
 	if len(errs) > 0 {
 		return gen.PutInvoicesById400ApplicationProblemPlusJSONResponse(invalid(invalidInvoiceTitle, errs)), nil
 	}
 	saved, refusal, err := s.saveDraft(ctx, req.Id, *req.Body.Revision, in, totals)
+	if errors.Is(err, errDocumentGone) {
+		return gen.PutInvoicesById404Response{}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -521,9 +525,15 @@ func (s *server) PutInvoicesById(ctx context.Context, req gen.PutInvoicesByIdReq
 	return gen.PutInvoicesById200JSONResponse(resp), nil
 }
 
+// errDocumentGone is a document deleted between a handler's first read and
+// its lock — two users, one deleting and one saving or issuing. The handler
+// answers it with its operation's 404, as if the first read had missed.
+var errDocumentGone = errors.New("invoices: the document was deleted")
+
 // saveDraft is the transaction every draft replace runs: the row taken FOR
 // UPDATE, still a draft and at the revision the caller read; then the row and
-// its lines replaced.
+// its lines replaced. A row deleted since the caller read it is
+// errDocumentGone.
 func (s *server) saveDraft(ctx context.Context, id int64, revision int32, in draftInput, totals documentTotals) (store.InvoicesInvoice, *gen.InvoicesConflictProblem, error) {
 	net, vat, gross, vatNOK, err := numerics(totals)
 	if err != nil {
@@ -534,6 +544,9 @@ func (s *server) saveDraft(ctx context.Context, id int64, revision int32, in dra
 	var saved store.InvoicesInvoice
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
 		locked, err := txq.LockInvoice(ctx, id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errDocumentGone
+		}
 		if err != nil {
 			return fmt.Errorf("invoices: lock document %d: %w", id, err)
 		}

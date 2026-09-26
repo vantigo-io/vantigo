@@ -29,10 +29,7 @@ const (
 // which this phase does not model yet.
 const onlyNOK = "Only NOK in this phase"
 
-var (
-	countryPattern = regexp.MustCompile(`^[A-Z]{2}$`)
-	bicPattern     = regexp.MustCompile(`^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$`)
-)
+var bicPattern = regexp.MustCompile(`^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$`)
 
 // maxLength is the rule for a varchar(n) column: n characters, as Postgres
 // counts them.
@@ -170,7 +167,7 @@ func parseSettings(body gen.InvoicesSettingsRequest) (parsedSettings, map[string
 	add("addressLine2", maxLength("An address line", p.AddressLine2, 200))
 	add("postalCode", maxLength("A postal code", p.PostalCode, 20))
 	add("city", maxLength("A city", p.City, 100))
-	if !countryPattern.MatchString(p.Country) {
+	if !validCountry(p.Country) {
 		add("country", "A country is a two-letter ISO 3166-1 code, such as NO")
 	}
 	if p.BankAccount != "" && !validBankAccount(p.BankAccount) {

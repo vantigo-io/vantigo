@@ -3,7 +3,6 @@ package invoices
 import (
 	"context"
 	"fmt"
-	"math/big"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -245,7 +244,7 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 				return gen.InvoicesInvoiceResponse{}, err
 			}
 		}
-		resp.PdfStored = ptr(inv.PdfSha256 != nil)
+		resp.PdfStored = ptr(inv.PdfSha256 != nil && inv.PdfObjectKey != nil)
 		if inv.Kind == kindInvoice && issuedLate(inv.IssueDate.Time, deliveryEndOf(inv)) {
 			resp.Warnings = append(resp.Warnings, warningIssuedLate)
 		}
@@ -276,7 +275,12 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 		if err != nil {
 			return gen.InvoicesInvoiceResponse{}, err
 		}
-		rows, totals, _ = summarize(taxedLines(lines, codes), big.NewRat(1, 1))
+		// VAT in NOK at the draft's own exchange rate, as its issue writes it.
+		exchangeRate, err := ratFromNumeric(inv.ExchangeRate)
+		if err != nil {
+			return gen.InvoicesInvoiceResponse{}, err
+		}
+		rows, totals, _ = summarize(taxedLines(lines, codes), exchangeRate)
 		for _, l := range lines {
 			if c, ok := codes[l.vatCodeID]; ok && c.rate == nil {
 				resp.Warnings = append(resp.Warnings, warningVatCodeNotValid)

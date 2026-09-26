@@ -65,13 +65,16 @@ func (s *server) PostInvoicesByIdCredit(ctx context.Context, req gen.PostInvoice
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read document %d: %w", req.Id, err)
 	}
+	// The kind first: a credit note, draft or issued, is never credited (D8),
+	// and saying "it is a draft" of one would invite an issue that still
+	// leaves it uncreditable.
 	switch {
-	case original.Status != statusIssued:
-		return gen.PostInvoicesByIdCredit409ApplicationProblemPlusJSONResponse(conflict(codeInvoiceDraft, cannotCreditTitle,
-			"A draft is not a sales document: change or delete it instead.")), nil
 	case original.Kind == kindCreditNote:
 		return gen.PostInvoicesByIdCredit409ApplicationProblemPlusJSONResponse(conflict(codeCreditNoteNotCreditable, cannotCreditTitle,
 			"A credit note is never itself credited.")), nil
+	case original.Status != statusIssued:
+		return gen.PostInvoicesByIdCredit409ApplicationProblemPlusJSONResponse(conflict(codeInvoiceDraft, cannotCreditTitle,
+			"A draft is not a sales document: change or delete it instead.")), nil
 	}
 	_, left, err := uncredited(ctx, q, original)
 	if err != nil {
@@ -626,6 +629,13 @@ func derefID(id *int64) int64 {
 // else it copied from its original stays, and each attempt to change it is a
 // 400 on the field. The caps only warn here; the issue decides them.
 func (s *server) putCreditDraft(ctx context.Context, q *store.Queries, current store.InvoicesInvoice, body gen.InvoicesInvoiceRequest) (gen.PutInvoicesByIdResponseObject, error) {
+	// The revision before the field rules: a client that read the draft
+	// before a merge re-pointed it would otherwise be told it changed the
+	// customer, when its copy is only stale. saveDraft checks it again under
+	// the lock.
+	if *body.Revision != current.Revision {
+		return gen.PutInvoicesById409ApplicationProblemPlusJSONResponse(revisionConflict("Invoice", current.Revision, *body.Revision)), nil
+	}
 	in, errs := parseDraft(body, current.Currency)
 	add := func(field, msg string) { errs = withFieldError(errs, field, msg) }
 	if in.customerID != current.CustomerID {
@@ -727,6 +737,9 @@ func (s *server) putCreditDraft(ctx context.Context, q *store.Queries, current s
 		in.lines[i].amounts = t.amounts[i]
 	}
 	saved, refusal, err := s.saveDraft(ctx, current.ID, *body.Revision, in, t.totals)
+	if errors.Is(err, errDocumentGone) {
+		return gen.PutInvoicesById404Response{}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
