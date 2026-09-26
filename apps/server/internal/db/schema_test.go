@@ -2449,6 +2449,26 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		}
 	}
 
+	// The buyer snapshot is as wide as what customers lets a customer hold — a
+	// name, a legal name and an address line are up to 255 there — so a valid
+	// customer never fails an issue on length (22001).
+	widthRows, err := pool.Query(ctx, `
+		SELECT column_name || ':' || character_maximum_length::text
+		FROM information_schema.columns
+		WHERE table_schema = 'invoices' AND table_name = 'invoices'
+		  AND column_name IN ('buyer_name', 'buyer_address_line1', 'buyer_address_line2')
+		ORDER BY column_name`)
+	if err != nil {
+		t.Fatalf("query buyer widths: %v", err)
+	}
+	gotWidths, err := pgx.CollectRows(widthRows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatalf("collect buyer widths: %v", err)
+	}
+	if want := []string{"buyer_address_line1:255", "buyer_address_line2:255", "buyer_name:255"}; !equalStrings(gotWidths, want) {
+		t.Errorf("buyer snapshot widths = %v, want %v", gotWidths, want)
+	}
+
 	triggerRows, err := pool.Query(ctx, `
 		SELECT c.relname || ':' || t.tgname
 		FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace
