@@ -165,6 +165,20 @@ func TestPDFModel_ACreditNoteAndAPreview(t *testing.T) {
 	if pm.watermark != "UTKAST — ikke et salgsdokument" || pm.meta[0][0] == "Nummer" {
 		t.Errorf("preview = watermark %q, first meta %q", pm.watermark, pm.meta[0])
 	}
+	// A preview of an incomplete seller prints no bare "Org.nr.", and an
+	// empty place of delivery no bare "Leveringssted".
+	p.seller.organisationNumber, p.deliveryPlace = "", &pdfParty{}
+	pm = buildPDFModel(p)
+	for _, line := range pm.seller {
+		if strings.HasPrefix(line, "Org.nr.") {
+			t.Errorf("an incomplete seller prints %q", line)
+		}
+	}
+	for _, kv := range pm.meta {
+		if kv[0] == "Leveringssted" {
+			t.Errorf("an empty place of delivery prints %q", kv)
+		}
+	}
 }
 
 // The same document renders to the same bytes, in-process, twice: catalog

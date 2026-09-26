@@ -255,12 +255,16 @@ func buildPDFModel(d pdfDocument) pdfModel {
 
 	// The seller: name, address, the organisation number followed by MVA
 	// when VAT-registered, Foretaksregisteret when registered there (§ 5-1-2).
+	// Only a preview of an incomplete seller lacks the number, and then
+	// prints no bare label.
 	m.seller = partyLines(d.seller)
-	orgLine := l.orgNumber + " " + organisationNumber(d.seller.organisationNumber)
-	if d.seller.vatRegistered {
-		orgLine += " MVA"
+	if d.seller.organisationNumber != "" {
+		orgLine := l.orgNumber + " " + organisationNumber(d.seller.organisationNumber)
+		if d.seller.vatRegistered {
+			orgLine += " MVA"
+		}
+		m.seller = append(m.seller, orgLine)
 	}
-	m.seller = append(m.seller, orgLine)
 	if d.seller.foretaksregisteret {
 		m.seller = append(m.seller, "Foretaksregisteret")
 	}
@@ -289,8 +293,9 @@ func buildPDFModel(d pdfDocument) pdfModel {
 		m.meta = append(m.meta, [2]string{l.deliveryPeriod, formatDate(*d.deliveryFrom, lang) + " – " + formatDate(*d.deliveryTo, lang)})
 	}
 	if d.deliveryPlace != nil && !sameAddress(*d.deliveryPlace, d.buyer) {
-		place := partyLines(*d.deliveryPlace)
-		m.meta = append(m.meta, [2]string{l.deliveryPlace, strings.Join(place[1:], ", ")})
+		if place := strings.Join(partyLines(*d.deliveryPlace)[1:], ", "); place != "" {
+			m.meta = append(m.meta, [2]string{l.deliveryPlace, place})
+		}
 	}
 	if d.kind == kindInvoice {
 		if d.dueDate != nil {

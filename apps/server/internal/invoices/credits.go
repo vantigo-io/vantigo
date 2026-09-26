@@ -473,7 +473,6 @@ type creditDraft struct {
 // readCreditDraft totals a stored credit-note draft with book, its
 // original's credit book when the caller has read it already, nil to read it
 // here once.
-// credit book once.
 func readCreditDraft(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, stored []store.InvoicesLine, book *creditBook) (creditDraft, error) {
 	if book == nil {
 		b, err := bookOf(ctx, q, inv)
@@ -727,9 +726,10 @@ func (s *server) putCreditDraft(ctx context.Context, q *store.Queries, current s
 	}
 	// The lines are stored as total amounts them, a line's last return with
 	// what its original line has left. What is stored can never be seen or
-	// issued stale: the response and the preview total the draft afresh, and
-	// the issue totals it again under the original's lock and writes a
-	// squared line's amounts itself (SquareCreditLine). Nor can a squared
+	// issued stale: the response totals it with the book the save used, the
+	// preview and the issue total it afresh — the issue under the original's
+	// lock — and the issue writes a squared line's amounts itself
+	// (SquareCreditLine). Nor can a squared
 	// line lose its squaring to a credit note issued in between without
 	// becoming a refusal: that note credited the same line, so this one now
 	// passes the line's quantity and the line cap refuses it.

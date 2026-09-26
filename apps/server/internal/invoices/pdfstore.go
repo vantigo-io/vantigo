@@ -417,7 +417,8 @@ func (s *server) GetInvoicesByIdPdf(ctx context.Context, req gen.GetInvoicesById
 // A draft as it would be if issued today, rendered on demand and never
 // stored: the current settings (even incomplete), the customer's billing
 // profile as it is now for an invoice draft and the copied snapshot for a
-// credit-note draft, today's rates, the watermark and no number.
+// credit-note draft, today's rates for an invoice draft and the original
+// lines' snapshot rates for a credit-note draft, the watermark and no number.
 func (s *server) GetInvoicesByIdPreviewPdf(ctx context.Context, req gen.GetInvoicesByIdPreviewPdfRequestObject) (gen.GetInvoicesByIdPreviewPdfResponseObject, error) {
 	q := store.New(s.deps.Pool)
 	inv, err := q.GetInvoice(ctx, req.Id)
