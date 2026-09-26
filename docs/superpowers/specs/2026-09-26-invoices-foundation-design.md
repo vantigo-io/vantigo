@@ -508,8 +508,12 @@ issues, so every check that depends on other documents runs after it:
 
 Every refusal above is a 409 with that code. The lock order is always the document, then
 the settings row, then the counter, then the original. Nothing else takes these in
-another order: `PUT /settings` takes only the settings row; the merge holder updates
-invoice rows only; 1B's payments lock only the original. So there is no cycle.
+another order: `PUT /settings` takes only the settings row; the merge holder locks the
+customer's invoice rows **newest first** (`ORDER BY id DESC FOR UPDATE`) before its
+update, so it meets a credit-note issue — which locks the draft, then the older
+original — in the same order and cannot deadlock with it; 1B's payments lock only the
+original. So there is no cycle, and a test races the real holder against credit-note
+issues to prove it.
 
 **After the commit**, the PDF is stored by the store-once path (D7). A failure there is
 logged at warn and does not fail the issue: the number is committed. The response then
@@ -733,9 +737,12 @@ by the list convention (D4).
   positive (D8); a journal that summed them as positive would overstate revenue.
 - `totals`: over the whole range, not the page, per (`safTCode`, `category`,
   `ratePercent`), plus net, VAT and gross, signed.
-- `gaps`: over the whole range, the numbers in `[max(first − 1, series_start) … last]`
-  that no issued document holds, where `first` and `last` are the lowest and highest
-  numbers in the range. The first document of the range is thereby checked against the one
+- `gaps`: every number that no issued document holds between the **previous issued
+  document before the range** and `last` — the range checked is
+  `[greatest(coalesce(max(number) where number < first, series_start − 1) + 1, series_start) … last]`,
+  where `first` and `last` are the lowest and highest numbers in the range, and the
+  response says which range it checked (`checkedFrom`, `checkedTo`) and the highest issued
+  number overall (`highestIssued`). The first document of the range is thereby checked against the one
   before it. A number below `series_start` is never a gap. It must be empty; at most 1000
   are listed, with `gapsTruncated`.
 - `seriesStart`, and `counterLast`: the counter's last allocated number (`next_value − 1`;
