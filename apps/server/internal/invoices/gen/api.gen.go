@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -498,6 +499,12 @@ type ServerInterface interface {
 	// PostInvoicesByIdIssue Issue a draft
 	// (POST /api/v1/invoices/{id}/issue)
 	PostInvoicesByIdIssue(w http.ResponseWriter, r *http.Request, id int64)
+	// GetInvoicesByIdPdf Download an issued document's PDF
+	// (GET /api/v1/invoices/{id}/pdf)
+	GetInvoicesByIdPdf(w http.ResponseWriter, r *http.Request, id int64)
+	// GetInvoicesByIdPreviewPdf Preview a draft as PDF
+	// (GET /api/v1/invoices/{id}/preview.pdf)
+	GetInvoicesByIdPreviewPdf(w http.ResponseWriter, r *http.Request, id int64)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -908,6 +915,58 @@ func (siw *ServerInterfaceWrapper) PostInvoicesByIdIssue(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// GetInvoicesByIdPdf operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoicesByIdPdf(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoicesByIdPdf(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInvoicesByIdPreviewPdf operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoicesByIdPreviewPdf(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoicesByIdPreviewPdf(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -1042,6 +1101,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/{id}", wrapper.GetInvoicesById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/{id}", wrapper.PutInvoicesById)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/issue", wrapper.PostInvoicesByIdIssue)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/{id}/pdf", wrapper.GetInvoicesByIdPdf)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/{id}/preview.pdf", wrapper.GetInvoicesByIdPreviewPdf)
 
 	return m
 }
@@ -2022,6 +2083,190 @@ func (response PostInvoicesByIdIssue503ApplicationProblemPlusJSONResponse) Visit
 	return err
 }
 
+type GetInvoicesByIdPdfRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetInvoicesByIdPdfResponseObject interface {
+	VisitGetInvoicesByIdPdfResponse(w http.ResponseWriter) error
+}
+
+type GetInvoicesByIdPdf200ApplicationpdfResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetInvoicesByIdPdf200ApplicationpdfResponse) VisitGetInvoicesByIdPdfResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/pdf")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetInvoicesByIdPdf401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesByIdPdf401JSONResponse) VisitGetInvoicesByIdPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesByIdPdf403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesByIdPdf403JSONResponse) VisitGetInvoicesByIdPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesByIdPdf404Response struct {
+}
+
+func (response GetInvoicesByIdPdf404Response) VisitGetInvoicesByIdPdfResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetInvoicesByIdPdf409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response GetInvoicesByIdPdf409ApplicationProblemPlusJSONResponse) VisitGetInvoicesByIdPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesByIdPdf500ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetInvoicesByIdPdf500ApplicationProblemPlusJSONResponse) VisitGetInvoicesByIdPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesByIdPdf503ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response GetInvoicesByIdPdf503ApplicationProblemPlusJSONResponse) VisitGetInvoicesByIdPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesByIdPreviewPdfRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetInvoicesByIdPreviewPdfResponseObject interface {
+	VisitGetInvoicesByIdPreviewPdfResponse(w http.ResponseWriter) error
+}
+
+type GetInvoicesByIdPreviewPdf200ApplicationpdfResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetInvoicesByIdPreviewPdf200ApplicationpdfResponse) VisitGetInvoicesByIdPreviewPdfResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/pdf")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetInvoicesByIdPreviewPdf401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesByIdPreviewPdf401JSONResponse) VisitGetInvoicesByIdPreviewPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesByIdPreviewPdf403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesByIdPreviewPdf403JSONResponse) VisitGetInvoicesByIdPreviewPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesByIdPreviewPdf404Response struct {
+}
+
+func (response GetInvoicesByIdPreviewPdf404Response) VisitGetInvoicesByIdPreviewPdfResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetInvoicesByIdPreviewPdf409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response GetInvoicesByIdPreviewPdf409ApplicationProblemPlusJSONResponse) VisitGetInvoicesByIdPreviewPdfResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// GetInvoices List invoices and credit notes
@@ -2066,6 +2311,12 @@ type StrictServerInterface interface {
 	// PostInvoicesByIdIssue Issue a draft
 	// (POST /api/v1/invoices/{id}/issue)
 	PostInvoicesByIdIssue(ctx context.Context, request PostInvoicesByIdIssueRequestObject) (PostInvoicesByIdIssueResponseObject, error)
+	// GetInvoicesByIdPdf Download an issued document's PDF
+	// (GET /api/v1/invoices/{id}/pdf)
+	GetInvoicesByIdPdf(ctx context.Context, request GetInvoicesByIdPdfRequestObject) (GetInvoicesByIdPdfResponseObject, error)
+	// GetInvoicesByIdPreviewPdf Preview a draft as PDF
+	// (GET /api/v1/invoices/{id}/preview.pdf)
+	GetInvoicesByIdPreviewPdf(ctx context.Context, request GetInvoicesByIdPreviewPdfRequestObject) (GetInvoicesByIdPreviewPdfResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -2502,6 +2753,58 @@ func (sh *strictHandler) PostInvoicesByIdIssue(w http.ResponseWriter, r *http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostInvoicesByIdIssueResponseObject); ok {
 		if err := validResponse.VisitPostInvoicesByIdIssueResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInvoicesByIdPdf operation middleware
+func (sh *strictHandler) GetInvoicesByIdPdf(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetInvoicesByIdPdfRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoicesByIdPdf(ctx, request.(GetInvoicesByIdPdfRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoicesByIdPdf")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoicesByIdPdfResponseObject); ok {
+		if err := validResponse.VisitGetInvoicesByIdPdfResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInvoicesByIdPreviewPdf operation middleware
+func (sh *strictHandler) GetInvoicesByIdPreviewPdf(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetInvoicesByIdPreviewPdfRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoicesByIdPreviewPdf(ctx, request.(GetInvoicesByIdPreviewPdfRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoicesByIdPreviewPdf")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoicesByIdPreviewPdfResponseObject); ok {
+		if err := validResponse.VisitGetInvoicesByIdPreviewPdfResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

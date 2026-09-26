@@ -257,12 +257,62 @@ func (f *fakeCustomers) afterProfileRead(fn func(id int32)) {
 	f.onProfile = fn
 }
 
-// fakeObjectStore is an in-memory storage.ObjectStore that records every Delete,
-// because the module must never call one (D7).
+// fakeObjectStore is an in-memory storage.ObjectStore that records every Put
+// and every Delete — the module must never call one (D7) — and fails a Put or
+// a Get on demand.
 type fakeObjectStore struct {
 	mu      sync.Mutex
 	objects map[string][]byte
+	puts    int
 	deletes int
+	putErr  error
+	getErr  error
+}
+
+// failPuts makes every Put fail with err, nil to stop.
+func (s *fakeObjectStore) failPuts(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.putErr = err
+}
+
+// failGets makes every Get fail with err, nil to stop.
+func (s *fakeObjectStore) failGets(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.getErr = err
+}
+
+// replace swaps an object's bytes behind the module's back.
+func (s *fakeObjectStore) replace(key string, body []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.objects[key] = body
+}
+
+// lose removes an object behind the module's back.
+func (s *fakeObjectStore) lose(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.objects, key)
+}
+
+// stored is every key in the store and the number of Puts and Deletes made.
+func (s *fakeObjectStore) stored() (keys []string, puts, deletes int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for k := range s.objects {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return keys, s.puts, s.deletes
+}
+
+// object is one object's bytes.
+func (s *fakeObjectStore) object(key string) []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.objects[key]
 }
 
 var _ storage.ObjectStore = (*fakeObjectStore)(nil)
@@ -278,6 +328,10 @@ func (s *fakeObjectStore) Put(_ context.Context, key string, r io.Reader, _ stri
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.putErr != nil {
+		return s.putErr
+	}
+	s.puts++
 	s.objects[key] = body
 	return nil
 }
@@ -285,6 +339,9 @@ func (s *fakeObjectStore) Put(_ context.Context, key string, r io.Reader, _ stri
 func (s *fakeObjectStore) Get(_ context.Context, key string) (io.ReadCloser, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.getErr != nil {
+		return nil, s.getErr
+	}
 	body, ok := s.objects[key]
 	if !ok {
 		return nil, storage.ErrNotExist
