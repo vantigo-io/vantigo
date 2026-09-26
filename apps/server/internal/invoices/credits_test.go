@@ -361,3 +361,93 @@ func TestCredit_BothCapsWarn(t *testing.T) {
 	}
 	refusedWith(t, h, second.ID, "", "credit_exceeds_line")
 }
+
+// creditUnits makes a credit-note draft of the original's first line at
+// units of its quantity, saved.
+func creditUnits(t *testing.T, h *harness, original int64, units float64) invoiceJSON {
+	t.Helper()
+	c := creditDraft(t, h, original)
+	l := creditLine(c.Lines[0])
+	l["quantity"] = units
+	return saveCredit(t, h, c, creditBody(c, l))
+}
+
+// A full reversal credits exactly what was charged, øre for øre: 2 × 33.30 at
+// 15 % charged 9.99 VAT, and each unit alone would round to 5.00. The credit
+// note that credits the last of every line takes the VAT the original charged
+// less what the credit notes before it reversed — 4.99 — so it fits what the
+// invoice has left, and the invoice ends credited in full (D8, the ruling on
+// the Task 8 review's I1).
+func TestCredit_AFullReversalCreditsExactlyWhatWasCharged(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	original := issued(t, h, createDraft(t, h, draftBody(customerAcme, line("Matvare", 2, 33.30, vat15))).ID)
+	if original.VatTotal != 9.99 || original.GrossTotal != 76.59 {
+		t.Fatalf("the original = VAT %v gross %v, want 9.99 and 76.59, or the fixture proves nothing", original.VatTotal, original.GrossTotal)
+	}
+
+	first := issued(t, h, creditUnits(t, h, original.ID, 1).ID)
+	if first.VatTotal != 5 || first.GrossTotal != 38.30 {
+		t.Errorf("the first unit's credit = VAT %v gross %v, want 5.00 and 38.30", first.VatTotal, first.GrossTotal)
+	}
+
+	last := creditUnits(t, h, original.ID, 1)
+	if last.VatTotal != 4.99 || last.GrossTotal != 38.29 || slices.Contains(last.Warnings, "credit_exceeds_invoice") {
+		t.Errorf("the last unit's draft = VAT %v gross %v warnings %v, want 4.99, 38.29 and no cap", last.VatTotal, last.GrossTotal, last.Warnings)
+	}
+	credit := issued(t, h, last.ID)
+	if credit.VatTotal != 4.99 || credit.GrossTotal != 38.29 || len(credit.VatSummaries) != 1 ||
+		credit.VatSummaries[0].VatAmount != 4.99 || credit.VatSummaries[0].TaxableAmount != 33.30 {
+		t.Errorf("the last unit's credit = VAT %v gross %v summaries %+v, want 4.99 on 33.30", credit.VatTotal, credit.GrossTotal, credit.VatSummaries)
+	}
+	after := getInvoice(t, h, original.ID)
+	if *after.CreditedAmount != 76.59 || *after.UncreditedAmount != 0 {
+		t.Errorf("the original = credited %v uncredited %v, want 76.59 and 0", *after.CreditedAmount, *after.UncreditedAmount)
+	}
+}
+
+// A partial credit rounds as any document does, per rate on its own lines:
+// of 3 × 33.30 at 15 % (VAT 14.99) and freight at 25 %, each food unit
+// credited alone reverses 5.00 — none is the last, the freight is uncredited —
+// so the three reverse 15.00, an øre more than was charged. The credit note
+// that then credits the freight is the final full reversal: its 15 % row
+// squares the øre on nothing taxable, and the credits sum to the invoice.
+func TestCredit_APartialCreditRoundsAsAnyDocument(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	original := issued(t, h, createDraft(t, h, draftBody(customerAcme, line("Matvare", 3, 33.30, vat15), line("Frakt", 1, 100, vat25))).ID)
+	if original.VatTotal != 39.99 || original.GrossTotal != 239.89 {
+		t.Fatalf("the original = VAT %v gross %v, want 14.99 + 25.00 and 239.89", original.VatTotal, original.GrossTotal)
+	}
+	onlyFood := func() invoiceJSON {
+		c := creditDraft(t, h, original.ID)
+		l := creditLine(c.Lines[0])
+		l["quantity"] = 1
+		return issued(t, h, saveCredit(t, h, c, creditBody(c, l)).ID)
+	}
+	for i, c := range []invoiceJSON{onlyFood(), onlyFood(), onlyFood()} {
+		if c.VatTotal != 5 || c.GrossTotal != 38.30 {
+			t.Errorf("food credit %d = VAT %v gross %v, want 5.00 and 38.30: a partial credit rounds on its own lines", i+1, c.VatTotal, c.GrossTotal)
+		}
+	}
+	last := creditDraft(t, h, original.ID)
+	if len(last.Lines) != 2 {
+		t.Fatalf("the last credit draft has %d lines, want both copied", len(last.Lines))
+	}
+	freight := saveCredit(t, h, last, creditBody(last, creditLine(last.Lines[1])))
+	if freight.VatTotal != 24.99 || slices.Contains(freight.Warnings, "credit_exceeds_invoice") {
+		t.Errorf("the freight draft = VAT %v warnings %v, want 24.99 and no cap", freight.VatTotal, freight.Warnings)
+	}
+	credit := issued(t, h, freight.ID)
+	want := []summaryJSON{
+		{VatCategory: "S", RatePercent: 25, SafTCode: "3", TaxableAmount: 100, VatAmount: 25, VatAmountNok: 25},
+		{VatCategory: "S", RatePercent: 15, SafTCode: "31", TaxableAmount: 0, VatAmount: -0.01, VatAmountNok: -0.01},
+	}
+	if credit.VatTotal != 24.99 || credit.GrossTotal != 124.99 || !slices.Equal(credit.VatSummaries, want) {
+		t.Errorf("the freight credit = VAT %v gross %v summaries %+v, want 24.99, 124.99 and %+v", credit.VatTotal, credit.GrossTotal, credit.VatSummaries, want)
+	}
+	after := getInvoice(t, h, original.ID)
+	if *after.CreditedAmount != 239.89 || *after.UncreditedAmount != 0 {
+		t.Errorf("the original = credited %v uncredited %v, want 239.89 and 0", *after.CreditedAmount, *after.UncreditedAmount)
+	}
+}

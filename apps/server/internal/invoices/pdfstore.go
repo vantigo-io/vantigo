@@ -460,15 +460,15 @@ func (s *server) renderPreview(ctx context.Context, q *store.Queries, inv store.
 		return nil, err
 	}
 	taxed := taxedLines(lines, codes)
+	summaries, totals, _ := summarize(taxed, big.NewRat(1, 1))
 	if inv.Kind == kindCreditNote {
 		// As the draft's response does: a credit note reverses its
 		// original's treatment, with the original lines' snapshot rates,
-		// never today's (D8).
-		if taxed, err = creditDraftTaxedLines(ctx, q, *inv.CreditsInvoiceID, stored, lines); err != nil {
+		// never today's, and a final full reversal squares the VAT (D8).
+		if taxed, summaries, totals, err = creditDraftSummary(ctx, q, inv, stored, lines); err != nil {
 			return nil, err
 		}
 	}
-	summaries, totals, _ := summarize(taxed, big.NewRat(1, 1))
 	var original *store.InvoicesInvoice
 	if inv.CreditsInvoiceID != nil {
 		o, err := q.GetInvoice(ctx, *inv.CreditsInvoiceID)

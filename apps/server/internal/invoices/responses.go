@@ -244,9 +244,10 @@ func (s *server) invoiceResponse(ctx context.Context, q *store.Queries, inv stor
 	if err != nil {
 		return gen.InvoicesInvoiceResponse{}, err
 	}
-	var taxed []taxedLine
+	var rows []vatSummary
+	var totals documentTotals
 	if inv.Kind == kindCreditNote {
-		if taxed, err = creditDraftTaxedLines(ctx, q, *inv.CreditsInvoiceID, stored, lines); err != nil {
+		if _, rows, totals, err = creditDraftSummary(ctx, q, inv, stored, lines); err != nil {
 			return gen.InvoicesInvoiceResponse{}, err
 		}
 	} else {
@@ -254,7 +255,7 @@ func (s *server) invoiceResponse(ctx context.Context, q *store.Queries, inv stor
 		if err != nil {
 			return gen.InvoicesInvoiceResponse{}, err
 		}
-		taxed = taxedLines(lines, codes)
+		rows, totals, _ = summarize(taxedLines(lines, codes), big.NewRat(1, 1))
 		for _, l := range lines {
 			if c, ok := codes[l.vatCodeID]; ok && c.rate == nil {
 				resp.Warnings = append(resp.Warnings, warningVatCodeNotValid)
@@ -262,7 +263,6 @@ func (s *server) invoiceResponse(ctx context.Context, q *store.Queries, inv stor
 			}
 		}
 	}
-	rows, totals, _ := summarize(taxed, big.NewRat(1, 1))
 	for _, r := range rows {
 		resp.VatSummaries = append(resp.VatSummaries, summaryResponse(r))
 	}

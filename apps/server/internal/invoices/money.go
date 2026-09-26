@@ -116,13 +116,19 @@ func summarize(lines []taxedLine, exchangeRate *big.Rat) (rows []vatSummary, tot
 		rows = append(rows, *row)
 	}
 	totals.gross.Add(totals.net, totals.vat)
+	sortSummaries(rows)
+	return rows, totals, ambiguous
+}
+
+// sortSummaries puts VAT summary rows in a document's order: the highest rate
+// first, then by category.
+func sortSummaries(rows []vatSummary) {
 	sort.SliceStable(rows, func(i, j int) bool {
 		if c := rows[i].rate.Cmp(rows[j].rate); c != 0 {
 			return c > 0
 		}
 		return rows[i].category < rows[j].category
 	})
-	return rows, totals, ambiguous
 }
 
 // ratFromNumeric reads a numeric column as the exact decimal it holds — Int ×

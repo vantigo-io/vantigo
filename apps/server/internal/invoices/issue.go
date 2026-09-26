@@ -72,6 +72,16 @@ type issuedLine struct {
 type issuePlan struct {
 	lines []issuedLine
 	buyer *store.IssueDocumentParams
+	// summary, when the checks computed it, is the VAT the issue writes: a
+	// credit note's (creditSummary). nil means summarize over the lines.
+	summary *planSummary
+}
+
+// planSummary is a document's VAT rows and totals as its issue writes them.
+type planSummary struct {
+	rows      []vatSummary
+	totals    documentTotals
+	ambiguous bool
 }
 
 // buyerSnapshot is D4's buyer snapshot from the billing profile.
@@ -317,6 +327,9 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 			taxed = append(taxed, l.taxed)
 		}
 		rows, totals, ambiguous := summarize(taxed, exchangeRate)
+		if plan.summary != nil {
+			rows, totals, ambiguous = plan.summary.rows, plan.summary.totals, plan.summary.ambiguous
+		}
 		if ambiguous {
 			refusal = cannotIssue(codeVatCodesAmbiguous,
 				"Two lines share a VAT category and rate but carry different SAF-T codes, so one VAT summary row could not name its code.")
