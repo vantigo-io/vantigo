@@ -15,7 +15,7 @@ export const refusalCode = (error: unknown): string | undefined => {
 };
 
 /** A 409's own fields — the dates, the line — from its parsed body. */
-export const refusalProblem = (error: unknown): Record<string, unknown> =>
+const refusalProblem = (error: unknown): Record<string, unknown> =>
   ((error as { problem?: Record<string, unknown> } | null)?.problem ?? {}) as Record<string, unknown>;
 
 /**
@@ -46,4 +46,39 @@ export const refusalMessage = (error: unknown, t: Translate, date: (day: string)
     if (first?.[0]) return first[0];
   }
   return error instanceof Error ? error.message : String(error);
+};
+
+/**
+ * A 400's refusals split by where they are shown: each field an input shows
+ * (`hasInput`) worded by the catalog's `fieldInvalid.<field>` — a line's
+ * `lines[2].quantity` by `fieldInvalid.line.quantity` — and the server's own
+ * sentence only for a field the catalog has no words for; every refusal no
+ * input shows, as the server wrote it, for a notification. Each field's
+ * catalog sentence covers every rule the server checks on it, so it says what
+ * was refused in the reader's language.
+ */
+export const fieldRefusals = (
+  error: ApiValidationError,
+  t: Translate,
+  hasInput: (field: string) => boolean,
+): { onInputs: Record<string, string>; elsewhere: string[] } => {
+  const onInputs: Record<string, string> = {};
+  const elsewhere: string[] = [];
+  for (const [field, message] of Object.entries(error.fieldErrors)) {
+    const key = `fieldInvalid.${field.replace(/^lines\[\d+\]\./, "line.")}`;
+    if (hasInput(field)) onInputs[field] = key in invoicesCatalog.en ? t(key) : message;
+    else elsewhere.push(message);
+  }
+  return { onInputs, elsewhere };
+};
+
+/**
+ * A draft's warning in words. A warning this catalog has no words for — one
+ * a newer server added — is looked up before it is translated, as a refusal's
+ * code is: outside production a missing key throws, and a warning must never
+ * take the editor down with it.
+ */
+export const warningMessage = (warning: string, t: Translate): string => {
+  const key = `warning.${warning}`;
+  return key in invoicesCatalog.en ? t(key) : t("warningUnknown", { code: warning });
 };

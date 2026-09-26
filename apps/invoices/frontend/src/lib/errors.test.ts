@@ -5,45 +5,37 @@ import { invoicesCatalog } from "../i18n";
 import { refusalMessage } from "./errors";
 
 /**
- * Every code the list, the editor, the issue dialog, the credit flow and the
- * PDF buttons can meet, and the six the settings page meets — together
- * openapi/invoices.yaml's InvoicesConflictProblem. A code without a key would
- * fall through to the server's English detail, which an nb reader then sees.
+ * Every refusal code the server can answer, read from the invoices package's
+ * own Go source at test time — the `code… = "…"` constants — so a code added
+ * there without words here fails this test rather than falling through to the
+ * server's English detail, which an nb reader would then see.
  */
-const documentCodes = [
-  "invoice_issued",
-  "invoice_draft",
-  "customer_merged",
-  "customer_archived",
-  "customer_blocked",
-  "customer_missing",
-  "invoice_changed",
-  "seller_incomplete",
-  "no_lines",
-  "delivery_date_missing",
-  "issue_date_not_allowed",
-  "buyer_incomplete",
-  "vat_code_inactive",
-  "vat_code_not_valid",
-  "vat_not_registered",
-  "category_o_not_allowed",
-  "reverse_charge_needs_org_number",
-  "vat_codes_ambiguous",
-  "credit_exceeds_line",
-  "credit_exceeds_invoice",
-  "credit_note_not_creditable",
-  "invoice_fully_credited",
-  "storage_unavailable",
-];
+const goSources = import.meta.glob<string>("../../../../server/internal/invoices/*.go", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+});
+const serverCodes = [
+  ...new Set(
+    Object.entries(goSources)
+      .filter(([file]) => !file.endsWith("_test.go"))
+      .flatMap(([, source]) =>
+        [...source.matchAll(/^\s*(?:const\s+)?code[A-Z]\w*\s*=\s*"([a-z_]+)"/gm)].map((m) => m[1]),
+      ),
+  ),
+].sort();
 
-const settingsCodes = [
-  "series_locked",
-  "vat_code_in_use",
-  "rate_change_in_past",
-  "rate_period_not_latest",
-  "rate_period_last",
-  "rate_period_in_use",
-];
+/** The contract's own list of the 409 codes, in InvoicesConflictProblem's description. */
+const contract = Object.values(
+  import.meta.glob<string>("../../../../../openapi/invoices.yaml", { query: "?raw", import: "default", eager: true }),
+)[0];
+const conflictCodes = (
+  /InvoicesConflictProblem:\s*\n\s*description: '.*?code names the rule that refused — ([a-z_, ]+)\./.exec(
+    contract ?? "",
+  )?.[1] ?? ""
+)
+  .split(", ")
+  .filter(Boolean);
 
 /** A refusal as the shared client throws it for a 409 problem. */
 const conflict = (code: string, problem: Record<string, unknown> = {}) =>
@@ -60,7 +52,14 @@ const translate = (language: "en" | "nb") => {
 };
 
 describe("a refusal's words", () => {
-  it.each([...documentCodes, ...settingsCodes])("has a key for %s in both catalogs", (code) => {
+  it("reads every code the server has, and every 409 code the contract names is one of them", () => {
+    // 29 today: the contract's 28 conflicts and the 503 storage_unavailable.
+    expect(serverCodes.length).toBeGreaterThanOrEqual(29);
+    expect(conflictCodes.length).toBeGreaterThanOrEqual(28);
+    expect(conflictCodes.filter((code) => !serverCodes.includes(code))).toEqual([]);
+  });
+
+  it.each(serverCodes)("has a key for %s in both catalogs", (code) => {
     expect(invoicesCatalog.en).toHaveProperty([`refusal.${code}`]);
     expect(invoicesCatalog.nb).toHaveProperty([`refusal.${code}`]);
   });

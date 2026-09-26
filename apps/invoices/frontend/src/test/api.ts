@@ -19,3 +19,38 @@ export const sent = (fetchMock: StubbedFetch, method: string) => {
     body: init?.body ? JSON.parse(String(init.body)) : undefined,
   };
 };
+
+/** A customer as the customers module's list answers one: the four fields the picker reads. */
+export interface ListedCustomer {
+  id: number;
+  name: string;
+  customerNumber: number;
+  status: string;
+}
+
+/** The customers the fakes know: three active, one archived. */
+export const listedCustomers: ListedCustomer[] = [
+  { id: 2001, name: "Acme AS", customerNumber: 10001, status: "active" },
+  { id: 2002, name: "Kari Nordmann", customerNumber: 10002, status: "active" },
+  { id: 2003, name: "Bygg AS", customerNumber: 10003, status: "active" },
+  { id: 2004, name: "Gammel Handel AS", customerNumber: 10004, status: "archived" },
+];
+
+/**
+ * GET /api/v1/customers as the customers module answers it, for the rules the
+ * picker meets: `search` matches a name case-insensitively or a customer
+ * number whole — never a label like "Acme AS (10001)" — `status` shows that
+ * status only, and archived customers only with `includeArchived=true`.
+ */
+export const customerSearch = (url: string, customers: ListedCustomer[] = listedCustomers) => {
+  const query = new URL(url, "http://localhost").searchParams;
+  const search = (query.get("search") ?? "").toLowerCase();
+  const status = query.get("status");
+  const archived = query.get("includeArchived") === "true";
+  const data = customers.filter(
+    (c) =>
+      (status ? c.status === status : archived || c.status !== "archived") &&
+      (!search || c.name.toLowerCase().includes(search) || String(c.customerNumber) === search),
+  );
+  return jsonResponse(200, { data });
+};

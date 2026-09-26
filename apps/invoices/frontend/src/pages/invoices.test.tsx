@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { jsonResponse, problemResponse, sent } from "../test/api";
+import { customerSearch, jsonResponse, problemResponse, sent } from "../test/api";
 import { stubFetch } from "../test/fetch";
 import { draft, listPage, meta } from "../test/fixtures";
 import { renderRoute } from "../test/route-tree";
@@ -23,9 +23,7 @@ const server = (options: { canCreate?: boolean; totalPages?: number } = {}) =>
       if (method === "POST") return jsonResponse(201, draft({ id: 1010, lines: [] }));
       return jsonResponse(200, listPage({ totalPages: options.totalPages ?? 1 }));
     }
-    if (url.startsWith("/api/v1/customers?")) {
-      return jsonResponse(200, { data: [{ id: 2001, name: "Acme AS", customerNumber: 10001, status: "active" }] });
-    }
+    if (url.startsWith("/api/v1/customers?")) return customerSearch(url);
     if (url === "/api/v1/invoices/1010") return jsonResponse(200, draft({ id: 1010, lines: [] }));
     return new Response(null, { status: 404 });
   });
@@ -52,6 +50,30 @@ describe("the invoice list", () => {
     await waitFor(() => expect(fetchMock.actualCalls.some(([url]) => path(url).includes("status=draft"))).toBe(true));
     await userEvent.click(await screen.findByRole("button", { name: "2" }));
     await waitFor(() => expect(fetchMock.actualCalls.some(([url]) => path(url).includes("page=2"))).toBe(true));
+  });
+
+  it("keeps the page shown while the next filter's is fetched", async () => {
+    let answer: (response: Response) => void = () => {};
+    const drafts = new Promise<Response>((resolve) => {
+      answer = resolve;
+    });
+    stubFetch((input: RequestInfo | URL) => {
+      const url = path(input);
+      if (url === "/api/v1/invoices/meta") return jsonResponse(200, meta());
+      if (url.includes("status=draft")) return drafts;
+      if (url.startsWith("/api/v1/invoices?")) return jsonResponse(200, listPage());
+      if (url.startsWith("/api/v1/customers?")) return customerSearch(url);
+      return new Response(null, { status: 404 });
+    });
+    renderRoute("/invoices");
+    await screen.findByText("Kari Nordmann");
+
+    await userEvent.click(screen.getByRole("radio", { name: "Draft" }));
+    // The drafts are still on their way: the last page stays, no skeleton.
+    expect(screen.getByText("Kari Nordmann")).toBeInTheDocument();
+    expect(screen.queryByTestId("content-skeleton")).not.toBeInTheDocument();
+    answer(jsonResponse(200, listPage({ totalCount: 1 })));
+    expect(await screen.findByText("1 document")).toBeInTheDocument();
   });
 
   it("searches once the typing pauses, not per keystroke", async () => {

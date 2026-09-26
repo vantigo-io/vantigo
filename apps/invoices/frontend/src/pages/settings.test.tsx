@@ -74,6 +74,13 @@ const server = (refuse: Record<string, Response> = {}, state: World = world()) =
       const { revision, ...own } = body as VatCodeUpdateInput;
       const code = state.codes.find((c) => c.id === Number(one[1]));
       if (!code) return new Response(null, { status: 404 });
+      if (revision !== code.revision) {
+        return jsonResponse(409, {
+          title: "VAT code revision conflict",
+          status: 409,
+          detail: `The VAT code has revision ${code.revision}; the supplied revision was ${revision}.`,
+        });
+      }
       const updated: VatCode = { ...code, ...own, revision: revision + 1 };
       state.codes = state.codes.map((c) => (c.id === code.id ? updated : c));
       return jsonResponse(200, updated);
@@ -419,5 +426,29 @@ describe("the invoice settings", () => {
     });
     const row = (await screen.findByText("Utgående mva 15 % (næringsmidler)")).closest("tr") as HTMLElement;
     expect(within(row).getByText("Inactive")).toBeInTheDocument();
+  });
+
+  it("says a VAT code changed on a stale edit, never the server's English, and reloads it", async () => {
+    const state = world();
+    server({}, state);
+    renderWithProviders(<SettingsPage />);
+    await screen.findByText("Utgående mva 15 %");
+
+    await userEvent.click(screen.getByRole("button", { name: "Edit VAT code 31" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Name" }), " (mat)");
+    // Another user renames it in the meantime.
+    state.codes = state.codes.map((c) => (c.id === 2 ? { ...c, name: "Redusert sats", revision: 2 } : c));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    expect(await within(dialog).findByText("The VAT code changed")).toBeInTheDocument();
+    expect(screen.queryByText(/the supplied revision was 1/)).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("textbox", { name: "Name" })).toHaveValue("Utgående mva 15 % (mat)");
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Reload" }));
+    await waitFor(() =>
+      expect(within(screen.getByRole("dialog")).getByRole("textbox", { name: "Name" })).toHaveValue("Redusert sats"),
+    );
+    expect(screen.queryByText("The VAT code changed")).not.toBeInTheDocument();
   });
 });

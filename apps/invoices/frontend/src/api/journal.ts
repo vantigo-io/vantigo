@@ -6,7 +6,6 @@ type Schemas = components["schemas"];
 
 /** The invoice journal over a range of issue dates (D11). */
 export type InvoiceJournal = Schemas["InvoicesJournalResponse"];
-export type InvoiceJournalRow = Schemas["InvoicesJournalRow"];
 
 export const journalQueryOptions = (from: string, to: string, page: number) =>
   queryOptions({
