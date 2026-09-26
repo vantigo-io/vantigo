@@ -73,9 +73,19 @@ type CustomerBillingProfile struct {
 	Name           string
 	Type           string // "business" | "person"
 	Archived       bool
-	LegalCountry   string // "" when the customer has no legal identity
-	LegalID        string
-	LegalName      string
+	// Status is the customer's own status — "active", "disabled" or
+	// "archived" (an anonymised person is archived) — so one read answers every
+	// gate an invoice keeps as well as its snapshot (invoices foundation design
+	// D10). "disabled" means blocked for invoicing: Invoices refuses a new
+	// invoice to it, never a credit note or a read.
+	Status string
+	// MergedInto is the customer this one was merged into, nil unless it was
+	// merged away — the same answer CustomerEntry.MergedInto gives, so a
+	// consumer holding a stale id learns where its references went.
+	MergedInto   *int32
+	LegalCountry string // "" when the customer has no legal identity
+	LegalID      string
+	LegalName    string
 	// InvoiceAddress is the resolved invoice address (D3's rule: primary
 	// invoice, else primary postal, else nil) — never a list, since a
 	// consumer only ever needs the one address to print.
@@ -132,9 +142,11 @@ type CustomerBillingProfile struct {
 //   - Archived customers still resolve, from every one of Customer,
 //     Customers and BillingProfile. A consumer (a supply period, a past
 //     invoice) can hold a long-lived reference to a customer that has since
-//     been archived, and must still be able to show its name or invoice it
-//     again; Archived tells the caller to decorate that reference, not that
-//     the lookup failed.
+//     been archived, and must still be able to show its name — so a past
+//     invoice can be shown and credited; Archived tells the caller to
+//     decorate that reference, not that the lookup failed. Invoices refuses a
+//     new invoice to an archived or disabled customer (the billing profile's
+//     Status, invoices foundation design D10).
 //   - More than one candidate from ContactsByEmail is ambiguous. A contact's
 //     email is not unique across customers, and the directory does not
 //     guess which customer the caller means: it returns every candidate,
