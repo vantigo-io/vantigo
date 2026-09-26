@@ -131,6 +131,51 @@ func (q *Queries) CreditedPerLine(ctx context.Context, originalID *int64) ([]Cre
 	return items, nil
 }
 
+const creditedVatPerRate = `-- name: CreditedVatPerRate :many
+SELECT s.vat_category, s.rate_percent,
+       sum(s.vat_amount)::numeric(14,2) AS vat,
+       sum(s.vat_amount_nok)::numeric(14,2) AS vat_nok
+FROM invoices.vat_summaries s
+JOIN invoices.invoices c ON c.id = s.invoice_id
+WHERE c.credits_invoice_id = $1 AND c.status = 'issued'
+GROUP BY s.vat_category, s.rate_percent
+`
+
+type CreditedVatPerRateRow struct {
+	VatCategory string
+	RatePercent pgtype.Numeric
+	Vat         pgtype.Numeric
+	VatNok      pgtype.Numeric
+}
+
+// CreditedVatPerRate is, per (category, rate) row of an invoice, the VAT its
+// issued credit notes reversed: what a final full reversal takes from the
+// original's row, so the credits sum to what was charged, øre for øre (D8).
+func (q *Queries) CreditedVatPerRate(ctx context.Context, originalID *int64) ([]CreditedVatPerRateRow, error) {
+	rows, err := q.db.Query(ctx, creditedVatPerRate, originalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CreditedVatPerRateRow
+	for rows.Next() {
+		var i CreditedVatPerRateRow
+		if err := rows.Scan(
+			&i.VatCategory,
+			&i.RatePercent,
+			&i.Vat,
+			&i.VatNok,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertCreditDraft = `-- name: InsertCreditDraft :one
 INSERT INTO invoices.invoices (
     kind, customer_id, credits_invoice_id, delivery_date, delivery_from, delivery_to,

@@ -61,3 +61,15 @@ FROM invoices.lines l
 JOIN invoices.invoices c ON c.id = l.invoice_id
 WHERE c.credits_invoice_id = @original_id AND c.status = 'issued' AND l.credits_line_id IS NOT NULL
 GROUP BY l.credits_line_id;
+
+-- name: CreditedVatPerRate :many
+-- CreditedVatPerRate is, per (category, rate) row of an invoice, the VAT its
+-- issued credit notes reversed: what a final full reversal takes from the
+-- original's row, so the credits sum to what was charged, øre for øre (D8).
+SELECT s.vat_category, s.rate_percent,
+       sum(s.vat_amount)::numeric(14,2) AS vat,
+       sum(s.vat_amount_nok)::numeric(14,2) AS vat_nok
+FROM invoices.vat_summaries s
+JOIN invoices.invoices c ON c.id = s.invoice_id
+WHERE c.credits_invoice_id = @original_id AND c.status = 'issued'
+GROUP BY s.vat_category, s.rate_percent;
