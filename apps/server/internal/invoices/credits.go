@@ -268,7 +268,8 @@ func (b creditBook) lastReturn(l creditedLine, o store.InvoicesLine) (bool, erro
 
 // finalReversal reports whether a credit note is the invoice's last: every
 // line of the original is returned in full, each either by an earlier note
-// that returned its last unit or by this note's last return of it (lastReturn).
+// that returned its last unit or by this note's last return of it (lastReturn)
+// — a line that carries no money excepted, returned or not.
 // squared is, per line of the note, whether it is its line's last return.
 func (b creditBook) finalReversal(lines []creditedLine, squared []bool) (bool, error) {
 	if len(b.lines) == 0 {
@@ -285,6 +286,15 @@ func (b creditBook) finalReversal(lines []creditedLine, squared []bool) (bool, e
 		if here[id] {
 			continue
 		}
+		// A line with no money in it ("Frakt 0,-") needs no return: leaving
+		// it out of the last note must not cost that note its squaring.
+		free, err := carriesNoMoney(o)
+		if err != nil {
+			return false, err
+		}
+		if free {
+			continue
+		}
 		c, ok := b.credited[id]
 		if !ok || !c.returns {
 			return false, nil
@@ -294,6 +304,21 @@ func (b creditBook) finalReversal(lines []creditedLine, squared []bool) (bool, e
 			return false, err
 		}
 		if c.quantity.Cmp(want) != 0 {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+// carriesNoMoney reports whether an original line's gross, allowance and net
+// are all zero: its quantity credits nothing.
+func carriesNoMoney(o store.InvoicesLine) (bool, error) {
+	for _, n := range []pgtype.Numeric{o.LineGross, o.LineAllowance, o.LineNet} {
+		r, err := ratFromNumeric(n)
+		if err != nil {
+			return false, err
+		}
+		if r.Sign() != 0 {
 			return false, nil
 		}
 	}
@@ -578,10 +603,19 @@ func creditIssueChecks(ctx context.Context, txq *store.Queries, locked store.Inv
 	if err != nil {
 		return issuePlan{}, nil, err
 	}
+	// Both hold by construction — the save refuses them with a 400, and
+	// ux_lines_credit_once forbids a line credited twice in one note — so
+	// either failing is a broken row, never a user's mistake.
+	seen := map[int64]bool{}
 	for _, l := range lines {
-		if _, ok := book.lines[derefID(l.CreditsLineID)]; !ok {
+		id := derefID(l.CreditsLineID)
+		if _, ok := book.lines[id]; !ok {
 			return issuePlan{}, nil, fmt.Errorf("invoices: credit note %d's line %d credits no line of %d", locked.ID, l.ID, original.ID)
 		}
+		if seen[id] {
+			return issuePlan{}, nil, fmt.Errorf("invoices: credit note %d credits line %d of %d twice", locked.ID, id, original.ID)
+		}
+		seen[id] = true
 	}
 	credited, err := storedCreditedLines(lines)
 	if err != nil {

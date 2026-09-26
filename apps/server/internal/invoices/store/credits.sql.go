@@ -197,7 +197,7 @@ const insertCreditDraft = `-- name: InsertCreditDraft :one
 INSERT INTO invoices.invoices (
     kind, customer_id, credits_invoice_id, delivery_date, delivery_from, delivery_to,
     delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country,
-    currency, exchange_rate, your_reference, our_reference, order_reference,
+    currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference,
     buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id,
     buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country,
     buyer_peppol_id, buyer_gln, buyer_language,
@@ -206,7 +206,7 @@ INSERT INTO invoices.invoices (
 SELECT
     'credit_note', o.customer_id, o.id, o.delivery_date, o.delivery_from, o.delivery_to,
     o.delivery_address_line1, o.delivery_address_line2, o.delivery_postal_code, o.delivery_city, o.delivery_country,
-    o.currency, o.exchange_rate, o.your_reference, o.our_reference, o.order_reference,
+    o.currency, o.exchange_rate, o.exchange_rate_date, o.your_reference, o.our_reference, o.order_reference,
     o.buyer_customer_number, o.buyer_type, o.buyer_name, o.buyer_organisation_number, o.buyer_foreign_id,
     o.buyer_address_line1, o.buyer_address_line2, o.buyer_postal_code, o.buyer_city, o.buyer_region, o.buyer_country,
     o.buyer_peppol_id, o.buyer_gln, o.buyer_language,
@@ -223,10 +223,10 @@ type InsertCreditDraftParams struct {
 }
 
 // InsertCreditDraft writes a credit-note draft for an issued invoice (D8),
-// copying what the correction must name: the customer, the currency and rate,
-// the delivery and its place, the references, and the buyer snapshot. It reads
-// no directory: the original's snapshot is what the correction names, an
-// anonymised customer's included.
+// copying what the correction must name: the customer, the currency, the rate
+// and the date it was taken on, the delivery and its place, the references,
+// and the buyer snapshot. It reads no directory: the original's snapshot is
+// what the correction names, an anonymised customer's included.
 func (q *Queries) InsertCreditDraft(ctx context.Context, arg InsertCreditDraftParams) (InvoicesInvoice, error) {
 	row := q.db.QueryRow(ctx, insertCreditDraft, arg.CreatedByUserID, arg.Now, arg.OriginalID)
 	var i InvoicesInvoice

@@ -242,8 +242,8 @@ func TestCredit_TheHeadlineCap(t *testing.T) {
 	// An issued credit note of 1000 with no lines — planted, so the line cap
 	// has nothing to count and only the headline decides.
 	modtest.One[int64](t, h.Harness, `
-		INSERT INTO invoices.invoices (kind, status, number, customer_id, credits_invoice_id, issue_date, gross_total, issued_at, created_by_user_id, created_at, updated_at)
-		VALUES ('credit_note', 'issued', 50, $1, $2, '2026-09-12', 1000, now(), $3, now(), now()) RETURNING id`, customerAcme, original.ID, uuid.New())
+		INSERT INTO invoices.invoices (kind, status, number, customer_id, credits_invoice_id, issue_date, exchange_rate_date, seller_legal_name, buyer_name, gross_total, issued_at, created_by_user_id, created_at, updated_at)
+		VALUES ('credit_note', 'issued', 50, $1, $2, '2026-09-12', '2026-09-12', 'Selger AS', 'Acme AS', 1000, now(), $3, now(), now()) RETURNING id`, customerAcme, original.ID, uuid.New())
 
 	if got := getInvoice(t, h, c.ID); !slices.Contains(got.Warnings, "credit_exceeds_invoice") {
 		t.Errorf("warnings = %v, want credit_exceeds_invoice", got.Warnings)
@@ -772,5 +772,69 @@ func TestCredit_ASellerNoLongerRegisteredStillCredits(t *testing.T) {
 	credit := issued(t, h, c.ID)
 	if credit.VatTotal != 250 || credit.Seller == nil || credit.Seller.VatRegistered {
 		t.Errorf("the credit note = VAT %v, seller %+v, want the original's 250 reversed by a seller now unregistered", credit.VatTotal, credit.Seller)
+	}
+}
+
+// A free line ("Frakt 0,-") carries no money, so leaving it out of the last
+// credit note does not stop that note being the final one: two returns of
+// 1 × 10.02 at 25 % reverse 2.51 and then the 2.50 left, and the invoice is
+// credited exactly — not refused credit_exceeds_invoice by an øre.
+func TestCredit_AFreeLineLeftOutStillSquaresTheFinalNote(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	original := issued(t, h, createDraft(t, h, draftBody(customerAcme,
+		line("A", 1, 10.02, vat25), line("B", 1, 10.02, vat25), line("Frakt", 1, 0, vat25))).ID)
+	if original.VatTotal != 5.01 || original.GrossTotal != 25.05 {
+		t.Fatalf("the original = VAT %v gross %v, want 5.01 and 25.05", original.VatTotal, original.GrossTotal)
+	}
+
+	first := creditDraft(t, h, original.ID)
+	one := issued(t, h, saveCredit(t, h, first, creditBody(first, creditLine(first.Lines[0]))).ID)
+	second := creditDraft(t, h, original.ID)
+	two := issued(t, h, saveCredit(t, h, second, creditBody(second, creditLine(second.Lines[1]))).ID)
+	if one.VatTotal != 2.51 || two.VatTotal != 2.5 || two.GrossTotal != 12.52 {
+		t.Errorf("the notes = VAT %v and %v, gross %v; want 2.51, then the 2.50 left and 12.52", one.VatTotal, two.VatTotal, two.GrossTotal)
+	}
+	if after := getInvoice(t, h, original.ID); *after.UncreditedAmount != 0 {
+		t.Errorf("uncredited = %v, want 0: the invoice credited exactly", *after.UncreditedAmount)
+	}
+}
+
+// A credit note keeps its original's exchange rate and the date that rate was
+// taken on: the row never claims a rate date its rate was not taken on.
+func TestCredit_KeepsTheOriginalsRateDate(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	original := issued(t, h, createDraft(t, h, draftBody(customerAcme, line("A", 1, 100, vat25))).ID)
+	h.Advance(24 * time.Hour)
+	credit := issued(t, h, creditDraft(t, h, original.ID).ID)
+	if original.ExchangeRateDate == nil || *original.ExchangeRateDate != "2026-09-12" {
+		t.Fatalf("the original's rate date = %v, want its issue date 2026-09-12", original.ExchangeRateDate)
+	}
+	if credit.ExchangeRateDate == nil || *credit.ExchangeRateDate != "2026-09-12" || *credit.IssueDate != "2026-09-13" {
+		t.Errorf("the credit note = rate date %v issued %v, want the original's 2026-09-12, issued 2026-09-13", orNone(credit.ExchangeRateDate), orNone(credit.IssueDate))
+	}
+}
+
+func orNone(s *string) string {
+	if s == nil {
+		return "<none>"
+	}
+	return *s
+}
+
+// A credit note credits an original line at most once, in the schema too: a
+// second line of one note on the same original line is refused however it is
+// written, so the per-line cap can never count one line twice.
+func TestCredit_AnOriginalLineOncePerNoteInTheSchema(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	original := issued(t, h, createDraft(t, h, draftBody(customerAcme, line("A", 2, 100, vat25))).ID)
+	c := creditDraft(t, h, original.ID)
+	_, err := h.Pool().Exec(context.Background(), `
+		INSERT INTO invoices.lines (invoice_id, position, description, quantity, unit_price, vat_code_id, credits_line_id, line_gross, line_allowance, line_net)
+		VALUES ($1, 2, 'Igjen', 1, 100, 1, $2, 100, 0, 100)`, c.ID, *c.Lines[0].CreditsLineID)
+	if err == nil || !strings.Contains(err.Error(), "ux_lines_credit_once") {
+		t.Errorf("a second line on the same original line = %v, want ux_lines_credit_once to refuse it", err)
 	}
 }

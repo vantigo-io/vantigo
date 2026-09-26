@@ -116,6 +116,7 @@ type pdfLine struct {
 // the draft would be if issued today (preview in pdfstore.go).
 type pdfDocument struct {
 	kind, language                         string
+	currency                               string // the document's, ISO 4217
 	number                                 *int64
 	issueDate                              time.Time
 	dueDate                                *time.Time
@@ -314,8 +315,18 @@ func buildPDFModel(d pdfDocument) pdfModel {
 		m.creditsLine = fmt.Sprintf(l.creditsFor, d.credits.number, formatDate(d.credits.issueDate, lang))
 	}
 
+	// The currency, stated once where it binds every amount: the line
+	// amounts' and the VAT's headers and the amount to pay (§ 5-1-1 nr. 6).
+	// Stored PDFs are never re-rendered, so a page without it would stay
+	// without it for the whole retention period.
+	currency := d.currency
+	if currency == "" {
+		currency = "NOK" // the column's default; never printed as "()"
+	}
+	inCurrency := func(label string) string { return label + " (" + currency + ")" }
+
 	// The lines.
-	m.lineHeader = []string{l.description, l.quantity, l.unit, l.unitPrice, l.discount, l.vat, l.amount}
+	m.lineHeader = []string{l.description, l.quantity, l.unit, l.unitPrice, l.discount, l.vat, inCurrency(l.amount)}
 	for _, line := range d.lines {
 		m.lines = append(m.lines, []string{
 			line.description, formatDecimal(line.quantity, 0, 3, lang), line.unit,
@@ -326,7 +337,7 @@ func buildPDFModel(d pdfDocument) pdfModel {
 
 	// VAT per (category, rate), 0 % categories included, and under it each
 	// non-S category's reason — the reverse-charge text in Norwegian always.
-	m.vatHeader = []string{l.vatCategory, l.vatBasis, l.vatAmount}
+	m.vatHeader = []string{l.vatCategory, l.vatBasis, inCurrency(l.vatAmount)}
 	seen := map[string]bool{}
 	for _, r := range d.summaries {
 		m.vatRows = append(m.vatRows, []string{
@@ -348,7 +359,7 @@ func buildPDFModel(d pdfDocument) pdfModel {
 		grossLabel = l.toPay
 	}
 	m.totals = [][2]string{
-		{l.net, money(d.totals.net, lang)}, {l.vatTotal, money(d.totals.vat, lang)}, {grossLabel, money(d.totals.gross, lang)},
+		{l.net, money(d.totals.net, lang)}, {l.vatTotal, money(d.totals.vat, lang)}, {grossLabel, currency + " " + money(d.totals.gross, lang)},
 	}
 
 	// The payment block, on an invoice only.

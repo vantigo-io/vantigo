@@ -234,11 +234,6 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 			return nil, err
 		}
 	}
-	today := businessDay(s.deps.Clock())
-	issueDate := today
-	if req.Body.IssueDate != nil {
-		issueDate = utcDay(req.Body.IssueDate.Time)
-	}
 
 	var refusal *gen.InvoicesConflictProblem
 	var issued store.InvoicesInvoice
@@ -274,6 +269,14 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 			if err := issueAfterAllocation(ctx, locked.ID); err != nil {
 				return err
 			}
+		}
+		// "Today" is read only now, after the counter: an issue that waited
+		// on it across Oslo midnight is dated the day it is issued, the day
+		// its issued_at falls on.
+		today := businessDay(s.deps.Clock())
+		issueDate := today
+		if req.Body.IssueDate != nil {
+			issueDate = utcDay(req.Body.IssueDate.Time)
 		}
 		// 5. Only now, the checks.
 		lines, err := txq.Lines(ctx, locked.ID)

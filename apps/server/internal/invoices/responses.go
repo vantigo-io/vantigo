@@ -246,7 +246,14 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 			}
 		}
 		resp.PdfStored = ptr(inv.PdfSha256 != nil && inv.PdfObjectKey != nil)
-		if inv.Kind == kindInvoice && issuedLate(inv.IssueDate.Time, deliveryEndOf(inv)) {
+		// § 5-2-2 is about when the document was issued, not the date it
+		// carries: one issued on the 14th dated the last of the previous
+		// month (§ 5-1-3) is judged on the 14th.
+		issuedOn := inv.IssueDate.Time
+		if inv.IssuedAt != nil {
+			issuedOn = businessDay(*inv.IssuedAt)
+		}
+		if inv.Kind == kindInvoice && issuedLate(issuedOn, deliveryEndOf(inv)) {
 			resp.Warnings = append(resp.Warnings, warningIssuedLate)
 		}
 		return resp, creditLinks(ctx, q, inv, &resp, nil)

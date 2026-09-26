@@ -95,7 +95,9 @@ UPDATE invoices.invoices SET
     number = @number,
     issue_date = @issue_date,
     due_date = @due_date,
-    exchange_rate_date = @issue_date,
+    -- A credit note keeps its original's rate and the date it was taken on
+    -- (InsertCreditDraft copies both); an invoice's is its issue date.
+    exchange_rate_date = COALESCE(exchange_rate_date, @issue_date),
     buyer_customer_number = @buyer_customer_number,
     buyer_type = @buyer_type,
     buyer_name = @buyer_name,

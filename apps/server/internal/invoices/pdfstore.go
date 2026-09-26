@@ -43,7 +43,7 @@ func pdfDocumentOf(inv store.InvoicesInvoice, lines []store.InvoicesLine, sums [
 		return *s
 	}
 	d := pdfDocument{
-		kind: inv.Kind, language: str(inv.BuyerLanguage), number: inv.Number, issueDate: inv.IssueDate.Time,
+		kind: inv.Kind, language: str(inv.BuyerLanguage), currency: inv.Currency, number: inv.Number, issueDate: inv.IssueDate.Time,
 		paymentTermsDays: inv.PaymentTermsDays, yourReference: inv.YourReference, ourReference: inv.OurReference,
 		orderRef: inv.OrderReference, note: inv.Note, footer: str(inv.SellerFooterText),
 		seller: pdfParty{

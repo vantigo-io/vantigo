@@ -287,7 +287,9 @@ UPDATE invoices.invoices SET
     number = $1,
     issue_date = $2,
     due_date = $3,
-    exchange_rate_date = $2,
+    -- A credit note keeps its original's rate and the date it was taken on
+    -- (InsertCreditDraft copies both); an invoice's is its issue date.
+    exchange_rate_date = COALESCE(exchange_rate_date, $2),
     buyer_customer_number = $4,
     buyer_type = $5,
     buyer_name = $6,

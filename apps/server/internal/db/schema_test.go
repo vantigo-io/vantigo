@@ -2443,6 +2443,11 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		`INSERT INTO invoices.invoices (kind, customer_id, delivery_date, delivery_from, created_by_user_id, created_at, updated_at) VALUES ('invoice', 1, DATE '2026-09-01', DATE '2026-09-01', gen_random_uuid(), now(), now())`,
 		`INSERT INTO invoices.invoices (kind, customer_id, delivery_from, delivery_to, created_by_user_id, created_at, updated_at) VALUES ('invoice', 1, DATE '2026-09-02', DATE '2026-09-01', gen_random_uuid(), now(), now())`,
 		`INSERT INTO invoices.invoices (kind, customer_id, created_by_user_id, created_at, updated_at) VALUES ('credit_note', 1, gen_random_uuid(), now(), now())`,
+		// An issued document without its snapshot's names, and an issued
+		// invoice without a due date — or a draft with one.
+		`INSERT INTO invoices.invoices (kind, status, number, customer_id, issue_date, due_date, exchange_rate_date, seller_legal_name, issued_at, created_by_user_id, created_at, updated_at) VALUES ('invoice', 'issued', 8, 1, DATE '2026-09-12', DATE '2026-09-26', DATE '2026-09-12', 'Selger AS', now(), gen_random_uuid(), now(), now())`,
+		`INSERT INTO invoices.invoices (kind, status, number, customer_id, issue_date, exchange_rate_date, seller_legal_name, buyer_name, issued_at, created_by_user_id, created_at, updated_at) VALUES ('invoice', 'issued', 9, 1, DATE '2026-09-12', DATE '2026-09-12', 'Selger AS', 'Kunde AS', now(), gen_random_uuid(), now(), now())`,
+		`INSERT INTO invoices.invoices (kind, customer_id, due_date, created_by_user_id, created_at, updated_at) VALUES ('invoice', 1, DATE '2026-09-26', gen_random_uuid(), now(), now())`,
 	} {
 		if _, err := pool.Exec(ctx, bad); !isCheckViolation(err) {
 			t.Errorf("%s: %v, want a check violation", bad, err)

@@ -184,7 +184,13 @@ CREATE TABLE invoices.invoices (
     CONSTRAINT ck_invoices_exchange_rate CHECK (exchange_rate > 0),
     -- The PDF's key and hash are one fact, set together once (D7): a hash
     -- without the key it names would be a stored PDF nobody can find.
-    CONSTRAINT ck_invoices_pdf CHECK ((pdf_object_key IS NULL) = (pdf_sha256 IS NULL))
+    CONSTRAINT ck_invoices_pdf CHECK ((pdf_object_key IS NULL) = (pdf_sha256 IS NULL)),
+    -- An issued document carries when it was issued, both parties' names and
+    -- the date its rate was taken on (D4, D6).
+    CONSTRAINT ck_invoices_issued_snapshot CHECK (status = 'draft' OR (issued_at IS NOT NULL
+        AND seller_legal_name IS NOT NULL AND buyer_name IS NOT NULL AND exchange_rate_date IS NOT NULL)),
+    -- An invoice has a due date exactly when it is issued (§ 5-1-1 nr. 7).
+    CONSTRAINT ck_invoices_due_date CHECK (kind <> 'invoice' OR ((status = 'issued') = (due_date IS NOT NULL)))
 );
 CREATE UNIQUE INDEX ux_invoices_number ON invoices.invoices (number);
 CREATE INDEX ix_invoices_customer ON invoices.invoices (customer_id);
@@ -221,6 +227,10 @@ CREATE TABLE invoices.lines (
 CREATE UNIQUE INDEX ux_lines_invoice_position ON invoices.lines (invoice_id, position);
 CREATE INDEX ix_lines_vat_code ON invoices.lines (vat_code_id);
 CREATE INDEX ix_lines_credits_line ON invoices.lines (credits_line_id) WHERE credits_line_id IS NOT NULL;
+-- A credit note credits an original line at most once (D8): the per-line cap
+-- counts each note line against the issued credits, so two lines of one note
+-- on the same original line would pass it twice.
+CREATE UNIQUE INDEX ux_lines_credit_once ON invoices.lines (invoice_id, credits_line_id) WHERE credits_line_id IS NOT NULL;
 
 -- VAT per (category, rate) of an issued document (D4, D5), a row for each
 -- 0 % category too (§ 5-1-5).
@@ -275,19 +285,32 @@ CREATE TRIGGER tr_invoices_immutable
 -- own trigger has already refused deleting an issued one), and is allowed.
 -- An UPDATE is judged against both the old and the new parent, so a row
 -- cannot be moved out from under an issued document either.
+--
+-- The parent is read FOR SHARE, whatever its status, and only then judged: a
+-- write beside an issue that has not committed yet waits for it, and then
+-- sees the row as the issue left it. A plain read would see the draft and let
+-- the write through — the issued document would gain a line its totals and
+-- its PDF never saw. (A WHERE status = 'issued' in the locking read would not
+-- do: the draft the snapshot sees does not match, so it would never wait.)
+-- The module's own writers hold the document FOR UPDATE already, so for them
+-- this lock is their own.
 -- +goose StatementBegin
 CREATE FUNCTION invoices.refuse_issued_child_change()
 RETURNS trigger LANGUAGE plpgsql AS $function$
+DECLARE
+    parent_status text;
 BEGIN
-    IF TG_OP IN ('UPDATE', 'DELETE') AND EXISTS (
-        SELECT 1 FROM invoices.invoices WHERE id = OLD.invoice_id AND status = 'issued'
-    ) THEN
-        RAISE EXCEPTION 'invoices: issued document is immutable' USING ERRCODE = 'P0001';
+    IF TG_OP IN ('UPDATE', 'DELETE') THEN
+        SELECT status INTO parent_status FROM invoices.invoices WHERE id = OLD.invoice_id FOR SHARE;
+        IF parent_status = 'issued' THEN
+            RAISE EXCEPTION 'invoices: issued document is immutable' USING ERRCODE = 'P0001';
+        END IF;
     END IF;
-    IF TG_OP IN ('INSERT', 'UPDATE') AND EXISTS (
-        SELECT 1 FROM invoices.invoices WHERE id = NEW.invoice_id AND status = 'issued'
-    ) THEN
-        RAISE EXCEPTION 'invoices: issued document is immutable' USING ERRCODE = 'P0001';
+    IF TG_OP IN ('INSERT', 'UPDATE') THEN
+        SELECT status INTO parent_status FROM invoices.invoices WHERE id = NEW.invoice_id FOR SHARE;
+        IF parent_status = 'issued' THEN
+            RAISE EXCEPTION 'invoices: issued document is immutable' USING ERRCODE = 'P0001';
+        END IF;
     END IF;
     IF TG_OP = 'DELETE' THEN
         RETURN OLD;

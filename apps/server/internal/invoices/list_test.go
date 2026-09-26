@@ -58,8 +58,8 @@ func plantIssuedFor(t *testing.T, h *harness, number int64, issueDate string, cu
 		credits = ptr(plantIssuedFor(t, h, number+100000, issueDate, customer, buyer, "invoice"))
 	}
 	return modtest.One[int64](t, h.Harness, `
-		INSERT INTO invoices.invoices (kind, status, number, customer_id, credits_invoice_id, issue_date, buyer_name, gross_total, issued_at, created_by_user_id, created_at, updated_at)
-		VALUES ($1, 'issued', $2, $3, $4, $5::date, $6, 100, now(), $7, now(), now())
+		INSERT INTO invoices.invoices (kind, status, number, customer_id, credits_invoice_id, issue_date, due_date, exchange_rate_date, seller_legal_name, buyer_name, gross_total, issued_at, created_by_user_id, created_at, updated_at)
+		VALUES ($1::text, 'issued', $2, $3, $4, $5::date, CASE WHEN $1::text = 'invoice' THEN $5::date + 14 END, $5::date, 'Selger AS', $6, 100, now(), $7, now(), now())
 		RETURNING id`, kind, number, customer, credits, issueDate, buyer, uuid.New())
 }
 
