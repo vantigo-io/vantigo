@@ -36,3 +36,9 @@ UPDATE invoices.settings SET
     revision = revision + 1
 WHERE id = 1
 RETURNING *;
+
+-- name: ShareSettings :one
+-- ShareSettings takes the settings row FOR SHARE: the issue's seller snapshot
+-- and series start (D6 step 3). Two issues share it; PUT /settings and a rate
+-- change wait for both to commit.
+SELECT * FROM invoices.settings WHERE id = 1 FOR SHARE;

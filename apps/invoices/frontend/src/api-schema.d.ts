@@ -182,6 +182,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/{id}/issue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue a draft
+         * @description Issues a draft — an invoice or a credit note — into the next number of the one series (D6). The billing profile is read first; then one transaction locks the document, shares the settings row, allocates the number, and only then checks every rule, so any refusal rolls the number back with it. The response is the issued document with its warnings (issued_late). The PDF is stored after the commit; pdfStored false means storing it failed and the next download stores it.
+         */
+        post: operations["postInvoicesByIdIssue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -625,6 +645,11 @@ export interface components {
         PaginatedResponseOfInvoicesInvoiceListItem: {
             data: components["schemas"]["InvoicesInvoiceListItem"][];
             pagination: components["schemas"]["PaginationMetadata"];
+        };
+        /** @description POST /invoices/{id}/issue's body (D6). issueDate is today (Oslo) when omitted; the only other date allowed is the last day of the previous month, while today's calendar day is 15 or less and the delivery ended on or before it — and never a date before the latest issue date of any issued document. */
+        InvoicesIssueRequest: {
+            /** Format: date */
+            issueDate?: string;
         };
         AuthErrorResponse: {
             error: {
@@ -1372,6 +1397,75 @@ export interface operations {
             };
             /** @description Conflict — invoice_issued. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesByIdIssue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesIssueRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the issued document. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesInvoiceResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — invoice_issued, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed (with allowedIssueDates), customer_merged, customer_archived, customer_blocked, customer_missing, buyer_incomplete, vat_code_inactive and vat_code_not_valid (with linePosition), vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line (with linePosition) or credit_exceeds_invoice. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Service Unavailable — storage_unavailable, before any number is allocated. An issued number whose PDF can never be stored is not allowed to exist. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

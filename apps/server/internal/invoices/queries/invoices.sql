@@ -84,3 +84,53 @@ WHERE (sqlc.narg(status)::text IS NULL OR status = sqlc.narg(status)::text)
        OR buyer_name ILIKE sqlc.narg(search_pattern)::text)
   AND (sqlc.narg(issued_from)::date IS NULL OR issue_date >= sqlc.narg(issued_from)::date)
   AND (sqlc.narg(issued_to)::date IS NULL OR issue_date <= sqlc.narg(issued_to)::date);
+
+-- name: IssueDocument :one
+-- IssueDocument turns a draft into an issued document (D6 step 6), last of the
+-- issue's writes: the number, the dates, both snapshots and the totals. From
+-- this row's commit on the trigger refuses every change but the merge
+-- holder's customer_id and the PDF set once (D9).
+UPDATE invoices.invoices SET
+    status = 'issued',
+    number = @number,
+    issue_date = @issue_date,
+    due_date = @due_date,
+    exchange_rate_date = @issue_date,
+    buyer_customer_number = @buyer_customer_number,
+    buyer_type = @buyer_type,
+    buyer_name = @buyer_name,
+    buyer_organisation_number = @buyer_organisation_number,
+    buyer_foreign_id = @buyer_foreign_id,
+    buyer_address_line1 = @buyer_address_line1,
+    buyer_address_line2 = @buyer_address_line2,
+    buyer_postal_code = @buyer_postal_code,
+    buyer_city = @buyer_city,
+    buyer_region = @buyer_region,
+    buyer_country = @buyer_country,
+    buyer_peppol_id = @buyer_peppol_id,
+    buyer_gln = @buyer_gln,
+    buyer_language = @buyer_language,
+    seller_legal_name = @seller_legal_name,
+    seller_organisation_number = @seller_organisation_number,
+    seller_vat_registered = @seller_vat_registered,
+    seller_in_foretaksregisteret = @seller_in_foretaksregisteret,
+    seller_address_line1 = @seller_address_line1,
+    seller_address_line2 = @seller_address_line2,
+    seller_postal_code = @seller_postal_code,
+    seller_city = @seller_city,
+    seller_country = @seller_country,
+    seller_bank_account = @seller_bank_account,
+    seller_iban = @seller_iban,
+    seller_bic = @seller_bic,
+    seller_email = @seller_email,
+    seller_footer_text = @seller_footer_text,
+    net_total = @net_total,
+    vat_total = @vat_total,
+    gross_total = @gross_total,
+    vat_total_nok = @vat_total_nok,
+    issued_at = @now::timestamptz,
+    issued_by_user_id = @issued_by_user_id,
+    updated_at = @now::timestamptz,
+    revision = revision + 1
+WHERE id = @id AND status = 'draft'
+RETURNING *;

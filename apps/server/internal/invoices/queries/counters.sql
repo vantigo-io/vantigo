@@ -11,3 +11,13 @@ SELECT next_value FROM invoices.counters WHERE counter_name = 'documents';
 -- not be dated before it (D6); both read it after the lock that makes it
 -- final.
 SELECT max(issue_date)::date AS latest FROM invoices.invoices WHERE status = 'issued';
+
+-- name: AllocateNumber :one
+-- AllocateNumber takes the next number of the one series (D2): the first
+-- allocation is series_start, every later one one more. The lock on the counter row
+-- is held until the issue commits, so it is the one thing that serialises
+-- two issues, and a rolled-back issue rolls its number back with it.
+INSERT INTO invoices.counters (counter_name, next_value)
+VALUES ('documents', sqlc.arg(series_start)::bigint + 1)
+ON CONFLICT (counter_name) DO UPDATE SET next_value = invoices.counters.next_value + 1
+RETURNING (next_value - 1)::bigint AS allocated;

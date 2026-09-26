@@ -22,3 +22,20 @@ INSERT INTO invoices.lines (
 -- VatSummaries is an issued document's VAT per (category, rate), the highest
 -- rate first.
 SELECT * FROM invoices.vat_summaries WHERE invoice_id = @invoice_id ORDER BY rate_percent DESC, vat_category;
+
+-- name: SnapshotLine :exec
+-- SnapshotLine writes the VAT a line was issued with (D6 step 6). It runs while
+-- the document is still a draft; the trigger refuses it afterwards (D9).
+UPDATE invoices.lines SET
+    vat_rate_percent = @vat_rate_percent,
+    vat_category = @vat_category,
+    saf_t_code = @saf_t_code,
+    exemption_reason = @exemption_reason
+WHERE id = @id;
+
+-- name: InsertVatSummary :exec
+INSERT INTO invoices.vat_summaries (
+    invoice_id, vat_category, rate_percent, saf_t_code, exemption_reason, taxable_amount, vat_amount, vat_amount_nok
+) VALUES (
+    @invoice_id, @vat_category, @rate_percent, @saf_t_code, @exemption_reason, @taxable_amount, @vat_amount, @vat_amount_nok
+);

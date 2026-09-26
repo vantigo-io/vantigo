@@ -14,3 +14,12 @@ var InLockedTx = inLockedTx
 func SetContractCallHook(hook func(ctx context.Context, method string)) {
 	contractCallHook = hook
 }
+
+// SetIssueAfterAllocation installs a hook the issue calls inside its
+// transaction right after the number is allocated, and answers the function
+// that removes it. A test using it does not run in parallel: the hook is the
+// package's.
+func SetIssueAfterAllocation(hook func(ctx context.Context, invoiceID int64) error) func() {
+	issueAfterAllocation = hook
+	return func() { issueAfterAllocation = nil }
+}

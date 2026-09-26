@@ -281,6 +281,210 @@ func (q *Queries) InsertInvoiceDraft(ctx context.Context, arg InsertInvoiceDraft
 	return i, err
 }
 
+const issueDocument = `-- name: IssueDocument :one
+UPDATE invoices.invoices SET
+    status = 'issued',
+    number = $1,
+    issue_date = $2,
+    due_date = $3,
+    exchange_rate_date = $2,
+    buyer_customer_number = $4,
+    buyer_type = $5,
+    buyer_name = $6,
+    buyer_organisation_number = $7,
+    buyer_foreign_id = $8,
+    buyer_address_line1 = $9,
+    buyer_address_line2 = $10,
+    buyer_postal_code = $11,
+    buyer_city = $12,
+    buyer_region = $13,
+    buyer_country = $14,
+    buyer_peppol_id = $15,
+    buyer_gln = $16,
+    buyer_language = $17,
+    seller_legal_name = $18,
+    seller_organisation_number = $19,
+    seller_vat_registered = $20,
+    seller_in_foretaksregisteret = $21,
+    seller_address_line1 = $22,
+    seller_address_line2 = $23,
+    seller_postal_code = $24,
+    seller_city = $25,
+    seller_country = $26,
+    seller_bank_account = $27,
+    seller_iban = $28,
+    seller_bic = $29,
+    seller_email = $30,
+    seller_footer_text = $31,
+    net_total = $32,
+    vat_total = $33,
+    gross_total = $34,
+    vat_total_nok = $35,
+    issued_at = $36::timestamptz,
+    issued_by_user_id = $37,
+    updated_at = $36::timestamptz,
+    revision = revision + 1
+WHERE id = $38 AND status = 'draft'
+RETURNING id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision
+`
+
+type IssueDocumentParams struct {
+	Number                     *int64
+	IssueDate                  pgtype.Date
+	DueDate                    pgtype.Date
+	BuyerCustomerNumber        *int64
+	BuyerType                  *string
+	BuyerName                  *string
+	BuyerOrganisationNumber    *string
+	BuyerForeignID             *string
+	BuyerAddressLine1          *string
+	BuyerAddressLine2          *string
+	BuyerPostalCode            *string
+	BuyerCity                  *string
+	BuyerRegion                *string
+	BuyerCountry               *string
+	BuyerPeppolID              *string
+	BuyerGln                   *string
+	BuyerLanguage              *string
+	SellerLegalName            *string
+	SellerOrganisationNumber   *string
+	SellerVatRegistered        *bool
+	SellerInForetaksregisteret *bool
+	SellerAddressLine1         *string
+	SellerAddressLine2         *string
+	SellerPostalCode           *string
+	SellerCity                 *string
+	SellerCountry              *string
+	SellerBankAccount          *string
+	SellerIban                 *string
+	SellerBic                  *string
+	SellerEmail                *string
+	SellerFooterText           *string
+	NetTotal                   pgtype.Numeric
+	VatTotal                   pgtype.Numeric
+	GrossTotal                 pgtype.Numeric
+	VatTotalNok                pgtype.Numeric
+	Now                        time.Time
+	IssuedByUserID             *uuid.UUID
+	ID                         int64
+}
+
+// IssueDocument turns a draft into an issued document (D6 step 6), last of the
+// issue's writes: the number, the dates, both snapshots and the totals. From
+// this row's commit on the trigger refuses every change but the merge
+// holder's customer_id and the PDF set once (D9).
+func (q *Queries) IssueDocument(ctx context.Context, arg IssueDocumentParams) (InvoicesInvoice, error) {
+	row := q.db.QueryRow(ctx, issueDocument,
+		arg.Number,
+		arg.IssueDate,
+		arg.DueDate,
+		arg.BuyerCustomerNumber,
+		arg.BuyerType,
+		arg.BuyerName,
+		arg.BuyerOrganisationNumber,
+		arg.BuyerForeignID,
+		arg.BuyerAddressLine1,
+		arg.BuyerAddressLine2,
+		arg.BuyerPostalCode,
+		arg.BuyerCity,
+		arg.BuyerRegion,
+		arg.BuyerCountry,
+		arg.BuyerPeppolID,
+		arg.BuyerGln,
+		arg.BuyerLanguage,
+		arg.SellerLegalName,
+		arg.SellerOrganisationNumber,
+		arg.SellerVatRegistered,
+		arg.SellerInForetaksregisteret,
+		arg.SellerAddressLine1,
+		arg.SellerAddressLine2,
+		arg.SellerPostalCode,
+		arg.SellerCity,
+		arg.SellerCountry,
+		arg.SellerBankAccount,
+		arg.SellerIban,
+		arg.SellerBic,
+		arg.SellerEmail,
+		arg.SellerFooterText,
+		arg.NetTotal,
+		arg.VatTotal,
+		arg.GrossTotal,
+		arg.VatTotalNok,
+		arg.Now,
+		arg.IssuedByUserID,
+		arg.ID,
+	)
+	var i InvoicesInvoice
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Status,
+		&i.Number,
+		&i.CustomerID,
+		&i.CreditsInvoiceID,
+		&i.IssueDate,
+		&i.DeliveryDate,
+		&i.DeliveryFrom,
+		&i.DeliveryTo,
+		&i.DeliveryAddressLine1,
+		&i.DeliveryAddressLine2,
+		&i.DeliveryPostalCode,
+		&i.DeliveryCity,
+		&i.DeliveryCountry,
+		&i.PaymentTermsDays,
+		&i.DueDate,
+		&i.Currency,
+		&i.ExchangeRate,
+		&i.ExchangeRateDate,
+		&i.YourReference,
+		&i.OurReference,
+		&i.OrderReference,
+		&i.Note,
+		&i.InternalNote,
+		&i.BuyerCustomerNumber,
+		&i.BuyerType,
+		&i.BuyerName,
+		&i.BuyerOrganisationNumber,
+		&i.BuyerForeignID,
+		&i.BuyerAddressLine1,
+		&i.BuyerAddressLine2,
+		&i.BuyerPostalCode,
+		&i.BuyerCity,
+		&i.BuyerRegion,
+		&i.BuyerCountry,
+		&i.BuyerPeppolID,
+		&i.BuyerGln,
+		&i.BuyerLanguage,
+		&i.SellerLegalName,
+		&i.SellerOrganisationNumber,
+		&i.SellerVatRegistered,
+		&i.SellerInForetaksregisteret,
+		&i.SellerAddressLine1,
+		&i.SellerAddressLine2,
+		&i.SellerPostalCode,
+		&i.SellerCity,
+		&i.SellerCountry,
+		&i.SellerBankAccount,
+		&i.SellerIban,
+		&i.SellerBic,
+		&i.SellerEmail,
+		&i.SellerFooterText,
+		&i.NetTotal,
+		&i.VatTotal,
+		&i.GrossTotal,
+		&i.VatTotalNok,
+		&i.PdfObjectKey,
+		&i.PdfSha256,
+		&i.IssuedAt,
+		&i.IssuedByUserID,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Revision,
+	)
+	return i, err
+}
+
 const listInvoices = `-- name: ListInvoices :many
 SELECT id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision FROM invoices.invoices
 WHERE ($1::text IS NULL OR status = $1::text)

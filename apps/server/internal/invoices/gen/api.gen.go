@@ -184,6 +184,11 @@ type InvoicesInvoiceResponse struct {
 	YourReference    string               `json:"yourReference"`
 }
 
+// InvoicesIssueRequest POST /invoices/{id}/issue's body (D6). issueDate is today (Oslo) when omitted; the only other date allowed is the last day of the previous month, while today's calendar day is 15 or less and the delivery ended on or before it — and never a date before the latest issue date of any issued document.
+type InvoicesIssueRequest struct {
+	IssueDate *openapi_types.Date `json:"issueDate,omitempty"`
+}
+
 // InvoicesLine One line (D4, D5). lineGross is quantity × unitPrice rounded to øre, lineAllowance the discount of it rounded, lineNet their difference. The VAT fields are the issue snapshot, absent on a draft.
 type InvoicesLine struct {
 	// CreditsLineId On a credit note's line, the original line it credits.
@@ -446,6 +451,9 @@ type PostInvoicesVatCodesByIdRatesJSONRequestBody = InvoicesVatCodeRateRequest
 // PutInvoicesByIdJSONRequestBody defines body for PutInvoicesById for application/json ContentType.
 type PutInvoicesByIdJSONRequestBody = InvoicesInvoiceRequest
 
+// PostInvoicesByIdIssueJSONRequestBody defines body for PostInvoicesByIdIssue for application/json ContentType.
+type PostInvoicesByIdIssueJSONRequestBody = InvoicesIssueRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// GetInvoices List invoices and credit notes
@@ -487,6 +495,9 @@ type ServerInterface interface {
 	// PutInvoicesById Replace a draft
 	// (PUT /api/v1/invoices/{id})
 	PutInvoicesById(w http.ResponseWriter, r *http.Request, id int64)
+	// PostInvoicesByIdIssue Issue a draft
+	// (POST /api/v1/invoices/{id}/issue)
+	PostInvoicesByIdIssue(w http.ResponseWriter, r *http.Request, id int64)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -871,6 +882,32 @@ func (siw *ServerInterfaceWrapper) PutInvoicesById(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// PostInvoicesByIdIssue operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesByIdIssue(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesByIdIssue(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -1004,6 +1041,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/invoices/{id}", wrapper.DeleteInvoicesById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/{id}", wrapper.GetInvoicesById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/{id}", wrapper.PutInvoicesById)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/issue", wrapper.PostInvoicesByIdIssue)
 
 	return m
 }
@@ -1897,6 +1935,93 @@ func (response PutInvoicesById409ApplicationProblemPlusJSONResponse) VisitPutInv
 	return err
 }
 
+type PostInvoicesByIdIssueRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostInvoicesByIdIssueJSONRequestBody
+}
+
+type PostInvoicesByIdIssueResponseObject interface {
+	VisitPostInvoicesByIdIssueResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesByIdIssue200JSONResponse InvoicesInvoiceResponse
+
+func (response PostInvoicesByIdIssue200JSONResponse) VisitPostInvoicesByIdIssueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdIssue401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesByIdIssue401JSONResponse) VisitPostInvoicesByIdIssueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdIssue403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesByIdIssue403JSONResponse) VisitPostInvoicesByIdIssueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdIssue404Response struct {
+}
+
+func (response PostInvoicesByIdIssue404Response) VisitPostInvoicesByIdIssueResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInvoicesByIdIssue409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesByIdIssue409ApplicationProblemPlusJSONResponse) VisitPostInvoicesByIdIssueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdIssue503ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesByIdIssue503ApplicationProblemPlusJSONResponse) VisitPostInvoicesByIdIssueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// GetInvoices List invoices and credit notes
@@ -1938,6 +2063,9 @@ type StrictServerInterface interface {
 	// PutInvoicesById Replace a draft
 	// (PUT /api/v1/invoices/{id})
 	PutInvoicesById(ctx context.Context, request PutInvoicesByIdRequestObject) (PutInvoicesByIdResponseObject, error)
+	// PostInvoicesByIdIssue Issue a draft
+	// (POST /api/v1/invoices/{id}/issue)
+	PostInvoicesByIdIssue(ctx context.Context, request PostInvoicesByIdIssueRequestObject) (PostInvoicesByIdIssueResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -2341,6 +2469,39 @@ func (sh *strictHandler) PutInvoicesById(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutInvoicesByIdResponseObject); ok {
 		if err := validResponse.VisitPutInvoicesByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesByIdIssue operation middleware
+func (sh *strictHandler) PostInvoicesByIdIssue(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostInvoicesByIdIssueRequestObject
+
+	request.Id = id
+
+	var body PostInvoicesByIdIssueJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesByIdIssue(ctx, request.(PostInvoicesByIdIssueRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesByIdIssue")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesByIdIssueResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesByIdIssueResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
