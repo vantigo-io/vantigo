@@ -25,7 +25,7 @@ import (
 // moduleSchemas are the PostgreSQL schemas owned by one module each. The
 // platform schema is deliberately not one of these: internal/ratelimit
 // reaches it from outside its own module, by design (Global Constraints).
-var moduleSchemas = []string{"identity", "customers", "products", "energy", "communications", "projects", "time", "expenses"}
+var moduleSchemas = []string{"identity", "customers", "products", "energy", "communications", "projects", "time", "expenses", "invoices"}
 
 // schemaOwnedFile is one migration or query file, with the module that owns
 // it and its full text.
@@ -2348,6 +2348,162 @@ func TestExpensesSupplierInvoices_AppliesAndIsIdempotent(t *testing.T) {
 	}
 	if functions != 0 || left != 0 {
 		t.Errorf("after the rollback %d owes_employee functions and %d supplier columns remain, want none", functions, left)
+	}
+}
+
+// TestInvoicesBaseline_AppliesAndIsIdempotent proves
+// 00034_invoices_baseline.sql applies, rolls back and re-applies cleanly, and
+// pins what the invoices foundation design rests on: the seven tables, the one
+// settings row and its CHECK, no counter row until something is issued (D2),
+// the nine seeded VAT codes with one open 2026 period each — 6 as E and 7 as O
+// — and the rules the database holds itself: the rate periods' exclusion (D3),
+// the draft/number CHECK and the delivery CHECK (D4), and the three
+// immutability triggers (D9).
+func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
+	url := testdb.URL(t)
+	applyUpDownUp(t, url, 34) // 00034_invoices_baseline.sql
+
+	ctx := context.Background()
+	pool, err := db.Open(ctx, url)
+	if err != nil {
+		t.Fatalf("open pool: %v", err)
+	}
+	defer pool.Close()
+
+	rows, err := pool.Query(ctx, `SELECT table_name FROM information_schema.tables WHERE table_schema = 'invoices' ORDER BY table_name`)
+	if err != nil {
+		t.Fatalf("query tables: %v", err)
+	}
+	gotTables, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatalf("collect tables: %v", err)
+	}
+	if want := []string{"counters", "invoices", "lines", "settings", "vat_code_rates", "vat_codes", "vat_summaries"}; !equalStrings(gotTables, want) {
+		t.Errorf("tables = %v, want %v", gotTables, want)
+	}
+
+	var settingsRows, counterRows int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM invoices.settings WHERE id = 1 AND legal_name = '' AND series_start = 1 AND default_payment_terms_days = 14 AND default_currency = 'NOK'`).Scan(&settingsRows); err != nil {
+		t.Fatalf("count settings: %v", err)
+	}
+	if settingsRows != 1 {
+		t.Errorf("settings rows = %d, want the one empty row", settingsRows)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO invoices.settings (id, updated_at) VALUES (2, now())`); !isCheckViolation(err) {
+		t.Errorf("a second settings row: %v, want a check violation from ck_settings_single_row", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM invoices.counters`).Scan(&counterRows); err != nil {
+		t.Fatalf("count counters: %v", err)
+	}
+	if counterRows != 0 {
+		t.Errorf("counter rows = %d, want none until something is issued", counterRows)
+	}
+
+	codeRows, err := pool.Query(ctx, `
+		SELECT c.code || ':' || c.ehf_category || ':' || c.saf_t_code || ':' || r.rate_percent::text || ':' || r.valid_from::text || ':' || coalesce(r.valid_to::text, 'open')
+		FROM invoices.vat_codes c JOIN invoices.vat_code_rates r ON r.vat_code_id = c.id
+		ORDER BY c.id`)
+	if err != nil {
+		t.Fatalf("query codes: %v", err)
+	}
+	gotCodes, err := pgx.CollectRows(codeRows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatalf("collect codes: %v", err)
+	}
+	wantCodes := []string{
+		"3:S:3:25.00:2026-01-01:open", "31:S:31:15.00:2026-01-01:open", "32:S:32:11.11:2026-01-01:open",
+		"33:S:33:12.00:2026-01-01:open", "5:Z:5:0.00:2026-01-01:open", "51:AE:51:0.00:2026-01-01:open",
+		"52:G:52:0.00:2026-01-01:open", "6:E:6:0.00:2026-01-01:open", "7:O:7:0.00:2026-01-01:open",
+	}
+	if !equalStrings(gotCodes, wantCodes) {
+		t.Errorf("seeded codes = %v, want %v", gotCodes, wantCodes)
+	}
+
+	// The rate periods of one code never overlap, inclusive at both ends.
+	if _, err := pool.Exec(ctx, `INSERT INTO invoices.vat_code_rates (vat_code_id, rate_percent, valid_from, created_at) VALUES (1, 26, DATE '2027-01-01', now())`); !isExclusionViolation(err) {
+		t.Errorf("an overlapping period: %v, want an exclusion violation", err)
+	}
+	// A reason is required unless the category is S; the category is UNCL5305's.
+	if _, err := pool.Exec(ctx, `INSERT INTO invoices.vat_codes (code, name, saf_t_code, ehf_category, created_at, updated_at) VALUES ('X', 'X', '5', 'Z', now(), now())`); !isCheckViolation(err) {
+		t.Errorf("a Z code without a reason: %v, want a check violation", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO invoices.vat_codes (code, name, saf_t_code, ehf_category, created_at, updated_at) VALUES ('Y', 'Y', '3', 'Q', now(), now())`); !isCheckViolation(err) {
+		t.Errorf("an unknown category: %v, want a check violation", err)
+	}
+	// The code label is unique ignoring case.
+	if _, err := pool.Exec(ctx, `INSERT INTO invoices.vat_codes (code, name, saf_t_code, ehf_category, created_at, updated_at) VALUES ('3', 'Again', '3', 'S', now(), now())`); !isUniqueViolation(err) {
+		t.Errorf("a second code 3: %v, want a unique violation", err)
+	}
+
+	// A draft has no number; a number is an issued document's; delivery is a
+	// day, a period with from <= to, or nothing.
+	for _, bad := range []string{
+		`INSERT INTO invoices.invoices (kind, status, number, customer_id, created_by_user_id, created_at, updated_at) VALUES ('invoice', 'draft', 7, 1, gen_random_uuid(), now(), now())`,
+		`INSERT INTO invoices.invoices (kind, status, customer_id, created_by_user_id, created_at, updated_at) VALUES ('invoice', 'issued', 1, gen_random_uuid(), now(), now())`,
+		`INSERT INTO invoices.invoices (kind, customer_id, delivery_date, delivery_from, created_by_user_id, created_at, updated_at) VALUES ('invoice', 1, DATE '2026-09-01', DATE '2026-09-01', gen_random_uuid(), now(), now())`,
+		`INSERT INTO invoices.invoices (kind, customer_id, delivery_from, delivery_to, created_by_user_id, created_at, updated_at) VALUES ('invoice', 1, DATE '2026-09-02', DATE '2026-09-01', gen_random_uuid(), now(), now())`,
+		`INSERT INTO invoices.invoices (kind, customer_id, created_by_user_id, created_at, updated_at) VALUES ('credit_note', 1, gen_random_uuid(), now(), now())`,
+	} {
+		if _, err := pool.Exec(ctx, bad); !isCheckViolation(err) {
+			t.Errorf("%s: %v, want a check violation", bad, err)
+		}
+	}
+
+	triggerRows, err := pool.Query(ctx, `
+		SELECT c.relname || ':' || t.tgname
+		FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE n.nspname = 'invoices' AND NOT t.tgisinternal
+		ORDER BY 1`)
+	if err != nil {
+		t.Fatalf("query triggers: %v", err)
+	}
+	gotTriggers, err := pgx.CollectRows(triggerRows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatalf("collect triggers: %v", err)
+	}
+	if want := []string{"invoices:tr_invoices_immutable", "lines:tr_lines_immutable", "vat_summaries:tr_vat_summaries_immutable"}; !equalStrings(gotTriggers, want) {
+		t.Errorf("triggers = %v, want %v", gotTriggers, want)
+	}
+}
+
+// TestInvoicesSchema_NamesNoColumnWithAReservedWord pins the rule of D2: no
+// column of the invoices schema is named with a word PostgreSQL reserves
+// (catcode R in pg_get_keywords()) — to, from, end, user, order and the rest —
+// so no query ever has to quote one, and no generated field is named after a
+// keyword.
+func TestInvoicesSchema_NamesNoColumnWithAReservedWord(t *testing.T) {
+	url := testdb.URL(t)
+	migrateTo(t, url, 34)
+
+	ctx := context.Background()
+	pool, err := db.Open(ctx, url)
+	if err != nil {
+		t.Fatalf("open pool: %v", err)
+	}
+	defer pool.Close()
+
+	var columns int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_schema = 'invoices'`).Scan(&columns); err != nil {
+		t.Fatalf("count columns: %v", err)
+	}
+	if columns < 100 {
+		t.Fatalf("the invoices schema has %d columns, want the whole 1A schema to be checked", columns)
+	}
+	rows, err := pool.Query(ctx, `
+		SELECT c.table_name || '.' || c.column_name
+		FROM information_schema.columns c
+		JOIN pg_get_keywords() k ON k.word = c.column_name AND k.catcode = 'R'
+		WHERE c.table_schema = 'invoices'
+		ORDER BY 1`)
+	if err != nil {
+		t.Fatalf("query reserved column names: %v", err)
+	}
+	reserved, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatalf("collect reserved column names: %v", err)
+	}
+	if len(reserved) > 0 {
+		t.Errorf("columns named with a reserved word: %v", reserved)
 	}
 }
 

@@ -22,6 +22,7 @@ package server
 //go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 -config internal/openapi/gen/cfg-communications.yaml ../../openapi/communications.yaml
 //go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 -config internal/openapi/gen/cfg-time.yaml ../../openapi/time.yaml
 //go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 -config internal/openapi/gen/cfg-expenses.yaml ../../openapi/expenses.yaml
+//go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 -config internal/openapi/gen/cfg-invoices.yaml ../../openapi/invoices.yaml
 
 // sqlc's typed query layer. Pinned in mise.toml ("aqua:sqlc-dev/sqlc"), so it
 // is already on PATH by the time go generate runs.
@@ -33,3 +34,4 @@ package server
 //go:generate sqlc generate -f internal/communications/sqlc.yaml
 //go:generate sqlc generate -f internal/time/sqlc.yaml
 //go:generate sqlc generate -f internal/expenses/sqlc.yaml
+//go:generate sqlc generate -f internal/invoices/sqlc.yaml

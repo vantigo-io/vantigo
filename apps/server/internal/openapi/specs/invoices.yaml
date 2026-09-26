@@ -1,0 +1,133 @@
+components:
+    schemas:
+        InvoicesMetaCapabilities:
+            description: What the caller may do in the Invoices app, answered by the server so no client re-derives a permission rule.
+            properties:
+                canCreate:
+                    description: invoices:create — create, edit and delete drafts, and preview a draft.
+                    type: boolean
+                canIssue:
+                    description: invoices:issue — issue a draft, and create a credit-note draft.
+                    type: boolean
+                canManage:
+                    description: invoices:manage — the seller record, the series start and the VAT codes.
+                    type: boolean
+            required:
+                - canCreate
+                - canIssue
+                - canManage
+            type: object
+        InvoicesMetaResponse:
+            description: What every Invoices page needs before it draws anything (invoices foundation design D2).
+            properties:
+                anythingIssued:
+                    description: Whether any document has been issued — the counter row exists. Once true the series start is locked.
+                    type: boolean
+                capabilities:
+                    $ref: '#/components/schemas/InvoicesMetaCapabilities'
+                currency:
+                    description: The one currency a document may carry in this phase, NOK.
+                    type: string
+                defaultPaymentTermsDays:
+                    description: The seller's default payment terms, which a new draft takes when neither the request nor the customer's billing profile decides.
+                    format: int32
+                    type: integer
+                missingSellerFields:
+                    description: The seller fields issuing still needs, by their camelCase names (legalName, organisationNumber, addressLine1, postalCode, city, bankAccount). Empty when the seller is complete.
+                    items:
+                        type: string
+                    type: array
+                sellerComplete:
+                    description: Whether the seller record is complete enough to issue. Issuing is refused with 409 seller_incomplete until it is.
+                    type: boolean
+                seriesStart:
+                    description: The first number of the one series invoices and credit notes share.
+                    format: int64
+                    type: integer
+                storageAvailable:
+                    description: Whether this installation has an object store. Without one nothing can be issued (503 storage_unavailable), because an issued number whose PDF can never be stored is not allowed to exist.
+                    type: boolean
+                today:
+                    description: Today in Europe/Oslo, the business day every date rule of this module is judged on.
+                    format: date
+                    type: string
+                vatCodes:
+                    description: The VAT codes a new line may take — active, with a rate period covering today — each with today's rate.
+                    items:
+                        $ref: '#/components/schemas/InvoicesVatCodeInForce'
+                    type: array
+            required:
+                - currency
+                - defaultPaymentTermsDays
+                - sellerComplete
+                - missingSellerFields
+                - anythingIssued
+                - seriesStart
+                - storageAvailable
+                - today
+                - vatCodes
+                - capabilities
+            type: object
+        InvoicesVatCodeInForce:
+            description: One VAT code as a new line may take it, with the rate in force today. A draft holds only the code; the rate a line carries is resolved at issue for the issue date (D3).
+            properties:
+                code:
+                    type: string
+                ehfCategory:
+                    description: The UNCL5305 category — S, Z, E, AE, G, O or K.
+                    type: string
+                exemptionReason:
+                    description: The text printed under the VAT summary for a category other than S. Absent for S.
+                    type: string
+                id:
+                    format: int32
+                    type: integer
+                name:
+                    type: string
+                ratePercent:
+                    format: double
+                    type: number
+                safTCode:
+                    type: string
+            required:
+                - id
+                - code
+                - name
+                - safTCode
+                - ehfCategory
+                - ratePercent
+            type: object
+info:
+    title: Vantigo Invoices API
+    version: "1"
+openapi: 3.0.3
+paths:
+    /api/v1/invoices/meta:
+        get:
+            description: What every Invoices page needs in one read — the currency, the default payment terms, whether the seller is complete and what it lacks, whether anything is issued and the series start, whether an object store exists, today in Oslo, the VAT codes in force today and the caller's capabilities.
+            operationId: getInvoicesMeta
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesMetaResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get the Invoices metadata
+            tags:
+                - Invoices
+            x-vantigo-access: permission:invoices:access
+servers:
+    - url: /
