@@ -747,21 +747,32 @@ kept five years — and the B2B e-invoicing duty is law from 2027-01-01, so EHF 
 a late phase. Vantigo stays a sub-ledger: it issues, sends, tracks and exports; it keeps
 no general ledger.
 
-### Phase 1 — The sales document
+### Phase 1A — The sales document (done)
 
-The seller record (legal name, organisation number, VAT registration, Foretaksregisteret,
-address, bank account), a dated VAT-code table seeded with the SAF-T output codes, one
-number series with a start set once and gap-free allocation inside the issue
-transaction, and the invoice itself: a draft with lines (description, quantity, unit,
-unit price, discount, VAT code), issued into an immutable document with a buyer
-snapshot taken from the billing profile, VAT summarised per rate, a deterministic PDF
-rendered once and stored, e-mail delivery, full and partial credit notes, manual
-payment registration with partial payments and a derived open/overdue status, an
-invoice journal proving the series has no gaps, and a CSV export for the accountant.
-Currency and exchange rate are modelled from day one even though the UI starts NOK-only.
+Delivered on `feat/invoices-foundation`
+([design](docs/superpowers/specs/2026-09-26-invoices-foundation-design.md),
+[`docs/invoices.md`](docs/invoices.md)): the seller record and one gap-free number
+series whose start locks at the first issue; VAT codes whose rates are dated periods,
+seeded with the SAF-T output codes; drafts issued in one serialised transaction into an
+immutable, numbered document with a buyer and a seller snapshot and VAT per rate,
+immutability enforced by database triggers too; the issue-date rule with § 5-1-3's
+previous-month exception; a PDF in Noto Sans rendered from the snapshot and stored once,
+and a watermarked preview; full and partial credit notes in the same series with caps
+per line and on the headline; an invoice journal with the gap check; both customer slots
+(merge re-points, anonymisation erases drafts only); and `Status` and `MergedInto` on the
+customers contract's billing profile, so `disabled` finally means "blocked for invoicing".
+
+### Phase 1B — Payments, delivery and the export (next)
+
+A branch cut from `main` after 1A merges, building only on 1A's tables: manual payment
+registration with soft removal and derived states (credited, paid, overdue, partially
+paid, open), e-mail delivery with the stored PDF and a Reply-To, the accountant's CSV
+export, the dashboard card and stats, the customer page's Invoices tab, and the
+customers-plus-invoices integration test.
 
 *Unblocks:* everything below; nothing else is lawful without numbering, immutability
-and credit notes.
+and credit notes. Phase 1A alone does not meet the B2G duty (EHF since 2019) nor the B2B
+duty from 2027-01-01 — that is phase 2.
 
 ### Phase 2 — EHF over Peppol, and KID
 

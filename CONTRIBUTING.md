@@ -69,6 +69,7 @@ vantigo/
 │   │       ├── projects/            # Projects vertical slice
 │   │       ├── time/                # Time vertical slice (package timetracking)
 │   │       ├── expenses/            # Expenses vertical slice
+│   │       ├── invoices/            # Invoices vertical slice (the sales document)
 │   │       ├── module/              # The platform modules mount through
 │   │       ├── contracts/           # Cross-module interfaces, permissions, access rules
 │   │       ├── config/              # The environment reference: one struct, one validation pass
@@ -86,7 +87,8 @@ vantigo/
 │   ├── energy/frontend/             # @vantigo/energy-ui
 │   ├── projects/frontend/           # @vantigo/projects-ui
 │   ├── time/frontend/               # @vantigo/time-ui
-│   └── expenses/frontend/           # @vantigo/expenses-ui
+│   ├── expenses/frontend/           # @vantigo/expenses-ui
+│   └── invoices/frontend/           # @vantigo/invoices-ui
 ├── packages/
 │   ├── frontend-shell/              # @vantigo/frontend-shell — shared app shell, theme, branding
 │   └── frontend-api-client/         # @vantigo/frontend-api-client — generated types and client
@@ -142,7 +144,7 @@ own deployable without a rewrite.
 ### Database
 
 One PostgreSQL database, one schema per module: `identity`, `customers`, `products`,
-`energy`, `communications`, `projects`, `time` and `expenses`. Schemas are hard boundaries:
+`energy`, `communications`, `projects`, `time`, `expenses` and `invoices`. Schemas are hard boundaries:
 
 - **No cross-schema foreign keys or joins.** Reference other modules' data by
   opaque ID only. This is what keeps a future "move this schema to its own
@@ -228,7 +230,8 @@ Navigation — *one pattern per level*, so every page reads the same way:
   each operation's access rule and rate limit from the contract at runtime.
 - **Versioned APIs** — Identity lives under `/api/v1/identity`; business modules use
   `/api/v1/customers`, `/api/v1/products`, `/api/v1/energy`,
-  `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time` and `/api/v1/expenses`.
+  `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`, `/api/v1/expenses` and
+  `/api/v1/invoices`.
 - **In-process contracts** — module collaboration uses `internal/contracts`, not
   service-to-service API keys.
 - **Form-friendly errors** — validation errors use camelCase JSON field paths.
@@ -242,8 +245,8 @@ All endpoints are versioned by URL segment. Each module's own contract lives in
 `openapi/<module>.yaml`, and the running server serves the merged contract of the
 enabled modules at `GET /api/openapi.json` (session required). Module prefixes are
 `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`, `/api/v1/energy`,
-`/api/v1/communications`, `/api/v1/projects`, `/api/v1/time` and `/api/v1/expenses`.
-Every other `/api` path answers the catch-all 404 problem.
+`/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`, `/api/v1/expenses` and
+`/api/v1/invoices`. Every other `/api` path answers the catch-all 404 problem.
 
 Errors are RFC 7807 problem responses written by `internal/httpx`; validation errors
 carry keys matching the JSON field path:
@@ -414,9 +417,9 @@ that does not match `identity.yaml` fails the test that produced it. `go test
 must have been exercised by at least one successful exchange, with no allow-list, so a newly
 added operation without a passing test fails the whole package.
 
-### Customers, products, energy, communications, projects, time and expenses
+### Customers, products, energy, communications, projects, time, expenses and invoices
 
-Seven business modules mount on that platform, each serving its own contract and
+Eight business modules mount on that platform, each serving its own contract and
 owning its own schema:
 
 - `internal/customers` → `/api/v1/customers/*` from `openapi/customers.yaml`:
@@ -455,16 +458,24 @@ owning its own schema:
   purely optionally: with `projects` off, `GET /meta` answers
   `projectsAvailable: false` and every project-shaped field is refused on its own
   field. See [`docs/expenses.md`](docs/expenses.md).
+- `internal/invoices` → `/api/v1/invoices/*` from `openapi/invoices.yaml`: the sales
+  document — the seller record, one gap-free number series, VAT codes with dated
+  rates, drafts issued into immutable documents (enforced by database triggers too),
+  credit notes, a PDF stored once in the object store, and the invoice journal. It
+  consumes `contracts.CustomerDirectory` (customers, **required**) and fills both
+  customer slots. See [`docs/invoices.md`](docs/invoices.md).
 
 `MODULES` chooses which of them a deployment serves: a comma-separated list,
 parsed once at startup, defaulting to
-`customers,products,energy,communications,projects,time,expenses` — every module
+`customers,products,energy,communications,projects,time,expenses,invoices` — every module
 this binary can mount. Identity is always mounted and is never
 listed. A name the binary does not know fails
 startup, naming the name and the known set. `energy`, `communications` and
 `projects` read customer data through `contracts.CustomerDirectory`, so any of
 them without `customers` fails startup naming both; `time` reads projects through
-`contracts.ProjectDirectory`, so `time` without `projects` fails the same way.
+`contracts.ProjectDirectory`, so `time` without `projects` fails the same way, and
+`invoices` reads its buyer through `contracts.CustomerDirectory`, so `invoices`
+without `customers` fails too.
 `expenses` has no such dependency check — it starts with or without any other
 module. A disabled module
 contributes no route, no permission and no contract path, and its paths answer
@@ -596,6 +607,7 @@ bun run --cwd apps/energy/frontend test
 bun run --cwd apps/projects/frontend test
 bun run --cwd apps/time/frontend test
 bun run --cwd apps/expenses/frontend test
+bun run --cwd apps/invoices/frontend test
 ```
 
 The SPA is **not** served by the dev server in production: `scripts/build-artifacts.sh`

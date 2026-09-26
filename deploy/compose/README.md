@@ -60,11 +60,11 @@ a one-shot job, and then starts Vantigo:
 - **Vantigo** — <http://localhost:8080>
 - **API contract** — `GET http://localhost:8080/api/openapi.json` (requires a session)
 
-The Customers, Products, Energy, Communications, Projects, Time and Expenses
-modules are enabled by default (`MODULES` in `vantigo.env`). They share one
-PostgreSQL database named `vantigo`, with independent `identity`, `customers`,
-`products`, `energy`, `communications`, `projects`, `time` and `expenses`
-schemas and migration histories.
+The Customers, Products, Energy, Communications, Projects, Time, Expenses and
+Invoices modules are enabled by default (`MODULES` in `vantigo.env`). They share
+one PostgreSQL database named `vantigo`, with independent `identity`, `customers`,
+`products`, `energy`, `communications`, `projects`, `time`, `expenses` and
+`invoices` schemas and migration histories.
 
 ## First sign-in
 
@@ -345,6 +345,14 @@ application rollback across one.
 docker compose pull
 docker compose up -d
 ```
+
+**The release with Invoices.** An installation that leaves `MODULES` unset enables
+every module this binary knows, so it gets the Invoices app on upgrade. Nobody can use
+it until a role grants `invoices:access` (Owner holds every permission already).
+Issuing needs an object store (`STORAGE_PROVIDER`): without one the app opens and
+every issue answers 503. An installation that lists `MODULES` explicitly gets
+Invoices only once `invoices` is added, beside `customers`. See
+[Invoices](../../docs/invoices.md).
 
 For a complete backup, one-migrator, token rotation, and Owner break-glass runbook,
 see [SSO and SCIM operations](../../docs/sso-scim-operations.md).

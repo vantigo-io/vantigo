@@ -27,6 +27,9 @@ Operator and contributor documentation for Vantigo:
   approval state machine, weekly submission, the period lock and permissions.
 - [Expenses module](expenses.md) — outlays and mileage, receipts, approval, the
   reimbursed and invoiced tracks, dated rates, the payroll CSV and permissions.
+- [Invoices module](invoices.md) — the sales document: the seller record, gap-free
+  numbering, VAT codes with dated rates, issue and immutability, credit notes, the
+  stored PDF, the journal, retention and permissions.
 - [Module boundaries](module-boundaries.md) — implementation ownership and module
   conventions.
 - [Object storage](storage.md) — the filesystem-only provider, module scopes, key
