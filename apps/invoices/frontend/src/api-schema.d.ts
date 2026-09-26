@@ -262,6 +262,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/journal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The invoice journal
+         * @description The invoice journal (D11) — what proves complete registration (§ 5-1-3). from and to are issue dates, both required, from on or before to; page and pageSize are the list's.
+         */
+        get: operations["getInvoicesJournal"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -710,6 +730,92 @@ export interface components {
         InvoicesIssueRequest: {
             /** Format: date */
             issueDate?: string;
+        };
+        /** @description One (SAF-T code, category, rate) of the journal's VAT, credit notes signed negative. */
+        InvoicesJournalCode: {
+            category: string;
+            /** Format: double */
+            ratePercent: number;
+            safTCode: string;
+            /** Format: double */
+            taxableAmount: number;
+            /** Format: double */
+            vatAmount: number;
+        };
+        /** @description The invoice journal (D11) over issue dates from-to: the issued documents in number order, a page at a time; the totals over the whole range, per SAF-T code, category and rate, credit notes signed negative; and the gap check — the numbers from the one after the issued document before the range's first (never below the series start) to the range's last that no issued document holds, at most 1000 listed. */
+        InvoicesJournalResponse: {
+            /**
+             * Format: int64
+             * @description The first number the gap check covered — one past the issued document before the range's first, or the series start; absent when the range holds no document.
+             */
+            checkedFrom?: number;
+            /**
+             * Format: int64
+             * @description The last number the gap check covered, the range's last; absent when the range holds no document.
+             */
+            checkedTo?: number;
+            /**
+             * Format: int64
+             * @description The counter's last allocated number; absent when nothing was ever issued. When it is not highestIssued, a number was allocated without a document.
+             */
+            counterLast?: number;
+            data: components["schemas"]["InvoicesJournalRow"][];
+            gaps: number[];
+            gapsTruncated: boolean;
+            /**
+             * Format: int64
+             * @description The highest number any issued document holds, whatever its date; absent when nothing is issued.
+             */
+            highestIssued?: number;
+            pagination: components["schemas"]["PaginationMetadata"];
+            /** Format: int64 */
+            seriesStart: number;
+            totals: components["schemas"]["InvoicesJournalTotals"];
+        };
+        /** @description One issued document in the journal, credit notes signed negative in every amount. */
+        InvoicesJournalRow: {
+            /** Format: int64 */
+            buyerCustomerNumber?: number;
+            buyerName?: string;
+            buyerOrganisationNumber?: string;
+            /**
+             * Format: int64
+             * @description On a credit note, the number of the invoice it credits.
+             */
+            creditsNumber?: number;
+            currency: string;
+            /** Format: date */
+            deliveryDate?: string;
+            /** Format: date */
+            deliveryFrom?: string;
+            /** Format: date */
+            deliveryTo?: string;
+            /** Format: date */
+            dueDate?: string;
+            /** Format: double */
+            grossTotal: number;
+            /** Format: int64 */
+            id: number;
+            /** Format: date */
+            issueDate: string;
+            kind: string;
+            /** Format: double */
+            netTotal: number;
+            /** Format: int64 */
+            number: number;
+            vatSummaries: components["schemas"]["InvoicesJournalCode"][];
+            /** Format: double */
+            vatTotal: number;
+        };
+        /** @description The journal's totals over the whole range, not the page, credit notes signed negative. */
+        InvoicesJournalTotals: {
+            byCode: components["schemas"]["InvoicesJournalCode"][];
+            /** Format: double */
+            grossTotal: number;
+            /** Format: double */
+            netTotal: number;
+            /** Format: double */
+            vatTotal: number;
         };
         AuthErrorResponse: {
             error: {
@@ -1717,6 +1823,58 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    getInvoicesJournal: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesJournalResponse"];
+                };
+            };
+            /** @description Bad Request — from after to, or paging out of range. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
         };
