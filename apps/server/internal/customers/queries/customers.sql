@@ -591,7 +591,9 @@ ORDER BY c.id;
 -- does everywhere else this module reads it), contact email and the eleven
 -- billing columns GetCustomerBillingProfile itself selects, plus
 -- customer_number and status — what resolveBillingProfile (directory.go)
--- needs to fill in every field of contracts.CustomerBillingProfile except
+-- needs to fill in every field of contracts.CustomerBillingProfile (status
+-- and merged_into_customer_id too, for the gates Invoices keeps, invoices
+-- foundation design D10) except
 -- the resolved invoice address, which is DirectoryInvoiceAddress's own
 -- query (queries/addresses.sql), a second round trip rather than a join:
 -- at most one row either way, and a join would return no row at all for a
@@ -602,6 +604,7 @@ ORDER BY c.id;
 -- rather than a second round trip, since the group is this module's own table
 -- and a customer in no group must still answer a row.
 SELECT c.id, c.customer_number, c.name, c.type, c.status = 'archived' AS archived,
+       c.status, c.merged_into_customer_id,
        c.legal_country, c.legal_id, c.legal_name, c.legal_source, c.legal_type, c.email,
        c.invoice_email, c.reminder_email, c.payment_terms_days, c.currency, c.language,
        c.invoice_delivery, c.reminder_delivery, c.peppol_id, c.gln, c.buyer_reference, c.default_bill_rate,

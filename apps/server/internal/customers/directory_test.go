@@ -336,8 +336,8 @@ func TestDirectory_BillingProfile_UnknownIdIsNilWithoutAnError(t *testing.T) {
 
 // TestDirectory_BillingProfile_ArchivedResolves proves an archived customer's
 // billing profile still resolves, flagged — a past invoice can hold a
-// reference to a customer archived since, and must still be able to invoice
-// it again.
+// reference to a customer archived since, and must still be shown and
+// credited.
 func TestDirectory_BillingProfile_ArchivedResolves(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -349,6 +349,39 @@ func TestDirectory_BillingProfile_ArchivedResolves(t *testing.T) {
 	}
 	if got == nil || !got.Archived || got.Name != "Nedlagt Handel AS" {
 		t.Errorf("BillingProfile = %+v, want an archived Nedlagt Handel AS", got)
+	}
+}
+
+// TestDirectory_BillingProfile_CarriesStatusAndMergedInto proves the two
+// fields invoices foundation design D10 adds to the contract: Status is the
+// customer's own for an active, a disabled and an archived customer, and
+// MergedInto names the survivor of a merged-away one and is nil otherwise — so
+// one read answers every gate Invoices keeps.
+func TestDirectory_BillingProfile_CarriesStatusAndMergedInto(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	dir := newDirectory(t, h)
+	ctx := context.Background()
+	for _, status := range []string{"active", "disabled", "archived"} {
+		id := insertCustomer(t, h, "Status "+status+" AS", status)
+		got, err := dir.BillingProfile(ctx, id)
+		if err != nil {
+			t.Fatalf("BillingProfile(%s): %v", status, err)
+		}
+		if got == nil || got.Status != status || got.MergedInto != nil {
+			t.Errorf("BillingProfile of a %s customer = %+v, want Status %q and no MergedInto", status, got, status)
+		}
+	}
+
+	survivor := insertCustomer(t, h, "Overlever AS", "active")
+	absorbed := insertCustomer(t, h, "Slått sammen AS", "active")
+	h.Exec(t, `UPDATE customers.customers SET status = 'archived', merged_into_customer_id = $1 WHERE id = $2`, survivor, absorbed)
+	got, err := dir.BillingProfile(ctx, absorbed)
+	if err != nil {
+		t.Fatalf("BillingProfile(merged): %v", err)
+	}
+	if got == nil || got.Status != "archived" || got.MergedInto == nil || *got.MergedInto != survivor {
+		t.Errorf("BillingProfile of a merged-away customer = %+v, want archived and MergedInto %d", got, survivor)
 	}
 }
 

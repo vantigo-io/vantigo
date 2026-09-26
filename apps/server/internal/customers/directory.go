@@ -155,8 +155,13 @@ func (d *directory) BillingProfile(ctx context.Context, id int32) (*contracts.Cu
 		row.Currency, row.Language, row.InvoiceDelivery, row.ReminderDelivery, row.PeppolID, row.Gln, row.BuyerReference, defaultBillRate)
 	identity := identityFromRow(row.LegalCountry, row.LegalID, row.LegalName, row.LegalSource, row.LegalType)
 
-	return resolveBillingProfile(row.ID, row.CustomerNumber, row.Name, row.Type, row.Archived,
-		identity, row.Email, profile, row.GroupDefaultPaymentTermsDays, invoiceAddress), nil
+	resolved := resolveBillingProfile(row.ID, row.CustomerNumber, row.Name, row.Type, row.Archived,
+		identity, row.Email, profile, row.GroupDefaultPaymentTermsDays, invoiceAddress)
+	// The two facts every gate Invoices keeps reads (invoices foundation
+	// design D10): nothing to resolve, so they pass straight through.
+	resolved.Status = row.Status
+	resolved.MergedInto = row.MergedIntoCustomerID
+	return resolved, nil
 }
 
 // resolveBillingProfile is contracts.CustomerDirectory.BillingProfile's one
