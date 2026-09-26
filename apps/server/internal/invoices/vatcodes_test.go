@@ -82,8 +82,8 @@ func periods(c vatCodeJSON) string {
 func plantIssuedDocument(t *testing.T, h *harness, number int64, issueDate string) int64 {
 	t.Helper()
 	return modtest.One[int64](t, h.Harness, `
-		INSERT INTO invoices.invoices (kind, status, number, customer_id, issue_date, issued_at, created_by_user_id, created_at, updated_at)
-		VALUES ('invoice', 'issued', $1, 1, $2::date, now(), $3, now(), now())
+		INSERT INTO invoices.invoices (kind, status, number, customer_id, issue_date, due_date, exchange_rate_date, seller_legal_name, buyer_name, issued_at, created_by_user_id, created_at, updated_at)
+		VALUES ('invoice', 'issued', $1, 1, $2::date, $2::date + 14, $2::date, 'Selger AS', 'Kunde AS', now(), $3, now(), now())
 		RETURNING id`, number, issueDate, uuid.New())
 }
 

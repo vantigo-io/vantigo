@@ -391,6 +391,12 @@ func TestDrafts_TheMoney(t *testing.T) {
 		t.Errorf("discounted line = %+v, want 33.35 − 3.34 = 30.01", inv.Lines[0])
 	}
 
+	// Half away from zero, not half to even: 1 × 10.02 at 25 % is VAT
+	// round(2.505) = 2.51, where banker's rounding would give 2.50.
+	if inv := createDraft(t, h, draftBody(customerAcme, line("Halv", 1, 10.02, vat25))); inv.VatTotal != 2.51 || inv.GrossTotal != 12.53 {
+		t.Errorf("1 × 10.02 at 25 %% = VAT %v gross %v, want 2.51 and 12.53", inv.VatTotal, inv.GrossTotal)
+	}
+
 	// Three rates, a 0 % category with its own row, no øre rounding.
 	mixed := createDraft(t, h, draftBody(customerAcme,
 		line("Tjeneste", 1, 100.01, vat25), line("Mat", 2, 100, vat15), line("Fritatt", 1, 50.5, vatZero)))

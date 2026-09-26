@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
+	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 )
 
 // This file tests the PDF through its model: no PDF text extractor in this
@@ -31,7 +32,7 @@ func anInvoice() pdfDocument {
 	delivered := time.Date(2026, 9, 10, 0, 0, 0, 0, time.UTC)
 	zeroReason := "Fritatt for merverdiavgift"
 	return pdfDocument{
-		kind: kindInvoice, language: "nb", number: &number, issueDate: issued, dueDate: &due, paymentTermsDays: &terms,
+		kind: kindInvoice, language: "nb", currency: "NOK", number: &number, issueDate: issued, dueDate: &due, paymentTermsDays: &terms,
 		deliveryDate: &delivered, yourReference: "PO-77", ourReference: "Ola Nordmann",
 		seller: pdfParty{name: "Kraft-Verket AS", line1: "Storgata 1", postalCode: "0155", city: "Oslo", country: "NO",
 			organisationNumber: "974760673", email: "faktura@kraft-verket.no", vatRegistered: true, foretaksregisteret: true},
@@ -84,8 +85,12 @@ func TestPDFModel_AnInvoice(t *testing.T) {
 	if !slices.Equal(m.reasons, []string{"Fritatt for merverdiavgift"}) {
 		t.Errorf("reasons = %q, want the Z row's", m.reasons)
 	}
-	if m.totals[2] != [2]string{"Å betale", "15 045,00"} {
-		t.Errorf("gross = %q, want Å betale 15 045,00", m.totals[2])
+	// The currency, once where it binds every amount (§ 5-1-1 nr. 6).
+	if m.totals[2] != [2]string{"Å betale", "NOK 15 045,00"} {
+		t.Errorf("gross = %q, want Å betale NOK 15 045,00", m.totals[2])
+	}
+	if m.lineHeader[6] != "Beløp (NOK)" || m.vatHeader[2] != "MVA (NOK)" {
+		t.Errorf("headers = %q %q, want Beløp (NOK) and MVA (NOK)", m.lineHeader, m.vatHeader)
 	}
 	if want := [][2]string{{"Kontonummer", "86011117947"}, {"IBAN", "NO9386011117947"}, {"BIC", "DNBANOKKXXX"}, {"Forfallsdato", "26.09.2026"}}; !slices.Equal(m.payment, want) ||
 		m.paymentNote != "Vennligst oppgi fakturanummer ved betaling" {
@@ -126,6 +131,9 @@ func TestPDFModel_TheFlagsAndTheLanguage(t *testing.T) {
 	}
 	if m.lines[0][3] != "1,200.00" || m.meta[1] != [2]string{"Invoice date", "2026-09-12"} {
 		t.Errorf("English numbers and dates = %q %q", m.lines[0][3], m.meta[1])
+	}
+	if m.totals[2] != [2]string{"Amount due", "NOK 15,045.00"} || m.lineHeader[6] != "Amount (NOK)" || m.vatHeader[2] != "VAT (NOK)" {
+		t.Errorf("English currency = %q, %q, %q; want Amount due NOK 15,045.00, Amount (NOK), VAT (NOK)", m.totals[2], m.lineHeader[6], m.vatHeader[2])
 	}
 	same := anInvoice()
 	same.deliveryPlace = &pdfParty{line1: "kundeveien 2", postalCode: "0150", city: "OSLO", country: "NO"}
@@ -216,7 +224,7 @@ func TestRenderPDF_IsReproducible(t *testing.T) {
 	}
 }
 
-const pinnedRenderSHA256 = "0a4817fc89b7841163410f204a030cce25705faba105f05375553372a7d18830"
+const pinnedRenderSHA256 = "d1e3dada3c358bf3fd4b8d2d2704a1c15a908ab0ddb36fc0a3646191b6d1a868"
 
 // A download whose store-once path fails answers a 503 only for the object
 // store's failure: a document that cannot be rendered, or a database that
@@ -230,5 +238,26 @@ func TestStoreOnceFailed_OnlyTheObjectStoreIsA503(t *testing.T) {
 	render := fmt.Errorf("invoices: render document 7: %w", errors.New("font"))
 	if res, err := storeOnceFailed(render); res != nil || !errors.Is(err, render) {
 		t.Errorf("a render failure = %T, %v; want the error, which the server answers with a 500", res, err)
+	}
+}
+
+// An issued document's (and a preview's) PDF is in the document's own
+// currency: pdfDocumentOf carries it from the row.
+func TestPDFDocumentOf_CarriesTheCurrency(t *testing.T) {
+	t.Parallel()
+	number := int64(7)
+	zero, err := numericFromRat(new(big.Rat), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := pdfDocumentOf(store.InvoicesInvoice{
+		Kind: kindInvoice, Currency: "SEK", Number: &number, IssueDate: pgDate(time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC)),
+		NetTotal: zero, VatTotal: zero, GrossTotal: zero,
+	}, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("pdfDocumentOf: %v", err)
+	}
+	if m := buildPDFModel(d); d.currency != "SEK" || m.lineHeader[6] != "Beløp (SEK)" {
+		t.Errorf("currency = %q, header %q; want SEK throughout", d.currency, m.lineHeader[6])
 	}
 }

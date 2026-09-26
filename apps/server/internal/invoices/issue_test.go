@@ -210,6 +210,30 @@ func TestIssue_TheIssueDateRule(t *testing.T) {
 
 // issued_late warns when the delivery ended more than a month before the
 // issue date; the issue still succeeds (§ 5-2-2).
+// issued_late is judged on the day a document was actually issued, not the
+// date it carries (§ 5-2-2 is about issuing): delivered 1 August, issued on 14
+// September dated 31 August (§ 5-1-3's backdate) is late, though 31 August
+// alone is within the month.
+func TestIssue_IssuedLateIsJudgedOnTheDayItWasIssued(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	h.Advance(2 * 24 * time.Hour) // the 14th
+	body := draftBody(customerAcme, line("A", 1, 100, vat25))
+	body["deliveryDate"] = "2026-08-01"
+	res := issueWith(t, h, createDraft(t, h, body).ID, "2026-08-31")
+	if res.Status != http.StatusOK {
+		t.Fatalf("issue dated 31 August = %d %s", res.Status, res.Body)
+	}
+	var inv invoiceJSON
+	res.JSON(&inv)
+	if *inv.IssueDate != "2026-08-31" || !slices.Equal(inv.Warnings, []string{"issued_late"}) {
+		t.Errorf("issued = dated %s warnings %v, want dated 2026-08-31 and issued_late", *inv.IssueDate, inv.Warnings)
+	}
+	if got := getInvoice(t, h, inv.ID); !slices.Equal(got.Warnings, []string{"issued_late"}) {
+		t.Errorf("read back = warnings %v, want issued_late", got.Warnings)
+	}
+}
+
 func TestIssue_IssuedLateWarnsAndIssues(t *testing.T) {
 	t.Parallel()
 	h := readyToIssue(t)
@@ -535,6 +559,25 @@ func TestIssue_RacingDatesStayMonotone(t *testing.T) {
 	}
 }
 
+// "Today" is read after the counter: an issue that waits there across Oslo
+// midnight is dated the day it is issued. The hook moves the clock a day on
+// right after the allocation. Not parallel: the hook is the package's.
+func TestIssue_TodayIsReadAfterTheCounter(t *testing.T) {
+	h := readyToIssue(t)
+	draft := createDraft(t, h, draftBody(customerAcme, line("A", 1, 100, vat25))).ID
+	restore := invoices.SetIssueAfterAllocation(func(_ context.Context, id int64) error {
+		if id == draft {
+			h.Advance(24 * time.Hour)
+		}
+		return nil
+	})
+	defer restore()
+
+	if inv := issued(t, h, draft); *inv.IssueDate != "2026-09-13" {
+		t.Errorf("issue date = %s, want 2026-09-13, the day after the wait", *inv.IssueDate)
+	}
+}
+
 // Two issues of one draft at once: both pass the pre-read, the second waits
 // on the document's lock and finds it issued — exactly one 200 and one 409
 // invoice_issued, and one number taken. Deterministic as above: the first
@@ -758,6 +801,60 @@ func TestIssue_AnIssuedDocumentIsImmutableInSQL(t *testing.T) {
 	h.Exec(t, `DELETE FROM invoices.invoices WHERE id = $1`, draft.ID)
 	if n := h.Count(t, `SELECT count(*) FROM invoices.lines WHERE invoice_id = $1`, draft.ID); n != 0 {
 		t.Errorf("a deleted draft's lines = %d, want the cascade to take them", n)
+	}
+}
+
+// The child-row trigger cannot be raced (D9): a line inserted beside an
+// issue that has not committed yet waits for it — the trigger takes the
+// document FOR SHARE — and is refused once the issue commits. Without the
+// lock the insert would see the draft, succeed, and give the issued document
+// a line its totals and its PDF never saw. The issue is made by hand on one
+// connection, the insert on another.
+func TestIssue_ALineRacingAnUncommittedIssueWaitsAndIsRefused(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	draft := createDraft(t, h, draftBody(customerAcme, line("A", 1, 100, vat25)))
+	ctx := context.Background()
+	tx, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `
+		UPDATE invoices.invoices SET status = 'issued', number = 1, issue_date = '2026-09-12', due_date = '2026-10-12',
+			exchange_rate_date = '2026-09-12', issued_at = now(), seller_legal_name = 'Selger AS', buyer_name = 'Acme AS'
+		WHERE id = $1`, draft.ID); err != nil {
+		t.Fatalf("issue by hand: %v", err)
+	}
+
+	inserted := make(chan error, 1)
+	go func() {
+		_, err := h.Pool().Exec(ctx, `
+			INSERT INTO invoices.lines (invoice_id, position, description, quantity, unit_price, vat_code_id, line_gross, line_allowance, line_net)
+			VALUES ($1, 9, 'Sniket inn', 1, 1, 1, 1, 0, 1)`, draft.ID)
+		inserted <- err
+	}()
+	deadline := time.Now().Add(10 * time.Second)
+	for waiting := false; !waiting; {
+		select {
+		case err := <-inserted:
+			t.Fatalf("the insert did not wait for the uncommitted issue: %v", err)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the insert neither finished nor waited")
+		}
+		waiting = h.Count(t, `SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`) > 0
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit the issue: %v", err)
+	}
+	if err := <-inserted; err == nil || !strings.Contains(err.Error(), "invoices: issued document is immutable") {
+		t.Errorf("the waiting insert = %v, want the immutability refusal", err)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM invoices.lines WHERE invoice_id = $1`, draft.ID); n != 1 {
+		t.Errorf("lines = %d, want the one the draft had", n)
 	}
 }
 
