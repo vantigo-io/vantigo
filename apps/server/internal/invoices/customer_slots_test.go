@@ -128,8 +128,12 @@ func TestCustomerReferences_ARepointRacingACreditNoteIssueNeverDeadlocks(t *test
 			mergeErr <- tx.Commit(ctx)
 		}()
 		// The merge is waiting on a document this issue holds before the
-		// issue goes on to lock the original.
-		waitForALockWaiter(t, h)
+		// issue goes on to lock the original. The handler's goroutine:
+		// t.Errorf, never a t.Fatal.
+		if err := awaitLockWaiter(h); err != nil {
+			t.Errorf("the merge: %v", err)
+			return err
+		}
 		return nil
 	})
 	res := issueWith(t, h, credit.ID, "")

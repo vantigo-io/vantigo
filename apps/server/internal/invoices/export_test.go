@@ -43,3 +43,18 @@ func SetAfterPDFRender(hook func(ctx context.Context, body []byte) []byte) func(
 	afterPDFRender = hook
 	return func() { afterPDFRender = nil }
 }
+
+// SetPDFModelBuilt installs a hook told, for every PDF laid out, its
+// document's id, its watermark ("" for none) and whether it carries a
+// number, and answers the function that removes it. A test using it does not
+// run in parallel: the hook is the package's.
+func SetPDFModelBuilt(hook func(invoiceID int64, watermark string, numbered bool)) func() {
+	pdfModelBuilt = func(id int64, m pdfModel) {
+		numbered := false
+		for _, row := range m.meta {
+			numbered = numbered || row[0] == labels["nb"].number || row[0] == labels["en"].number
+		}
+		hook(id, m.watermark, numbered)
+	}
+	return func() { pdfModelBuilt = nil }
+}

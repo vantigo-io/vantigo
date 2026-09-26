@@ -2487,10 +2487,11 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 }
 
 // TestInvoicesSchema_NamesNoColumnWithAReservedWord pins the rule of D2: no
-// column of the invoices schema is named with a word PostgreSQL reserves
-// (catcode R in pg_get_keywords()) — to, from, end, user, order and the rest —
-// so no query ever has to quote one, and no generated field is named after a
-// keyword.
+// column of the invoices schema is named with a word PostgreSQL reserves —
+// catcode R in pg_get_keywords() (to, from, end, user, order and the rest) or
+// T, reserved but allowed as a function or type name (left, join, natural,
+// similar …), which no more names a column unquoted — so no query ever has to
+// quote one, and no generated field is named after a keyword.
 func TestInvoicesSchema_NamesNoColumnWithAReservedWord(t *testing.T) {
 	url := testdb.URL(t)
 	migrateTo(t, url, 34)
@@ -2512,7 +2513,7 @@ func TestInvoicesSchema_NamesNoColumnWithAReservedWord(t *testing.T) {
 	rows, err := pool.Query(ctx, `
 		SELECT c.table_name || '.' || c.column_name
 		FROM information_schema.columns c
-		JOIN pg_get_keywords() k ON k.word = c.column_name AND k.catcode = 'R'
+		JOIN pg_get_keywords() k ON k.word = c.column_name AND k.catcode IN ('R', 'T')
 		WHERE c.table_schema = 'invoices'
 		ORDER BY 1`)
 	if err != nil {

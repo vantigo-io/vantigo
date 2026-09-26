@@ -128,42 +128,10 @@ func TestPDF_TheKeyAndTheHashAreSetTogether(t *testing.T) {
 	h.Exec(t, `UPDATE invoices.invoices SET pdf_object_key = 'documents/x.pdf', pdf_sha256 = repeat('a', 64) WHERE id = $1`, inv.ID)
 }
 
-// Two downloads racing for an unstored PDF store one hash and both stream the
-// same bytes.
-func TestPDF_RacingDownloadsStoreOneHash(t *testing.T) {
-	t.Parallel()
-	h := readyToIssue(t)
-	h.objects.failPuts(errors.New("offline"))
-	inv := issuedAcme(t, h)
-	h.objects.failPuts(nil)
-
-	bodies := make([][]byte, 4)
-	var wg sync.WaitGroup
-	for i := range bodies {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			res := download(t, h, inv.ID)
-			if res.Status != http.StatusOK {
-				t.Errorf("racing download = %d %s", res.Status, res.Body)
-				return
-			}
-			bodies[i] = res.Body
-		}()
-	}
-	wg.Wait()
-	stored := modtest.One[string](t, h.Harness, `SELECT pdf_sha256 FROM invoices.invoices WHERE id = $1`, inv.ID)
-	for i, b := range bodies {
-		if sha(b) != stored {
-			t.Errorf("download %d streamed %s, want the stored %s", i, sha(b), stored)
-		}
-	}
-}
-
-// The race proper. A render is reproducible, so the racers above store the
-// same bytes and cannot tell a loser that streams the winner's object from one
-// that streams its own. Here each racer's render differs, and all of them have
-// rendered before any records its hash: one hash wins, every racer streams the
+// Racing downloads of an unstored PDF. A render is reproducible, so plain
+// racers would store the same bytes and could not tell a loser that streams
+// the winner's object from one that streams its own. Here each racer's render
+// differs, and all of them have rendered before any records its hash: one hash wins, every racer streams the
 // winner's bytes, and each loser's object stays an orphan, never overwriting
 // another (D7). Not parallel: the hook is the package's.
 func TestPDF_ARaceLoserStreamsTheWinnersObject(t *testing.T) {
@@ -300,22 +268,35 @@ func TestPDF_ThePreview(t *testing.T) {
 	}
 }
 
-// The preview over HTTP is rendered as a preview. Its words cannot be read
-// back (the font is an embedded subset), but the page's content stream is
-// plain, and the watermark is the only text drawn in its red (200, 30, 30),
-// which gofpdf writes as "0.784 0.118 0.118 rg": the preview has it, an issued
-// document's download does not.
+// Only the preview carries the watermark, and only the issued document a
+// number (D4, D7) — asserted on the model each PDF is laid out from, not on
+// the content stream's bytes. Not parallel: the hook is the package's.
 func TestPDF_OnlyThePreviewCarriesTheWatermark(t *testing.T) {
-	t.Parallel()
-	const watermarkColour = "0.784 0.118 0.118 rg"
 	h := readyToIssue(t)
 	draft := createDraft(t, h, draftBody(customerAcme, line("Konsulenttime", 2, 1000, vat25)))
-	if res := creator(t, h).Do(http.MethodGet, previewPath(draft.ID), nil); res.Status != http.StatusOK || !strings.Contains(string(res.Body), watermarkColour) {
-		t.Errorf("preview = %d, watermarked %v; want 200 and the watermark", res.Status, strings.Contains(string(res.Body), watermarkColour))
+	type model struct {
+		watermark string
+		numbered  bool
 	}
-	inv := issued(t, h, draft.ID)
-	if res := download(t, h, inv.ID); res.Status != http.StatusOK || strings.Contains(string(res.Body), watermarkColour) {
-		t.Errorf("download = %d, watermarked %v; want 200 and no watermark", res.Status, strings.Contains(string(res.Body), watermarkColour))
+	var mu sync.Mutex
+	var models []model
+	defer invoices.SetPDFModelBuilt(func(id int64, watermark string, numbered bool) {
+		if id != draft.ID {
+			return
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		models = append(models, model{watermark, numbered})
+	})()
+
+	if res := creator(t, h).Do(http.MethodGet, previewPath(draft.ID), nil); res.Status != http.StatusOK {
+		t.Fatalf("preview = %d %s", res.Status, res.Body)
+	}
+	issued(t, h, draft.ID) // the issue stores its PDF, so it builds one model
+	mu.Lock()
+	defer mu.Unlock()
+	if want := []model{{"UTKAST — ikke et salgsdokument", false}, {"", true}}; !slices.Equal(models, want) {
+		t.Errorf("models = %+v, want the preview watermarked and unnumbered, then the issued document plain and numbered", models)
 	}
 }
 

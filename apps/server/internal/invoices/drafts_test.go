@@ -381,12 +381,14 @@ func TestDrafts_TheMoney(t *testing.T) {
 		t.Errorf("per rate = net %v vat %v gross %v, want 99.99, 25.00, 124.99", perRate.NetTotal, perRate.VatTotal, perRate.GrossTotal)
 	}
 
-	// A discount is an allowance of the rounded gross: 3 × 33.33 = 99.99, 10 %
-	// of it 9.999 → 10.00, net 89.99.
-	discounted := line("Rabattert", 3, 33.33, vat25)
+	// A discount is an allowance of the rounded gross, itself rounded, and the
+	// net is the difference (D5): 1 × 33.35 at 10 % is an allowance of
+	// round(3.335) = 3.34 and a net of 30.01. One rounding of the discounted
+	// amount, round(33.35 × 0.9 = 30.015), would give 30.02.
+	discounted := line("Rabattert", 1, 33.35, vat25)
 	discounted["discountPercent"] = 10
-	if inv := createDraft(t, h, draftBody(customerAcme, discounted)); inv.Lines[0].LineGross != 99.99 || inv.Lines[0].LineAllowance != 10 || inv.Lines[0].LineNet != 89.99 {
-		t.Errorf("discounted line = %+v, want 99.99 − 10.00 = 89.99", inv.Lines[0])
+	if inv := createDraft(t, h, draftBody(customerAcme, discounted)); inv.Lines[0].LineGross != 33.35 || inv.Lines[0].LineAllowance != 3.34 || inv.Lines[0].LineNet != 30.01 {
+		t.Errorf("discounted line = %+v, want 33.35 − 3.34 = 30.01", inv.Lines[0])
 	}
 
 	// Three rates, a 0 % category with its own row, no øre rounding.
@@ -431,12 +433,8 @@ func TestDrafts_TheMoney(t *testing.T) {
 			t.Errorf("%s = %d %s, want 400 on %s", bad.name, res.Status, res.Body, bad.field)
 		}
 	}
-	res := c.Do(http.MethodPost, invoicesPath, draftBody(customerAcme, line("Linje", 1, 100, vat25), line("Rabatt", 1, 100, vat25)))
-	if res.Status != http.StatusCreated {
-		t.Fatalf("two lines = %d", res.Status)
-	}
-	if p := problemOf(t, res); len(p.Errors["lines[1].unitPrice"]) != 0 {
-		t.Errorf("a valid second line refused: %v", p.Errors)
+	if res := c.Do(http.MethodPost, invoicesPath, draftBody(customerAcme, line("Linje", 1, 100, vat25), line("Rabatt", 1, 100, vat25))); res.Status != http.StatusCreated {
+		t.Fatalf("two valid lines = %d %s, want 201", res.Status, res.Body)
 	}
 
 	// The document bound: 101 lines at the line bound, at 25 %.

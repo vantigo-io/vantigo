@@ -1,6 +1,7 @@
 package invoices_test
 
 import (
+	"fmt"
 	"net/http"
 	"slices"
 	"testing"
@@ -87,8 +88,8 @@ func TestJournal_TheRangeInNumberOrder(t *testing.T) {
 	}
 	credit := j.Data[2]
 	if credit.Kind != "credit_note" || credit.NetTotal != -400 || credit.VatTotal != -100 || credit.GrossTotal != -500 ||
-		credit.CreditsNumber == nil || *credit.CreditsNumber != 1 || credit.VatSummaries[0].TaxableAmount != -400 {
-		t.Errorf("the credit note's row = %+v, want it signed negative and naming invoice 1", credit)
+		credit.CreditsNumber == nil || *credit.CreditsNumber != 1 || len(credit.VatSummaries) != 1 || credit.VatSummaries[0].TaxableAmount != -400 {
+		t.Errorf("the credit note's row = %+v, want it signed negative, naming invoice 1, with one VAT row of -400", credit)
 	}
 	if j.Totals.NetTotal != 800 || j.Totals.VatTotal != 150 || j.Totals.GrossTotal != 950 {
 		t.Errorf("totals = %+v, want 1000 + 200 − 400 net, 250 − 100 VAT", j.Totals)
@@ -118,8 +119,9 @@ func TestJournal_TheRangeInNumberOrder(t *testing.T) {
 
 // A gap planted behind the handlers' backs is reported: every number missing
 // between the issued document before the range's first and the range's last,
-// so a hole straddling two ranges is listed in full by the later one; a
-// number below the series start never is; at most 1000 are listed (D11).
+// so a hole straddling two ranges is listed in full by the later one; at most
+// 1000 are listed (D11). That a number below the series start never is a gap
+// is TestJournal_TheSeriesStartAndTheCounter's.
 func TestJournal_TheGapCheck(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -144,7 +146,11 @@ func TestJournal_TheGapCheck(t *testing.T) {
 	}
 	plantIssuedDocument(t, h, 1012, "2026-11-02")
 	if j := journal(t, h, "?from=2026-09-01&to=2026-11-30"); len(j.Gaps) != 1000 || !j.GapsTruncated || j.Gaps[0] != 3 {
-		t.Errorf("a long gap = %d listed, truncated %v, first %v; want 1000, true, 3", len(j.Gaps), j.GapsTruncated, j.Gaps[0])
+		first := "none"
+		if len(j.Gaps) > 0 {
+			first = fmt.Sprint(j.Gaps[0])
+		}
+		t.Errorf("a long gap = %d listed, truncated %v, first %s; want 1000, true, 3", len(j.Gaps), j.GapsTruncated, first)
 	}
 }
 
@@ -205,5 +211,15 @@ func TestJournal_TheSeriesStartAndTheCounter(t *testing.T) {
 	}
 	if j := journal(t, h, "?from=2026-10-01&to=2026-10-31"); !is(j.HighestIssued, 101) {
 		t.Errorf("an empty range's highestIssued = %v, want the series' 101", j.HighestIssued)
+	}
+}
+
+// The journal is read with invoices:access (D11); a caller without it is the
+// access layer's 403.
+func TestJournal_NeedsAccess(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	if res := h.SignIn(t).Do(http.MethodGet, journalPath+"?from=2026-09-01&to=2026-09-30", nil); res.Status != http.StatusForbidden {
+		t.Errorf("GET /journal without invoices:access = %d %s, want 403", res.Status, res.Body)
 	}
 }
