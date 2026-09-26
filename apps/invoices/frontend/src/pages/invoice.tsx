@@ -44,7 +44,7 @@ import {
   replaceInvoice,
 } from "../api/invoices";
 import { type InvoicesMeta, invoicesMetaQueryOptions } from "../api/meta";
-import { INVOICES_QUERY_KEY } from "../api/request";
+import { ApiConflictError, INVOICES_QUERY_KEY } from "../api/request";
 import { vatCodesQueryOptions } from "../api/vat-codes";
 import { CustomerPicker } from "../components/customer-picker";
 import { DocumentLink } from "../components/document-link";
@@ -71,6 +71,11 @@ export const InvoicePage = ({ invoiceId, canViewCustomers }: InvoicePageProps) =
   const { t, date } = useInvoiceFormat();
   const meta = useQuery(invoicesMetaQueryOptions());
   const document = useQuery(invoiceQueryOptions(invoiceId));
+  // The draft the unsaved edits were made on. While there are any, the editor
+  // keeps it rather than remounting on a newer revision a background refetch
+  // brings in (coming back from the Preview tab is enough): the person's edits
+  // are never thrown away unasked, and the editor says the draft changed.
+  const [editedFrom, setEditedFrom] = useState<InvoiceDocument | null>(null);
   if (meta.isError) {
     return (
       <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadMeta")}>
@@ -86,10 +91,14 @@ export const InvoicePage = ({ invoiceId, canViewCustomers }: InvoicePageProps) =
     );
   }
   if (!document.data || !meta.data) return <ContentSkeleton rows={6} rowHeight={48} />;
-  return document.data.status === "draft" ? (
+  const shown = editedFrom?.id === invoiceId ? editedFrom : document.data;
+  return shown.status === "draft" ? (
     <DraftEditor
-      key={document.data.revision}
-      draft={document.data}
+      key={shown.revision}
+      draft={shown}
+      latestRevision={document.data.revision}
+      dirty={shown === editedFrom}
+      onDirtyChange={(dirty) => setEditedFrom((current) => (dirty ? (current ?? shown) : null))}
       meta={meta.data}
       canViewCustomers={canViewCustomers}
     />
@@ -139,6 +148,11 @@ const nextKey = () => `line-${++lineKeys}`;
 
 interface DraftEditorProps {
   draft: InvoiceDocument;
+  /** The revision the server last answered: newer than the draft's when someone else saved meanwhile. */
+  latestRevision: number;
+  /** Whether there are unsaved edits; the page holds it, so a refetch does not remount the editor under them. */
+  dirty: boolean;
+  onDirtyChange: (dirty: boolean) => void;
   /** The codes a new line may take, today, the capabilities and whether a store exists. */
   meta: InvoicesMeta;
   canViewCustomers: boolean;
@@ -148,13 +162,22 @@ interface DraftEditorProps {
  * A draft's editor (D12): the buyer, the delivery — required before issue —
  * with an optional place of delivery, the references with a nudge when
  * "Deres ref." is empty, the terms, the lines with a VAT code each from the
- * codes in force today, live totals per rate by D5's rule, the draft's
- * warnings, and Save, Preview, Issue and Delete. A credit-note draft offers
+ * codes in force today, the totals per rate — the server's for the draft as
+ * saved, a live estimate by D5's rule while editing — the draft's warnings,
+ * and Save, Preview, Issue and Delete. A save refused as stale, or a newer
+ * revision seen while editing, says the draft changed and offers Reload. A credit-note draft offers
  * only what D8 allows: removing lines and lowering quantities and prices, never
  * past the original line's. A caller who may not create drafts sees it read-only;
  * without an object store nothing is issued, so Issue is not offered then.
  */
-const DraftEditor = ({ draft, meta, canViewCustomers }: DraftEditorProps) => {
+const DraftEditor = ({
+  draft,
+  latestRevision,
+  dirty,
+  onDirtyChange: setDirty,
+  meta,
+  canViewCustomers,
+}: DraftEditorProps) => {
   const { t, money, date } = useInvoiceFormat();
   const { vatCodes, today, storageAvailable } = meta;
   const { canCreate, canIssue } = meta.capabilities;
@@ -203,7 +226,11 @@ const DraftEditor = ({ draft, meta, canViewCustomers }: DraftEditorProps) => {
     })),
   );
   const [issuing, setIssuing] = useState(false);
-  const [dirty, setDirty] = useState(false);
+  // A save refused as stale (a 409 without a code), or a newer revision seen
+  // while editing: nothing to fix but look at the latest version.
+  const [conflict, setConflict] = useState(false);
+  const [reloadFailed, setReloadFailed] = useState(false);
+  const stale = conflict || latestRevision > draft.revision;
   const touch =
     <T,>(setter: (v: T) => void) =>
     (v: T) => {
@@ -224,7 +251,7 @@ const DraftEditor = ({ draft, meta, canViewCustomers }: DraftEditorProps) => {
     setDirty(true);
   };
 
-  // Live totals by D5's rule, as the server totals the draft: an invoice's
+  // The live estimate by D5's rule, as the server totals the draft: an invoice's
   // lines at the rate each code has today — offered or not, 0 % without a
   // period today — and a credit note's at its original lines' own.
   const originalLine = (line: EditorLine) => original.data?.lines.find((ol) => ol.id === line.creditsLineId);
@@ -241,7 +268,26 @@ const DraftEditor = ({ draft, meta, canViewCustomers }: DraftEditorProps) => {
   const amounts = lines.map((l) =>
     lineAmounts(numberOf(l.quantity), numberOf(l.unitPrice), numberOf(l.discountPercent)),
   );
-  const totals = documentTotals(lines.map((l, i) => ({ net: amounts[i].net, ...rateOf(l) })));
+  const live = documentTotals(lines.map((l, i) => ({ net: amounts[i].net, ...rateOf(l) })));
+  // What the page shows: the server's own figures for the draft as saved —
+  // the one authority, which on the credit note completing a full reversal
+  // takes what the original charged less what was reversed, where the live
+  // rule would round afresh — and the live figures, labelled an estimate,
+  // only while the person edits.
+  const totals = dirty
+    ? live
+    : {
+        rates: draft.vatSummaries.map((v) => ({
+          category: v.vatCategory,
+          ratePercent: v.ratePercent,
+          taxable: v.taxableAmount,
+          vat: v.vatAmount,
+        })),
+        net: draft.netTotal,
+        vat: draft.vatTotal,
+        gross: draft.grossTotal,
+      };
+  const lineNet = (i: number) => (dirty ? amounts[i].net : (draft.lines[i]?.lineNet ?? amounts[i].net));
 
   const input = (): InvoiceInput => ({
     customerId: customerId ?? draft.customerId,
@@ -280,11 +326,26 @@ const DraftEditor = ({ draft, meta, canViewCustomers }: DraftEditorProps) => {
     mutationFn: () => replaceInvoice(draft.id, input()),
     onSuccess: async (saved) => {
       queryClient.setQueryData(invoiceQueryOptions(draft.id).queryKey, saved);
+      // The saved revision replaces the edited one: the editor remounts on it.
+      setDirty(false);
       await queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY, "list"] });
       notifications.show({ color: "green", message: t("saved") });
     },
-    onError: (error) =>
-      notifications.show({ color: "red", title: t("couldNotSave"), message: refusalMessage(error, t, date) }),
+    onError: (error) => {
+      if (error instanceof ApiConflictError && !error.code) {
+        setConflict(true);
+        return;
+      }
+      notifications.show({ color: "red", title: t("couldNotSave"), message: refusalMessage(error, t, date) });
+    },
+  });
+  // Reload drops the unsaved edits for the latest revision, which the editor
+  // then remounts on.
+  const reload = useMutation({
+    mutationFn: () => queryClient.fetchQuery({ ...invoiceQueryOptions(draft.id), staleTime: 0 }),
+    onMutate: () => setReloadFailed(false),
+    onSuccess: () => setDirty(false),
+    onError: () => setReloadFailed(true),
   });
   const remove = useMutation({
     mutationFn: () => deleteInvoice(draft.id),
@@ -348,6 +409,29 @@ const DraftEditor = ({ draft, meta, canViewCustomers }: DraftEditorProps) => {
         }
       />
       <CreditsLink doc={draft} />
+      {stale && (
+        <Alert color="yellow" icon={<IconAlertCircle size={16} />} title={t("draftChangedTitle")}>
+          <Stack gap="xs">
+            <Text size="sm">{t("draftChangedMessage")}</Text>
+            {reloadFailed && (
+              <Text size="sm" c="red">
+                {t("couldNotReload")}
+              </Text>
+            )}
+            <Group justify="flex-end">
+              <Button
+                size="xs"
+                variant="light"
+                color="yellow"
+                loading={reload.isPending}
+                onClick={() => reload.mutate()}
+              >
+                {t("reload")}
+              </Button>
+            </Group>
+          </Stack>
+        </Alert>
+      )}
       {dirty && canIssue && (
         <Text size="sm" c="dimmed">
           {t("saveBeforeIssue")}
@@ -580,7 +664,7 @@ const DraftEditor = ({ draft, meta, canViewCustomers }: DraftEditorProps) => {
                       onChange={(v) => setLine(l.key, { vatCodeId: v === null ? null : Number(v) })}
                     />
                   </Table.Td>
-                  <Table.Td ta="right">{money(amounts[i].net, draft.currency)}</Table.Td>
+                  <Table.Td ta="right">{money(lineNet(i), draft.currency)}</Table.Td>
                   <Table.Td>
                     {editable && (
                       <Group gap={4} wrap="nowrap">
@@ -642,6 +726,11 @@ const DraftEditor = ({ draft, meta, canViewCustomers }: DraftEditorProps) => {
                 {t("addLine")}
               </Button>
             </Group>
+          )}
+          {dirty && (
+            <Text size="sm" c="dimmed">
+              {t("totalsEstimate")}
+            </Text>
           )}
           <Totals
             currency={draft.currency}

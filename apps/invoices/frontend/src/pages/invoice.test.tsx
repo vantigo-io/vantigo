@@ -383,22 +383,37 @@ describe("what the editor offers", () => {
     renderRoute("/invoices/1001");
 
     // Code 9 is deactivated but still has 25 % today: the server totals it at
-    // 25 % (and refuses it at issue), so the editor does too.
+    // 25 % (and refuses it at issue), so the editor's estimate does too.
     await waitFor(() =>
       expect(screen.getByRole("combobox", { name: "Line 1 VAT code" })).toHaveValue(
         "3G — Gammel sats (no longer offered)",
       ),
     );
+    await userEvent.type(screen.getByRole("textbox", { name: "Line 1 description" }), " endret");
+    expect(screen.getByText(/An estimate while you edit/)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId("vat-total")).toHaveTextContent("25.00"));
   });
 
   it("totals a line whose code has no rate today at 0 %, as the server does, with its warning", async () => {
     const lines = draft().lines.map((l) => ({ ...l, vatCodeId: 1 }));
-    server({ 1001: draft({ lines, warnings: ["vat_code_not_valid"] }) }, {}, { meta: { today: "2025-06-01" } });
+    // As the server answers it: the lines at 0 %, the draft warned.
+    const answered = draft({
+      lines,
+      warnings: ["vat_code_not_valid"],
+      vatSummaries: [
+        { vatCategory: "S", ratePercent: 0, safTCode: "3", taxableAmount: 99.99, vatAmount: 0, vatAmountNok: 0 },
+      ],
+      vatTotal: 0,
+      vatTotalNok: 0,
+      grossTotal: 99.99,
+    });
+    server({ 1001: answered }, {}, { meta: { today: "2025-06-01" } });
     renderRoute("/invoices/1001");
 
     expect(await screen.findByText(/has no rate today, so it counts at 0 %/)).toBeInTheDocument();
+    await userEvent.type(screen.getByRole("textbox", { name: "Line 1 description" }), " endret");
     await waitFor(() => expect(screen.getByTestId("vat-total")).toHaveTextContent("0.00"));
+    expect(screen.getByTestId("gross-total")).toHaveTextContent("99.99");
   });
 });
 
@@ -573,5 +588,88 @@ describe("the preview", () => {
     expect(await screen.findByText("The document is already issued.")).toBeInTheDocument();
     expect(tab.close).toHaveBeenCalled();
     expect(tab.location.href).toBe("");
+  });
+});
+
+describe("the totals the page shows", () => {
+  it("are the server's until an edit, then the editor's estimate", async () => {
+    // The last of three credit notes reversing lines of 33.33 at 25 %: the
+    // server takes what the original charged less what was reversed, 8.34,
+    // where round(33.33 × 25 %) alone is 8.33.
+    const last = creditDraft({
+      vatSummaries: [
+        { vatCategory: "S", ratePercent: 25, safTCode: "3", taxableAmount: 33.33, vatAmount: 8.34, vatAmountNok: 8.34 },
+      ],
+      vatTotal: 8.34,
+      vatTotalNok: 8.34,
+      grossTotal: 41.67,
+    });
+    server({ 1002: last, 1001: issued() });
+    renderRoute("/invoices/1002");
+
+    expect(await screen.findByTestId("vat-total")).toHaveTextContent("8.34");
+    expect(screen.getByTestId("gross-total")).toHaveTextContent("41.67");
+    expect(screen.queryByText(/An estimate while you edit/)).not.toBeInTheDocument();
+
+    await userEvent.type(screen.getByRole("textbox", { name: "Line 1 description" }), " retur");
+    expect(screen.getByText(/An estimate while you edit/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("vat-total")).toHaveTextContent("8.33"));
+  });
+});
+
+describe("a draft someone else saved meanwhile", () => {
+  it("says so on save, keeps the edits on screen, and reloads the latest on request", async () => {
+    const documents: Record<number, InvoiceDocument> = { 1001: draft() };
+    const fetchMock = server(documents);
+    renderRoute("/invoices/1001");
+
+    const description = await screen.findByRole("textbox", { name: "Line 2 description" });
+    await userEvent.clear(description);
+    await userEvent.type(description, "Mine endringer");
+    // Another user saves revision 4 in the meantime.
+    documents[1001] = draft({ revision: 4, yourReference: "PO-88" });
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("The draft changed")).toBeInTheDocument();
+    expect(screen.getByText(/Someone else saved this draft/)).toBeInTheDocument();
+    expect(screen.queryByText(/Invoice revision 4 is current/)).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Line 2 description" })).toHaveValue("Mine endringer");
+    expect(sent(fetchMock, "PUT").body.revision).toBe(3);
+
+    await userEvent.click(screen.getByRole("button", { name: "Reload" }));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Your reference" })).toHaveValue("PO-88"));
+    expect(screen.getByRole("textbox", { name: "Line 2 description" })).toHaveValue("Tredjedel 2");
+    expect(screen.queryByText("The draft changed")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("never throws unsaved edits away on a background refetch, and takes the latest when there are none", async () => {
+    const documents: Record<number, InvoiceDocument> = { 1001: draft() };
+    server(documents);
+    const { queryClient } = renderRoute("/invoices/1001");
+
+    const description = await screen.findByRole("textbox", { name: "Line 2 description" });
+    await userEvent.clear(description);
+    await userEvent.type(description, "Mine endringer");
+    documents[1001] = draft({ revision: 4, yourReference: "PO-88" });
+    // What coming back from the Preview tab does: a refetch on focus.
+    await queryClient.refetchQueries({ queryKey: ["invoices", "document", 1001] });
+    // It says so rather than swapping the draft under the person's hands.
+    expect(await screen.findByText("The draft changed")).toBeInTheDocument();
+
+    expect(screen.getByRole("textbox", { name: "Line 2 description" })).toHaveValue("Mine endringer");
+    expect(screen.getByRole("textbox", { name: "Your reference" })).toHaveValue("PO-77");
+  });
+
+  it("shows another's save at once while nothing is edited", async () => {
+    const documents: Record<number, InvoiceDocument> = { 1001: draft() };
+    server(documents);
+    const { queryClient } = renderRoute("/invoices/1001");
+
+    await screen.findByRole("textbox", { name: "Line 2 description" });
+    documents[1001] = draft({ revision: 4, yourReference: "PO-88" });
+    await queryClient.refetchQueries({ queryKey: ["invoices", "document", 1001] });
+
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Your reference" })).toHaveValue("PO-88"));
   });
 });

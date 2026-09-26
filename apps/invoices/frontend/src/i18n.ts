@@ -109,6 +109,12 @@ export const invoicesCatalog = {
     preview: "Preview",
     issue: "Issue",
     saveBeforeIssue: "Save the changes before issuing.",
+    totalsEstimate: "An estimate while you edit; the saved draft's totals are the server's.",
+    draftChangedTitle: "The draft changed",
+    draftChangedMessage:
+      "Someone else saved this draft. Reload to see the latest version; the changes made here are not saved.",
+    reload: "Reload",
+    couldNotReload: "Could not reload the draft",
     deleteDraftTitle: "Delete the draft?",
     deleteDraftBody: "The draft and its lines are deleted. Nothing was issued, so no number is lost.",
 
@@ -344,6 +350,12 @@ export const invoicesCatalog = {
     preview: "Forhåndsvis",
     issue: "Utsted",
     saveBeforeIssue: "Lagre endringene før du utsteder.",
+    totalsEstimate: "Et anslag mens du redigerer; det lagrede utkastets summer er serverens.",
+    draftChangedTitle: "Utkastet er endret",
+    draftChangedMessage:
+      "Noen andre har lagret dette utkastet. Last inn på nytt for å se den nyeste versjonen; endringene gjort her er ikke lagret.",
+    reload: "Last inn på nytt",
+    couldNotReload: "Kunne ikke laste utkastet på nytt",
     deleteDraftTitle: "Slette utkastet?",
     deleteDraftBody: "Utkastet og linjene slettes. Ingenting er utstedt, så ingen nummer går tapt.",
 
