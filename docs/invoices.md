@@ -117,11 +117,11 @@ depends on other documents runs after it. The directory is read before the trans
 and the object store is used after it; neither is ever called under a lock. The lock
 order is always document → settings → counter → original, and nothing takes them in
 another order: `PUT /settings` takes only the settings row, the rate operations the
-settings row and then the VAT code, and `PUT /vat-codes/{id}` only the code — no issue
-locks a code — and the merge holder locks the documents it re-points **newest first** before it writes
-them — a credit note's issue holds the credit note and then locks its older original,
-and an UPDATE alone could lock the original first, a deadlock. This is the module's one
-lock invariant, and every multi-row lock inside it keeps to it: **take locks in
+settings row and then the VAT code, and `PUT /vat-codes/{id}` only the code; no issue
+locks a code. The merge holder locks the documents it re-points **newest first** before
+it writes them: a credit note's issue holds the credit note and then locks its older
+original, and an UPDATE alone could lock the original first, a deadlock. This is the
+module's one lock invariant, and every multi-row lock inside it keeps to it: **take locks in
 descending id**, which is the same rule as "a credit note is always newer — holds a
 higher id — than the original it credits", stated twice; any future path that locks
 more than one row of `invoices.invoices` at once must keep both true.
