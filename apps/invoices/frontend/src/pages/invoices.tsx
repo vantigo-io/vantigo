@@ -102,7 +102,7 @@ export const InvoicesPage = ({ canViewCustomers, userDisplayName }: InvoicesPage
         {canViewCustomers && (
           <CustomerPicker
             label={t("customerFilter")}
-            anyOpen
+            anyStatus
             value={filters.customerId ?? null}
             onChange={(id) => set({ customerId: id ?? undefined })}
           />

@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { InvoiceDocument, InvoiceInput } from "../api/invoices";
 import { jsonResponse, sent } from "../test/api";
 import { stubFetch } from "../test/fetch";
-import { creditDraft, draft, issued, meta, vatCodes } from "../test/fixtures";
+import { creditDraft, draft, issued, listPage, meta, vatCodes } from "../test/fixtures";
 import { renderRoute } from "../test/route-tree";
 
 const path = (input: RequestInfo | URL) => String(input);
@@ -671,5 +671,89 @@ describe("a draft someone else saved meanwhile", () => {
     await queryClient.refetchQueries({ queryKey: ["invoices", "document", 1001] });
 
     await waitFor(() => expect(screen.getByRole("textbox", { name: "Your reference" })).toHaveValue("PO-88"));
+  });
+});
+
+describe("deleting a draft", () => {
+  // Invalidated while the page still showed it, the deleted draft was fetched
+  // again and the page flashed "Could not load the document" on the way out.
+  it("goes back to the list and never asks for the deleted draft again", async () => {
+    const documents: Record<number, InvoiceDocument> = { 1001: draft() };
+    const fetchMock = server(
+      documents,
+      {},
+      {
+        answers: {
+          "DELETE /api/v1/invoices/1001": () => {
+            delete documents[1001];
+            return new Response(null, { status: 204 });
+          },
+          "GET /api/v1/invoices?page=1": () => jsonResponse(200, listPage()),
+        },
+      },
+    );
+    const { router } = renderRoute("/invoices/1001");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/invoices"));
+    expect(await screen.findByText("Kari Nordmann")).toBeInTheDocument();
+
+    const document = ([url]: [RequestInfo | URL, RequestInit | undefined]) => path(url) === "/api/v1/invoices/1001";
+    const deletedAt = fetchMock.actualCalls.findIndex((call) => document(call) && call[1]?.method === "DELETE");
+    expect(deletedAt).toBeGreaterThanOrEqual(0);
+    const askedAgain = fetchMock.actualCalls
+      .slice(deletedAt + 1)
+      .filter((call) => document(call) && (call[1]?.method ?? "GET") === "GET");
+    expect(askedAgain).toEqual([]);
+    expect(screen.queryByText("Could not load the document")).not.toBeInTheDocument();
+  });
+});
+
+describe("unsaved edits", () => {
+  // The preview renders the draft as saved, so it is held back as Issue is.
+  it("hold the preview back, as they hold Issue, and say why", async () => {
+    server({ 1001: draft() });
+    renderRoute("/invoices/1001");
+
+    expect(await screen.findByRole("button", { name: "Preview" })).toBeEnabled();
+    await userEvent.type(screen.getByRole("textbox", { name: "Line 1 description" }), " endret");
+    expect(screen.getByRole("button", { name: "Preview" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Issue" })).toBeDisabled();
+    expect(screen.getByText("Save the changes before previewing or issuing.")).toBeInTheDocument();
+  });
+
+  // Typed past what the columns hold, a number reached 1e21 before the input
+  // clamped it, and the live totals crashed the editor in render.
+  it("never crash the editor on a number past what a line holds, which the inputs clamp", async () => {
+    server({ 1001: draft() });
+    renderRoute("/invoices/1001");
+
+    const quantity = await screen.findByRole("textbox", { name: "Line 1 quantity" });
+    await userEvent.clear(quantity);
+    await userEvent.type(quantity, "1000000000000000000000");
+    expect(screen.getByTestId("net-total")).toBeInTheDocument();
+    await userEvent.tab();
+    expect(quantity).toHaveValue("999999999.999");
+
+    const price = screen.getByRole("textbox", { name: "Line 1 unit price" });
+    await userEvent.clear(price);
+    await userEvent.type(price, "1000000000000000000000");
+    expect(screen.getByTestId("net-total")).toBeInTheDocument();
+    await userEvent.tab();
+    expect(price).toHaveValue("9999999999.9999");
+  });
+});
+
+describe("an issued document's lines", () => {
+  it("write a unit price with its four decimals", async () => {
+    const base = issued();
+    server({ 1001: issued({ lines: [{ ...base.lines[0], unitPrice: 33.3333 }, base.lines[1]] }) });
+    renderRoute("/invoices/1001");
+
+    const first = (await screen.findByText("Tredjedel 1")).closest("tr") as HTMLElement;
+    expect(within(first).getByText(/33\.3333/)).toBeInTheDocument();
+    const second = screen.getByText("Tredjedel 2").closest("tr") as HTMLElement;
+    expect(within(second).getAllByText(/33\.33$/).length).toBeGreaterThan(0);
   });
 });

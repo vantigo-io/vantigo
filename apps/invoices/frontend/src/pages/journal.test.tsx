@@ -112,4 +112,18 @@ describe("the invoice journal", () => {
     expect(screen.getByText("No gaps between 1000 and 1003.")).toBeInTheDocument();
     expect(screen.queryByText(/The counter is at/)).not.toBeInTheDocument();
   });
+
+  // The range starts from meta's today: without meta the journal is never
+  // asked for, and the page said nothing while its skeleton spun for ever.
+  it("says when the metadata cannot be loaded, rather than loading for ever", async () => {
+    stubFetch((input: RequestInfo | URL) =>
+      path(input) === "/api/v1/invoices/meta"
+        ? jsonResponse(500, { title: "Boom", status: 500 })
+        : jsonResponse(200, journal()),
+    );
+    renderWithProviders(<JournalPage />);
+
+    expect(await screen.findByText("Could not load Invoices")).toBeInTheDocument();
+    expect(screen.queryByTestId("content-skeleton")).not.toBeInTheDocument();
+  });
 });

@@ -65,7 +65,9 @@ describe("the invoice list", () => {
     expect(searches.map(([url]) => path(url))).toEqual(["/api/v1/invoices?page=1&search=Acme"]);
   });
 
-  it("filters by any customer not archived, a disabled one too", async () => {
+  // An archived customer's issued invoices are kept (bookkeeping act § 13),
+  // so the filter finds them too; only a new draft's buyer must be active.
+  it("filters by any customer, a disabled or an archived one too", async () => {
     const fetchMock = server();
     renderRoute("/invoices");
     await screen.findByText("Kari Nordmann");
@@ -77,7 +79,7 @@ describe("the invoice list", () => {
     const customers = fetchMock.actualCalls
       .map(([url]) => path(url))
       .filter((url) => url.startsWith("/api/v1/customers?"));
-    expect(customers.every((url) => !url.includes("status="))).toBe(true);
+    expect(customers.every((url) => !url.includes("status=") && url.includes("includeArchived=true"))).toBe(true);
   });
 
   it("offers New invoice only to a caller who may create drafts and pick a buyer", async () => {
@@ -98,6 +100,10 @@ describe("the invoice list", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Create the draft" }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe("/invoices/1010"));
+    // The buyer is picked among the active customers only; the gates refuse the rest.
+    const buyers = fetchMock.actualCalls.map(([url]) => path(url)).filter((url) => url.includes("status=active"));
+    expect(buyers.length).toBeGreaterThan(0);
+    expect(buyers.some((url) => url.includes("includeArchived"))).toBe(false);
     expect(sent(fetchMock, "POST").body).toEqual({
       customerId: 2001,
       lines: [],
