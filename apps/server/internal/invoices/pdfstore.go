@@ -461,13 +461,16 @@ func (s *server) renderPreview(ctx context.Context, q *store.Queries, inv store.
 	}
 	taxed := taxedLines(lines, codes)
 	summaries, totals, _ := summarize(taxed, big.NewRat(1, 1))
+	var squared []lineAmounts
 	if inv.Kind == kindCreditNote {
 		// As the draft's response does: a credit note reverses its
 		// original's treatment, with the original lines' snapshot rates,
-		// never today's, and a final full reversal squares the VAT (D8).
-		if taxed, summaries, totals, err = creditDraftSummary(ctx, q, inv, stored, lines); err != nil {
+		// never today's, and a final full reversal takes what is left (D8).
+		cd, err := readCreditDraft(ctx, q, inv, stored)
+		if err != nil {
 			return nil, err
 		}
+		taxed, summaries, totals, squared = cd.totals.taxed, cd.totals.rows, cd.totals.totals, cd.totals.amounts
 	}
 	var original *store.InvoicesInvoice
 	if inv.CreditsInvoiceID != nil {
@@ -483,6 +486,9 @@ func (s *server) renderPreview(ctx context.Context, q *store.Queries, inv store.
 	}
 	for i := range doc.lines {
 		doc.lines[i].rate = taxed[i].rate
+		if squared != nil {
+			doc.lines[i].net = squared[i].net
+		}
 	}
 	doc.summaries, doc.totals, doc.preview = summaries, totals, true
 	if previewRendered != nil {

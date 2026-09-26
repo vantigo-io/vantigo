@@ -64,6 +64,9 @@ type issuedLine struct {
 	id       int64
 	position int32
 	taxed    taxedLine
+	// amounts, when set, replace the line's own: a final credit note's line
+	// takes what its original line has left (creditBook.total).
+	amounts *lineAmounts
 }
 
 // issuePlan is what the checks decided the issue writes: the lines' VAT, and
@@ -73,7 +76,7 @@ type issuePlan struct {
 	lines []issuedLine
 	buyer *store.IssueDocumentParams
 	// summary, when the checks computed it, is the VAT the issue writes: a
-	// credit note's (creditSummary). nil means summarize over the lines.
+	// credit note's (creditBook.total). nil means summarize over the lines.
 	summary *planSummary
 }
 
@@ -339,6 +342,20 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 		// 6. The writes: the lines' snapshots, the summaries, and last the
 		// row itself — the trigger refuses line writes under an issued one.
 		for _, l := range plan.lines {
+			if a := l.amounts; a != nil {
+				p := store.SquareCreditLineParams{ID: l.id}
+				for _, c := range []struct {
+					dst *pgtype.Numeric
+					v   *big.Rat
+				}{{&p.LineGross, a.gross}, {&p.LineAllowance, a.allowance}, {&p.LineNet, a.net}} {
+					if *c.dst, err = numericFromRat(c.v, 2); err != nil {
+						return err
+					}
+				}
+				if err := txq.SquareCreditLine(ctx, p); err != nil {
+					return fmt.Errorf("invoices: square line %d: %w", l.id, err)
+				}
+			}
 			rate, err := numericFromRat(l.taxed.rate, 2)
 			if err != nil {
 				return err

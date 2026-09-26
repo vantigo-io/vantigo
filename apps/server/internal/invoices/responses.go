@@ -237,7 +237,7 @@ func (s *server) invoiceResponse(ctx context.Context, q *store.Queries, inv stor
 		if inv.Kind == kindInvoice && issuedLate(inv.IssueDate.Time, deliveryEndOf(inv)) {
 			resp.Warnings = append(resp.Warnings, warningIssuedLate)
 		}
-		return resp, creditLinks(ctx, q, inv, &resp)
+		return resp, creditLinks(ctx, q, inv, &resp, nil)
 	}
 
 	lines, err := storedDraftLines(stored)
@@ -246,9 +246,18 @@ func (s *server) invoiceResponse(ctx context.Context, q *store.Queries, inv stor
 	}
 	var rows []vatSummary
 	var totals documentTotals
+	var credit *creditDraft
 	if inv.Kind == kindCreditNote {
-		if _, rows, totals, err = creditDraftSummary(ctx, q, inv, stored, lines); err != nil {
+		// Totalled as its issue will total it (creditBook.total): a final
+		// note's lines show what their original lines have left.
+		cd, err := readCreditDraft(ctx, q, inv, stored)
+		if err != nil {
 			return gen.InvoicesInvoiceResponse{}, err
+		}
+		credit, rows, totals = &cd, cd.totals.rows, cd.totals.totals
+		for i, a := range cd.totals.amounts {
+			resp.Lines[i].LineGross, resp.Lines[i].LineAllowance = floatFromRat(a.gross, 2), floatFromRat(a.allowance, 2)
+			resp.Lines[i].LineNet = floatFromRat(a.net, 2)
 		}
 	} else {
 		codes, err := vatCodesOn(ctx, q, pgDate(today))
@@ -285,5 +294,5 @@ func (s *server) invoiceResponse(ctx context.Context, q *store.Queries, inv stor
 		allowed = append(allowed, wireDate(d))
 	}
 	resp.AllowedIssueDates = &allowed
-	return resp, creditLinks(ctx, q, inv, &resp)
+	return resp, creditLinks(ctx, q, inv, &resp, credit)
 }

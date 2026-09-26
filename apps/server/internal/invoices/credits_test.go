@@ -451,3 +451,166 @@ func TestCredit_APartialCreditRoundsAsAnyDocument(t *testing.T) {
 		t.Errorf("the original = credited %v uncredited %v, want 239.89 and 0", *after.CreditedAmount, *after.UncreditedAmount)
 	}
 }
+
+// creditEach credits the original's first line one piece at a time — each of
+// quantities its own credit note, issued — and answers the credit notes.
+func creditEach(t *testing.T, h *harness, original int64, quantities ...float64) []invoiceJSON {
+	t.Helper()
+	var out []invoiceJSON
+	for _, q := range quantities {
+		out = append(out, issued(t, h, creditUnits(t, h, original, q).ID))
+	}
+	return out
+}
+
+// The final credit note takes each line's remaining net (fix round 2): a
+// line's nets, rounded credit by credit, need not add up to its own — 3 ×
+// 33.33 at 5 % off is 94.99 net, and one unit is 31.66 — so the credit note
+// that credits a line's last quantity takes what the line has left, 31.67, and
+// the VAT that is left, and the invoice ends credited in full.
+func TestCredit_TheFinalNoteTakesEachLinesRemainingNet(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	disc := line("Matvare", 3, 33.33, vat15)
+	disc["discountPercent"] = 5
+	original := issued(t, h, createDraft(t, h, draftBody(customerAcme, disc)).ID)
+	if original.NetTotal != 94.99 || original.VatTotal != 14.25 || original.GrossTotal != 109.24 {
+		t.Fatalf("the original = %v + %v = %v, want 94.99 + 14.25 = 109.24, or the fixture proves nothing", original.NetTotal, original.VatTotal, original.GrossTotal)
+	}
+	for i, c := range creditEach(t, h, original.ID, 1, 1) {
+		if c.NetTotal != 31.66 || c.VatTotal != 4.75 {
+			t.Errorf("unit %d's credit = net %v VAT %v, want 31.66 and 4.75: a partial credit rounds on its own", i+1, c.NetTotal, c.VatTotal)
+		}
+	}
+	last := creditUnits(t, h, original.ID, 1)
+	if l := last.Lines[0]; l.LineNet != 31.67 || l.LineGross != 33.33 || l.LineAllowance != 1.66 || last.NetTotal != 31.67 || last.VatTotal != 4.75 || len(last.Warnings) != 0 {
+		t.Errorf("the last unit's draft = line %+v, totals %v/%v, warnings %v; want the line's remaining 31.67, VAT 4.75, no warning", l, last.NetTotal, last.VatTotal, last.Warnings)
+	}
+	credit := issued(t, h, last.ID)
+	if l := credit.Lines[0]; l.LineNet != 31.67 || credit.GrossTotal != 36.42 {
+		t.Errorf("the last unit's credit = line net %v gross %v, want 31.67 and 36.42", l.LineNet, credit.GrossTotal)
+	}
+	if after := getInvoice(t, h, original.ID); *after.UncreditedAmount != 0 || *after.CreditedAmount != 109.24 {
+		t.Errorf("the original = credited %v uncredited %v, want 109.24 and 0", *after.CreditedAmount, *after.UncreditedAmount)
+	}
+}
+
+// A quantity credited in thirds (fix round 2): 1 × 0.25 at 25 % is 0.25 +
+// 0.06; a third, 0.333 of it, rounds to 0.08 + 0.02 twice, and the last,
+// 0.334, takes the 0.09 and the 0.02 that are left.
+func TestCredit_AQuantityCreditedInThirds(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	original := issued(t, h, createDraft(t, h, draftBody(customerAcme, line("Småting", 1, 0.25, vat25))).ID)
+	if original.GrossTotal != 0.31 {
+		t.Fatalf("the original's gross = %v, want 0.31", original.GrossTotal)
+	}
+	notes := creditEach(t, h, original.ID, 0.333, 0.333, 0.334)
+	for i, want := range []struct{ net, vat float64 }{{0.08, 0.02}, {0.08, 0.02}, {0.09, 0.02}} {
+		if c := notes[i]; c.NetTotal != want.net || c.VatTotal != want.vat || c.Lines[0].LineNet != want.net {
+			t.Errorf("third %d = line %v, net %v VAT %v; want %v and %v", i+1, c.Lines[0].LineNet, c.NetTotal, c.VatTotal, want.net, want.vat)
+		}
+	}
+	if after := getInvoice(t, h, original.ID); *after.UncreditedAmount != 0 {
+		t.Errorf("the original has %v left, want 0", *after.UncreditedAmount)
+	}
+}
+
+// A one-shot full reversal of an invoice at several rates is the original, row
+// for row, with no remainder row: nothing was credited before it.
+func TestCredit_AOneShotFullReversalIsTheOriginal(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	disc := line("Matvare", 3, 33.33, vat15)
+	disc["discountPercent"] = 5
+	original := issued(t, h, createDraft(t, h, draftBody(customerAcme, line("Konsulenttime", 1.5, 999.99, vat25), disc, line("Kurs", 1, 2000, vatExempt))).ID)
+	credit := issued(t, h, creditDraft(t, h, original.ID).ID)
+	if !sameSummaries(credit.VatSummaries, original.VatSummaries) || credit.NetTotal != original.NetTotal ||
+		credit.VatTotal != original.VatTotal || credit.GrossTotal != original.GrossTotal {
+		t.Errorf("the reversal = %v %v %v %+v, want the original's %v %v %v %+v", credit.NetTotal, credit.VatTotal, credit.GrossTotal, credit.VatSummaries,
+			original.NetTotal, original.VatTotal, original.GrossTotal, original.VatSummaries)
+	}
+	for i, l := range credit.Lines {
+		if l.LineNet != original.Lines[i].LineNet || l.LineGross != original.Lines[i].LineGross {
+			t.Errorf("line %d = %v/%v, want the original's %v/%v", i+1, l.LineGross, l.LineNet, original.Lines[i].LineGross, original.Lines[i].LineNet)
+		}
+	}
+}
+
+// A foreign document's final credit note takes the NOK VAT that is left too:
+// at 10.0007 NOK per unit, 9.99 of VAT is 99.91 NOK and the first unit's 5.00
+// is 50.00 NOK, so the last unit's 4.99 is 49.91 NOK, not its own 49.90.
+func TestCredit_AForeignFinalNoteSquaresTheNOK(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	draft := createDraft(t, h, draftBody(customerAcme, line("Matvare", 2, 33.30, vat15)))
+	h.Exec(t, `UPDATE invoices.invoices SET currency = 'EUR', exchange_rate = 10.0007 WHERE id = $1`, draft.ID)
+	original := issued(t, h, draft.ID)
+	if original.VatTotalNok != 99.91 {
+		t.Fatalf("the original's NOK VAT = %v, want 99.91", original.VatTotalNok)
+	}
+	notes := creditEach(t, h, original.ID, 1, 1)
+	if notes[0].VatTotalNok != 50 || notes[1].VatTotal != 4.99 || notes[1].VatTotalNok != 49.91 || notes[1].VatSummaries[0].VatAmountNok != 49.91 {
+		t.Errorf("the NOK VAT = %v then %v (%v), want 50.00 then the 49.91 left", notes[0].VatTotalNok, notes[1].VatTotalNok, notes[1].VatSummaries)
+	}
+}
+
+// A line credited to its last quantity by earlier notes may still have an øre
+// of net left, and the final note need not carry it: the note that credits
+// the invoice's last quantity squares that row too, on the øre, so nothing is
+// stranded (fix round 2).
+func TestCredit_AnOreLeftOnALineTheFinalNoteDoesNotCarry(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	disc := line("Matvare", 3, 33.33, vat15)
+	disc["discountPercent"] = 5
+	original := issued(t, h, createDraft(t, h, draftBody(customerAcme, disc, line("Frakt", 1, 100, vat25))).ID)
+	creditEach(t, h, original.ID, 1, 1, 1) // 3 × 31.66 = 94.98 of 94.99
+	last := creditDraft(t, h, original.ID)
+	credit := issued(t, h, saveCredit(t, h, last, creditBody(last, creditLine(last.Lines[1]))).ID)
+	want := []summaryJSON{
+		{VatCategory: "S", RatePercent: 25, SafTCode: "3", TaxableAmount: 100, VatAmount: 25, VatAmountNok: 25},
+		{VatCategory: "S", RatePercent: 15, SafTCode: "31", TaxableAmount: 0.01, VatAmount: 0, VatAmountNok: 0},
+	}
+	if !slices.Equal(credit.VatSummaries, want) || credit.GrossTotal != 125.01 {
+		t.Errorf("the freight credit = gross %v summaries %+v, want 125.01 and %+v", credit.GrossTotal, credit.VatSummaries, want)
+	}
+	if after := getInvoice(t, h, original.ID); *after.UncreditedAmount != 0 {
+		t.Errorf("the original has %v left, want 0", *after.UncreditedAmount)
+	}
+}
+
+// sameSummaries compares VAT summary rows by value, the exemption reason's
+// text included.
+func sameSummaries(a, b []summaryJSON) bool {
+	return slices.EqualFunc(a, b, func(x, y summaryJSON) bool {
+		rx, ry := x.ExemptionReason, y.ExemptionReason
+		x.ExemptionReason, y.ExemptionReason = nil, nil
+		return x == y && (rx == nil) == (ry == nil) && (rx == nil || *rx == *ry)
+	})
+}
+
+// A price reduction is never squared as rounding: 2 × 100 reduced by 90 on one
+// unit (a credit of 1 × 10), then its other unit returned, credits 100 for
+// that unit — not the 190 the line has left. The quantity is credited in
+// full, but the parts were a choice, not a rounding (fix round 2).
+func TestCredit_APriceReductionIsNeverSquared(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	original := issued(t, h, createDraft(t, h, draftBody(customerAcme, line("Vare", 2, 100, vat25))).ID)
+	c := creditDraft(t, h, original.ID)
+	reduced := creditLine(c.Lines[0])
+	reduced["quantity"], reduced["unitPrice"] = 1, 10
+	issued(t, h, saveCredit(t, h, c, creditBody(c, reduced)).ID)
+
+	returned := creditUnits(t, h, original.ID, 1)
+	if returned.Lines[0].LineNet != 100 || returned.GrossTotal != 125 {
+		t.Errorf("the returned unit's draft = line %v gross %v, want 100 and 125", returned.Lines[0].LineNet, returned.GrossTotal)
+	}
+	if credit := issued(t, h, returned.ID); credit.NetTotal != 100 || credit.VatTotal != 25 {
+		t.Errorf("the returned unit's credit = %v + %v, want 100 + 25", credit.NetTotal, credit.VatTotal)
+	}
+	if after := getInvoice(t, h, original.ID); *after.UncreditedAmount != 112.5 {
+		t.Errorf("the original has %v left, want 112.50: the reduction and one unit are credited", *after.UncreditedAmount)
+	}
+}
