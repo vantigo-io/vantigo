@@ -52,24 +52,43 @@ SELECT coalesce(sum(gross_total), 0)::numeric(14,2) AS credited FROM invoices.in
 WHERE credits_invoice_id = @original_id AND status = 'issued';
 
 -- name: CreditedPerLine :many
--- CreditedPerLine is, per line of an invoice, the quantity and the net its
--- issued credit notes credit: what the per-line cap is judged against (D8).
+-- CreditedPerLine is, per line of an invoice, what its issued credit notes
+-- credit: the quantity and the net the per-line cap is judged against (D8),
+-- the gross and the allowance a final credit note's line takes the rest of,
+-- and whether every one of them was a return at the line's own price and
+-- discount — only then are the rest's øre rounding, and the final note's.
 SELECT l.credits_line_id::bigint AS line_id,
        sum(l.quantity)::numeric(14,3) AS quantity,
-       sum(l.line_net)::numeric(14,2) AS net
+       sum(l.line_net)::numeric(14,2) AS net,
+       sum(l.line_gross)::numeric(14,2) AS gross,
+       sum(l.line_allowance)::numeric(14,2) AS allowance,
+       bool_and(l.unit_price = o.unit_price AND l.discount_percent = o.discount_percent)::boolean AS returns
 FROM invoices.lines l
 JOIN invoices.invoices c ON c.id = l.invoice_id
+JOIN invoices.lines o ON o.id = l.credits_line_id
 WHERE c.credits_invoice_id = @original_id AND c.status = 'issued' AND l.credits_line_id IS NOT NULL
 GROUP BY l.credits_line_id;
 
 -- name: CreditedVatPerRate :many
--- CreditedVatPerRate is, per (category, rate) row of an invoice, the VAT its
--- issued credit notes reversed: what a final full reversal takes from the
--- original's row, so the credits sum to what was charged, øre for øre (D8).
+-- CreditedVatPerRate is, per (category, rate) row of an invoice, the taxable
+-- amount and the VAT its issued credit notes reversed: what a final credit
+-- note takes from the original's row, so the credits sum to what was charged,
+-- øre for øre (D8).
 SELECT s.vat_category, s.rate_percent,
+       sum(s.taxable_amount)::numeric(14,2) AS taxable,
        sum(s.vat_amount)::numeric(14,2) AS vat,
        sum(s.vat_amount_nok)::numeric(14,2) AS vat_nok
 FROM invoices.vat_summaries s
 JOIN invoices.invoices c ON c.id = s.invoice_id
 WHERE c.credits_invoice_id = @original_id AND c.status = 'issued'
 GROUP BY s.vat_category, s.rate_percent;
+
+-- name: SquareCreditLine :exec
+-- SquareCreditLine gives a final credit note's line what its original line has
+-- left — gross, allowance and net — in place of its own rounding (D8). It runs
+-- while the credit note is still a draft; the trigger refuses it afterwards.
+UPDATE invoices.lines SET
+    line_gross = @line_gross,
+    line_allowance = @line_allowance,
+    line_net = @line_net
+WHERE id = @id;
