@@ -8,8 +8,8 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 )
 
-// This module's refusals follow the codebase's one rule: 404 for what the
-// caller may not see (a bare body), 403 for what is not theirs to do (the
+// This module's refusals follow the codebase's one rule: 404 for what does
+// not exist (a bare body), 403 for what is not theirs to do (the
 // access layer's own body), 400 naming the field (apicommon.ValidationProblem)
 // and 409 for a rule about the state of things — the settings, the series, a
 // document — carrying the rule's code (InvoicesConflictProblem), the way the

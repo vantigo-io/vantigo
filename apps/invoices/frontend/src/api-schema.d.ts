@@ -168,7 +168,7 @@ export interface paths {
         get: operations["getInvoicesById"];
         /**
          * Replace a draft
-         * @description Replaces a draft whole, with revision (D4). Only a draft is edited (409 invoice_issued otherwise).
+         * @description Replaces a draft whole, with revision (D4). Only a draft is edited (409 invoice_issued otherwise). A credit-note draft changes only what D8 allows — lines removed, a quantity or a unit price lowered, a description, the note and the internal note — and anything else — another customer, currency, delivery, place of delivery or reference, payment terms, a line's VAT code or unit changed, a quantity or unit price raised, a discount lowered, a line added or one credited twice — is a 400 on the field; its revision is checked first, so a stale copy is the revision 409.
          */
         put: operations["putInvoicesById"];
         post?: never;
@@ -574,7 +574,7 @@ export interface components {
             revision?: number;
             yourReference?: string;
         };
-        /** @description One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed with the rates in force today — the issue resolves them again for the issue date — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. */
+        /** @description One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. */
         InvoicesInvoiceResponse: {
             allowedIssueDates?: string[];
             buyer?: components["schemas"]["InvoicesBuyer"];
@@ -1594,6 +1594,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InvoicesInvoiceResponse"];
+                };
+            };
+            /** @description Bad Request — the body did not decode (none at all, or an issueDate that is not a calendar date). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
             /** @description Unauthorized */

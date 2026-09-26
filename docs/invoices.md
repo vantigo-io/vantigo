@@ -147,22 +147,38 @@ caps. It has no due date and no payment block. Refusals: `invoice_draft`,
 `credit_note_not_creditable`, `invoice_fully_credited`. The cap is common practice, not
 law.
 
-**The final credit note reconciles the øre.** VAT on a credit note is rounded the same
-way as on any document — per (category, rate) row, half away from zero — so a partial
-note's own rounding does not in general sum back to the original's. The **final**
-credit note — the one that, counting the credit notes already issued against the
-invoice, credits every original line's remaining quantity in full — is computed
-differently to close that gap: each line's net is the line's *remaining* net (the
-original net, less what the issued credit notes have already reversed on that line),
-and each VAT row is the original's VAT on that row, less what those credit notes have
-already reversed on it — so the full set of credit notes against an invoice always sums
-to exactly the original, øre for øre. When an earlier partial note over-reversed a rate
-— its own rounding took more than that row's fair share — the final note carries a row
-at that rate with a taxable amount of 0.00 and the small negative VAT remainder; it
-prints on the PDF as it is, and the EHF phase (2) must be able to carry a negative VAT
-row too. A credit-note draft's totals as stored in the list can lag an øre behind once a
-sibling credit note against the same invoice issues and changes what "remaining" means;
-the draft's own page always recomputes them fresh.
+**Squaring the øre, per line.** A credit note rounds as any document does: each line on
+its own quantity and price, the VAT per (category, rate) row on the sum of its lines'
+nets, half away from zero. So partial notes' roundings do not in general sum back to
+what was charged — three returns of one unit of a 3 × 31.66 line are not 94.99 until
+something squares them. Squaring is **per line**: the credit that returns a line's last
+unit — with the issued credit notes before it, the line's whole quantity credited, and
+every credit of that line, theirs and this one, a return at the line's own unit price
+and discount — takes that line's *remaining* gross, allowance and net (the original's
+less what the issued notes credited on it), whatever the note's other lines do. The
+**final** credit note — every line of the invoice returned in full that way, each by an
+earlier note's last return or by one of this note's — also takes each VAT row's VAT and
+NOK VAT as charged less what the issued notes reversed on that row; when an earlier
+partial note over-reversed a rate — its own rounding took more than that row's fair
+share — the final note carries a row at that rate with a taxable amount of 0.00 and the
+small negative VAT remainder. It prints on the PDF as it is, and the EHF phase (2) must
+be able to carry a negative VAT row too. A price reduction ("prisavslag") or a higher
+discount is never squared: its credit was a choice, not a rounding, and squaring after
+it would credit the reduction again. Whatever is squared, every note's line nets sum to
+its net total (EN 16931 BR-CO-10), so no credit note is one an EHF could not carry.
+
+**A price reduction uses up the line's quantity.** The per-line cap counts quantity as
+well as net, so a prisavslag credit of a line's full quantity at a lower price uses the
+line's whole quantity cap: a later return of goods on that line is refused
+`credit_exceeds_line`. The workaround is to return the goods first and then credit the
+reduction only on the units that are kept, so the cap still has room for both. The cap is
+kept as it is because it is what stops one line at 25 % being reversed twice while a 0 %
+line is never credited, which would misstate the VAT return per SAF-T code.
+
+**A draft's stored totals can lag.** A credit-note draft's totals as stored — what the
+list and an invoice's `creditNotes` show — can lag an øre behind once a sibling credit
+note against the same invoice issues and changes what a line has left; the draft's own
+page, its preview and its issue always total it afresh.
 
 ## The PDF
 

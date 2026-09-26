@@ -324,6 +324,23 @@ func TestIssue_ThePostalCodeIsNorwaysRule(t *testing.T) {
 	}
 }
 
+// A body that does not decode — none at all, or an issueDate that is no
+// calendar day — is the strict handler's 400, declared in the contract, and
+// takes no number.
+func TestIssue_ABodyThatDoesNotDecodeIs400(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	draft := createDraft(t, h, draftBody(customerAcme, line("A", 1, 100, vat25)))
+	for name, body := range map[string]any{"no body": nil, "February 30": map[string]any{"issueDate": "2026-02-30"}} {
+		if res := issuer(t, h).Do(http.MethodPost, issuePath(draft.ID), body); res.Status != http.StatusBadRequest {
+			t.Errorf("%s = %d %s, want 400", name, res.Status, res.Body)
+		}
+	}
+	if n := counterNext(t, h); n != 0 {
+		t.Errorf("counter = %d, want no number taken", n)
+	}
+}
+
 // A seller outside the VAT register issues only O lines (research §2.1).
 func TestIssue_ANonRegisteredSeller(t *testing.T) {
 	t.Parallel()

@@ -16,7 +16,8 @@ import (
 // This file renders a document for the wire (D4): every column in camelCase,
 // its lines, its VAT summaries and its warnings. An issued document is
 // rendered from its own rows and snapshots only; a draft's summaries and
-// totals are computed afresh with the rates in force today.
+// totals are computed afresh — an invoice draft's with the rates in force
+// today, a credit-note draft's at its original lines' snapshot rates.
 
 // The warnings a document carries (D4, D6, D8). They are never refusals.
 const (

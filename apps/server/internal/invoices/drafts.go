@@ -20,7 +20,8 @@ import (
 // a draft, and never again once issued. A draft is not a salgsdokument — it
 // has no number, and its totals are computed with today's rates only so the
 // person editing it sees them; the issue computes them again for the issue
-// date.
+// date. A credit-note draft is the exception: it is totalled at its original
+// lines' snapshot rates (credits.go).
 
 // The document's kinds and statuses, as the columns hold them.
 const (
