@@ -44,6 +44,7 @@ import { Route as ExpensesReimbursementsRouteImport } from './routes/expenses/re
 import { Route as ExpensesSettingsRouteImport } from './routes/expenses/settings'
 import { Route as InvitationsAcceptRouteImport } from './routes/invitations/accept'
 import { Route as InvoicesIndexRouteImport } from './routes/invoices/index'
+import { Route as InvoicesInvoiceIdRouteImport } from './routes/invoices/$invoiceId'
 import { Route as ProductsIndexRouteImport } from './routes/products/index'
 import { Route as ProductsProductIdRouteImport } from './routes/products/$productId'
 import { Route as ProductsCategoriesRouteImport } from './routes/products/categories'
@@ -255,6 +256,11 @@ const InvitationsAcceptRoute = InvitationsAcceptRouteImport.update({
 const InvoicesIndexRoute = InvoicesIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => InvoicesRoute,
+} as any)
+const InvoicesInvoiceIdRoute = InvoicesInvoiceIdRouteImport.update({
+  id: '/$invoiceId',
+  path: '/$invoiceId',
   getParentRoute: () => InvoicesRoute,
 } as any)
 const ProductsIndexRoute = ProductsIndexRouteImport.update({
@@ -477,6 +483,7 @@ export interface FileRoutesByFullPath {
   '/expenses/reimbursements': typeof ExpensesReimbursementsRoute
   '/expenses/settings': typeof ExpensesSettingsRoute
   '/invitations/accept': typeof InvitationsAcceptRoute
+  '/invoices/$invoiceId': typeof InvoicesInvoiceIdRoute
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
   '/products/tax-categories': typeof ProductsTaxCategoriesRoute
@@ -538,6 +545,7 @@ export interface FileRoutesByTo {
   '/expenses/reimbursements': typeof ExpensesReimbursementsRoute
   '/expenses/settings': typeof ExpensesSettingsRoute
   '/invitations/accept': typeof InvitationsAcceptRoute
+  '/invoices/$invoiceId': typeof InvoicesInvoiceIdRoute
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
   '/products/tax-categories': typeof ProductsTaxCategoriesRoute
@@ -611,6 +619,7 @@ export interface FileRoutesById {
   '/expenses/reimbursements': typeof ExpensesReimbursementsRoute
   '/expenses/settings': typeof ExpensesSettingsRoute
   '/invitations/accept': typeof InvitationsAcceptRoute
+  '/invoices/$invoiceId': typeof InvoicesInvoiceIdRoute
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
   '/products/tax-categories': typeof ProductsTaxCategoriesRoute
@@ -686,6 +695,7 @@ export interface FileRouteTypes {
     | '/expenses/reimbursements'
     | '/expenses/settings'
     | '/invitations/accept'
+    | '/invoices/$invoiceId'
     | '/products/$productId'
     | '/products/categories'
     | '/products/tax-categories'
@@ -747,6 +757,7 @@ export interface FileRouteTypes {
     | '/expenses/reimbursements'
     | '/expenses/settings'
     | '/invitations/accept'
+    | '/invoices/$invoiceId'
     | '/products/$productId'
     | '/products/categories'
     | '/products/tax-categories'
@@ -819,6 +830,7 @@ export interface FileRouteTypes {
     | '/expenses/reimbursements'
     | '/expenses/settings'
     | '/invitations/accept'
+    | '/invoices/$invoiceId'
     | '/products/$productId'
     | '/products/categories'
     | '/products/tax-categories'
@@ -1132,6 +1144,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/invoices/'
       preLoaderRoute: typeof InvoicesIndexRouteImport
+      parentRoute: typeof InvoicesRoute
+    }
+    '/invoices/$invoiceId': {
+      id: '/invoices/$invoiceId'
+      path: '/$invoiceId'
+      fullPath: '/invoices/$invoiceId'
+      preLoaderRoute: typeof InvoicesInvoiceIdRouteImport
       parentRoute: typeof InvoicesRoute
     }
     '/products/': {
@@ -1489,10 +1508,12 @@ const ExpensesRouteWithChildren = ExpensesRoute._addFileChildren(
 )
 
 interface InvoicesRouteChildren {
+  InvoicesInvoiceIdRoute: typeof InvoicesInvoiceIdRoute
   InvoicesIndexRoute: typeof InvoicesIndexRoute
 }
 
 const InvoicesRouteChildren: InvoicesRouteChildren = {
+  InvoicesInvoiceIdRoute: InvoicesInvoiceIdRoute,
   InvoicesIndexRoute: InvoicesIndexRoute,
 }
 

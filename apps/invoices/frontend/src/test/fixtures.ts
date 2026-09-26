@@ -1,0 +1,264 @@
+import type { InvoiceDocument, InvoiceList } from "../api/invoices";
+import type { InvoicesMeta } from "../api/meta";
+import type { VatCode } from "../api/vat-codes";
+
+/**
+ * GET /meta as the server sends it — a wire literal: a complete seller, the
+ * caller may create and issue, and today is 2026-09-12 in Oslo.
+ */
+export const meta = (overrides: Partial<InvoicesMeta> = {}): InvoicesMeta => ({
+  currency: "NOK",
+  defaultPaymentTermsDays: 14,
+  sellerComplete: true,
+  missingSellerFields: [],
+  anythingIssued: true,
+  seriesStart: 1,
+  storageAvailable: true,
+  today: "2026-09-12",
+  vatCodes: [
+    { id: 1, code: "3", name: "Utgående mva 25 %", safTCode: "3", ehfCategory: "S", ratePercent: 25 },
+    { id: 2, code: "31", name: "Utgående mva 15 %", safTCode: "31", ehfCategory: "S", ratePercent: 15 },
+    {
+      id: 5,
+      code: "5",
+      name: "Fritatt innenlands 0 %",
+      safTCode: "5",
+      ehfCategory: "Z",
+      exemptionReason: "Fritatt for merverdiavgift",
+      ratePercent: 0,
+    },
+  ],
+  capabilities: { canCreate: true, canIssue: true, canManage: false },
+  ...overrides,
+});
+
+/** An invoice draft for Acme with three lines of 33.33 at 25 %, as the server answers it. */
+export const draft = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocument => ({
+  id: 1001,
+  kind: "invoice",
+  status: "draft",
+  customerId: 2001,
+  customerName: "Acme AS",
+  deliveryDate: "2026-09-10",
+  paymentTermsDays: 30,
+  currency: "NOK",
+  exchangeRate: 1,
+  yourReference: "PO-77",
+  ourReference: "Ola Nordmann",
+  orderReference: "",
+  note: "",
+  internalNote: "",
+  netTotal: 99.99,
+  vatTotal: 25,
+  grossTotal: 124.99,
+  vatTotalNok: 25,
+  lines: [1, 2, 3].map((position) => ({
+    id: 5000 + position,
+    position,
+    description: `Tredjedel ${position}`,
+    quantity: 1,
+    unit: "timer",
+    unitPrice: 33.33,
+    discountPercent: 0,
+    vatCodeId: 1,
+    lineGross: 33.33,
+    lineAllowance: 0,
+    lineNet: 33.33,
+  })),
+  vatSummaries: [
+    { vatCategory: "S", ratePercent: 25, safTCode: "3", taxableAmount: 99.99, vatAmount: 25, vatAmountNok: 25 },
+  ],
+  warnings: [],
+  allowedIssueDates: ["2026-09-12"],
+  createdAt: "2026-09-12T10:00:00Z",
+  updatedAt: "2026-09-12T10:00:00Z",
+  revision: 3,
+  ...overrides,
+});
+
+/** The same invoice, issued as number 1000, nothing credited yet. */
+export const issued = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocument => {
+  const base = draft();
+  return {
+    ...base,
+    status: "issued",
+    number: 1000,
+    issueDate: "2026-09-12",
+    dueDate: "2026-10-12",
+    exchangeRateDate: "2026-09-12",
+    customerName: "Acme Norge AS",
+    issuedAt: "2026-09-12T10:30:00Z",
+    issuedByUserId: "0b6e4c1a-5f7d-4d8e-9a3b-2c1d0e9f8a7b",
+    buyer: {
+      customerNumber: 10001,
+      type: "business",
+      name: "Acme Norge AS",
+      organisationNumber: "923609016",
+      addressLine1: "Kundeveien 2",
+      postalCode: "0150",
+      city: "Oslo",
+      country: "NO",
+      peppolId: "0192:923609016",
+      gln: "7080000000001",
+      language: "nb",
+    },
+    seller: {
+      legalName: "Kraft-Verket AS",
+      organisationNumber: "974760673",
+      vatRegistered: true,
+      inForetaksregisteret: true,
+      addressLine1: "Storgata 1",
+      addressLine2: "",
+      postalCode: "0155",
+      city: "Oslo",
+      country: "NO",
+      bankAccount: "15032080119",
+      iban: "",
+      bic: "",
+      email: "faktura@kraft-verket.no",
+      footerText: "",
+    },
+    lines: base.lines.map((l) => ({ ...l, vatRatePercent: 25, vatCategory: "S", safTCode: "3" })),
+    allowedIssueDates: undefined,
+    pdfStored: true,
+    creditedAmount: 0,
+    uncreditedAmount: 124.99,
+    creditNotes: [],
+    revision: 4,
+    ...overrides,
+  };
+};
+
+/** A credit-note draft of invoice 1000, crediting its first line. */
+export const creditDraft = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocument => {
+  const base = draft();
+  return {
+    ...base,
+    id: 1002,
+    kind: "credit_note",
+    paymentTermsDays: undefined,
+    customerName: "Acme Norge AS",
+    buyer: {
+      customerNumber: 10001,
+      type: "business",
+      name: "Acme Norge AS",
+      organisationNumber: "923609016",
+      language: "nb",
+    },
+    lines: [{ ...base.lines[0], id: 6001, creditsLineId: 5001 }],
+    netTotal: 33.33,
+    vatTotal: 8.33,
+    grossTotal: 41.66,
+    vatTotalNok: 8.33,
+    vatSummaries: [
+      { vatCategory: "S", ratePercent: 25, safTCode: "3", taxableAmount: 33.33, vatAmount: 8.33, vatAmountNok: 8.33 },
+    ],
+    credits: { id: 1001, number: 1000, issueDate: "2026-09-12" },
+    revision: 1,
+    ...overrides,
+  };
+};
+
+/** A page of the list: a draft, then two issued documents. */
+export const listPage = (overrides: Partial<InvoiceList["pagination"]> = {}): InvoiceList => ({
+  data: [
+    {
+      id: 1003,
+      kind: "invoice",
+      status: "draft",
+      customerId: 2002,
+      customerName: "Kari Nordmann",
+      currency: "NOK",
+      grossTotal: 0,
+    },
+    {
+      id: 1002,
+      kind: "credit_note",
+      status: "issued",
+      number: 1001,
+      customerId: 2001,
+      customerName: "Acme Norge AS",
+      issueDate: "2026-09-12",
+      currency: "NOK",
+      grossTotal: 41.66,
+      creditsInvoiceId: 1001,
+    },
+    {
+      id: 1001,
+      kind: "invoice",
+      status: "issued",
+      number: 1000,
+      customerId: 2001,
+      customerName: "Acme Norge AS",
+      issueDate: "2026-09-12",
+      dueDate: "2026-10-12",
+      currency: "NOK",
+      grossTotal: 124.99,
+    },
+  ],
+  pagination: {
+    page: 1,
+    pageSize: 25,
+    totalCount: 3,
+    totalPages: 1,
+    hasNextPage: false,
+    hasPreviousPage: false,
+    ...overrides,
+  },
+});
+
+/**
+ * GET /vat-codes as the server sends it: every code, inactive ones included.
+ * Code 3 is at 25 % with a change to 26 % from 2027, not yet in force; code 9
+ * is no longer offered but still has a period covering today.
+ */
+export const vatCodes = (): VatCode[] => [
+  {
+    id: 1,
+    code: "3",
+    name: "Utgående mva 25 %",
+    safTCode: "3",
+    ehfCategory: "S",
+    active: true,
+    inUse: true,
+    revision: 1,
+    rates: [
+      { id: 1001, ratePercent: 25, validFrom: "2026-01-01", validTo: "2026-12-31" },
+      { id: 1002, ratePercent: 26, validFrom: "2027-01-01" },
+    ],
+  },
+  {
+    id: 2,
+    code: "31",
+    name: "Utgående mva 15 %",
+    safTCode: "31",
+    ehfCategory: "S",
+    active: true,
+    inUse: false,
+    revision: 1,
+    rates: [{ id: 1003, ratePercent: 15, validFrom: "2026-01-01" }],
+  },
+  {
+    id: 5,
+    code: "5",
+    name: "Fritatt innenlands 0 %",
+    safTCode: "5",
+    ehfCategory: "Z",
+    exemptionReason: "Fritatt for merverdiavgift",
+    active: true,
+    inUse: false,
+    revision: 1,
+    rates: [{ id: 1005, ratePercent: 0, validFrom: "2026-01-01" }],
+  },
+  {
+    id: 9,
+    code: "3G",
+    name: "Gammel sats",
+    safTCode: "3",
+    ehfCategory: "S",
+    active: false,
+    inUse: true,
+    revision: 2,
+    rates: [{ id: 1009, ratePercent: 25, validFrom: "2020-01-01" }],
+  },
+];

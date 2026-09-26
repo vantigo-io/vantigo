@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { InvoicesPage } from "@vantigo/invoices-ui/pages/invoices";
+import { InvoicesList } from "./-invoices-list";
 
 export const Route = createFileRoute("/invoices/")({
-  component: InvoicesPage,
+  component: InvoicesList,
 });
