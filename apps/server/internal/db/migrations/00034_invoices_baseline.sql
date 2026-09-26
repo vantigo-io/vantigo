@@ -123,14 +123,16 @@ CREATE TABLE invoices.invoices (
     note                   varchar(1000) NOT NULL DEFAULT '',
     internal_note          varchar(1000) NOT NULL DEFAULT '',
     -- The buyer snapshot (D4), written at issue from the billing profile — on a
-    -- credit note, copied from the original when the draft is made.
+    -- credit note, copied from the original when the draft is made. Each width
+    -- is at least the customers module's own (a name and an address line are
+    -- up to 255 there), so no valid customer can fail an issue on length.
     buyer_customer_number     bigint,
     buyer_type                varchar(20),
-    buyer_name                varchar(200),
+    buyer_name                varchar(255),
     buyer_organisation_number varchar(9),
     buyer_foreign_id          varchar(60),
-    buyer_address_line1       varchar(200),
-    buyer_address_line2       varchar(200),
+    buyer_address_line1       varchar(255),
+    buyer_address_line2       varchar(255),
     buyer_postal_code         varchar(20),
     buyer_city                varchar(100),
     buyer_region              varchar(100),
