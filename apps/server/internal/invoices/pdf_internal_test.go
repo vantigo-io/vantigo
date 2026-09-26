@@ -216,8 +216,9 @@ func TestRenderPDF_IsReproducible(t *testing.T) {
 	}
 	// One fixed render, pinned: a change here means every re-render of an
 	// unstored document would hash differently from a render before it. The
-	// pin may change on an upgrade of maroto, gofpdf or the font — update it
-	// then, in the upgrade's commit; stored PDFs are never re-rendered.
+	// pin changes on an upgrade of maroto, gofpdf or the font, and on any
+	// change to what the page says — update it in that commit; stored PDFs are
+	// never re-rendered.
 	sum := sha256.Sum256(first)
 	if got := hex.EncodeToString(sum[:]); got != pinnedRenderSHA256 {
 		t.Errorf("the fixed render's SHA-256 = %s, want %s", got, pinnedRenderSHA256)

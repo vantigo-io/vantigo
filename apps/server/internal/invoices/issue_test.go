@@ -208,8 +208,6 @@ func TestIssue_TheIssueDateRule(t *testing.T) {
 	}
 }
 
-// issued_late warns when the delivery ended more than a month before the
-// issue date; the issue still succeeds (§ 5-2-2).
 // issued_late is judged on the day a document was actually issued, not the
 // date it carries (§ 5-2-2 is about issuing): delivered 1 August, issued on 14
 // September dated 31 August (§ 5-1-3's backdate) is late, though 31 August
@@ -234,6 +232,8 @@ func TestIssue_IssuedLateIsJudgedOnTheDayItWasIssued(t *testing.T) {
 	}
 }
 
+// issued_late warns when the delivery ended more than a month before the
+// issue date; the issue still succeeds (§ 5-2-2).
 func TestIssue_IssuedLateWarnsAndIssues(t *testing.T) {
 	t.Parallel()
 	h := readyToIssue(t)
