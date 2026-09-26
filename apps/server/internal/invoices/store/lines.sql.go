@@ -67,6 +67,39 @@ func (q *Queries) InsertLine(ctx context.Context, arg InsertLineParams) error {
 	return err
 }
 
+const insertVatSummary = `-- name: InsertVatSummary :exec
+INSERT INTO invoices.vat_summaries (
+    invoice_id, vat_category, rate_percent, saf_t_code, exemption_reason, taxable_amount, vat_amount, vat_amount_nok
+) VALUES (
+    $1, $2, $3, $4, $5, $6, $7, $8
+)
+`
+
+type InsertVatSummaryParams struct {
+	InvoiceID       int64
+	VatCategory     string
+	RatePercent     pgtype.Numeric
+	SafTCode        string
+	ExemptionReason *string
+	TaxableAmount   pgtype.Numeric
+	VatAmount       pgtype.Numeric
+	VatAmountNok    pgtype.Numeric
+}
+
+func (q *Queries) InsertVatSummary(ctx context.Context, arg InsertVatSummaryParams) error {
+	_, err := q.db.Exec(ctx, insertVatSummary,
+		arg.InvoiceID,
+		arg.VatCategory,
+		arg.RatePercent,
+		arg.SafTCode,
+		arg.ExemptionReason,
+		arg.TaxableAmount,
+		arg.VatAmount,
+		arg.VatAmountNok,
+	)
+	return err
+}
+
 const lines = `-- name: Lines :many
 SELECT id, invoice_id, position, description, quantity, unit, unit_price, discount_percent, vat_code_id, credits_line_id, line_gross, line_allowance, line_net, vat_rate_percent, vat_category, saf_t_code, exemption_reason FROM invoices.lines WHERE invoice_id = $1 ORDER BY position
 `
@@ -108,6 +141,36 @@ func (q *Queries) Lines(ctx context.Context, invoiceID int64) ([]InvoicesLine, e
 		return nil, err
 	}
 	return items, nil
+}
+
+const snapshotLine = `-- name: SnapshotLine :exec
+UPDATE invoices.lines SET
+    vat_rate_percent = $1,
+    vat_category = $2,
+    saf_t_code = $3,
+    exemption_reason = $4
+WHERE id = $5
+`
+
+type SnapshotLineParams struct {
+	VatRatePercent  pgtype.Numeric
+	VatCategory     *string
+	SafTCode        *string
+	ExemptionReason *string
+	ID              int64
+}
+
+// SnapshotLine writes the VAT a line was issued with (D6 step 6). It runs while
+// the document is still a draft; the trigger refuses it afterwards (D9).
+func (q *Queries) SnapshotLine(ctx context.Context, arg SnapshotLineParams) error {
+	_, err := q.db.Exec(ctx, snapshotLine,
+		arg.VatRatePercent,
+		arg.VatCategory,
+		arg.SafTCode,
+		arg.ExemptionReason,
+		arg.ID,
+	)
+	return err
 }
 
 const vatSummaries = `-- name: VatSummaries :many

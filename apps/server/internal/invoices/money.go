@@ -83,8 +83,12 @@ type documentTotals struct {
 //
 // ambiguous is true when two lines share a (category, rate) but carry
 // different SAF-T codes, so one summary row could not name its code
-// (vat_codes_ambiguous, D6). The rows come highest rate first, then by
-// category, so a document always lists them the same way.
+// (vat_codes_ambiguous, D6). Two codes may share a (category, rate) and a
+// SAF-T code yet word their exemption reasons differently: the row then
+// carries the first line's reason, in the order the lines are given — by
+// position — and each line keeps its own code's reason in its snapshot. The
+// rows come highest rate first, then by category, so a document always lists
+// them the same way.
 func summarize(lines []taxedLine, exchangeRate *big.Rat) (rows []vatSummary, totals documentTotals, ambiguous bool) {
 	type key struct{ category, rate string }
 	byKey := map[key]*vatSummary{}

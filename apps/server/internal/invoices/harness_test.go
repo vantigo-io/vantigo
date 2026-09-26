@@ -113,6 +113,9 @@ func (l *lockedCalls) since(n int) []string {
 type fakeCustomers struct {
 	mu       sync.Mutex
 	profiles map[int32]contracts.CustomerBillingProfile
+	// onProfile, when set, runs after every BillingProfile read — what
+	// happens between the directory read and the issue's transaction.
+	onProfile func(id int32)
 }
 
 var _ contracts.CustomerDirectory = (*fakeCustomers)(nil)
@@ -226,12 +229,32 @@ func (f *fakeCustomers) ContactsByEmail(context.Context, string) ([]contracts.Co
 
 func (f *fakeCustomers) BillingProfile(_ context.Context, id int32) (*contracts.CustomerBillingProfile, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	p, ok := f.profiles[id]
+	after := f.onProfile
+	f.mu.Unlock()
+	if after != nil {
+		after(id)
+	}
 	if !ok {
 		return nil, nil
 	}
 	return &p, nil
+}
+
+// edit changes one customer's profile, as the customers module would.
+func (f *fakeCustomers) edit(id int32, change func(*contracts.CustomerBillingProfile)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p := f.profiles[id]
+	change(&p)
+	f.profiles[id] = p
+}
+
+// afterProfileRead sets onProfile.
+func (f *fakeCustomers) afterProfileRead(fn func(id int32)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.onProfile = fn
 }
 
 // fakeObjectStore is an in-memory storage.ObjectStore that records every Delete,

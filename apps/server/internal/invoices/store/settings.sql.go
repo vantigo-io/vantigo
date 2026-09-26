@@ -80,6 +80,41 @@ func (q *Queries) LockSettings(ctx context.Context) (InvoicesSetting, error) {
 	return i, err
 }
 
+const shareSettings = `-- name: ShareSettings :one
+SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision FROM invoices.settings WHERE id = 1 FOR SHARE
+`
+
+// ShareSettings takes the settings row FOR SHARE: the issue's seller snapshot
+// and series start (D6 step 3). Two issues share it; PUT /settings and a rate
+// change wait for both to commit.
+func (q *Queries) ShareSettings(ctx context.Context) (InvoicesSetting, error) {
+	row := q.db.QueryRow(ctx, shareSettings)
+	var i InvoicesSetting
+	err := row.Scan(
+		&i.ID,
+		&i.LegalName,
+		&i.OrganisationNumber,
+		&i.VatRegistered,
+		&i.InForetaksregisteret,
+		&i.AddressLine1,
+		&i.AddressLine2,
+		&i.PostalCode,
+		&i.City,
+		&i.Country,
+		&i.BankAccount,
+		&i.Iban,
+		&i.Bic,
+		&i.Email,
+		&i.DefaultPaymentTermsDays,
+		&i.DefaultCurrency,
+		&i.FooterText,
+		&i.SeriesStart,
+		&i.UpdatedAt,
+		&i.Revision,
+	)
+	return i, err
+}
+
 const updateSettings = `-- name: UpdateSettings :one
 UPDATE invoices.settings SET
     legal_name = $1,

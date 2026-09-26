@@ -11,6 +11,24 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const allocateNumber = `-- name: AllocateNumber :one
+INSERT INTO invoices.counters (counter_name, next_value)
+VALUES ('documents', $1::bigint + 1)
+ON CONFLICT (counter_name) DO UPDATE SET next_value = invoices.counters.next_value + 1
+RETURNING (next_value - 1)::bigint AS allocated
+`
+
+// AllocateNumber takes the next number of the one series (D2): the first
+// allocation is series_start, every later one one more. The lock on the counter row
+// is held until the issue commits, so it is the one thing that serialises
+// two issues, and a rolled-back issue rolls its number back with it.
+func (q *Queries) AllocateNumber(ctx context.Context, seriesStart int64) (int64, error) {
+	row := q.db.QueryRow(ctx, allocateNumber, seriesStart)
+	var allocated int64
+	err := row.Scan(&allocated)
+	return allocated, err
+}
+
 const counterNextValue = `-- name: CounterNextValue :one
 SELECT next_value FROM invoices.counters WHERE counter_name = 'documents'
 `

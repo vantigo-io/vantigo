@@ -33,8 +33,17 @@ func allowedIssueDates(today, deliveryEnd, latest time.Time) []time.Time {
 }
 
 // issuedLate is § 5-2-2's "senest en måned etter levering", as a warning: the
-// document is issued more than one month after its delivery ended (D6). It
+// document is issued after the day one month after its delivery ended (D6). It
 // never refuses — refusing would leave the sale undocumented.
 func issuedLate(issueDate, deliveryEnd time.Time) bool {
-	return !deliveryEnd.IsZero() && deliveryEnd.Before(issueDate.AddDate(0, -1, 0))
+	return !deliveryEnd.IsZero() && issueDate.After(oneMonthAfter(deliveryEnd))
+}
+
+// oneMonthAfter is the same day of the next month, clamped to that month's
+// last day: 31 January gives 28 (or 29) February. time.AddDate would normalise
+// 31 February into March and move the deadline past the month the law gives.
+func oneMonthAfter(d time.Time) time.Time {
+	first := time.Date(d.Year(), d.Month()+1, 1, 0, 0, 0, 0, time.UTC)
+	last := first.AddDate(0, 1, -1).Day()
+	return time.Date(first.Year(), first.Month(), min(d.Day(), last), 0, 0, 0, 0, time.UTC)
 }

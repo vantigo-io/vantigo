@@ -896,6 +896,13 @@ components:
                 - data
                 - pagination
             type: object
+        InvoicesIssueRequest:
+            description: 'POST /invoices/{id}/issue''s body (D6). issueDate is today (Oslo) when omitted; the only other date allowed is the last day of the previous month, while today''s calendar day is 15 or less and the delivery ended on or before it — and never a date before the latest issue date of any issued document.'
+            properties:
+                issueDate:
+                    format: date
+                    type: string
+            type: object
 info:
     title: Vantigo Invoices API
     version: "1"
@@ -1463,5 +1470,59 @@ paths:
             tags:
                 - Invoices
             x-vantigo-access: permission:invoices:access+invoices:create
+    /api/v1/invoices/{id}/issue:
+        post:
+            description: 'Issues a draft — an invoice or a credit note — into the next number of the one series (D6). The billing profile is read first; then one transaction locks the document, shares the settings row, allocates the number, and only then checks every rule, so any refusal rolls the number back with it. The response is the issued document with its warnings (issued_late). The PDF is stored after the commit; pdfStored false means storing it failed and the next download stores it.'
+            operationId: postInvoicesByIdIssue
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/InvoicesIssueRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesInvoiceResponse'
+                    description: OK — the issued document.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no document has that id.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesConflictProblem'
+                    description: 'Conflict — invoice_issued, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed (with allowedIssueDates), customer_merged, customer_archived, customer_blocked, customer_missing, buyer_incomplete, vat_code_inactive and vat_code_not_valid (with linePosition), vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line (with linePosition) or credit_exceeds_invoice.'
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesConflictProblem'
+                    description: Service Unavailable — storage_unavailable, before any number is allocated. An issued number whose PDF can never be stored is not allowed to exist.
+            summary: Issue a draft
+            tags:
+                - Invoices
+            x-vantigo-access: permission:invoices:access+invoices:issue
 servers:
     - url: /
