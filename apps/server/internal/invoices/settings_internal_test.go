@@ -39,3 +39,16 @@ func TestSellerNumbers_TheCheckDigitRules(t *testing.T) {
 		}
 	}
 }
+
+// The copied ISO 3166-1 table is the customers module's, upper-case: 249
+// assigned codes, and neither a user-assigned code nor a common alias.
+func TestISO3166Alpha2_TheCopiedTable(t *testing.T) {
+	if n := len(iso3166Alpha2); n != 249 {
+		t.Errorf("len(iso3166Alpha2) = %d, want 249", n)
+	}
+	for code, want := range map[string]bool{"NO": true, "SE": true, "GB": true, "ZZ": false, "UK": false, "XK": false, "no": false} {
+		if got := validCountry(code); got != want {
+			t.Errorf("validCountry(%q) = %v, want %v", code, got, want)
+		}
+	}
+}

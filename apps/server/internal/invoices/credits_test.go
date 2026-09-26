@@ -1,10 +1,12 @@
 package invoices_test
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -180,7 +182,17 @@ func TestCredit_WhatADraftMayChange(t *testing.T) {
 		{"another currency", func(b map[string]any, _ []map[string]any) { b["currency"] = "EUR" }, "currency"},
 		{"payment terms", func(b map[string]any, _ []map[string]any) { b["paymentTermsDays"] = 14 }, "paymentTermsDays"},
 		{"another reference", func(b map[string]any, _ []map[string]any) { b["yourReference"] = "Ny" }, "yourReference"},
+		{"a delivery period", func(b map[string]any, _ []map[string]any) {
+			delete(b, "deliveryDate")
+			b["deliveryFrom"], b["deliveryTo"] = "2026-09-01", "2026-09-11"
+		}, "deliveryDate"},
 		{"another delivery", func(b map[string]any, _ []map[string]any) { b["deliveryDate"] = "2026-09-11" }, "deliveryDate"},
+		{"another unit", func(_ map[string]any, l []map[string]any) { l[0]["unit"] = "kasse" }, "lines[0].unit"},
+		{"a place of delivery", func(b map[string]any, _ []map[string]any) {
+			b["deliveryAddress"] = map[string]any{"line1": "Lageret", "city": "Oslo", "country": "NO"}
+		}, "deliveryAddress"},
+		{"another our reference", func(b map[string]any, _ []map[string]any) { b["ourReference"] = "Ny" }, "ourReference"},
+		{"another order reference", func(b map[string]any, _ []map[string]any) { b["orderReference"] = "Ny" }, "orderReference"},
 	} {
 		lines := []map[string]any{creditLine(c.Lines[0]), creditLine(c.Lines[1])}
 		body := creditBody(saved, lines...)
@@ -240,7 +252,9 @@ func TestCredit_TheHeadlineCap(t *testing.T) {
 }
 
 // Two credit notes racing against one original cannot together pass a line's
-// cap: the second issue waits on the original's lock and sees the first.
+// cap: the second issue waits on the counter, and sees the first under the
+// original's lock. That the original's lock itself holds is proved by the
+// merge holder's race (customer_slots_test.go).
 func TestCredit_RacingCreditNotesKeepTheCap(t *testing.T) {
 	t.Parallel()
 	h := readyToIssue(t)
@@ -691,5 +705,72 @@ func TestCredit_APriceReductionIsNeverSquared(t *testing.T) {
 	}
 	if after := getInvoice(t, h, original.ID); *after.UncreditedAmount != 112.5 {
 		t.Errorf("the original has %v left, want 112.50: the reduction and one unit are credited", *after.UncreditedAmount)
+	}
+}
+
+// A credit note has no payment terms and no due date (D4), and the schema
+// holds it too: neither can be set on one.
+func TestCredit_NoTermsAndNoDueDateInTheSchema(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	original := issued(t, h, createDraft(t, h, draftBody(customerAcme, line("A", 1, 100, vat25))).ID)
+	credit := creditDraft(t, h, original.ID)
+	ctx := context.Background()
+	for _, sql := range []string{
+		`UPDATE invoices.invoices SET payment_terms_days = 14 WHERE id = $1`,
+		`UPDATE invoices.invoices SET due_date = '2026-10-01' WHERE id = $1`,
+	} {
+		if _, err := h.Pool().Exec(ctx, sql, credit.ID); err == nil || !strings.Contains(err.Error(), "ck_invoices_credit_note_terms") {
+			t.Errorf("%s: %v, want ck_invoices_credit_note_terms to refuse it", sql, err)
+		}
+	}
+}
+
+// A client that read a credit draft before a merge re-pointed it, and saves
+// afterwards, is told its copy is stale — the revision 409 — not that it
+// changed the customer, which it did not.
+func TestCredit_AStaleSaveAfterAMergeIsTheRevisionConflict(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	original := issued(t, h, createDraft(t, h, draftBody(customerAcme, line("A", 1, 1000, vat25))).ID)
+	c := creditDraft(t, h, original.ID)
+	// What the merge holder's RepointCustomer does to a draft.
+	h.Exec(t, `UPDATE invoices.invoices SET customer_id = $1, revision = revision + 1 WHERE id = $2`, customerNoTerms, c.ID)
+
+	res := creator(t, h).Do(http.MethodPut, invoicePath(c.ID), creditBody(c, creditLine(c.Lines[0])))
+	if res.Status != http.StatusConflict || problemOf(t, res).Code != "" {
+		t.Errorf("a stale save after a merge = %d %s, want the revision 409", res.Status, res.Body)
+	}
+}
+
+// A credit note given as the original is credit_note_not_creditable (D8),
+// a draft one too: its kind decides before its status.
+func TestCredit_ACreditNoteDraftIsNotCreditable(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	original := issued(t, h, createDraft(t, h, draftBody(customerAcme, line("A", 1, 1000, vat25))).ID)
+	c := creditDraft(t, h, original.ID)
+	if res := issuer(t, h).Do(http.MethodPost, creditPath(c.ID), nil); res.Status != http.StatusConflict || problemOf(t, res).Code != "credit_note_not_creditable" {
+		t.Errorf("crediting a credit-note draft = %d %s, want 409 credit_note_not_creditable", res.Status, res.Body)
+	}
+}
+
+// A credit note reverses its original's treatment whatever the seller's
+// registration is now (D8 skips vat_not_registered): a seller that left the
+// VAT register after the invoice still credits its 25 % line.
+func TestCredit_ASellerNoLongerRegisteredStillCredits(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	original := issued(t, h, createDraft(t, h, draftBody(customerAcme, line("A", 1, 1000, vat25))).ID)
+	c := creditDraft(t, h, original.ID)
+	var current settingsJSON
+	h.SignIn(t, "invoices:access").Do(http.MethodGet, settingsPath, nil).JSON(&current)
+	body := completeSeller(current.Revision)
+	body["vatRegistered"] = false
+	saveSeller(t, h, body)
+
+	credit := issued(t, h, c.ID)
+	if credit.VatTotal != 250 || credit.Seller == nil || credit.Seller.VatRegistered {
+		t.Errorf("the credit note = VAT %v, seller %+v, want the original's 250 reversed by a seller now unregistered", credit.VatTotal, credit.Seller)
 	}
 }

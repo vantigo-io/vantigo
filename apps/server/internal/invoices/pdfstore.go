@@ -249,6 +249,13 @@ func (s *server) storeOnce(ctx context.Context, q *store.Queries, inv store.Invo
 // failure is logged at warn and never fails the issue: the number is
 // committed, and the next download stores the PDF (D6).
 func (s *server) storeAfterIssue(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice) store.InvoicesInvoice {
+	if !s.storageConfigured {
+		// Nothing to store into. The issue refuses before allocating a number
+		// without a store (D6), so this is only a guard: no warning that "the
+		// next download stores it", which a download answering 503 never does.
+		s.deps.Logger.DebugContext(ctx, "invoices: no object store; the issued document's PDF is not stored", "invoice_id", inv.ID)
+		return inv
+	}
 	if _, err := s.storeOnce(ctx, q, inv); err != nil {
 		s.deps.Logger.WarnContext(ctx, "invoices: the PDF of an issued document could not be stored; the next download stores it",
 			"invoice_id", inv.ID, "number", *inv.Number, "error", err.Error())
@@ -353,7 +360,9 @@ func (s *server) GetInvoicesByIdPdf(ctx context.Context, req gen.GetInvoicesById
 			"This installation has no object store.")), nil
 	}
 	found := storedPDF{}
-	if inv.PdfSha256 == nil {
+	// Stored means both columns (ck_invoices_pdf keeps them together); either
+	// one missing is "not stored", never a dereference of the other.
+	if inv.PdfSha256 == nil || inv.PdfObjectKey == nil {
 		if found, err = s.storeOnce(ctx, q, inv); err != nil {
 			s.deps.Logger.ErrorContext(ctx, "invoices: a PDF could not be stored on download", "invoice_id", inv.ID, "error", err.Error())
 			return storeOnceFailed(err)
@@ -459,8 +468,12 @@ func (s *server) renderPreview(ctx context.Context, q *store.Queries, inv store.
 	if err != nil {
 		return nil, err
 	}
+	exchangeRate, err := ratFromNumeric(inv.ExchangeRate)
+	if err != nil {
+		return nil, err
+	}
 	taxed := taxedLines(lines, codes)
-	summaries, totals, _ := summarize(taxed, big.NewRat(1, 1))
+	summaries, totals, _ := summarize(taxed, exchangeRate)
 	var squared []lineAmounts
 	var original *store.InvoicesInvoice // a credit note's, for its "til faktura" line
 	if inv.Kind == kindCreditNote {

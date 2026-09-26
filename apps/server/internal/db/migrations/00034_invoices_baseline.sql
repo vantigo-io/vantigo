@@ -179,7 +179,12 @@ CREATE TABLE invoices.invoices (
         OR (delivery_date IS NULL AND delivery_from IS NULL AND delivery_to IS NULL)
     ),
     CONSTRAINT ck_invoices_payment_terms CHECK (payment_terms_days IS NULL OR payment_terms_days BETWEEN 0 AND 365),
-    CONSTRAINT ck_invoices_exchange_rate CHECK (exchange_rate > 0)
+    -- A credit note has no payment terms and no due date (D4).
+    CONSTRAINT ck_invoices_credit_note_terms CHECK (kind = 'invoice' OR (payment_terms_days IS NULL AND due_date IS NULL)),
+    CONSTRAINT ck_invoices_exchange_rate CHECK (exchange_rate > 0),
+    -- The PDF's key and hash are one fact, set together once (D7): a hash
+    -- without the key it names would be a stored PDF nobody can find.
+    CONSTRAINT ck_invoices_pdf CHECK ((pdf_object_key IS NULL) = (pdf_sha256 IS NULL))
 );
 CREATE UNIQUE INDEX ux_invoices_number ON invoices.invoices (number);
 CREATE INDEX ix_invoices_customer ON invoices.invoices (customer_id);

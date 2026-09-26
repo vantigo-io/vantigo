@@ -17,9 +17,9 @@ func TestMergeSummary_NamesWhatMovedInWords(t *testing.T) {
 		{Kind: mergeKindContacts, Count: 3}, {Kind: mergeKindAddresses, Count: 2},
 		{Kind: mergeKindTimelineEntries, Count: 14}, {Kind: mergeKindTags, Count: 0},
 		{Kind: "projects.projects", Count: 2}, {Kind: "energy.supplyPeriods", Count: 1},
-		{Kind: "somewhere.else", Count: 4},
+		{Kind: "invoices.invoices", Count: 3}, {Kind: "somewhere.else", Count: 4},
 	}
-	want := "Absorbed #1005 Acme Norge AS: 3 contacts, 2 addresses, 14 timeline entries, 2 projects, 1 supply period, 4 × somewhere.else"
+	want := "Absorbed #1005 Acme Norge AS: 3 contacts, 2 addresses, 14 timeline entries, 2 projects, 1 supply period, 3 invoice documents, 4 × somewhere.else"
 	if got := mergeSummary(absorbed, moved); got != want {
 		t.Errorf("mergeSummary =\n%q\nwant\n%q", got, want)
 	}

@@ -349,11 +349,16 @@ func (s *server) PostInvoicesVatCodesByIdRates(ctx context.Context, req gen.Post
 		if err != nil {
 			return err
 		}
-		open := rates[len(rates)-1]
-		if !validFrom.After(open.ValidFrom.Time) {
-			errs = fieldError("validFrom", fmt.Sprintf("A new rate takes effect after the current one's start, %s",
-				open.ValidFrom.Time.Format(time.DateOnly)))
-			return errRefused
+		// The handlers keep at least one period on every code, but no
+		// constraint does: a code with none has no open period to close, and
+		// this change opens its first.
+		if len(rates) > 0 {
+			open := rates[len(rates)-1]
+			if !validFrom.After(open.ValidFrom.Time) {
+				errs = fieldError("validFrom", fmt.Sprintf("A new rate takes effect after the current one's start, %s",
+					open.ValidFrom.Time.Format(time.DateOnly)))
+				return errRefused
+			}
 		}
 		latest, err := txq.LatestIssueDate(ctx)
 		if err != nil {

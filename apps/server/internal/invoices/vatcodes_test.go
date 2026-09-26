@@ -293,6 +293,25 @@ func TestVatCodes_RemovingTheLatestFuturePeriodReopensThePrevious(t *testing.T) 
 	}
 }
 
+// A code with no rate period at all — the handlers never leave one, but no
+// constraint forbids it — opens its first period on a rate change instead of
+// failing.
+func TestVatCodes_ARateChangeOnACodeWithNoPeriodOpensItsFirst(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.Exec(t, `DELETE FROM invoices.vat_code_rates WHERE vat_code_id = $1`, vat15)
+
+	res := manager(t, h).Do(http.MethodPost, fmt.Sprintf("%s/%d/rates", vatCodesPath, vat15), map[string]any{"ratePercent": 16, "validFrom": "2027-01-01"})
+	if res.Status != http.StatusCreated {
+		t.Fatalf("a rate change on a code with no period = %d %s, want 201", res.Status, res.Body)
+	}
+	var changed vatCodeJSON
+	res.JSON(&changed)
+	if got := periods(changed); got != "[16 2027-01-01..open]" {
+		t.Errorf("periods = %s, want the one new open period", got)
+	}
+}
+
 // Every write to the VAT codes needs invoices:manage besides invoices:access
 // (D3): a reader is refused with the access layer's 403 and nothing moves.
 func TestVatCodes_EveryWriteNeedsManage(t *testing.T) {

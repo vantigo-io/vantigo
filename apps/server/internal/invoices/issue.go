@@ -245,6 +245,9 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
 		// 1. The document, FOR UPDATE: two issues of one draft queue here.
 		locked, err := txq.LockInvoice(ctx, req.Id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errDocumentGone
+		}
 		if err != nil {
 			return fmt.Errorf("invoices: lock document %d: %w", req.Id, err)
 		}
@@ -407,6 +410,9 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 	})
 	if refusal != nil {
 		return gen.PostInvoicesByIdIssue409ApplicationProblemPlusJSONResponse(*refusal), nil
+	}
+	if errors.Is(err, errDocumentGone) {
+		return gen.PostInvoicesByIdIssue404Response{}, nil
 	}
 	if err != nil {
 		return nil, err
