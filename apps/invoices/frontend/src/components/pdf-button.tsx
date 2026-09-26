@@ -35,7 +35,7 @@ export const PdfButton = ({ url, mode, children, ...button }: PdfButtonProps) =>
       } else {
         const anchor = document.createElement("a");
         anchor.href = objectUrl;
-        anchor.download = pdf.fileName ?? "document.pdf";
+        anchor.download = pdf.fileName ?? t("pdfFileName");
         anchor.click();
       }
       setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);

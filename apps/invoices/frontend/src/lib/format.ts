@@ -17,6 +17,9 @@ export const useInvoiceFormat = () => {
     unitPrice: (amount: number, currency: string) =>
       formatters.formatCurrency(amount, currency, { minimumFractionDigits: 2, maximumFractionDigits: 4 }),
     number: (value: number, maxDecimals = 3) => formatters.formatNumber(value, { maximumFractionDigits: maxDecimals }),
+    /** A VAT rate in percent, as the locale writes one: 25 is "25%" in en and "25 %" in nb, 12.5 keeps its decimal. */
+    percent: (ratePercent: number) =>
+      formatters.formatNumber(ratePercent / 100, { style: "percent", maximumFractionDigits: 2 }),
     date: (date: string) => formatters.formatDate(toUtc(date), { dateStyle: "medium", timeZone: "UTC" }),
   };
 };
