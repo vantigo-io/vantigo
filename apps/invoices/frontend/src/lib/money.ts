@@ -1,9 +1,14 @@
 /**
  * D5's arithmetic in the browser, exact: every amount is scaled to an integer
  * (BigInt) at its column's decimals, multiplied, and rounded once to øre with
- * the half away from zero — the server's rule — so the live totals the editor
- * shows are the ones the server will compute, to the øre. The server stays
- * authoritative; this only spares the person a round trip per keystroke.
+ * the half away from zero — the server's rule — so the totals the editor
+ * shows while the person edits are the ones the server will compute, to the
+ * øre, with one exception: the credit note completing a full reversal, whose
+ * lines take the original's remaining net and whose VAT per rate is what the
+ * original charged less what earlier credit notes reversed (a rate may keep a
+ * row on a zero base). That rule needs the whole credit history, so this does
+ * not model it. The server stays authoritative: the editor shows its figures
+ * for the draft as saved, and these, labelled an estimate, only while editing.
  */
 
 /** v at `places` decimals as an integer: 12.5 at 2 is 1250n. */
