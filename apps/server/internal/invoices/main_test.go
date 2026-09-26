@@ -4,6 +4,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/openapi/contracttest"
 )
 
@@ -16,5 +17,10 @@ import (
 var recorder = contracttest.NewForModule("invoices")
 
 func TestMain(m *testing.M) {
+	// The whole suite's locking guarantee, installed once before any test
+	// runs: every call this module makes to the directory or the object store
+	// is reported here, and one made from inside a locked transaction is
+	// recorded for the harness to fail on (newInvoicesHarness).
+	invoices.SetContractCallHook(lockedContractCalls.note)
 	os.Exit(contracttest.RequireCoverage(m, recorder))
 }

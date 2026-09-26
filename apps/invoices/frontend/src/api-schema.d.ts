@@ -130,6 +130,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List invoices and credit notes
+         * @description Invoices and credit notes, drafts first and then by number descending (D4). status is draft or issued, kind invoice or credit_note; from and to are issue dates, inclusive; search matches the number exactly when it is digits, or the buyer's name ignoring case — a draft has no buyer snapshot, so it is found by customerId, not search. page and pageSize are the codebase's paging: 25 by default, at most 100.
+         */
+        get: operations["getInvoices"];
+        put?: never;
+        /**
+         * Create an invoice draft
+         * @description Creates an invoice draft (D4). The buyer's billing profile is read before anything is written, for the prefills and the customer gates.
+         */
+        post: operations["postInvoices"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get an invoice or a credit note
+         * @description One document with its lines, VAT summaries, warnings and credit links.
+         */
+        get: operations["getInvoicesById"];
+        /**
+         * Replace a draft
+         * @description Replaces a draft whole, with revision (D4). Only a draft is edited (409 invoice_issued otherwise).
+         */
+        put: operations["putInvoicesById"];
+        post?: never;
+        /**
+         * Delete a draft
+         * @description Deletes a draft, its lines with it. An issued document is never deleted (409 invoice_issued).
+         */
+        delete: operations["deleteInvoicesById"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -324,6 +376,256 @@ export interface components {
             revision: number;
             safTCode: string;
         };
+        /** @description The buyer snapshot (D4), written at issue from the customer's billing profile and printed from, never re-read. A credit note carries its original's. */
+        InvoicesBuyer: {
+            addressLine1?: string;
+            addressLine2?: string;
+            city?: string;
+            country?: string;
+            /** Format: int64 */
+            customerNumber: number;
+            /** @description A foreign business's legal id prefixed with its country (SE556677889901), printed under "VAT/Reg. no.". Never a person's. */
+            foreignId?: string;
+            gln?: string;
+            /** @description The document's language, en or nb. */
+            language: string;
+            name: string;
+            /** @description A Norwegian business's organisation number. */
+            organisationNumber?: string;
+            peppolId?: string;
+            postalCode?: string;
+            region?: string;
+            /** @description business or person. */
+            type: string;
+        };
+        /** @description One credit note of an invoice, a draft (number absent) or issued. */
+        InvoicesCreditNoteRef: {
+            /** Format: double */
+            grossTotal: number;
+            /** Format: int64 */
+            id: number;
+            /** Format: date */
+            issueDate?: string;
+            /** Format: int64 */
+            number?: number;
+            status: string;
+        };
+        /** @description The issued invoice a credit note credits. */
+        InvoicesCreditsRef: {
+            /** Format: int64 */
+            id: number;
+            /** Format: date */
+            issueDate: string;
+            /** Format: int64 */
+            number: number;
+        };
+        /** @description The place of delivery (§ 5-1-1 nr. 4), when it is not the buyer's address. line1, city and country are required; country is ISO 3166-1 alpha-2. */
+        InvoicesDeliveryAddress: {
+            city: string;
+            country: string;
+            line1: string;
+            line2?: string;
+            postalCode?: string;
+        };
+        /** @description One document in the list. customerName is the buyer snapshot's name on an issued document and the customer's current name on a draft, absent when the directory no longer knows it. */
+        InvoicesInvoiceListItem: {
+            /** Format: int64 */
+            creditsInvoiceId?: number;
+            currency: string;
+            /** Format: int32 */
+            customerId: number;
+            customerName?: string;
+            /** Format: date */
+            dueDate?: string;
+            /** Format: double */
+            grossTotal: number;
+            /** Format: int64 */
+            id: number;
+            /** Format: date */
+            issueDate?: string;
+            kind: string;
+            /** Format: int64 */
+            number?: number;
+            status: string;
+        };
+        /** @description A draft, created (POST) or replaced whole (PUT, with revision) (D4). customerId is the buyer. currency, when given, is NOK — "Only NOK in this phase". Delivery is deliveryDate alone, deliveryFrom with deliveryTo (from on or before to), or none — none only on a draft; the issue refuses it. references are at most 100 characters each, note and internalNote 1000. lines are at most 500. On create, an omitted yourReference is the billing profile's buyerReference and an omitted paymentTermsDays the profile's terms, else the settings' default; on PUT an invoice's paymentTermsDays is required and an omitted reference is cleared. On a credit-note draft only what D8 allows may change: lines may be removed, a quantity or a unit price lowered, and a description, the note and the internal note edited. */
+        InvoicesInvoiceRequest: {
+            currency?: string;
+            /** Format: int32 */
+            customerId: number;
+            deliveryAddress?: components["schemas"]["InvoicesDeliveryAddress"];
+            /** Format: date */
+            deliveryDate?: string;
+            /** Format: date */
+            deliveryFrom?: string;
+            /** Format: date */
+            deliveryTo?: string;
+            internalNote?: string;
+            lines: components["schemas"]["InvoicesLineRequest"][];
+            note?: string;
+            orderReference?: string;
+            ourReference?: string;
+            /** Format: int32 */
+            paymentTermsDays?: number;
+            /**
+             * Format: int32
+             * @description Required on PUT; the revision the caller read. A stale one is a 409 naming both.
+             */
+            revision?: number;
+            yourReference?: string;
+        };
+        /** @description One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed with the rates in force today — the issue resolves them again for the issue date — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. */
+        InvoicesInvoiceResponse: {
+            allowedIssueDates?: string[];
+            buyer?: components["schemas"]["InvoicesBuyer"];
+            /** Format: date-time */
+            createdAt: string;
+            creditNotes?: components["schemas"]["InvoicesCreditNoteRef"][];
+            /** Format: double */
+            creditedAmount?: number;
+            credits?: components["schemas"]["InvoicesCreditsRef"];
+            currency: string;
+            /** Format: int32 */
+            customerId: number;
+            customerName?: string;
+            deliveryAddress?: components["schemas"]["InvoicesDeliveryAddress"];
+            /** Format: date */
+            deliveryDate?: string;
+            /** Format: date */
+            deliveryFrom?: string;
+            /** Format: date */
+            deliveryTo?: string;
+            /** Format: date */
+            dueDate?: string;
+            /** Format: double */
+            exchangeRate: number;
+            /** Format: date */
+            exchangeRateDate?: string;
+            /** Format: double */
+            grossTotal: number;
+            /** Format: int64 */
+            id: number;
+            internalNote: string;
+            /** Format: date */
+            issueDate?: string;
+            /** Format: date-time */
+            issuedAt?: string;
+            /** Format: uuid */
+            issuedByUserId?: string;
+            /** @description invoice or credit_note. */
+            kind: string;
+            lines: components["schemas"]["InvoicesLine"][];
+            /** Format: double */
+            netTotal: number;
+            note: string;
+            /** Format: int64 */
+            number?: number;
+            orderReference: string;
+            ourReference: string;
+            /** Format: int32 */
+            paymentTermsDays?: number;
+            /** @description On an issued document, whether its PDF is stored. False only when storing it after the issue failed; the next download stores it. */
+            pdfStored?: boolean;
+            /** Format: int32 */
+            revision: number;
+            seller?: components["schemas"]["InvoicesSeller"];
+            /** @description draft or issued. */
+            status: string;
+            /** Format: double */
+            uncreditedAmount?: number;
+            /** Format: date-time */
+            updatedAt: string;
+            vatSummaries: components["schemas"]["InvoicesVatSummary"][];
+            /** Format: double */
+            vatTotal: number;
+            /** Format: double */
+            vatTotalNok: number;
+            warnings: string[];
+            yourReference: string;
+        };
+        /** @description One line (D4, D5). lineGross is quantity × unitPrice rounded to øre, lineAllowance the discount of it rounded, lineNet their difference. The VAT fields are the issue snapshot, absent on a draft. */
+        InvoicesLine: {
+            /**
+             * Format: int64
+             * @description On a credit note's line, the original line it credits.
+             */
+            creditsLineId?: number;
+            description: string;
+            /** Format: double */
+            discountPercent: number;
+            exemptionReason?: string;
+            /** Format: int64 */
+            id: number;
+            /** Format: double */
+            lineAllowance: number;
+            /** Format: double */
+            lineGross: number;
+            /** Format: double */
+            lineNet: number;
+            /** Format: int32 */
+            position: number;
+            /** Format: double */
+            quantity: number;
+            safTCode?: string;
+            unit: string;
+            /** Format: double */
+            unitPrice: number;
+            vatCategory?: string;
+            /** Format: int32 */
+            vatCodeId: number;
+            /** Format: double */
+            vatRatePercent?: number;
+        };
+        /** @description One line of a draft. description is 1-500 characters; quantity greater than 0 with at most 3 decimals; unitPrice 0 or more with at most 4; discountPercent 0-100 with at most 2 (0 when omitted); unit at most 20. vatCodeId is an active code. creditsLineId is a credit-note draft's own and names the original line the line credits. */
+        InvoicesLineRequest: {
+            /** Format: int64 */
+            creditsLineId?: number;
+            description: string;
+            /** Format: double */
+            discountPercent?: number;
+            /** Format: double */
+            quantity: number;
+            unit?: string;
+            /** Format: double */
+            unitPrice: number;
+            /** Format: int32 */
+            vatCodeId: number;
+        };
+        /** @description The seller snapshot (D4), copied from the settings at issue. */
+        InvoicesSeller: {
+            addressLine1: string;
+            addressLine2: string;
+            bankAccount: string;
+            bic: string;
+            city: string;
+            country: string;
+            email: string;
+            footerText: string;
+            iban: string;
+            inForetaksregisteret: boolean;
+            legalName: string;
+            organisationNumber: string;
+            postalCode: string;
+            vatRegistered: boolean;
+        };
+        /** @description VAT per (category, rate) of a document (D5), computed on the sum of the lines' nets, a row for each 0 % category too. */
+        InvoicesVatSummary: {
+            exemptionReason?: string;
+            /** Format: double */
+            ratePercent: number;
+            safTCode: string;
+            /** Format: double */
+            taxableAmount: number;
+            /** Format: double */
+            vatAmount: number;
+            /** Format: double */
+            vatAmountNok: number;
+            vatCategory: string;
+        };
+        PaginatedResponseOfInvoicesInvoiceListItem: {
+            data: components["schemas"]["InvoicesInvoiceListItem"][];
+            pagination: components["schemas"]["PaginationMetadata"];
+        };
         AuthErrorResponse: {
             error: {
                 code: string;
@@ -338,6 +640,26 @@ export interface components {
             errors?: {
                 [key: string]: string[];
             };
+            instance?: string | null;
+            /** Format: int32 */
+            status?: number | null;
+            title?: string | null;
+            type?: string | null;
+        };
+        PaginationMetadata: {
+            hasNextPage: boolean;
+            hasPreviousPage: boolean;
+            /** Format: int32 */
+            page: number;
+            /** Format: int32 */
+            pageSize: number;
+            /** Format: int32 */
+            totalCount: number;
+            /** Format: int32 */
+            totalPages: number;
+        };
+        ProblemDetails: {
+            detail?: string | null;
             instance?: string | null;
             /** Format: int32 */
             status?: number | null;
@@ -763,6 +1085,292 @@ export interface operations {
                 content?: never;
             };
             /** @description Conflict — rate_period_not_latest, rate_period_last or rate_period_in_use. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    getInvoices: {
+        parameters: {
+            query?: {
+                status?: string;
+                kind?: string;
+                customerId?: number;
+                search?: string;
+                from?: string;
+                to?: string;
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponseOfInvoicesInvoiceListItem"];
+                };
+            };
+            /** @description Bad Request — paging out of range, an unknown status or kind, or from after to. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postInvoices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesInvoiceRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesInvoiceResponse"];
+                };
+            };
+            /** @description Bad Request — a field did not pass; the errors name it. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — customer_merged (with mergedInto), customer_archived, customer_blocked or customer_missing. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    getInvoicesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesInvoiceResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putInvoicesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesInvoiceRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesInvoiceResponse"];
+                };
+            };
+            /** @description Bad Request — a field did not pass; the errors name it. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — invoice_issued, a customer gate, or a stale revision. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    deleteInvoicesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — invoice_issued. */
             409: {
                 headers: {
                     [name: string]: unknown;
