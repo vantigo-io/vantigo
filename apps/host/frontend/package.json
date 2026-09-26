@@ -31,6 +31,7 @@
     "@vantigo/expenses-ui": "workspace:*",
     "@vantigo/frontend-api-client": "workspace:*",
     "@vantigo/frontend-shell": "workspace:*",
+    "@vantigo/invoices-ui": "workspace:*",
     "@vantigo/products-ui": "workspace:*",
     "@vantigo/projects-ui": "workspace:*",
     "@vantigo/time-ui": "workspace:*",

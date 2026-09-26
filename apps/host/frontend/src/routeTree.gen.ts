@@ -18,6 +18,7 @@ import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as EnergyRouteImport } from './routes/energy'
 import { Route as ExpensesRouteImport } from './routes/expenses'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+import { Route as InvoicesRouteImport } from './routes/invoices'
 import { Route as PasswordResetRouteImport } from './routes/password-reset'
 import { Route as ProductsRouteImport } from './routes/products'
 import { Route as ProjectsRouteImport } from './routes/projects'
@@ -42,6 +43,7 @@ import { Route as ExpensesApprovalsRouteImport } from './routes/expenses/approva
 import { Route as ExpensesReimbursementsRouteImport } from './routes/expenses/reimbursements'
 import { Route as ExpensesSettingsRouteImport } from './routes/expenses/settings'
 import { Route as InvitationsAcceptRouteImport } from './routes/invitations/accept'
+import { Route as InvoicesIndexRouteImport } from './routes/invoices/index'
 import { Route as ProductsIndexRouteImport } from './routes/products/index'
 import { Route as ProductsProductIdRouteImport } from './routes/products/$productId'
 import { Route as ProductsCategoriesRouteImport } from './routes/products/categories'
@@ -122,6 +124,11 @@ const ExpensesRoute = ExpensesRouteImport.update({
 const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
   id: '/forgot-password',
   path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InvoicesRoute = InvoicesRouteImport.update({
+  id: '/invoices',
+  path: '/invoices',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PasswordResetRoute = PasswordResetRouteImport.update({
@@ -244,6 +251,11 @@ const InvitationsAcceptRoute = InvitationsAcceptRouteImport.update({
   id: '/invitations/accept',
   path: '/invitations/accept',
   getParentRoute: () => rootRouteImport,
+} as any)
+const InvoicesIndexRoute = InvoicesIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => InvoicesRoute,
 } as any)
 const ProductsIndexRoute = ProductsIndexRouteImport.update({
   id: '/',
@@ -445,6 +457,7 @@ export interface FileRoutesByFullPath {
   '/energy': typeof EnergyRouteWithChildren
   '/expenses': typeof ExpensesRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
+  '/invoices': typeof InvoicesRouteWithChildren
   '/password-reset': typeof PasswordResetRoute
   '/products': typeof ProductsRouteWithChildren
   '/projects': typeof ProjectsRouteWithChildren
@@ -485,6 +498,7 @@ export interface FileRoutesByFullPath {
   '/customers/': typeof CustomersIndexRoute
   '/energy/': typeof EnergyIndexRoute
   '/expenses/': typeof ExpensesIndexRoute
+  '/invoices/': typeof InvoicesIndexRoute
   '/products/': typeof ProductsIndexRoute
   '/projects/': typeof ProjectsIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -544,6 +558,7 @@ export interface FileRoutesByTo {
   '/customers': typeof CustomersIndexRoute
   '/energy': typeof EnergyIndexRoute
   '/expenses': typeof ExpensesIndexRoute
+  '/invoices': typeof InvoicesIndexRoute
   '/products': typeof ProductsIndexRoute
   '/projects': typeof ProjectsIndexRoute
   '/settings': typeof SettingsIndexRoute
@@ -576,6 +591,7 @@ export interface FileRoutesById {
   '/energy': typeof EnergyRouteWithChildren
   '/expenses': typeof ExpensesRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
+  '/invoices': typeof InvoicesRouteWithChildren
   '/password-reset': typeof PasswordResetRoute
   '/products': typeof ProductsRouteWithChildren
   '/projects': typeof ProjectsRouteWithChildren
@@ -616,6 +632,7 @@ export interface FileRoutesById {
   '/customers/': typeof CustomersIndexRoute
   '/energy/': typeof EnergyIndexRoute
   '/expenses/': typeof ExpensesIndexRoute
+  '/invoices/': typeof InvoicesIndexRoute
   '/products/': typeof ProductsIndexRoute
   '/projects/': typeof ProjectsIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -649,6 +666,7 @@ export interface FileRouteTypes {
     | '/energy'
     | '/expenses'
     | '/forgot-password'
+    | '/invoices'
     | '/password-reset'
     | '/products'
     | '/projects'
@@ -689,6 +707,7 @@ export interface FileRouteTypes {
     | '/customers/'
     | '/energy/'
     | '/expenses/'
+    | '/invoices/'
     | '/products/'
     | '/projects/'
     | '/settings/'
@@ -748,6 +767,7 @@ export interface FileRouteTypes {
     | '/customers'
     | '/energy'
     | '/expenses'
+    | '/invoices'
     | '/products'
     | '/projects'
     | '/settings'
@@ -779,6 +799,7 @@ export interface FileRouteTypes {
     | '/energy'
     | '/expenses'
     | '/forgot-password'
+    | '/invoices'
     | '/password-reset'
     | '/products'
     | '/projects'
@@ -819,6 +840,7 @@ export interface FileRouteTypes {
     | '/customers/'
     | '/energy/'
     | '/expenses/'
+    | '/invoices/'
     | '/products/'
     | '/projects/'
     | '/settings/'
@@ -851,6 +873,7 @@ export interface RootRouteChildren {
   EnergyRoute: typeof EnergyRouteWithChildren
   ExpensesRoute: typeof ExpensesRouteWithChildren
   ForgotPasswordRoute: typeof ForgotPasswordRoute
+  InvoicesRoute: typeof InvoicesRouteWithChildren
   PasswordResetRoute: typeof PasswordResetRoute
   ProductsRoute: typeof ProductsRouteWithChildren
   ProjectsRoute: typeof ProjectsRouteWithChildren
@@ -927,6 +950,13 @@ declare module '@tanstack/react-router' {
       path: '/forgot-password'
       fullPath: '/forgot-password'
       preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invoices': {
+      id: '/invoices'
+      path: '/invoices'
+      fullPath: '/invoices'
+      preLoaderRoute: typeof InvoicesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/password-reset': {
@@ -1096,6 +1126,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/invitations/accept'
       preLoaderRoute: typeof InvitationsAcceptRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/invoices/': {
+      id: '/invoices/'
+      path: '/'
+      fullPath: '/invoices/'
+      preLoaderRoute: typeof InvoicesIndexRouteImport
+      parentRoute: typeof InvoicesRoute
     }
     '/products/': {
       id: '/products/'
@@ -1451,6 +1488,18 @@ const ExpensesRouteWithChildren = ExpensesRoute._addFileChildren(
   ExpensesRouteChildren,
 )
 
+interface InvoicesRouteChildren {
+  InvoicesIndexRoute: typeof InvoicesIndexRoute
+}
+
+const InvoicesRouteChildren: InvoicesRouteChildren = {
+  InvoicesIndexRoute: InvoicesIndexRoute,
+}
+
+const InvoicesRouteWithChildren = InvoicesRoute._addFileChildren(
+  InvoicesRouteChildren,
+)
+
 interface ProductsRouteChildren {
   ProductsProductIdRoute: typeof ProductsProductIdRoute
   ProductsCategoriesRoute: typeof ProductsCategoriesRoute
@@ -1574,6 +1623,7 @@ const rootRouteChildren: RootRouteChildren = {
   EnergyRoute: EnergyRouteWithChildren,
   ExpensesRoute: ExpensesRouteWithChildren,
   ForgotPasswordRoute: ForgotPasswordRoute,
+  InvoicesRoute: InvoicesRouteWithChildren,
   PasswordResetRoute: PasswordResetRoute,
   ProductsRoute: ProductsRouteWithChildren,
   ProjectsRoute: ProjectsRouteWithChildren,
