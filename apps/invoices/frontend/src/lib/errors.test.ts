@@ -25,17 +25,18 @@ const serverCodes = [
   ),
 ].sort();
 
-/** The contract's own list of the 409 codes, in InvoicesConflictProblem's description. */
+/** The contract's own list of the codes, in InvoicesConflictProblem's description. */
 const contract = Object.values(
   import.meta.glob<string>("../../../../../openapi/invoices.yaml", { query: "?raw", import: "default", eager: true }),
 )[0];
-const conflictCodes = (
-  /InvoicesConflictProblem:\s*\n\s*description: '.*?code names the rule that refused — ([a-z_, ]+)\./.exec(
-    contract ?? "",
-  )?.[1] ?? ""
-)
-  .split(", ")
-  .filter(Boolean);
+// Every snake_case word in the sentence that lists them, however it is worded.
+const conflictCodes = [
+  ...(
+    /InvoicesConflictProblem:\s*\n\s*description: '.*?code names the rule that refused (.*?)A revision conflict/.exec(
+      contract ?? "",
+    )?.[1] ?? ""
+  ).matchAll(/\b[a-z]+(?:_[a-z]+)+\b/g),
+].map((m) => m[0]);
 
 /** A refusal as the shared client throws it for a 409 problem. */
 const conflict = (code: string, problem: Record<string, unknown> = {}) =>
@@ -53,9 +54,10 @@ const translate = (language: "en" | "nb") => {
 
 describe("a refusal's words", () => {
   it("reads every code the server has, and every 409 code the contract names is one of them", () => {
-    // 29 today: the contract's 28 conflicts and the 503 storage_unavailable.
+    // 29 today: the contract names the 28 conflicts and the 503's storage_unavailable.
     expect(serverCodes.length).toBeGreaterThanOrEqual(29);
     expect(conflictCodes.length).toBeGreaterThanOrEqual(28);
+    expect(conflictCodes).toContain("invoice_fully_credited");
     expect(conflictCodes.filter((code) => !serverCodes.includes(code))).toEqual([]);
   });
 
