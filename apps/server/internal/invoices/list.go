@@ -110,8 +110,9 @@ func (s *server) GetInvoices(ctx context.Context, req gen.GetInvoicesRequestObje
 		return nil, fmt.Errorf("invoices: count: %w", err)
 	}
 
-	// A draft has no buyer snapshot: the page's drafts are named by their
-	// customers' current names, in one directory round trip.
+	// An invoice draft has no buyer snapshot (a credit-note draft carries the
+	// one it copied): the page's invoice drafts are named by their customers'
+	// current names, in one directory round trip.
 	var draftCustomers []int32
 	for _, r := range rows {
 		if r.BuyerName == nil {
