@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -304,6 +305,25 @@ func TestIssue_TheRefusals(t *testing.T) {
 	}
 }
 
+// § 5-1-2's buyer address, the postal-code clause only buyerComplete holds: a
+// Norwegian address without a postal code is incomplete, a foreign one
+// without one is complete — many countries have none.
+func TestIssue_ThePostalCodeIsNorwaysRule(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	h.customers.edit(customerPerson, func(p *contracts.CustomerBillingProfile) {
+		p.InvoiceAddress = &contracts.CustomerAddressEntry{Line1: "Hjemveien 5", City: "Bergen", Country: "NO"}
+	})
+	refusedWith(t, h, createDraft(t, h, draftBody(customerPerson, line("A", 1, 100, vat25))).ID, "", "buyer_incomplete")
+
+	h.customers.edit(customerPerson, func(p *contracts.CustomerBillingProfile) {
+		p.InvoiceAddress = &contracts.CustomerAddressEntry{Line1: "Main Street 1", City: "Dublin", Country: "IE"}
+	})
+	if inv := issued(t, h, createDraft(t, h, draftBody(customerPerson, line("A", 1, 100, vat25))).ID); inv.Buyer == nil || *inv.Buyer.Country != "IE" {
+		t.Errorf("a foreign address without a postal code = %+v, want issued to it", inv.Buyer)
+	}
+}
+
 // A seller outside the VAT register issues only O lines (research §2.1).
 func TestIssue_ANonRegisteredSeller(t *testing.T) {
 	t.Parallel()
@@ -438,9 +458,15 @@ func TestIssue_RacingIssuesGetConsecutiveNumbers(t *testing.T) {
 }
 
 // Two racing issues with different dates cannot give a later number an
-// earlier date: the one that allocates second reads the first's date.
+// earlier date (D6): the one that allocates second reads the latest issue
+// date only after the counter's lock, so it sees the first's. Deterministic:
+// A holds the counter (the hook runs right after its allocation) until B —
+// asking for the last day of August — waits on it; B's only possible wait is
+// the counter row, since its document differs and FOR SHARE on the settings
+// is compatible with A's. Read before the lock, B would see August 31 and
+// issue number 3 dated before number 2. Not parallel: the hook is the
+// package's.
 func TestIssue_RacingDatesStayMonotone(t *testing.T) {
-	t.Parallel()
 	h := readyToIssue(t)
 	h.Advance(3 * 24 * time.Hour) // the 15th: the last day of August is allowed
 	august := func() int64 {
@@ -448,28 +474,92 @@ func TestIssue_RacingDatesStayMonotone(t *testing.T) {
 		body["deliveryDate"] = "2026-08-20"
 		return createDraft(t, h, body).ID
 	}
-	for round := range 4 {
-		a, b := august(), august()
-		var wg sync.WaitGroup
-		for _, c := range []struct {
-			id   int64
-			date string
-		}{{a, "2026-08-31"}, {b, ""}} {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				res := issueWith(t, h, c.id, c.date)
-				if res.Status != http.StatusOK && (res.Status != http.StatusConflict || problemOf(t, res).Code != "issue_date_not_allowed") {
-					t.Errorf("round %d: issue %d = %d %s", round, c.id, res.Status, res.Body)
-				}
-			}()
-		}
-		wg.Wait()
+	// A first issue makes the counter row, so the wait below is the ordinary
+	// one, on that row's lock.
+	if res := issueWith(t, h, august(), "2026-08-31"); res.Status != http.StatusOK {
+		t.Fatalf("the first issue = %d %s", res.Status, res.Body)
 	}
-	if n := h.Count(t, `
-		SELECT count(*) FROM invoices.invoices a JOIN invoices.invoices b ON a.number < b.number
-		WHERE a.status = 'issued' AND b.status = 'issued' AND a.issue_date > b.issue_date`); n != 0 {
-		t.Errorf("%d pairs have a later number with an earlier date", n)
+	a := createDraft(t, h, draftBody(customerAcme, line("A", 1, 100, vat25))).ID
+	b := august()
+
+	var bRes *modtest.Response
+	bDone := make(chan struct{})
+	bIssuer := issuer(t, h) // signed in here, on the test's goroutine
+	restore := invoices.SetIssueAfterAllocation(func(_ context.Context, id int64) error {
+		// The handler's goroutine: t.Errorf, never a t.Fatal.
+		if id != a {
+			return nil
+		}
+		go func() {
+			defer close(bDone)
+			bRes = bIssuer.Do(http.MethodPost, issuePath(b), map[string]any{"issueDate": "2026-08-31"})
+		}()
+		if err := awaitLockWaiter(h); err != nil {
+			t.Errorf("B: %v", err)
+			return err
+		}
+		return nil
+	})
+	defer restore()
+
+	aDoc := issued(t, h, a)
+	<-bDone
+	if *aDoc.Number != 2 || *aDoc.IssueDate != "2026-09-15" {
+		t.Errorf("A = number %d dated %s, want 2 dated 2026-09-15", *aDoc.Number, *aDoc.IssueDate)
+	}
+	if bRes.Status != http.StatusConflict {
+		t.Fatalf("B = %d %s, want 409 issue_date_not_allowed", bRes.Status, bRes.Body)
+	}
+	if p := problemOf(t, bRes); p.Code != "issue_date_not_allowed" || !slices.Equal(p.AllowedIssueDates, []string{"2026-09-15"}) {
+		t.Errorf("B = %s allowing %v, want issue_date_not_allowed allowing only 2026-09-15", p.Code, p.AllowedIssueDates)
+	}
+	if n := counterNext(t, h); n != 3 {
+		t.Errorf("counter next = %d, want 3: B's number rolled back", n)
+	}
+}
+
+// Two issues of one draft at once: both pass the pre-read, the second waits
+// on the document's lock and finds it issued — exactly one 200 and one 409
+// invoice_issued, and one number taken. Deterministic as above: the first
+// holds its transaction until the second waits. Not parallel: the hook is
+// the package's.
+func TestIssue_TwoIssuesOfOneDraft(t *testing.T) {
+	h := readyToIssue(t)
+	draft := createDraft(t, h, draftBody(customerAcme, line("A", 1, 100, vat25))).ID
+	var second *modtest.Response
+	done := make(chan struct{})
+	secondIssuer := issuer(t, h) // signed in here, on the test's goroutine
+	var fired atomic.Bool
+	restore := invoices.SetIssueAfterAllocation(func(_ context.Context, id int64) error {
+		// The handler's goroutine: t.Errorf, never a t.Fatal.
+		// Only the first issue should reach its allocation — the second
+		// stops at the document's lock and finds it issued — but should it
+		// not, it gets no second waiter.
+		if id != draft || fired.Swap(true) {
+			return nil
+		}
+		go func() {
+			defer close(done)
+			second = secondIssuer.Do(http.MethodPost, issuePath(draft), map[string]any{})
+		}()
+		if err := awaitLockWaiter(h); err != nil {
+			t.Errorf("the second issue: %v", err)
+			return err
+		}
+		return nil
+	})
+	defer restore()
+
+	first := issued(t, h, draft)
+	<-done
+	if *first.Number != 1 {
+		t.Errorf("the first issue = number %d, want 1", *first.Number)
+	}
+	if second.Status != http.StatusConflict || problemOf(t, second).Code != "invoice_issued" {
+		t.Errorf("the second issue = %d %s, want 409 invoice_issued", second.Status, second.Body)
+	}
+	if n := counterNext(t, h); n != 2 {
+		t.Errorf("counter next = %d, want 2: one number taken", n)
 	}
 }
 
@@ -499,17 +589,31 @@ func TestIssue_AFailureAfterAllocationLeavesNoGap(t *testing.T) {
 }
 
 // waitForALockWaiter polls until a session of this installation's database
-// waits on a lock.
+// waits on a lock. It fails the test, so it runs on the test's goroutine only;
+// a hook on a handler's goroutine calls awaitLockWaiter.
 func waitForALockWaiter(t *testing.T, h *harness) {
 	t.Helper()
+	if err := awaitLockWaiter(h); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// awaitLockWaiter is waitForALockWaiter answering an error instead of failing
+// the test: what a hook running on a handler's goroutine may call.
+func awaitLockWaiter(h *harness) error {
+	ctx := context.Background()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		if h.Count(t, `SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`) > 0 {
-			return
+		var n int
+		if err := h.Pool().QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`).Scan(&n); err != nil {
+			return fmt.Errorf("read the lock waiters: %w", err)
+		}
+		if n > 0 {
+			return nil
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	t.Fatal("no session ever waited on a lock")
+	return errors.New("no session ever waited on a lock")
 }
 
 // A settings replace racing the first issue waits behind it and is refused:
@@ -519,7 +623,9 @@ func TestIssue_ASettingsReplaceRacingTheFirstIssueWaitsAndIsRefused(t *testing.T
 	draft := createDraft(t, h, draftBody(customerAcme, line("A", 1, 100, vat25)))
 	var put *modtest.Response
 	done := make(chan struct{})
+	settingsManager := h.SignIn(t, "invoices:access", "invoices:manage") // on the test's goroutine
 	restore := invoices.SetIssueAfterAllocation(func(_ context.Context, id int64) error {
+		// The handler's goroutine: t.Errorf, never a t.Fatal.
 		if id != draft.ID {
 			return nil
 		}
@@ -527,9 +633,12 @@ func TestIssue_ASettingsReplaceRacingTheFirstIssueWaitsAndIsRefused(t *testing.T
 			defer close(done)
 			body := completeSeller(2)
 			body["seriesStart"] = 5000
-			put = h.SignIn(t, "invoices:access", "invoices:manage").Do(http.MethodPut, settingsPath, body)
+			put = settingsManager.Do(http.MethodPut, settingsPath, body)
 		}()
-		waitForALockWaiter(t, h)
+		if err := awaitLockWaiter(h); err != nil {
+			t.Errorf("the settings replace: %v", err)
+			return err
+		}
 		return nil
 	})
 	defer restore()
@@ -567,15 +676,20 @@ func TestIssue_NoDeadlockBesideASettingsWriteAndACustomerUpdate(t *testing.T) {
 			}
 		}()
 	}
+	// Off the test's goroutine: t.Errorf, never a t.Fatal — so no h.Exec,
+	// and the manager signs in here first.
+	settingsManager := h.SignIn(t, "invoices:access", "invoices:manage")
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		h.Exec(t, `UPDATE invoices.invoices SET customer_id = $1 WHERE customer_id = $2`, customerAcme, customerAcme)
+		if _, err := h.Pool().Exec(context.Background(), `UPDATE invoices.invoices SET customer_id = $1 WHERE customer_id = $2`, customerAcme, customerAcme); err != nil {
+			t.Errorf("the customer update: %v", err)
+		}
 	}()
 	go func() {
 		defer wg.Done()
 		body := completeSeller(2)
-		if res := h.SignIn(t, "invoices:access", "invoices:manage").Do(http.MethodPut, settingsPath, body); res.Status != http.StatusOK {
+		if res := settingsManager.Do(http.MethodPut, settingsPath, body); res.Status != http.StatusOK {
 			t.Errorf("the settings write = %d %s", res.Status, res.Body)
 		}
 	}()
@@ -603,6 +717,7 @@ func TestIssue_AnIssuedDocumentIsImmutableInSQL(t *testing.T) {
 	immutable(`UPDATE invoices.invoices SET revision = revision + 1 WHERE id = $1`, inv.ID)
 	immutable(`UPDATE invoices.invoices SET number = 99 WHERE id = $1`, inv.ID)
 	immutable(`UPDATE invoices.invoices SET internal_note = 'x' WHERE id = $1`, inv.ID)
+	immutable(`UPDATE invoices.invoices SET status = 'draft', number = NULL, issue_date = NULL WHERE id = $1`, inv.ID)
 	immutable(`DELETE FROM invoices.invoices WHERE id = $1`, inv.ID)
 	immutable(`UPDATE invoices.lines SET description = 'x' WHERE invoice_id = $1`, inv.ID)
 	immutable(`DELETE FROM invoices.lines WHERE invoice_id = $1`, inv.ID)
@@ -650,13 +765,22 @@ func TestIssue_ASettingsReplaceThatCommitsFirstSetsTheStartTheIssueUses(t *testi
 		t.Fatalf("change the start: %v", err)
 	}
 
-	done := make(chan invoiceJSON)
-	go func() { done <- issued(t, h, draft.ID) }()
+	// The issue runs off the test's goroutine, so it only answers; the test
+	// asserts on it here.
+	c := issuer(t, h)
+	done := make(chan *modtest.Response)
+	go func() { done <- c.Do(http.MethodPost, issuePath(draft.ID), map[string]any{}) }()
 	waitForALockWaiter(t, h)
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatalf("commit: %v", err)
 	}
-	if inv := <-done; *inv.Number != 5000 {
+	res := <-done
+	if res.Status != http.StatusOK {
+		t.Fatalf("the waiting issue = %d %s, want 200", res.Status, res.Body)
+	}
+	var inv invoiceJSON
+	res.JSON(&inv)
+	if *inv.Number != 5000 {
 		t.Errorf("number = %d, want the start the replace committed, 5000", *inv.Number)
 	}
 }

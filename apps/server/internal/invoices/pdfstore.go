@@ -175,12 +175,22 @@ func renderIssued(ctx context.Context, q *store.Queries, inv store.InvoicesInvoi
 	if err != nil {
 		return nil, fmt.Errorf("invoices: render document %d: %w", inv.ID, err)
 	}
-	body, err := renderPDF(buildPDFModel(doc))
+	m := buildPDFModel(doc)
+	if pdfModelBuilt != nil {
+		pdfModelBuilt(inv.ID, m)
+	}
+	body, err := renderPDF(m)
 	if err != nil {
 		return nil, fmt.Errorf("invoices: render document %d: %w", inv.ID, err)
 	}
 	return body, nil
 }
+
+// pdfModelBuilt, when a test sets it (export_test.go), is told every model a
+// PDF is laid out from — an issued document's and a preview's — so what a PDF
+// says is asserted on the model, never on the renderer's content stream. Nil
+// outside tests.
+var pdfModelBuilt func(invoiceID int64, m pdfModel)
 
 // storedPDF is where an issued document's PDF is, and, when this call stored
 // it, the bytes it stored.
@@ -501,7 +511,11 @@ func (s *server) renderPreview(ctx context.Context, q *store.Queries, inv store.
 	if previewRendered != nil {
 		previewRendered(inv.ID, doc.totals.vat)
 	}
-	return renderPDF(buildPDFModel(doc))
+	m := buildPDFModel(doc)
+	if pdfModelBuilt != nil {
+		pdfModelBuilt(inv.ID, m)
+	}
+	return renderPDF(m)
 }
 
 // previewRendered, when a test sets it, is told each preview's VAT total: no
