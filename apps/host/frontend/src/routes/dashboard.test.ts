@@ -1,5 +1,6 @@
 import { i18n } from "@vantigo/frontend-shell";
 import { describe, expect, it } from "vitest";
+import { dashboardCatalog } from "../catalogs/dashboard";
 import {
   attentionHref,
   attentionTitle,
@@ -7,6 +8,7 @@ import {
   attentionWeek,
   awaitingApprovalHint,
   expensesUnreimbursedValue,
+  invoicesKpi,
   invoicesOverdueHint,
   metrics,
   projectsCardHint,
@@ -428,7 +430,8 @@ describe("the dashboard's attention links", () => {
 // something overdue — the `awaitingApprovalHint` pattern.
 describe("the dashboard's invoices card", () => {
   const format = (value: number, currency: string) => `${value} ${currency}`;
-  const t = (key: string, values?: Record<string, unknown>) => `${key}:${values?.count}:${values?.amount}`;
+  const t = (key: string, values?: Record<string, unknown>) =>
+    values ? `${key}:${values.count}:${values.amount}` : key;
 
   it("shows no overdue hint while nothing is overdue, or before the summary is known", () => {
     expect(invoicesOverdueHint({ overdueCount: 0, overdueAmount: 0 }, format, t)).toBeUndefined();
@@ -441,6 +444,40 @@ describe("the dashboard's invoices card", () => {
     );
   });
 
+  // The value is the outstanding amount, not the period's issued gross; the
+  // delta is the issued gross against the previous period's (1500 now, 1000
+  // before: +50 %, where the arguments swapped would read +150 %).
+  it("shows the outstanding amount in NOK, the overdue hint and the issued gross delta", () => {
+    const summary = {
+      from: "2026-09-01T00:00:00Z",
+      to: "2026-10-01T00:00:00Z",
+      outstandingAmount: 4200,
+      outstandingCount: 3,
+      overdueAmount: 1250.5,
+      overdueCount: 2,
+      issuedCount: 5,
+      issuedGrossTotal: 1500,
+      issuedGrossTotalDelta: 500,
+      creditedCount: 0,
+      creditedGrossTotal: 0,
+      paidAmount: 800,
+      paidCount: 1,
+    };
+
+    expect(invoicesKpi(summary, format, t)).toEqual({
+      value: "4200 NOK",
+      hint: "dashboard.invoicesOverdueHint:2:1250.5 NOK",
+      delta: { value: 50, label: "dashboard.invoicesIssuedDelta" },
+    });
+    expect(invoicesKpi({ ...summary, overdueCount: 0, overdueAmount: 0 }, format, t).hint).toBeUndefined();
+  });
+
+  it("shows a dash and neither hint nor delta before the summary is known", () => {
+    expect(invoicesKpi(undefined, format, t)).toEqual({ value: "—", hint: undefined, delta: undefined });
+  });
+
+  // Read from the catalogs themselves: through i18n.t a missing nb key would
+  // fall back to the English text and pass.
   it("has the card's strings in English and Norwegian", () => {
     for (const key of [
       "dashboard.invoices",
@@ -448,13 +485,16 @@ describe("the dashboard's invoices card", () => {
       "dashboard.invoicesOutstanding",
       "dashboard.invoicesOverdueHint",
       "dashboard.invoicesIssuedDelta",
-    ]) {
-      for (const lng of ["en", "nb"]) {
-        expect(i18n.t(key, { ns: "host", lng, count: 2, amount: "kr 10" })).not.toBe(key);
-      }
+    ] as const) {
+      expect(dashboardCatalog.en[key]).toBeTruthy();
+      expect(dashboardCatalog.nb[key]).toBeTruthy();
+      expect(dashboardCatalog.nb[key]).not.toBe(dashboardCatalog.en[key]);
     }
     expect(i18n.t("dashboard.invoicesOverdueHint", { ns: "host", lng: "en", count: 2, amount: "kr 10" })).toBe(
       "2 overdue (kr 10)",
+    );
+    expect(i18n.t("dashboard.invoicesOverdueHint", { ns: "host", lng: "nb", count: 2, amount: "kr 10" })).toBe(
+      "2 forfalte (kr 10)",
     );
   });
 

@@ -1,7 +1,7 @@
 import { ContentSkeleton } from "@vantigo/frontend-shell";
 import { InvoicesPage } from "@vantigo/invoices-ui/pages/invoices";
 import "../../i18n";
-import { useInvoiceAccess } from "./-invoice-access";
+import { useInvoiceAccess } from "../../lib/invoice-access";
 
 /**
  * The list's entry point: the package page, told whether the caller may pick
