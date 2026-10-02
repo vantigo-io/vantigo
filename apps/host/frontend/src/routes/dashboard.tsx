@@ -21,6 +21,7 @@ import {
   IconChecklist,
   IconCircleCheck,
   IconClock,
+  IconFileInvoice,
   IconInbox,
   IconMessage,
   IconPackage,
@@ -127,6 +128,25 @@ interface ExpensesSummary {
   myUnreimbursed: { currency: string; amount: number }[];
 }
 
+/** The invoices module's `InvoicesStatsSummaryResponse` (payments and delivery design D7); all NOK. */
+interface InvoicesSummary {
+  from: string;
+  to: string;
+  /** Now, not in the period: issued invoices with something open, credit notes excluded. */
+  outstandingAmount: number;
+  outstandingCount: number;
+  /** Now: those of the outstanding past their due date. */
+  overdueAmount: number;
+  overdueCount: number;
+  issuedCount: number;
+  issuedGrossTotal: number;
+  issuedGrossTotalDelta: number;
+  creditedCount: number;
+  creditedGrossTotal: number;
+  paidAmount: number;
+  paidCount: number;
+}
+
 interface AttentionItem {
   id: string;
   type: string;
@@ -204,7 +224,21 @@ const moduleCards = [
     module: "expenses" as ModuleKey,
     requiredPermissions: ["expenses:access"],
   },
+  {
+    title: "dashboard.invoices",
+    description: "dashboard.manageInvoices",
+    path: "/invoices",
+    icon: IconFileInvoice,
+    module: "invoices" as ModuleKey,
+    requiredPermissions: ["invoices:access"],
+  },
 ] as const;
+
+/** The module cards the caller may see: module enabled for the tenant and permission granted. */
+export const visibleModuleCards = (enabledModules: readonly ModuleKey[], permissions: string[] | undefined) =>
+  moduleCards.filter(
+    (card) => enabledModules.includes(card.module) && hasPermissions(permissions, card.requiredPermissions),
+  );
 
 const presetDays: Record<Exclude<DashboardPreset, "custom">, number> = {
   "7d": 7,
@@ -213,7 +247,8 @@ const presetDays: Record<Exclude<DashboardPreset, "custom">, number> = {
   "12m": 365,
 };
 
-const metrics = [
+/** The activity chart's series. Invoices has none: it serves no timeseries (payments and delivery design D7). */
+export const metrics = [
   { module: "customers" as ModuleKey, metric: "newCustomers", color: "blue.6", label: "dashboard.newCustomers" },
   {
     module: "communications" as ModuleKey,
@@ -479,6 +514,24 @@ export const expensesUnreimbursedValue = (
   return rest.length ? `${base} ${t("dashboard.moreCurrencies", { count: rest.length })}` : base;
 };
 
+/**
+ * The Invoices card's "N overdue (amount)" hint, or nothing while nothing is
+ * overdue — zero is the ordinary case, so a standing zero would be a fixture
+ * rather than something worth reading, the same rule as `awaitingApprovalHint`.
+ * Only NOK in this phase.
+ */
+export const invoicesOverdueHint = (
+  summary: Pick<InvoicesSummary, "overdueCount" | "overdueAmount"> | undefined,
+  formatCurrency: (value: number, currency: string) => string,
+  t: (key: string, values?: Record<string, unknown>) => string,
+): string | undefined =>
+  summary && summary.overdueCount > 0
+    ? t("dashboard.invoicesOverdueHint", {
+        count: summary.overdueCount,
+        amount: formatCurrency(summary.overdueAmount, "NOK"),
+      })
+    : undefined;
+
 const deltaPercent = (current: number, absoluteDelta: number) => {
   const previous = current - absoluteDelta;
   if (previous === 0) return absoluteDelta === 0 ? 0 : absoluteDelta > 0 ? 100 : -100;
@@ -519,9 +572,7 @@ const DashboardPage = () => {
 
   const enabledModules = enabledModuleKeys();
   const permissions = authorization.data?.permissions;
-  const modules = moduleCards.filter(
-    (card) => enabledModules.includes(card.module) && hasPermissions(permissions, card.requiredPermissions),
-  );
+  const modules = visibleModuleCards(enabledModules, permissions);
   const allowed = (module: ModuleKey) => modules.some((item) => item.module === module);
   const range =
     search.preset === "custom" && search.from && search.to
@@ -571,6 +622,14 @@ const DashboardPage = () => {
     queryKey: ["dashboard", "expenses", "summary", range.from.toISOString(), range.to.toISOString()],
     queryFn: ({ signal }) => fetchSummary<ExpensesSummary>("expenses", range, signal),
     enabled: allowed("expenses"),
+    retry: false,
+  });
+
+  // Invoices serves a summary only: no timeseries and no attention list (D7).
+  const invoicesSummary = useQuery({
+    queryKey: ["dashboard", "invoices", "summary", range.from.toISOString(), range.to.toISOString()],
+    queryFn: ({ signal }) => fetchSummary<InvoicesSummary>("invoices", range, signal),
+    enabled: allowed("invoices"),
     retry: false,
   });
 
@@ -979,6 +1038,33 @@ const DashboardPage = () => {
                 sparklineData={sparkline(expensesTimeseries.data)}
                 href={href}
                 loading={expensesSummary.isPending || expensesTimeseries.isPending}
+              />
+            );
+          }
+          if (module.module === "invoices") {
+            return (
+              <KpiCard
+                key={module.module}
+                label={t("dashboard.invoicesOutstanding")}
+                value={
+                  invoicesSummary.data ? formatters.formatCurrency(invoicesSummary.data.outstandingAmount, "NOK") : "—"
+                }
+                hint={invoicesOverdueHint(invoicesSummary.data, formatters.formatCurrency, t)}
+                // The delta is the period's issued gross against the previous
+                // period's, not the outstanding figure's, so its label says so.
+                delta={
+                  invoicesSummary.data
+                    ? {
+                        value: deltaPercent(
+                          invoicesSummary.data.issuedGrossTotal,
+                          invoicesSummary.data.issuedGrossTotalDelta,
+                        ),
+                        label: t("dashboard.invoicesIssuedDelta"),
+                      }
+                    : undefined
+                }
+                href={href}
+                loading={invoicesSummary.isPending}
               />
             );
           }

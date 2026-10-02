@@ -369,6 +369,12 @@ export const hostPermissionTranslationKeys = {
     displayNameKey: "admin.permission.invoicesManage",
     descriptionKey: "admin.permission.invoicesManageDescription",
   },
+  "invoices:payments": {
+    moduleKey: "admin.permission.module.invoices",
+    categoryKey: "admin.permission.category.invoices",
+    displayNameKey: "admin.permission.invoicesPayments",
+    descriptionKey: "admin.permission.invoicesPaymentsDescription",
+  },
 } as const;
 
 export const getHostPermissionTranslation = (permissionKey: string) =>
@@ -604,15 +610,18 @@ const en = {
     "Change expense settings, rates and categories, record expenses for a colleague, mark expenses reimbursed, and work past the period lock.",
   "admin.permission.invoicesAccess": "Use Invoices",
   "admin.permission.invoicesAccessDescription":
-    "Use the Invoices app and read every invoice, credit note, PDF and the invoice journal.",
+    "Use the Invoices app and read every invoice, credit note, PDF, payment and delivery, the journal, the CSV export and the stats.",
   "admin.permission.invoicesCreate": "Create invoices",
   "admin.permission.invoicesCreateDescription": "Create, edit and delete invoice drafts, and preview a draft as PDF.",
   "admin.permission.invoicesIssue": "Issue invoices",
   "admin.permission.invoicesIssueDescription":
-    "Issue a draft into a numbered document that can never be changed, and create credit notes.",
+    "Issue a draft into a numbered document that can never be changed, create credit notes, and send an issued document by e-mail.",
   "admin.permission.invoicesManage": "Manage invoicing",
   "admin.permission.invoicesManageDescription":
     "Change the seller record, the number series start, and the VAT codes and their rates.",
+  "admin.permission.invoicesPayments": "Register payments",
+  "admin.permission.invoicesPaymentsDescription":
+    "Register payments against issued invoices, and remove a registration with a reason.",
   "admin.accountExists": "An account already exists for this email address.",
   "admin.filterUsers": "Filter users by {{label}}",
   "admin.searchUsers": "Search users",
@@ -964,16 +973,19 @@ const nb: { [Key in keyof typeof en]: string } = {
     "Endre utleggsinnstillinger, satser og kategorier, før utlegg for en kollega, merk utlegg som refundert, og arbeid forbi periodelåsen.",
   "admin.permission.invoicesAccess": "Bruke Fakturaer",
   "admin.permission.invoicesAccessDescription":
-    "Bruke Fakturaer-appen og lese alle fakturaer, kreditnotaer, PDF-er og fakturajournalen.",
+    "Bruke Fakturaer-appen og lese alle fakturaer, kreditnotaer, PDF-er, betalinger og forsendelser, journalen, CSV-eksporten og statistikken.",
   "admin.permission.invoicesCreate": "Lage fakturaer",
   "admin.permission.invoicesCreateDescription":
     "Lage, endre og slette fakturautkast, og forhåndsvise et utkast som PDF.",
   "admin.permission.invoicesIssue": "Utstede fakturaer",
   "admin.permission.invoicesIssueDescription":
-    "Utstede et utkast som et nummerert dokument som aldri kan endres, og lage kreditnotaer.",
+    "Utstede et utkast som et nummerert dokument som aldri kan endres, lage kreditnotaer, og sende et utstedt dokument på e-post.",
   "admin.permission.invoicesManage": "Administrere fakturering",
   "admin.permission.invoicesManageDescription":
     "Endre selgeropplysningene, startnummeret for nummerserien, og mva-kodene og satsene deres.",
+  "admin.permission.invoicesPayments": "Registrere betalinger",
+  "admin.permission.invoicesPaymentsDescription":
+    "Registrere betalinger mot utstedte fakturaer, og fjerne en registrering med en begrunnelse.",
   "admin.accountExists": "Det finnes allerede en konto for denne e-postadressen.",
   "admin.filterUsers": "Filtrer brukere etter {{label}}",
   "admin.searchUsers": "Søk etter brukere",

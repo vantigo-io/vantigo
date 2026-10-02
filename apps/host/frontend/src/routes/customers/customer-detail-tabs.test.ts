@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { moduleKeys } from "../../navigation";
-import { showCorrespondenceAction, visibleCustomerDetailTabs } from "./-customer-detail-layout";
+import {
+  activeCustomerDetailTab,
+  showCorrespondenceAction,
+  visibleCustomerDetailTabs,
+} from "./-customer-detail-layout";
 
 const values = (enabledModules: Parameters<typeof visibleCustomerDetailTabs>[0], permissions: string[] | undefined) =>
   visibleCustomerDetailTabs(enabledModules, permissions).map((tab) => tab.value);
 
 describe("customer detail tab visibility", () => {
   it("shows every tab when all modules are enabled and permissions granted", () => {
-    expect(values(moduleKeys, ["*"])).toEqual(["overview", "energy", "projects"]);
+    expect(values(moduleKeys, ["*"])).toEqual(["overview", "energy", "projects", "invoices"]);
   });
 
   it("hides the energy tab when the energy module is disabled for the tenant", () => {
@@ -32,12 +36,35 @@ describe("customer detail tab visibility", () => {
     expect(values(moduleKeys, ["energy:metering-points-view"])).toEqual(["overview", "energy"]);
   });
 
+  it("shows the invoices tab only with the invoices module and invoices:access", () => {
+    expect(values(moduleKeys, ["invoices:access"])).toEqual(["overview", "invoices"]);
+    expect(values(["customers", "projects"], ["*"])).toEqual(["overview", "projects"]);
+    expect(values(["customers", "invoices"], ["invoices:access"])).toEqual(["overview", "invoices"]);
+  });
+
+  it("hides the invoices tab without invoices:access even though the module is enabled", () => {
+    expect(values(moduleKeys, ["customers:view", "invoices:create", "invoices:issue"])).toEqual(["overview"]);
+  });
+
   // Every module in the navigation catalog ships in this build (the
   // tenant-capabilities endpoint is gone; see the production call site in
   // $customerId.tsx), so enabledModules is never actually undefined here.
   // Only the permissions query is genuinely transient.
   it("shows only the overview while permissions are still loading", () => {
     expect(values(moduleKeys, undefined)).toEqual(["overview"]);
+  });
+});
+
+// Without its route id in the ternary a tab would never highlight, and the
+// row would silently say "Overview" on the invoices page.
+describe("the active customer detail tab", () => {
+  const routeIds = (...ids: string[]) => ["__root__", "/customers", "/customers/$customerId", ...ids];
+
+  it("follows the child route the URL matched", () => {
+    expect(activeCustomerDetailTab(routeIds("/customers/$customerId/"))).toBe("overview");
+    expect(activeCustomerDetailTab(routeIds("/customers/$customerId/energy"))).toBe("energy");
+    expect(activeCustomerDetailTab(routeIds("/customers/$customerId/projects"))).toBe("projects");
+    expect(activeCustomerDetailTab(routeIds("/customers/$customerId/invoices"))).toBe("invoices");
   });
 });
 

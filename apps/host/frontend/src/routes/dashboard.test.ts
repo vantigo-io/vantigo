@@ -7,8 +7,11 @@ import {
   attentionWeek,
   awaitingApprovalHint,
   expensesUnreimbursedValue,
+  invoicesOverdueHint,
+  metrics,
   projectsCardHint,
   readyMilestonesHint,
+  visibleModuleCards,
 } from "./dashboard";
 import "../i18n";
 
@@ -417,5 +420,63 @@ describe("the dashboard's attention links", () => {
         t,
       ),
     ).toBe("500 NOK dashboard.moreCurrencies:1");
+  });
+});
+
+// Invoices' card (payments and delivery design D7): one KPI whose value is the
+// outstanding amount, with the overdue figure as its hint only while there is
+// something overdue — the `awaitingApprovalHint` pattern.
+describe("the dashboard's invoices card", () => {
+  const format = (value: number, currency: string) => `${value} ${currency}`;
+  const t = (key: string, values?: Record<string, unknown>) => `${key}:${values?.count}:${values?.amount}`;
+
+  it("shows no overdue hint while nothing is overdue, or before the summary is known", () => {
+    expect(invoicesOverdueHint({ overdueCount: 0, overdueAmount: 0 }, format, t)).toBeUndefined();
+    expect(invoicesOverdueHint(undefined, format, t)).toBeUndefined();
+  });
+
+  it("names the overdue count and the overdue amount in NOK", () => {
+    expect(invoicesOverdueHint({ overdueCount: 2, overdueAmount: 1250.5 }, format, t)).toBe(
+      "dashboard.invoicesOverdueHint:2:1250.5 NOK",
+    );
+  });
+
+  it("has the card's strings in English and Norwegian", () => {
+    for (const key of [
+      "dashboard.invoices",
+      "dashboard.manageInvoices",
+      "dashboard.invoicesOutstanding",
+      "dashboard.invoicesOverdueHint",
+      "dashboard.invoicesIssuedDelta",
+    ]) {
+      for (const lng of ["en", "nb"]) {
+        expect(i18n.t(key, { ns: "host", lng, count: 2, amount: "kr 10" })).not.toBe(key);
+      }
+    }
+    expect(i18n.t("dashboard.invoicesOverdueHint", { ns: "host", lng: "en", count: 2, amount: "kr 10" })).toBe(
+      "2 overdue (kr 10)",
+    );
+  });
+
+  it("shows the card with the invoices module and invoices:access, and not otherwise", () => {
+    const invoicesCard = (modules: Parameters<typeof visibleModuleCards>[0], permissions: string[] | undefined) =>
+      visibleModuleCards(modules, permissions).find((card) => card.module === "invoices");
+
+    expect(invoicesCard(["customers", "invoices"], ["invoices:access"])).toMatchObject({
+      title: "dashboard.invoices",
+      description: "dashboard.manageInvoices",
+      path: "/invoices",
+      requiredPermissions: ["invoices:access"],
+    });
+    expect(invoicesCard(["customers", "invoices"], ["*"])).toBeDefined();
+    expect(invoicesCard(["customers", "invoices"], ["customers:view", "invoices:create"])).toBeUndefined();
+    expect(invoicesCard(["customers", "invoices"], undefined)).toBeUndefined();
+    expect(invoicesCard(["customers", "projects"], ["*"])).toBeUndefined();
+  });
+
+  // No timeseries in this phase (D7, Out of scope): a metrics entry would make
+  // the activity chart query an endpoint the module does not serve.
+  it("adds no activity metric for invoices", () => {
+    expect(metrics.some((metric) => (metric.module as string) === "invoices")).toBe(false);
   });
 });
