@@ -538,6 +538,26 @@ const deltaPercent = (current: number, absoluteDelta: number) => {
   return Math.round((absoluteDelta / Math.abs(previous)) * 100);
 };
 
+/**
+ * The Invoices card's figures: the outstanding amount in NOK ("—" before the
+ * summary is known), the overdue hint, and the period's issued gross against
+ * the previous period's — not the outstanding figure's, so its label says so.
+ */
+export const invoicesKpi = (
+  summary: InvoicesSummary | undefined,
+  formatCurrency: (value: number, currency: string) => string,
+  t: (key: string, values?: Record<string, unknown>) => string,
+) => ({
+  value: summary ? formatCurrency(summary.outstandingAmount, "NOK") : "—",
+  hint: invoicesOverdueHint(summary, formatCurrency, t),
+  delta: summary
+    ? {
+        value: deltaPercent(summary.issuedGrossTotal, summary.issuedGrossTotalDelta),
+        label: t("dashboard.invoicesIssuedDelta"),
+      }
+    : undefined,
+});
+
 const sparkline = (points: DailyPoint[] | undefined) => points?.map((point) => point.value);
 
 const relativeTime = (value: string, locale: string) => {
@@ -1046,23 +1066,7 @@ const DashboardPage = () => {
               <KpiCard
                 key={module.module}
                 label={t("dashboard.invoicesOutstanding")}
-                value={
-                  invoicesSummary.data ? formatters.formatCurrency(invoicesSummary.data.outstandingAmount, "NOK") : "—"
-                }
-                hint={invoicesOverdueHint(invoicesSummary.data, formatters.formatCurrency, t)}
-                // The delta is the period's issued gross against the previous
-                // period's, not the outstanding figure's, so its label says so.
-                delta={
-                  invoicesSummary.data
-                    ? {
-                        value: deltaPercent(
-                          invoicesSummary.data.issuedGrossTotal,
-                          invoicesSummary.data.issuedGrossTotalDelta,
-                        ),
-                        label: t("dashboard.invoicesIssuedDelta"),
-                      }
-                    : undefined
-                }
+                {...invoicesKpi(invoicesSummary.data, formatters.formatCurrency, t)}
                 href={href}
                 loading={invoicesSummary.isPending}
               />

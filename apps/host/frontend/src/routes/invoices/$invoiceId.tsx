@@ -1,7 +1,7 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { ContentSkeleton } from "@vantigo/frontend-shell";
 import { InvoicePage } from "@vantigo/invoices-ui/pages/invoice";
-import { useInvoiceAccess } from "./-invoice-access";
+import { useInvoiceAccess } from "../../lib/invoice-access";
 
 /**
  * One invoice or credit note. The path is the package's own
