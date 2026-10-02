@@ -1,9 +1,11 @@
-import { Alert, Group, Pagination, Stack, Table, Text, Title } from "@mantine/core";
+import { Alert, Button, Group, Pagination, Stack, Table, Text, Title } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
-import { IconAlertCircle, IconAlertTriangle, IconCircleCheck } from "@tabler/icons-react";
-import { useQuery } from "@tanstack/react-query";
+import { notifications } from "@mantine/notifications";
+import { IconAlertCircle, IconAlertTriangle, IconCircleCheck, IconDownload } from "@tabler/icons-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
+import { downloadInvoicesCsv, isSessionExpired, saveCsv } from "../api/export";
 import { journalQueryOptions } from "../api/journal";
 import { invoicesMetaQueryOptions } from "../api/meta";
 import "../i18n";
@@ -15,7 +17,10 @@ const firstOfMonth = (day: string) => `${day.slice(0, 7)}-01`;
 /**
  * The invoice journal (D11, D12): a range of issue dates, the gap check in
  * words, the totals per SAF-T code over the whole range, and the documents in
- * number order a page at a time — credit notes signed negative.
+ * number order a page at a time — credit notes signed negative. "Export CSV"
+ * fetches the accountant's file for the range shown (payments and delivery
+ * design D5), so a refusal is a notification, never a problem opened in the
+ * browser.
  */
 export const JournalPage = () => {
   const { t, money, date, number } = useInvoiceFormat();
@@ -39,10 +44,33 @@ export const JournalPage = () => {
   // issue and an issued row cannot be deleted — so both are said as alarms.
   const checked = data?.checkedFrom !== undefined && data?.checkedTo !== undefined;
   const counterAhead = data?.counterLast !== undefined && data.counterLast !== data.highestIssued;
+  const exportCsv = useMutation({
+    mutationFn: () => downloadInvoicesCsv({ from: rangeFrom, to: rangeTo }),
+    onSuccess: saveCsv,
+    onError: (error) => {
+      // An expired session has signed the person out already: nothing to say here.
+      if (isSessionExpired(error)) return;
+      notifications.show({ color: "red", title: t("couldNotExport"), message: refusalMessage(error, t, date) });
+    },
+  });
 
   return (
     <Stack gap="lg">
-      <PageHeader title={t("journal")} description={t("journalDescription")} />
+      <PageHeader
+        title={t("journal")}
+        description={t("journalDescription")}
+        actions={
+          <Button
+            variant="default"
+            leftSection={<IconDownload size={16} />}
+            disabled={!rangeFrom || !rangeTo}
+            loading={exportCsv.isPending}
+            onClick={() => exportCsv.mutate()}
+          >
+            {t("exportCsv")}
+          </Button>
+        }
+      />
       <Group>
         <DateInput
           label={t("issuedFrom")}

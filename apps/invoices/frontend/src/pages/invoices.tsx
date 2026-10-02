@@ -1,6 +1,5 @@
 import {
   Alert,
-  Badge,
   Button,
   Group,
   Modal,
@@ -19,11 +18,12 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { useNavigate } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
-import { createInvoice, type InvoiceListFilters, invoiceListQueryOptions } from "../api/invoices";
+import { createInvoice, type InvoiceList, type InvoiceListFilters, invoiceListQueryOptions } from "../api/invoices";
 import { invoicesMetaQueryOptions } from "../api/meta";
 import { INVOICES_QUERY_KEY } from "../api/request";
 import { CustomerPicker } from "../components/customer-picker";
 import { DocumentLink } from "../components/document-link";
+import { StateBadge } from "../components/state-badge";
 import "../i18n";
 import { refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
@@ -36,14 +36,18 @@ export interface InvoicesPageProps {
   userDisplayName?: string;
 }
 
+/** The states an issued invoice can be filtered by (D3); a draft and a credit note never match one. */
+const filterStates = ["open", "partially_paid", "overdue", "paid", "credited"] as const;
+
 /**
  * The list (D4, D12): drafts first, then by number descending, with the
- * status and kind chips, a customer filter, a search, an issue-date range and
- * paging. "New invoice" is offered to a caller who may create drafts and pick
- * a buyer.
+ * status, kind and state chips, a customer filter, a search, an issue-date
+ * range and paging; each row badged with its state, and an issued invoice's
+ * open amount beside its total. "New invoice" is offered to a caller who may
+ * create drafts and pick a buyer.
  */
 export const InvoicesPage = ({ canViewCustomers, userDisplayName }: InvoicesPageProps) => {
-  const { t, money, date } = useInvoiceFormat();
+  const { t, date } = useInvoiceFormat();
   const meta = useQuery(invoicesMetaQueryOptions());
   const [filters, setFilters] = useState<InvoiceListFilters>({ page: 1 });
   // The search is sent once the typing pauses, not per keystroke.
@@ -104,6 +108,15 @@ export const InvoicesPage = ({ canViewCustomers, userDisplayName }: InvoicesPage
             { value: "credit_note", label: t("kindCreditNote") },
           ]}
         />
+        <SegmentedControl
+          aria-label={t("state")}
+          value={filters.state ?? "all"}
+          onChange={(v) => set({ state: v === "all" ? undefined : v })}
+          data={[
+            { value: "all", label: t("allStates") },
+            ...filterStates.map((state) => ({ value: state, label: t(`state.${state}`) })),
+          ]}
+        />
         {canViewCustomers && (
           <CustomerPicker
             label={t("customerFilter")}
@@ -147,33 +160,7 @@ export const InvoicesPage = ({ canViewCustomers, userDisplayName }: InvoicesPage
       )}
       {list.data && list.data.data.length > 0 && (
         <>
-          <Table highlightOnHover>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>{t("number")}</Table.Th>
-                <Table.Th>{t("kind")}</Table.Th>
-                <Table.Th>{t("customer")}</Table.Th>
-                <Table.Th>{t("issueDate")}</Table.Th>
-                <Table.Th>{t("dueDate")}</Table.Th>
-                <Table.Th ta="right">{t("grossTotal")}</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {list.data.data.map((row) => (
-                <Table.Tr key={row.id}>
-                  <Table.Td>
-                    <DocumentLink invoiceId={row.id}>{row.number ?? t("draftNumber")}</DocumentLink>{" "}
-                    {row.status === "draft" && <Badge variant="light">{t("statusDraft")}</Badge>}
-                  </Table.Td>
-                  <Table.Td>{row.kind === "credit_note" ? t("kindCreditNote") : t("kindInvoice")}</Table.Td>
-                  <Table.Td>{row.customerName ?? t("unknownCustomer")}</Table.Td>
-                  <Table.Td>{row.issueDate ? date(row.issueDate) : t("notAvailable")}</Table.Td>
-                  <Table.Td>{row.dueDate ? date(row.dueDate) : t("notAvailable")}</Table.Td>
-                  <Table.Td ta="right">{money(row.grossTotal, row.currency)}</Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
+          <InvoiceTable rows={list.data.data} showCustomer />
           {list.data.pagination.totalPages > 1 && (
             <Pagination
               total={list.data.pagination.totalPages}
@@ -197,9 +184,63 @@ export const InvoicesPage = ({ canViewCustomers, userDisplayName }: InvoicesPage
   );
 };
 
-interface NewInvoiceModalProps {
+export interface InvoiceTableProps {
+  rows: InvoiceList["data"];
+  /** Whether to name each document's customer — the customer panel's rows are all one customer's. */
+  showCustomer: boolean;
+}
+
+/**
+ * The documents as the list shows them: each linked, badged with its state
+ * (D3) and, on an issued invoice, with its open amount beside its total.
+ */
+export const InvoiceTable = ({ rows, showCustomer }: InvoiceTableProps) => {
+  const { t, money, date } = useInvoiceFormat();
+  return (
+    <Table.ScrollContainer minWidth={640}>
+      <Table highlightOnHover>
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>{t("number")}</Table.Th>
+            <Table.Th>{t("kind")}</Table.Th>
+            <Table.Th>{t("state")}</Table.Th>
+            {showCustomer && <Table.Th>{t("customer")}</Table.Th>}
+            <Table.Th>{t("issueDate")}</Table.Th>
+            <Table.Th>{t("dueDate")}</Table.Th>
+            <Table.Th ta="right">{t("grossTotal")}</Table.Th>
+            <Table.Th ta="right">{t("openAmount")}</Table.Th>
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {rows.map((row) => (
+            <Table.Tr key={row.id}>
+              <Table.Td>
+                <DocumentLink invoiceId={row.id}>{row.number ?? t("draftNumber")}</DocumentLink>
+              </Table.Td>
+              <Table.Td>{row.kind === "credit_note" ? t("kindCreditNote") : t("kindInvoice")}</Table.Td>
+              <Table.Td>
+                <StateBadge state={row.state} />
+              </Table.Td>
+              {showCustomer && <Table.Td>{row.customerName ?? t("unknownCustomer")}</Table.Td>}
+              <Table.Td>{row.issueDate ? date(row.issueDate) : t("notAvailable")}</Table.Td>
+              <Table.Td>{row.dueDate ? date(row.dueDate) : t("notAvailable")}</Table.Td>
+              <Table.Td ta="right">{money(row.grossTotal, row.currency)}</Table.Td>
+              <Table.Td ta="right" data-testid="open-amount">
+                {row.openAmount !== undefined ? money(row.openAmount, row.currency) : t("notAvailable")}
+              </Table.Td>
+            </Table.Tr>
+          ))}
+        </Table.Tbody>
+      </Table>
+    </Table.ScrollContainer>
+  );
+};
+
+export interface NewInvoiceModalProps {
   userDisplayName?: string;
   deliveryDate?: string;
+  /** The buyer, when the page already knows it — the customer panel's. Without one the person picks it. */
+  customerId?: number;
   onClose: () => void;
 }
 
@@ -207,11 +248,16 @@ interface NewInvoiceModalProps {
  * Picks the buyer and makes the draft. The API never invents a delivery date;
  * the UI prefills today, which the editor lets the person change (D4).
  */
-const NewInvoiceModal = ({ userDisplayName, deliveryDate, onClose }: NewInvoiceModalProps) => {
+export const NewInvoiceModal = ({
+  userDisplayName,
+  deliveryDate,
+  customerId: fixed,
+  onClose,
+}: NewInvoiceModalProps) => {
   const { t, date } = useInvoiceFormat();
   const queryClient = useQueryClient();
   const navigate = useNavigate() as (options: unknown) => void;
-  const [customerId, setCustomerId] = useState<number | null>(null);
+  const [customerId, setCustomerId] = useState<number | null>(fixed ?? null);
   const create = useMutation({
     mutationFn: () =>
       createInvoice({
@@ -231,7 +277,11 @@ const NewInvoiceModal = ({ userDisplayName, deliveryDate, onClose }: NewInvoiceM
   return (
     <Modal opened onClose={onClose} title={t("newInvoice")}>
       <Stack>
-        <CustomerPicker value={customerId} onChange={setCustomerId} required />
+        {fixed === undefined ? (
+          <CustomerPicker value={customerId} onChange={setCustomerId} required />
+        ) : (
+          <Text size="sm">{t("newInvoiceForCustomer")}</Text>
+        )}
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>
             {t("cancel")}

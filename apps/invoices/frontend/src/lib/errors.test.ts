@@ -80,6 +80,23 @@ describe("a refusal's words", () => {
     );
   });
 
+  it("names the open amount a payment exceeded, written as money, in Norwegian too", () => {
+    const money = (amount: number) => `kr ${amount.toFixed(2).replace(".", ",")}`;
+    expect(
+      refusalMessage(conflict("payment_exceeds_open", { openAmount: 24.99 }), translate("nb"), undefined, money),
+    ).toBe("Betalingen er større enn utestående beløp, kr 24,99. En overbetaling kan ikke registreres.");
+  });
+
+  it("words the rate limit's 429, whose body is not a problem document", () => {
+    const limited = Object.assign(new Error("Too many requests"), { status: 429, code: "rate_limited" });
+    expect(refusalMessage(limited, translate("en"))).toBe(
+      "Too many e-mails were sent in a short time. Wait a few minutes and try again.",
+    );
+    expect(refusalMessage(limited, translate("nb"))).toBe(
+      "For mange e-poster er sendt på kort tid. Vent noen minutter og prøv igjen.",
+    );
+  });
+
   it("words the refusals about a document's kind, never the server's English", () => {
     const en = translate("en");
     expect(refusalMessage(conflict("credit_note_not_creditable"), en)).toBe("A credit note cannot itself be credited.");

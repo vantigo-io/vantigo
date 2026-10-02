@@ -26,6 +26,7 @@ import {
   IconArrowUp,
   IconDownload,
   IconEye,
+  IconMail,
   IconPlus,
   IconTrash,
 } from "@tabler/icons-react";
@@ -47,9 +48,12 @@ import { type InvoicesMeta, invoicesMetaQueryOptions } from "../api/meta";
 import { ApiConflictError, ApiValidationError, INVOICES_QUERY_KEY } from "../api/request";
 import { vatCodesQueryOptions } from "../api/vat-codes";
 import { CustomerPicker } from "../components/customer-picker";
+import { DeliveriesCard } from "../components/deliveries-card";
 import { DocumentLink } from "../components/document-link";
+import { PaymentsCard } from "../components/payments-card";
 import { PdfButton } from "../components/pdf-button";
 import { StaleAlert } from "../components/stale-alert";
+import { StateBadge } from "../components/state-badge";
 import "../i18n";
 import { fieldRefusals, refusalMessage, warningMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
@@ -57,6 +61,7 @@ import { documentTotals, lineAmounts } from "../lib/money";
 import { invoiceLinkOptions } from "../lib/routes";
 import { draftRate } from "../lib/vat";
 import { IssueModal } from "./-issue-modal";
+import { SendDialog } from "./-send-dialog";
 
 export interface InvoicePageProps {
   invoiceId: number;
@@ -113,7 +118,7 @@ export const InvoicePage = ({ invoiceId, canViewCustomers }: InvoicePageProps) =
       canViewCustomers={canViewCustomers}
     />
   ) : (
-    <IssuedDocument document={document.data} canIssue={meta.data.capabilities.canIssue} />
+    <IssuedDocument document={document.data} meta={meta.data} />
   );
 };
 
@@ -877,10 +882,14 @@ interface TotalsProps {
   net: number;
   vat: number;
   gross: number;
+  /** An issued invoice's figures (D3): what its live payments paid, what is open, and — below zero — the refund due. */
+  paid?: number;
+  open?: number;
+  refundDue?: number;
 }
 
-/** The totals per rate, then net, VAT and gross. */
-const Totals = ({ currency, rates, net, vat, gross }: TotalsProps) => {
+/** The totals per rate, then net, VAT and gross, and on an issued invoice what is paid and open. */
+const Totals = ({ currency, rates, net, vat, gross, paid, open, refundDue }: TotalsProps) => {
   const { t, money, number } = useInvoiceFormat();
   return (
     <Table withRowBorders={false} data-testid="totals">
@@ -913,22 +922,55 @@ const Totals = ({ currency, rates, net, vat, gross }: TotalsProps) => {
             {money(gross, currency)}
           </Table.Td>
         </Table.Tr>
+        {paid !== undefined && (
+          <Table.Tr>
+            <Table.Td fw={600}>{t("paidAmount")}</Table.Td>
+            <Table.Td />
+            <Table.Td ta="right" data-testid="paid-amount">
+              {money(paid, currency)}
+            </Table.Td>
+          </Table.Tr>
+        )}
+        {open !== undefined && (
+          <Table.Tr>
+            <Table.Td fw={700}>{t("openAmount")}</Table.Td>
+            <Table.Td />
+            <Table.Td ta="right" fw={700} data-testid="open-amount">
+              {money(open, currency)}
+            </Table.Td>
+          </Table.Tr>
+        )}
+        {refundDue !== undefined && (
+          <Table.Tr>
+            <Table.Td fw={700} c="red">
+              {t("refundDue")}
+            </Table.Td>
+            <Table.Td />
+            <Table.Td ta="right" fw={700} c="red" data-testid="refund-due">
+              {money(refundDue, currency)}
+            </Table.Td>
+          </Table.Tr>
+        )}
       </Table.Tbody>
     </Table>
   );
 };
 
 /**
- * An issued document's page (D12): its header, lines, VAT summary and totals,
- * its credit notes, Download PDF, and Credit, which opens the new credit-note
- * draft. A document whose PDF could not be stored at issue says the first
- * download stores it.
+ * An issued document's page (D12): its header with its state (payments and
+ * delivery design D3), lines, VAT summary and totals — an invoice's with what
+ * is paid and open — its credit notes and payments, every e-mail that sent
+ * it, Download PDF, Send, and Credit, which opens the new credit-note draft. A
+ * document whose PDF could not be stored at issue says the first download
+ * stores it.
  */
-const IssuedDocument = ({ document: doc, canIssue }: { document: InvoiceDocument; canIssue: boolean }) => {
+const IssuedDocument = ({ document: doc, meta }: { document: InvoiceDocument; meta: InvoicesMeta }) => {
   const { t, money, unitPrice, date, number } = useInvoiceFormat();
+  const { canIssue, canRegisterPayments, canSend } = meta.capabilities;
   const queryClient = useQueryClient();
   const navigate = useNavigate() as (options: unknown) => void;
   const heading = useHeading(doc);
+  const [sending, setSending] = useState(false);
   const credit = useMutation({
     mutationFn: () => creditInvoice(doc.id),
     onSuccess: async (draft) => {
@@ -944,11 +986,21 @@ const IssuedDocument = ({ document: doc, canIssue }: { document: InvoiceDocument
       <PageHeader
         breadcrumbs={[{ label: t("invoices"), to: "/invoices" }, { label: heading }]}
         title={heading}
+        description={
+          <span data-testid="document-state">
+            <StateBadge state={doc.state} />
+          </span>
+        }
         actions={
           <Group>
             <PdfButton url={pdfUrl(doc.id)} mode="download" leftSection={<IconDownload size={16} />}>
               {t("downloadPdf")}
             </PdfButton>
+            {canSend && doc.sendDefaults && (
+              <Button variant="default" leftSection={<IconMail size={16} />} onClick={() => setSending(true)}>
+                {t("send")}
+              </Button>
+            )}
             {creditable && (
               <Button variant="default" loading={credit.isPending} onClick={() => credit.mutate()}>
                 {t("credit")}
@@ -1028,6 +1080,9 @@ const IssuedDocument = ({ document: doc, canIssue }: { document: InvoiceDocument
           net={doc.netTotal}
           vat={doc.vatTotal}
           gross={doc.grossTotal}
+          paid={doc.paidAmount}
+          open={doc.openAmount}
+          refundDue={doc.refundDue}
         />
       </Card>
       {doc.kind === "invoice" && (
@@ -1054,6 +1109,11 @@ const IssuedDocument = ({ document: doc, canIssue }: { document: InvoiceDocument
             <Text size="sm">{t("uncreditedAmountIs", { amount: money(doc.uncreditedAmount ?? 0, doc.currency) })}</Text>
           </Stack>
         </Card>
+      )}
+      {doc.kind === "invoice" && <PaymentsCard invoice={doc} canRegister={canRegisterPayments} today={meta.today} />}
+      <DeliveriesCard deliveries={doc.deliveries ?? []} />
+      {sending && doc.sendDefaults && (
+        <SendDialog document={doc} defaults={doc.sendDefaults} onClose={() => setSending(false)} />
       )}
     </Stack>
   );
