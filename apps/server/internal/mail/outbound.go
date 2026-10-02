@@ -48,6 +48,8 @@ type Outbound struct {
 	Cc          []string
 	Bcc         []string
 	Subject     string
+	// ReplyTo is the address replies go to; empty sets no header.
+	ReplyTo     string
 	TextBody    string
 	HTMLBody    string
 	MessageID   string
@@ -129,6 +131,11 @@ func (o Outbound) message(from string) (*gomail.Msg, error) {
 		}
 	}
 	msg.Subject(o.Subject)
+	if o.ReplyTo != "" {
+		if err := msg.ReplyTo(o.ReplyTo); err != nil {
+			return nil, fmt.Errorf("mail: invalid reply-to address: %w", err)
+		}
+	}
 	if o.MessageID != "" {
 		msg.SetMessageIDWithValue(o.MessageID)
 	}
