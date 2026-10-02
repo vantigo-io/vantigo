@@ -21,6 +21,13 @@ Communications' outbox is the working example.
    dial (today `internal/mail`'s SMTP guard and `internal/peppol`'s SMP
    client; Brreg, OIDC and the AI client use `http.DefaultTransport`) — …)
    and its own subpackages, never another module's.
+
+   `internal/mail` is such a platform import, and a module that sends mail goes through
+   its guarded path (`mail.SendOutbound`, or the test seam `Deps.SMTPSend`) with the
+   installation's `SMTP_*` configuration, as identity's mail does. Its one change made
+   for a module is Invoices': `mail.Outbound` carries a `ReplyTo`, written as the
+   `Reply-To` header when set and absent when empty, so a document sent from the
+   installation's `SMTP_FROM` can have its replies reach the seller's own mailbox.
 2. **The platform imports no module.** `internal/module` and `internal/contracts` —
    the platform modules mount through — may not import any business module, so the
    composition machinery never depends on what it composes.
@@ -93,8 +100,8 @@ Communications' outbox is the working example.
    out of them. Today's implementations are communications (the correspondence,
    handed over and deleted), energy and projects (handed over, and kept:
    a supply period is the metering point's history, invoiced work stays) and
-   invoices (handed over; drafts deleted, issued documents kept as
-   bookkeeping material)
+   invoices (handed over; drafts deleted, issued documents and their payments kept
+   as bookkeeping material, the deliveries kept with the recipient blanked)
    ([Personal data and anonymisation](customers.md#personal-data-and-anonymisation)).
 
 ## How they are enforced
@@ -270,19 +277,28 @@ without Projects.
 **Invoices requires customers.** `MODULES` refuses `invoices` without `customers`
 (`internal/config`): the buyer, its billing profile and its invoice address come
 from `contracts.CustomerDirectory.BillingProfile`, read before any issue or save
-takes a lock and never under one. It reads nothing else — products, projects,
-time, expenses and energy are not read in phase 1A — and provides no single-provider
-contract. It fills both many-provider slots: as a `CustomerReferenceHolder` it
-re-points every document of a merged-away customer, drafts and issued alike
-(`invoices.invoices`), the immutability trigger allowing exactly `customer_id` to
-change on an issued one; as `CustomerPersonalData` it exports a person's documents
-and drafts and, on anonymisation, deletes the drafts (`invoices.drafts`) and keeps
-the issued documents under bokføringsloven § 13 (`invoices.documents`, at 0).
+takes a lock and never under one — as is a send's recipient, the customer's current
+invoice e-mail. It reads nothing else — products, projects, time, expenses and energy
+are not read in phases 1A and 1B — sends mail only through the platform's SMTP seam,
+never under a lock, and provides no single-provider contract. It fills both
+many-provider slots: as a `CustomerReferenceHolder` it re-points every document of a
+merged-away customer, drafts and issued alike (`invoices.invoices`), the immutability
+trigger allowing exactly `customer_id` to change on an issued one; as
+`CustomerPersonalData` it exports a person's documents and drafts with their payments
+and deliveries and, on anonymisation, locks the person's documents, writes a
+module-private marker that refuses every later send, blanks every delivery's
+recipient (`invoices.deliveries`), deletes the drafts (`invoices.drafts`) and keeps the
+issued documents and their payments under bokføringsloven § 13 (`invoices.documents`
+and `invoices.payments`, at 0).
 For those gates `contracts.CustomerBillingProfile` carries the customer's `Status`
 (`active`, `disabled`, `archived`) and `MergedInto`, the one change to the
 customers contract Invoices made: `disabled` is "blocked for invoicing", and an
 archived or merged-away customer still resolves, so a past invoice can be shown and
-credited. See [Invoices](invoices.md).
+credited. The customer page's Invoices tab is host-owned composition, as its Projects
+tab is: the host's customer-detail layout registers the tab, gated on the enabled module
+and `invoices:access`, and renders `CustomerInvoicesPanel` from `@vantigo/invoices-ui`,
+which reads only the invoices API (`GET /invoices?customerId=`); the customers package
+and the invoices package never import each other (rule 7). See [Invoices](invoices.md).
 
 ## Adding a module
 

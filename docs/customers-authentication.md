@@ -252,7 +252,13 @@ hatch. A destination reached only through DNS64 on the local-use prefix
 an embedded address from); a resolver on the well-known `64:ff9b::/96` prefix
 works as normal.
 
-This is identity's application mail. Communications' per-channel mailbox credentials
+Invoices sends through the same configuration: a document e-mailed to a customer goes
+out from `SMTP_FROM`, under the seller's name and with the seller's e-mail as Reply-To,
+through this SMTP server and its guard ([Invoices](invoices.md#sending-a-document)).
+Under `MAIL_DRIVER=log` nothing can be sent that way: the send answers 503
+`mail_unavailable`, and `GET /invoices/meta` answers `mailAvailable: false`.
+
+This is identity's application mail, and Invoices'. Communications' per-channel mailbox credentials
 are a different thing entirely — configured through the Communications API and
 sealed at rest, never environment variables. See
 [Communications](communications.md).

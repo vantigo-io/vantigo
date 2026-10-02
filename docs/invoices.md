@@ -3,16 +3,20 @@
 The Invoices module issues the sales document of Norwegian bookkeeping: a draft
 becomes a numbered, immutable invoice or credit note, rendered to a PDF that is stored
 once and downloaded as stored, and listed in a journal that proves the number series has
-no gaps. This is phase 1A of the module
+no gaps. Phase 1A built that
 ([design](superpowers/specs/2026-09-26-invoices-foundation-design.md),
-[research](superpowers/research/2026-09-26-invoices-module.md)). Vantigo stays a
-sub-ledger: there is no general ledger and nothing is posted.
+[research](superpowers/research/2026-09-26-invoices-module.md)); phase 1B
+([design](superpowers/specs/2026-10-02-invoices-payments-delivery-design.md)) added
+payments and the derived state of an invoice, sending a document by e-mail, the
+accountant's CSV export and the dashboard's stats. Vantigo stays a sub-ledger: there is
+no general ledger and nothing is posted — a payment here is a registration, not a
+posting, and nothing is matched to a bank file.
 
-> **Phase 1A alone does not meet the e-invoicing duties.** Invoicing the public sector
+> **Phases 1A and 1B do not meet the e-invoicing duties.** Invoicing the public sector
 > has required EHF since 2019 (FOR-2019-04-01-444), and invoicing Norwegian businesses
-> requires an e-invoice from **2027-01-01** (Lov 19. juni 2026 nr. 39). This phase
-> issues PDFs a person hands over; EHF over Peppol is phase 2. See
-> [What comes next](#what-comes-next).
+> requires an e-invoice from **2027-01-01** (Lov 19. juni 2026 nr. 39). These phases
+> issue PDFs, which a person hands over or the module e-mails — a PDF by e-mail is not
+> an e-invoice; EHF over Peppol is phase 2. See [What comes next](#what-comes-next).
 
 ## The law in one page
 
@@ -71,6 +75,12 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
 | `invoices.invoices` | Drafts and issued documents: kind, status, number, customer, delivery, references, notes, the buyer snapshot and the seller snapshot (written at issue), the totals, and the stored PDF's key and SHA-256. |
 | `invoices.lines` | Description, quantity (3 decimals), unit, unit price (4), discount (2), VAT code, the computed gross, allowance and net, the credited line on a credit note, and the VAT snapshot written at issue. |
 | `invoices.vat_summaries` | An issued document's VAT per (category, rate) with its SAF-T code and reason. |
+| `invoices.payments` | Money received against an issued invoice: the day it arrived, the amount and the currency (the invoice's, copied), the bank's or the payer's reference, a note, who registered it and when, and — once removed — when, by whom and why. Never deleted; never changed but by the removal, once. |
+| `invoices.deliveries` | One row per e-mail that handed an issued document over: the recipient (`''` once the customer is anonymised), the subject, the Message-ID, the SHA-256 of the PDF attached, when and by whom. Never deleted; never changed but by that blanking. |
+| `invoices.erased_customers` | The customers this module has anonymised, by id, with when: the marker a send and the delivery trigger read. Never removed. |
+
+A document's state is not a column: `invoices.document_state(...)` derives it, see
+[Payments and the state of an invoice](#payments-and-the-state-of-an-invoice).
 
 The seeded codes, each from 2026-01-01: `3` 25 %, `31` 15 %, `32` 11.11 %, `33` 12 %
 (all S), `5` Z, `51` AE, `52` G, `6` **E** (unntatt, mval. kap. 3) and `7` **O** (a seller
@@ -117,8 +127,8 @@ depends on other documents runs after it. The directory is read before the trans
 and the object store is used after it; neither is ever called under a lock. The lock
 order is always document → settings → counter → original, and nothing takes them in
 another order: `PUT /settings` takes only the settings row, the rate operations the
-settings row and then the VAT code, and `PUT /vat-codes/{id}` only the code; no issue
-locks a code. The merge holder locks the documents it re-points **newest first** before
+settings row and then the VAT code, `PUT /vat-codes/{id}` only the code, and a
+payment's registration or removal only its invoice; no issue locks a code. The merge holder locks the documents it re-points **newest first** before
 it writes them: a credit note's issue holds the credit note and then locks its older
 original, and an UPDATE alone could lock the original first, a deadlock. This is the
 module's one lock invariant, and every multi-row lock inside it keeps to it: **take locks in
@@ -194,6 +204,98 @@ list and an invoice's `creditNotes` show — can lag an øre behind once a sibli
 note against the same invoice issues and changes what a line has left; the draft's own
 page, its preview and its issue always total it afresh.
 
+## Payments and the state of an invoice
+
+**A payment is a registration.** `POST /invoices/{id}/payments` records money received
+against an issued invoice: `paidOn`, the day it arrived — on or after the invoice's issue
+date and not after today (Oslo, from the server's clock) — `amount`, above 0 with at most
+two decimals and at most 99 999 999 999.99, and optionally `reference` (the bank's or
+the payer's, at most 100 characters) and `note` (at most 500), both trimmed. The
+currency is the invoice's, copied, never chosen. Every field that fails is named in one
+400. A credit note takes no payment, draft or issued (409 `credit_note_no_payments`,
+judged before the status), and an invoice draft none either (409 `invoice_draft`). No
+directory is read and no customer gate runs: the customer may be disabled, archived,
+merged or anonymised since, and the money arrived regardless.
+
+**Never more than is open.** The registration locks the invoice `FOR UPDATE` — the only
+row it locks — and only then reads what its issued credit notes credit and what its live
+payments paid. **The open amount** is gross − credited − paid. Nothing open (open ≤ 0) is
+409 `invoice_settled`; an amount above the open amount is 409 `payment_exceeds_open`,
+whose problem carries `openAmount`. An overpayment would be a customer credit balance,
+which is phase 4; refusing it keeps payments alone from taking the open amount below
+zero. A payment of exactly the open amount is accepted, and the invoice is then `paid`.
+The response is the document, with its new state, open amount and payments.
+
+**The lock a registration and a credit issue share.** A credit note's issue locks its
+original last, after the counter ([Issuing](#issuing)); a registration locks that same
+row. The two serialise on it, and each reads its figures after the lock — under READ
+COMMITTED every statement after the lock sees every commit before it — so the credit's
+caps and the payment's are each judged on figures the other cannot change underneath
+it. **A credit note after a payment is allowed** and may take the open amount below
+zero: the invoice then answers **`refundDue`**, −open, what is owed back. Refunds are not
+a flow in this phase (phase 4); this is the figure, not a payout. Two registrations of
+the whole open amount racing each other give one 200 and one `invoice_settled`. A
+retried registration of a partial amount registers twice — two receipts are what the
+body says — and no idempotency key is taken in this phase.
+
+**Removal, never deletion.** `POST /invoices/{id}/payments/{paymentId}/remove` takes a
+`reason` — 1 to 200 characters once trimmed, judged before anything is read — locks the
+invoice first and reads the payment after the lock, so two removals of one payment give
+one 200 and one 409 `payment_removed`, and sets `removed_at`, `removed_by_user_id` and
+`removal_reason` together. A payment that is not that invoice's is a 404. A removed
+registration counts for nothing but keeps its row: the document answers every payment,
+removed ones included with their removal, in the order the money arrived. A removal is
+never undone, and a payment is never edited: a mistake is removed with a reason and the
+payment registered again.
+
+**Why a row never leaves.** A registration is kept as long as the document it is
+registered against — bokføringsloven § 13, five years after the end of the financial
+year, as this module reads it for the document. That reading is **uncertain**, as the
+document's own is below: the 2027 wording of § 13 is unread, and the research (§ 2.5)
+speaks of the sales documentation, not of payment registrations by name. So nothing
+deletes one. Two triggers hold it in the database: `tr_payments_immutable` refuses every
+DELETE and every UPDATE but the one that sets the three removal columns from NULL, once,
+with the rest of the row unchanged ("invoices: a payment registration is immutable",
+SQLSTATE `P0001`); `tr_payments_parent` reads the document `FOR SHARE` on INSERT and
+refuses a row under anything but an issued invoice ("invoices: a payment needs an issued
+invoice"). A CHECK holds the three removal columns together and the reason non-empty,
+another the amount above 0, and the foreign key is `ON DELETE RESTRICT`. The API refuses
+first, with its own codes; the triggers are the floor.
+
+**The state is derived, never stored.** Judged against today in Oslo, with `credited`
+the issued credit notes' gross (0 for a credit note) and `paid` the live payments' sum,
+the first match wins:
+
+| State | When |
+| --- | --- |
+| `draft` | a draft, invoice or credit note |
+| `issued` | an issued credit note |
+| `credited` | an issued invoice with `credited > 0` and `credited ≥ gross` |
+| `paid` | gross − credited − paid ≤ 0 |
+| `overdue` | the due date is before today |
+| `partially_paid` | something is paid |
+| `open` | otherwise |
+
+The order is the rule: a fully credited invoice is `credited` even when it was paid
+first (the money is then a refund due); a paid invoice is never `overdue`; a late partial
+payment is `overdue`, not `partially_paid` — overdue is the fact that matters. An invoice
+is not overdue on its due date, and is from the day after. `credited > 0` keeps an
+invoice of free lines only (gross 0, which can never be credited) out of `credited`: it is
+`paid`, nothing being open. The rule lives once in SQL, `invoices.document_state(kind,
+status, gross, credited, paid, due_date, today)`, `IMMUTABLE`, with `today` always a
+parameter from the server's clock and never `CURRENT_DATE`; the list and the stats filter
+with it. `documentState` in `state.go` is its Go mirror, for one response at a time, and
+a test runs every combination through both.
+
+Every document answers `state`. An issued invoice also answers `paidAmount`,
+`openAmount` (which may be negative), `refundDue` only while the open amount is below
+zero, and `payments`; a draft and a credit note answer none of them — money is absent,
+not null, where it does not apply. `GET /invoices?state=` takes one of `open`,
+`partially_paid`, `overdue`, `paid` or `credited` — anything else is a 400 — combines with
+the other filters, and only an issued invoice can match it. Each list item answers
+`state` and, on an issued invoice, `openAmount`. The list's order is unchanged: there is
+no sort by state.
+
 ## The PDF
 
 **The currency is on the page** (§ 5-1-1 nr. 6): the line amounts' header reads
@@ -212,8 +314,8 @@ the PDF is rendered from the document's own rows and snapshots only — never th
 settings, the directory or the VAT tables — hashed, and put under
 `documents/<id>/<number>-<sha256>.pdf` in the `invoices` scope (physically
 `invoices/documents/…`), and the row records the key and hash once. A store failure there
-never fails the issue: the response says `pdfStored: false` and the first download stores
-it. Every download streams the stored object, verified against its hash; a document whose
+never fails the issue: the response says `pdfStored: false` and the first download — or
+the first send — stores it. Every download streams the stored object, verified against its hash; a document whose
 hash is set is never rendered again, and the module never deletes an object. A stored
 object that is gone or no longer matches its hash is a 500 logged at error — an operator
 problem, never papered over. A first download that cannot reach the store is a 503 to
@@ -228,6 +330,204 @@ draft keeps its copied buyer and its original lines' rates. It is never stored. 
 opens it in a new browser tab — opened with the click, before the PDF is fetched, so
 the browser's pop-up blocker never sees a `window.open` outside a click — and falls
 back to a plain download when the tab could not be opened at all.
+
+## Sending a document
+
+`POST /invoices/{id}/send` e-mails an issued document's **stored PDF** — an invoice's or
+a credit note's — to the customer, now, and logs it. It is synchronous: no outbox and no
+worker, and a failure is the caller's to see. It needs `invoices:issue`
+([Permissions](#permissions)); the body is `{recipient?}`. In order:
+
+1. **503 `mail_unavailable`** when the installation's mail driver is not `smtp`, judged
+   before anything is read. The `log` driver delivers nothing and is allowed only in
+   development ([email delivery](customers-authentication.md#email-delivery)), so this
+   is a development installation's answer.
+2. 404; 409 `invoice_draft` on a draft.
+3. **409 `customer_anonymised`** when this module has anonymised the document's customer
+   (the marker, below): a person who has been anonymised is not written to again, at an
+   override's address or any other.
+4. **The recipient**: `recipient` when given — a bare address that parses to itself, at
+   most 254 characters once trimmed, so `"Name <a@b>"` is a 400 on `recipient` — else
+   the invoice e-mail of the customer's **current** billing profile, read from the
+   directory outside any lock. A credit note reads the profile too: it goes to the same
+   buyer at today's address, not the snapshot's, because a person's mailbox changes and
+   the document does not. No address is 409 `no_invoice_email`; a directory that fails
+   here is a 500.
+5. **The PDF**, through the download's own path: stored first when it never was, and
+   otherwise read and verified against its hash, so a send never attaches bytes the store
+   does not hold — 503 `storage_unavailable`, and a 500 for a stored object gone or
+   altered or a document that cannot be rendered, as `GET /{id}/pdf` answers.
+6. **The envelope.** From is the installation's `SMTP_FROM` under the display name of
+   the document's **seller snapshot** — the legal name the PDF prints. **Reply-To is the
+   current settings' e-mail** — replies should reach today's mailbox, not the one the
+   document was issued under — and there is none when the settings have none (the
+   platform's `mail.Outbound.ReplyTo`). To is the recipient, alone. The Message-ID is a
+   fresh `<uuid>@vantigo.invalid`. The PDF is attached as `application/pdf` under the
+   download's own name — `faktura-1001.pdf`, `invoice-1001.pdf`, `kreditnota-1002.pdf`,
+   `credit-note-1002.pdf`. The body is plain text in the document's language, below: no
+   HTML, no logo, no template, no personal message.
+7. **The send**, through the platform's guarded SMTP client with the `SMTP_*`
+   configuration. **A failure is 502 `mail_failed` and records nothing**; the error is
+   logged at warn with the document id and never put on the wire.
+8. **The log**: one row in `invoices.deliveries`. The answer is the document, its
+   `deliveries` holding the row and `sendDefaults.warnings` the send's warnings.
+
+**Three contexts.** The reads before the send run on the request's context and stop with
+it. The send runs on a context the request's cancellation does not reach, bounded at
+**30 seconds**: a browser that goes away must not abort a transfer the mail server may
+already have accepted. The delivery row is written on an uncancellable context of its
+own, bounded at **5 seconds** — never what is left of the send's 30, so a send accepted at
+the 29th second is still logged — and the response is rendered uncancellable too, so a
+caller that went away gets no error-level log for a send that succeeded.
+
+**The timeout caveat.** A send that times out after the mail server has taken the data
+answers 502 `mail_failed` and logs nothing, though the mail may have gone. And the row's
+five seconds include the delivery trigger's lock wait: the insert waits on the document
+behind an anonymisation that holds the customer's documents
+([Retention and personal data](#retention-and-personal-data)), so an erase that holds
+them longer than five seconds leaves a sent mail with no row. A row that cannot be
+written after a successful send — for that reason or any other — is a 500 and an
+error-level log line naming the document id and the recipient: the mail went, and the
+operator is told.
+
+**Re-sending.** Sending twice is allowed and logged twice: a re-send is a legitimate act.
+No suppression list is read — `communications.suppressions` is another module's table
+([module boundaries](module-boundaries.md), rule 4) — and a customer whose invoice
+address bounces is a problem the person sending will hear about. There is no bulk send.
+
+**The rate limit.** 60 sends per client per 10 minutes (the policy `invoices-send`):
+with an arbitrary override the endpoint is an authenticated relay through the
+installation's SMTP server, and a limit is cheap. It is counted per client address
+before the access check, so every request to the endpoint counts, a refused one too.
+Over it is a 429 in the limiter's shape everywhere in Vantigo — `application/json`
+`{"error": {"code": "rate_limited", "message": …}}` with `Retry-After` — never a problem
+document.
+
+**The texts.** A document whose buyer language is `en` is written in English, every other
+in Norwegian (nb). `{number}` is the document's number, `{seller}` the seller snapshot's
+legal name, `{amount}` the gross and `{open}` the open amount at the send, both as the PDF
+prints money (`NOK 15 045,00`, `NOK 15,045.00`), `{due}` the due date as the PDF prints a
+date (`31.10.2026`, `2026-10-31`), `{account}` the snapshot's bank account, `{iban}` and
+`{bic}` its IBAN and BIC, and `{original}` the number of the invoice a credit note
+credits.
+
+Invoice, nb — subject `Faktura {number} fra {seller}`:
+
+```text
+Hei,
+
+Vedlagt følger faktura {number} fra {seller} på {amount}, med forfall {due}.
+{the payment paragraph}
+
+Med vennlig hilsen
+{seller}
+```
+
+Invoice, en — subject `Invoice {number} from {seller}`:
+
+```text
+Hello,
+
+Please find attached invoice {number} from {seller} for {amount}, due {due}.
+{the payment paragraph}
+
+Kind regards
+{seller}
+```
+
+Credit note, nb — subject `Kreditnota {number} fra {seller}`:
+
+```text
+Hei,
+
+Vedlagt følger kreditnota {number} fra {seller} på {amount}, som krediterer faktura {original}.
+
+Med vennlig hilsen
+{seller}
+```
+
+Credit note, en — subject `Credit note {number} from {seller}`:
+
+```text
+Hello,
+
+Please find attached credit note {number} from {seller} for {amount}, crediting invoice {original}.
+
+Kind regards
+{seller}
+```
+
+**The payment paragraph** of an invoice follows the open amount at the send, so a
+re-send never asks for money that is not owed; a credit note has none:
+
+| Open at the send | nb | en |
+| --- | --- | --- |
+| the whole gross | `Beløpet betales til kontonummer {account}. Merk betalingen med fakturanummer {number}.` | `Please pay {to}, quoting invoice number {number}.` |
+| above 0, below the gross | `Utestående beløp er {open}, som betales til kontonummer {account}. Merk betalingen med fakturanummer {number}.` | `The outstanding amount is {open}; please pay it {to}, quoting invoice number {number}.` |
+| 0 or below (paid or credited) | `Fakturaen er gjort opp. Det er ingenting å betale.` | `The invoice has been settled. Nothing is due.` |
+
+**The IBAN form.** In English `{to}` is `to IBAN {iban} (BIC {bic})` when the snapshot has
+an IBAN — the BIC in brackets only when it has one too — and `to account {account}`
+otherwise: an English-language buyer is usually abroad and cannot pay a domestic
+account. The Norwegian text always names the account. A seller without a bank account
+cannot have issued (`seller_incomplete`), so the account is always there.
+
+**The four warnings** are never refusals: a send is never refused for one. They are on
+`sendDefaults.warnings` and on the send's own response, and the server judges each
+against today in Oslo from its own clock — never the browser, which has neither, and a
+code is what a test with a fixed clock can pin.
+
+| Warning | When |
+| --- | --- |
+| `delivery_preference_ehf` | the customer's current billing profile says `ehf`: the customer expects EHF, and an e-mailed PDF does not meet the e-invoicing duty |
+| `delivery_preference_other` | the profile says `efaktura` or `paper` |
+| `buyer_norwegian_business` | the buyer snapshot has an organisation number and today is before 2027-01-01: from that day a Norwegian business must receive an e-invoice, and this is a PDF |
+| `buyer_norwegian_business_required` | the same buyer from **2027-01-01**, when an e-mailed PDF no longer meets the B2B duty |
+
+**The public-body half, dropped, and what replaces it.** The 1A review asked for a
+warning when the buyer is a public body. The directory carries no such fact — "Public
+sector" in [Customers](customers.md#groups) is a group an installation may name, a word
+of its own vocabulary, not a fact a module can read — so that half is not built, and no
+fact is added to the contract for it. What the snapshot does carry is the buyer's
+organisation number, which every public body and every Norwegian business has; the two
+`buyer_norwegian_business` warnings key on it, and from 2027 the B2B duty makes that the
+warning that matters.
+
+**`sendDefaults`** — `{recipient?, preference?, warnings}` — is what the Send dialog opens
+with: the customer's current invoice e-mail, the profile's invoice delivery preference,
+and the warnings. It is on an issued document's `GET /{id}` and on the send's own
+response only, and only for a caller who may send — `invoices:issue` on an installation
+that can send: the customer's invoice e-mail sits behind `customers:view` in its own
+module, and `invoices:access` alone must not widen that. A payment's, a removal's, an
+issue's and a credit's responses never carry it, so no write adds a directory call to
+its answer. It is the one directory read on an issued document, and it is best effort: a
+directory that fails leaves `sendDefaults` out and logs at warn, never a 500 on a read
+of bookkeeping material. The document's own `warnings` (`issued_late`, …) are another
+list and never mixed with the send's.
+
+**The delivery log.** `invoices.deliveries` holds one row per mail the server took: the
+recipient, the subject as sent, the bare Message-ID, the SHA-256 of the PDF attached, when,
+and the sender's user id. Every issued document answers `deliveries`, the first first.
+**The recipient is on the wire only for a caller with `invoices:issue`**; a reader sees
+when each send happened, by whom and its subject, not the address. Two triggers hold the
+log: `tr_deliveries_immutable` refuses a DELETE and every UPDATE but the recipient to
+`''` — the one write an anonymisation makes ("invoices: a delivery is immutable") — and
+`tr_deliveries_parent` reads the document's status and current customer `FOR SHARE` on
+INSERT, refuses a draft's ("invoices: a delivery needs an issued document"), and then
+blanks the recipient when the customer has been anonymised.
+
+**The anonymised customer.** A send reads its recipient before it sends and writes its
+row after; an anonymisation committing in between would otherwise blank the rows that
+existed and leave the new one holding the person's address, for good.
+`invoices.erased_customers`, written by the erase under a lock on the customer's
+documents, closes that: a send after the erase is refused `customer_anonymised`; a row
+written while the erase holds the documents waits on the trigger's `FOR SHARE` and, once
+the erase commits, sees the marker and is written with `''`; a row written after the
+erase is blanked the same way; a row written before it is blanked by the erase. The check
+is the trigger's because only a statement run after the lock wait sees an erase that
+committed during it — the inserting statement's own snapshot was taken before. The
+trigger reads the document's current customer, so a merge in between is covered too. A
+delivery whose recipient is `''` is one whose customer was anonymised.
 
 ## The journal
 
@@ -255,6 +555,94 @@ document may still be dated that month's last day under the backdating rule abov
 only while no later-dated document has yet been issued. This is what shows "det ikke er
 brudd i nummerserien".
 
+## The CSV export
+
+`GET /invoices/export.csv?from&to` is the accountant's file of a period: the journal's
+selection — the issued documents with an issue date from `from` to `to`, both required
+calendar dates, `from` on or before `to` — in number order, **one row per document and
+VAT summary row**, and within a document by category then rate. A credit note is signed
+negative in every amount column, as the journal signs it (it is stored positive).
+
+The columns, fixed and English, in this order:
+
+```text
+Number;Kind;Issue date;Delivery;Due;Customer number;Buyer;Buyer org no;Currency;SAF-T code;Rate;Base;VAT;Base NOK;VAT NOK;Credits number
+```
+
+| Column | Rule |
+| --- | --- |
+| `Number` | the document's number |
+| `Kind` | `invoice` or `credit_note` |
+| `Issue date` | the issue date |
+| `Delivery` | the delivery day, or the period as `YYYY-MM-DD/YYYY-MM-DD` (ISO 8601's interval notation); empty when there is none |
+| `Due` | the invoice's due date; empty on a credit note |
+| `Customer number` | the buyer snapshot's |
+| `Buyer` | the buyer snapshot's name |
+| `Buyer org no` | the buyer snapshot's organisation number; empty for a person or a foreign buyer |
+| `Currency` | the document's — NOK in this phase |
+| `SAF-T code` | the VAT row's |
+| `Rate` | the VAT row's rate in percent (`25,00`) |
+| `Base` | the VAT row's taxable amount, in the document's currency |
+| `VAT` | the VAT row's VAT, in the document's currency |
+| `Base NOK` | `Base` × the document's exchange rate (1 in this phase), rounded to øre — the one computed column |
+| `VAT NOK` | the VAT row's stored NOK VAT |
+| `Credits number` | on a credit note, the number of the invoice it credits; empty on an invoice |
+
+**The byte format** is the expenses payroll file's ([the payroll CSV](expenses.md#the-payroll-csv)),
+duplicated into this module as customers duplicated it — depguard keeps modules from
+sharing it: UTF-8 with a byte order mark, `;` between cells, the decimal comma and two
+decimals, dates as `YYYY-MM-DD`, CRLF after every row the last included, and RFC 4180
+quoting — a cell holding `;`, `"`, CR or LF is quoted and its quotes doubled. Every
+amount is the stored `numeric` as exact text, never a float, and a credit note's `0,00`
+stays `0,00`.
+
+**The formula guard is on the text columns only.** `Kind`, `Delivery`, `Customer number`,
+`Buyer`, `Buyer org no`, `Currency`, `SAF-T code` and `Credits number` get an apostrophe in
+front when they begin with `=`, `+`, `-`, `@`, a tab or a CR, so a buyer named `=cmd`
+opens as text. `Number`, `Issue date`, `Due`, `Rate` and the four amounts are never
+guarded: the payroll file guards every cell because none of its amounts is ever
+negative, but a credit note's are, and a guarded `-1234,50` is text in a spreadsheet, not
+a number.
+
+**The cap and the headers.** A period of more than **5000 rows** is a 400 asking for a
+narrower period — known before a byte is written, never a file cut short; the cap is the
+customers export's. The answer is `text/csv; charset=utf-8`, with
+`Content-Disposition: attachment; filename="invoices-<from>-<to>.csv"` and
+`Cache-Control: private, no-store`: a period's invoices name who the business sold to and
+for how much, and belong in nobody's cache.
+
+## Stats
+
+`GET /invoices/stats/summary?from&to` is the dashboard's Invoices card, in the envelope
+every module's summary shares: `from` and `to` are instants, `to` defaulting to now and
+`from` to 30 days before it, and `from` after `to` is a 400. The answer echoes the
+period as `from` and `to`, and:
+
+| Field | What it counts |
+| --- | --- |
+| `outstandingAmount`, `outstandingCount` | **now**: the issued invoices that are `open`, `partially_paid` or `overdue`, at their open amounts — credit notes and paid or credited invoices are never outstanding |
+| `overdueAmount`, `overdueCount` | **now**: of those, the `overdue` ones |
+| `issuedCount`, `issuedGrossTotal` | the invoices issued in the period |
+| `issuedGrossTotalDelta` | `issuedGrossTotal` less the previous period's — an amount, not a percentage |
+| `creditedCount`, `creditedGrossTotal` | the credit notes issued in the period |
+| `paidAmount`, `paidCount` | the live payments whose `paidOn` is in the period |
+
+"Now" is today in Oslo from the server's clock, judged through the same state function
+the list filters with. Every figure is NOK, the only currency in this phase.
+
+**From instants to Oslo days.** The period arrives as half-open instants `[from, to)`;
+issue dates and payment dates are Oslo calendar days. `fromDay` is the Oslo day `from`
+falls on; `toDayExclusive` is the Oslo day of the last instant inside the period (`to`
+less a nanosecond) **plus one day** — so a period ending now, or at the end of today,
+includes today, which a bare `< toDay` would drop from every dashboard preset. A document
+is in the period when `fromDay ≤ issue date < toDayExclusive`, a payment when its
+`paidOn` is. **The previous period is counted in days, not in duration**: the same number
+of Oslo days, `toDayExclusive − fromDay`, ending at `fromDay`. The platform's
+`previousFrom` is an absolute duration, a day off the current period's length across a
+daylight-saving change or for a default period that starts mid-day, and "the period of
+the same length just before" is what the delta compares against. There is no timeseries
+and no attention list in this phase.
+
 ## Retention and personal data
 
 Sales documentation is kept **five years after the end of the financial year**
@@ -264,12 +652,19 @@ read — **unconfirmed**. **The operator's backup of the object store is part of
 retention**: the only storage driver is `fs`, with no WORM, so the PDFs are only as safe
 as the volume and its backups ([storage](storage.md)).
 
+**Payments and deliveries are kept with the document** they hang off. A payment
+registration is bookkeeping material read under the same § 13 — **uncertain**, see
+[Payments](#payments-and-the-state-of-an-invoice) — and a delivery is the evidence of when
+the claim was sent; neither is ever deleted, and their foreign keys refuse a document's
+deletion.
+
 The module fills both customer slots ([module boundaries](module-boundaries.md)):
 
 - **Merging customers** (`contracts.CustomerReferenceHolder`) re-points every document of
   the absorbed customer, drafts and issued, reported as `invoices.invoices`. An issued
   document keeps its buyer snapshot — the id is not printed, the snapshot is — and its
-  revision.
+  revision. Payments and deliveries hang off the document by id and carry no customer
+  id, so they follow it and are not reported.
 - **A person's export** (`contracts.CustomerPersonalData`) hands over every issued
   document and every draft, each with its lines, a structured `buyer` — the full
   snapshot: name, type, organisation number, foreign id, GLN, Peppol id, language and
@@ -277,13 +672,34 @@ The module fills both customer slots ([module boundaries](module-boundaries.md))
   and both notes, and, on a credit note, `credits{number, issueDate}` naming what it
   credits. An issued document's internal note is exported too: it is immutable once
   issued, the same as every other column, and export carves out no exception for it.
-- **Anonymisation** deletes the person's drafts, invoice and credit-note drafts alike,
-  reported as `invoices.drafts` — a draft is not a sales document and has no retention
-  basis, so GDPR art. 17 applies — and keeps every issued document, its buyer snapshot
-  and its internal note under § 13, reported as `invoices.documents` at 0 — the note is
-  immutable once issued, so anonymisation has no more standing to touch it than any
-  other write does. `contracts.ErasedData` carries no reason field; this paragraph is
-  where the reason is written.
+  An issued document also carries its `payments` — every registration, with its paid
+  date, amount, currency, reference, note and registration time, and a removed one's
+  removal time and reason: a bank reference often names the payer, and a note is staff
+  free text about them — and its `deliveries`, each with its recipient, sent time and
+  subject. A draft has neither.
+- **Anonymisation**, inside the customers module's transaction, in this order: it locks
+  the person's documents `FOR UPDATE`, newest first — the merge holder's statement, the
+  module's lock order — so a delivery insert, whose trigger takes the document `FOR
+  SHARE`, waits for it; writes the marker in `invoices.erased_customers`; blanks the
+  recipient of every delivery of those documents; and deletes the drafts. It reports
+  four kinds, in this order:
+  - `invoices.drafts` — the drafts deleted, invoice and credit-note drafts alike: a
+    draft is not a sales document and has no retention basis, so GDPR art. 17 applies;
+  - `invoices.documents`, at 0 — every issued document, its buyer snapshot and its
+    internal note are kept under § 13; the note is immutable once issued, so
+    anonymisation has no more standing to touch it than any other write does;
+  - `invoices.payments`, at 0 — looked at and kept, because a registration is
+    bookkeeping material kept with the document, not because it holds nothing
+    personal: a note is staff free text and a bank reference often names the payer;
+  - `invoices.deliveries` — the deliveries whose recipient was blanked: the rows stay as
+    the evidence of when the claim was sent, the address gone.
+
+  Run twice, it finds nothing and reports zeros, and the marker keeps its first time.
+  The marker refuses every later send (`customer_anonymised`) and blanks any delivery
+  row a send racing the erase writes ([Sending a document](#sending-a-document)); it is
+  read by this module only and never removed — anonymisation is never undone.
+  `contracts.ErasedData` carries no reason field; this paragraph is where the reasons
+  are written.
 
 ## Permissions
 
@@ -291,10 +707,22 @@ No built-in role holds any of these; Owner has the wildcard.
 
 | Key | Sensitive | What it allows |
 | --- | --- | --- |
-| `invoices:access` | no | Use the app; read every invoice, credit note, PDF and the journal. |
+| `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, the journal, the CSV export and the stats. |
 | `invoices:create` | no | Create, edit and delete drafts; preview a draft. |
-| `invoices:issue` | yes | Issue a draft; create a credit-note draft. |
+| `invoices:issue` | yes | Issue a draft; create a credit-note draft; send an issued document by e-mail, and see where each send went. |
 | `invoices:manage` | yes | The seller record, the series start, VAT codes and their rates. |
+| `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason. |
+
+`invoices:payments` is sensitive because a registration changes what the company says it
+is owed, and a wrong one is corrected only by a removal that stays on record.
+
+**Sending is under `invoices:issue`**: whoever may create bookkeeping material may hand
+it over, and a reader with `invoices:access` alone may download it, as before, and sees
+each send's time and subject but not its address. Sending also needs an installation
+that can send — `MAIL_DRIVER=smtp` and the `SMTP_*` configuration
+([email delivery](customers-authentication.md#email-delivery)). `GET /meta` answers
+`mailAvailable`, `capabilities.canSend` — `invoices:issue` and `mailAvailable` — and
+`capabilities.canRegisterPayments`, so no client re-derives either rule.
 
 **Creating a draft in the app also needs `customers:view`**: the directory has no
 search, so the buyer picker reads the customers module's own list. The API takes a
@@ -302,7 +730,11 @@ customer id and checks nothing more; the app hides "New invoice" without it.
 
 ## Endpoints
 
-All under `/api/v1/invoices`, every one behind `invoices:access`.
+All under `/api/v1/invoices`, every one behind `invoices:access`. The access rules are
+`permission:invoices:access` and, with the key under "Also needs",
+`permission:invoices:access+invoices:create`, `permission:invoices:access+invoices:issue`,
+`permission:invoices:access+invoices:manage` and
+`permission:invoices:access+invoices:payments`.
 
 | Operation | Also needs | Refusals |
 | --- | --- | --- |
@@ -314,7 +746,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access`.
 | `PUT /vat-codes/{id}` | `invoices:manage` | 404; 400; 409 `vat_code_in_use`, a stale revision |
 | `POST /vat-codes/{id}/rates` | `invoices:manage` | 404; 400 on `ratePercent` or `validFrom`; 409 `rate_change_in_past` |
 | `DELETE /vat-codes/{id}/rates/{rateId}` | `invoices:manage` | 404; 409 `rate_period_not_latest`, `rate_period_last`, `rate_period_in_use` |
-| `GET /` | | 400 paging, status, kind, `from` after `to` |
+| `GET /` | | 400 paging, status, kind, state, `from` after `to` |
 | `POST /` | `invoices:create` | 400 on the field; 409 the customer gates |
 | `GET /{id}` | | 404 |
 | `PUT /{id}` | `invoices:create` | 404; 400; 409 `invoice_issued`, the customer gates, a stale revision |
@@ -323,14 +755,28 @@ All under `/api/v1/invoices`, every one behind `invoices:access`.
 | `POST /{id}/credit` | `invoices:issue` | 404; 409 `invoice_draft`, `credit_note_not_creditable`, `invoice_fully_credited` |
 | `GET /{id}/pdf` | | 404; 409 `invoice_draft`; 500 a missing or altered stored object, or a render that fails; 503 `storage_unavailable` |
 | `GET /{id}/preview.pdf` | `invoices:create` | 404; 409 `invoice_issued` |
+| `POST /{id}/payments` | `invoices:payments` | 404; 409 `credit_note_no_payments`, `invoice_draft`; 400 on the field; 409 `invoice_settled`, `payment_exceeds_open` (with `openAmount`) |
+| `POST /{id}/payments/{paymentId}/remove` | `invoices:payments` | 400 on `reason`; 404 the document, or a payment not its own; 409 `payment_removed` |
+| `POST /{id}/send` | `invoices:issue` | 429 `rate_limited`; 503 `mail_unavailable`; 404; 409 `invoice_draft`, `customer_anonymised`; 400 on `recipient`; 409 `no_invoice_email`; 503 `storage_unavailable`; 500 a directory that fails, a missing or altered stored object, a render that fails, or a sent mail whose row could not be written; 502 `mail_failed` |
 | `GET /journal` | | 400 `from` or `to` missing or not a calendar date, `from` after `to`, paging |
+| `GET /export.csv` | | 400 `from` or `to` missing or not a calendar date, `from` after `to`, more than 5000 rows |
+| `GET /stats/summary` | | 400 `from` after `to` |
 
 ## What comes next
 
-- **1B** (next): payments with soft removal and derived states (open, overdue, paid,
-  credited), e-mail delivery with the PDF, the accountant's CSV export, the dashboard
-  card and stats, the customer page's Invoices tab.
-- **2**: EHF over Peppol and KID — what makes B2G and, from 2027, B2B invoicing lawful.
+- **2** (next): EHF over Peppol and KID — what makes B2G and, from 2027, B2B invoicing
+  lawful, and what the send's warnings point at.
 - **3**: hours, expenses and milestones turned into lines, with a write-back contract.
-- **4**: payment files and reminders.
+- **4**: payment files matched on KID, reminders and late interest — and overpayment,
+  customer credit balances and refunds as a flow, which 1B refuses or only shows as a
+  figure.
 - **5**: energy consumption billing.
+
+Left out of 1B on purpose: editing a payment (remove it and register it again), a
+payment in another currency than the document's, a payment against a credit note, one
+payment allocated across several invoices, an idempotency key, HTML mail, a logo, an
+editable template or a personal message in the mail, sending through an outbox or a
+worker, honouring `communications.suppressions`, bulk sending, a "paid" stamp on the PDF
+(the PDF is immutable), timeseries and attention stats, per-currency stats, a public-body
+fact on the directory, user display names on payments and deliveries (ids only), and a
+purge of anything.

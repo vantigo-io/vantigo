@@ -762,19 +762,28 @@ per line and on the headline; an invoice journal with the gap check; both custom
 (merge re-points, anonymisation erases drafts only); and `Status` and `MergedInto` on the
 customers contract's billing profile, so `disabled` finally means "blocked for invoicing".
 
-### Phase 1B — Payments, delivery and the export (next)
+### Phase 1B — Payments, delivery and the export (done)
 
-A branch cut from `main` after 1A merges, building only on 1A's tables: manual payment
-registration with soft removal and derived states (credited, paid, overdue, partially
-paid, open), e-mail delivery with the stored PDF and a Reply-To, the accountant's CSV
-export, the dashboard card and stats, the customer page's Invoices tab, and the
-customers-plus-invoices integration test.
+Delivered on `feat/invoices-payments-delivery`
+([design](docs/superpowers/specs/2026-10-02-invoices-payments-delivery-design.md),
+[`docs/invoices.md`](docs/invoices.md)), building only on 1A's tables: payment
+registrations against an issued invoice, refused once nothing is open or over the open
+amount, locked on the same row a credit note's issue locks, removable only with a reason
+and never deleted; derived states (credited, paid, overdue, partially paid, open) from
+one SQL function with a Go mirror, on every document and as a list filter, with the open
+amount and a refund due; e-mail delivery of the stored PDF with the seller as Reply-To
+(the one platform change, `mail.Outbound.ReplyTo`), plain-text cover mails in nb and en
+whose payment paragraph follows the open amount, four warnings for EHF customers and
+Norwegian businesses — red from 2027-01-01 — and an immutable delivery log; the
+anonymisation blanking that log under a lock and marking the customer erased, so a
+racing send cannot keep the address; the accountant's CSV export; the stats summary and
+the dashboard card; the customer page's Invoices tab; a new permission,
+`invoices:payments`; and the customers-plus-invoices integration test.
 
-*Unblocks:* everything below; nothing else is lawful without numbering, immutability
-and credit notes. Phase 1A alone does not meet the B2G duty (EHF since 2019) nor the B2B
-duty from 2027-01-01 — that is phase 2.
+*Unblocks:* receivables tracked in Vantigo, and everything below. Phases 1A and 1B do not
+meet the B2G duty (EHF since 2019) nor the B2B duty from 2027-01-01 — that is phase 2.
 
-### Phase 2 — EHF over Peppol, and KID
+### Phase 2 — EHF over Peppol, and KID (next)
 
 UBL 2.1 Invoice and CreditNote per Peppol BIS Billing 3.0 with the Norwegian rules,
 validated before sending; an access-point port with one provider adapter, credentials
