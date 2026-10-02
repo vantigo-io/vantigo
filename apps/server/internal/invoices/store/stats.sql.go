@@ -66,7 +66,7 @@ SELECT count(*) FILTER (WHERE kind = 'invoice' AND issue_date >= $1::date AND is
        coalesce(sum(gross_total) FILTER (WHERE kind = 'credit_note' AND issue_date >= $1::date AND issue_date < $2::date), 0)::numeric(14,2) AS credited_gross_total,
        coalesce(sum(gross_total) FILTER (WHERE kind = 'invoice' AND issue_date >= $3::date AND issue_date < $1::date), 0)::numeric(14,2) AS previous_issued_gross_total
 FROM invoices.invoices
-WHERE status = 'issued'
+WHERE status = 'issued' AND issue_date >= $3::date AND issue_date < $2::date
 `
 
 type InvoiceStatsPeriodParams struct {
@@ -87,6 +87,9 @@ type InvoiceStatsPeriodRow struct {
 // the credit notes whose issue date is in [from_day, to_day_exclusive), and
 // the invoices' gross over the previous period, [previous_from_day, from_day).
 // The days are Oslo days computed by the caller; this compares dates only.
+// The WHERE bounds the whole span, [previous_from_day, to_day_exclusive) —
+// previous_from_day is never after from_day — so ix_invoices_issue_date
+// applies.
 func (q *Queries) InvoiceStatsPeriod(ctx context.Context, arg InvoiceStatsPeriodParams) (InvoiceStatsPeriodRow, error) {
 	row := q.db.QueryRow(ctx, invoiceStatsPeriod, arg.FromDay, arg.ToDayExclusive, arg.PreviousFromDay)
 	var i InvoiceStatsPeriodRow

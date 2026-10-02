@@ -538,11 +538,18 @@ invalid period), in the envelope every module's summary uses:
 `periodFrom` falls in; `toDayExclusive` is the Oslo day of the last instant *inside*
 the period (`periodTo − 1ns`) **plus one day** — so a period ending "now" or at the end
 of today includes today, which a bare `< toDay` would drop from every dashboard
-preset; `previousFromDay` likewise from `previousFrom`. A document is in the period
-when `issue_date >= fromDay AND issue_date < toDayExclusive`, a payment when `paid_on`
-is; the previous period is `[previousFromDay, fromDay)`. The test plants a document on
-the first day, on the last day and on the day before the first. All NOK (only NOK in
-this phase). "Now" is `today` in Oslo from `Deps.Clock()`.
+preset. **The previous period is counted in days, not in duration:** it is the same
+number of Oslo days ending at `fromDay` — `[fromDay − n days, fromDay)` with `n =
+toDayExclusive − fromDay` — never `businessDay(previousFrom)`: `NormalizePeriod`'s
+`previousFrom` is an absolute duration, which across a daylight-saving change or for a
+default period that starts mid-day is a day off the current period's own length, and
+"the period of the same length just before" is what the delta compares against. A
+document is in the period when `issue_date >= fromDay AND issue_date < toDayExclusive`,
+a payment when `paid_on` is. The test plants a document on the first day, on the last
+day, on the day before the first, on the previous period's first day, and runs a
+period that contains the October change (2026-10-25) to prove both periods hold the
+same number of days. All NOK (only NOK in this phase). "Now" is `today` in Oslo from
+`Deps.Clock()`.
 
 No timeseries and no attention list in this phase: the dashboard queries them per
 module only where a module is listed, and Invoices adds no `metrics` entry — on the

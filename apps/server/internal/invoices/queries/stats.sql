@@ -31,13 +31,16 @@ FROM d;
 -- the credit notes whose issue date is in [from_day, to_day_exclusive), and
 -- the invoices' gross over the previous period, [previous_from_day, from_day).
 -- The days are Oslo days computed by the caller; this compares dates only.
+-- The WHERE bounds the whole span, [previous_from_day, to_day_exclusive) —
+-- previous_from_day is never after from_day — so ix_invoices_issue_date
+-- applies.
 SELECT count(*) FILTER (WHERE kind = 'invoice' AND issue_date >= @from_day::date AND issue_date < @to_day_exclusive::date)::int AS issued_count,
        coalesce(sum(gross_total) FILTER (WHERE kind = 'invoice' AND issue_date >= @from_day::date AND issue_date < @to_day_exclusive::date), 0)::numeric(14,2) AS issued_gross_total,
        count(*) FILTER (WHERE kind = 'credit_note' AND issue_date >= @from_day::date AND issue_date < @to_day_exclusive::date)::int AS credited_count,
        coalesce(sum(gross_total) FILTER (WHERE kind = 'credit_note' AND issue_date >= @from_day::date AND issue_date < @to_day_exclusive::date), 0)::numeric(14,2) AS credited_gross_total,
        coalesce(sum(gross_total) FILTER (WHERE kind = 'invoice' AND issue_date >= @previous_from_day::date AND issue_date < @from_day::date), 0)::numeric(14,2) AS previous_issued_gross_total
 FROM invoices.invoices
-WHERE status = 'issued';
+WHERE status = 'issued' AND issue_date >= @previous_from_day::date AND issue_date < @to_day_exclusive::date;
 
 -- name: PaymentsInPeriod :one
 -- PaymentsInPeriod is the live payments paid in the period (D7): paid_on in

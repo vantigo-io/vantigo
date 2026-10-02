@@ -78,13 +78,15 @@ func plantIssuedOn(t *testing.T, h *harness, number int64, issueDate string, cre
 //   - in the period: the invoices issued on the first day, inside, and on
 //     the last day — today, which a period ending at the end of today
 //     includes — but not the one issued the day before the first; the credit
-//     note; the live payments paid in it, not the removed one and not one
-//     paid before it;
+//     note issued inside it, not the one issued the day before the first; the
+//     live payments paid on the first day, inside and today, not the removed
+//     one and not those paid before it;
 //   - the delta: against what was issued in the previous period of the same
-//     length, [2026-08-20, 2026-09-01), which leaves out the day before it.
+//     twelve days, [2026-08-20, 2026-09-01) — its first day in, the day
+//     before it out.
 //
 // A period ending exactly at an Oslo midnight ends with the day before it: the
-// last day's invoice is then out.
+// last day's invoice and today's payment are then out.
 func TestStatsSummary_TheFigures(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -98,12 +100,18 @@ func TestStatsSummary_TheFigures(t *testing.T) {
 	partial := plantIssuedOn(t, h, 4, "2026-09-05", nil, "2000.55", "2026-09-26")
 	plantPayment(t, h, partial, "300.10", "2026-09-06")
 	plantIssuedOn(t, h, 5, "2026-09-07", &credited, "700", "")
-	plantIssuedOn(t, h, 6, "2026-09-12", nil, "4000", "2026-09-26")  // the last day
-	plantIssuedOn(t, h, 7, "2026-08-31", nil, "16000", "2026-09-14") // the day before the first
+	last := plantIssuedOn(t, h, 6, "2026-09-12", nil, "4000", "2026-09-26")    // the last day
+	plantPayment(t, h, last, "400", "2026-09-12")                              // today
+	before := plantIssuedOn(t, h, 7, "2026-08-31", nil, "16000", "2026-09-14") // the day before the first
+	plantPayment(t, h, before, "1000", "2026-08-31")                           // the day before the first
+	plantPayment(t, h, before, "2000", "2026-09-01")                           // the first day
 	overdue := plantIssuedOn(t, h, 8, "2026-08-25", nil, "8000", "2026-09-08")
 	plantPayment(t, h, overdue, "1000", "2026-08-30")
+	plantIssuedOn(t, h, 10, "2026-08-31", &overdue, "2000", "")               // a credit note the day before the first
 	older := plantIssuedOn(t, h, 9, "2026-08-19", nil, "32000", "2026-09-02") // before the previous period
 	plantPayment(t, h, older, "32000", "2026-08-19")
+	previousFirst := plantIssuedOn(t, h, 11, "2026-08-20", nil, "3000", "2026-09-03") // the previous period's first day
+	plantPayment(t, h, previousFirst, "3000", "2026-08-20")
 
 	oslo, err := time.LoadLocation("Europe/Oslo")
 	if err != nil {
@@ -118,27 +126,76 @@ func TestStatsSummary_TheFigures(t *testing.T) {
 	}
 	got.From, got.To = time.Time{}, time.Time{}
 	want := statsSummaryJSON{
-		// open 1000 + partial 1700.45 + the last day's 4000 + the day before's
-		// 16000 + overdue 7000.
-		OutstandingAmount: 29700.45, OutstandingCount: 5,
-		OverdueAmount: 7000, OverdueCount: 1,
+		// open 1000 + partial 1700.45 + the last day's 3600 + the day before's
+		// 13000 + overdue 5000 (less its payment and its credit note).
+		OutstandingAmount: 24300.45, OutstandingCount: 5,
+		OverdueAmount: 5000, OverdueCount: 1,
 		// open 1000, credited 700, paid 500, partial 2000.55, the last day's 4000.
 		IssuedCount: 5, IssuedGrossTotal: 8200.55,
-		// against the day before's 16000 and overdue's 8000.
-		IssuedGrossTotalDelta: -15799.45,
+		// against the day before's 16000, overdue's 8000 and the previous
+		// period's first day's 3000.
+		IssuedGrossTotalDelta: -18799.45,
 		CreditedCount:         1, CreditedGrossTotal: 700,
-		// paid's 500 and partial's 300.10.
-		PaidAmount: 800.10, PaidCount: 2,
+		// the first day's 2000, paid's 500, partial's 300.10 and today's 400.
+		PaidAmount: 3200.10, PaidCount: 4,
 	}
 	if got != want {
 		t.Errorf("summary =\n%+v\nwant\n%+v", got, want)
 	}
 
 	// The same period ending at the midnight that begins today: the last day
-	// is 2026-09-11, and the invoice issued today is out.
+	// is 2026-09-11, and the invoice issued today and today's payment are out.
 	midnight := time.Date(2026, time.September, 12, 0, 0, 0, 0, oslo)
-	if early := statsSummary(t, h, periodQuery(from, midnight)); early.IssuedCount != 4 || early.IssuedGrossTotal != 4200.55 {
+	early := statsSummary(t, h, periodQuery(from, midnight))
+	if early.IssuedCount != 4 || early.IssuedGrossTotal != 4200.55 {
 		t.Errorf("ending at today's midnight: issued %d, %v; want 4, 4200.55 — without today's", early.IssuedCount, early.IssuedGrossTotal)
+	}
+	if early.PaidCount != 3 || early.PaidAmount != 2800.10 {
+		t.Errorf("ending at today's midnight: paid %d, %v; want 3, 2800.10 — without today's", early.PaidCount, early.PaidAmount)
+	}
+}
+
+// The previous period is the same number of Oslo days ending the day before
+// the first, not the same duration: from the start of 2026-10-04 to the end
+// of 2026-11-03 is 31 days that hold the October change (2026-10-25, a
+// 25-hour day), so the duration is an hour longer than 31 days and would
+// reach back into 2026-09-02. The previous period is [2026-09-03,
+// 2026-10-04): its first day and its last, the day before the first, are in;
+// the day before it is out.
+func TestStatsSummary_ThePreviousPeriodIsCountedInDays(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.Advance(time.Date(2026, time.November, 3, 11, 0, 0, 0, time.UTC).Sub(h.Now())) // 12:00 in Oslo (CET)
+
+	plantIssuedOn(t, h, 1, "2026-09-02", nil, "100000", "2026-09-16") // the day before the previous period
+	plantIssuedOn(t, h, 2, "2026-09-03", nil, "200", "2026-09-17")    // the previous period's first day
+	plantIssuedOn(t, h, 3, "2026-10-03", nil, "400", "2026-10-17")    // the day before the first
+	plantIssuedOn(t, h, 4, "2026-10-04", nil, "1000", "2026-10-18")   // the first day
+	plantIssuedOn(t, h, 5, "2026-11-03", nil, "2000", "2026-11-17")   // the last day
+
+	oslo, err := time.LoadLocation("Europe/Oslo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	from := time.Date(2026, time.October, 4, 0, 0, 0, 0, oslo)
+	to := time.Date(2026, time.November, 3, 23, 59, 59, 999_000_000, oslo)
+
+	got := statsSummary(t, h, periodQuery(from, to))
+	if got.IssuedCount != 2 || got.IssuedGrossTotal != 3000 {
+		t.Errorf("issued %d, %v; want 2, 3000 — the first day's and the last day's", got.IssuedCount, got.IssuedGrossTotal)
+	}
+	// 3000 against the previous period's 200 + 400, without 2026-09-02's 100000.
+	if got.IssuedGrossTotalDelta != 2400 {
+		t.Errorf("delta = %v, want 2400 — against [2026-09-03, 2026-10-04), the same 31 days", got.IssuedGrossTotalDelta)
+	}
+}
+
+// The summary is behind invoices:access, like every read of this module.
+func TestStatsSummary_IsForbiddenWithoutAccess(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	if res := h.SignIn(t).Do(http.MethodGet, statsSummaryPath, nil); res.Status != http.StatusForbidden {
+		t.Errorf("without invoices:access = %d %s, want 403", res.Status, res.Body)
 	}
 }
 
