@@ -21,9 +21,11 @@ import (
 
 // The kinds this module reports, "<module>.<what>" in the API's camelCase.
 const (
-	kindInvoicesInvoices  = "invoices.invoices"
-	kindInvoicesDrafts    = "invoices.drafts"
-	kindInvoicesDocuments = "invoices.documents"
+	kindInvoicesInvoices   = "invoices.invoices"
+	kindInvoicesDrafts     = "invoices.drafts"
+	kindInvoicesDocuments  = "invoices.documents"
+	kindInvoicesPayments   = "invoices.payments"
+	kindInvoicesDeliveries = "invoices.deliveries"
 )
 
 // customerReferenceHolder is this module's contracts.CustomerReferenceHolder:
@@ -106,6 +108,34 @@ type exportedDocument struct {
 	Note            string           `json:"note,omitempty"`
 	InternalNote    string           `json:"internalNote,omitempty"`
 	Lines           []exportedLine   `json:"lines"`
+	// Payments and Deliveries are an issued document's, empty when it has
+	// none; a draft has neither, and nil leaves the key out (payments and
+	// delivery design D6).
+	Payments   []exportedPayment  `json:"payments,omitzero"`
+	Deliveries []exportedDelivery `json:"deliveries,omitzero"`
+}
+
+// exportedPayment is one registration of money received, as it was
+// registered, and its removal when it was removed: a bank reference often
+// names the payer, and a note is staff free text about them.
+type exportedPayment struct {
+	PaidOn        string     `json:"paidOn"`
+	Amount        string     `json:"amount"`
+	Currency      string     `json:"currency"`
+	Reference     string     `json:"reference,omitempty"`
+	Note          string     `json:"note,omitempty"`
+	RegisteredAt  time.Time  `json:"registeredAt"`
+	RemovedAt     *time.Time `json:"removedAt,omitempty"`
+	RemovalReason string     `json:"removalReason,omitempty"`
+}
+
+// exportedDelivery is one e-mail that handed a document over: to whom, when
+// and with what subject. The recipient is "" once the customer was
+// anonymised.
+type exportedDelivery struct {
+	Recipient string    `json:"recipient"`
+	SentAt    time.Time `json:"sentAt"`
+	Subject   string    `json:"subject"`
 }
 
 // exportedCredits is the issued invoice a credit note credits, as it was
@@ -211,7 +241,9 @@ func decimalOf(n pgtype.Numeric, places int) (string, error) {
 // ExportCustomerData answers nil for a customer with no document. Otherwise
 // every issued document and every draft, with the buyer snapshot, the place
 // of delivery and the internal note: the customers export treats
-// staff-written notes as data held about the person.
+// staff-written notes as data held about the person. An issued document
+// carries its payments, removed ones with their removal, and its deliveries
+// (payments and delivery design D6).
 func (p customerPersonalData) ExportCustomerData(ctx context.Context, customerID int32) (any, error) {
 	q := store.New(p.pool)
 	docs, err := q.CustomerDocuments(ctx, customerID)
@@ -232,6 +264,35 @@ func (p customerPersonalData) ExportCustomerData(ctx context.Context, customerID
 	byDoc := map[int64][]store.InvoicesLine{}
 	for _, l := range lines {
 		byDoc[l.InvoiceID] = append(byDoc[l.InvoiceID], l)
+	}
+	payments, err := q.PaymentsOfDocuments(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read customer %d's payments: %w", customerID, err)
+	}
+	paymentsOf := map[int64][]exportedPayment{}
+	for _, r := range payments {
+		amount, err := decimalOf(r.Amount, 2)
+		if err != nil {
+			return nil, err
+		}
+		e := exportedPayment{
+			PaidOn: orEmpty(dateText(r.PaidOn)), Amount: amount, Currency: r.Currency,
+			Reference: r.Reference, Note: r.Note, RegisteredAt: r.RegisteredAt.UTC(),
+			RemovalReason: orEmpty(r.RemovalReason),
+		}
+		if r.RemovedAt != nil {
+			e.RemovedAt = ptr(r.RemovedAt.UTC())
+		}
+		paymentsOf[r.InvoiceID] = append(paymentsOf[r.InvoiceID], e)
+	}
+	deliveries, err := q.DeliveriesOfDocuments(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read customer %d's deliveries: %w", customerID, err)
+	}
+	deliveriesOf := map[int64][]exportedDelivery{}
+	for _, d := range deliveries {
+		deliveriesOf[d.InvoiceID] = append(deliveriesOf[d.InvoiceID],
+			exportedDelivery{Recipient: d.Recipient, SentAt: d.SentAt.UTC(), Subject: d.Subject})
 	}
 	// A credit note's customer is its original's (credits.go), so the
 	// original is almost always among docs; one that is not is read.
@@ -287,6 +348,8 @@ func (p customerPersonalData) ExportCustomerData(ctx context.Context, customerID
 			e.Lines = append(e.Lines, line)
 		}
 		if d.Status == statusIssued {
+			e.Payments = append([]exportedPayment{}, paymentsOf[d.ID]...)
+			e.Deliveries = append([]exportedDelivery{}, deliveriesOf[d.ID]...)
 			section.Documents = append(section.Documents, e)
 		} else {
 			section.Drafts = append(section.Drafts, e)
@@ -295,20 +358,41 @@ func (p customerPersonalData) ExportCustomerData(ctx context.Context, customerID
 	return section, nil
 }
 
-// EraseCustomerData deletes the person's drafts and keeps their issued
-// documents. A draft is not a salgsdokument, so it has no retention basis and
-// GDPR art. 17 applies; an issued document and its buyer snapshot are kept
-// under bokføringsloven § 13 — five years after the end of the financial year —
-// which is why invoices.documents reports 0. contracts.ErasedData carries no
-// reason; docs/invoices.md and the anonymisation table in docs/customers.md
-// say it.
-func (customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, customerID int32) ([]contracts.ErasedData, error) {
-	n, err := store.New(tx).DeleteCustomerDrafts(ctx, customerID)
+// EraseCustomerData anonymises the person in this module (payments and
+// delivery design D6), in this order: it locks their documents FOR UPDATE
+// newest first (the merge's statement, the issue's order), so a delivery
+// insert — whose trigger takes the document FOR SHARE — waits for this
+// transaction; writes the erased-customer marker, which that trigger reads
+// after its wait and which refuses any later send; blanks every delivery's
+// recipient; and deletes the drafts. A draft is not a salgsdokument, so it
+// has no retention basis and GDPR art. 17 applies; an issued document, its
+// buyer snapshot and its payments are bookkeeping material kept under
+// bokføringsloven § 13 — five years after the end of the financial year —
+// which is why invoices.documents and invoices.payments report 0. A delivery
+// is kept as the evidence of when the claim was sent, its address gone.
+// contracts.ErasedData carries no reason; docs/invoices.md and the
+// anonymisation table in docs/customers.md say it. Run twice, it reports
+// zeros and the marker keeps its first time.
+func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, customerID int32) ([]contracts.ErasedData, error) {
+	q := store.New(tx)
+	if err := q.LockCustomerDocuments(ctx, store.LockCustomerDocumentsParams{FromCustomerID: customerID, IntoCustomerID: customerID}); err != nil {
+		return nil, fmt.Errorf("invoices: lock customer %d's documents: %w", customerID, err)
+	}
+	if err := q.MarkCustomerErased(ctx, store.MarkCustomerErasedParams{CustomerID: customerID, ErasedAt: p.clock()}); err != nil {
+		return nil, fmt.Errorf("invoices: mark customer %d erased: %w", customerID, err)
+	}
+	blanked, err := q.BlankCustomerDeliveries(ctx, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: blank customer %d's deliveries: %w", customerID, err)
+	}
+	drafts, err := q.DeleteCustomerDrafts(ctx, customerID)
 	if err != nil {
 		return nil, fmt.Errorf("invoices: erase customer %d's drafts: %w", customerID, err)
 	}
 	return []contracts.ErasedData{
-		{Kind: kindInvoicesDrafts, Count: n},
+		{Kind: kindInvoicesDrafts, Count: drafts},
 		{Kind: kindInvoicesDocuments, Count: 0},
+		{Kind: kindInvoicesPayments, Count: 0},
+		{Kind: kindInvoicesDeliveries, Count: blanked},
 	}, nil
 }

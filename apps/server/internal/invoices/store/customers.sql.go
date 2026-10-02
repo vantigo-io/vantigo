@@ -10,6 +10,24 @@ import (
 	"time"
 )
 
+const blankCustomerDeliveries = `-- name: BlankCustomerDeliveries :execrows
+UPDATE invoices.deliveries d SET recipient = ''
+FROM invoices.invoices i
+WHERE d.invoice_id = i.id AND i.customer_id = $1 AND d.recipient <> ''
+`
+
+// BlankCustomerDeliveries removes the address from every delivery of a
+// customer's documents on anonymisation (D6) — the one write
+// tr_deliveries_immutable allows. The rows stay: they are the evidence of
+// when the claim was sent. A row blanked already is not counted again.
+func (q *Queries) BlankCustomerDeliveries(ctx context.Context, customerID int32) (int64, error) {
+	result, err := q.db.Exec(ctx, blankCustomerDeliveries, customerID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const customerDocuments = `-- name: CustomerDocuments :many
 SELECT id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision FROM invoices.invoices
 WHERE customer_id = $1
@@ -119,6 +137,43 @@ func (q *Queries) DeleteCustomerDrafts(ctx context.Context, customerID int32) (i
 	return result.RowsAffected(), nil
 }
 
+const deliveriesOfDocuments = `-- name: DeliveriesOfDocuments :many
+SELECT id, invoice_id, recipient, subject, message_id, pdf_sha256, sent_at, sent_by_user_id FROM invoices.deliveries
+WHERE invoice_id = ANY($1::bigint[])
+ORDER BY invoice_id, sent_at, id
+`
+
+// DeliveriesOfDocuments is every send of several documents at once, for a
+// private person's export (D6).
+func (q *Queries) DeliveriesOfDocuments(ctx context.Context, invoiceIds []int64) ([]InvoicesDelivery, error) {
+	rows, err := q.db.Query(ctx, deliveriesOfDocuments, invoiceIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InvoicesDelivery
+	for rows.Next() {
+		var i InvoicesDelivery
+		if err := rows.Scan(
+			&i.ID,
+			&i.InvoiceID,
+			&i.Recipient,
+			&i.Subject,
+			&i.MessageID,
+			&i.PdfSha256,
+			&i.SentAt,
+			&i.SentByUserID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const linesOf = `-- name: LinesOf :many
 SELECT id, invoice_id, position, description, quantity, unit, unit_price, discount_percent, vat_code_id, credits_line_id, line_gross, line_allowance, line_net, vat_rate_percent, vat_category, saf_t_code, exemption_reason FROM invoices.lines WHERE invoice_id = ANY($1::bigint[]) ORDER BY invoice_id, position
 `
@@ -185,6 +240,69 @@ type LockCustomerDocumentsParams struct {
 func (q *Queries) LockCustomerDocuments(ctx context.Context, arg LockCustomerDocumentsParams) error {
 	_, err := q.db.Exec(ctx, lockCustomerDocuments, arg.FromCustomerID, arg.IntoCustomerID)
 	return err
+}
+
+const markCustomerErased = `-- name: MarkCustomerErased :exec
+INSERT INTO invoices.erased_customers (customer_id, erased_at)
+VALUES ($1, $2::timestamptz)
+ON CONFLICT (customer_id) DO NOTHING
+`
+
+type MarkCustomerErasedParams struct {
+	CustomerID int32
+	ErasedAt   time.Time
+}
+
+// MarkCustomerErased records that this module has anonymised a customer
+// (payments and delivery design D6), under the erase's lock on the
+// customer's documents. A send to a marked customer is refused, and a
+// delivery row written after the mark is blanked by tr_deliveries_parent.
+// Never removed: anonymisation is never undone, and a second erase keeps the
+// first time.
+func (q *Queries) MarkCustomerErased(ctx context.Context, arg MarkCustomerErasedParams) error {
+	_, err := q.db.Exec(ctx, markCustomerErased, arg.CustomerID, arg.ErasedAt)
+	return err
+}
+
+const paymentsOfDocuments = `-- name: PaymentsOfDocuments :many
+SELECT id, invoice_id, paid_on, amount, currency, reference, note, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason FROM invoices.payments
+WHERE invoice_id = ANY($1::bigint[])
+ORDER BY invoice_id, paid_on, id
+`
+
+// PaymentsOfDocuments is every registration of several documents at once,
+// removed ones included, for a private person's export (D6).
+func (q *Queries) PaymentsOfDocuments(ctx context.Context, invoiceIds []int64) ([]InvoicesPayment, error) {
+	rows, err := q.db.Query(ctx, paymentsOfDocuments, invoiceIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InvoicesPayment
+	for rows.Next() {
+		var i InvoicesPayment
+		if err := rows.Scan(
+			&i.ID,
+			&i.InvoiceID,
+			&i.PaidOn,
+			&i.Amount,
+			&i.Currency,
+			&i.Reference,
+			&i.Note,
+			&i.RegisteredByUserID,
+			&i.RegisteredAt,
+			&i.RemovedAt,
+			&i.RemovedByUserID,
+			&i.RemovalReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const repointCustomer = `-- name: RepointCustomer :execrows
