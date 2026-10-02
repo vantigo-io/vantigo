@@ -29,8 +29,8 @@ SELECT * FROM invoices.payments WHERE id = @id AND invoice_id = @invoice_id;
 
 -- name: RemovePayment :execrows
 -- RemovePayment is the soft removal, once: the three columns set together
--- (D2). A registration already removed matches no row; tr_payments_immutable
--- would refuse it anyway.
+-- (D2), of that invoice's registration only. A registration already removed
+-- matches no row; tr_payments_immutable would refuse it anyway.
 UPDATE invoices.payments
 SET removed_at = @removed_at::timestamptz, removed_by_user_id = @removed_by_user_id::uuid, removal_reason = @removal_reason::text
-WHERE id = @id AND removed_at IS NULL;
+WHERE id = @id AND invoice_id = @invoice_id AND removed_at IS NULL;

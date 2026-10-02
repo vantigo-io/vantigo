@@ -154,7 +154,7 @@ func (q *Queries) PaymentsOf(ctx context.Context, invoiceID int64) ([]InvoicesPa
 const removePayment = `-- name: RemovePayment :execrows
 UPDATE invoices.payments
 SET removed_at = $1::timestamptz, removed_by_user_id = $2::uuid, removal_reason = $3::text
-WHERE id = $4 AND removed_at IS NULL
+WHERE id = $4 AND invoice_id = $5 AND removed_at IS NULL
 `
 
 type RemovePaymentParams struct {
@@ -162,17 +162,19 @@ type RemovePaymentParams struct {
 	RemovedByUserID uuid.UUID
 	RemovalReason   string
 	ID              int64
+	InvoiceID       int64
 }
 
 // RemovePayment is the soft removal, once: the three columns set together
-// (D2). A registration already removed matches no row; tr_payments_immutable
-// would refuse it anyway.
+// (D2), of that invoice's registration only. A registration already removed
+// matches no row; tr_payments_immutable would refuse it anyway.
 func (q *Queries) RemovePayment(ctx context.Context, arg RemovePaymentParams) (int64, error) {
 	result, err := q.db.Exec(ctx, removePayment,
 		arg.RemovedAt,
 		arg.RemovedByUserID,
 		arg.RemovalReason,
 		arg.ID,
+		arg.InvoiceID,
 	)
 	if err != nil {
 		return 0, err

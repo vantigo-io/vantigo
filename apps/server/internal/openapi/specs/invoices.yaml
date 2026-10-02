@@ -896,6 +896,31 @@ components:
                 - registeredAt
                 - registeredByUserId
             type: object
+        InvoicesPaymentRemovalRequest:
+            description: 'POST /invoices/{id}/payments/{paymentId}/remove''s body (D2). reason is why the registration is removed: 1-200 characters once trimmed. A removal is never undone; a mistake is registered again.'
+            properties:
+                reason:
+                    type: string
+            required:
+                - reason
+            type: object
+        InvoicesPaymentRequest:
+            description: 'POST /invoices/{id}/payments'' body (D2). paidOn is the day the money arrived: on or after the invoice''s issue date and not after today (Oslo). amount is greater than 0 with at most 2 decimals, at most 99999999999.99, in the invoice''s currency, and at most its open amount (409 payment_exceeds_open). reference (the bank''s or the payer''s) holds at most 100 characters and note at most 500, both trimmed; absent is empty.'
+            properties:
+                amount:
+                    format: double
+                    type: number
+                note:
+                    type: string
+                paidOn:
+                    format: date
+                    type: string
+                reference:
+                    type: string
+            required:
+                - paidOn
+                - amount
+            type: object
         InvoicesSeller:
             description: The seller snapshot (D4), copied from the settings at issue.
             properties:
@@ -1916,6 +1941,120 @@ paths:
             tags:
                 - Invoices
             x-vantigo-access: permission:invoices:access+invoices:issue
+    /api/v1/invoices/{id}/payments:
+        post:
+            description: 'Registers money received against an issued invoice (D2). It reads no directory: the customer may be disabled, archived, merged or anonymised since — the money arrived regardless. The fields are judged before anything is locked; then one transaction locks the invoice, reads what its issued credit notes credit and what its live payments paid under that lock, and refuses a payment once nothing is open (invoice_settled) or one over the open amount (payment_exceeds_open, with openAmount). The response is the document with its new state, open amount and payments.'
+            operationId: postInvoicesByIdPayments
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/InvoicesPaymentRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesInvoiceResponse'
+                    description: OK — the invoice with the payment registered.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — a field did not pass; the errors name it.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no document has that id.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesConflictProblem'
+                    description: Conflict — invoice_draft, credit_note_no_payments (a credit note, draft or issued, takes no payment), invoice_settled (nothing is open) or payment_exceeds_open (with openAmount).
+            summary: Register a payment
+            tags:
+                - Invoices
+            x-vantigo-access: permission:invoices:access+invoices:payments
+    /api/v1/invoices/{id}/payments/{paymentId}/remove:
+        post:
+            description: 'Removes a payment registration with a reason (D2): the row is kept, struck through on the document, and counts for nothing. The reason is judged before anything is read; then one transaction locks the invoice first and reads the payment after that lock, so two removals of one payment give one 200 and one payment_removed. A removal is never undone; the payment is registered again. The response is the document.'
+            operationId: postInvoicesByIdPaymentsByPaymentIdRemove
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - in: path
+                  name: paymentId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/InvoicesPaymentRemovalRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesInvoiceResponse'
+                    description: OK — the invoice with the payment removed.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — the reason is empty or over 200 characters.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no document has that id, or the payment is not that document's.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesConflictProblem'
+                    description: Conflict — payment_removed (the registration is already removed).
+            summary: Remove a payment registration
+            tags:
+                - Invoices
+            x-vantigo-access: permission:invoices:access+invoices:payments
     /api/v1/invoices/journal:
         get:
             description: The invoice journal (D11) — what proves complete registration (§ 5-1-3). from and to are issue dates, both required, from on or before to; page and pageSize are the list's.

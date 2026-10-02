@@ -48,6 +48,7 @@ func (s *server) GetInvoicesMeta(ctx context.Context, _ gen.GetInvoicesMetaReque
 	}
 	missing := sellerMissingFields(row)
 	mail := s.mailAvailable()
+	canIssue := s.has(ctx, "invoices:issue")
 	return gen.GetInvoicesMeta200JSONResponse(gen.InvoicesMetaResponse{
 		Currency:                row.DefaultCurrency,
 		DefaultPaymentTermsDays: row.DefaultPaymentTermsDays,
@@ -61,10 +62,10 @@ func (s *server) GetInvoicesMeta(ctx context.Context, _ gen.GetInvoicesMetaReque
 		VatCodes:                inForce,
 		Capabilities: gen.InvoicesMetaCapabilities{
 			CanCreate:           s.has(ctx, "invoices:create"),
-			CanIssue:            s.has(ctx, "invoices:issue"),
+			CanIssue:            canIssue,
 			CanManage:           s.has(ctx, "invoices:manage"),
 			CanRegisterPayments: s.has(ctx, "invoices:payments"),
-			CanSend:             s.has(ctx, "invoices:issue") && mail,
+			CanSend:             canIssue && mail,
 		},
 	}), nil
 }

@@ -27,6 +27,25 @@ func SetIssueAfterAllocation(hook func(ctx context.Context, invoiceID int64) err
 	return func() { issueAfterAllocation = nil }
 }
 
+// SetPaymentAfterLock installs a hook both payment writes — a registration
+// and a removal — call inside their transaction right after the invoice is
+// locked, and answers the function that removes it. A race test holds one
+// side there while it starts the other. A test using it does not run in
+// parallel: the hook is the package's.
+func SetPaymentAfterLock(hook func(ctx context.Context, invoiceID int64)) func() {
+	paymentAfterLock = hook
+	return func() { paymentAfterLock = nil }
+}
+
+// SetCreditIssueAfterOriginalLock installs a hook a credit note's issue calls
+// inside its transaction right after it has locked the original, with the
+// original's id, and answers the function that removes it. A test using it
+// does not run in parallel: the hook is the package's.
+func SetCreditIssueAfterOriginalLock(hook func(ctx context.Context, invoiceID int64)) func() {
+	creditIssueAfterOriginalLock = hook
+	return func() { creditIssueAfterOriginalLock = nil }
+}
+
 // SetPreviewRendered installs a hook every preview reports its VAT total to,
 // as a two-decimal string, and answers the function that removes it. A test
 // using it does not run in parallel: the hook is the package's.
