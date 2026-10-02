@@ -393,7 +393,7 @@ vocabulary word, not a fact a module can read. What the snapshot does carry is t
 buyer's **organisation number**, which every public body and every Norwegian business
 has, and the B2B duty makes that the warning that matters: from **2027-01-01** (Lov 19.
 juni 2026 nr. 39) a PDF by e-mail to a Norwegian business is not a lawful e-invoice.
-So two warnings, on the document's `sendDefaults.warnings`, on the send's response
+So the warnings, on the document's `sendDefaults.warnings`, on the send's response
 `warnings`, and in the Send dialog:
 
 - `delivery_preference_ehf` — the current profile's `InvoiceDelivery` is `ehf`: a red
@@ -631,7 +631,7 @@ two modules' understanding of the contract is proven to be one.
   Norwegian-business note, red from 2027; the other-preference note); for a settled or
   partly paid invoice the dialog says what the mail will say about payment; "Send" →
   the notification "Sent to <recipient>"; a **Deliveries card** listing each send
-  (when, to whom, "(anonymised)" for a blank recipient); `no_invoice_email`,
+  (when, to whom — "(anonymised)" for a blank recipient, and no address column at all for a reader without `invoices:issue`); `no_invoice_email`,
   `customer_anonymised`, `mail_unavailable`, `mail_failed` and the 429 in the reader's
   language.
 - **Journal**: "Export CSV" (D5).
@@ -647,7 +647,7 @@ two modules' understanding of the contract is proven to be one.
   leaves, the lock the registration and the credit issue share, the retention marked
   UNCERTAIN as 1A marks it); "Sending a document" (the recipient rule, Reply-To, the
   texts and the payment paragraph's three forms, the codes, the rate limit, the log, the
-  timeout caveat, re-sending, both warnings, the dropped public-body half and what
+  timeout caveat, re-sending, the four warnings, the dropped public-body half and what
   replaces it, the anonymised refusal); "The CSV export" (the columns, the byte format,
   which columns are guarded); "Stats" (the period-to-days rule); the endpoints table
   and the permissions table extended; the anonymisation paragraph gaining payments and
@@ -729,7 +729,7 @@ Oslo clock), plus `modtest.WithSMTPSend` recording envelopes and `WithEnv` for
   `storage_unavailable`; a send failure is 502 and no delivery row exists; a cancelled
   request still sends and still writes the row; a credit note is sent with its text;
   `deliveries[]` on the document; `sendDefaults` for a sender, absent for a reader and
-  on a draft, absent with a warn log when the directory fails; both warnings, the 2027
+  on a draft, absent with a warn log when the directory fails; the four warnings, the 2027
   switch under the fixed clock; `invoices:issue` required; the rate limit's 429;
   `mail.Outbound.ReplyTo` reaches the message (`srv/mail`); the harness's locked-call
   hook sees `SMTPSend` and never inside a lock.
