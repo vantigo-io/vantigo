@@ -142,6 +142,23 @@ describe("the invoice settings", () => {
     });
   });
 
+  it.each([
+    [true, "Mail is configured (SMTP)"],
+    [false, "Mail is not configured (SMTP), so documents cannot be sent by e-mail. Issuing does not need it."],
+  ])(
+    "says in the checklist whether mail is configured (%s), which never holds issuing back",
+    async (mailAvailable, words) => {
+      server({
+        "GET /api/v1/invoices/meta": jsonResponse(200, meta({ capabilities: manager, mailAvailable })),
+      });
+      renderWithProviders(<SettingsPage />);
+
+      const checklist = await screen.findByRole("list", { name: "What issuing needs" });
+      const line = await within(checklist).findByText(words);
+      expect(line.closest("li")).toHaveAttribute("data-informative", "true");
+    },
+  );
+
   it("shows the series start read-only once anything is issued", async () => {
     server();
     renderWithProviders(<SettingsPage />);

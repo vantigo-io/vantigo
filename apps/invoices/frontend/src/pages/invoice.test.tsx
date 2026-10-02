@@ -283,7 +283,7 @@ describe("an issued document", () => {
   });
 
   it("offers no credit for an invoice credited in full", async () => {
-    server({ 1001: issued({ uncreditedAmount: 0, creditedAmount: 124.99 }) });
+    server({ 1001: issued({ uncreditedAmount: 0, creditedAmount: 124.99, state: "credited", openAmount: 0 }) });
     renderRoute("/invoices/1001");
     await screen.findByRole("heading", { name: "Invoice 1000" });
     expect(screen.queryByRole("button", { name: "Credit" })).not.toBeInTheDocument();
@@ -725,7 +725,11 @@ describe("what the server decides since the page was read", () => {
   });
 
   it("says why a credit is refused, and stays on the invoice", async () => {
-    server({ 1001: issued() }, {}, { current: { 1001: issued({ uncreditedAmount: 0, creditedAmount: 124.99 }) } });
+    server(
+      { 1001: issued() },
+      {},
+      { current: { 1001: issued({ uncreditedAmount: 0, creditedAmount: 124.99, state: "credited", openAmount: 0 }) } },
+    );
     const { router } = renderRoute("/invoices/1001");
 
     await userEvent.click(await screen.findByRole("button", { name: "Credit" }));

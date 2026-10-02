@@ -20,7 +20,16 @@ import {
 } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
-import { IconAlertCircle, IconCheck, IconLock, IconPencil, IconPlus, IconTrash, IconX } from "@tabler/icons-react";
+import {
+  IconAlertCircle,
+  IconCheck,
+  IconInfoCircle,
+  IconLock,
+  IconPencil,
+  IconPlus,
+  IconTrash,
+  IconX,
+} from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
 import { type ChangeEvent, useState } from "react";
@@ -156,6 +165,8 @@ interface SellerFormProps {
 const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }: SellerFormProps) => {
   const { t, date } = useInvoiceFormat();
   const queryClient = useQueryClient();
+  // The page has read meta before it drew this form; the mail line comes from it.
+  const meta = useQuery(invoicesMetaQueryOptions());
   const [values, setValues] = useState(settings);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [conflict, setConflict] = useState(false);
@@ -266,6 +277,21 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
               </List.Item>
             );
           })}
+          {/* Informative only: sending needs SMTP, issuing never does (payments and delivery design D10). */}
+          {meta.data && (
+            <List.Item
+              data-informative="true"
+              icon={
+                meta.data.mailAvailable ? (
+                  <IconCheck size={14} color="green" />
+                ) : (
+                  <IconInfoCircle size={14} color="gray" />
+                )
+              }
+            >
+              {meta.data.mailAvailable ? t("mailConfigured") : t("mailNotConfigured")}
+            </List.Item>
+          )}
         </List>
         <SimpleGrid cols={{ base: 1, sm: 2 }}>
           <TextInput {...text("legalName")} />

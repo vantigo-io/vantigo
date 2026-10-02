@@ -21,5 +21,8 @@ export const useInvoiceFormat = () => {
     percent: (ratePercent: number) =>
       formatters.formatNumber(ratePercent / 100, { style: "percent", maximumFractionDigits: 2 }),
     date: (date: string) => formatters.formatDate(toUtc(date), { dateStyle: "medium", timeZone: "UTC" }),
+    /** An instant — a payment registered, a mail sent — in the reader's own time zone. */
+    dateTime: (instant: string) =>
+      formatters.formatDate(new Date(instant), { dateStyle: "medium", timeStyle: "short" }),
   };
 };

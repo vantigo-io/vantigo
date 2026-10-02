@@ -1,8 +1,8 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { InvoiceJournal } from "../api/journal";
-import { jsonResponse } from "../test/api";
+import { jsonResponse, problemResponse } from "../test/api";
 import { stubFetch } from "../test/fetch";
 import { journal, meta } from "../test/fixtures";
 import { renderWithProviders } from "../test/render";
@@ -125,5 +125,60 @@ describe("the invoice journal", () => {
 
     expect(await screen.findByText("Could not load Invoices")).toBeInTheDocument();
     expect(screen.queryByTestId("content-skeleton")).not.toBeInTheDocument();
+  });
+
+  it("exports the range shown as CSV, saved under the name the server gives it", async () => {
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:csv"), revokeObjectURL: vi.fn() }));
+    const clicked: HTMLAnchorElement[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      clicked.push(this);
+    });
+    const fetchMock = stubFetch((input: RequestInfo | URL) => {
+      const url = path(input);
+      if (url === "/api/v1/invoices/meta") return jsonResponse(200, meta());
+      if (url.startsWith("/api/v1/invoices/journal?")) return jsonResponse(200, journal());
+      if (url.startsWith("/api/v1/invoices/export.csv?")) {
+        return new Response("\uFEFFNumber;Kind\r\n", {
+          status: 200,
+          headers: {
+            "Content-Type": "text/csv; charset=utf-8",
+            "Content-Disposition": 'attachment; filename="invoices-2026-09-01-2026-09-12.csv"',
+          },
+        });
+      }
+      return new Response(null, { status: 404 });
+    });
+    renderWithProviders(<JournalPage />);
+    await screen.findByText("No gaps between 1000 and 1002.");
+
+    await userEvent.click(screen.getByRole("button", { name: "Export CSV" }));
+    await waitFor(() => expect(clicked).toHaveLength(1));
+    expect(
+      fetchMock.actualCalls.some(
+        ([url, init]) =>
+          path(url) === "/api/v1/invoices/export.csv?from=2026-09-01&to=2026-09-12" &&
+          (init?.method ?? "GET") === "GET",
+      ),
+    ).toBe(true);
+    expect(clicked[0].download).toBe("invoices-2026-09-01-2026-09-12.csv");
+    expect(clicked[0].href).toBe("blob:csv");
+  });
+
+  it("says a refused export in a notification, never the problem opened in the browser", async () => {
+    const clicked = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    stubFetch((input: RequestInfo | URL) => {
+      const url = path(input);
+      if (url === "/api/v1/invoices/meta") return jsonResponse(200, meta());
+      if (url.startsWith("/api/v1/invoices/journal?")) return jsonResponse(200, journal());
+      if (url.startsWith("/api/v1/invoices/export.csv?")) return problemResponse(400, "Too many rows to export");
+      return new Response(null, { status: 404 });
+    });
+    renderWithProviders(<JournalPage />);
+    await screen.findByText("No gaps between 1000 and 1002.");
+
+    await userEvent.click(screen.getByRole("button", { name: "Export CSV" }));
+    expect(await screen.findByText("Could not export the CSV")).toBeInTheDocument();
+    expect(screen.getByText("Too many rows to export")).toBeInTheDocument();
+    expect(clicked).not.toHaveBeenCalled();
   });
 });

@@ -153,6 +153,47 @@ describe("the invoice list", () => {
     });
   });
 
+  it("badges each row with its state and shows an issued invoice's open amount", async () => {
+    server();
+    renderRoute("/invoices");
+
+    const rows = await screen.findAllByRole("row");
+    expect(screen.getByRole("columnheader", { name: "State" })).toBeInTheDocument();
+    expect(within(rows[1]).getByTestId("state-badge")).toHaveTextContent("Draft");
+    expect(within(rows[2]).getByTestId("state-badge")).toHaveTextContent("Issued");
+    expect(within(rows[3]).getByTestId("state-badge")).toHaveTextContent("Open");
+    // Only an issued invoice has an open amount; a draft and a credit note show none.
+    expect(within(rows[3]).getByTestId("open-amount")).toHaveTextContent(/NOK\s?124\.99/);
+    expect(within(rows[1]).getByTestId("open-amount")).toHaveTextContent("—");
+    expect(within(rows[2]).getByTestId("open-amount")).toHaveTextContent("—");
+  });
+
+  it.each([
+    ["Open", "open"],
+    ["Partially paid", "partially_paid"],
+    ["Overdue", "overdue"],
+    ["Paid", "paid"],
+    ["Credited", "credited"],
+  ])("asks the server for the %s state", async (label, state) => {
+    const fetchMock = server();
+    renderRoute("/invoices");
+    await screen.findByText("Kari Nordmann");
+
+    const chips = screen.getByRole("radiogroup", { name: "State" });
+    await userEvent.click(within(chips).getByRole("radio", { name: label }));
+    await waitFor(() =>
+      expect(fetchMock.actualCalls.some(([url]) => path(url) === `/api/v1/invoices?page=1&state=${state}`)).toBe(true),
+    );
+    // "Any state" asks for the list without the filter again.
+    const asked = fetchMock.actualCalls.findIndex(([url]) => path(url).includes(`state=${state}`));
+    await userEvent.click(within(chips).getByRole("radio", { name: "Any state" }));
+    await waitFor(() =>
+      expect(fetchMock.actualCalls.slice(asked + 1).some(([url]) => path(url) === "/api/v1/invoices?page=1")).toBe(
+        true,
+      ),
+    );
+  });
+
   it("says when the list could not be loaded", async () => {
     stubFetch((input: RequestInfo | URL) =>
       path(input) === "/api/v1/invoices/meta"

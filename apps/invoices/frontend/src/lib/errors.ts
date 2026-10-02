@@ -22,23 +22,33 @@ const refusalProblem = (error: unknown): Record<string, unknown> =>
  * What a refusal says to a person. A coded refusal is worded by its code, in
  * the reader's language, never the server's English detail — with what the
  * refusal names put into the words: the dates an issue may take
- * (`{{dates}}`, each written by `date`), the line (`{{line}}`) and the
- * customer a merged one went into (`{{mergedInto}}`). A validation error says
+ * (`{{dates}}`, each written by `date`), the line (`{{line}}`), the
+ * customer a merged one went into (`{{mergedInto}}`) and the open amount a
+ * payment exceeded (`{{openAmount}}`, written by `money`). The rate limiter's
+ * 429 is not a problem document — its body is `{"error": {"code":
+ * "rate_limited"}}` — and is worded by `refusal.rateLimited`. A validation error says
  * its first field's message; anything else, the error's own — a code this
  * catalog has no words for included, which is looked up before it is
  * translated: outside production a missing key throws rather than echoing
  * itself back.
  */
-export const refusalMessage = (error: unknown, t: Translate, date: (day: string) => string = (d) => d): string => {
+export const refusalMessage = (
+  error: unknown,
+  t: Translate,
+  date: (day: string) => string = (d) => d,
+  money: (amount: number) => string = (amount) => String(amount),
+): string => {
   const code = refusalCode(error);
-  const key = `refusal.${code}`;
-  if (code && key in invoicesCatalog.en) {
+  const limited = code === "rate_limited" || (error as { status?: unknown } | null)?.status === 429;
+  const key = limited ? "refusal.rateLimited" : `refusal.${code}`;
+  if ((code || limited) && key in invoicesCatalog.en) {
     const problem = refusalProblem(error);
     const dates = Array.isArray(problem.allowedIssueDates) ? (problem.allowedIssueDates as string[]) : [];
     return t(key, {
       dates: dates.map(date).join(", "),
       line: problem.linePosition ?? "",
       mergedInto: problem.mergedInto ?? "",
+      openAmount: typeof problem.openAmount === "number" ? money(problem.openAmount) : "",
     });
   }
   if (error instanceof ApiValidationError) {
@@ -53,7 +63,9 @@ export const refusalMessage = (error: unknown, t: Translate, date: (day: string)
  * screen shows (`hasInput`), and every other one for a notification — a field
  * whose input is not rendered just now is never swallowed. Each is worded by
  * the catalog's `fieldInvalid.<field>` — a line's `lines[2].quantity` by
- * `fieldInvalid.line.quantity` — and by the server's own sentence only where
+ * `fieldInvalid.line.quantity`, and a field of another request than the
+ * draft's under its `scope`, a payment's `note` by `fieldInvalid.payment.note`
+ * — and by the server's own sentence only where
  * the catalog has no words for the field. Each field's
  * catalog sentence covers every rule the server checks on it, so it says what
  * was refused in the reader's language.
@@ -62,11 +74,12 @@ export const fieldRefusals = (
   error: ApiValidationError,
   t: Translate,
   hasInput: (field: string) => boolean,
+  scope?: string,
 ): { onInputs: Record<string, string>; elsewhere: string[] } => {
   const onInputs: Record<string, string> = {};
   const elsewhere: string[] = [];
   for (const [field, message] of Object.entries(error.fieldErrors)) {
-    const key = `fieldInvalid.${field.replace(/^lines\[\d+\]\./, "line.")}`;
+    const key = `fieldInvalid.${scope ? `${scope}.` : ""}${field.replace(/^lines\[\d+\]\./, "line.")}`;
     const words = key in invoicesCatalog.en ? t(key) : message;
     if (hasInput(field)) onInputs[field] = words;
     else elsewhere.push(words);
