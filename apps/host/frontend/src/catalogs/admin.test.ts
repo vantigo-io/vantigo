@@ -25,7 +25,13 @@ const expensesPermissionKeys = ["expenses:access", "expenses:approve", "expenses
 
 // Hand-kept in step with `apps/server/internal/invoices/module.go` (`var
 // permissions`), for the same reason.
-const invoicesPermissionKeys = ["invoices:access", "invoices:create", "invoices:issue", "invoices:manage"] as const;
+const invoicesPermissionKeys = [
+  "invoices:access",
+  "invoices:create",
+  "invoices:issue",
+  "invoices:manage",
+  "invoices:payments",
+] as const;
 
 describe("the admin permission catalog", () => {
   it("has a display name and a description, in English and Norwegian, for these six projects permissions", () => {
@@ -52,7 +58,7 @@ describe("the admin permission catalog", () => {
     }
   });
 
-  it("has a display name and a description, in English and Norwegian, for the four invoices permissions", () => {
+  it("has a display name and a description, in English and Norwegian, for the five invoices permissions", () => {
     for (const key of invoicesPermissionKeys) {
       const translation = hostPermissionTranslationKeys[key as keyof typeof hostPermissionTranslationKeys];
       expect(translation, `no catalog entry for ${key}`).toBeDefined();
@@ -68,7 +74,7 @@ describe("the admin permission catalog", () => {
     const en = adminCatalog.en as Record<string, string>;
     expect(en["admin.permission.invoicesAccess"]).toBe("Use Invoices");
     expect(en["admin.permission.invoicesAccessDescription"]).toBe(
-      "Use the Invoices app and read every invoice, credit note, PDF and the invoice journal.",
+      "Use the Invoices app and read every invoice, credit note, PDF, payment and delivery, the journal, the CSV export and the stats.",
     );
     expect(en["admin.permission.invoicesCreate"]).toBe("Create invoices");
     expect(en["admin.permission.invoicesCreateDescription"]).toBe(
@@ -76,11 +82,15 @@ describe("the admin permission catalog", () => {
     );
     expect(en["admin.permission.invoicesIssue"]).toBe("Issue invoices");
     expect(en["admin.permission.invoicesIssueDescription"]).toBe(
-      "Issue a draft into a numbered document that can never be changed, and create credit notes.",
+      "Issue a draft into a numbered document that can never be changed, create credit notes, and send an issued document by e-mail.",
     );
     expect(en["admin.permission.invoicesManage"]).toBe("Manage invoicing");
     expect(en["admin.permission.invoicesManageDescription"]).toBe(
       "Change the seller record, the number series start, and the VAT codes and their rates.",
+    );
+    expect(en["admin.permission.invoicesPayments"]).toBe("Register payments");
+    expect(en["admin.permission.invoicesPaymentsDescription"]).toBe(
+      "Register payments against issued invoices, and remove a registration with a reason.",
     );
   });
 

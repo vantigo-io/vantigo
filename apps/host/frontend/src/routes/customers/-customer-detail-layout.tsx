@@ -1,5 +1,5 @@
 import { Button } from "@mantine/core";
-import { IconBolt, IconBriefcase, IconLayoutDashboard, IconMessages } from "@tabler/icons-react";
+import { IconBolt, IconBriefcase, IconFileInvoice, IconLayoutDashboard, IconMessages } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useMatches, useNavigate, useParams } from "@tanstack/react-router";
 import { CustomerDetailHeader } from "@vantigo/customers-ui/pages/customers.$customerId";
@@ -18,13 +18,17 @@ interface CustomerDetailGate {
   requiredPermissions?: readonly string[];
 }
 
-type CustomerDetailView = "overview" | "energy" | "projects";
+type CustomerDetailView = "overview" | "energy" | "projects" | "invoices";
 
 interface CustomerDetailTab extends CustomerDetailGate {
   value: CustomerDetailView;
-  labelKey: "customer.overviewTab" | "customer.energyTab" | "customer.projectsTab";
+  labelKey: "customer.overviewTab" | "customer.energyTab" | "customer.projectsTab" | "customer.invoicesTab";
   icon: typeof IconLayoutDashboard;
-  to: "/customers/$customerId" | "/customers/$customerId/energy" | "/customers/$customerId/projects";
+  to:
+    | "/customers/$customerId"
+    | "/customers/$customerId/energy"
+    | "/customers/$customerId/projects"
+    | "/customers/$customerId/invoices";
 }
 
 /** The views of the customer page, each a child route, so the tab row follows the URL. */
@@ -50,6 +54,14 @@ export const customerDetailTabs: CustomerDetailTab[] = [
     to: "/customers/$customerId/projects",
     module: "projects",
     requiredPermissions: ["projects:access"],
+  },
+  {
+    value: "invoices",
+    labelKey: "customer.invoicesTab",
+    icon: IconFileInvoice,
+    to: "/customers/$customerId/invoices",
+    module: "invoices",
+    requiredPermissions: ["invoices:access"],
   },
 ];
 
@@ -82,6 +94,16 @@ export const showCorrespondenceAction = (
   permissions: string[] | undefined,
 ) => passesGate(customerDetailActions.correspondence, enabledModules, permissions);
 
+/** The tab the matched child route belongs to; anything else is the overview. */
+export const activeCustomerDetailTab = (routeIds: readonly string[]): CustomerDetailView =>
+  routeIds.includes("/customers/$customerId/energy")
+    ? "energy"
+    : routeIds.includes("/customers/$customerId/projects")
+      ? "projects"
+      : routeIds.includes("/customers/$customerId/invoices")
+        ? "invoices"
+        : "overview";
+
 export const CustomerDetailLayout = () => {
   const { t } = useI18n("host");
   const { customerId } = useParams({ from: "/customers/$customerId" });
@@ -101,11 +123,7 @@ export const CustomerDetailLayout = () => {
   const enabledModules = enabledModuleKeys();
   const permissions = authorization.data?.permissions;
   const visibleTabs = visibleCustomerDetailTabs(enabledModules, permissions);
-  const activeTab: CustomerDetailView = matches.some((match) => match.routeId === "/customers/$customerId/energy")
-    ? "energy"
-    : matches.some((match) => match.routeId === "/customers/$customerId/projects")
-      ? "projects"
-      : "overview";
+  const activeTab = activeCustomerDetailTab(matches.map((match) => match.routeId));
 
   return (
     <>

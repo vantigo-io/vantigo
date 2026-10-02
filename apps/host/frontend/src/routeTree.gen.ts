@@ -70,6 +70,7 @@ import { Route as WorkspaceRolesRouteImport } from './routes/workspace/roles'
 import { Route as WorkspaceUsersRouteImport } from './routes/workspace/users'
 import { Route as CustomersCustomerIdIndexRouteImport } from './routes/customers/$customerId.index'
 import { Route as CustomersCustomerIdEnergyRouteImport } from './routes/customers/$customerId.energy'
+import { Route as CustomersCustomerIdInvoicesRouteImport } from './routes/customers/$customerId.invoices'
 import { Route as CustomersCustomerIdProjectsRouteImport } from './routes/customers/$customerId.projects'
 import { Route as CustomersContactsIndexRouteImport } from './routes/customers/contacts/index'
 import { Route as CustomersContactsContactIdRouteImport } from './routes/customers/contacts/$contactId'
@@ -392,6 +393,12 @@ const CustomersCustomerIdEnergyRoute =
     path: '/energy',
     getParentRoute: () => CustomersCustomerIdRoute,
   } as any)
+const CustomersCustomerIdInvoicesRoute =
+  CustomersCustomerIdInvoicesRouteImport.update({
+    id: '/invoices',
+    path: '/invoices',
+    getParentRoute: () => CustomersCustomerIdRoute,
+  } as any)
 const CustomersCustomerIdProjectsRoute =
   CustomersCustomerIdProjectsRouteImport.update({
     id: '/projects',
@@ -526,6 +533,7 @@ export interface FileRoutesByFullPath {
   '/time/': typeof TimeIndexRoute
   '/workspace/': typeof WorkspaceIndexRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
+  '/customers/$customerId/invoices': typeof CustomersCustomerIdInvoicesRoute
   '/customers/$customerId/projects': typeof CustomersCustomerIdProjectsRoute
   '/customers/contacts/$contactId': typeof CustomersContactsContactIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
@@ -589,6 +597,7 @@ export interface FileRoutesByTo {
   '/time': typeof TimeIndexRoute
   '/workspace': typeof WorkspaceIndexRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
+  '/customers/$customerId/invoices': typeof CustomersCustomerIdInvoicesRoute
   '/customers/$customerId/projects': typeof CustomersCustomerIdProjectsRoute
   '/customers/contacts/$contactId': typeof CustomersContactsContactIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
@@ -666,6 +675,7 @@ export interface FileRoutesById {
   '/time/': typeof TimeIndexRoute
   '/workspace/': typeof WorkspaceIndexRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
+  '/customers/$customerId/invoices': typeof CustomersCustomerIdInvoicesRoute
   '/customers/$customerId/projects': typeof CustomersCustomerIdProjectsRoute
   '/customers/contacts/$contactId': typeof CustomersContactsContactIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
@@ -744,6 +754,7 @@ export interface FileRouteTypes {
     | '/time/'
     | '/workspace/'
     | '/customers/$customerId/energy'
+    | '/customers/$customerId/invoices'
     | '/customers/$customerId/projects'
     | '/customers/contacts/$contactId'
     | '/energy/metering-points/$meteringPointId'
@@ -807,6 +818,7 @@ export interface FileRouteTypes {
     | '/time'
     | '/workspace'
     | '/customers/$customerId/energy'
+    | '/customers/$customerId/invoices'
     | '/customers/$customerId/projects'
     | '/customers/contacts/$contactId'
     | '/energy/metering-points/$meteringPointId'
@@ -883,6 +895,7 @@ export interface FileRouteTypes {
     | '/time/'
     | '/workspace/'
     | '/customers/$customerId/energy'
+    | '/customers/$customerId/invoices'
     | '/customers/$customerId/projects'
     | '/customers/contacts/$contactId'
     | '/energy/metering-points/$meteringPointId'
@@ -1352,6 +1365,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CustomersCustomerIdEnergyRouteImport
       parentRoute: typeof CustomersCustomerIdRoute
     }
+    '/customers/$customerId/invoices': {
+      id: '/customers/$customerId/invoices'
+      path: '/invoices'
+      fullPath: '/customers/$customerId/invoices'
+      preLoaderRoute: typeof CustomersCustomerIdInvoicesRouteImport
+      parentRoute: typeof CustomersCustomerIdRoute
+    }
     '/customers/$customerId/projects': {
       id: '/customers/$customerId/projects'
       path: '/projects'
@@ -1476,12 +1496,14 @@ const CommunicationsRouteWithChildren = CommunicationsRoute._addFileChildren(
 
 interface CustomersCustomerIdRouteChildren {
   CustomersCustomerIdEnergyRoute: typeof CustomersCustomerIdEnergyRoute
+  CustomersCustomerIdInvoicesRoute: typeof CustomersCustomerIdInvoicesRoute
   CustomersCustomerIdProjectsRoute: typeof CustomersCustomerIdProjectsRoute
   CustomersCustomerIdIndexRoute: typeof CustomersCustomerIdIndexRoute
 }
 
 const CustomersCustomerIdRouteChildren: CustomersCustomerIdRouteChildren = {
   CustomersCustomerIdEnergyRoute: CustomersCustomerIdEnergyRoute,
+  CustomersCustomerIdInvoicesRoute: CustomersCustomerIdInvoicesRoute,
   CustomersCustomerIdProjectsRoute: CustomersCustomerIdProjectsRoute,
   CustomersCustomerIdIndexRoute: CustomersCustomerIdIndexRoute,
 }
