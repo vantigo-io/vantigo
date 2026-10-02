@@ -590,6 +590,15 @@ type GetInvoicesParams struct {
 	PageSize   *int32              `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
 
+// GetInvoicesExportCsvParams defines parameters for GetInvoicesExportCsv.
+type GetInvoicesExportCsvParams struct {
+	// From The first issue date to include.
+	From openapi_types.Date `form:"from" json:"from"`
+
+	// To The last issue date to include.
+	To openapi_types.Date `form:"to" json:"to"`
+}
+
 // GetInvoicesJournalParams defines parameters for GetInvoicesJournal.
 type GetInvoicesJournalParams struct {
 	From     openapi_types.Date `form:"from" json:"from"`
@@ -636,6 +645,9 @@ type ServerInterface interface {
 	// PostInvoices Create an invoice draft
 	// (POST /api/v1/invoices)
 	PostInvoices(w http.ResponseWriter, r *http.Request)
+	// GetInvoicesExportCsv Export the issued documents as CSV
+	// (GET /api/v1/invoices/export.csv)
+	GetInvoicesExportCsv(w http.ResponseWriter, r *http.Request, params GetInvoicesExportCsvParams)
 	// GetInvoicesJournal The invoice journal
 	// (GET /api/v1/invoices/journal)
 	GetInvoicesJournal(w http.ResponseWriter, r *http.Request, params GetInvoicesJournalParams)
@@ -846,6 +858,52 @@ func (siw *ServerInterfaceWrapper) PostInvoices(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostInvoices(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInvoicesExportCsv operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoicesExportCsv(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetInvoicesExportCsvParams
+
+	// ------------- Required query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoicesExportCsv(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1494,6 +1552,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/payments/{paymentId}/remove", wrapper.PostInvoicesByIdPaymentsByPaymentIdRemove)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/send", wrapper.PostInvoicesByIdSend)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/journal", wrapper.GetInvoicesJournal)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/export.csv", wrapper.GetInvoicesExportCsv)
 
 	return m
 }
@@ -1636,6 +1695,76 @@ func (response PostInvoices409ApplicationProblemPlusJSONResponse) VisitPostInvoi
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesExportCsvRequestObject struct {
+	Params GetInvoicesExportCsvParams
+}
+
+type GetInvoicesExportCsvResponseObject interface {
+	VisitGetInvoicesExportCsvResponse(w http.ResponseWriter) error
+}
+
+type GetInvoicesExportCsv200TextcsvResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetInvoicesExportCsv200TextcsvResponse) VisitGetInvoicesExportCsvResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetInvoicesExportCsv400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetInvoicesExportCsv400ApplicationProblemPlusJSONResponse) VisitGetInvoicesExportCsvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesExportCsv401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesExportCsv401JSONResponse) VisitGetInvoicesExportCsvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesExportCsv403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesExportCsv403JSONResponse) VisitGetInvoicesExportCsvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -3144,6 +3273,9 @@ type StrictServerInterface interface {
 	// PostInvoices Create an invoice draft
 	// (POST /api/v1/invoices)
 	PostInvoices(ctx context.Context, request PostInvoicesRequestObject) (PostInvoicesResponseObject, error)
+	// GetInvoicesExportCsv Export the issued documents as CSV
+	// (GET /api/v1/invoices/export.csv)
+	GetInvoicesExportCsv(ctx context.Context, request GetInvoicesExportCsvRequestObject) (GetInvoicesExportCsvResponseObject, error)
 	// GetInvoicesJournal The invoice journal
 	// (GET /api/v1/invoices/journal)
 	GetInvoicesJournal(ctx context.Context, request GetInvoicesJournalRequestObject) (GetInvoicesJournalResponseObject, error)
@@ -3292,6 +3424,32 @@ func (sh *strictHandler) PostInvoices(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostInvoicesResponseObject); ok {
 		if err := validResponse.VisitPostInvoicesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInvoicesExportCsv operation middleware
+func (sh *strictHandler) GetInvoicesExportCsv(w http.ResponseWriter, r *http.Request, params GetInvoicesExportCsvParams) {
+	var request GetInvoicesExportCsvRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoicesExportCsv(ctx, request.(GetInvoicesExportCsvRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoicesExportCsv")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoicesExportCsvResponseObject); ok {
+		if err := validResponse.VisitGetInvoicesExportCsvResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

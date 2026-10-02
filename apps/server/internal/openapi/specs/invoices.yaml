@@ -2243,5 +2243,54 @@ paths:
             tags:
                 - Invoices
             x-vantigo-access: permission:invoices:access
+    /api/v1/invoices/export.csv:
+        get:
+            description: 'The accountant''s CSV export (payments and delivery design D5): the issued documents whose issue date is from-to — the journal''s own selection — one row per document and VAT row, in number order and in each document by category then rate, a credit note negative in every amount. UTF-8 with a byte order mark, semicolons, the decimal comma, YYYY-MM-DD, CRLF after every row, RFC 4180 quoting, and the formula guard on the text columns only. The header row is Number;Kind;Issue date;Delivery;Due;Customer number;Buyer;Buyer org no;Currency;SAF-T code;Rate;Base;VAT;Base NOK;VAT NOK;Credits number. from and to are both required, from on or before to; a period of more than 5000 rows is refused, never cut short.'
+            operationId: getInvoicesExportCsv
+            parameters:
+                - description: The first issue date to include.
+                  in: query
+                  name: from
+                  required: true
+                  schema:
+                    format: date
+                    type: string
+                - description: The last issue date to include.
+                  in: query
+                  name: to
+                  required: true
+                  schema:
+                    format: date
+                    type: string
+            responses:
+                "200":
+                    content:
+                        text/csv:
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK — served as an attachment named invoices-<from>-<to>.csv (the period's two dates, YYYY-MM-DD), and never cached.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request — from or to missing or not a calendar date, from after to, or more than 5000 rows, which asks for a narrower period.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Export the issued documents as CSV
+            tags:
+                - Invoices
+            x-vantigo-access: permission:invoices:access
 servers:
     - url: /
