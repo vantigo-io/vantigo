@@ -313,11 +313,18 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 		if err != nil {
 			return gen.InvoicesInvoiceResponse{}, fmt.Errorf("invoices: read document %d's deliveries: %w", inv.ID, err)
 		}
+		// The address a send went to is the customer's personal data and
+		// sits behind invoices:issue, as sendDefaults does (D4): a reader sees
+		// when each send happened and its subject, not the address. Asked
+		// only when there is a send to show.
+		showRecipient := len(sends) > 0 && s.has(ctx, "invoices:issue")
 		deliveries := make([]gen.InvoicesDelivery, 0, len(sends))
 		for _, d := range sends {
-			deliveries = append(deliveries, gen.InvoicesDelivery{
-				Id: d.ID, Recipient: d.Recipient, Subject: d.Subject, SentAt: d.SentAt, SentByUserId: d.SentByUserID,
-			})
+			delivery := gen.InvoicesDelivery{Id: d.ID, Subject: d.Subject, SentAt: d.SentAt, SentByUserId: d.SentByUserID}
+			if showRecipient {
+				delivery.Recipient = ptr(d.Recipient)
+			}
+			deliveries = append(deliveries, delivery)
 		}
 		resp.Deliveries = &deliveries
 		// § 5-2-2 is about when the document was issued, not the date it

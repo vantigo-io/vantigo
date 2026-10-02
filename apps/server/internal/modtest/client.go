@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -98,9 +99,11 @@ func RawBody(ct string, b []byte) RequestOption {
 }
 
 // Context sends the request on ctx, so a test can cancel it mid-flight as a
-// browser that goes away does. A request whose ctx ends before it is
-// answered answers a Response with Status 0 and no body rather than failing
-// the test: the cancellation is the test's own doing.
+// browser that goes away does. A request that fails because ctx was
+// cancelled or ran out — the error is context.Canceled or
+// context.DeadlineExceeded — answers a Response with Status 0 and no body
+// rather than failing the test: the cancellation is the test's own doing.
+// Any other error fails the test as it would without the option.
 func Context(ctx context.Context) RequestOption {
 	return func(r *request) { r.ctx = ctx }
 }
@@ -142,7 +145,7 @@ func (c *Client) Do(method, path string, body any, opts ...RequestOption) *Respo
 	}
 
 	res, err := c.http.Do(req)
-	if err != nil && r.ctx != nil && r.ctx.Err() != nil {
+	if err != nil && r.ctx != nil && endedByContext(err) {
 		return &Response{t: c.t, headers: http.Header{}}
 	}
 	if err != nil {
@@ -150,13 +153,19 @@ func (c *Client) Do(method, path string, body any, opts ...RequestOption) *Respo
 	}
 	defer func() { _ = res.Body.Close() }()
 	b, err := io.ReadAll(res.Body)
-	if err != nil && r.ctx != nil && r.ctx.Err() != nil {
+	if err != nil && r.ctx != nil && endedByContext(err) {
 		return &Response{t: c.t, headers: http.Header{}}
 	}
 	if err != nil {
 		c.t.Fatalf("%s %s: read body: %v", method, path, err)
 	}
 	return &Response{t: c.t, Status: res.StatusCode, Body: b, headers: res.Header}
+}
+
+// endedByContext reports whether err is a request's context ending — the
+// one failure a Context option makes the test's own doing.
+func endedByContext(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
 // Response is one response, body read.

@@ -52,10 +52,12 @@ func coverMail(inv store.InvoicesInvoice, original *store.InvoicesInvoice, open 
 		greeting, closing = "Hei,", "Med vennlig hilsen"
 	}
 	if inv.Kind == kindCreditNote {
-		var credited int64
-		if original != nil && original.Number != nil {
-			credited = *original.Number
+		// A credit note names the invoice it credits; without that number
+		// there is no true sentence to send, never "faktura 0".
+		if original == nil || original.Number == nil {
+			return mailText{}, fmt.Errorf("invoices: credit note %d's cover mail needs its original's number", inv.ID)
 		}
+		credited := *original.Number
 		if lang == "en" {
 			subject = fmt.Sprintf("Credit note %d from %s", number, seller)
 			intro = fmt.Sprintf("Please find attached credit note %d from %s for %s, crediting invoice %d.", number, seller, amount(gross), credited)
