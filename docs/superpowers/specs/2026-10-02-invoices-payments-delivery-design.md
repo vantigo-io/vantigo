@@ -276,12 +276,15 @@ cheap. In order:
    the document id, never put on the wire. A timeout that strikes after the server has
    accepted the data can mean the mail went with no row; `docs/invoices.md` says so.
 8. **The log**: one row in `invoices.deliveries`, written on the same uncancellable
-   context, by an `INSERT … SELECT` whose `recipient` is `''` when the customer is by
-   then in `invoices.erased_customers` and the address otherwise — the race the review
-   found: an anonymisation committing between step 4 and here must not leave the
-   person's address in a row the erase has already run past. A row that fails to write
-   after a successful send is logged at error with the document id and the recipient —
-   the mail went; the operator is told.
+   context. **The blanking of a recipient whose customer was erased meanwhile is the
+   insert trigger's job, not the statement's** (`tr_deliveries_parent`, below): an
+   anonymisation running between step 4 and here — committed, or still holding the
+   customer's documents — must not leave the person's address in a row the erase has
+   already run past, and only a check made *after* the trigger's lock wait sees the
+   erase's marker (an `INSERT … SELECT CASE WHEN EXISTS (marker)` would read a
+   snapshot taken before the wait and leak). A row that fails to write after a
+   successful send is logged at error with the document id and the recipient — the
+   mail went; the operator is told.
 9. The document is answered, its `deliveries[]` now holding the row.
 
 Sending twice is allowed and logged twice: a re-send is a legitimate act. No
@@ -302,10 +305,19 @@ problem the person sending will hear about.
 | `sent_at timestamptz NOT NULL`, `sent_by_user_id uuid NOT NULL` | |
 
 Two triggers: `tr_deliveries_immutable` refuses DELETE and any UPDATE but `recipient`
-to `''` — the one write anonymisation makes; `tr_deliveries_parent` reads the document
-`FOR SHARE` on INSERT and refuses a draft's ("invoices: a delivery needs an issued
-document") — the payments' parent trigger's shape, and what serialises a send's row
-against an erase holding the documents (D6).
+to `''` — the one write anonymisation makes; `tr_deliveries_parent`
+(`invoices.guard_delivery_insert()`) reads the document's `status` and `customer_id`
+`FOR SHARE` on INSERT, refuses a draft's ("invoices: a delivery needs an issued
+document"), and **then** — in a statement after the lock wait, which under READ
+COMMITTED sees whatever committed while it waited — sets `NEW.recipient := ''` when
+`invoices.erased_customers` holds that `customer_id`. The payments' parent trigger's
+shape plus the one check that closes the race (D6): it reads the document's *current*
+customer, so a merge in between is covered too.
+
+**The 429.** The limiter answers as it does everywhere (`ratelimit.Reject`):
+`application/json` `{"error": {"code": "rate_limited", "message": …}}` with
+`Retry-After`, declared as identity declares it (`common.yaml`'s `AuthErrorResponse`),
+never as ProblemDetails.
 
 **The texts.** `{number}`, `{seller}`, `{amount}` (the PDF's own money format, `NOK
 15 045,00` / `NOK 15,045.00`), `{due}` (the PDF's date format), `{account}` (the
@@ -395,10 +407,15 @@ So two warnings, on the document's `sendDefaults.warnings`, on the send's respon
 `sendDefaults{recipient?, preference?, warnings[]}` is on an issued document's response
 **only for a caller with `canSend`** (`invoices:issue` and mail available): the
 customer's invoice e-mail sits behind `customers:view` in its own module, and
-`invoices:access` alone should not widen that. It is the one new directory read on an
-issued document (1A read the profile for drafts only); it is **best effort** — a
-directory error leaves `sendDefaults` absent and logs at warn, never a 500 on a read of
-bookkeeping material.
+`invoices:access` alone should not widen that. It is computed by **`GET /invoices/{id}`
+and the send's own response only** — not by a payment's, a removal's, an issue's or a
+credit's — so no write adds a directory call to its answer; the app invalidates the
+document after those writes rather than setting their responses into the cache. It is
+the one new directory read on an issued document (1A read the profile for drafts
+only); it is **best effort** — a directory error leaves `sendDefaults` absent and logs
+at warn, never a 500 on a read of bookkeeping material. The send's warnings live in
+`sendDefaults.warnings`; the document's own `warnings` (`issued_late`, …) keep their
+meaning and are never mixed with them.
 
 ### D5 — The accountant's CSV export
 
@@ -479,10 +496,14 @@ sends and writes its row after; without a marker an erase committing in between 
 blank the rows that existed and the send would then add one holding the person's
 address, for good (the delivery trigger allows no second blanking by anyone but the
 worker, which never returns). With it: a send after the erase is refused
-`customer_anonymised` (D4 step 3); a send whose row is written after the erase commits
-writes `''` (D4 step 8, the `INSERT … SELECT CASE`); a send whose row is written before
-is blanked by the erase. The marker is module-private, read by this module only, and
-never removed — anonymisation is never undone.
+`customer_anonymised` (D4 step 3); a send whose row is written while the erase holds
+the documents waits on the trigger's `FOR SHARE` and, once the erase commits, the
+trigger's check sees the marker and writes `''` (D4); a send whose row is written
+after the erase commits is blanked by the same check; a send whose row is written
+before is blanked by the erase. The check is in the trigger because only a statement
+run after the lock wait sees the marker — the inserting statement's own snapshot was
+taken before it. The marker is module-private, read by this module only, and never
+removed — anonymisation is never undone.
 
 ### D7 — Stats, and the dashboard card
 
@@ -503,15 +524,17 @@ invalid period), in the envelope every module's summary uses:
 }
 ```
 
-**The period's dates.** `NormalizePeriod` answers instants; this module's facts are
-calendar dates in Oslo (`issue_date`, `paid_on`). The rule: each instant becomes the
-Oslo calendar day it falls in (`periodFrom`, `periodTo`, `previousFrom` → `(t AT TIME
-ZONE 'Europe/Oslo')::date`, computed in Go through `businessDay`), and a document is in
-the period when `issue_date >= fromDay AND issue_date < toDay`, a payment when
-`paid_on` is — half-open on days, the same as every module's half-open instants. The
-previous period is `[previousFromDay, fromDay)`. The test plants a document on the
-boundary day and one the day before. All NOK (only NOK in this phase). "Now" is
-`today` in Oslo from `Deps.Clock()`.
+**The period's dates.** `NormalizePeriod` answers half-open instants
+`[periodFrom, periodTo)`; this module's facts are calendar dates in Oslo (`issue_date`,
+`paid_on`). The rule, computed in Go through `businessDay`: `fromDay` is the Oslo day
+`periodFrom` falls in; `toDayExclusive` is the Oslo day of the last instant *inside*
+the period (`periodTo − 1ns`) **plus one day** — so a period ending "now" or at the end
+of today includes today, which a bare `< toDay` would drop from every dashboard
+preset; `previousFromDay` likewise from `previousFrom`. A document is in the period
+when `issue_date >= fromDay AND issue_date < toDayExclusive`, a payment when `paid_on`
+is; the previous period is `[previousFromDay, fromDay)`. The test plants a document on
+the first day, on the last day and on the day before the first. All NOK (only NOK in
+this phase). "Now" is `today` in Oslo from `Deps.Clock()`.
 
 No timeseries and no attention list in this phase: the dashboard queries them per
 module only where a module is listed, and Invoices adds no `metrics` entry — on the
