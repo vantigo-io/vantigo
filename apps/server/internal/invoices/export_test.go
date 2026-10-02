@@ -58,3 +58,11 @@ func SetPDFModelBuilt(hook func(invoiceID int64, watermark string, numbered bool
 	}
 	return func() { pdfModelBuilt = nil }
 }
+
+// DocumentState is documentState, the Go mirror of invoices.document_state,
+// for the test that holds the two to each other.
+var DocumentState = documentState
+
+// InvoiceStates is the five states an issued invoice can be in, the ones the
+// list filters by.
+var InvoiceStates = invoiceStates

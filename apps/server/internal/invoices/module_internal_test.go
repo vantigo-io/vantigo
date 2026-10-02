@@ -10,8 +10,8 @@ import (
 
 // The catalog is what an administrator sees when they build a role, so every
 // word of it is pinned (D1): the keys, their display names and descriptions,
-// the category, which are sensitive — issuing and the seller record — and that
-// all four may be delegated.
+// the category, which are sensitive — issuing, the seller record and payments
+// (payments and delivery design D1) — and that all five may be delegated.
 func TestPermissions_AreTheCatalogTheDesignNames(t *testing.T) {
 	t.Parallel()
 	want := []contracts.Permission{
@@ -35,10 +35,15 @@ func TestPermissions_AreTheCatalogTheDesignNames(t *testing.T) {
 			Description: "Change the seller record, the number series start, and the VAT codes and their rates.",
 			Category:    "Invoices", Sensitive: true, Delegable: true,
 		},
+		{
+			Key: "invoices:payments", Display: "Register payments",
+			Description: "Register payments against issued invoices, and remove a registration with a reason.",
+			Category:    "Invoices", Sensitive: true, Delegable: true,
+		},
 	}
 	got := Module().Permissions
 	if len(got) != len(want) {
-		t.Fatalf("permissions = %+v, want the four of D1", got)
+		t.Fatalf("permissions = %+v, want the five of D1", got)
 	}
 	for i, w := range want {
 		if got[i] != w {

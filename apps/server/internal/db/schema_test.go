@@ -2378,7 +2378,10 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("collect tables: %v", err)
 	}
-	if want := []string{"counters", "invoices", "lines", "settings", "vat_code_rates", "vat_codes", "vat_summaries"}; !equalStrings(gotTables, want) {
+	// deliveries, erased_customers and payments are 00035's, and
+	// applyUpDownUp ends with every migration applied, so they stand here
+	// beside the seven this one creates.
+	if want := []string{"counters", "deliveries", "erased_customers", "invoices", "lines", "payments", "settings", "vat_code_rates", "vat_codes", "vat_summaries"}; !equalStrings(gotTables, want) {
 		t.Errorf("tables = %v, want %v", gotTables, want)
 	}
 
@@ -2486,9 +2489,237 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("collect triggers: %v", err)
 	}
-	if want := []string{"invoices:tr_invoices_immutable", "lines:tr_lines_immutable", "vat_summaries:tr_vat_summaries_immutable"}; !equalStrings(gotTriggers, want) {
+	// The four on deliveries and payments are 00035's, as above.
+	if want := []string{
+		"deliveries:tr_deliveries_immutable", "deliveries:tr_deliveries_parent", "invoices:tr_invoices_immutable",
+		"lines:tr_lines_immutable", "payments:tr_payments_immutable", "payments:tr_payments_parent",
+		"vat_summaries:tr_vat_summaries_immutable",
+	}; !equalStrings(gotTriggers, want) {
 		t.Errorf("triggers = %v, want %v", gotTriggers, want)
 	}
+}
+
+// invoicesPhase1BObjects is what 00035 adds to the invoices schema, as found:
+// its tables, its triggers (table:trigger:function), its two CHECKs and the
+// document_state function with its volatility and return type.
+func invoicesPhase1BObjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool) (tables, triggers, checks, functions []string) {
+	t.Helper()
+	collect := func(what, sql string) []string {
+		t.Helper()
+		rows, err := pool.Query(ctx, sql)
+		if err != nil {
+			t.Fatalf("query %s: %v", what, err)
+		}
+		got, err := pgx.CollectRows(rows, pgx.RowTo[string])
+		if err != nil {
+			t.Fatalf("collect %s: %v", what, err)
+		}
+		return got
+	}
+	tables = collect("tables", `
+		SELECT table_name FROM information_schema.tables
+		WHERE table_schema = 'invoices' AND table_name IN ('payments', 'deliveries', 'erased_customers')
+		ORDER BY table_name`)
+	triggers = collect("triggers", `
+		SELECT c.relname || ':' || t.tgname || ':' || p.proname
+		FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+		JOIN pg_proc p ON p.oid = t.tgfoid
+		WHERE n.nspname = 'invoices' AND NOT t.tgisinternal AND c.relname IN ('payments', 'deliveries')
+		ORDER BY 1`)
+	checks = collect("checks", `
+		SELECT conname FROM pg_constraint
+		WHERE connamespace = 'invoices'::regnamespace AND conname IN ('ck_payments_amount', 'ck_payments_removal')
+		ORDER BY 1`)
+	functions = collect("functions", `
+		SELECT p.proname || ':' || p.provolatile::text || ':' || pg_catalog.format_type(p.prorettype, NULL)
+		FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+		WHERE n.nspname = 'invoices' AND p.proname IN ('document_state', 'refuse_payment_change',
+		    'refuse_payment_on_unissued', 'refuse_delivery_change', 'guard_delivery_insert')
+		ORDER BY 1`)
+	return tables, triggers, checks, functions
+}
+
+// refusedWith reports whether err is the invoices triggers' refusal: SQLSTATE
+// P0001 carrying exactly message.
+func refusedWith(err error, message string) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "P0001" && pgErr.Message == message
+}
+
+// TestInvoicesPaymentsDelivery_AppliesAndIsIdempotent proves
+// 00035_invoices_payments_delivery.sql applies, rolls back and re-applies
+// cleanly, and pins what the payments and delivery design rests on: the three
+// tables, the four triggers with their functions and their messages (D2, D4),
+// the payments' two CHECKs, the erased-customer marker the delivery insert
+// reads after its lock wait (D6), and invoices.document_state (D3) — which the
+// Down drops with the rest.
+func TestInvoicesPaymentsDelivery_AppliesAndIsIdempotent(t *testing.T) {
+	url := testdb.URL(t)
+	applyUpDownUp(t, url, 35) // 00035_invoices_payments_delivery.sql
+
+	ctx := context.Background()
+	pool, err := db.Open(ctx, url)
+	if err != nil {
+		t.Fatalf("open pool: %v", err)
+	}
+	defer pool.Close()
+
+	wantTables := []string{"deliveries", "erased_customers", "payments"}
+	wantTriggers := []string{
+		"deliveries:tr_deliveries_immutable:refuse_delivery_change",
+		"deliveries:tr_deliveries_parent:guard_delivery_insert",
+		"payments:tr_payments_immutable:refuse_payment_change",
+		"payments:tr_payments_parent:refuse_payment_on_unissued",
+	}
+	wantChecks := []string{"ck_payments_amount", "ck_payments_removal"}
+	wantFunctions := []string{
+		"document_state:i:text", "guard_delivery_insert:v:trigger", "refuse_delivery_change:v:trigger",
+		"refuse_payment_change:v:trigger", "refuse_payment_on_unissued:v:trigger",
+	}
+	expectAll := func(when string) {
+		t.Helper()
+		tables, triggers, checks, functions := invoicesPhase1BObjects(t, ctx, pool)
+		if !equalStrings(tables, wantTables) {
+			t.Errorf("%s: tables = %v, want %v", when, tables, wantTables)
+		}
+		if !equalStrings(triggers, wantTriggers) {
+			t.Errorf("%s: triggers = %v, want %v", when, triggers, wantTriggers)
+		}
+		if !equalStrings(checks, wantChecks) {
+			t.Errorf("%s: checks = %v, want %v", when, checks, wantChecks)
+		}
+		if !equalStrings(functions, wantFunctions) {
+			t.Errorf("%s: functions = %v, want %v", when, functions, wantFunctions)
+		}
+	}
+	expectAll("after up")
+
+	// One draft and one issued invoice of customer 7, and a credit note of
+	// the invoice.
+	var draft, invoice, credit int64
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO invoices.invoices (kind, customer_id, created_by_user_id, created_at, updated_at)
+		VALUES ('invoice', 7, gen_random_uuid(), now(), now()) RETURNING id`).Scan(&draft); err != nil {
+		t.Fatalf("seed a draft: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO invoices.invoices (kind, status, number, customer_id, issue_date, due_date, exchange_rate_date,
+		    seller_legal_name, buyer_name, gross_total, issued_at, created_by_user_id, created_at, updated_at)
+		VALUES ('invoice', 'issued', 1, 7, DATE '2026-09-12', DATE '2026-09-26', DATE '2026-09-12',
+		    'Selger AS', 'Kunde AS', 1000, now(), gen_random_uuid(), now(), now()) RETURNING id`).Scan(&invoice); err != nil {
+		t.Fatalf("seed an issued invoice: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO invoices.invoices (kind, status, number, customer_id, credits_invoice_id, issue_date, exchange_rate_date,
+		    seller_legal_name, buyer_name, gross_total, issued_at, created_by_user_id, created_at, updated_at)
+		VALUES ('credit_note', 'issued', 2, 7, $1, DATE '2026-09-13', DATE '2026-09-13',
+		    'Selger AS', 'Kunde AS', 400, now(), gen_random_uuid(), now(), now()) RETURNING id`, invoice).Scan(&credit); err != nil {
+		t.Fatalf("seed an issued credit note: %v", err)
+	}
+
+	const insertPayment = `
+		INSERT INTO invoices.payments (invoice_id, paid_on, amount, currency, registered_by_user_id, registered_at)
+		VALUES ($1, DATE '2026-09-20', $2, 'NOK', gen_random_uuid(), now()) RETURNING id`
+	const paymentNeedsIssued = "invoices: a payment needs an issued invoice"
+	const paymentImmutable = "invoices: a payment registration is immutable"
+
+	// A payment belongs to an issued invoice: never a draft's, never a
+	// credit note's; and it is more than nothing.
+	for name, parent := range map[string]int64{"a draft": draft, "a credit note": credit} {
+		if _, err := pool.Exec(ctx, insertPayment, parent, 100); !refusedWith(err, paymentNeedsIssued) {
+			t.Errorf("a payment under %s: %v, want P0001 %q", name, err, paymentNeedsIssued)
+		}
+	}
+	if _, err := pool.Exec(ctx, insertPayment, invoice, 0); !isCheckViolation(err) {
+		t.Errorf("a payment of 0: %v, want a check violation from ck_payments_amount", err)
+	}
+	var payment int64
+	if err := pool.QueryRow(ctx, insertPayment, invoice, 300).Scan(&payment); err != nil {
+		t.Fatalf("a payment under an issued invoice: %v", err)
+	}
+
+	// A registration is never deleted and never edited; its one write is the
+	// removal, all three columns together with a reason, once.
+	if _, err := pool.Exec(ctx, `DELETE FROM invoices.payments WHERE id = $1`, payment); !refusedWith(err, paymentImmutable) {
+		t.Errorf("deleting a payment: %v, want P0001 %q", err, paymentImmutable)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.payments SET amount = 200 WHERE id = $1`, payment); !refusedWith(err, paymentImmutable) {
+		t.Errorf("changing a payment's amount: %v, want P0001 %q", err, paymentImmutable)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.payments SET removed_at = now(), removed_by_user_id = gen_random_uuid(), amount = 200 WHERE id = $1`, payment); !refusedWith(err, paymentImmutable) {
+		t.Errorf("a removal that also changes the amount: %v, want P0001 %q", err, paymentImmutable)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.payments SET removed_at = now(), removed_by_user_id = gen_random_uuid() WHERE id = $1`, payment); !isCheckViolation(err) {
+		t.Errorf("a removal without a reason: %v, want a check violation from ck_payments_removal", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.payments SET removed_at = now(), removed_by_user_id = gen_random_uuid(), removal_reason = '' WHERE id = $1`, payment); !isCheckViolation(err) {
+		t.Errorf("a removal with an empty reason: %v, want a check violation from ck_payments_removal", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.payments SET removed_at = now(), removed_by_user_id = gen_random_uuid(), removal_reason = 'Registrert to ganger' WHERE id = $1`, payment); err != nil {
+		t.Errorf("removing a payment: %v, want it allowed", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.payments SET removal_reason = 'Feil faktura' WHERE id = $1`, payment); !refusedWith(err, paymentImmutable) {
+		t.Errorf("removing a payment twice: %v, want P0001 %q", err, paymentImmutable)
+	}
+
+	const insertDelivery = `
+		INSERT INTO invoices.deliveries (invoice_id, recipient, subject, message_id, pdf_sha256, sent_at, sent_by_user_id)
+		VALUES ($1, 'kari@example.invalid', 'Faktura 1 fra Selger AS', 'a@vantigo.invalid', repeat('a', 64), now(), gen_random_uuid())
+		RETURNING id, recipient`
+	const deliveryNeedsIssued = "invoices: a delivery needs an issued document"
+	const deliveryImmutable = "invoices: a delivery is immutable"
+
+	// A delivery is an issued document's — an invoice's or a credit note's.
+	if _, err := pool.Exec(ctx, insertDelivery, draft); !refusedWith(err, deliveryNeedsIssued) {
+		t.Errorf("a delivery of a draft: %v, want P0001 %q", err, deliveryNeedsIssued)
+	}
+	var delivery, toCredit int64
+	var recipient string
+	if err := pool.QueryRow(ctx, insertDelivery, invoice).Scan(&delivery, &recipient); err != nil || recipient != "kari@example.invalid" {
+		t.Fatalf("a delivery of an issued invoice: %v, recipient %q, want it written as sent", err, recipient)
+	}
+	if err := pool.QueryRow(ctx, insertDelivery, credit).Scan(&toCredit, &recipient); err != nil {
+		t.Fatalf("a delivery of an issued credit note: %v", err)
+	}
+
+	// A delivery is never deleted, and its one write is the anonymisation's.
+	if _, err := pool.Exec(ctx, `DELETE FROM invoices.deliveries WHERE id = $1`, delivery); !refusedWith(err, deliveryImmutable) {
+		t.Errorf("deleting a delivery: %v, want P0001 %q", err, deliveryImmutable)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.deliveries SET subject = 'Endret' WHERE id = $1`, delivery); !refusedWith(err, deliveryImmutable) {
+		t.Errorf("changing a delivery's subject: %v, want P0001 %q", err, deliveryImmutable)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.deliveries SET recipient = 'ola@example.invalid' WHERE id = $1`, delivery); !refusedWith(err, deliveryImmutable) {
+		t.Errorf("changing a delivery's recipient: %v, want P0001 %q", err, deliveryImmutable)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.deliveries SET recipient = '', subject = 'Endret' WHERE id = $1`, delivery); !refusedWith(err, deliveryImmutable) {
+		t.Errorf("a blanking that also changes the subject: %v, want P0001 %q", err, deliveryImmutable)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.deliveries SET recipient = '' WHERE id = $1`, delivery); err != nil {
+		t.Errorf("blanking a delivery's recipient: %v, want it allowed", err)
+	}
+
+	// Once the customer is marked erased, a delivery written for one of its
+	// documents keeps no address (D6).
+	if _, err := pool.Exec(ctx, `INSERT INTO invoices.erased_customers (customer_id, erased_at) VALUES (7, now())`); err != nil {
+		t.Fatalf("mark customer 7 erased: %v", err)
+	}
+	if err := pool.QueryRow(ctx, insertDelivery, invoice).Scan(&delivery, &recipient); err != nil || recipient != "" {
+		t.Errorf("a delivery after the erase: %v, recipient %q, want it written with the address blanked", err, recipient)
+	}
+
+	// Down drops all of it, document_state included, and leaves 1A's schema.
+	migrateTo(t, url, 34)
+	tables, triggers, checks, functions := invoicesPhase1BObjects(t, ctx, pool)
+	if len(tables) != 0 || len(triggers) != 0 || len(checks) != 0 || len(functions) != 0 {
+		t.Errorf("after down: tables %v, triggers %v, checks %v, functions %v remain, want none", tables, triggers, checks, functions)
+	}
+	var invoicesLeft int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM invoices.invoices`).Scan(&invoicesLeft); err != nil || invoicesLeft != 3 {
+		t.Errorf("after down: %d documents (%v), want the three 1A rows kept", invoicesLeft, err)
+	}
+	migrateTo(t, url, 35)
+	expectAll("after up again")
 }
 
 // TestInvoicesSchema_NamesNoColumnWithAReservedWord pins the rule of D2: no
@@ -2499,7 +2730,7 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 // quote one, and no generated field is named after a keyword.
 func TestInvoicesSchema_NamesNoColumnWithAReservedWord(t *testing.T) {
 	url := testdb.URL(t)
-	migrateTo(t, url, 34)
+	migrateTo(t, url, 35)
 
 	ctx := context.Background()
 	pool, err := db.Open(ctx, url)

@@ -16,6 +16,22 @@ type InvoicesCounter struct {
 	NextValue   int64
 }
 
+type InvoicesDelivery struct {
+	ID           int64
+	InvoiceID    int64
+	Recipient    string
+	Subject      string
+	MessageID    string
+	PdfSha256    string
+	SentAt       time.Time
+	SentByUserID uuid.UUID
+}
+
+type InvoicesErasedCustomer struct {
+	CustomerID int32
+	ErasedAt   time.Time
+}
+
 type InvoicesInvoice struct {
 	ID                         int64
 	Kind                       string
@@ -102,6 +118,21 @@ type InvoicesLine struct {
 	VatCategory     *string
 	SafTCode        *string
 	ExemptionReason *string
+}
+
+type InvoicesPayment struct {
+	ID                 int64
+	InvoiceID          int64
+	PaidOn             pgtype.Date
+	Amount             pgtype.Numeric
+	Currency           string
+	Reference          string
+	Note               string
+	RegisteredByUserID uuid.UUID
+	RegisteredAt       time.Time
+	RemovedAt          *time.Time
+	RemovedByUserID    *uuid.UUID
+	RemovalReason      *string
 }
 
 type InvoicesSetting struct {

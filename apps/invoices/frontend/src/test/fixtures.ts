@@ -5,8 +5,9 @@ import type { InvoiceSettings } from "../api/settings";
 import type { VatCode } from "../api/vat-codes";
 
 /**
- * GET /meta as the server sends it — a wire literal: a complete seller, the
- * caller may create and issue, and today is 2026-09-12 in Oslo.
+ * GET /meta as the server sends it — a wire literal: a complete seller, mail
+ * available, the caller may create, issue, register payments and send, and
+ * today is 2026-09-12 in Oslo.
  */
 export const meta = (overrides: Partial<InvoicesMeta> = {}): InvoicesMeta => ({
   currency: "NOK",
@@ -16,6 +17,7 @@ export const meta = (overrides: Partial<InvoicesMeta> = {}): InvoicesMeta => ({
   anythingIssued: true,
   seriesStart: 1,
   storageAvailable: true,
+  mailAvailable: true,
   today: "2026-09-12",
   vatCodes: [
     { id: 1, code: "3", name: "Utgående mva 25 %", safTCode: "3", ehfCategory: "S", ratePercent: 25 },
@@ -30,7 +32,7 @@ export const meta = (overrides: Partial<InvoicesMeta> = {}): InvoicesMeta => ({
       ratePercent: 0,
     },
   ],
-  capabilities: { canCreate: true, canIssue: true, canManage: false },
+  capabilities: { canCreate: true, canIssue: true, canManage: false, canRegisterPayments: true, canSend: true },
   ...overrides,
 });
 

@@ -481,7 +481,21 @@ describe("what the editor offers", () => {
   });
 
   it("is read-only to a caller who may not create drafts", async () => {
-    server({ 1001: draft() }, {}, { meta: { capabilities: { canCreate: false, canIssue: false, canManage: false } } });
+    server(
+      { 1001: draft() },
+      {},
+      {
+        meta: {
+          capabilities: {
+            canCreate: false,
+            canIssue: false,
+            canManage: false,
+            canRegisterPayments: false,
+            canSend: false,
+          },
+        },
+      },
+    );
     renderRoute("/invoices/1001");
 
     expect(await screen.findByRole("textbox", { name: "Line 1 description" })).toHaveAttribute("readonly");

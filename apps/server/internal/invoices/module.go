@@ -25,9 +25,12 @@ import (
 // permissions is the module's catalog (D1). Every operation requires
 // invoices:access, through the grammar permission:invoices:access+invoices:<x>,
 // and no built-in role holds any of them: Owner has the wildcard, and everyone
-// else is granted invoicing deliberately. Issuing and the seller record are
-// sensitive — the one creates bookkeeping material that can never be taken
-// back, the other decides what every document says the company is.
+// else is granted invoicing deliberately. Issuing, the seller record and
+// payments are sensitive — the first creates bookkeeping material that can
+// never be taken back, the second decides what every document says the
+// company is, and the third changes what the company says it is owed, a wrong
+// registration corrected only by a removal that stays on record (payments and
+// delivery design D1). Sending is under invoices:issue.
 var permissions = []contracts.Permission{
 	{
 		Key: "invoices:access", Display: "Use Invoices",
@@ -49,10 +52,15 @@ var permissions = []contracts.Permission{
 		Description: "Change the seller record, the number series start, and the VAT codes and their rates.",
 		Category:    "Invoices", Sensitive: true, Delegable: true,
 	},
+	{
+		Key: "invoices:payments", Display: "Register payments",
+		Description: "Register payments against issued invoices, and remove a registration with a reason.",
+		Category:    "Invoices", Sensitive: true, Delegable: true,
+	},
 }
 
 // Module is invoices as a platform module: its contract mounted under
-// /api/v1/invoices/, its four permissions in the composed catalog, and the two
+// /api/v1/invoices/, its five permissions in the composed catalog, and the two
 // slots every module holding customer ids fills (customer_slots.go): the merge
 // holder and the personal-data provider.
 func Module() module.Module {
