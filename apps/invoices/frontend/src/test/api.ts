@@ -3,6 +3,24 @@ import type { StubbedFetch } from "./fetch";
 export const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
+/** A fetch input as the URL string the fakes match on. */
+export const path = (input: RequestInfo | URL) => String(input);
+
+/**
+ * A coded refusal as the server answers it: the invoices conflict problem — a
+ * 409, a 502 or a 503 alike — with the server's English detail, which the
+ * page must never show, and whatever the refusal names (`extra`).
+ */
+export const refusal = (status: number, code: string, extra: Record<string, unknown> = {}) =>
+  jsonResponse(status, {
+    type: "about:blank",
+    title: "Refused",
+    status,
+    code,
+    detail: "The server's English.",
+    ...extra,
+  });
+
 /** A refusal in the shape the API answers it: a problem, with field errors when it has any. */
 export const problemResponse = (status: number, title: string, fields?: Record<string, string[]>) =>
   jsonResponse(status, { title, status, ...(fields ? { errors: fields } : {}) });

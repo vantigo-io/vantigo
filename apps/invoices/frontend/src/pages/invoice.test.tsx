@@ -4,12 +4,10 @@ import { setLanguagePreference } from "@vantigo/frontend-shell";
 import { describe, expect, it, vi } from "vitest";
 import type { InvoiceDocument, InvoiceInput } from "../api/invoices";
 import { setUnauthorizedHandler } from "../api/request";
-import { customerSearch, jsonResponse, listedCustomers, sent } from "../test/api";
+import { customerSearch, jsonResponse, listedCustomers, path, refusal, sent } from "../test/api";
 import { stubFetch } from "../test/fetch";
 import { creditDraft, draft, issued, listPage, meta, vatCodes } from "../test/fixtures";
 import { renderRoute } from "../test/route-tree";
-
-const path = (input: RequestInfo | URL) => String(input);
 
 /** Beyond the documents: the meta to answer, and any other answer by "METHOD url". */
 interface ServerOptions {
@@ -24,17 +22,6 @@ interface ServerOptions {
   /** The dates the server allows an issue now, when the day has turned since the draft was read. */
   allowedNow?: string[];
 }
-
-/** A refusal as the server answers it: the invoices conflict problem. */
-const refusal = (status: number, code: string, extra: Record<string, unknown> = {}) =>
-  jsonResponse(status, {
-    type: "about:blank",
-    title: "Refused",
-    status,
-    code,
-    detail: "The server's English.",
-    ...extra,
-  });
 
 const bodyOf = (init?: RequestInit) => (init?.body ? JSON.parse(String(init.body)) : {});
 
@@ -245,7 +232,7 @@ describe("the issue dialog", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Issue" }));
     await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Issue" }));
 
-    expect(await screen.findByRole("heading", { name: "Invoice 1000" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /^Invoice 1000/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Download PDF" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
     expect(sent(fetchMock, "POST").body).toEqual({ issueDate: "2026-09-12" });
@@ -270,7 +257,7 @@ describe("an issued document", () => {
     );
     const { router } = renderRoute("/invoices/1001");
 
-    expect(await screen.findByRole("heading", { name: "Invoice 1000" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /^Invoice 1000/ })).toBeInTheDocument();
     expect(screen.getByText(/It is stored the first time it is downloaded/)).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Credit" }));
@@ -285,7 +272,7 @@ describe("an issued document", () => {
   it("offers no credit for an invoice credited in full", async () => {
     server({ 1001: issued({ uncreditedAmount: 0, creditedAmount: 124.99, state: "credited", openAmount: 0 }) });
     renderRoute("/invoices/1001");
-    await screen.findByRole("heading", { name: "Invoice 1000" });
+    await screen.findByRole("heading", { name: /^Invoice 1000/ });
     expect(screen.queryByRole("button", { name: "Credit" })).not.toBeInTheDocument();
   });
 });
@@ -372,6 +359,27 @@ describe("refusals", () => {
     expect(
       await screen.findByText("That issue date is not allowed today. It may be: Sep 12, 2026."),
     ).toBeInTheDocument();
+  });
+
+  // The store is configured (Issue is offered) but cannot be reached at the
+  // issue: the 503 is a problem whose code the shared client keeps, so it is
+  // worded by the catalog, not the server's English.
+  it("says a 503 storage_unavailable at the issue in the reader's language", async () => {
+    server(
+      { 1001: draft() },
+      {},
+      { answers: { "POST /api/v1/invoices/1001/issue": refusal(503, "storage_unavailable") } },
+    );
+    renderRoute("/invoices/1001");
+
+    const issue = await screen.findByRole("button", { name: "Issue" });
+    expect(issue).toBeEnabled();
+    await userEvent.click(issue);
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Issue" }));
+    expect(
+      await screen.findByText("The document store is unavailable, so nothing can be issued or downloaded now."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("The server's English.")).not.toBeInTheDocument();
   });
 
   it("says when the metadata cannot be loaded", async () => {
@@ -754,7 +762,7 @@ describe("an issued credit note", () => {
     server({ 1002: note, 1001: issued() });
     renderRoute("/invoices/1002");
 
-    expect(await screen.findByRole("heading", { name: "Credit note 1001" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /^Credit note 1001/ })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "1000" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Download PDF" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Credit" })).not.toBeInTheDocument();
@@ -1081,7 +1089,7 @@ describe("moving between documents", () => {
     await userEvent.type(await screen.findByRole("textbox", { name: "Line 1 description" }), " retur");
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
     await userEvent.click(screen.getByRole("link", { name: "1000" }));
-    expect(await screen.findByRole("heading", { name: "Invoice 1000" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /^Invoice 1000/ })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("link", { name: "Credit note — Draft" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/invoices/1002"));
 

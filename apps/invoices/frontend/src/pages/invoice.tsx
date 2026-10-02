@@ -985,18 +985,17 @@ const IssuedDocument = ({ document: doc, meta }: { document: InvoiceDocument; me
     <Stack gap="lg">
       <PageHeader
         breadcrumbs={[{ label: t("invoices"), to: "/invoices" }, { label: heading }]}
-        title={heading}
-        description={
-          <span data-testid="document-state">
-            <StateBadge state={doc.state} />
-          </span>
+        title={
+          <>
+            {heading} <StateBadge state={doc.state} />
+          </>
         }
         actions={
           <Group>
             <PdfButton url={pdfUrl(doc.id)} mode="download" leftSection={<IconDownload size={16} />}>
               {t("downloadPdf")}
             </PdfButton>
-            {canSend && doc.sendDefaults && (
+            {canSend && (
               <Button variant="default" leftSection={<IconMail size={16} />} onClick={() => setSending(true)}>
                 {t("send")}
               </Button>
@@ -1112,9 +1111,7 @@ const IssuedDocument = ({ document: doc, meta }: { document: InvoiceDocument; me
       )}
       {doc.kind === "invoice" && <PaymentsCard invoice={doc} canRegister={canRegisterPayments} today={meta.today} />}
       <DeliveriesCard deliveries={doc.deliveries ?? []} />
-      {sending && doc.sendDefaults && (
-        <SendDialog document={doc} defaults={doc.sendDefaults} onClose={() => setSending(false)} />
-      )}
+      {sending && <SendDialog document={doc} defaults={doc.sendDefaults} onClose={() => setSending(false)} />}
     </Stack>
   );
 };

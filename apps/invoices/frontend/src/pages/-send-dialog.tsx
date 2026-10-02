@@ -3,17 +3,21 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertTriangle, IconInfoCircle } from "@tabler/icons-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { isSessionExpired } from "../api/export";
 import type { InvoiceDocument } from "../api/invoices";
-import { ApiValidationError, INVOICES_QUERY_KEY } from "../api/request";
-import { type SendDefaults, sendInvoice } from "../api/send";
+import { ApiValidationError, INVOICES_QUERY_KEY, NotFoundError } from "../api/request";
+import { type InvoiceDelivery, type SendDefaults, sendInvoice } from "../api/send";
 import { invoicesCatalog } from "../i18n";
 import { fieldRefusals, refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 
 export interface SendDialogProps {
   document: InvoiceDocument;
-  /** The document's send defaults, which the page offers Send only with. */
-  defaults: SendDefaults;
+  /**
+   * The document's send defaults; absent when the directory could not be read
+   * (the server's best effort), and the person then enters the address.
+   */
+  defaults?: SendDefaults;
   onClose: () => void;
 }
 
@@ -27,29 +31,45 @@ const loud = new Set(["delivery_preference_ehf", "buyer_norwegian_business_requi
 /**
  * Sends an issued document by e-mail (D4, D10): the recipient prefilled with
  * the customer's invoice e-mail and editable — an edited one is sent as the
- * override, the customer's own is left to the server — the send's warnings,
+ * override, the customer's own is left to the server; without the send
+ * defaults the field starts empty and a note says why — the send's warnings,
  * and on an invoice something has been paid on or credited against, what the
- * mail will say about payment. "Sent to …" on success; every refusal, the
- * rate limit's included, in the reader's language. The button is disabled
- * while the mail is on its way.
+ * mail will say about payment. "Sent to …" on success, the address the
+ * server logged; every refusal, the rate limit's included, in the reader's
+ * language, and an expired session left to the host's sign-in. The button is
+ * disabled while the mail is on its way.
  */
 export const SendDialog = ({ document: doc, defaults, onClose }: SendDialogProps) => {
   const { t, money, date } = useInvoiceFormat();
   const queryClient = useQueryClient();
-  const [recipient, setRecipient] = useState(defaults.recipient ?? "");
+  const [recipient, setRecipient] = useState(defaults?.recipient ?? "");
   const [error, setError] = useState<string | undefined>();
   const chosen = recipient.trim();
   // The customer's own address is the server's default: only another one is an override.
-  const override = chosen && chosen !== defaults.recipient ? chosen : undefined;
+  const override = chosen && chosen !== defaults?.recipient ? chosen : undefined;
   const send = useMutation({
     mutationFn: () => sendInvoice(doc.id, override),
-    onSuccess: async () => {
+    onSuccess: async (sent) => {
+      // Where it went is the server's log: the newest delivery, the row this
+      // send wrote (ids only grow) — what was typed or prefilled only if the
+      // answer names no address.
+      const newest = (sent.deliveries ?? []).reduce<InvoiceDelivery | undefined>(
+        (latest, d) => (latest === undefined || d.id > latest.id ? d : latest),
+        undefined,
+      );
+      const to = newest?.recipient || (override ?? defaults?.recipient) || "";
       // Read again, as after every write, rather than set from the answer (reading 5b).
       await queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY] });
-      notifications.show({ color: "green", message: t("sentTo", { recipient: override ?? defaults.recipient }) });
+      notifications.show({ color: "green", message: t("sentTo", { recipient: to }) });
       onClose();
     },
     onError: (refusal) => {
+      // An expired session has signed the person out already: nothing to say here.
+      if (isSessionExpired(refusal)) return;
+      if (refusal instanceof NotFoundError) {
+        notifications.show({ color: "red", title: t("couldNotSend"), message: t("documentNotFound") });
+        return;
+      }
       if (refusal instanceof ApiValidationError) {
         const { onInputs, elsewhere } = fieldRefusals(refusal, t, (field) => field === "recipient", "send");
         setError(onInputs.recipient);
@@ -61,7 +81,7 @@ export const SendDialog = ({ document: doc, defaults, onClose }: SendDialogProps
       notifications.show({ color: "red", title: t("couldNotSend"), message: refusalMessage(refusal, t, date) });
     },
   });
-  const preference = defaults.preference ?? "";
+  const preference = defaults?.preference ?? "";
   const preferenceWords = `preference.${preference}` in invoicesCatalog.en ? t(`preference.${preference}`) : preference;
   const warningWords = (warning: string) => {
     const key = `sendWarning.${warning}`;
@@ -81,7 +101,12 @@ export const SendDialog = ({ document: doc, defaults, onClose }: SendDialogProps
   return (
     <Modal opened onClose={onClose} title={t("sendDocument")}>
       <Stack>
-        {defaults.warnings.map((warning) =>
+        {!defaults && (
+          <Alert color="gray" icon={<IconInfoCircle size={16} />} role="note" data-testid="send-defaults-unavailable">
+            {t("sendDefaultsUnavailable")}
+          </Alert>
+        )}
+        {(defaults?.warnings ?? []).map((warning) =>
           loud.has(warning) ? (
             <Alert
               key={warning}

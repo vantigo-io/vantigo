@@ -1,61 +1,23 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import type { InvoiceDocument } from "../api/invoices";
-import { jsonResponse } from "../test/api";
-import { stubFetch } from "../test/fetch";
-import { issued, meta, partlyPaid } from "../test/fixtures";
+import { jsonResponse, refusal } from "../test/api";
+import { pendingResponse, readsOf, requestTo, documentServer as server } from "../test/document-server";
+import { issued, partlyPaid } from "../test/fixtures";
 import { renderRoute } from "../test/route-tree";
 
-const path = (input: RequestInfo | URL) => String(input);
+/** The document's heading: its kind and number, its state badge inside it (D10). */
+const heading = (name: RegExp) => screen.findByRole("heading", { name });
 
-/** A refusal as the server answers it: the invoices conflict problem. */
-const refusal = (status: number, code: string, extra: Record<string, unknown> = {}) =>
-  jsonResponse(status, {
-    type: "about:blank",
-    title: "Refused",
-    status,
-    code,
-    detail: "The server's English.",
-    ...extra,
-  });
-
-type Answer = Response | Promise<Response> | (() => Response | Promise<Response>);
-
-/**
- * The fetch fake: meta, document 1001 as `doc` says, and each write by
- * "METHOD url" — the writes this page makes are POSTs to the payments.
- */
-const server = (
-  doc: () => InvoiceDocument,
-  answers: Record<string, Answer> = {},
-  capabilities: Partial<ReturnType<typeof meta>["capabilities"]> = {},
-) =>
-  stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
-    const url = path(input);
-    const method = init?.method ?? "GET";
-    const answer = answers[`${method} ${url}`];
-    if (answer) return typeof answer === "function" ? answer() : answer;
-    if (url === "/api/v1/invoices/meta") {
-      return jsonResponse(200, meta({ capabilities: { ...meta().capabilities, ...capabilities } }));
-    }
-    if (method === "GET" && url === "/api/v1/invoices/1001") return jsonResponse(200, doc());
-    return new Response(null, { status: 404 });
-  });
-
-/** The request a write made, found by its method and URL — never "the last fetch". */
-const requestTo = (fetchMock: ReturnType<typeof stubFetch>, method: string, url: string) => {
-  const call = fetchMock.actualCalls.find(([u, init]) => path(u) === url && (init?.method ?? "GET") === method);
-  return call ? JSON.parse(String(call[1]?.body ?? "{}")) : undefined;
-};
+/** The live payment's Remove button, named by the payment it removes. */
+const removeLive = { name: /^Remove the payment of NOK\s?50\.00 on Sep 10, 2026$/ };
 
 describe("an issued invoice's money", () => {
   it("shows the state beside the number and what is paid and open in the totals", async () => {
     server(() => partlyPaid());
     renderRoute("/invoices/1001");
 
-    expect(await screen.findByRole("heading", { name: "Invoice 1000" })).toBeInTheDocument();
-    expect(screen.getByTestId("document-state")).toHaveTextContent("Partially paid");
+    expect(within(await heading(/^Invoice 1000/)).getByText("Partially paid")).toBeInTheDocument();
     expect(screen.getByTestId("paid-amount")).toHaveTextContent(/NOK\s?50\.00/);
     expect(screen.getByTestId("open-amount")).toHaveTextContent(/NOK\s?74\.99/);
     expect(screen.queryByTestId("refund-due")).not.toBeInTheDocument();
@@ -68,7 +30,7 @@ describe("an issued invoice's money", () => {
     renderRoute("/invoices/1001");
 
     expect(await screen.findByTestId("refund-due")).toHaveTextContent(/NOK\s?50\.00/);
-    expect(screen.getByTestId("document-state")).toHaveTextContent("Credited");
+    expect(within(await heading(/^Invoice 1000/)).getByText("Credited")).toBeInTheDocument();
   });
 });
 
@@ -80,25 +42,27 @@ describe("the payments card", () => {
     const card = await screen.findByTestId("payments-card");
     const removed = within(card).getByText("Feil KID").closest("tr") as HTMLElement;
     expect(removed).toHaveAttribute("data-removed", "true");
-    expect(within(removed).getByText("Removed: Registrert på feil faktura")).toBeInTheDocument();
-    expect(within(removed).queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
+    expect(within(removed).getByText("Feil KID")).toHaveStyle({ textDecoration: "line-through" });
+    expect(within(removed).getByText(/NOK\s?20\.00/)).toHaveStyle({ textDecoration: "line-through" });
+    expect(within(removed).getByText("Removed: Registrert på feil faktura")).not.toHaveStyle({
+      textDecoration: "line-through",
+    });
+    expect(within(removed).queryByRole("button", { name: /^Remove/ })).not.toBeInTheDocument();
     const live = within(card).getByText("Bank 4471").closest("tr") as HTMLElement;
     expect(live).not.toHaveAttribute("data-removed");
+    expect(within(live).getByText("Bank 4471")).not.toHaveStyle({ textDecoration: "line-through" });
     expect(within(live).getByText("Første avdrag")).toBeInTheDocument();
     expect(within(live).getByText(/NOK\s?50\.00/)).toBeInTheDocument();
-    expect(within(live).getByRole("button", { name: "Remove" })).toBeInTheDocument();
+    expect(within(live).getByRole("button", removeLive)).toBeInTheDocument();
   });
 
   it("registers a payment with today and the open amount prefilled, and disables the button while it is sent", async () => {
-    let answer: (response: Response) => void = () => {};
-    const pending = new Promise<Response>((resolve) => {
-      answer = resolve;
-    });
+    const pending = pendingResponse();
     let registered = false;
     const fetchMock = server(
       () => (registered ? partlyPaid({ state: "paid", paidAmount: 124.99, openAmount: 0 }) : partlyPaid()),
       {
-        "POST /api/v1/invoices/1001/payments": () => pending,
+        "POST /api/v1/invoices/1001/payments": () => pending.response,
       },
     );
     renderRoute("/invoices/1001");
@@ -119,16 +83,15 @@ describe("the payments card", () => {
       note: "Resten",
     });
     registered = true;
-    answer(
+    const reads = readsOf(fetchMock, "/api/v1/invoices/1001");
+    pending.answer(
       jsonResponse(200, partlyPaid({ state: "paid", paidAmount: 124.99, openAmount: 0, sendDefaults: undefined })),
     );
     expect(await screen.findByText("Payment registered")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     // The document is read again rather than set from the answer, which carries no send defaults.
-    await waitFor(() => expect(screen.getByTestId("document-state")).toHaveTextContent("Paid"));
-    expect(
-      fetchMock.actualCalls.filter(([u, init]) => path(u) === "/api/v1/invoices/1001" && !init?.method).length,
-    ).toBeGreaterThan(1);
+    await waitFor(() => expect(readsOf(fetchMock, "/api/v1/invoices/1001")).toBeGreaterThan(reads));
+    expect(within(await heading(/^Invoice 1000/)).getByText("Paid")).toBeInTheDocument();
   });
 
   it("says invoice_settled in the reader's language", async () => {
@@ -177,17 +140,13 @@ describe("the payments card", () => {
   });
 
   it("removes a payment with a reason, the button disabled until there is one and while it is sent", async () => {
-    let answer: (response: Response) => void = () => {};
-    const pending = new Promise<Response>((resolve) => {
-      answer = resolve;
-    });
+    const pending = pendingResponse();
     const fetchMock = server(() => partlyPaid(), {
-      "POST /api/v1/invoices/1001/payments/1002/remove": () => pending,
+      "POST /api/v1/invoices/1001/payments/1002/remove": () => pending.response,
     });
     renderRoute("/invoices/1001");
 
-    const live = (await screen.findByText("Bank 4471")).closest("tr") as HTMLElement;
-    await userEvent.click(within(live).getByRole("button", { name: "Remove" }));
+    await userEvent.click(await screen.findByRole("button", removeLive));
     const dialog = await screen.findByRole("dialog");
     const remove = within(dialog).getByRole("button", { name: "Remove the payment" });
     expect(remove).toBeDisabled();
@@ -198,8 +157,11 @@ describe("the payments card", () => {
     expect(requestTo(fetchMock, "POST", "/api/v1/invoices/1001/payments/1002/remove")).toEqual({
       reason: "Feil beløp",
     });
-    answer(jsonResponse(200, partlyPaid()));
+    const reads = readsOf(fetchMock, "/api/v1/invoices/1001");
+    pending.answer(jsonResponse(200, partlyPaid()));
     expect(await screen.findByText("Payment removed")).toBeInTheDocument();
+    // Read again after the removal, as after every write (reading 5b).
+    await waitFor(() => expect(readsOf(fetchMock, "/api/v1/invoices/1001")).toBeGreaterThan(reads));
   });
 
   it("says payment_removed in the reader's language", async () => {
@@ -208,8 +170,7 @@ describe("the payments card", () => {
     });
     renderRoute("/invoices/1001");
 
-    const live = (await screen.findByText("Bank 4471")).closest("tr") as HTMLElement;
-    await userEvent.click(within(live).getByRole("button", { name: "Remove" }));
+    await userEvent.click(await screen.findByRole("button", removeLive));
     const dialog = await screen.findByRole("dialog");
     await userEvent.type(within(dialog).getByRole("textbox", { name: "Reason" }), "Dobbel");
     await userEvent.click(within(dialog).getByRole("button", { name: "Remove the payment" }));
@@ -234,7 +195,7 @@ describe("the payments card", () => {
     const card = await screen.findByTestId("payments-card");
     expect(within(card).getByText("Bank 4471")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Register payment" })).not.toBeInTheDocument();
-    expect(within(card).queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
+    expect(within(card).queryByRole("button", { name: /^Remove/ })).not.toBeInTheDocument();
   });
 
   it("is not on a credit note, which takes no payments", async () => {
@@ -250,8 +211,8 @@ describe("the payments card", () => {
     );
     renderRoute("/invoices/1001");
 
-    await screen.findByRole("heading", { name: "Credit note 1000" });
+    const title = await heading(/^Credit note 1000/);
     expect(screen.queryByTestId("payments-card")).not.toBeInTheDocument();
-    expect(screen.getByTestId("document-state")).toHaveTextContent("Issued");
+    expect(within(title).getByText("Issued")).toBeInTheDocument();
   });
 });

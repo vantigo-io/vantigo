@@ -293,6 +293,7 @@ export const invoicesCatalog = {
     registerPayment: "Register payment",
     register: "Register",
     removePaymentButton: "Remove",
+    removePaymentOf: "Remove the payment of {{amount}} on {{date}}",
     removePayment: "Remove the payment",
     removePaymentHint:
       "The payment stays on the invoice, struck through with the reason. A removal cannot be undone; register the payment again if it was right after all.",
@@ -314,6 +315,8 @@ export const invoicesCatalog = {
     recipientHint: "The customer's invoice e-mail. Change it to send the document elsewhere.",
     "fieldInvalid.send.recipient": "A bare e-mail address, such as faktura@example.no.",
     sentTo: "Sent to {{recipient}}",
+    sendDefaultsUnavailable: "The customer's invoice address could not be read; enter the address to send to.",
+    documentNotFound: "The document no longer exists.",
     couldNotSend: "Could not send",
     "sendWarning.delivery_preference_ehf":
       "This customer expects EHF. An e-mailed PDF does not meet the e-invoicing duty; phase 2 adds EHF.",
@@ -328,7 +331,7 @@ export const invoicesCatalog = {
     "preference.ehf": "EHF",
     "preference.efaktura": "eFaktura",
     "preference.paper": "paper",
-    sendPartlyNote: "Part of the invoice is paid, so the e-mail asks for the outstanding {{open}} only.",
+    sendPartlyNote: "Part of the invoice is paid or credited, so the e-mail asks only for the outstanding {{open}}.",
     sendSettledNote: "The invoice is settled, so the e-mail says nothing is due.",
 
     deliveries: "Sent by e-mail",
@@ -340,6 +343,9 @@ export const invoicesCatalog = {
 
     exportCsv: "Export CSV",
     couldNotExport: "Could not export the CSV",
+    exportTooManyRows: "The export would hold more than 5000 rows; narrow the period.",
+    "fieldInvalid.export.from": "Choose a first day on or before the last day.",
+    "fieldInvalid.export.to": "Choose a last day on or after the first day.",
     mailConfigured: "Mail is configured (SMTP)",
     mailNotConfigured:
       "Mail is not configured (SMTP), so documents cannot be sent by e-mail. Issuing does not need it.",
@@ -382,11 +388,11 @@ export const invoicesCatalog = {
     "refusal.payment_exceeds_open":
       "The payment is more than the open amount, {{openAmount}}. An overpayment cannot be registered.",
     "refusal.payment_removed": "This payment is already removed.",
-    "refusal.customer_anonymised": "The customer has been anonymised and is not written to again.",
+    "refusal.customer_anonymised": "The customer has been anonymised and is not contacted again.",
     "refusal.no_invoice_email": "The customer has no invoice e-mail. Enter an address to send to.",
     "refusal.mail_unavailable": "This installation cannot send e-mail: SMTP is not configured.",
     "refusal.mail_failed": "The mail server did not take the e-mail. Nothing was sent; try again later.",
-    "refusal.rateLimited": "Too many e-mails were sent in a short time. Wait a few minutes and try again.",
+    "refusal.rateLimited": "Too many requests in a short time; wait a minute and try again.",
   },
   nb: {
     invoices: "Fakturaer",
@@ -675,13 +681,14 @@ export const invoicesCatalog = {
 
     payments: "Betalinger",
     noPayments: "Ingen betalinger er registrert.",
-    paidOn: "Betalt dato",
+    paidOn: "Betalingsdato",
     paymentAmount: "Beløp",
     paymentReference: "Referanse",
     registeredAt: "Registrert",
     registerPayment: "Registrer betaling",
     register: "Registrer",
     removePaymentButton: "Fjern",
+    removePaymentOf: "Fjern betalingen på {{amount}} fra {{date}}",
     removePayment: "Fjern betalingen",
     removePaymentHint:
       "Betalingen blir stående på fakturaen, gjennomstreket med begrunnelsen. En fjerning kan ikke angres; registrer betalingen på nytt om den likevel var riktig.",
@@ -695,14 +702,16 @@ export const invoicesCatalog = {
     "fieldInvalid.payment.amount": "Mer enn 0 og høyst utestående beløp, med opptil to desimaler.",
     "fieldInvalid.payment.reference": "Høyst 100 tegn.",
     "fieldInvalid.payment.note": "Høyst 500 tegn.",
-    "fieldInvalid.payment.reason": "Si hvorfor, med høyst 200 tegn.",
+    "fieldInvalid.payment.reason": "Oppgi en begrunnelse på høyst 200 tegn.",
 
     send: "Send",
     sendDocument: "Send på e-post",
     recipient: "Mottaker",
-    recipientHint: "Kundens faktura-e-post. Endre den for å sende dokumentet et annet sted.",
-    "fieldInvalid.send.recipient": "En e-postadresse alene, som faktura@example.no.",
+    recipientHint: "Kundens faktura-e-post. Endre den for å sende dokumentet til en annen adresse.",
+    "fieldInvalid.send.recipient": "Bare selve e-postadressen, for eksempel faktura@example.no.",
     sentTo: "Sendt til {{recipient}}",
+    sendDefaultsUnavailable: "Kundens fakturaadresse kunne ikke leses; skriv inn adressen det skal sendes til.",
+    documentNotFound: "Dokumentet finnes ikke lenger.",
     couldNotSend: "Kunne ikke sende",
     "sendWarning.delivery_preference_ehf":
       "Denne kunden forventer EHF. En PDF på e-post oppfyller ikke plikten til elektronisk faktura; fase 2 legger til EHF.",
@@ -717,7 +726,8 @@ export const invoicesCatalog = {
     "preference.ehf": "EHF",
     "preference.efaktura": "eFaktura",
     "preference.paper": "papir",
-    sendPartlyNote: "Deler av fakturaen er betalt, så e-posten ber bare om utestående {{open}}.",
+    sendPartlyNote:
+      "Deler av fakturaen er betalt eller kreditert, så e-posten ber bare om det utestående beløpet {{open}}.",
     sendSettledNote: "Fakturaen er gjort opp, så e-posten sier at det ikke er noe å betale.",
 
     deliveries: "Sendt på e-post",
@@ -729,6 +739,9 @@ export const invoicesCatalog = {
 
     exportCsv: "Eksporter CSV",
     couldNotExport: "Kunne ikke eksportere CSV-filen",
+    exportTooManyRows: "Eksporten ville hatt mer enn 5000 rader; snevre inn perioden.",
+    "fieldInvalid.export.from": "Velg en første dag på eller før den siste dagen.",
+    "fieldInvalid.export.to": "Velg en siste dag på eller etter den første dagen.",
     mailConfigured: "E-post er satt opp (SMTP)",
     mailNotConfigured:
       "E-post er ikke satt opp (SMTP), så dokumenter kan ikke sendes på e-post. Utstedelse trenger det ikke.",
@@ -769,11 +782,11 @@ export const invoicesCatalog = {
     "refusal.payment_exceeds_open":
       "Betalingen er større enn utestående beløp, {{openAmount}}. En overbetaling kan ikke registreres.",
     "refusal.payment_removed": "Denne betalingen er allerede fjernet.",
-    "refusal.customer_anonymised": "Kunden er anonymisert og skal ikke skrives til igjen.",
+    "refusal.customer_anonymised": "Kunden er anonymisert, og det sendes ikke mer til den.",
     "refusal.no_invoice_email": "Kunden har ingen faktura-e-post. Skriv inn en adresse å sende til.",
     "refusal.mail_unavailable": "Denne installasjonen kan ikke sende e-post: SMTP er ikke satt opp.",
     "refusal.mail_failed": "E-postserveren tok ikke imot e-posten. Ingenting ble sendt; prøv igjen senere.",
-    "refusal.rateLimited": "For mange e-poster er sendt på kort tid. Vent noen minutter og prøv igjen.",
+    "refusal.rateLimited": "For mange forespørsler på kort tid; vent et minutt og prøv igjen.",
   },
 } satisfies CatalogResources;
 

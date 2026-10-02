@@ -8,7 +8,8 @@ import { invoicesMetaQueryOptions } from "../api/meta";
 import "../i18n";
 import { refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
-import { InvoiceTable, NewInvoiceModal } from "../pages/invoices";
+import { NewInvoiceModal } from "../pages/invoices";
+import { InvoiceTable } from "./invoice-table";
 
 export interface CustomerInvoicesPanelProps {
   customerId: number;
