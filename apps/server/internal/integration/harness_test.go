@@ -11,6 +11,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/customers"
 	"github.com/vantigo-io/vantigo/server/internal/expenses"
+	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/openapi"
@@ -41,6 +42,7 @@ const (
 	modProjects  = "projects"
 	modTime      = "time"
 	modExpenses  = "expenses"
+	modInvoices  = "invoices"
 )
 
 // moduleNamed is the real module value for one name. It is the only place this
@@ -57,6 +59,8 @@ func moduleNamed(t *testing.T, name string) module.Module {
 		return timetracking.Module()
 	case modExpenses:
 		return expenses.Module()
+	case modInvoices:
+		return invoices.Module()
 	}
 	t.Fatalf("integration: no module named %q", name)
 	return module.Module{}
@@ -71,14 +75,24 @@ func moduleNamed(t *testing.T, name string) module.Module {
 // overwrites Deps.Directory whenever a composed module provides one).
 func newInstallation(t *testing.T, names ...string) *modtest.Harness {
 	t.Helper()
-	opts := []modtest.Option{
+	return newInstallationWith(t, nil, names...)
+}
+
+// newInstallationWith is newInstallation with the options an installation
+// needs beyond its modules — an object store, the SMTP seam, an environment
+// variable — applied after the shared ones, so one of them may replace a
+// shared one.
+func newInstallationWith(t *testing.T, opts []modtest.Option, names ...string) *modtest.Harness {
+	t.Helper()
+	all := []modtest.Option{
 		modtest.WithRecorder(recorder),
 		modtest.WithDirectory(fakeCustomers{}),
 	}
+	all = append(all, opts...)
 	for _, name := range names {
-		opts = append(opts, modtest.WithModule(moduleNamed(t, name)))
+		all = append(all, modtest.WithModule(moduleNamed(t, name)))
 	}
-	return modtest.New(t, opts...)
+	return modtest.New(t, all...)
 }
 
 // recorder validates every exchange of every test here against every
@@ -89,7 +103,7 @@ func newInstallation(t *testing.T, names ...string) *modtest.Harness {
 // because modtest installs a single transport: openapi.Validate routes an
 // exchange by path through the document it is given, and the modules' paths
 // are disjoint (/api/v1/customers, /api/v1/projects, /api/v1/time,
-// /api/v1/expenses), so a
+// /api/v1/expenses, /api/v1/invoices), so a
 // document holding all of them routes each exchange to its own operation. The
 // documents are already fully resolved when Load returns, so a path item
 // carries its schemas with it and nothing is lost in the merge.
@@ -98,7 +112,7 @@ func newInstallation(t *testing.T, names ...string) *modtest.Harness {
 // TestMain's job over its own contract, and a cross-module test that counted
 // towards it would let an operation look exercised without its module's suite
 // ever having exercised it.
-var recorder = mergedRecorder(modCustomers, modProjects, modTime, modExpenses)
+var recorder = mergedRecorder(modCustomers, modProjects, modTime, modExpenses, modInvoices)
 
 func mergedRecorder(names ...string) *contracttest.Recorder {
 	merged := &openapi3.T{
