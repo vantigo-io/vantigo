@@ -244,7 +244,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/expenses/rates/{id}` (putExpensesRatesById)
 - `PUT /api/v1/expenses/settings` (putExpensesSettings)
 
-## invoices (22 uncovered)
+## invoices (23 uncovered)
 
 - `DELETE /api/v1/invoices/vat-codes/{id}/rates/{rateId}` (deleteInvoicesVatCodesByIdRatesByRateId)
 - `DELETE /api/v1/invoices/{id}` (deleteInvoicesById)
@@ -252,6 +252,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `GET /api/v1/invoices/journal` (getInvoicesJournal)
 - `GET /api/v1/invoices/meta` (getInvoicesMeta)
 - `GET /api/v1/invoices/settings` (getInvoicesSettings)
+- `GET /api/v1/invoices/stats/summary` (getInvoicesStatsSummary)
 - `GET /api/v1/invoices/vat-codes` (getInvoicesVatCodes)
 - `GET /api/v1/invoices/{id}/pdf` (getInvoicesByIdPdf)
 - `GET /api/v1/invoices/{id}/preview.pdf` (getInvoicesByIdPreviewPdf)
@@ -269,4 +270,4 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/invoices/vat-codes/{id}` (putInvoicesVatCodesById)
 - `PUT /api/v1/invoices/{id}` (putInvoicesById)
 
-Total: 240 of 375 operations have no recorded exchange.
+Total: 241 of 376 operations have no recorded exchange.

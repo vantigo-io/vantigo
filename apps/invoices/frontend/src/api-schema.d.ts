@@ -362,6 +362,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/stats/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the invoices dashboard summary
+         * @description The dashboard's invoices card (payments and delivery design D7). from and to are instants, as every module's summary takes them; to defaults to now and from to 30 days before to, and from after to is a 400.
+         */
+        get: operations["getInvoicesStatsSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -992,6 +1012,35 @@ export interface components {
             netTotal: number;
             /** Format: double */
             vatTotal: number;
+        };
+        /** @description The dashboard's invoices card over one period, in the envelope every module's /stats/summary shares (payments and delivery design D7). outstanding and overdue are now — the issued invoices with something open, at their open amounts, credit notes excluded, and of those the ones past their due date on today's Oslo date. issued, credited and paid are in the period: the invoices and the credit notes whose issue date, and the live payments whose paid date, falls on an Oslo day from the day of from up to and including the day of the last instant before to. issuedGrossTotalDelta is issuedGrossTotal less the previous period's, the period of the same length just before. All NOK. */
+        InvoicesStatsSummaryResponse: {
+            /** Format: int32 */
+            creditedCount: number;
+            /** Format: double */
+            creditedGrossTotal: number;
+            /** Format: date-time */
+            from: string;
+            /** Format: int32 */
+            issuedCount: number;
+            /** Format: double */
+            issuedGrossTotal: number;
+            /** Format: double */
+            issuedGrossTotalDelta: number;
+            /** Format: double */
+            outstandingAmount: number;
+            /** Format: int32 */
+            outstandingCount: number;
+            /** Format: double */
+            overdueAmount: number;
+            /** Format: int32 */
+            overdueCount: number;
+            /** Format: double */
+            paidAmount: number;
+            /** Format: int32 */
+            paidCount: number;
+            /** Format: date-time */
+            to: string;
         };
         AuthErrorResponse: {
             error: {
@@ -2335,6 +2384,56 @@ export interface operations {
                 };
             };
             /** @description Bad Request — from or to missing or not a calendar date, from after to, or more than 5000 rows, which asks for a narrower period. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getInvoicesStatsSummary: {
+        parameters: {
+            query?: {
+                from?: string;
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesStatsSummaryResponse"];
+                };
+            };
+            /** @description Bad Request — from after to. */
             400: {
                 headers: {
                     [name: string]: unknown;

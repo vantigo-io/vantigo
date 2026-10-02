@@ -1219,6 +1219,63 @@ components:
                 - vatTotal
                 - grossTotal
             type: object
+        InvoicesStatsSummaryResponse:
+            description: 'The dashboard''s invoices card over one period, in the envelope every module''s /stats/summary shares (payments and delivery design D7). outstanding and overdue are now — the issued invoices with something open, at their open amounts, credit notes excluded, and of those the ones past their due date on today''s Oslo date. issued, credited and paid are in the period: the invoices and the credit notes whose issue date, and the live payments whose paid date, falls on an Oslo day from the day of from up to and including the day of the last instant before to. issuedGrossTotalDelta is issuedGrossTotal less the previous period''s, the period of the same length just before. All NOK.'
+            properties:
+                creditedCount:
+                    format: int32
+                    type: integer
+                creditedGrossTotal:
+                    format: double
+                    type: number
+                from:
+                    format: date-time
+                    type: string
+                issuedCount:
+                    format: int32
+                    type: integer
+                issuedGrossTotal:
+                    format: double
+                    type: number
+                issuedGrossTotalDelta:
+                    format: double
+                    type: number
+                outstandingAmount:
+                    format: double
+                    type: number
+                outstandingCount:
+                    format: int32
+                    type: integer
+                overdueAmount:
+                    format: double
+                    type: number
+                overdueCount:
+                    format: int32
+                    type: integer
+                paidAmount:
+                    format: double
+                    type: number
+                paidCount:
+                    format: int32
+                    type: integer
+                to:
+                    format: date-time
+                    type: string
+            required:
+                - from
+                - to
+                - outstandingAmount
+                - outstandingCount
+                - overdueAmount
+                - overdueCount
+                - issuedCount
+                - issuedGrossTotal
+                - issuedGrossTotalDelta
+                - creditedCount
+                - creditedGrossTotal
+                - paidAmount
+                - paidCount
+            type: object
 info:
     title: Vantigo Invoices API
     version: "1"
@@ -2289,6 +2346,50 @@ paths:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
             summary: Export the issued documents as CSV
+            tags:
+                - Invoices
+            x-vantigo-access: permission:invoices:access
+    /api/v1/invoices/stats/summary:
+        get:
+            description: The dashboard's invoices card (payments and delivery design D7). from and to are instants, as every module's summary takes them; to defaults to now and from to 30 days before to, and from after to is a 400.
+            operationId: getInvoicesStatsSummary
+            parameters:
+                - in: query
+                  name: from
+                  schema:
+                    format: date-time
+                    type: string
+                - in: query
+                  name: to
+                  schema:
+                    format: date-time
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesStatsSummaryResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request — from after to.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get the invoices dashboard summary
             tags:
                 - Invoices
             x-vantigo-access: permission:invoices:access

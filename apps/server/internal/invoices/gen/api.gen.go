@@ -487,6 +487,23 @@ type InvoicesSettingsResponse struct {
 	VatRegistered       bool      `json:"vatRegistered"`
 }
 
+// InvoicesStatsSummaryResponse The dashboard's invoices card over one period, in the envelope every module's /stats/summary shares (payments and delivery design D7). outstanding and overdue are now — the issued invoices with something open, at their open amounts, credit notes excluded, and of those the ones past their due date on today's Oslo date. issued, credited and paid are in the period: the invoices and the credit notes whose issue date, and the live payments whose paid date, falls on an Oslo day from the day of from up to and including the day of the last instant before to. issuedGrossTotalDelta is issuedGrossTotal less the previous period's, the period of the same length just before. All NOK.
+type InvoicesStatsSummaryResponse struct {
+	CreditedCount         int32     `json:"creditedCount"`
+	CreditedGrossTotal    float64   `json:"creditedGrossTotal"`
+	From                  time.Time `json:"from"`
+	IssuedCount           int32     `json:"issuedCount"`
+	IssuedGrossTotal      float64   `json:"issuedGrossTotal"`
+	IssuedGrossTotalDelta float64   `json:"issuedGrossTotalDelta"`
+	OutstandingAmount     float64   `json:"outstandingAmount"`
+	OutstandingCount      int32     `json:"outstandingCount"`
+	OverdueAmount         float64   `json:"overdueAmount"`
+	OverdueCount          int32     `json:"overdueCount"`
+	PaidAmount            float64   `json:"paidAmount"`
+	PaidCount             int32     `json:"paidCount"`
+	To                    time.Time `json:"to"`
+}
+
 // InvoicesVatCode One VAT code with every rate period it has had (D3). inUse is true once any line, draft or issued, carries the code; from then on its category and SAF-T code cannot change (409 vat_code_in_use).
 type InvoicesVatCode struct {
 	Active      bool   `json:"active"`
@@ -607,6 +624,12 @@ type GetInvoicesJournalParams struct {
 	PageSize *int32             `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
 
+// GetInvoicesStatsSummaryParams defines parameters for GetInvoicesStatsSummary.
+type GetInvoicesStatsSummaryParams struct {
+	From *time.Time `form:"from,omitempty" json:"from,omitempty"`
+	To   *time.Time `form:"to,omitempty" json:"to,omitempty"`
+}
+
 // PostInvoicesJSONRequestBody defines body for PostInvoices for application/json ContentType.
 type PostInvoicesJSONRequestBody = InvoicesInvoiceRequest
 
@@ -660,6 +683,9 @@ type ServerInterface interface {
 	// PutInvoicesSettings Change the invoice settings
 	// (PUT /api/v1/invoices/settings)
 	PutInvoicesSettings(w http.ResponseWriter, r *http.Request)
+	// GetInvoicesStatsSummary Get the invoices dashboard summary
+	// (GET /api/v1/invoices/stats/summary)
+	GetInvoicesStatsSummary(w http.ResponseWriter, r *http.Request, params GetInvoicesStatsSummaryParams)
 	// GetInvoicesVatCodes List the VAT codes
 	// (GET /api/v1/invoices/vat-codes)
 	GetInvoicesVatCodes(w http.ResponseWriter, r *http.Request)
@@ -1018,6 +1044,52 @@ func (siw *ServerInterfaceWrapper) PutInvoicesSettings(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutInvoicesSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInvoicesStatsSummary operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoicesStatsSummary(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetInvoicesStatsSummaryParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoicesStatsSummary(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1553,6 +1625,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/send", wrapper.PostInvoicesByIdSend)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/journal", wrapper.GetInvoicesJournal)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/export.csv", wrapper.GetInvoicesExportCsv)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/stats/summary", wrapper.GetInvoicesStatsSummary)
 
 	return m
 }
@@ -2005,6 +2078,70 @@ func (response PutInvoicesSettings409ApplicationProblemPlusJSONResponse) VisitPu
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesStatsSummaryRequestObject struct {
+	Params GetInvoicesStatsSummaryParams
+}
+
+type GetInvoicesStatsSummaryResponseObject interface {
+	VisitGetInvoicesStatsSummaryResponse(w http.ResponseWriter) error
+}
+
+type GetInvoicesStatsSummary200JSONResponse InvoicesStatsSummaryResponse
+
+func (response GetInvoicesStatsSummary200JSONResponse) VisitGetInvoicesStatsSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesStatsSummary400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetInvoicesStatsSummary400ApplicationProblemPlusJSONResponse) VisitGetInvoicesStatsSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesStatsSummary401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesStatsSummary401JSONResponse) VisitGetInvoicesStatsSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInvoicesStatsSummary403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInvoicesStatsSummary403JSONResponse) VisitGetInvoicesStatsSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -3288,6 +3425,9 @@ type StrictServerInterface interface {
 	// PutInvoicesSettings Change the invoice settings
 	// (PUT /api/v1/invoices/settings)
 	PutInvoicesSettings(ctx context.Context, request PutInvoicesSettingsRequestObject) (PutInvoicesSettingsResponseObject, error)
+	// GetInvoicesStatsSummary Get the invoices dashboard summary
+	// (GET /api/v1/invoices/stats/summary)
+	GetInvoicesStatsSummary(ctx context.Context, request GetInvoicesStatsSummaryRequestObject) (GetInvoicesStatsSummaryResponseObject, error)
 	// GetInvoicesVatCodes List the VAT codes
 	// (GET /api/v1/invoices/vat-codes)
 	GetInvoicesVatCodes(ctx context.Context, request GetInvoicesVatCodesRequestObject) (GetInvoicesVatCodesResponseObject, error)
@@ -3555,6 +3695,32 @@ func (sh *strictHandler) PutInvoicesSettings(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutInvoicesSettingsResponseObject); ok {
 		if err := validResponse.VisitPutInvoicesSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInvoicesStatsSummary operation middleware
+func (sh *strictHandler) GetInvoicesStatsSummary(w http.ResponseWriter, r *http.Request, params GetInvoicesStatsSummaryParams) {
+	var request GetInvoicesStatsSummaryRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoicesStatsSummary(ctx, request.(GetInvoicesStatsSummaryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoicesStatsSummary")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoicesStatsSummaryResponseObject); ok {
+		if err := validResponse.VisitGetInvoicesStatsSummaryResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
