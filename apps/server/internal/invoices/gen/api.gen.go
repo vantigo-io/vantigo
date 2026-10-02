@@ -46,7 +46,7 @@ type InvoicesBuyer struct {
 	Type string `json:"type"`
 }
 
-// InvoicesConflictProblem ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, and storage_unavailable, which a 503 carries in the same shape. A revision conflict carries no code; its detail names both revisions.
+// InvoicesConflictProblem ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions.
 type InvoicesConflictProblem struct {
 	// AllowedIssueDates On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise.
 	AllowedIssueDates *[]openapi_types.Date `json:"allowedIssueDates,omitempty"`
@@ -58,10 +58,13 @@ type InvoicesConflictProblem struct {
 	LinePosition *int32 `json:"linePosition,omitempty"`
 
 	// MergedInto On customer_merged, the customer the draft's customer was merged into. Absent otherwise.
-	MergedInto *int32  `json:"mergedInto,omitempty"`
-	Status     *int32  `json:"status,omitempty"`
-	Title      *string `json:"title,omitempty"`
-	Type       *string `json:"type,omitempty"`
+	MergedInto *int32 `json:"mergedInto,omitempty"`
+
+	// OpenAmount On payment_exceeds_open, the invoice's open amount the payment exceeded (gross − credited − paid). Absent otherwise.
+	OpenAmount *float64 `json:"openAmount,omitempty"`
+	Status     *int32   `json:"status,omitempty"`
+	Title      *string  `json:"title,omitempty"`
+	Type       *string  `json:"type,omitempty"`
 }
 
 // InvoicesCreditNoteRef One credit note of an invoice, a draft (number absent) or issued.
@@ -295,6 +298,12 @@ type InvoicesMetaCapabilities struct {
 
 	// CanManage invoices:manage — the seller record, the series start and the VAT codes.
 	CanManage bool `json:"canManage"`
+
+	// CanRegisterPayments invoices:payments — register a payment against an issued invoice, and remove a registration with a reason.
+	CanRegisterPayments bool `json:"canRegisterPayments"`
+
+	// CanSend invoices:issue and mailAvailable — send an issued document to the customer by e-mail.
+	CanSend bool `json:"canSend"`
 }
 
 // InvoicesMetaResponse What every Invoices page needs before it draws anything (invoices foundation design D2).
@@ -310,6 +319,9 @@ type InvoicesMetaResponse struct {
 
 	// DefaultPaymentTermsDays The seller's default payment terms, which a new draft takes when neither the request nor the customer's billing profile decides.
 	DefaultPaymentTermsDays int32 `json:"defaultPaymentTermsDays"`
+
+	// MailAvailable Whether this installation's mail driver is smtp. Without it nothing can be sent (503 mail_unavailable), and canSend is false.
+	MailAvailable bool `json:"mailAvailable"`
 
 	// MissingSellerFields The seller fields issuing still needs, by their camelCase names (legalName, organisationNumber, addressLine1, postalCode, city, bankAccount). Empty when the seller is complete.
 	MissingSellerFields []string `json:"missingSellerFields"`

@@ -68,13 +68,16 @@ func (h *customerReferenceHolder) RepointCustomer(ctx context.Context, tx pgx.Tx
 // drafts erased while the issued documents stay.
 type customerPersonalData struct {
 	pool *pgxpool.Pool
+	// clock is Deps.Clock, for the erased-customer marker's erased_at
+	// (payments and delivery design D6).
+	clock func() time.Time
 }
 
 var _ contracts.CustomerPersonalData = customerPersonalData{}
 
 // newCustomerPersonalData is Module's CustomerPersonalData.
 func newCustomerPersonalData(d module.Deps) contracts.CustomerPersonalData {
-	return customerPersonalData{pool: d.Pool}
+	return customerPersonalData{pool: d.Pool, clock: d.Clock}
 }
 
 type invoicesSection struct {

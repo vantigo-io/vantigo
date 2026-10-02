@@ -16,7 +16,15 @@ const server = (options: { canCreate?: boolean; totalPages?: number } = {}) =>
     if (url === "/api/v1/invoices/meta") {
       return jsonResponse(
         200,
-        meta({ capabilities: { canCreate: options.canCreate ?? true, canIssue: true, canManage: false } }),
+        meta({
+          capabilities: {
+            canCreate: options.canCreate ?? true,
+            canIssue: true,
+            canManage: false,
+            canRegisterPayments: true,
+            canSend: true,
+          },
+        }),
       );
     }
     if (url.startsWith("/api/v1/invoices?") || url === "/api/v1/invoices") {

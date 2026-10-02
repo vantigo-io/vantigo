@@ -5,6 +5,8 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
 // metaJSON is GET /meta as a client reads it.
@@ -16,6 +18,7 @@ type metaJSON struct {
 	AnythingIssued          bool     `json:"anythingIssued"`
 	SeriesStart             int64    `json:"seriesStart"`
 	StorageAvailable        bool     `json:"storageAvailable"`
+	MailAvailable           bool     `json:"mailAvailable"`
 	Today                   string   `json:"today"`
 	VatCodes                []struct {
 		ID              int32   `json:"id"`
@@ -27,9 +30,11 @@ type metaJSON struct {
 		RatePercent     float64 `json:"ratePercent"`
 	} `json:"vatCodes"`
 	Capabilities struct {
-		CanCreate bool `json:"canCreate"`
-		CanIssue  bool `json:"canIssue"`
-		CanManage bool `json:"canManage"`
+		CanCreate           bool `json:"canCreate"`
+		CanIssue            bool `json:"canIssue"`
+		CanManage           bool `json:"canManage"`
+		CanRegisterPayments bool `json:"canRegisterPayments"`
+		CanSend             bool `json:"canSend"`
 	} `json:"capabilities"`
 }
 
@@ -134,5 +139,39 @@ func TestMeta_StorageAndTheCounter(t *testing.T) {
 	h.Exec(t, `INSERT INTO invoices.counters (counter_name, next_value) VALUES ('documents', 2)`)
 	if meta := getMeta(t, h, "invoices:access"); !meta.AnythingIssued {
 		t.Error("anythingIssued = false with the counter row present")
+	}
+}
+
+// Sending needs an installation whose mail driver is smtp (payments and
+// delivery design D1, D4): meta says whether it is, and canSend is
+// invoices:issue and that together — the log driver delivers nothing, so
+// nobody may send there, issuer or not. canRegisterPayments is
+// invoices:payments alone.
+func TestMeta_MailAvailabilityAndTheNewCapabilities(t *testing.T) {
+	t.Parallel()
+	withMail := newHarness(t,
+		modtest.WithEnv("MAIL_DRIVER", "smtp"),
+		modtest.WithEnv("SMTP_HOST", "smtp.example.invalid"),
+		modtest.WithEnv("SMTP_FROM", "faktura@example.invalid"))
+	withoutMail := newHarness(t)
+
+	if meta := getMeta(t, withMail, "invoices:access", "invoices:issue"); !meta.MailAvailable || !meta.Capabilities.CanSend {
+		t.Errorf("with smtp, an issuer: mailAvailable %v, canSend %v, want true, true", meta.MailAvailable, meta.Capabilities.CanSend)
+	}
+	if meta := getMeta(t, withMail, "invoices:access", "invoices:create", "invoices:manage", "invoices:payments"); !meta.MailAvailable || meta.Capabilities.CanSend {
+		t.Errorf("with smtp, no invoices:issue: mailAvailable %v, canSend %v, want true, false", meta.MailAvailable, meta.Capabilities.CanSend)
+	}
+	if meta := getMeta(t, withoutMail, "invoices:access", "invoices:issue"); meta.MailAvailable || meta.Capabilities.CanSend {
+		t.Errorf("with the log driver, an issuer: mailAvailable %v, canSend %v, want false, false", meta.MailAvailable, meta.Capabilities.CanSend)
+	}
+
+	for _, h := range []*harness{withMail, withoutMail} {
+		if meta := getMeta(t, h, "invoices:access", "invoices:payments"); !meta.Capabilities.CanRegisterPayments ||
+			meta.Capabilities.CanCreate || meta.Capabilities.CanIssue || meta.Capabilities.CanManage || meta.Capabilities.CanSend {
+			t.Errorf("capabilities = %+v for invoices:payments, want only canRegisterPayments", meta.Capabilities)
+		}
+		if meta := getMeta(t, h, "invoices:access", "invoices:create", "invoices:issue", "invoices:manage"); meta.Capabilities.CanRegisterPayments {
+			t.Errorf("canRegisterPayments = true without invoices:payments")
+		}
 	}
 }

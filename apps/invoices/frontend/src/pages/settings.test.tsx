@@ -12,7 +12,7 @@ import { SettingsPage } from "./settings";
 const path = (input: RequestInfo | URL) => String(input);
 
 /** The caller the page is for: meta's `canManage` is what shows it (D12). */
-const manager = { canCreate: true, canIssue: true, canManage: true };
+const manager = { canCreate: true, canIssue: true, canManage: true, canRegisterPayments: false, canSend: false };
 
 /** What the fake server holds, which a test may change under the page as another user would. */
 interface World {
