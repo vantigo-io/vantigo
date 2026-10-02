@@ -144,3 +144,18 @@ func TestCoverMail_TheTexts(t *testing.T) {
 		}
 	}
 }
+
+// A credit note names the invoice it credits: without its original, or with
+// an original that has no number, the cover mail is an error — never a mail
+// that credits "faktura 0".
+func TestCoverMail_ACreditNoteWithoutItsOriginalIsAnError(t *testing.T) {
+	t.Parallel()
+	credit := mailDocument(t, kindCreditNote, "nb", 1002, "3000", "", "")
+	for name, original := range map[string]*store.InvoicesInvoice{
+		"no original": nil, "an original without a number": {},
+	} {
+		if got, err := coverMail(credit, original, nil); err == nil {
+			t.Errorf("%s: cover mail = %q, want an error", name, got.body)
+		}
+	}
+}

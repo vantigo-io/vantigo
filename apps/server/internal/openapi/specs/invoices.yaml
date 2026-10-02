@@ -492,12 +492,13 @@ components:
                 - issueDate
             type: object
         InvoicesDelivery:
-            description: One e-mail that handed an issued document over (payments and delivery design D4), logged once the mail server took it. recipient is the address it went to — empty once the customer has been anonymised (D6); subject is as sent.
+            description: One e-mail that handed an issued document over (payments and delivery design D4), logged once the mail server took it. recipient is the address it went to — empty once the customer has been anonymised (D6) — and is present only for a caller with invoices:issue; a reader sees when each send happened, by whom and its subject, not the address. subject is as sent.
             properties:
                 id:
                     format: int64
                     type: integer
                 recipient:
+                    description: The address the e-mail went to, empty once the customer has been anonymised (D6). Present only for a caller with invoices:issue; absent for every other reader.
                     type: string
                 sentAt:
                     format: date-time
@@ -509,7 +510,6 @@ components:
                     type: string
             required:
                 - id
-                - recipient
                 - subject
                 - sentAt
                 - sentByUserId
@@ -952,7 +952,7 @@ components:
                 - amount
             type: object
         InvoicesSendDefaults:
-            description: 'What the Send dialog opens with (D4), on an issued document''s GET and on the send''s own response only, and only for a caller who may send (invoices:issue on an installation whose mail driver is smtp). recipient is the customer''s current invoice e-mail, absent when it has none; preference is the billing profile''s invoice delivery (email, ehf, efaktura or paper), absent when unset. warnings are the send''s, never refusals: delivery_preference_ehf (the customer expects EHF; an e-mailed PDF does not meet the e-invoicing duty), delivery_preference_other (the customer prefers efaktura or paper), buyer_norwegian_business (the buyer snapshot has a Norwegian organisation number: from 2027-01-01 a Norwegian business must receive an e-invoice). Absent when the directory could not be read.'
+            description: 'What the Send dialog opens with (D4), on an issued document''s GET and on the send''s own response only, and only for a caller who may send (invoices:issue on an installation whose mail driver is smtp). recipient is the customer''s current invoice e-mail, absent when it has none; preference is the billing profile''s invoice delivery (email, ehf, efaktura or paper), absent when unset. warnings are the send''s, never refusals: delivery_preference_ehf (the customer expects EHF; an e-mailed PDF does not meet the e-invoicing duty), delivery_preference_other (the customer prefers efaktura or paper), buyer_norwegian_business (the buyer snapshot has a Norwegian organisation number and today, the Oslo business day of the server''s clock, is before 2027-01-01: from that day a Norwegian business must receive an e-invoice), buyer_norwegian_business_required (the same buyer from 2027-01-01, when an e-mailed PDF no longer meets the duty). The server judges the date, never the browser. Absent when the directory could not be read.'
             properties:
                 preference:
                     type: string
@@ -2107,7 +2107,7 @@ paths:
             x-vantigo-access: permission:invoices:access+invoices:payments
     /api/v1/invoices/{id}/send:
         post:
-            description: 'Sends an issued document''s stored PDF by e-mail (D4), in this order: 503 mail_unavailable when the installation''s mail driver is not smtp, judged before anything is read; 404; 409 invoice_draft; 409 customer_anonymised when this module has anonymised the customer; the recipient — the override, else the customer''s current invoice e-mail, read from the directory outside any lock (409 no_invoice_email when there is none); the stored PDF, stored first when it never was and otherwise verified against its hash (503 storage_unavailable, 500 when the stored object is gone or altered); then one plain-text mail in the buyer''s language from the installation''s address under the seller snapshot''s name, Reply-To the current settings'' e-mail, the PDF attached under the download''s name. The send and its log row run on a context the request''s cancellation does not reach, bounded at 30 seconds. A failed send is 502 mail_failed and records nothing; a sent one is logged once, and sending again is logged again. Rate limited to 60 per client per 10 minutes. The response is the document with its deliveries and sendDefaults.'
+            description: 'Sends an issued document''s stored PDF by e-mail (D4), in this order: 503 mail_unavailable when the installation''s mail driver is not smtp, judged before anything is read; 404; 409 invoice_draft; 409 customer_anonymised when this module has anonymised the customer; the recipient — the override, else the customer''s current invoice e-mail, read from the directory outside any lock (409 no_invoice_email when there is none); the stored PDF, stored first when it never was and otherwise verified against its hash (503 storage_unavailable, 500 when the stored object is gone or altered); then one plain-text mail in the buyer''s language from the installation''s address under the seller snapshot''s name, Reply-To the current settings'' e-mail, the PDF attached under the download''s name. The send runs on a context the request''s cancellation does not reach, bounded at 30 seconds; its log row on an uncancellable context of its own, bounded at 5 seconds, and the response is rendered uncancellable too. A failed send is 502 mail_failed and records nothing; a sent one is logged once, and sending again is logged again. Rate limited to 60 per client per 10 minutes. The response is the document with its deliveries and sendDefaults.'
             operationId: postInvoicesByIdSend
             parameters:
                 - in: path

@@ -20,13 +20,24 @@ import (
 
 func sendPath(id int64) string { return fmt.Sprintf("%s/%d/send", invoicesPath, id) }
 
-// deliveryJSON is one send on a document, as the response carries it.
+// deliveryJSON is one send on a document, as the response carries it. The
+// recipient is answered only to a caller with invoices:issue.
 type deliveryJSON struct {
-	ID           int64  `json:"id"`
-	Recipient    string `json:"recipient"`
-	Subject      string `json:"subject"`
-	SentAt       string `json:"sentAt"`
-	SentByUserID string `json:"sentByUserId"`
+	ID           int64   `json:"id"`
+	Recipient    *string `json:"recipient"`
+	Subject      string  `json:"subject"`
+	SentAt       string  `json:"sentAt"`
+	SentByUserID string  `json:"sentByUserId"`
+}
+
+// addressOf is a delivery's recipient as an assertion reads it: "<absent>"
+// when the response left it out, which an empty — anonymised — address is
+// told apart from.
+func addressOf(d deliveryJSON) string {
+	if d.Recipient == nil {
+		return "<absent>"
+	}
+	return *d.Recipient
 }
 
 // sendDefaultsJSON is what the Send dialog opens with.
@@ -138,6 +149,18 @@ func sent(t *testing.T, h *harness, id int64, body map[string]any) invoiceJSON {
 	return inv
 }
 
+// readAs reads document id as c.
+func readAs(t *testing.T, c *modtest.Client, id int64) invoiceJSON {
+	t.Helper()
+	res := c.Do(http.MethodGet, invoicePath(id), nil)
+	if res.Status != http.StatusOK {
+		t.Fatalf("GET %d = %d %s", id, res.Status, res.Body)
+	}
+	var got invoiceJSON
+	res.JSON(&got)
+	return got
+}
+
 // sendRefused asserts res is a status-coded problem with code.
 func sendRefused(t *testing.T, what string, res *modtest.Response, status int, code string) {
 	t.Helper()
@@ -186,12 +209,13 @@ func TestSend_MailUnavailableIsJudgedFirst(t *testing.T) {
 
 // A draft is no document to send (invoice_draft), an unknown id is a bare
 // 404, and a customer this module has anonymised is never written to again
-// (customer_anonymised, D4 step 3) — override or not. Nothing is sent.
+// (customer_anonymised, D4 step 3) — override or not, and before the
+// directory is asked for the address (step 4). Nothing is sent.
 func TestSend_RefusesADraftAndAnAnonymisedCustomer(t *testing.T) {
 	t.Parallel()
 	h, fake := sendReady(t)
 	draft := createDraft(t, h, draftBody(customerAcme, line("Konsulenttime", 1, 100, vat25)))
-	c := sender(t, h)
+	c, userID := h.SignInUser(t, "invoices:access", "invoices:issue")
 	sendRefused(t, "send a draft", sendAs(c, draft.ID, nil), http.StatusConflict, "invoice_draft")
 	if res := sendAs(c, 999999, nil); res.Status != http.StatusNotFound {
 		t.Errorf("send an unknown id = %d %s, want 404", res.Status, res.Body)
@@ -204,6 +228,12 @@ func TestSend_RefusesADraftAndAnAnonymisedCustomer(t *testing.T) {
 		http.StatusConflict, "customer_anonymised")
 	if len(fake.mails()) != 0 || deliveryRows(t, h, inv.ID) != 0 {
 		t.Errorf("%d mails, %d rows; want nothing sent and nothing logged", len(fake.mails()), deliveryRows(t, h, inv.ID))
+	}
+	for _, call := range contractCalls.by(userID) {
+		if call.method == "Directory.BillingProfile" {
+			t.Errorf("calls out of the module = %+v, want no billing profile read before the refusals", contractCalls.by(userID))
+			break
+		}
 	}
 }
 
@@ -229,8 +259,9 @@ func TestSend_NoInvoiceEmail(t *testing.T) {
 
 // An override wins over the profile's address and is held to the settings'
 // rule (D4): a bare address that parses to itself, at most 254 characters —
-// so "Name <a@b>" is refused, and so is an empty one. A refusal names
-// recipient and sends nothing.
+// so "Name <a@b>" is refused, and so are an empty one, one smuggling a
+// header after a line break and a quoted local part; one of exactly 254 goes.
+// A refusal names recipient and sends nothing.
 func TestSend_TheOverrideWinsAndIsValidated(t *testing.T) {
 	t.Parallel()
 	h, fake := sendReady(t)
@@ -238,6 +269,7 @@ func TestSend_TheOverrideWinsAndIsValidated(t *testing.T) {
 	c := sender(t, h)
 	for _, bad := range []string{
 		"Kari Nordmann <kari@example.org>", "not an address", "", "   ", strings.Repeat("a", 245) + "@example.no",
+		"a@b.no\r\nBcc: x@y.no", `"a b"@c.no`,
 	} {
 		res := sendAs(c, inv.ID, map[string]any{"recipient": bad})
 		if res.Status != http.StatusBadRequest {
@@ -260,6 +292,16 @@ func TestSend_TheOverrideWinsAndIsValidated(t *testing.T) {
 	h.customers.edit(customerAcme, func(p *contracts.CustomerBillingProfile) { p.InvoiceEmail = "" })
 	sent(t, h, inv.ID, map[string]any{"recipient": "bokholder@example.org"})
 	fake.last(t, 1)
+
+	// 254 characters is the limit, not past it.
+	longest := strings.Repeat("a", 64) + "@" + strings.Repeat("b", 63) + "." + strings.Repeat("c", 63) + "." + strings.Repeat("d", 58) + ".no"
+	if len(longest) != 254 {
+		t.Fatalf("the longest address is %d characters, want 254", len(longest))
+	}
+	sent(t, h, inv.ID, map[string]any{"recipient": longest})
+	if got := fake.last(t, 2).out.To; !slices.Equal(got, []string{longest}) {
+		t.Errorf("To = %v, want the 254-character override", got)
+	}
 }
 
 // The envelope (D4 step 6): from the installation's address under the
@@ -493,12 +535,27 @@ func TestSend_AFailedSendRecordsNothing(t *testing.T) {
 	}
 }
 
-// A browser that goes away mid-send does not abort it (D4 step 7): the
+// A browser that goes away mid-send does not abort it (D4 steps 7-9): the
 // request is cancelled while the SMTP send is under way, the send runs on to
-// the end on a context the cancellation never reached, and its row is
-// written.
+// the end on a context the cancellation never reached, its row is written,
+// and the document is rendered without a single error-level log line — a
+// send that succeeded is no server fault.
 func TestSend_ACancelledRequestStillSendsAndLogs(t *testing.T) {
 	t.Parallel()
+	var h *harness
+	// Registered before the harness's own cleanups, this runs after them:
+	// after its server has closed, which waits for every handler — the
+	// cancelled send's to its very end.
+	t.Cleanup(func() {
+		if h == nil {
+			return
+		}
+		for _, l := range strings.Split(h.Logs(), "\n") {
+			if strings.Contains(l, `"level":"ERROR"`) {
+				t.Errorf("an error-level log line for a send that succeeded: %s", l)
+			}
+		}
+	})
 	h, fake := sendReady(t)
 	inv := issuedAcme(t, h)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -553,8 +610,9 @@ func TestSend_ACancelledRequestStillSendsAndLogs(t *testing.T) {
 // Every send is logged once and shown on the document (D4 steps 8-9): a
 // re-send is a second row; each row names the recipient, the subject, the
 // time and the sender; the row keeps the Message-ID and the attached bytes'
-// hash; a reader sees the log too; a draft has none. The send went through
-// the contract-call seam (SMTPSend), and never under a lock.
+// hash; a reader sees the log too, but not the address — that is for a
+// caller with invoices:issue; a draft has none. The send went through the
+// contract-call seam (SMTPSend), and never under a lock.
 func TestSend_IsLogged(t *testing.T) {
 	t.Parallel()
 	h, fake := sendReady(t)
@@ -568,15 +626,25 @@ func TestSend_IsLogged(t *testing.T) {
 			t.Fatalf("send %v = %d %s", body, res.Status, res.Body)
 		}
 	}
-	got := getInvoice(t, h, inv.ID)
+	got := readAs(t, c, inv.ID)
 	if len(got.Deliveries) != 2 {
 		t.Fatalf("deliveries = %+v, want two", got.Deliveries)
 	}
 	for i, want := range []string{"faktura@acme.example", "kopi@example.org"} {
 		d := got.Deliveries[i]
 		at, err := time.Parse(time.RFC3339Nano, d.SentAt)
-		if d.Recipient != want || d.Subject != "Faktura 1 fra Kraft-Verket AS" || d.SentByUserID != userID.String() || err != nil || !at.Equal(h.Now()) {
-			t.Errorf("delivery %d = %+v, want to %s, the subject, by %s at %s", i, d, want, userID, h.Now())
+		if addressOf(d) != want || d.Subject != "Faktura 1 fra Kraft-Verket AS" || d.SentByUserID != userID.String() || err != nil || !at.Equal(h.Now()) {
+			t.Errorf("delivery %d = %+v (to %s), want to %s, the subject, by %s at %s", i, d, addressOf(d), want, userID, h.Now())
+		}
+	}
+	read := getInvoice(t, h, inv.ID) // invoices:access alone
+	if len(read.Deliveries) != 2 {
+		t.Fatalf("a reader's deliveries = %+v, want two", read.Deliveries)
+	}
+	for i, d := range read.Deliveries {
+		if d.Recipient != nil || d.ID != got.Deliveries[i].ID || d.Subject != got.Deliveries[i].Subject ||
+			d.SentAt != got.Deliveries[i].SentAt || d.SentByUserID != userID.String() {
+			t.Errorf("a reader's delivery %d = %+v (to %s), want the send without its address", i, d, addressOf(d))
 		}
 	}
 	out := fake.last(t, 1).out
@@ -605,25 +673,17 @@ func TestSend_IsLogged(t *testing.T) {
 // invoice e-mail, the delivery preference and the send warnings; never for a
 // reader, a creator or a payment's response, never on a draft or on an
 // installation that cannot send, and left out with a warning in the log when
-// the directory fails. The preference warning is delivery_preference_ehf for
-// ehf and delivery_preference_other for efaktura and paper; a buyer with a
-// Norwegian organisation number is buyer_norwegian_business, before
-// 2027-01-01 and after it alike — the red alert from that day is the app's.
+// the directory fails — a send with an override then goes, logged, and
+// answers without them. The preference warning is delivery_preference_ehf
+// for ehf and delivery_preference_other for efaktura and paper; a buyer with
+// a Norwegian organisation number is buyer_norwegian_business before
+// 2027-01-01 and buyer_norwegian_business_required from that day, judged on
+// the server's clock in Oslo — a minute either side of midnight there.
 func TestSend_SendDefaultsAndWarnings(t *testing.T) {
 	t.Parallel()
-	h, _ := sendReady(t)
+	h, fake := sendReady(t)
 	h.customers.edit(customerAcme, func(p *contracts.CustomerBillingProfile) { p.InvoiceDelivery = "ehf" })
 	inv := issuedAcme(t, h)
-	read := func(c *modtest.Client, id int64) invoiceJSON {
-		t.Helper()
-		res := c.Do(http.MethodGet, invoicePath(id), nil)
-		if res.Status != http.StatusOK {
-			t.Fatalf("GET %d = %d %s", id, res.Status, res.Body)
-		}
-		var got invoiceJSON
-		res.JSON(&got)
-		return got
-	}
 	// opt is an optional field as the assertion reads it: absent is "", and
 	// present but empty — which the contract never answers — is told apart.
 	opt := func(s *string) string {
@@ -648,18 +708,18 @@ func TestSend_SendDefaultsAndWarnings(t *testing.T) {
 		}
 	}
 	c := sender(t, h)
-	is("ehf, a Norwegian business", read(c, inv.ID).SendDefaults, "faktura@acme.example", "ehf",
+	is("ehf, a Norwegian business", readAs(t, c, inv.ID).SendDefaults, "faktura@acme.example", "ehf",
 		"delivery_preference_ehf", "buyer_norwegian_business")
 
 	for _, other := range []*modtest.Client{
 		h.SignIn(t, "invoices:access"), h.SignIn(t, "invoices:access", "invoices:create", "invoices:payments"),
 	} {
-		if d := read(other, inv.ID).SendDefaults; d != nil {
+		if d := readAs(t, other, inv.ID).SendDefaults; d != nil {
 			t.Errorf("a caller without invoices:issue sees sendDefaults %+v", d)
 		}
 	}
 	draft := createDraft(t, h, draftBody(customerAcme, line("Konsulenttime", 1, 100, vat25)))
-	if d := read(c, draft.ID).SendDefaults; d != nil {
+	if d := readAs(t, c, draft.ID).SendDefaults; d != nil {
 		t.Errorf("a draft's sendDefaults = %+v, want none", d)
 	}
 	res := h.SignIn(t, "invoices:access", "invoices:issue", "invoices:payments").Do(http.MethodPost, paymentsPath(inv.ID), pay(100, "2026-09-12"))
@@ -681,30 +741,63 @@ func TestSend_SendDefaultsAndWarnings(t *testing.T) {
 		if c2.warning != "" {
 			want = []string{c2.warning, "buyer_norwegian_business"}
 		}
-		is("preference "+c2.preference, read(c, inv.ID).SendDefaults, "faktura@acme.example", c2.preference, want...)
+		is("preference "+c2.preference, readAs(t, c, inv.ID).SendDefaults, "faktura@acme.example", c2.preference, want...)
 	}
 
 	person := issued(t, h, createDraft(t, h, draftBody(customerPerson, line("Consulting", 1, 100, vat25))).ID)
-	is("a private person", read(c, person.ID).SendDefaults, "kari@example.org", "")
+	is("a private person", readAs(t, c, person.ID).SendDefaults, "kari@example.org", "")
 	h.customers.edit(customerPerson, func(p *contracts.CustomerBillingProfile) { p.InvoiceEmail = "" })
-	is("no invoice e-mail", read(c, person.ID).SendDefaults, "", "")
+	is("no invoice e-mail", readAs(t, c, person.ID).SendDefaults, "", "")
 
-	h.Advance(time.Date(2027, 1, 2, 9, 0, 0, 0, time.UTC).Sub(h.Now()))
+	// 23:59 in Oslo on New Year's Eve, then 00:01 on the first — the UTC
+	// day is still the 31st.
+	h.Advance(time.Date(2026, 12, 31, 22, 59, 0, 0, time.UTC).Sub(h.Now()))
 	c = sender(t, h) // the earlier session has expired by then
-	is("from 2027", read(c, inv.ID).SendDefaults, "faktura@acme.example", "", "buyer_norwegian_business")
+	is("the last minute of 2026 in Oslo", readAs(t, c, inv.ID).SendDefaults, "faktura@acme.example", "", "buyer_norwegian_business")
+	h.Advance(2 * time.Minute)
+	c = sender(t, h)
+	is("the first minute of 2027 in Oslo", readAs(t, c, inv.ID).SendDefaults, "faktura@acme.example", "", "buyer_norwegian_business_required")
 
+	// directoryWarnings is how many warnings name document inv and the
+	// directory's error.
+	directoryWarnings := func() int {
+		n := 0
+		for _, l := range strings.Split(h.Logs(), "\n") {
+			if strings.Contains(l, `"level":"WARN"`) && strings.Contains(l, fmt.Sprintf(`"invoice_id":%d`, inv.ID)) &&
+				strings.Contains(l, "the directory is down") {
+				n++
+			}
+		}
+		return n
+	}
 	h.customers.failProfiles(errors.New("the directory is down"))
-	if d := read(c, inv.ID).SendDefaults; d != nil {
+	if d := readAs(t, c, inv.ID).SendDefaults; d != nil {
 		t.Errorf("with the directory down, sendDefaults = %+v, want none", d)
 	}
-	if !strings.Contains(h.Logs(), "the directory is down") {
-		t.Errorf("logs =\n%s\nwant a warning naming the directory's error", h.Logs())
+	if directoryWarnings() != 1 {
+		t.Errorf("logs =\n%s\nwant a warning naming the document and the directory's error", h.Logs())
+	}
+	// A send with an override needs no directory to go: it is sent and
+	// logged, and its answer leaves the defaults out with a warning.
+	mails, rows := len(fake.mails()), deliveryRows(t, h, inv.ID)
+	overridden := sendAs(c, inv.ID, map[string]any{"recipient": "kopi@example.org"})
+	if overridden.Status != http.StatusOK {
+		t.Fatalf("a send with an override while the directory is down = %d %s, want 200", overridden.Status, overridden.Body)
+	}
+	var answered invoiceJSON
+	overridden.JSON(&answered)
+	if answered.SendDefaults != nil || len(fake.mails()) != mails+1 || deliveryRows(t, h, inv.ID) != rows+1 {
+		t.Errorf("sendDefaults %+v, %d mails, %d rows; want none, one more mail and one more row",
+			answered.SendDefaults, len(fake.mails())-mails, deliveryRows(t, h, inv.ID)-rows)
+	}
+	if directoryWarnings() != 2 {
+		t.Errorf("logs =\n%s\nwant the send's own warning naming the document and the directory's error", h.Logs())
 	}
 
 	// An installation that cannot send offers nothing to send with.
 	quiet := readyToIssue(t)
 	other := issuedAcme(t, quiet)
-	if d := read(sender(t, quiet), other.ID).SendDefaults; d != nil {
+	if d := readAs(t, sender(t, quiet), other.ID).SendDefaults; d != nil {
 		t.Errorf("on the log driver, sendDefaults = %+v, want none", d)
 	}
 }

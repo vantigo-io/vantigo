@@ -275,8 +275,11 @@ cheap. In order:
    `mail_failed` and records nothing** — the ruling. The error is logged at warn with
    the document id, never put on the wire. A timeout that strikes after the server has
    accepted the data can mean the mail went with no row; `docs/invoices.md` says so.
-8. **The log**: one row in `invoices.deliveries`, written on the same uncancellable
-   context. **The blanking of a recipient whose customer was erased meanwhile is the
+8. **The log**: one row in `invoices.deliveries`, written on an uncancellable context
+   of its own with its **own short timeout** (five seconds), never the send's remaining
+   budget — a send the server accepted at the 29th second must still be logged. After
+   it, the response is rendered on an uncancellable context too, so a caller that
+   disconnected gets no error-level log for a send that succeeded. **The blanking of a recipient whose customer was erased meanwhile is the
    insert trigger's job, not the statement's** (`tr_deliveries_parent`, below): an
    anonymisation running between step 4 and here — committed, or still holding the
    customer's documents — must not leave the person's address in a row the erase has
@@ -397,17 +400,22 @@ So two warnings, on the document's `sendDefaults.warnings`, on the send's respon
   alert that cannot be missed ("This customer expects EHF. An e-mailed PDF does not
   meet the e-invoicing duty; phase 2 adds EHF."); `efaktura` and `paper` give a plain
   note (`delivery_preference_other`).
-- `buyer_norwegian_business` — the snapshot has `buyer_organisation_number`: a plain
-  note before 2027-01-01 ("From 1 January 2027 Norwegian businesses must receive an
-  e-invoice; this is a PDF.") and a **red alert from that day** (judged on today in
-  Oslo). This recovers the public-body half of the ruling without a contract fact and
+- `buyer_norwegian_business` — the snapshot has `buyer_organisation_number` and today
+  (Oslo, the server's clock) is before 2027-01-01: a plain note ("From 1 January 2027
+  Norwegian businesses must receive an e-invoice; this is a PDF.").
+- `buyer_norwegian_business_required` — the same buyer from **2027-01-01**: a red alert
+  that cannot be missed. The server judges the date, never the browser: the app has
+  neither the server's clock nor Oslo's day, and a code is what a fixed-clock test can
+  pin. This recovers the public-body half of the ruling without a contract fact and
   says the one thing the person sending needs to know. The send is never refused for
-  either.
+  any warning.
 
 `sendDefaults{recipient?, preference?, warnings[]}` is on an issued document's response
 **only for a caller with `canSend`** (`invoices:issue` and mail available): the
 customer's invoice e-mail sits behind `customers:view` in its own module, and
-`invoices:access` alone should not widen that. It is computed by **`GET /invoices/{id}`
+`invoices:access` alone should not widen that. **For the same reason a delivery's
+`recipient` is on `deliveries[]` only for a caller with `invoices:issue`**; a reader
+sees when each send happened and its subject, not the address. It is computed by **`GET /invoices/{id}`
 and the send's own response only** — not by a payment's, a removal's, an issue's or a
 credit's — so no write adds a directory call to its answer; the app invalidates the
 document after those writes rather than setting their responses into the cache. It is

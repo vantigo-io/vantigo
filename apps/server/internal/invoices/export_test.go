@@ -87,8 +87,8 @@ var DocumentState = documentState
 var InvoiceStates = invoiceStates
 
 // SetBeforeDeliveryWrite installs a hook a send calls right before it writes
-// its delivery row — after the mail went, on the send's own uncancellable
-// context — and answers the function that removes it. A race test holds the
+// its delivery row — after the mail went, on an uncancellable context, before
+// the row's own timeout starts — and answers the function that removes it. A race test holds the
 // send there while an erase runs. A test using it does not run in parallel:
 // the hook is the package's.
 func SetBeforeDeliveryWrite(hook func(ctx context.Context, invoiceID int64)) func() {

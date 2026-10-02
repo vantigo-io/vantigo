@@ -353,7 +353,7 @@ func TestCustomerPersonalData_EraseBlanksDeliveriesAndReportsFourKinds(t *testin
 	if n := h.Count(t, `SELECT count(*) FROM invoices.deliveries WHERE invoice_id = $1 AND recipient = ''`, doc.ID); n != 2 {
 		t.Errorf("%d of the person's two deliveries blanked, want both", n)
 	}
-	if kept := getInvoice(t, h, doc.ID); len(kept.Deliveries) != 2 || kept.Deliveries[0].Recipient != "" || kept.Deliveries[0].Subject == "" {
+	if kept := readAs(t, sender(t, h), doc.ID); len(kept.Deliveries) != 2 || addressOf(kept.Deliveries[0]) != "" || kept.Deliveries[0].Subject == "" {
 		t.Errorf("the deliveries = %+v, want both kept, the subject too, with the address gone", kept.Deliveries)
 	}
 	if got := modtest.One[string](t, h.Harness, `SELECT recipient FROM invoices.deliveries WHERE invoice_id = $1`, acme.ID); got != "faktura@acme.example" {
@@ -448,7 +448,7 @@ func TestCustomerPersonalData_ASendRacingAnUncommittedEraseLeavesNoAddress(t *te
 	}
 	var got invoiceJSON
 	res.JSON(&got)
-	if len(got.Deliveries) != 1 || got.Deliveries[0].Recipient != "" {
+	if len(got.Deliveries) != 1 || addressOf(got.Deliveries[0]) != "" {
 		t.Errorf("the send's deliveries = %+v, want one with no address", got.Deliveries)
 	}
 	if row := modtest.One[string](t, h.Harness, `SELECT recipient FROM invoices.deliveries WHERE invoice_id = $1`, inv.ID); row != "" {
@@ -456,6 +456,51 @@ func TestCustomerPersonalData_ASendRacingAnUncommittedEraseLeavesNoAddress(t *te
 	}
 	restore()
 	sendRefused(t, "a second send", sendAs(c, inv.ID, nil), http.StatusConflict, "customer_anonymised")
+}
+
+// The marker committed between a send's directory read and its row (D4 step
+// 8, D6): the send was not refused — the customer was not anonymised when it
+// looked — and the mail went, but the erase has run past the deliveries by
+// the time the row is written, so the row's trigger blanks the address. The
+// send still answers 200: the mail went. Not parallel: the delivery hook is
+// the package's.
+func TestCustomerPersonalData_ASendWhoseCustomerIsErasedBeforeItsRowLeavesNoAddress(t *testing.T) {
+	h, fake := sendReady(t)
+	inv := issued(t, h, createDraft(t, h, draftBody(customerPerson, line("Konsultasjon", 1, 1000, vat25))).ID)
+	marked := make(chan error, 1)
+	restore := invoices.SetBeforeDeliveryWrite(func(ctx context.Context, id int64) {
+		if id != inv.ID {
+			return
+		}
+		_, err := h.Pool().Exec(ctx, `INSERT INTO invoices.erased_customers (customer_id, erased_at) VALUES ($1, now())`, customerPerson)
+		marked <- err
+	})
+	defer restore()
+
+	res := sendAs(sender(t, h), inv.ID, nil)
+	restore()
+	select {
+	case err := <-marked:
+		if err != nil {
+			t.Fatalf("mark the customer erased: %v", err)
+		}
+	default:
+		t.Fatal("the send never reached its row")
+	}
+	if res.Status != http.StatusOK {
+		t.Fatalf("the send = %d %s, want 200: the mail went", res.Status, res.Body)
+	}
+	if mails := fake.mails(); len(mails) != 1 || mails[0].out.To[0] != "kari@example.org" {
+		t.Errorf("mails = %+v, want the one to Kari", mails)
+	}
+	var got invoiceJSON
+	res.JSON(&got)
+	if len(got.Deliveries) != 1 || addressOf(got.Deliveries[0]) != "" {
+		t.Errorf("the send's deliveries = %+v, want one with no address", got.Deliveries)
+	}
+	if row := modtest.One[string](t, h.Harness, `SELECT recipient FROM invoices.deliveries WHERE invoice_id = $1`, inv.ID); row != "" {
+		t.Errorf("the delivery row's recipient = %q, want '' — the marker was committed before it", row)
+	}
 }
 
 // awaitDeliveryInsertWaiting polls until a delivery's INSERT in h's database

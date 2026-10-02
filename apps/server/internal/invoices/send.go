@@ -37,21 +37,30 @@ const (
 	cannotSendTitle  = "The document cannot be sent"
 	invalidSendTitle = "Invalid send"
 
-	warningDeliveryPreferenceEHF   = "delivery_preference_ehf"
-	warningDeliveryPreferenceOther = "delivery_preference_other"
-	warningBuyerNorwegianBusiness  = "buyer_norwegian_business"
+	warningDeliveryPreferenceEHF          = "delivery_preference_ehf"
+	warningDeliveryPreferenceOther        = "delivery_preference_other"
+	warningBuyerNorwegianBusiness         = "buyer_norwegian_business"
+	warningBuyerNorwegianBusinessRequired = "buyer_norwegian_business_required"
 )
 
-// sendTimeout bounds the send and its log row together: communications' send
-// timeout.
+// b2bDutyFrom is the Oslo business day the B2B e-invoicing duty starts (Lov
+// 19. juni 2026 nr. 39): from it a PDF by e-mail to a Norwegian business is
+// not a lawful e-invoice. A day as businessDay answers one.
+var b2bDutyFrom = time.Date(2027, time.January, 1, 0, 0, 0, 0, time.UTC)
+
+// sendTimeout bounds the SMTP send alone: communications' send timeout.
 const sendTimeout = 30 * time.Second
+
+// deliveryRowTimeout bounds the delivery row, on a context of its own: a send
+// the server accepted at the 29th second must still be logged.
+const deliveryRowTimeout = 5 * time.Second
 
 // messageIDDomain is the right-hand side of every Message-ID this module
 // mints: communications' domain.
 const messageIDDomain = "vantigo.invalid"
 
 // beforeDeliveryWrite, when a test sets it (export_test.go), is called right
-// before the delivery row is written, on the send's own context, so a race
+// before the delivery row is written, on an uncancellable context, so a race
 // test can hold a send between its directory read and its row. nil in
 // production.
 var beforeDeliveryWrite func(ctx context.Context, invoiceID int64)
@@ -60,10 +69,12 @@ var beforeDeliveryWrite func(ctx context.Context, invoiceID int64)
 // (D4): the customer's delivery preference when it is not e-mail — EHF, which
 // an e-mailed PDF does not satisfy, or efaktura and paper — and a buyer with
 // a Norwegian organisation number, whom the B2B e-invoicing duty covers from
-// 2027-01-01. The duty's date decides only how loudly the app says it; the
-// warning is the same either side of it. profile is the customer's current
-// billing profile, nil when the directory knows none.
-func sendWarnings(inv store.InvoicesInvoice, profile *contracts.CustomerBillingProfile) []string {
+// 2027-01-01: buyer_norwegian_business before that day and
+// buyer_norwegian_business_required from it. The server judges the date on
+// today, the Oslo business day of its own clock — the browser has neither.
+// profile is the customer's current billing profile, nil when the directory
+// knows none.
+func sendWarnings(inv store.InvoicesInvoice, profile *contracts.CustomerBillingProfile, today time.Time) []string {
 	warnings := []string{}
 	if profile != nil {
 		switch profile.InvoiceDelivery {
@@ -74,7 +85,11 @@ func sendWarnings(inv store.InvoicesInvoice, profile *contracts.CustomerBillingP
 		}
 	}
 	if inv.BuyerOrganisationNumber != nil && *inv.BuyerOrganisationNumber != "" {
-		warnings = append(warnings, warningBuyerNorwegianBusiness)
+		if today.Before(b2bDutyFrom) {
+			warnings = append(warnings, warningBuyerNorwegianBusiness)
+		} else {
+			warnings = append(warnings, warningBuyerNorwegianBusinessRequired)
+		}
 	}
 	return warnings
 }
@@ -110,7 +125,8 @@ func (s *server) withSendDefaults(ctx context.Context, inv store.InvoicesInvoice
 			return
 		}
 	}
-	defaults := gen.InvoicesSendDefaults{Warnings: sendWarnings(inv, profile)}
+	today := businessDay(s.deps.Clock())
+	defaults := gen.InvoicesSendDefaults{Warnings: sendWarnings(inv, profile, today)}
 	if profile != nil && profile.InvoiceEmail != "" {
 		defaults.Recipient = ptr(profile.InvoiceEmail)
 	}
@@ -210,19 +226,26 @@ func (s *server) PostInvoicesByIdSend(ctx context.Context, req gen.PostInvoicesB
 		return nil, err
 	}
 
-	// 7-8. The send and its row, on a context the request's cancellation does
-	// not reach: a browser that goes away must not abort a transfer the mail
-	// server may already have accepted, nor the row that is its evidence.
-	sendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sendTimeout)
-	defer cancel()
-	if err := s.smtpSend(sendCtx, s.deps.Config.Mail, out); err != nil {
+	// 7. The send, on a context the request's cancellation does not reach: a
+	// browser that goes away must not abort a transfer the mail server may
+	// already have accepted. The 30 seconds are the send's alone.
+	uncancelled := context.WithoutCancel(ctx)
+	sendCtx, cancelSend := context.WithTimeout(uncancelled, sendTimeout)
+	err = s.smtpSend(sendCtx, s.deps.Config.Mail, out)
+	cancelSend()
+	if err != nil {
 		s.deps.Logger.WarnContext(ctx, "invoices: a document could not be sent", "invoice_id", inv.ID, "error", err.Error())
 		return gen.PostInvoicesByIdSend502ApplicationProblemPlusJSONResponse(mailFailed()), nil
 	}
+
+	// 8. The row that is the send's evidence, uncancellable too and on a
+	// short timeout of its own, never the send's remaining budget.
 	if beforeDeliveryWrite != nil {
-		beforeDeliveryWrite(sendCtx, inv.ID)
+		beforeDeliveryWrite(uncancelled, inv.ID)
 	}
-	if _, err := q.InsertDelivery(sendCtx, store.InsertDeliveryParams{
+	rowCtx, cancelRow := context.WithTimeout(uncancelled, deliveryRowTimeout)
+	defer cancelRow()
+	if _, err := q.InsertDelivery(rowCtx, store.InsertDeliveryParams{
 		InvoiceID: inv.ID, Recipient: recipient, Subject: out.Subject, MessageID: out.MessageID,
 		PdfSha256: pdf.sha256, SentAt: s.deps.Clock(), SentByUserID: callerID(ctx),
 	}); err != nil {
@@ -232,17 +255,18 @@ func (s *server) PostInvoicesByIdSend(ctx context.Context, req gen.PostInvoicesB
 	}
 
 	// 9. The document, its deliveries now holding the row — read again when
-	// step 5 stored its PDF, so it says so.
+	// step 5 stored its PDF, so it says so. Uncancellable as well: a caller
+	// who went away is owed no error for a send that succeeded.
 	if pdf.body != nil && inv.PdfSha256 == nil {
-		if inv, err = q.GetInvoice(ctx, inv.ID); err != nil {
+		if inv, err = q.GetInvoice(uncancelled, inv.ID); err != nil {
 			return nil, fmt.Errorf("invoices: re-read document %d: %w", req.Id, err)
 		}
 	}
-	resp, err := s.invoiceResponse(ctx, q, inv, nil)
+	resp, err := s.invoiceResponse(uncancelled, q, inv, nil)
 	if err != nil {
 		return nil, err
 	}
-	s.withSendDefaults(ctx, inv, profile, &resp)
+	s.withSendDefaults(uncancelled, inv, profile, &resp)
 	return gen.PostInvoicesByIdSend200JSONResponse(resp), nil
 }
 

@@ -83,7 +83,7 @@ func parsePayment(req gen.InvoicesPaymentRequest, issueDate, today time.Time) (s
 
 // openOf is what is open on an issued invoice — gross less what its issued
 // credit notes credit and what its live payments paid — read with q, which
-// holds the invoice's lock.
+// holds the invoice's lock, or a plain read.
 func openOf(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice) (*big.Rat, error) {
 	_, left, err := uncredited(ctx, q, inv)
 	if err != nil {
