@@ -85,3 +85,13 @@ var DocumentState = documentState
 // InvoiceStates is the five states an issued invoice can be in, the ones the
 // list filters by.
 var InvoiceStates = invoiceStates
+
+// SetBeforeDeliveryWrite installs a hook a send calls right before it writes
+// its delivery row — after the mail went, on the send's own uncancellable
+// context — and answers the function that removes it. A race test holds the
+// send there while an erase runs. A test using it does not run in parallel:
+// the hook is the package's.
+func SetBeforeDeliveryWrite(hook func(ctx context.Context, invoiceID int64)) func() {
+	beforeDeliveryWrite = hook
+	return func() { beforeDeliveryWrite = nil }
+}

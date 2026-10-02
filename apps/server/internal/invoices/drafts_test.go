@@ -111,11 +111,13 @@ type invoiceJSON struct {
 		Number    int64  `json:"number"`
 		IssueDate string `json:"issueDate"`
 	} `json:"credits"`
-	State      string        `json:"state"`
-	PaidAmount *float64      `json:"paidAmount"`
-	OpenAmount *float64      `json:"openAmount"`
-	RefundDue  *float64      `json:"refundDue"`
-	Payments   []paymentJSON `json:"payments"`
+	State        string            `json:"state"`
+	PaidAmount   *float64          `json:"paidAmount"`
+	OpenAmount   *float64          `json:"openAmount"`
+	RefundDue    *float64          `json:"refundDue"`
+	Payments     []paymentJSON     `json:"payments"`
+	Deliveries   []deliveryJSON    `json:"deliveries"`
+	SendDefaults *sendDefaultsJSON `json:"sendDefaults"`
 }
 
 // line is one request line on code vatCodeID.

@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 )
 
@@ -227,18 +226,18 @@ func TestRenderPDF_IsReproducible(t *testing.T) {
 
 const pinnedRenderSHA256 = "d1e3dada3c358bf3fd4b8d2d2704a1c15a908ab0ddb36fc0a3646191b6d1a868"
 
-// A download whose store-once path fails answers a 503 only for the object
-// store's failure: a document that cannot be rendered, or a database that
-// fails, is a 500 — retrying does not mend it.
+// A download or a send whose store-once path fails answers a 503 only for
+// the object store's failure: a document that cannot be rendered, or a
+// database that fails, is a 500 — retrying does not mend it.
 func TestStoreOnceFailed_OnlyTheObjectStoreIsA503(t *testing.T) {
 	t.Parallel()
-	res, err := storeOnceFailed(fmt.Errorf("%w: %w", errObjectStore, errors.New("disk full")))
-	if _, ok := res.(gen.GetInvoicesByIdPdf503ApplicationProblemPlusJSONResponse); !ok || err != nil {
-		t.Errorf("an object-store failure = %T, %v; want the 503", res, err)
+	p := storeOnceFailed(fmt.Errorf("%w: %w", errObjectStore, errors.New("disk full")))
+	if p.unavailable == nil || p.unavailable.Code == nil || *p.unavailable.Code != codeStorageUnavailable || p.err != nil {
+		t.Errorf("an object-store failure = %+v; want the 503", p)
 	}
 	render := fmt.Errorf("invoices: render document 7: %w", errors.New("font"))
-	if res, err := storeOnceFailed(render); res != nil || !errors.Is(err, render) {
-		t.Errorf("a render failure = %T, %v; want the error, which the server answers with a 500", res, err)
+	if p := storeOnceFailed(render); p.unavailable != nil || p.broken || !errors.Is(p.err, render) {
+		t.Errorf("a render failure = %+v; want the error, which the server answers with a 500", p)
 	}
 }
 

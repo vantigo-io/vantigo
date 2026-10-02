@@ -15,11 +15,13 @@ package invoices
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/module"
+	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 )
 
 // permissions is the module's catalog (D1). Every operation requires
@@ -59,6 +61,15 @@ var permissions = []contracts.Permission{
 	},
 }
 
+// limits maps each rate-limited operationId to its policy; the router hits
+// it per client address before access is checked. A send takes an arbitrary
+// recipient, which makes the endpoint an authenticated relay through the
+// installation's SMTP server: 60 sends per client per 10 minutes (payments
+// and delivery design D4).
+var limits = map[string]ratelimit.Policy{
+	"postInvoicesByIdSend": {Name: "invoices-send", Limit: 60, Window: 10 * time.Minute},
+}
+
 // Module is invoices as a platform module: its contract mounted under
 // /api/v1/invoices/, its five permissions in the composed catalog, and the two
 // slots every module holding customer ids fills (customer_slots.go): the merge
@@ -88,6 +99,7 @@ func mount(d module.Deps) (http.Handler, error) {
 		Doc:     d.Doc,
 		Access:  d.Access,
 		Limiter: d.Limiter,
+		Limits:  limits,
 		Catalog: d.Catalog,
 	})
 	srv, err := newServer(d)

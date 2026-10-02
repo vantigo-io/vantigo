@@ -133,6 +133,8 @@ export const issued = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocumen
     paidAmount: 0,
     openAmount: 124.99,
     payments: [],
+    deliveries: [],
+    sendDefaults: { recipient: "faktura@acme.no", warnings: ["buyer_norwegian_business"] },
     revision: 4,
     ...overrides,
   };

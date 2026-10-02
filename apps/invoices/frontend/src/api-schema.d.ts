@@ -302,6 +302,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/{id}/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send an issued document by e-mail
+         * @description Sends an issued document's stored PDF by e-mail (D4), in this order: 503 mail_unavailable when the installation's mail driver is not smtp, judged before anything is read; 404; 409 invoice_draft; 409 customer_anonymised when this module has anonymised the customer; the recipient — the override, else the customer's current invoice e-mail, read from the directory outside any lock (409 no_invoice_email when there is none); the stored PDF, stored first when it never was and otherwise verified against its hash (503 storage_unavailable, 500 when the stored object is gone or altered); then one plain-text mail in the buyer's language from the installation's address under the seller snapshot's name, Reply-To the current settings' e-mail, the PDF attached under the download's name. The send and its log row run on a context the request's cancellation does not reach, bounded at 30 seconds. A failed send is 502 mail_failed and records nothing; a sent one is logged once, and sending again is logged again. Rate limited to 60 per client per 10 minutes. The response is the document with its deliveries and sendDefaults.
+         */
+        post: operations["postInvoicesByIdSend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/journal": {
         parameters: {
             query?: never;
@@ -570,6 +590,17 @@ export interface components {
             /** Format: int64 */
             number: number;
         };
+        /** @description One e-mail that handed an issued document over (payments and delivery design D4), logged once the mail server took it. recipient is the address it went to — empty once the customer has been anonymised (D6); subject is as sent. */
+        InvoicesDelivery: {
+            /** Format: int64 */
+            id: number;
+            recipient: string;
+            /** Format: date-time */
+            sentAt: string;
+            /** Format: uuid */
+            sentByUserId: string;
+            subject: string;
+        };
         /** @description The place of delivery (§ 5-1-1 nr. 4), when it is not the buyer's address. line1, city and country are required; country is ISO 3166-1 alpha-2. */
         InvoicesDeliveryAddress: {
             city: string;
@@ -632,7 +663,7 @@ export interface components {
             revision?: number;
             yourReference?: string;
         };
-        /** @description One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. */
+        /** @description One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. Every issued document carries deliveries (D4); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send. */
         InvoicesInvoiceResponse: {
             allowedIssueDates?: string[];
             buyer?: components["schemas"]["InvoicesBuyer"];
@@ -646,6 +677,8 @@ export interface components {
             /** Format: int32 */
             customerId: number;
             customerName?: string;
+            /** @description On an issued document, every e-mail that handed it over, the first first (D4). */
+            deliveries?: components["schemas"]["InvoicesDelivery"][];
             deliveryAddress?: components["schemas"]["InvoicesDeliveryAddress"];
             /** Format: date */
             deliveryDate?: string;
@@ -704,6 +737,7 @@ export interface components {
             /** Format: int32 */
             revision: number;
             seller?: components["schemas"]["InvoicesSeller"];
+            sendDefaults?: components["schemas"]["InvoicesSendDefaults"];
             /** @description The derived state, judged against today in Oslo (D3), the first match winning: draft (a draft); issued (an issued credit note); credited (an issued invoice its issued credit notes cover, credited > 0 and credited ≥ gross); paid (nothing left open); overdue (past its due date); partially_paid (something paid); open (otherwise). */
             state: string;
             /** @description draft or issued. */
@@ -801,6 +835,16 @@ export interface components {
             /** Format: date */
             paidOn: string;
             reference?: string;
+        };
+        /** @description What the Send dialog opens with (D4), on an issued document's GET and on the send's own response only, and only for a caller who may send (invoices:issue on an installation whose mail driver is smtp). recipient is the customer's current invoice e-mail, absent when it has none; preference is the billing profile's invoice delivery (email, ehf, efaktura or paper), absent when unset. warnings are the send's, never refusals: delivery_preference_ehf (the customer expects EHF; an e-mailed PDF does not meet the e-invoicing duty), delivery_preference_other (the customer prefers efaktura or paper), buyer_norwegian_business (the buyer snapshot has a Norwegian organisation number: from 2027-01-01 a Norwegian business must receive an e-invoice). Absent when the directory could not be read. */
+        InvoicesSendDefaults: {
+            preference?: string;
+            recipient?: string;
+            warnings: string[];
+        };
+        /** @description POST /invoices/{id}/send's body (D4). recipient overrides the customer's current invoice e-mail: a bare address that parses to itself, at most 254 characters once trimmed (so "Name <a@b>" is refused). Absent, the invoice e-mail is used. */
+        InvoicesSendRequest: {
+            recipient?: string;
         };
         /** @description The seller snapshot (D4), copied from the settings at issue. */
         InvoicesSeller: {
@@ -2079,6 +2123,112 @@ export interface operations {
             };
             /** @description Conflict — payment_removed (the registration is already removed). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesByIdSend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesSendRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the document, sent, with the send logged in deliveries and the send warnings in sendDefaults.warnings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesInvoiceResponse"];
+                };
+            };
+            /** @description Bad Request — recipient is not a bare e-mail address. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — invoice_draft, customer_anonymised (this module has anonymised the customer) or no_invoice_email (no override and no invoice e-mail in the directory). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error — the stored object is gone, or its bytes no longer match the hash; or the mail went and its log row could not be written, which the operator is told of. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Bad Gateway — mail_failed, the mail server did not take the mail; nothing is recorded. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Service Unavailable — mail_unavailable, the installation cannot send mail; or storage_unavailable, the object store is not configured or could not be reached. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

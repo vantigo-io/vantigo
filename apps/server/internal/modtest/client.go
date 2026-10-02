@@ -2,6 +2,7 @@ package modtest
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -76,6 +77,7 @@ type request struct {
 	header      http.Header
 	contentType string
 	body        []byte
+	ctx         context.Context
 }
 
 // Header sets a request header.
@@ -93,6 +95,14 @@ func SkipContract(reason string) RequestOption {
 // RawBody sends b as the body, with content type ct, instead of JSON.
 func RawBody(ct string, b []byte) RequestOption {
 	return func(r *request) { r.contentType, r.body = ct, b }
+}
+
+// Context sends the request on ctx, so a test can cancel it mid-flight as a
+// browser that goes away does. A request whose ctx ends before it is
+// answered answers a Response with Status 0 and no body rather than failing
+// the test: the cancellation is the test's own doing.
+func Context(ctx context.Context) RequestOption {
+	return func(r *request) { r.ctx = ctx }
 }
 
 // Do sends one request to path (server-absolute, base path included) and
@@ -115,7 +125,11 @@ func (c *Client) Do(method, path string, body any, opts ...RequestOption) *Respo
 	if r.body != nil {
 		reader = bytes.NewReader(r.body)
 	}
-	req, err := http.NewRequest(method, c.h.url+path, reader)
+	ctx := r.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.h.url+path, reader)
 	if err != nil {
 		c.t.Fatalf("%s %s: %v", method, path, err)
 	}
@@ -128,11 +142,17 @@ func (c *Client) Do(method, path string, body any, opts ...RequestOption) *Respo
 	}
 
 	res, err := c.http.Do(req)
+	if err != nil && r.ctx != nil && r.ctx.Err() != nil {
+		return &Response{t: c.t, headers: http.Header{}}
+	}
 	if err != nil {
 		c.t.Fatalf("%s %s: %v", method, path, err)
 	}
 	defer func() { _ = res.Body.Close() }()
 	b, err := io.ReadAll(res.Body)
+	if err != nil && r.ctx != nil && r.ctx.Err() != nil {
+		return &Response{t: c.t, headers: http.Header{}}
+	}
 	if err != nil {
 		c.t.Fatalf("%s %s: read body: %v", method, path, err)
 	}

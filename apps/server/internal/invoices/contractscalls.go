@@ -4,17 +4,20 @@ import (
 	"context"
 	"io"
 
+	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/mail"
 )
 
 // This file is the whole of this module's reach outside its own schema: the
-// customer directory (deps.Directory) and the object store (server.objects).
+// customer directory (deps.Directory), the object store (server.objects) and
+// the SMTP seam (deps.SMTPSend).
 // Every call is made through one of the thin accessors below and through
 // nowhere else, so "what does Invoices ask of its neighbours, and when" has one
 // place to read the answer and one place to check it from.
 //
-// What is checked is the rule of D6 and D7: no directory call and no
-// object-store call is ever made inside a transaction holding locks
+// What is checked is the rule of D6 and D7: no directory call, no
+// object-store call and no send is ever made inside a transaction holding locks
 // (withLockedTx). The directory reads through the same connection pool, and a
 // slow store under a row lock is the same hazard by another route.
 // noteContractCall pins the rule on every path, at a production cost of one nil
@@ -63,4 +66,15 @@ func (s *server) objectGet(ctx context.Context, key string) (io.ReadCloser, erro
 func (s *server) objectExists(ctx context.Context, key string) (bool, error) {
 	noteContractCall(ctx, "ObjectStore.Exists")
 	return s.objects.Exists(ctx, key)
+}
+
+// smtpSend hands one mail to the installation's SMTP server (payments and
+// delivery design D4): Deps.SMTPSend when a harness set one, otherwise
+// mail.SendOutbound, the platform's guarded path.
+func (s *server) smtpSend(ctx context.Context, cfg config.MailConfig, out mail.Outbound) error {
+	noteContractCall(ctx, "SMTPSend")
+	if s.deps.SMTPSend != nil {
+		return s.deps.SMTPSend(ctx, cfg, out)
+	}
+	return mail.SendOutbound(ctx, cfg, out)
 }
