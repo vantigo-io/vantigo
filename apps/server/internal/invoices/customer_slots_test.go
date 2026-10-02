@@ -314,22 +314,30 @@ func TestCustomerPersonalData_ExportCarriesPaymentsAndDeliveries(t *testing.T) {
 }
 
 // The erase (D6) locks the person's documents, writes the marker, blanks
-// every one of their deliveries' recipients and deletes their drafts,
-// reporting the four kinds in order; the payments — a bank reference naming
-// the payer included — are looked at and kept, reported at 0. Another
-// customer's deliveries keep their address. Run twice it finds nothing, and
-// the marker keeps its first time. With the module disabled: the pool and
-// the clock are all it needs.
+// every one of their deliveries' recipients and every one of their payments'
+// notes — live and removed — and deletes their drafts, reporting the four
+// kinds in order, invoices.payments as the notes blanked; the payments are
+// kept otherwise, a bank reference naming the payer included. Another
+// customer's deliveries keep their address and its payments their note. Run
+// twice it finds nothing, and the marker keeps its first time. With the
+// module disabled: the pool and the clock are all it needs.
 func TestCustomerPersonalData_EraseBlanksDeliveriesAndReportsFourKinds(t *testing.T) {
 	t.Parallel()
 	h, _ := sendReady(t)
 	doc := issued(t, h, createDraft(t, h, draftBody(customerPerson, line("Konsultasjon", 1, 1000, vat25))).ID)
 	createDraft(t, h, draftBody(customerPerson, line("Utkast", 1, 100, vat25)))
 	registered(t, h, doc.ID, map[string]any{"amount": 300, "paidOn": "2026-09-12", "reference": "Fra Kari Nordmann", "note": "Ringte"})
+	registered(t, h, doc.ID, map[string]any{"amount": 100, "paidOn": "2026-09-12"})
+	removed := registered(t, h, doc.ID, map[string]any{"amount": 50, "paidOn": "2026-09-12", "note": "Kari sa det var feil"}).Payments
+	removedID := removed[len(removed)-1].ID
+	if res := payer(t, h).Do(http.MethodPost, removalPath(doc.ID, removedID), map[string]any{"reason": "Feil beløp"}); res.Status != http.StatusOK {
+		t.Fatalf("remove payment %d = %d %s", removedID, res.Status, res.Body)
+	}
 	sent(t, h, doc.ID, nil)
 	sent(t, h, doc.ID, map[string]any{"recipient": "kari.privat@example.org"})
 	acme := issuedAcme(t, h)
 	sent(t, h, acme.ID, nil)
+	registered(t, h, acme.ID, map[string]any{"amount": 100, "paidOn": "2026-09-12", "note": "Acme ringte"})
 	data := invoices.Module().CustomerPersonalData(disabledDeps(h))
 	h.Advance(time.Hour)
 	erasedAt := h.Now()
@@ -346,7 +354,7 @@ func TestCustomerPersonalData_EraseBlanksDeliveriesAndReportsFourKinds(t *testin
 
 	if got, want := erase(), []contracts.ErasedData{
 		{Kind: "invoices.drafts", Count: 1}, {Kind: "invoices.documents", Count: 0},
-		{Kind: "invoices.payments", Count: 0}, {Kind: "invoices.deliveries", Count: 2},
+		{Kind: "invoices.payments", Count: 2}, {Kind: "invoices.deliveries", Count: 2},
 	}; !slices.Equal(got, want) {
 		t.Errorf("erased = %+v, want %+v", got, want)
 	}
@@ -359,9 +367,13 @@ func TestCustomerPersonalData_EraseBlanksDeliveriesAndReportsFourKinds(t *testin
 	if got := modtest.One[string](t, h.Harness, `SELECT recipient FROM invoices.deliveries WHERE invoice_id = $1`, acme.ID); got != "faktura@acme.example" {
 		t.Errorf("another customer's delivery = %q, want its address kept", got)
 	}
-	payment := `SELECT reference || '|' || note || '|' || amount::text || '|' || (removed_at IS NULL)::text FROM invoices.payments WHERE invoice_id = $1`
-	if got := modtest.One[string](t, h.Harness, payment, doc.ID); got != "Fra Kari Nordmann|Ringte|300.00|true" {
-		t.Errorf("the payment = %s, want it kept as registered", got)
+	payments := `SELECT string_agg(reference || '|' || note || '|' || amount::text || '|' || (removed_at IS NULL)::text, ' ' ORDER BY id)
+		FROM invoices.payments WHERE invoice_id = $1`
+	if got := modtest.One[string](t, h.Harness, payments, doc.ID); got != "Fra Kari Nordmann||300.00|true ||100.00|true ||50.00|false" {
+		t.Errorf("the payments = %s, want all three kept, the bank's reference too, with the notes gone", got)
+	}
+	if got := modtest.One[string](t, h.Harness, payments, acme.ID); got != "|Acme ringte|100.00|true" {
+		t.Errorf("another customer's payment = %s, want its note kept", got)
 	}
 	marker := `SELECT erased_at FROM invoices.erased_customers WHERE customer_id = $1`
 	if at := modtest.One[time.Time](t, h.Harness, marker, customerPerson); !at.Equal(erasedAt) {

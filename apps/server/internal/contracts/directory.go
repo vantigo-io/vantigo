@@ -57,6 +57,10 @@ type ContactMatch struct {
 // CustomerBillingProfile.InvoiceAddress: enough to print on a document,
 // never the address's own id or type — the profile has already picked which
 // one applies, and a consumer never needs to ask the directory for another.
+//
+// Country is an ISO 3166-1 alpha-2 code in lower case, as customers stores
+// it; a consumer compares it case-insensitively and prints it in whatever
+// case its own format wants.
 type CustomerAddressEntry struct {
 	Label, Line1, Line2, PostalCode, City, Region, Country string
 }
@@ -82,8 +86,11 @@ type CustomerBillingProfile struct {
 	// MergedInto is the customer this one was merged into, nil unless it was
 	// merged away — the same answer CustomerEntry.MergedInto gives, so a
 	// consumer holding a stale id learns where its references went.
-	MergedInto   *int32
-	LegalCountry string // "" when the customer has no legal identity
+	MergedInto *int32
+	// LegalCountry is the legal identity's ISO 3166-1 alpha-2 code in lower
+	// case, as customers stores it — compared case-insensitively by a
+	// consumer — and "" when the customer has no legal identity.
+	LegalCountry string
 	LegalID      string
 	LegalName    string
 	// InvoiceAddress is the resolved invoice address (D3's rule: primary

@@ -158,6 +158,7 @@ type invoiceDoc struct {
 	Payments []struct {
 		ID     int64   `json:"id"`
 		Amount float64 `json:"amount"`
+		Note   string  `json:"note"`
 	} `json:"payments"`
 	Deliveries []struct {
 		Recipient *string `json:"recipient"`
@@ -406,8 +407,9 @@ func TestInvoices_ASendReachesTheProfilesAddressWithTheSellersReplyTo(t *testing
 // with its payment and its delivery, and the draft; then the anonymisation
 // worker, built by module.Workers with invoices among the modules exactly as
 // worker mode builds it, run once: the drafts are deleted, the document is
-// kept, its delivery's recipient is blanked, customer.anonymised lists the
-// invoices module's four kinds, and a send afterwards is refused.
+// kept, its delivery's recipient and its payment's note are blanked,
+// customer.anonymised lists the invoices module's four kinds, and a send
+// afterwards is refused.
 func TestInvoices_TheExportAndTheAnonymisation(t *testing.T) {
 	t.Parallel()
 	h, admin, _ := invoicesInstallation(t)
@@ -416,7 +418,7 @@ func TestInvoices_TheExportAndTheAnonymisation(t *testing.T) {
 	invoiceAddress(t, admin, person.Id)
 	billingProfile(t, admin, person.Id, map[string]any{"invoiceEmail": "kari@example.org"})
 	doc := issueDoc(t, admin, newDraft(t, admin, person.Id).ID)
-	okJSON(t, admin, http.MethodPost, invoiceAt(doc.ID)+"/payments", map[string]any{"amount": 500, "paidOn": "2026-09-12"}, nil)
+	okJSON(t, admin, http.MethodPost, invoiceAt(doc.ID)+"/payments", map[string]any{"amount": 500, "paidOn": "2026-09-12", "note": "Kari ringte"}, nil)
 	okJSON(t, admin, http.MethodPost, invoiceAt(doc.ID)+"/send", map[string]any{}, nil)
 	draft := newDraft(t, admin, person.Id)
 
@@ -429,6 +431,7 @@ func TestInvoices_TheExportAndTheAnonymisation(t *testing.T) {
 			Number   *int64 `json:"number"`
 			Payments []struct {
 				Amount string `json:"amount"`
+				Note   string `json:"note"`
 			} `json:"payments"`
 			Deliveries []struct {
 				Recipient string `json:"recipient"`
@@ -443,9 +446,10 @@ func TestInvoices_TheExportAndTheAnonymisation(t *testing.T) {
 	}
 	if len(section.Documents) != 1 || section.Documents[0].Number == nil || *section.Documents[0].Number != *doc.Number ||
 		len(section.Documents[0].Payments) != 1 || section.Documents[0].Payments[0].Amount != "500.00" ||
+		section.Documents[0].Payments[0].Note != "Kari ringte" ||
 		len(section.Documents[0].Deliveries) != 1 || section.Documents[0].Deliveries[0].Recipient != "kari@example.org" ||
 		len(section.Drafts) != 1 {
-		t.Errorf("modules.invoices = %s, want document %d with its 500.00 payment and its delivery to kari@example.org, and the draft",
+		t.Errorf("modules.invoices = %s, want document %d with its 500.00 payment and its note, its delivery to kari@example.org, and the draft",
 			file.Modules["invoices"], *doc.Number)
 	}
 
@@ -471,9 +475,9 @@ func TestInvoices_TheExportAndTheAnonymisation(t *testing.T) {
 		t.Errorf("the draft after the anonymisation = %d %s, want 404: erased", r.Status, r.Body)
 	}
 	kept := readDoc(t, admin, doc.ID)
-	if kept.Status != "issued" || len(kept.Payments) != 1 || len(kept.Deliveries) != 1 ||
-		str(kept.Deliveries[0].Recipient) != "" || kept.Deliveries[0].Subject == "" {
-		t.Errorf("the document after the anonymisation = %s, payments %+v, deliveries %+v; want it kept, its delivery's address blanked",
+	if kept.Status != "issued" || len(kept.Payments) != 1 || kept.Payments[0].Note != "" || kept.Payments[0].Amount != 500 ||
+		len(kept.Deliveries) != 1 || str(kept.Deliveries[0].Recipient) != "" || kept.Deliveries[0].Subject == "" {
+		t.Errorf("the document after the anonymisation = %s, payments %+v, deliveries %+v; want it kept, its payment's note and its delivery's address blanked",
 			kept.Status, kept.Payments, kept.Deliveries)
 	}
 
@@ -489,7 +493,7 @@ func TestInvoices_TheExportAndTheAnonymisation(t *testing.T) {
 	}
 	if want := []kindCount{
 		{Kind: "invoices.drafts", Count: 1}, {Kind: "invoices.documents", Count: 0},
-		{Kind: "invoices.payments", Count: 0}, {Kind: "invoices.deliveries", Count: 1},
+		{Kind: "invoices.payments", Count: 1}, {Kind: "invoices.deliveries", Count: 1},
 	}; !slices.Equal(ofInvoices, want) {
 		t.Errorf("customer.anonymised's erased = %+v, want the invoices module's %+v", event.Erased, want)
 	}

@@ -223,18 +223,21 @@ func settle(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, to
 // caller already read for an invoice draft (for its current name and the
 // currency warning), nil otherwise; this function reads no directory itself.
 func (s *server) invoiceResponse(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, profile *contracts.CustomerBillingProfile) (gen.InvoicesInvoiceResponse, error) {
-	return s.renderInvoice(ctx, q, inv, profile, nil)
+	return s.renderInvoice(ctx, q, inv, profile, nil, nil)
 }
 
 // creditDraftResponse renders a credit-note draft with the credit book its
 // caller has read already, so a save reads its original's once.
 func (s *server) creditDraftResponse(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, book *creditBook) (gen.InvoicesInvoiceResponse, error) {
-	return s.renderInvoice(ctx, q, inv, nil, book)
+	return s.renderInvoice(ctx, q, inv, nil, book, nil)
 }
 
 // renderInvoice is invoiceResponse, with book the credit book of a credit
-// note's original when the caller has it, nil otherwise.
-func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, profile *contracts.CustomerBillingProfile, book *creditBook) (gen.InvoicesInvoiceResponse, error) {
+// note's original when the caller has it, nil otherwise, and canIssue whether
+// the caller holds invoices:issue when the handler has asked already — the
+// GET and the send ask once for the response and its sendDefaults — nil to
+// ask here, and only when there is a send to show.
+func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, profile *contracts.CustomerBillingProfile, book *creditBook, canIssue *bool) (gen.InvoicesInvoiceResponse, error) {
 	stored, err := q.Lines(ctx, inv.ID)
 	if err != nil {
 		return gen.InvoicesInvoiceResponse{}, fmt.Errorf("invoices: read document %d's lines: %w", inv.ID, err)
@@ -316,8 +319,14 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 		// The address a send went to is the customer's personal data and
 		// sits behind invoices:issue, as sendDefaults does (D4): a reader sees
 		// when each send happened and its subject, not the address. Asked
-		// only when there is a send to show.
-		showRecipient := len(sends) > 0 && s.has(ctx, "invoices:issue")
+		// only when there is a send to show, unless the handler has asked.
+		showRecipient := false
+		switch {
+		case canIssue != nil:
+			showRecipient = *canIssue
+		case len(sends) > 0:
+			showRecipient = s.has(ctx, "invoices:issue")
+		}
 		deliveries := make([]gen.InvoicesDelivery, 0, len(sends))
 		for _, d := range sends {
 			delivery := gen.InvoicesDelivery{Id: d.ID, Subject: d.Subject, SentAt: d.SentAt, SentByUserId: d.SentByUserID}

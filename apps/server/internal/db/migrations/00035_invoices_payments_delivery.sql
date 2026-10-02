@@ -55,10 +55,13 @@ CREATE TABLE invoices.erased_customers (
     erased_at   timestamptz NOT NULL
 );
 
--- A payment registration is refused a DELETE, and every UPDATE but the
--- removal: removed_at going from NULL to a value, with the whole row as jsonb
--- less the three removal columns unchanged — the 00034
--- refuse_issued_document_change shape, so a column added later is covered.
+-- A payment registration is refused a DELETE, and every UPDATE but two
+-- writes, which one statement may make together: the removal — removed_at
+-- going from NULL to a value — and the anonymisation's blanking of the note
+-- (D6), note going to ''. Whatever else the row holds, as jsonb less the
+-- three removal columns and the note, never changes — the 00034
+-- refuse_issued_document_change shape, so a column added later is covered;
+-- the removal columns change only in the removal, and the note only to ''.
 -- The CHECK ck_payments_removal holds the three together.
 -- +goose StatementBegin
 CREATE FUNCTION invoices.refuse_payment_change()
@@ -67,9 +70,13 @@ BEGIN
     IF TG_OP = 'DELETE' THEN
         RAISE EXCEPTION 'invoices: a payment registration is immutable' USING ERRCODE = 'P0001';
     END IF;
-    IF OLD.removed_at IS NULL AND NEW.removed_at IS NOT NULL
-       AND (to_jsonb(OLD) - 'removed_at' - 'removed_by_user_id' - 'removal_reason')
-           = (to_jsonb(NEW) - 'removed_at' - 'removed_by_user_id' - 'removal_reason') THEN
+    IF (to_jsonb(OLD) - 'removed_at' - 'removed_by_user_id' - 'removal_reason' - 'note')
+           = (to_jsonb(NEW) - 'removed_at' - 'removed_by_user_id' - 'removal_reason' - 'note')
+       AND (NEW.note = OLD.note OR NEW.note = '')
+       AND ((OLD.removed_at IS NULL AND NEW.removed_at IS NOT NULL)
+            OR (NEW.note = ''
+                AND (OLD.removed_at, OLD.removed_by_user_id, OLD.removal_reason)
+                    IS NOT DISTINCT FROM (NEW.removed_at, NEW.removed_by_user_id, NEW.removal_reason))) THEN
         RETURN NEW;
     END IF;
     RAISE EXCEPTION 'invoices: a payment registration is immutable' USING ERRCODE = 'P0001';

@@ -52,7 +52,10 @@ var b2bDutyFrom = time.Date(2027, time.January, 1, 0, 0, 0, 0, time.UTC)
 const sendTimeout = 30 * time.Second
 
 // deliveryRowTimeout bounds the delivery row, on a context of its own: a send
-// the server accepted at the 29th second must still be logged.
+// the server accepted at the 29th second must still be logged. It includes
+// the insert trigger's FOR SHARE wait on the document behind an erase that
+// holds it (D6). The response after the row is rendered on a timeout of the
+// same length.
 const deliveryRowTimeout = 5 * time.Second
 
 // messageIDDomain is the right-hand side of every Message-ID this module
@@ -108,21 +111,31 @@ func validRecipient(s string) (string, bool) {
 }
 
 // withSendDefaults sets resp.SendDefaults for a caller who may send (D4):
-// invoices:issue on an installation that can send, on an issued document
-// only. profile is the billing profile when the caller has read it already,
-// nil to read it here. The read is best effort: a directory that fails
-// leaves sendDefaults out and says so at warn, never failing a read of
-// bookkeeping material.
-func (s *server) withSendDefaults(ctx context.Context, inv store.InvoicesInvoice, profile *contracts.CustomerBillingProfile, resp *gen.InvoicesInvoiceResponse) {
-	if inv.Status != statusIssued || !s.mailAvailable() || !s.has(ctx, "invoices:issue") {
-		return
+// canIssue — invoices:issue, which the handler asked once for the whole
+// response — on an installation that can send, on an issued document only,
+// and never for a customer this module has anonymised: a send to one is
+// refused, so there is nothing to open the dialog with. profile is the
+// billing profile when the caller has read it already, nil to read it here.
+// The directory read is best effort: a directory that fails leaves
+// sendDefaults out and says so at warn, never failing a read of bookkeeping
+// material.
+func (s *server) withSendDefaults(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, profile *contracts.CustomerBillingProfile, canIssue bool, resp *gen.InvoicesInvoiceResponse) error {
+	if inv.Status != statusIssued || !s.mailAvailable() || !canIssue {
+		return nil
+	}
+	erased, err := q.CustomerErased(ctx, inv.CustomerID)
+	if err != nil {
+		return fmt.Errorf("invoices: read whether customer %d was erased: %w", inv.CustomerID, err)
+	}
+	if erased {
+		return nil
 	}
 	if profile == nil {
 		var err error
 		if profile, err = s.customerProfile(ctx, inv.CustomerID); err != nil {
 			s.deps.Logger.WarnContext(ctx, "invoices: the billing profile could not be read; the document is answered without its send defaults",
 				"invoice_id", inv.ID, "customer_id", inv.CustomerID, "error", err.Error())
-			return
+			return nil
 		}
 	}
 	today := businessDay(s.deps.Clock())
@@ -134,13 +147,14 @@ func (s *server) withSendDefaults(ctx context.Context, inv store.InvoicesInvoice
 		defaults.Preference = ptr(profile.InvoiceDelivery)
 	}
 	resp.SendDefaults = &defaults
+	return nil
 }
 
 // mailFailed is the 502 a send answers when the mail server did not take the
 // mail, and mailUnavailable the 503 of an installation that cannot send.
 func mailFailed() gen.InvoicesConflictProblem {
 	c := conflict(codeMailFailed, "The e-mail could not be sent",
-		"The mail server did not accept the e-mail. Nothing was recorded; try again.")
+		"The mail server did not confirm the e-mail. Nothing was recorded. It may still have been delivered if the server timed out; check before sending again.")
 	c.Status = ptr(int32(http.StatusBadGateway))
 	return c
 }
@@ -249,24 +263,36 @@ func (s *server) PostInvoicesByIdSend(ctx context.Context, req gen.PostInvoicesB
 		InvoiceID: inv.ID, Recipient: recipient, Subject: out.Subject, MessageID: out.MessageID,
 		PdfSha256: pdf.sha256, SentAt: s.deps.Clock(), SentByUserID: callerID(ctx),
 	}); err != nil {
+		// The document id only, never the address: it may be a person's
+		// whom an erase is anonymising at this very moment.
 		s.deps.Logger.ErrorContext(ctx, "invoices: a document was sent but its delivery could not be logged",
-			"invoice_id", inv.ID, "recipient", recipient, "error", err.Error())
+			"invoice_id", inv.ID, "error", err.Error())
 		return nil, fmt.Errorf("invoices: log the send of document %d: %w", inv.ID, err)
 	}
 
 	// 9. The document, its deliveries now holding the row — read again when
-	// step 5 stored its PDF, so it says so. Uncancellable as well: a caller
-	// who went away is owed no error for a send that succeeded.
+	// step 5 stored its PDF, so it says so. Uncancellable as well, and on a
+	// short timeout of its own, so the re-read, the render and the
+	// best-effort directory read are bounded: a caller who went away is owed
+	// no error for a send that succeeded.
+	renderCtx, cancelRender := context.WithTimeout(uncancelled, deliveryRowTimeout)
+	defer cancelRender()
 	if pdf.body != nil && inv.PdfSha256 == nil {
-		if inv, err = q.GetInvoice(uncancelled, inv.ID); err != nil {
+		if inv, err = q.GetInvoice(renderCtx, inv.ID); err != nil {
 			return nil, fmt.Errorf("invoices: re-read document %d: %w", req.Id, err)
 		}
 	}
-	resp, err := s.invoiceResponse(uncancelled, q, inv, nil)
+	// has() asks Access with the request itself, whose context a disconnect
+	// cancels: a caller who went away gets the response without sendDefaults
+	// and the deliveries' recipients — it fails closed, and nobody reads it.
+	canIssue := s.has(ctx, "invoices:issue")
+	resp, err := s.renderInvoice(renderCtx, q, inv, nil, nil, &canIssue)
 	if err != nil {
 		return nil, err
 	}
-	s.withSendDefaults(uncancelled, inv, profile, &resp)
+	if err := s.withSendDefaults(renderCtx, q, inv, profile, canIssue, &resp); err != nil {
+		return nil, err
+	}
 	return gen.PostInvoicesByIdSend200JSONResponse(resp), nil
 }
 

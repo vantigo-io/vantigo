@@ -2662,6 +2662,50 @@ func TestInvoicesPaymentsDelivery_AppliesAndIsIdempotent(t *testing.T) {
 		t.Errorf("removing a payment twice: %v, want P0001 %q", err, paymentImmutable)
 	}
 
+	// Its other write is the anonymisation's (D6): note to '', alone, on a
+	// live or a removed registration, or in the removal's own statement. A
+	// note is never otherwise changed, and its blanking changes nothing else.
+	const insertNoted = `
+		INSERT INTO invoices.payments (invoice_id, paid_on, amount, currency, note, registered_by_user_id, registered_at)
+		VALUES ($1, DATE '2026-09-20', 10, 'NOK', 'Ringte fra privaten', gen_random_uuid(), now()) RETURNING id`
+	var noted, removedNoted, removedAndBlanked int64
+	for _, id := range []*int64{&noted, &removedNoted, &removedAndBlanked} {
+		if err := pool.QueryRow(ctx, insertNoted, invoice).Scan(id); err != nil {
+			t.Fatalf("a payment with a note: %v", err)
+		}
+	}
+	for what, sql := range map[string]string{
+		"changing a payment's note":                  `UPDATE invoices.payments SET note = 'Endret' WHERE id = $1`,
+		"a blanking that also changes the amount":    `UPDATE invoices.payments SET note = '', amount = 20 WHERE id = $1`,
+		"a blanking that also changes the reference": `UPDATE invoices.payments SET note = '', reference = 'Kari Nordmann' WHERE id = $1`,
+	} {
+		if _, err := pool.Exec(ctx, sql, noted); !refusedWith(err, paymentImmutable) {
+			t.Errorf("%s: %v, want P0001 %q", what, err, paymentImmutable)
+		}
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.payments SET note = '' WHERE id = $1`, noted); err != nil {
+		t.Errorf("blanking a live payment's note: %v, want it allowed", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.payments SET note = 'Igjen' WHERE id = $1`, noted); !refusedWith(err, paymentImmutable) {
+		t.Errorf("writing a blanked note again: %v, want P0001 %q", err, paymentImmutable)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.payments SET removed_at = now(), removed_by_user_id = gen_random_uuid(), removal_reason = 'Feil' WHERE id = $1`, removedNoted); err != nil {
+		t.Fatalf("removing a payment with a note: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.payments SET note = '', removal_reason = 'Annen grunn' WHERE id = $1`, removedNoted); !refusedWith(err, paymentImmutable) {
+		t.Errorf("a blanking that also changes the removal: %v, want P0001 %q", err, paymentImmutable)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.payments SET note = '' WHERE id = $1`, removedNoted); err != nil {
+		t.Errorf("blanking a removed payment's note: %v, want it allowed", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.payments SET note = '', removed_at = now(), removed_by_user_id = gen_random_uuid(), removal_reason = 'Feil' WHERE id = $1`, removedAndBlanked); err != nil {
+		t.Errorf("a removal that blanks the note in the same statement: %v, want it allowed", err)
+	}
+	var notes int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM invoices.payments WHERE id = ANY($1) AND note = ''`, []int64{noted, removedNoted, removedAndBlanked}).Scan(&notes); err != nil || notes != 3 {
+		t.Errorf("%d of the three notes blanked (%v), want all three", notes, err)
+	}
+
 	const insertDelivery = `
 		INSERT INTO invoices.deliveries (invoice_id, recipient, subject, message_id, pdf_sha256, sent_at, sent_by_user_id)
 		VALUES ($1, 'kari@example.invalid', 'Faktura 1 fra Selger AS', 'a@vantigo.invalid', repeat('a', 64), now(), gen_random_uuid())

@@ -94,10 +94,12 @@ the financial year, as 1A reads it for the document; **UNCERTAIN** as 1A marks i
 not of payment registrations by name — so a row is never deleted and never edited: a
 trigger `tr_payments_immutable` (`invoices.refuse_payment_change()`, SQLSTATE `P0001`,
 "invoices: a payment registration is immutable") refuses every DELETE and every UPDATE
-but the one that sets `removed_at`, `removed_by_user_id` and `removal_reason` from NULL
-to values, once — the 1A `refuse_issued_document_change` shape (the whole row as jsonb
-less those three columns must be unchanged, and the three must have been NULL). A
-mistake is removed with a reason and registered again.
+but two writes, which one statement may make together: the removal, which sets
+`removed_at`, `removed_by_user_id` and `removal_reason` from NULL to values, once; and
+the anonymisation's blanking of `note` to `''` (D6; reading 10) — the 1A
+`refuse_issued_document_change` shape (the whole row as jsonb less those three columns
+and `note` must be unchanged; the three change only in the removal, from NULL; `note`
+changes only to `''`). A mistake is removed with a reason and registered again.
 
 **A payment belongs to an issued invoice.** A second trigger, `tr_payments_parent`
 (`invoices.refuse_payment_on_unissued()`), reads the document `FOR SHARE` on INSERT —
@@ -277,17 +279,19 @@ cheap. In order:
    accepted the data can mean the mail went with no row; `docs/invoices.md` says so.
 8. **The log**: one row in `invoices.deliveries`, written on an uncancellable context
    of its own with its **own short timeout** (five seconds), never the send's remaining
-   budget — a send the server accepted at the 29th second must still be logged. After
-   it, the response is rendered on an uncancellable context too, so a caller that
-   disconnected gets no error-level log for a send that succeeded. **The blanking of a recipient whose customer was erased meanwhile is the
+   budget — a send the server accepted at the 29th second must still be logged; the five
+   seconds include the insert trigger's `FOR SHARE` wait behind an erase. After it, the
+   response is rendered on an uncancellable context too, bounded by five seconds of its
+   own, so a caller that disconnected gets no error-level log for a send that succeeded. **The blanking of a recipient whose customer was erased meanwhile is the
    insert trigger's job, not the statement's** (`tr_deliveries_parent`, below): an
    anonymisation running between step 4 and here — committed, or still holding the
    customer's documents — must not leave the person's address in a row the erase has
    already run past, and only a check made *after* the trigger's lock wait sees the
    erase's marker (an `INSERT … SELECT CASE WHEN EXISTS (marker)` would read a
    snapshot taken before the wait and leak). A row that fails to write after a
-   successful send is logged at error with the document id and the recipient — the
-   mail went; the operator is told.
+   successful send is logged at error with the document id only — never the
+   recipient, which may be a person's whom an erase is anonymising at that moment —
+   the mail went; the operator is told.
 9. The document is answered, its `deliveries[]` now holding the row.
 
 Sending twice is allowed and logged twice: a re-send is a legitimate act. No
@@ -487,14 +491,18 @@ language, not a problem document opened in the browser.
   2. write the marker `invoices.erased_customers (customer_id integer PRIMARY KEY,
      erased_at timestamptz NOT NULL)`, `ON CONFLICT DO NOTHING`;
   3. blank every delivery's `recipient` (reported as `invoices.deliveries`, the count
-     blanked), delete the drafts (`invoices.drafts`), keep the documents
-     (`invoices.documents`, 0) and keep the payments (`invoices.payments`, 0 — looked at
-     and left alone, which the contract says to report).
+     blanked), then blank the `note` of every payment of the person's documents, live
+     and removed (reported as `invoices.payments`, the count of notes blanked — 0 when
+     none had one), delete the drafts (`invoices.drafts`) and keep the documents
+     (`invoices.documents`, 0).
 
   Payments are kept because they are bookkeeping material kept with the document, not
-  because they hold nothing personal: a `note` is staff free text and a bank
-  `reference` often names the payer. Deliveries are kept with the address gone: they
-  are the evidence of when the claim was sent. The reporting order is `invoices.drafts`,
+  because they hold nothing personal — their date, amount and the bank's `reference`
+  (which often names the payer) stay. Their `note` is staff free text about the person
+  that no retention rule needs, so it is blanked, as a delivery's address is (reading
+  10); the export is unchanged and carries the note while there is one. Deliveries are
+  kept with the address gone: they are the record of when the claim was handed to the
+  mail server. The reporting order is `invoices.drafts`,
   `invoices.documents`, `invoices.payments`, `invoices.deliveries`; the anonymisation
   table in `docs/customers.md` gains the two rows. Run twice, it finds nothing and
   reports zeros (the marker is already there).
@@ -610,8 +618,9 @@ host and a from). The scenarios:
 4. a send reaches the profile's invoice e-mail with Reply-To the seller's; the delivery
    is on the document;
 5. a person's export through the customers API has the invoices section with the
-   document, its payment and its delivery; the anonymisation worker run once deletes
-   the drafts, keeps the document, blanks the delivery's recipient, and
+   document, its payment (with a note) and its delivery; the anonymisation worker run
+   once deletes the drafts, keeps the document, blanks the delivery's recipient and the
+   payment's note (`invoices.payments` 1), and
    `customer.anonymised` lists `invoices.drafts`, `invoices.documents`,
    `invoices.payments` and `invoices.deliveries`; a send afterwards is
    `customer_anonymised`.
@@ -661,8 +670,8 @@ two modules' understanding of the contract is proven to be one.
   deliveries and the marker; "What comes next" moved to phase 2.
 - `docs/module-boundaries.md`: the platform `mail.Outbound.ReplyTo` change; the
   customer tab as host-owned composition.
-- `docs/customers.md`: the anonymisation table's invoices row gains payments (kept) and
-  deliveries (recipient blanked).
+- `docs/customers.md`: the anonymisation table's invoices row gains payments (kept,
+  their notes blanked) and deliveries (recipient blanked).
 - `docs/customers-authentication.md` (the SMTP section): invoices now sends through
   the same `SMTP_*` configuration.
 - `ROADMAP.md`: 1B done, phase 2 next. `deploy/compose/README.md` "Upgrading": the new
@@ -683,7 +692,11 @@ For the user's verdict, as 1A's plan listed its readings:
 6. The cover mail's payment paragraph follows the open amount (D4).
 7. A send to an anonymised customer is refused outright (D4, D6).
 8. One dashboard KPI, no list-page strip, no timeseries (D7).
-9. The erase reports `invoices.payments` at zero (D6).
+9. The erase keeps the payments (D6) — their date, amount and the bank's reference;
+   `invoices.payments` reports the notes reading 10 blanks, not a zero.
+10. A person's payment `note` is blanked on erase, like a delivery's recipient (D2, D6):
+    the trigger allows `note` to `''` besides the removal, and `invoices.payments`
+    reports the count blanked.
 
 ## Out of scope
 
@@ -750,8 +763,9 @@ Oslo clock), plus `modtest.WithSMTPSend` recording envelopes and `WithEnv` for
   period and the previous period, the boundary day in and the day before out); the
   default period; an invalid period; the envelope's `from`/`to`.
 - **The slots.** Export carries payments and deliveries; erase locks the documents,
-  writes the marker, blanks every delivery's recipient and reports the four kinds, keeps
-  the payments, and run twice reports zeros; **the race**: a send whose directory read
+  writes the marker, blanks every delivery's recipient and every payment's note (live
+  and removed) and reports the four kinds, keeps the payments, and run twice reports
+  zeros; **the race**: a send whose directory read
   happened before the erase and whose row is written after it leaves `recipient = ''`
   (the send is held between the two with the test seam).
 - **The integration test** (D9).
