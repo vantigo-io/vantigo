@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -14,7 +15,8 @@ import (
 
 // This file is GET /invoices (D4): every module list's page/pageSize
 // convention, drafts first and then by number descending. There is no keyset
-// cursor: number is NULL on every draft.
+// cursor: number is NULL on every draft. Each item carries its derived state
+// and, on an issued invoice, its open amount, both from the query (D3).
 
 // The paging bounds every module's list uses; listMaxPage keeps page ×
 // pageSize inside the int32 offset.
@@ -71,6 +73,9 @@ func (s *server) GetInvoices(ctx context.Context, req gen.GetInvoicesRequestObje
 	if p.Kind != nil && *p.Kind != kindInvoice && *p.Kind != kindCreditNote {
 		errs = append(errs, fmt.Sprintf("'kind' must be 'invoice' or 'credit_note', but was '%s'.", *p.Kind))
 	}
+	if p.State != nil && !slices.Contains(invoiceStates, *p.State) {
+		errs = append(errs, fmt.Sprintf("'state' must be one of open, partially_paid, overdue, paid or credited, but was '%s'.", *p.State))
+	}
 	if p.From != nil && p.To != nil && p.From.After(p.To.Time) {
 		errs = append(errs, "'from' must be on or before 'to'.")
 	}
@@ -79,7 +84,8 @@ func (s *server) GetInvoices(ctx context.Context, req gen.GetInvoicesRequestObje
 	}
 	page, pageSize := pageParams(p.Page, p.PageSize)
 	params := store.ListInvoicesParams{
-		Status: p.Status, Kind: p.Kind, CustomerID: p.CustomerId,
+		Status: p.Status, Kind: p.Kind, CustomerID: p.CustomerId, State: p.State,
+		Today:      pgDate(businessDay(s.deps.Clock())),
 		PageOffset: (page - 1) * pageSize, PageSize: pageSize,
 	}
 	if p.From != nil {
@@ -104,7 +110,7 @@ func (s *server) GetInvoices(ctx context.Context, req gen.GetInvoicesRequestObje
 	total, err := q.CountInvoices(ctx, store.CountInvoicesParams{
 		Status: params.Status, Kind: params.Kind, CustomerID: params.CustomerID,
 		SearchNumber: params.SearchNumber, SearchPattern: params.SearchPattern,
-		IssuedFrom: params.IssuedFrom, IssuedTo: params.IssuedTo,
+		IssuedFrom: params.IssuedFrom, IssuedTo: params.IssuedTo, State: params.State, Today: params.Today,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("invoices: count: %w", err)
@@ -115,8 +121,8 @@ func (s *server) GetInvoices(ctx context.Context, req gen.GetInvoicesRequestObje
 	// current names, in one directory round trip.
 	var draftCustomers []int32
 	for _, r := range rows {
-		if r.BuyerName == nil {
-			draftCustomers = append(draftCustomers, r.CustomerID)
+		if r.InvoicesInvoice.BuyerName == nil {
+			draftCustomers = append(draftCustomers, r.InvoicesInvoice.CustomerID)
 		}
 	}
 	entries, err := s.customerEntries(ctx, draftCustomers)
@@ -129,15 +135,25 @@ func (s *server) GetInvoices(ctx context.Context, req gen.GetInvoicesRequestObje
 	}
 
 	data := make([]gen.InvoicesInvoiceListItem, 0, len(rows))
-	for _, r := range rows {
+	for _, row := range rows {
+		r := row.InvoicesInvoice
 		gross, err := floatFromNumeric(r.GrossTotal)
 		if err != nil {
 			return nil, err
 		}
 		item := gen.InvoicesInvoiceListItem{
-			Id: r.ID, Kind: r.Kind, Status: r.Status, Number: r.Number, CustomerId: r.CustomerID,
+			Id: r.ID, Kind: r.Kind, Status: r.Status, State: row.State, Number: r.Number, CustomerId: r.CustomerID,
 			IssueDate: wireDateOf(r.IssueDate), DueDate: wireDateOf(r.DueDate), GrossTotal: gross,
 			Currency: r.Currency, CreditsInvoiceId: r.CreditsInvoiceID, CustomerName: r.BuyerName,
+		}
+		// The open amount is an issued invoice's only: a draft has nothing
+		// to pay yet, and a credit note is never paid (D3).
+		if r.Kind == kindInvoice && r.Status == statusIssued {
+			open, err := ratFromNumeric(row.OpenAmount)
+			if err != nil {
+				return nil, err
+			}
+			item.OpenAmount = ptr(floatFromRat(open, 2))
 		}
 		if item.CustomerName == nil {
 			if name, ok := names[r.CustomerID]; ok {

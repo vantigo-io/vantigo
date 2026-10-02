@@ -3,6 +3,7 @@ package invoices
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -17,7 +18,9 @@ import (
 // its lines, its VAT summaries and its warnings. An issued document is
 // rendered from its own rows and snapshots only; a draft's summaries and
 // totals are computed afresh — an invoice draft's with the rates in force
-// today, a credit-note draft's at its original lines' snapshot rates.
+// today, a credit-note draft's at its original lines' snapshot rates. Every
+// document answers its derived state (D3); an issued invoice also its money —
+// paid, open, a refund due — and its payments.
 
 // The warnings a document carries (D4, D6, D8). They are never refusals.
 const (
@@ -161,6 +164,60 @@ func sellerResponse(inv store.InvoicesInvoice) *gen.InvoicesSeller {
 	}
 }
 
+// settle answers an issued invoice's money on resp (D3): what its issued
+// credit notes credit and what is left uncredited, what its live payments
+// paid, what is open (gross − credited − paid, which a credit note after a
+// payment takes below zero), the refund due only then, its state through the
+// Go mirror with today the Oslo business day, and every payment, removed ones
+// included with their removal (D2). Every figure is exact until the wire.
+func settle(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, today time.Time, resp *gen.InvoicesInvoiceResponse) error {
+	credited, left, err := uncredited(ctx, q, inv)
+	if err != nil {
+		return err
+	}
+	sum, err := q.LivePaymentsSum(ctx, inv.ID)
+	if err != nil {
+		return fmt.Errorf("invoices: read what document %d is paid: %w", inv.ID, err)
+	}
+	paid, err := ratFromNumeric(sum)
+	if err != nil {
+		return err
+	}
+	gross, err := ratFromNumeric(inv.GrossTotal)
+	if err != nil {
+		return err
+	}
+	var due *time.Time
+	if inv.DueDate.Valid {
+		due = &inv.DueDate.Time
+	}
+	open := new(big.Rat).Sub(left, paid)
+	resp.State = documentState(inv.Kind, inv.Status, gross, credited, paid, due, today)
+	resp.CreditedAmount, resp.UncreditedAmount = ptr(floatFromRat(credited, 2)), ptr(floatFromRat(left, 2))
+	resp.PaidAmount, resp.OpenAmount = ptr(floatFromRat(paid, 2)), ptr(floatFromRat(open, 2))
+	if open.Sign() < 0 {
+		resp.RefundDue = ptr(floatFromRat(new(big.Rat).Neg(open), 2))
+	}
+	rows, err := q.PaymentsOf(ctx, inv.ID)
+	if err != nil {
+		return fmt.Errorf("invoices: read document %d's payments: %w", inv.ID, err)
+	}
+	payments := make([]gen.InvoicesPayment, 0, len(rows))
+	for _, p := range rows {
+		amount, err := ratFromNumeric(p.Amount)
+		if err != nil {
+			return err
+		}
+		payments = append(payments, gen.InvoicesPayment{
+			Id: p.ID, PaidOn: wireDate(p.PaidOn.Time), Amount: floatFromRat(amount, 2), Currency: p.Currency,
+			Reference: p.Reference, Note: p.Note, RegisteredAt: p.RegisteredAt, RegisteredByUserId: p.RegisteredByUserID,
+			RemovedAt: p.RemovedAt, RemovedByUserId: p.RemovedByUserID, RemovalReason: p.RemovalReason,
+		})
+	}
+	resp.Payments = &payments
+	return nil
+}
+
 // invoiceResponse renders one document. profile is the billing profile the
 // caller already read for an invoice draft (for its current name and the
 // currency warning), nil otherwise; this function reads no directory itself.
@@ -222,6 +279,11 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 	}
 
 	today := businessDay(s.deps.Clock())
+	// A draft's and a credit note's state reads no money; an issued
+	// invoice's is settle's.
+	if inv.Kind != kindInvoice || inv.Status != statusIssued {
+		resp.State = documentState(inv.Kind, inv.Status, nil, nil, nil, nil, today)
+	}
 	if inv.Status == statusIssued {
 		rows, err := q.VatSummaries(ctx, inv.ID)
 		if err != nil {
@@ -253,8 +315,13 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 		if inv.IssuedAt != nil {
 			issuedOn = businessDay(*inv.IssuedAt)
 		}
-		if inv.Kind == kindInvoice && issuedLate(issuedOn, deliveryEndOf(inv)) {
-			resp.Warnings = append(resp.Warnings, warningIssuedLate)
+		if inv.Kind == kindInvoice {
+			if issuedLate(issuedOn, deliveryEndOf(inv)) {
+				resp.Warnings = append(resp.Warnings, warningIssuedLate)
+			}
+			if err := settle(ctx, q, inv, today, &resp); err != nil {
+				return gen.InvoicesInvoiceResponse{}, err
+			}
 		}
 		return resp, creditLinks(ctx, q, inv, &resp, nil)
 	}

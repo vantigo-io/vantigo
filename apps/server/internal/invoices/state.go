@@ -34,15 +34,18 @@ var invoiceStates = []string{stateOpen, statePartiallyPaid, stateOverdue, stateP
 // (gross − credited − paid ≤ 0); past its due date; partly paid; open.
 // credited is the issued credit notes' gross (0 for a credit note), paid the
 // live payments' sum, and today the Oslo business day (businessDay). A nil
-// dueDate is never overdue, as NULL < today is not true in SQL.
+// dueDate is never overdue, as NULL < today is not true in SQL. A draft's and
+// a credit note's state reads none of the figures, which may then be nil.
 func documentState(kind, status string, gross, credited, paid *big.Rat, dueDate *time.Time, today time.Time) string {
-	open := new(big.Rat).Sub(gross, credited)
-	open.Sub(open, paid)
 	switch {
 	case status == statusDraft:
 		return stateDraft
 	case kind == kindCreditNote:
 		return stateIssued
+	}
+	open := new(big.Rat).Sub(gross, credited)
+	open.Sub(open, paid)
+	switch {
 	case credited.Sign() > 0 && credited.Cmp(gross) >= 0:
 		return stateCredited
 	case open.Sign() <= 0:

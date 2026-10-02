@@ -61,29 +61,64 @@ DELETE FROM invoices.invoices WHERE id = @id AND status = 'draft';
 -- descending, the id breaking ties so a page never shifts under a reader.
 -- search is a number (exact) or a buyer-name pattern; a draft has no buyer
 -- snapshot and is found through customer_id instead.
-SELECT * FROM invoices.invoices
-WHERE (sqlc.narg(status)::text IS NULL OR status = sqlc.narg(status)::text)
-  AND (sqlc.narg(kind)::text IS NULL OR kind = sqlc.narg(kind)::text)
-  AND (sqlc.narg(customer_id)::int IS NULL OR customer_id = sqlc.narg(customer_id)::int)
+--
+-- Each row carries its derived state (D3): credited (the issued credit notes'
+-- gross) and paid (the live payments' sum) from one lateral join each, read
+-- once per row and handed to invoices.document_state with today, the Oslo
+-- business day the caller passes — never CURRENT_DATE. open_amount is gross
+-- less both. The state filter runs the same call; CountInvoices repeats the
+-- joins and the predicate word for word, so the total counts what the page
+-- shows.
+SELECT sqlc.embed(i),
+       coalesce(cr.credited, 0)::numeric(14,2) AS credited,
+       coalesce(pd.paid, 0)::numeric(14,2)     AS paid,
+       (i.gross_total - coalesce(cr.credited, 0) - coalesce(pd.paid, 0))::numeric(14,2) AS open_amount,
+       invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, @today::date)::text AS state
+FROM invoices.invoices i
+LEFT JOIN LATERAL (
+    SELECT coalesce(sum(c.gross_total), 0)::numeric(14,2) AS credited
+    FROM invoices.invoices c WHERE c.credits_invoice_id = i.id AND c.status = 'issued'
+) cr ON true
+LEFT JOIN LATERAL (
+    SELECT coalesce(sum(p.amount), 0)::numeric(14,2) AS paid
+    FROM invoices.payments p WHERE p.invoice_id = i.id AND p.removed_at IS NULL
+) pd ON true
+WHERE (sqlc.narg(status)::text IS NULL OR i.status = sqlc.narg(status)::text)
+  AND (sqlc.narg(kind)::text IS NULL OR i.kind = sqlc.narg(kind)::text)
+  AND (sqlc.narg(customer_id)::int IS NULL OR i.customer_id = sqlc.narg(customer_id)::int)
   AND ((sqlc.narg(search_number)::bigint IS NULL AND sqlc.narg(search_pattern)::text IS NULL)
-       OR number = sqlc.narg(search_number)::bigint
-       OR buyer_name ILIKE sqlc.narg(search_pattern)::text)
-  AND (sqlc.narg(issued_from)::date IS NULL OR issue_date >= sqlc.narg(issued_from)::date)
-  AND (sqlc.narg(issued_to)::date IS NULL OR issue_date <= sqlc.narg(issued_to)::date)
-ORDER BY number DESC NULLS FIRST, id DESC
+       OR i.number = sqlc.narg(search_number)::bigint
+       OR i.buyer_name ILIKE sqlc.narg(search_pattern)::text)
+  AND (sqlc.narg(issued_from)::date IS NULL OR i.issue_date >= sqlc.narg(issued_from)::date)
+  AND (sqlc.narg(issued_to)::date IS NULL OR i.issue_date <= sqlc.narg(issued_to)::date)
+  AND (sqlc.narg(state)::text IS NULL
+       OR invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, @today::date) = sqlc.narg(state)::text)
+ORDER BY i.number DESC NULLS FIRST, i.id DESC
 LIMIT @page_size OFFSET @page_offset;
 
 -- name: CountInvoices :one
--- CountInvoices is ListInvoices' total, over the same filters.
-SELECT count(*)::int FROM invoices.invoices
-WHERE (sqlc.narg(status)::text IS NULL OR status = sqlc.narg(status)::text)
-  AND (sqlc.narg(kind)::text IS NULL OR kind = sqlc.narg(kind)::text)
-  AND (sqlc.narg(customer_id)::int IS NULL OR customer_id = sqlc.narg(customer_id)::int)
+-- CountInvoices is ListInvoices' total, over the same filters — the state
+-- filter's lateral joins included.
+SELECT count(*)::int
+FROM invoices.invoices i
+LEFT JOIN LATERAL (
+    SELECT coalesce(sum(c.gross_total), 0)::numeric(14,2) AS credited
+    FROM invoices.invoices c WHERE c.credits_invoice_id = i.id AND c.status = 'issued'
+) cr ON true
+LEFT JOIN LATERAL (
+    SELECT coalesce(sum(p.amount), 0)::numeric(14,2) AS paid
+    FROM invoices.payments p WHERE p.invoice_id = i.id AND p.removed_at IS NULL
+) pd ON true
+WHERE (sqlc.narg(status)::text IS NULL OR i.status = sqlc.narg(status)::text)
+  AND (sqlc.narg(kind)::text IS NULL OR i.kind = sqlc.narg(kind)::text)
+  AND (sqlc.narg(customer_id)::int IS NULL OR i.customer_id = sqlc.narg(customer_id)::int)
   AND ((sqlc.narg(search_number)::bigint IS NULL AND sqlc.narg(search_pattern)::text IS NULL)
-       OR number = sqlc.narg(search_number)::bigint
-       OR buyer_name ILIKE sqlc.narg(search_pattern)::text)
-  AND (sqlc.narg(issued_from)::date IS NULL OR issue_date >= sqlc.narg(issued_from)::date)
-  AND (sqlc.narg(issued_to)::date IS NULL OR issue_date <= sqlc.narg(issued_to)::date);
+       OR i.number = sqlc.narg(search_number)::bigint
+       OR i.buyer_name ILIKE sqlc.narg(search_pattern)::text)
+  AND (sqlc.narg(issued_from)::date IS NULL OR i.issue_date >= sqlc.narg(issued_from)::date)
+  AND (sqlc.narg(issued_to)::date IS NULL OR i.issue_date <= sqlc.narg(issued_to)::date)
+  AND (sqlc.narg(state)::text IS NULL
+       OR invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, @today::date) = sqlc.narg(state)::text);
 
 -- name: IssueDocument :one
 -- IssueDocument turns a draft into an issued document (D6 step 6), last of the

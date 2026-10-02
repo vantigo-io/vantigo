@@ -104,7 +104,13 @@ type InvoicesInvoiceListItem struct {
 	IssueDate        *openapi_types.Date `json:"issueDate,omitempty"`
 	Kind             string              `json:"kind"`
 	Number           *int64              `json:"number,omitempty"`
-	Status           string              `json:"status"`
+
+	// OpenAmount On an issued invoice, gross less what its issued credit notes credit and what its live payments paid; negative when a credit note followed a payment.
+	OpenAmount *float64 `json:"openAmount,omitempty"`
+
+	// State The derived state (D3): draft, issued (an issued credit note), credited, paid, overdue, partially_paid or open.
+	State  string `json:"state"`
+	Status string `json:"status"`
 }
 
 // InvoicesInvoiceRequest A draft, created (POST) or replaced whole (PUT, with revision) (D4). customerId is the buyer. currency, when given, is NOK — "Only NOK in this phase". Delivery is deliveryDate alone, deliveryFrom with deliveryTo (from on or before to), or none — none only on a draft; the issue refuses it. references are at most 100 characters each, note and internalNote 1000. lines are at most 500. On create, an omitted yourReference is the billing profile's buyerReference and an omitted paymentTermsDays the profile's terms, else the settings' default; on PUT an invoice's paymentTermsDays is required and an omitted reference is cleared. On a credit-note draft only what D8 allows may change: lines may be removed, a quantity or a unit price lowered, and a description, the note and the internal note edited.
@@ -129,7 +135,7 @@ type InvoicesInvoiceRequest struct {
 	YourReference *string `json:"yourReference,omitempty"`
 }
 
-// InvoicesInvoiceResponse One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits.
+// InvoicesInvoiceResponse One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries.
 type InvoicesInvoiceResponse struct {
 	AllowedIssueDates *[]openapi_types.Date `json:"allowedIssueDates,omitempty"`
 
@@ -161,21 +167,36 @@ type InvoicesInvoiceResponse struct {
 	IssuedByUserId   *openapi_types.UUID      `json:"issuedByUserId,omitempty"`
 
 	// Kind invoice or credit_note.
-	Kind             string         `json:"kind"`
-	Lines            []InvoicesLine `json:"lines"`
-	NetTotal         float64        `json:"netTotal"`
-	Note             string         `json:"note"`
-	Number           *int64         `json:"number,omitempty"`
-	OrderReference   string         `json:"orderReference"`
-	OurReference     string         `json:"ourReference"`
-	PaymentTermsDays *int32         `json:"paymentTermsDays,omitempty"`
+	Kind     string         `json:"kind"`
+	Lines    []InvoicesLine `json:"lines"`
+	NetTotal float64        `json:"netTotal"`
+	Note     string         `json:"note"`
+	Number   *int64         `json:"number,omitempty"`
+
+	// OpenAmount On an issued invoice, grossTotal less creditedAmount less paidAmount. It may be negative — a credit note issued after a payment — and refundDue is then what it is short of zero.
+	OpenAmount     *float64 `json:"openAmount,omitempty"`
+	OrderReference string   `json:"orderReference"`
+	OurReference   string   `json:"ourReference"`
+
+	// PaidAmount On an issued invoice, what its live payments add up to; a removed payment counts for nothing.
+	PaidAmount       *float64 `json:"paidAmount,omitempty"`
+	PaymentTermsDays *int32   `json:"paymentTermsDays,omitempty"`
+
+	// Payments On an issued invoice, every payment registered against it, removed ones included with their removal, in the order the money arrived.
+	Payments *[]InvoicesPayment `json:"payments,omitempty"`
 
 	// PdfStored On an issued document, whether its PDF is stored. False only when storing it after the issue failed; the next download stores it.
 	PdfStored *bool `json:"pdfStored,omitempty"`
-	Revision  int32 `json:"revision"`
+
+	// RefundDue On an issued invoice whose openAmount is below zero, the amount owed back (−openAmount); absent otherwise. The figure only — refunds are not a flow in this phase.
+	RefundDue *float64 `json:"refundDue,omitempty"`
+	Revision  int32    `json:"revision"`
 
 	// Seller The seller snapshot (D4), copied from the settings at issue.
 	Seller *InvoicesSeller `json:"seller,omitempty"`
+
+	// State The derived state, judged against today in Oslo (D3), the first match winning: draft (a draft); issued (an issued credit note); credited (an issued invoice its issued credit notes cover, credited > 0 and credited ≥ gross); paid (nothing left open); overdue (past its due date); partially_paid (something paid); open (otherwise).
+	State string `json:"state"`
 
 	// Status draft or issued.
 	Status           string               `json:"status"`
@@ -342,6 +363,21 @@ type InvoicesMetaResponse struct {
 	VatCodes []InvoicesVatCodeInForce `json:"vatCodes"`
 }
 
+// InvoicesPayment One payment registered against an issued invoice (D2). A removed one keeps its row and carries removedAt, removedByUserId and removalReason; it counts for nothing.
+type InvoicesPayment struct {
+	Amount             float64             `json:"amount"`
+	Currency           string              `json:"currency"`
+	Id                 int64               `json:"id"`
+	Note               string              `json:"note"`
+	PaidOn             openapi_types.Date  `json:"paidOn"`
+	Reference          string              `json:"reference"`
+	RegisteredAt       time.Time           `json:"registeredAt"`
+	RegisteredByUserId openapi_types.UUID  `json:"registeredByUserId"`
+	RemovalReason      *string             `json:"removalReason,omitempty"`
+	RemovedAt          *time.Time          `json:"removedAt,omitempty"`
+	RemovedByUserId    *openapi_types.UUID `json:"removedByUserId,omitempty"`
+}
+
 // InvoicesSeller The seller snapshot (D4), copied from the settings at issue.
 type InvoicesSeller struct {
 	AddressLine1         string `json:"addressLine1"`
@@ -499,8 +535,11 @@ type PaginatedResponseOfInvoicesInvoiceListItem struct {
 
 // GetInvoicesParams defines parameters for GetInvoices.
 type GetInvoicesParams struct {
-	Status     *string             `form:"status,omitempty" json:"status,omitempty"`
-	Kind       *string             `form:"kind,omitempty" json:"kind,omitempty"`
+	Status *string `form:"status,omitempty" json:"status,omitempty"`
+	Kind   *string `form:"kind,omitempty" json:"kind,omitempty"`
+
+	// State One of open, partially_paid, overdue, paid or credited, judged against today in Oslo; only an issued invoice can match it.
+	State      *string             `form:"state,omitempty" json:"state,omitempty"`
 	CustomerId *int32              `form:"customerId,omitempty" json:"customerId,omitempty"`
 	Search     *string             `form:"search,omitempty" json:"search,omitempty"`
 	From       *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
@@ -636,6 +675,19 @@ func (siw *ServerInterfaceWrapper) GetInvoices(w http.ResponseWriter, r *http.Re
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "kind"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "kind", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
 		}
 		return
 	}
