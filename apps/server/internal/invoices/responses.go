@@ -20,7 +20,8 @@ import (
 // totals are computed afresh — an invoice draft's with the rates in force
 // today, a credit-note draft's at its original lines' snapshot rates. Every
 // document answers its derived state (D3); an issued invoice also its money —
-// paid, open, a refund due — and its payments.
+// paid, open, a refund due — and its payments; every issued document its
+// deliveries (payments and delivery design D4).
 
 // The warnings a document carries (D4, D6, D8). They are never refusals.
 const (
@@ -308,6 +309,17 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 			}
 		}
 		resp.PdfStored = ptr(inv.PdfSha256 != nil && inv.PdfObjectKey != nil)
+		sends, err := q.DeliveriesOf(ctx, inv.ID)
+		if err != nil {
+			return gen.InvoicesInvoiceResponse{}, fmt.Errorf("invoices: read document %d's deliveries: %w", inv.ID, err)
+		}
+		deliveries := make([]gen.InvoicesDelivery, 0, len(sends))
+		for _, d := range sends {
+			deliveries = append(deliveries, gen.InvoicesDelivery{
+				Id: d.ID, Recipient: d.Recipient, Subject: d.Subject, SentAt: d.SentAt, SentByUserId: d.SentByUserID,
+			})
+		}
+		resp.Deliveries = &deliveries
 		// § 5-2-2 is about when the document was issued, not the date it
 		// carries: one issued on the 14th dated the last of the previous
 		// month (§ 5-1-3) is judged on the 14th.

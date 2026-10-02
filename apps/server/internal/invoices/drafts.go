@@ -636,5 +636,8 @@ func (s *server) GetInvoicesById(ctx context.Context, req gen.GetInvoicesByIdReq
 	if err != nil {
 		return nil, err
 	}
+	// The one read besides the send that answers what a send would open with
+	// (payments and delivery design D4): no write adds a directory call.
+	s.withSendDefaults(ctx, inv, nil, &resp)
 	return gen.GetInvoicesById200JSONResponse(resp), nil
 }

@@ -83,6 +83,15 @@ type InvoicesCreditsRef struct {
 	Number    int64              `json:"number"`
 }
 
+// InvoicesDelivery One e-mail that handed an issued document over (payments and delivery design D4), logged once the mail server took it. recipient is the address it went to — empty once the customer has been anonymised (D6); subject is as sent.
+type InvoicesDelivery struct {
+	Id           int64              `json:"id"`
+	Recipient    string             `json:"recipient"`
+	SentAt       time.Time          `json:"sentAt"`
+	SentByUserId openapi_types.UUID `json:"sentByUserId"`
+	Subject      string             `json:"subject"`
+}
+
 // InvoicesDeliveryAddress The place of delivery (§ 5-1-1 nr. 4), when it is not the buyer's address. line1, city and country are required; country is ISO 3166-1 alpha-2.
 type InvoicesDeliveryAddress struct {
 	City       string  `json:"city"`
@@ -135,7 +144,7 @@ type InvoicesInvoiceRequest struct {
 	YourReference *string `json:"yourReference,omitempty"`
 }
 
-// InvoicesInvoiceResponse One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries.
+// InvoicesInvoiceResponse One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. Every issued document carries deliveries (D4); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send.
 type InvoicesInvoiceResponse struct {
 	AllowedIssueDates *[]openapi_types.Date `json:"allowedIssueDates,omitempty"`
 
@@ -150,6 +159,9 @@ type InvoicesInvoiceResponse struct {
 	Currency     string              `json:"currency"`
 	CustomerId   int32               `json:"customerId"`
 	CustomerName *string             `json:"customerName,omitempty"`
+
+	// Deliveries On an issued document, every e-mail that handed it over, the first first (D4).
+	Deliveries *[]InvoicesDelivery `json:"deliveries,omitempty"`
 
 	// DeliveryAddress The place of delivery (§ 5-1-1 nr. 4), when it is not the buyer's address. line1, city and country are required; country is ISO 3166-1 alpha-2.
 	DeliveryAddress  *InvoicesDeliveryAddress `json:"deliveryAddress,omitempty"`
@@ -194,6 +206,9 @@ type InvoicesInvoiceResponse struct {
 
 	// Seller The seller snapshot (D4), copied from the settings at issue.
 	Seller *InvoicesSeller `json:"seller,omitempty"`
+
+	// SendDefaults What the Send dialog opens with (D4), on an issued document's GET and on the send's own response only, and only for a caller who may send (invoices:issue on an installation whose mail driver is smtp). recipient is the customer's current invoice e-mail, absent when it has none; preference is the billing profile's invoice delivery (email, ehf, efaktura or paper), absent when unset. warnings are the send's, never refusals: delivery_preference_ehf (the customer expects EHF; an e-mailed PDF does not meet the e-invoicing duty), delivery_preference_other (the customer prefers efaktura or paper), buyer_norwegian_business (the buyer snapshot has a Norwegian organisation number: from 2027-01-01 a Norwegian business must receive an e-invoice). Absent when the directory could not be read.
+	SendDefaults *InvoicesSendDefaults `json:"sendDefaults,omitempty"`
 
 	// State The derived state, judged against today in Oslo (D3), the first match winning: draft (a draft); issued (an issued credit note); credited (an issued invoice its issued credit notes cover, credited > 0 and credited ≥ gross); paid (nothing left open); overdue (past its due date); partially_paid (something paid); open (otherwise).
 	State string `json:"state"`
@@ -409,6 +424,18 @@ type InvoicesSeller struct {
 	VatRegistered        bool   `json:"vatRegistered"`
 }
 
+// InvoicesSendDefaults What the Send dialog opens with (D4), on an issued document's GET and on the send's own response only, and only for a caller who may send (invoices:issue on an installation whose mail driver is smtp). recipient is the customer's current invoice e-mail, absent when it has none; preference is the billing profile's invoice delivery (email, ehf, efaktura or paper), absent when unset. warnings are the send's, never refusals: delivery_preference_ehf (the customer expects EHF; an e-mailed PDF does not meet the e-invoicing duty), delivery_preference_other (the customer prefers efaktura or paper), buyer_norwegian_business (the buyer snapshot has a Norwegian organisation number: from 2027-01-01 a Norwegian business must receive an e-invoice). Absent when the directory could not be read.
+type InvoicesSendDefaults struct {
+	Preference *string  `json:"preference,omitempty"`
+	Recipient  *string  `json:"recipient,omitempty"`
+	Warnings   []string `json:"warnings"`
+}
+
+// InvoicesSendRequest POST /invoices/{id}/send's body (D4). recipient overrides the customer's current invoice e-mail: a bare address that parses to itself, at most 254 characters once trimmed (so "Name <a@b>" is refused). Absent, the invoice e-mail is used.
+type InvoicesSendRequest struct {
+	Recipient *string `json:"recipient,omitempty"`
+}
+
 // InvoicesSettingsRequest PUT /settings' body, a full replace (D2). Every text field is trimmed; an empty string is "not set". organisationNumber is nine digits with a valid mod-11 check digit; bankAccount eleven digits with a valid mod-11 check digit (spaces and dots are dropped); iban passes mod-97 and bic is 8 or 11 characters, both optional; country is ISO 3166-1 alpha-2; defaultPaymentTermsDays is 0-365; defaultCurrency is NOK and only NOK in this phase; seriesStart is 1 to 9007199254740991 (2^53 − 1) and cannot change once anything is issued (409 series_locked). revision is the one the caller read: a stale one is a 409 naming both.
 type InvoicesSettingsRequest struct {
 	AddressLine1            string  `json:"addressLine1"`
@@ -596,6 +623,9 @@ type PostInvoicesByIdPaymentsJSONRequestBody = InvoicesPaymentRequest
 // PostInvoicesByIdPaymentsByPaymentIdRemoveJSONRequestBody defines body for PostInvoicesByIdPaymentsByPaymentIdRemove for application/json ContentType.
 type PostInvoicesByIdPaymentsByPaymentIdRemoveJSONRequestBody = InvoicesPaymentRemovalRequest
 
+// PostInvoicesByIdSendJSONRequestBody defines body for PostInvoicesByIdSend for application/json ContentType.
+type PostInvoicesByIdSendJSONRequestBody = InvoicesSendRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// GetInvoices List invoices and credit notes
@@ -658,6 +688,9 @@ type ServerInterface interface {
 	// GetInvoicesByIdPreviewPdf Preview a draft as PDF
 	// (GET /api/v1/invoices/{id}/preview.pdf)
 	GetInvoicesByIdPreviewPdf(w http.ResponseWriter, r *http.Request, id int64)
+	// PostInvoicesByIdSend Send an issued document by e-mail
+	// (POST /api/v1/invoices/{id}/send)
+	PostInvoicesByIdSend(w http.ResponseWriter, r *http.Request, id int64)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -1292,6 +1325,32 @@ func (siw *ServerInterfaceWrapper) GetInvoicesByIdPreviewPdf(w http.ResponseWrit
 	handler.ServeHTTP(w, r)
 }
 
+// PostInvoicesByIdSend operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesByIdSend(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesByIdSend(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -1431,6 +1490,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/credit", wrapper.PostInvoicesByIdCredit)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/payments", wrapper.PostInvoicesByIdPayments)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/payments/{paymentId}/remove", wrapper.PostInvoicesByIdPaymentsByPaymentIdRemove)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/send", wrapper.PostInvoicesByIdSend)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/journal", wrapper.GetInvoicesJournal)
 
 	return m
@@ -2921,6 +2981,159 @@ func (response GetInvoicesByIdPreviewPdf409ApplicationProblemPlusJSONResponse) V
 	return err
 }
 
+type PostInvoicesByIdSendRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostInvoicesByIdSendJSONRequestBody
+}
+
+type PostInvoicesByIdSendResponseObject interface {
+	VisitPostInvoicesByIdSendResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesByIdSend200JSONResponse InvoicesInvoiceResponse
+
+func (response PostInvoicesByIdSend200JSONResponse) VisitPostInvoicesByIdSendResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdSend400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostInvoicesByIdSend400ApplicationProblemPlusJSONResponse) VisitPostInvoicesByIdSendResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdSend401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesByIdSend401JSONResponse) VisitPostInvoicesByIdSendResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdSend403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesByIdSend403JSONResponse) VisitPostInvoicesByIdSendResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdSend404Response struct {
+}
+
+func (response PostInvoicesByIdSend404Response) VisitPostInvoicesByIdSendResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInvoicesByIdSend409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesByIdSend409ApplicationProblemPlusJSONResponse) VisitPostInvoicesByIdSendResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdSend429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostInvoicesByIdSend429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostInvoicesByIdSend429ResponseHeaders
+}
+
+func (response PostInvoicesByIdSend429JSONResponse) VisitPostInvoicesByIdSendResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdSend500ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PostInvoicesByIdSend500ApplicationProblemPlusJSONResponse) VisitPostInvoicesByIdSendResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdSend502ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesByIdSend502ApplicationProblemPlusJSONResponse) VisitPostInvoicesByIdSendResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdSend503ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesByIdSend503ApplicationProblemPlusJSONResponse) VisitPostInvoicesByIdSendResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// GetInvoices List invoices and credit notes
@@ -2983,6 +3196,9 @@ type StrictServerInterface interface {
 	// GetInvoicesByIdPreviewPdf Preview a draft as PDF
 	// (GET /api/v1/invoices/{id}/preview.pdf)
 	GetInvoicesByIdPreviewPdf(ctx context.Context, request GetInvoicesByIdPreviewPdfRequestObject) (GetInvoicesByIdPreviewPdfResponseObject, error)
+	// PostInvoicesByIdSend Send an issued document by e-mail
+	// (POST /api/v1/invoices/{id}/send)
+	PostInvoicesByIdSend(ctx context.Context, request PostInvoicesByIdSendRequestObject) (PostInvoicesByIdSendResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -3590,6 +3806,39 @@ func (sh *strictHandler) GetInvoicesByIdPreviewPdf(w http.ResponseWriter, r *htt
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetInvoicesByIdPreviewPdfResponseObject); ok {
 		if err := validResponse.VisitGetInvoicesByIdPreviewPdfResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesByIdSend operation middleware
+func (sh *strictHandler) PostInvoicesByIdSend(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostInvoicesByIdSendRequestObject
+
+	request.Id = id
+
+	var body PostInvoicesByIdSendJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesByIdSend(ctx, request.(PostInvoicesByIdSendRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesByIdSend")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesByIdSendResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesByIdSendResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

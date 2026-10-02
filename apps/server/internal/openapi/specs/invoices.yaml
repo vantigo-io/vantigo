@@ -491,6 +491,29 @@ components:
                 - number
                 - issueDate
             type: object
+        InvoicesDelivery:
+            description: One e-mail that handed an issued document over (payments and delivery design D4), logged once the mail server took it. recipient is the address it went to — empty once the customer has been anonymised (D6); subject is as sent.
+            properties:
+                id:
+                    format: int64
+                    type: integer
+                recipient:
+                    type: string
+                sentAt:
+                    format: date-time
+                    type: string
+                sentByUserId:
+                    format: uuid
+                    type: string
+                subject:
+                    type: string
+            required:
+                - id
+                - recipient
+                - subject
+                - sentAt
+                - sentByUserId
+            type: object
         InvoicesDeliveryAddress:
             description: The place of delivery (§ 5-1-1 nr. 4), when it is not the buyer's address. line1, city and country are required; country is ISO 3166-1 alpha-2.
             properties:
@@ -602,7 +625,7 @@ components:
                 - lines
             type: object
         InvoicesInvoiceResponse:
-            description: 'One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft''s with the rates in force today, which the issue resolves again for the issue date; a credit-note draft''s at its original lines'' snapshot rates, with each line''s and the invoice''s remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original''s delivery), vat_code_not_valid (a line''s code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line. An invoice carries creditedAmount (its issued credit notes'' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries.'
+            description: 'One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft''s with the rates in force today, which the issue resolves again for the issue date; a credit-note draft''s at its original lines'' snapshot rates, with each line''s and the invoice''s remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original''s delivery), vat_code_not_valid (a line''s code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line. An invoice carries creditedAmount (its issued credit notes'' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. Every issued document carries deliveries (D4); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send.'
             properties:
                 allowedIssueDates:
                     items:
@@ -630,6 +653,11 @@ components:
                     type: integer
                 customerName:
                     type: string
+                deliveries:
+                    description: On an issued document, every e-mail that handed it over, the first first (D4).
+                    items:
+                        $ref: '#/components/schemas/InvoicesDelivery'
+                    type: array
                 deliveryAddress:
                     $ref: '#/components/schemas/InvoicesDeliveryAddress'
                 deliveryDate:
@@ -714,6 +742,8 @@ components:
                     type: integer
                 seller:
                     $ref: '#/components/schemas/InvoicesSeller'
+                sendDefaults:
+                    $ref: '#/components/schemas/InvoicesSendDefaults'
                 state:
                     description: 'The derived state, judged against today in Oslo (D3), the first match winning: draft (a draft); issued (an issued credit note); credited (an issued invoice its issued credit notes cover, credited > 0 and credited ≥ gross); paid (nothing left open); overdue (past its due date); partially_paid (something paid); open (otherwise).'
                     type: string
@@ -920,6 +950,26 @@ components:
             required:
                 - paidOn
                 - amount
+            type: object
+        InvoicesSendDefaults:
+            description: 'What the Send dialog opens with (D4), on an issued document''s GET and on the send''s own response only, and only for a caller who may send (invoices:issue on an installation whose mail driver is smtp). recipient is the customer''s current invoice e-mail, absent when it has none; preference is the billing profile''s invoice delivery (email, ehf, efaktura or paper), absent when unset. warnings are the send''s, never refusals: delivery_preference_ehf (the customer expects EHF; an e-mailed PDF does not meet the e-invoicing duty), delivery_preference_other (the customer prefers efaktura or paper), buyer_norwegian_business (the buyer snapshot has a Norwegian organisation number: from 2027-01-01 a Norwegian business must receive an e-invoice). Absent when the directory could not be read.'
+            properties:
+                preference:
+                    type: string
+                recipient:
+                    type: string
+                warnings:
+                    items:
+                        type: string
+                    type: array
+            required:
+                - warnings
+            type: object
+        InvoicesSendRequest:
+            description: 'POST /invoices/{id}/send''s body (D4). recipient overrides the customer''s current invoice e-mail: a bare address that parses to itself, at most 254 characters once trimmed (so "Name <a@b>" is refused). Absent, the invoice e-mail is used.'
+            properties:
+                recipient:
+                    type: string
             type: object
         InvoicesSeller:
             description: The seller snapshot (D4), copied from the settings at issue.
@@ -2055,6 +2105,88 @@ paths:
             tags:
                 - Invoices
             x-vantigo-access: permission:invoices:access+invoices:payments
+    /api/v1/invoices/{id}/send:
+        post:
+            description: 'Sends an issued document''s stored PDF by e-mail (D4), in this order: 503 mail_unavailable when the installation''s mail driver is not smtp, judged before anything is read; 404; 409 invoice_draft; 409 customer_anonymised when this module has anonymised the customer; the recipient — the override, else the customer''s current invoice e-mail, read from the directory outside any lock (409 no_invoice_email when there is none); the stored PDF, stored first when it never was and otherwise verified against its hash (503 storage_unavailable, 500 when the stored object is gone or altered); then one plain-text mail in the buyer''s language from the installation''s address under the seller snapshot''s name, Reply-To the current settings'' e-mail, the PDF attached under the download''s name. The send and its log row run on a context the request''s cancellation does not reach, bounded at 30 seconds. A failed send is 502 mail_failed and records nothing; a sent one is logged once, and sending again is logged again. Rate limited to 60 per client per 10 minutes. The response is the document with its deliveries and sendDefaults.'
+            operationId: postInvoicesByIdSend
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/InvoicesSendRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesInvoiceResponse'
+                    description: OK — the document, sent, with the send logged in deliveries and the send warnings in sendDefaults.warnings.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — recipient is not a bare e-mail address.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no document has that id.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesConflictProblem'
+                    description: Conflict — invoice_draft, customer_anonymised (this module has anonymised the customer) or no_invoice_email (no override and no invoice e-mail in the directory).
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+                "500":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Internal Server Error — the stored object is gone, or its bytes no longer match the hash; or the mail went and its log row could not be written, which the operator is told of.
+                "502":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesConflictProblem'
+                    description: Bad Gateway — mail_failed, the mail server did not take the mail; nothing is recorded.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InvoicesConflictProblem'
+                    description: Service Unavailable — mail_unavailable, the installation cannot send mail; or storage_unavailable, the object store is not configured or could not be reached.
+            summary: Send an issued document by e-mail
+            tags:
+                - Invoices
+            x-vantigo-access: permission:invoices:access+invoices:issue
     /api/v1/invoices/journal:
         get:
             description: The invoice journal (D11) — what proves complete registration (§ 5-1-3). from and to are issue dates, both required, from on or before to; page and pageSize are the list's.

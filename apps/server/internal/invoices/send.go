@@ -1,0 +1,286 @@
+package invoices
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"math/big"
+	"net/http"
+	netmail "net/mail"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
+	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
+	"github.com/vantigo-io/vantigo/server/internal/mail"
+)
+
+// This file is the send (payments and delivery design D4): an issued
+// document's stored PDF, e-mailed now to the customer's current invoice
+// address or an override, with the seller as Reply-To, and logged once in
+// invoices.deliveries. Nothing here runs under a lock: the reads are plain,
+// the send goes through the contract-call seam, and the log row is one
+// insert whose trigger — after its wait on the document — blanks the
+// recipient of a customer anonymised meanwhile (D6).
+
+// The codes, titles and warnings of the send.
+const (
+	codeCustomerAnonymised = "customer_anonymised"
+	codeNoInvoiceEmail     = "no_invoice_email"
+	codeMailUnavailable    = "mail_unavailable"
+	codeMailFailed         = "mail_failed"
+
+	cannotSendTitle  = "The document cannot be sent"
+	invalidSendTitle = "Invalid send"
+
+	warningDeliveryPreferenceEHF   = "delivery_preference_ehf"
+	warningDeliveryPreferenceOther = "delivery_preference_other"
+	warningBuyerNorwegianBusiness  = "buyer_norwegian_business"
+)
+
+// sendTimeout bounds the send and its log row together: communications' send
+// timeout.
+const sendTimeout = 30 * time.Second
+
+// messageIDDomain is the right-hand side of every Message-ID this module
+// mints: communications' domain.
+const messageIDDomain = "vantigo.invalid"
+
+// beforeDeliveryWrite, when a test sets it (export_test.go), is called right
+// before the delivery row is written, on the send's own context, so a race
+// test can hold a send between its directory read and its row. nil in
+// production.
+var beforeDeliveryWrite func(ctx context.Context, invoiceID int64)
+
+// sendWarnings are what the person sending is told and never refused for
+// (D4): the customer's delivery preference when it is not e-mail — EHF, which
+// an e-mailed PDF does not satisfy, or efaktura and paper — and a buyer with
+// a Norwegian organisation number, whom the B2B e-invoicing duty covers from
+// 2027-01-01. The duty's date decides only how loudly the app says it; the
+// warning is the same either side of it. profile is the customer's current
+// billing profile, nil when the directory knows none.
+func sendWarnings(inv store.InvoicesInvoice, profile *contracts.CustomerBillingProfile) []string {
+	warnings := []string{}
+	if profile != nil {
+		switch profile.InvoiceDelivery {
+		case "ehf":
+			warnings = append(warnings, warningDeliveryPreferenceEHF)
+		case "efaktura", "paper":
+			warnings = append(warnings, warningDeliveryPreferenceOther)
+		}
+	}
+	if inv.BuyerOrganisationNumber != nil && *inv.BuyerOrganisationNumber != "" {
+		warnings = append(warnings, warningBuyerNorwegianBusiness)
+	}
+	return warnings
+}
+
+// validRecipient is an override held to the rule the settings hold the
+// seller's e-mail to (settings.go): trimmed, a bare address that parses to
+// itself, at most 254 characters — so "Name <a@b>" is refused — and, unlike
+// the settings' optional field, never empty.
+func validRecipient(s string) (string, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" || len(s) > 254 {
+		return s, false
+	}
+	a, err := netmail.ParseAddress(s)
+	return s, err == nil && a.Address == s
+}
+
+// withSendDefaults sets resp.SendDefaults for a caller who may send (D4):
+// invoices:issue on an installation that can send, on an issued document
+// only. profile is the billing profile when the caller has read it already,
+// nil to read it here. The read is best effort: a directory that fails
+// leaves sendDefaults out and says so at warn, never failing a read of
+// bookkeeping material.
+func (s *server) withSendDefaults(ctx context.Context, inv store.InvoicesInvoice, profile *contracts.CustomerBillingProfile, resp *gen.InvoicesInvoiceResponse) {
+	if inv.Status != statusIssued || !s.mailAvailable() || !s.has(ctx, "invoices:issue") {
+		return
+	}
+	if profile == nil {
+		var err error
+		if profile, err = s.customerProfile(ctx, inv.CustomerID); err != nil {
+			s.deps.Logger.WarnContext(ctx, "invoices: the billing profile could not be read; the document is answered without its send defaults",
+				"invoice_id", inv.ID, "customer_id", inv.CustomerID, "error", err.Error())
+			return
+		}
+	}
+	defaults := gen.InvoicesSendDefaults{Warnings: sendWarnings(inv, profile)}
+	if profile != nil && profile.InvoiceEmail != "" {
+		defaults.Recipient = ptr(profile.InvoiceEmail)
+	}
+	if profile != nil && profile.InvoiceDelivery != "" {
+		defaults.Preference = ptr(profile.InvoiceDelivery)
+	}
+	resp.SendDefaults = &defaults
+}
+
+// mailFailed is the 502 a send answers when the mail server did not take the
+// mail, and mailUnavailable the 503 of an installation that cannot send.
+func mailFailed() gen.InvoicesConflictProblem {
+	c := conflict(codeMailFailed, "The e-mail could not be sent",
+		"The mail server did not accept the e-mail. Nothing was recorded; try again.")
+	c.Status = ptr(int32(http.StatusBadGateway))
+	return c
+}
+
+func mailUnavailable() gen.InvoicesConflictProblem {
+	c := conflict(codeMailUnavailable, "E-mail is unavailable",
+		"This installation has no mail server configured, so a document cannot be sent by e-mail.")
+	c.Status = ptr(int32(http.StatusServiceUnavailable))
+	return c
+}
+
+// PostInvoicesByIdSend Send an issued document by e-mail
+// (POST /api/v1/invoices/{id}/send)
+func (s *server) PostInvoicesByIdSend(ctx context.Context, req gen.PostInvoicesByIdSendRequestObject) (gen.PostInvoicesByIdSendResponseObject, error) {
+	// 1. An installation that cannot send reads nothing.
+	if !s.mailAvailable() {
+		return gen.PostInvoicesByIdSend503ApplicationProblemPlusJSONResponse(mailUnavailable()), nil
+	}
+
+	// 2. The document.
+	q := store.New(s.deps.Pool)
+	inv, err := q.GetInvoice(ctx, req.Id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return gen.PostInvoicesByIdSend404Response{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read document %d: %w", req.Id, err)
+	}
+	if inv.Status != statusIssued {
+		return gen.PostInvoicesByIdSend409ApplicationProblemPlusJSONResponse(conflict(codeInvoiceDraft, cannotSendTitle,
+			"A draft is not a sales document: issue it before sending it.")), nil
+	}
+
+	// 3. A person this module has anonymised is not written to again.
+	erased, err := q.CustomerErased(ctx, inv.CustomerID)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read whether customer %d was erased: %w", inv.CustomerID, err)
+	}
+	if erased {
+		return gen.PostInvoicesByIdSend409ApplicationProblemPlusJSONResponse(conflict(codeCustomerAnonymised, cannotSendTitle,
+			"This document's customer has been anonymised, and is not written to again.")), nil
+	}
+
+	// 4. The recipient: the override, else today's invoice e-mail — a credit
+	// note's too, for the person's address changes and the document does not.
+	var recipient string
+	var profile *contracts.CustomerBillingProfile
+	if req.Body.Recipient != nil {
+		var ok bool
+		if recipient, ok = validRecipient(*req.Body.Recipient); !ok {
+			return gen.PostInvoicesByIdSend400ApplicationProblemPlusJSONResponse(invalid(invalidSendTitle,
+				fieldError("recipient", "This is not an e-mail address"))), nil
+		}
+	} else {
+		if profile, err = s.customerProfile(ctx, inv.CustomerID); err != nil {
+			return nil, fmt.Errorf("invoices: read customer %d's billing profile: %w", inv.CustomerID, err)
+		}
+		if profile != nil {
+			recipient = profile.InvoiceEmail
+		}
+		if recipient == "" {
+			return gen.PostInvoicesByIdSend409ApplicationProblemPlusJSONResponse(conflict(codeNoInvoiceEmail, cannotSendTitle,
+				"The customer has no invoice e-mail. Add one to the customer, or send to another address.")), nil
+		}
+	}
+
+	// 5. The stored PDF, stored first when it never was.
+	pdf, problem := s.loadStoredPDF(ctx, q, inv)
+	switch {
+	case problem == nil:
+	case problem.unavailable != nil:
+		return gen.PostInvoicesByIdSend503ApplicationProblemPlusJSONResponse(*problem.unavailable), nil
+	case problem.broken:
+		return gen.PostInvoicesByIdSend500ApplicationProblemPlusJSONResponse(storedDocumentBroken()), nil
+	default:
+		return nil, problem.err
+	}
+
+	// 6. The envelope: the seller as the PDF names it, replies to today's
+	// mailbox, the text in the buyer's language.
+	out, err := s.envelope(ctx, q, inv, recipient, pdf.body)
+	if err != nil {
+		return nil, err
+	}
+
+	// 7-8. The send and its row, on a context the request's cancellation does
+	// not reach: a browser that goes away must not abort a transfer the mail
+	// server may already have accepted, nor the row that is its evidence.
+	sendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sendTimeout)
+	defer cancel()
+	if err := s.smtpSend(sendCtx, s.deps.Config.Mail, out); err != nil {
+		s.deps.Logger.WarnContext(ctx, "invoices: a document could not be sent", "invoice_id", inv.ID, "error", err.Error())
+		return gen.PostInvoicesByIdSend502ApplicationProblemPlusJSONResponse(mailFailed()), nil
+	}
+	if beforeDeliveryWrite != nil {
+		beforeDeliveryWrite(sendCtx, inv.ID)
+	}
+	if _, err := q.InsertDelivery(sendCtx, store.InsertDeliveryParams{
+		InvoiceID: inv.ID, Recipient: recipient, Subject: out.Subject, MessageID: out.MessageID,
+		PdfSha256: pdf.sha256, SentAt: s.deps.Clock(), SentByUserID: callerID(ctx),
+	}); err != nil {
+		s.deps.Logger.ErrorContext(ctx, "invoices: a document was sent but its delivery could not be logged",
+			"invoice_id", inv.ID, "recipient", recipient, "error", err.Error())
+		return nil, fmt.Errorf("invoices: log the send of document %d: %w", inv.ID, err)
+	}
+
+	// 9. The document, its deliveries now holding the row — read again when
+	// step 5 stored its PDF, so it says so.
+	if pdf.body != nil && inv.PdfSha256 == nil {
+		if inv, err = q.GetInvoice(ctx, inv.ID); err != nil {
+			return nil, fmt.Errorf("invoices: re-read document %d: %w", req.Id, err)
+		}
+	}
+	resp, err := s.invoiceResponse(ctx, q, inv, nil)
+	if err != nil {
+		return nil, err
+	}
+	s.withSendDefaults(ctx, inv, profile, &resp)
+	return gen.PostInvoicesByIdSend200JSONResponse(resp), nil
+}
+
+// envelope is one send's mail.Outbound: From the installation's address
+// (Config.Mail.From, which the SMTP client sets) under the seller snapshot's
+// legal name, Reply-To the current settings' e-mail when there is one, the
+// cover mail in the document's language, a fresh bare Message-ID, and the
+// PDF attached under the download's own name.
+func (s *server) envelope(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, recipient string, pdf []byte) (mail.Outbound, error) {
+	settings, err := q.GetSettings(ctx)
+	if err != nil {
+		return mail.Outbound{}, fmt.Errorf("invoices: read the settings: %w", err)
+	}
+	var original *store.InvoicesInvoice
+	var open *big.Rat
+	if inv.CreditsInvoiceID != nil {
+		o, err := q.GetInvoice(ctx, *inv.CreditsInvoiceID)
+		if err != nil {
+			return mail.Outbound{}, fmt.Errorf("invoices: read credit note %d's original: %w", inv.ID, err)
+		}
+		original = &o
+	}
+	if inv.Kind == kindInvoice {
+		if open, err = openOf(ctx, q, inv); err != nil {
+			return mail.Outbound{}, err
+		}
+	}
+	text, err := coverMail(inv, original, open)
+	if err != nil {
+		return mail.Outbound{}, err
+	}
+	out := mail.Outbound{
+		To: []string{recipient}, Subject: text.subject, ReplyTo: settings.Email, TextBody: text.body,
+		MessageID:   uuid.NewString() + "@" + messageIDDomain,
+		Attachments: []mail.Attachment{{FileName: fileName(inv), ContentType: "application/pdf", Content: pdf}},
+	}
+	if inv.SellerLegalName != nil {
+		out.DisplayName = *inv.SellerLegalName
+	}
+	return out, nil
+}

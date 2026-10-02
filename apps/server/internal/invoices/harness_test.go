@@ -10,6 +10,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
@@ -69,7 +71,7 @@ func newInvoicesHarness(t *testing.T, objects *fakeObjectStore, opts ...modtest.
 }
 
 // lockedContractCalls is every call out of the module — to the customer
-// directory, or to the object store — made from inside a transaction that
+// directory, the object store or the SMTP seam — made from inside a transaction that
 // holds locks (invoices.InLockedTx). The rule is that none ever is (D6, D7),
 // and every harness checks it when its test ends. It is one recorder for the
 // package because the hook is a package-level one (TestMain); each harness
@@ -106,6 +108,53 @@ func (l *lockedCalls) since(n int) []string {
 	return slices.Clone(l.calls[n:])
 }
 
+// contractCalls is every call out of the module, each with the caller whose
+// request made it and whether it was made inside a locked transaction — the
+// whole record lockedContractCalls keeps only the forbidden part of. A test
+// asserts that a call happened, and how, through the user it signed in:
+// tests run in parallel against one package-level hook, and a caller's id is
+// what tells one test's calls from another's.
+var contractCalls = &allCalls{}
+
+// contractCall is one call out of the module.
+type contractCall struct {
+	method string
+	userID uuid.UUID
+	locked bool
+}
+
+type allCalls struct {
+	mu    sync.Mutex
+	calls []contractCall
+}
+
+func (a *allCalls) note(ctx context.Context, method string) {
+	p, _ := contracts.PrincipalFrom(ctx)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.calls = append(a.calls, contractCall{method: method, userID: p.UserID, locked: invoices.InLockedTx(ctx)})
+}
+
+// by is every call a request of userID's made, in order.
+func (a *allCalls) by(userID uuid.UUID) []contractCall {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	var out []contractCall
+	for _, c := range a.calls {
+		if c.userID == userID {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// noteContractCall is the hook TestMain installs: every call is recorded, and
+// one made under a lock is also recorded as a failure.
+func noteContractCall(ctx context.Context, method string) {
+	lockedContractCalls.note(ctx, method)
+	contractCalls.note(ctx, method)
+}
+
 // fakeCustomers is contracts.CustomerDirectory over billing profiles a test
 // puts in. It models what the invoices gates read — Status and MergedInto on
 // the billing profile (D10) — and is safe for concurrent use, because the
@@ -116,6 +165,8 @@ type fakeCustomers struct {
 	// onProfile, when set, runs after every BillingProfile read — what
 	// happens between the directory read and the issue's transaction.
 	onProfile func(id int32)
+	// profileErr, when set, is what every BillingProfile read fails with.
+	profileErr error
 }
 
 var _ contracts.CustomerDirectory = (*fakeCustomers)(nil)
@@ -230,10 +281,13 @@ func (f *fakeCustomers) ContactsByEmail(context.Context, string) ([]contracts.Co
 func (f *fakeCustomers) BillingProfile(_ context.Context, id int32) (*contracts.CustomerBillingProfile, error) {
 	f.mu.Lock()
 	p, ok := f.profiles[id]
-	after := f.onProfile
+	after, failure := f.onProfile, f.profileErr
 	f.mu.Unlock()
 	if after != nil {
 		after(id)
+	}
+	if failure != nil {
+		return nil, failure
 	}
 	if !ok {
 		return nil, nil
@@ -255,6 +309,13 @@ func (f *fakeCustomers) afterProfileRead(fn func(id int32)) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.onProfile = fn
+}
+
+// failProfiles makes every BillingProfile read fail with err, nil to stop.
+func (f *fakeCustomers) failProfiles(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.profileErr = err
 }
 
 // fakeObjectStore is an in-memory storage.ObjectStore that records every Put

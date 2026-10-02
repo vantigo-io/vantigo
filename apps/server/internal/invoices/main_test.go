@@ -18,9 +18,10 @@ var recorder = contracttest.NewForModule("invoices")
 
 func TestMain(m *testing.M) {
 	// The whole suite's locking guarantee, installed once before any test
-	// runs: every call this module makes to the directory or the object store
-	// is reported here, and one made from inside a locked transaction is
+	// runs: every call this module makes to the directory, the object store
+	// or the SMTP seam is reported here — recorded with its caller
+	// (contractCalls), and, when made from inside a locked transaction,
 	// recorded for the harness to fail on (newInvoicesHarness).
-	invoices.SetContractCallHook(lockedContractCalls.note)
+	invoices.SetContractCallHook(noteContractCall)
 	os.Exit(contracttest.RequireCoverage(m, recorder))
 }

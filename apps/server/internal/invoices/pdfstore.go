@@ -292,32 +292,95 @@ func fileName(inv store.InvoicesInvoice) string {
 	return fmt.Sprintf("faktura-%d.pdf", *inv.Number)
 }
 
-// storeOnceFailed answers a download whose store-once path failed: the
-// object store's failure is a 503 to retry, and anything else — a render, a
-// database read or write — an error the server answers with a 500.
-func storeOnceFailed(err error) (gen.GetInvoicesByIdPdfResponseObject, error) {
-	if !errors.Is(err, errObjectStore) {
-		return nil, err
-	}
-	return gen.GetInvoicesByIdPdf503ApplicationProblemPlusJSONResponse(storageUnavailable(
-		"The document store could not be reached. Try again.")), nil
+// pdfProblem is why loadStoredPDF has no bytes to answer, in the terms both
+// its callers answer with: unavailable is the object store's 503 to retry
+// (storage_unavailable), broken a stored object gone or altered — a 500 the
+// operator has been told of in the log — and err anything else, a render or
+// a database read or write, which the server answers with a 500.
+type pdfProblem struct {
+	unavailable *gen.InvoicesConflictProblem
+	broken      bool
+	err         error
 }
 
-// storageUnavailable is the 503 a download answers when the store is not
-// configured or cannot be read.
+// storageUnavailable is the 503 a download or a send answers when the store
+// is not configured or cannot be read.
 func storageUnavailable(detail string) gen.InvoicesConflictProblem {
 	c := conflict(codeStorageUnavailable, storageUnavailableTitle, detail)
 	c.Status = ptr(int32(http.StatusServiceUnavailable))
 	return c
 }
 
-// storedDocumentBroken is the 500 a download answers when the stored object is
-// gone or its bytes no longer match its hash — an operator problem, logged at
-// error and never papered over by rendering again.
+// unavailable is a pdfProblem the object store caused.
+func unavailable(detail string) *pdfProblem {
+	return &pdfProblem{unavailable: ptr(storageUnavailable(detail))}
+}
+
+// storedDocumentBroken is the 500 a download or a send answers when the
+// stored object is gone or its bytes no longer match its hash — an operator
+// problem, logged at error and never papered over by rendering again.
 func storedDocumentBroken() apicommon.ProblemDetails {
 	return apicommon.ProblemStatus("The stored document is damaged",
 		"The document's stored PDF is missing or does not match what was stored. It is not rendered again; the operator has been told.",
 		http.StatusInternalServerError)
+}
+
+// storeOnceFailed is the problem of a store-once path that failed: the
+// object store's failure is a 503 to retry, and anything else — a render, a
+// database read or write — an error the server answers with a 500.
+func storeOnceFailed(err error) *pdfProblem {
+	if errors.Is(err, errObjectStore) {
+		return unavailable("The document store could not be reached. Try again.")
+	}
+	return &pdfProblem{err: err}
+}
+
+// loadStoredPDF is an issued document's PDF as the object store holds it
+// (D7), for the download and the send alike: stored once when the row has no
+// hash yet, and otherwise read whole and verified against the hash, so
+// neither ever hands over bytes the store does not hold. Its answer carries
+// the bytes; its problem says why there are none.
+func (s *server) loadStoredPDF(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice) (storedPDF, *pdfProblem) {
+	if !s.storageConfigured {
+		return storedPDF{}, unavailable("This installation has no object store.")
+	}
+	found := storedPDF{}
+	// Stored means both columns (ck_invoices_pdf keeps them together); either
+	// one missing is "not stored", never a dereference of the other.
+	if inv.PdfSha256 == nil || inv.PdfObjectKey == nil {
+		var err error
+		if found, err = s.storeOnce(ctx, q, inv); err != nil {
+			s.deps.Logger.ErrorContext(ctx, "invoices: a PDF could not be stored", "invoice_id", inv.ID, "error", err.Error())
+			return storedPDF{}, storeOnceFailed(err)
+		}
+	} else {
+		found = storedPDF{key: *inv.PdfObjectKey, sha256: *inv.PdfSha256}
+	}
+	if found.body != nil {
+		return found, nil
+	}
+	rc, err := s.objectGet(ctx, found.key)
+	switch {
+	case errors.Is(err, storage.ErrNotExist):
+		s.deps.Logger.ErrorContext(ctx, "invoices: an issued document's stored PDF is gone", "invoice_id", inv.ID, "key", found.key)
+		return storedPDF{}, &pdfProblem{broken: true}
+	case err != nil:
+		s.deps.Logger.WarnContext(ctx, "invoices: the document store could not be read", "invoice_id", inv.ID, "error", err.Error())
+		return storedPDF{}, unavailable("The document store could not be read. Try again.")
+	}
+	body, err := io.ReadAll(io.LimitReader(rc, maxStoredPDF+1))
+	_ = rc.Close()
+	if err != nil {
+		return storedPDF{}, unavailable("The document store could not be read. Try again.")
+	}
+	sum := sha256.Sum256(body)
+	if len(body) > maxStoredPDF || hex.EncodeToString(sum[:]) != found.sha256 {
+		s.deps.Logger.ErrorContext(ctx, "invoices: an issued document's stored PDF does not match its hash",
+			"invoice_id", inv.ID, "key", found.key)
+		return storedPDF{}, &pdfProblem{broken: true}
+	}
+	found.body = body
+	return found, nil
 }
 
 // pdfDownload and pdfPreview set the headers a PDF answers with before the
@@ -365,46 +428,17 @@ func (s *server) GetInvoicesByIdPdf(ctx context.Context, req gen.GetInvoicesById
 		return gen.GetInvoicesByIdPdf409ApplicationProblemPlusJSONResponse(conflict(codeInvoiceDraft, "The document is a draft",
 			"A draft has no document to download yet; preview it instead.")), nil
 	}
-	if !s.storageConfigured {
-		return gen.GetInvoicesByIdPdf503ApplicationProblemPlusJSONResponse(storageUnavailable(
-			"This installation has no object store.")), nil
-	}
-	found := storedPDF{}
-	// Stored means both columns (ck_invoices_pdf keeps them together); either
-	// one missing is "not stored", never a dereference of the other.
-	if inv.PdfSha256 == nil || inv.PdfObjectKey == nil {
-		if found, err = s.storeOnce(ctx, q, inv); err != nil {
-			s.deps.Logger.ErrorContext(ctx, "invoices: a PDF could not be stored on download", "invoice_id", inv.ID, "error", err.Error())
-			return storeOnceFailed(err)
-		}
-	} else {
-		found = storedPDF{key: *inv.PdfObjectKey, sha256: *inv.PdfSha256}
+	found, problem := s.loadStoredPDF(ctx, q, inv)
+	switch {
+	case problem == nil:
+	case problem.unavailable != nil:
+		return gen.GetInvoicesByIdPdf503ApplicationProblemPlusJSONResponse(*problem.unavailable), nil
+	case problem.broken:
+		return gen.GetInvoicesByIdPdf500ApplicationProblemPlusJSONResponse(storedDocumentBroken()), nil
+	default:
+		return nil, problem.err
 	}
 	body := found.body
-	if body == nil {
-		rc, err := s.objectGet(ctx, found.key)
-		switch {
-		case errors.Is(err, storage.ErrNotExist):
-			s.deps.Logger.ErrorContext(ctx, "invoices: an issued document's stored PDF is gone", "invoice_id", inv.ID, "key", found.key)
-			return gen.GetInvoicesByIdPdf500ApplicationProblemPlusJSONResponse(storedDocumentBroken()), nil
-		case err != nil:
-			s.deps.Logger.WarnContext(ctx, "invoices: the document store could not be read", "invoice_id", inv.ID, "error", err.Error())
-			return gen.GetInvoicesByIdPdf503ApplicationProblemPlusJSONResponse(storageUnavailable(
-				"The document store could not be read. Try again.")), nil
-		}
-		body, err = io.ReadAll(io.LimitReader(rc, maxStoredPDF+1))
-		_ = rc.Close()
-		if err != nil {
-			return gen.GetInvoicesByIdPdf503ApplicationProblemPlusJSONResponse(storageUnavailable(
-				"The document store could not be read. Try again.")), nil
-		}
-		sum := sha256.Sum256(body)
-		if len(body) > maxStoredPDF || hex.EncodeToString(sum[:]) != found.sha256 {
-			s.deps.Logger.ErrorContext(ctx, "invoices: an issued document's stored PDF does not match its hash",
-				"invoice_id", inv.ID, "key", found.key)
-			return gen.GetInvoicesByIdPdf500ApplicationProblemPlusJSONResponse(storedDocumentBroken()), nil
-		}
-	}
 	return pdfDownload{
 		body:        gen.GetInvoicesByIdPdf200ApplicationpdfResponse{Body: bytes.NewReader(body), ContentLength: int64(len(body))},
 		disposition: fmt.Sprintf("attachment; filename=%q", fileName(inv)),
