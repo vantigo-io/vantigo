@@ -29,7 +29,8 @@ Operator and contributor documentation for Vantigo:
   reimbursed and invoiced tracks, dated rates, the payroll CSV and permissions.
 - [Invoices module](invoices.md) — the sales document: the seller record, gap-free
   numbering, VAT codes with dated rates, issue and immutability, credit notes, the
-  stored PDF, the journal, retention and permissions.
+  stored PDF, payments and the derived state, sending by e-mail, the journal, the CSV
+  export, the stats, retention and permissions.
 - [Module boundaries](module-boundaries.md) — implementation ownership and module
   conventions.
 - [Object storage](storage.md) — the filesystem-only provider, module scopes, key

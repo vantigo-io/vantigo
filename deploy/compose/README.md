@@ -354,5 +354,13 @@ every issue answers 503. An installation that lists `MODULES` explicitly gets
 Invoices only once `invoices` is added, beside `customers`. See
 [Invoices](../../docs/invoices.md).
 
+**The release with invoice payments and sending.** One new permission,
+`invoices:payments` — registering and removing payments — which no built-in role holds;
+Owner has it through the wildcard, and everyone else needs a role that grants it.
+Sending a document by e-mail is under `invoices:issue` and goes through the same
+`SMTP_*` configuration as identity's mail ([Email and observability](#email-and-observability)):
+an installation without a working SMTP server cannot send invoices, and one on
+`MAIL_DRIVER=log` (development only) answers every send with 503.
+
 For a complete backup, one-migrator, token rotation, and Owner break-glass runbook,
 see [SSO and SCIM operations](../../docs/sso-scim-operations.md).
