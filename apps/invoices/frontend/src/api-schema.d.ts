@@ -262,6 +262,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/{id}/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register a payment
+         * @description Registers money received against an issued invoice (D2). It reads no directory: the customer may be disabled, archived, merged or anonymised since — the money arrived regardless. The fields are judged before anything is locked; then one transaction locks the invoice, reads what its issued credit notes credit and what its live payments paid under that lock, and refuses a payment once nothing is open (invoice_settled) or one over the open amount (payment_exceeds_open, with openAmount). The response is the document with its new state, open amount and payments.
+         */
+        post: operations["postInvoicesByIdPayments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/payments/{paymentId}/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove a payment registration
+         * @description Removes a payment registration with a reason (D2): the row is kept, struck through on the document, and counts for nothing. The reason is judged before anything is read; then one transaction locks the invoice first and reads the payment after that lock, so two removals of one payment give one 200 and one payment_removed. A removal is never undone; the payment is registered again. The response is the document.
+         */
+        post: operations["postInvoicesByIdPaymentsByPaymentIdRemove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/journal": {
         parameters: {
             query?: never;
@@ -748,6 +788,19 @@ export interface components {
             removedAt?: string;
             /** Format: uuid */
             removedByUserId?: string;
+        };
+        /** @description POST /invoices/{id}/payments/{paymentId}/remove's body (D2). reason is why the registration is removed: 1-200 characters once trimmed. A removal is never undone; a mistake is registered again. */
+        InvoicesPaymentRemovalRequest: {
+            reason: string;
+        };
+        /** @description POST /invoices/{id}/payments' body (D2). paidOn is the day the money arrived: on or after the invoice's issue date and not after today (Oslo). amount is greater than 0 with at most 2 decimals, at most 99999999999.99, in the invoice's currency, and at most its open amount (409 payment_exceeds_open). reference (the bank's or the payer's) holds at most 100 characters and note at most 500, both trimmed; absent is empty. */
+        InvoicesPaymentRequest: {
+            /** Format: double */
+            amount: number;
+            note?: string;
+            /** Format: date */
+            paidOn: string;
+            reference?: string;
         };
         /** @description The seller snapshot (D4), copied from the settings at issue. */
         InvoicesSeller: {
@@ -1886,6 +1939,145 @@ export interface operations {
                 content?: never;
             };
             /** @description Conflict — invoice_draft (the original is not issued), credit_note_not_creditable (a credit note is never credited) or invoice_fully_credited. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesByIdPayments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesPaymentRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the invoice with the payment registered. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesInvoiceResponse"];
+                };
+            };
+            /** @description Bad Request — a field did not pass; the errors name it. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — invoice_draft, credit_note_no_payments (a credit note, draft or issued, takes no payment), invoice_settled (nothing is open) or payment_exceeds_open (with openAmount). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesByIdPaymentsByPaymentIdRemove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                paymentId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesPaymentRemovalRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the invoice with the payment removed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesInvoiceResponse"];
+                };
+            };
+            /** @description Bad Request — the reason is empty or over 200 characters. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id, or the payment is not that document's. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — payment_removed (the registration is already removed). */
             409: {
                 headers: {
                     [name: string]: unknown;

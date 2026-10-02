@@ -589,6 +589,12 @@ func numericPair(a, b pgtype.Numeric) (*big.Rat, *big.Rat, error) {
 	return x, y, nil
 }
 
+// creditIssueAfterOriginalLock is called inside a credit note's issue right
+// after the original is locked, with the original's id, so a test can hold
+// the issue there while a payment registration against the original waits on
+// the same lock (payments.go). nil in production.
+var creditIssueAfterOriginalLock func(ctx context.Context, invoiceID int64)
+
 // creditIssueChecks are the checks only a credit note keeps (D6 step 5): the
 // original locked FOR UPDATE — the last lock of the issue's order — then its
 // credit book read under that lock, after the counter, so every credit note
@@ -598,6 +604,9 @@ func creditIssueChecks(ctx context.Context, txq *store.Queries, locked store.Inv
 	original, err := txq.LockInvoice(ctx, *locked.CreditsInvoiceID)
 	if err != nil {
 		return issuePlan{}, nil, fmt.Errorf("invoices: lock the original %d: %w", *locked.CreditsInvoiceID, err)
+	}
+	if creditIssueAfterOriginalLock != nil {
+		creditIssueAfterOriginalLock(ctx, original.ID)
 	}
 	book, err := readCreditBook(ctx, txq, original)
 	if err != nil {

@@ -378,6 +378,19 @@ type InvoicesPayment struct {
 	RemovedByUserId    *openapi_types.UUID `json:"removedByUserId,omitempty"`
 }
 
+// InvoicesPaymentRemovalRequest POST /invoices/{id}/payments/{paymentId}/remove's body (D2). reason is why the registration is removed: 1-200 characters once trimmed. A removal is never undone; a mistake is registered again.
+type InvoicesPaymentRemovalRequest struct {
+	Reason string `json:"reason"`
+}
+
+// InvoicesPaymentRequest POST /invoices/{id}/payments' body (D2). paidOn is the day the money arrived: on or after the invoice's issue date and not after today (Oslo). amount is greater than 0 with at most 2 decimals, at most 99999999999.99, in the invoice's currency, and at most its open amount (409 payment_exceeds_open). reference (the bank's or the payer's) holds at most 100 characters and note at most 500, both trimmed; absent is empty.
+type InvoicesPaymentRequest struct {
+	Amount    float64            `json:"amount"`
+	Note      *string            `json:"note,omitempty"`
+	PaidOn    openapi_types.Date `json:"paidOn"`
+	Reference *string            `json:"reference,omitempty"`
+}
+
 // InvoicesSeller The seller snapshot (D4), copied from the settings at issue.
 type InvoicesSeller struct {
 	AddressLine1         string `json:"addressLine1"`
@@ -577,6 +590,12 @@ type PutInvoicesByIdJSONRequestBody = InvoicesInvoiceRequest
 // PostInvoicesByIdIssueJSONRequestBody defines body for PostInvoicesByIdIssue for application/json ContentType.
 type PostInvoicesByIdIssueJSONRequestBody = InvoicesIssueRequest
 
+// PostInvoicesByIdPaymentsJSONRequestBody defines body for PostInvoicesByIdPayments for application/json ContentType.
+type PostInvoicesByIdPaymentsJSONRequestBody = InvoicesPaymentRequest
+
+// PostInvoicesByIdPaymentsByPaymentIdRemoveJSONRequestBody defines body for PostInvoicesByIdPaymentsByPaymentIdRemove for application/json ContentType.
+type PostInvoicesByIdPaymentsByPaymentIdRemoveJSONRequestBody = InvoicesPaymentRemovalRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// GetInvoices List invoices and credit notes
@@ -627,6 +646,12 @@ type ServerInterface interface {
 	// PostInvoicesByIdIssue Issue a draft
 	// (POST /api/v1/invoices/{id}/issue)
 	PostInvoicesByIdIssue(w http.ResponseWriter, r *http.Request, id int64)
+	// PostInvoicesByIdPayments Register a payment
+	// (POST /api/v1/invoices/{id}/payments)
+	PostInvoicesByIdPayments(w http.ResponseWriter, r *http.Request, id int64)
+	// PostInvoicesByIdPaymentsByPaymentIdRemove Remove a payment registration
+	// (POST /api/v1/invoices/{id}/payments/{paymentId}/remove)
+	PostInvoicesByIdPaymentsByPaymentIdRemove(w http.ResponseWriter, r *http.Request, id int64, paymentId int64)
 	// GetInvoicesByIdPdf Download an issued document's PDF
 	// (GET /api/v1/invoices/{id}/pdf)
 	GetInvoicesByIdPdf(w http.ResponseWriter, r *http.Request, id int64)
@@ -1154,6 +1179,67 @@ func (siw *ServerInterfaceWrapper) PostInvoicesByIdIssue(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// PostInvoicesByIdPayments operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesByIdPayments(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesByIdPayments(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInvoicesByIdPaymentsByPaymentIdRemove operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesByIdPaymentsByPaymentIdRemove(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "paymentId" -------------
+	var paymentId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "paymentId", r.PathValue("paymentId"), &paymentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "paymentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesByIdPaymentsByPaymentIdRemove(w, r, id, paymentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetInvoicesByIdPdf operation middleware
 func (siw *ServerInterfaceWrapper) GetInvoicesByIdPdf(w http.ResponseWriter, r *http.Request) {
 
@@ -1343,6 +1429,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/{id}/pdf", wrapper.GetInvoicesByIdPdf)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/{id}/preview.pdf", wrapper.GetInvoicesByIdPreviewPdf)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/credit", wrapper.PostInvoicesByIdCredit)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/payments", wrapper.PostInvoicesByIdPayments)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/{id}/payments/{paymentId}/remove", wrapper.PostInvoicesByIdPaymentsByPaymentIdRemove)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/journal", wrapper.GetInvoicesJournal)
 
 	return m
@@ -2474,6 +2562,181 @@ func (response PostInvoicesByIdIssue503ApplicationProblemPlusJSONResponse) Visit
 	return err
 }
 
+type PostInvoicesByIdPaymentsRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostInvoicesByIdPaymentsJSONRequestBody
+}
+
+type PostInvoicesByIdPaymentsResponseObject interface {
+	VisitPostInvoicesByIdPaymentsResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesByIdPayments200JSONResponse InvoicesInvoiceResponse
+
+func (response PostInvoicesByIdPayments200JSONResponse) VisitPostInvoicesByIdPaymentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdPayments400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostInvoicesByIdPayments400ApplicationProblemPlusJSONResponse) VisitPostInvoicesByIdPaymentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdPayments401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesByIdPayments401JSONResponse) VisitPostInvoicesByIdPaymentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdPayments403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesByIdPayments403JSONResponse) VisitPostInvoicesByIdPaymentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdPayments404Response struct {
+}
+
+func (response PostInvoicesByIdPayments404Response) VisitPostInvoicesByIdPaymentsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInvoicesByIdPayments409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesByIdPayments409ApplicationProblemPlusJSONResponse) VisitPostInvoicesByIdPaymentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdPaymentsByPaymentIdRemoveRequestObject struct {
+	Id        int64 `json:"id"`
+	PaymentId int64 `json:"paymentId"`
+	Body      *PostInvoicesByIdPaymentsByPaymentIdRemoveJSONRequestBody
+}
+
+type PostInvoicesByIdPaymentsByPaymentIdRemoveResponseObject interface {
+	VisitPostInvoicesByIdPaymentsByPaymentIdRemoveResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesByIdPaymentsByPaymentIdRemove200JSONResponse InvoicesInvoiceResponse
+
+func (response PostInvoicesByIdPaymentsByPaymentIdRemove200JSONResponse) VisitPostInvoicesByIdPaymentsByPaymentIdRemoveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdPaymentsByPaymentIdRemove400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostInvoicesByIdPaymentsByPaymentIdRemove400ApplicationProblemPlusJSONResponse) VisitPostInvoicesByIdPaymentsByPaymentIdRemoveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdPaymentsByPaymentIdRemove401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesByIdPaymentsByPaymentIdRemove401JSONResponse) VisitPostInvoicesByIdPaymentsByPaymentIdRemoveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdPaymentsByPaymentIdRemove403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesByIdPaymentsByPaymentIdRemove403JSONResponse) VisitPostInvoicesByIdPaymentsByPaymentIdRemoveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesByIdPaymentsByPaymentIdRemove404Response struct {
+}
+
+func (response PostInvoicesByIdPaymentsByPaymentIdRemove404Response) VisitPostInvoicesByIdPaymentsByPaymentIdRemoveResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInvoicesByIdPaymentsByPaymentIdRemove409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesByIdPaymentsByPaymentIdRemove409ApplicationProblemPlusJSONResponse) VisitPostInvoicesByIdPaymentsByPaymentIdRemoveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetInvoicesByIdPdfRequestObject struct {
 	Id int64 `json:"id"`
 }
@@ -2708,6 +2971,12 @@ type StrictServerInterface interface {
 	// PostInvoicesByIdIssue Issue a draft
 	// (POST /api/v1/invoices/{id}/issue)
 	PostInvoicesByIdIssue(ctx context.Context, request PostInvoicesByIdIssueRequestObject) (PostInvoicesByIdIssueResponseObject, error)
+	// PostInvoicesByIdPayments Register a payment
+	// (POST /api/v1/invoices/{id}/payments)
+	PostInvoicesByIdPayments(ctx context.Context, request PostInvoicesByIdPaymentsRequestObject) (PostInvoicesByIdPaymentsResponseObject, error)
+	// PostInvoicesByIdPaymentsByPaymentIdRemove Remove a payment registration
+	// (POST /api/v1/invoices/{id}/payments/{paymentId}/remove)
+	PostInvoicesByIdPaymentsByPaymentIdRemove(ctx context.Context, request PostInvoicesByIdPaymentsByPaymentIdRemoveRequestObject) (PostInvoicesByIdPaymentsByPaymentIdRemoveResponseObject, error)
 	// GetInvoicesByIdPdf Download an issued document's PDF
 	// (GET /api/v1/invoices/{id}/pdf)
 	GetInvoicesByIdPdf(ctx context.Context, request GetInvoicesByIdPdfRequestObject) (GetInvoicesByIdPdfResponseObject, error)
@@ -3202,6 +3471,73 @@ func (sh *strictHandler) PostInvoicesByIdIssue(w http.ResponseWriter, r *http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostInvoicesByIdIssueResponseObject); ok {
 		if err := validResponse.VisitPostInvoicesByIdIssueResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesByIdPayments operation middleware
+func (sh *strictHandler) PostInvoicesByIdPayments(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostInvoicesByIdPaymentsRequestObject
+
+	request.Id = id
+
+	var body PostInvoicesByIdPaymentsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesByIdPayments(ctx, request.(PostInvoicesByIdPaymentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesByIdPayments")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesByIdPaymentsResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesByIdPaymentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesByIdPaymentsByPaymentIdRemove operation middleware
+func (sh *strictHandler) PostInvoicesByIdPaymentsByPaymentIdRemove(w http.ResponseWriter, r *http.Request, id int64, paymentId int64) {
+	var request PostInvoicesByIdPaymentsByPaymentIdRemoveRequestObject
+
+	request.Id = id
+	request.PaymentId = paymentId
+
+	var body PostInvoicesByIdPaymentsByPaymentIdRemoveJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesByIdPaymentsByPaymentIdRemove(ctx, request.(PostInvoicesByIdPaymentsByPaymentIdRemoveRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesByIdPaymentsByPaymentIdRemove")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesByIdPaymentsByPaymentIdRemoveResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesByIdPaymentsByPaymentIdRemoveResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
