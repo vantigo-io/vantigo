@@ -24,6 +24,7 @@
       "**/*.json",
       "**/*.css",
       "!!.claude",
+      "!!.omc",
       "!!**/node_modules",
       "!!**/dist",
       "!!**/bin",
