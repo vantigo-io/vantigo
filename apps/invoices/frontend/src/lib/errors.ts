@@ -5,9 +5,10 @@ import { invoicesCatalog } from "../i18n";
 type Translate = (key: string, values?: Record<string, unknown>) => string;
 
 /**
- * The refusal's code, when the error is one of this module's 409s or its 503
- * (D2-D8). The shared client puts a problem's top-level `code` on the error
- * itself, a conflict and a generic error alike.
+ * The refusal's code: a problem's `code` (this module's 409s, its 502 and its
+ * 503s) or the rate limiter's `error.code` (its 429). The shared client puts
+ * either on the error itself, whatever the status — a conflict and a generic
+ * error alike.
  */
 export const refusalCode = (error: unknown): string | undefined => {
   const code = (error as { code?: unknown } | null)?.code;
@@ -25,8 +26,8 @@ const refusalProblem = (error: unknown): Record<string, unknown> =>
  * (`{{dates}}`, each written by `date`), the line (`{{line}}`), the
  * customer a merged one went into (`{{mergedInto}}`) and the open amount a
  * payment exceeded (`{{openAmount}}`, written by `money`). The rate limiter's
- * 429 is not a problem document — its body is `{"error": {"code":
- * "rate_limited"}}` — and is worded by `refusal.rateLimited`. A validation error says
+ * `rate_limited` (its 429, not a problem document) is worded by
+ * `refusal.rateLimited`. A validation error says
  * its first field's message; anything else, the error's own — a code this
  * catalog has no words for included, which is looked up before it is
  * translated: outside production a missing key throws rather than echoing
@@ -39,9 +40,8 @@ export const refusalMessage = (
   money: (amount: number) => string = (amount) => String(amount),
 ): string => {
   const code = refusalCode(error);
-  const limited = code === "rate_limited" || (error as { status?: unknown } | null)?.status === 429;
-  const key = limited ? "refusal.rateLimited" : `refusal.${code}`;
-  if ((code || limited) && key in invoicesCatalog.en) {
+  const key = code === "rate_limited" ? "refusal.rateLimited" : `refusal.${code}`;
+  if (code && key in invoicesCatalog.en) {
     const problem = refusalProblem(error);
     const dates = Array.isArray(problem.allowedIssueDates) ? (problem.allowedIssueDates as string[]) : [];
     return t(key, {

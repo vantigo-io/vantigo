@@ -1,14 +1,13 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { setLanguagePreference } from "@vantigo/frontend-shell";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InvoiceJournal } from "../api/journal";
-import { jsonResponse, problemResponse } from "../test/api";
+import { jsonResponse, path } from "../test/api";
 import { stubFetch } from "../test/fetch";
 import { journal, meta } from "../test/fixtures";
 import { renderWithProviders } from "../test/render";
 import { JournalPage } from "./journal";
-
-const path = (input: RequestInfo | URL) => String(input);
 
 const server = (answer: InvoiceJournal | ((url: string) => InvoiceJournal)) =>
   stubFetch((input: RequestInfo | URL) => {
@@ -17,6 +16,30 @@ const server = (answer: InvoiceJournal | ((url: string) => InvoiceJournal)) =>
     if (url.startsWith("/api/v1/invoices/journal?")) {
       return jsonResponse(200, typeof answer === "function" ? answer(url) : answer);
     }
+    return new Response(null, { status: 404 });
+  });
+
+// jsdom has no object URLs: the export's save makes and revokes one, so each
+// test gets its own fakes and the originals (absent in jsdom) come back after.
+const { createObjectURL, revokeObjectURL } = URL;
+
+beforeEach(() => {
+  URL.createObjectURL = vi.fn(() => "blob:csv");
+  URL.revokeObjectURL = vi.fn();
+});
+
+afterEach(() => {
+  URL.createObjectURL = createObjectURL;
+  URL.revokeObjectURL = revokeObjectURL;
+});
+
+/** The journal's fake with the export answered by `exportAnswer`. */
+const exportServer = (exportAnswer: () => Response) =>
+  stubFetch((input: RequestInfo | URL) => {
+    const url = path(input);
+    if (url === "/api/v1/invoices/meta") return jsonResponse(200, meta());
+    if (url.startsWith("/api/v1/invoices/journal?")) return jsonResponse(200, journal());
+    if (url.startsWith("/api/v1/invoices/export.csv?")) return exportAnswer();
     return new Response(null, { status: 404 });
   });
 
@@ -128,26 +151,20 @@ describe("the invoice journal", () => {
   });
 
   it("exports the range shown as CSV, saved under the name the server gives it", async () => {
-    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:csv"), revokeObjectURL: vi.fn() }));
     const clicked: HTMLAnchorElement[] = [];
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
       clicked.push(this);
     });
-    const fetchMock = stubFetch((input: RequestInfo | URL) => {
-      const url = path(input);
-      if (url === "/api/v1/invoices/meta") return jsonResponse(200, meta());
-      if (url.startsWith("/api/v1/invoices/journal?")) return jsonResponse(200, journal());
-      if (url.startsWith("/api/v1/invoices/export.csv?")) {
-        return new Response("\uFEFFNumber;Kind\r\n", {
+    const fetchMock = exportServer(
+      () =>
+        new Response("\uFEFFNumber;Kind\r\n", {
           status: 200,
           headers: {
             "Content-Type": "text/csv; charset=utf-8",
             "Content-Disposition": 'attachment; filename="invoices-2026-09-01-2026-09-12.csv"',
           },
-        });
-      }
-      return new Response(null, { status: 404 });
-    });
+        }),
+    );
     renderWithProviders(<JournalPage />);
     await screen.findByText("No gaps between 1000 and 1002.");
 
@@ -162,23 +179,59 @@ describe("the invoice journal", () => {
     ).toBe(true);
     expect(clicked[0].download).toBe("invoices-2026-09-01-2026-09-12.csv");
     expect(clicked[0].href).toBe("blob:csv");
+    await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:csv"));
   });
 
-  it("says a refused export in a notification, never the problem opened in the browser", async () => {
-    const clicked = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
-    stubFetch((input: RequestInfo | URL) => {
-      const url = path(input);
-      if (url === "/api/v1/invoices/meta") return jsonResponse(200, meta());
-      if (url.startsWith("/api/v1/invoices/journal?")) return jsonResponse(200, journal());
-      if (url.startsWith("/api/v1/invoices/export.csv?")) return problemResponse(400, "Too many rows to export");
-      return new Response(null, { status: 404 });
+  // The cap's 400 as the server answers it (csvexport.go's tooManyRowsToExport):
+  // a bare problem, its title and detail in English, no `errors`.
+  const tooManyRows = () =>
+    jsonResponse(400, {
+      title: "Too many rows to export",
+      status: 400,
+      detail: "This export would hold more than 5000 rows, which is more than one file should; narrow the period.",
     });
+
+  it("says the row cap in a notification in the reader's language, never the problem opened in the browser", async () => {
+    const clicked = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    exportServer(tooManyRows);
     renderWithProviders(<JournalPage />);
     await screen.findByText("No gaps between 1000 and 1002.");
 
     await userEvent.click(screen.getByRole("button", { name: "Export CSV" }));
     expect(await screen.findByText("Could not export the CSV")).toBeInTheDocument();
-    expect(screen.getByText("Too many rows to export")).toBeInTheDocument();
+    expect(screen.getByText("The export would hold more than 5000 rows; narrow the period.")).toBeInTheDocument();
+    expect(screen.queryByText(/Too many rows to export|which is more than one file should/)).not.toBeInTheDocument();
     expect(clicked).not.toHaveBeenCalled();
+  });
+
+  it("says the row cap in Norwegian from the nb catalog", async () => {
+    setLanguagePreference("nb");
+    try {
+      vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+      exportServer(tooManyRows);
+      renderWithProviders(<JournalPage />);
+      await userEvent.click(await screen.findByRole("button", { name: "Eksporter CSV" }));
+      expect(
+        await screen.findByText("Eksporten ville hatt mer enn 5000 rader; snevre inn perioden."),
+      ).toBeInTheDocument();
+    } finally {
+      setLanguagePreference("auto");
+    }
+  });
+
+  it("says a refused field of the period by the catalog's words", async () => {
+    exportServer(() =>
+      jsonResponse(400, {
+        title: "Invalid query parameters",
+        status: 400,
+        errors: { from: ["from is required and must be a date"] },
+      }),
+    );
+    renderWithProviders(<JournalPage />);
+    await screen.findByText("No gaps between 1000 and 1002.");
+
+    await userEvent.click(screen.getByRole("button", { name: "Export CSV" }));
+    expect(await screen.findByText("Choose a first day on or before the last day.")).toBeInTheDocument();
+    expect(screen.queryByText("from is required and must be a date")).not.toBeInTheDocument();
   });
 });

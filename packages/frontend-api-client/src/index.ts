@@ -165,12 +165,19 @@ export const createApiClient = (clientOptions: ApiClientOptions = {}): ApiClient
     if ((response.status === 400 || response.status === 409) && fields) {
       throw new ApiValidationError(problemMessage(problem, response.status), fields, response.status);
     }
-    const code = typeof details.error?.code === "string" ? details.error.code : undefined;
+    // A nested `error.code` (the identity shape) wins; a problem document's
+    // top-level `code` (the modules' conflict shape, any status) is the fallback.
+    const code =
+      typeof details.error?.code === "string"
+        ? details.error.code
+        : typeof details.code === "string"
+          ? details.code
+          : undefined;
     if (response.status === 409 && problem && typeof problem === "object" && typeof details.title === "string") {
       throw new ApiConflictError(problemMessage(problem, response.status), {
         title: details.title,
         detail: typeof details.detail === "string" ? details.detail : undefined,
-        code: code ?? (typeof details.code === "string" ? details.code : undefined),
+        code,
         problem: problem as Record<string, unknown>,
       });
     }

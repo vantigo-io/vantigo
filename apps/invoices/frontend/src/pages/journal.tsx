@@ -8,8 +8,9 @@ import { useState } from "react";
 import { downloadInvoicesCsv, isSessionExpired, saveCsv } from "../api/export";
 import { journalQueryOptions } from "../api/journal";
 import { invoicesMetaQueryOptions } from "../api/meta";
+import { ApiValidationError } from "../api/request";
 import "../i18n";
-import { refusalMessage } from "../lib/errors";
+import { fieldRefusals, refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 
 const firstOfMonth = (day: string) => `${day.slice(0, 7)}-01`;
@@ -44,13 +45,25 @@ export const JournalPage = () => {
   // issue and an issued row cannot be deleted — so both are said as alarms.
   const checked = data?.checkedFrom !== undefined && data?.checkedTo !== undefined;
   const counterAhead = data?.counterLast !== undefined && data.counterLast !== data.highestIssued;
+  // The export's refusals in the reader's language (D5): a validation 400
+  // names `from` or `to`; a bare 400 is the 5000-row cap — or, on a reversed
+  // range, the server's other bare 400, which this page can tell by itself.
+  const exportRefusal = (error: unknown): string => {
+    if (error instanceof ApiValidationError) {
+      return fieldRefusals(error, t, () => false, "export").elsewhere.join(" ");
+    }
+    if ((error as { status?: unknown } | null)?.status === 400) {
+      return rangeFrom > rangeTo ? t("fieldInvalid.export.from") : t("exportTooManyRows");
+    }
+    return refusalMessage(error, t, date);
+  };
   const exportCsv = useMutation({
     mutationFn: () => downloadInvoicesCsv({ from: rangeFrom, to: rangeTo }),
     onSuccess: saveCsv,
     onError: (error) => {
       // An expired session has signed the person out already: nothing to say here.
       if (isSessionExpired(error)) return;
-      notifications.show({ color: "red", title: t("couldNotExport"), message: refusalMessage(error, t, date) });
+      notifications.show({ color: "red", title: t("couldNotExport"), message: exportRefusal(error) });
     },
   });
 

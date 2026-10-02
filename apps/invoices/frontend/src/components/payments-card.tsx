@@ -83,7 +83,17 @@ export const PaymentsCard = ({ invoice, canRegister, today }: PaymentsCardProps)
                       {canRegister && (
                         <Table.Td ta="right">
                           {!removed && (
-                            <Button size="xs" variant="subtle" color="red" onClick={() => setRemoving(p)}>
+                            <Button
+                              size="xs"
+                              variant="subtle"
+                              color="red"
+                              // "Remove" alone says not which: each button names its payment.
+                              aria-label={t("removePaymentOf", {
+                                date: date(p.paidOn),
+                                amount: money(p.amount, p.currency),
+                              })}
+                              onClick={() => setRemoving(p)}
+                            >
                               {t("removePaymentButton")}
                             </Button>
                           )}

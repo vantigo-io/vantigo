@@ -87,14 +87,19 @@ describe("a refusal's words", () => {
     ).toBe("Betalingen er større enn utestående beløp, kr 24,99. En overbetaling kan ikke registreres.");
   });
 
-  it("words the rate limit's 429, whose body is not a problem document", () => {
+  it("words the rate limiter's rate_limited, whose body is not a problem document", () => {
     const limited = Object.assign(new Error("Too many requests"), { status: 429, code: "rate_limited" });
     expect(refusalMessage(limited, translate("en"))).toBe(
-      "Too many e-mails were sent in a short time. Wait a few minutes and try again.",
+      "Too many requests in a short time; wait a minute and try again.",
     );
     expect(refusalMessage(limited, translate("nb"))).toBe(
-      "For mange e-poster er sendt på kort tid. Vent noen minutter og prøv igjen.",
+      "For mange forespørsler på kort tid; vent et minutt og prøv igjen.",
     );
+  });
+
+  it("words a 429 by its code only: one without rate_limited says its own message", () => {
+    const other = Object.assign(new Error("Slow down"), { status: 429 });
+    expect(refusalMessage(other, translate("en"))).toBe("Slow down");
   });
 
   it("words the refusals about a document's kind, never the server's English", () => {

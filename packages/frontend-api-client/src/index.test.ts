@@ -35,6 +35,37 @@ describe("frontend API client", () => {
     });
   });
 
+  it("keeps a problem's top-level code on the generic error for any status", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse(503, {
+          title: "Storage unavailable",
+          code: "storage_unavailable",
+          detail: "The document store cannot be reached.",
+          status: 503,
+        }),
+      ),
+    );
+    const client = createApiClient();
+
+    await expect(client.request("/api/v1/invoices/1/issue", { method: "POST" })).rejects.toMatchObject({
+      message: "The document store cannot be reached.",
+      status: 503,
+      code: "storage_unavailable",
+    });
+  });
+
+  it("keeps a 400's top-level code when the problem has no fields", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse(400, { title: "Bad request", code: "too_many_rows" })),
+    );
+    const client = createApiClient();
+
+    await expect(client.request("/api/v1/x")).rejects.toMatchObject({ status: 400, code: "too_many_rows" });
+  });
+
   it("applies a caller-supplied transformUrl", async () => {
     const transformUrl = (url: string) =>
       url.startsWith("/api/") && !url.startsWith("/api/v1/identity/") ? `/custom/prefix${url}` : url;

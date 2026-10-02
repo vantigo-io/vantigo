@@ -1,43 +1,25 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
-import type { InvoiceDocument } from "../api/invoices";
-import { jsonResponse } from "../test/api";
-import { stubFetch } from "../test/fetch";
-import { issued, meta, partlyPaid } from "../test/fixtures";
+import { describe, expect, it, vi } from "vitest";
+import { setUnauthorizedHandler } from "../api/request";
+import { jsonResponse, refusal } from "../test/api";
+import { pendingResponse, readsOf, requestTo, documentServer as server } from "../test/document-server";
+import { issued, partlyPaid } from "../test/fixtures";
 import { renderRoute } from "../test/route-tree";
 
-const path = (input: RequestInfo | URL) => String(input);
-
-/** A refusal as the server answers it: the invoices conflict problem, a 409, a 502 or a 503 alike. */
-const refusal = (status: number, code: string) =>
-  jsonResponse(status, { type: "about:blank", title: "Refused", status, code, detail: "The server's English." });
-
-type Answer = Response | Promise<Response> | (() => Response | Promise<Response>);
-
-/** The fetch fake: meta, document 1001 as `doc` says, and each write by "METHOD url". */
-const server = (
-  doc: () => InvoiceDocument,
-  answers: Record<string, Answer> = {},
-  capabilities: Partial<ReturnType<typeof meta>["capabilities"]> = {},
-) =>
-  stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
-    const url = path(input);
-    const method = init?.method ?? "GET";
-    const answer = answers[`${method} ${url}`];
-    if (answer) return typeof answer === "function" ? answer() : answer;
-    if (url === "/api/v1/invoices/meta") {
-      return jsonResponse(200, meta({ capabilities: { ...meta().capabilities, ...capabilities } }));
-    }
-    if (method === "GET" && url === "/api/v1/invoices/1001") return jsonResponse(200, doc());
-    return new Response(null, { status: 404 });
+/** The answer to a send: the document with the delivery the send logged, to `recipient`. */
+const sentTo = (recipient: string) =>
+  issued({
+    deliveries: [
+      {
+        id: 1003,
+        recipient,
+        sentAt: "2026-09-12T10:00:00Z",
+        sentByUserId: "0b6e4c1a-5f7d-4d8e-9a3b-2c1d0e9f8a7b",
+        subject: "Faktura 1000 fra Kraft-Verket AS",
+      },
+    ],
   });
-
-/** The body a write sent, found by its method and URL — never "the last fetch". */
-const requestTo = (fetchMock: ReturnType<typeof stubFetch>, method: string, url: string) => {
-  const call = fetchMock.actualCalls.find(([u, init]) => path(u) === url && (init?.method ?? "GET") === method);
-  return call ? JSON.parse(String(call[1]?.body ?? "{}")) : undefined;
-};
 
 const openSendDialog = async () => {
   await userEvent.click(await screen.findByRole("button", { name: "Send" }));
@@ -46,11 +28,8 @@ const openSendDialog = async () => {
 
 describe("the Send dialog", () => {
   it("prefills the customer's invoice e-mail and sends to it, saying where it went", async () => {
-    let answer: (response: Response) => void = () => {};
-    const pending = new Promise<Response>((resolve) => {
-      answer = resolve;
-    });
-    const fetchMock = server(() => issued(), { "POST /api/v1/invoices/1001/send": () => pending });
+    const pending = pendingResponse();
+    const fetchMock = server(() => issued(), { "POST /api/v1/invoices/1001/send": () => pending.response });
     renderRoute("/invoices/1001");
 
     const dialog = await openSendDialog();
@@ -59,13 +38,44 @@ describe("the Send dialog", () => {
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "Send" })).toBeDisabled());
     // The address the customer has is the server's default: nothing to override.
     expect(requestTo(fetchMock, "POST", "/api/v1/invoices/1001/send")).toEqual({});
-    answer(jsonResponse(200, issued()));
+    const reads = readsOf(fetchMock, "/api/v1/invoices/1001");
+    pending.answer(jsonResponse(200, sentTo("faktura@acme.no")));
     expect(await screen.findByText("Sent to faktura@acme.no")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    // Read again after the send, as after every write (reading 5b).
+    await waitFor(() => expect(readsOf(fetchMock, "/api/v1/invoices/1001")).toBeGreaterThan(reads));
+  });
+
+  it("says the address the server logged, the newest delivery's, over the one prefilled", async () => {
+    server(() => partlyPaid(), {
+      "POST /api/v1/invoices/1001/send": () =>
+        jsonResponse(
+          200,
+          partlyPaid({
+            deliveries: [
+              ...(partlyPaid().deliveries ?? []),
+              {
+                id: 1003,
+                recipient: "bokføring@acme.no",
+                sentAt: "2026-09-12T10:00:00Z",
+                sentByUserId: "0b6e4c1a-5f7d-4d8e-9a3b-2c1d0e9f8a7b",
+                subject: "Faktura 1000 fra Kraft-Verket AS",
+              },
+            ],
+          }),
+        ),
+    });
+    renderRoute("/invoices/1001");
+
+    const dialog = await openSendDialog();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Send" }));
+    expect(await screen.findByText("Sent to bokføring@acme.no")).toBeInTheDocument();
   });
 
   it("sends an edited recipient as the override", async () => {
-    const fetchMock = server(() => issued(), { "POST /api/v1/invoices/1001/send": () => jsonResponse(200, issued()) });
+    const fetchMock = server(() => issued(), {
+      "POST /api/v1/invoices/1001/send": () => jsonResponse(200, sentTo("regnskap@acme.no")),
+    });
     renderRoute("/invoices/1001");
 
     const dialog = await openSendDialog();
@@ -111,7 +121,7 @@ describe("the Send dialog", () => {
     [
       "a partly paid",
       partlyPaid(),
-      /Part of the invoice is paid, so the e-mail asks for the outstanding NOK\s?74\.99 only\./,
+      /^Part of the invoice is paid or credited, so the e-mail asks only for the outstanding NOK\s?74\.99\.$/,
     ],
     [
       "a paid",
@@ -141,7 +151,7 @@ describe("the Send dialog", () => {
 
   it.each([
     [409, "no_invoice_email", "The customer has no invoice e-mail. Enter an address to send to."],
-    [409, "customer_anonymised", "The customer has been anonymised and is not written to again."],
+    [409, "customer_anonymised", "The customer has been anonymised and is not contacted again."],
     [503, "mail_unavailable", "This installation cannot send e-mail: SMTP is not configured."],
     [502, "mail_failed", "The mail server did not take the e-mail. Nothing was sent; try again later."],
   ] as const)("says a %i %s in the reader's language", async (status, code, words) => {
@@ -168,20 +178,63 @@ describe("the Send dialog", () => {
     const dialog = await openSendDialog();
     await userEvent.click(within(dialog).getByRole("button", { name: "Send" }));
     expect(
-      await screen.findByText("Too many e-mails were sent in a short time. Wait a few minutes and try again."),
+      await screen.findByText("Too many requests in a short time; wait a minute and try again."),
     ).toBeInTheDocument();
     expect(screen.queryByText("Too many requests")).not.toBeInTheDocument();
   });
 
-  it.each([
-    ["without invoices:issue or mail", { canSend: false }, issued()],
-    ["without the send defaults", {}, issued({ sendDefaults: undefined })],
-  ] as const)("is not offered %s", async (_why, capabilities, doc) => {
-    server(() => doc, {}, capabilities);
+  it("hands an expired session to the host and says nothing in red", async () => {
+    const expired = vi.fn();
+    setUnauthorizedHandler(expired);
+    server(() => issued(), {
+      "POST /api/v1/invoices/1001/send": () => jsonResponse(401, { title: "Unauthorized", status: 401 }),
+    });
     renderRoute("/invoices/1001");
 
-    await screen.findByRole("heading", { name: "Invoice 1000" });
+    const dialog = await openSendDialog();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(expired).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText("Could not send")).not.toBeInTheDocument();
+  });
+
+  it("says a document that is gone in the reader's language", async () => {
+    server(() => issued(), { "POST /api/v1/invoices/1001/send": () => new Response(null, { status: 404 }) });
+    renderRoute("/invoices/1001");
+
+    const dialog = await openSendDialog();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Send" }));
+    expect(await screen.findByText("The document no longer exists.")).toBeInTheDocument();
+    expect(screen.getByText("Could not send")).toBeInTheDocument();
+  });
+
+  it("is not offered without invoices:issue or mail", async () => {
+    server(() => issued(), {}, { canSend: false });
+    renderRoute("/invoices/1001");
+
+    await screen.findByRole("heading", { name: /^Invoice 1000/ });
     expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
+  });
+
+  // The send defaults are the server's best effort: a directory that cannot
+  // be read leaves them out, and the person enters the address instead.
+  it("is offered without the send defaults, the recipient empty and a note saying why", async () => {
+    const fetchMock = server(() => issued({ sendDefaults: undefined }), {
+      "POST /api/v1/invoices/1001/send": () => jsonResponse(200, sentTo("faktura@acme.no")),
+    });
+    renderRoute("/invoices/1001");
+
+    const dialog = await openSendDialog();
+    const recipient = within(dialog).getByRole("textbox", { name: "Recipient" });
+    expect(recipient).toHaveValue("");
+    expect(
+      within(dialog).getByText("The customer's invoice address could not be read; enter the address to send to."),
+    ).toBeInTheDocument();
+    expect(dialog.querySelector("[data-send-warning]")).toBeNull();
+    await userEvent.type(recipient, "faktura@acme.no");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Send" }));
+
+    expect(await screen.findByText("Sent to faktura@acme.no")).toBeInTheDocument();
+    expect(requestTo(fetchMock, "POST", "/api/v1/invoices/1001/send")).toEqual({ recipient: "faktura@acme.no" });
   });
 
   it("is offered for an issued credit note too", async () => {
