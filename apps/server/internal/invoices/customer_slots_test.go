@@ -3,9 +3,12 @@ package invoices_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,6 +16,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/invoices"
+	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 )
 
@@ -244,7 +248,10 @@ func TestCustomerPersonalData_EraseDeletesDraftsAndKeepsDocuments(t *testing.T) 
 	if n := h.Count(t, `SELECT count(*) FROM invoices.invoices WHERE customer_id = $1 AND status = 'draft'`, customerPerson); n != 3 {
 		t.Fatalf("drafts after a rolled-back erase = %d, want 3", n)
 	}
-	if got, want := erase(true), []contracts.ErasedData{{Kind: "invoices.drafts", Count: 3}, {Kind: "invoices.documents", Count: 0}}; !slices.Equal(got, want) {
+	if got, want := erase(true), []contracts.ErasedData{
+		{Kind: "invoices.drafts", Count: 3}, {Kind: "invoices.documents", Count: 0},
+		{Kind: "invoices.payments", Count: 0}, {Kind: "invoices.deliveries", Count: 0},
+	}; !slices.Equal(got, want) {
 		t.Errorf("erased = %+v, want %+v", got, want)
 	}
 	if n := h.Count(t, `SELECT count(*) FROM invoices.invoices WHERE id = $1`, credit.ID); n != 0 {
@@ -256,7 +263,217 @@ func TestCustomerPersonalData_EraseDeletesDraftsAndKeepsDocuments(t *testing.T) 
 	if n := h.Count(t, `SELECT count(*) FROM invoices.invoices WHERE customer_id = $1`, customerAcme); n != 1 {
 		t.Error("another customer's draft was erased")
 	}
-	if got, want := erase(true), []contracts.ErasedData{{Kind: "invoices.drafts", Count: 0}, {Kind: "invoices.documents", Count: 0}}; !slices.Equal(got, want) {
+	if got, want := erase(true), []contracts.ErasedData{
+		{Kind: "invoices.drafts", Count: 0}, {Kind: "invoices.documents", Count: 0},
+		{Kind: "invoices.payments", Count: 0}, {Kind: "invoices.deliveries", Count: 0},
+	}; !slices.Equal(got, want) {
 		t.Errorf("a second erase = %+v, want zeros", got)
 	}
+}
+
+// The export carries each issued document's payments and deliveries
+// (payments and delivery design D6): every registration, a removed one with
+// its removal, the amounts as exact decimal text, and every send's
+// recipient, time and subject. A draft has neither.
+func TestCustomerPersonalData_ExportCarriesPaymentsAndDeliveries(t *testing.T) {
+	t.Parallel()
+	h, _ := sendReady(t)
+	doc := issued(t, h, createDraft(t, h, draftBody(customerPerson, line("Konsultasjon", 1, 1000, vat25))).ID)
+	createDraft(t, h, draftBody(customerPerson, line("Utkast", 1, 100, vat25)))
+	registered(t, h, doc.ID, map[string]any{"amount": 300.1, "paidOn": "2026-09-12", "reference": "KID 0012345", "note": "Delbetaling"})
+	h.Advance(time.Hour)
+	mistake := registered(t, h, doc.ID, pay(0.5, "2026-09-12")).Payments[1].ID
+	h.Advance(time.Hour)
+	if res := payer(t, h).Do(http.MethodPost, removalPath(doc.ID, mistake), map[string]any{"reason": "Feil beløp"}); res.Status != http.StatusOK {
+		t.Fatalf("the removal = %d %s, want 200", res.Status, res.Body)
+	}
+	subject, _ := json.Marshal(sent(t, h, doc.ID, nil).Deliveries[0].Subject)
+
+	section, err := invoices.Module().CustomerPersonalData(disabledDeps(h)).ExportCustomerData(context.Background(), customerPerson)
+	if err != nil {
+		t.Fatalf("ExportCustomerData: %v", err)
+	}
+	b, _ := json.Marshal(section)
+	raw := string(b)
+	for _, want := range []string{
+		`"payments":[` +
+			`{"paidOn":"2026-09-12","amount":"300.10","currency":"NOK","reference":"KID 0012345","note":"Delbetaling","registeredAt":"2026-09-12T12:00:00Z"},` +
+			`{"paidOn":"2026-09-12","amount":"0.50","currency":"NOK","registeredAt":"2026-09-12T13:00:00Z",` +
+			`"removedAt":"2026-09-12T14:00:00Z","removalReason":"Feil beløp"}]`,
+		`"deliveries":[{"recipient":"kari@example.org","sentAt":"2026-09-12T14:00:00Z","subject":` + string(subject) + `}]`,
+	} {
+		if !strings.Contains(raw, want) {
+			t.Errorf("export %s has no %s", raw, want)
+		}
+	}
+	for _, key := range []string{`"payments"`, `"deliveries"`} {
+		if n := strings.Count(raw, key); n != 1 {
+			t.Errorf("export %s has %d %s, want the issued document's only: a draft has neither", raw, n, key)
+		}
+	}
+}
+
+// The erase (D6) locks the person's documents, writes the marker, blanks
+// every one of their deliveries' recipients and deletes their drafts,
+// reporting the four kinds in order; the payments — a bank reference naming
+// the payer included — are looked at and kept, reported at 0. Another
+// customer's deliveries keep their address. Run twice it finds nothing, and
+// the marker keeps its first time. With the module disabled: the pool and
+// the clock are all it needs.
+func TestCustomerPersonalData_EraseBlanksDeliveriesAndReportsFourKinds(t *testing.T) {
+	t.Parallel()
+	h, _ := sendReady(t)
+	doc := issued(t, h, createDraft(t, h, draftBody(customerPerson, line("Konsultasjon", 1, 1000, vat25))).ID)
+	createDraft(t, h, draftBody(customerPerson, line("Utkast", 1, 100, vat25)))
+	registered(t, h, doc.ID, map[string]any{"amount": 300, "paidOn": "2026-09-12", "reference": "Fra Kari Nordmann", "note": "Ringte"})
+	sent(t, h, doc.ID, nil)
+	sent(t, h, doc.ID, map[string]any{"recipient": "kari.privat@example.org"})
+	acme := issuedAcme(t, h)
+	sent(t, h, acme.ID, nil)
+	data := invoices.Module().CustomerPersonalData(disabledDeps(h))
+	h.Advance(time.Hour)
+	erasedAt := h.Now()
+	erase := func() []contracts.ErasedData {
+		var erased []contracts.ErasedData
+		inTx(t, h, true, func(tx pgx.Tx) {
+			var err error
+			if erased, err = data.EraseCustomerData(context.Background(), tx, customerPerson); err != nil {
+				t.Fatalf("EraseCustomerData: %v", err)
+			}
+		})
+		return erased
+	}
+
+	if got, want := erase(), []contracts.ErasedData{
+		{Kind: "invoices.drafts", Count: 1}, {Kind: "invoices.documents", Count: 0},
+		{Kind: "invoices.payments", Count: 0}, {Kind: "invoices.deliveries", Count: 2},
+	}; !slices.Equal(got, want) {
+		t.Errorf("erased = %+v, want %+v", got, want)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM invoices.deliveries WHERE invoice_id = $1 AND recipient = ''`, doc.ID); n != 2 {
+		t.Errorf("%d of the person's two deliveries blanked, want both", n)
+	}
+	if kept := getInvoice(t, h, doc.ID); len(kept.Deliveries) != 2 || kept.Deliveries[0].Recipient != "" || kept.Deliveries[0].Subject == "" {
+		t.Errorf("the deliveries = %+v, want both kept, the subject too, with the address gone", kept.Deliveries)
+	}
+	if got := modtest.One[string](t, h.Harness, `SELECT recipient FROM invoices.deliveries WHERE invoice_id = $1`, acme.ID); got != "faktura@acme.example" {
+		t.Errorf("another customer's delivery = %q, want its address kept", got)
+	}
+	payment := `SELECT reference || '|' || note || '|' || amount::text || '|' || (removed_at IS NULL)::text FROM invoices.payments WHERE invoice_id = $1`
+	if got := modtest.One[string](t, h.Harness, payment, doc.ID); got != "Fra Kari Nordmann|Ringte|300.00|true" {
+		t.Errorf("the payment = %s, want it kept as registered", got)
+	}
+	marker := `SELECT erased_at FROM invoices.erased_customers WHERE customer_id = $1`
+	if at := modtest.One[time.Time](t, h.Harness, marker, customerPerson); !at.Equal(erasedAt) {
+		t.Errorf("the marker = %s, want the clock's %s", at, erasedAt)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM invoices.erased_customers WHERE customer_id = $1`, customerAcme); n != 0 {
+		t.Error("another customer was marked erased")
+	}
+
+	h.Advance(time.Hour)
+	if got, want := erase(), []contracts.ErasedData{
+		{Kind: "invoices.drafts", Count: 0}, {Kind: "invoices.documents", Count: 0},
+		{Kind: "invoices.payments", Count: 0}, {Kind: "invoices.deliveries", Count: 0},
+	}; !slices.Equal(got, want) {
+		t.Errorf("a second erase = %+v, want zeros", got)
+	}
+	if at := modtest.One[time.Time](t, h.Harness, marker, customerPerson); !at.Equal(erasedAt) {
+		t.Errorf("the marker after a second erase = %s, want its first time %s", at, erasedAt)
+	}
+}
+
+// The race the marker closes (D6): a send reads the person's address while
+// an anonymisation runs and has not committed — so the send is not refused —
+// mails it, and writes its row while the erase still holds the person's
+// documents. The row's insert waits on the document; once the erase commits,
+// the trigger's check, made after the wait, sees the marker and the row keeps
+// no address. A second send is refused customer_anonymised. Not parallel:
+// the delivery hook is the package's.
+func TestCustomerPersonalData_ASendRacingAnUncommittedEraseLeavesNoAddress(t *testing.T) {
+	h, fake := sendReady(t)
+	inv := issued(t, h, createDraft(t, h, draftBody(customerPerson, line("Konsultasjon", 1, 1000, vat25))).ID)
+	data := invoices.Module().CustomerPersonalData(disabledDeps(h))
+	c := sender(t, h)
+	ctx := context.Background()
+
+	e, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = e.Rollback(ctx) }()
+	if _, err := data.EraseCustomerData(ctx, e, customerPerson); err != nil {
+		t.Fatalf("EraseCustomerData: %v", err)
+	}
+
+	reached, release := make(chan struct{}), make(chan struct{})
+	var releaseOnce sync.Once
+	releaseSend := func() { releaseOnce.Do(func() { close(release) }) }
+	defer releaseSend()
+	restore := invoices.SetBeforeDeliveryWrite(func(_ context.Context, id int64) {
+		if id != inv.ID {
+			return
+		}
+		close(reached)
+		<-release
+	})
+	defer restore()
+
+	answered := make(chan *modtest.Response, 1)
+	go func() { answered <- sendAs(c, inv.ID, nil) }()
+	select {
+	case <-reached:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the send never reached its row")
+	}
+	if mails := fake.mails(); len(mails) != 1 || mails[0].out.To[0] != "kari@example.org" {
+		t.Fatalf("mails = %+v, want the one to Kari: the uncommitted erase refuses nothing", mails)
+	}
+	releaseSend()
+	if err := awaitDeliveryInsertWaiting(h); err != nil {
+		t.Fatalf("the send's row: %v", err)
+	}
+	if err := e.Commit(ctx); err != nil {
+		t.Fatalf("commit the erase: %v", err)
+	}
+
+	var res *modtest.Response
+	select {
+	case res = <-answered:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the send never answered")
+	}
+	if res.Status != http.StatusOK {
+		t.Fatalf("the send = %d %s, want 200: the mail went", res.Status, res.Body)
+	}
+	var got invoiceJSON
+	res.JSON(&got)
+	if len(got.Deliveries) != 1 || got.Deliveries[0].Recipient != "" {
+		t.Errorf("the send's deliveries = %+v, want one with no address", got.Deliveries)
+	}
+	if row := modtest.One[string](t, h.Harness, `SELECT recipient FROM invoices.deliveries WHERE invoice_id = $1`, inv.ID); row != "" {
+		t.Errorf("the delivery row's recipient = %q, want '' — the erase has run past it", row)
+	}
+	restore()
+	sendRefused(t, "a second send", sendAs(c, inv.ID, nil), http.StatusConflict, "customer_anonymised")
+}
+
+// awaitDeliveryInsertWaiting polls until a delivery's INSERT in h's database
+// is waiting on a lock — its trigger's FOR SHARE on a document an erase
+// holds.
+func awaitDeliveryInsertWaiting(h *harness) error {
+	ctx := context.Background()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		var n int
+		if err := h.Pool().QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity
+			WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%INSERT INTO invoices.deliveries%'`).Scan(&n); err != nil {
+			return fmt.Errorf("read the lock waiters: %w", err)
+		}
+		if n > 0 {
+			return nil
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return errors.New("no delivery insert ever waited on a lock")
 }
