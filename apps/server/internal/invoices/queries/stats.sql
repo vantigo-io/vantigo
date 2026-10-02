@@ -1,0 +1,48 @@
+-- name: InvoiceStatsNow :one
+-- InvoiceStatsNow is the summary's "now" (D7): every issued document with its
+-- derived state and open amount, from ListInvoices' own lateral joins and
+-- with today the Oslo business day the caller passes — never CURRENT_DATE —
+-- then outstanding (open, partially paid or overdue, at the open amount) and
+-- overdue. A credit note's state is issued, a draft's draft: neither is ever
+-- outstanding. The CTE is there because an alias cannot be read in a FILTER
+-- at its own level.
+WITH d AS (
+    SELECT (i.gross_total - coalesce(cr.credited, 0) - coalesce(pd.paid, 0))::numeric(14,2) AS open_amount,
+           invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, @today::date)::text AS state
+    FROM invoices.invoices i
+    LEFT JOIN LATERAL (
+        SELECT coalesce(sum(c.gross_total), 0)::numeric(14,2) AS credited
+        FROM invoices.invoices c WHERE c.credits_invoice_id = i.id AND c.status = 'issued'
+    ) cr ON true
+    LEFT JOIN LATERAL (
+        SELECT coalesce(sum(p.amount), 0)::numeric(14,2) AS paid
+        FROM invoices.payments p WHERE p.invoice_id = i.id AND p.removed_at IS NULL
+    ) pd ON true
+    WHERE i.status = 'issued'
+)
+SELECT count(*) FILTER (WHERE state IN ('open', 'partially_paid', 'overdue'))::int AS outstanding_count,
+       coalesce(sum(open_amount) FILTER (WHERE state IN ('open', 'partially_paid', 'overdue')), 0)::numeric(14,2) AS outstanding_amount,
+       count(*) FILTER (WHERE state = 'overdue')::int AS overdue_count,
+       coalesce(sum(open_amount) FILTER (WHERE state = 'overdue'), 0)::numeric(14,2) AS overdue_amount
+FROM d;
+
+-- name: InvoiceStatsPeriod :one
+-- InvoiceStatsPeriod is what was issued in the period (D7): the invoices and
+-- the credit notes whose issue date is in [from_day, to_day_exclusive), and
+-- the invoices' gross over the previous period, [previous_from_day, from_day).
+-- The days are Oslo days computed by the caller; this compares dates only.
+SELECT count(*) FILTER (WHERE kind = 'invoice' AND issue_date >= @from_day::date AND issue_date < @to_day_exclusive::date)::int AS issued_count,
+       coalesce(sum(gross_total) FILTER (WHERE kind = 'invoice' AND issue_date >= @from_day::date AND issue_date < @to_day_exclusive::date), 0)::numeric(14,2) AS issued_gross_total,
+       count(*) FILTER (WHERE kind = 'credit_note' AND issue_date >= @from_day::date AND issue_date < @to_day_exclusive::date)::int AS credited_count,
+       coalesce(sum(gross_total) FILTER (WHERE kind = 'credit_note' AND issue_date >= @from_day::date AND issue_date < @to_day_exclusive::date), 0)::numeric(14,2) AS credited_gross_total,
+       coalesce(sum(gross_total) FILTER (WHERE kind = 'invoice' AND issue_date >= @previous_from_day::date AND issue_date < @from_day::date), 0)::numeric(14,2) AS previous_issued_gross_total
+FROM invoices.invoices
+WHERE status = 'issued';
+
+-- name: PaymentsInPeriod :one
+-- PaymentsInPeriod is the live payments paid in the period (D7): paid_on in
+-- [from_day, to_day_exclusive). A removed registration is not a payment.
+SELECT count(*)::int AS paid_count,
+       coalesce(sum(amount), 0)::numeric(14,2) AS paid_amount
+FROM invoices.payments
+WHERE removed_at IS NULL AND paid_on >= @from_day::date AND paid_on < @to_day_exclusive::date;
