@@ -201,7 +201,7 @@ func newFakeCustomers() *fakeCustomers {
 	business := func(id int32, number int64, name string) contracts.CustomerBillingProfile {
 		return contracts.CustomerBillingProfile{
 			ID: id, CustomerNumber: number, Name: name, Type: "business", Status: "active",
-			LegalCountry: "NO", LegalID: "923609016", LegalName: name + " Norge", InvoiceAddress: oslo,
+			LegalCountry: "no", LegalID: "923609016", LegalName: name + " Norge", InvoiceAddress: oslo,
 		}
 	}
 	acme := business(customerAcme, 10001, "Acme AS")
@@ -224,7 +224,7 @@ func newFakeCustomers() *fakeCustomers {
 		},
 		customerForeign: {
 			ID: customerForeign, CustomerNumber: 10003, Name: "Svenska AB", Type: "business", Status: "active",
-			LegalCountry: "SE", LegalID: "556677889901", LegalName: "Svenska Aktiebolaget AB", Language: "en",
+			LegalCountry: "se", LegalID: "556677889901", LegalName: "Svenska Aktiebolaget AB", Language: "en",
 			InvoiceAddress: &contracts.CustomerAddressEntry{Line1: "Storgatan 1", PostalCode: "111 22", City: "Stockholm", Country: "SE"},
 		},
 		customerNoTerms:  noTerms,
