@@ -539,12 +539,20 @@ components:
                 number:
                     format: int64
                     type: integer
+                openAmount:
+                    description: On an issued invoice, gross less what its issued credit notes credit and what its live payments paid; negative when a credit note followed a payment.
+                    format: double
+                    type: number
+                state:
+                    description: 'The derived state (D3): draft, issued (an issued credit note), credited, paid, overdue, partially_paid or open.'
+                    type: string
                 status:
                     type: string
             required:
                 - id
                 - kind
                 - status
+                - state
                 - customerId
                 - currency
                 - grossTotal
@@ -594,7 +602,7 @@ components:
                 - lines
             type: object
         InvoicesInvoiceResponse:
-            description: 'One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft''s with the rates in force today, which the issue resolves again for the issue date; a credit-note draft''s at its original lines'' snapshot rates, with each line''s and the invoice''s remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original''s delivery), vat_code_not_valid (a line''s code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line. An invoice carries creditedAmount (its issued credit notes'' gross), uncreditedAmount and creditNotes; a credit note carries credits.'
+            description: 'One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft''s with the rates in force today, which the issue resolves again for the issue date; a credit-note draft''s at its original lines'' snapshot rates, with each line''s and the invoice''s remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original''s delivery), vat_code_not_valid (a line''s code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line. An invoice carries creditedAmount (its issued credit notes'' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries.'
             properties:
                 allowedIssueDates:
                     items:
@@ -676,19 +684,39 @@ components:
                     type: integer
                 orderReference:
                     type: string
+                openAmount:
+                    description: On an issued invoice, grossTotal less creditedAmount less paidAmount. It may be negative — a credit note issued after a payment — and refundDue is then what it is short of zero.
+                    format: double
+                    type: number
                 ourReference:
                     type: string
+                paidAmount:
+                    description: On an issued invoice, what its live payments add up to; a removed payment counts for nothing.
+                    format: double
+                    type: number
                 paymentTermsDays:
                     format: int32
                     type: integer
+                payments:
+                    description: On an issued invoice, every payment registered against it, removed ones included with their removal, in the order the money arrived.
+                    items:
+                        $ref: '#/components/schemas/InvoicesPayment'
+                    type: array
                 pdfStored:
                     description: On an issued document, whether its PDF is stored. False only when storing it after the issue failed; the next download stores it.
                     type: boolean
+                refundDue:
+                    description: On an issued invoice whose openAmount is below zero, the amount owed back (−openAmount); absent otherwise. The figure only — refunds are not a flow in this phase.
+                    format: double
+                    type: number
                 revision:
                     format: int32
                     type: integer
                 seller:
                     $ref: '#/components/schemas/InvoicesSeller'
+                state:
+                    description: 'The derived state, judged against today in Oslo (D3), the first match winning: draft (a draft); issued (an issued credit note); credited (an issued invoice its issued credit notes cover, credited > 0 and credited ≥ gross); paid (nothing left open); overdue (past its due date); partially_paid (something paid); open (otherwise).'
+                    type: string
                 status:
                     description: draft or issued.
                     type: string
@@ -718,6 +746,7 @@ components:
                 - id
                 - kind
                 - status
+                - state
                 - customerId
                 - currency
                 - exchangeRate
@@ -824,6 +853,48 @@ components:
                 - quantity
                 - unitPrice
                 - vatCodeId
+            type: object
+        InvoicesPayment:
+            description: One payment registered against an issued invoice (D2). A removed one keeps its row and carries removedAt, removedByUserId and removalReason; it counts for nothing.
+            properties:
+                amount:
+                    format: double
+                    type: number
+                currency:
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                note:
+                    type: string
+                paidOn:
+                    format: date
+                    type: string
+                reference:
+                    type: string
+                registeredAt:
+                    format: date-time
+                    type: string
+                registeredByUserId:
+                    format: uuid
+                    type: string
+                removalReason:
+                    type: string
+                removedAt:
+                    format: date-time
+                    type: string
+                removedByUserId:
+                    format: uuid
+                    type: string
+            required:
+                - id
+                - paidOn
+                - amount
+                - currency
+                - reference
+                - note
+                - registeredAt
+                - registeredByUserId
             type: object
         InvoicesSeller:
             description: The seller snapshot (D4), copied from the settings at issue.
@@ -1401,7 +1472,7 @@ paths:
             x-vantigo-access: permission:invoices:access+invoices:manage
     /api/v1/invoices:
         get:
-            description: 'Invoices and credit notes, drafts first and then by number descending (D4). status is draft or issued, kind invoice or credit_note; from and to are issue dates, inclusive; search matches the number exactly when it is digits, or the buyer''s name ignoring case — a draft has no buyer snapshot, so it is found by customerId, not search. page and pageSize are the codebase''s paging: 25 by default, at most 100.'
+            description: 'Invoices and credit notes, drafts first and then by number descending (D4). status is draft or issued, kind invoice or credit_note; state is one of open, partially_paid, overdue, paid or credited (D3), which only an issued invoice matches; from and to are issue dates, inclusive; search matches the number exactly when it is digits, or the buyer''s name ignoring case — a draft has no buyer snapshot, so it is found by customerId, not search. page and pageSize are the codebase''s paging: 25 by default, at most 100.'
             operationId: getInvoices
             parameters:
                 - in: query
@@ -1410,6 +1481,11 @@ paths:
                     type: string
                 - in: query
                   name: kind
+                  schema:
+                    type: string
+                - description: 'One of open, partially_paid, overdue, paid or credited, judged against today in Oslo; only an issued invoice can match it.'
+                  in: query
+                  name: state
                   schema:
                     type: string
                 - in: query
@@ -1453,7 +1529,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: common.yaml#/components/schemas/ProblemDetails
-                    description: Bad Request — paging out of range, an unknown status or kind, or from after to.
+                    description: Bad Request — paging out of range, an unknown status, kind or state, or from after to.
                 "401":
                     content:
                         application/json:

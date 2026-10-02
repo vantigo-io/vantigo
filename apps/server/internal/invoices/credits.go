@@ -795,21 +795,16 @@ func sameText(a, b *string) bool {
 	return (a == nil) == (b == nil) && (a == nil || *a == *b)
 }
 
-// creditLinks are a document's credit links (D4): on an issued invoice, what
-// its issued credit notes credit, what it has left, and every credit note,
-// drafts included; on a credit note, the invoice it credits. On a
-// credit-note draft, the caps as warnings: draft is that draft as
+// creditLinks are a document's credit links (D4): on an issued invoice every
+// credit note, drafts included (what they credit and what it has left are
+// settle's, beside the payments); on a credit note, the invoice it credits.
+// On a credit-note draft, the caps as warnings: draft is that draft as
 // readCreditDraft totalled it, nil for any other document.
 func creditLinks(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, resp *gen.InvoicesInvoiceResponse, draft *creditDraft) error {
 	if inv.Kind == kindInvoice {
 		if inv.Status != statusIssued {
 			return nil
 		}
-		credited, left, err := uncredited(ctx, q, inv)
-		if err != nil {
-			return err
-		}
-		resp.CreditedAmount, resp.UncreditedAmount = ptr(floatFromRat(credited, 2)), ptr(floatFromRat(left, 2))
 		notes, err := q.CreditNotesOf(ctx, &inv.ID)
 		if err != nil {
 			return fmt.Errorf("invoices: read document %d's credit notes: %w", inv.ID, err)

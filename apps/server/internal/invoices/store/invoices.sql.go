@@ -14,15 +14,26 @@ import (
 )
 
 const countInvoices = `-- name: CountInvoices :one
-SELECT count(*)::int FROM invoices.invoices
-WHERE ($1::text IS NULL OR status = $1::text)
-  AND ($2::text IS NULL OR kind = $2::text)
-  AND ($3::int IS NULL OR customer_id = $3::int)
+SELECT count(*)::int
+FROM invoices.invoices i
+LEFT JOIN LATERAL (
+    SELECT coalesce(sum(c.gross_total), 0)::numeric(14,2) AS credited
+    FROM invoices.invoices c WHERE c.credits_invoice_id = i.id AND c.status = 'issued'
+) cr ON true
+LEFT JOIN LATERAL (
+    SELECT coalesce(sum(p.amount), 0)::numeric(14,2) AS paid
+    FROM invoices.payments p WHERE p.invoice_id = i.id AND p.removed_at IS NULL
+) pd ON true
+WHERE ($1::text IS NULL OR i.status = $1::text)
+  AND ($2::text IS NULL OR i.kind = $2::text)
+  AND ($3::int IS NULL OR i.customer_id = $3::int)
   AND (($4::bigint IS NULL AND $5::text IS NULL)
-       OR number = $4::bigint
-       OR buyer_name ILIKE $5::text)
-  AND ($6::date IS NULL OR issue_date >= $6::date)
-  AND ($7::date IS NULL OR issue_date <= $7::date)
+       OR i.number = $4::bigint
+       OR i.buyer_name ILIKE $5::text)
+  AND ($6::date IS NULL OR i.issue_date >= $6::date)
+  AND ($7::date IS NULL OR i.issue_date <= $7::date)
+  AND ($8::text IS NULL
+       OR invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, $9::date) = $8::text)
 `
 
 type CountInvoicesParams struct {
@@ -33,9 +44,12 @@ type CountInvoicesParams struct {
 	SearchPattern *string
 	IssuedFrom    pgtype.Date
 	IssuedTo      pgtype.Date
+	State         *string
+	Today         pgtype.Date
 }
 
-// CountInvoices is ListInvoices' total, over the same filters.
+// CountInvoices is ListInvoices' total, over the same filters — the state
+// filter's lateral joins included.
 func (q *Queries) CountInvoices(ctx context.Context, arg CountInvoicesParams) (int32, error) {
 	row := q.db.QueryRow(ctx, countInvoices,
 		arg.Status,
@@ -45,6 +59,8 @@ func (q *Queries) CountInvoices(ctx context.Context, arg CountInvoicesParams) (i
 		arg.SearchPattern,
 		arg.IssuedFrom,
 		arg.IssuedTo,
+		arg.State,
+		arg.Today,
 	)
 	var column_1 int32
 	err := row.Scan(&column_1)
@@ -488,20 +504,36 @@ func (q *Queries) IssueDocument(ctx context.Context, arg IssueDocumentParams) (I
 }
 
 const listInvoices = `-- name: ListInvoices :many
-SELECT id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision FROM invoices.invoices
-WHERE ($1::text IS NULL OR status = $1::text)
-  AND ($2::text IS NULL OR kind = $2::text)
-  AND ($3::int IS NULL OR customer_id = $3::int)
-  AND (($4::bigint IS NULL AND $5::text IS NULL)
-       OR number = $4::bigint
-       OR buyer_name ILIKE $5::text)
-  AND ($6::date IS NULL OR issue_date >= $6::date)
-  AND ($7::date IS NULL OR issue_date <= $7::date)
-ORDER BY number DESC NULLS FIRST, id DESC
-LIMIT $9 OFFSET $8
+SELECT i.id, i.kind, i.status, i.number, i.customer_id, i.credits_invoice_id, i.issue_date, i.delivery_date, i.delivery_from, i.delivery_to, i.delivery_address_line1, i.delivery_address_line2, i.delivery_postal_code, i.delivery_city, i.delivery_country, i.payment_terms_days, i.due_date, i.currency, i.exchange_rate, i.exchange_rate_date, i.your_reference, i.our_reference, i.order_reference, i.note, i.internal_note, i.buyer_customer_number, i.buyer_type, i.buyer_name, i.buyer_organisation_number, i.buyer_foreign_id, i.buyer_address_line1, i.buyer_address_line2, i.buyer_postal_code, i.buyer_city, i.buyer_region, i.buyer_country, i.buyer_peppol_id, i.buyer_gln, i.buyer_language, i.seller_legal_name, i.seller_organisation_number, i.seller_vat_registered, i.seller_in_foretaksregisteret, i.seller_address_line1, i.seller_address_line2, i.seller_postal_code, i.seller_city, i.seller_country, i.seller_bank_account, i.seller_iban, i.seller_bic, i.seller_email, i.seller_footer_text, i.net_total, i.vat_total, i.gross_total, i.vat_total_nok, i.pdf_object_key, i.pdf_sha256, i.issued_at, i.issued_by_user_id, i.created_by_user_id, i.created_at, i.updated_at, i.revision,
+       coalesce(cr.credited, 0)::numeric(14,2) AS credited,
+       coalesce(pd.paid, 0)::numeric(14,2)     AS paid,
+       (i.gross_total - coalesce(cr.credited, 0) - coalesce(pd.paid, 0))::numeric(14,2) AS open_amount,
+       invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, $1::date)::text AS state
+FROM invoices.invoices i
+LEFT JOIN LATERAL (
+    SELECT coalesce(sum(c.gross_total), 0)::numeric(14,2) AS credited
+    FROM invoices.invoices c WHERE c.credits_invoice_id = i.id AND c.status = 'issued'
+) cr ON true
+LEFT JOIN LATERAL (
+    SELECT coalesce(sum(p.amount), 0)::numeric(14,2) AS paid
+    FROM invoices.payments p WHERE p.invoice_id = i.id AND p.removed_at IS NULL
+) pd ON true
+WHERE ($2::text IS NULL OR i.status = $2::text)
+  AND ($3::text IS NULL OR i.kind = $3::text)
+  AND ($4::int IS NULL OR i.customer_id = $4::int)
+  AND (($5::bigint IS NULL AND $6::text IS NULL)
+       OR i.number = $5::bigint
+       OR i.buyer_name ILIKE $6::text)
+  AND ($7::date IS NULL OR i.issue_date >= $7::date)
+  AND ($8::date IS NULL OR i.issue_date <= $8::date)
+  AND ($9::text IS NULL
+       OR invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, $1::date) = $9::text)
+ORDER BY i.number DESC NULLS FIRST, i.id DESC
+LIMIT $11 OFFSET $10
 `
 
 type ListInvoicesParams struct {
+	Today         pgtype.Date
 	Status        *string
 	Kind          *string
 	CustomerID    *int32
@@ -509,16 +541,34 @@ type ListInvoicesParams struct {
 	SearchPattern *string
 	IssuedFrom    pgtype.Date
 	IssuedTo      pgtype.Date
+	State         *string
 	PageOffset    int32
 	PageSize      int32
+}
+
+type ListInvoicesRow struct {
+	InvoicesInvoice InvoicesInvoice
+	Credited        pgtype.Numeric
+	Paid            pgtype.Numeric
+	OpenAmount      pgtype.Numeric
+	State           string
 }
 
 // ListInvoices is one page of GET /invoices (D4): drafts first, then by number
 // descending, the id breaking ties so a page never shifts under a reader.
 // search is a number (exact) or a buyer-name pattern; a draft has no buyer
 // snapshot and is found through customer_id instead.
-func (q *Queries) ListInvoices(ctx context.Context, arg ListInvoicesParams) ([]InvoicesInvoice, error) {
+//
+// Each row carries its derived state (D3): credited (the issued credit notes'
+// gross) and paid (the live payments' sum) from one lateral join each, read
+// once per row and handed to invoices.document_state with today, the Oslo
+// business day the caller passes — never CURRENT_DATE. open_amount is gross
+// less both. The state filter runs the same call; CountInvoices repeats the
+// joins and the predicate word for word, so the total counts what the page
+// shows.
+func (q *Queries) ListInvoices(ctx context.Context, arg ListInvoicesParams) ([]ListInvoicesRow, error) {
 	rows, err := q.db.Query(ctx, listInvoices,
+		arg.Today,
 		arg.Status,
 		arg.Kind,
 		arg.CustomerID,
@@ -526,6 +576,7 @@ func (q *Queries) ListInvoices(ctx context.Context, arg ListInvoicesParams) ([]I
 		arg.SearchPattern,
 		arg.IssuedFrom,
 		arg.IssuedTo,
+		arg.State,
 		arg.PageOffset,
 		arg.PageSize,
 	)
@@ -533,75 +584,79 @@ func (q *Queries) ListInvoices(ctx context.Context, arg ListInvoicesParams) ([]I
 		return nil, err
 	}
 	defer rows.Close()
-	var items []InvoicesInvoice
+	var items []ListInvoicesRow
 	for rows.Next() {
-		var i InvoicesInvoice
+		var i ListInvoicesRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.Kind,
-			&i.Status,
-			&i.Number,
-			&i.CustomerID,
-			&i.CreditsInvoiceID,
-			&i.IssueDate,
-			&i.DeliveryDate,
-			&i.DeliveryFrom,
-			&i.DeliveryTo,
-			&i.DeliveryAddressLine1,
-			&i.DeliveryAddressLine2,
-			&i.DeliveryPostalCode,
-			&i.DeliveryCity,
-			&i.DeliveryCountry,
-			&i.PaymentTermsDays,
-			&i.DueDate,
-			&i.Currency,
-			&i.ExchangeRate,
-			&i.ExchangeRateDate,
-			&i.YourReference,
-			&i.OurReference,
-			&i.OrderReference,
-			&i.Note,
-			&i.InternalNote,
-			&i.BuyerCustomerNumber,
-			&i.BuyerType,
-			&i.BuyerName,
-			&i.BuyerOrganisationNumber,
-			&i.BuyerForeignID,
-			&i.BuyerAddressLine1,
-			&i.BuyerAddressLine2,
-			&i.BuyerPostalCode,
-			&i.BuyerCity,
-			&i.BuyerRegion,
-			&i.BuyerCountry,
-			&i.BuyerPeppolID,
-			&i.BuyerGln,
-			&i.BuyerLanguage,
-			&i.SellerLegalName,
-			&i.SellerOrganisationNumber,
-			&i.SellerVatRegistered,
-			&i.SellerInForetaksregisteret,
-			&i.SellerAddressLine1,
-			&i.SellerAddressLine2,
-			&i.SellerPostalCode,
-			&i.SellerCity,
-			&i.SellerCountry,
-			&i.SellerBankAccount,
-			&i.SellerIban,
-			&i.SellerBic,
-			&i.SellerEmail,
-			&i.SellerFooterText,
-			&i.NetTotal,
-			&i.VatTotal,
-			&i.GrossTotal,
-			&i.VatTotalNok,
-			&i.PdfObjectKey,
-			&i.PdfSha256,
-			&i.IssuedAt,
-			&i.IssuedByUserID,
-			&i.CreatedByUserID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.Revision,
+			&i.InvoicesInvoice.ID,
+			&i.InvoicesInvoice.Kind,
+			&i.InvoicesInvoice.Status,
+			&i.InvoicesInvoice.Number,
+			&i.InvoicesInvoice.CustomerID,
+			&i.InvoicesInvoice.CreditsInvoiceID,
+			&i.InvoicesInvoice.IssueDate,
+			&i.InvoicesInvoice.DeliveryDate,
+			&i.InvoicesInvoice.DeliveryFrom,
+			&i.InvoicesInvoice.DeliveryTo,
+			&i.InvoicesInvoice.DeliveryAddressLine1,
+			&i.InvoicesInvoice.DeliveryAddressLine2,
+			&i.InvoicesInvoice.DeliveryPostalCode,
+			&i.InvoicesInvoice.DeliveryCity,
+			&i.InvoicesInvoice.DeliveryCountry,
+			&i.InvoicesInvoice.PaymentTermsDays,
+			&i.InvoicesInvoice.DueDate,
+			&i.InvoicesInvoice.Currency,
+			&i.InvoicesInvoice.ExchangeRate,
+			&i.InvoicesInvoice.ExchangeRateDate,
+			&i.InvoicesInvoice.YourReference,
+			&i.InvoicesInvoice.OurReference,
+			&i.InvoicesInvoice.OrderReference,
+			&i.InvoicesInvoice.Note,
+			&i.InvoicesInvoice.InternalNote,
+			&i.InvoicesInvoice.BuyerCustomerNumber,
+			&i.InvoicesInvoice.BuyerType,
+			&i.InvoicesInvoice.BuyerName,
+			&i.InvoicesInvoice.BuyerOrganisationNumber,
+			&i.InvoicesInvoice.BuyerForeignID,
+			&i.InvoicesInvoice.BuyerAddressLine1,
+			&i.InvoicesInvoice.BuyerAddressLine2,
+			&i.InvoicesInvoice.BuyerPostalCode,
+			&i.InvoicesInvoice.BuyerCity,
+			&i.InvoicesInvoice.BuyerRegion,
+			&i.InvoicesInvoice.BuyerCountry,
+			&i.InvoicesInvoice.BuyerPeppolID,
+			&i.InvoicesInvoice.BuyerGln,
+			&i.InvoicesInvoice.BuyerLanguage,
+			&i.InvoicesInvoice.SellerLegalName,
+			&i.InvoicesInvoice.SellerOrganisationNumber,
+			&i.InvoicesInvoice.SellerVatRegistered,
+			&i.InvoicesInvoice.SellerInForetaksregisteret,
+			&i.InvoicesInvoice.SellerAddressLine1,
+			&i.InvoicesInvoice.SellerAddressLine2,
+			&i.InvoicesInvoice.SellerPostalCode,
+			&i.InvoicesInvoice.SellerCity,
+			&i.InvoicesInvoice.SellerCountry,
+			&i.InvoicesInvoice.SellerBankAccount,
+			&i.InvoicesInvoice.SellerIban,
+			&i.InvoicesInvoice.SellerBic,
+			&i.InvoicesInvoice.SellerEmail,
+			&i.InvoicesInvoice.SellerFooterText,
+			&i.InvoicesInvoice.NetTotal,
+			&i.InvoicesInvoice.VatTotal,
+			&i.InvoicesInvoice.GrossTotal,
+			&i.InvoicesInvoice.VatTotalNok,
+			&i.InvoicesInvoice.PdfObjectKey,
+			&i.InvoicesInvoice.PdfSha256,
+			&i.InvoicesInvoice.IssuedAt,
+			&i.InvoicesInvoice.IssuedByUserID,
+			&i.InvoicesInvoice.CreatedByUserID,
+			&i.InvoicesInvoice.CreatedAt,
+			&i.InvoicesInvoice.UpdatedAt,
+			&i.InvoicesInvoice.Revision,
+			&i.Credited,
+			&i.Paid,
+			&i.OpenAmount,
+			&i.State,
 		); err != nil {
 			return nil, err
 		}

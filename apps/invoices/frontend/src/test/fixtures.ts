@@ -41,6 +41,7 @@ export const draft = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocument
   id: 1001,
   kind: "invoice",
   status: "draft",
+  state: "draft",
   customerId: 2001,
   customerName: "Acme AS",
   deliveryDate: "2026-09-10",
@@ -80,12 +81,13 @@ export const draft = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocument
   ...overrides,
 });
 
-/** The same invoice, issued as number 1000, nothing credited yet. */
+/** The same invoice, issued as number 1000, nothing credited or paid yet: open. */
 export const issued = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocument => {
   const base = draft();
   return {
     ...base,
     status: "issued",
+    state: "open",
     number: 1000,
     issueDate: "2026-09-12",
     dueDate: "2026-10-12",
@@ -128,6 +130,9 @@ export const issued = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocumen
     creditedAmount: 0,
     uncreditedAmount: 124.99,
     creditNotes: [],
+    paidAmount: 0,
+    openAmount: 124.99,
+    payments: [],
     revision: 4,
     ...overrides,
   };
@@ -170,6 +175,7 @@ export const listPage = (overrides: Partial<InvoiceList["pagination"]> = {}): In
       id: 1003,
       kind: "invoice",
       status: "draft",
+      state: "draft",
       customerId: 2002,
       customerName: "Kari Nordmann",
       currency: "NOK",
@@ -179,6 +185,7 @@ export const listPage = (overrides: Partial<InvoiceList["pagination"]> = {}): In
       id: 1002,
       kind: "credit_note",
       status: "issued",
+      state: "issued",
       number: 1001,
       customerId: 2001,
       customerName: "Acme Norge AS",
@@ -191,6 +198,7 @@ export const listPage = (overrides: Partial<InvoiceList["pagination"]> = {}): In
       id: 1001,
       kind: "invoice",
       status: "issued",
+      state: "open",
       number: 1000,
       customerId: 2001,
       customerName: "Acme Norge AS",
@@ -198,6 +206,7 @@ export const listPage = (overrides: Partial<InvoiceList["pagination"]> = {}): In
       dueDate: "2026-10-12",
       currency: "NOK",
       grossTotal: 124.99,
+      openAmount: 124.99,
     },
   ],
   pagination: {
