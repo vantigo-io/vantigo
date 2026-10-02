@@ -18,20 +18,23 @@ import (
 // dates (issue_date, paid_on), so the period becomes days here, in Go:
 // fromDay is the day periodFrom falls on, toDayExclusive the day after the
 // one the last instant inside the period falls on — so a period ending now,
-// or at the end of today, includes today — and previousFromDay the day
-// previousFrom falls on. The queries compare dates only.
+// or at the end of today, includes today. The previous period is the same
+// number of Oslo days ending at fromDay, counted in days and never from
+// NormalizePeriod's previousFrom: that is an absolute duration, a day off
+// across a daylight-saving change. The queries compare dates only.
 
 // GetInvoicesStatsSummary Get the invoices dashboard summary
 // (GET /api/v1/invoices/stats/summary)
 func (s *server) GetInvoicesStatsSummary(ctx context.Context, req gen.GetInvoicesStatsSummaryRequestObject) (gen.GetInvoicesStatsSummaryResponseObject, error) {
 	now := s.deps.Clock()
-	periodFrom, periodTo, previousFrom, ok := apicommon.NormalizePeriod(req.Params.From, req.Params.To, now)
+	periodFrom, periodTo, _, ok := apicommon.NormalizePeriod(req.Params.From, req.Params.To, now)
 	if !ok {
 		return gen.GetInvoicesStatsSummary400ApplicationProblemPlusJSONResponse(apicommon.InvalidPeriod()), nil
 	}
 	fromDay := businessDay(periodFrom)
 	toDayExclusive := businessDay(periodTo.Add(-time.Nanosecond)).AddDate(0, 0, 1)
-	previousFromDay := businessDay(previousFrom)
+	days := int(toDayExclusive.Sub(fromDay) / (24 * time.Hour)) // both UTC midnights, so exact
+	previousFromDay := fromDay.AddDate(0, 0, -days)
 
 	q := store.New(s.deps.Pool)
 	current, err := q.InvoiceStatsNow(ctx, pgDate(businessDay(now)))
