@@ -182,6 +182,29 @@ func TestSendOutbound_OmitsCallerMessageIDWhenUnset(t *testing.T) {
 	}
 }
 
+// TestSendOutbound_SetsReplyToWhenGiven proves a non-empty ReplyTo renders as
+// the message's Reply-To header.
+func TestSendOutbound_SetsReplyToWhenGiven(t *testing.T) {
+	data, _ := sendOutboundThroughTestServer(t, mail.Outbound{
+		To: []string{"to@example.test"}, Subject: "hi", TextBody: "hi",
+		ReplyTo: "replies@example.test",
+	})
+	if !strings.Contains(data, "Reply-To: <replies@example.test>") {
+		t.Errorf("Reply-To header missing or wrong; DATA:\n%s", data)
+	}
+}
+
+// TestSendOutbound_OmitsReplyToWhenUnset proves an empty ReplyTo sets no
+// header at all, rather than an empty one.
+func TestSendOutbound_OmitsReplyToWhenUnset(t *testing.T) {
+	data, _ := sendOutboundThroughTestServer(t, mail.Outbound{
+		To: []string{"to@example.test"}, Subject: "hi", TextBody: "hi",
+	})
+	if strings.Contains(data, "Reply-To") {
+		t.Errorf("Reply-To header present though unset; DATA:\n%s", data)
+	}
+}
+
 // TestSendOutbound_RequiresARecipient proves the recipient check happens
 // before any connection is attempted: a message with no To, Cc or Bcc is
 // refused rather than dialled out and rejected by the server.
