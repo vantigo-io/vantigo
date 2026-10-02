@@ -106,10 +106,14 @@ func buyerSnapshot(p *contracts.CustomerBillingProfile) *store.IssueDocumentPara
 	}
 	b.BuyerName = &name
 	if p.Type == "business" && p.LegalID != "" {
-		if p.LegalCountry == "NO" {
+		// The customers module stores a legal identity's country lowercase
+		// ("no"); the snapshot prints it the ISO way. The customers +
+		// invoices integration test found this comparison case-sensitive.
+		country := strings.ToUpper(p.LegalCountry)
+		if country == "NO" {
 			b.BuyerOrganisationNumber = &p.LegalID
-		} else if p.LegalCountry != "" {
-			b.BuyerForeignID = ptr(p.LegalCountry + p.LegalID)
+		} else if country != "" {
+			b.BuyerForeignID = ptr(country + p.LegalID)
 		}
 	}
 	if a := p.InvoiceAddress; a != nil {
