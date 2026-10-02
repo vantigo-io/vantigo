@@ -17,7 +17,7 @@ func TestPermissions_AreTheCatalogTheDesignNames(t *testing.T) {
 	want := []contracts.Permission{
 		{
 			Key: "invoices:access", Display: "Use Invoices",
-			Description: "Use the Invoices app and read every invoice, credit note, PDF and the invoice journal.",
+			Description: "Use the Invoices app and read every invoice, credit note, PDF, payment and delivery, the journal, the CSV export and the stats.",
 			Category:    "Invoices", Sensitive: false, Delegable: true,
 		},
 		{
@@ -27,7 +27,7 @@ func TestPermissions_AreTheCatalogTheDesignNames(t *testing.T) {
 		},
 		{
 			Key: "invoices:issue", Display: "Issue invoices",
-			Description: "Issue a draft into a numbered document that can never be changed, and create credit notes.",
+			Description: "Issue a draft into a numbered document that can never be changed, create credit notes, and send an issued document by e-mail.",
 			Category:    "Invoices", Sensitive: true, Delegable: true,
 		},
 		{

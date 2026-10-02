@@ -632,12 +632,22 @@ func (s *server) GetInvoicesById(ctx context.Context, req gen.GetInvoicesByIdReq
 			return nil, err
 		}
 	}
-	resp, err := s.invoiceResponse(ctx, q, inv, profile)
+	// An issued document's deliveries and sendDefaults both turn on
+	// invoices:issue: asked once, for both.
+	var canIssue *bool
+	if inv.Status == statusIssued {
+		canIssue = ptr(s.has(ctx, "invoices:issue"))
+	}
+	resp, err := s.renderInvoice(ctx, q, inv, profile, nil, canIssue)
 	if err != nil {
 		return nil, err
 	}
 	// The one read besides the send that answers what a send would open with
 	// (payments and delivery design D4): no write adds a directory call.
-	s.withSendDefaults(ctx, inv, nil, &resp)
+	if canIssue != nil {
+		if err := s.withSendDefaults(ctx, q, inv, nil, *canIssue, &resp); err != nil {
+			return nil, err
+		}
+	}
 	return gen.GetInvoicesById200JSONResponse(resp), nil
 }

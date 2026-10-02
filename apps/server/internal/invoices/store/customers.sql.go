@@ -28,6 +28,26 @@ func (q *Queries) BlankCustomerDeliveries(ctx context.Context, customerID int32)
 	return result.RowsAffected(), nil
 }
 
+const blankCustomerPaymentNotes = `-- name: BlankCustomerPaymentNotes :execrows
+UPDATE invoices.payments p SET note = ''
+FROM invoices.invoices i
+WHERE p.invoice_id = i.id AND i.customer_id = $1 AND p.note <> ''
+`
+
+// BlankCustomerPaymentNotes removes the staff-written note from every payment
+// of a customer's documents, live and removed, on anonymisation (D6) — the
+// write tr_payments_immutable allows besides the removal. The registrations
+// stay, the bank's reference with them: they are bookkeeping material kept
+// with the document. A note blanked already, or never written, is not
+// counted.
+func (q *Queries) BlankCustomerPaymentNotes(ctx context.Context, customerID int32) (int64, error) {
+	result, err := q.db.Exec(ctx, blankCustomerPaymentNotes, customerID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const customerDocuments = `-- name: CustomerDocuments :many
 SELECT id, kind, status, number, customer_id, credits_invoice_id, issue_date, delivery_date, delivery_from, delivery_to, delivery_address_line1, delivery_address_line2, delivery_postal_code, delivery_city, delivery_country, payment_terms_days, due_date, currency, exchange_rate, exchange_rate_date, your_reference, our_reference, order_reference, note, internal_note, buyer_customer_number, buyer_type, buyer_name, buyer_organisation_number, buyer_foreign_id, buyer_address_line1, buyer_address_line2, buyer_postal_code, buyer_city, buyer_region, buyer_country, buyer_peppol_id, buyer_gln, buyer_language, seller_legal_name, seller_organisation_number, seller_vat_registered, seller_in_foretaksregisteret, seller_address_line1, seller_address_line2, seller_postal_code, seller_city, seller_country, seller_bank_account, seller_iban, seller_bic, seller_email, seller_footer_text, net_total, vat_total, gross_total, vat_total_nok, pdf_object_key, pdf_sha256, issued_at, issued_by_user_id, created_by_user_id, created_at, updated_at, revision FROM invoices.invoices
 WHERE customer_id = $1

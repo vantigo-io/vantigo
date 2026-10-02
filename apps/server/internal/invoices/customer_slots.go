@@ -364,15 +364,18 @@ func (p customerPersonalData) ExportCustomerData(ctx context.Context, customerID
 // insert — whose trigger takes the document FOR SHARE — waits for this
 // transaction; writes the erased-customer marker, which that trigger reads
 // after its wait and which refuses any later send; blanks every delivery's
-// recipient; and deletes the drafts. A draft is not a salgsdokument, so it
-// has no retention basis and GDPR art. 17 applies; an issued document, its
-// buyer snapshot and its payments are bookkeeping material kept under
-// bokføringsloven § 13 — five years after the end of the financial year —
-// which is why invoices.documents and invoices.payments report 0. A delivery
-// is kept as the evidence of when the claim was sent, its address gone.
-// contracts.ErasedData carries no reason; docs/invoices.md and the
-// anonymisation table in docs/customers.md say it. Run twice, it reports
-// zeros and the marker keeps its first time.
+// recipient; blanks every payment's note, live and removed; and deletes the
+// drafts. A draft is not a salgsdokument, so it has no retention basis and
+// GDPR art. 17 applies; an issued document, its buyer snapshot and its
+// payments are bookkeeping material kept under bokføringsloven § 13 — five
+// years after the end of the financial year — which is why
+// invoices.documents reports 0 and a payment keeps its date, its amount and
+// the bank's reference. A payment's note is staff free text about the
+// person, which no retention rule needs: invoices.payments reports the notes
+// blanked. A delivery is kept as the record of when the claim was handed to
+// the mail server, its address gone. contracts.ErasedData carries no reason;
+// docs/invoices.md and the anonymisation table in docs/customers.md say it.
+// Run twice, it reports zeros and the marker keeps its first time.
 func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, customerID int32) ([]contracts.ErasedData, error) {
 	q := store.New(tx)
 	if err := q.LockCustomerDocuments(ctx, store.LockCustomerDocumentsParams{FromCustomerID: customerID, IntoCustomerID: customerID}); err != nil {
@@ -385,6 +388,10 @@ func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, 
 	if err != nil {
 		return nil, fmt.Errorf("invoices: blank customer %d's deliveries: %w", customerID, err)
 	}
+	notes, err := q.BlankCustomerPaymentNotes(ctx, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: blank customer %d's payment notes: %w", customerID, err)
+	}
 	drafts, err := q.DeleteCustomerDrafts(ctx, customerID)
 	if err != nil {
 		return nil, fmt.Errorf("invoices: erase customer %d's drafts: %w", customerID, err)
@@ -392,7 +399,7 @@ func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, 
 	return []contracts.ErasedData{
 		{Kind: kindInvoicesDrafts, Count: drafts},
 		{Kind: kindInvoicesDocuments, Count: 0},
-		{Kind: kindInvoicesPayments, Count: 0},
+		{Kind: kindInvoicesPayments, Count: notes},
 		{Kind: kindInvoicesDeliveries, Count: blanked},
 	}, nil
 }

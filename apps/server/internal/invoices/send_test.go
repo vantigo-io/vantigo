@@ -14,6 +14,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
@@ -799,6 +800,74 @@ func TestSend_SendDefaultsAndWarnings(t *testing.T) {
 	other := issuedAcme(t, quiet)
 	if d := readAs(t, sender(t, quiet), other.ID).SendDefaults; d != nil {
 		t.Errorf("on the log driver, sendDefaults = %+v, want none", d)
+	}
+}
+
+// A row that fails to write after a successful send (D4 step 8) is logged at
+// error with the document id only — never the address, which may be a
+// person's whom an erase is anonymising at that moment — and the send
+// answers 500: the mail went, the operator is told. Not parallel: the
+// delivery hook is the package's.
+func TestSend_ARowThatFailsIsLoggedWithoutTheAddress(t *testing.T) {
+	h, fake := sendReady(t)
+	inv := issued(t, h, createDraft(t, h, draftBody(customerPerson, line("Konsultasjon", 1, 1000, vat25))).ID)
+	restore := invoices.SetBeforeDeliveryWrite(func(ctx context.Context, id int64) {
+		// The handler's goroutine: t.Errorf, never a t.Fatal.
+		if id != inv.ID {
+			return
+		}
+		if _, err := h.Pool().Exec(ctx, `ALTER TABLE invoices.deliveries ADD CONSTRAINT ck_refuse_every_row CHECK (false) NOT VALID`); err != nil {
+			t.Errorf("make the row fail: %v", err)
+		}
+	})
+	defer restore()
+
+	if res := sendAs(sender(t, h), inv.ID, nil); res.Status != http.StatusInternalServerError {
+		t.Errorf("a send whose row fails = %d %s, want 500", res.Status, res.Body)
+	}
+	if n := len(fake.mails()); n != 1 {
+		t.Errorf("%d mails sent, want the one that went", n)
+	}
+	logged := false
+	for _, l := range strings.Split(h.Logs(), "\n") {
+		if strings.Contains(l, "kari@example.org") {
+			t.Errorf("a log line carries the recipient's address: %s", l)
+		}
+		logged = logged || (strings.Contains(l, `"level":"ERROR"`) && strings.Contains(l, "its delivery could not be logged") &&
+			strings.Contains(l, fmt.Sprintf(`"invoice_id":%d`, inv.ID)))
+	}
+	if !logged {
+		t.Errorf("logs =\n%s\nwant an error naming the document", h.Logs())
+	}
+}
+
+// A customer this module has anonymised is never written to again (D4 step
+// 3), so a sender's read of its document offers nothing to send with:
+// sendDefaults is left out, and the directory is not asked for the address.
+func TestSend_NoSendDefaultsForAnAnonymisedCustomer(t *testing.T) {
+	t.Parallel()
+	h, _ := sendReady(t)
+	inv := issuedAcme(t, h)
+	c, userID := h.SignInUser(t, "invoices:access", "invoices:issue")
+	if d := readAs(t, c, inv.ID).SendDefaults; d == nil {
+		t.Fatal("before the erase, sendDefaults absent; want the customer's")
+	}
+	profileReads := func() int {
+		n := 0
+		for _, call := range contractCalls.by(userID) {
+			if call.method == "Directory.BillingProfile" {
+				n++
+			}
+		}
+		return n
+	}
+	before := profileReads()
+	h.Exec(t, `INSERT INTO invoices.erased_customers (customer_id, erased_at) VALUES ($1, now())`, customerAcme)
+	if d := readAs(t, c, inv.ID).SendDefaults; d != nil {
+		t.Errorf("an anonymised customer's sendDefaults = %+v, want none", d)
+	}
+	if n := profileReads() - before; n != 0 {
+		t.Errorf("%d billing profile reads for an anonymised customer's document, want none", n)
 	}
 }
 

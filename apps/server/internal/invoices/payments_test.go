@@ -303,8 +303,9 @@ func TestPayments_RemovalReopensAndIsRecorded(t *testing.T) {
 }
 
 // A registration is a record (D2): direct SQL can neither change nor delete
-// one; the removal's three columns are set once and never again; and no row
-// can be put under a draft or a credit note.
+// one; the removal's three columns are set once and never again; its note may
+// only be blanked, the anonymisation's write (D6); and no row can be put
+// under a draft or a credit note.
 func TestPayments_ImmutableInSQL(t *testing.T) {
 	t.Parallel()
 	h := readyToIssue(t)
@@ -327,6 +328,14 @@ func TestPayments_ImmutableInSQL(t *testing.T) {
 	h.Exec(t, `UPDATE invoices.payments SET removed_at = now(), removed_by_user_id = $2, removal_reason = 'Feil' WHERE id = $1`, paymentID, uuid.New())
 	refused(immutable, `UPDATE invoices.payments SET removed_at = now(), removed_by_user_id = $2, removal_reason = 'Igjen' WHERE id = $1`, paymentID, uuid.New())
 	refused(immutable, `UPDATE invoices.payments SET removal_reason = 'Annen grunn' WHERE id = $1`, paymentID)
+
+	// The anonymisation's one write (D6): a note to '', and nothing else with it.
+	noted := registered(t, h, inv.ID, map[string]any{"amount": 100, "paidOn": "2026-09-12", "note": "Ringte"}).Payments
+	notedID := noted[len(noted)-1].ID
+	refused(immutable, `UPDATE invoices.payments SET note = 'x' WHERE id = $1`, notedID)
+	refused(immutable, `UPDATE invoices.payments SET note = '', amount = 50 WHERE id = $1`, notedID)
+	h.Exec(t, `UPDATE invoices.payments SET note = '' WHERE id = $1`, notedID)
+	refused(immutable, `UPDATE invoices.payments SET note = 'x' WHERE id = $1`, notedID)
 
 	draft := createDraft(t, h, draftBody(customerAcme, line("A", 1, 100, vat25)))
 	creditNote := issued(t, h, creditDraft(t, h, inv.ID).ID)

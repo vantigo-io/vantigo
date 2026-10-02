@@ -61,6 +61,17 @@ UPDATE invoices.deliveries d SET recipient = ''
 FROM invoices.invoices i
 WHERE d.invoice_id = i.id AND i.customer_id = @customer_id AND d.recipient <> '';
 
+-- name: BlankCustomerPaymentNotes :execrows
+-- BlankCustomerPaymentNotes removes the staff-written note from every payment
+-- of a customer's documents, live and removed, on anonymisation (D6) — the
+-- write tr_payments_immutable allows besides the removal. The registrations
+-- stay, the bank's reference with them: they are bookkeeping material kept
+-- with the document. A note blanked already, or never written, is not
+-- counted.
+UPDATE invoices.payments p SET note = ''
+FROM invoices.invoices i
+WHERE p.invoice_id = i.id AND i.customer_id = @customer_id AND p.note <> '';
+
 -- name: PaymentsOfDocuments :many
 -- PaymentsOfDocuments is every registration of several documents at once,
 -- removed ones included, for a private person's export (D6).

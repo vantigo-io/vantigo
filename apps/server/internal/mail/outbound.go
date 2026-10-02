@@ -64,14 +64,17 @@ type Outbound struct {
 // only for this one message.
 //
 // It takes a config.MailConfig per call rather than being a method on a
-// long-lived Sender because its caller (communications' outbox worker) resolves
-// the server from the *channel's* stored credentials, which differ per channel
-// and can change between sends; cfg.From is the channel's own address. This is
-// the same shape VerifyConnection already has, for the same reason.
+// long-lived Sender because it was made for communications' outbox worker,
+// which resolves the server from the *channel's* stored credentials, which
+// differ per channel and can change between sends; cfg.From is then the
+// channel's own address. This is the same shape VerifyConnection already has,
+// for the same reason. Invoices' send is its other caller, with the process's
+// SMTP_* settings (Config.Mail) and the seller's address as ReplyTo.
 //
 // The caller bounds the send with ctx. Communications derives that deadline
 // from its lease so a send can never outlive the lease that protects it
-// (inventory §15.2's `0 < timeout < lease` invariant).
+// (inventory §15.2's `0 < timeout < lease` invariant); invoices bounds its
+// send at 30 seconds.
 func SendOutbound(ctx context.Context, cfg config.MailConfig, out Outbound) error {
 	if len(out.To)+len(out.Cc)+len(out.Bcc) == 0 {
 		return fmt.Errorf("mail: an outbound message needs at least one recipient")
