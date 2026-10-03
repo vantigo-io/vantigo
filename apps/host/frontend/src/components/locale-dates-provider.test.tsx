@@ -87,7 +87,13 @@ describe("LocaleDatesProvider", () => {
       /januar|februar|mars|april|mai|juni|juli|august|september|oktober|november|desember/,
     );
     expect(norwegianCalendar).toHaveTextContent(/\b(ma|ti|on|to|fr|lø|sø)\b/);
-    expect(norwegianCalendar.querySelector<HTMLElement>("[aria-label*='juli']")).toBeInTheDocument();
+    // The page's "From" defaults to one month before today, so the calendar
+    // opens on that month: assert its Norwegian name rather than a fixed
+    // "juli", which held only while the grid showed a July day.
+    const defaultFrom = new Date();
+    defaultFrom.setMonth(defaultFrom.getMonth() - 1);
+    const monthInNorwegian = new Intl.DateTimeFormat("nb", { month: "long" }).format(defaultFrom);
+    expect(norwegianCalendar.querySelector<HTMLElement>(`[aria-label*='${monthInNorwegian}']`)).toBeInTheDocument();
 
     fireEvent.keyDown(norwegianFromInput, { key: "Escape" });
     await waitFor(() =>
