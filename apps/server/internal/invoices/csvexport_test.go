@@ -116,6 +116,50 @@ func TestExportCSV_IsExactlyTheseBytes(t *testing.T) {
 	}
 }
 
+// TestExportCSV_BaseNOKRoundsHalfAwayFromZero: Base NOK is the one computed
+// column (D5), at øre half away from zero, never half to even — 100.03 at
+// 1.5 is 150.045, so 150,05 on the invoice and -150,05 on its credit note,
+// rounded before it is negated.
+func TestExportCSV_BaseNOKRoundsHalfAwayFromZero(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	// plant writes one issued document in EUR at 1.5 with one VAT row of
+	// 100.03, a draft first and its VAT row under it, as plantExportDocuments
+	// does.
+	plant := func(kind string, number int64, credits *int64) int64 {
+		t.Helper()
+		id := modtest.One[int64](t, h.Harness, `
+			INSERT INTO invoices.invoices (kind, customer_id, currency, exchange_rate, credits_invoice_id, created_by_user_id, created_at, updated_at)
+			VALUES ($1::text, 1, 'EUR', 1.5, $2, $3, now(), now()) RETURNING id`, kind, credits, uuid.New())
+		h.Exec(t, `
+			INSERT INTO invoices.vat_summaries (invoice_id, vat_category, rate_percent, saf_t_code, taxable_amount, vat_amount, vat_amount_nok)
+			VALUES ($1, 'S', 25, '3', 100.03, 25.01, 37.52)`, id)
+		h.Exec(t, `
+			UPDATE invoices.invoices
+			SET status = 'issued', number = $2, issue_date = '2026-09-12', issued_at = now(),
+			    due_date = CASE WHEN kind = 'invoice' THEN DATE '2026-09-26' END,
+			    seller_legal_name = 'Selger AS', buyer_name = 'Kunde AS', exchange_rate_date = '2026-09-12'
+			WHERE id = $1`, id, number)
+		return id
+	}
+	invoice := plant("invoice", 1, nil)
+	plant("credit_note", 2, &invoice)
+
+	header, rows := exportTable(t, exportCSV(t, h, "from=2026-09-01&to=2026-09-30").Body)
+	baseNOK := -1
+	for i, name := range header {
+		if name == "Base NOK" {
+			baseNOK = i
+		}
+	}
+	if baseNOK < 0 || len(rows) != 2 {
+		t.Fatalf("header %v, %d rows; want Base NOK and two rows", header, len(rows))
+	}
+	if rows[0][baseNOK] != "150,05" || rows[1][baseNOK] != "-150,05" {
+		t.Errorf("Base NOK = %q and %q, want 150,05 and -150,05: half away from zero", rows[0][baseNOK], rows[1][baseNOK])
+	}
+}
+
 // TestExportCSV_IsServedAsAFileNobodyCaches pins the headers a browser needs
 // to save the file rather than show it, and its name: the period it covers.
 // A file of no documents is still a file — its header row — and the export is

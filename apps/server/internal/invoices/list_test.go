@@ -175,10 +175,12 @@ func removePayment(t *testing.T, h *harness, paymentID int64, reason string) {
 
 // The list's state filter (D3): each of the five states returns exactly its
 // invoices, judged by the SQL function with today the Oslo business day
-// (2026-09-12 on the fixed clock); it combines with kind and customerId and
-// pages with a total that agrees; a draft and a credit note never match one;
-// an unknown state is a 400. Every item answers its state, and an issued
-// invoice its open amount — gross less what is credited and what is live paid.
+// (2026-09-12 on the fixed clock); it combines with kind, customerId, status
+// and search, and pages with a total that agrees; a draft and a credit note
+// never match one; an unknown state is a 400. Every item answers its state,
+// and an issued invoice its open amount — gross less what is credited and
+// what is live paid, so a payment on a credited invoice is a negative open
+// amount, the state still credited.
 func TestList_TheStateFilterAndTheOpenAmount(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -194,6 +196,7 @@ func TestList_TheStateFilterAndTheOpenAmount(t *testing.T) {
 	plantPayment(t, h, paid, "0.01", "2026-09-06")
 	credited := plantDocument(t, h, 6, customerAcme, nil, "1000", "2026-09-11")
 	creditNote := plantDocument(t, h, 7, customerAcme, &credited, "1000", "")
+	plantPayment(t, h, credited, "200", "2026-09-05")
 	draft := createDraft(t, h, draftBody(customerAcme)).ID
 
 	for _, c := range []struct {
@@ -210,6 +213,10 @@ func TestList_TheStateFilterAndTheOpenAmount(t *testing.T) {
 		{fmt.Sprintf("?state=overdue&customerId=%d", customerPerson), []int64{overduePartial}},
 		{fmt.Sprintf("?state=open&customerId=%d", customerPerson), []int64{}},
 		{"?state=open&status=draft", []int64{}},
+		{"?state=open&status=issued", []int64{open}},
+		{"?state=overdue&search=4", []int64{overduePartial}},
+		{"?state=open&search=4", []int64{}},
+		{"?state=credited&search=kunde", []int64{credited}},
 	} {
 		got := ids(list(t, h, c.query))
 		if got == nil {
@@ -229,7 +236,7 @@ func TestList_TheStateFilterAndTheOpenAmount(t *testing.T) {
 		open: "open", partial: "partially_paid", overdue: "overdue", overduePartial: "overdue",
 		paid: "paid", credited: "credited", creditNote: "issued", draft: "draft",
 	}
-	wantOpen := map[int64]float64{open: 1000, partial: 700, overdue: 1000, overduePartial: 700, paid: 0, credited: 0}
+	wantOpen := map[int64]float64{open: 1000, partial: 700, overdue: 1000, overduePartial: 700, paid: 0, credited: -200}
 	all := list(t, h, "")
 	if len(all.Data) != len(wantState) {
 		t.Fatalf("the whole list = %v, want %d rows", ids(all), len(wantState))

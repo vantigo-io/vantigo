@@ -15,9 +15,13 @@
 // So this package is deliberately not a module and is deliberately outside
 // every depguard rule: `.golangci.yml`'s rules are scoped with `files:` to
 // `**/internal/<module>/**` and the platform list, and this directory is in
-// neither, which is what lets one test import `customers`, `projects`, `time`
-// and `expenses` together. Nothing here is built into the binary — the package has
-// no production code and nothing imports it — so the exemption buys a test and
-// costs no coupling. If anything non-test is ever added here, that reasoning
-// stops holding and this package needs a depguard rule of its own.
+// neither, which is what lets one test import `customers`, `projects`, `time`,
+// `expenses` and `invoices` together. The invoices tests reach past the
+// database the same way the binary does — a file-system object store over a
+// temporary directory and the smtp driver — with only the last hop, the SMTP
+// dial, replaced by the test seam. Nothing here is built into the binary —
+// the package has no production code and nothing imports it — so the
+// exemption buys a test and costs no coupling. If anything non-test is ever
+// added here, that reasoning stops holding and this package needs a depguard
+// rule of its own.
 package integration

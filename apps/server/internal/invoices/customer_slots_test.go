@@ -160,8 +160,9 @@ func TestCustomerReferences_ARepointRacingACreditNoteIssueNeverDeadlocks(t *test
 
 // The export (D10): nil when nothing is held; every issued document and draft
 // otherwise, the internal notes included, each issued one with its whole buyer
-// snapshot, a place of delivery when one is set, and a credit note naming the
-// invoice it credits.
+// snapshot, a place of delivery when one is set, and empty payments and
+// deliveries when it has none; and a credit note naming the invoice it
+// credits.
 func TestCustomerPersonalData_Export(t *testing.T) {
 	t.Parallel()
 	h := readyToIssue(t)
@@ -194,6 +195,7 @@ func TestCustomerPersonalData_Export(t *testing.T) {
 			`"address":{"line1":"Hjemveien 5","postalCode":"5003","city":"Bergen","region":"Vestland","country":"NO"},"language":"en"}`,
 		`"deliveryAddress":{"line1":"Hytta","postalCode":"3580","city":"Geilo","country":"NO"}`, `"internalNote":"Ringte to ganger"`,
 		`"vatRatePercent":"25.00"`, `"drafts":[{"kind":"invoice"`, `"internalNote":"Utkast til neste måned"`, `"quantity":"1.500"`,
+		`"payments":[],"deliveries":[]}`,
 	} {
 		if !strings.Contains(raw, want) {
 			t.Errorf("export %s has no %s", raw, want)

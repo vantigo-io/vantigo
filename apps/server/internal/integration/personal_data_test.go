@@ -6,9 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
-
-	"github.com/vantigo-io/vantigo/server/internal/customers"
-	"github.com/vantigo-io/vantigo/server/internal/module"
 )
 
 // TestPersonalData_TheRealProjectsModuleIsAskedAndKeepsItsProjects is customers
@@ -57,16 +54,7 @@ func TestPersonalData_TheRealProjectsModuleIsAskedAndKeepsItsProjects(t *testing
 	okJSON(t, admin, http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/anonymisation", person.Id),
 		map[string]any{"anonymiseOn": h.Now().UTC().Format("2006-01-02")}, nil)
 
-	var worker *customers.AnonymisationWorker
-	for _, w := range module.Workers(h.Deps(), customers.Module(), moduleNamed(t, modProjects)) {
-		if aw, ok := w.(*customers.AnonymisationWorker); ok {
-			worker = aw
-		}
-	}
-	if worker == nil {
-		t.Fatal("module.Workers built no anonymisation worker")
-	}
-	if ran, err := worker.RunCycle(context.Background()); err != nil || !ran {
+	if ran, err := anonymisationWorker(t, h, modCustomers, modProjects).RunCycle(context.Background()); err != nil || !ran {
 		t.Fatalf("RunCycle = %v, %v", ran, err)
 	}
 

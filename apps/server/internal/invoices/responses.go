@@ -347,6 +347,7 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 			if issuedLate(issuedOn, deliveryEndOf(inv)) {
 				resp.Warnings = append(resp.Warnings, warningIssuedLate)
 			}
+			// settle hands documentState non-nil money, which an issued invoice's needs.
 			if err := settle(ctx, q, inv, today, &resp); err != nil {
 				return gen.InvoicesInvoiceResponse{}, err
 			}

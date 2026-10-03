@@ -256,7 +256,9 @@ type LockCustomerDocumentsParams struct {
 // UPDATE locks in whatever order it scans, which can be the original first —
 // and a merge holding the original while waiting on the credit note, beside
 // an issue holding the credit note while waiting on the original, is a
-// deadlock. Locking id-descending takes them in the issue's order.
+// deadlock. Locking id-descending takes them in the issue's order. The erase
+// (D6) reuses it with the one customer's id as both, to hold the person's
+// documents against a send's delivery insert.
 func (q *Queries) LockCustomerDocuments(ctx context.Context, arg LockCustomerDocumentsParams) error {
 	_, err := q.db.Exec(ctx, lockCustomerDocuments, arg.FromCustomerID, arg.IntoCustomerID)
 	return err

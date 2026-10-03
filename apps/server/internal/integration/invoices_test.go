@@ -1,6 +1,7 @@
 package integration_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -8,13 +9,11 @@ import (
 	"slices"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
-	"github.com/vantigo-io/vantigo/server/internal/customers"
-	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
-	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/storage"
 )
 
@@ -31,6 +30,14 @@ const (
 	invoicesBase = "/api/v1/invoices"
 	// sellerEmail is the seller's own address, what a send's Reply-To names.
 	sellerEmail = "faktura@kraft-verket.no"
+)
+
+// The days these tests write and expect, from the clock every installation
+// starts at: today is modtest.Start's day, the issue's and a payment's, and
+// a draft's delivery two days before it.
+var (
+	invoiceToday     = modtest.Start.Format(time.DateOnly)
+	invoiceDelivered = modtest.Start.AddDate(0, 0, -2).Format(time.DateOnly)
 )
 
 // smtpRecorder stands in for mail.SendOutbound: every envelope it is handed
@@ -90,18 +97,18 @@ func invoicesInstallation(t *testing.T) (*modtest.Harness, *modtest.Client, *smt
 	return h, admin, smtp
 }
 
-// createdCustomer is POST /customers's answer.
-type createdCustomer struct {
+// invoiceCustomer is POST /customers's answer.
+type invoiceCustomer struct {
 	Id             int32 `json:"id"`
 	CustomerNumber int64 `json:"customerNumber"`
 }
 
-// newBusiness creates a Norwegian business through the customers API, its
+// invoiceNewBusiness creates a Norwegian business through the customers API, its
 // legal identity orgNumber registered under legalName, with an invoice
 // address.
-func newBusiness(t *testing.T, c *modtest.Client, name, legalName, orgNumber string) createdCustomer {
+func invoiceNewBusiness(t *testing.T, c *modtest.Client, name, legalName, orgNumber string) invoiceCustomer {
 	t.Helper()
-	var created createdCustomer
+	var created invoiceCustomer
 	okJSON(t, c, http.MethodPost, "/api/v1/customers", map[string]any{
 		"name": name,
 		"identity": map[string]any{
@@ -112,9 +119,9 @@ func newBusiness(t *testing.T, c *modtest.Client, name, legalName, orgNumber str
 	return created
 }
 
-// billingProfile replaces a customer's billing profile through the customers
+// invoiceBillingProfile replaces a customer's billing profile through the customers
 // API.
-func billingProfile(t *testing.T, c *modtest.Client, id int32, profile map[string]any) {
+func invoiceBillingProfile(t *testing.T, c *modtest.Client, id int32, profile map[string]any) {
 	t.Helper()
 	okJSON(t, c, http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/billing-profile", id), profile, nil)
 }
@@ -170,10 +177,10 @@ func invoiceAt(id int64) string { return fmt.Sprintf("%s/%d", invoicesBase, id) 
 
 // draftFor is a create body for customer: ten hours at 1000 on the standard
 // 25 % code (the first the invoices migration seeds, id 1), delivered on
-// 2026-09-10.
+// invoiceDelivered.
 func draftFor(customer int32) map[string]any {
 	return map[string]any{
-		"customerId": customer, "deliveryDate": "2026-09-10",
+		"customerId": customer, "deliveryDate": invoiceDelivered,
 		"lines": []map[string]any{{"description": "Konsulenttime", "quantity": 10, "unit": "timer", "unitPrice": 1000, "vatCodeId": 1}},
 	}
 }
@@ -205,8 +212,8 @@ func readDoc(t *testing.T, c *modtest.Client, id int64) invoiceDoc {
 	return doc
 }
 
-// refusedAs asserts res is a 409 with code.
-func refusedAs(t *testing.T, what string, res *modtest.Response, code string) {
+// invoiceRefusedAs asserts res is a 409 with code.
+func invoiceRefusedAs(t *testing.T, what string, res *modtest.Response, code string) {
 	t.Helper()
 	if res.Status != http.StatusConflict {
 		t.Errorf("%s = %d %s, want 409 %s", what, res.Status, res.Body, code)
@@ -221,16 +228,16 @@ func refusedAs(t *testing.T, what string, res *modtest.Response, code string) {
 	}
 }
 
-// kindCount is one {kind, count} entry of customer.merged's moved list,
+// invoiceKindCount is one {kind, count} entry of customer.merged's moved list,
 // the merge response's moved list and customer.anonymised's erased list.
-type kindCount struct {
+type invoiceKindCount struct {
 	Kind  string `json:"kind"`
 	Count int64  `json:"count"`
 }
 
-// newestEvent is the newest entry of a customer's timeline, which must be
+// invoiceNewestEvent is the newest entry of a customer's timeline, which must be
 // of eventType, its payload decoded into payload.
-func newestEvent(t *testing.T, c *modtest.Client, customer int32, eventType string, payload any) {
+func invoiceNewestEvent(t *testing.T, c *modtest.Client, customer int32, eventType string, payload any) {
 	t.Helper()
 	var timeline struct {
 		Data []struct {
@@ -247,7 +254,7 @@ func newestEvent(t *testing.T, c *modtest.Client, customer int32, eventType stri
 	}
 }
 
-func str(s *string) string {
+func invoiceStr(s *string) string {
 	if s == nil {
 		return "<absent>"
 	}
@@ -264,8 +271,8 @@ func str(s *string) string {
 func TestInvoices_ADraftTakesTheRealProfileAndTheSnapshotIsTheCustomer(t *testing.T) {
 	t.Parallel()
 	_, admin, _ := invoicesInstallation(t)
-	customer := newBusiness(t, admin, "Fjord Nord", "Fjord Nord AS", "923609016")
-	billingProfile(t, admin, customer.Id, map[string]any{
+	customer := invoiceNewBusiness(t, admin, "Fjord Nord", "Fjord Nord AS", "923609016")
+	invoiceBillingProfile(t, admin, customer.Id, map[string]any{
 		"invoiceEmail": "faktura@fjordnord.example", "paymentTermsDays": 30, "buyerReference": "PO-4711",
 	})
 
@@ -274,25 +281,26 @@ func TestInvoices_ADraftTakesTheRealProfileAndTheSnapshotIsTheCustomer(t *testin
 		t.Errorf("the draft's prefills = %q, %v; want the profile's PO-4711 and 30 days", draft.YourReference, draft.PaymentTermsDays)
 	}
 	if draft.CustomerName == nil || *draft.CustomerName != "Fjord Nord" {
-		t.Errorf("the draft's customerName = %s, want the customer's own name", str(draft.CustomerName))
+		t.Errorf("the draft's customerName = %s, want the customer's own name", invoiceStr(draft.CustomerName))
 	}
 
 	doc := issueDoc(t, admin, draft.ID)
-	if str(doc.IssueDate) != "2026-09-12" || str(doc.DueDate) != "2026-10-12" {
-		t.Errorf("issued %s due %s, want 2026-09-12 due 30 days on, 2026-10-12", str(doc.IssueDate), str(doc.DueDate))
+	due := modtest.Start.AddDate(0, 0, 30).Format(time.DateOnly)
+	if invoiceStr(doc.IssueDate) != invoiceToday || invoiceStr(doc.DueDate) != due {
+		t.Errorf("issued %s due %s, want %s due 30 days on, %s", invoiceStr(doc.IssueDate), invoiceStr(doc.DueDate), invoiceToday, due)
 	}
 	b := doc.Buyer
 	if b == nil {
 		t.Fatal("the issued invoice has no buyer snapshot")
 	}
 	if b.CustomerNumber != customer.CustomerNumber || b.Type != "business" || b.Name != "Fjord Nord AS" ||
-		str(b.OrganisationNumber) != "923609016" || b.Language != "nb" {
+		invoiceStr(b.OrganisationNumber) != "923609016" || b.Language != "nb" {
 		t.Errorf("the buyer = #%d %s %q %s %s, want #%d business \"Fjord Nord AS\" 923609016 nb",
-			b.CustomerNumber, b.Type, b.Name, str(b.OrganisationNumber), b.Language, customer.CustomerNumber)
+			b.CustomerNumber, b.Type, b.Name, invoiceStr(b.OrganisationNumber), b.Language, customer.CustomerNumber)
 	}
-	if str(b.AddressLine1) != "Kaiveien 3" || str(b.PostalCode) != "5003" || str(b.City) != "Bergen" || str(b.Country) != "NO" {
+	if invoiceStr(b.AddressLine1) != "Kaiveien 3" || invoiceStr(b.PostalCode) != "5003" || invoiceStr(b.City) != "Bergen" || invoiceStr(b.Country) != "NO" {
 		t.Errorf("the buyer's address = %s, %s %s, %s; want the customer's invoice address",
-			str(b.AddressLine1), str(b.PostalCode), str(b.City), str(b.Country))
+			invoiceStr(b.AddressLine1), invoiceStr(b.PostalCode), invoiceStr(b.City), invoiceStr(b.Country))
 	}
 }
 
@@ -303,7 +311,7 @@ func TestInvoices_ADraftTakesTheRealProfileAndTheSnapshotIsTheCustomer(t *testin
 func TestInvoices_ADisabledCustomerIsRefusedANewDraftButCredited(t *testing.T) {
 	t.Parallel()
 	_, admin, _ := invoicesInstallation(t)
-	customer := newBusiness(t, admin, "Sperret AS", "Sperret AS", "923609016")
+	customer := invoiceNewBusiness(t, admin, "Sperret AS", "Sperret AS", "923609016")
 	original := issueDoc(t, admin, newDraft(t, admin, customer.Id).ID)
 
 	var updated struct {
@@ -315,7 +323,7 @@ func TestInvoices_ADisabledCustomerIsRefusedANewDraftButCredited(t *testing.T) {
 		t.Fatalf("the customer's status = %q, want disabled", updated.Status)
 	}
 
-	refusedAs(t, "a new draft for the disabled customer", admin.Do(http.MethodPost, invoicesBase, draftFor(customer.Id)), "customer_blocked")
+	invoiceRefusedAs(t, "a new draft for the disabled customer", admin.Do(http.MethodPost, invoicesBase, draftFor(customer.Id)), "customer_blocked")
 
 	var creditDraft invoiceDoc
 	okJSON(t, admin, http.MethodPost, invoiceAt(original.ID)+"/credit", nil, &creditDraft)
@@ -337,23 +345,23 @@ func TestInvoices_ADisabledCustomerIsRefusedANewDraftButCredited(t *testing.T) {
 func TestInvoices_AMergeRepointsTheRealDocuments(t *testing.T) {
 	t.Parallel()
 	_, admin, _ := invoicesInstallation(t)
-	survivor := newBusiness(t, admin, "Acme AS", "Acme AS", "923609016")
-	absorbed := newBusiness(t, admin, "Acme Norge AS", "Acme Norge AS", "974760673")
+	survivor := invoiceNewBusiness(t, admin, "Acme AS", "Acme AS", "923609016")
+	absorbed := invoiceNewBusiness(t, admin, "Acme Norge AS", "Acme Norge AS", "987654325")
 	issued := issueDoc(t, admin, newDraft(t, admin, absorbed.Id).ID)
 	draft := newDraft(t, admin, absorbed.Id)
 
 	var merged struct {
-		Moved []kindCount `json:"moved"`
+		Moved []invoiceKindCount `json:"moved"`
 	}
 	okJSON(t, admin, http.MethodPost, fmt.Sprintf("/api/v1/customers/%d/merge", survivor.Id), map[string]any{"sourceId": absorbed.Id}, &merged)
-	if !slices.Contains(merged.Moved, kindCount{Kind: "invoices.invoices", Count: 2}) {
+	if !slices.Contains(merged.Moved, invoiceKindCount{Kind: "invoices.invoices", Count: 2}) {
 		t.Errorf("the merge's moved = %+v, want invoices.invoices 2 from the real holder", merged.Moved)
 	}
 	var event struct {
-		Moved []kindCount `json:"moved"`
+		Moved []invoiceKindCount `json:"moved"`
 	}
-	newestEvent(t, admin, survivor.Id, "customer.merged", &event)
-	if !slices.Contains(event.Moved, kindCount{Kind: "invoices.invoices", Count: 2}) {
+	invoiceNewestEvent(t, admin, survivor.Id, "customer.merged", &event)
+	if !slices.Contains(event.Moved, invoiceKindCount{Kind: "invoices.invoices", Count: 2}) {
 		t.Errorf("customer.merged's moved = %+v, want invoices.invoices 2", event.Moved)
 	}
 
@@ -365,7 +373,7 @@ func TestInvoices_AMergeRepointsTheRealDocuments(t *testing.T) {
 	if got := readDoc(t, admin, issued.ID); got.Buyer == nil || got.Buyer.Name != "Acme Norge AS" || got.Buyer.CustomerNumber != absorbed.CustomerNumber {
 		t.Errorf("the issued document's buyer = %+v, want the snapshot it printed: Acme Norge AS #%d", got.Buyer, absorbed.CustomerNumber)
 	}
-	refusedAs(t, "a new draft for the duplicate", admin.Do(http.MethodPost, invoicesBase, draftFor(absorbed.Id)), "customer_merged")
+	invoiceRefusedAs(t, "a new draft for the duplicate", admin.Do(http.MethodPost, invoicesBase, draftFor(absorbed.Id)), "customer_merged")
 }
 
 // TestInvoices_ASendReachesTheProfilesAddressWithTheSellersReplyTo: the send
@@ -377,8 +385,8 @@ func TestInvoices_AMergeRepointsTheRealDocuments(t *testing.T) {
 func TestInvoices_ASendReachesTheProfilesAddressWithTheSellersReplyTo(t *testing.T) {
 	t.Parallel()
 	_, admin, smtp := invoicesInstallation(t)
-	customer := newBusiness(t, admin, "Kunde AS", "Kunde AS", "923609016")
-	billingProfile(t, admin, customer.Id, map[string]any{"invoiceEmail": "faktura@kunde.example"})
+	customer := invoiceNewBusiness(t, admin, "Kunde AS", "Kunde AS", "923609016")
+	invoiceBillingProfile(t, admin, customer.Id, map[string]any{"invoiceEmail": "faktura@kunde.example"})
 	doc := issueDoc(t, admin, newDraft(t, admin, customer.Id).ID)
 
 	var sent invoiceDoc
@@ -393,11 +401,11 @@ func TestInvoices_ASendReachesTheProfilesAddressWithTheSellersReplyTo(t *testing
 		t.Errorf("the envelope = to %v reply-to %q from %q, want the profile's faktura@kunde.example, reply-to %s, from Kraft-Verket AS",
 			out.To, out.ReplyTo, out.DisplayName, sellerEmail)
 	}
-	if len(out.Attachments) != 1 {
+	if len(out.Attachments) != 1 || !bytes.HasPrefix(out.Attachments[0].Content, []byte("%PDF")) {
 		t.Errorf("%d attachments, want the stored PDF", len(out.Attachments))
 	}
 	got := readDoc(t, admin, doc.ID)
-	if len(got.Deliveries) != 1 || str(got.Deliveries[0].Recipient) != "faktura@kunde.example" || got.Deliveries[0].Subject == "" {
+	if len(got.Deliveries) != 1 || invoiceStr(got.Deliveries[0].Recipient) != "faktura@kunde.example" || got.Deliveries[0].Subject == "" {
 		t.Errorf("the document's deliveries = %+v, want the one send to faktura@kunde.example", got.Deliveries)
 	}
 }
@@ -413,12 +421,12 @@ func TestInvoices_ASendReachesTheProfilesAddressWithTheSellersReplyTo(t *testing
 func TestInvoices_TheExportAndTheAnonymisation(t *testing.T) {
 	t.Parallel()
 	h, admin, _ := invoicesInstallation(t)
-	var person createdCustomer
+	var person invoiceCustomer
 	okJSON(t, admin, http.MethodPost, "/api/v1/customers", map[string]any{"name": "Kari Nordmann", "type": "person"}, &person)
 	invoiceAddress(t, admin, person.Id)
-	billingProfile(t, admin, person.Id, map[string]any{"invoiceEmail": "kari@example.org"})
+	invoiceBillingProfile(t, admin, person.Id, map[string]any{"invoiceEmail": "kari@example.org"})
 	doc := issueDoc(t, admin, newDraft(t, admin, person.Id).ID)
-	okJSON(t, admin, http.MethodPost, invoiceAt(doc.ID)+"/payments", map[string]any{"amount": 500, "paidOn": "2026-09-12", "note": "Kari ringte"}, nil)
+	okJSON(t, admin, http.MethodPost, invoiceAt(doc.ID)+"/payments", map[string]any{"amount": 500, "paidOn": invoiceToday, "note": "Kari ringte"}, nil)
 	okJSON(t, admin, http.MethodPost, invoiceAt(doc.ID)+"/send", map[string]any{}, nil)
 	draft := newDraft(t, admin, person.Id)
 
@@ -458,16 +466,7 @@ func TestInvoices_TheExportAndTheAnonymisation(t *testing.T) {
 	}
 	okJSON(t, admin, http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/anonymisation", person.Id),
 		map[string]any{"anonymiseOn": h.Now().UTC().Format("2006-01-02")}, nil)
-	var worker *customers.AnonymisationWorker
-	for _, w := range module.Workers(h.Deps(), customers.Module(), invoices.Module()) {
-		if aw, ok := w.(*customers.AnonymisationWorker); ok {
-			worker = aw
-		}
-	}
-	if worker == nil {
-		t.Fatal("module.Workers built no anonymisation worker")
-	}
-	if ran, err := worker.RunCycle(context.Background()); err != nil || !ran {
+	if ran, err := anonymisationWorker(t, h, modCustomers, modInvoices).RunCycle(context.Background()); err != nil || !ran {
 		t.Fatalf("RunCycle = %v, %v", ran, err)
 	}
 
@@ -476,27 +475,27 @@ func TestInvoices_TheExportAndTheAnonymisation(t *testing.T) {
 	}
 	kept := readDoc(t, admin, doc.ID)
 	if kept.Status != "issued" || len(kept.Payments) != 1 || kept.Payments[0].Note != "" || kept.Payments[0].Amount != 500 ||
-		len(kept.Deliveries) != 1 || str(kept.Deliveries[0].Recipient) != "" || kept.Deliveries[0].Subject == "" {
+		len(kept.Deliveries) != 1 || invoiceStr(kept.Deliveries[0].Recipient) != "" || kept.Deliveries[0].Subject == "" {
 		t.Errorf("the document after the anonymisation = %s, payments %+v, deliveries %+v; want it kept, its payment's note and its delivery's address blanked",
 			kept.Status, kept.Payments, kept.Deliveries)
 	}
 
 	var event struct {
-		Erased []kindCount `json:"erased"`
+		Erased []invoiceKindCount `json:"erased"`
 	}
-	newestEvent(t, admin, person.Id, "customer.anonymised", &event)
-	var ofInvoices []kindCount
+	invoiceNewestEvent(t, admin, person.Id, "customer.anonymised", &event)
+	var ofInvoices []invoiceKindCount
 	for _, e := range event.Erased {
 		if e.Kind == "invoices.drafts" || e.Kind == "invoices.documents" || e.Kind == "invoices.payments" || e.Kind == "invoices.deliveries" {
 			ofInvoices = append(ofInvoices, e)
 		}
 	}
-	if want := []kindCount{
+	if want := []invoiceKindCount{
 		{Kind: "invoices.drafts", Count: 1}, {Kind: "invoices.documents", Count: 0},
 		{Kind: "invoices.payments", Count: 1}, {Kind: "invoices.deliveries", Count: 1},
 	}; !slices.Equal(ofInvoices, want) {
 		t.Errorf("customer.anonymised's erased = %+v, want the invoices module's %+v", event.Erased, want)
 	}
 
-	refusedAs(t, "a send after the anonymisation", admin.Do(http.MethodPost, invoiceAt(doc.ID)+"/send", map[string]any{}), "customer_anonymised")
+	invoiceRefusedAs(t, "a send after the anonymisation", admin.Do(http.MethodPost, invoiceAt(doc.ID)+"/send", map[string]any{}), "customer_anonymised")
 }

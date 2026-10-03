@@ -209,6 +209,46 @@ func TestPayments_TheFieldRules(t *testing.T) {
 	}
 }
 
+// paidOn is judged on Oslo days (D2 step 2): at 22:00 UTC it is already the
+// next day in Oslo, and that day is today, the day after it not yet; on an
+// invoice issued three days before, a day between the issue and today is
+// taken, the day before the issue and the day after today are refused on
+// paidOn. A body without paidOn is refused on paidOn as missing, not as a
+// day before the issue.
+func TestPayments_PaidOnIsAnOsloDay(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	inv := thousand(t, h) // issued at modtest.Start, 2026-09-12 12:00 UTC
+	refusedOnPaidOn := func(what string, res *modtest.Response, message string) {
+		t.Helper()
+		if res.Status != http.StatusBadRequest {
+			t.Errorf("%s = %d %s, want 400", what, res.Status, res.Body)
+			return
+		}
+		if p := problemOf(t, res); len(p.Errors["paidOn"]) != 1 || !strings.HasPrefix(p.Errors["paidOn"][0], message) {
+			t.Errorf("%s = errors %v, want paidOn: %s", what, p.Errors, message)
+		}
+	}
+	refusedOnPaidOn("a body without paidOn", payer(t, h).Do(http.MethodPost, paymentsPath(inv.ID), map[string]any{"amount": 100}),
+		"A payment needs the day it was received")
+
+	h.Advance(10 * time.Hour) // 22:00 UTC: midnight, the 13th, in Oslo
+	registered(t, h, inv.ID, pay(100, "2026-09-13"))
+	refusedOnPaidOn("the day after Oslo's today", payer(t, h).Do(http.MethodPost, paymentsPath(inv.ID), pay(100, "2026-09-14")),
+		"A payment is received today at the latest, 2026-09-13")
+
+	h.Advance(48 * time.Hour) // the 15th in Oslo, three days after the issue
+	c := payer(t, h)
+	registered(t, h, inv.ID, pay(100, "2026-09-14"))
+	refusedOnPaidOn("the day before the issue", c.Do(http.MethodPost, paymentsPath(inv.ID), pay(100, "2026-09-11")),
+		"A payment is received on or after the invoice's issue date, 2026-09-12")
+	refusedOnPaidOn("the day after today", c.Do(http.MethodPost, paymentsPath(inv.ID), pay(100, "2026-09-16")),
+		"A payment is received today at the latest, 2026-09-15")
+	if n := livePayments(t, h, inv.ID); n != 2 {
+		t.Errorf("live payments = %d, want the two days taken", n)
+	}
+}
+
 // Once nothing is open a payment is invoice_settled; one over the open amount
 // is payment_exceeds_open carrying the open amount (D2 step 3), whether the
 // open amount is the gross, what payments left, or what a credit note left —
@@ -371,10 +411,12 @@ func raceACreditNote(t *testing.T, h *harness, original, creditNote int64, amoun
 	defer restore()
 
 	issued(t, h, creditNote)
-	<-done
+	// The issue has answered, so the seam has run if it ever will: a seam
+	// that never fired is a red here, not a wait on done for ever.
 	if !fired.Load() {
 		t.Fatal("the credit note's issue never locked the original")
 	}
+	<-done
 	return registration
 }
 
@@ -447,6 +489,9 @@ func TestPayments_TwoRegistrationsOfTheWholeOpenAmount(t *testing.T) {
 	defer restore()
 
 	first := registered(t, h, inv.ID, pay(1000, "2026-09-12"))
+	if !fired.Load() {
+		t.Fatal("the first registration never reached the seam after its lock")
+	}
 	<-done
 	if first.State != "paid" {
 		t.Errorf("the first registration = %q, want paid", first.State)
@@ -484,6 +529,9 @@ func TestPayments_TwoRemovalsOfOnePayment(t *testing.T) {
 	defer restore()
 
 	res := payer(t, h).Do(http.MethodPost, removalPath(inv.ID, paymentID), map[string]any{"reason": "Den første"})
+	if !fired.Load() {
+		t.Fatal("the first removal never reached the seam after its lock")
+	}
 	<-done
 	if res.Status != http.StatusOK {
 		t.Errorf("the first removal = %d %s, want 200", res.Status, res.Body)
