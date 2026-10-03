@@ -184,10 +184,11 @@ transmission (D9), never on the document row. Storing at send, not at issue: the
 the sales document only once it is transmitted (§ 5-2-9: the bytes that may have reached
 the receiver are the record), and a document only ever e-mailed has no UBL to keep.
 **A later send reuses the previous transmission's stored UBL only when that
-transmission's outcome is not definitively negative** — `submitted` or `unconfirmed`,
-where the bytes may have reached the receiver; after a definitive rejection (`failed`
-before the network: a provider 4xx, or a provider-reported failure before the AS4
-receipt) the send **renders fresh**, so a mapping fix in a later release or a corrected
+transmission was `unconfirmed` and a person resolved it as failed** (`failed` with
+`resolved_by_user_id` set) — the bytes may have reached the receiver, so a second send
+must carry the same ones; after any other `failed` (a provider 4xx, a provider-reported
+failure before the AS4 receipt, the age cap on a never-attempted row) or a `cancelled`
+the send **renders fresh**, so a mapping fix in a later release or a corrected
 seller id is not locked out, and the content-addressed key keeps store-once per bytes.
 The send finds the previous object through the latest transmission's `ubl_object_key`.
 
@@ -231,13 +232,16 @@ the adapter beside it):
 ```go
 type AccessPoint interface {
     // Submit hands one document to the network. The same key twice is one submission:
-    // the provider refuses the second, and Submit answers ErrAlreadySubmitted carrying
-    // the first's reference when the provider tells it, or an empty one when it does not.
+    // the provider refuses the second with the same 422 it uses for a validation
+    // refusal, so Submit answers ErrUnprocessable for both and the worker decides (D9).
     Submit(ctx context.Context, s Submission) (SubmissionRef, error)
-    // Status answers where a submission is, in the port's own vocabulary.
-    Status(ctx context.Context, ref SubmissionRef) (SubmissionStatus, error)
-    // Evidence answers the provider's receipt for a delivered submission.
-    Evidence(ctx context.Context, ref SubmissionRef) (body []byte, contentType string, err error)
+    // NextEvent reads one event from the provider's queue; ok is false on an empty queue.
+    NextEvent(ctx context.Context) (e Event, ok bool, err error)
+    // AckEvent removes an event from the queue once it is applied or found irrelevant.
+    AckEvent(ctx context.Context, eventID string) error
+    // Evidence answers the provider's receipt and the delivered documents for a
+    // submission the receiving access point accepted, or ErrNotYetAvailable.
+    Evidence(ctx context.Context, ref SubmissionRef) (Evidence, error)
     // Verify makes the cheapest authenticated read, for the settings page.
     Verify(ctx context.Context) error
 }
@@ -247,18 +251,27 @@ type Submission struct {
     DocumentType, ProcessID string
     UBL              []byte
 }
-type SubmissionStatus struct {
-    State       SubmissionState    // submitted | delivered | failed | unknown
-    At          time.Time
-    ProviderRef string
-    Reason      string             // the provider's wording; kept off the wire and redacted in logs
+type Event struct {
+    ID             string             // the queue entry, acknowledged by AckEvent
+    SubmissionRef  SubmissionRef
+    IdempotencyKey uuid.UUID
+    State          SubmissionState    // submitted | delivered | failed
+    At             time.Time
+    Reason         string             // the provider's wording; kept off the wire and redacted in logs
+}
+type Evidence struct {
+    ReceiptJSON   []byte             // the provider's evidence document, stored as the receipt
+    Delivered     []byte             // the transmitted UBL, fetched from the evidence's expiring URL
+    DeliveredMIME string
+    MessageID, ReceivingAP string
 }
 ```
 
-Error classes the adapter must tell apart, by status and body: `ErrAlreadySubmitted`,
-`ErrRejected` (a validation or routing refusal — definitive), `ErrUnauthorized` (the
-key), `ErrThrottled` with a retry-after, and a transport or 5xx error (retryable,
-outcome unknown). `delivered` means **the receiving access point accepted the message
+Error classes the adapter must tell apart, by status: `ErrUnprocessable` carrying the
+body's messages (a 422 — a validation refusal **or** a duplicate key, indistinguishable),
+`ErrUnauthorized` (401 or 403, the key), `ErrThrottled` with a retry-after (429),
+`ErrUnmappedScheme` (raised before any call), `ErrNotYetAvailable` (the evidence's 404),
+and a transport or 5xx error (retryable, outcome unknown). `delivered` means **the receiving access point accepted the message
 (the AS4 receipt)** — nothing stronger (research §4); the adapter's mapping of the
 provider's states onto the four is tested.
 
@@ -267,7 +280,7 @@ provider's states onto the four is tested.
 `legalEntityId`, `idempotencyGuid` (36 characters), `routing.eIdentifiers` `[{scheme,
 id}]` — **Storecove's scheme for a Norwegian organisation number is `NO:ORG`**, so the
 adapter maps the Peppol scheme `0192` to it (a small table; an unmapped scheme is
-`ErrRejected` before any call) — and `document: {documentType: "invoice",
+`ErrUnmappedScheme` before any call) — and `document: {documentType: "invoice",
 rawDocumentData: {document: <base64 UBL>, parseStrategy: "ubl"}}`; the response is
 `{guid}`. **Storecove parses the submitted UBL into its own model and regenerates the
 UBL it transmits** (its documentation says so): what reaches the receiver is not
@@ -308,14 +321,18 @@ provider accepted cannot become a second document.
 `id = 1`; the communications channel shape, and off the settings row every issue reads
 `FOR SHARE`): `provider varchar(20)`, `settings_json text` (non-secret:
 `legalEntityId`), `secret_ciphertext text` sealed under
-`invoices/access-point-credential`, `updated_at`. `PUT /invoices/settings/access-point`
+`invoices/access-point-credential`, `rejected_at timestamptz` (set by the worker on a
+401/403 or a failed `Open`, cleared by the next successful call or by a new `PUT`; meta
+reads it as `accessPointCredentialsRejected`), `updated_at`. **One Storecove account per
+installation**: the events worker acknowledges every event it reads, and a shared
+account would lose another system's events; the administration page says so. `PUT /invoices/settings/access-point`
 (`invoices:manage`) takes `{provider, legalEntityId, apiKey?}` — an omitted key keeps the
 stored one, re-sealed in the transaction; the response answers `hasCredentials`, never
 the key. `DELETE` clears it and a provider switch replaces it — **both refused with 409
 `transmissions_active`** while any transmission is `queued`, `submitted` or
 `unconfirmed`. `POST …/verify` calls `Verify` and answers `ok`, `unauthorized`,
-`unreachable`. A failed `Open` at send or in the worker is logged at error and leaves the
-row queued (D9); an empty key is never sent.
+`unreachable`. A failed `Open` at send or in the worker is logged at error, sets
+`rejected_at`, and leaves the row queued (D9); an empty key is never sent.
 
 ### D8 — `POST /invoices/{id}/send-ehf`: judged, re-checked, queued under the lock
 
@@ -355,27 +372,33 @@ but a credit note.
 
 **`invoices.transmissions`:** `id bigint`, `invoice_id` (`ON DELETE RESTRICT`),
 `provider varchar(20)`, `idempotency_key uuid UNIQUE`, `sender_participant varchar(60)`,
-`receiver_participant varchar(60)`, `document_type varchar(300)`, `process_id
+`receiver_participant varchar(100)`, `document_type varchar(300)`, `process_id
 varchar(100)`, `ubl_object_key varchar(300)`, `ubl_sha256 char(64)`, `pdf_sha256
 char(64)`, `status varchar(20)` (`queued` | `submitted` | `delivered` | `failed` |
 `unconfirmed` | `cancelled`), `provider_ref varchar(200)`, `evidence_object_key
-varchar(300)`, `submit_attempts int`, `poll_attempts int`, `next_attempt_at`,
+varchar(300)`, `evidence_sha256 char(64)`, `submit_attempts int`, `poll_attempts int`, `next_attempt_at`,
 `submit_attempted_at` (the outbox's crash marker), `lease_id`, `lease_until`,
 `last_error varchar(500)` (the port's `Reason`, with anything matching an e-mail address
 or a `0192:` identifier replaced by a placeholder), `lookup_registered bool`,
 `lookup_can_receive bool`, `lookup_at`, `queued_at`, `submitted_at`, `delivered_at`,
 `failed_at`, `cancelled_at`, `resolved_by_user_id uuid`, `resolution_note varchar(500)`,
 `created_by_user_id uuid`. Indexes: the partial unique of D8; `(status, next_attempt_at)
-WHERE status IN ('queued','submitted')`.
+WHERE status IN ('queued','submitted','unconfirmed') OR (status = 'delivered' AND
+evidence_object_key IS NULL AND provider_ref IS NOT NULL)` — a delivered row stays
+claimable until its evidence is stored. **Every query over this table takes the time
+as `@now` from `Deps.Clock()`**, never SQL `now()`: the harness clock sits weeks from
+the database's, and a lease or a cap judged by `now()` would be wrong under test.
 
 Triggers: a parent trigger **on INSERT only** (`FOR SHARE` the document, refuse a
 draft's, re-check the anonymisation marker after the wait, as the delivery insert does)
 — so the worker's claim `UPDATE` takes no document lock; no DELETE ever; an UPDATE may
 change only the state columns (`status`, `provider_ref`, `evidence_object_key`, the
 attempt counters, `next_attempt_at`, `submit_attempted_at`, the lease, `last_error`, the
-timestamps, the resolution) — identity and the UBL's key and hash are frozen; and a
-terminal row (`failed`, `cancelled`) changes nothing, a `delivered` row only its
-`evidence_object_key` once.
+`lookup_*` columns, the timestamps, the resolution) — identity and the UBL's key and
+hash are frozen; a terminal row (`failed`, `cancelled`) changes nothing; a `delivered`
+row keeps its status and `delivered_at` frozen and may change only the lease,
+`next_attempt_at`, `poll_attempts`, `last_error`, and `evidence_object_key` with
+`evidence_sha256` once, while the evidence is NULL.
 
 **The worker** (`srv/invoices/ehf_worker.go`, `Module.Workers` gated on the switches),
 the communications outbox's shape: poll 5 s; claim by conditional `UPDATE` with a
@@ -383,36 +406,48 @@ the communications outbox's shape: poll 5 s; claim by conditional `UPDATE` with 
 claim outlives half its lease; every completion is a lease-checked `UPDATE` that is a
 no-op when the lease changed (the outbox's rule, copied).
 
-- `queued` → stamp `submit_attempted_at` (auto-committed, before the call) → `Submit`
-  (the key opened from the credentials row — a failed `Open` leaves the row queued, logs
-  at error, and sets `accessPointCredentialsRejected`; the UBL fetched from the store and
-  checked against `ubl_sha256`; when `lookup_at` is older than 24 h the lookup runs
-  again first, D6) → `submitted` with `provider_ref` and `submitted_at`.
-  `ErrAlreadySubmitted` cannot be told from a validation 422 by the body — the 422 rule
-  below decides by the crash marker. A transport
-  failure or a 5xx → `submit_attempts + 1`, `next_attempt_at = now + backoff(attempts)`
-  (`min(3600, 2^n)` s), still `queued`; `ErrThrottled` → the provider's retry-after;
-  `ErrUnauthorized` → stays `queued` with backoff, `accessPointCredentialsRejected` on
-  meta, an error log; `ErrRejected` → `failed` with the reason. **Caps**: 8 submit
-  attempts or 48 hours since `queued_at` → `unconfirmed` when `submit_attempted_at` is
-  set (the provider may have the document), `failed` when it never was; the 48 hours
-  stay under any dedupe window the spike finds (shortened if the spike says so).
+- `queued` → when `lookup_at` is older than 24 h the lookup runs again first in the
+  same claim (a lookup is not a provider call; the `lookup_*` columns are refreshed;
+  a receiver no longer registered or no longer accepting the document type → `failed`
+  with the reason `receiver_not_receivable`, the marker untouched, and the claim ends)
+  → the key opened from the credentials row (a failed `Open` leaves the row queued,
+  reschedules it an hour out, logs at error and sets `rejected_at`) → the UBL fetched
+  from the store and checked against `ubl_sha256` → **stamp `submit_attempted_at`
+  (auto-committed, immediately before the call)** → `Submit` → `submitted` with
+  `provider_ref` and `submitted_at`, and `rejected_at` cleared. **The crash marker is
+  never touched by a claim**; a completion restores it to its pre-claim value only
+  when the outcome proves the provider did not take the document — `ErrUnauthorized`,
+  `ErrThrottled`, `ErrUnmappedScheme`. A transport failure or a 5xx → `submit_attempts
+  + 1`, `next_attempt_at = now + backoff(attempts)` (`min(3600, 2^n)` s), still
+  `queued`; `ErrThrottled` → the provider's retry-after, no attempt counted;
+  `ErrUnauthorized` → stays `queued` an hour out, no attempt counted, `rejected_at`
+  set, an error log; `ErrUnmappedScheme` → `failed` with the reason; the 422 rule
+  below. **The cap is by age only**: 48 hours since `queued_at` → `unconfirmed` when
+  `submit_attempted_at` is set (the provider may have the document), `failed` when it
+  never was. Attempts are not capped — the backoff reaches its hourly ceiling — so a
+  provider outage of some minutes does not strand every queued document on a person's
+  desk; the 48 hours stay under any dedupe window the spike finds.
 - **Status comes from the queue.** A second worker, `invoices-ehf-events`, under an
   advisory lease (the customers module's shape — one replica drains at a time), polls
   `GET webhook_instances/` every 30 s while any row is `submitted` or `unconfirmed`:
   each event is matched to a row by `provider_ref` (or by `idempotency_key` when the row
-  never learned its reference), applied as a lease-checked update — `succeeded` →
-  `delivered` with `delivered_at`; `failed` or `no_action_taken` → `failed` with the
-  reason — and then acknowledged with `DELETE`; an event for no row of ours is logged and
-  acknowledged. The queue is drained until 204.
+  never learned its reference) and applied **idempotently, without a row lease** — one
+  `UPDATE … WHERE status IN ('queued','submitted','unconfirmed')` that sets
+  `provider_ref` when missing: `succeeded` → `delivered` with `delivered_at`; `failed`
+  or `no_action_taken` → `failed` with the reason; `0 rows` (the row already terminal,
+  or no row of ours) is logged by guid — and then **always** acknowledged with
+  `DELETE`. A `queued` row with the marker set counts as awaiting an event. The queue
+  is drained until 204.
 - `submitted` rows also probe on their own cadence by `poll_attempts` (5 min, 15 min,
   then hourly): `Evidence` **is the status proxy** — 404 means not delivered yet, 200
   means delivered even if the event was lost — so a row the queue never mentions still
   completes. `delivered` is committed first; **then** the next claim fetches `Evidence`
-  and stores it once under `documents/<id>/<number>-<transmission>-receipt.json` with
-  the delivered UBL beside it as `…-delivered.xml` — a `delivered` row with a NULL
-  `evidence_object_key` is re-pollable, and a failed fetch retries on the cadence; still
-  `submitted` **seven days after `submitted_at`** → `unconfirmed`.
+  and stores it once (`Exists` before `Put`) under
+  `documents/<id>/<number>-<transmission>-receipt.json` with the delivered UBL beside it
+  as `…-delivered.xml`, `evidence_sha256` the receipt's — a `delivered` row with a NULL
+  `evidence_object_key` and a reference is claimable, and a failed fetch retries on the
+  cadence; `submitted` without a reference is never probed, only rescheduled hourly;
+  still `submitted` **seven days after `submitted_at`** → `unconfirmed`.
 - **The 422 rule.** A 422 on the first attempt (`submit_attempted_at` was NULL before
   this claim) is a validation refusal → `failed` with the body's messages as the reason;
   a 422 on a retry (the marker was already set) may be the duplicate-key refusal of a
@@ -423,24 +458,31 @@ no-op when the lease changed (the outbox's rule, copied).
   resolves it with `POST /invoices/{id}/transmissions/{transmissionId}/resolve
   {outcome: "delivered" | "failed", note}` after checking with the provider — the
   outcome, who and the note are recorded; `failed` then allows a new send (with a fresh
-  render, D4), `delivered` closes it. The worker keeps polling an `unconfirmed` row with
-  a provider reference once a day for thirty days and resolves it itself if the provider
-  finally answers.
+  render, D4), `delivered` closes it. The worker keeps probing an `unconfirmed` row with
+  a provider reference once a day for thirty days and resolves it itself if the
+  provider finally answers (`resolved_by_user_id` NULL, the note saying so); after
+  thirty days, or at once without a reference, `next_attempt_at = 'infinity'` and the
+  row waits for a person.
 
 **Cancel.** `POST …/transmissions/{transmissionId}/cancel` (`invoices:issue`): only a
 `queued` row that was **never attempted** — `UPDATE … WHERE status = 'queued' AND
-submit_attempted_at IS NULL AND (lease_until IS NULL OR lease_until < now())` — becomes
+submit_attempted_at IS NULL AND (lease_until IS NULL OR lease_until < @now)` — becomes
 `cancelled`; anything else is 409 `transmission_not_cancellable`.
 
-The worker needs the pool, the secrets box, the clock, the configuration and an object
-store it builds from the configuration (worker mode's `Deps` carries none); it needs no
-directory. Every state change is logged with the transmission id and the provider
+Both workers hold a `*server` built by `newServer` from worker mode's `Deps` — the
+pool, the secrets box, the clock, the configuration and an object store built from the
+configuration (`Deps` carries none) — so every lookup and provider call goes through
+`contractscalls.go`; they need no directory. A lookup-disabled installation still
+probes and drains but leaves a `queued` row alone (the send refused it already). Every state change is logged with the transmission id and the provider
 reference, never the receiver's identifier.
 
 ### D10 — The document's EHF state, and channel precedence
 
 An issued document answers `ehf` (absent on a draft): `{status, queuedAt, submittedAt,
-deliveredAt, failedAt, providerRef?, reason?, canSend, blockedBy?, transmissions[]}` —
+deliveredAt, failedAt, providerRef?, reason?, canSend, blockedBy?, preference?,
+buyerPeppolId?, transmissions[]}` — `preference` and `buyerPeppolId` for
+`invoices:issue` holders and **not gated on mail being available**, since an EHF-only
+installation has no SMTP;
 `status` the latest transmission's or `not_sent`; `reason` and `providerRef` only for
 `invoices:issue` holders; `canSend` what D8 would answer without the network, with
 `blockedBy` naming the first refusal code; `transmissions[]` every row's identity, state,
@@ -454,7 +496,8 @@ type, otherwise the billing profile's preference"): the receiver's acceptance is
 only at the send's re-check, so the UI decides by what it has — when `canSendEhf` and
 the profile's preference (`sendDefaults.preference`) is `ehf`, or the buyer has a Peppol
 id and the preference is unset, **the issued document's primary action is "Send as
-EHF"** and e-mail is secondary; the e-mail dialog then warns `ehf_preferred` and, for a
+EHF"** and e-mail is secondary; the e-mail dialog then warns `ehf_preferred` (emitted
+by the server in place of `delivery_preference_ehf` when `canSendEhf`) and, for a
 Norwegian business from 2027-01-01, `buyer_norwegian_business_required` as 1B does.
 Each dialog warns when the other channel already carried the document (`deliveries[]`
 non-empty, or an EHF transmission active or delivered). Neither is refused for the
@@ -613,13 +656,13 @@ Per `AGENTS.md`'s page map:
    case yields `-`.
 3. The headroom rule refuses only what does not fit and warns under two digits.
 4. Units map by a word table with `C62` as the fallback; `t` is not mapped.
-5. The UBL is stored at the first send and reused only while the outcome may be
-   positive; a definitive rejection renders fresh.
+5. The UBL is stored at the first send and reused only after an `unconfirmed` outcome
+   a person resolved as failed; any other failure or a cancel renders fresh.
 6. No `PaymentID` without a KID; one `PaymentMeans`, code 30, the IBAN for a foreign
    buyer.
 7. The send queues under the document's `FOR UPDATE`; the worker submits once per
-   claim; status is polled, not pushed; an unknown outcome is `unconfirmed` and a person
-   resolves it.
+   claim; status is drained from the provider's queue and probed by evidence, never
+   pushed to us; an unknown outcome is `unconfirmed` and a person resolves it.
 8. `delivered` is the AS4 receipt and is worded so.
 9. Storecove first, by its OpenAPI document: status is drained from its pull queue by
    a leased second worker, evidence is the proof probe, and the delivered copy from
@@ -632,6 +675,16 @@ Per `AGENTS.md`'s page map:
     id; the receiver's acceptance is the send's re-check.
 13. Category K is refused at send.
 14. No new permission.
+15. The cap on a queued transmission is by age (48 hours) only; attempts back off to an
+    hourly ceiling and are never capped, and a 401, 403 or 429 counts as no attempt.
+16. The crash marker is stamped immediately before the provider call and never touched
+    by a claim; only an outcome that proves the provider did not take the document
+    restores it.
+17. Every transmissions query takes its time from `Deps.Clock()` as `@now`.
+18. One Storecove account per installation, because the event queue is account-wide
+    and the drain acknowledges every event.
+19. The Peppol artefact is pinned at `v3.0.20`, the newest tag; 3.0.21 is adopted the
+    day it is tagged.
 
 ## Testing
 
@@ -670,16 +723,23 @@ state; evidence), a fake object store, the fixed clock, and `WithEnv` for the sw
   failure a 502 logged by kind; **two racing sends → one queued, one `ehf_already_sent`**
   (held on a seam after the lookup; the second waits on the lock and is refused; with
   the index alone the insert fails and maps to the same code); the UBL stored once and
-  reused after an `unconfirmed`, rendered fresh after a `failed`; the draft warning;
+  reused after a resolved `unconfirmed`, rendered fresh after any other `failed` or a
+  `cancelled`; the draft warning;
   the rate limit; `invoices:issue`.
 - **The worker**: claim and lease (two workers, one submission); one call per claim;
-  the crash marker before `Submit`; `ErrAlreadySubmitted` with and without a reference;
-  backoff on 5xx; the retry-after on 429; `ErrUnauthorized` keeps the row and flags
-  meta; `ErrRejected` → `failed`; the caps → `unconfirmed` or `failed` by the marker;
-  the poll cadence; `delivered` committed before evidence, evidence stored once and
-  re-polled after a fetch failure; the seven days → `unconfirmed`; the daily poll of an
-  unconfirmed row; the 24-hour lookup refresh; a failed `Open` leaves the row; the
-  lease-changed no-op; the switch off → no worker; worker-mode `Deps` works.
+  the crash marker stamped before `Submit` and restored on 401, 429 and an unmapped
+  scheme; the 422 rule's two branches (first attempt → `failed` with the messages; a
+  retry → `submitted` without a reference); backoff on 5xx; the retry-after on 429
+  counting no attempt; `ErrUnauthorized` keeps the row, counts no attempt and flags
+  meta; the age cap → `unconfirmed` or `failed` by the marker; the probe cadence;
+  `delivered` committed before evidence, evidence stored once (`Exists` before `Put`)
+  and re-probed after a fetch failure; the seven days → `unconfirmed`; the daily probe
+  of an unconfirmed row resolving it, and `'infinity'` after thirty days; the 24-hour
+  lookup refresh in the submit claim, and `receiver_not_receivable`; a failed `Open`
+  leaves the row and flags meta; the lease-changed no-op; the switch off → no worker;
+  worker-mode `Deps` works. **The events worker**: a match by reference and by key; a
+  duplicate event; an event after the probe already delivered; an event for a failed
+  row; an unknown event acknowledged; the drain stops at 204; two workers, one drain.
 - **Cancel and resolve**: cancel only never-attempted queued (a race with the claim
   loses); resolve only `unconfirmed`, recorded with who and the note; a resolved failure
   allows a new send.
