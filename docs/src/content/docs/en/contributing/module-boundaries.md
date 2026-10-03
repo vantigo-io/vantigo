@@ -1,5 +1,10 @@
-# Module boundaries
-
+---
+title: "Module boundaries"
+description: "Implementation ownership and the conventions every module follows."
+sources:
+  - apps/server/internal/module
+  - apps/server/internal/contracts
+---
 Vantigo is a modular monolith: one Go binary, one container, one PostgreSQL
 database — with strict module boundaries so any module can later be extracted into
 its own deployable without a rewrite. Customers, Products, Energy, Communications and
@@ -8,7 +13,7 @@ platform.
 
 Modules never reference each other directly. Synchronous cross-module needs go
 through the in-process contracts in `internal/contracts`; asynchronous ones use the
-transactional-outbox pattern described in [`ROADMAP.md`](../ROADMAP.md), of which
+transactional-outbox pattern described in [`ROADMAP.md`](https://github.com/vantigo-io/vantigo/blob/main/ROADMAP.md), of which
 Communications' outbox is the working example.
 
 ## The rules
@@ -83,7 +88,7 @@ Communications' outbox is the working example.
    begins or ends a transaction, never reads a directory (no in-process lookup
    happens under a lock anywhere in this codebase), and tolerates a reference
    that already points at the surviving customer. Today's holders are projects,
-   energy, communications and invoices ([Merging duplicates](customers.md#merging-duplicates)).
+   energy, communications and invoices ([Merging duplicates](/en/reference/customers/#merging-duplicates)).
    Another write direction needs a design of its own, not a second holder-shaped
    interface — rule 9 is that design for the second.
 9. **A person's data, handed over and taken out.** The second sanctioned
@@ -105,12 +110,12 @@ Communications' outbox is the working example.
    invoices (handed over; drafts deleted, issued documents and their payments kept
    as bookkeeping material with the payments' notes blanked, the deliveries kept
    with the recipient blanked)
-   ([Personal data and anonymisation](customers.md#personal-data-and-anonymisation)).
+   ([Personal data and anonymisation](/en/reference/customers/#personal-data-and-anonymisation)).
 
 ## How they are enforced
 
 - **Rules 1–3**: [depguard](https://github.com/OpenPeeDeeB/depguard) in
-  [`apps/server/.golangci.yml`](../apps/server/.golangci.yml), run by
+  [`apps/server/.golangci.yml`](https://github.com/vantigo-io/vantigo/blob/main/apps/server/.golangci.yml), run by
   `mise run server:check` and in CI. There is one rule set per boundary, scoped to
   its directory, and each forbidden module gets two deny entries — an exact,
   `$`-anchored match so it can never prefix-match a sibling, and a `…/<mod>/` match
@@ -234,7 +239,7 @@ gets a strict subset of it through Projects. Cost and margin sit behind a second
 Projects-owned gate on top of that (`projects:view-costs`, sensitive, granted to no
 default role) — a permission the consuming module defines and enforces itself,
 which a provider contract cannot see or grant on its behalf. See
-[`docs/projects.md`](projects.md#project-economy) for what each shaping level
+[`docs/projects.md`](/en/reference/projects/#project-economy) for what each shaping level
 returns.
 
 Time consumes four contracts and provides one:
@@ -274,7 +279,7 @@ project id an expense already carries is not cleared when the module is switched
 off — the column is data, not a fact this module owns the right to delete — but
 nothing can be judged against a project nobody can ask about any more, so a save on
 such a row carries those six columns through untouched instead of refusing the
-edit. See [Expenses](expenses.md) for the model, and for what changes with and
+edit. See [Expenses](/en/reference/expenses/) for the model, and for what changes with and
 without Projects.
 
 **Invoices requires customers.** `MODULES` refuses `invoices` without `customers`
@@ -301,7 +306,7 @@ credited. The customer page's Invoices tab is host-owned composition, as its Pro
 tab is: the host's customer-detail layout registers the tab, gated on the enabled module
 and `invoices:access`, and renders `CustomerInvoicesPanel` from `@vantigo/invoices-ui`,
 which reads only the invoices API (`GET /invoices?customerId=`); the customers package
-and the invoices package never import each other (rule 7). See [Invoices](invoices.md).
+and the invoices package never import each other (rule 7). See [Invoices](/en/reference/invoices/).
 
 ## Adding a module
 

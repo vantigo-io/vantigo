@@ -50,7 +50,7 @@
 12. **`Content-Disposition` is not declared in the contract**: `contracttest` hands kin-openapi only the `Content-Type` header, so a declared required header fails every exchange; the header is set by a `Visit` wrapper, as expenses' receipt download does.
 13. **The merge holder takes `Deps.Clock`** besides nothing else (projects' precedent) for a draft's `updated_at`; "needs only the pool" is read as "needs nothing a disabled module's Deps lacks". The export's amounts are exact decimal strings.
 14. **The gap check starts one past the issued document before the range's first**: `[greatest(coalesce(the highest issued number below first, series_start − 1) + 1, series_start) … last]`, so every number missing between the previous issued document and the range's first is listed, not only the one just before it — a hole straddling two ranges is listed in full by the later one. This is how "the first document of the range is checked against the one before it" (D11) is read, and the response names the range it checked (`checkedFrom`, `checkedTo`).
-15. **"Third-party notices" and "the release note"** have no file in this repository: the font's licence ships as `apps/server/internal/invoices/fonts/LICENSE` and `docs/invoices.md` names it, and the release note is a paragraph in `deploy/compose/README.md` "Upgrading". `vantigo.env.example` lists `invoices` in its explicit `MODULES`.
+15. **"Third-party notices" and "the release note"** have no file in this repository: the font's licence ships as `apps/server/internal/invoices/fonts/LICENSE` and `docs/src/content/docs/en/reference/invoices.md` names it, and the release note is a paragraph in `deploy/compose/README.md` "Upgrading". `vantigo.env.example` lists `invoices` in its explicit `MODULES`.
 16. **The fonts are vendored** from pinned commits (Noto Sans Regular and Bold from `notofonts/notofonts.github.io@28b15b4b`, `OFL.txt` from `notofonts/latin-greek-cyrillic@4bc63d7e`) with their SHA-256 checked; the build needs no network.
 17. **sqlc** mis-parses `@name::type + 1` ("syntax error at or near N"), so the counter and the journal use `sqlc.arg(name)::type`.
 18. **The frontend is two tasks after the skeleton** (12: list, editor, issue, credit; 13: settings, journal). The host passes `canViewCustomers` and the user's display name through small wrappers (`routes/invoices/-invoice-access.tsx`), the pattern of expenses' `-my-expenses.tsx`. A PDF is fetched behind a button, so a 409 or 503 is a notification in the reader's language rather than the problem JSON opened in the browser.
@@ -74,7 +74,7 @@
 | `apps/server/internal/invoices/credits.go`, `queries/credits.sql` | credit notes (Task 8) |
 | `apps/server/internal/invoices/customer_slots.go`, `queries/customers.sql` | the merge holder and personal data (Task 9) |
 | `apps/server/internal/invoices/journal.go`, `queries/journal.sql` | the journal (Task 10) |
-| `docs/invoices.md`, `docs/{module-boundaries,customers,README}.md`, `ROADMAP.md`, `CONTRIBUTING.md`, `deploy/compose/{README.md,vantigo.env.example}` | D13 (Task 11) |
+| `docs/src/content/docs/en/reference/invoices.md`, `docs/{module-boundaries,customers,README}.md`, `ROADMAP.md`, `CONTRIBUTING.md`, `deploy/compose/{README.md,vantigo.env.example}` | D13 (Task 11) |
 | `apps/invoices/frontend/**` | `@vantigo/invoices-ui` (skeleton Task 2; list, editor, issue, credit Task 12; settings, journal Task 13) |
 | `apps/host/frontend/src/{navigation,apps,i18n}.ts`, `catalogs/{admin,navigation}.ts`, `routes/invoices*` | the app in the host (Tasks 2, 12, 13) |
 
@@ -82,13 +82,13 @@
 
 ### Task 1: The module skeleton: the schema, GET /meta and the module in the platform (D1, the D2–D4 and D9 schema)
 
-The whole phase-1A schema lands now — settings, counters, VAT codes and their rate periods, documents, lines and VAT summaries, the CHECKs, the exclusion constraint and the three immutability triggers — so no later task adds a migration. The contract has one operation, `GET /invoices/meta`, which already answers everything the pages need to start (it reads the seeded settings row, the seeded codes and the counter row). The module is wired into every list the checklist in `docs/module-boundaries.md` "Adding a module" names. Task 2 adds the frontend package and the host's app entry.
+The whole phase-1A schema lands now — settings, counters, VAT codes and their rate periods, documents, lines and VAT summaries, the CHECKs, the exclusion constraint and the three immutability triggers — so no later task adds a migration. The contract has one operation, `GET /invoices/meta`, which already answers everything the pages need to start (it reads the seeded settings row, the seeded codes and the counter row). The module is wired into every list the checklist in `docs/src/content/docs/en/contributing/module-boundaries.md` "Adding a module" names. Task 2 adds the frontend package and the host's app entry.
 
 **Files:**
 - Create: `apps/server/internal/db/migrations/00034_invoices_baseline.sql`, `apps/server/internal/invoices/harness_test.go`, `apps/server/internal/invoices/main_test.go`, `apps/server/internal/invoices/meta.go`, `apps/server/internal/invoices/meta_test.go`, `apps/server/internal/invoices/module.go`, `apps/server/internal/invoices/module_internal_test.go`, `apps/server/internal/invoices/queries/counters.sql`, `apps/server/internal/invoices/queries/settings.sql`, `apps/server/internal/invoices/queries/vatcodes.sql`, `apps/server/internal/invoices/seller.go`, `apps/server/internal/invoices/server.go`, `apps/server/internal/invoices/sqlc.yaml`, `apps/server/internal/invoices/values.go`, `apps/server/internal/openapi/gen/cfg-invoices.yaml`, `openapi/invoices.yaml`
 - Modify: `apps/server/.golangci.yml`, `apps/server/cmd/vantigo/main.go`, `apps/server/generate.go`, `apps/server/internal/config/config.go`, `apps/server/internal/config/config_test.go`, `apps/server/internal/db/schema_test.go`, `apps/server/internal/module/compose_test.go`, `apps/server/internal/openapi/openapi.go`
 - Generated (commit them; never edit by hand): `apps/server/internal/invoices/gen/api.gen.go`, `apps/server/internal/invoices/store/counters.sql.go`, `apps/server/internal/invoices/store/db.go`, `apps/server/internal/invoices/store/models.go`, `apps/server/internal/invoices/store/settings.sql.go`, `apps/server/internal/invoices/store/vatcodes.sql.go`, `apps/server/internal/openapi/specs/invoices.yaml`, `openapi/COVERAGE.md`
-- Read first (do not change): `docs/module-boundaries.md:268-318`, `apps/server/internal/expenses/{module.go,server.go,main_test.go,harness_test.go}`, `db/migrations/00005_energy_baseline.sql:11-16,85-100` (the exclusion), `00033_expenses_supplier_invoices.sql` (plpgsql in goose), `internal/db/schema_test.go:24-218,2393-2433`, `internal/config/config.go:1223-1283`
+- Read first (do not change): `docs/src/content/docs/en/contributing/module-boundaries.md:268-318`, `apps/server/internal/expenses/{module.go,server.go,main_test.go,harness_test.go}`, `db/migrations/00005_energy_baseline.sql:11-16,85-100` (the exclusion), `00033_expenses_supplier_invoices.sql` (plpgsql in goose), `internal/db/schema_test.go:24-218,2393-2433`, `internal/config/config.go:1223-1283`
 
 **Interfaces:**
 - Produces SQL: schema `invoices` with `settings` (one row, id 1), `counters`, `vat_codes` (seeded ids 1–9), `vat_code_rates` (`ex_vat_code_rates_no_overlap`), `invoices`, `lines`, `vat_summaries`; functions `invoices.refuse_issued_document_change()`, `invoices.refuse_issued_child_change()`; triggers `tr_invoices_immutable`, `tr_lines_immutable`, `tr_vat_summaries_immutable` (SQLSTATE `P0001`, message `invoices: issued document is immutable`).
@@ -424,7 +424,7 @@ cd ../..
 -- Invoices, the sales document (invoices foundation design D2-D4, D9): the
 -- whole phase 1A schema at once, so no later task of the delivery adds a
 -- migration. customer_id is opaque — the customer lives in another schema
--- (docs/module-boundaries.md rule 4) and is read through
+-- (docs/src/content/docs/en/contributing/module-boundaries.md rule 4) and is read through
 -- contracts.CustomerDirectory. Unlike 00012's house style this schema carries
 -- CHECK constraints: an issued document is bookkeeping material, and the rules
 -- that make it lawful are the database's to hold as well as the module's (D9).
@@ -1616,13 +1616,13 @@ var _ gen.StrictServerInterface = (*server)(nil)
 
 // storageScope is this module's namespace in the object store: a document's
 // key documents/<id>/<number>-<sha256>.pdf is physically
-// invoices/documents/... (docs/storage.md).
+// invoices/documents/... (docs/src/content/docs/en/admin/object-storage.md).
 const storageScope = "invoices"
 
 // newServer builds the module's operations over d. It fails only when the
 // configured object store cannot be built. An unset provider is not an error:
 // the process starts, and issuing and downloading fail closed with a 503 at the
-// operation (docs/storage.md), never at startup.
+// operation (docs/src/content/docs/en/admin/object-storage.md), never at startup.
 func newServer(d module.Deps) (*server, error) {
 	if d.ObjectStore != nil {
 		return &server{deps: d, objects: d.ObjectStore, storageConfigured: true}, nil
@@ -4485,7 +4485,7 @@ func conflict(code, title, detail string) gen.InvoicesConflictProblem {
 // revisionConflict is the 409 an update carrying a stale revision answers. It
 // names both revisions, so a client can tell "somebody else saved" from "I
 // sent the wrong number", and carries no code: it is not a rule of this
-// module's but the codebase's (docs/expenses.md).
+// module's but the codebase's (docs/src/content/docs/en/reference/expenses.md).
 func revisionConflict(what string, current, supplied int32) gen.InvoicesConflictProblem {
 	title := what + " revision conflict"
 	detail := fmt.Sprintf("The %s has revision %d; the supplied revision was %d.", what, current, supplied)
@@ -4614,7 +4614,7 @@ type lockedTxKey struct{}
 // marked as locked and its queries bound to the transaction.
 //
 // The rule the mark carries: nothing inside fn calls another module or the
-// object store (docs/module-boundaries.md, docs/expenses.md). Whatever a
+// object store (docs/src/content/docs/en/contributing/module-boundaries.md, docs/src/content/docs/en/reference/expenses.md). Whatever a
 // decision inside fn needs from the customer directory is read before the
 // transaction, and a PDF is stored after it has committed.
 func (s *server) withLockedTx(ctx context.Context, fn func(ctx context.Context, txq *store.Queries) error) error {
@@ -7738,7 +7738,7 @@ import (
 // This file is D5's arithmetic, and nothing else: pure functions over exact
 // decimals (math/big.Rat), with no database, no request and no float in them.
 // Every rounding is to two decimals, the half away from zero — big.Rat's own
-// FloatString rule, and the codebase's (docs/expenses.md).
+// FloatString rule, and the codebase's (docs/src/content/docs/en/reference/expenses.md).
 
 // The bounds a document's amounts are held to before the database could
 // overflow (D5).
@@ -7893,7 +7893,7 @@ import "time"
 // the service were delivered by then. "Virkedager" is not defined in the
 // regulation, and fifteen working days always reach at least the 17th, even
 // counting Saturdays; "calendar day ≤ 15" is therefore always within the law,
-// needs no holiday calendar, and is stricter than the law — docs/invoices.md
+// needs no holiday calendar, and is stricter than the law — docs/src/content/docs/en/reference/invoices.md
 // says so. On top of that no date may be before the latest issue date of any
 // issued document, so numbers and dates are both monotone: an extra guard the
 // law does not ask for.
@@ -10448,7 +10448,7 @@ maroto v2 renders the model `buildPDFModel` builds from an issued document's own
 - Create: `apps/server/internal/invoices/fonts/LICENSE`, `apps/server/internal/invoices/fonts/NotoSans-Bold.ttf`, `apps/server/internal/invoices/fonts/NotoSans-Regular.ttf`, `apps/server/internal/invoices/pdf.go`, `apps/server/internal/invoices/pdf_internal_test.go`, `apps/server/internal/invoices/pdfstore.go`, `apps/server/internal/invoices/pdfstore_test.go`
 - Modify: `apps/server/go.mod`, `apps/server/internal/invoices/contractscalls.go`, `apps/server/internal/invoices/harness_test.go`, `apps/server/internal/invoices/issue.go`, `apps/server/internal/invoices/queries/invoices.sql`, `openapi/invoices.yaml`
 - Generated (commit them; never edit by hand): `apps/invoices/frontend/src/api-schema.d.ts`, `apps/server/go.sum`, `apps/server/internal/invoices/gen/api.gen.go`, `apps/server/internal/invoices/store/invoices.sql.go`, `apps/server/internal/openapi/specs/invoices.yaml`, `openapi/COVERAGE.md`
-- Read first (do not change): `apps/server/internal/expenses/attachments.go:508-613` (the Visit wrapper and the download), `internal/storage/storage.go`, `docs/storage.md`, `$(go env GOMODCACHE)/github.com/phpdave11/gofpdf@v1.4.3/fpdf.go:3795-3840` (`SetDefaultCatalogSort`, `SetDefaultModificationDate`), `$(go env GOMODCACHE)/github.com/johnfercher/maroto/v2@v2.4.2/pkg/{config/builder.go,fontrepository/fontrepository.go}`
+- Read first (do not change): `apps/server/internal/expenses/attachments.go:508-613` (the Visit wrapper and the download), `internal/storage/storage.go`, `docs/src/content/docs/en/admin/object-storage.md`, `$(go env GOMODCACHE)/github.com/phpdave11/gofpdf@v1.4.3/fpdf.go:3795-3840` (`SetDefaultCatalogSort`, `SetDefaultModificationDate`), `$(go env GOMODCACHE)/github.com/johnfercher/maroto/v2@v2.4.2/pkg/{config/builder.go,fontrepository/fontrepository.go}`
 
 **Interfaces:**
 - Produces wire: `GET /invoices/{id}/pdf` (200 `application/pdf` with `Content-Disposition: attachment; filename="faktura-<n>.pdf"` / `kreditnota-<n>.pdf` / `invoice-<n>.pdf` / `credit-note-<n>.pdf`; 409 `invoice_draft`; 500 a missing or altered object or a render that fails; 503 `storage_unavailable`), `GET /invoices/{id}/preview.pdf` (200 `inline; filename="utkast-<id>.pdf"`; 409 `invoice_issued`).
@@ -13614,7 +13614,7 @@ git show --stat HEAD && git status --short   # nothing of yours left; go.mod/go.
 
 ### Task 9: The two customer slots: the merge holder and the person's data (D10)
 
-`CustomerReferences.RepointCustomer` moves every document of the absorbed customer inside the merge's transaction, locking the two customers' documents newest first before it writes — the order a credit note's issue takes them in, so the two never deadlock — drafts' revisions advance, issued documents change only their `customer_id` (the one column the trigger allows) and keep their buyer snapshot. `CustomerPersonalData` exports the person's documents and drafts, internal notes included, and on anonymisation deletes the drafts and keeps the issued documents under bokføringsloven § 13. `contracts.ErasedData` has no reason field and does not grow one (the spec's ruling): the reason is written in `docs/invoices.md` and `docs/customers.md` (Task 11). Both constructors need nothing a disabled module's Deps lacks; `module.Compose` and `module.Workers` collect them from `Module()`.
+`CustomerReferences.RepointCustomer` moves every document of the absorbed customer inside the merge's transaction, locking the two customers' documents newest first before it writes — the order a credit note's issue takes them in, so the two never deadlock — drafts' revisions advance, issued documents change only their `customer_id` (the one column the trigger allows) and keep their buyer snapshot. `CustomerPersonalData` exports the person's documents and drafts, internal notes included, and on anonymisation deletes the drafts and keeps the issued documents under bokføringsloven § 13. `contracts.ErasedData` has no reason field and does not grow one (the spec's ruling): the reason is written in `docs/src/content/docs/en/reference/invoices.md` and `docs/src/content/docs/en/reference/customers.md` (Task 11). Both constructors need nothing a disabled module's Deps lacks; `module.Compose` and `module.Workers` collect them from `Module()`.
 
 **Files:**
 - Create: `apps/server/internal/invoices/customer_slots.go`, `apps/server/internal/invoices/customer_slots_test.go`, `apps/server/internal/invoices/queries/customers.sql`
@@ -14136,7 +14136,7 @@ func (p customerPersonalData) ExportCustomerData(ctx context.Context, customerID
 // GDPR art. 17 applies; an issued document and its buyer snapshot are kept
 // under bokføringsloven § 13 — five years after the end of the financial year —
 // which is why invoices.documents reports 0. contracts.ErasedData carries no
-// reason; docs/invoices.md and the anonymisation table in docs/customers.md
+// reason; docs/src/content/docs/en/reference/invoices.md and the anonymisation table in docs/src/content/docs/en/reference/customers.md
 // say it.
 func (customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, customerID int32) ([]contracts.ErasedData, error) {
 	n, err := store.New(tx).DeleteCustomerDrafts(ctx, customerID)
@@ -15005,16 +15005,16 @@ git show --stat HEAD && git status --short   # nothing of yours left; go.mod/go.
 
 ### Task 11: The docs (D13)
 
-`docs/invoices.md` is new: the law in one page (numbering, immutability, credit notes, VAT per rate, the issue-date rule and that "calendar day ≤ 15" is stricter than the law, delivery, NOK only), the model, drafts, issuing with every code, credit notes, the PDF and store-once, the journal, retention (§ 13; the object store's backup is part of it; nothing purged; the 2027 wording unconfirmed), why anonymisation erases drafts only, permissions with the `customers:view` note, every endpoint and its refusals, and the plain warning that phase 1A meets neither the B2G nor the 2027 B2B duty. The other docs gain what the module changed. It may be written beside Tasks 7–10 once Task 6 is in; Step 3's check and the commit run after Task 10 (see Parallelism).
+`docs/src/content/docs/en/reference/invoices.md` is new: the law in one page (numbering, immutability, credit notes, VAT per rate, the issue-date rule and that "calendar day ≤ 15" is stricter than the law, delivery, NOK only), the model, drafts, issuing with every code, credit notes, the PDF and store-once, the journal, retention (§ 13; the object store's backup is part of it; nothing purged; the 2027 wording unconfirmed), why anonymisation erases drafts only, permissions with the `customers:view` note, every endpoint and its refusals, and the plain warning that phase 1A meets neither the B2G nor the 2027 B2B duty. The other docs gain what the module changed. It may be written beside Tasks 7–10 once Task 6 is in; Step 3's check and the commit run after Task 10 (see Parallelism).
 
 **Files:**
-- Create: `docs/invoices.md`
-- Modify: `CONTRIBUTING.md`, `ROADMAP.md`, `deploy/compose/README.md`, `deploy/compose/vantigo.env.example`, `docs/README.md`, `docs/customers.md`, `docs/module-boundaries.md`
-- Read first (do not change): `docs/expenses.md` (the voice), `docs/customers.md:88-120,1436-1450,1595-1610`, `docs/module-boundaries.md:230-270`, `ROADMAP.md:734-800`, `CONTRIBUTING.md:60-95,140-150,225-250,410-470,590-600`, `deploy/compose/README.md:55-70,342-350`, `deploy/compose/vantigo.env.example:185-196`
+- Create: `docs/src/content/docs/en/reference/invoices.md`
+- Modify: `CONTRIBUTING.md`, `ROADMAP.md`, `deploy/compose/README.md`, `deploy/compose/vantigo.env.example`, `docs/README.md`, `docs/src/content/docs/en/reference/customers.md`, `docs/src/content/docs/en/contributing/module-boundaries.md`
+- Read first (do not change): `docs/src/content/docs/en/reference/expenses.md` (the voice), `docs/src/content/docs/en/reference/customers.md:88-120,1436-1450,1595-1610`, `docs/src/content/docs/en/contributing/module-boundaries.md:230-270`, `ROADMAP.md:734-800`, `CONTRIBUTING.md:60-95,140-150,225-250,410-470,590-600`, `deploy/compose/README.md:55-70,342-350`, `deploy/compose/vantigo.env.example:185-196`
 
 - [ ] **Step 1: The module's own document**
 
-**Create** `docs/invoices.md`:
+**Create** `docs/src/content/docs/en/reference/invoices.md`:
 
 ```markdown
 # Invoices
@@ -15299,7 +15299,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access`.
 - [Object storage](storage.md) — the filesystem-only provider, module scopes, key
 ```
 
-**Replace** in `docs/module-boundaries.md`:
+**Replace** in `docs/src/content/docs/en/contributing/module-boundaries.md`:
 
 ```markdown
 edit. See [Expenses](expenses.md) for the model, and for what changes with and
@@ -15338,7 +15338,7 @@ credited. See [Invoices](invoices.md).
 **Backend**
 ```
 
-**Replace** in `docs/customers.md`:
+**Replace** in `docs/src/content/docs/en/reference/customers.md`:
 
 ```markdown
 
@@ -15381,7 +15381,7 @@ credited. See [Invoices](invoices.md).
   writes nothing and emits no second event) and requires `customers:delete`.
 ```
 
-**Replace** in `docs/customers.md`:
+**Replace** in `docs/src/content/docs/en/reference/customers.md`:
 
 ```markdown
 | --- | --- |
@@ -15404,7 +15404,7 @@ Any error, a holder's included, rolls back everything: nothing moved, no marker,
 Any error, a holder's included, rolls back everything: nothing moved, no marker, no
 ```
 
-**Replace** in `docs/customers.md`:
+**Replace** in `docs/src/content/docs/en/reference/customers.md`:
 
 ```markdown
 | Addresses, Peppol answer, registry record | Deleted. |
@@ -15466,7 +15466,7 @@ no general ledger.
 
 Delivered on `feat/invoices-foundation`
 ([design](docs/superpowers/specs/2026-09-26-invoices-foundation-design.md),
-[`docs/invoices.md`](docs/invoices.md)): the seller record and one gap-free number
+[`docs/src/content/docs/en/reference/invoices.md`](docs/src/content/docs/en/reference/invoices.md)): the seller record and one gap-free number
 series whose start locks at the first issue; VAT codes whose rates are dated periods,
 seeded with the SAF-T output codes; drafts issued in one serialised transaction into an
 immutable, numbered document with a buyer and a seller snapshot and VAT per rate,
@@ -15649,7 +15649,7 @@ owning its own schema:
 ```markdown
   purely optionally: with `projects` off, `GET /meta` answers
   `projectsAvailable: false` and every project-shaped field is refused on its own
-  field. See [`docs/expenses.md`](docs/expenses.md).
+  field. See [`docs/src/content/docs/en/reference/expenses.md`](docs/src/content/docs/en/reference/expenses.md).
 
 `MODULES` chooses which of them a deployment serves: a comma-separated list,
 parsed once at startup, defaulting to
@@ -15670,13 +15670,13 @@ contributes no route, no permission and no contract path, and its paths answer
 ```markdown
   purely optionally: with `projects` off, `GET /meta` answers
   `projectsAvailable: false` and every project-shaped field is refused on its own
-  field. See [`docs/expenses.md`](docs/expenses.md).
+  field. See [`docs/src/content/docs/en/reference/expenses.md`](docs/src/content/docs/en/reference/expenses.md).
 - `internal/invoices` → `/api/v1/invoices/*` from `openapi/invoices.yaml`: the sales
   document — the seller record, one gap-free number series, VAT codes with dated
   rates, drafts issued into immutable documents (enforced by database triggers too),
   credit notes, a PDF stored once in the object store, and the invoice journal. It
   consumes `contracts.CustomerDirectory` (customers, **required**) and fills both
-  customer slots. See [`docs/invoices.md`](docs/invoices.md).
+  customer slots. See [`docs/src/content/docs/en/reference/invoices.md`](docs/src/content/docs/en/reference/invoices.md).
 
 `MODULES` chooses which of them a deployment serves: a comma-separated list,
 parsed once at startup, defaulting to
@@ -15756,7 +15756,7 @@ docker compose up -d
 ```
 
 For a complete backup, one-migrator, token rotation, and Owner break-glass runbook,
-see [SSO and SCIM operations](../../docs/sso-scim-operations.md).
+see [SSO and SCIM operations](../../docs/src/content/docs/en/admin/sso-scim.md).
 ````
 
 **with**:
@@ -15771,10 +15771,10 @@ it until a role grants `invoices:access` (Owner holds every permission already).
 Issuing needs an object store (`STORAGE_PROVIDER`): without one the app opens and
 every issue answers 503. An installation that lists `MODULES` explicitly gets
 Invoices only once `invoices` is added, beside `customers`. See
-[Invoices](../../docs/invoices.md).
+[Invoices](../../docs/src/content/docs/en/reference/invoices.md).
 
 For a complete backup, one-migrator, token rotation, and Owner break-glass runbook,
-see [SSO and SCIM operations](../../docs/sso-scim-operations.md).
+see [SSO and SCIM operations](../../docs/src/content/docs/en/admin/sso-scim.md).
 ````
 
 **Replace** in `deploy/compose/vantigo.env.example`:
@@ -15817,11 +15817,11 @@ MODULES=customers,products,energy,communications,projects,time,expenses,invoices
 
 - [ ] **Step 3: After Task 10: check the docs against the code, and commit**
 
-Every code the Go writes is in `docs/invoices.md`, and every code the docs name is in the Go (the two leftovers are a kind value, a column and an index name):
+Every code the Go writes is in `docs/src/content/docs/en/reference/invoices.md`, and every code the docs name is in the Go (the two leftovers are a kind value, a column and an index name):
 
 ```bash
-grep -ohE '= "[a-z]+(_[a-z]+)+"' apps/server/internal/invoices/*.go | sed 's/= "//;s/"//' | sort -u | while read -r c; do grep -q "\`$c\`" docs/invoices.md || echo "not in the docs: $c"; done
-grep -ohE '`[a-z]+(_[a-z]+)+`' docs/invoices.md | tr -d '`' | sort -u | while read -r c; do grep -q "\"$c\"" apps/server/internal/invoices/*.go || echo "not in the code: $c"; done
+grep -ohE '= "[a-z]+(_[a-z]+)+"' apps/server/internal/invoices/*.go | sed 's/= "//;s/"//' | sort -u | while read -r c; do grep -q "\`$c\`" docs/src/content/docs/en/reference/invoices.md || echo "not in the docs: $c"; done
+grep -ohE '`[a-z]+(_[a-z]+)+`' docs/src/content/docs/en/reference/invoices.md | tr -d '`' | sort -u | while read -r c; do grep -q "\"$c\"" apps/server/internal/invoices/*.go || echo "not in the code: $c"; done
 # expected: "not in the docs: credit_note", "not in the docs: ux_vat_codes_code_lower", "not in the code: customer_id", "not in the code: series_start"
 grep -c 'x-vantigo-access' openapi/invoices.yaml   # 18, the rows of the endpoints table
 ```
@@ -15832,7 +15832,7 @@ Commit:
 cat > /tmp/claude-1000/msg-invoices-task11.txt <<'MSG'
 docs(invoices): the sales document, and what it changed elsewhere
 
-docs/invoices.md (invoices foundation design D13): the law in one page, the
+docs/src/content/docs/en/reference/invoices.md (invoices foundation design D13): the law in one page, the
 model, drafts, the issue and its every refusal, credit notes, the stored
 PDF, the journal, retention and why anonymisation erases drafts only, the
 permissions and the customers:view note, the endpoints, and a plain warning
@@ -15844,8 +15844,8 @@ installation with MODULES unset gets Invoices on upgrade.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 MSG
-git add -- 'CONTRIBUTING.md' 'ROADMAP.md' 'deploy/compose/README.md' 'deploy/compose/vantigo.env.example' 'docs/README.md' 'docs/customers.md' 'docs/invoices.md' 'docs/module-boundaries.md'
-git commit -F /tmp/claude-1000/msg-invoices-task11.txt -- 'CONTRIBUTING.md' 'ROADMAP.md' 'deploy/compose/README.md' 'deploy/compose/vantigo.env.example' 'docs/README.md' 'docs/customers.md' 'docs/invoices.md' 'docs/module-boundaries.md'
+git add -- 'CONTRIBUTING.md' 'ROADMAP.md' 'deploy/compose/README.md' 'deploy/compose/vantigo.env.example' 'docs/README.md' 'docs/src/content/docs/en/reference/customers.md' 'docs/src/content/docs/en/reference/invoices.md' 'docs/src/content/docs/en/contributing/module-boundaries.md'
+git commit -F /tmp/claude-1000/msg-invoices-task11.txt -- 'CONTRIBUTING.md' 'ROADMAP.md' 'deploy/compose/README.md' 'deploy/compose/vantigo.env.example' 'docs/README.md' 'docs/src/content/docs/en/reference/customers.md' 'docs/src/content/docs/en/reference/invoices.md' 'docs/src/content/docs/en/contributing/module-boundaries.md'
 git show --stat HEAD && git status --short   # nothing of yours left; go.mod/go.sum at the root untracked as before
 ```
 
@@ -20615,7 +20615,7 @@ Vantigo issued nothing. After this it issues the lawful Norwegian sales
 document: a draft becomes a numbered, immutable invoice or credit note, its
 PDF is stored once and downloaded as stored, and a journal proves the series
 has no gaps. Decided in `docs/superpowers/specs/2026-09-26-invoices-foundation-design.md`
-(D1–D13); the reference is `docs/invoices.md`.
+(D1–D13); the reference is `docs/src/content/docs/en/reference/invoices.md`.
 
 - **A new module** `invoices` (`internal/invoices`, `openapi/invoices.yaml`,
   `@vantigo/invoices-ui`), requiring customers; four permissions, two of them
@@ -20680,7 +20680,7 @@ Say: the PR's number and URL and CI's state; each test shown able to fail and wh
 
 | Spec | Where |
 | --- | --- |
-| D1 the module, its four permissions, `invoices requires customers`, the checklist of `docs/module-boundaries.md` | Task 1 (every step); `TestPermissions_AreTheCatalogTheDesignNames`, `TestMount_RefusesAnInstallationWithoutCustomers`, `TestLoad_Modules`; Task 2 (the package and the host); Task 13 Step 3 (the sidebar) |
+| D1 the module, its four permissions, `invoices requires customers`, the checklist of `docs/src/content/docs/en/contributing/module-boundaries.md` | Task 1 (every step); `TestPermissions_AreTheCatalogTheDesignNames`, `TestMount_RefusesAnInstallationWithoutCustomers`, `TestLoad_Modules`; Task 2 (the package and the host); Task 13 Step 3 (the sidebar) |
 | D1 the Oslo business day from `Deps.Clock()`, never `CURRENT_DATE` | Task 1 `values.go`; `TestMeta_TodayIsTheBusinessDayInOslo`; Task 14 Step 2's grep |
 | D1 `customers:view` for the picker; the API checks none | Task 12 (`-invoice-access.tsx`, `canViewCustomers`); `-invoices-list.test.tsx`; the list test "offers New invoice only to…" |
 | D2 the settings row, both mod-11 checks, IBAN/BIC, NOK only, the revision, completeness, the counter, `series_locked` after `FOR UPDATE` | Task 1 migration; Task 3 `settings.go`; `TestSellerNumbers_TheCheckDigitRules`, `TestSettings_*`; Task 6 `TestIssue_ASettingsReplaceRacingTheFirstIssueWaitsAndIsRefused` and `TestIssue_ASettingsReplaceThatCommitsFirstSetsTheStartTheIssueUses` |

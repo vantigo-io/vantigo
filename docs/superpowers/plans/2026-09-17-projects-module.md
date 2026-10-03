@@ -60,7 +60,7 @@ apps/server/internal/db/migrations/00008_projects_baseline.sql
 openapi/projects.yaml
 apps/projects/frontend/           @vantigo/projects-ui (mirror apps/customers/frontend)
 apps/host/frontend/src/           registry, routes/projects*, customer tab, spotlight, dashboard, catalogs
-docs/projects.md, docs/module-boundaries.md, CONTRIBUTING.md, ROADMAP.md
+docs/src/content/docs/en/reference/projects.md, docs/src/content/docs/en/contributing/module-boundaries.md, CONTRIBUTING.md, ROADMAP.md
 ```
 
 ---
@@ -254,7 +254,7 @@ CREATE SCHEMA projects;
 
 -- customer_id, created_by_user_id and every other foreign identifier here is
 -- opaque: customers, identity and products live in other schemas, so there is
--- no foreign key to them (docs/module-boundaries.md rule 4).
+-- no foreign key to them (docs/src/content/docs/en/contributing/module-boundaries.md rule 4).
 CREATE TABLE projects.projects (
     id                 integer GENERATED ALWAYS AS IDENTITY (START WITH 1001) PRIMARY KEY,
     code               varchar(20)   NOT NULL,
@@ -757,10 +757,10 @@ Mirror `apps/customers/frontend/src/pages/customers.$customerId.tsx` (header + o
 
 ### Task 15: Documentation
 
-**Files:** Create `docs/projects.md`; modify `docs/module-boundaries.md`, `docs/README.md` (index), `CONTRIBUTING.md` (URL map, module lists), `README.md` (module list), `ROADMAP.md`, `deploy/` env examples if they enumerate `MODULES` values (`grep -rn "communications" deploy/ README.md CONTRIBUTING.md docs/*.md`).
+**Files:** Create `docs/src/content/docs/en/reference/projects.md`; modify `docs/src/content/docs/en/contributing/module-boundaries.md`, `docs/README.md` (index), `CONTRIBUTING.md` (URL map, module lists), `README.md` (module list), `ROADMAP.md`, `deploy/` env examples if they enumerate `MODULES` values (`grep -rn "communications" deploy/ README.md CONTRIBUTING.md docs/*.md`).
 
-- `docs/projects.md`: model, codes (D1–D3), roles and the permission table, financial shaping, billing lines and the optional Products dependency, the three contracts, "what Time tracking should build on" — match the tone and depth of `docs/products.md`.
-- `docs/module-boundaries.md`: rule 4's schema list; rule 5 (a module may also provide a user directory, product catalog or project directory); "Turning a module off" (known set, `projects requires customers`, optional providers leave `Deps` nil and the consumer must handle it); "Adding a module" additions: `openapi.Modules`, `generate.go`, `cfg-<name>.yaml`, `tools/openapi/gen-client.ts`, host i18n import, permission labels.
+- `docs/src/content/docs/en/reference/projects.md`: model, codes (D1–D3), roles and the permission table, financial shaping, billing lines and the optional Products dependency, the three contracts, "what Time tracking should build on" — match the tone and depth of `docs/src/content/docs/en/reference/products.md`.
+- `docs/src/content/docs/en/contributing/module-boundaries.md`: rule 4's schema list; rule 5 (a module may also provide a user directory, product catalog or project directory); "Turning a module off" (known set, `projects requires customers`, optional providers leave `Deps` nil and the consumer must handle it); "Adding a module" additions: `openapi.Modules`, `generate.go`, `cfg-<name>.yaml`, `tools/openapi/gen-client.ts`, host i18n import, permission labels.
 - `ROADMAP.md` Projects section: Phase 1 (done) as built; Phase 2 Time tracking (hours on project + line codes, reads `ProjectDirectory`); Later: milestones/tasks as a separate code dimension, rates per person, configurable project roles, project documents, domain events once the bus exists. Each with its *Unblocks* line like the other sections.
 
 - [ ] **Step 1:** write; `mise exec -- bunx biome check .`. **Step 2: Commit.** `docs(projects): module guide, boundaries and roadmap`

@@ -73,7 +73,7 @@
 | `apps/customers/frontend/src/pages/-customer-billing-modal.tsx`, `-customer-billing-modal.test.tsx` | the input |
 | `apps/customers/frontend/src/pages/-customer-billing-card.tsx`, `-customer-billing-card.test.tsx`, `-customer-peppol-status.test.tsx` | the row; the Use EHF body keeps the rate |
 | `apps/customers/frontend/src/i18n.ts` | four keys, en + nb |
-| `docs/customers.md`, `docs/time.md`, `docs/projects.md`, `docs/module-boundaries.md`, `ROADMAP.md` | D5 |
+| `docs/src/content/docs/en/reference/customers.md`, `docs/src/content/docs/en/reference/time.md`, `docs/src/content/docs/en/reference/projects.md`, `docs/src/content/docs/en/contributing/module-boundaries.md`, `ROADMAP.md` | D5 |
 
 ---
 
@@ -841,7 +841,7 @@ If `go generate` touched a generated file outside `PATHS` (`store/models.go` may
 One field on the contract, passed through like `Currency`. No group tier, so `resolveBillingProfile` keeps its signature and no caller of it moves.
 
 **Files:**
-- Modify: `apps/server/internal/contracts/directory.go`, `apps/server/internal/customers/directory.go`, `apps/server/internal/customers/directory_internal_test.go`, `apps/server/internal/customers/directory_test.go`, `docs/customers.md`
+- Modify: `apps/server/internal/contracts/directory.go`, `apps/server/internal/customers/directory.go`, `apps/server/internal/customers/directory_internal_test.go`, `apps/server/internal/customers/directory_test.go`, `docs/src/content/docs/en/reference/customers.md`
 - Read first (do not change) — every `CustomerDirectory` implementation, none of which needs an edit because the struct only gains a field and every literal of it is keyed: `apps/server/internal/projects/projects_list_internal_test.go` (`countingDirectory`), `apps/server/internal/projects/harness_test.go` (`fakeDirectory`), `apps/server/internal/integration/harness_test.go` (`fakeCustomers` — keyed `{ID: id, Name: …}`, no rate, so the composed time module in the integration suite prices exactly as before), `apps/server/internal/module/compose_test.go` (`fakeDirectory`), `apps/server/internal/communications/harness_test.go` and `apps/server/internal/energy/harness_test.go` (`fakeDirectory`, keyed)
 
 **Interfaces:**
@@ -963,7 +963,7 @@ Expected: seven files (`communications/harness_test.go`, `customers/directory.go
 
 - [ ] **Step 5: The docs' resolution table**
 
-In `docs/customers.md`, "`BillingProfile` — what an invoice needs, already resolved", directly after the `| `PaymentTermsDays` | … |` row add:
+In `docs/src/content/docs/en/reference/customers.md`, "`BillingProfile` — what an invoice needs, already resolved", directly after the `| `PaymentTermsDays` | … |` row add:
 
 ```
 | `DefaultBillRate` | The billing profile's own `defaultBillRate`, else `nil`, quoted in `Currency` (never `""` when a rate is set). **Own value only** — no group tier; a group default bill rate would slot in beside `defaultPaymentTermsDays` if it is ever wanted. [Time's rate chain](time.md#the-rate-chain) reads it: the customer step, between the project default and the person card. |
@@ -1024,7 +1024,7 @@ compiles unchanged.
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 EOF
 PATHS="apps/server/internal/contracts/directory.go apps/server/internal/customers/directory.go \
- apps/server/internal/customers/directory_internal_test.go apps/server/internal/customers/directory_test.go docs/customers.md"
+ apps/server/internal/customers/directory_internal_test.go apps/server/internal/customers/directory_test.go docs/src/content/docs/en/reference/customers.md"
 git add $PATHS && git commit -F /tmp/claude-1000/msg-bill-rate-2.txt -- $PATHS
 git show --stat HEAD && git status --short
 ```
@@ -1036,7 +1036,7 @@ git show --stat HEAD && git status --short
 The directory is Time's to read for the first time. It is optional — customers may be off — so `Deps.Directory` is checked where it is used, not at mount, the way `lineRate` treats `Deps.Products`. The step is asked only once the line and the project have both priced nothing, so an entry that never gets there costs no cross-module call.
 
 **Files:**
-- Modify: `apps/server/internal/time/values.go`, `rates.go`, `module.go`, `rates_internal_test.go`, `harness_test.go`, `entries_test.go`, `openapi/time.yaml`, `apps/time/frontend/src/api/entries.ts`, `apps/time/frontend/src/api/entries.test.ts`, `docs/time.md`, `docs/projects.md`, `docs/module-boundaries.md`
+- Modify: `apps/server/internal/time/values.go`, `rates.go`, `module.go`, `rates_internal_test.go`, `harness_test.go`, `entries_test.go`, `openapi/time.yaml`, `apps/time/frontend/src/api/entries.ts`, `apps/time/frontend/src/api/entries.test.ts`, `docs/src/content/docs/en/reference/time.md`, `docs/src/content/docs/en/reference/projects.md`, `docs/src/content/docs/en/contributing/module-boundaries.md`
 - Generated: `apps/server/internal/openapi/specs/time.yaml`, `apps/server/internal/time/gen/api.gen.go`, `apps/time/frontend/src/api-schema.d.ts`
 - Read first (do not change): `apps/server/internal/time/entries.go:120-140` and `:395-405` (both callers resolve rates on the pool, before `withLockedTx` — the directory call lands outside every lock), `apps/server/internal/modtest/modtest.go:167-179` (`WithDirectory` survives `Compose`: identity and time declare no `Module.Directory`)
 
@@ -1634,7 +1634,7 @@ Expected: `internal/openapi/specs/time.yaml`, `internal/time/gen/api.gen.go` (th
 
 - [ ] **Step 7: The docs**
 
-In `docs/time.md`, "The rate chain", replace the text from `2. **The project's `defaultBillRate`**, when the project has a currency to quote it` through `the person.` (the end of the "Each step falls through…" paragraph) with:
+In `docs/src/content/docs/en/reference/time.md`, "The rate chain", replace the text from `2. **The project's `defaultBillRate`**, when the project has a currency to quote it` through `the person.` (the end of the "Each step falls through…" paragraph) with:
 
 ```
 2. **The project's `defaultBillRate`**, when the project has a currency to quote it
@@ -1718,9 +1718,9 @@ with
   to the person's card.
 ```
 
-In `docs/projects.md`, replace `  (billing-line rule → project default → person default). It is a financial field —` with `  (billing-line rule → project default → customer default → person default). It is a financial field —`.
+In `docs/src/content/docs/en/reference/projects.md`, replace `  (billing-line rule → project default → person default). It is a financial field —` with `  (billing-line rule → project default → customer default → person default). It is a financial field —`.
 
-In `docs/module-boundaries.md`, replace
+In `docs/src/content/docs/en/contributing/module-boundaries.md`, replace
 
 ```
 Time is the first module to consume three contracts and provide one:
@@ -1783,7 +1783,7 @@ PATHS="apps/server/internal/time/values.go apps/server/internal/time/rates.go ap
  apps/server/internal/time/rates_internal_test.go apps/server/internal/time/harness_test.go apps/server/internal/time/entries_test.go \
  openapi/time.yaml apps/server/internal/openapi/specs/time.yaml apps/server/internal/time/gen/api.gen.go \
  apps/time/frontend/src/api-schema.d.ts apps/time/frontend/src/api/entries.ts apps/time/frontend/src/api/entries.test.ts \
- docs/time.md docs/projects.md docs/module-boundaries.md"
+ docs/src/content/docs/en/reference/time.md docs/src/content/docs/en/reference/projects.md docs/src/content/docs/en/contributing/module-boundaries.md"
 git add $PATHS && git commit -F /tmp/claude-1000/msg-bill-rate-3.txt -- $PATHS
 git show --stat HEAD && git status --short
 ```
@@ -1795,7 +1795,7 @@ git show --stat HEAD && git status --short
 The modal gains a two-decimal `NumberInput` after the currency, the card a row after the currency. The server's field errors already land by key (`form.setErrors(error.fieldErrors)`), so the currency-required error reaches the rate field with no new mapping. `valuesFromProfile`/`toInput` are shared with the Use EHF offer, which is why the rate must travel through both: that button's PUT is a full replace too, and forgetting the field there would clear a customer's rate on a click about EHF.
 
 **Files:**
-- Modify: `apps/customers/frontend/src/api/billing-profile.ts`, `api/billing-profile.test.ts`, `api/customers.test.ts`, `pages/-customer-billing-modal.tsx`, `pages/-customer-billing-modal.test.tsx`, `pages/-customer-billing-card.tsx`, `pages/-customer-billing-card.test.tsx`, `pages/-customer-peppol-status.test.tsx`, `src/i18n.ts`, `docs/customers.md`, `ROADMAP.md`
+- Modify: `apps/customers/frontend/src/api/billing-profile.ts`, `api/billing-profile.test.ts`, `api/customers.test.ts`, `pages/-customer-billing-modal.tsx`, `pages/-customer-billing-modal.test.tsx`, `pages/-customer-billing-card.tsx`, `pages/-customer-billing-card.test.tsx`, `pages/-customer-peppol-status.test.tsx`, `src/i18n.ts`, `docs/src/content/docs/en/reference/customers.md`, `ROADMAP.md`
 - Read first (do not change): `apps/customers/frontend/src/pages/-customer-peppol-status.tsx:256-261` (the Use EHF body is `toInput(valuesFromProfile(profile), …)`), `packages/frontend-shell/src/i18n/format.ts` (`formatters.formatNumber`)
 
 **Interfaces:**
@@ -2010,7 +2010,7 @@ and in `nb`, directly after `  billingCurrency: "Valuta",`:
 
 - [ ] **Step 7: The docs**
 
-In `docs/customers.md`:
+In `docs/src/content/docs/en/reference/customers.md`:
 
 Replace
 
@@ -2118,7 +2118,7 @@ with
 the customer default bill rate, the billing profile's eleventh field, quoted in the
 profile's own currency, and the customer step of Time's rate chain between the
 project default and the person card — the person card's currency rule, nothing
-converted. See [`docs/time.md#the-rate-chain`](docs/time.md#the-rate-chain).
+converted. See [`docs/src/content/docs/en/reference/time.md#the-rate-chain`](docs/src/content/docs/en/reference/time.md#the-rate-chain).
 
 **Still ahead in this phase:** other modules writing to the customer timeline, riding
 on the outbox deferred until Orders; invoiced revenue and outstanding, once Invoices
@@ -2160,7 +2160,7 @@ PATHS="apps/customers/frontend/src/api/billing-profile.ts apps/customers/fronten
  apps/customers/frontend/src/api/customers.test.ts apps/customers/frontend/src/pages/-customer-billing-modal.tsx \
  apps/customers/frontend/src/pages/-customer-billing-modal.test.tsx apps/customers/frontend/src/pages/-customer-billing-card.tsx \
  apps/customers/frontend/src/pages/-customer-billing-card.test.tsx apps/customers/frontend/src/pages/-customer-peppol-status.test.tsx \
- apps/customers/frontend/src/i18n.ts docs/customers.md ROADMAP.md"
+ apps/customers/frontend/src/i18n.ts docs/src/content/docs/en/reference/customers.md ROADMAP.md"
 git add $PATHS && git commit -F /tmp/claude-1000/msg-bill-rate-4.txt -- $PATHS
 git show --stat HEAD && git status --short
 ```

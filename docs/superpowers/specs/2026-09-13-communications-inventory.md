@@ -30,7 +30,7 @@ Path abbreviations: `EP/` = `apps/communications/backend/Communications.Module/E
 `ST/` = `packages/storage/Vantigo.Storage/`, `STA/` = `packages/storage/Vantigo.Storage.Abstractions/`,
 `CT/` = `packages/contracts/Vantigo.Contracts/`, `CFG/` = `packages/configuration/Vantigo.Configuration/`
 (the specific file `CFG/CommunicationsOptions.cs` is cited as `CFG` where the source passes did),
-`DOC` = `docs/communications.md`, `PORT` = `docs/superpowers/specs/2026-09-10-go-backend-port-design.md`,
+`DOC` = `docs/src/content/docs/en/reference/communications.md`, `PORT` = `docs/superpowers/specs/2026-09-10-go-backend-port-design.md`,
 `SPEC` = `apps/server/internal/openapi/specs/communications.yaml`. Where the source passes used a narrower
 `DB/` prefix that already included the `Communications/` sub-folder (e.g. `DB/CommunicationEntities.cs:150`),
 citations below use `EN`/`CTX` instead — same file and line, normalised abbreviation only; no citation's
@@ -1059,7 +1059,7 @@ constraints or expression indexes in this schema.
 
 ## 11. Doc-versus-code divergences
 
-Five places where `docs/communications.md` / the port design doc disagree with the code. This table is one of
+Five places where `docs/src/content/docs/en/reference/communications.md` / the port design doc disagree with the code. This table is one of
 the most valuable things in this document — preserved intact from the workers-focused pass.
 
 | # | `DOC`/`PORT` says | Code does | Where |

@@ -34,13 +34,13 @@ var _ gen.StrictServerInterface = (*server)(nil)
 
 // storageScope is this module's namespace in the object store: a document's
 // key documents/<id>/<number>-<sha256>.pdf is physically
-// invoices/documents/... (docs/storage.md).
+// invoices/documents/... (docs/src/content/docs/en/admin/object-storage.md).
 const storageScope = "invoices"
 
 // newServer builds the module's operations over d. It fails only when the
 // configured object store cannot be built. An unset provider is not an error:
 // the process starts, and issuing and downloading fail closed with a 503 at the
-// operation (docs/storage.md), never at startup.
+// operation (docs/src/content/docs/en/admin/object-storage.md), never at startup.
 func newServer(d module.Deps) (*server, error) {
 	if d.ObjectStore != nil {
 		return &server{deps: d, objects: d.ObjectStore, storageConfigured: true}, nil
@@ -75,7 +75,7 @@ type lockedTxKey struct{}
 // marked as locked and its queries bound to the transaction.
 //
 // The rule the mark carries: nothing inside fn calls another module or the
-// object store (docs/module-boundaries.md, docs/expenses.md). Whatever a
+// object store (docs/src/content/docs/en/contributing/module-boundaries.md, docs/src/content/docs/en/reference/expenses.md). Whatever a
 // decision inside fn needs from the customer directory is read before the
 // transaction, and a PDF is stored after it has committed.
 func (s *server) withLockedTx(ctx context.Context, fn func(ctx context.Context, txq *store.Queries) error) error {

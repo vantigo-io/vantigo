@@ -2,7 +2,7 @@
 -- Invoices, the sales document (invoices foundation design D2-D4, D9): the
 -- whole phase 1A schema at once, so no later task of the delivery adds a
 -- migration. customer_id is opaque — the customer lives in another schema
--- (docs/module-boundaries.md rule 4) and is read through
+-- (docs/src/content/docs/en/contributing/module-boundaries.md rule 4) and is read through
 -- contracts.CustomerDirectory. Unlike 00012's house style this schema carries
 -- CHECK constraints: an issued document is bookkeeping material, and the rules
 -- that make it lawful are the database's to hold as well as the module's (D9).

@@ -1,37 +1,36 @@
 # Vantigo documentation
 
-Operator and contributor documentation for Vantigo:
+This directory is the documentation site, built with [Astro Starlight](https://starlight.astro.build/)
+and published at <https://docs.vantigo.io>. The content lives in
+[`src/content/docs/`](src/content/docs/), one tree per language:
 
-- [Identity, authentication and deployment](customers-authentication.md) — local
-  accounts, the static environment-configured OIDC provider, email, proxy trust,
-  `APP_SECRET`-derived key material, and migrations.
-- [Static identity operations](sso-scim-operations.md) — production static-only
-  OIDC/SCIM configuration, rotation, migration, lifecycle, and recovery.
-- [Transport security and browser hardening](transport-security.md) — the
-  operator's https, PostgreSQL TLS or Unix socket, and SMTP TLS choices and what
-  each costs, HSTS, host filtering, the content security policy, and the API
-  contract document.
-- [Docker Compose deployment](../deploy/compose/README.md) — the pre-built image
-  quick start, proxy example, upgrades, and production notes.
-- [Management listener](management.md) — the private, bearer-protected status
-  endpoint a control plane polls, and seating the first Owner by invitation
-  instead of `/setup`.
-- [Customers module](customers.md) — customers, legal identity and its validation,
-  contacts and associations, the timeline and its authorship, the list endpoint's
-  search reach, revision, the duplicate-identity guard and permissions.
-- [Products module](products.md) — product domain and API reference.
-- [Communications module](communications.md) — communications domain and API reference.
-- [Projects module](projects.md) — projects, codes, roles, financial shaping, the
-  optional Products dependency and the contracts later modules build on.
-- [Time module](time.md) — time entries, the rate chain and its snapshots, the
-  approval state machine, weekly submission, the period lock and permissions.
-- [Expenses module](expenses.md) — outlays and mileage, receipts, approval, the
-  reimbursed and invoiced tracks, dated rates, the payroll CSV and permissions.
-- [Invoices module](invoices.md) — the sales document: the seller record, gap-free
-  numbering, VAT codes with dated rates, issue and immutability, credit notes, the
-  stored PDF, payments and the derived state, sending by e-mail, the journal, the CSV
-  export, the stats, retention and permissions.
-- [Module boundaries](module-boundaries.md) — implementation ownership and module
-  conventions.
-- [Object storage](storage.md) — the filesystem-only provider, module scopes, key
-  validation, and streamed downloads.
+```
+src/content/docs/
+├── en/                 English (the default; untranslated pages fall back to it)
+│   ├── user/           The user guide: what someone using Vantigo can do, and how
+│   ├── admin/          The administration guide: install, configure, run, upgrade
+│   ├── reference/      Per-module domain model, rules, permissions and endpoints
+│   └── contributing/   The rules a change is held to
+└── nb/                 Norsk bokmål, mirroring en/ page for page
+```
+
+`superpowers/` beside this README holds the design specs, plans and research the
+modules were built from. It is working material for contributors and agents, not part
+of the site.
+
+## Running it
+
+```bash
+mise run docs:dev      # http://localhost:4321 with live reload
+mise run docs:check    # the production build, broken links fail it, plus the coverage check
+```
+
+## The rule
+
+A change that alters what Vantigo does — a behaviour, a setting, an endpoint, a
+permission, a screen — lands in the same pull request as the change to the pages that
+describe it, in **both** languages for the user and administration guides. Every page
+declares the repository paths it documents in its `sources` frontmatter, and
+`tools/docs/check-coverage.ts` fails CI when a path changes without its pages. The
+details are in the [documentation guide](src/content/docs/en/contributing/documentation.md)
+and in the repository's [`AGENTS.md`](../AGENTS.md).

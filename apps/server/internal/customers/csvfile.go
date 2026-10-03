@@ -22,7 +22,7 @@ import (
 // internal/expenses rather than shared: depguard keeps modules from importing
 // one another, and ten lines of formatting are not worth a platform package.
 //
-// The header names are the API's own JSON names, so docs/customers.md's field
+// The header names are the API's own JSON names, so docs/src/content/docs/en/reference/customers.md's field
 // tables describe the file too. No competitor's layout is documented anywhere
 // this module could read it from, and one honest format beats three guessed
 // ones: onboarding from Tripletex, Fiken or PowerOffice is "export there,

@@ -394,7 +394,7 @@ func exportCustomerData(ctx context.Context, q *store.Queries, customerID int32)
 // person, which no retention rule needs: invoices.payments reports the notes
 // blanked. A delivery is kept as the record of when the claim was handed to
 // the mail server, its address gone. contracts.ErasedData carries no reason;
-// docs/invoices.md and the anonymisation table in docs/customers.md say it.
+// docs/src/content/docs/en/reference/invoices.md and the anonymisation table in docs/src/content/docs/en/reference/customers.md say it.
 // Run twice, it reports zeros and the marker keeps its first time.
 func (p customerPersonalData) EraseCustomerData(ctx context.Context, tx pgx.Tx, customerID int32) ([]contracts.ErasedData, error) {
 	q := store.New(tx)

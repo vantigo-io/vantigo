@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go (pgx v5, sqlc, oapi-codegen strict server), PostgreSQL, React 19, Mantine 9, TanStack Router + Query, Vitest, Bun.
 
-**Spec:** `docs/superpowers/specs/2026-09-19-project-economy-design.md` — delivery B: §2 E2–E4, E6–E9; §4; §5 "Delivery B" and "Stats"; §6; §7 (budget bar, per-line table, Time off, portfolio, dashboard); §8; §9. Delivery A (milestones, line budgets) is merged work this builds on — `docs/projects.md` describes it.
+**Spec:** `docs/superpowers/specs/2026-09-19-project-economy-design.md` — delivery B: §2 E2–E4, E6–E9; §4; §5 "Delivery B" and "Stats"; §6; §7 (budget bar, per-line table, Time off, portfolio, dashboard); §8; §9. Delivery A (milestones, line budgets) is merged work this builds on — `docs/src/content/docs/en/reference/projects.md` describes it.
 
 ## Global Constraints
 
@@ -47,7 +47,7 @@ apps/projects/frontend/src/
 apps/host/frontend/src/
   routes/projects/economy.tsx, apps.ts (+ sidebar item), -project-detail-layout.tsx (tab for everyone),
   routes/dashboard.tsx (+ metric, four attention types), catalogs (+), routeTree.gen.ts
-docs/projects.md, docs/time.md, docs/module-boundaries.md, ROADMAP.md
+docs/src/content/docs/en/reference/projects.md, docs/src/content/docs/en/reference/time.md, docs/src/content/docs/en/contributing/module-boundaries.md, ROADMAP.md
 ```
 
 ---
@@ -131,7 +131,7 @@ ProjectEconomyListResponse { data: [ProjectEconomyRow], pagination (the module's
 
 ### Task 5: Host integration and docs
 
-Economy tab shown to everyone who sees the project (drop delivery A's capability gate; keep order Billing → Economy → Time); route `routes/projects/economy.tsx` with the package's search validator; sidebar item "Economy" in the Projects app (`projects:access` — the page's empty state covers callers with nothing to see; say so in the report); dashboard: Projects card metric from `readyMilestones` (hidden at 0), the four attention types with en + nb titles and links to `/projects/<id>/economy` (parse `milestoneReady`'s `<projectId>/<milestoneId>`); permission label/description for `projects:view-costs` in the host's permission catalog (en + nb); `routeTree.gen.ts`. Docs: `docs/projects.md` (Economy: budget used, buckets, shaping table, portfolio, alerts, the actuals dependency and what happens without Time), `docs/time.md` (the provider it implements), `docs/module-boundaries.md` (the new sanctioned read and its direction), `ROADMAP.md` (phase 3 first delivery done; next: expenses, overtime multipliers). Fact-check every sentence against the code.
+Economy tab shown to everyone who sees the project (drop delivery A's capability gate; keep order Billing → Economy → Time); route `routes/projects/economy.tsx` with the package's search validator; sidebar item "Economy" in the Projects app (`projects:access` — the page's empty state covers callers with nothing to see; say so in the report); dashboard: Projects card metric from `readyMilestones` (hidden at 0), the four attention types with en + nb titles and links to `/projects/<id>/economy` (parse `milestoneReady`'s `<projectId>/<milestoneId>`); permission label/description for `projects:view-costs` in the host's permission catalog (en + nb); `routeTree.gen.ts`. Docs: `docs/src/content/docs/en/reference/projects.md` (Economy: budget used, buckets, shaping table, portfolio, alerts, the actuals dependency and what happens without Time), `docs/src/content/docs/en/reference/time.md` (the provider it implements), `docs/src/content/docs/en/contributing/module-boundaries.md` (the new sanctioned read and its direction), `ROADMAP.md` (phase 3 first delivery done; next: expenses, overtime multipliers). Fact-check every sentence against the code.
 
 - [ ] Tests first (tab visible to a member; portfolio route + guard; dashboard hrefs/titles for the four types; metric hidden at 0), implement, host `test|typecheck|lint|build`, root gates.
 - [ ] **Commit** `feat(frontend): the economy portfolio, budget signals on the dashboard` and `docs: project economy — what it shows, who sees it, where the hours come from`.

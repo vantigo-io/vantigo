@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go (pgx v5, sqlc, goose, oapi-codegen strict server), PostgreSQL, React 19, Mantine 9, TanStack Router + Query, Vitest, Bun.
 
-**Spec:** `docs/superpowers/specs/2026-09-18-time-tracking-and-tasks-design.md` (delivery A: §2 D5–D7, §3.1, §4.1, §5, §7 Projects, §8 Projects app). The projects module's own guide is `docs/projects.md`.
+**Spec:** `docs/superpowers/specs/2026-09-18-time-tracking-and-tasks-design.md` (delivery A: §2 D5–D7, §3.1, §4.1, §5, §7 Projects, §8 Projects app). The projects module's own guide is `docs/src/content/docs/en/reference/projects.md`.
 
 ## Global Constraints
 
@@ -51,7 +51,7 @@ apps/projects/frontend/src/
   i18n.ts (+), index.ts (+), package.json exports (+)
 apps/host/frontend/src/
   routes/projects/$projectId.tasks.tsx, routes/projects/my-tasks.tsx, -project-detail-layout.tsx (+ tab), apps.ts (+ sidebar entry), app-spotlight.tsx (+ Create task), catalogs/* (+ labels)
-docs/projects.md (+ tasks section), ROADMAP.md (phase 2A note)
+docs/src/content/docs/en/reference/projects.md (+ tasks section), ROADMAP.md (phase 2A note)
 ```
 
 ---
@@ -194,7 +194,7 @@ Operations:
 
 ### Task 4: Project default bill rate
 
-**Files:** modify `projects.yaml` (`ProjectFinancials.defaultBillRate`, `ProjectCreateRequest`/`ProjectUpdateRequest.defaultBillRate`), `values.go`, `projects.go`, `responses.go`, `timeline.go` (`billing-changed` field name `defaultBillRate`), tests in `projects_test.go`/`projects_update_test.go`, `docs/projects.md`.
+**Files:** modify `projects.yaml` (`ProjectFinancials.defaultBillRate`, `ProjectCreateRequest`/`ProjectUpdateRequest.defaultBillRate`), `values.go`, `projects.go`, `responses.go`, `timeline.go` (`billing-changed` field name `defaultBillRate`), tests in `projects_test.go`/`projects_update_test.go`, `docs/src/content/docs/en/reference/projects.md`.
 
 - [ ] **Step 1: Failing tests**: create/update with `defaultBillRate` → stored, returned inside `financials`, absent for members (raw JSON); `> 0` rule; requires `currency` (400 on `currency` when missing); change writes `billing-changed` with the field name only; directory `ProjectEntry.DefaultBillRate` reflects it.
 - [ ] **Step 2–4**, **Step 5: Commit** `feat(projects): a default bill rate on the project`.
@@ -217,7 +217,7 @@ Operations:
 
 ### Task 6: Host integration and docs
 
-**Files:** `apps/host/frontend/src/routes/projects/$projectId.tasks.tsx` (renders `ProjectTasks`), `routes/projects/my-tasks.tsx` (renders `MyTasksPage`), `-project-detail-layout.tsx` (Tasks tab between Overview and People, gated on seeing the project), `apps.ts` (sidebar entry "My tasks" → `/projects/my-tasks`, `projects:access`), `app-spotlight.tsx` (quick action "Create task" → `/projects/my-tasks?create=true` opening a project picker + task form, or, simpler and acceptable: navigate to `/projects` — decide and say so), catalogs (`project.ts` tab label, navigation label, spotlight strings; en + nb), `routeTree.gen.ts` regenerated; tests (`project-detail-tabs.test.ts` gains the Tasks tab; route test for my-tasks; spotlight test). `docs/projects.md` gains a Tasks section (model, rules, authorization, the directory methods) and `ROADMAP.md`'s phase 2 gets "tasks (done)" marked.
+**Files:** `apps/host/frontend/src/routes/projects/$projectId.tasks.tsx` (renders `ProjectTasks`), `routes/projects/my-tasks.tsx` (renders `MyTasksPage`), `-project-detail-layout.tsx` (Tasks tab between Overview and People, gated on seeing the project), `apps.ts` (sidebar entry "My tasks" → `/projects/my-tasks`, `projects:access`), `app-spotlight.tsx` (quick action "Create task" → `/projects/my-tasks?create=true` opening a project picker + task form, or, simpler and acceptable: navigate to `/projects` — decide and say so), catalogs (`project.ts` tab label, navigation label, spotlight strings; en + nb), `routeTree.gen.ts` regenerated; tests (`project-detail-tabs.test.ts` gains the Tasks tab; route test for my-tasks; spotlight test). `docs/src/content/docs/en/reference/projects.md` gains a Tasks section (model, rules, authorization, the directory methods) and `ROADMAP.md`'s phase 2 gets "tasks (done)" marked.
 
 - [ ] **Step 1–4**: tests first, implement, `bun run --cwd apps/host/frontend test|typecheck|lint|build`, `frontend:lint`, `frontend:typecheck`, translations, biome.
 - [ ] **Step 5: Commit** `feat(frontend): tasks tab, my tasks and the create-task action`.

@@ -1,5 +1,13 @@
-# Transport security and browser hardening
-
+---
+title: "Transport security and browser hardening"
+description: "The operator's https, PostgreSQL TLS or Unix socket and SMTP TLS choices, HSTS, host filtering and the content security policy."
+sidebar:
+  order: 30
+sources:
+  - apps/server/internal/server
+  - apps/server/internal/security
+  - apps/server/internal/netguard
+---
 Transport — http or https at the edge, TLS or plaintext to PostgreSQL and to the
 SMTP relay — is the operator's choice, made per deployment in the environment. The
 process does not second-guess it: nothing about transport fails configuration

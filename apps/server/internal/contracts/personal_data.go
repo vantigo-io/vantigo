@@ -12,7 +12,7 @@ import (
 // CustomerReferenceHolder, and deliberately not a method on it: a merge moves
 // references and keeps everything, an anonymisation keeps the references and
 // takes the person out of them, and a module may hold customer ids without
-// holding anything about a person (docs/module-boundaries.md rule 9).
+// holding anything about a person (docs/src/content/docs/en/contributing/module-boundaries.md rule 9).
 //
 // ExportCustomerData answers the module's section of a private person's
 // export: a JSON-serialisable value, nil when the module holds nothing for the

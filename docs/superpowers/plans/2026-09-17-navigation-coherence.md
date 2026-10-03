@@ -260,7 +260,7 @@ export const useShellLink = () => useContext(ShellLinkContext);
 
 **Files:**
 - Modify: `CONTRIBUTING.md:142-166` — after the URL convention paragraph, add a "Navigation" paragraph with the four rules (sidebar = pages within an area, always the shell's, declared in `apps.ts` for apps and areas; tabs = views of one page, always in the URL, always `PageTabs` under the header; segmented controls = filters and form modes only; `PageHeader` on every page, `eyebrow` on top-level pages, `breadcrumbs` on detail pages). Replace "`/settings`, `/workspace` and `/admin` are administration pages reached from the avatar menu and belong to no app" with "…are *areas*: declared in `apps.ts` like apps, with their own sidebar, but without a switcher tile".
-- Modify: `docs/module-boundaries.md:99-104` only if the registry instructions changed (they did not).
+- Modify: `docs/src/content/docs/en/contributing/module-boundaries.md:99-104` only if the registry instructions changed (they did not).
 
 - [ ] Run: `bun run frontend:typecheck && bun run frontend:lint && bun run format:check && bun run translations:check && bun run frontend:test`.
 - [ ] Commit `docs(frontend): state the navigation rules`.

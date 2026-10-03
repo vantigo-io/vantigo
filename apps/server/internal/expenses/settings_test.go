@@ -251,7 +251,7 @@ func TestExpensesSettings_RefusesAZoneGoAndPostgresReadDifferently(t *testing.T)
 
 // The property the setting exists for, over the zones it accepts: the day Go
 // derives from an instant and the day Postgres derives from the same instant
-// are the same day. It is the sentence docs/expenses.md states as absolute, so
+// are the same day. It is the sentence docs/src/content/docs/en/reference/expenses.md states as absolute, so
 // it is a test rather than an assertion — instants either side of local
 // midnight, in January and in July, so a zone the two disagree about only in
 // summer cannot slip through.

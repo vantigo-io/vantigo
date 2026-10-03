@@ -1,5 +1,11 @@
-# Projects module
-
+---
+title: "Projects module"
+description: "Projects per customer, codes, roles, financial shaping, work types and the contracts later modules build on."
+sources:
+  - apps/server/internal/projects
+  - apps/projects/frontend
+  - openapi/projects.yaml
+---
 The Projects module is where work is organised: a project is a named, coded piece of
 work for one customer (or none, which means internal), the people who may act on it,
 and the commercial rules invoicing will later read. It is a vertical-slice module
@@ -86,7 +92,7 @@ safely under concurrent writes.
 
 The `projects` schema holds no foreign key that leaves it: `customer_id`,
 `variant_id` and every user ID are opaque, per
-[module boundaries](module-boundaries.md) rule 4.
+[module boundaries](/en/contributing/module-boundaries/) rule 4.
 
 ## Project codes
 
@@ -506,7 +512,7 @@ the only way to say so was a duplicate billing line — "Consulting (overtime)" 
 separate product price — on every project, for every kind of work. A **work type**
 ends that: a project defines its types once ("Overtid 50 %", "Overtid 100 %",
 "Helg"), a person picks one when logging time, and Time multiplies whatever rates the
-chain resolved (see [the work type's multiplier](time.md#the-work-types-multiplier)).
+chain resolved (see [the work type's multiplier](/en/reference/time/#the-work-types-multiplier)).
 
 - **A rule, not an amount.** A type is a `name` (1–100 characters once trimmed,
   unique in the project without regard to case), a `billMultiplierPercent` and a
@@ -562,7 +568,7 @@ In the apps:
 - The Economy tab shows [Hours by work type](#hours-by-work-type) in its budget
   section.
 - Time's entry form, week grid, day view and approval queue pick and show the type —
-  see [the Time app](time.md#the-time-app).
+  see [the Time app](/en/reference/time/#the-time-app).
 
 ## Project economy
 
@@ -623,7 +629,7 @@ exceedance, whatever its rounded percentage happens to print.
 
 Every actual is the same three buckets Time tracking's own entry statuses fold into
 (`approved` — approved and invoiced entries, `submitted`, `draft` — draft and
-rejected entries; see [Time's state machine](time.md#the-state-machine)), with
+rejected entries; see [Time's state machine](/en/reference/time/#the-state-machine)), with
 figures that span all three:
 
 - **`unpricedHours`** — **billable** hours with no bill amount in the project's
@@ -635,7 +641,7 @@ figures that span all three:
   summary covers only submitted, approved and invoiced work, so a billable draft with
   no rate is counted here and not there, and it infers a currency for a project that
   carries none where this reports no amounts at all. See
-  [what Time reports to other modules](time.md#what-time-reports-to-other-modules).
+  [what Time reports to other modules](/en/reference/time/#what-time-reports-to-other-modules).
 - **`uncostedHours`** (inside the `cost` block only) — hours, billable or not, whose
   cost is not counted: no cost rate, or a cost rate in another currency. `margin` is
   short by exactly what these hours would have cost, which is why the block always
@@ -675,7 +681,7 @@ whoever paid; `amount` is what the *billable* lines will charge.
   project's currency holds none (and on a project that carries no currency). A
   provider whose split contradicts itself — its total count not its buckets', or
   more lines than the currency has — is a 500, as a contradicting total is. See
-  [the supplier invoice](expenses.md#the-supplier-invoice).
+  [the supplier invoice](/en/reference/expenses/#the-supplier-invoice).
 - **`lastEntryDate`** — the most recently dated line **across every currency**, so
   on a project with a foreign receipt it may be the day of a line reported under
   `otherCurrencies`.
@@ -993,7 +999,7 @@ consumes an optional contract from another module; here, Projects is still the
 consumer, but the provider is the module that in every other respect *depends on*
 Projects. `Compose` resolves both directions before any module mounts, so neither
 ever calls the other over HTTP or reads the other's schema, and there is no cycle at
-request time — see [module boundaries](module-boundaries.md). With `time` disabled,
+request time — see [module boundaries](/en/contributing/module-boundaries/). With `time` disabled,
 `Deps.Actuals` is nil and this whole feature degrades to "budgets and plans, nothing
 to compare them with" (`timeTracking: false`), never to zeroes.
 
@@ -1180,7 +1186,7 @@ missing row is `(nil, nil)`, never an error.
   `ProjectsForCustomer` (every project billed to one customer, in any status, by id
   ascending and at most `contracts.MaxActualsRequests` — the batch a consumer asks
   the time and expenses providers about next; the customer page's
-  [Customer 360](customers.md#customer-360) is its reader), `Task`,
+  [Customer 360](/en/reference/customers/#customer-360) is its reader), `Task`,
   `OpenTasksForUser`, `CanLogTime(projectID, userID)`, and `WorkType(id)` /
   `WorkTypes(projectID)` — a project's [work types](#work-types) as `WorkTypeEntry` (id,
   project, name, both multipliers, active; `WorkType` answers an inactive type too,
@@ -1199,7 +1205,7 @@ missing row is `(nil, nil)`, never an error.
   approved already billed, which Projects' economy does not read — and bill and cost amounts,
   each counted only when logged in the currency Projects asked for, and `WorkTypes` —
   the same work split per work type, by id, for the economy's `workTypes`. See
-  [Project economy](#project-economy) and [what Time reports](time.md#what-time-reports-to-other-modules).
+  [Project economy](#project-economy) and [what Time reports](/en/reference/time/#what-time-reports-to-other-modules).
 - **`contracts.ProjectExpenses`** — provided by *expenses*, **nil when expenses is
   disabled** (the third optional contract, and the second Projects consumes).
   `ExpensesForProjects(projectIDs)` (batch only, capped at
@@ -1209,7 +1215,7 @@ missing row is `(nil, nil)`, never an error.
   nothing recorded is **absent from its map**, which is the one way it differs from
   the actuals contract. See
   [The optional expenses dependency](#the-optional-expenses-dependency) and
-  [expenses](expenses.md).
+  [expenses](/en/reference/expenses/).
 
 On the platform side, `module.Module` has provider fields `Users`, `Products`,
 `Projects`, `Actuals` and `Expenses` beside `Directory`, and `module.Deps` has the
@@ -1223,7 +1229,7 @@ the 409 above, and `timeTracking: false` / `expenseTracking: false` in
 test can run against a fake or a real provider.
 
 Projects also **holds customer references** — `contracts.CustomerReferenceHolder`,
-the one sanctioned cross-module write ([module boundaries rule 8](module-boundaries.md#the-rules)).
+the one sanctioned cross-module write ([module boundaries rule 8](/en/contributing/module-boundaries/#the-rules)).
 When the customers module merges two customers, `RepointProjectsCustomer` moves every
 project of the absorbed customer to the survivor inside the merge's own transaction,
 advancing each moved project's revision like any other change to the row, so an edit
@@ -1231,15 +1237,15 @@ form still holding the old customer answers the stale-revision 409. No project
 timeline entry is written: the merge is recorded on the survivor's customer timeline,
 and `customerName` reads the survivor's from then on. Time and expenses hold no
 customer id of their own, so the move keeps them right too. See
-[Merging duplicates](customers.md#merging-duplicates).
+[Merging duplicates](/en/reference/customers/#merging-duplicates).
 
 It hands a private person's projects over too — `contracts.CustomerPersonalData`
-([module boundaries rule 9](module-boundaries.md#the-rules)): code, name, status and
+([module boundaries rule 9](/en/contributing/module-boundaries/#the-rules)): code, name, status and
 dates of every project billed to them, in their export's `modules.projects`. Their
 anonymisation keeps every project: invoiced work stays, a project stores no customer
 name to blank, and `customerName` reads the anonymised customer's through the
 directory from then on. A project named after the person is free text this module
-does not rewrite. See [Personal data and anonymisation](customers.md#personal-data-and-anonymisation).
+does not rewrite. See [Personal data and anonymisation](/en/reference/customers/#personal-data-and-anonymisation).
 
 ### What Time tracking should build on
 
@@ -1409,7 +1415,7 @@ for the figures) therefore reads the row as plain text with no link, which is th
 right answer — the page it would lead to would refuse them. This package knows no
 route of the Expenses app and imports nothing from it. Both tabs read the
 same figures, so the host refreshes the economy queries when something on the
-Expenses tab changes them. See [docs/expenses.md](expenses.md#on-the-project-page). Spotlight has
+Expenses tab changes them. See [docs/expenses.md](/en/reference/expenses/#on-the-project-page). Spotlight has
 **Create project** and **Create task** quick actions and a Projects result group
 searching by code or name; the dashboard has a Projects card (the `newProjects`
 metric and, once anything is ready to invoice, a `readyMilestones` hint), the

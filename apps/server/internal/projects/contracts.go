@@ -18,7 +18,7 @@ import (
 // Projects ask of another module, and when" a question with one place to read
 // the answer — and one place to check it from.
 //
-// What is checked is docs/projects.md's "Locking" rule: a cross-module call is
+// What is checked is docs/src/content/docs/en/reference/projects.md's "Locking" rule: a cross-module call is
 // always made *before* the project's row lock is taken, never from inside the
 // transaction holding it (withProjectLock). These are in-process calls into
 // another module that read through the same connection pool, so a transaction

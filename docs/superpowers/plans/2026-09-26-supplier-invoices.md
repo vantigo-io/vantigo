@@ -64,7 +64,7 @@
 | `apps/server/internal/contracts/expenses.go`, `internal/expenses/queries/projectexpenses.sql`, `projectexpenses.go`, `projectsummary.go`, `projectexpenses_test.go`, `projectsummary_test.go`, `harness_test.go` | `ExpenseSplit`, the grouped flag, the fold, the summary line (Task 3) |
 | `openapi/projects.yaml` (+ generated `internal/openapi/specs/projects.yaml`, `internal/projects/gen/api.gen.go`, `apps/projects/frontend/src/api-schema.d.ts`), `apps/server/internal/projects/economy.go`, `economy_math.go`, `harness_test.go`, `economy_expenses_test.go` | the economy's `expenses.supplierInvoices` (Task 4) |
 | `apps/server/internal/integration/supplier_invoices_test.go` | projects + expenses composed for real (Task 5) |
-| `docs/expenses.md`, `docs/projects.md`, `docs/module-boundaries.md`, `ROADMAP.md` | D6 (Task 6) |
+| `docs/src/content/docs/en/reference/expenses.md`, `docs/src/content/docs/en/reference/projects.md`, `docs/src/content/docs/en/contributing/module-boundaries.md`, `ROADMAP.md` | D6 (Task 6) |
 | `apps/expenses/frontend/src/{lib/status.ts,lib/money.ts,lib/search.test.ts,api/projects.ts,api/project-expenses.ts,lib/project-options.ts,pages/-expense-form-modal.tsx,components/entry-details.tsx,components/project-expenses-panel.tsx,test/fixtures.ts,test/server.ts,pages/supplier-invoice.test.tsx,components/project-expenses-panel.test.tsx,i18n.ts}` | D5, the Expenses package (Task 7) |
 | `apps/projects/frontend/src/{api/economy.ts,pages/project-economy.tsx,pages/project-economy.test.tsx,i18n.ts}` | D5, the Costs section's line (Task 8) |
 
@@ -4097,13 +4097,13 @@ git show --stat HEAD && git status --short
 ---
 ### Task 6: The docs (D6)
 
-`docs/expenses.md` learns the fourth kind and the function; `docs/projects.md` the economy's `supplierInvoices`; `docs/module-boundaries.md` the contract's new sub-figure; `ROADMAP.md` phase 3 C done. Every sentence is checked against the code of Tasks 1–5 (Step 5). This task touches no code and may run beside Tasks 7 and 8.
+`docs/src/content/docs/en/reference/expenses.md` learns the fourth kind and the function; `docs/src/content/docs/en/reference/projects.md` the economy's `supplierInvoices`; `docs/src/content/docs/en/contributing/module-boundaries.md` the contract's new sub-figure; `ROADMAP.md` phase 3 C done. Every sentence is checked against the code of Tasks 1–5 (Step 5). This task touches no code and may run beside Tasks 7 and 8.
 
 **Files:**
-- Modify: `docs/expenses.md`, `docs/projects.md`, `docs/module-boundaries.md`, `ROADMAP.md`
-- Read first (do not change): `docs/expenses.md:1-160,573-590,692-845,879-942,1061-1124`, `docs/projects.md:644-690,766-780,1360-1385`, `docs/module-boundaries.md:190-220`, `ROADMAP.md:520-600,686-720`, and the code of Tasks 1–5
+- Modify: `docs/src/content/docs/en/reference/expenses.md`, `docs/src/content/docs/en/reference/projects.md`, `docs/src/content/docs/en/contributing/module-boundaries.md`, `ROADMAP.md`
+- Read first (do not change): `docs/src/content/docs/en/reference/expenses.md:1-160,573-590,692-845,879-942,1061-1124`, `docs/src/content/docs/en/reference/projects.md:644-690,766-780,1360-1385`, `docs/src/content/docs/en/contributing/module-boundaries.md:190-220`, `ROADMAP.md:520-600,686-720`, and the code of Tasks 1–5
 
-- [ ] **Step 1: `docs/expenses.md` — the kind, the rule, the one date**
+- [ ] **Step 1: `docs/src/content/docs/en/reference/expenses.md` — the kind, the rule, the one date**
 
 Replace
 
@@ -4332,7 +4332,7 @@ are mostly supplier invoices — and never in `unreimbursed`, `myUnreimbursed` o
 `reimbursementWaiting`, because it owes nobody.
 ```
 
-- [ ] **Step 2: `docs/expenses.md` — the figures, the page, visibility, receipts, the API, what comes next**
+- [ ] **Step 2: `docs/src/content/docs/en/reference/expenses.md` — the figures, the page, visibility, receipts, the API, what comes next**
 
 Replace
 
@@ -4507,13 +4507,13 @@ Run
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo
-grep -n "one money line\|The SQL function and its Go mirror\|## The supplier invoice\|canRecordSupplierInvoice\|Record a supplier invoice\|Supplier invoices\*\* are done" docs/expenses.md
-grep -n "^| \`GET /entries\` \|^| \`POST /entries/{id}/attachments\`\|^| \`GET /projects\` \|^| \`projects:view-financials\` without" docs/expenses.md   # each row once
+grep -n "one money line\|The SQL function and its Go mirror\|## The supplier invoice\|canRecordSupplierInvoice\|Record a supplier invoice\|Supplier invoices\*\* are done" docs/src/content/docs/en/reference/expenses.md
+grep -n "^| \`GET /entries\` \|^| \`POST /entries/{id}/attachments\`\|^| \`GET /projects\` \|^| \`projects:view-financials\` without" docs/src/content/docs/en/reference/expenses.md   # each row once
 ```
 
-- [ ] **Step 3: `docs/projects.md` and `docs/module-boundaries.md`**
+- [ ] **Step 3: `docs/src/content/docs/en/reference/projects.md` and `docs/src/content/docs/en/contributing/module-boundaries.md`**
 
-In `docs/projects.md`, replace
+In `docs/src/content/docs/en/reference/projects.md`, replace
 
 ```markdown
 - **`lastEntryDate`** — the most recently dated line **across every currency**, so
@@ -4564,7 +4564,7 @@ added up, and beneath the total an **"of which supplier invoices"** row — the
 supplier invoices' own count, cost and amount, when there are any.
 ```
 
-In `docs/module-boundaries.md`, replace
+In `docs/src/content/docs/en/contributing/module-boundaries.md`, replace
 
 ```markdown
 `contracts.ProjectExpenses` is the third optional contract and the mirror of the
@@ -4626,7 +4626,7 @@ completed project too, and visible to them as rows. The expenses contract
 carries it as a per-currency sub-figure, and the Economy tab's Costs section
 and the Expenses tab's cards show "of which supplier invoices". Accounts
 payable, a supplier register and inbound e-invoices stay out of scope. See
-[`docs/expenses.md`](docs/expenses.md#the-supplier-invoice).
+[`docs/src/content/docs/en/reference/expenses.md`](docs/src/content/docs/en/reference/expenses.md#the-supplier-invoice).
 
 *Unblocks:* a project's non-hours cost that is what suppliers invoiced, not
 only what somebody put on an expense.
@@ -4654,7 +4654,7 @@ supplier's invoice is its own kind — see [Projects](#projects).
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo
-grep -rn "supplier invoice\|supplier_invoice\|supplierInvoices\|owes_employee" docs/expenses.md docs/projects.md docs/module-boundaries.md ROADMAP.md | head -60
+grep -rn "supplier invoice\|supplier_invoice\|supplierInvoices\|owes_employee" docs/src/content/docs/en/reference/expenses.md docs/src/content/docs/en/reference/projects.md docs/src/content/docs/en/contributing/module-boundaries.md ROADMAP.md | head -60
 grep -n "owes_employee\|kindSupplierInvoice\|supplierInvoiceNeedsProject\|cannotRecordSupplierInvoice\|Attach the supplier's invoice" \
   apps/server/internal/expenses/*.go apps/server/internal/db/migrations/00033_expenses_supplier_invoices.sql | head -30
 ```
@@ -4665,17 +4665,17 @@ cd /home/anders/projects/vantigo/vantigo
 cat > /tmp/claude-1000/msg-si-6.txt <<'MSG'
 docs: supplier invoices — the kind, the one rule for who is owed, the sub-figure
 
-docs/expenses.md gains the supplier invoice (its fields, the one date,
+docs/src/content/docs/en/reference/expenses.md gains the supplier invoice (its fields, the one date,
 company-paid, never in a claim, always on a project, the required
 document, who may record it and who sees it), the SQL function and its Go
 mirror, the summary's new figures and the project page's button;
-docs/projects.md the economy's supplierInvoices and the Costs section's
-line; docs/module-boundaries.md the contract's sub-figure; ROADMAP.md
+docs/src/content/docs/en/reference/projects.md the economy's supplierInvoices and the Costs section's
+line; docs/src/content/docs/en/contributing/module-boundaries.md the contract's sub-figure; ROADMAP.md
 phase 3 done and supplier costs no longer a gap.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 MSG
-PATHS="docs/expenses.md docs/projects.md docs/module-boundaries.md ROADMAP.md"
+PATHS="docs/src/content/docs/en/reference/expenses.md docs/src/content/docs/en/reference/projects.md docs/src/content/docs/en/contributing/module-boundaries.md ROADMAP.md"
 git add $PATHS && git commit -F /tmp/claude-1000/msg-si-6.txt -- $PATHS
 git show --stat HEAD && git status --short
 ```
@@ -6905,7 +6905,7 @@ git diff main..HEAD -- openapi/testdata/exchanges   # must print nothing
 grep -rn "kind = 'outlay' AND (\(e\.\)\?paid_by IS NULL" apps/server/internal/expenses/queries/   # must print nothing: every copy calls the function
 grep -rn "kindOutlay" apps/server/internal/expenses/*.go | grep -v _test   # each remaining one is outlay-only on purpose (the receipt threshold, parseOutlay, the switch arms that list both kinds)
 cd apps/server && mise exec -- go test -count=1 -run 'TestNoModuleReferencesAnotherModulesSchema|TestSqlcSchemaListsOnlyTheModulesOwnMigrations|TestServeMuxConflictsArePinned' ./internal/db/ ./internal/openapi/ && cd ../..
-grep -rn "supplier invoice\|supplier_invoice\|supplierInvoices\|owes_employee" docs/expenses.md docs/projects.md docs/module-boundaries.md ROADMAP.md | head -40   # the docs say what the code does
+grep -rn "supplier invoice\|supplier_invoice\|supplierInvoices\|owes_employee" docs/src/content/docs/en/reference/expenses.md docs/src/content/docs/en/reference/projects.md docs/src/content/docs/en/contributing/module-boundaries.md ROADMAP.md | head -40   # the docs say what the code does
 ```
 Check, by eye: the spec commit, the plan commit and eight task commits, each trailer exactly `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`; nothing under `openapi/testdata/exchanges/`; `go.mod`/`go.sum` still untracked; no existing `required:` list changed in either yaml (the diff adds `required:` only inside `ExpensesProjectSummarySupplierInvoices` and `ProjectEconomySupplierInvoices`); one migration, `00033` (expenses); no expenses file imports projects or the reverse; no query names another module's schema; no `float64` multiplied into money anywhere in the diff; no new operation (`git diff main..HEAD -- openapi/*.yaml | grep -c operationId` prints 0); every directory call the diff adds (`checkSupplierInvoiceProject`, `financialProjects`, `supplierInvoiceProjects`, `projectOption` from the summary) runs before any `withLockedTx`, which the harness's locked-call check has already proven on every test.
 
@@ -7047,6 +7047,6 @@ Say: the PR's number and URL and CI's state; each test shown able to fail and wh
 
 **Placeholder scan.** Every step carries its code, SQL, yaml, test and command. The hedges left are about what a generator emits — sqlc's handling of the function's argument types (with the exact fallback in Task 1 Step 3), sqlc's name for the `supplier_invoice` flag, oapi-codegen's field names, Mantine's role for `DateInput` — each with the instruction to use what it emits and report it.
 
-**Name consistency.** Go: `kindSupplierInvoice`, `marksUp`, `takesReceipts`, `parseAmounts`, `parseSupplierInvoice`, `invoiceNumberMaxLength`, `supplierInvoiceNeedsProject`, `supplierInvoiceNotInClaim`, `supplierInvoicePaidByCompany`, `checkLine`, `checkSupplierInvoiceProject`, `projectCancelled`, `cannotRecordSupplierInvoice`, `supplierInvoiceOnCancelledProject`, `optionalPgDate`, `projectScope`, `financialProjects`, `supplierInvoiceDocumentRefusal`, `projectOption`, `supplierInvoiceProjects`, `owesEmployee`/`OwesEmployee`, `splitSum`, `sumOf`, `pickBucket`, `split`, `contracts.ExpenseSplit`, `CurrencyExpenses.SupplierInvoices`, `expenseSplit`, `expenseSplitOf`, `setSupplierInvoices`, `spentSplit`. SQL: `expenses.owes_employee(kind, paid_by)`, `supplier_invoice_number`, `supplier_due_date`, `@supplier_invoices_all`, `@financial_project_ids`, `supplier_invoice` (the grouped flag). Wire: `invoiceNumber`, `dueDate`, `kind=supplier_invoice`, `canRecordSupplierInvoice`, `project`, `supplierInvoices`, `ExpensesProjectSummarySupplierInvoices`, `ProjectEconomySupplierInvoices`. TS: `ExpenseKind` `"supplier_invoice"`, `entersAnAmount`, `takesReceipts`, `INVOICE_NUMBER_MAX_LENGTH`, `ProjectPicker`, `expenseProjectsQueryOptions(kind)`, `useProjectOptions(…, kind)`, `ProjectExpensesSupplierInvoices`, `EconomySupplierInvoices`, `supplierInvoice()`, `categoriesWithSubcontractor`, `supplierInvoiceProjects`, `canRecordSupplierInvoice`, `summaryProject`. Test ids: `company-pays`, `attach-supplier-invoice`, `project-expense-supplier-invoices-<CUR>`, `expense-supplier-invoices`. The refusal sentences are the same words in `entries_validation.go`/`entries.go`/`flow.go`, the Go tests, the fetch fake, the i18n catalogs (where the client says them itself) and `docs/expenses.md`.
+**Name consistency.** Go: `kindSupplierInvoice`, `marksUp`, `takesReceipts`, `parseAmounts`, `parseSupplierInvoice`, `invoiceNumberMaxLength`, `supplierInvoiceNeedsProject`, `supplierInvoiceNotInClaim`, `supplierInvoicePaidByCompany`, `checkLine`, `checkSupplierInvoiceProject`, `projectCancelled`, `cannotRecordSupplierInvoice`, `supplierInvoiceOnCancelledProject`, `optionalPgDate`, `projectScope`, `financialProjects`, `supplierInvoiceDocumentRefusal`, `projectOption`, `supplierInvoiceProjects`, `owesEmployee`/`OwesEmployee`, `splitSum`, `sumOf`, `pickBucket`, `split`, `contracts.ExpenseSplit`, `CurrencyExpenses.SupplierInvoices`, `expenseSplit`, `expenseSplitOf`, `setSupplierInvoices`, `spentSplit`. SQL: `expenses.owes_employee(kind, paid_by)`, `supplier_invoice_number`, `supplier_due_date`, `@supplier_invoices_all`, `@financial_project_ids`, `supplier_invoice` (the grouped flag). Wire: `invoiceNumber`, `dueDate`, `kind=supplier_invoice`, `canRecordSupplierInvoice`, `project`, `supplierInvoices`, `ExpensesProjectSummarySupplierInvoices`, `ProjectEconomySupplierInvoices`. TS: `ExpenseKind` `"supplier_invoice"`, `entersAnAmount`, `takesReceipts`, `INVOICE_NUMBER_MAX_LENGTH`, `ProjectPicker`, `expenseProjectsQueryOptions(kind)`, `useProjectOptions(…, kind)`, `ProjectExpensesSupplierInvoices`, `EconomySupplierInvoices`, `supplierInvoice()`, `categoriesWithSubcontractor`, `supplierInvoiceProjects`, `canRecordSupplierInvoice`, `summaryProject`. Test ids: `company-pays`, `attach-supplier-invoice`, `project-expense-supplier-invoices-<CUR>`, `expense-supplier-invoices`. The refusal sentences are the same words in `entries_validation.go`/`entries.go`/`flow.go`, the Go tests, the fetch fake, the i18n catalogs (where the client says them itself) and `docs/src/content/docs/en/reference/expenses.md`.
 
 **Real paths, numbers and commands.** Checked on the branch before writing: the latest migration is `00032_time_work_types.sql`, so `00033` is free; `apps/server/internal/expenses/sqlc.yaml` lists 00012–00014; every file under **Modify** exists (`ls`), every file under **Create** does not; `openapi/testdata/exchanges/` holds no `expenses.jsonl` or `projects.jsonl`; `apps/server/internal/openapi/cmd/contract` exists; `bun run gen:client`, `translations:check` and `i18n:test` are root `package.json` scripts; `test`, `typecheck` and `lint` are both packages' scripts; `/tmp/claude-1000/` exists; the seeded settings row has no receipt threshold and a 0 % default markup (00012), so the tests' outlays need no receipt and a supplier invoice bills its net; the second seeded category is `Subcontractor`, id 1002; `projects.visible` (00008) is the precedent for a schema-qualified SQL function in an sqlc query. **Every edit anchor was checked by a script** (`/tmp/claude-1000/anchorcheck.py`) that applies the plan's replacements in order to copies of the files — Task 1's `sed` included — and asserts each anchor occurs exactly once in its file at the moment it is applied: 195 anchors, none missing, none ambiguous. The same script then wrote the result — every replacement, every **Create**, the appends and the two whole-block replacements — into a scratch worktree of the spec commit, where `go generate ./...`, `gofmt`, `go vet`, `golangci-lint` (0 issues), the expenses, projects, customers, openapi, db, module and integration suites, `bun run gen:client`, both frontend packages' typecheck, lint and tests (expenses 237 tests, projects' economy 73) and `translations:check`/`i18n:test` all passed; that run is how the integration test's object store (Task 5) and the `time` import (Task 2 Step 4) came to be in this plan. `biome check --write` reformatted three of the touched frontend files there, which Task 7 Step 5 does as a matter of course. The two whole-block replacements it does not apply by text (`parseOutlay`, from its doc comment to `refuseMileageFields(body, kindOutlay, add)`; and `projectoptions.go`, replaced whole) were checked by hand: both bounds occur once.

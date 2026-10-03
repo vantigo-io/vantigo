@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.27 (pgx, sqlc, goose, oapi-codegen strict server), PostgreSQL 18, React + Mantine + TanStack Router/Query, vitest, bun, mise.
 
-**Spec:** `docs/superpowers/specs/2026-09-23-customers-owner-tags-design.md` (D1–D4 + "Out of scope" + "Testing"). Read it first; it is binding. It builds on `docs/superpowers/specs/2026-09-21-customers-foundation-design.md` (the revision rules D5 and the actor rule D1) and on `docs/customers.md`.
+**Spec:** `docs/superpowers/specs/2026-09-23-customers-owner-tags-design.md` (D1–D4 + "Out of scope" + "Testing"). Read it first; it is binding. It builds on `docs/superpowers/specs/2026-09-21-customers-foundation-design.md` (the revision rules D5 and the actor rule D1) and on `docs/src/content/docs/en/reference/customers.md`.
 
 ## Global Constraints
 
@@ -5208,8 +5208,8 @@ git show --stat HEAD && git status --short
 ### Task 7: Documentation (D1–D4)
 
 **Files:**
-- Modify: `docs/customers.md`, `ROADMAP.md`
-- Check and modify only if they enumerate something this delivery changed: `CONTRIBUTING.md`, `docs/module-boundaries.md`
+- Modify: `docs/src/content/docs/en/reference/customers.md`, `ROADMAP.md`
+- Check and modify only if they enumerate something this delivery changed: `CONTRIBUTING.md`, `docs/src/content/docs/en/contributing/module-boundaries.md`
 
 **Interfaces:** none — this task adds no code and no test.
 
@@ -5219,11 +5219,11 @@ git show --stat HEAD && git status --short
 cd /home/anders/projects/vantigo/vantigo
 grep -rn 'customer.contact_info_updated' docs/ CONTRIBUTING.md
 grep -rn '40 operations\|fourteen permissions\|fourteen keys' docs/ CONTRIBUTING.md apps/server/internal/customers/module.go
-grep -rn 'UserDirectory' docs/module-boundaries.md
+grep -rn 'UserDirectory' docs/src/content/docs/en/contributing/module-boundaries.md
 ```
-The first tells you where the timeline's generated event types are listed (two new ones must join them). The second tells you which counts are now wrong — the operation count in `docs/customers.md`'s API section moves by seven; the permission count does **not** move, because this delivery adds no key. The third tells you whether `docs/module-boundaries.md` describes who reads the user directory: customers now does, for the owner, and if that file lists the readers it gains one line.
+The first tells you where the timeline's generated event types are listed (two new ones must join them). The second tells you which counts are now wrong — the operation count in `docs/src/content/docs/en/reference/customers.md`'s API section moves by seven; the permission count does **not** move, because this delivery adds no key. The third tells you whether `docs/src/content/docs/en/contributing/module-boundaries.md` describes who reads the user directory: customers now does, for the owner, and if that file lists the readers it gains one line.
 
-- [ ] **Step 2: Add the new section to `docs/customers.md`**
+- [ ] **Step 2: Add the new section to `docs/src/content/docs/en/reference/customers.md`**
 
 Insert a new `## Owner and tags` section after the billing-profile section and before `## The timeline`, written in that file's own voice — full sentences explaining *why*, not a field list:
 
@@ -5324,19 +5324,19 @@ protection gained.
 
 - [ ] **Step 4: Mark the delivery in `ROADMAP.md`**
 
-`### Phase 4 — Light CRM` keeps its intro but gains a delivery paragraph in the shape phase 3's deliveries have (`**Delivery A (done)** — …`), with a link to the spec and to `docs/customers.md#owner-and-tags`, naming what shipped (one owner, the `me`/`none` filter, the tag vocabulary with a case-insensitive name, the set replace, the two timeline events) and what is still ahead in the phase (typed contact roles with a primary contact; follow-ups; customer groups with defaults; attachments, still waiting on the storage module). Change the heading to `### Phase 4 — Light CRM (in progress)` only if the file uses that convention for a partly-delivered phase — check phase 2's heading and follow it.
+`### Phase 4 — Light CRM` keeps its intro but gains a delivery paragraph in the shape phase 3's deliveries have (`**Delivery A (done)** — …`), with a link to the spec and to `docs/src/content/docs/en/reference/customers.md#owner-and-tags`, naming what shipped (one owner, the `me`/`none` filter, the tag vocabulary with a case-insensitive name, the set replace, the two timeline events) and what is still ahead in the phase (typed contact roles with a primary contact; follow-ups; customer groups with defaults; attachments, still waiting on the storage module). Change the heading to `### Phase 4 — Light CRM (in progress)` only if the file uses that convention for a partly-delivered phase — check phase 2's heading and follow it.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo
 printf '%s\n\n%s\n' 'docs(customers): the owner and the tag vocabulary' 'Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>' > /tmp/msg-owner-task7
-git add docs/customers.md ROADMAP.md
+git add docs/src/content/docs/en/reference/customers.md ROADMAP.md
 git commit -F /tmp/msg-owner-task7 -- $(git diff --cached --name-only)
 git show --stat HEAD && git status --short
 ```
 
-(If `CONTRIBUTING.md` or `docs/module-boundaries.md` needed a line, add them to both the `git add` and the pathspec.)
+(If `CONTRIBUTING.md` or `docs/src/content/docs/en/contributing/module-boundaries.md` needed a line, add them to both the `git add` and the pathspec.)
 
 ---
 

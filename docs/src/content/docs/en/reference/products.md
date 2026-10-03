@@ -1,5 +1,11 @@
-# Products module
-
+---
+title: "Products module"
+description: "The catalog of goods and services the company sells, with prices."
+sources:
+  - apps/server/internal/products
+  - apps/products/frontend
+  - openapi/products.yaml
+---
 The Products module is the catalog of everything the company sells: physical goods
 and performed services alike. It is a vertical-slice module inside the single Vantigo
 binary (`apps/server/internal/products`), owns the `products` schema in the shared
@@ -36,14 +42,14 @@ resolved VAT rate must be snapshotted at transaction time; consumers must not jo
 historical transactions back to mutable catalog prices or tax categories.
 
 Cross-module reads go through `internal/contracts`, never through another module's
-schema or HTTP endpoints — see [module boundaries](module-boundaries.md).
+schema or HTTP endpoints — see [module boundaries](/en/contributing/module-boundaries/).
 
 ## API
 
 Versioned REST endpoints live under `/api/v1/products`, authenticated with the shared
 identity session cookie. Mutating browser requests are protected by origin checks
 rather than an antiforgery token — see
-[identity and authentication](customers-authentication.md).
+[identity and authentication](/en/admin/authentication/).
 
 | Endpoint | Description |
 | --- | --- |

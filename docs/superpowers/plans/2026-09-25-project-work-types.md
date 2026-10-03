@@ -68,7 +68,7 @@
 | `apps/server/internal/contracts/actuals.go` | `WorkTypeActuals`, `ProjectActualsEntry.WorkTypes` (Task 2) |
 | `apps/server/internal/projects/economy.go`, `harness_test.go`, `economy_work_types_test.go`, `economy_expenses_test.go` | the economy's `workTypes` block, named from projects' own table; the golden test's second allowed field (Task 3) |
 | `apps/server/internal/integration/work_types_test.go` | projects + time composed for real (Task 4) |
-| `docs/projects.md`, `docs/time.md`, `docs/module-boundaries.md`, `ROADMAP.md` | D6 (Task 5) |
+| `docs/src/content/docs/en/reference/projects.md`, `docs/src/content/docs/en/reference/time.md`, `docs/src/content/docs/en/contributing/module-boundaries.md`, `ROADMAP.md` | D6 (Task 5) |
 | `apps/projects/frontend/src/{api/projects.ts,api/work-types.ts,api/work-types.test.ts,api/economy.ts,pages/project-billing.tsx,pages/project-billing.test.tsx,pages/-work-type-form-modal.tsx,pages/-work-type-form-modal.test.tsx,pages/project-economy.tsx,pages/project-economy.test.tsx,pages/-project-timeline.tsx,pages/-project-timeline.test.tsx,i18n.ts}` | the card, the modal, the timeline, the economy table (Task 6) |
 | `apps/time/frontend/src/{api/projects.ts,api/projects.test.ts,api/entries.ts,api/entries.test.ts,lib/money.ts,lib/money.test.ts,components/work-type-badge.tsx,components/rate-line.tsx,pages/-entry-form-modal.tsx,pages/day.tsx,pages/day.test.tsx,pages/approvals.tsx,pages/approvals.test.tsx,pages/my-week.tsx,pages/my-week.test.tsx,test/server.ts,test/fixtures.ts,i18n.ts}` | the select, the badges, the rate line, the exact amount (Task 7) |
 
@@ -1262,7 +1262,7 @@ import (
 // caller's access to it (404 before 403), then the body — and differ from
 // them in one place on purpose: no project-row lock. The lock guards writes
 // whose validity depends on the project's currency, fixed price or billing
-// type (docs/projects.md's "Locking"), and a work type depends on none of
+// type (docs/src/content/docs/en/reference/projects.md's "Locking"), and a work type depends on none of
 // them. Each write is one plain transaction; the name's uniqueness is the
 // unique index's, whose 23505 is the 409.
 //
@@ -1776,7 +1776,7 @@ Create `apps/server/internal/db/migrations/00032_time_work_types.sql`:
 -- says what the rate was and what multiplied it. numeric(6,2) is the scale
 -- projects stores the percentages in, so a snapshot never rounds one.
 -- work_type_id is opaque — work types are projects' rows
--- (docs/module-boundaries.md rule 4) — and no CHECK ties the four together,
+-- (docs/src/content/docs/en/contributing/module-boundaries.md rule 4) — and no CHECK ties the four together,
 -- house style: the save writes all four or none.
 ALTER TABLE time.entries
     ADD COLUMN work_type_id            integer,
@@ -3689,11 +3689,11 @@ git show --stat HEAD && git status --short
 The four documents say what the code now does. Every sentence below is checked against Tasks 1–4's code before it is committed.
 
 **Files:**
-- Modify: `docs/projects.md`, `docs/time.md`, `docs/module-boundaries.md`, `ROADMAP.md`
+- Modify: `docs/src/content/docs/en/reference/projects.md`, `docs/src/content/docs/en/reference/time.md`, `docs/src/content/docs/en/contributing/module-boundaries.md`, `ROADMAP.md`
 
 **Interfaces:** none.
 
-- [ ] **Step 1: `docs/projects.md`**
+- [ ] **Step 1: `docs/src/content/docs/en/reference/projects.md`**
 
 In the Domain model list, replace
 
@@ -3835,7 +3835,7 @@ In the API table, directly after the `PUT /api/v1/projects/{id}/billing-lines/{l
 
 In "## Locking", at the end of its first paragraph (after `… so nothing can deadlock.`), add: `A work type's create and change take no project lock at all: nothing about a percentage depends on the project's currency, fixed price or billing type.`
 
-- [ ] **Step 2: `docs/time.md`**
+- [ ] **Step 2: `docs/src/content/docs/en/reference/time.md`**
 
 In the Domain model's Time entry bullet, replace `` `rateSource` that produced them, a `status`, a `rejectionReason`, the`` with `` `rateSource` that produced them, the picked work type's snapshot (`workTypeId`, its name, `billMultiplierPercent` and `costMultiplierPercent`; all empty for ordinary hours), a `status`, a `rejectionReason`, the``.
 
@@ -3905,9 +3905,9 @@ In "## What Time reports to other modules", directly before the bullet that begi
   `ActualsForProjects` does not carry it.
 ```
 
-- [ ] **Step 3: `docs/module-boundaries.md` and `ROADMAP.md`**
+- [ ] **Step 3: `docs/src/content/docs/en/contributing/module-boundaries.md` and `ROADMAP.md`**
 
-In `docs/module-boundaries.md`, replace
+In `docs/src/content/docs/en/contributing/module-boundaries.md`, replace
 
 ```markdown
 Time consumes four contracts and provides one:
@@ -3948,8 +3948,8 @@ resolved, keeps the base rates and snapshots the multipliers beside them,
 freezes them on submit, and multiplies where it sums, exactly; the actuals
 contract gains the work per type (ids and figures; Projects names the rows),
 and the Economy tab shows "Hours by work type". The Norwegian overtime case no longer needs a duplicate billing line.
-See [`docs/projects.md`](docs/projects.md#work-types) and
-[`docs/time.md`](docs/time.md#the-work-types-multiplier).
+See [`docs/src/content/docs/en/reference/projects.md`](docs/src/content/docs/en/reference/projects.md#work-types) and
+[`docs/src/content/docs/en/reference/time.md`](docs/src/content/docs/en/reference/time.md#the-work-types-multiplier).
 
 *Unblocks:* overtime billed and costed at its own rate on every project,
 without a line per kind of work.
@@ -3968,10 +3968,10 @@ deciding on once that lands, not committed work yet.
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo
-grep -n 'work-type-added\|work-type-changed' apps/server/internal/projects/timeline.go docs/projects.md
-grep -n 'Work type exists\|Work type is not on this project\|Work type is no longer active' apps/server/internal/projects/errors.go apps/server/internal/time/values.go docs/projects.md docs/time.md
+grep -n 'work-type-added\|work-type-changed' apps/server/internal/projects/timeline.go docs/src/content/docs/en/reference/projects.md
+grep -n 'Work type exists\|Work type is not on this project\|Work type is no longer active' apps/server/internal/projects/errors.go apps/server/internal/time/values.go docs/src/content/docs/en/reference/projects.md docs/src/content/docs/en/reference/time.md
 grep -n 'COALESCE(bill_multiplier_percent, 100) \* 0.01' apps/server/internal/time/queries/actuals.sql apps/server/internal/time/queries/stats.sql
-grep -n '(#work-types)\|(#hours-by-work-type)\|#the-work-types-multiplier' docs/projects.md docs/time.md ROADMAP.md
+grep -n '(#work-types)\|(#hours-by-work-type)\|#the-work-types-multiplier' docs/src/content/docs/en/reference/projects.md docs/src/content/docs/en/reference/time.md ROADMAP.md
 grep -n -A6 'type WorkTypeActuals struct' apps/server/internal/contracts/actuals.go   # no Name field: the docs must not promise one
 ```
 Every string the docs quote must be found in the code; every anchor must resolve to a heading (`## Work types` → `#work-types`, `### The work type's multiplier` → `#the-work-types-multiplier`). Then:
@@ -3982,7 +3982,7 @@ docs: work types, their multipliers, and what Time reports per type
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 EOF
-PATHS="docs/projects.md docs/time.md docs/module-boundaries.md ROADMAP.md"
+PATHS="docs/src/content/docs/en/reference/projects.md docs/src/content/docs/en/reference/time.md docs/src/content/docs/en/contributing/module-boundaries.md ROADMAP.md"
 git add $PATHS && git commit -F /tmp/claude-1000/msg-wt-5.txt -- $PATHS
 git show --stat HEAD && git status --short
 ```
@@ -5761,7 +5761,7 @@ git diff main..HEAD -- openapi/projects.yaml openapi/time.yaml
 git diff main..HEAD -- apps/server/internal/contracts apps/server/internal/module
 git diff main..HEAD -- openapi/testdata/exchanges   # must print nothing
 cd apps/server && mise exec -- go test -count=1 -run 'TestNoModuleReferencesAnotherModulesSchema|TestSqlcSchemaListsOnlyTheModulesOwnMigrations|TestServeMuxConflictsArePinned' ./internal/db/ ./internal/openapi/ && cd ../..
-grep -rn 'work-type\|workType\|WorkType' docs/projects.md docs/time.md docs/module-boundaries.md | head -40   # the docs say what the code does
+grep -rn 'work-type\|workType\|WorkType' docs/src/content/docs/en/reference/projects.md docs/src/content/docs/en/reference/time.md docs/src/content/docs/en/contributing/module-boundaries.md | head -40   # the docs say what the code does
 ```
 Check, by eye: the spec commit plus seven task commits, each trailer exactly `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`; nothing under `openapi/testdata/exchanges/`; `go.mod`/`go.sum` still untracked; no existing `required:` list changed in either yaml (the diff adds `required:` only inside `WorkTypeRequest`, `WorkTypeResponse`, `ProjectEconomyWorkType` and `TimeEntryWorkType`); two migrations, `00031` (projects) and `00032` (time); no projects file imports time or the reverse; no query names another module's schema; no `float64` multiplied into money anywhere in the diff (`git diff main..HEAD -- apps/server | grep -n '\* \*\|float64(.*) \*'` finds only display code or none); `internal/projects` computes no amount (grep the diff of `internal/projects` for `Mul(` — only none, or the existing economy math).
 
@@ -5870,6 +5870,6 @@ Say: the PR's number and URL and CI's state; each test shown able to fail and wh
 
 **Placeholder scan.** Every step carries its code, SQL, yaml, test and command; the three hedges left are about what a generator emits (sqlc/oapi-codegen names, Mantine's `NumberInput` role, extra ServeMux pins), each with the instruction to use what it emits and report it.
 
-**Name consistency.** Go: `WorkTypeEntry`, `WorkType`/`WorkTypes`, `WorkTypeActuals`, `ProjectActualsEntry.WorkTypes`, `workTypeExists`, `eventWorkTypeAdded`/`eventWorkTypeChanged`, `snapshotWorkType`, `multiplied`, `multiplierOf`, `economyWorkTypes`, `setWorkTypes` (projects fake), `setWorkType` (time fake). SQL: `projects.work_types(bill_multiplier_percent, cost_multiplier_percent)`, `ux_work_types_project_id_name`, `time.entries(work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent)`, `ProjectWorkTypeActualGroups`. Wire: `WorkTypeRequest`/`WorkTypeResponse` (`billMultiplierPercent`, `costMultiplierPercent`, `active`), `workTypeId`, `TimeEntryWorkType`, `multiplierPercent`/`effectiveRate`, `ProjectEconomyWorkType` (`hours`, `billAmount`, `costAmount`), `workTypes`. TS: `WorkType`, `WorkTypeInput`, `workTypesQueryOptions`, `EconomyWorkType`, `ProjectWorkType`, `projectWorkTypesQueryOptions`, `billedAmount`, `WorkTypeBadge`, `RateLine`, `kvemWorkTypes`. Timeline strings `work-type-added`/`work-type-changed` in `timeline.go`, `-project-timeline.tsx` and `docs/projects.md` alike.
+**Name consistency.** Go: `WorkTypeEntry`, `WorkType`/`WorkTypes`, `WorkTypeActuals`, `ProjectActualsEntry.WorkTypes`, `workTypeExists`, `eventWorkTypeAdded`/`eventWorkTypeChanged`, `snapshotWorkType`, `multiplied`, `multiplierOf`, `economyWorkTypes`, `setWorkTypes` (projects fake), `setWorkType` (time fake). SQL: `projects.work_types(bill_multiplier_percent, cost_multiplier_percent)`, `ux_work_types_project_id_name`, `time.entries(work_type_id, work_type_name, bill_multiplier_percent, cost_multiplier_percent)`, `ProjectWorkTypeActualGroups`. Wire: `WorkTypeRequest`/`WorkTypeResponse` (`billMultiplierPercent`, `costMultiplierPercent`, `active`), `workTypeId`, `TimeEntryWorkType`, `multiplierPercent`/`effectiveRate`, `ProjectEconomyWorkType` (`hours`, `billAmount`, `costAmount`), `workTypes`. TS: `WorkType`, `WorkTypeInput`, `workTypesQueryOptions`, `EconomyWorkType`, `ProjectWorkType`, `projectWorkTypesQueryOptions`, `billedAmount`, `WorkTypeBadge`, `RateLine`, `kvemWorkTypes`. Timeline strings `work-type-added`/`work-type-changed` in `timeline.go`, `-project-timeline.tsx` and `docs/src/content/docs/en/reference/projects.md` alike.
 
 **Real paths, numbers and commands.** Checked on the branch before writing: the latest migration is `00030_customers_personal_data.sql`, so `00031`/`00032` are free; every file under **Modify** exists (`ls`), and every edit anchor quoted in a "replace … with …" occurs exactly once in its file (a script counted them; the one that did not — `maps.Copy(body, overrides)`, twice in `time/harness_test.go` — is anchored on the switch above it); `openapi/testdata/exchanges/` holds no `projects.jsonl` or `time.jsonl`; `apps/server/internal/openapi/cmd/contract` exists; `bun run gen:client`, `translations:check` and `i18n:test` are root `package.json` scripts; `test`, `typecheck` and `lint` are both packages' scripts; `/tmp/claude-1000/` exists.

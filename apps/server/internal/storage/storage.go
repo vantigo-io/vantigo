@@ -7,17 +7,17 @@
 // Vantigo.Storage (packages/storage). .NET's physical key is
 // tenants/{tenant-id}/{scope}/{key}; the tenant segment is dropped with
 // tenancy, so the physical key here is just "{scope}/{key}"
-// (docs/storage.md "Tenant isolation, module scopes, and downloads").
+// (docs/src/content/docs/en/admin/object-storage.md "Tenant isolation, module scopes, and downloads").
 //
 // New picks the driver from config.Config.StorageProvider: "fs" (fs.go)
 // stores objects under StorageFSRoot. When StorageProvider is unset, New
 // still returns a usable store — the process starts — but every operation
 // on it reports ErrNotConfigured, mirroring .NET's host, which starts with
-// storage fail-closed when Storage__Provider is omitted (docs/storage.md).
+// storage fail-closed when Storage__Provider is omitted (docs/src/content/docs/en/admin/object-storage.md).
 //
 // There is deliberately no presigned-URL operation and no API here ever
 // returns a physical filesystem path: downloads stream through an
-// authorised application endpoint instead (docs/storage.md).
+// authorised application endpoint instead (docs/src/content/docs/en/admin/object-storage.md).
 package storage
 
 import (
@@ -37,7 +37,7 @@ const maxKeyBytes = 1024
 
 // ErrNotConfigured is returned by every ObjectStore operation when
 // STORAGE_PROVIDER is unset: the process starts, but storage fails closed
-// (docs/storage.md).
+// (docs/src/content/docs/en/admin/object-storage.md).
 var ErrNotConfigured = errors.New("storage: not configured")
 
 // ErrNotExist is the sentinel Get and Delete report for a key that has
@@ -75,7 +75,7 @@ type ObjectStore interface {
 // New builds the ObjectStore config.Config selects. StorageProvider "fs"
 // selects NewFS, rooted at StorageFSRoot. An unset StorageProvider is not a
 // construction error: New still returns a store, whose every operation
-// reports ErrNotConfigured (docs/storage.md's fail-closed host).
+// reports ErrNotConfigured (docs/src/content/docs/en/admin/object-storage.md's fail-closed host).
 func New(cfg *config.Config) (ObjectStore, error) {
 	switch cfg.StorageProvider {
 	case "":
@@ -136,7 +136,7 @@ type scopedStore struct {
 // NewScope wraps inner so every key passed to Put, Get, Exists and Delete
 // is combined with scope as "{scope}/{key}" before reaching inner. scope
 // must be a canonical lowercase [a-z0-9-] name; the relative keys callers
-// pass must not repeat it (docs/storage.md).
+// pass must not repeat it (docs/src/content/docs/en/admin/object-storage.md).
 func NewScope(inner ObjectStore, scope string) (ObjectStore, error) {
 	if inner == nil {
 		return nil, errors.New("storage: NewScope requires a non-nil store")

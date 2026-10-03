@@ -63,7 +63,7 @@
 | `apps/server/internal/invoices/{csvexport.go,csvfile.go,csvexport_test.go}`, `queries/export.sql` | the CSV (Task 7) |
 | `apps/server/internal/invoices/{stats.go,stats_test.go}`, `queries/stats.sql` | the summary (Task 8) |
 | `apps/server/internal/integration/{harness_test.go,invoices_test.go}` | the real-module test (Task 9) |
-| `docs/invoices.md`, `docs/{module-boundaries,customers,customers-authentication,README}.md`, `ROADMAP.md`, `deploy/compose/README.md` | D11 (Task 10) |
+| `docs/src/content/docs/en/reference/invoices.md`, `docs/{module-boundaries,customers,customers-authentication,README}.md`, `ROADMAP.md`, `deploy/compose/README.md` | D11 (Task 10) |
 | `apps/invoices/frontend/src/**` | the app (Task 11) |
 | `apps/host/frontend/src/{routes/dashboard.tsx,routes/customers/*,catalogs/{admin,customer,dashboard}.ts}` | the host (Task 12) |
 
@@ -265,10 +265,10 @@ The test harness: `newHarness(t, modtest.WithSMTPSend(fake.send), modtest.WithEn
 
 ### Task 10: The docs (D11)
 
-**Files:** modify `docs/invoices.md`, `docs/module-boundaries.md`, `docs/customers.md`, `docs/customers-authentication.md`, `ROADMAP.md`, `deploy/compose/README.md`, `docs/README.md` if its index describes modules.
+**Files:** modify `docs/src/content/docs/en/reference/invoices.md`, `docs/src/content/docs/en/contributing/module-boundaries.md`, `docs/src/content/docs/en/reference/customers.md`, `docs/src/content/docs/en/admin/authentication.md`, `ROADMAP.md`, `deploy/compose/README.md`, `docs/README.md` if its index describes modules.
 
-- [ ] **Step 1:** Write every section D11 lists, in `docs/invoices.md`'s voice; the endpoints table gains the five operations with their refusals; the permissions table the fifth key.
-- [ ] **Step 2: Check against the code** as 1A's Task 11 Step 3 did: every `codeX` constant and every `x-vantigo-access` of `openapi/invoices.yaml` appears in `docs/invoices.md`, and every code the doc names exists in Go (`grep -o '`[a-z_]*`' docs/invoices.md | sort -u` against `grep -ho 'code[A-Za-z]* *= "[a-z_]*"' apps/server/internal/invoices/*.go`).
+- [ ] **Step 1:** Write every section D11 lists, in `docs/src/content/docs/en/reference/invoices.md`'s voice; the endpoints table gains the five operations with their refusals; the permissions table the fifth key.
+- [ ] **Step 2: Check against the code** as 1A's Task 11 Step 3 did: every `codeX` constant and every `x-vantigo-access` of `openapi/invoices.yaml` appears in `docs/src/content/docs/en/reference/invoices.md`, and every code the doc names exists in Go (`grep -o '`[a-z_]*`' docs/src/content/docs/en/reference/invoices.md | sort -u` against `grep -ho 'code[A-Za-z]* *= "[a-z_]*"' apps/server/internal/invoices/*.go`).
 - [ ] **Step 3: Commit** `docs(invoices): payments and the state, sending, the export and the stats — what the code does`.
 
 ---

@@ -195,13 +195,13 @@ contact linker lowercases. The asymmetry is faithful, and the inventory records 
 2. The staged-upload expiry and the 10 MiB attachment limit move from the scanner to
    retention and to config (D3).
 3. DDL defaults are added for columns whose only default was a C# initialiser (D4).
-4. `docs/communications.md` is corrected in two places where it disagrees with the code:
+4. `docs/src/content/docs/en/reference/communications.md` is corrected in two places where it disagrees with the code:
    the outbox backoff cap is documented as 3600 s but `2^min(attempts,10)` clamps the
    real ceiling to 1024 s, and with `max_attempts = 8` the largest live backoff is 128 s;
    and the advisory lease is described as protecting every queue when in fact only
    retention takes it. The parent design's §3.10 inherits the same overstatement and is
    corrected with it.
-5. The Mailgun and scanning sections of `docs/communications.md` are removed, since the
+5. The Mailgun and scanning sections of `docs/src/content/docs/en/reference/communications.md` are removed, since the
    endpoints and workers they document no longer exist.
 6. Rejecting a non-SMTP channel provider reports `SMTP credentials require the smtp
    provider.` rather than .NET's `Provider must be smtp or mailgun.` The .NET message

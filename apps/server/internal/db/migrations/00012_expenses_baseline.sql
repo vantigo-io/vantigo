@@ -2,7 +2,7 @@
 CREATE SCHEMA expenses;
 
 -- Every foreign identifier here is opaque: users, projects and billing lines
--- live in other schemas (docs/module-boundaries.md rule 4). There are no CHECK
+-- live in other schemas (docs/src/content/docs/en/contributing/module-boundaries.md rule 4). There are no CHECK
 -- constraints anywhere in this schema — the house style is that the module's
 -- own validation owns the domain rules and reports them per field.
 

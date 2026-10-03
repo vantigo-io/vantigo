@@ -4,7 +4,7 @@
 
 **Goal:** A **person** customer's data can be handed to them in one file, and anonymised on a date a person chose — the row stays (its number, its place in projects and supply periods, the shape of its history), the person disappears from it — and the module's phase-1 promise, never a fødselsnummer, becomes a rule the validator enforces. One new permission key (`customers:personal-data`), one migration (`00030`), three operations (`GET /customers/{id}/personal-data`, `PUT`/`DELETE /customers/{id}/anonymisation`), three event types, one worker (`customers-anonymisation`), one many-provider contract slot (`contracts.CustomerPersonalData`), one new refusal (`customer_anonymised`).
 
-**Architecture:** `validateLegalIdentity` gains the national-identity-number refusal beside the organisation-number rule it already carries, so the create body, the legal-identity PUT and the CSV import refuse it through the one validator. `contracts.CustomerPersonalData` (`ExportCustomerData` outside any transaction, `EraseCustomerData` inside the caller's) is the second sanctioned cross-module direction, `docs/module-boundaries.md` rule 9; `module.Module.CustomerPersonalData` is a many-provider slot collected — from every module given, enabled or not, each under its module's name — by `module.Compose` (for the export, which runs in a Mount) **and** by `module.Workers` (for the worker, since worker mode never composes). Communications, energy and projects implement it in their own packages over their own sqlc files; communications' erase reuses the retention worker's delete machinery and cleanup ledger through a function extracted from `CleanupBatch`. In customers, migration `00030` adds `anonymise_on`/`anonymised_at`; `personal_data.go` builds the export in one read-only snapshot plus the pool decoration and each module's section, streamed as a JSON attachment (the CSV download's shape); `anonymisation.go` schedules and cancels under the customer's lock (restoring or retyping a customer cancels its schedule in the same transaction) and holds the per-customer anonymisation — the row cleared, addresses, Peppol answer and registry record deleted, associations detached and orphan contacts deleted, every timeline entry and revision rewritten set-based in SQL, merge chains followed, each module's eraser inside the transaction, then `anonymised_at`, the revision and `customer.anonymised`; `anonymisation_worker.go` is the registry feed's lease shape running at most 50 due customers a cycle, each in its own retried transaction. The merged-away refusal generalises into a read-only refusal (`customer_merged` or `customer_anonymised`) behind the same lock-time check. `anonymisation?` reaches `SafeCustomerResponse` through the batched decoration. The frontend gains a Personal data menu on a person's page behind `canManagePersonalData`, the scheduled and anonymised banners (the latter hiding every edit, the merged-away banner's shape), the three new timeline event labels, the read-only refusal's sentence, the host prop and the admin catalog label; en + nb.
+**Architecture:** `validateLegalIdentity` gains the national-identity-number refusal beside the organisation-number rule it already carries, so the create body, the legal-identity PUT and the CSV import refuse it through the one validator. `contracts.CustomerPersonalData` (`ExportCustomerData` outside any transaction, `EraseCustomerData` inside the caller's) is the second sanctioned cross-module direction, `docs/src/content/docs/en/contributing/module-boundaries.md` rule 9; `module.Module.CustomerPersonalData` is a many-provider slot collected — from every module given, enabled or not, each under its module's name — by `module.Compose` (for the export, which runs in a Mount) **and** by `module.Workers` (for the worker, since worker mode never composes). Communications, energy and projects implement it in their own packages over their own sqlc files; communications' erase reuses the retention worker's delete machinery and cleanup ledger through a function extracted from `CleanupBatch`. In customers, migration `00030` adds `anonymise_on`/`anonymised_at`; `personal_data.go` builds the export in one read-only snapshot plus the pool decoration and each module's section, streamed as a JSON attachment (the CSV download's shape); `anonymisation.go` schedules and cancels under the customer's lock (restoring or retyping a customer cancels its schedule in the same transaction) and holds the per-customer anonymisation — the row cleared, addresses, Peppol answer and registry record deleted, associations detached and orphan contacts deleted, every timeline entry and revision rewritten set-based in SQL, merge chains followed, each module's eraser inside the transaction, then `anonymised_at`, the revision and `customer.anonymised`; `anonymisation_worker.go` is the registry feed's lease shape running at most 50 due customers a cycle, each in its own retried transaction. The merged-away refusal generalises into a read-only refusal (`customer_merged` or `customer_anonymised`) behind the same lock-time check. `anonymisation?` reaches `SafeCustomerResponse` through the batched decoration. The frontend gains a Personal data menu on a person's page behind `canManagePersonalData`, the scheduled and anonymised banners (the latter hiding every edit, the merged-away banner's shape), the three new timeline event labels, the read-only refusal's sentence, the host prop and the admin catalog label; en + nb.
 
 **Tech Stack:** Go 1.27 (pgx, sqlc, oapi-codegen strict server), PostgreSQL 18, React + Mantine 9 + TanStack Query, vitest, bun, mise.
 
@@ -38,7 +38,7 @@
 
 - The timeline actor is resolved with `s.actorFor(ctx, ...)` before the transaction and only when a write will happen; no directory call inside a transaction.
 - `validateLegalID` REFUSES an eleven-digit Norwegian national identity number (fødselsnummer or D-number: both mod-11 check digits pass) for `country=no`+`type=person` — field error `legalId` "A Norwegian national identity number is never stored here"; other person identifiers stay free text. The one validator serves the identity PUT, create, and the CSV import.
-- `contracts.CustomerPersonalData` is a SECOND sanctioned cross-module direction with its own rule (`docs/module-boundaries.md` rule 9), NOT a method on the merge holder: `ExportCustomerData(ctx, id) (any, error)` runs outside any transaction; `EraseCustomerData(ctx, tx, id) ([]ErasedData{Kind, Count}, error)` runs INSIDE the customers anonymisation transaction on the module's own schema (the holder's rules: own code, no own tx, no lookups). `module.Module.CustomerPersonalData` is a many-provider slot collected from EVERY module Compose is given into `Deps.CustomerPersonalData`. Implementations: communications (export conversations/messages/attachment names; erase them via the retention cleanup ledger), energy (export supply periods + metering-point address; erase no-op), projects (export code/name/status/dates; erase no-op).
+- `contracts.CustomerPersonalData` is a SECOND sanctioned cross-module direction with its own rule (`docs/src/content/docs/en/contributing/module-boundaries.md` rule 9), NOT a method on the merge holder: `ExportCustomerData(ctx, id) (any, error)` runs outside any transaction; `EraseCustomerData(ctx, tx, id) ([]ErasedData{Kind, Count}, error)` runs INSIDE the customers anonymisation transaction on the module's own schema (the holder's rules: own code, no own tx, no lookups). `module.Module.CustomerPersonalData` is a many-provider slot collected from EVERY module Compose is given into `Deps.CustomerPersonalData`. Implementations: communications (export conversations/messages/attachment names; erase them via the retention cleanup ledger), energy (export supply periods + metering-point address; erase no-op), projects (export code/name/status/dates; erase no-op).
 - New sensitive key `customers:personal-data` (+ `customers:view`) gates `GET /customers/{id}/personal-data` (application/json download, PERSON customers only → 409 `personal_data_not_a_person`), `PUT /customers/{id}/anonymisation` `{anonymiseOn}` (person + ARCHIVED only → 409 `personal_data_customer_active`; today or later; events `customer.anonymisation_scheduled`/`_cancelled`) and `DELETE …/anonymisation`. Migration 00030: `anonymise_on date NULL`, `anonymised_at timestamptz NULL`, partial index. NO default date.
 - Worker `customers-anonymisation` (`CUSTOMERS_ANONYMISATION_ENABLED` default on, `_POLL` default 24h, advisory lease like the registry feed, ≤ 50 per cycle, `RunCycle` testable): each due customer in ONE transaction, row locked: name → "Anonymised person" (number kept), identity + contact info + website cleared, billing identifiers cleared (invoiceEmail, reminderEmail, peppolId, gln, buyerReference; terms/currency/language/delivery kept), addresses + peppol lookup deleted, associations detached and orphan contacts deleted, every timeline entry KEPT with content anonymised (manual summary/note → "[anonymised]"; generated payload keys `name`, `identity`, `contactInfo`, `billingProfile`, `before`, `after`, `changes`, `absorbed`, contact names → "[anonymised]"; ids/dates/counts kept; revisions the same), merge chains handled (customers merged into this one anonymised in the same run; the survivor's `absorbed` block rewritten if this one was merged away), each module's `EraseCustomerData` inside the tx, then `anonymised_at` + revision bump + `customer.anonymised` recorded LAST (generated fallback actor). A failing module rolls that customer back; the worker moves on.
 - An anonymised customer is read-only (409 `customer_anonymised` through the same lock-time check as `customer_merged`), stays archived, exports what is left, cannot be scheduled again.
@@ -69,16 +69,16 @@
 | `apps/server/internal/customers/values.go`, `values_test.go`, `export_test.go`, `national_identity_test.go` | the fødselsnummer refusal (Task 1) |
 | `apps/server/internal/contracts/personal_data.go`, `references.go` | `CustomerPersonalData`, `ErasedData`, `CustomerPersonalDataHolder` (Task 2) |
 | `apps/server/internal/module/module.go`, `compose.go`, `workers.go`, `compose_test.go`, `workers_test.go`, `apps/server/internal/modtest/modtest.go` | the slot, its collection, the harness seam (Task 2) |
-| `docs/module-boundaries.md` | rule 9 (Task 2) |
+| `docs/src/content/docs/en/contributing/module-boundaries.md` | rule 9 (Task 2) |
 | `apps/server/internal/{communications,energy,projects}/customer_personal_data.go`, `customer_personal_data_test.go`, `queries/customer_personal_data.sql` (+ generated `store/customer_personal_data.sql.go`), `module.go`; `communications/retention.go` | the three implementations (Task 3) |
-| `docs/communications.md`, `docs/projects.md` | their paragraphs (Task 3) |
+| `docs/src/content/docs/en/reference/communications.md`, `docs/src/content/docs/en/reference/projects.md` | their paragraphs (Task 3) |
 | `apps/server/internal/db/migrations/00030_customers_personal_data.sql`, `internal/customers/sqlc.yaml`, `internal/db/schema_test.go` | the two columns (Task 4) |
 | `apps/server/internal/customers/queries/personal_data.sql`, `queries/addresses.sql`, `queries/merge.sql` (+ generated `store/*.go`) | every new statement (Tasks 4–6) |
 | `openapi/customers.yaml` (+ generated `internal/openapi/specs/customers.yaml`, `internal/customers/gen/api.gen.go`, `apps/customers/frontend/src/api-schema.d.ts`), `openapi/COVERAGE.md`, `apps/server/internal/openapi/openapi_test.go` | three operations, five schemas, `anonymisation` (Tasks 4, 5) |
 | `apps/server/internal/customers/personal_data.go`, `owner.go`, `customers.go`, `module.go`, `personal_data_test.go`, `module_test.go` | the export, the decoration, the permission (Task 4) |
 | `apps/server/internal/customers/anonymisation.go`, `timeline_events.go`, `customers.go`, `customer_type.go`, `merge.go` (+ the renamed callers), `import.go`, `anonymisation_test.go` | scheduling, cancelling, and the read-only refusal (Task 5) |
 | `apps/server/internal/customers/anonymisation_worker.go`, `anonymisation.go`, `anonymisation_worker_test.go`, `module.go`, `export_test.go`; `internal/config/config.go`, `config_test.go`; `cmd/vantigo/main_test.go`; `deploy/compose/vantigo.env.example`; `internal/integration/personal_data_test.go` | the anonymisation and its worker (Task 6) |
-| `docs/customers.md`, `ROADMAP.md` | D6 (Task 7) |
+| `docs/src/content/docs/en/reference/customers.md`, `ROADMAP.md` | D6 (Task 7) |
 | `apps/customers/frontend/src/api/{customers.ts,customers.test.ts,merge.test.ts,import-export.ts,personal-data.ts,personal-data.test.ts}`, `lib/customer-write-error{,.test}.ts`, `pages/{-customer-personal-data.tsx,-customer-personal-data.test.tsx,customers.$customerId.tsx,-customer-timeline.tsx,-customer-timeline.test.tsx,-customer-form-modal.tsx,-customer-form-modal.test.tsx,-customer-merge-modal.tsx,-customer-import-modal.test.tsx}`, `i18n.ts` | the menu, the banners, the timeline, the refusals, the strings (Task 8) |
 | `apps/host/frontend/src/routes/customers/-customer-detail-layout.tsx`, `customer-detail-route.test.tsx`, `apps/host/frontend/src/catalogs/admin.ts`, `catalogs/admin.test.ts` | `canManagePersonalData`, the permission's labels (Task 8) |
 
@@ -89,7 +89,7 @@
 The promise the module has made since phase 1 becomes a rule: `no` + `person` + eleven digits whose two check digits pass is a 400, through the one validator every identity write uses.
 
 **Files:**
-- Modify: `apps/server/internal/customers/values.go`, `apps/server/internal/customers/values_test.go`, `apps/server/internal/customers/export_test.go`, `docs/customers.md`
+- Modify: `apps/server/internal/customers/values.go`, `apps/server/internal/customers/values_test.go`, `apps/server/internal/customers/export_test.go`, `docs/src/content/docs/en/reference/customers.md`
 - Create: `apps/server/internal/customers/national_identity_test.go`
 - Read first (do not change): `values.go:117-147` (`validNorwegianOrgNumber`), `values.go:452-501` (`validateLegalIdentity`), `import.go:470-490` (the CSV identity path and `identityColumns`), `csvimport_test.go:40-135` (`csvFileOf`, `postImport`, `legalHeader`, `cells`)
 
@@ -465,7 +465,7 @@ Expected: PASS, the existing identity tests included (`010170-12345`'s second ch
 
 Prove the tests can fail, restoring after each: delete the new `if … t == "person" && isNorwegianNationalID(i)` block — every `refused/…` case and the HTTP test go red; change `nationalIDFirstWeights`' first weight from 3 to 4 — the refused cases go red (the builder's own arithmetic no longer agrees); drop `r == '-'` from the `strings.Map` — "grouped with a hyphen" goes red; change `return second >= 0 && …` to `return true` — "a second check digit that fails" and the one-digit test go red. Say what each printed.
 
-In `docs/customers.md`, in `## Legal identity and its validation`, replace the `id` row of the table with:
+In `docs/src/content/docs/en/reference/customers.md`, in `## Legal identity and its validation`, replace the `id` row of the table with:
 
 ```markdown
 | `id` | Non-blank, at most 50 UTF-16 code units, trimmed and lower-cased — **except** when `country` is `no`: for `type` `business` it must be a Norwegian **organisasjonsnummer** (whitespace stripped, then exactly nine digits whose last is the mod-11 check digit — weights 3 2 7 6 5 4 3 2; a remainder that would produce check digit 10 is invalid outright — stored as the nine digits); for `type` `person` it must **not** be a Norwegian national identity number (below). |
@@ -511,7 +511,7 @@ person's.
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 EOF
 PATHS="apps/server/internal/customers/values.go apps/server/internal/customers/values_test.go \
- apps/server/internal/customers/export_test.go apps/server/internal/customers/national_identity_test.go docs/customers.md"
+ apps/server/internal/customers/export_test.go apps/server/internal/customers/national_identity_test.go docs/src/content/docs/en/reference/customers.md"
 git add $PATHS && git commit -F /tmp/claude-1000/msg-gdpr-1.txt -- $PATHS
 git show --stat HEAD && git status --short
 ```
@@ -526,7 +526,7 @@ The second write direction, with nobody calling it yet: the interface, the slot,
 
 **Files:**
 - Create: `apps/server/internal/contracts/personal_data.go`
-- Modify: `apps/server/internal/contracts/references.go`, `apps/server/internal/module/module.go`, `apps/server/internal/module/compose.go`, `apps/server/internal/module/workers.go`, `apps/server/internal/module/compose_test.go`, `apps/server/internal/module/workers_test.go`, `apps/server/internal/modtest/modtest.go`, `docs/module-boundaries.md`
+- Modify: `apps/server/internal/contracts/references.go`, `apps/server/internal/module/module.go`, `apps/server/internal/module/compose.go`, `apps/server/internal/module/workers.go`, `apps/server/internal/module/compose_test.go`, `apps/server/internal/module/workers_test.go`, `apps/server/internal/modtest/modtest.go`, `docs/src/content/docs/en/contributing/module-boundaries.md`
 - Read first (do not change): `compose.go:232-257` (the holders' collection this mirrors), `compose_test.go:1316-1455` (the holder tests these mirror), `workers_test.go:1-60`
 
 **Interfaces:**
@@ -719,7 +719,7 @@ import (
 // CustomerReferenceHolder, and deliberately not a method on it: a merge moves
 // references and keeps everything, an anonymisation keeps the references and
 // takes the person out of them, and a module may hold customer ids without
-// holding anything about a person (docs/module-boundaries.md rule 9).
+// holding anything about a person (docs/src/content/docs/en/contributing/module-boundaries.md rule 9).
 //
 // ExportCustomerData answers the module's section of a private person's
 // export: a JSON-serialisable value, nil when the module holds nothing for the
@@ -894,7 +894,7 @@ and in `New`'s `h.deps = module.Deps{…}` literal, directly after `CustomerRefe
 
 - [ ] **Step 6: The boundary rule**
 
-In `docs/module-boundaries.md`:
+In `docs/src/content/docs/en/contributing/module-boundaries.md`:
 
 Rule 3's second paragraph becomes:
 
@@ -977,14 +977,14 @@ module.Module.CustomerPersonalData is a many-provider slot collected from
 every module given, enabled or not, each under its module's name — by
 Compose for the export and by Workers for the worker, since worker mode
 never composes. modtest.WithCustomerPersonalData is the seam, and
-docs/module-boundaries.md gains rule 9.
+docs/src/content/docs/en/contributing/module-boundaries.md gains rule 9.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 EOF
 PATHS="apps/server/internal/contracts/personal_data.go apps/server/internal/contracts/references.go \
  apps/server/internal/module/module.go apps/server/internal/module/compose.go apps/server/internal/module/workers.go \
  apps/server/internal/module/compose_test.go apps/server/internal/module/workers_test.go \
- apps/server/internal/modtest/modtest.go docs/module-boundaries.md"
+ apps/server/internal/modtest/modtest.go docs/src/content/docs/en/contributing/module-boundaries.md"
 git add $PATHS && git commit -F /tmp/claude-1000/msg-gdpr-2.txt -- $PATHS
 git show --stat HEAD && git status --short
 ```
@@ -997,7 +997,7 @@ Three implementations, each one sqlc file of its own schema and one Go file, lan
 
 **Files:**
 - Create: `apps/server/internal/communications/customer_personal_data.go`, `communications/customer_personal_data_test.go`, `communications/queries/customer_personal_data.sql`; the same three in `apps/server/internal/energy/` and `apps/server/internal/projects/` (+ each generated `store/customer_personal_data.sql.go`)
-- Modify: `apps/server/internal/communications/retention.go`, `communications/module.go`, `energy/module.go`, `projects/module.go`, `docs/communications.md`, `docs/projects.md`
+- Modify: `apps/server/internal/communications/retention.go`, `communications/module.go`, `energy/module.go`, `projects/module.go`, `docs/src/content/docs/en/reference/communications.md`, `docs/src/content/docs/en/reference/projects.md`
 - Read first (do not change): `communications/retention.go:190-330` (`CleanupBatch`), `communications/objects.go:100-170` (`queueObjectForDeletion`), `communications/retention_test.go:36-140` (`seedRetentionMessage`), each package's `customer_references.go` and `customer_references_test.go` (the shape these copy), `energy/stats_test.go:29` (`insertActiveSupplyPeriod`), `energy/meteringpoints_test.go:15-43`
 
 **Interfaces:**
@@ -1954,7 +1954,7 @@ Expected: PASS — the retention suite included (its deletes are the same statem
 
 Prove the tests can fail, restoring after each: in `deleteMessages`, swap the events and deliveries deletes — the communications erase test goes red with SQLSTATE 23001 (and so does `TestRetention_DeletesEventsBeforeDeliveries`); remove the `queueObjectForDeletion` loop over `attachments` — the ledger assertion goes red; drop `ClearCustomerSuggestions` — the suggestion assertion goes red; make projects' erase `return nil, nil` — its kind assertion goes red; make energy's export skip the address — its assertion goes red. Say what each printed.
 
-In `docs/communications.md`, after the paragraph that begins `The one write in the other direction is a customer merge:`, add:
+In `docs/src/content/docs/en/reference/communications.md`, after the paragraph that begins `The one write in the other direction is a customer merge:`, add:
 
 ```markdown
 It also hands over and takes out what it holds about a private person —
@@ -1979,7 +1979,7 @@ a conversation being linked to the archived "Anonymised person" afterwards;
 `customer.peppol_lookup` entries keep their `smpHost`, derived from the participant id.
 ```
 
-In `docs/projects.md`, after the paragraph that begins `Projects also **holds customer references**`, add:
+In `docs/src/content/docs/en/reference/projects.md`, after the paragraph that begins `Projects also **holds customer references**`, add:
 
 ```markdown
 It hands a private person's projects over too — `contracts.CustomerPersonalData`
@@ -2015,7 +2015,7 @@ PATHS="apps/server/internal/communications/customer_personal_data.go apps/server
  apps/server/internal/energy/module.go \
  apps/server/internal/projects/customer_personal_data.go apps/server/internal/projects/customer_personal_data_test.go \
  apps/server/internal/projects/queries/customer_personal_data.sql apps/server/internal/projects/store/customer_personal_data.sql.go \
- apps/server/internal/projects/module.go docs/communications.md docs/projects.md"
+ apps/server/internal/projects/module.go docs/src/content/docs/en/reference/communications.md docs/src/content/docs/en/reference/projects.md"
 git add $PATHS && git commit -F /tmp/claude-1000/msg-gdpr-3.txt -- $PATHS
 git show --stat HEAD && git status --short
 ```
@@ -2052,7 +2052,7 @@ Create `apps/server/internal/db/migrations/00030_customers_personal_data.sql`:
 -- column says why a date was chosen: Norwegian bookkeeping rules keep accounting
 -- material for years after the fiscal year, this installation invoices nothing
 -- yet, and the person scheduling is the one who knows what was invoiced — so the
--- schema encodes no retention period at all (docs/customers.md, Personal data
+-- schema encodes no retention period at all (docs/src/content/docs/en/reference/customers.md, Personal data
 -- and anonymisation). anonymise_on stays set once the customer is anonymised,
 -- the record of what was asked for.
 --
@@ -2715,7 +2715,7 @@ import (
 // This file is GET /customers/{id}/personal-data (customers GDPR design D3): a
 // private person's data, all of it, in one file — what this module holds, read
 // in one snapshot, and what every other module holds, through
-// contracts.CustomerPersonalData (docs/module-boundaries.md rule 9). It is
+// contracts.CustomerPersonalData (docs/src/content/docs/en/contributing/module-boundaries.md rule 9). It is
 // shaped by nothing but customers:personal-data: that key means "may hand this
 // person their data", so the legal identity and the contacts are in the file
 // whether or not the caller could read them one by one. It is built in memory
@@ -4879,7 +4879,7 @@ In `deploy/compose/vantigo.env.example`, directly after `# CUSTOMERS_PEPPOL_RECH
 ```text
 #
 # The anonymisation worker carries out the anonymisations people schedule for
-# private-person customers (docs/customers.md, "Personal data and
+# private-person customers (docs/src/content/docs/en/reference/customers.md, "Personal data and
 # anonymisation"): once a day it takes every archived person whose day has come,
 # at most fifty a cycle, and removes the person from the customer while keeping
 # its number and the shape of its history. Turned off, scheduled dates wait.
@@ -5471,12 +5471,12 @@ git show --stat HEAD && git status --short
 ### Task 7: The docs (D6)
 
 **Files:**
-- Modify: `docs/customers.md`, `ROADMAP.md`
-- Read first (do not change): the spec's D1–D6 and "Out of scope"; `docs/customers.md` sections `## Statuses`, `## Merging duplicates`, `## Permissions`, `## The frontend`, `## API`, `## What comes next`; `ROADMAP.md` phase 6
+- Modify: `docs/src/content/docs/en/reference/customers.md`, `ROADMAP.md`
+- Read first (do not change): the spec's D1–D6 and "Out of scope"; `docs/src/content/docs/en/reference/customers.md` sections `## Statuses`, `## Merging duplicates`, `## Permissions`, `## The frontend`, `## API`, `## What comes next`; `ROADMAP.md` phase 6
 
 - [ ] **Step 1: The section**
 
-In `docs/customers.md`, directly before `## Brreg lookup`, add:
+In `docs/src/content/docs/en/reference/customers.md`, directly before `## Brreg lookup`, add:
 
 ```markdown
 ## Personal data and anonymisation
@@ -5694,7 +5694,7 @@ chosen day by a worker — the number, the dates and the shape of the history ke
 bookkeeping, the person taken out of the customer, its timeline and other modules
 through `contracts.CustomerPersonalData` (communications, energy, projects); behind the
 new `customers:personal-data`. See
-[`docs/customers.md#personal-data-and-anonymisation`](docs/customers.md#personal-data-and-anonymisation).
+[`docs/src/content/docs/en/reference/customers.md#personal-data-and-anonymisation`](docs/src/content/docs/en/reference/customers.md#personal-data-and-anonymisation).
 
 Phase 6 is complete, and with it the Customers roadmap. Still deferred, each waiting on
 another module: attachments on the timeline, and the other modules' timeline writers,
@@ -5705,8 +5705,8 @@ which need the outbox (Orders).
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo
-grep -n 'personal-data-and-anonymisation\|module-boundaries.md#the-rules' docs/customers.md docs/module-boundaries.md docs/communications.md docs/projects.md ROADMAP.md
-grep -n '^## Personal data and anonymisation' docs/customers.md
+grep -n 'personal-data-and-anonymisation\|module-boundaries.md#the-rules' docs/src/content/docs/en/reference/customers.md docs/src/content/docs/en/contributing/module-boundaries.md docs/src/content/docs/en/reference/communications.md docs/src/content/docs/en/reference/projects.md ROADMAP.md
+grep -n '^## Personal data and anonymisation' docs/src/content/docs/en/reference/customers.md
 ```
 
 Read every sentence of the new section against the code it describes: the key lists against `personalPayloadKeys`/`keptSummaryEventTypes` in `anonymisation.go`, the cleared columns against `AnonymiseCustomerRow`, the kinds against the constants and each module's `EraseCustomerData`, the refusal titles and codes against `merge.go`/`anonymisation.go`/`personal_data.go`, the defaults against `config.go`, the operation count against `grep -c 'operationId:' openapi/customers.yaml` (63). Fix the docs, not the code, where they disagree — unless the code contradicts the spec, in which case stop and say so.
@@ -5715,7 +5715,7 @@ Read every sentence of the new section against the code it describes: the key li
 cat > /tmp/claude-1000/msg-gdpr-7.txt <<'EOF'
 docs(customers): personal data and anonymisation, and phase 6 delivery C
 
-docs/customers.md gains Personal data and anonymisation — the export's
+docs/src/content/docs/en/reference/customers.md gains Personal data and anonymisation — the export's
 contents and why one key shapes it, the scheduling rules and why there
 is no default day, exactly what the worker clears, keeps and rewrites
 and why the number and dates stay, merge chains, the read-only rule and
@@ -5726,7 +5726,7 @@ complete.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 EOF
-PATHS="docs/customers.md ROADMAP.md"
+PATHS="docs/src/content/docs/en/reference/customers.md ROADMAP.md"
 git add $PATHS && git commit -F /tmp/claude-1000/msg-gdpr-7.txt -- $PATHS
 git show --stat HEAD && git status --short
 ```
@@ -6798,7 +6798,7 @@ git diff --stat main..HEAD
 git diff main..HEAD -- openapi/customers.yaml
 git diff main..HEAD -- apps/server/internal/module apps/server/internal/contracts
 cd apps/server && mise exec -- go test -count=1 -run 'TestNoModuleReferencesAnotherModulesSchema|TestSqlcSchemaListsOnlyTheModulesOwnMigrations' ./internal/db/ && cd ../..
-grep -rn 'fødselsnummer\|personal-data\|anonymis' docs/customers.md | head -40   # the docs say what the code does
+grep -rn 'fødselsnummer\|personal-data\|anonymis' docs/src/content/docs/en/reference/customers.md | head -40   # the docs say what the code does
 ```
 Check, by eye: the design and plan commits plus eight task commits, each trailer `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`; nothing under `openapi/testdata/exchanges/`; `go.mod`/`go.sum` still untracked; no existing `required:` list changed; one migration (`00030`); no customers file imports another module; no query names another schema; no real person's national identity number anywhere in the diff (`git diff main..HEAD | grep -E '\b[0-9]{11}\b'` finds only what the tests build or none).
 
@@ -6822,7 +6822,7 @@ roadmap's last delivery.
   any transaction, erase inside the customers module's — collected from every module given,
   by Compose and by Workers (worker mode never composes). Communications hands over and
   deletes the person's correspondence through the retention worker's own deletes and
-  cleanup ledger; energy and projects hand over and keep. `docs/module-boundaries.md` gains
+  cleanup ledger; energy and projects hand over and keep. `docs/src/content/docs/en/contributing/module-boundaries.md` gains
   rule 9.
 - **`GET /customers/{id}/personal-data`** behind the new sensitive `customers:personal-data`
   (+ view): the row, identity, contact info, addresses, billing profile, owner, group, tags,

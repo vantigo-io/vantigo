@@ -37,7 +37,7 @@ const storageScope = "expenses"
 // configured object store cannot be built — StorageProvider "fs" with a root
 // that cannot be opened. An unset provider is not an error: the process starts
 // and every storage operation fails closed with storage.ErrNotConfigured
-// (docs/storage.md), which this module answers as a 503.
+// (docs/src/content/docs/en/admin/object-storage.md), which this module answers as a 503.
 func newServer(d module.Deps) (*server, error) {
 	objects, err := moduleObjectStore(d)
 	if err != nil {

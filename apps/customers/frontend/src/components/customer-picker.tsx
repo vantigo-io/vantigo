@@ -15,7 +15,7 @@ const CUSTOMER_PICKER_PAGE_SIZE = 20;
  * Picks another customer, searching this module's own list as the user types
  * (customers merge design D4). It is the projects package's `CustomerPicker`
  * shape, copied rather than imported — module frontends never import one
- * another (docs/module-boundaries.md rule 7) — with three differences the merge
+ * another (docs/src/content/docs/en/contributing/module-boundaries.md rule 7) — with three differences the merge
  * needs:
  *
  *  - The value is the whole customer, not an id: the modal says what will

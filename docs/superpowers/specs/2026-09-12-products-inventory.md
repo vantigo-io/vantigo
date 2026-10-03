@@ -167,7 +167,7 @@ endpoints check by hand (e.g. nothing stops direct DbContext misuse from leaving
   rounding at the app level** — Postgres `numeric(5,4)` (§3) silently rounds/truncates to 4 decimal places on
   insert. Products reference a tax category by id rather than copying the rate, so a rate edit changes what
   *future* reads compute — there is no snapshot/versioning of historical rates in this module (the module's own
-  docs say consumers must snapshot the rate at transaction time, `docs/products.md:33-35`).
+  docs say consumers must snapshot the rate at transaction time, `docs/src/content/docs/en/reference/products.md:33-35`).
 - **Money / pricing** (`DM/ProductPrice.cs`, `DM/ProductPricing.cs`):
   - No dedicated Money type — `Amount` is a plain `decimal`, `Currency` a 3-letter ISO 4217 string, uppercased on
     input (`EP/Products/Dtos/ProductPriceRequest.cs:41`), validated as exactly 3 ASCII letters

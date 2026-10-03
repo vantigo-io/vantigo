@@ -183,7 +183,7 @@ describe("contact details page", () => {
     // Unlike the customer dashboard's contacts card — which holds every
     // association at that customer and can scan them for another holder —
     // this page lists the contact's own customers, so it always passes
-    // soleRoles: [] and gets the general wording (design D5, docs/customers.md).
+    // soleRoles: [] and gets the general wording (design D5, docs/src/content/docs/en/reference/customers.md).
     stubFetch({
       "GET /api/v1/customers/contacts/1001": () => jsonResponse(200, anders),
       "GET /api/v1/customers/contacts/1001/customers": () =>

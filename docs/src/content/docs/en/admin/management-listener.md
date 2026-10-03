@@ -1,5 +1,11 @@
-# Management listener
-
+---
+title: "Management listener"
+description: "The private, bearer-protected status endpoint a control plane polls, and seating the first Owner by invitation."
+sidebar:
+  order: 40
+sources:
+  - apps/server/internal/management
+---
 A control plane that runs many Vantigo instances needs to ask each one three
 things without holding a user session: which version is running, whether its
 first Owner has been seated, and how much it is being used. The management

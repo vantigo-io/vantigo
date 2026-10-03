@@ -35,7 +35,7 @@ import (
 // same row, so they queue rather than deadlock; and a batch over several lines
 // takes them in id order, as every other batch in this module does. Nothing
 // inside any of these transactions calls another module or the object store
-// (the rule of docs/expenses.md, checked across the whole test suite): what a
+// (the rule of docs/src/content/docs/en/reference/expenses.md, checked across the whole test suite): what a
 // decision under the lock needs from a neighbour — the new project, its billing
 // lines — is read before the transaction opens, and what the response needs is
 // resolved after it commits.

@@ -1,0 +1,38 @@
+---
+title: Vantigo-dokumentasjon
+description: Alt Vantigo gjør, for de som bruker det og de som drifter det.
+template: splash
+hero:
+  tagline: Den åpne alt-i-ett-plattformen for å drive en bedrift. Kunder, prosjekter, timer, utlegg, fakturaer, produkter, energi og kommunikasjon i én applikasjon.
+  image:
+    file: ../../../assets/logo.png
+  actions:
+    - text: Brukerveiledning
+      link: /nb/user/
+      icon: right-arrow
+    - text: Administrasjon
+      link: /nb/admin/
+      icon: setting
+      variant: minimal
+---
+
+import { Card, CardGrid } from "@astrojs/starlight/components";
+
+<CardGrid stagger>
+  <Card title="Brukerveiledning" icon="open-book">
+    Slik får du jobben gjort i Vantigo: innlogging, hvordan du finner fram, og hver modul fra kundekortet til den sendte fakturaen.
+    [Åpne brukerveiledningen](/nb/user/)
+  </Card>
+  <Card title="Administrasjon" icon="setting">
+    Installere og drifte Vantigo selv: Docker Compose, konfigurasjon, single sign-on, e-post, lagring, sikkerhet og oppgradering.
+    [Åpne administrasjonsveiledningen](/nb/admin/)
+  </Card>
+  <Card title="Referanse" icon="document">
+    Domenemodellen, reglene, rettighetene og endepunktene i hver modul, skrevet ut fra det koden gjør.
+    [Åpne referansen](/nb/reference/)
+  </Card>
+  <Card title="Bidra" icon="github">
+    Få stacken til å kjøre, modulgrensene og konvensjonene en endring forventes å følge.
+    [Les bidragsveiledningen](/nb/contributing/)
+  </Card>
+</CardGrid>

@@ -1,5 +1,13 @@
-# Vantigo identity, authentication and deployment
-
+---
+title: "Identity, authentication and deployment"
+description: "Local accounts, the environment-configured OIDC provider, email, proxy trust, APP_SECRET-derived key material and migrations."
+sidebar:
+  order: 20
+sources:
+  - apps/server/internal/identity
+  - apps/server/internal/config
+  - apps/server/cmd/vantigo
+---
 Vantigo authenticates the browser SPA and the same-origin API with an application
 cookie issued by the identity module. The API answers JSON `401`/`403` problems
 rather than login redirects.
@@ -19,10 +27,10 @@ host filtering is derived from `APP_URL`. Cross-origin SPA/API hosting is not a
 supported deployment shape.
 
 For static workforce OIDC, SCIM 2.0, provider setup and the operator recovery
-runbook, see [SSO and SCIM operations](sso-scim-operations.md).
+runbook, see [SSO and SCIM operations](/en/admin/sso-scim/).
 
 Every setting this document names is read by
-[`apps/server/internal/config/config.go`](../apps/server/internal/config/config.go),
+[`apps/server/internal/config/config.go`](https://github.com/vantigo-io/vantigo/blob/main/apps/server/internal/config/config.go),
 whose field comments are the authoritative reference. Configuration is parsed once
 at startup and **every** problem is reported at once, so a misconfigured container
 fails its first boot with the complete list instead of one restart per mistake.
@@ -238,7 +246,7 @@ SMTP_TLS=starttls
 
 `SMTP_HOST` and a valid `SMTP_FROM` address are required for the SMTP driver.
 `SMTP_TLS` is `starttls` (the default), `implicit`, or `none` — the operator's
-choice; see [transport security](transport-security.md) for what `none` costs.
+choice; see [transport security](/en/admin/transport-security/) for what `none` costs.
 STARTTLS is mandatory rather than opportunistic — a server that offers no TLS
 produces an error, not a plaintext delivery. `SMTP_USERNAME` is optional for servers
 that need no authentication.
@@ -246,7 +254,7 @@ that need no authentication.
 SMTP destinations are resolved and checked before the socket opens: private,
 loopback, link-local, carrier-grade-NAT and cloud-metadata addresses are refused,
 and the connection is made to the address that was checked rather than a fresh
-lookup. See [transport security](transport-security.md) for the rule and its escape
+lookup. See [transport security](/en/admin/transport-security/) for the rule and its escape
 hatch. A destination reached only through DNS64 on the local-use prefix
 `64:ff9b:1::/48` is refused outright (there is no single fixed offset to decode
 an embedded address from); a resolver on the well-known `64:ff9b::/96` prefix
@@ -254,14 +262,14 @@ works as normal.
 
 Invoices sends through the same configuration: a document e-mailed to a customer goes
 out from `SMTP_FROM`, under the seller's name and with the seller's e-mail as Reply-To,
-through this SMTP server and its guard ([Invoices](invoices.md#sending-a-document)).
+through this SMTP server and its guard ([Invoices](/en/reference/invoices/#sending-a-document)).
 Under `MAIL_DRIVER=log` nothing can be sent that way: the send answers 503
 `mail_unavailable`, and `GET /invoices/meta` answers `mailAvailable: false`.
 
 This is identity's application mail, and Invoices'. Communications' per-channel
 mailbox credentials are a different thing entirely — configured through the
 Communications API and sealed at rest, never environment variables. See
-[Communications](communications.md).
+[Communications](/en/reference/communications/).
 
 ## Key material
 
@@ -365,7 +373,7 @@ summary. Booleans are strict `0`/`1` switches — anything else fails startup.
 | `APP_TITLE`, `APP_LOGO_URL`, `APP_SUPPORT_EMAIL`, `APP_SUPPORT_PHONE`, `APP_SUPPORT_URL` | SPA branding | unset |
 
 The Peppol lookup treats NXDOMAIN and NOERROR-with-no-NAPTR-records as the same
-definitive "not registered" answer (`docs/customers.md#peppol-lookup`), since
+definitive "not registered" answer ([Peppol lookup](/en/reference/customers/#peppol-lookup)), since
 the SML publishes a name only for a registered participant. That makes the
 resolver named by `PEPPOL_DNS_SERVER` matter: one that answers NODATA instead
 of forwarding the authoritative NXDOMAIN — or that silently drops an
@@ -382,10 +390,10 @@ plain recursive resolver, not one that synthesizes or filters answers.
 | `MANAGEMENT_TOKEN` | Bearer token for it, ≥ 32 characters, no whitespace | unset (disabled) |
 
 The two are one switch: set both or neither. See
-[the management listener](management.md).
+[the management listener](/en/admin/management-listener/).
 
 Communications' own settings (`COMMUNICATIONS_*`) are documented in
-[Communications](communications.md). OpenTelemetry is configured with the standard
+[Communications](/en/reference/communications/). OpenTelemetry is configured with the standard
 `OTEL_EXPORTER_OTLP_*` variables, read by the OTel SDK rather than by `config.go`.
 
 ## Workforce OIDC
@@ -443,7 +451,7 @@ SCIM 2.0 is served at `/api/v1/identity/scim/v2` and authenticated by the static
 bearer token in `SCIM_TOKEN`; unset disables it. The token must not contain
 whitespace. **There is no file-based token variant** — inject the value from a
 secret manager. Rotation with a bounded overlap is described in
-[SSO and SCIM operations](sso-scim-operations.md).
+[SSO and SCIM operations](/en/admin/sso-scim/).
 
 ## Forwarded headers and HTTPS
 
@@ -479,7 +487,7 @@ One PostgreSQL database holds one schema per module — `identity`, `customers`,
 `products`, `energy`, `communications`, `projects` and `time` — migrated by plain SQL files embedded in
 the binary. Every schema is migrated regardless of which modules `MODULES` enables,
 so enabling a module later needs no migration. See the
-[contributor migration guide](../CONTRIBUTING.md#database-migrations) for how
+[contributor migration guide](https://github.com/vantigo-io/vantigo/blob/main/CONTRIBUTING.md#database-migrations) for how
 migrations are written and applied.
 
 **Both the `migrate` command and the `api` command apply migrations.** `api`

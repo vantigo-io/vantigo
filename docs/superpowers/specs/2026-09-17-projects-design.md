@@ -498,9 +498,9 @@ suite pinned to four CPUs, `bun run frontend:check`, translations check, and
 
 ## 10. Documentation
 
-- `docs/projects.md` — the module: model, codes, roles, financial shaping,
+- `docs/src/content/docs/en/reference/projects.md` — the module: model, codes, roles, financial shaping,
   the optional Products dependency, the three contracts.
-- `docs/module-boundaries.md` — the three new contracts, optional versus
+- `docs/src/content/docs/en/contributing/module-boundaries.md` — the three new contracts, optional versus
   required providers, `projects` in the schema and `MODULES` lists.
 - `CONTRIBUTING.md` — URL map gains the Projects app.
 - `ROADMAP.md` — a Projects section: phase 1 (this); later: Time tracking on

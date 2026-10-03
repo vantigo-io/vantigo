@@ -73,7 +73,7 @@ Smaller readings, stated where they are implemented: header names match case-ins
 | `apps/server/internal/customers/legal_identity.go`, `contact_info.go`, `billing_profile.go`, `addresses.go`, `group_membership.go`, `tags.go` | each handler onto its extracted write (Task 3) |
 | `apps/server/internal/customers/import.go`, `server.go`, `module.go`, `csvimport_test.go`, `csvimport_cap_test.go` | the import, its key constant, its body limit, its tests (Task 4) |
 | `openapi/customers.yaml` (+ generated `internal/openapi/specs/customers.yaml`, `internal/customers/gen/api.gen.go`, `apps/customers/frontend/src/api-schema.d.ts`), `openapi/COVERAGE.md` | three operations, two schemas (Tasks 2, 4) |
-| `docs/customers.md`, `ROADMAP.md` | D5 (Task 5) |
+| `docs/src/content/docs/en/reference/customers.md`, `ROADMAP.md` | D5 (Task 5) |
 | `apps/customers/frontend/src/lib/csv.ts`, `lib/csv.test.ts` | the browser's reader/writer and the failed-rows file (Task 6) |
 | `apps/customers/frontend/src/api/customers.ts`, `api/import-export.ts`, `api/import-export.test.ts` | the list's query string, the downloads, the upload (Task 6) |
 | `apps/customers/frontend/src/pages/-customer-import-modal.tsx`, `-customer-import-modal.test.tsx`, `customers.index.tsx`, `-customers.index.test.tsx`, `i18n.ts` | the modal, the buttons, the strings (Task 6) |
@@ -312,7 +312,7 @@ import (
 // internal/expenses rather than shared: depguard keeps modules from importing
 // one another, and ten lines of formatting are not worth a platform package.
 //
-// The header names are the API's own JSON names, so docs/customers.md's field
+// The header names are the API's own JSON names, so docs/src/content/docs/en/reference/customers.md's field
 // tables describe the file too. No competitor's layout is documented anywhere
 // this module could read it from, and one honest format beats three guessed
 // ones: onboarding from Tripletex, Fiken or PowerOffice is "export there,
@@ -2698,7 +2698,7 @@ import (
 // (design D3's "measure it and say what it takes"). Sixty seconds, well inside
 // the ~100 s after which the proxy in front of a hosted installation
 // (cloudflared) answers 524 while the rows go on committing. The run logs what
-// it actually took, and that number is what docs/customers.md quotes.
+// it actually took, and that number is what docs/src/content/docs/en/reference/customers.md quotes.
 const importAtTheCapBudget = 60 * time.Second
 
 // importCapSlice is how many rows one request of this test carries. modtest's
@@ -2995,7 +2995,7 @@ const (
 	// (customersFileMaxRows), so a round trip always fits — unless the timing
 	// test (csvimport_cap_test.go) says one request cannot carry that many in
 	// time, in which case it is the largest round number that can, and
-	// docs/customers.md says so.
+	// docs/src/content/docs/en/reference/customers.md says so.
 	maxImportRows = customersFileMaxRows
 )
 
@@ -3973,11 +3973,11 @@ git show --stat HEAD && git status --short
 ### Task 5: The docs (D5)
 
 **Files:**
-- Modify: `docs/customers.md`, `ROADMAP.md`; commit `docs/superpowers/specs/2026-09-24-customers-import-export-design.md`, whose D3 the planner already amended in the working tree for the two rulings (dry run per row + in-file check; `customers:view`) — read it, do not rewrite it
+- Modify: `docs/src/content/docs/en/reference/customers.md`, `ROADMAP.md`; commit `docs/superpowers/specs/2026-09-24-customers-import-export-design.md`, whose D3 the planner already amended in the working tree for the two rulings (dry run per row + in-file check; `customers:view`) — read it, do not rewrite it
 
 - [ ] **Step 1: The section**
 
-In `docs/customers.md`, directly above `## Revision and concurrency`, insert the section below. It carries three placeholders to fill from Task 4 Step 6 before committing: `<MAX>` (the `maxImportRows` the timing rule left), `<REAL>` (the cap test's logged total, rounded to the second) and `<machine>` (where it ran — the CI-like `taskset -c 0-3` run); no placeholder may be left in the committed file:
+In `docs/src/content/docs/en/reference/customers.md`, directly above `## Revision and concurrency`, insert the section below. It carries three placeholders to fill from Task 4 Step 6 before committing: `<MAX>` (the `maxImportRows` the timing rule left), `<REAL>` (the cap test's logged total, rounded to the second) and `<machine>` (where it ran — the CI-like `taskset -c 0-3` run); no placeholder may be left in the committed file:
 
 ```markdown
 ## CSV import and export
@@ -4175,7 +4175,7 @@ In `ROADMAP.md`, `### Phase 6 — Data operations and compliance`, after its fir
 CSV export of the list as the caller sees it and CSV import that creates and updates
 through the endpoints' own write paths, with a dry run and a failed-rows file for the
 re-run; one canonical format, no import key. See
-[`docs/customers.md#csv-import-and-export`](docs/customers.md#csv-import-and-export).
+[`docs/src/content/docs/en/reference/customers.md#csv-import-and-export`](docs/src/content/docs/en/reference/customers.md#csv-import-and-export).
 
 **Still ahead in this phase:** merging duplicate customers (delivery B) and GDPR
 handling for person customers (delivery C).
@@ -4191,7 +4191,7 @@ grep -c "operationId:" openapi/customers.yaml
 cat > /tmp/claude-1000/msg-import-export-5.txt <<'EOF'
 docs(customers): the CSV import and export, and phase 6 delivery A
 
-docs/customers.md gains the CSV import and export section — the format,
+docs/src/content/docs/en/reference/customers.md gains the CSV import and export section — the format,
 the column table, the export's permission shape and cap, the import's
 permission rule, matching, whole-group replacement, the dry run, the
 caps and what the timing test measured, the result and the failed-rows
@@ -4204,7 +4204,7 @@ check, and the import wants customers:view as well.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 EOF
-PATHS="docs/customers.md ROADMAP.md docs/superpowers/specs/2026-09-24-customers-import-export-design.md"
+PATHS="docs/src/content/docs/en/reference/customers.md ROADMAP.md docs/superpowers/specs/2026-09-24-customers-import-export-design.md"
 git add $PATHS && git commit -F /tmp/claude-1000/msg-import-export-5.txt -- $PATHS
 git show --stat HEAD && git status --short
 ```
@@ -5529,7 +5529,7 @@ Customers leave and arrive as one CSV file. Decided in
   Download failed rows, built client-side), `canExport`/`canImport` from the host;
   en + nb.
 
-At the cap: see the timing recorded in docs/customers.md's dry-run paragraph (and the row cap, if the timing rule lowered it).
+At the cap: see the timing recorded in docs/src/content/docs/en/reference/customers.md's dry-run paragraph (and the row cap, if the timing rule lowered it).
 Contract: three operations, two new schemas; no existing schema changed, no
 migration, no permission key. The frozen corpus is untouched and still validates.
 

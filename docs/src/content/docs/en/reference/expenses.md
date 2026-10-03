@@ -1,5 +1,11 @@
-# Expenses module
-
+---
+title: "Expenses module"
+description: "Outlays and mileage, receipts, approval, the reimbursed and invoiced tracks, dated rates, the payroll CSV and permissions."
+sources:
+  - apps/server/internal/expenses
+  - apps/expenses/frontend
+  - openapi/expenses.yaml
+---
 The Expenses module is outlays, supplier invoices, mileage and per diem days, standalone or
 gathered into a travel claim, with receipts, an approval flow, two independent
 tracks after approval — paying the employee back and invoicing the customer —
@@ -8,7 +14,7 @@ inside the single Vantigo binary (`apps/server/internal/expenses`), owns the
 `expenses` schema in the shared PostgreSQL database, and serves `openapi/expenses.yaml`
 under `/api/v1/expenses`.
 
-It depends on nobody but identity. [Projects](projects.md) is an **optional** read
+It depends on nobody but identity. [Projects](/en/reference/projects/) is an **optional** read
 through `contracts.ProjectDirectory`: `MODULES=customers,expenses` is a valid
 installation, and so is `MODULES=expenses` alone.
 
@@ -107,7 +113,7 @@ enforces what they say.
   instants is taken in (see "Which day is which").
 
 Every foreign identifier — users, projects, billing lines — is opaque: read through
-`contracts`, never through SQL (see [module boundaries](module-boundaries.md) rule 4).
+`contracts`, never through SQL (see [module boundaries](/en/contributing/module-boundaries/) rule 4).
 
 ## Money rules
 
@@ -1067,7 +1073,7 @@ Every receipt is stored under a **fresh random key**, `receipts/<entryId>/<uuid>
 relative to this module's own object-store scope (`expenses`), so the physical key
 is `expenses/receipts/<entryId>/<uuid>` — never derived from the file name, so no
 upload can collide with another or be guessed. See
-[Object storage](storage.md#module-scopes-and-the-physical-key) for the scope
+[Object storage](/en/admin/object-storage/#module-scopes-and-the-physical-key) for the scope
 mechanism. Receipts are **served only through the API**, `GET /attachments/{id}`,
 which streams the bytes with the type they were sniffed as, never cached, never
 sniffed again by the browser (`X-Content-Type-Options: nosniff`), and under a
@@ -1262,13 +1268,13 @@ whoever holds financial rights on its project — [the two tracks after
 approval](#the-two-tracks-after-approval) — and "ready to invoice" is the list an
 invoice would be built from. The module that turns that list into an invoice does
 not exist yet; when it does, it owns the stamp, exactly as
-[docs/time.md](time.md#what-invoicing-will-read) says of the same column on an hour.
+[the Time module](/en/reference/time/#what-invoicing-will-read) says of the same column on an hour.
 **Supplier invoices** are done: a supplier's invoice is recorded as what it is —
 [the supplier invoice](#the-supplier-invoice) — attested, re-billed and counted
 apart in the project's economy. What is deliberately still not here is accounts
 payable: a paid/unpaid state, a supplier register, inbound e-invoices and a
 payment export are purchasing's, when purchasing comes — see
-[ROADMAP.md](../ROADMAP.md#projects).
+[ROADMAP.md](https://github.com/vantigo-io/vantigo/blob/main/ROADMAP.md#projects).
 
 The project page is done, both sides: [the Expenses tab](#on-the-project-page) with
 the totals, the list and "Record a cost", and the Economy tab's cost side — what a

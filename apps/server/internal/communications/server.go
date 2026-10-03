@@ -10,7 +10,7 @@ import (
 )
 
 // storageScope is this module's IStorageScope name
-// (IS/CommunicationsStorageScope.cs:5-8, docs/storage.md "communications"
+// (IS/CommunicationsStorageScope.cs:5-8, docs/src/content/docs/en/admin/object-storage.md "communications"
 // example, inventory §16.1): every key attachments.go passes to store is
 // combined as "communications/{key}" before reaching the configured
 // backend.
@@ -55,7 +55,7 @@ var _ gen.StrictServerInterface = (*server)(nil)
 // production path, which fails only when Config.StorageProvider is "fs" and
 // the configured root cannot actually be opened (an unset provider is not an
 // error here: the process starts and every storage operation fails closed
-// with storage.ErrNotConfigured instead, docs/storage.md). d.Config is nil
+// with storage.ErrNotConfigured instead, docs/src/content/docs/en/admin/object-storage.md). d.Config is nil
 // in the handful of white-box tests that build a bare module.Deps to probe
 // routing rather than storage (module_internal_test.go); an empty
 // *config.Config stands in for it, the same StorageProvider="" unconfigured

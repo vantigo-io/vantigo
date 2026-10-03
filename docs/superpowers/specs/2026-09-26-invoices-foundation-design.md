@@ -35,7 +35,7 @@ https://anskaffelser.dev/postaward/g3/spec/current/billing-3.0/norway/).
 
 `srv/invoices`, schema `invoices`, contract `openapi/invoices.yaml`, UI package
 `apps/invoices/frontend` (`@vantigo/invoices-ui`), app "Invoices" / "Fakturaer". It is
-added by the checklist in `docs/module-boundaries.md:268-318`: `businessModules`, the
+added by the checklist in `docs/src/content/docs/en/contributing/module-boundaries.md:268-318`: `businessModules`, the
 OpenAPI `Modules` list, oapi-codegen config, depguard rules in `apps/server/.golangci.yml`,
 `moduleSchemas` in `srv/db/schema_test.go`, the known-module set, the frontend
 registry, `moduleKeys`, the i18n import and one admin catalog entry per permission key.
@@ -45,7 +45,7 @@ registry, `moduleKeys`, the i18n import and one admin catalog entry per permissi
   `srv/config/config.go:1266-1277`. The buyer, its billing profile and its address come
   from `contracts.CustomerDirectory`.
 - The object store (scope `invoices`) is a platform capability. The module fails closed
-  without it at the operation (`docs/storage.md:41-45`), never at startup.
+  without it at the operation (`docs/src/content/docs/en/admin/object-storage.md:41-45`), never at startup.
 - Products, projects, time, expenses and energy are not read in 1A. Lines are typed by
   hand. Later phases add optional slots.
 - `defaultModules` is every known module (`srv/config/config.go:1234-1236`). An
@@ -74,7 +74,7 @@ Every operation needs `invoices:access`, through the grammar
 No built-in role gets any of these keys. The three built-in roles are seeded with no
 permission keys at all (migration `00002`), and Owner holds the permission wildcard for
 every module (`srv/identity/bootstrap.go:37-39`). That follows the sensitive-permission
-practice (`projects:view-costs`, `docs/module-boundaries.md:222-224`). The catalog labels
+practice (`projects:view-costs`, `docs/src/content/docs/en/contributing/module-boundaries.md:222-224`). The catalog labels
 go in `apps/host/frontend/src/catalogs/admin.ts`, en + nb.
 
 **Creating a draft in the UI also needs `customers:view`.** `CustomerDirectory` has no
@@ -111,7 +111,7 @@ empty values:
 
 `GET /invoices/settings` and `PUT /invoices/settings` (full replace with `revision`;
 `invoices:access+invoices:manage`). A stale revision is a 409 naming both revisions, the
-codebase's rule (`docs/expenses.md:1200-1201`).
+codebase's rule (`docs/src/content/docs/en/reference/expenses.md:1200-1201`).
 
 **The seller is complete** when `legal_name`, `organisation_number`, `address_line1`,
 `postal_code`, `city` and `bank_account` are set. § 5-1-2 requires the name and the
@@ -332,7 +332,7 @@ editor nudges when it is empty.
 The **customer gates** on creating and saving an invoice draft, in this order, from the
 billing profile (after the contract change in D10):
 1. `MergedInto` set: 409 `customer_merged`, carrying `mergedInto`.
-2. `Status = "archived"` (which includes an anonymised customer, `docs/customers.md:109`):
+2. `Status = "archived"` (which includes an anonymised customer, `docs/src/content/docs/en/reference/customers.md:109`):
    409 `customer_archived`.
 3. `Status = "disabled"`: 409 `customer_blocked`. `disabled` finally means "blocked for
    invoicing".
@@ -387,7 +387,7 @@ and then `big.Rat.SetString`, never `SetFloat64`, which keeps the binary value (
 unit price 4, discount 2.
 
 **Arithmetic.** `math/big.Rat`; every rounding is to two decimals, half away from zero,
-the codebase convention (`docs/expenses.md:112-118`).
+the codebase convention (`docs/src/content/docs/en/reference/expenses.md:112-118`).
 - `line_gross = round(quantity × unit_price)`.
 - `line_allowance = round(line_gross × discount_percent / 100)`.
 - `line_net = line_gross − line_allowance`.
@@ -439,7 +439,7 @@ dates are allowed:
 "Virkedager" is not defined in the regulation. Fifteen working days always reach at least
 the 17th of the month, even counting Saturdays as working days. "Calendar day ≤ 15" is
 therefore always within the law and needs no holiday calendar. It is stricter than the
-law, and `docs/invoices.md` says so.
+law, and `docs/src/content/docs/en/reference/invoices.md` says so.
 
 On top of that, the date must not be before the latest `issue_date` of any issued
 document. Numbers and dates are then both monotone. The law does not require this; it is
@@ -454,8 +454,8 @@ succeeds and the response carries `warnings: ["issued_late"]`. § 5-2-2 says "se
 måned etter levering" (https://lovdata.no/forskrift/2004-12-01-1558/§5-2-1); refusing
 would leave the sale undocumented.
 
-**Before the transaction** (no lock is held, `docs/module-boundaries.md:230-233`; no
-contract call and no object-store call under a lock, `docs/expenses.md:1203-1205`):
+**Before the transaction** (no lock is held, `docs/src/content/docs/en/contributing/module-boundaries.md:230-233`; no
+contract call and no object-store call under a lock, `docs/src/content/docs/en/reference/expenses.md:1203-1205`):
 1. Load the draft: 404 if absent. Not a draft: 409 `invoice_issued`.
 2. No store configured (`Deps.Config.StorageProvider` empty, so the store would answer
    `storage.ErrNotConfigured`): 503 `storage_unavailable`. An issued number whose PDF can
@@ -535,17 +535,17 @@ never downloaded, because every download goes through the stored object. So:
   it unless `Exists` says it is there; then
   `UPDATE invoices.invoices SET pdf_object_key = $key, pdf_sha256 = $hash WHERE id = $id
   AND pdf_sha256 IS NULL`. No lock is held around the store calls
-  (`docs/expenses.md:1203-1205`).
+  (`docs/src/content/docs/en/reference/expenses.md:1203-1205`).
 - Two racing downloads may each `Put`. The key names the bytes, so neither overwrites the
   other. The first `UPDATE` wins. The loser re-reads the row and streams the winner's
   object. Its own object is an orphan that nothing ever served. There is no sweeper, as
-  for expenses receipts (`docs/storage.md:88-105`).
+  for expenses receipts (`docs/src/content/docs/en/admin/object-storage.md:88-105`).
 - Once `pdf_sha256` is set, the document is **never re-rendered**.
 - The module never calls `Delete` on its scope.
 
 **The key.** `pdf_object_key` holds the key relative to the scope,
 `documents/<id>/<number>-<sha256>.pdf`. The store is `storage.NewScope(inner,
-"invoices")`, so the physical key is `invoices/documents/…` (`docs/storage.md:72-92`).
+"invoices")`, so the physical key is `invoices/documents/…` (`docs/src/content/docs/en/admin/object-storage.md:72-92`).
 
 **`GET /invoices/{id}/pdf`** (`invoices:access`). A draft answers 409 `invoice_draft`.
 - No hash yet: the store-once path, then stream.
@@ -691,7 +691,7 @@ immutable after issue in phase 1; a later `PATCH` may allow it as non-document s
   "must still be able to … invoice it again". It becomes: archived customers still
   resolve, so a past invoice can be shown and credited; Invoices refuses a new invoice to
   an archived or disabled customer.
-- `docs/module-boundaries.md` and `docs/customers.md` are updated (D13).
+- `docs/src/content/docs/en/contributing/module-boundaries.md` and `docs/src/content/docs/en/reference/customers.md` are updated (D13).
 - The change is additive. Nothing is live, and the user allows breaking customers
   contract changes in any case.
 
@@ -708,7 +708,7 @@ allows exactly this column (D9).
   issued document and every draft for the customer, with number, kind, dates, lines,
   totals, the buyer snapshot, the references, the note and the internal note. The
   customers export already treats staff-written internal notes as data held about the
-  person (`docs/customers.md:1519`).
+  person (`docs/src/content/docs/en/reference/customers.md:1519`).
 - `EraseCustomerData`, inside the anonymisation transaction:
   - deletes the customer's **drafts**, invoice and credit-note drafts alike, reported as
     `invoices.drafts` with the count deleted. A draft is not a salgsdokument (research
@@ -717,10 +717,10 @@ allows exactly this column (D9).
     with count 0. Bokføringsloven § 13 (https://lovdata.no/lov/2004-11-19-73/§13) keeps
     sales documentation for five years after the end of the financial year. This is the
     projects precedent, a module that kept everything listed at zero
-    (`docs/customers.md:1606`).
+    (`docs/src/content/docs/en/reference/customers.md:1606`).
   - `ErasedData` has no reason field (`{Kind, Count}`), and it does not grow one. The
-    reason "kept under bokføringsloven § 13" is written in `docs/invoices.md` and in the
-    anonymisation table in `docs/customers.md`.
+    reason "kept under bokføringsloven § 13" is written in `docs/src/content/docs/en/reference/invoices.md` and in the
+    anonymisation table in `docs/src/content/docs/en/reference/customers.md`.
 
 ### D11 — The journal
 
@@ -781,7 +781,7 @@ App "Invoices", `@vantigo/invoices-ui`, en + nb throughout.
 
 ### D13 — Docs
 
-- `docs/invoices.md` (new): the law in one page — numbering, immutability, credit notes,
+- `docs/src/content/docs/en/reference/invoices.md` (new): the law in one page — numbering, immutability, credit notes,
   VAT per rate, the issue-date rule and that "calendar day ≤ 15" is stricter than the law,
   delivery, NOK only; the model; the endpoints and every error code; the permissions and
   the `customers:view` note; the PDF and store-once; retention: five years after the end
@@ -791,11 +791,11 @@ App "Invoices", `@vantigo/invoices-ui`, en + nb throughout.
   no WORM (research §7.9); why anonymisation erases drafts only; and a plain warning that
   phase 1 alone does not meet the B2G duty (EHF since 2019) nor the B2B duty from
   2027-01-01 (research §1.2). What phases 1B–5 add.
-- `docs/module-boundaries.md`: the module, its required dependency, the two slots it
+- `docs/src/content/docs/en/contributing/module-boundaries.md`: the module, its required dependency, the two slots it
   implements, the contract change to `CustomerBillingProfile`.
-- `docs/customers.md`: `disabled` means "blocked for invoicing" — it refuses creating,
+- `docs/src/content/docs/en/reference/customers.md`: `disabled` means "blocked for invoicing" — it refuses creating,
   saving and issuing an invoice, and never blocks credit notes, PDFs or reads — replacing
-  "a label only" (`docs/customers.md:94-102`); archived and merged-away customers are
+  "a label only" (`docs/src/content/docs/en/reference/customers.md:94-102`); archived and merged-away customers are
   refused new invoices likewise; the anonymisation table gains the invoices row (drafts
   erased, issued documents and their buyer snapshots kept under § 13).
 - `ROADMAP.md`: Invoices 1A done, 1B next.
@@ -836,7 +836,7 @@ concern it, so nothing is lost:
   log is kept (the evidence of when the claim was sent) with `recipient` blanked for a
   person, reported as `invoices.deliveries`.
 - **The CSV export**, `GET /invoices/export.csv`: the expenses byte format
-  (`docs/expenses.md:1098-1110`), one row per (document × VAT summary row), fixed English
+  (`docs/src/content/docs/en/reference/expenses.md:1098-1110`), one row per (document × VAT summary row), fixed English
   columns `Number;Kind;Issue date;Delivery;Due;Customer number;Buyer;Buyer org no;Currency;SAF-T code;Rate;Base;VAT;Base NOK;VAT NOK;Credits number`,
   credit notes negative, over 5000 rows a 400 "Too many rows to export", never truncated.
 - **Stats and the dashboard card**, `GET /invoices/stats/summary`, credit notes excluded
@@ -966,11 +966,11 @@ a fake object store with injectable failures, and a fixed clock in Oslo.
   download needing only `invoices:access`; the `MODULES` check refusing invoices without
   customers.
 - **Contract coverage.** `contracttest.RequireCoverage` over every operation (no frozen
-  corpus file exists for this module; `docs/module-boundaries.md:286-291`), the PDF
+  corpus file exists for this module; `docs/src/content/docs/en/contributing/module-boundaries.md:286-291`), the PDF
   responses included.
 - **Frontend.** The list and its paging; the draft editor with live per-rate totals
   matching the server on the øre case; the issue dialog's date offer (previous month only
   on days 1–15); the credit flow and its limits; settings with the locked series start
   and the rate periods; the journal's gap message; the admin catalog in both languages.
 - **Docs** checked against the code: every endpoint, error code and permission in
-  `docs/invoices.md` exists, and nothing the code has is missing from it.
+  `docs/src/content/docs/en/reference/invoices.md` exists, and nothing the code has is missing from it.

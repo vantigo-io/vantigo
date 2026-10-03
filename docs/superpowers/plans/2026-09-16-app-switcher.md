@@ -70,7 +70,7 @@ bun run frontend:test         # every workspace, one at a time
 
 **Module packages** — string updates only: `apps/customers/frontend/src/pages/contacts.$contactId.tsx`, `pages/contacts.index.tsx`, `pages/-customer-contacts-card.tsx`, `components/app-spotlight.tsx`, `test/route-tree.tsx`; `apps/customers/frontend/src/components/app-shell-whitelabel.test.tsx` and `apps/products/frontend/src/components/app-shell-whitelabel.test.tsx` (new shell props).
 
-**Docs** — `CONTRIBUTING.md`, `docs/module-boundaries.md`.
+**Docs** — `CONTRIBUTING.md`, `docs/src/content/docs/en/contributing/module-boundaries.md`.
 
 ---
 
@@ -2447,7 +2447,7 @@ git commit -m "feat(frontend): per-app sidebar with the app switcher and account
 
 **Files:**
 - Modify: `CONTRIBUTING.md:143-164`
-- Modify: `docs/module-boundaries.md:99-100`
+- Modify: `docs/src/content/docs/en/contributing/module-boundaries.md:99-100`
 
 - [ ] **Step 1: Update CONTRIBUTING**
 
@@ -2496,7 +2496,7 @@ Expected: every command exits 0. Report any failure verbatim; do not open the PR
 - [ ] **Step 4: Commit and open the PR**
 
 ```bash
-git add CONTRIBUTING.md docs/module-boundaries.md
+git add CONTRIBUTING.md docs/src/content/docs/en/contributing/module-boundaries.md
 git commit -m "docs(frontend): describe the per-app URL convention and registry"
 git push -u origin feat/app-switcher
 gh pr create --title "feat(frontend): app switcher and per-app shell" --body-file - <<'EOF'

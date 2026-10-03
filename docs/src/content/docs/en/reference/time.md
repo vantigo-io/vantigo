@@ -1,5 +1,11 @@
-# Time module
-
+---
+title: "Time module"
+description: "Time entries, the rate chain and its snapshots, the approval state machine, weekly submission, the period lock and permissions."
+sources:
+  - apps/server/internal/time
+  - apps/time/frontend
+  - openapi/time.yaml
+---
 The Time module is where the hours are: who worked, on which project and billing line,
 for how long, what it should be billed at and what it cost. It is a vertical-slice
 module inside the single Vantigo binary (`apps/server/internal/time`, package clause
@@ -7,7 +13,7 @@ module inside the single Vantigo binary (`apps/server/internal/time`, package cl
 in the shared PostgreSQL database, and serves `openapi/time.yaml` under
 `/api/v1/time`.
 
-It sits on top of [Projects](projects.md): hours hang off a project, optionally a
+It sits on top of [Projects](/en/reference/projects/): hours hang off a project, optionally a
 billing line and a task, and `time` without `projects` is a startup error. It stops
 short of invoicing. Time **snapshots** the rate that applied when the hours were
 submitted and marks entries invoiced when somebody tells it they were; it issues no
@@ -35,7 +41,7 @@ invoice and holds no invoice line.
 
 Every foreign identifier is opaque: users, projects, billing lines and tasks live in
 other schemas and are read through contracts, never through SQL
-(see [module boundaries](module-boundaries.md) rule 4).
+(see [module boundaries](/en/contributing/module-boundaries/) rule 4).
 
 ### Hours, and the start/end rule
 
@@ -73,7 +79,7 @@ The bill rate, when the entry is billable:
 2. **The project's `defaultBillRate`**, when the project has a currency to quote it
    in.
 3. **The customer's default bill rate** — the `defaultBillRate` on the
-   [billing profile](customers.md#billing-profile) of the project's customer, read
+   [billing profile](/en/reference/customers/#billing-profile) of the project's customer, read
    through `contracts.CustomerDirectory.BillingProfile` — under the person card's
    currency rule: the project has no currency of its own (the entry takes the
    customer's), or it is the customer's. The directory is asked **at most once per
@@ -127,7 +133,7 @@ part of the entry's response so the UI can say where an amount came from.
 
 ### The work type's multiplier
 
-An entry may pick one of its project's [work types](projects.md#work-types) —
+An entry may pick one of its project's [work types](/en/reference/projects/#work-types) —
 `workTypeId` on the create and the update, checked at every save while `draft` or
 `rejected`: the type must be one of the entry's project's (else 400 on `workTypeId`,
 "Work type is not on this project") and active ("Work type is no longer active"). The
@@ -391,11 +397,11 @@ are there so the state machine is complete rather than retrofitted.
 Time was the first module to *provide* a cross-module contract rather than only
 consume one, and is no longer the only one: Expenses provides
 `contracts.ProjectExpenses` the same way, and a project's Economy tab reads both
-(see [docs/projects.md](projects.md#the-optional-expenses-dependency)). Time
+(see [docs/projects.md](/en/reference/projects/#the-optional-expenses-dependency)). Time
 implements `contracts.ProjectActuals` (`internal/time/actuals.go`),
 which is what has been logged against a project, for whoever compares it with what
 was planned — Projects' economy view and the customer page's
-[Customer 360](customers.md#customer-360) today, an invoice later. It performs no
+[Customer 360](/en/reference/customers/#customer-360) today, an invoice later. It performs no
 authorization of its own: the caller has already decided who may see the project and
 who may see amounts, and the answer hands back hours and money together for the
 caller to shape.
@@ -406,7 +412,7 @@ caller to shape.
 - **`Invoiced` is a view into `Approved`, not a bucket beside it.** Every invoiced
   entry is in `Approved` exactly as it always was, and in `Invoiced` as well, so
   `Approved − Invoiced` is the work approved and not yet billed — what the customer
-  page's [Customer 360](customers.md#customer-360) calls unbilled. `Total` counts
+  page's [Customer 360](/en/reference/customers/#customer-360) calls unbilled. `Total` counts
   the invoiced work once, and a consumer that ignores the field (Projects' economy
   does) reads exactly what it read before. It is rounded on its own like each
   bucket, so the subtraction's amount can be a cent from the unbilled work rounded
@@ -472,7 +478,7 @@ caller to shape.
   currency arrives *in* the request (`ActualsRequest.Currency`) instead of being
   looked up.
 
-See [module boundaries](module-boundaries.md) for how this contract is resolved
+See [module boundaries](/en/contributing/module-boundaries/) for how this contract is resolved
 without either module importing the other.
 
 ## Enabling and disabling

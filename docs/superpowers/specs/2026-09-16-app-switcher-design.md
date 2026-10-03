@@ -396,7 +396,7 @@ module paths is a separate cleanup.
 - `CONTRIBUTING.md` "SPA URL convention": replace with the per-app prefix
   rule and the URL map from §3, and describe the app registry as the place
   a new module registers its tile and sidebar.
-- `docs/module-boundaries.md` "Adding a module" step 6: add "register the
+- `docs/src/content/docs/en/contributing/module-boundaries.md` "Adding a module" step 6: add "register the
   app in `apps/host/frontend/src/apps.ts` and add its layout route".
 
 ## 11. Testing

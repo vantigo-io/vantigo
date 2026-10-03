@@ -85,3 +85,23 @@ trap 'bash scripts/restore-embed-overlay.sh' EXIT
 docker buildx inspect vantigo >/dev/null 2>&1 || docker buildx create --name vantigo --driver docker-container
 BUILDX_BUILDER=vantigo goreleaser release --snapshot --clean --skip=sign
 """
+
+# ─── Documentation site (docs/): `mise run docs:<task>` ─────────────────────
+
+[tasks."docs:dev"]
+description = "The documentation site with live reload on http://localhost:4321"
+dir = "docs"
+run = "bun run dev"
+
+[tasks."docs:build"]
+description = "Production build of the documentation site into docs/dist"
+dir = "docs"
+run = "bun run build"
+
+[tasks."docs:check"]
+description = "What CI runs for the docs: the build (a broken link fails it), the coverage check's tests, and the coverage check against main"
+run = [
+  "bun test tools/docs",
+  "cd docs && bun run build",
+  "bun run tools/docs/check-coverage.ts",
+]

@@ -81,7 +81,7 @@ does not have, confirmed by reading the code rather than inferring from names:
 - **REWRITE the other ten**, plus `README.md`, `CONTRIBUTING.md` and
   `deploy/compose/README.md`.
 
-**`docs/storage.md`'s S3/MinIO and Azure Blob sections are a capability
+**`docs/src/content/docs/en/admin/object-storage.md`'s S3/MinIO and Azure Blob sections are a capability
 regression**: `internal/storage` contains only `fs.go`, and `objectStorage()`
 accepts only `""` or `"fs"`. State that plainly rather than softening it.
 

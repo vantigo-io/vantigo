@@ -108,7 +108,7 @@ type OutboxWorker struct {
 	// storeErr is deferred rather than returned by the constructor: a worker
 	// whose object store cannot be built must still be startable, failing only
 	// the jobs that actually carry attachments, exactly as an unconfigured
-	// store fails closed per operation rather than at boot (docs/storage.md).
+	// store fails closed per operation rather than at boot (docs/src/content/docs/en/admin/object-storage.md).
 	storeErr error
 	// metrics are the module's four outbox counters (metrics.go, inventory
 	// §18). Task 11 kept the possible-duplicate count as an atomic int here

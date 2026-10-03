@@ -27,6 +27,8 @@
       "!!**/.omc",
       "!!**/node_modules",
       "!!**/dist",
+      "!!**/.astro",
+      "!!**/.wrangler",
       "!!**/bin",
       "!!**/obj",
       "!**/routeTree.gen.ts",

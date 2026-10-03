@@ -70,7 +70,7 @@ DELETE FROM customers.customers_contacts WHERE customer_id = @customer_id;
 -- statement's snapshot, the survivor's own addresses — and keeping it primary
 -- for a type the survivor has none of, so every type still has exactly one
 -- (ux_customer_addresses_primary). The 50-address cap guards a write, not a
--- merge (docs/customers.md, Merging duplicates).
+-- merge (docs/src/content/docs/en/reference/customers.md, Merging duplicates).
 UPDATE customers.customer_addresses a
 SET customer_id = @into_customer_id::int,
     is_primary = a.is_primary AND NOT EXISTS (

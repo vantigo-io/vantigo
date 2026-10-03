@@ -139,7 +139,7 @@ Rules: for every non-archived customer with a record: `registryBankrupt` when `b
 
 ### Task 5: Docs
 
-`docs/customers.md` (registry record: table, fetch-on-pick/click, the three outcomes, the diff and the event, attention items and their clearing rules, address offers, permissions/withholding), `ROADMAP.md` (phase 3: delivery A done; B = feed worker + Peppol re-checks remaining), `openapi/COVERAGE.md` if not already, `CONTRIBUTING.md` operation count. Commit: `docs(customers): the registry record, and what a refresh reports`.
+`docs/src/content/docs/en/reference/customers.md` (registry record: table, fetch-on-pick/click, the three outcomes, the diff and the event, attention items and their clearing rules, address offers, permissions/withholding), `ROADMAP.md` (phase 3: delivery A done; B = feed worker + Peppol re-checks remaining), `openapi/COVERAGE.md` if not already, `CONTRIBUTING.md` operation count. Commit: `docs(customers): the registry record, and what a refresh reports`.
 
 ### Task 6: Verify and open the PR
 

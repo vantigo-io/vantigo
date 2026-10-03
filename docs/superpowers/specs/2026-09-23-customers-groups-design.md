@@ -134,7 +134,7 @@ consumer that resolves a price by group must not read the billing profile for it
 
 ### D6 — Docs
 
-`docs/customers.md`: a **Groups** section after Owner and tags (vocabulary,
+`docs/src/content/docs/en/reference/customers.md`: a **Groups** section after Owner and tags (vocabulary,
 membership, the `group_in_use` rule, the inheritance rule and where it is
 implemented), the billing profile section's `paymentTermsDays` row and the
 directory's resolution table (`PaymentTermsDays` now has a rule), the permission

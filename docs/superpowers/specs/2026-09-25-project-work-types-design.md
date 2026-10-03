@@ -112,11 +112,11 @@ block is visible, the rate line reads "900 × 150 % = 1 350". en + nb.
 
 ### D6 — Docs
 
-`docs/projects.md`: a **Work types** section (what they are, the rule-not-amount reading,
+`docs/src/content/docs/en/reference/projects.md`: a **Work types** section (what they are, the rule-not-amount reading,
 the API, the timeline entries, why no lock, why per project), the economy section's
-`workTypes` block, the API list; `docs/time.md`: the rate chain paragraph gains the
+`workTypes` block, the API list; `docs/src/content/docs/en/reference/time.md`: the rate chain paragraph gains the
 multiplier step, the entry's snapshot fields, the freeze rule restated, "what invoicing will
-read" corrected, "what Time reports" gains the per-type list; `docs/module-boundaries.md`:
+read" corrected, "what Time reports" gains the per-type list; `docs/src/content/docs/en/contributing/module-boundaries.md`:
 the directory's two new methods in its slot description (no rule changes); `ROADMAP.md`
 phase 3: delivery B done, "supplier invoices" the next delivery.
 

@@ -117,7 +117,7 @@ func lockProject(ctx context.Context, txq *store.Queries, projectID int32) (stor
 
 // withProjectLock runs fn in one transaction whose first statement takes the
 // project's row lock — every guarded write in this module goes through it
-// (design §3.3, docs/projects.md's "Locking"): the project's own update, a
+// (design §3.3, docs/src/content/docs/en/reference/projects.md's "Locking"): the project's own update, a
 // billing line's create and change, and all five milestone writes. fn gets the
 // locked row, the queries bound to the transaction, and a context marked
 // inLockedTx which shadows the handler's own.

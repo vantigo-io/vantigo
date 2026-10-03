@@ -47,7 +47,7 @@ apps/projects/frontend/src/
   pages/-project-timeline.tsx (+ the new event types), i18n.ts (+), index.ts (+)
 apps/host/frontend/src/
   routes/projects/$projectId.economy.tsx, -project-detail-layout.tsx (+ tab), catalogs (+ tab label), routeTree.gen.ts
-docs/projects.md (+ Economy / billing milestones section), ROADMAP.md (phase 3 progress)
+docs/src/content/docs/en/reference/projects.md (+ Economy / billing milestones section), ROADMAP.md (phase 3 progress)
 ```
 
 ---
@@ -121,7 +121,7 @@ Operations (all `permission:projects:access`), access per spec §5 and Global Co
 
 ### Task 4: Host integration and docs
 
-**Files:** `routes/projects/$projectId.economy.tsx` (renders `ProjectEconomy`; mirror `$projectId.billing.tsx`), `-project-detail-layout.tsx` (Economy tab between Billing and Time, shown to everyone who sees the project — same gating as Billing; check what Billing does and copy it), catalogs en + nb (tab label), `routeTree.gen.ts` regenerated; tests (`project-detail-tabs.test.ts` gains the tab and its order; a route test like the billing one). `docs/projects.md`: a "Billing milestones and the invoice plan" section (model, effective amount and freezing, the move table and who may do what, guards, timeline events, API table) and line budgets in the billing-lines section; amend the "calculates no money" sentence — Projects now computes exactly one thing, a percent of the fixed price. `ROADMAP.md` phase 3: mark billing milestones and line budgets done, budget-vs-actual/portfolio/alerts next.
+**Files:** `routes/projects/$projectId.economy.tsx` (renders `ProjectEconomy`; mirror `$projectId.billing.tsx`), `-project-detail-layout.tsx` (Economy tab between Billing and Time, shown to everyone who sees the project — same gating as Billing; check what Billing does and copy it), catalogs en + nb (tab label), `routeTree.gen.ts` regenerated; tests (`project-detail-tabs.test.ts` gains the tab and its order; a route test like the billing one). `docs/src/content/docs/en/reference/projects.md`: a "Billing milestones and the invoice plan" section (model, effective amount and freezing, the move table and who may do what, guards, timeline events, API table) and line budgets in the billing-lines section; amend the "calculates no money" sentence — Projects now computes exactly one thing, a percent of the fixed price. `ROADMAP.md` phase 3: mark billing milestones and line budgets done, budget-vs-actual/portfolio/alerts next.
 
 - [ ] **Step 1–4** — tests first, implement, `bun run --cwd apps/host/frontend test|typecheck|lint|build`, `frontend:lint`, `frontend:typecheck`, translations, biome.
 - [ ] **Step 5: Commit** `feat(frontend): the economy tab on the project page` and `docs(projects): billing milestones, line budgets and the roadmap`.

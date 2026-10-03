@@ -14,8 +14,8 @@ import (
 // the server cancels a request whose connection went, and the import stops
 // before its next row (importRows) — but every row before it stays committed,
 // the caller gets no result saying which, and sending the file again creates
-// those customers a second time (docs/customers.md, "A run cut off"). The run
-// logs what it actually took, and that number is what docs/customers.md quotes.
+// those customers a second time (docs/src/content/docs/en/reference/customers.md, "A run cut off"). The run
+// logs what it actually took, and that number is what docs/src/content/docs/en/reference/customers.md quotes.
 const importAtTheCapBudget = 60 * time.Second
 
 // importCapSlice is how many rows one request of this test carries. modtest's

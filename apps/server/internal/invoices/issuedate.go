@@ -11,7 +11,7 @@ import "time"
 // the service were delivered by then. "Virkedager" is not defined in the
 // regulation, and fifteen working days always reach at least the 17th, even
 // counting Saturdays; "calendar day ≤ 15" is therefore always within the law,
-// needs no holiday calendar, and is stricter than the law — docs/invoices.md
+// needs no holiday calendar, and is stricter than the law — docs/src/content/docs/en/reference/invoices.md
 // says so. On top of that no date may be before the latest issue date of any
 // issued document, so numbers and dates are both monotone: an extra guard the
 // law does not ask for.

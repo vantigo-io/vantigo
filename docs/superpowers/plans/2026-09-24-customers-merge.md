@@ -56,7 +56,7 @@
 2. **The race that is retried is the contact delete, not the attach.** The spec's testing section says "a merge racing a contact attach — retried". An attach takes the customer row first and the contact second, exactly as a merge does (customers first, then — moving an association — a key-share on the contact), so the two serialize and cannot cycle. `DELETE /customers/contacts/{id}` takes the contact first and the customers after, which is the one cycle `mergeWriteAttempts` exists for (the same reason `contactRoleWriteAttempts` gives). The concurrency test pins that race; the double-merge race pins `merge_already_merged`.
 3. **A re-pointed project's revision advances and nothing else is written in projects.** Changing a project's customer is a change to the row, so an edit form opened before the merge — still holding the absorbed customer — answers the stale-revision 409 instead of writing it back. No project timeline entry: the merge is recorded on the survivor's customer timeline, and `customerName` reads the survivor's from the moment it commits. Energy and communications rows carry no revision and are only re-pointed.
 4. **The 50-address cap guards a write, not a merge.** Every address moves (D3) even when the survivor ends past 50; its next address POST answers the cap until it is back under. Refusing the merge instead would leave two duplicates nobody could fold.
-5. **`docs/energy.md` does not exist** (energy has no module doc — only its inventory spec). D5's energy paragraph goes into `docs/customers.md`'s holder table instead of a one-paragraph new file; projects and communications get theirs in their own docs.
+5. **`docs/energy.md` does not exist** (energy has no module doc — only its inventory spec). D5's energy paragraph goes into `docs/src/content/docs/en/reference/customers.md`'s holder table instead of a one-paragraph new file; projects and communications get theirs in their own docs.
 6. **A merged-away customer stays writable on the server.** The spec names no refusal for edits of an absorbed customer, and it is an archived customer like any other (restoring one works the same way). The page shows no edit action on it anywhere (controller ruling on the pre-flight review): the header hides Edit, Change type, Archive, Restore and Merge, and every card gets `canX && !customer.mergedInto`. The marker survives any edit made through the API. The 400 for a missing or non-positive `sourceId` is the one refusal added beside the ladder; the stale revision comes after `merge_already_merged`.
 7. **The Merge hint shows on both the create form's and the edit form's duplicate-identity conflict, for a caller who may merge** (D4; controller ruling on the pre-flight review), in two wordings: on an edit the fix is a merge from the duplicate's page; on a create the new customer does not exist yet, so the line says to open the duplicate instead — or create anyway and merge there. `canMerge` reaches `CustomerFormModal` from both the customer page and the list (the list opens the same form).
 8. **The picker is the list endpoint with `includeArchived`, filtered in the browser.** An archived duplicate is the common case (D2), so the search must reach archived customers; this customer and merged-away ones are dropped client-side, so a page of twenty may show nineteen. No server filter was added.
@@ -73,7 +73,7 @@ Smaller readings, stated where they are implemented: a moved address's `updated_
 | `apps/server/internal/contracts/references.go` | `CustomerReferenceHolder`, `RepointedReferences` (Task 1) |
 | `apps/server/internal/module/module.go`, `compose.go`, `compose_test.go` | the many-provider slot and its collection (Task 1) |
 | `apps/server/internal/modtest/modtest.go` | `WithCustomerReferenceHolders` (Task 1) |
-| `docs/module-boundaries.md` | rule 5 widened, rule 8 (Task 1) |
+| `docs/src/content/docs/en/contributing/module-boundaries.md` | rule 5 widened, rule 8 (Task 1) |
 | `apps/server/internal/{projects,energy,communications}/customer_references.go`, `customer_references_test.go`, `queries/customer_references.sql` (+ generated `store/customer_references.sql.go`), `module.go` | the three holders (Task 2) |
 | `apps/server/internal/db/migrations/00029_customers_merge.sql`, `internal/customers/sqlc.yaml`, `internal/db/schema_test.go` | the marker column (Task 3) |
 | `apps/server/internal/customers/queries/merge.sql`, `queries/customers.sql` (+ generated `store/merge.sql.go`, `store/customers.sql.go`, `store/models.go`) | the moves, the marker, the decoration's read, the directory's column (Task 3) |
@@ -82,7 +82,7 @@ Smaller readings, stated where they are implemented: a moved address's `updated_
 | `apps/server/internal/customers/merge.go`, `timeline_events.go`, `owner.go`, `customers.go`, `module.go` | the merge, its events, `mergedInto`, the permission (Task 3) |
 | `apps/server/internal/customers/merge_test.go`, `merge_concurrency_test.go`, `merge_internal_test.go`, `module_test.go`, `customers_test.go` | its tests (Task 3) |
 | `apps/server/internal/integration/merge_test.go` | customers + projects for real (Task 4) |
-| `docs/customers.md`, `docs/projects.md`, `docs/communications.md`, `ROADMAP.md` | D5 (Task 5) |
+| `docs/src/content/docs/en/reference/customers.md`, `docs/src/content/docs/en/reference/projects.md`, `docs/src/content/docs/en/reference/communications.md`, `ROADMAP.md` | D5 (Task 5) |
 | `apps/customers/frontend/src/api/customers.ts`, `api/customers.test.ts`, `api/merge.ts`, `api/merge.test.ts` | `mergedInto`, `includeArchived`, the call (Task 6) |
 | `apps/customers/frontend/src/components/customer-picker.tsx`, `customer-picker.test.tsx` | this package's own picker (Task 6) |
 | `apps/customers/frontend/src/pages/-customer-merge-modal.tsx`, `-customer-merge-modal.test.tsx`, `customers.$customerId.tsx`, `-customer-merge-header.test.tsx`, `-customer-contacts-card.tsx`, `-customer-form-modal.tsx`, `-customer-form-modal.test.tsx`, `customers.index.tsx`, `i18n.ts` | the modal, the header, the banner, the read-only cards, the hints, the strings (Task 6) |
@@ -96,7 +96,7 @@ The write direction, with nobody calling it yet: the interface, the slot, Compos
 
 **Files:**
 - Create: `apps/server/internal/contracts/references.go`
-- Modify: `apps/server/internal/module/module.go`, `apps/server/internal/module/compose.go`, `apps/server/internal/module/compose_test.go`, `apps/server/internal/modtest/modtest.go`, `docs/module-boundaries.md`
+- Modify: `apps/server/internal/module/module.go`, `apps/server/internal/module/compose.go`, `apps/server/internal/module/compose_test.go`, `apps/server/internal/modtest/modtest.go`, `docs/src/content/docs/en/contributing/module-boundaries.md`
 - Read first (do not change): `apps/server/internal/module/workers.go` (the many-provider precedent), `compose_test.go:719-800` and `:988-1013` (the provider-slot tests and the preset-survives seam)
 
 **Interfaces:**
@@ -252,7 +252,7 @@ import (
 // for a read — and an error anywhere rolls back every module's part together.
 //
 // tx is a platform type, not a store type, so rule 3 of
-// docs/module-boundaries.md (contracts carry no store types) still holds: the
+// docs/src/content/docs/en/contributing/module-boundaries.md (contracts carry no store types) still holds: the
 // holder builds its own store over it.
 //
 // RepointCustomer moves every reference from `from` to `into` inside tx and
@@ -365,7 +365,7 @@ and in `New`'s `h.deps = module.Deps{…}` literal, directly after `Expenses:   
 
 - [ ] **Step 6: The boundary rule**
 
-In `docs/module-boundaries.md`, rule 5: after the sentence ending `…so those providers' *constructors* are allowed
+In `docs/src/content/docs/en/contributing/module-boundaries.md`, rule 5: after the sentence ending `…so those providers' *constructors* are allowed
    to read the project directory (neither does, but a future provider could).` add, still inside item 5:
 
 ```markdown
@@ -433,14 +433,14 @@ reports what it moved kind by kind. module.Module.CustomerReferences is a
 many-provider slot like Workers — Compose collects every enabled module's
 holder, in module order, onto Deps.CustomerReferenceHolders, appended to
 a copy of whatever a harness preset — and modtest.WithCustomerReferenceHolders
-is that seam. docs/module-boundaries.md gains rule 8, which says why this
+is that seam. docs/src/content/docs/en/contributing/module-boundaries.md gains rule 8, which says why this
 write is allowed and what a holder may and may not do.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 EOF
 PATHS="apps/server/internal/contracts/references.go apps/server/internal/module/module.go \
  apps/server/internal/module/compose.go apps/server/internal/module/compose_test.go \
- apps/server/internal/modtest/modtest.go docs/module-boundaries.md"
+ apps/server/internal/modtest/modtest.go docs/src/content/docs/en/contributing/module-boundaries.md"
 git add $PATHS && git commit -F /tmp/claude-1000/msg-merge-1.txt -- $PATHS
 git show --stat HEAD && git status --short
 ```
@@ -2147,7 +2147,7 @@ DELETE FROM customers.customers_contacts WHERE customer_id = @customer_id;
 -- statement's snapshot, the survivor's own addresses — and keeping it primary
 -- for a type the survivor has none of, so every type still has exactly one
 -- (ux_customer_addresses_primary). The 50-address cap guards a write, not a
--- merge (docs/customers.md, Merging duplicates).
+-- merge (docs/src/content/docs/en/reference/customers.md, Merging duplicates).
 UPDATE customers.customer_addresses a
 SET customer_id = @into_customer_id::int,
     is_primary = a.is_primary AND NOT EXISTS (
@@ -2563,7 +2563,7 @@ import (
 // transaction, because every module shares one database: both customer rows
 // are locked, this module's own tables move, and then every
 // contracts.CustomerReferenceHolder Compose collected re-points its own schema
-// through the same transaction (docs/module-boundaries.md rule 8). An error
+// through the same transaction (docs/src/content/docs/en/contributing/module-boundaries.md rule 8). An error
 // anywhere — a holder's included — rolls every module's part back together.
 
 // The four kinds of reference this module's own tables hold, reported first in
@@ -3071,12 +3071,12 @@ git show --stat HEAD && git status --short
 ### Task 5: The docs (D5)
 
 **Files:**
-- Modify: `docs/customers.md`, `docs/projects.md`, `docs/communications.md`, `ROADMAP.md`
+- Modify: `docs/src/content/docs/en/reference/customers.md`, `docs/src/content/docs/en/reference/projects.md`, `docs/src/content/docs/en/reference/communications.md`, `ROADMAP.md`
 - Read first: the code of Tasks 1–3 — every message, code, count and kind quoted below must match it
 
 - [ ] **Step 1: The section**
 
-In `docs/customers.md`, directly above `## Brreg lookup` (so it follows [The duplicate-identity guard](#the-duplicate-identity-guard), the way duplicates are found), insert:
+In `docs/src/content/docs/en/reference/customers.md`, directly above `## Brreg lookup` (so it follows [The duplicate-identity guard](#the-duplicate-identity-guard), the way duplicates are found), insert:
 
 ```markdown
 ## Merging duplicates
@@ -3181,7 +3181,7 @@ duplicate-identity guard and the list search are how duplicates are found today.
 
 - [ ] **Step 2: The rest of D5**
 
-In `docs/customers.md`:
+In `docs/src/content/docs/en/reference/customers.md`:
 
 **Statuses** — after the bullet beginning `- **Customers are archived, never deleted.**`, add:
 
@@ -3250,7 +3250,7 @@ implement. Still ahead in phase 6: GDPR handling for person customers (delivery 
 
 and in the paragraph beginning `Past that, the remaining gaps are exactly`, `no merge and no GDPR handling (phase 6 deliveries B and C)` (wrapped) becomes `no GDPR handling (phase 6 delivery C)`.
 
-In `docs/projects.md`, directly above `### What Time tracking should build on`, add:
+In `docs/src/content/docs/en/reference/projects.md`, directly above `### What Time tracking should build on`, add:
 
 ```markdown
 Projects also **holds customer references** — `contracts.CustomerReferenceHolder`,
@@ -3265,7 +3265,7 @@ customer id of their own, so the move keeps them right too. See
 [Merging duplicates](customers.md#merging-duplicates).
 ```
 
-In `docs/communications.md`, at the end of `## In-process customer integration` (directly above `## SMTP`), add:
+In `docs/src/content/docs/en/reference/communications.md`, at the end of `## In-process customer integration` (directly above `## SMTP`), add:
 
 ```markdown
 The one write in the other direction is a customer merge: communications declares a
@@ -3288,14 +3288,14 @@ contacts (roles unioned), addresses, timeline, tags, and every other module's
 references through `contracts.CustomerReferenceHolder` (projects, energy,
 communications); the survivor keeps every field of its own and the duplicate is
 archived with a marker; behind the new `customers:merge`. See
-[`docs/customers.md#merging-duplicates`](docs/customers.md#merging-duplicates).
+[`docs/src/content/docs/en/reference/customers.md#merging-duplicates`](docs/src/content/docs/en/reference/customers.md#merging-duplicates).
 
 **Still ahead in this phase:** GDPR handling for person customers (delivery C).
 ```
 
 - [ ] **Step 3: Check the docs against the code, commit**
 
-Read the new section against `merge.go`, `timeline_events.go`, `queries/merge.sql` and the three holders: every code, title, count rule, kind name, summary shape and the retry count must match the code; the API row against `openapi/customers.yaml`; the count 60 against `grep -c "operationId:" openapi/customers.yaml`; every link target heading exists (`grep -n '^## \|^### ' docs/customers.md docs/module-boundaries.md`).
+Read the new section against `merge.go`, `timeline_events.go`, `queries/merge.sql` and the three holders: every code, title, count rule, kind name, summary shape and the retry count must match the code; the API row against `openapi/customers.yaml`; the count 60 against `grep -c "operationId:" openapi/customers.yaml`; every link target heading exists (`grep -n '^## \|^### ' docs/src/content/docs/en/reference/customers.md docs/src/content/docs/en/contributing/module-boundaries.md`).
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo
@@ -3304,18 +3304,18 @@ grep -n 'Merging duplicates\|rule 8' docs/*.md ROADMAP.md
 cat > /tmp/claude-1000/msg-merge-5.txt <<'EOF'
 docs(customers): merging duplicates, and phase 6 delivery B
 
-docs/customers.md gains the Merging duplicates section — the direction,
+docs/src/content/docs/en/reference/customers.md gains the Merging duplicates section — the direction,
 the refusals in order, what moves, stays and is recorded, the two
 events, the one transaction and its three holders, the retry, the
 marker — plus the status note, the customers:merge key, the directory's
 MergedInto, the frontend bullet, the API row and the phase 6 delivery B
-paragraph. docs/projects.md and docs/communications.md say what each
+paragraph. docs/src/content/docs/en/reference/projects.md and docs/src/content/docs/en/reference/communications.md say what each
 re-points; energy, which has no module doc, is its row in the holder
 table. The roadmap marks delivery B done, with GDPR ahead.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 EOF
-PATHS="docs/customers.md docs/projects.md docs/communications.md ROADMAP.md"
+PATHS="docs/src/content/docs/en/reference/customers.md docs/src/content/docs/en/reference/projects.md docs/src/content/docs/en/reference/communications.md ROADMAP.md"
 git add $PATHS && git commit -F /tmp/claude-1000/msg-merge-5.txt -- $PATHS
 git show --stat HEAD && git status --short
 ```
@@ -4078,7 +4078,7 @@ const CUSTOMER_PICKER_PAGE_SIZE = 20;
  * Picks another customer, searching this module's own list as the user types
  * (customers merge design D4). It is the projects package's `CustomerPicker`
  * shape, copied rather than imported — module frontends never import one
- * another (docs/module-boundaries.md rule 7) — with three differences the merge
+ * another (docs/src/content/docs/en/contributing/module-boundaries.md rule 7) — with three differences the merge
  * needs:
  *
  *  - The value is the whole customer, not an id: the modal says what will
@@ -4696,7 +4696,7 @@ One customer absorbs its duplicate. Decided in
   many-provider slot like `Workers`, Compose collects every enabled module's holder,
   and the merge calls each inside its own transaction — own SQL, own schema, own
   package, no directory lookups. Holders: projects, energy, communications
-  (candidates kept once where a conversation lists both). `docs/module-boundaries.md`
+  (candidates kept once where a conversation lists both). `docs/src/content/docs/en/contributing/module-boundaries.md`
   gains rule 8.
 - **`POST /customers/{id}/merge`** `{sourceId, revision?}` behind the new sensitive
   `customers:merge` (+ `customers:view`). Both rows locked in ascending id order,

@@ -1,7 +1,7 @@
 # Time tracking and tasks — design
 
 Phase 2 of `docs/superpowers/specs/2026-09-18-project-management-plan.md`.
-Builds on the projects module (`docs/projects.md`,
+Builds on the projects module (`docs/src/content/docs/en/reference/projects.md`,
 `docs/superpowers/specs/2026-09-17-projects-design.md`).
 
 ## 1. Scope

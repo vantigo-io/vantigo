@@ -343,7 +343,7 @@ func (w *RegistryFeedWorker) Sweep(ctx context.Context, outage *registryOutage) 
 }
 
 // logSweep is the sweep's one line per cycle, at INFO (final fix wave I2):
-// docs/customers.md promises an operator a line per cycle for the sweep beside
+// docs/src/content/docs/en/reference/customers.md promises an operator a line per cycle for the sweep beside
 // the one per page, and a Debug line is one they would have to turn the whole
 // process's logging up to see. It says what the sweep attempted of each half and
 // how those attempts came out, so "nothing happened" and "fifty attempts, fifty

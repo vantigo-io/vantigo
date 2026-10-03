@@ -48,7 +48,7 @@ Rough edges found (file references in the inventory, all verified against the co
     list does one call per distinct customer), and `ContactsByEmail` has no production caller.
 11. No other module writes to the customer timeline; time and expenses have no customer
     coupling at all (only via the project's `customer_id`).
-12. No `docs/customers.md`; `docs/customers-authentication.md` is the platform identity doc,
+12. No `docs/src/content/docs/en/reference/customers.md`; `docs/src/content/docs/en/admin/authentication.md` is the platform identity doc,
     misnamed.
 
 ## 2. What comparable systems do
@@ -205,8 +205,8 @@ customer cannot be invoiced: there is nowhere to send it and no terms to put on 
     a differentiator in Norway.
 23. **GDPR for person customers**: data export, scheduled anonymisation that leaves
     bookkeeping intact, never a fødselsnummer field.
-24. `docs/customers.md` and a Customers section in `ROADMAP.md`; rename
-    `docs/customers-authentication.md`.
+24. `docs/src/content/docs/en/reference/customers.md` and a Customers section in `ROADMAP.md`; rename
+    `docs/src/content/docs/en/admin/authentication.md`.
 
 ### Later / on proven demand
 

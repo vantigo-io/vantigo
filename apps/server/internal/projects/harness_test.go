@@ -102,7 +102,7 @@ func newHarnessWithActualsAndExpenses(t *testing.T, actuals *fakeActuals, expens
 //
 // Every harness also carries the module's locking guarantee out of its test:
 // nothing this module asks of another module is asked while one of its
-// transactions holds the project's row lock (docs/projects.md's "Locking").
+// transactions holds the project's row lock (docs/src/content/docs/en/reference/projects.md's "Locking").
 // The check is the whole suite's, not one path's — whichever write a future
 // change introduces it on, the call is reported and the test that made it
 // fails.

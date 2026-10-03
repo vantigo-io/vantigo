@@ -114,7 +114,7 @@ them, re-import only those. The list invalidates on completion. en + nb.
 
 ### D5 — Docs
 
-`docs/customers.md`: a **CSV import and export** section (the format, the column
+`docs/src/content/docs/en/reference/customers.md`: a **CSV import and export** section (the format, the column
 table, the permission rule, matching, the group-replace rule, the dry run, the caps,
 what the failed-rows file is), the API list, the permission section's note that import
 needs no key, the frontend bullets, a phase 6 delivery A paragraph; `ROADMAP.md` phase 6

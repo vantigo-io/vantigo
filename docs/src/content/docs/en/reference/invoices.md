@@ -1,12 +1,18 @@
-# Invoices
-
+---
+title: "Invoices module"
+description: "The sales document: the seller record, gap-free numbering, VAT, issue and immutability, credit notes, the PDF, payments, sending, the journal, the export and retention."
+sources:
+  - apps/server/internal/invoices
+  - apps/invoices/frontend
+  - openapi/invoices.yaml
+---
 The Invoices module issues the sales document of Norwegian bookkeeping: a draft
 becomes a numbered, immutable invoice or credit note, rendered to a PDF that is stored
 once and downloaded as stored, and listed in a journal that proves the number series has
 no gaps. Phase 1A built that
-([design](superpowers/specs/2026-09-26-invoices-foundation-design.md),
-[research](superpowers/research/2026-09-26-invoices-module.md)); phase 1B
-([design](superpowers/specs/2026-10-02-invoices-payments-delivery-design.md)) added
+([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-09-26-invoices-foundation-design.md),
+[research](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/research/2026-09-26-invoices-module.md)); phase 1B
+([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-02-invoices-payments-delivery-design.md)) added
 payments and the derived state of an invoice, sending a document by e-mail, the
 accountant's CSV export and the dashboard's stats. Vantigo stays a sub-ledger: there is
 no general ledger and nothing is posted — a payment here is a registration, not a
@@ -151,7 +157,7 @@ A Norwegian business's organisation number reaches the buyer snapshot only from 
 release on: before it, the snapshot compared the directory's lowercase country
 case-sensitively, so a document issued to one then carries `buyer_foreign_id` `no…`
 instead — snapshots are immutable, so credit and re-issue one where it matters
-([upgrading](../deploy/compose/README.md#upgrading)).
+([upgrading](https://github.com/vantigo-io/vantigo/blob/main/deploy/compose/README.md#upgrading)).
 A merge that re-points the draft between the directory read and the lock is
 `invoice_changed`.
 
@@ -352,7 +358,7 @@ worker, and a failure is the caller's to see. It needs `invoices:issue`
 
 1. **503 `mail_unavailable`** when the installation's mail driver is not `smtp`, judged
    before anything is read. The `log` driver delivers nothing and is allowed only in
-   development ([email delivery](customers-authentication.md#email-delivery)), so this
+   development ([email delivery](/en/admin/authentication/#email-delivery)), so this
    is a development installation's answer.
 2. 404; 409 `invoice_draft` on a draft.
 3. **409 `customer_anonymised`** when this module has anonymised the document's customer
@@ -407,11 +413,11 @@ be a person's being anonymised at that moment: the mail went, and the operator i
 
 **Re-sending.** Sending twice is allowed and logged twice: a re-send is a legitimate act.
 No suppression list is read — `communications.suppressions` is another module's table
-([module boundaries](module-boundaries.md), rule 4). **A bounce goes to the envelope
+([module boundaries](/en/contributing/module-boundaries/), rule 4). **A bounce goes to the envelope
 sender**, the installation's `SMTP_FROM`, not to the seller's Reply-To, and Vantigo
 records none: a delivery row means the mail server accepted the mail, not that it
 arrived. Point `SMTP_FROM` at a mailbox someone reads if bounces matter
-([deploy/compose/README.md](../deploy/compose/README.md)). There is no bulk send.
+([deploy/compose/README.md](https://github.com/vantigo-io/vantigo/blob/main/deploy/compose/README.md)). There is no bulk send.
 
 **The rate limit.** 60 sends per client per 10 minutes (the policy `invoices-send`):
 with an arbitrary override the endpoint is an authenticated relay through the
@@ -504,7 +510,7 @@ code is what a test with a fixed clock can pin.
 
 **The public-body half, dropped, and what replaces it.** The 1A review asked for a
 warning when the buyer is a public body. The directory carries no such fact — "Public
-sector" in [Customers](customers.md#groups) is a group an installation may name, a word
+sector" in [Customers](/en/reference/customers/#groups) is a group an installation may name, a word
 of its own vocabulary, not a fact a module can read — so that half is not built, and no
 fact is added to the contract for it. What the snapshot does carry is the buyer's
 organisation number, which every public body and every Norwegian business has; the two
@@ -609,7 +615,7 @@ Number;Kind;Issue date;Delivery;Due;Customer number;Buyer;Buyer org no;Currency;
 | `VAT NOK` | the VAT row's stored NOK VAT |
 | `Credits number` | on a credit note, the number of the invoice it credits; empty on an invoice |
 
-**The byte format** is the expenses payroll file's ([the payroll CSV](expenses.md#the-payroll-csv)),
+**The byte format** is the expenses payroll file's ([the payroll CSV](/en/reference/expenses/#the-payroll-csv)),
 duplicated into this module as customers duplicated it — depguard keeps modules from
 sharing it: UTF-8 with a byte order mark, `;` between cells, the decimal comma and two
 decimals, dates as `YYYY-MM-DD`, CRLF after every row the last included, and RFC 4180
@@ -671,7 +677,7 @@ Sales documentation is kept **five years after the end of the financial year**
 this phase; a purge is later work. The 2027 wording of § 13 (Lov 2026 nr. 39) was not
 read — **unconfirmed**. **The operator's backup of the object store is part of that
 retention**: the only storage driver is `fs`, with no WORM, so the PDFs are only as safe
-as the volume and its backups ([storage](storage.md)).
+as the volume and its backups ([storage](/en/admin/object-storage/)).
 
 **Payments and deliveries are kept with the document** they hang off. A payment
 registration is bookkeeping material read under the same § 13 — **unconfirmed**, see
@@ -679,7 +685,7 @@ registration is bookkeeping material read under the same § 13 — **unconfirmed
 the claim was handed to the mail server, not of its receipt; neither is ever deleted,
 and their foreign keys refuse a document's deletion.
 
-The module fills both customer slots ([module boundaries](module-boundaries.md)):
+The module fills both customer slots ([module boundaries](/en/contributing/module-boundaries/)):
 
 - **Merging customers** (`contracts.CustomerReferenceHolder`) re-points every document of
   the absorbed customer, drafts and issued, reported as `invoices.invoices`. An issued
@@ -746,7 +752,7 @@ is owed, and a wrong one is corrected only by a removal that stays on record.
 it over, and a reader with `invoices:access` alone may download it, as before, and sees
 each send's time and subject but not its address. Sending also needs an installation
 that can send — `MAIL_DRIVER=smtp` and the `SMTP_*` configuration
-([email delivery](customers-authentication.md#email-delivery)). `GET /meta` answers
+([email delivery](/en/admin/authentication/#email-delivery)). `GET /meta` answers
 `mailAvailable`, `capabilities.canSend` — `invoices:issue` and `mailAvailable` — and
 `capabilities.canRegisterPayments`, so no client re-derives either rule.
 

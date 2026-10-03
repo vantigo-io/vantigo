@@ -267,7 +267,7 @@ Outside development the configuration is fail-closed on secrets and mail: `APP_S
 commands above and every replica. Transport is yours to choose: `APP_URL` may be http
 or https, `DATABASE_URL` may use any `sslmode` or a Unix socket, and `SMTP_TLS` may be
 `starttls`, `implicit` or `none` — see
-[transport security](docs/transport-security.md) for what each costs and for the
+[transport security](docs/src/content/docs/en/admin/transport-security.md) for what each costs and for the
 same-host and socket forms.
 
 `migrate` needs that whole set too, which is why the terminating job above carries the
@@ -301,7 +301,7 @@ possible, set `BOOTSTRAP_OWNER_EMAIL`: `/setup` is closed and the Owner is
 seated by an emailed invitation instead. A control plane running many
 instances can also poll each one over a private, bearer-protected listener
 (`MANAGEMENT_PORT` and `MANAGEMENT_TOKEN`) instead of holding a session; see
-[the management listener](docs/management.md).
+[the management listener](docs/src/content/docs/en/admin/management-listener.md).
 
 `APP_SECRET` derives every key the process uses (CSRF tokens, cookie signing, TOTP
 secret encryption) through HKDF-SHA256. There is no external key vault to provision,
@@ -311,16 +311,16 @@ database.
 
 Do not run `seed` in production; it is development-only. Authentication,
 reverse-proxy and full configuration guidance lives in
-[Vantigo identity](docs/customers-authentication.md); every setting the process reads
+[Vantigo identity](docs/src/content/docs/en/admin/authentication.md); every setting the process reads
 is documented in `apps/server/internal/config/config.go`'s field comments, which are
 the authoritative reference. For static workforce OIDC, static SCIM provisioning and
 the operator runbook, see the
-[SSO and SCIM operations guide](docs/sso-scim-operations.md) and the
+[SSO and SCIM operations guide](docs/src/content/docs/en/admin/sso-scim.md) and the
 [documentation index](docs/README.md). The Products domain model, pricing rules and
-cross-module contracts are documented in [Products](docs/products.md); projects,
-their codes, roles and billing lines in [Projects](docs/projects.md); hours, rates,
-approval and the period lock in [Time](docs/time.md); outlays, mileage, receipts,
-approval and the two tracks after it in [Expenses](docs/expenses.md).
+cross-module contracts are documented in [Products](docs/src/content/docs/en/reference/products.md); projects,
+their codes, roles and billing lines in [Projects](docs/src/content/docs/en/reference/projects.md); hours, rates,
+approval and the period lock in [Time](docs/src/content/docs/en/reference/time.md); outlays, mileage, receipts,
+approval and the two tracks after it in [Expenses](docs/src/content/docs/en/reference/expenses.md).
 
 Prefer not to host anything at all? The managed **Vantigo SaaS** runs the exact same
 open-source stack for you.

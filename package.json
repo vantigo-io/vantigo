@@ -6,7 +6,8 @@
   "workspaces": {
     "packages": [
       "apps/*/frontend",
-      "packages/*"
+      "packages/*",
+      "docs"
     ],
     "catalog": {
       "@mantine/charts": "^9.4.2",
@@ -68,7 +69,9 @@
     "i18n:test": "bun run --cwd apps/customers/frontend vitest run --root ../../../packages/frontend-shell src/i18n && bun test tools/i18n",
     "prepare": "husky",
     "format:check": "biome check .",
-    "format:write": "biome check --write ."
+    "format:write": "biome check --write .",
+    "docs:check": "bun run tools/docs/check-coverage.ts",
+    "docs:test": "bun test tools/docs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

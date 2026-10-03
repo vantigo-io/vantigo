@@ -73,7 +73,7 @@ const (
 	// (csvimport_cap_test.go) measured a real run at the cap at about 30 s on
 	// four CPUs, inside the ~100 s a hosted installation's proxy allows; were a
 	// run ever to need more, this is the number to lower, and
-	// docs/customers.md the paragraph that says so.
+	// docs/src/content/docs/en/reference/customers.md the paragraph that says so.
 	maxImportRows = customersFileMaxRows
 	// maxNamelessColumnsNamed is how many positions of nameless columns the
 	// refusal lists before it counts the rest.

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.27 (pgx, sqlc, goose, oapi-codegen strict server), PostgreSQL 18, React + Mantine 9 + TanStack Router/Query, vitest, bun, mise.
 
-**Spec:** `docs/superpowers/specs/2026-09-23-customers-groups-design.md` (D1–D6 + "Out of scope" + "Testing"). Read it first; it is binding, and every decision below argues from it rather than past it. Research with file:line pointers into the code this plan mirrors: `.superpowers/sdd/2026-09-23-customers-groups/context-for-design.md`. The sibling deliveries whose shape this one copies are documented in `docs/customers.md` ("Owner and tags", "Billing profile", "`contracts.CustomerDirectory`") and were planned in `docs/superpowers/plans/2026-09-23-customers-owner-tags.md` and `2026-09-23-customers-follow-ups.md`.
+**Spec:** `docs/superpowers/specs/2026-09-23-customers-groups-design.md` (D1–D6 + "Out of scope" + "Testing"). Read it first; it is binding, and every decision below argues from it rather than past it. Research with file:line pointers into the code this plan mirrors: `.superpowers/sdd/2026-09-23-customers-groups/context-for-design.md`. The sibling deliveries whose shape this one copies are documented in `docs/src/content/docs/en/reference/customers.md` ("Owner and tags", "Billing profile", "`contracts.CustomerDirectory`") and were planned in `docs/superpowers/plans/2026-09-23-customers-owner-tags.md` and `2026-09-23-customers-follow-ups.md`.
 
 ## Global Constraints
 
@@ -70,7 +70,7 @@
 | `apps/customers/frontend/src/pages/customers.index.tsx` | the Group filter ↔ URL and the Manage groups button |
 | `apps/customers/frontend/src/pages/-customer-billing-card.tsx` | the inherited-term sentence under the payment-terms row |
 | `apps/host/frontend/src/routes/customers/index.tsx` | `groupId` validated into the URL, the vocabulary prefetched |
-| `docs/customers.md`, `ROADMAP.md`, `openapi/COVERAGE.md` | the Groups section, the two tables, the permission note, the frontend bullets, the API list, phase 4 |
+| `docs/src/content/docs/en/reference/customers.md`, `ROADMAP.md`, `openapi/COVERAGE.md` | the Groups section, the two tables, the permission note, the frontend bullets, the API list, phase 4 |
 
 ---
 
@@ -2520,7 +2520,7 @@ The same list for both, and named files rather than `internal/customers` wholesa
 **Files:**
 - Modify: `apps/server/internal/contracts/directory.go`, `apps/server/internal/customers/directory.go`, `apps/server/internal/customers/directory_internal_test.go`, `apps/server/internal/customers/directory_test.go`, `apps/server/internal/customers/billing_profile.go`, `apps/server/internal/customers/billing_profile_test.go`, `apps/server/internal/customers/queries/customers.sql`, `openapi/customers.yaml`
 - Generated: `store/customers.sql.go`, `internal/openapi/specs/customers.yaml`, `internal/customers/gen/api.gen.go`, each changed `api-schema.d.ts`
-- Read first (do not change): `apps/server/internal/customers/directory.go:106-202`, `apps/server/internal/customers/directory_internal_test.go` (all of it — three tests, one of which this task extends), `apps/server/internal/customers/billing_profile.go:32-140`, `docs/customers.md:1810-1841` (the resolution table Task 5 edits)
+- Read first (do not change): `apps/server/internal/customers/directory.go:106-202`, `apps/server/internal/customers/directory_internal_test.go` (all of it — three tests, one of which this task extends), `apps/server/internal/customers/billing_profile.go:32-140`, `docs/src/content/docs/en/reference/customers.md:1810-1841` (the resolution table Task 5 edits)
 
 **Interfaces:**
 - Produces (contract): schema `CustomerBillingGroupDefault` (`{group: CustomerGroupRef, paymentTermsDays?: int32}`, `group` required); `groupDefault?` on `CustomerBillingProfile` (additive, optional).
@@ -3011,17 +3011,17 @@ One list for `add` and `commit`, and named files rather than `internal/customers
 
 ### Task 5: Documentation (D1–D6)
 
-No code. `docs/customers.md` gains a **Groups** section after Owner and tags, and four existing places learn about groups; `ROADMAP.md`'s phase 4 gains delivery D and loses groups from "still ahead". Everything here must be true of the code that is now on the branch — read the handlers again rather than the plan.
+No code. `docs/src/content/docs/en/reference/customers.md` gains a **Groups** section after Owner and tags, and four existing places learn about groups; `ROADMAP.md`'s phase 4 gains delivery D and loses groups from "still ahead". Everything here must be true of the code that is now on the branch — read the handlers again rather than the plan.
 
 It lands **before** Tasks 6–7, so this one commit documents a Group filter, a card select and a billing sentence that arrive two commits later. That is deliberate: the docs' own subject is the module's behaviour, the backend of which is complete here, and writing the frontend bullets twice (once as "not built yet") would be worse. A reviewer reading commit by commit should know; say so in the PR if it comes up.
 
 **Files:**
-- Modify: `docs/customers.md`, `ROADMAP.md`
-- Read first (do not change): `docs/customers.md:517-621` (Owner and tags — the section this one follows and imitates), `440-517` (the billing profile's field table), `1694-1767` (permissions), `1810-1841` (the directory's resolution table), `1841-1989` (the frontend bullets), `1989-2042` (the API list), `2042-2118` (What comes next), `ROADMAP.md:139-215`
+- Modify: `docs/src/content/docs/en/reference/customers.md`, `ROADMAP.md`
+- Read first (do not change): `docs/src/content/docs/en/reference/customers.md:517-621` (Owner and tags — the section this one follows and imitates), `440-517` (the billing profile's field table), `1694-1767` (permissions), `1810-1841` (the directory's resolution table), `1841-1989` (the frontend bullets), `1989-2042` (the API list), `2042-2118` (What comes next), `ROADMAP.md:139-215`
 
 - [ ] **Step 1: The Groups section**
 
-In `docs/customers.md`, after the "Owner and tags" section's last paragraph (the "Search does not match owner names or tag names…" one) and before `## The timeline`, add:
+In `docs/src/content/docs/en/reference/customers.md`, after the "Owner and tags" section's last paragraph (the "Search does not match owner names or tag names…" one) and before `## The timeline`, add:
 
 ```markdown
 ## Groups
@@ -3196,7 +3196,7 @@ is never deleted — 409 `group_in_use`, with the count, and `ON DELETE RESTRICT
 under it — because detaching them would change every member's effective payment
 term with no record on any customer. No new permission key, and
 `contracts.CustomerEntry.Group` is the seam Products phase 4's customer-group
-prices will read. See [`docs/customers.md#groups`](docs/customers.md#groups).
+prices will read. See [`docs/src/content/docs/en/reference/customers.md#groups`](docs/src/content/docs/en/reference/customers.md#groups).
 ```
 Then, in "**Still ahead in this phase:**", drop "customer groups that can carry defaults;" and add to the leftovers: "Groups have their own: no **bulk move** (a group's members are moved one at a time, which is why the delete is refused rather than cascading), no group-level prices until Products phase 4 reads the seam, no default beyond payment terms, and the vocabulary is unpaged on the same bet the tags' is."
 
@@ -3206,7 +3206,7 @@ Also update the Products phase 4 line (`ROADMAP.md:365-368`) to name the seam th
 
 ```bash
 cd /home/anders/projects/vantigo/vantigo
-mise exec -- grep -n '#groups\|#the-membership\|55 operations' docs/customers.md ROADMAP.md
+mise exec -- grep -n '#groups\|#the-membership\|55 operations' docs/src/content/docs/en/reference/customers.md ROADMAP.md
 mise exec -- grep -c 'operationId:' openapi/customers.yaml   # must be 55
 cat > /tmp/claude-1000/msg-groups-5.txt <<'EOF'
 docs(customers): customer groups
@@ -3220,7 +3220,7 @@ ROADMAP gains delivery D and loses groups from what is still ahead.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 EOF
-PATHS="docs/customers.md ROADMAP.md"
+PATHS="docs/src/content/docs/en/reference/customers.md ROADMAP.md"
 git add $PATHS && git commit -F /tmp/claude-1000/msg-groups-5.txt -- $PATHS
 git show --stat HEAD && git status --short
 ```
