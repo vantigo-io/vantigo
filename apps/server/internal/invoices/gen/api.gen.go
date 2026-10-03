@@ -146,7 +146,7 @@ type InvoicesInvoiceRequest struct {
 	YourReference *string `json:"yourReference,omitempty"`
 }
 
-// InvoicesInvoiceResponse One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. Every issued document carries deliveries (D4); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send.
+// InvoicesInvoiceResponse One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. Every issued document carries deliveries (D4); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised.
 type InvoicesInvoiceResponse struct {
 	AllowedIssueDates *[]openapi_types.Date `json:"allowedIssueDates,omitempty"`
 
@@ -157,10 +157,13 @@ type InvoicesInvoiceResponse struct {
 	CreditedAmount *float64                 `json:"creditedAmount,omitempty"`
 
 	// Credits The issued invoice a credit note credits.
-	Credits      *InvoicesCreditsRef `json:"credits,omitempty"`
-	Currency     string              `json:"currency"`
-	CustomerId   int32               `json:"customerId"`
-	CustomerName *string             `json:"customerName,omitempty"`
+	Credits  *InvoicesCreditsRef `json:"credits,omitempty"`
+	Currency string              `json:"currency"`
+
+	// CustomerAnonymised true on an issued document whose customer this module has anonymised (D6), answered where sendDefaults would be — GET /invoices/{id} and the send, for a caller who may send, on an installation that can — so the app offers no send; absent otherwise, never false.
+	CustomerAnonymised *bool   `json:"customerAnonymised,omitempty"`
+	CustomerId         int32   `json:"customerId"`
+	CustomerName       *string `json:"customerName,omitempty"`
 
 	// Deliveries On an issued document, every e-mail that handed it over, the first first (D4).
 	Deliveries *[]InvoicesDelivery `json:"deliveries,omitempty"`

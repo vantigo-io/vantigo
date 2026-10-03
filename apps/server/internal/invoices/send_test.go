@@ -512,12 +512,14 @@ func TestSend_StorageUnavailable(t *testing.T) {
 
 // A send that fails is mail_failed, a 502, and records nothing — the ruling
 // (D4 step 7). The SMTP error is logged at warn with the document, never put
-// on the wire.
+// on the wire, and with the recipient's address — which a server's error
+// often quotes, in any case — replaced by "<recipient>": it may be a
+// person's, and the log outlives an erase.
 func TestSend_AFailedSendRecordsNothing(t *testing.T) {
 	t.Parallel()
 	h, fake := sendReady(t)
 	inv := issuedAcme(t, h)
-	fake.fail(errors.New("554 relay access denied for the secret relay"))
+	fake.fail(errors.New("554 relay access denied for the secret relay: RCPT TO:<faktura@acme.example> (Faktura@Acme.Example)"))
 	res := sendAs(sender(t, h), inv.ID, nil)
 	sendRefused(t, "a failed send", res, http.StatusBadGateway, "mail_failed")
 	if strings.Contains(string(res.Body), "relay") {
@@ -529,10 +531,13 @@ func TestSend_AFailedSendRecordsNothing(t *testing.T) {
 	logged := false
 	for _, l := range strings.Split(h.Logs(), "\n") {
 		logged = logged || (strings.Contains(l, `"level":"WARN"`) && strings.Contains(l, "relay access denied") &&
-			strings.Contains(l, fmt.Sprintf(`"invoice_id":%d`, inv.ID)))
+			strings.Contains(l, "<recipient>") && strings.Contains(l, fmt.Sprintf(`"invoice_id":%d`, inv.ID)))
 	}
 	if !logged {
-		t.Errorf("logs =\n%s\nwant a warning naming the document and the SMTP error", h.Logs())
+		t.Errorf("logs =\n%s\nwant a warning naming the document and the SMTP error with the address replaced", h.Logs())
+	}
+	if logs := strings.ToLower(h.Logs()); strings.Contains(logs, "faktura@acme.example") {
+		t.Errorf("logs =\n%s\nwant the recipient's address in no line", h.Logs())
 	}
 }
 
@@ -843,14 +848,16 @@ func TestSend_ARowThatFailsIsLoggedWithoutTheAddress(t *testing.T) {
 
 // A customer this module has anonymised is never written to again (D4 step
 // 3), so a sender's read of its document offers nothing to send with:
-// sendDefaults is left out, and the directory is not asked for the address.
+// sendDefaults is left out, customerAnonymised says why, and the directory is
+// not asked for the address. A reader who may not send is told neither.
 func TestSend_NoSendDefaultsForAnAnonymisedCustomer(t *testing.T) {
 	t.Parallel()
 	h, _ := sendReady(t)
 	inv := issuedAcme(t, h)
 	c, userID := h.SignInUser(t, "invoices:access", "invoices:issue")
-	if d := readAs(t, c, inv.ID).SendDefaults; d == nil {
-		t.Fatal("before the erase, sendDefaults absent; want the customer's")
+	reader := h.SignIn(t, "invoices:access")
+	if got := readAs(t, c, inv.ID); got.SendDefaults == nil || got.CustomerAnonymised != nil {
+		t.Fatalf("before the erase, sendDefaults %+v, customerAnonymised %v; want the customer's defaults and no flag", got.SendDefaults, got.CustomerAnonymised)
 	}
 	profileReads := func() int {
 		n := 0
@@ -863,8 +870,15 @@ func TestSend_NoSendDefaultsForAnAnonymisedCustomer(t *testing.T) {
 	}
 	before := profileReads()
 	h.Exec(t, `INSERT INTO invoices.erased_customers (customer_id, erased_at) VALUES ($1, now())`, customerAcme)
-	if d := readAs(t, c, inv.ID).SendDefaults; d != nil {
-		t.Errorf("an anonymised customer's sendDefaults = %+v, want none", d)
+	got := readAs(t, c, inv.ID)
+	if got.SendDefaults != nil {
+		t.Errorf("an anonymised customer's sendDefaults = %+v, want none", got.SendDefaults)
+	}
+	if got.CustomerAnonymised == nil || !*got.CustomerAnonymised {
+		t.Errorf("an anonymised customer's customerAnonymised = %v, want true for a sender", got.CustomerAnonymised)
+	}
+	if flag := readAs(t, reader, inv.ID).CustomerAnonymised; flag != nil {
+		t.Errorf("customerAnonymised for a reader who may not send = %v, want absent", *flag)
 	}
 	if n := profileReads() - before; n != 0 {
 		t.Errorf("%d billing profile reads for an anonymised customer's document, want none", n)

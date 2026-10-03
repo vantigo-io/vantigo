@@ -92,18 +92,25 @@ CREATE TRIGGER tr_payments_immutable
 -- note. The document is read FOR SHARE, whatever it is, and only then judged
 -- (00034's child-row pattern): an insert beside an issue that has not
 -- committed yet waits for it. The API refuses first, with its own codes; this
--- is the floor.
+-- is the floor. The read takes the document's current customer too, and the
+-- marker is then read in a statement of its own — guard_delivery_insert's
+-- shape (D6): a payment registered for a marked customer keeps no staff note,
+-- so a registration that waited out an erase does not write one back.
 -- +goose StatementBegin
 CREATE FUNCTION invoices.refuse_payment_on_unissued()
 RETURNS trigger LANGUAGE plpgsql AS $function$
 DECLARE
-    parent_kind   text;
-    parent_status text;
+    parent_kind     text;
+    parent_status   text;
+    parent_customer integer;
 BEGIN
-    SELECT kind, status INTO parent_kind, parent_status
+    SELECT kind, status, customer_id INTO parent_kind, parent_status, parent_customer
     FROM invoices.invoices WHERE id = NEW.invoice_id FOR SHARE;
     IF parent_kind IS DISTINCT FROM 'invoice' OR parent_status IS DISTINCT FROM 'issued' THEN
         RAISE EXCEPTION 'invoices: a payment needs an issued invoice' USING ERRCODE = 'P0001';
+    END IF;
+    IF EXISTS (SELECT 1 FROM invoices.erased_customers WHERE customer_id = parent_customer) THEN
+        NEW.note := '';
     END IF;
     RETURN NEW;
 END;

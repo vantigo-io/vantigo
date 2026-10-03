@@ -75,9 +75,9 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
 | `invoices.invoices` | Drafts and issued documents: kind, status, number, customer, delivery, references, notes, the buyer snapshot and the seller snapshot (written at issue), the totals, and the stored PDF's key and SHA-256. |
 | `invoices.lines` | Description, quantity (3 decimals), unit, unit price (4), discount (2), VAT code, the computed gross, allowance and net, the credited line on a credit note, and the VAT snapshot written at issue. |
 | `invoices.vat_summaries` | An issued document's VAT per (category, rate) with its SAF-T code and reason. |
-| `invoices.payments` | Money received against an issued invoice: the day it arrived, the amount and the currency (the invoice's, copied), the bank's or the payer's reference, a note (`''` once the customer is anonymised), who registered it and when, and — once removed — when, by whom and why. Never deleted; never changed but by the removal, once, and that blanking. |
+| `invoices.payments` | Money received against an issued invoice: the day it arrived, the amount and the currency (the invoice's, copied), the bank's or the payer's reference, a note (`''` once the customer is anonymised, and on every registration made after), who registered it and when, and — once removed — when, by whom and why. Never deleted; never changed but by the removal, once, and that blanking. |
 | `invoices.deliveries` | One row per e-mail that handed an issued document over: the recipient (`''` once the customer is anonymised), the subject, the Message-ID, the SHA-256 of the PDF attached, when and by whom. Never deleted; never changed but by that blanking. |
-| `invoices.erased_customers` | The customers this module has anonymised, by id, with when: the marker a send and the delivery trigger read. Never removed. |
+| `invoices.erased_customers` | The customers this module has anonymised, by id, with when: the marker a send and the delivery and payment triggers read. Never removed. |
 
 A document's state is not a column: `invoices.document_state(...)` derives it, see
 [Payments and the state of an invoice](#payments-and-the-state-of-an-invoice).
@@ -147,6 +147,11 @@ line), `reverse_charge_needs_org_number` and `vat_codes_ambiguous`; for a credit
 `credit_exceeds_line` (with `linePosition`) and `credit_exceeds_invoice`. Before the
 transaction: `invoice_issued`, and 503 `storage_unavailable` when no object store is
 configured — an issued number whose PDF could never be stored is not allowed to exist.
+A Norwegian business's organisation number reaches the buyer snapshot only from this
+release on: before it, the snapshot compared the directory's lowercase country
+case-sensitively, so a document issued to one then carries `buyer_foreign_id` `no…`
+instead — snapshots are immutable, so credit and re-issue one where it matters
+([upgrading](../deploy/compose/README.md#upgrading)).
 A merge that re-points the draft between the directory read and the lock is
 `invoice_changed`.
 
@@ -260,9 +265,11 @@ triggers hold it in the database: `tr_payments_immutable` refuses every DELETE a
 UPDATE but two writes, which one statement may make together — the removal, which sets
 the three removal columns from NULL, once, and an anonymisation's blanking of the note
 to `''` — with the rest of the row unchanged ("invoices: a payment registration is
-immutable", SQLSTATE `P0001`); `tr_payments_parent` reads the document `FOR SHARE` on
-INSERT and refuses a row under anything but an issued invoice ("invoices: a payment
-needs an issued invoice"). A CHECK holds the three removal columns together and the
+immutable", SQLSTATE `P0001`); `tr_payments_parent` reads the document and its current
+customer `FOR SHARE` on INSERT, refuses a row under anything but an issued invoice
+("invoices: a payment needs an issued invoice"), and then writes the note as `''` when
+the customer has been anonymised — so a registration that raced the erase, or came
+after it, never keeps a staff note about the person. A CHECK holds the three removal columns together and the
 reason non-empty, another the amount above 0, and the foreign key is `ON DELETE
 RESTRICT`. The API refuses first, with its own codes; the triggers are the floor.
 
@@ -515,7 +522,9 @@ payment's, a removal's, an issue's and a credit's responses never carry it, so n
 adds a directory call to its answer. It is the one directory read on an issued document,
 and it is best effort: a directory that fails leaves `sendDefaults` out and logs at
 warn, never a 500 on a read of bookkeeping material. The document's own `warnings`
-(`issued_late`, …) are another list and never mixed with the send's.
+(`issued_late`, …) are another list and never mixed with the send's. Where
+`sendDefaults` would be, an anonymised customer's document answers `customerAnonymised:
+true` instead, so the app offers no send; it is absent otherwise.
 
 **The delivery log.** `invoices.deliveries` holds one row per mail the server took: the
 recipient, the subject as sent, the bare Message-ID, the SHA-256 of the PDF attached, when,
@@ -704,13 +713,16 @@ The module fills both customer slots ([module boundaries](module-boundaries.md))
     registration is kept, because it is bookkeeping material kept with the document,
     not because it holds nothing personal: its date, amount and the bank's reference —
     which often names the payer — stay, while the note, staff free text about the
-    person that no retention rule needs, goes;
+    person that no retention rule needs, goes. A removed registration's
+    `removal_reason` stays too: it is the audit trail kept with the registration — it
+    says why a registration was withdrawn, not who the person is;
   - `invoices.deliveries` — the deliveries whose recipient was blanked: the rows stay as
     the record of when the claim was handed to the mail server, the address gone.
 
   Run twice, it finds nothing and reports zeros, and the marker keeps its first time.
-  The marker refuses every later send (`customer_anonymised`) and blanks any delivery
-  row a send racing the erase writes ([Sending a document](#sending-a-document)); it is
+  The marker refuses every later send (`customer_anonymised`), blanks any delivery
+  row a send racing the erase writes ([Sending a document](#sending-a-document)), and
+  blanks the note of any payment registered after or racing the erase; it is
   read by this module only and never removed — anonymisation is never undone.
   `contracts.ErasedData` carries no reason field; this paragraph is where the reasons
   are written.
