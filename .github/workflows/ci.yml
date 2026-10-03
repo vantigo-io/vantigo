@@ -125,7 +125,11 @@ jobs:
         continue-on-error: true
 
       - name: 🛡️ Audit frontend dependencies (fail on High/Critical)
-        run: bun audit --audit-level=high
+        # GHSA-ch52-4w7c-c8xp (http-cache-semantics, max-stale handling) has
+        # no patched release. It reaches us only through Astro, which uses it
+        # at build time for the documentation site; nothing it caches is ever
+        # served. Drop the ignore when a fixed version ships.
+        run: bun audit --audit-level=high --ignore=GHSA-ch52-4w7c-c8xp
 
       - name: 🌐 Check translation catalogs
         run: bun run translations:check
