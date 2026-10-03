@@ -262,21 +262,40 @@ outcome unknown). `delivered` means **the receiving access point accepted the me
 (the AS4 receipt)** — nothing stronger (research §4); the adapter's mapping of the
 provider's states onto the four is tested.
 
-**One adapter, Storecove.** `Authorization: Bearer <api key>`; `POST
-document_submissions` with the UBL as the document body, the sender's `legalEntityId`,
-the receiver's `eIdentifiers` and the `idempotencyGuid`; evidence by `GET
-document_submissions/{guid}/evidence`, `{guid}` being the provider's reference. **How
-status is read is settled by the spike**, the plan's first task, against Storecove's
-OpenAPI document and sandbox: the research found a per-account pull queue, not a
-per-submission read (§5.4). Two designs are ready for its answer: a per-submission read,
-polled by the row's cadence (D9), or **a single leased drain of the account's queue**
-(the customers module's advisory-lease shape, one replica at a time) that matches events
-to rows by provider guid and acknowledges them, with `Evidence` as the status proxy for a
-row the queue never mentions. The spike's checklist: the raw-UBL field name and encoding;
-whether the embedded PDF passes through unchanged or a separate PDF field wins; the two
-422 bodies (duplicate key vs validation) and how rule ids are reported; the idempotency
-dedupe window; rate limits; the status read; whether sandbox access needs a sales contact
-(which would stall the task and is said in the report).
+**One adapter, Storecove**, by its OpenAPI document as the spike read it (the plan's
+"Spike findings"): `Authorization: Bearer <api key>`; `POST document_submissions` with
+`legalEntityId`, `idempotencyGuid` (36 characters), `routing.eIdentifiers` `[{scheme,
+id}]` — **Storecove's scheme for a Norwegian organisation number is `NO:ORG`**, so the
+adapter maps the Peppol scheme `0192` to it (a small table; an unmapped scheme is
+`ErrRejected` before any call) — and `document: {documentType: "invoice",
+rawDocumentData: {document: <base64 UBL>, parseStrategy: "ubl"}}`; the response is
+`{guid}`. **Storecove parses the submitted UBL into its own model and regenerates the
+UBL it transmits** (its documentation says so): what reaches the receiver is not
+Vantigo's bytes. So the record of what was sent is **two things**: the UBL as submitted
+(`ubl_sha256`, D4) and **the delivered copy from the provider's evidence**, which the
+worker fetches and stores once a transmission is `delivered` (D9) — `GET
+document_submissions/{guid}/evidence/sending` answers JSON with the receiving access
+point, the message id, an inline receipt XML and **expiring URLs** to the transmitted
+documents; the adapter fetches those documents at once and `Evidence` answers the
+receipt JSON plus the delivered UBL bytes, both stored. Whether the PDF embedded in
+Vantigo's UBL survives the regeneration is **unstated**; the tagged sandbox test asserts
+it, and the administration page says it until then. **There is no per-submission status
+read**: status arrives as webhooks — pushed to a public URL, or **pulled from the
+account's FIFO queue** (`GET webhook_instances/` → one event or 204; `DELETE
+webhook_instances/{guid}` acknowledges) — and every event carries the submission's
+`guid` and `idempotencyGuid`. The states a Norwegian sender sees: `no_action_taken` (no
+routable receiver → `failed`), `failed` (final → `failed`), `succeeded` (the receiving
+access point's AS4 receipt → `delivered`); the others are gated on Invoice Response or
+tax clearance and are mapped to `submitted` if they ever appear. **The two 422 bodies —
+a duplicate `idempotencyGuid` and a validation refusal — are the same shape**, so the
+adapter cannot tell them apart; the worker does, by its crash marker (D9). No rate limit,
+no 429 and no 5xx are documented; the adapter still classifies them defensively.
+Sandbox access is a **sales-contact form with a thirty-day test account**, the same host
+with a sandbox key: the plan asks for it on day one, the implementation runs against an
+`httptest` Storecove speaking the OpenAPI schemas, and the tagged test runs when
+`STORECOVE_SANDBOX_API_KEY` is set. One API key spans several legal entities
+(`legalEntityId` is per call), which is what a multi-entity installation would need
+later.
 
 **The HTTP client** is the Brreg client's shape — the base URL is the operator's
 (D1), so it dials unguarded like Brreg does (the guard refuses loopback and private hosts
@@ -369,8 +388,8 @@ no-op when the lease changed (the outbox's rule, copied).
   at error, and sets `accessPointCredentialsRejected`; the UBL fetched from the store and
   checked against `ubl_sha256`; when `lookup_at` is older than 24 h the lookup runs
   again first, D6) → `submitted` with `provider_ref` and `submitted_at`.
-  `ErrAlreadySubmitted` with a reference is the same; **without a reference the row
-  becomes `unconfirmed`** (nothing can be polled; a person resolves it). A transport
+  `ErrAlreadySubmitted` cannot be told from a validation 422 by the body — the 422 rule
+  below decides by the crash marker. A transport
   failure or a 5xx → `submit_attempts + 1`, `next_attempt_at = now + backoff(attempts)`
   (`min(3600, 2^n)` s), still `queued`; `ErrThrottled` → the provider's retry-after;
   `ErrUnauthorized` → stays `queued` with backoff, `accessPointCredentialsRejected` on
@@ -378,12 +397,27 @@ no-op when the lease changed (the outbox's rule, copied).
   attempts or 48 hours since `queued_at` → `unconfirmed` when `submit_attempted_at` is
   set (the provider may have the document), `failed` when it never was; the 48 hours
   stay under any dedupe window the spike finds (shortened if the spike says so).
-- `submitted` → `Status` on a cadence by `poll_attempts` (1, 5, 15 min, then hourly):
-  `delivered` → `delivered_at` **committed first**, then `Evidence` on the next claim,
-  stored once under `documents/<id>/<number>-<transmission>-receipt.<ext>` — a
-  `delivered` row with a NULL `evidence_object_key` is re-pollable, and a failed fetch
-  retries on the cadence; `failed` → `failed_at` and the reason; still `submitted` or
-  `unknown` **seven days after `submitted_at`** → `unconfirmed`.
+- **Status comes from the queue.** A second worker, `invoices-ehf-events`, under an
+  advisory lease (the customers module's shape — one replica drains at a time), polls
+  `GET webhook_instances/` every 30 s while any row is `submitted` or `unconfirmed`:
+  each event is matched to a row by `provider_ref` (or by `idempotency_key` when the row
+  never learned its reference), applied as a lease-checked update — `succeeded` →
+  `delivered` with `delivered_at`; `failed` or `no_action_taken` → `failed` with the
+  reason — and then acknowledged with `DELETE`; an event for no row of ours is logged and
+  acknowledged. The queue is drained until 204.
+- `submitted` rows also probe on their own cadence by `poll_attempts` (5 min, 15 min,
+  then hourly): `Evidence` **is the status proxy** — 404 means not delivered yet, 200
+  means delivered even if the event was lost — so a row the queue never mentions still
+  completes. `delivered` is committed first; **then** the next claim fetches `Evidence`
+  and stores it once under `documents/<id>/<number>-<transmission>-receipt.json` with
+  the delivered UBL beside it as `…-delivered.xml` — a `delivered` row with a NULL
+  `evidence_object_key` is re-pollable, and a failed fetch retries on the cadence; still
+  `submitted` **seven days after `submitted_at`** → `unconfirmed`.
+- **The 422 rule.** A 422 on the first attempt (`submit_attempted_at` was NULL before
+  this claim) is a validation refusal → `failed` with the body's messages as the reason;
+  a 422 on a retry (the marker was already set) may be the duplicate-key refusal of a
+  submission that went through → `submitted` without a reference, which the queue drain
+  resolves by `idempotency_key`, or `unconfirmed` if nothing arrives in seven days.
 - `unconfirmed` is terminal for the machine and open for a person: the transmission
   **blocks a new send** (D8's index includes it) until an `invoices:issue` holder
   resolves it with `POST /invoices/{id}/transmissions/{transmissionId}/resolve
@@ -587,8 +621,10 @@ Per `AGENTS.md`'s page map:
    claim; status is polled, not pushed; an unknown outcome is `unconfirmed` and a person
    resolves it.
 8. `delivered` is the AS4 receipt and is worded so.
-9. Storecove first; its status read and request fields are settled by a spike before
-   the adapter; the drain-worker fallback is designed.
+9. Storecove first, by its OpenAPI document: status is drained from its pull queue by
+   a leased second worker, evidence is the proof probe, and the delivered copy from
+   the evidence is stored as the transmitted record because Storecove regenerates the
+   UBL; a 422 on a retry is read as a possible duplicate, never as a refusal.
 10. The access-point client is unguarded like Brreg's; the URL is the operator's.
 11. Transmissions are kept through anonymisation; a never-attempted queued one is
     cancelled.

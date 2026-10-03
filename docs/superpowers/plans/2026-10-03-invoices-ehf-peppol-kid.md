@@ -26,7 +26,7 @@
 - Every commit message ends with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`; a docs-only or test-only commit carries `Docs-Impact: none — <reason>` above it. Scopes `invoices`, `invoices-ui`, `peppol`, `config`, `ci`, `tools`, `integration`, `docs`.
 - Every new test is shown able to fail; the report says so.
 
-**Parallelism.** Task 1 (the spike's record) first. Tasks 2 → 3 → 4 → 6 → 7 → 8 → 9 run in order on the server. Task 5 (the oracle toolchain) needs Task 4's goldens and may run beside Task 6. Task 10 (docs) follows Task 8 and is checked against the code. Task 11 (the app) needs the `api-schema.d.ts` Task 7 commits and may run beside Tasks 8–10. Task 12 verifies the whole branch. The one-committer rule holds throughout.
+**Parallelism.** Task 1 is done. Tasks 2 → 3 → 4 → 6 → 7 → 8 → 9 run in order on the server. Task 5 (the oracle toolchain) needs Task 4's goldens and may run beside Task 6. Task 10 (docs) follows Task 8 and is checked against the code. Task 11 (the app) needs the `api-schema.d.ts` Task 7 commits and may run beside Tasks 8–10. Task 12 verifies the whole branch. The one-committer rule holds throughout.
 
 ---
 
@@ -41,7 +41,7 @@
 7. The e-mail cover text's KID sentence replaces the "quoting invoice number" clause only; the account sentence stays.
 8. The CSV's `KID` column is the seventeenth, after `Credits number`.
 9. `blockedBy` is the first of D8's codes in order, computed without the network.
-10. The Storecove status read is whichever the spike confirms (Task 1); the plan's Task 8 carries both shapes and the implementer deletes the one not chosen.
+10. The Storecove status read is the pull queue drained by a second leased worker (the spike found no per-submission read); evidence is the proof probe; the delivered copy from the evidence is stored as the transmitted record.
 
 ## File Structure
 
@@ -62,9 +62,9 @@
 
 ---
 
-### Task 1: Record the Storecove contract spike
+### Task 1: The Storecove contract spike — done; its findings are below
 
-The spike ran as research (`scratchpad/spike-storecove.md`); this task writes its answers into this plan's §Spike findings and into `research §5.3`, and settles reading 10. Deliverable: a table — the raw-UBL field and encoding; `eIdentifiers` scheme format for `0192`; the attachment path and which PDF wins; the submission response; the 422 bodies for a duplicate key vs validation; 401/403; 429 and `Retry-After`; the status read (per-submission GET, or the pull queue and its acknowledgement); the evidence response; the dedupe window; whether the UBL is Schematron-validated on submission and how rule ids come back; the sandbox base URL and how keys are obtained; legal-entity registration. Each with its source URL and a confidence. Commit `docs(invoices): the Storecove contract, as the spike found it` with `Docs-Impact: none — a plan note`.
+The spike ran against Storecove's OpenAPI 2.0 document (`https://api.storecove.com/api/v2/openapi.json`) and its rendered documentation before this plan was finalised; the §Spike findings table at the end of this plan is its record, and spec D7/D9 were revised on it. The one thing it could not do is obtain a sandbox: **Storecove's test account is a sales-contact form with a thirty-day period** — the user requests it on day one, and every task below proceeds against the `httptest` fake built from the OpenAPI schemas; the tagged sandbox test (Task 6) runs when `STORECOVE_SANDBOX_API_KEY` is set. Nothing to commit here.
 
 ### Task 2: The migration, KID, and the settings' new fields (D2, D3, D9 tables)
 
@@ -190,7 +190,7 @@ The mapping is the spec's D4 table, row for row; the category rules (no `Percent
 
 **Files:** create `srv/invoices/accesspoint/{accesspoint.go,storecove.go,storecove_test.go,fake_test.go}`, `srv/invoices/{credentials.go,credentials_test.go}`; modify `srv/invoices/{server.go,contractscalls.go,harness_test.go}`, `openapi/invoices.yaml`, the reference page's endpoints/permissions rows, the user and admin page sentences; generated files.
 
-**Interfaces:** the port exactly as spec D7 (the interface, `Submission`, `SubmissionRef`, `SubmissionStatus`, the error classes `ErrAlreadySubmitted{Ref}`, `ErrRejected{Reason}`, `ErrUnauthorized`, `ErrThrottled{RetryAfter}`); `storecove.New(baseURL, apiKey, legalEntityID string, transport http.RoundTripper) *Client` implementing it with the contract Task 1 recorded; no retries inside; 30 s per request; `Verify` = the cheapest authenticated read; the fake in `fake_test.go` (`httptest`) speaking the same contract for every status path. `contractscalls.go`: `accessPoint(ctx) (accesspoint.AccessPoint, error)` opening the key (`noteContractCall("AccessPoint.…")` on each method through a wrapper). `credentials.go`: `PUT/DELETE /invoices/settings/access-point`, `POST …/verify`, `transmissions_active` (409) while any transmission is active, `hasCredentials`, `rejectedAt` on the response; the key sealed under `invoices/access-point-credential`.
+**Interfaces:** the port as spec D7, with `Status` replaced by two methods the spike's contract supports — `NextEvent(ctx) (Event, bool, error)` (`GET webhook_instances/`; `false` on 204) and `AckEvent(ctx, eventID string) error` (`DELETE webhook_instances/{guid}`), `Event{ID, SubmissionRef, IdempotencyKey, State, At, Reason}` with `State` mapped `succeeded → delivered`, `failed`/`no_action_taken → failed`, anything else `submitted` — and `Evidence(ctx, ref) (Evidence, error)` answering the receipt JSON (`evidence.xml`, `message_id`, `receiving_accesspoint`), the delivered documents fetched at once from their expiring URLs (`documents[].document`, `mime_type`), or `ErrNotYetAvailable` on 404. Error classes `ErrUnprocessable{Messages}` (a 422 — the worker decides duplicate vs refusal by its marker), `ErrUnauthorized` (401/403), `ErrThrottled{RetryAfter}` (a 429, defensive — undocumented), and a transport/5xx error. `storecove.New(baseURL, apiKey string, legalEntityID int, transport http.RoundTripper) *Client`: `POST document_submissions` with `{legalEntityId, idempotencyGuid, routing: {eIdentifiers: [{scheme: "NO:ORG", id: "<orgnr>"}]}, document: {documentType: "invoice", rawDocumentData: {document: <base64>, parseStrategy: "ubl"}}}` (the scheme table `0192 → NO:ORG`; `0088 → GLN` if the spike's identifier tables list it, else unmapped → `ErrRejected` before any call); the response `{guid}`; no retries inside; 30 s per request; `Verify` = `GET legal_entities/{id}`; the fake in `fake_test.go` (`httptest`) speaks exactly these shapes, holds a queue of events the test enqueues, and serves evidence with a local URL for the delivered document. `contractscalls.go`: `accessPoint(ctx) (accesspoint.AccessPoint, error)` opening the key (`noteContractCall("AccessPoint.…")` on each method through a wrapper). `credentials.go`: `PUT/DELETE /invoices/settings/access-point`, `POST …/verify`, `transmissions_active` (409) while any transmission is active, `hasCredentials`, `rejectedAt` on the response; the key sealed under `invoices/access-point-credential`.
 
 - [ ] **Step 1:** adapter tests first against the fake: a submission's body shape (the UBL, `legalEntityId`, `eIdentifiers`, `idempotencyGuid`), each response class, status mapping to the four states, evidence, verify. Red; implement; green.
 - [ ] **Step 2:** credentials tests first: never returned, kept when omitted, DELETE and switch refused while active, verify's answers, `invoices:manage`, a failed `Open` → 503 and an error log. Implement.
@@ -209,7 +209,7 @@ The mapping is the spec's D4 table, row for row; the category rules (no `Percent
 
 **Files:** create `ehf_worker.go`, `ehf_worker_test.go`; modify `module.go` (`Workers`), `queries/transmissions.sql` if a statement is missing, the reference's worker section stub and `admin/installation.md`'s workers list (en + nb).
 
-**The worker** as D9: the claim query (`status IN ('queued','submitted','unconfirmed') AND next_attempt_at <= now AND (lease_until IS NULL OR lease_until < now)`), one call per claim, the crash marker, the error classes → the transitions, the caps (8 submit attempts / 48 h → `unconfirmed` when attempted, else `failed`), the poll cadence by `poll_attempts`, `delivered` committed before evidence, the seven days → `unconfirmed`, the daily poll of `unconfirmed` rows for thirty days, the 24-hour lookup refresh (through the seam), the lease-checked completion, its own object store from the configuration, the switches. **Status read**: per the spike — a per-submission GET polled by the row's cadence, **or** the leased drain of the account's pull queue (a second worker `invoices-ehf-events` under an advisory lease, `0x494E56454846" "INVEHF`, matching events by provider guid, acknowledging them) with `Evidence` as the proxy; the implementer keeps the one Task 1 chose.
+**The worker** as D9: the claim query (`status IN ('queued','submitted','unconfirmed') AND next_attempt_at <= now AND (lease_until IS NULL OR lease_until < now)`), one call per claim, the crash marker, the error classes → the transitions, the caps (8 submit attempts / 48 h → `unconfirmed` when attempted, else `failed`), the poll cadence by `poll_attempts`, `delivered` committed before evidence, the seven days → `unconfirmed`, the daily poll of `unconfirmed` rows for thirty days, the 24-hour lookup refresh (through the seam), the lease-checked completion, its own object store from the configuration, the switches. **Status** per the spike and spec D9: a second worker `invoices-ehf-events` under an advisory lease (key `0x494E5645484631`, "INVEHF1") that, while any row is `submitted` or `unconfirmed`, drains the queue every 30 s — `NextEvent` → match by `provider_ref`, else by `idempotency_key` → a lease-checked update (`delivered` / `failed` with the reason) → `AckEvent`; an event for no row is logged (by guid only) and acknowledged; stop at 204. `submitted` rows also probe `Evidence` on their cadence (5 min, 15 min, hourly): 200 → `delivered`; `ErrNotYetAvailable` → reschedule. The 422 rule: a 422 with the marker previously NULL → `failed` with the messages; with the marker already set → `submitted` without a reference (the drain matches by idempotency key), and `unconfirmed` after seven days. Evidence after `delivered`: the receipt JSON stored as `…-receipt.json` and the delivered UBL as `…-delivered.xml`, both once.
 
 - [ ] **Step 1:** tests first against the fake access point and a fake lookup: claim and lease (two workers, one submission); the marker before Submit; each error class's transition; the caps by the marker; the cadence under the fixed clock; delivered-then-evidence with a failing fetch retried; the seven days; the daily unconfirmed poll resolving; the lookup refresh; a failed `Open`; the lease-changed no-op; the switch off → no worker; worker-mode Deps. Red; implement; green; shown able to fail by removing the lease check (a double completion).
 - [ ] **Step 2:** docs; `docs:check`; **commit** `feat(invoices): the invoices-ehf worker — one provider call per claim, polled status, the receipt stored once, and an unconfirmed outcome left to a person`.
@@ -243,9 +243,26 @@ The mapping is the spec's D4 table, row for row; the category rules (no `Percent
 - [ ] **Step 2:** the PR in PR #129's shape: What, Decisions made without asking (the spec's fourteen readings and this plan's ten), Things to know (the Java/Saxon CI job; the Storecove onboarding; the KID agreement; the switch defaults), How it was built, Verification. `gh pr create --base main --head feat/invoices-ehf-peppol-kid`. Watch CI; do not merge.
 - [ ] **Step 3: Report.**
 
-## Spike findings (Task 1 fills this in)
+## Spike findings (Task 1)
 
-_Pending the spike's report._
+From Storecove's OpenAPI 2.0 document and its documentation, read verbatim (`scratchpad/spike-storecove.md`, 2026-10-04):
+
+| Item | Answer | Confidence |
+| --- | --- | --- |
+| Raw UBL | `document.rawDocumentData.document` (base64) + `parseStrategy: "ubl"`; `document.documentType: "invoice"`; `parse` is deprecated | High |
+| Pass-through | **No**: parsed into Storecove's model, outbound UBL regenerated; `ubl_sha256` is what we sent, the evidence's delivered copy is what arrived | High |
+| Sender | `legalEntityId` (integer), sibling field; one API key spans several legal entities | High |
+| Receiver | `routing.eIdentifiers: [{scheme, id}]`; Norway's scheme is **`NO:ORG`** (tax `NO:VAT`); test receiver `NO:ORG` / `010101018` | High |
+| Idempotency | `idempotencyGuid` (36 chars), sibling field; a duplicate is a 422; window and scope **undocumented** | High / UNCERTAIN |
+| Attachments | none on the raw-UBL path; whether an embedded PDF survives the regeneration is **unstated** | Medium |
+| Response | 200 `{guid}`; 401/403 without a body; 422 `[{source, details}]` for duplicate and validation alike; **no 429, no 5xx, no rate limit documented** | High |
+| Status | **no `GET document_submissions/{guid}`**; webhooks pushed (5-day retry) or pulled: `GET webhook_instances/` → `{guid, body}` or 204, `DELETE webhook_instances/{guid}` acknowledges; ordering/retention/visibility **undocumented**; every event carries `guid` and `idempotencyGuid` | High / UNCERTAIN |
+| States | `no_action_taken` (no routable receiver), `failed` (final), `succeeded` (corner-3 AS4 receipt — the terminal state for a sender without Invoice Response); the rest gated on CTC/Invoice Response | High |
+| Evidence | `GET document_submissions/{guid}/evidence/sending` → JSON `{guid, sender, receiver, network, documents: [{document: <expiring url>, expires_at, mime_type}], evidence: {xml, message_id, receiving_accesspoint, …}}`; 404 before `succeeded` | High |
+| Validation | synchronous rule ids documented for France's CTC only; for Peppol/Norway **unstated** | UNCERTAIN |
+| Sandbox | same host, a sandbox key; obtained through a **sales-contact form**, thirty days; pricing by contact | Medium |
+| Legal entity | `POST legal_entities` `{party_name, line1, city, zip, country, …}` then a `PeppolIdentifier {scheme: "NO:ORG", superscheme: "iso6523-actorid-upis", identifier}` | High |
+| Qvalia | no OpenAPI, no idempotency, no status/evidence API — fewer answers, not more | High |
 
 ## Self-review
 
