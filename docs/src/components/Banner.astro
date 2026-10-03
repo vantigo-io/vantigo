@@ -1,0 +1,38 @@
+---
+/**
+ * The site-wide version line above Starlight's own banner. DOCS_VERSION at
+ * build time names the build: a release tag inside a Vantigo installation,
+ * "main@<sha>" on the public site, nothing in a local build. The reader then
+ * knows which Vantigo the pages describe.
+ */
+import Default from "@astrojs/starlight/components/Banner.astro";
+
+const version: string = __DOCS_VERSION__;
+const norwegian = (Astro.currentLocale ?? "en").startsWith("nb");
+const development = version.startsWith("main@") || version.startsWith("preview@") || version === "dev";
+
+let text = "";
+if (version && development) {
+  text = norwegian
+    ? `Denne dokumentasjonen beskriver utviklingsversjonen av Vantigo (${version}).`
+    : `This documentation describes the development version of Vantigo (${version}).`;
+} else if (version) {
+  text = norwegian ? `Denne dokumentasjonen beskriver Vantigo ${version}.` : `This documentation describes Vantigo ${version}.`;
+}
+---
+
+{text && <p class="version-note" data-pagefind-ignore>{text}</p>}
+<Default />
+
+<style>
+  .version-note {
+    margin: 0;
+    padding: 0.35rem var(--sl-nav-pad-x);
+    font-size: var(--sl-text-xs);
+    line-height: var(--sl-line-height-headings);
+    text-align: center;
+    color: var(--sl-color-gray-2);
+    background-color: var(--sl-color-gray-6);
+    border-bottom: 1px solid var(--sl-color-hairline);
+  }
+</style>

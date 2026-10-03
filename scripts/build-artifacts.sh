@@ -5,8 +5,9 @@
 #   dist/server/linux/amd64/vantigo
 #   dist/server/linux/arm64/vantigo
 #
-# The SPA is embedded into both binaries (scripts/spa-embed-overlay.sh) and
-# the placeholder is restored afterwards, even on failure. The layout mirrors
+# The SPA and the documentation site are embedded into both binaries
+# (scripts/spa-embed-overlay.sh) and the placeholders are restored afterwards,
+# even on failure. The layout mirrors
 # GoReleaser's dockers_v2 build context (linux/<arch>/vantigo), so one
 # Dockerfile COPY line serves both.
 #
@@ -15,10 +16,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-trap 'bash scripts/restore-embed-overlay.sh' EXIT
-bash scripts/spa-embed-overlay.sh
-
 VERSION="${VANTIGO_VERSION:-dev}"
+trap 'bash scripts/restore-embed-overlay.sh' EXIT
+bash scripts/spa-embed-overlay.sh "$VERSION"
+
 echo "==> server binaries ($VERSION)"
 rm -rf dist/server
 for arch in amd64 arm64; do

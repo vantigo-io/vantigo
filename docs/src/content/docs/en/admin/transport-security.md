@@ -192,6 +192,20 @@ If a customized frontend needs a wider policy, set `CSP_REPORT_ONLY=1` to emit
 `Content-Security-Policy-Report-Only` while the difference is worked out. That
 disables the protection, so it is a diagnostic setting, not a destination.
 
+### The documentation under `/docs/`
+
+The built-in documentation site (see [Installation](/en/admin/installation/#the-built-in-documentation))
+is a static build whose pages carry Starlight's inline theme and navigation scripts
+and whose search runs Pagefind's WebAssembly, none of which the hash-only
+`script-src` above allows. Responses under `/docs/` therefore replace the
+application's policy with the site's own: `script-src 'self' 'unsafe-inline'
+'wasm-unsafe-eval'`, `style-src 'self' 'unsafe-inline'`, `img-src 'self' data:`,
+and the same `default-src 'self'`, `frame-ancestors 'none'`, `object-src 'none'`
+and `form-action 'self'`. The pages are a build artefact with no user-provided
+content, so the inline scripts are the site's own. The header name follows
+`CSP_REPORT_ONLY` like the application's. Every other header in this section is
+unchanged on those responses.
+
 ## The API contract document
 
 The running server serves the merged contract of its **enabled** modules at:

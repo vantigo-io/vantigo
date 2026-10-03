@@ -1,4 +1,4 @@
-import { IconBuilding, IconBuildingSkyscraper, IconSettings, IconShieldCheck } from "@tabler/icons-react";
+import { IconBuilding, IconBuildingSkyscraper, IconHelp, IconSettings, IconShieldCheck } from "@tabler/icons-react";
 import type { NavItem } from "./navigation";
 
 export interface AccountMenuSection {
@@ -11,12 +11,16 @@ export interface AccountMenuSection {
  * The avatar menu's destinations, grouped. Personal account settings
  * (/settings) stay distinct from workspace administration (/workspace): the
  * latter is Owner-gated, the former is open to every signed-in user. Users
- * and invitations remain in-page tabs of the workspace area.
+ * and invitations remain in-page tabs of the workspace area. Help opens the
+ * documentation the server embeds under /docs, in the reader's language.
  */
 export const accountMenuSections: readonly AccountMenuSection[] = [
   {
     label: "navigation.accountSection",
-    items: [{ label: "navigation.settings", to: "/settings", icon: IconSettings }],
+    items: [
+      { label: "navigation.settings", to: "/settings", icon: IconSettings },
+      { label: "navigation.help", to: "/docs", icon: IconHelp, external: true },
+    ],
   },
   {
     label: "navigation.workspaceSection",

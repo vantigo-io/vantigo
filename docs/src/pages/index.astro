@@ -3,6 +3,7 @@
 // and generates no root page of its own, so this one sends the reader to the
 // language their browser prefers: Norwegian for a Norwegian browser, English
 // otherwise. The meta refresh is the fallback without JavaScript.
+const base = import.meta.env.BASE_URL.replace(/\/+$/, "");
 ---
 
 <!doctype html>
@@ -10,16 +11,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="robots" content="noindex" />
-    <meta http-equiv="refresh" content="0; url=/en/" />
-    <link rel="canonical" href="/en/" />
+    <meta http-equiv="refresh" content={`0; url=${base}/en/`} />
+    <link rel="canonical" href={`${base}/en/`} />
     <title>Vantigo documentation</title>
-    <script is:inline>
+    <script is:inline define:vars={{ base }}>
       const languages = navigator.languages ?? [navigator.language ?? "en"];
       const norwegian = languages.some((l) => /^(nb|nn|no)\b/i.test(l));
-      location.replace(norwegian ? "/nb/" : "/en/");
+      location.replace(norwegian ? `${base}/nb/` : `${base}/en/`);
     </script>
   </head>
   <body>
-    <p><a href="/en/">Vantigo documentation (English)</a> · <a href="/nb/">Vantigo-dokumentasjon (norsk)</a></p>
+    <p><a href={`${base}/en/`}>Vantigo documentation (English)</a> · <a href={`${base}/nb/`}>Vantigo-dokumentasjon (norsk)</a></p>
   </body>
 </html>

@@ -12,10 +12,12 @@ endpoints. It is written for an integrator, an operator debugging a refusal, or 
 contributor about to change the module, and it is kept in step with the code: a change
 to a module's behaviour lands together with the change to its page here.
 
-The reference is maintained in English. The generated **API** section beneath it is
-built from the OpenAPI contracts in
+The reference is maintained in English. The generated **API** reference is built
+from the OpenAPI contracts in
 [`openapi/`](https://github.com/vantigo-io/vantigo/tree/main/openapi), one document
-per module, so it cannot drift from what the server serves.
+per module, so it cannot drift from what the server serves. It is part of the public
+site at <https://docs.vantigo.io> and left out of the copy a Vantigo installation
+serves under `/docs/`.
 
 ## Modules
 

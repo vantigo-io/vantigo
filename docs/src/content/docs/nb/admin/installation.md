@@ -352,6 +352,22 @@ en kjøretidsinnstilling; det ene imaget serverer den tilhørende SPA-en uten ny
 Stol på nøyaktig proxyen foran deg med `TRUSTED_PROXY_HOPS` og `TRUSTED_PROXY_CIDRS`,
 ellers ignoreres de videresendte headerne for skjema, vert og klientadresse.
 
+## Den innebygde dokumentasjonen
+
+Hvert image har med seg denne dokumentasjonen, bygget for nøyaktig den versjonen det
+leveres med, og serverer den på `/docs/` ved siden av applikasjonen (`/docs/en/` og
+`/docs/nb/`, under basestien når en er satt). Den trenger verken nettverk eller
+innlogging, og **Hjelp** i avatar-menyen åpner den på leserens språk. Den offentlige
+siden på <https://docs.vantigo.io> beskriver i stedet den nyeste utviklingsversjonen;
+en linje under toppfeltet på hver side sier hvilken Vantigo den beskriver.
+
+Sidene er statiske filer inne i binæren: ingen innstilling slår dem av eller på, og de
+legger noen få megabyte til imaget. Den genererte API-referansen er utelatt fra den
+innebygde kopien og finnes bare på den offentlige siden. Fordi sidens egne skript
+kjører inline og søket kjører WebAssembly, bærer svar under `/docs/` sidens egen
+innholdssikkerhetspolicy i stedet for applikasjonens; se
+[Transportsikkerhet og herding av nettleseren](/nb/admin/transport-security/#sikkerhetshoder-for-nettleseren).
+
 ## E-post og observerbarhet
 
 Identitetsinvitasjoner og passordgjenoppretting bruker innstillingene `MAIL_DRIVER` og

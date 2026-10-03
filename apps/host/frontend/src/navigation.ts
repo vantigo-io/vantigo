@@ -35,6 +35,12 @@ export interface NavItem {
   guardPermissions?: readonly string[];
   /** The module that must be enabled for this destination. */
   module?: ModuleKey;
+  /**
+   * The destination is a page the server serves beside the SPA, not a client
+   * route: `to` is its path under the app's base path, it opens in a new tab,
+   * and Spotlight does not offer it. The built-in documentation is the case.
+   */
+  external?: boolean;
   /** Search defaults used when Spotlight opens this destination. */
   searchStrategy?: "customer-list" | "inbox-list" | "products-list" | "energy-list" | "projects-list" | "time-week";
 }

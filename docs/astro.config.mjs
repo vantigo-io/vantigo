@@ -3,6 +3,7 @@ import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
 import starlightLinksValidator from "starlight-links-validator";
 import starlightOpenAPI, { openAPISidebarGroups } from "starlight-openapi";
+import { rehypeBaseLinks } from "./src/plugins/rehype-base-links.mjs";
 
 const repository = "https://github.com/vantigo-io/vantigo";
 
@@ -22,8 +23,24 @@ const contracts = [
   "invoices",
 ];
 
+/**
+ * DOCS_BASE is the path the site is served under: "/" on docs.vantigo.io, and
+ * "/docs" when scripts/docs-embed-overlay.sh builds the copy the server binary
+ * embeds. DOCS_VERSION names the build in the banner: a release tag in the
+ * image, "main@<sha>" on the public site, unset locally.
+ */
+const base = (process.env.DOCS_BASE ?? "/").replace(/\/+$/, "") || "/";
+/**
+ * DOCS_EMBED=1 builds the copy the server binary embeds: without the generated
+ * API reference, which is 74 MB of pages that belong on the public site, and
+ * without the link validator, which CI runs on the public build.
+ */
+const embedded = process.env.DOCS_EMBED === "1";
+const version = process.env.DOCS_VERSION ?? "";
+
 export default defineConfig({
   site: "https://docs.vantigo.io",
+  base,
   integrations: [
     starlight({
       title: "Vantigo",
@@ -55,15 +72,19 @@ export default defineConfig({
           translations: { nb: "Referanse" },
           items: [{ autogenerate: { directory: "reference" } }],
         },
-        ...openAPISidebarGroups,
+        ...(embedded ? [] : openAPISidebarGroups),
         {
           label: "Contributing",
           translations: { nb: "Bidra" },
           items: [{ autogenerate: { directory: "contributing" } }],
         },
       ],
+      components: { Banner: "./src/components/Banner.astro" },
       plugins: [
-        starlightOpenAPI(
+        ...(embedded
+          ? []
+          : [
+              starlightOpenAPI(
           contracts.map((name) => ({
             base: `reference/api/${name}`,
             schema: `../openapi/${name}.yaml`,
@@ -71,6 +92,10 @@ export default defineConfig({
             sidebar: { collapsed: true },
           })),
         ),
+            ]),
+        ...(base !== "/"
+          ? []
+          : [
         starlightLinksValidator({
           // The reference section is English only for now and nb falls back to
           // it; links from nb pages into the reference therefore point at /en/.
@@ -79,7 +104,10 @@ export default defineConfig({
           // The installation guide legitimately points at http://localhost:8080.
           errorOnLocalLinks: false,
         }),
+            ]),
       ],
     }),
   ],
+  markdown: { rehypePlugins: [rehypeBaseLinks(base)] },
+  vite: { define: { __DOCS_VERSION__: JSON.stringify(version) } },
 });

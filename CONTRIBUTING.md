@@ -79,6 +79,7 @@ vantigo/
 │   │       ├── server/              # The outer HTTP server: security, telemetry, routing
 │   │       ├── testdb/              # A fresh migrated database per test
 │   │       ├── web/                 # The embedded SPA
+│   │       ├── docs/                # The embedded documentation site, served under /docs
 │   │       └── worker/              # The background-worker runner
 │   ├── host/frontend/               # @vantigo/app — the single React SPA (Vite), owns all routes
 │   ├── customers/frontend/          # @vantigo/customers-ui (pages, API clients)
@@ -615,7 +616,9 @@ The SPA is **not** served by the dev server in production: `scripts/build-artifa
 builds it with Vite and overlays it into `apps/server/internal/web/dist`, where
 `go:embed` picks it up at compile time, and then restores the committed placeholder so
 the working tree stays clean. That is why plain `go build` and `go test` work without a
-frontend build.
+frontend build. The documentation site gets the same treatment: the overlay builds it
+with `DOCS_BASE=/docs` into `apps/server/internal/docs/dist`, and the binary serves it
+under `/docs` (see [Documentation](#documentation)).
 
 Translations are checked separately, and the pre-commit hook runs both:
 

@@ -18,6 +18,11 @@ src/content/docs/
 modules were built from. It is working material for contributors and agents, not part
 of the site.
 
+The site is built twice: once for docs.vantigo.io, and once, without the generated API
+reference, into the server binary, which serves it under `/docs` so every installation
+carries the documentation for the version it runs
+(`scripts/spa-embed-overlay.sh`, `apps/server/internal/docs`).
+
 ## Running it
 
 ```bash

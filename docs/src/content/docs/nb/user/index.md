@@ -4,6 +4,8 @@ description: Apper, sidemenyen, dashbordet, søk og kontoen din.
 sidebar:
   order: 0
   label: Oversikt
+sources:
+  - apps/host/frontend
 ---
 
 Vantigo samler modulene en bedrift trenger i én applikasjon. Hvilke moduler du ser
@@ -42,6 +44,8 @@ app-velgeren for et skjermbilde du vet navnet på.
 
 Avatar-menyen øverst til høyre fører til **Innstillinger**, med profilen din (navn,
 språk) og sikkerheten din (passord, tofaktorautentisering, passnøkler).
+**Hjelp** i den samme menyen åpner denne dokumentasjonen, på ditt språk, som kopien
+bygget inn i den Vantigo-en du bruker, så den beskriver alltid versjonen du har.
 
 Er du eier av arbeidsområdet, fører den samme menyen til **Administrasjon av
 arbeidsområdet**: brukere, invitasjoner, og roller og tilgang. En systemadministrator

@@ -48,6 +48,7 @@ How it is enforced:
 | An OpenAPI contract | nothing by hand: the API reference regenerates |
 | The identity module | `admin/authentication.md` or `admin/sso-scim.md` |
 | A new module | a new page in every section it touches, listed in that section's overview |
+| The documentation site itself, its build or the server's `/docs` handler | `contributing/documentation.md`, and `admin/installation.md` if what an operator sees changes |
 
 ### Writing
 
