@@ -443,10 +443,15 @@ error log**, never a user-facing refusal.
   with the JDK's own `javax.xml.validation` (a single-file `Validate.java`) — Schematron
   checks nothing about element order or names, and that is what a hand writer can get
   wrong. **Schematron**: both artefacts pinned by checksum — the CEN EN 16931 rules
-  (`ConnectingEurope/eInvoicing-EN16931`, release 1.3.16) and the Peppol BIS Billing 3.0
-  rules (release 3.0.21, which carry NO-R-001/002) — run as XSLT 2.0 through Saxon-HE
-  12 from Maven Central, pinned; the SVRL output parsed, **failing on `flag="fatal"`
-  only** and reporting warnings.
+  (`ConnectingEurope/eInvoicing-EN16931` release `validation-1.3.16`, whose
+  `en16931-ubl-1.3.16.zip` ships the compiled XSLT) and the Peppol BIS Billing 3.0 rules
+  (`OpenPEPPOL/peppol-bis-invoice-3`, `rules/sch/PEPPOL-EN16931-UBL.sch`, which carries
+  NO-R-001/002 — the repository ships Schematron sources only, so the oracle compiles
+  them once with the ISO Schematron XSLT 2.0 skeleton, also through Saxon; pinned by the
+  newest tag, `v3.0.20` today, and bumped to 3.0.21 — published 2026-05-20, mandatory
+  from 2026-08-17 — the day it is tagged) — run through Saxon-HE 12.7 from Maven
+  Central, pinned; the SVRL output parsed, **failing on `flag="fatal"` only** and
+  reporting warnings.
 - Toolchain: `java = "temurin-21"` in `mise.toml`'s `[tools]`; `tools/ehf/validate.sh`
   downloads the artefacts into a cache with checksums; `mise run ehf:validate` is the
   task; a CI job with `install_args: "java"` runs it on every pull request (cheap; no
