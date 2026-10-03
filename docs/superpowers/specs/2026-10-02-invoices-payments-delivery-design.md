@@ -614,7 +614,7 @@ host and a from). The scenarios:
 2. a disabled customer is refused a new draft (`customer_blocked`) and a credit note of
    its issued invoice is still created and issued;
 3. a merge through the customers API re-points the documents, and `customer.merged`'s
-   `repointed` names `invoices.invoices`;
+   `moved` names `invoices.invoices`;
 4. a send reaches the profile's invoice e-mail with Reply-To the seller's; the delivery
    is on the document;
 5. a person's export through the customers API has the invoices section with the

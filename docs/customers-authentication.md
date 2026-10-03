@@ -258,9 +258,9 @@ through this SMTP server and its guard ([Invoices](invoices.md#sending-a-documen
 Under `MAIL_DRIVER=log` nothing can be sent that way: the send answers 503
 `mail_unavailable`, and `GET /invoices/meta` answers `mailAvailable: false`.
 
-This is identity's application mail, and Invoices'. Communications' per-channel mailbox credentials
-are a different thing entirely — configured through the Communications API and
-sealed at rest, never environment variables. See
+This is identity's application mail, and Invoices'. Communications' per-channel
+mailbox credentials are a different thing entirely — configured through the
+Communications API and sealed at rest, never environment variables. See
 [Communications](communications.md).
 
 ## Key material
