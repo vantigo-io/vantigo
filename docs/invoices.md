@@ -75,7 +75,7 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
 | `invoices.invoices` | Drafts and issued documents: kind, status, number, customer, delivery, references, notes, the buyer snapshot and the seller snapshot (written at issue), the totals, and the stored PDF's key and SHA-256. |
 | `invoices.lines` | Description, quantity (3 decimals), unit, unit price (4), discount (2), VAT code, the computed gross, allowance and net, the credited line on a credit note, and the VAT snapshot written at issue. |
 | `invoices.vat_summaries` | An issued document's VAT per (category, rate) with its SAF-T code and reason. |
-| `invoices.payments` | Money received against an issued invoice: the day it arrived, the amount and the currency (the invoice's, copied), the bank's or the payer's reference, a note, who registered it and when, and — once removed — when, by whom and why. Never deleted; never changed but by the removal, once. |
+| `invoices.payments` | Money received against an issued invoice: the day it arrived, the amount and the currency (the invoice's, copied), the bank's or the payer's reference, a note (`''` once the customer is anonymised), who registered it and when, and — once removed — when, by whom and why. Never deleted; never changed but by the removal, once, and that blanking. |
 | `invoices.deliveries` | One row per e-mail that handed an issued document over: the recipient (`''` once the customer is anonymised), the subject, the Message-ID, the SHA-256 of the PDF attached, when and by whom. Never deleted; never changed but by that blanking. |
 | `invoices.erased_customers` | The customers this module has anonymised, by id, with when: the marker a send and the delivery trigger read. Never removed. |
 
@@ -127,14 +127,16 @@ depends on other documents runs after it. The directory is read before the trans
 and the object store is used after it; neither is ever called under a lock. The lock
 order is always document → settings → counter → original, and nothing takes them in
 another order: `PUT /settings` takes only the settings row, the rate operations the
-settings row and then the VAT code, `PUT /vat-codes/{id}` only the code, and a
-payment's registration or removal only its invoice; no issue locks a code. The merge holder locks the documents it re-points **newest first** before
-it writes them: a credit note's issue holds the credit note and then locks its older
-original, and an UPDATE alone could lock the original first, a deadlock. This is the
-module's one lock invariant, and every multi-row lock inside it keeps to it: **take locks in
-descending id**, which is the same rule as "a credit note is always newer — holds a
-higher id — than the original it credits", stated twice; any future path that locks
-more than one row of `invoices.invoices` at once must keep both true.
+settings row and then the VAT code, `PUT /vat-codes/{id}` only the code, a payment's
+registration or removal only its invoice, and a send's delivery row only its document,
+`FOR SHARE`; no issue locks a code. The merge holder locks the documents it re-points
+**newest first** before it writes them: a credit note's issue holds the credit note and
+then locks its older original, and an UPDATE alone could lock the original first, a
+deadlock. This is the module's one lock invariant, and every multi-row lock inside it
+keeps to it: **take locks in descending id**, which is the same rule as "a credit note is
+always newer — holds a higher id — than the original it credits", stated twice; any
+future path that locks more than one row of `invoices.invoices` at once must keep both
+true.
 
 The checks, each a 409 that rolls the number back: `seller_incomplete`, `no_lines`,
 `delivery_date_missing`, `issue_date_not_allowed` (with `allowedIssueDates`); for an
@@ -250,17 +252,19 @@ payment registered again.
 
 **Why a row never leaves.** A registration is kept as long as the document it is
 registered against — bokføringsloven § 13, five years after the end of the financial
-year, as this module reads it for the document. That reading is **uncertain**, as the
-document's own is below: the 2027 wording of § 13 is unread, and the research (§ 2.5)
-speaks of the sales documentation, not of payment registrations by name. So nothing
-deletes one. Two triggers hold it in the database: `tr_payments_immutable` refuses every
-DELETE and every UPDATE but the one that sets the three removal columns from NULL, once,
-with the rest of the row unchanged ("invoices: a payment registration is immutable",
-SQLSTATE `P0001`); `tr_payments_parent` reads the document `FOR SHARE` on INSERT and
-refuses a row under anything but an issued invoice ("invoices: a payment needs an issued
-invoice"). A CHECK holds the three removal columns together and the reason non-empty,
-another the amount above 0, and the foreign key is `ON DELETE RESTRICT`. The API refuses
-first, with its own codes; the triggers are the floor.
+year, as this module reads it for the document. That reading is **unconfirmed**, as the
+document's own is ([Retention and personal data](#retention-and-personal-data)): the
+2027 wording of § 13 is unread, and the research (§ 2.5) speaks of the sales
+documentation, not of payment registrations by name. So nothing deletes one. Two
+triggers hold it in the database: `tr_payments_immutable` refuses every DELETE and every
+UPDATE but two writes, which one statement may make together — the removal, which sets
+the three removal columns from NULL, once, and an anonymisation's blanking of the note
+to `''` — with the rest of the row unchanged ("invoices: a payment registration is
+immutable", SQLSTATE `P0001`); `tr_payments_parent` reads the document `FOR SHARE` on
+INSERT and refuses a row under anything but an issued invoice ("invoices: a payment
+needs an issued invoice"). A CHECK holds the three removal columns together and the
+reason non-empty, another the amount above 0, and the foreign key is `ON DELETE
+RESTRICT`. The API refuses first, with its own codes; the triggers are the floor.
 
 **The state is derived, never stored.** Judged against today in Oslo, with `credited`
 the issued credit notes' gross (0 for a credit note) and `paid` the live payments' sum,
@@ -315,11 +319,12 @@ settings, the directory or the VAT tables — hashed, and put under
 `documents/<id>/<number>-<sha256>.pdf` in the `invoices` scope (physically
 `invoices/documents/…`), and the row records the key and hash once. A store failure there
 never fails the issue: the response says `pdfStored: false` and the first download — or
-the first send — stores it. Every download streams the stored object, verified against its hash; a document whose
-hash is set is never rendered again, and the module never deletes an object. A stored
-object that is gone or no longer matches its hash is a 500 logged at error — an operator
-problem, never papered over. A first download that cannot reach the store is a 503 to
-retry; one that cannot render the document is a 500, since retrying does not mend it. Reproducible bytes are a nice-to-have: catalog sorting and a
+the first send — stores it. Every download streams the stored object, verified against
+its hash; a document whose hash is set is never rendered again, and the module never
+deletes an object. A stored object that is gone or no longer matches its hash is a 500
+logged at error — an operator problem, never papered over. A first download that cannot
+reach the store is a 503 to retry; one that cannot render the document is a 500, since
+retrying does not mend it. Reproducible bytes are a nice-to-have: catalog sorting and a
 fixed modification date are set process-wide and the creation date is the issue instant,
 but the bytes may change with a maroto, gofpdf or font upgrade; stored PDFs never do.
 
@@ -362,13 +367,15 @@ worker, and a failure is the caller's to see. It needs `invoices:issue`
    current settings' e-mail** — replies should reach today's mailbox, not the one the
    document was issued under — and there is none when the settings have none (the
    platform's `mail.Outbound.ReplyTo`). To is the recipient, alone. The Message-ID is a
-   fresh `<uuid>@vantigo.invalid`. The PDF is attached as `application/pdf` under the
-   download's own name — `faktura-1001.pdf`, `invoice-1001.pdf`, `kreditnota-1002.pdf`,
-   `credit-note-1002.pdf`. The body is plain text in the document's language, below: no
-   HTML, no logo, no template, no personal message.
+   fresh `{uuid}@vantigo.invalid`, bare. The PDF is attached as `application/pdf` under
+   the download's own name — `faktura-1001.pdf`, `invoice-1001.pdf`,
+   `kreditnota-1002.pdf`, `credit-note-1002.pdf`. The body is plain text in the
+   document's language, below: no HTML, no logo, no template, no personal message.
 7. **The send**, through the platform's guarded SMTP client with the `SMTP_*`
-   configuration. **A failure is 502 `mail_failed` and records nothing**; the error is
-   logged at warn with the document id and never put on the wire.
+   configuration. **A failure is 502 `mail_failed` and records nothing**; its detail says
+   the mail may still have been delivered if the server timed out, so check before
+   sending again. The error is logged at warn with the document id and never put on the
+   wire.
 8. **The log**: one row in `invoices.deliveries`. The answer is the document, its
    `deliveries` holding the row and `sendDefaults.warnings` the send's warnings.
 
@@ -377,8 +384,9 @@ it. The send runs on a context the request's cancellation does not reach, bounde
 **30 seconds**: a browser that goes away must not abort a transfer the mail server may
 already have accepted. The delivery row is written on an uncancellable context of its
 own, bounded at **5 seconds** — never what is left of the send's 30, so a send accepted at
-the 29th second is still logged — and the response is rendered uncancellable too, so a
-caller that went away gets no error-level log for a send that succeeded.
+the 29th second is still logged — and the response is rendered uncancellable too,
+bounded at 5 seconds of its own, so a caller that went away gets no error-level log for
+a send that succeeded.
 
 **The timeout caveat.** A send that times out after the mail server has taken the data
 answers 502 `mail_failed` and logs nothing, though the mail may have gone. And the row's
@@ -387,21 +395,24 @@ behind an anonymisation that holds the customer's documents
 ([Retention and personal data](#retention-and-personal-data)), so an erase that holds
 them longer than five seconds leaves a sent mail with no row. A row that cannot be
 written after a successful send — for that reason or any other — is a 500 and an
-error-level log line naming the document id and the recipient: the mail went, and the
-operator is told.
+error-level log line naming the document id only, never the recipient, whose address may
+be a person's being anonymised at that moment: the mail went, and the operator is told.
 
 **Re-sending.** Sending twice is allowed and logged twice: a re-send is a legitimate act.
 No suppression list is read — `communications.suppressions` is another module's table
-([module boundaries](module-boundaries.md), rule 4) — and a customer whose invoice
-address bounces is a problem the person sending will hear about. There is no bulk send.
+([module boundaries](module-boundaries.md), rule 4). **A bounce goes to the envelope
+sender**, the installation's `SMTP_FROM`, not to the seller's Reply-To, and Vantigo
+records none: a delivery row means the mail server accepted the mail, not that it
+arrived. Point `SMTP_FROM` at a mailbox someone reads if bounces matter
+([deploy/compose/README.md](../deploy/compose/README.md)). There is no bulk send.
 
 **The rate limit.** 60 sends per client per 10 minutes (the policy `invoices-send`):
 with an arbitrary override the endpoint is an authenticated relay through the
-installation's SMTP server, and a limit is cheap. It is counted per client address
-before the access check, so every request to the endpoint counts, a refused one too.
-Over it is a 429 in the limiter's shape everywhere in Vantigo — `application/json`
-`{"error": {"code": "rate_limited", "message": …}}` with `Retry-After` — never a problem
-document.
+installation's SMTP server, and a limit is cheap. It is counted per client IP address —
+an office behind one NAT shares one budget — before the access check, so every request
+to the endpoint counts, a refused one too. Over it is a 429 in the limiter's shape
+everywhere in Vantigo — `application/json` `{"error": {"code": "rate_limited",
+"message": …}}` with `Retry-After` — never a problem document.
 
 **The texts.** A document whose buyer language is `en` is written in English, every other
 in Norwegian (nb). `{number}` is the document's number, `{seller}` the seller snapshot's
@@ -498,12 +509,13 @@ with: the customer's current invoice e-mail, the profile's invoice delivery pref
 and the warnings. It is on an issued document's `GET /{id}` and on the send's own
 response only, and only for a caller who may send — `invoices:issue` on an installation
 that can send: the customer's invoice e-mail sits behind `customers:view` in its own
-module, and `invoices:access` alone must not widen that. A payment's, a removal's, an
-issue's and a credit's responses never carry it, so no write adds a directory call to
-its answer. It is the one directory read on an issued document, and it is best effort: a
-directory that fails leaves `sendDefaults` out and logs at warn, never a 500 on a read
-of bookkeeping material. The document's own `warnings` (`issued_late`, …) are another
-list and never mixed with the send's.
+module, and `invoices:access` alone must not widen that. A customer this module has
+anonymised gets none, and the directory is not asked: a send to one is refused. A
+payment's, a removal's, an issue's and a credit's responses never carry it, so no write
+adds a directory call to its answer. It is the one directory read on an issued document,
+and it is best effort: a directory that fails leaves `sendDefaults` out and logs at
+warn, never a 500 on a read of bookkeeping material. The document's own `warnings`
+(`issued_late`, …) are another list and never mixed with the send's.
 
 **The delivery log.** `invoices.deliveries` holds one row per mail the server took: the
 recipient, the subject as sent, the bare Message-ID, the SHA-256 of the PDF attached, when,
@@ -653,10 +665,10 @@ retention**: the only storage driver is `fs`, with no WORM, so the PDFs are only
 as the volume and its backups ([storage](storage.md)).
 
 **Payments and deliveries are kept with the document** they hang off. A payment
-registration is bookkeeping material read under the same § 13 — **uncertain**, see
-[Payments](#payments-and-the-state-of-an-invoice) — and a delivery is the evidence of when
-the claim was sent; neither is ever deleted, and their foreign keys refuse a document's
-deletion.
+registration is bookkeeping material read under the same § 13 — **unconfirmed**, see
+[Payments](#payments-and-the-state-of-an-invoice) — and a delivery is the record of when
+the claim was handed to the mail server, not of its receipt; neither is ever deleted,
+and their foreign keys refuse a document's deletion.
 
 The module fills both customer slots ([module boundaries](module-boundaries.md)):
 
@@ -681,18 +693,20 @@ The module fills both customer slots ([module boundaries](module-boundaries.md))
   the person's documents `FOR UPDATE`, newest first — the merge holder's statement, the
   module's lock order — so a delivery insert, whose trigger takes the document `FOR
   SHARE`, waits for it; writes the marker in `invoices.erased_customers`; blanks the
-  recipient of every delivery of those documents; and deletes the drafts. It reports
-  four kinds, in this order:
+  recipient of every delivery of those documents; blanks the note of every payment of
+  them, live and removed; and deletes the drafts. It reports four kinds, in this order:
   - `invoices.drafts` — the drafts deleted, invoice and credit-note drafts alike: a
     draft is not a sales document and has no retention basis, so GDPR art. 17 applies;
   - `invoices.documents`, at 0 — every issued document, its buyer snapshot and its
     internal note are kept under § 13; the note is immutable once issued, so
     anonymisation has no more standing to touch it than any other write does;
-  - `invoices.payments`, at 0 — looked at and kept, because a registration is
-    bookkeeping material kept with the document, not because it holds nothing
-    personal: a note is staff free text and a bank reference often names the payer;
+  - `invoices.payments` — the payment notes blanked (0 when none had one). A
+    registration is kept, because it is bookkeeping material kept with the document,
+    not because it holds nothing personal: its date, amount and the bank's reference —
+    which often names the payer — stay, while the note, staff free text about the
+    person that no retention rule needs, goes;
   - `invoices.deliveries` — the deliveries whose recipient was blanked: the rows stay as
-    the evidence of when the claim was sent, the address gone.
+    the record of when the claim was handed to the mail server, the address gone.
 
   Run twice, it finds nothing and reports zeros, and the marker keeps its first time.
   The marker refuses every later send (`customer_anonymised`) and blanks any delivery
@@ -755,7 +769,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `POST /{id}/credit` | `invoices:issue` | 404; 409 `invoice_draft`, `credit_note_not_creditable`, `invoice_fully_credited` |
 | `GET /{id}/pdf` | | 404; 409 `invoice_draft`; 500 a missing or altered stored object, or a render that fails; 503 `storage_unavailable` |
 | `GET /{id}/preview.pdf` | `invoices:create` | 404; 409 `invoice_issued` |
-| `POST /{id}/payments` | `invoices:payments` | 404; 409 `credit_note_no_payments`, `invoice_draft`; 400 on the field; 409 `invoice_settled`, `payment_exceeds_open` (with `openAmount`) |
+| `POST /{id}/payments` | `invoices:payments` | 400 a body that does not decode; 404; 409 `credit_note_no_payments`, `invoice_draft`; 400 on the field; 409 `invoice_settled`, `payment_exceeds_open` (with `openAmount`) |
 | `POST /{id}/payments/{paymentId}/remove` | `invoices:payments` | 400 on `reason`; 404 the document, or a payment not its own; 409 `payment_removed` |
 | `POST /{id}/send` | `invoices:issue` | 429 `rate_limited`; 503 `mail_unavailable`; 404; 409 `invoice_draft`, `customer_anonymised`; 400 on `recipient`; 409 `no_invoice_email`; 503 `storage_unavailable`; 500 a directory that fails, a missing or altered stored object, a render that fails, or a sent mail whose row could not be written; 502 `mail_failed` |
 | `GET /journal` | | 400 `from` or `to` missing or not a calendar date, `from` after `to`, paging |

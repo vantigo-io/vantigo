@@ -773,12 +773,13 @@ and never deleted; derived states (credited, paid, overdue, partially paid, open
 one SQL function with a Go mirror, on every document and as a list filter, with the open
 amount and a refund due; e-mail delivery of the stored PDF with the seller as Reply-To
 (the one platform change, `mail.Outbound.ReplyTo`), plain-text cover mails in nb and en
-whose payment paragraph follows the open amount, four warnings for EHF customers and
-Norwegian businesses — red from 2027-01-01 — and an immutable delivery log; the
-anonymisation blanking that log under a lock and marking the customer erased, so a
-racing send cannot keep the address; the accountant's CSV export; the stats summary and
-the dashboard card; the customer page's Invoices tab; a new permission,
-`invoices:payments`; and the customers-plus-invoices integration test.
+whose payment paragraph follows the open amount, four warnings — a non-e-mail delivery
+preference, and Norwegian businesses, red from 2027-01-01 — and an immutable delivery
+log; the anonymisation blanking that log and the person's payment notes under a lock
+and marking the customer erased, so a racing send cannot keep the address; the
+accountant's CSV export; the stats summary and the dashboard card; the customer page's
+Invoices tab; a new permission, `invoices:payments`; and the customers-plus-invoices
+integration test.
 
 *Unblocks:* receivables tracked in Vantigo, and everything below. Phases 1A and 1B do not
 meet the B2G duty (EHF since 2019) nor the B2B duty from 2027-01-01 — that is phase 2.

@@ -23,11 +23,13 @@ Communications' outbox is the working example.
    and its own subpackages, never another module's.
 
    `internal/mail` is such a platform import, and a module that sends mail goes through
-   its guarded path (`mail.SendOutbound`, or the test seam `Deps.SMTPSend`) with the
-   installation's `SMTP_*` configuration, as identity's mail does. Its one change made
-   for a module is Invoices': `mail.Outbound` carries a `ReplyTo`, written as the
-   `Reply-To` header when set and absent when empty, so a document sent from the
-   installation's `SMTP_FROM` can have its replies reach the seller's own mailbox.
+   its guarded path (`mail.SendOutbound`, or the test seam `Deps.SMTPSend`).
+   `mail.Outbound` and `mail.SendOutbound` were made for Communications, which sends
+   with each channel's own stored credentials; Invoices sends with the installation's
+   `SMTP_*` configuration, as identity's mail does. Invoices' one change to the package
+   is `ReplyTo`: `mail.Outbound` carries a `ReplyTo`, written as the `Reply-To` header
+   when set and absent when empty, so a document sent from the installation's
+   `SMTP_FROM` can have its replies reach the seller's own mailbox.
 2. **The platform imports no module.** `internal/module` and `internal/contracts` —
    the platform modules mount through — may not import any business module, so the
    composition machinery never depends on what it composes.

@@ -357,10 +357,13 @@ Invoices only once `invoices` is added, beside `customers`. See
 **The release with invoice payments and sending.** One new permission,
 `invoices:payments` — registering and removing payments — which no built-in role holds;
 Owner has it through the wildcard, and everyone else needs a role that grants it.
-Sending a document by e-mail is under `invoices:issue` and goes through the same
-`SMTP_*` configuration as identity's mail ([Email and observability](#email-and-observability)):
+Sending a document by e-mail is under `invoices:issue`, so every role holding
+`invoices:issue` can send from this release. It goes through the same `SMTP_*`
+configuration as identity's mail ([Email and observability](#email-and-observability)):
 an installation without a working SMTP server cannot send invoices, and one on
-`MAIL_DRIVER=log` (development only) answers every send with 503.
+`MAIL_DRIVER=log` (development only) answers every send with 503. A bounce goes to the
+envelope sender, `SMTP_FROM`, not to the seller's Reply-To, and Vantigo records none:
+point `SMTP_FROM` at a mailbox someone reads if bounces matter.
 
 For a complete backup, one-migrator, token rotation, and Owner break-glass runbook,
 see [SSO and SCIM operations](../../docs/sso-scim-operations.md).
