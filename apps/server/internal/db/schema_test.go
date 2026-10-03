@@ -2771,6 +2771,13 @@ func TestInvoicesPaymentsDelivery_AppliesAndIsIdempotent(t *testing.T) {
 	if err := pool.QueryRow(ctx, insertDelivery, invoice).Scan(&delivery, &recipient); err != nil || recipient != "" {
 		t.Errorf("a delivery after the erase: %v, recipient %q, want it written with the address blanked", err, recipient)
 	}
+	// And a payment registered for one of its invoices keeps no staff note.
+	var lateNote string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO invoices.payments (invoice_id, paid_on, amount, currency, note, registered_by_user_id, registered_at)
+		VALUES ($1, DATE '2026-09-21', 10, 'NOK', 'Ringte fra privaten', gen_random_uuid(), now()) RETURNING note`, invoice).Scan(&lateNote); err != nil || lateNote != "" {
+		t.Errorf("a payment after the erase: %v, note %q, want it written with the note blanked", err, lateNote)
+	}
 
 	// Down drops all of it, document_state included, and leaves 1A's schema.
 	migrateTo(t, url, 34)

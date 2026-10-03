@@ -543,7 +543,9 @@ func TestPayments_TwoRemovalsOfOnePayment(t *testing.T) {
 }
 
 // A payment has no customer gate (D2 step 1): an anonymised customer's
-// invoice takes one, and is paid — and neither write reads the directory.
+// invoice takes one, and is paid — and neither write reads the directory. The
+// erase's marker blanks the staff note the registration carried (D6), so a
+// payment registered after the erase keeps no note about the person.
 func TestPayments_AnAnonymisedCustomersInvoiceStillTakesAPayment(t *testing.T) {
 	t.Parallel()
 	h := readyToIssue(t)
@@ -551,12 +553,18 @@ func TestPayments_AnAnonymisedCustomersInvoiceStillTakesAPayment(t *testing.T) {
 	h.customers.edit(customerAcme, func(p *contracts.CustomerBillingProfile) {
 		p.Status, p.Archived, p.Name, p.LegalName, p.InvoiceAddress = "archived", true, "Anonymisert", "", nil
 	})
+	h.Exec(t, `INSERT INTO invoices.erased_customers (customer_id, erased_at) VALUES ($1, now())`, customerAcme)
 	var reads atomic.Int32
 	h.customers.afterProfileRead(func(int32) { reads.Add(1) })
 
-	got := registered(t, h, inv.ID, pay(1000, "2026-09-12"))
+	body := pay(1000, "2026-09-12")
+	body["note"] = "Ringte fra privaten"
+	got := registered(t, h, inv.ID, body)
 	if got.State != "paid" {
 		t.Errorf("the anonymised customer's invoice = %q, want paid", got.State)
+	}
+	if len(got.Payments) != 1 || got.Payments[0].Note != "" {
+		t.Errorf("payments = %+v, want the one, its note blanked", got.Payments)
 	}
 	res := payer(t, h).Do(http.MethodPost, removalPath(inv.ID, got.Payments[0].ID), map[string]any{"reason": "Feil"})
 	if res.Status != http.StatusOK {

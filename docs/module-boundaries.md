@@ -103,7 +103,8 @@ Communications' outbox is the working example.
    handed over and deleted), energy and projects (handed over, and kept:
    a supply period is the metering point's history, invoiced work stays) and
    invoices (handed over; drafts deleted, issued documents and their payments kept
-   as bookkeeping material, the deliveries kept with the recipient blanked)
+   as bookkeeping material with the payments' notes blanked, the deliveries kept
+   with the recipient blanked)
    ([Personal data and anonymisation](customers.md#personal-data-and-anonymisation)).
 
 ## How they are enforced
@@ -289,9 +290,9 @@ trigger allowing exactly `customer_id` to change on an issued one; as
 `CustomerPersonalData` it exports a person's documents and drafts with their payments
 and deliveries and, on anonymisation, locks the person's documents, writes a
 module-private marker that refuses every later send, blanks every delivery's
-recipient (`invoices.deliveries`), deletes the drafts (`invoices.drafts`) and keeps the
-issued documents and their payments under bokføringsloven § 13 (`invoices.documents`
-and `invoices.payments`, at 0).
+recipient (`invoices.deliveries`), blanks every payment's note (`invoices.payments`,
+the notes blanked), deletes the drafts (`invoices.drafts`) and keeps the issued
+documents and their payments under bokføringsloven § 13 (`invoices.documents`, at 0).
 For those gates `contracts.CustomerBillingProfile` carries the customer's `Status`
 (`active`, `disabled`, `archived`) and `MergedInto`, the one change to the
 customers contract Invoices made: `disabled` is "blocked for invoicing", and an

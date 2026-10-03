@@ -365,5 +365,11 @@ an installation without a working SMTP server cannot send invoices, and one on
 envelope sender, `SMTP_FROM`, not to the seller's Reply-To, and Vantigo records none:
 point `SMTP_FROM` at a mailbox someone reads if bounces matter.
 
+Documents issued before this release to a Norwegian business carry no organisation
+number in their buyer snapshot — `buyer_foreign_id` reads `no…` instead — because the
+issue compared the directory's country case-sensitively. Those snapshots are immutable:
+where it matters, credit such a document and issue it again. Documents issued from this
+release on are right.
+
 For a complete backup, one-migrator, token rotation, and Owner break-glass runbook,
 see [SSO and SCIM operations](../../docs/sso-scim-operations.md).

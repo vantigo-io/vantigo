@@ -500,7 +500,10 @@ language, not a problem document opened in the browser.
   because they hold nothing personal — their date, amount and the bank's `reference`
   (which often names the payer) stay. Their `note` is staff free text about the person
   that no retention rule needs, so it is blanked, as a delivery's address is (reading
-  10); the export is unchanged and carries the note while there is one. Deliveries are
+  10); the export is unchanged and carries the note while there is one. A removed
+  registration's `removal_reason` stays: it is the audit trail kept with the
+  registration — it says why a registration was withdrawn, not who the person is.
+  Deliveries are
   kept with the address gone: they are the record of when the claim was handed to the
   mail server. The reporting order is `invoices.drafts`,
   `invoices.documents`, `invoices.payments`, `invoices.deliveries`; the anonymisation
@@ -518,7 +521,11 @@ trigger's check sees the marker and writes `''` (D4); a send whose row is writte
 after the erase commits is blanked by the same check; a send whose row is written
 before is blanked by the erase. The check is in the trigger because only a statement
 run after the lock wait sees the marker — the inserting statement's own snapshot was
-taken before it. The marker is module-private, read by this module only, and never
+taken before it. A payment registration races the erase the same way — a note read
+from the dialog, written after the erase blanked the notes that existed — so the
+payment insert trigger (`refuse_payment_on_unissued`) reads the document's customer
+with its `FOR SHARE` and, when the marker holds it, writes the note as `''`: a payment
+registered for an anonymised customer never keeps a staff note. The marker is module-private, read by this module only, and never
 removed — anonymisation is never undone.
 
 ### D7 — Stats, and the dashboard card
@@ -710,7 +717,9 @@ an outbox or a worker (a send is synchronous and its failure is the caller's to 
 honouring `communications.suppressions`; bulk send; a "paid" stamp on the PDF (the PDF
 is immutable); attention and timeseries stats; a tone prop on `KpiCard`; per-currency
 stats; a public-body fact on the directory; user display names on payments and
-deliveries (ids only); a purge of anything.
+deliveries (ids only); a purge of anything. A follow-up for review: blanking a
+removed registration's `removal_reason` on erase too, should a reviewer judge it
+personal — this phase keeps it as the registration's audit trail (D6).
 
 ## Testing
 

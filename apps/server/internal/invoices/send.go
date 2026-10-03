@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"net/http"
 	netmail "net/mail"
+	"regexp"
 	"strings"
 	"time"
 
@@ -114,7 +115,8 @@ func validRecipient(s string) (string, bool) {
 // canIssue — invoices:issue, which the handler asked once for the whole
 // response — on an installation that can send, on an issued document only,
 // and never for a customer this module has anonymised: a send to one is
-// refused, so there is nothing to open the dialog with. profile is the
+// refused, so there is nothing to open the dialog with — the response says
+// customerAnonymised instead, so the app offers no send. profile is the
 // billing profile when the caller has read it already, nil to read it here.
 // The directory read is best effort: a directory that fails leaves
 // sendDefaults out and says so at warn, never failing a read of bookkeeping
@@ -128,6 +130,7 @@ func (s *server) withSendDefaults(ctx context.Context, q *store.Queries, inv sto
 		return fmt.Errorf("invoices: read whether customer %d was erased: %w", inv.CustomerID, err)
 	}
 	if erased {
+		resp.CustomerAnonymised = ptr(true)
 		return nil
 	}
 	if profile == nil {
@@ -148,6 +151,15 @@ func (s *server) withSendDefaults(ctx context.Context, q *store.Queries, inv sto
 	}
 	resp.SendDefaults = &defaults
 	return nil
+}
+
+// withoutRecipient is msg with every occurrence of recipient, in any case,
+// replaced by "<recipient>".
+func withoutRecipient(msg, recipient string) string {
+	if recipient == "" {
+		return msg
+	}
+	return regexp.MustCompile("(?i)"+regexp.QuoteMeta(recipient)).ReplaceAllLiteralString(msg, "<recipient>")
 }
 
 // mailFailed is the 502 a send answers when the mail server did not take the
@@ -248,7 +260,11 @@ func (s *server) PostInvoicesByIdSend(ctx context.Context, req gen.PostInvoicesB
 	err = s.smtpSend(sendCtx, s.deps.Config.Mail, out)
 	cancelSend()
 	if err != nil {
-		s.deps.Logger.WarnContext(ctx, "invoices: a document could not be sent", "invoice_id", inv.ID, "error", err.Error())
+		// The error with the address taken out: a mail server's refusal
+		// often quotes it, and it may be a person's whom an erase is about
+		// to anonymise — the log would keep it.
+		s.deps.Logger.WarnContext(ctx, "invoices: a document could not be sent", "invoice_id", inv.ID,
+			"error", withoutRecipient(err.Error(), recipient))
 		return gen.PostInvoicesByIdSend502ApplicationProblemPlusJSONResponse(mailFailed()), nil
 	}
 
