@@ -198,9 +198,10 @@ jobs:
   publish_docs:
     # The public site at docs.vantigo.io follows main. Cloudflare serves
     # docs/dist as static assets; the token needs the Workers Scripts edit
-    # permission on the account.
+    # permission on the account. A manual dispatch publishes whatever branch
+    # it runs on, which is how the deployment itself is tried out.
     needs: [docs, build_and_test_frontend, build_and_test_server]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     name: 🌍 Publish documentation
     runs-on: ubuntu-latest
     permissions:
