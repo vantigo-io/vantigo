@@ -37,7 +37,10 @@ const loud = new Set(["delivery_preference_ehf", "buyer_norwegian_business_requi
  * mail will say about payment. "Sent to …" on success, the address the
  * server logged; every refusal, the rate limit's included, in the reader's
  * language, and an expired session left to the host's sign-in. The button is
- * disabled while the mail is on its way.
+ * disabled while the mail is on its way, and while the field is empty when the
+ * customer has an address — an emptied field must not fall back to it unseen.
+ * A customer the server says is anonymised is offered no send at all: the
+ * dialog says why, and nothing else.
  */
 export const SendDialog = ({ document: doc, defaults, onClose }: SendDialogProps) => {
   const { t, money, date } = useInvoiceFormat();
@@ -47,6 +50,7 @@ export const SendDialog = ({ document: doc, defaults, onClose }: SendDialogProps
   const chosen = recipient.trim();
   // The customer's own address is the server's default: only another one is an override.
   const override = chosen && chosen !== defaults?.recipient ? chosen : undefined;
+  const anonymised = doc.customerAnonymised === true;
   const send = useMutation({
     mutationFn: () => sendInvoice(doc.id, override),
     onSuccess: async (sent) => {
@@ -58,7 +62,7 @@ export const SendDialog = ({ document: doc, defaults, onClose }: SendDialogProps
         undefined,
       );
       const to = newest?.recipient || (override ?? defaults?.recipient) || "";
-      // Read again, as after every write, rather than set from the answer (reading 5b).
+      // Read again, as after every write, rather than set from the answer (design D4).
       await queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY] });
       notifications.show({ color: "green", message: t("sentTo", { recipient: to }) });
       onClose();
@@ -98,6 +102,22 @@ export const SendDialog = ({ document: doc, defaults, onClose }: SendDialogProps
         : open < doc.grossTotal
           ? t("sendPartlyNote", { open: money(open, doc.currency) })
           : undefined;
+  if (anonymised) {
+    return (
+      <Modal opened onClose={onClose} title={t("sendDocument")}>
+        <Stack>
+          <Alert color="gray" icon={<IconInfoCircle size={16} />} role="note">
+            {t("refusal.customer_anonymised")}
+          </Alert>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={onClose}>
+              {t("cancel")}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+    );
+  }
   return (
     <Modal opened onClose={onClose} title={t("sendDocument")}>
       <Stack>
@@ -153,7 +173,11 @@ export const SendDialog = ({ document: doc, defaults, onClose }: SendDialogProps
           <Button variant="default" onClick={onClose}>
             {t("cancel")}
           </Button>
-          <Button disabled={send.isPending} loading={send.isPending} onClick={() => send.mutate()}>
+          <Button
+            disabled={send.isPending || (chosen === "" && defaults?.recipient !== undefined)}
+            loading={send.isPending}
+            onClick={() => send.mutate()}
+          >
             {t("send")}
           </Button>
         </Group>

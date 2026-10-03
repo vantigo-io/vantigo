@@ -10,7 +10,7 @@ export type PaymentInput = Schemas["InvoicesPaymentRequest"];
 
 /**
  * Registers a payment. The answer is the document without its send defaults
- * (reading 5b), so the caller invalidates the document rather than setting
+ * (design D4), so the caller invalidates the document rather than setting
  * this answer into the cache.
  */
 export const registerPayment = (id: number, input: PaymentInput): Promise<InvoiceDocument> =>

@@ -17,7 +17,7 @@ export type InvoiceDelivery = Schemas["InvoicesDelivery"];
  * carry their code on the error, so the dialog words them in the reader's
  * language; a 401 signs the person out and a 404 is a `NotFoundError`. The
  * answer carries the send defaults and the new delivery row, but the caller
- * invalidates the document anyway, as after every write (reading 5b).
+ * invalidates the document anyway, as after every write (design D4).
  */
 export const sendInvoice = (id: number, recipient?: string): Promise<InvoiceDocument> =>
   request<InvoiceDocument>(`/api/v1/invoices/${id}/send`, json("POST", recipient ? { recipient } : {}));

@@ -47,7 +47,7 @@ export const RegisterPaymentModal = ({ invoice, today, onClose }: RegisterPaymen
         ...(note.trim() ? { note: note.trim() } : {}),
       }),
     onSuccess: async () => {
-      // The answer carries no send defaults (reading 5b): the document is read again.
+      // The answer carries no send defaults (design D4): the document is read again.
       await queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY] });
       notifications.show({ color: "green", message: t("paymentRegistered") });
       onClose();
