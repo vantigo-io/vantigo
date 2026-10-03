@@ -1,0 +1,38 @@
+---
+title: Vantigo documentation
+description: Everything Vantigo does, for the people who use it and the people who run it.
+template: splash
+hero:
+  tagline: The open-source, all-in-one platform for running your business. Customers, projects, time, expenses, invoices, products, energy and communications in one application.
+  image:
+    file: ../../../assets/logo.png
+  actions:
+    - text: User guide
+      link: /en/user/
+      icon: right-arrow
+    - text: Administration
+      link: /en/admin/
+      icon: setting
+      variant: minimal
+---
+
+import { Card, CardGrid } from "@astrojs/starlight/components";
+
+<CardGrid stagger>
+  <Card title="User guide" icon="open-book">
+    How to get your work done in Vantigo: signing in, finding your way around, and every module from the customer card to the sent invoice.
+    [Open the user guide](/en/user/)
+  </Card>
+  <Card title="Administration" icon="setting">
+    Installing and running Vantigo yourself: Docker Compose, configuration, single sign-on, email, storage, security and upgrades.
+    [Open the administration guide](/en/admin/)
+  </Card>
+  <Card title="Reference" icon="document">
+    The domain model, rules, permissions and endpoints of every module, written from what the code does.
+    [Open the reference](/en/reference/)
+  </Card>
+  <Card title="Contributing" icon="github">
+    Getting the stack running, module boundaries and the conventions a change is expected to follow.
+    [Read the contributing guide](/en/contributing/)
+  </Card>
+</CardGrid>

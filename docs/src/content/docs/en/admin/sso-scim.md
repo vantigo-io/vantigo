@@ -1,5 +1,11 @@
-# Static identity deployment and operations
-
+---
+title: "SSO and SCIM operations"
+description: "Production static-only OIDC and SCIM configuration, rotation, migration, lifecycle and recovery."
+sidebar:
+  order: 21
+sources:
+  - apps/server/internal/identity
+---
 This is the production runbook for Vantigo's static identity integrations. Each
 deployment has **at most one** workforce OpenID Connect provider and one
 deployment-bound SCIM credential. Both are read from the environment when the process
@@ -23,7 +29,7 @@ environment switch, and only development relaxes anything.
 
 Every setting is validated in one pass at startup and **every** problem is reported
 at once, so a misconfigured container fails its first boot with the complete list.
-[`apps/server/internal/config/config.go`](../apps/server/internal/config/config.go)'s
+[`apps/server/internal/config/config.go`](https://github.com/vantigo-io/vantigo/blob/main/apps/server/internal/config/config.go)'s
 field comments are the authoritative reference.
 
 ```bash
@@ -290,7 +296,7 @@ passkeys and local MFA are independent of the external provider.
 If the installation is reachable before an operator can complete `/setup`, set
 `BOOTSTRAP_OWNER_EMAIL` instead: the same break-glass Owner is then seated by an
 emailed invitation issued at startup rather than by whoever reaches `/setup`
-first. See [the management listener](management.md#seating-the-first-owner-without-setup).
+first. See [the management listener](/en/admin/management-listener/#seating-the-first-owner-without-setup).
 
 With `OWNERS_REQUIRE_MFA=1` (the default outside development), Owner and SystemAdmin
 operations require a second factor — a TOTP code, a recovery code or a passkey. Store
@@ -328,7 +334,7 @@ For Compose, `vantigo-migrate` is the one-shot migration service and `vantigo` i
 long-running `api` service. `docker compose up -d` honours that dependency; for a
 controlled release, run `docker compose up vantigo-migrate`, confirm it exits
 successfully, then `docker compose up -d vantigo` as described in the
-[Compose runbook](../deploy/compose/README.md).
+[Compose runbook](https://github.com/vantigo-io/vantigo/blob/main/deploy/compose/README.md).
 
 ## Secret hygiene checklist
 

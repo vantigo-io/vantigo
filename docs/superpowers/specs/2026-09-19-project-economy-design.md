@@ -2,8 +2,8 @@
 
 Projects phase 3, first delivery. Phased plan:
 `2026-09-18-project-management-plan.md` (phase 3, decisions D7 and D10).
-Builds on the projects module (`docs/projects.md`), tasks and the `time` module
-(`docs/time.md`).
+Builds on the projects module (`docs/src/content/docs/en/reference/projects.md`), tasks and the `time` module
+(`docs/src/content/docs/en/reference/time.md`).
 
 ## 1. Purpose
 

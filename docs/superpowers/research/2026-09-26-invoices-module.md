@@ -13,10 +13,10 @@ at `e5601fb0` (identical to `main`); `srv/` abbreviates `apps/server/internal/`.
 ### 1.1 Four roadmaps end at the same place
 
 - **Customers.** The billing profile is "ready for Invoices to read once that module
-  exists" (`docs/customers.md:2632-2633`), and "whether a customer *can actually be
-  invoiced* a given way is Invoices' question to ask at send time" (`docs/customers.md:490-496`).
+  exists" (`docs/src/content/docs/en/reference/customers.md:2632-2633`), and "whether a customer *can actually be
+  invoiced* a given way is Invoices' question to ask at send time" (`docs/src/content/docs/en/reference/customers.md:490-496`).
   `disabled` waits for Invoices to give it meaning, with Business Central's "blocked for
-  invoicing" as the model (`docs/customers.md:94-102`; `ROADMAP.md:49-52`). Customer 360
+  invoicing" as the model (`docs/src/content/docs/en/reference/customers.md:94-102`; `ROADMAP.md:49-52`). Customer 360
   still lacks "invoiced revenue and outstanding once Invoices exists"
   (`ROADMAP.md:241-242,270-272`). Per-customer dunning, a portal and credit limits are
   parked behind Invoices (`ROADMAP.md:325-329`).
@@ -24,10 +24,10 @@ at `e5601fb0` (identical to `main`); `srv/` abbreviates `apps/server/internal/`.
   a-konto is one kind" (`docs/superpowers/specs/2026-09-18-project-management-plan.md:132-135`);
   "A later Invoices module sets the same status" (`ROADMAP.md:533-537`). Time has an
   `invoiced` status and an `invoiced_at` column that "exist for the future Invoices module
-  to use" (`docs/time.md:192-196`) and a whole section "What invoicing will read"
-  (`docs/time.md:363-387`).
+  to use" (`docs/src/content/docs/en/reference/time.md:192-196`) and a whole section "What invoicing will read"
+  (`docs/src/content/docs/en/reference/time.md:363-387`).
 - **Expenses.** "The module that turns that list into an invoice does not exist yet; when
-  it does, it owns the stamp" (`docs/expenses.md:1260-1265`; `ROADMAP.md:727-732`).
+  it does, it owns the stamp" (`docs/src/content/docs/en/reference/expenses.md:1260-1265`; `ROADMAP.md:727-732`).
 - **Energy.** Phase 4 is "Invoicing groundwork (align with Invoices)": a
   `contracts.ConsumptionProvider` and a price dimension (spot prices per price area NO1–NO5,
   grid tariffs) "decided together with the Invoices module" (`ROADMAP.md:379-387`).
@@ -479,10 +479,10 @@ https://support.scoro.com/hc/en-us/articles/12664935036557-Issuing-credit-notes 
 
 - **A third write direction needs its own design.** Rule 8: a module never writes another's
   data except through `contracts.CustomerReferenceHolder`; "Another write direction needs a
-  design of its own" (`docs/module-boundaries.md:67-79`); rule 9 is `CustomerPersonalData`
+  design of its own" (`docs/src/content/docs/en/contributing/module-boundaries.md:67-79`); rule 9 is `CustomerPersonalData`
   (`:80-96`). Stamping time entries, expense lines or milestones as invoiced from Invoices
   is that third direction. Every other contract is a read (`srv/contracts/references.go:9-13`).
-- No contract call inside a transaction holding a lock (`docs/module-boundaries.md:245-247`;
+- No contract call inside a transaction holding a lock (`docs/src/content/docs/en/contributing/module-boundaries.md:245-247`;
   `srv/contracts/references.go:31-34`).
 - The outbox/event bus is deferred, to be built "together with its first real consumer"
   (`ROADMAP.md:8-21`).
@@ -498,16 +498,16 @@ https://support.scoro.com/hc/en-us/articles/12664935036557-Issuing-credit-notes 
   `buyer_reference` (`srv/db/migrations/00019_customers_billing_profile.sql:9-18`) and
   `default_bill_rate` (`00028_customers_default_bill_rate.sql:14`). `language` ∈ `nb`/`en`;
   `invoiceDelivery` ∈ `email`/`ehf`/`efaktura`/`paper`; `reminderDelivery` ∈ `email`/`paper`
-  (`docs/customers.md:477-488`). Payment terms fall back to the group default
-  (`docs/customers.md:751-759`; `srv/customers/directory.go:207-212`).
+  (`docs/src/content/docs/en/reference/customers.md:477-488`). Payment terms fall back to the group default
+  (`docs/src/content/docs/en/reference/customers.md:751-759`; `srv/customers/directory.go:207-212`).
 - Invoice address = primary `invoice`, else primary `postal`, else none
-  (`docs/customers.md:464-468`).
+  (`docs/src/content/docs/en/reference/customers.md:464-468`).
 - Read through `CustomerDirectory.BillingProfile` (`srv/contracts/directory.go:169-173`),
   resolved in `resolveBillingProfile` (`srv/customers/directory.go:191-239`). **No batch
   `BillingProfiles(ids)`.** `CustomerBillingProfile` (`srv/contracts/directory.go:70-111`)
   carries **no status, no `MergedInto`, no anonymised flag, no Peppol lookup answer**.
 - Peppol: `internal/peppol` is lookup only (`srv/peppol/lookup.go:96,164`), shared "with the
-  future Invoices module" (`docs/module-boundaries.md:18-19`); answers store
+  future Invoices module" (`docs/src/content/docs/en/contributing/module-boundaries.md:18-19`); answers store
   `can_receive_invoice` and `can_receive_credit_note` (`srv/db/migrations/00020_customers_peppol_lookup.sql:5-10`);
   a recheck worker exists (`srv/customers/peppol_recheck_worker.go`). **No access point or
   send capability.**
@@ -515,18 +515,18 @@ https://support.scoro.com/hc/en-us/articles/12664935036557-Issuing-credit-notes 
   but "that is Invoices' call, later" (`docs/superpowers/specs/2026-09-22-customers-brreg-full-design.md:159-160`);
   not in any contract.
 - Anonymisation keeps the customer number ("the bookkeeping reference") and clears billing
-  identifiers (`docs/customers.md:1601-1602,1638-1644`); "linking data to it after its day
+  identifiers (`docs/src/content/docs/en/reference/customers.md:1601-1602,1638-1644`); "linking data to it after its day
   is the linker's responsibility" (`:1650-1653`). `CustomerReferences` and
   `CustomerPersonalData` are called for disabled modules too (`srv/module/module.go:213-233`).
 
 ### 7.3 Products
 
 - "an invoice line later gets its product, unit and tax category for free"
-  (`docs/projects.md:249-254`) — **not true through the contract**: `VariantEntry` has no
+  (`docs/src/content/docs/en/reference/projects.md:249-254`) — **not true through the contract**: `VariantEntry` has no
   tax category or rate (`srv/contracts/catalog.go:12-19`). The tax category sits on the
   product (`00004_products_baseline.sql:51`), unversioned, so a rate edit rewrites history
   for anything not snapshotted; "Prices and the resolved VAT rate must be snapshotted at
-  transaction time" (`docs/products.md:32-36`).
+  transaction time" (`docs/src/content/docs/en/reference/products.md:32-36`).
 - `ListPrice` returns `Money{Amount float64}` (`srv/contracts/catalog.go:23-26,43-53`).
   Products is optional (nil when disabled, `srv/module/module.go:59-64`).
 
@@ -534,13 +534,13 @@ https://support.scoro.com/hc/en-us/articles/12664935036557-Issuing-credit-notes 
 
 - Project `customer_id`, `billing_type`, one `currency`, `fixed_price_amount`
   (`srv/db/migrations/00008_projects_baseline.sql:11-29`); billing lines with `variant_id`
-  and a trackable code `<project>-<line>` (`docs/projects.md:1250-1254`).
+  and a trackable code `<project>-<line>` (`docs/src/content/docs/en/reference/projects.md:1250-1254`).
 - Milestones: `status planned|ready|invoiced|cancelled` with `invoiced_at`,
   `invoiced_by_user_id`, `invoice_reference varchar(100)`, `invoice_date`,
   `invoiced_amount` (`srv/db/migrations/00011_projects_milestones.sql:23-46`); stamped by
   hand through `POST /api/v1/projects/milestones/{milestoneId}/status`
   (`openapi/projects.yaml:2440-2459`). Undo is never refused because "crediting an invoice
-  is a real event" (`docs/projects.md:409-423`). **No milestone read in `ProjectDirectory`**
+  is a real event" (`docs/src/content/docs/en/reference/projects.md:409-423`). **No milestone read in `ProjectDirectory`**
   (`srv/contracts/projects.go:80-135`).
 - Financial rights are re-derived by each consumer (e.g. `srv/expenses/authorize.go:363-369`);
   no directory method.
@@ -550,11 +550,11 @@ https://support.scoro.com/hc/en-us/articles/12664935036557-Issuing-credit-notes 
 - `time.entries`: `status` includes `invoiced` (`srv/time/values.go:36`), `invoiced_at`
   (`srv/db/migrations/00010_time_baseline.sql:29`) — **no `invoiced_by`, no reference, no
   frozen amount**. Nothing writes `invoiced` today; tests reach it through the database
-  (`docs/time.md:192-196`); approval refuses to reopen (`srv/time/approval.go:63-64`); the
-  state "has no way out" (`docs/time.md:183`).
+  (`docs/src/content/docs/en/reference/time.md:192-196`); approval refuses to reopen (`srv/time/approval.go:63-64`); the
+  state "has no way out" (`docs/src/content/docs/en/reference/time.md:183`).
 - Invoiceable = approved, billable, with a bill rate: `hours × billRate ×
   billMultiplierPercent / 100` in `billCurrency`, "rounded once per invoice line", grouped
-  by project and line, then work type (`docs/time.md:368-376`). "Time provides no contract
+  by project and line, then work type (`docs/src/content/docs/en/reference/time.md:368-376`). "Time provides no contract
   yet" for it (`:365`); `ProjectActuals` is aggregates only (`srv/contracts/actuals.go:45-57`).
 
 ### 7.6 Expenses
@@ -597,9 +597,9 @@ One Compose project per tenant means per installation = per tenant.
   **`mail.SendOutbound`** takes To/Cc/Bcc, text + HTML and `[]Attachment` with per-channel
   config (`srv/mail/outbound.go:22-75`) — its one producer is communications' outbox
   worker. Communications offers no contract to enqueue mail (`srv/contracts/`; attachments
-  "can be staged but never sent", `docs/communications.md:249-252`).
+  "can be staged but never sent", `docs/src/content/docs/en/reference/communications.md:249-252`).
 - Storage: `ObjectStore{Put, Get, Exists, Delete}` (`srv/storage/storage.go:61-72`),
-  `fs` driver only, no presigned URLs, nothing immutable/WORM (`docs/storage.md:9-23,107-122`).
+  `fs` driver only, no presigned URLs, nothing immutable/WORM (`docs/src/content/docs/en/admin/object-storage.md:9-23,107-122`).
 
 ### 7.10 Numbering, money, adding a module
 
@@ -609,12 +609,12 @@ One Compose project per tenant means per installation = per tenant.
   `srv/customers/queries/customers.sql:1-10`); Projects copies it with `PeekCounterValue`
   (`srv/projects/queries/counters.sql:1-24`). No per-year reset or prefix.
 - **Money**: `numeric(12,2)` in the DB; `math/big.Rat`, rounded once half away from zero
-  (`docs/expenses.md:112-118`; `docs/time.md:69-72`); contracts mixed — decimal text in
+  (`docs/src/content/docs/en/reference/expenses.md:112-118`; `docs/src/content/docs/en/reference/time.md:69-72`); contracts mixed — decimal text in
   `ActualsBucket`/`ExpenseBucket` "so no float ever rounds money"
   (`srv/contracts/actuals.go:67-70`) vs `float64` in `Money`, `DefaultBillRate`,
   `FixedAmount`. Currency is never converted anywhere (`srv/contracts/actuals.go:27-39`).
 - Only Expenses has a time zone setting (`srv/expenses/settings.go:61-70`).
-- Adding a module: `docs/module-boundaries.md:268-318` (openapi, baseline migration,
+- Adding a module: `docs/src/content/docs/en/contributing/module-boundaries.md:268-318` (openapi, baseline migration,
   depguard, `moduleSchemas`, config dependency check, frontend app, one admin catalog entry
   per permission). A new provider slot is platform code (`srv/module/module.go:28-161`,
   `srv/module/compose.go:177-226`). `contracttest.RequireCoverage` is the operations gate
@@ -728,7 +728,7 @@ Tripletex/Fiken/PowerOffice.
    `tax_categories`, no VAT on expense bill amounts, none on milestones; foreign VAT numbers
    not stored.
 6. **The write direction.** Contract command in a shared transaction, an outbox, or read-only
-   Invoices with each module's manual door kept (rule 8, `docs/module-boundaries.md:78-79`);
+   Invoices with each module's manual door kept (rule 8, `docs/src/content/docs/en/contributing/module-boundaries.md:78-79`);
    who owns `invoiced_at` for hours.
 7. **One stamp protocol for three shapes** (time status + `invoiced_at`; expense stamp + by +
    reference; milestone status + by + reference + date + amount); does the stamp carry an

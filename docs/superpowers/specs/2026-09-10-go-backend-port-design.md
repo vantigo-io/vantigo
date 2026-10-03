@@ -159,7 +159,7 @@ Core:
 | `BOOTSTRAP_SECRET` | One-time secret for first-owner setup, as today. |
 | `SMTP_*` | Host, port, user, password, from, TLS mode (§3.9). |
 | `OIDC_*` | Issuer, client id, client secret or `AZURE_FEDERATED_TOKEN_FILE`, scopes, display name. All-or-nothing. |
-| `SCIM_TOKEN`, `SCIM_PREVIOUS_TOKEN`, `SCIM_PREVIOUS_TOKEN_EXPIRES_AT` | Static SCIM bearer with rotation overlap, as documented in `docs/sso-scim-operations.md`. |
+| `SCIM_TOKEN`, `SCIM_PREVIOUS_TOKEN`, `SCIM_PREVIOUS_TOKEN_EXPIRES_AT` | Static SCIM bearer with rotation overlap, as documented in `docs/src/content/docs/en/admin/sso-scim.md`. |
 | `OPENAI_API_KEY`, `OPENAI_MODEL` | Optional; the AI draft feature is off without them. |
 | `OTEL_EXPORTER_OTLP_*` | Standard OTel variables; a signal is exported only if its endpoint is set. |
 | `SESSION_*` | Absolute and idle lifetimes, with the tighter Owner/SystemAdmin bounds carried over from `VantigoAuthenticationOptions`. |
@@ -240,7 +240,7 @@ type Module struct {
 }
 ```
 
-Rules, carried over from `docs/module-boundaries.md`:
+Rules, carried over from `docs/src/content/docs/en/contributing/module-boundaries.md`:
 
 1. `internal/<module>` imports only `internal/contracts` and the platform
    packages (`db`, `httpx`, `storage`, `mail`, `secrets`, `config` types).
@@ -385,7 +385,7 @@ type Storage interface {
   starts all enabled modules' workers as goroutines in `api` (when
   `WORKERS_IN_PROCESS=1`) and `worker` modes, never in `server` mode.
 - Communications keeps three workers: outbox delivery, retention, and
-  attachment cleanup. The outbox semantics in `docs/communications.md`
+  attachment cleanup. The outbox semantics in `docs/src/content/docs/en/reference/communications.md`
   are preserved exactly: claim by conditional update with lease, commit a
   `delivery_attempted_at` marker before the external send, complete after,
   deterministic `Message-Id`, exponential backoff, `max_attempts` terminal,
@@ -420,7 +420,7 @@ type Storage interface {
   be reachable only through the proxy. (.NET by default trusted only
   loopback peers.) A peer CIDR allowlist arrives with the first
   rate-limited route (sub-project 3).
-- Transport fail-closed rules from `docs/transport-security.md` are
+- Transport fail-closed rules from `docs/src/content/docs/en/admin/transport-security.md` are
   enforced at config validation when `APP_ENV=production`, with the single
   `ALLOW_INSECURE_TRANSPORT` escape hatch; development relaxes them, as the
   .NET host does.

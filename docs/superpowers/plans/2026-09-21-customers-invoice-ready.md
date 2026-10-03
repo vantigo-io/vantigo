@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.27 (pgx, sqlc, oapi-codegen strict server, goose), PostgreSQL 18, React + Mantine + TanStack Router/Query, vitest, bun, mise.
 
-**Spec:** `docs/superpowers/specs/2026-09-21-customers-invoice-ready-design.md` (D1–D6). It builds on `docs/superpowers/specs/2026-09-21-customers-foundation-design.md` (revision rules D5, actor rule D1) and `docs/customers.md`. Read the spec first.
+**Spec:** `docs/superpowers/specs/2026-09-21-customers-invoice-ready-design.md` (D1–D6). It builds on `docs/superpowers/specs/2026-09-21-customers-foundation-design.md` (revision rules D5, actor rule D1) and `docs/src/content/docs/en/reference/customers.md`. Read the spec first.
 
 ## Global Constraints
 
@@ -132,7 +132,7 @@ Handler order for PUT: validation 400 → 404 → revision 409 → no-op → act
 ### Task 4: The directory other modules read (D5)
 
 **Files:**
-- Modify: `apps/server/internal/contracts/directory.go` (interface, `CustomerBillingProfile`, `CustomerAddressEntry`, doc comment rules), `apps/server/internal/customers/directory.go`, `directory_test.go`, `queries/customers.sql` + `queries/addresses.sql` (`DirectoryCustomers :many` with `id = ANY(@ids::int[])`, `DirectoryBillingProfile :one`, `DirectoryInvoiceAddress :one`), every fake/stub of `contracts.CustomerDirectory` (grep `ContactsByEmail(` across `apps/server`: `internal/module/compose_test.go`, `internal/integration/harness_test.go`, `internal/expenses/contractscalls_internal_test.go`, projects/energy/communications/products harnesses, `internal/modtest`), `apps/server/internal/projects/projects_list.go` (`customerNamesForPage` → one `Customers` call; keep `noteContractCall` bookkeeping via a `directoryCustomers` wrapper in `projects/contracts.go`), its tests, `docs/module-boundaries.md`
+- Modify: `apps/server/internal/contracts/directory.go` (interface, `CustomerBillingProfile`, `CustomerAddressEntry`, doc comment rules), `apps/server/internal/customers/directory.go`, `directory_test.go`, `queries/customers.sql` + `queries/addresses.sql` (`DirectoryCustomers :many` with `id = ANY(@ids::int[])`, `DirectoryBillingProfile :one`, `DirectoryInvoiceAddress :one`), every fake/stub of `contracts.CustomerDirectory` (grep `ContactsByEmail(` across `apps/server`: `internal/module/compose_test.go`, `internal/integration/harness_test.go`, `internal/expenses/contractscalls_internal_test.go`, projects/energy/communications/products harnesses, `internal/modtest`), `apps/server/internal/projects/projects_list.go` (`customerNamesForPage` → one `Customers` call; keep `noteContractCall` bookkeeping via a `directoryCustomers` wrapper in `projects/contracts.go`), its tests, `docs/src/content/docs/en/contributing/module-boundaries.md`
 
 **Interfaces:**
 - Produces:
@@ -192,7 +192,7 @@ type CustomerAddressEntry struct{ Label, Line1, Line2, PostalCode, City, Region,
 
 ### Task 7: Docs
 
-**Files:** `docs/customers.md` (model, the three sub-resources, the primary-address invariant and how it is serialised, billing fields + warnings, the new permission → fourteen, directory additions with the resolution rules, frontend), `ROADMAP.md` (Customers phase 2: mark what is done, keep the Peppol lookup as the remaining part), `docs/module-boundaries.md` if Task 4 did not already, `CONTRIBUTING.md` customers bullet if it enumerates resources.
+**Files:** `docs/src/content/docs/en/reference/customers.md` (model, the three sub-resources, the primary-address invariant and how it is serialised, billing fields + warnings, the new permission → fourteen, directory additions with the resolution rules, frontend), `ROADMAP.md` (Customers phase 2: mark what is done, keep the Peppol lookup as the remaining part), `docs/src/content/docs/en/contributing/module-boundaries.md` if Task 4 did not already, `CONTRIBUTING.md` customers bullet if it enumerates resources.
 - [ ] Write without committing if another agent is editing the tree; otherwise commit `docs(customers): contact info, addresses and the billing profile`.
 
 ### Task 8: Verify and open the PR

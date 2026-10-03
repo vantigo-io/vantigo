@@ -765,7 +765,7 @@ describe("ProjectEconomy", () => {
     expect(await screen.findByText("Could not load the invoice plan")).toBeInTheDocument();
   });
 
-  // A flat amount remembers the currency it was entered in (docs/projects.md,
+  // A flat amount remembers the currency it was entered in (docs/src/content/docs/en/reference/projects.md,
   // "Billing milestones and the invoice plan"), so a cancelled milestone can
   // read in a currency the project has since moved off. Each row must format
   // in *its own* currency; only the headline figures and the footer read the

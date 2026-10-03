@@ -149,7 +149,7 @@ link. No new endpoint.
 ## Out of scope
 
 Addresses, contact details, billing profile (P1); Brreg enrichment and refresh (P2);
-merge (P5); renaming `docs/customers-authentication.md`; rate limits; error-code
+merge (P5); renaming `docs/src/content/docs/en/admin/authentication.md`; rate limits; error-code
 vocabulary beyond the one `code` above; un-attributing or back-filling old timeline rows.
 
 ## Testing

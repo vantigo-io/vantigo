@@ -45,7 +45,7 @@ Holders today: **projects** (`projects.projects.customer_id`), **energy**
 CONFLICT DO NOTHING`). Time and expenses reach customers only through projects and hold
 nothing. The rule that a directory is never called inside a transaction stands: a
 holder's re-point is a write on the shared database, not a lookup, and it is the one
-sanctioned cross-module write direction — `docs/module-boundaries.md` gains the rule.
+sanctioned cross-module write direction — `docs/src/content/docs/en/contributing/module-boundaries.md` gains the rule.
 
 ### D2 — `POST /customers/{id}/merge`: this customer absorbs another
 
@@ -132,13 +132,13 @@ the action lives) — not a merge from the form. en + nb.
 
 ### D5 — Docs
 
-`docs/customers.md`: a **Merging duplicates** section (the direction, the refusals,
+`docs/src/content/docs/en/reference/customers.md`: a **Merging duplicates** section (the direction, the refusals,
 the table of what moves/stays/is recorded, the contract, the events, the marker), the
 permission key, the API list, the frontend bullets, a phase 6 delivery B paragraph;
-`docs/module-boundaries.md`: the new rule for the one sanctioned cross-module write
+`docs/src/content/docs/en/contributing/module-boundaries.md`: the new rule for the one sanctioned cross-module write
 (`CustomerReferenceHolder`: inside the caller's transaction, own schema, own code, no
-lookups); one paragraph each in `docs/projects.md`, `docs/energy.md`,
-`docs/communications.md` (what the module re-points); `ROADMAP.md` phase 6 (B delivered;
+lookups); one paragraph each in `docs/src/content/docs/en/reference/projects.md`, `docs/energy.md`,
+`docs/src/content/docs/en/reference/communications.md` (what the module re-points); `ROADMAP.md` phase 6 (B delivered;
 C ahead).
 
 ## Out of scope

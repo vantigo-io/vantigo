@@ -61,7 +61,7 @@ func (s *recordingStore) last() (call, key string) {
 // TestScope_CombinesKey proves the scope wrapper builds physical keys as
 // "{scope}/{relative-key}" — with no tenant segment: .NET's physical key is
 // tenants/{tenant-id}/{scope}/{key}, and dropping tenancy drops exactly that
-// segment (docs/storage.md "Tenant isolation, module scopes, and
+// segment (docs/src/content/docs/en/admin/object-storage.md "Tenant isolation, module scopes, and
 // downloads").
 func TestScope_CombinesKey(t *testing.T) {
 	inner := &recordingStore{}
@@ -93,7 +93,7 @@ func TestScope_CombinesKey(t *testing.T) {
 // TestScope_RejectsCallerSuppliedAbsoluteOrPrefixedKey proves a scoped store
 // never reaches its inner store with a key the caller was never meant to
 // construct: an absolute path, or a key that already repeats the scope name
-// as its own prefix (docs/storage.md: "duplicate-prefix forms rejected").
+// as its own prefix (docs/src/content/docs/en/admin/object-storage.md: "duplicate-prefix forms rejected").
 func TestScope_RejectsCallerSuppliedAbsoluteOrPrefixedKey(t *testing.T) {
 	inner := &recordingStore{}
 	scoped, err := storage.NewScope(inner, "communications")
@@ -121,7 +121,7 @@ func TestScope_RejectsCallerSuppliedAbsoluteOrPrefixedKey(t *testing.T) {
 
 // TestScope_RejectsUnsafeScopeName proves scope names are validated at
 // construction, before any key is ever combined: canonical lowercase
-// [a-z0-9-], no slashes or dots (docs/storage.md).
+// [a-z0-9-], no slashes or dots (docs/src/content/docs/en/admin/object-storage.md).
 func TestScope_RejectsUnsafeScopeName(t *testing.T) {
 	inner := &recordingStore{}
 	for _, scope := range []string{"", "Communications", "com.munications", "communications/x", "-leading", "trailing-", "com munications"} {
@@ -139,7 +139,7 @@ func TestScope_RejectsUnsafeScopeName(t *testing.T) {
 // unset, the process still starts (New returns a usable store, not an
 // error), and every operation on that store reports storage as not
 // configured rather than panicking or silently doing nothing
-// (docs/storage.md: "If Storage__Provider is omitted, the host starts with
+// (docs/src/content/docs/en/admin/object-storage.md: "If Storage__Provider is omitted, the host starts with
 // storage fail-closed; an operation reports that storage is not
 // configured.").
 func TestNew_FailsClosedWhenUnconfigured(t *testing.T) {

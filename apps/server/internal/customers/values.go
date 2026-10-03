@@ -759,7 +759,7 @@ var tagColors = []string{"gray", "red", "pink", "grape", "violet", "indigo", "bl
 // it would be exported as a cell that reads back as the tags on either side
 // of it — silently, whenever those exist. Refused here, the cell has one
 // reading only. The message states the rule bare, as every other validator's
-// does; the reason is here, in docs/customers.md and in CustomerTagRequest's
+// does; the reason is here, in docs/src/content/docs/en/reference/customers.md and in CustomerTagRequest's
 // description.
 func validateTagName(raw string) (string, string) {
 	name := norm.NFC.String(raw)

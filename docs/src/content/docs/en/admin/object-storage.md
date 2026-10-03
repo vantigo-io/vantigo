@@ -1,5 +1,11 @@
-# Object storage
-
+---
+title: "Object storage"
+description: "The filesystem provider, module scopes, key validation and streamed downloads."
+sidebar:
+  order: 41
+sources:
+  - apps/server/internal/storage
+---
 Object storage is the application port Communications stages and serves attachments
 through. Modules never talk to a provider SDK: they receive an `ObjectStore` scoped
 to their own namespace and pass relative keys.
@@ -92,7 +98,7 @@ physical key is `expenses/receipts/<entryId>/<uuid>`. Invoices uses the scope
 `documents/<id>/<number>-<sha256>.pdf`, so its physical key is
 `invoices/documents/<id>/<number>-<sha256>.pdf` — stored once after the issue
 commits and never deleted or overwritten, since an issued document is bookkeeping
-material ([Invoices](invoices.md#the-pdf)). A scoped store refuses a
+material ([Invoices](/en/reference/invoices/#the-pdf)). A scoped store refuses a
 relative key that equals its scope or already begins with `{scope}/`: callers pass
 relative keys only and must never construct the prefix themselves.
 
@@ -106,7 +112,7 @@ object that was staged for it is removed again, so a failure never leaves an
 object nothing points at. The one window nothing closes is the process dying
 between writing the object and that compensating removal or commit completing —
 there is no background sweeper today, so a receipt orphaned that way outlives the
-request that caused it. See [Expenses](expenses.md#receipts) for the upload rules
+request that caused it. See [Expenses](/en/reference/expenses/#receipts) for the upload rules
 (types, size, count, sniffing) and the rate limit.
 
 ## Downloads
@@ -118,10 +124,10 @@ redirects a caller to a direct storage URL. Communications' download endpoint
 authorizes the attachment, loads it through the scoped store, and returns the bytes
 with the stored content type and a sanitized filename; the `downloadPath` field in
 its DTOs is that same-origin application endpoint, never a storage location. See
-[Communications](communications.md) for the attachment lifecycle.
+[Communications](/en/reference/communications/) for the attachment lifecycle.
 
 Expenses' `GET /attachments/{id}` follows the same shape: it authorizes the
 receipt through the expense it belongs to, loads it through the module's own
 `expenses`-scoped store, and streams the bytes back with the content type they
 were sniffed as on upload and the file name as it was given — never a storage
-location of any kind. See [Expenses](expenses.md#receipts).
+location of any kind. See [Expenses](/en/reference/expenses/#receipts).

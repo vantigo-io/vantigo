@@ -80,10 +80,10 @@ catalogs. No host change (`canManageBilling` already gates the modal).
 
 ### D5 — Docs
 
-`docs/time.md` "The rate chain": step 3 inserted (person → 4, none → 5), the
+`docs/src/content/docs/en/reference/time.md` "The rate chain": step 3 inserted (person → 4, none → 5), the
 "Currency is never converted" rule gains the customer bullet, the `rateSource` sentence
-names `customer`, the prose at ~395 that enumerates the fallback; `docs/projects.md`'s
-chain summary widens to `→ customer default → person default`; `docs/customers.md`:
+names `customer`, the prose at ~395 that enumerates the fallback; `docs/src/content/docs/en/reference/projects.md`'s
+chain summary widens to `→ customer default → person default`; `docs/src/content/docs/en/reference/customers.md`:
 the billing profile table's eleventh row and its "ten columns (00019)" sentence, the
 directory resolution table's `DefaultBillRate` row, a phase 5 delivery B paragraph in
 "what comes next"; `ROADMAP.md` phase 5 "still ahead" loses the bill rate.

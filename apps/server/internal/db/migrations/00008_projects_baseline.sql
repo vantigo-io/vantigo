@@ -7,7 +7,7 @@ CREATE SCHEMA projects;
 
 -- customer_id, created_by_user_id and every other foreign identifier here is
 -- opaque: customers, identity and products live in other schemas, so there is
--- no foreign key to them (docs/module-boundaries.md rule 4).
+-- no foreign key to them (docs/src/content/docs/en/contributing/module-boundaries.md rule 4).
 CREATE TABLE projects.projects (
     id                 integer GENERATED ALWAYS AS IDENTITY (START WITH 1001) PRIMARY KEY,
     code               varchar(20)   NOT NULL,

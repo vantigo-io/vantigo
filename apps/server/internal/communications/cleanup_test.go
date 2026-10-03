@@ -232,7 +232,7 @@ func (s *cleanupStore) Delete(_ context.Context, key string) error {
 		return failKey
 	}
 	// Deleting a key that is not there is a success by contract
-	// (inventory §16.1, docs/storage.md): a double delete is harmless.
+	// (inventory §16.1, docs/src/content/docs/en/admin/object-storage.md): a double delete is harmless.
 	delete(s.objects, key)
 	return nil
 }
@@ -655,7 +655,7 @@ func TestCleanup_ReturnsRecordsClaimedNotSucceeded(t *testing.T) {
 }
 
 // TestCleanup_DeletingAMissingKeySucceeds pins the contract half of the double
-// delete (inventory §12.2's closing line, §16.1, docs/storage.md): deleting a
+// delete (inventory §12.2's closing line, §16.1, docs/src/content/docs/en/admin/object-storage.md): deleting a
 // key that is not there is a success, so a record whose object has already
 // gone — a repeated retention queue, a partially completed earlier batch —
 // completes rather than retrying forever.

@@ -358,7 +358,7 @@ type MoveCustomerAddressesParams struct {
 // statement's snapshot, the survivor's own addresses — and keeping it primary
 // for a type the survivor has none of, so every type still has exactly one
 // (ux_customer_addresses_primary). The 50-address cap guards a write, not a
-// merge (docs/customers.md, Merging duplicates).
+// merge (docs/src/content/docs/en/reference/customers.md, Merging duplicates).
 func (q *Queries) MoveCustomerAddresses(ctx context.Context, arg MoveCustomerAddressesParams) (int64, error) {
 	result, err := q.db.Exec(ctx, moveCustomerAddresses, arg.IntoCustomerID, arg.Now, arg.FromCustomerID)
 	if err != nil {

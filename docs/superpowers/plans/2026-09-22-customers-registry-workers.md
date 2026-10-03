@@ -4235,11 +4235,11 @@ Nothing of ours may be left in `git status --short` after the second commit: if 
 ### Task 6: Documentation
 
 **Files:**
-- Modify: `docs/customers.md` (a new `### Registry workers` section, the Peppol configuration table, the "What comes next" paragraph), `ROADMAP.md` (the Customers phase 3 entry), `CONTRIBUTING.md` (the worker list and the advisory-lease paragraph)
+- Modify: `docs/src/content/docs/en/reference/customers.md` (a new `### Registry workers` section, the Peppol configuration table, the "What comes next" paragraph), `ROADMAP.md` (the Customers phase 3 entry), `CONTRIBUTING.md` (the worker list and the advisory-lease paragraph)
 
 No code, no tests. Everything below is the text to write; adapt only where the surrounding prose has moved.
 
-- [ ] **Step 1: `docs/customers.md` — the new section**
+- [ ] **Step 1: `docs/src/content/docs/en/reference/customers.md` — the new section**
 
 Insert between the end of `### The frontend` (the registry record's own frontend subsection, ending "…and only for the one address they chose.") and `## Peppol lookup`:
 
@@ -4369,7 +4369,7 @@ waiting on it. Page size, page budget, the sweep batches and the Peppol batch ar
 constants, not knobs: they bound one cycle's work against a public register.
 ```
 
-- [ ] **Step 2: `docs/customers.md` — the Peppol section's own table**
+- [ ] **Step 2: `docs/src/content/docs/en/reference/customers.md` — the Peppol section's own table**
 
 The Peppol lookup section's **Configuration** table lists the four `PEPPOL_*`
 variables. Add one line at its end, so somebody reading about Peppol finds the
@@ -4390,7 +4390,7 @@ It records the same event under the same rule — only when the answer changed �
 the system actor, and it changes nothing on the billing profile.
 ```
 
-- [ ] **Step 3: `docs/customers.md` — "What comes next"**
+- [ ] **Step 3: `docs/src/content/docs/en/reference/customers.md` — "What comes next"**
 
 Replace the paragraph beginning "**Phase 3 delivery B**, not yet built, is exactly
 that schedule:" with:
@@ -4439,7 +4439,7 @@ never checked, are asked again on a schedule, surfacing on the same
 still never switching a customer's delivery method. Both workers elect one replica
 per cycle through a Postgres advisory lease and are configured per installation
 (`CUSTOMERS_REGISTRY_FEED_*`, `CUSTOMERS_PEPPOL_RECHECK_*`). See
-[`docs/customers.md`](docs/customers.md#registry-workers).
+[`docs/src/content/docs/en/reference/customers.md`](docs/src/content/docs/en/reference/customers.md#registry-workers).
 
 *Delivered:* registry data worth relying on instead of a name and a number typed
 once, and more behind the one endpoint (`/stats/attention`) and the one event type
@@ -4479,10 +4479,10 @@ Leave the paragraph's operation counts and the rest of the file alone.
 ```bash
 cd /home/anders/projects/vantigo/vantigo
 mise exec -- bun run translations:check
-grep -n "registry-workers" docs/customers.md ROADMAP.md   # every anchor resolves to the new section's heading
+grep -n "registry-workers" docs/src/content/docs/en/reference/customers.md ROADMAP.md   # every anchor resolves to the new section's heading
 printf '%s\n\n%s\n' 'docs(customers): what the registry workers do, and what an operator can set' 'Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>' > /tmp/msg-task6
-git add docs/customers.md ROADMAP.md CONTRIBUTING.md
-git commit -F /tmp/msg-task6 -- docs/customers.md ROADMAP.md CONTRIBUTING.md
+git add docs/src/content/docs/en/reference/customers.md ROADMAP.md CONTRIBUTING.md
+git commit -F /tmp/msg-task6 -- docs/src/content/docs/en/reference/customers.md ROADMAP.md CONTRIBUTING.md
 git show --stat HEAD && git status --short
 ```
 

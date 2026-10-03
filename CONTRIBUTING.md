@@ -443,13 +443,13 @@ owning its own schema:
   `contracts.ProjectDirectory` and consumes `contracts.UserDirectory` (identity,
   always present) and `contracts.ProductCatalog` (products, **optional** — nil when
   products is off, which makes billing-line operations answer 409). See
-  [`docs/projects.md`](docs/projects.md).
+  [`docs/src/content/docs/en/reference/projects.md`](docs/src/content/docs/en/reference/projects.md).
 - `internal/time` (package `timetracking`) → `/api/v1/time/*` from `openapi/time.yaml`:
   time entries with snapshotted bill and cost rates, weekly submission, approval and
   the period lock, person rate cards, and the dashboard and project hours summaries.
   It provides no contract and consumes `contracts.ProjectDirectory` (projects,
   **required**), `contracts.UserDirectory` and `contracts.ProductCatalog` (products,
-  optional). See [`docs/time.md`](docs/time.md).
+  optional). See [`docs/src/content/docs/en/reference/time.md`](docs/src/content/docs/en/reference/time.md).
 - `internal/expenses` → `/api/v1/expenses/*` from `openapi/expenses.yaml`: outlays
   and mileage with receipts, an approval flow, two independent tracks after
   approval (reimbursed by `expenses:manage`, invoiced by financial rights on the
@@ -457,13 +457,13 @@ owning its own schema:
   `MODULES=expenses` alone is valid — and consumes `contracts.ProjectDirectory`
   purely optionally: with `projects` off, `GET /meta` answers
   `projectsAvailable: false` and every project-shaped field is refused on its own
-  field. See [`docs/expenses.md`](docs/expenses.md).
+  field. See [`docs/src/content/docs/en/reference/expenses.md`](docs/src/content/docs/en/reference/expenses.md).
 - `internal/invoices` → `/api/v1/invoices/*` from `openapi/invoices.yaml`: the sales
   document — the seller record, one gap-free number series, VAT codes with dated
   rates, drafts issued into immutable documents (enforced by database triggers too),
   credit notes, a PDF stored once in the object store, and the invoice journal. It
   consumes `contracts.CustomerDirectory` (customers, **required**) and fills both
-  customer slots. See [`docs/invoices.md`](docs/invoices.md).
+  customer slots. See [`docs/src/content/docs/en/reference/invoices.md`](docs/src/content/docs/en/reference/invoices.md).
 
 `MODULES` chooses which of them a deployment serves: a comma-separated list,
 parsed once at startup, defaulting to
@@ -508,7 +508,7 @@ outbox's documented 3600 s backoff cap is unreachable — the expression clamps
 to 1024 s and `max_attempts = 8` makes 128 s the largest backoff a live job
 ever waits.
 
-`docs/communications.md` is the module's deployment and integration guide.
+`docs/src/content/docs/en/reference/communications.md` is the module's deployment and integration guide.
 
 The `internal/contracts` interfaces are the only sanctioned cross-module reads.
 No module imports another (enforced by depguard) and no module queries another's
@@ -558,7 +558,7 @@ Two settings configure the Brreg lookup:
   per-attempt timeout and a jittered backoff. An upstream failure answers 502.
 
 Four more configure the Peppol lookup (`POST .../peppol-lookup`,
-[`docs/customers.md`](docs/customers.md#peppol-lookup)) — whether a customer can
+[`docs/src/content/docs/en/reference/customers.md`](docs/src/content/docs/en/reference/customers.md#peppol-lookup)) — whether a customer can
 receive an EHF invoice:
 
 - `PEPPOL_LOOKUP_ENABLED` (default `1`) — `0` answers the operation 503

@@ -365,7 +365,7 @@ func (f *FS) ensureSecureDirectory(dirRel string) error {
 // stripPath removes the physical path *fs.PathError and *os.LinkError
 // otherwise carry in their own Error() text, so a wrapped OS error never
 // leaks the storage root through an API's error message — no API here
-// returns a physical filesystem path (docs/storage.md). This still matters
+// returns a physical filesystem path (docs/src/content/docs/en/admin/object-storage.md). This still matters
 // with os.Root in place: the bootstrap checks in NewFS run before the Root
 // exists and still use the plain os package on root's absolute path, and
 // even os.Root's own *fs.PathError values (whose Path field is already

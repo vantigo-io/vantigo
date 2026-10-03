@@ -19,7 +19,7 @@ import (
 //
 //   - **The 3600 s cap is unreachable.** The exponent is clamped at 10, so
 //     pow(2, …) ≤ 1024 and min(3600, …) can never bind. The effective ceiling
-//     is 1024 s, not the 3600 s `docs/communications.md` documents (inventory
+//     is 1024 s, not the 3600 s `docs/src/content/docs/en/reference/communications.md` documents (inventory
 //     §11 D1, `:1346-1349`). The design doc's divergence 4 records that the
 //     *doc sentence* is what gets corrected (in task 14) — not this
 //     arithmetic. Making 3600 reachable here would change real retry timing

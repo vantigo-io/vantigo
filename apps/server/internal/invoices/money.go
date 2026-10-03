@@ -11,7 +11,7 @@ import (
 // This file is D5's arithmetic, and nothing else: pure functions over exact
 // decimals (math/big.Rat), with no database, no request and no float in them.
 // Every rounding is to two decimals, the half away from zero — big.Rat's own
-// FloatString rule, and the codebase's (docs/expenses.md).
+// FloatString rule, and the codebase's (docs/src/content/docs/en/reference/expenses.md).
 
 // The bounds a document's amounts are held to before the database could
 // overflow (D5).

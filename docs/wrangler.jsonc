@@ -1,0 +1,13 @@
+{
+  // Cloudflare Workers configuration for the documentation site. The site is
+  // purely static: `astro build` writes dist/, and Workers serves it as assets.
+  // CI deploys on every push to main with CLOUDFLARE_API_TOKEN and
+  // CLOUDFLARE_ACCOUNT_ID; see .github/workflows/ci.yml.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "vantigo-docs",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "404-page"
+  }
+}

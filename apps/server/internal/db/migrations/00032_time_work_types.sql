@@ -11,7 +11,7 @@
 -- says what the rate was and what multiplied it. numeric(6,2) is the scale
 -- projects stores the percentages in, so a snapshot never rounds one.
 -- work_type_id is opaque — work types are projects' rows
--- (docs/module-boundaries.md rule 4) — and no CHECK ties the four together,
+-- (docs/src/content/docs/en/contributing/module-boundaries.md rule 4) — and no CHECK ties the four together,
 -- house style: the save writes all four or none.
 ALTER TABLE time.entries
     ADD COLUMN work_type_id            integer,

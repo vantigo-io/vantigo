@@ -19,7 +19,7 @@ import (
 // for a read — and an error anywhere rolls back every module's part together.
 //
 // tx is a platform type, not a store type, so rule 3 of
-// docs/module-boundaries.md (contracts carry no store types) still holds: the
+// docs/src/content/docs/en/contributing/module-boundaries.md (contracts carry no store types) still holds: the
 // holder builds its own store over it.
 //
 // RepointCustomer moves every reference from `from` to `into` inside tx and

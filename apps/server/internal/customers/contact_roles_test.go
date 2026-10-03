@@ -692,7 +692,7 @@ func TestUpdateCustomerContact_AReplaceKeepsARetainedRolesSeniority(t *testing.T
 // request could not be written; now it can, and the answer is a stripped
 // association rather than a 400 — deliberate, and easy to mistake for a bug the
 // first time a client sends a partial body, which is why it has a test and a
-// sentence in docs/customers.md.
+// sentence in docs/src/content/docs/en/reference/customers.md.
 func TestUpdateCustomerContact_AnEmptyBodyClearsTheFieldsAndKeepsTheRoles(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)

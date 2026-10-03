@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.27 (pgx, sqlc, oapi-codegen, goose, `golang.org/x/net/dns/dnsmessage`), PostgreSQL 18, React + Mantine + TanStack Query, vitest, bun, mise.
 
-**Spec:** `docs/superpowers/specs/2026-09-21-customers-peppol-lookup-design.md` (D1–D6, plus "What the network looks like" — every string there was verified live and is to be used verbatim). Builds on delivery A's spec and `docs/customers.md`.
+**Spec:** `docs/superpowers/specs/2026-09-21-customers-peppol-lookup-design.md` (D1–D6, plus "What the network looks like" — every string there was verified live and is to be used verbatim). Builds on delivery A's spec and `docs/src/content/docs/en/reference/customers.md`.
 
 ## Global Constraints
 
@@ -125,7 +125,7 @@ Rules: participant = explicit `peppolId` → else `derivedPeppolID` → else `no
 
 ### Task 5: Docs
 
-**Files:** `docs/customers.md` (the lookup: what is asked and of whom, NAPTR/zone facts in brief with a pointer to the spec, the guard, the table and why it is off the row, staleness, withholding, the two warnings, 502/503, config), `ROADMAP.md` (Customers phase 2 → done; note scheduled re-checks under phase 3), `docs/module-boundaries.md` (new shared packages `internal/peppol`, `internal/netguard` if it lists shared packages), `CONTRIBUTING.md` (env vars next to `BRREG_*`; operation count), `docs/customers-authentication.md` (env table rows), `deploy/compose/vantigo.env.example` (the four variables, commented like `BRREG_BASE_URL`; a note that outbound DNS and HTTPS 443 are needed), `docs/transport-security.md` only if it enumerates outbound destinations.
+**Files:** `docs/src/content/docs/en/reference/customers.md` (the lookup: what is asked and of whom, NAPTR/zone facts in brief with a pointer to the spec, the guard, the table and why it is off the row, staleness, withholding, the two warnings, 502/503, config), `ROADMAP.md` (Customers phase 2 → done; note scheduled re-checks under phase 3), `docs/src/content/docs/en/contributing/module-boundaries.md` (new shared packages `internal/peppol`, `internal/netguard` if it lists shared packages), `CONTRIBUTING.md` (env vars next to `BRREG_*`; operation count), `docs/src/content/docs/en/admin/authentication.md` (env table rows), `deploy/compose/vantigo.env.example` (the four variables, commented like `BRREG_BASE_URL`; a note that outbound DNS and HTTPS 443 are needed), `docs/src/content/docs/en/admin/transport-security.md` only if it enumerates outbound destinations.
 - [ ] Commit: `docs(customers): the Peppol lookup, its configuration and what it needs from the network`.
 
 ### Task 6: Verify and open the PR

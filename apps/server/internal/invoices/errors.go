@@ -48,7 +48,7 @@ func conflict(code, title, detail string) gen.InvoicesConflictProblem {
 // revisionConflict is the 409 an update carrying a stale revision answers. It
 // names both revisions, so a client can tell "somebody else saved" from "I
 // sent the wrong number", and carries no code: it is not a rule of this
-// module's but the codebase's (docs/expenses.md).
+// module's but the codebase's (docs/src/content/docs/en/reference/expenses.md).
 func revisionConflict(what string, current, supplied int32) gen.InvoicesConflictProblem {
 	title := what + " revision conflict"
 	detail := fmt.Sprintf("The %s has revision %d; the supplied revision was %d.", what, current, supplied)

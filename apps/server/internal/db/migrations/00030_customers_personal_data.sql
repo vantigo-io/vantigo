@@ -9,7 +9,7 @@
 -- column says why a date was chosen: Norwegian bookkeeping rules keep accounting
 -- material for years after the fiscal year, this installation invoices nothing
 -- yet, and the person scheduling is the one who knows what was invoiced — so the
--- schema encodes no retention period at all (docs/customers.md, Personal data
+-- schema encodes no retention period at all (docs/src/content/docs/en/reference/customers.md, Personal data
 -- and anonymisation). anonymise_on stays set once the customer is anonymised,
 -- the record of what was asked for.
 --

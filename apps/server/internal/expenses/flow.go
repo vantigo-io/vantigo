@@ -277,7 +277,7 @@ func (s *server) warmBatch(ctx context.Context, c *caller, rows []store.Expenses
 	for _, row := range rows {
 		projectIDs = append(projectIDs, row.ProjectID)
 	}
-	// A claim's project is every one of its lines' (docs/expenses.md, "The lock
+	// A claim's project is every one of its lines' (docs/src/content/docs/en/reference/expenses.md, "The lock
 	// order inside a claim"), so warming the claim's warms the lines the freeze
 	// has not read yet — they are only loaded once the rows are locked, where no
 	// directory call may be made.

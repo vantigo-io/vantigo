@@ -79,7 +79,7 @@ If the stack will be reachable before an operator can complete `/setup`, set
 `BOOTSTRAP_OWNER_EMAIL` in `vantigo.env` instead: `/setup` is closed from the
 start, and that address is mailed an Owner invitation once; if it expires
 unused, the next start issues a fresh one. See
-[the management listener](../../docs/management.md).
+[the management listener](../../docs/src/content/docs/en/admin/management-listener.md).
 
 ## Configuration
 
@@ -91,10 +91,10 @@ unused, the next start issues a fresh one. See
 Every key `vantigo.env` accepts is documented in
 `apps/server/internal/config/config.go`'s field comments — the authoritative
 reference — and summarized in
-[docs/customers-authentication.md](../../docs/customers-authentication.md).
+[docs/src/content/docs/en/admin/authentication.md](../../docs/src/content/docs/en/admin/authentication.md).
 For startup-configured workforce OIDC, static SCIM provisioning, and recovery
 procedures, see the
-[SSO and SCIM operations guide](../../docs/sso-scim-operations.md).
+[SSO and SCIM operations guide](../../docs/src/content/docs/en/admin/sso-scim.md).
 
 Pin a specific release with `VANTIGO_TAG=0.16.1` in `.env` — published image
 tags drop the `v` that git release tags keep (`v0.16.1` the git tag,
@@ -261,14 +261,14 @@ configured through the Communications API, where the host, port and a protected
 password are stored as mailbox credentials — there is no environment variable
 for them. Those channels are **SMTP-only**: the API refuses to create or update
 a channel naming any other provider, and rejects a Mailgun credential outright.
-See [communications](../../docs/communications.md). The Projects and Time
+See [communications](../../docs/src/content/docs/en/reference/communications.md). The Projects and Time
 modules need no environment variable of their own; see
-[projects](../../docs/projects.md) and [time](../../docs/time.md). **Expenses
+[projects](../../docs/src/content/docs/en/reference/projects.md) and [time](../../docs/src/content/docs/en/reference/time.md). **Expenses
 needs the object store configured** (`STORAGE_PROVIDER` in `vantigo.env.example`,
 the same setting Communications attachments use) the moment anybody tries to
 attach a receipt, whether or not the receipt rule requires one: unconfigured, a
 receipt upload or download answers 503 rather than the process failing to start.
-See [expenses](../../docs/expenses.md).
+See [expenses](../../docs/src/content/docs/en/reference/expenses.md).
 
 Telemetry is off by default. Standard OTLP variables can be set in
 `vantigo.env`:
@@ -286,7 +286,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   The quick-start stack serves `http://localhost:8080`; on a network you do
   not control, an http origin sends session cookies and the invitation and
   password-reset bearer links in the clear. See
-  [transport security](../../docs/transport-security.md).
+  [transport security](../../docs/src/content/docs/en/admin/transport-security.md).
 - Set `APP_URL` to the public `https://` origin; mailed links, the accepted
   `Host` header values, the cookie `Secure` attribute and the static OIDC
   callback are all derived from it. The callback is fixed at
@@ -308,7 +308,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   `SCIM_PREVIOUS_TOKEN` together with `SCIM_PREVIOUS_TOKEN_EXPIRES_AT`
   (future, and no more than 24 hours after startup).
 - `MANAGEMENT_PORT` and `MANAGEMENT_TOKEN` enable a private status endpoint
-  for a control plane ([docs/management.md](../../docs/management.md)). The
+  for a control plane ([docs/src/content/docs/en/admin/management-listener.md](../../docs/src/content/docs/en/admin/management-listener.md)). The
   Compose stack deliberately does **not** publish that port: reach it from
   another container on the Compose network, never from the host's public
   interface.
@@ -321,7 +321,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   or SystemAdmin password alone is enough for full control of identity and
   the tenant control plane. Enroll an authenticator for every privileged
   account, then set `OWNERS_REQUIRE_MFA=1` and drop the acknowledgement — see
-  [customer authentication](../../docs/customers-authentication.md).
+  [customer authentication](../../docs/src/content/docs/en/admin/authentication.md).
 - Never run `seed` in production; it is development-only (`APP_ENV=development`).
 - `APP_SECRET` derives every encryption key this process uses (CSRF tokens,
   cookie signing, TOTP secret encryption) via HKDF-SHA256 — there is no
@@ -352,7 +352,7 @@ it until a role grants `invoices:access` (Owner holds every permission already).
 Issuing needs an object store (`STORAGE_PROVIDER`): without one the app opens and
 every issue answers 503. An installation that lists `MODULES` explicitly gets
 Invoices only once `invoices` is added, beside `customers`. See
-[Invoices](../../docs/invoices.md).
+[Invoices](../../docs/src/content/docs/en/reference/invoices.md).
 
 **The release with invoice payments and sending.** One new permission,
 `invoices:payments` — registering and removing payments — which no built-in role holds;
@@ -372,4 +372,4 @@ where it matters, credit such a document and issue it again. Documents issued fr
 release on are right.
 
 For a complete backup, one-migrator, token rotation, and Owner break-glass runbook,
-see [SSO and SCIM operations](../../docs/sso-scim-operations.md).
+see [SSO and SCIM operations](../../docs/src/content/docs/en/admin/sso-scim.md).

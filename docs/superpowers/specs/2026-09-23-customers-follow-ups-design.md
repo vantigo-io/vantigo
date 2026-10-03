@@ -102,7 +102,7 @@ nullable). `validateContactRole` and the alias handling go; generated contact ev
 theirs). The frontend's `titleOf` fallback goes. The frozen corpus is **not edited**: no
 schema sets `additionalProperties: false`, so its recorded requests and responses that
 still carry `role` validate against the new schemas (verified by the corpus test staying
-green); `docs/customers.md`'s "why `role` is still on the wire" section is replaced by
+green); `docs/src/content/docs/en/reference/customers.md`'s "why `role` is still on the wire" section is replaced by
 one sentence saying it was removed while nothing was live.
 
 ### D6 — The code-scanning alerts

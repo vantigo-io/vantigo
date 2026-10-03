@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.27 (pgx, sqlc, goose, oapi-codegen strict server), PostgreSQL 18, React + Mantine 9 + TanStack Router/Query, vitest, bun, mise.
 
-**Spec:** `docs/superpowers/specs/2026-09-23-customers-follow-ups-design.md` (D1–D5 + "Out of scope" + "Testing"). Read it first; it is binding. **D6 — the five code-scanning alerts — is NOT part of this plan:** another agent is committing them on this same branch as their own commit. Do not touch `identity/cookies.go`, `identity/passwords.go` or `secrets/secrets.go`. The spec builds on `docs/superpowers/specs/2026-09-23-customers-contact-roles-design.md` (delivery B, whose `role` alias this plan removes) and on `docs/customers.md`.
+**Spec:** `docs/superpowers/specs/2026-09-23-customers-follow-ups-design.md` (D1–D5 + "Out of scope" + "Testing"). Read it first; it is binding. **D6 — the five code-scanning alerts — is NOT part of this plan:** another agent is committing them on this same branch as their own commit. Do not touch `identity/cookies.go`, `identity/passwords.go` or `secrets/secrets.go`. The spec builds on `docs/superpowers/specs/2026-09-23-customers-contact-roles-design.md` (delivery B, whose `role` alias this plan removes) and on `docs/src/content/docs/en/reference/customers.md`.
 
 ## Global Constraints
 
@@ -62,7 +62,7 @@
 | `apps/host/frontend/src/routes/customers/follow-ups.tsx`, `routes/customers/-follow-ups-page.tsx` | the route, its search params, and the `canManageTimeline` capability prop |
 | `apps/host/frontend/src/routes/customers/-customer-overview-tab.tsx` | `canManageTimeline` derived from `customers:timeline-manage` |
 | `apps/host/frontend/src/routes/dashboard.tsx`, `catalogs/dashboard.ts` | the two attention sentences, en + nb |
-| `docs/customers.md`, `ROADMAP.md` | the follow-ups section, the timeline/attention/permissions/API tables, the one-sentence `role` note, phase 4 delivery C done |
+| `docs/src/content/docs/en/reference/customers.md`, `ROADMAP.md` | the follow-ups section, the timeline/attention/permissions/API tables, the one-sentence `role` note, phase 4 delivery C done |
 
 ---
 
@@ -71,7 +71,7 @@
 The user approved removing the deprecated `role` alias now that the API is not live. This task removes it from the contract, from Go, from the frontend and from the docs, in one commit, and relaxes `GET /customers/assignable-users` in the same commit because both are contract changes that generation has to run over once. **The frozen corpus is not edited**, and the exchanges test staying green is this task's own proof.
 
 **Files:**
-- Modify: `openapi/customers.yaml`, `apps/server/internal/customers/values.go`, `apps/server/internal/customers/contact_roles.go`, `apps/server/internal/customers/contacts.go`, `apps/server/internal/customers/contacts_timeline.go`, `apps/server/internal/customers/owner.go`, `apps/server/internal/customers/values_test.go`, `apps/server/internal/customers/contact_roles_test.go`, `apps/server/internal/customers/contacts_test.go`, `apps/server/internal/customers/owner_test.go`, `apps/customers/frontend/src/api/contacts.ts`, `apps/customers/frontend/src/api/contacts.test.ts`, `apps/customers/frontend/src/pages/-contacts.test.tsx`, `docs/customers.md`
+- Modify: `openapi/customers.yaml`, `apps/server/internal/customers/values.go`, `apps/server/internal/customers/contact_roles.go`, `apps/server/internal/customers/contacts.go`, `apps/server/internal/customers/contacts_timeline.go`, `apps/server/internal/customers/owner.go`, `apps/server/internal/customers/values_test.go`, `apps/server/internal/customers/contact_roles_test.go`, `apps/server/internal/customers/contacts_test.go`, `apps/server/internal/customers/owner_test.go`, `apps/customers/frontend/src/api/contacts.ts`, `apps/customers/frontend/src/api/contacts.test.ts`, `apps/customers/frontend/src/pages/-contacts.test.tsx`, `docs/src/content/docs/en/reference/customers.md`
 - Deliberately **not** modified: `openapi/testdata/exchanges/customers.jsonl` — frozen, for any reason
 - Generated: `apps/server/internal/openapi/specs/customers.yaml`, `apps/server/internal/customers/gen/api.gen.go`, every changed `api-schema.d.ts`, `openapi/COVERAGE.md`
 - Read first (do not change): `apps/server/internal/openapi/exchanges_test.go` (what the corpus gate actually checks), `openapi/customers.yaml:3-30, 351-421, 721-746`
@@ -337,7 +337,7 @@ And `getCustomersAssignableUsers` (line ~2769) is relaxed — one line:
             x-vantigo-access: permission:customers:view
 ```
 
-Nothing else about that operation moves. Its `summary` still says "Search users assignable as a customer's owner", and that stays true: a follow-up's assignee comes from the same directory search, and widening the summary would make it vaguer rather than truer. The reason for the relaxation goes in the Go doc comment (Step 4) and in `docs/customers.md` (Task 7).
+Nothing else about that operation moves. Its `summary` still says "Search users assignable as a customer's owner", and that stays true: a follow-up's assignee comes from the same directory search, and widening the summary would make it vaguer rather than truer. The reason for the relaxation goes in the Go doc comment (Step 4) and in `docs/src/content/docs/en/reference/customers.md` (Task 7).
 
 - [ ] **Step 4: Generate, read the result, then follow it through Go**
 
@@ -737,7 +737,7 @@ Expected: PASS.
 
 - [ ] **Step 9: One sentence in the docs**
 
-In `docs/customers.md`, replace the whole `### The title, and why `role` is still on the wire` section (lines 160-181) with:
+In `docs/src/content/docs/en/reference/customers.md`, replace the whole `### The title, and why `role` is still on the wire` section (lines 160-181) with:
 
 ```markdown
 ### The title
@@ -776,7 +776,7 @@ cd /home/anders/projects/vantigo/vantigo && git status --short
 ```bash
 cd /home/anders/projects/vantigo/vantigo
 printf '%s\n\n%s\n\n%s\n' 'feat(customers)!: the association'"'"'s free text is a title and nothing else' 'The deprecated role alias is removed from all four association schemas while nothing is live: title is the field, the title-or-roles rule keeps its wording, and the contact events'"'"' payload version is 2 without it. The frozen corpus is untouched and still validates — no schema forbids an unknown key — so a body that still sends role now names no title and is refused by the rule that already existed. GET /customers/assignable-users drops to customers:view: it answers display names every timeline reader already sees, and a follow-up'"'"'s assignee has to be pickable without customers:update.' 'Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>' > /tmp/msg-followups-task1
-git add openapi/customers.yaml apps/server/internal/openapi/specs/customers.yaml apps/server/internal/customers/values.go apps/server/internal/customers/contact_roles.go apps/server/internal/customers/contacts.go apps/server/internal/customers/contacts_timeline.go apps/server/internal/customers/owner.go apps/server/internal/customers/gen apps/server/internal/customers/values_test.go apps/server/internal/customers/contact_roles_test.go apps/server/internal/customers/contacts_test.go apps/server/internal/customers/owner_test.go apps/customers/frontend/src/api/contacts.ts apps/customers/frontend/src/api/contacts.test.ts apps/customers/frontend/src/pages/-contacts.test.tsx docs/customers.md
+git add openapi/customers.yaml apps/server/internal/openapi/specs/customers.yaml apps/server/internal/customers/values.go apps/server/internal/customers/contact_roles.go apps/server/internal/customers/contacts.go apps/server/internal/customers/contacts_timeline.go apps/server/internal/customers/owner.go apps/server/internal/customers/gen apps/server/internal/customers/values_test.go apps/server/internal/customers/contact_roles_test.go apps/server/internal/customers/contacts_test.go apps/server/internal/customers/owner_test.go apps/customers/frontend/src/api/contacts.ts apps/customers/frontend/src/api/contacts.test.ts apps/customers/frontend/src/pages/-contacts.test.tsx docs/src/content/docs/en/reference/customers.md
 git add $(git status --short | grep 'api-schema.d.ts' | awk '{print $2}')
 git commit -F /tmp/msg-followups-task1 -- $(git diff --cached --name-only)
 git show --stat HEAD && git status --short
@@ -5335,12 +5335,12 @@ Note all three in the report.
 ### Task 7: Documentation (D1–D5)
 
 **Files:**
-- Modify: `docs/customers.md`, `ROADMAP.md`
-- Read first (do not change): `docs/customers.md:520-620` (§Owner and tags — the voice a whole new section is written in), `:621-725` (§The timeline, which gains two paragraphs), `:1049-1097` (§Attention items, whose table gains two rows), `:1526-1577` (§Permissions), `:1765-1812` (§API)
+- Modify: `docs/src/content/docs/en/reference/customers.md`, `ROADMAP.md`
+- Read first (do not change): `docs/src/content/docs/en/reference/customers.md:520-620` (§Owner and tags — the voice a whole new section is written in), `:621-725` (§The timeline, which gains two paragraphs), `:1049-1097` (§Attention items, whose table gains two rows), `:1526-1577` (§Permissions), `:1765-1812` (§API)
 
 - [ ] **Step 1: A Follow-ups section**
 
-Insert a new `## Follow-ups` section in `docs/customers.md` immediately after `## The timeline` ends and before `## The list endpoint and search` (line ~726):
+Insert a new `## Follow-ups` section in `docs/src/content/docs/en/reference/customers.md` immediately after `## The timeline` ends and before `## The list endpoint and search` (line ~726):
 
 ```markdown
 ## Follow-ups
@@ -5562,7 +5562,7 @@ capability prop stops a reader seeing controls that used to 403. The same
 delivery removed the contact association's deprecated `role` alias while nothing
 was live (`title` is the only name the contract has) and relaxed
 `GET /customers/assignable-users` to `customers:view`. See
-[`docs/customers.md#follow-ups`](docs/customers.md#follow-ups).
+[`docs/src/content/docs/en/reference/customers.md#follow-ups`](docs/src/content/docs/en/reference/customers.md#follow-ups).
 
 **Still ahead in this phase:** customer groups that can carry defaults;
 attachments on a customer and its timeline entries, once the storage module has a
@@ -5575,7 +5575,7 @@ model for it. Also left for later on purpose: the tag vocabulary is **unpaged**
 ```bash
 cd /home/anders/projects/vantigo/vantigo
 printf '%s\n\n%s\n\n%s\n' 'docs(customers): follow-ups, and what the two new attention types mean' 'A Follow-ups section covering where a follow-up lives and why, what setting and clearing one does to the done state, why the two done paths take no expected revision, and the list with its filters. The attention section gains the two caller-dependent types, the permissions section explains why no key was added and why assignable-users relaxed, and the API table gains three operations. ROADMAP marks phase 4 delivery C done.' 'Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>' > /tmp/msg-followups-task7
-git add docs/customers.md ROADMAP.md
+git add docs/src/content/docs/en/reference/customers.md ROADMAP.md
 git commit -F /tmp/msg-followups-task7 -- $(git diff --cached --name-only)
 git show --stat HEAD && git status --short
 ```

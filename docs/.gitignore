@@ -1,0 +1,5 @@
+# Astro build output and generated types
+dist/
+.astro/
+# Wrangler
+.wrangler/

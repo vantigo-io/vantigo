@@ -25,7 +25,7 @@ import (
 // caller's access to it (404 before 403), then the body — and differ from
 // them in one place on purpose: no project-row lock. The lock guards writes
 // whose validity depends on the project's currency, fixed price or billing
-// type (docs/projects.md's "Locking"), and a work type depends on none of
+// type (docs/src/content/docs/en/reference/projects.md's "Locking"), and a work type depends on none of
 // them. Each write is one plain transaction; the name's uniqueness is the
 // unique index's, whose 23505 is the 409.
 //

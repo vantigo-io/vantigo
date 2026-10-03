@@ -19,7 +19,7 @@ import (
 // This file is GET /customers/{id}/personal-data (customers GDPR design D3): a
 // private person's data, all of it, in one file — what this module holds, read
 // in one snapshot, and what every other module holds, through
-// contracts.CustomerPersonalData (docs/module-boundaries.md rule 9). It is
+// contracts.CustomerPersonalData (docs/src/content/docs/en/contributing/module-boundaries.md rule 9). It is
 // shaped by nothing but customers:personal-data: that key means "may hand this
 // person their data", so the legal identity and the contacts are in the file
 // whether or not the caller could read them one by one. It is built in memory

@@ -49,7 +49,7 @@ name/email, filters by status and type, sorts by more than id/name, and can show
 archived customers with a restore path. `disabled` stays a label that blocks nothing
 yet, on purpose: Projects already accepts a project against an archived customer, so
 inventing a blocking rule for `disabled` ahead of Invoices would contradict that
-standing decision. See [`docs/customers.md`](docs/customers.md).
+standing decision. See [`docs/src/content/docs/en/reference/customers.md`](docs/src/content/docs/en/reference/customers.md).
 
 *Unblocks:* every later phase below, and a customer list, duplicate guard and timeline
 worth building the invoice-ready customer on top of.
@@ -72,7 +72,7 @@ default buyer reference ("deres referanse") — with an **invoice email** and a
 eFaktura/EHF and dunning correspondence route differently. `contracts.CustomerDirectory`
 grew a `BillingProfile` read (every field resolved once, for Invoices) and a batch
 `Customers(ids)` lookup — Projects' project list now makes one directory call per
-page instead of one per distinct customer. See [`docs/customers.md`](docs/customers.md).
+page instead of one per distinct customer. See [`docs/src/content/docs/en/reference/customers.md`](docs/src/content/docs/en/reference/customers.md).
 
 **Delivery B (done)** — decided in
 [`docs/superpowers/specs/2026-09-21-customers-peppol-lookup-design.md`](docs/superpowers/specs/2026-09-21-customers-peppol-lookup-design.md):
@@ -88,7 +88,7 @@ decision changes without a click. Delivery A did not wait for it: `peppolId` and
 the billing profile's `ehf_without_recipient` warning already flagged a customer
 set to `ehf` with no Peppol id to send to; two new warnings
 (`ehf_recipient_not_registered`, `ehf_available`) now read the stored lookup
-answer too. See [`docs/customers.md`](docs/customers.md#peppol-lookup).
+answer too. See [`docs/src/content/docs/en/reference/customers.md`](docs/src/content/docs/en/reference/customers.md#peppol-lookup).
 
 *Unblocks:* Invoices can now read a resolved billing profile through the
 directory — delivery A gave a customer somewhere to send an invoice and terms to
@@ -113,7 +113,7 @@ file is written as a `registry.change` timeline event — the event type existed
 unused, since the port, and now has its first producer (`customers.brreg`) — and
 bankruptcy/dissolution/deletion/a name change surface on `/stats/attention`, also no
 longer a stub. Addresses from the record are offered to the address book, never
-written to it. See [`docs/customers.md`](docs/customers.md#registry-record).
+written to it. See [`docs/src/content/docs/en/reference/customers.md`](docs/src/content/docs/en/reference/customers.md#registry-record).
 
 **Delivery B (done)** — a scheduled refresh from Brreg's incremental update feed
 (`GET /enhetsregisteret/api/oppdateringer/enheter`, exact cursor on `oppdateringsid`, one unfiltered scan
@@ -130,7 +130,7 @@ never checked, are asked again on a schedule, surfacing on the same
 still never switching a customer's delivery method. Both workers elect one replica
 per cycle through a Postgres advisory lease and are configured per installation
 (`CUSTOMERS_REGISTRY_FEED_*`, `CUSTOMERS_PEPPOL_RECHECK_*`). See
-[`docs/customers.md`](docs/customers.md#registry-workers).
+[`docs/src/content/docs/en/reference/customers.md`](docs/src/content/docs/en/reference/customers.md#registry-workers).
 
 *Delivered:* registry data worth relying on instead of a name and a number typed
 once, and more behind the one endpoint (`/stats/attention`) and the one event type
@@ -159,7 +159,7 @@ replaced as a set rather than linked one at a time. Both ride on the existing
 `customers:view`/`customers:update` split — no new permission key. Two generated
 timeline events, `customer.owner_changed` and `customer.tags_changed`, each
 recorded only when the value actually changed. See
-[`docs/customers.md#owner-and-tags`](docs/customers.md#owner-and-tags).
+[`docs/src/content/docs/en/reference/customers.md#owner-and-tags`](docs/src/content/docs/en/reference/customers.md#owner-and-tags).
 
 **Delivery B (done)** — decided in
 [`docs/superpowers/specs/2026-09-23-customers-contact-roles-design.md`](docs/superpowers/specs/2026-09-23-customers-contact-roles-design.md):
@@ -175,7 +175,7 @@ role promotes the longest-standing remaining holder. The roles ride on the
 association's four existing endpoints and its two existing permissions — no new
 paths, no new key — and a promotion caused by somebody else's write is recorded
 on the promoted contact with the user who caused it. See
-[`docs/customers.md#contacts-and-associations`](docs/customers.md#contacts-and-associations).
+[`docs/src/content/docs/en/reference/customers.md#contacts-and-associations`](docs/src/content/docs/en/reference/customers.md#contacts-and-associations).
 
 **Delivery C (done)** — decided in
 [`docs/superpowers/specs/2026-09-23-customers-follow-ups-design.md`](docs/superpowers/specs/2026-09-23-customers-follow-ups-design.md):
@@ -193,7 +193,7 @@ capability prop stops a reader seeing controls that used to 403. The same
 delivery removed the contact association's deprecated `role` alias while nothing
 was live (`title` is the only name the contract has) and relaxed
 `GET /customers/assignable-users` to `customers:view`. See
-[`docs/customers.md#follow-ups`](docs/customers.md#follow-ups).
+[`docs/src/content/docs/en/reference/customers.md#follow-ups`](docs/src/content/docs/en/reference/customers.md#follow-ups).
 
 **Delivery D (done)** — decided in
 [`docs/superpowers/specs/2026-09-23-customers-groups-design.md`](docs/superpowers/specs/2026-09-23-customers-groups-design.md):
@@ -210,7 +210,7 @@ is never deleted — 409 `group_in_use`, with the count, and `ON DELETE RESTRICT
 under it — because detaching them would change every member's effective payment
 term with no record on any customer. No new permission key, and
 `contracts.CustomerEntry.Group` is the seam Products phase 4's customer-group
-prices will read. See [`docs/customers.md#groups`](docs/customers.md#groups).
+prices will read. See [`docs/src/content/docs/en/reference/customers.md#groups`](docs/src/content/docs/en/reference/customers.md#groups).
 
 **Still ahead in this phase:** attachments on a customer and its timeline
 entries, once the storage module has a model for it. Also left for later on
@@ -257,14 +257,14 @@ projects, unbilled work (approved less invoiced, through the new
 `ActualsTotals.Invoiced`), expenses ready to invoice and last activity, each section
 shaped by the projects module's keys and absent rather than refused; money per
 currency and only for financial rights. See
-[`docs/customers.md#customer-360`](docs/customers.md#customer-360).
+[`docs/src/content/docs/en/reference/customers.md#customer-360`](docs/src/content/docs/en/reference/customers.md#customer-360).
 
 **Delivery B (done)** — decided in
 [`docs/superpowers/specs/2026-09-24-customers-bill-rate-design.md`](docs/superpowers/specs/2026-09-24-customers-bill-rate-design.md):
 the customer default bill rate, the billing profile's eleventh field, quoted in the
 profile's own currency, and the customer step of Time's rate chain between the
 project default and the person card — the person card's currency rule, nothing
-converted. See [`docs/time.md#the-rate-chain`](docs/time.md#the-rate-chain).
+converted. See [`docs/src/content/docs/en/reference/time.md#the-rate-chain`](docs/src/content/docs/en/reference/time.md#the-rate-chain).
 
 **Still ahead in this phase:** other modules writing to the customer timeline, riding
 on the outbox deferred until Orders; invoiced revenue and outstanding, once Invoices
@@ -288,7 +288,7 @@ insists, never a fødselsnummer field.
 CSV export of the list as the caller sees it and CSV import that creates and updates
 through the endpoints' own write paths, with a dry run and a failed-rows file for the
 re-run; one canonical format, no import key. See
-[`docs/customers.md#csv-import-and-export`](docs/customers.md#csv-import-and-export).
+[`docs/src/content/docs/en/reference/customers.md#csv-import-and-export`](docs/src/content/docs/en/reference/customers.md#csv-import-and-export).
 
 **Delivery B (done)** — decided in
 [`docs/superpowers/specs/2026-09-24-customers-merge-design.md`](docs/superpowers/specs/2026-09-24-customers-merge-design.md):
@@ -297,7 +297,7 @@ contacts (roles unioned), addresses, timeline, tags, and every other module's
 references through `contracts.CustomerReferenceHolder` (projects, energy,
 communications); the survivor keeps every field of its own and the duplicate is
 archived with a marker; behind the new `customers:merge`. See
-[`docs/customers.md#merging-duplicates`](docs/customers.md#merging-duplicates).
+[`docs/src/content/docs/en/reference/customers.md#merging-duplicates`](docs/src/content/docs/en/reference/customers.md#merging-duplicates).
 
 **Delivery C (done)** — decided in
 [`docs/superpowers/specs/2026-09-24-customers-gdpr-design.md`](docs/superpowers/specs/2026-09-24-customers-gdpr-design.md):
@@ -307,7 +307,7 @@ chosen day by a worker — the number, the dates and the shape of the history ke
 bookkeeping, the person taken out of the customer, its timeline and other modules
 through `contracts.CustomerPersonalData` (communications, energy, projects); behind the
 new `customers:personal-data`. See
-[`docs/customers.md#personal-data-and-anonymisation`](docs/customers.md#personal-data-and-anonymisation).
+[`docs/src/content/docs/en/reference/customers.md#personal-data-and-anonymisation`](docs/src/content/docs/en/reference/customers.md#personal-data-and-anonymisation).
 
 Phase 6 is complete, and with it the Customers roadmap — this was its last delivery.
 Still deferred, each waiting on another module rather than on Customers: attachments on
@@ -520,7 +520,7 @@ submission, effective-dated person rate cards, weekly submission from a grid,
 batch approval and rejection by project managers and `time:approve` holders, a
 period lock for `time:manage`, a people overview, the dashboard figures and a
 Time tab on the project page. `invoiced` is terminal and waits for the module
-that writes it. See [`docs/time.md`](docs/time.md).
+that writes it. See [`docs/src/content/docs/en/reference/time.md`](docs/src/content/docs/en/reference/time.md).
 
 *Unblocks:* hours that can be invoiced, the first real consumer of billing
 lines, and a task list contractors and consultants will actually keep.
@@ -543,7 +543,7 @@ needs a currency) on a billing line, shown beside the line's pricing. Every
 write that depends on the project's currency, fixed price or billing type
 locks the project row first and decides under it — no separate ordering lock
 turned out to be needed once that held. See
-[`docs/projects.md`](docs/projects.md#billing-milestones-and-the-invoice-plan)
+[`docs/src/content/docs/en/reference/projects.md`](docs/src/content/docs/en/reference/projects.md#billing-milestones-and-the-invoice-plan)
 for the model, the status table and the guards.
 
 *Unblocks:* fixed-price milestone invoicing recorded in Vantigo, and the
@@ -562,9 +562,9 @@ projects; dashboard signals — a "ready to invoice" hint on the Projects card
 and four attention types (a budget nearing or past 100 %, a ready or an
 overdue milestone) linking to the Economy tab; `projects:view-costs`, a new
 sensitive permission for cost and margin, granted to nobody by default. See
-[`docs/projects.md`](docs/projects.md#project-economy) for the model, the
+[`docs/src/content/docs/en/reference/projects.md`](docs/src/content/docs/en/reference/projects.md#project-economy) for the model, the
 shaping rules and the dashboard signals, and
-[`docs/time.md`](docs/time.md#what-time-reports-to-other-modules) for the
+[`docs/src/content/docs/en/reference/time.md`](docs/src/content/docs/en/reference/time.md#what-time-reports-to-other-modules) for the
 contract Time implements.
 
 *Unblocks:* profitability and budget alerts, a project portfolio view.
@@ -582,8 +582,8 @@ rates and snapshots the multipliers beside them, freezes them on submit, and
 multiplies where it sums, exactly; the actuals contract gains the work per
 type (ids and figures; Projects names the rows), and the Economy tab shows
 "Hours by work type". The Norwegian overtime case no longer needs a duplicate
-billing line. See [`docs/projects.md`](docs/projects.md#work-types) and
-[`docs/time.md`](docs/time.md#the-work-types-multiplier).
+billing line. See [`docs/src/content/docs/en/reference/projects.md`](docs/src/content/docs/en/reference/projects.md#work-types) and
+[`docs/src/content/docs/en/reference/time.md`](docs/src/content/docs/en/reference/time.md#the-work-types-multiplier).
 
 *Unblocks:* overtime billed and costed at its own rate on every project,
 without a line per kind of work.
@@ -603,7 +603,7 @@ completed project too, and visible to them as rows. The expenses contract
 carries it as a per-currency sub-figure, and the Economy tab's Costs section
 and the Expenses tab's cards show "Of which supplier invoices". Accounts
 payable, a supplier register and inbound e-invoices stay out of scope. See
-[`docs/expenses.md`](docs/expenses.md#the-supplier-invoice).
+[`docs/src/content/docs/en/reference/expenses.md`](docs/src/content/docs/en/reference/expenses.md#the-supplier-invoice).
 
 *Unblocks:* a project's non-hours cost that is what suppliers invoiced, not
 only what somebody put on an expense.
@@ -672,7 +672,7 @@ project a line is booked on and the billing figures its side prices — with
 `projects` disabled every project-shaped field is refused on its own field rather
 than accepted and dropped. The period lock protects what was submitted and
 approved; it deliberately does not reach reimbursing, pricing or invoicing, which
-are bookkeeping done once a period has closed. See [`docs/expenses.md`](docs/expenses.md).
+are bookkeeping done once a period has closed. See [`docs/src/content/docs/en/reference/expenses.md`](docs/src/content/docs/en/reference/expenses.md).
 
 *Unblocks:* a company's non-hours costs recorded and paid back, and a customer's
 project a step closer to fully costed with Time's hours already in.
@@ -694,7 +694,7 @@ from there. Because a claim stores two instants, the installation gained a
 and the payroll file are judged by. In the app: the trip's own page, travel
 claims as units in the approval queue and the payroll list (one selection, one
 request, across both kinds), and the rate kinds and time zone in settings. See
-[`docs/expenses.md`](docs/expenses.md).
+[`docs/src/content/docs/en/reference/expenses.md`](docs/src/content/docs/en/reference/expenses.md).
 
 *Unblocks:* a whole trip recorded, approved and paid as one, and per diem
 priced by the agreement instead of by hand in a spreadsheet.
@@ -718,8 +718,8 @@ the totals per currency, the expenses behind them that the caller may open, a
 cost** with the project fixed. The totals and the list are gated differently on
 purpose — the aggregate is the project's money, the rows are a colleague's
 receipts — and the tab says so rather than showing an empty table. See
-[`docs/expenses.md`](docs/expenses.md#on-the-project-page) and
-[`docs/projects.md`](docs/projects.md#the-optional-expenses-dependency).
+[`docs/src/content/docs/en/reference/expenses.md`](docs/src/content/docs/en/reference/expenses.md#on-the-project-page) and
+[`docs/src/content/docs/en/reference/projects.md`](docs/src/content/docs/en/reference/projects.md#the-optional-expenses-dependency).
 
 *Unblocks:* a project fully costed — hours and money side by side — and one
 list of everything waiting to go on an invoice.
@@ -727,7 +727,7 @@ list of everything waiting to go on an invoice.
 **Next: invoicing.** `invoiced_at` is still set by hand, per line, by whoever
 holds financial rights on the project; "ready to invoice" is the list an
 Invoices module would build from, and that module owns the stamp when it
-arrives — the same thing [`docs/time.md`](docs/time.md#what-invoicing-will-read)
+arrives — the same thing [`docs/src/content/docs/en/reference/time.md`](docs/src/content/docs/en/reference/time.md#what-invoicing-will-read)
 has said of an hour since phase 2. Supplier costs are no longer a gap: a
 supplier's invoice is its own kind — see [Projects](#projects).
 
@@ -751,7 +751,7 @@ no general ledger.
 
 Delivered on `feat/invoices-foundation`
 ([design](docs/superpowers/specs/2026-09-26-invoices-foundation-design.md),
-[`docs/invoices.md`](docs/invoices.md)): the seller record and one gap-free number
+[`docs/src/content/docs/en/reference/invoices.md`](docs/src/content/docs/en/reference/invoices.md)): the seller record and one gap-free number
 series whose start locks at the first issue; VAT codes whose rates are dated periods,
 seeded with the SAF-T output codes; drafts issued in one serialised transaction into an
 immutable, numbered document with a buyer and a seller snapshot and VAT per rate,
@@ -766,7 +766,7 @@ customers contract's billing profile, so `disabled` finally means "blocked for i
 
 Delivered on `feat/invoices-payments-delivery`
 ([design](docs/superpowers/specs/2026-10-02-invoices-payments-delivery-design.md),
-[`docs/invoices.md`](docs/invoices.md)), building only on 1A's tables: payment
+[`docs/src/content/docs/en/reference/invoices.md`](docs/src/content/docs/en/reference/invoices.md)), building only on 1A's tables: payment
 registrations against an issued invoice, refused once nothing is open or over the open
 amount, locked on the same row a credit note's issue locks, removable only with a reason
 and never deleted; derived states (credited, paid, overdue, partially paid, open) from
@@ -806,7 +806,7 @@ final settlement deducting earlier ones. The write-back — hours, expenses and 
 marked invoiced with the invoice's id and number inside the issue transaction, and
 released again when a credit note reverses them — is a third sanctioned cross-module
 write direction and gets its own contract design under
-[`docs/module-boundaries.md`](docs/module-boundaries.md) before any code.
+[`docs/src/content/docs/en/contributing/module-boundaries.md`](docs/src/content/docs/en/contributing/module-boundaries.md) before any code.
 
 *Unblocks:* project invoicing end to end; Time's and Expenses' "next: invoicing".
 

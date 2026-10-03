@@ -22,7 +22,7 @@ import (
 // transaction, because every module shares one database: both customer rows
 // are locked, this module's own tables move, and then every
 // contracts.CustomerReferenceHolder Compose collected re-points its own schema
-// through the same transaction (docs/module-boundaries.md rule 8). An error
+// through the same transaction (docs/src/content/docs/en/contributing/module-boundaries.md rule 8). An error
 // anywhere — a holder's included — rolls every module's part back together.
 
 // The four kinds of reference this module's own tables hold, reported first in

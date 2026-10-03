@@ -98,7 +98,7 @@ func (p customerPersonalData) ExportCustomerData(ctx context.Context, customerID
 // and the row keeps pointing at the anonymised customer, whose name the
 // directory answers as "Anonymised person" from then on. Nothing here names
 // the person, so there is nothing to blank — the link stays, which makes this
-// pseudonymisation of it rather than its removal (docs/customers.md).
+// pseudonymisation of it rather than its removal (docs/src/content/docs/en/reference/customers.md).
 func (customerPersonalData) EraseCustomerData(context.Context, pgx.Tx, int32) ([]contracts.ErasedData, error) {
 	return []contracts.ErasedData{{Kind: customerReferenceKindSupplyPeriods, Count: 0}}, nil
 }

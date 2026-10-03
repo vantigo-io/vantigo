@@ -2,7 +2,7 @@
 CREATE SCHEMA time;
 
 -- Every foreign identifier here is opaque: users, projects, billing lines and
--- tasks live in other schemas (docs/module-boundaries.md rule 4).
+-- tasks live in other schemas (docs/src/content/docs/en/contributing/module-boundaries.md rule 4).
 CREATE TABLE time.entries (
     id                  bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id             uuid          NOT NULL,

@@ -93,12 +93,12 @@ the kind. Economy tab: the "of which supplier invoices" line. en + nb ("Leverand
 
 ### D6 — Docs
 
-`docs/expenses.md`: the kinds section gains the fourth kind (fields, rules, the one date,
+`docs/src/content/docs/en/reference/expenses.md`: the kinds section gains the fourth kind (fields, rules, the one date,
 company-paid, never in a claim, always on a project, the required document, who may record,
 the visibility widening), the "one rule, written twice" paragraph becomes "the SQL function
 and its Go mirror", the API table, the receipts section, the "what comes next" paragraph;
-`docs/projects.md`: the expenses block's `supplierInvoices`, the Costs section, "what a
-receipt cost the company" reworded; `docs/module-boundaries.md`: the contract's new
+`docs/src/content/docs/en/reference/projects.md`: the expenses block's `supplierInvoices`, the Costs section, "what a
+receipt cost the company" reworded; `docs/src/content/docs/en/contributing/module-boundaries.md`: the contract's new
 sub-figure in the third optional contract's description; `ROADMAP.md`: phase 3 C done, what
 remains uncommitted (forecast, revised budgets), and "supplier costs" no longer a gap in the
 Expenses section.

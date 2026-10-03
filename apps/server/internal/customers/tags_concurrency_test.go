@@ -36,7 +36,7 @@ import (
 // second transaction's DELETE waits on the first's row locks, resumes with a
 // statement snapshot that predates the first's INSERT, deletes nothing, and
 // trips the primary key on the ids the two sets share. That is a 500 for a
-// contract (the yaml's PutCustomerTagsRequest, docs/customers.md, design D2)
+// contract (the yaml's PutCustomerTagsRequest, docs/src/content/docs/en/reference/customers.md, design D2)
 // that promises last-wins, which is why the transaction's first statement is
 // LockCustomer's FOR NO KEY UPDATE on the customer row. The lock is what
 // TestPutCustomersByIdTags_ConcurrentReplacesSerialize_LastWins below pins.

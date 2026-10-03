@@ -96,10 +96,10 @@ reads nothing but the response. Strings in `catalogs/customer.ts` (en + nb).
 
 ### D4 — Docs
 
-`docs/customers.md`: a **Customer 360** section (the endpoint, the visibility rules,
+`docs/src/content/docs/en/reference/customers.md`: a **Customer 360** section (the endpoint, the visibility rules,
 what "unbilled" and "ready" mean and where each number comes from, the caps), the API
 list, the frontend bullet (host-owned panel), a phase 5 paragraph in "what comes next";
-`docs/projects.md`'s contract notes (`ProjectsForCustomer`); `docs/time.md`'s actuals
+`docs/src/content/docs/en/reference/projects.md`'s contract notes (`ProjectsForCustomer`); `docs/src/content/docs/en/reference/time.md`'s actuals
 section (`Invoiced` bucket); `ROADMAP.md` phase 5 (A delivered; B, timeline writers and
 revenue still ahead).
 

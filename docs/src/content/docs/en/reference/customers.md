@@ -1,5 +1,11 @@
-# Customers module
-
+---
+title: "Customers module"
+description: "Customers, legal identity, contacts, the timeline, addresses, the billing profile, Brreg and Peppol lookups, GDPR and permissions."
+sources:
+  - apps/server/internal/customers
+  - apps/customers/frontend
+  - openapi/customers.yaml
+---
 The Customers module is where every other module finds out who the work is for: a
 customer's name, number, legal identity, contacts and activity history, served under
 `/api/v1/customers/*` (`apps/server/internal/customers`, schema `customers`). It is the
@@ -10,7 +16,7 @@ schema directly.
 It is **not a sales CRM**. There is no pipeline, no deal stage, no lead scoring, no
 email/calendar sync and no marketing automation, and none of that is planned inside
 this module (see [What comes next](#what-comes-next) and
-[ROADMAP.md](../ROADMAP.md#customers)). What it does hold — a timeline with generated
+[ROADMAP.md](https://github.com/vantigo-io/vantigo/blob/main/ROADMAP.md#customers)). What it does hold — a timeline with generated
 and manual entries, contacts with per-relationship roles, archival instead of delete —
 is closer to what a light ERP customer card needs than to what a CRM offers, and it
 stops well short of a CRM on purpose.
@@ -93,7 +99,7 @@ permission the endpoint already needs. The billing profile is **not** part of
 
 - **`disabled` means blocked for invoicing.** It is accepted, stored, shown and
   filterable here, and nothing in this module behaves differently because of it; the
-  Invoices module gives it its meaning ([Invoices](invoices.md#drafts), Business
+  Invoices module gives it its meaning ([Invoices](/en/reference/invoices/#drafts), Business
   Central's "blocked for invoicing" the model): creating, saving and issuing an
   invoice for a disabled customer is refused with 409 `customer_blocked`. It never
   blocks a credit note, a PDF or a read — an invoice already issued must stay
@@ -482,7 +488,7 @@ NULL:
 | `invoiceEmail`, `reminderEmail` | Contact info's email rule. Kept separate from each other and from the customer's own contact-info email because reminders cannot travel as EHF or eFaktura — the reminder channel is its own decision. |
 | `paymentTermsDays` | Integer, 0–365 inclusive. NULL means "not decided here" — and, from [Groups](#groups) on, a customer whose group carries a default inherits that instead; `groupDefault` on this sub-resource says which group and what it gives, and the effective value is the profile's own, else the group's, else nothing. |
 | `currency` | Three-letter ISO 4217 code, upper-cased (the shape only — not checked against the set of actually-assigned codes, the same rule Projects' own currency field uses). |
-| `defaultBillRate` | The customer's default hourly bill rate, quoted in the profile's own `currency` — one currency per customer, never a pair of its own the way a project has. Greater than zero, at most two decimals, at most 9999999999.99 (`numeric(12,2)`, the scale every rate in the chain has). **A rate needs the currency**: a body with `defaultBillRate` and no `currency` is a 400 on `defaultBillRate`, and since the PUT is a full replace, clearing the currency while sending the rate is the same error. Omitted or null clears it. It is the customer step of [Time's rate chain](time.md#the-rate-chain), between the project default and the person card. |
+| `defaultBillRate` | The customer's default hourly bill rate, quoted in the profile's own `currency` — one currency per customer, never a pair of its own the way a project has. Greater than zero, at most two decimals, at most 9999999999.99 (`numeric(12,2)`, the scale every rate in the chain has). **A rate needs the currency**: a body with `defaultBillRate` and no `currency` is a 400 on `defaultBillRate`, and since the PUT is a full replace, clearing the currency while sending the rate is the same error. Omitted or null clears it. It is the customer step of [Time's rate chain](/en/reference/time/#the-rate-chain), between the project default and the person card. |
 | `language` | `nb` or `en` — the languages a document can be produced in. |
 | `invoiceDelivery` | One of `email`, `ehf`, `efaktura`, `paper`. |
 | `reminderDelivery` | One of `email`, `paper` — a narrower set than `invoiceDelivery`'s, since a reminder can never travel as EHF or eFaktura. |
@@ -555,7 +561,7 @@ either).
 ## Owner and tags
 
 Phase 4's first delivery, decided in
-[`docs/superpowers/specs/2026-09-23-customers-owner-tags-design.md`](superpowers/specs/2026-09-23-customers-owner-tags-design.md).
+[`docs/superpowers/specs/2026-09-23-customers-owner-tags-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-09-23-customers-owner-tags-design.md).
 Two questions a customer list has to be able to answer: *which of these are
 mine?*, and *which of these are of this kind?*
 
@@ -1099,7 +1105,7 @@ tie-broken by `id`) with `sortDirection` (`asc`/`desc`).
 ## CSV import and export
 
 Customers leave and arrive as one file (phase 6 delivery A, decided in
-[`docs/superpowers/specs/2026-09-24-customers-import-export-design.md`](superpowers/specs/2026-09-24-customers-import-export-design.md)).
+[`docs/superpowers/specs/2026-09-24-customers-import-export-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-09-24-customers-import-export-design.md)).
 Onboarding from Tripletex, Fiken or PowerOffice is "export there, rename the
 columns, import here": no competitor's layout is documented anywhere, and one
 honest format beats three guessed ones.
@@ -1368,7 +1374,7 @@ exception) already carries the same `(country, id)`, the write is refused with:
 
 Two customers that are the same real-world entity become one (phase 6 delivery B,
 decided in
-[`docs/superpowers/specs/2026-09-24-customers-merge-design.md`](superpowers/specs/2026-09-24-customers-merge-design.md)).
+[`docs/superpowers/specs/2026-09-24-customers-merge-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-09-24-customers-merge-design.md)).
 `POST /customers/{id}/merge` with `{sourceId, revision?}`: the customer in the path
 **survives** and **absorbs** `sourceId`. It needs `customers:merge` and
 `customers:view` — merging rewrites other modules' data and archives a customer,
@@ -1427,7 +1433,7 @@ a contact the survivor already had included; `customers.addresses`;
 `customers.timelineEntries` its active entries; `customers.tags` its tags), then each
 other module's in the order the installation composes them. Every holder the binary
 carries runs, its module enabled in `MODULES` or not: every schema is migrated
-regardless ([module boundaries](module-boundaries.md#turning-a-module-off)), so a module
+regardless ([module boundaries](/en/contributing/module-boundaries/#turning-a-module-off)), so a module
 switched off still has references to re-point, and they would otherwise wait on the
 absorbed customer for the module to come back.
 
@@ -1438,14 +1444,14 @@ bus. It locks both customer rows in ascending id order — the order every write
 locks several customers takes ([Typed roles](#typed-roles-and-one-primary-per-role)) —
 reads the refusals under the locks, moves this module's tables, and then hands the
 same transaction to each `contracts.CustomerReferenceHolder` Compose collected
-([module boundaries rule 8](module-boundaries.md#the-rules)). Each holder runs its
+([module boundaries rule 8](/en/contributing/module-boundaries/#the-rules)). Each holder runs its
 own SQL, on its own schema, from its own package:
 
 | Holder | What it re-points (kind) |
 | --- | --- |
 | projects | `projects.projects.customer_id` (`projects.projects`). Each moved project's revision advances; no project timeline entry is written. Time and expenses reach a customer only through a project, so they hold nothing. |
 | energy | `energy.supply_periods.customer_id` (`energy.supplyPeriods`). The overlap constraint is per metering point, so a re-point cannot violate it. Energy has no module doc of its own; this row is its paragraph. Its personal data (rule 9) is the supply periods with the metering point's address and the point's consumption inside each period — monthly kWh sums of the current intervals within the period's dates, each month a calendar month in the point's market zone (hourly for years would make a file nobody reads; energy's consumption endpoints keep the series) — handed over in the export and kept by an anonymisation: the period is the point's history and the readings are needed for settlement. The period keeps pointing at the anonymised customer, so its dates and the point's address — for a private person most likely their home — stay linked to "Anonymised person #1234": for that link this is pseudonymisation, not removal. |
-| invoices | `invoices.invoices.customer_id` (`invoices.invoices`): every document of the absorbed customer, drafts and issued alike. A draft's revision advances; an issued document's does not, and it keeps its buyer snapshot — the id is not printed, the snapshot is. The immutability trigger allows exactly this column to change on an issued document ([Invoices](invoices.md#retention-and-personal-data)). |
+| invoices | `invoices.invoices.customer_id` (`invoices.invoices`): every document of the absorbed customer, drafts and issued alike. A draft's revision advances; an issued document's does not, and it keeps its buyer snapshot — the id is not printed, the snapshot is. The immutability trigger allows exactly this column to change on an issued document ([Invoices](/en/reference/invoices/#retention-and-personal-data)). |
 | communications | `conversations.customer_id` (`communications.conversations`), `conversations.suggested_customer_id` (`communications.conversationSuggestions`), and the candidate list (`communications.conversationCandidates`), where a conversation that already lists the survivor keeps it once. |
 
 Any error, a holder's included, rolls back everything: nothing moved, no marker, no
@@ -1500,7 +1506,7 @@ duplicate-identity guard and the list search are how duplicates are found today.
 
 A **private person**'s data can be handed to them in one file, and taken out of the
 customer on a day somebody chose (phase 6 delivery C, decided in
-[`docs/superpowers/specs/2026-09-24-customers-gdpr-design.md`](superpowers/specs/2026-09-24-customers-gdpr-design.md)).
+[`docs/superpowers/specs/2026-09-24-customers-gdpr-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-09-24-customers-gdpr-design.md)).
 The customer row stays — its number, its place in projects and supply periods, the
 shape of its history — and the person disappears from it. A business is not a data
 subject: both operations refuse one with 409 `personal_data_not_a_person`, and a
@@ -1521,14 +1527,14 @@ shape, with `exportedAt` saying when it was made:
 | `customer` | id, number, name, type, status, created and updated, legal identity, contact info, addresses, the billing profile's own stored values (not the resolved profile), owner, group, tags, `mergedInto`, `anonymisation`, and `mergedFrom` — each duplicate merged into this customer as its own row still holds it: id, number, name, status, legal identity, contact info and billing values, since that row is the same person's data (absent when nothing was merged in) |
 | `contacts` | every contact linked to the customer as the contact is stored, with the association's title, phone, email and roles |
 | `timeline` | every entry, oldest first, deleted ones included (their `state` says so), each with its summary, its note — internal notes included: a note staff wrote about the person is data held about them — its payload, actor and follow-up, and — on an entry that was ever changed — its earlier `revisions`, oldest first: an edited note's earlier text is still held (staff read it under the entry's history, and the anonymisation rewrites it), so it is data held about the person too |
-| `modules` | each other module's section under its name — `communications` (the person's conversations: subject, status, dates, each message's direction, subject, date, text and HTML body, each when present, and its attachment names), `energy` (supply periods with the metering point's GSRN and address, and each period's `consumption` as monthly kWh sums), `projects` (code, name, status, dates), `invoices` (`documents` and `drafts`, each with its lines, buyer snapshot, references and notes, and an issued document's `payments` and `deliveries` — [Invoices](invoices.md#retention-and-personal-data)); a module holding nothing for the customer has no key |
+| `modules` | each other module's section under its name — `communications` (the person's conversations: subject, status, dates, each message's direction, subject, date, text and HTML body, each when present, and its attachment names), `energy` (supply periods with the metering point's GSRN and address, and each period's `consumption` as monthly kWh sums), `projects` (code, name, status, dates), `invoices` (`documents` and `drafts`, each with its lines, buyer snapshot, references and notes, and an issued document's `payments` and `deliveries` — [Invoices](/en/reference/invoices/#retention-and-personal-data)); a module holding nothing for the customer has no key |
 
 It is shaped by nothing but `customers:personal-data`: that key means "may hand this
 person their data", so the legal identity and the contacts are in the file without
 `customers:legal-identity-view` or `customers:contacts-view`. This module's parts are
 read in one read-only snapshot; each module's section is its own
 `contracts.CustomerPersonalData.ExportCustomerData`
-([module boundaries rule 9](module-boundaries.md#the-rules)), called outside any
+([module boundaries rule 9](/en/contributing/module-boundaries/#the-rules)), called outside any
 transaction of this module's. **The file is all or nothing**: a module whose export
 fails fails the request with a 500, never a file with that module's section quietly
 missing — a person handed a partial file would take it for the whole. The body is
@@ -1540,7 +1546,7 @@ its records moved with the merge — so export its survivor, whose file names it
 Communications' section leaves out the addressing metadata — participants' addresses and
 display names, each delivery's recipient address, a message's channel headers — though
 its erase deletes them with the conversations
-([communications](communications.md#in-process-customer-integration)). Its suppressions, the
+([communications](/en/reference/communications/#in-process-customer-integration)). Its suppressions, the
 opt-out addresses, are neither exported nor erased: honouring an opt-out needs the
 address.
 
@@ -1606,7 +1612,7 @@ holding the first, which on a small pool is a deadlock with the other lease work
 | Addresses, Peppol answer, registry record | Deleted. |
 | Contacts | Every association detached, its roles with it; a contact linked to no other customer afterwards is deleted — it existed for this person alone. One another customer still links stays, theirs too. |
 | Timeline | Every entry **stays**, deleted ones included — its type, its day, its state and its follow-up's day and assignee as they were; an open follow-up is closed, done at the run's instant — the customer takes no more writes, so it could never be marked done and would stay overdue on somebody's Follow-ups page for ever; one already done keeps its own instant — with its content anonymised: a manual entry's summary and note become "[anonymised]" and its source URL goes; a generated entry's summary does too, unless its type's summary is built from nothing personal (`customer.status_changed`, `customer.type_changed`, `customer.contact_info_updated`, `customer.billing_profile_updated`, `customer.peppol_lookup`, `customer.tags_changed`, `customer.group_changed`, `customer.owner_changed` and the three anonymisation events — an allow-list, so an event type added later is anonymised until somebody decides otherwise); in every payload the top-level keys that carry the person — `name`, `customerName`, `identity`, `legalIdentity`, `contactInfo`, `billingProfile`, `before`, `after`, `changes`, `absorbed`, `into`, and a contact's or address's `displayName`, `firstName`, `middleName`, `lastName`, `title`, `phone`, `email`, `label`, `display` — become "[anonymised]", each replaced whole — on every event alike, so a status change's `before` and `after` go too, rather than a per-event list a new event type could slip past — and the rest (`customerId`, ids, dates, counts, statuses) is kept. Revisions the same. The author of each entry (`actorDisplay`) is staff, and stays. One set-based statement per table, in SQL. |
-| Other modules | Each `contracts.CustomerPersonalData.EraseCustomerData`, inside the same transaction, one module after another in the order the installation composes them (energy first, invoices last); by module: communications deletes the person's conversations, every message and the rows under it through the retention worker's own deletes (a message still waiting in the outbox goes with its job), queues every object key — attachments, raw payloads and staged uploads — on the cleanup ledger for the cleanup worker to delete after commit, and clears a suggestion or candidate row naming them on another conversation; energy keeps the supply periods and the consumption (a period is the metering point's history, the address the point's, the readings are needed for settlement — the period's link to the customer stays, pseudonymised, see the [holder table](#what-moves-what-stays-what-is-recorded)); projects keeps the projects (invoiced work stays, no customer name is stored there); invoices locks the person's documents and marks the customer erased, so no later send reaches them and a send racing the run has its delivery's address blanked; deletes the person's drafts, invoice and credit-note drafts alike — a draft is not a sales document and has nothing that keeps it — and keeps every issued document, its buyer snapshot and its internal note, which bokføringsloven § 13 keeps for five years after the end of the financial year; keeps the payments registered against them — bookkeeping material kept with the document, a bank reference that may name the person included — and blanks their notes, staff free text about the person that no retention rule needs; and keeps the deliveries, the record of when the claim was handed to the mail server, with the recipient's address blanked ([Invoices](invoices.md#retention-and-personal-data)). |
+| Other modules | Each `contracts.CustomerPersonalData.EraseCustomerData`, inside the same transaction, one module after another in the order the installation composes them (energy first, invoices last); by module: communications deletes the person's conversations, every message and the rows under it through the retention worker's own deletes (a message still waiting in the outbox goes with its job), queues every object key — attachments, raw payloads and staged uploads — on the cleanup ledger for the cleanup worker to delete after commit, and clears a suggestion or candidate row naming them on another conversation; energy keeps the supply periods and the consumption (a period is the metering point's history, the address the point's, the readings are needed for settlement — the period's link to the customer stays, pseudonymised, see the [holder table](#what-moves-what-stays-what-is-recorded)); projects keeps the projects (invoiced work stays, no customer name is stored there); invoices locks the person's documents and marks the customer erased, so no later send reaches them and a send racing the run has its delivery's address blanked; deletes the person's drafts, invoice and credit-note drafts alike — a draft is not a sales document and has nothing that keeps it — and keeps every issued document, its buyer snapshot and its internal note, which bokføringsloven § 13 keeps for five years after the end of the financial year; keeps the payments registered against them — bookkeeping material kept with the document, a bank reference that may name the person included — and blanks their notes, staff free text about the person that no retention rule needs; and keeps the deliveries, the record of when the claim was handed to the mail server, with the recipient's address blanked ([Invoices](/en/reference/invoices/#retention-and-personal-data)). |
 | Last | `anonymised_at` is set, the revision advances, and `customer.anonymised` is recorded — after the rewrite, so the one event that keeps its words: `{customerId, erased: [{kind, count}]}`, this module's four kinds first (`customers.addresses`, `customers.contactAssociations`, `customers.contacts`, `customers.timelineEntries`) and then each module's — `communications.conversations`, `communications.messages`, `communications.objects`, `communications.conversationSuggestions`, `communications.conversationCandidates`, `energy.supplyPeriods`, `projects.projects`, `invoices.drafts`, `invoices.documents`, `invoices.payments`, `invoices.deliveries` — a module that kept everything listed at zero; the actor is the system. |
 
 **A failing customer is logged and tried again.** A module's error — a panic
@@ -1689,7 +1695,7 @@ its provenance, and a refresh — is [Registry record](#registry-record), below.
 ## Registry record
 
 Phase 3 delivery A ("Brreg in full",
-[design](superpowers/specs/2026-09-22-customers-brreg-full-design.md)): the fuller
+[design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-09-22-customers-brreg-full-design.md)): the fuller
 Enhetsregisteret record for a Norwegian business customer, kept beside the customer,
 re-read on a click, its differences written to the timeline and the notable ones
 surfaced on the dashboard. Delivery A does not touch the address book or the billing
@@ -2023,7 +2029,7 @@ for the one address they chose.
 ### Registry workers
 
 Phase 3 delivery B ("Registry workers",
-[design](superpowers/specs/2026-09-22-customers-registry-workers-design.md)): the
+[design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-09-22-customers-registry-workers-design.md)): the
 same fetch-and-store above, on a schedule instead of a click. Nothing new is shown
 to a user beyond one line on the Registry card; what changes is that the record, the
 timeline, the attention list and the billing warnings stop going stale.
@@ -2234,7 +2240,7 @@ register.
 `customers:view` — the people who act on the answer) asks the Peppol network
 itself whether this customer is a registered receiver of Peppol BIS Billing
 3.0 (EHF), and remembers the answer. Decided in
-[the design](superpowers/specs/2026-09-21-customers-peppol-lookup-design.md)
+[the design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-09-21-customers-peppol-lookup-design.md)
 as delivery **B** of the invoice-ready customer (delivery A is
 [above](#contact-info-addresses-and-the-billing-profile)); the design's own
 "What the network looks like" section is the verified detail this section
@@ -2384,7 +2390,7 @@ the list of project ids a customer has. It holds no transaction and writes nothi
 each contract method is asked at most once, and time and expenses each get every
 visible project in one batch — the project directory is asked twice only for a caller
 who sees just their role projects (the customer's projects, then theirs). Decided in
-[`docs/superpowers/specs/2026-09-23-customers-360-design.md`](superpowers/specs/2026-09-23-customers-360-design.md).
+[`docs/superpowers/specs/2026-09-23-customers-360-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-09-23-customers-360-design.md).
 
 **Sections are shaped, never refused.** Every section but `lastActivity` is absent
 when its module is off or it is not for this caller, and the response never says
@@ -2410,7 +2416,7 @@ per project, which is a delivery of its own rather than a rule this one bends.
 
 **Unbilled** is `Approved − Invoiced` from the actuals contract, per project, summed:
 approved work includes invoiced work, and `ActualsTotals.Invoiced` is the part of it
-already billed ([docs/time.md](time.md#what-time-reports-to-other-modules)). Hours
+already billed ([the Time module](/en/reference/time/#what-time-reports-to-other-modules)). Hours
 are hundredths and subtract exactly; they are *every* approved hour on the customer's
 projects, because the contract's buckets are not split by billability — an approved
 non-billable hour on a customer project counts as unbilled here, and carries no
@@ -2604,7 +2610,7 @@ customers still costs exactly one — not 25 or five.
 ### `BillingProfile` — what an invoice needs, already resolved
 
 `BillingProfile(ctx, id)` carries what an invoice needs — and the default bill rate
-[Time's rate chain](time.md#the-rate-chain) prices hours with — in one call: id, customer
+[Time's rate chain](/en/reference/time/#the-rate-chain) prices hours with — in one call: id, customer
 number, name, type, archived, the legal identity's `country`/`id`/`name` when
 present, the resolved invoice address when any, and the billing fields below —
 **every resolution rule lives here, once**, so no consumer ever re-derives an
@@ -2617,7 +2623,7 @@ invoice email, a reminder email or a Peppol id for itself.
 | `ReminderEmail` | The billing profile's own `reminderEmail`, else the `InvoiceEmail` just resolved above — reminders fall back to where an invoice would go, never straight to the contact-info email. |
 | `PeppolID` | The billing profile's own explicit `peppolId`, else `derivedPeppolID(identity, customerType)`: `"0192:<legal id>"` when the identity's country is `"no"`, **the customer itself (not the identity) is of type `"business"`**, and the identity's `id` itself passes the Norwegian organisation-number check (a malformed or pre-validation legacy `id` derives nothing), else `""`. The same predicate backs `billingWarnings`'s `ehf_without_recipient` check above, so the two can never disagree about whether a recipient exists. |
 | `PaymentTermsDays` | The billing profile's own `paymentTermsDays`, else the customer's **group's** `defaultPaymentTermsDays` ([Groups](#groups)), else `nil`. The only field here with three levels, and the only one that inherits from a group: a nil check, not a zero one, so a profile (or a group) that decided `0` days — due on receipt — is not overridden by the next tier. |
-| `DefaultBillRate` | The billing profile's own `defaultBillRate`, else `nil`, quoted in `Currency` (never `""` when a rate is set). **Own value only** — no group tier; a group default bill rate would slot in beside `defaultPaymentTermsDays` if it is ever wanted. [Time's rate chain](time.md#the-rate-chain) reads it: the customer step, between the project default and the person card. |
+| `DefaultBillRate` | The billing profile's own `defaultBillRate`, else `nil`, quoted in `Currency` (never `""` when a rate is set). **Own value only** — no group tier; a group default bill rate would slot in beside `defaultPaymentTermsDays` if it is ever wanted. [Time's rate chain](/en/reference/time/#the-rate-chain) reads it: the customer step, between the project default and the person card. |
 | `Currency`, `Language`, `InvoiceDelivery`, `ReminderDelivery`, `GLN`, `BuyerReference` | The billing profile's own value, `nil`/`""` if never set — no further resolution. |
 
 **Every consumer treats `""` (a string field) or `nil` (`PaymentTermsDays`,
@@ -3028,12 +3034,12 @@ projects module's own keys.
 
 **Phase 5 delivery B** — the customer default bill rate — has landed on top of it,
 decided in
-[`docs/superpowers/specs/2026-09-24-customers-bill-rate-design.md`](superpowers/specs/2026-09-24-customers-bill-rate-design.md):
+[`docs/superpowers/specs/2026-09-24-customers-bill-rate-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-09-24-customers-bill-rate-design.md):
 the billing profile's eleventh field, `defaultBillRate` (migration `00028`, the
 module's first money column), quoted in the profile's own currency and written under
 `customers:billing-manage` like every other billing field; the directory's
 `BillingProfile.DefaultBillRate`, the customer's own value with no group tier; and
-the customer step of [Time's rate chain](time.md#the-rate-chain), between the
+the customer step of [Time's rate chain](/en/reference/time/#the-rate-chain), between the
 project default and the person card, recorded as `rateSource: "customer"`. No
 permission key was added. Still ahead in phase 5: other modules writing to the
 customer timeline (on the outbox deferred until Orders), and invoiced revenue and
@@ -3041,7 +3047,7 @@ outstanding once Invoices exists.
 
 **Phase 6 delivery A** — [CSV import and export](#csv-import-and-export) — has
 landed, decided in
-[`docs/superpowers/specs/2026-09-24-customers-import-export-design.md`](superpowers/specs/2026-09-24-customers-import-export-design.md):
+[`docs/superpowers/specs/2026-09-24-customers-import-export-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-09-24-customers-import-export-design.md):
 one canonical file (the payroll export's form, the API's JSON names), the list
 exported as the caller sees it and capped at 5000 rows, and an import that creates
 and updates by `customerNumber` through the endpoints' own write paths, a group at a
@@ -3051,7 +3057,7 @@ permission key, no event type and no migration were added. Delivery B followed i
 
 **Phase 6 delivery B** — [Merging duplicates](#merging-duplicates) — has landed,
 decided in
-[`docs/superpowers/specs/2026-09-24-customers-merge-design.md`](superpowers/specs/2026-09-24-customers-merge-design.md):
+[`docs/superpowers/specs/2026-09-24-customers-merge-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-09-24-customers-merge-design.md):
 `POST /customers/{id}/merge` absorbs a duplicate into the customer in the path in one
 transaction — its contacts, addresses, timeline, tags and every other module's
 references, the survivor keeping every field of its own and the duplicate archived
@@ -3062,7 +3068,7 @@ implement. Delivery C followed it (below).
 
 **Phase 6 delivery C** — [Personal data and anonymisation](#personal-data-and-anonymisation)
 — has landed, decided in
-[`docs/superpowers/specs/2026-09-24-customers-gdpr-design.md`](superpowers/specs/2026-09-24-customers-gdpr-design.md):
+[`docs/superpowers/specs/2026-09-24-customers-gdpr-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-09-24-customers-gdpr-design.md):
 a Norwegian national identity number is refused as a person's legal id; a private person's
 data is handed over in one file; and an archived private person is anonymised on a day a
 person chose — the number and the shape of the history kept, the person taken out, every
@@ -3075,11 +3081,11 @@ Customers roadmap with it, is complete. Attachments on a customer and its timeli
 entries wait on the storage module, and other modules' timeline writers on the outbox.
 
 Past that, the remaining gaps are exactly
-what [ROADMAP.md's Customers section](../ROADMAP.md#customers) is built around —
+what [ROADMAP.md's Customers section](https://github.com/vantigo-io/vantigo/blob/main/ROADMAP.md#customers) is built around —
 `ContactsByEmail` still unused in production, other modules writing to the customer
 timeline (on the outbox, deferred until Orders), invoiced revenue once Invoices exists —
 itself drawn from
-[`docs/superpowers/research/2026-09-21-customers-module-next.md`](superpowers/research/2026-09-21-customers-module-next.md),
+[`docs/superpowers/research/2026-09-21-customers-module-next.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/research/2026-09-21-customers-module-next.md),
 which also compares this module against the Nordic ERP/accounting and international
 CRM/PSA fields it was benchmarked against.
 

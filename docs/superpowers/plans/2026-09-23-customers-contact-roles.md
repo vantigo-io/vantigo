@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.27 (pgx, sqlc, goose, oapi-codegen strict server), PostgreSQL 18, React + Mantine 9 + TanStack Router/Query, vitest, bun, mise.
 
-**Spec:** `docs/superpowers/specs/2026-09-23-customers-contact-roles-design.md` (D1–D5 + "Out of scope" + "Testing"). Read it first; it is binding. It builds on `docs/superpowers/specs/2026-09-21-customers-invoice-ready-design.md` (D3, the typed-address primary invariant this delivery copies verbatim) and on `docs/customers.md`.
+**Spec:** `docs/superpowers/specs/2026-09-23-customers-contact-roles-design.md` (D1–D5 + "Out of scope" + "Testing"). Read it first; it is binding. It builds on `docs/superpowers/specs/2026-09-21-customers-invoice-ready-design.md` (D3, the typed-address primary invariant this delivery copies verbatim) and on `docs/src/content/docs/en/reference/customers.md`.
 
 ## Global Constraints
 
@@ -23,7 +23,7 @@
   - New schemas (`CustomerContactRole`, `CustomerContactRoleRequest`) may have required fields.
 - **The role vocabulary is validated in Go, never by a yaml `enum:` and never by a database `CHECK`** — the three values are `billing`, `project`, `decision_maker`, and the message is the spec's verbatim: `A contact role must be one of 'billing', 'project' or 'decision_maker', but was '%s'`. Body-level validation messages have **no** trailing period (`values.go`); query-parameter messages do (`customers.go`). This delivery adds no query parameter.
 - **The customer row is locked first for every write that touches roles** — `LockCustomer` (`queries/addresses.sql:1-19`, `FOR NO KEY UPDATE`) — which now means the association attach, update, detach *and* the contact delete. `pgx.ErrNoRows` from it is the 404.
-- **The primary rule is the addresses' rule, verbatim** (`docs/customers.md` §Addresses; `addresses.go`'s `demoteCurrentPrimary`/`promoteOldestOfType`): the **first** holder of a role is its primary whatever the request says; `primary: true` on another contact demotes the current one in the same transaction; `primary: false` on the contact that is the only or the primary holder is **refused** (400, field `roles`); a contact losing a role it was primary for promotes the **longest-standing** remaining holder (`created_at`, then `contact_id`). **Demote happens before promote, and delete happens before promote** — a transient two-primaries state, even inside one transaction, violates the partial unique index. The index is the backstop, never the mechanism.
+- **The primary rule is the addresses' rule, verbatim** (`docs/src/content/docs/en/reference/customers.md` §Addresses; `addresses.go`'s `demoteCurrentPrimary`/`promoteOldestOfType`): the **first** holder of a role is its primary whatever the request says; `primary: true` on another contact demotes the current one in the same transaction; `primary: false` on the contact that is the only or the primary holder is **refused** (400, field `roles`); a contact losing a role it was primary for promotes the **longest-standing** remaining holder (`created_at`, then `contact_id`). **Demote happens before promote, and delete happens before promote** — a transient two-primaries state, even inside one transaction, violates the partial unique index. The index is the backstop, never the mechanism.
 - **The timeline actor is resolved before the transaction and only when a write will happen** (`s.actorFor(ctx, generatedFallbackActor)`, `actor.go`). No directory call ever runs inside a transaction or under a lock.
 - **Contact-association writes touch no `revision`** — `customers.customers_contacts` and `customers.customer_contact_roles` are off the customer row, exactly as addresses and tags are. No write here takes a `revision`, accepts one, or bumps one.
 - Both catalogs (`en` and `nb`) of `apps/customers/frontend/src/i18n.ts` get every new string; `mise exec -- bun run translations:check` and `mise exec -- bun run i18n:test` must pass.
@@ -59,7 +59,7 @@
 | `apps/customers/frontend/src/pages/-connection.tsx` | the shared Title input + Roles group, and the edit modal that sends both |
 | `apps/customers/frontend/src/pages/-customer-contacts-card.tsx` | the customer's contacts table: title under the name, badges, the attach modal's Title + Roles |
 | `apps/customers/frontend/src/pages/contacts.$contactId.tsx` | the contact's customers table: the same two columns and the same attach modal |
-| `docs/customers.md`, `ROADMAP.md` | the contacts section, the primary rule's prose, the event payloads, phase 4 delivery B |
+| `docs/src/content/docs/en/reference/customers.md`, `ROADMAP.md` | the contacts section, the primary rule's prose, the event payloads, phase 4 delivery B |
 
 ---
 
@@ -4177,7 +4177,7 @@ Note both in the report.
 ### Task 5: Documentation (D1–D5)
 
 **Files:**
-- Modify: `docs/customers.md`, `ROADMAP.md`
+- Modify: `docs/src/content/docs/en/reference/customers.md`, `ROADMAP.md`
 - Check, and modify only if it enumerates something this delivery changed: `CONTRIBUTING.md`
 
 **Interfaces:** none — this task adds no code and no test.
@@ -4191,11 +4191,11 @@ grep -rn 'customer.contact_attached' docs/ CONTRIBUTING.md
 grep -n 'operationId:' openapi/customers.yaml | wc -l
 grep -rn 'typed contact roles' ROADMAP.md
 ```
-The first grep finds the three sentences in `docs/customers.md`'s Domain model and Contacts sections that promise a primary-contact flag as future work. The second finds the timeline's generated-event list and the bullets under it. The third is the operation count in the API section — **it has not moved**, and running the count is how you prove that rather than assume it. The fourth finds the phase 4 paragraph and the "Still ahead in this phase" list.
+The first grep finds the three sentences in `docs/src/content/docs/en/reference/customers.md`'s Domain model and Contacts sections that promise a primary-contact flag as future work. The second finds the timeline's generated-event list and the bullets under it. The third is the operation count in the API section — **it has not moved**, and running the count is how you prove that rather than assume it. The fourth finds the phase 4 paragraph and the "Still ahead in this phase" list.
 
 - [ ] **Step 2: Fix the Domain model bullet**
 
-In `docs/customers.md`, the `**Customer–contact association**` bullet (~line 37) becomes:
+In `docs/src/content/docs/en/reference/customers.md`, the `**Customer–contact association**` bullet (~line 37) becomes:
 
 ```markdown
 - **Customer–contact association** — the many-to-many link, carrying `title`
@@ -4208,7 +4208,7 @@ In `docs/customers.md`, the `**Customer–contact association**` bullet (~line 3
 
 - [ ] **Step 3: Rewrite the Contacts and associations section**
 
-Replace `docs/customers.md`'s `## Contacts and associations` section body with the following, written in that file's voice — full sentences that explain *why*, not a field list:
+Replace `docs/src/content/docs/en/reference/customers.md`'s `## Contacts and associations` section body with the following, written in that file's voice — full sentences that explain *why*, not a field list:
 
 ```markdown
 ## Contacts and associations
@@ -4345,7 +4345,7 @@ are, so no write here takes a revision, accepts one or bumps one.
 
 - [ ] **Step 4: Update the timeline section**
 
-In `docs/customers.md`'s `## The timeline`, the generated-event list is unchanged — this delivery introduces no new event type, which is worth saying — and one bullet joins the others:
+In `docs/src/content/docs/en/reference/customers.md`'s `## The timeline`, the generated-event list is unchanged — this delivery introduces no new event type, which is worth saying — and one bullet joins the others:
 
 ```markdown
 - The four contact events (`customer.contact_attached`,
@@ -4369,7 +4369,7 @@ In `docs/customers.md`'s `## The timeline`, the generated-event list is unchange
 
 - [ ] **Step 5: Update the frontend section**
 
-In `docs/customers.md`'s `## The frontend`, add to the contacts paragraph: the customer page's contacts card and the contact page's customers card both show the title under the name and role badges with a star on the primary one (whose `aria-label` spells out "Primary billing contact", so the star is not the only carrier of the fact); the attach and edit modals share one `ConnectionFields` with a Title input and a checkbox per role, each with a Primary switch that is enabled while the box is ticked and **on and disabled** for a role the contact already holds as primary, with the reason shown — "Already the only holder" where the page can tell (the customer's contacts card holds every association, so it can), and "the primary holder stays primary — make another contact primary instead" where it cannot (the contact page lists customers, not the other contacts at each one). Saving sends `title` and the complete `roles`.
+In `docs/src/content/docs/en/reference/customers.md`'s `## The frontend`, add to the contacts paragraph: the customer page's contacts card and the contact page's customers card both show the title under the name and role badges with a star on the primary one (whose `aria-label` spells out "Primary billing contact", so the star is not the only carrier of the fact); the attach and edit modals share one `ConnectionFields` with a Title input and a checkbox per role, each with a Primary switch that is enabled while the box is ticked and **on and disabled** for a role the contact already holds as primary, with the reason shown — "Already the only holder" where the page can tell (the customer's contacts card holds every association, so it can), and "the primary holder stays primary — make another contact primary instead" where it cannot (the contact page lists customers, not the other contacts at each one). Saving sends `title` and the complete `roles`.
 
 - [ ] **Step 6: Mark the delivery in `ROADMAP.md`**
 
@@ -4389,7 +4389,7 @@ role promotes the longest-standing remaining holder. The roles ride on the
 association's four existing endpoints and its two existing permissions — no new
 paths, no new key — and a promotion caused by somebody else's write is recorded
 on the promoted contact with the user who caused it. See
-[`docs/customers.md#contacts-and-associations`](docs/customers.md#contacts-and-associations).
+[`docs/src/content/docs/en/reference/customers.md#contacts-and-associations`](docs/src/content/docs/en/reference/customers.md#contacts-and-associations).
 ```
 
 and update the "Still ahead in this phase" paragraph: typed contact roles are no longer ahead, so it lists follow-ups (a timeline entry's own date and assignee, feeding `/stats/attention` and a "my follow-ups" view), customer groups that can carry defaults, and attachments once the storage module has a model for them. Keep the existing sentence about the tag vocabulary being unpaged by design, and add one in the same spirit: the role vocabulary is deliberately **three** values, and a wider list (technical, executive sponsor) is a value change rather than a migration — the free-text title carries everything else today. Also update the phase heading's parenthetical if the file uses one for a partly-delivered phase (it currently reads `(first delivery done)`; check what phase 2's heading does and follow it).
@@ -4399,7 +4399,7 @@ and update the "Still ahead in this phase" paragraph: typed contact roles are no
 ```bash
 cd /home/anders/projects/vantigo/vantigo
 printf '%s\n\n%s\n' 'docs(customers): the association'"'"'s title, its typed roles and the primary rule they share with addresses' 'Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>' > /tmp/msg-roles-task5
-git add docs/customers.md ROADMAP.md
+git add docs/src/content/docs/en/reference/customers.md ROADMAP.md
 git commit -F /tmp/msg-roles-task5 -- $(git diff --cached --name-only)
 git show --stat HEAD && git status --short
 ```

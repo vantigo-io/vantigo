@@ -23,7 +23,7 @@ and the identity PUT, because it is the one validator. Other person identifiers
 ### D2 — One contract for what other modules hold about a person
 
 `contracts.CustomerPersonalData` — a second sanctioned cross-module direction with its
-own design (`docs/module-boundaries.md` rule 9), not a method on the merge holder:
+own design (`docs/src/content/docs/en/contributing/module-boundaries.md` rule 9), not a method on the merge holder:
 
 ```go
 // What a module holds about one customer as a person: a read for the
@@ -131,12 +131,12 @@ catalog label. en + nb.
 
 ### D6 — Docs
 
-`docs/customers.md`: a **Personal data and anonymisation** section (the export's
+`docs/src/content/docs/en/reference/customers.md`: a **Personal data and anonymisation** section (the export's
 contents, the scheduling rules, exactly what the worker clears/keeps/rewrites and why
 the number and dates stay, the merge-chain rule, the read-only rule, the worker's config),
 the identity section's refusal, the permission key, the statuses section, the API list,
 the frontend bullets, a phase 6 delivery C paragraph and "the roadmap's last delivery";
-`docs/module-boundaries.md` rule 9; `docs/communications.md`, `docs/projects.md` and
+`docs/src/content/docs/en/contributing/module-boundaries.md` rule 9; `docs/src/content/docs/en/reference/communications.md`, `docs/src/content/docs/en/reference/projects.md` and
 the energy row in customers' holder table; `ROADMAP.md` phase 6 complete (attachments
 and the outbox-dependent timeline writers remain deferred).
 

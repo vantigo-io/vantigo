@@ -193,7 +193,7 @@ Order of checks on each operation: permission gate → validation → 404 → re
 ### Task 8: Docs
 
 **Files:**
-- Create: `docs/customers.md` (what the module is: model, statuses incl. D3's plain statement, legal identity + validation, contacts, timeline + authorship, list search and its permission rule, revision, duplicate guard, permissions table, `CustomerDirectory`, what Invoices will need — pointing at the research doc). Follow `docs/projects.md`'s shape.
+- Create: `docs/src/content/docs/en/reference/customers.md` (what the module is: model, statuses incl. D3's plain statement, legal identity + validation, contacts, timeline + authorship, list search and its permission rule, revision, duplicate guard, permissions table, `CustomerDirectory`, what Invoices will need — pointing at the research doc). Follow `docs/src/content/docs/en/reference/projects.md`'s shape.
 - Modify: `docs/README.md` (link), `ROADMAP.md` (new `## Customers` section: Phase 1 — Foundation (done), Phase 2 — The invoice-ready customer, Phase 3 — Brreg in full, Phase 4 — Light CRM, Phase 5 — Customer 360, Phase 6 — Data operations and compliance, Later; each with a *Unblocks:* line, in the file's existing voice), `README.md` module status line if it still says "In development" and that is no longer the right word, `CONTRIBUTING.md`'s customers bullet if it enumerates behaviour.
 - [ ] Commit: `docs(customers): the module's reference, and its roadmap`. The spec, this plan and the research doc ship in the same PR (`docs(customers): foundation research, design and plan`).
 

@@ -7,7 +7,7 @@ branch)" at its end) recorded the review's rulings for this phase; every one of 
 honoured below, and where this design reads one of them differently it says so.
 Research: `docs/superpowers/research/2026-09-26-invoices-module.md` (§2.5 retention,
 §5.2 "open amount = gross − credited − paid; paid / partly paid / overdue is derived, not
-stored", §6.3 the patterns to take). Module doc: `docs/invoices.md`. This revision
+stored", §6.3 the patterns to take). Module doc: `docs/src/content/docs/en/reference/invoices.md`. This revision
 follows the design's critical review (one blocker — a send racing an anonymisation —
 and twenty-four findings, each taken or answered in its place).
 
@@ -276,7 +276,7 @@ cheap. In order:
    may already have accepted, nor the row that is its evidence. **A failure is 502
    `mail_failed` and records nothing** — the ruling. The error is logged at warn with
    the document id, never put on the wire. A timeout that strikes after the server has
-   accepted the data can mean the mail went with no row; `docs/invoices.md` says so.
+   accepted the data can mean the mail went with no row; `docs/src/content/docs/en/reference/invoices.md` says so.
 8. **The log**: one row in `invoices.deliveries`, written on an uncancellable context
    of its own with its **own short timeout** (five seconds), never the send's remaining
    budget — a send the server accepted at the 29th second must still be logged; the five
@@ -296,7 +296,7 @@ cheap. In order:
 
 Sending twice is allowed and logged twice: a re-send is a legitimate act. No
 suppression list is read — `communications.suppressions` is another module's table
-(`docs/module-boundaries.md` rule 4), and a customer whose invoice address bounces is a
+(`docs/src/content/docs/en/contributing/module-boundaries.md` rule 4), and a customer whose invoice address bounces is a
 problem the person sending will hear about.
 
 **`invoices.deliveries`:**
@@ -392,7 +392,7 @@ account is always there; "(BIC {bic})" is printed only with a BIC.
 
 **Warning loudly.** The ruling: "warn loudly when the profile says `ehf` or the buyer is
 a public body". The directory carries `InvoiceDelivery`; it carries **no public-body
-fact** — "Public sector" in `docs/customers.md` is a group an installation may name, a
+fact** — "Public sector" in `docs/src/content/docs/en/reference/customers.md` is a group an installation may name, a
 vocabulary word, not a fact a module can read. What the snapshot does carry is the
 buyer's **organisation number**, which every public body and every Norwegian business
 has, and the B2B duty makes that the warning that matters: from **2027-01-01** (Lov 19.
@@ -438,7 +438,7 @@ VAT summary row)**, in each document the rows by category then rate. A credit no
 amounts are **negative** in every amount column (stored positive, signed on output, the
 journal's rule).
 
-The byte format is the expenses payroll file's (`docs/expenses.md`, "The payroll CSV"),
+The byte format is the expenses payroll file's (`docs/src/content/docs/en/reference/expenses.md`, "The payroll CSV"),
 duplicated into this module as customers did (depguard forbids sharing the file): UTF-8
 with a BOM, `;`, decimal comma, `YYYY-MM-DD`, CRLF after every row the last included,
 RFC 4180 quoting with `;` as the separator, and the formula-injection guard — **on the
@@ -507,7 +507,7 @@ language, not a problem document opened in the browser.
   kept with the address gone: they are the record of when the claim was handed to the
   mail server. The reporting order is `invoices.drafts`,
   `invoices.documents`, `invoices.payments`, `invoices.deliveries`; the anonymisation
-  table in `docs/customers.md` gains the two rows. Run twice, it finds nothing and
+  table in `docs/src/content/docs/en/reference/customers.md` gains the two rows. Run twice, it finds nothing and
   reports zeros (the marker is already there).
 
 **The marker closes the race** the review found. A send reads the recipient before it
@@ -665,7 +665,7 @@ two modules' understanding of the contract is proven to be one.
 
 ### D11 — Docs
 
-- `docs/invoices.md`: a "Payments and the state of an invoice" section (the table of
+- `docs/src/content/docs/en/reference/invoices.md`: a "Payments and the state of an invoice" section (the table of
   states and the order, open amount, refund due, soft removal and why a row never
   leaves, the lock the registration and the credit issue share, the retention marked
   UNCERTAIN as 1A marks it); "Sending a document" (the recipient rule, Reply-To, the
@@ -675,11 +675,11 @@ two modules' understanding of the contract is proven to be one.
   which columns are guarded); "Stats" (the period-to-days rule); the endpoints table
   and the permissions table extended; the anonymisation paragraph gaining payments and
   deliveries and the marker; "What comes next" moved to phase 2.
-- `docs/module-boundaries.md`: the platform `mail.Outbound.ReplyTo` change; the
+- `docs/src/content/docs/en/contributing/module-boundaries.md`: the platform `mail.Outbound.ReplyTo` change; the
   customer tab as host-owned composition.
-- `docs/customers.md`: the anonymisation table's invoices row gains payments (kept,
+- `docs/src/content/docs/en/reference/customers.md`: the anonymisation table's invoices row gains payments (kept,
   their notes blanked) and deliveries (recipient blanked).
-- `docs/customers-authentication.md` (the SMTP section): invoices now sends through
+- `docs/src/content/docs/en/admin/authentication.md` (the SMTP section): invoices now sends through
   the same `SMTP_*` configuration.
 - `ROADMAP.md`: 1B done, phase 2 next. `deploy/compose/README.md` "Upgrading": the new
   permission, and that sending needs `SMTP_*`.
@@ -784,4 +784,4 @@ Oslo clock), plus `modtest.WithSMTPSend` recording envelopes and `WithEnv` for
   card's gating on module and permission and its hint; the customer tab's gating, its
   active state and its "New invoice" on an active customer only; both catalogs.
 - **Docs** checked against the code as 1A's Task 11 did: every endpoint, code and
-  permission in `docs/invoices.md` exists, and nothing the code has is missing.
+  permission in `docs/src/content/docs/en/reference/invoices.md` exists, and nothing the code has is missing.

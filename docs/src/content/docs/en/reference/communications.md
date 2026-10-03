@@ -1,5 +1,11 @@
-# Communications module deployment and integration
-
+---
+title: "Communications module"
+description: "Outbound business email across shared mailboxes: the outbox, delivery, retention and the operator's configuration."
+sources:
+  - apps/server/internal/communications
+  - apps/communications/frontend
+  - openapi/communications.yaml
+---
 Communications is a module inside the single Vantigo binary, not a separately
 deployed service. It runs in the same process as Identity, Customers, Products and
 Energy, and owns the `communications` schema in the shared PostgreSQL database. The
@@ -57,15 +63,15 @@ Customer and contact link values are opaque domain values. Preserve them exactly
 not derive meaning from them or use them as authorization credentials.
 
 The one write in the other direction is a customer merge: communications declares a
-`contracts.CustomerReferenceHolder` ([module boundaries rule 8](module-boundaries.md#the-rules)),
+`contracts.CustomerReferenceHolder` ([module boundaries rule 8](/en/contributing/module-boundaries/#the-rules)),
 and when the customers module merges two customers it re-points, inside the merge's
 own transaction, every conversation's `customer_id` and `suggested_customer_id` from
 the absorbed customer to the survivor, and the candidate list — where a conversation
 that already lists the survivor keeps it once. See
-[Merging duplicates](customers.md#merging-duplicates).
+[Merging duplicates](/en/reference/customers/#merging-duplicates).
 
 It also hands over and takes out what it holds about a private person —
-`contracts.CustomerPersonalData` ([module boundaries rule 9](module-boundaries.md#the-rules)).
+`contracts.CustomerPersonalData` ([module boundaries rule 9](/en/contributing/module-boundaries/#the-rules)).
 A person's export carries every conversation about them, with each message's
 direction, date and body — the text body and the HTML body, each when the message has
 it, so an HTML-only message is not left empty — and each attachment's name
@@ -84,7 +90,7 @@ the person keeps its own customer and loses the suggestion, its reasoning and th
 candidate row. The anonymisation reports `communications.objects` as the number of
 object keys it queued — attachments, raw payloads and staged uploads, a key already on
 the ledger counted too — not as a number of attachment rows. See
-[Personal data and anonymisation](customers.md#personal-data-and-anonymisation).
+[Personal data and anonymisation](/en/reference/customers/#personal-data-and-anonymisation).
 
 What the erase does not cover, on the record: this module takes no customer lock, so a
 message written into one of the person's conversations while the erase runs goes with
@@ -112,7 +118,7 @@ unrecoverable — they must be re-entered.
 The `SMTP_*` environment variables are a **different thing**: they configure
 identity's own application mail (invitations and password resets), not the mailboxes
 conversations are sent through. See
-[identity and authentication](customers-authentication.md).
+[identity and authentication](/en/admin/authentication/).
 
 Channels are SMTP-only. The API refuses to create or update a channel with any other
 provider, so no channel of another kind is reachable through ordinary use.
@@ -222,7 +228,7 @@ return 404 without storage details.
 streams only clean attachments through the application. It never redirects to a
 provider URL and never exposes a storage key; the `downloadPath` field in
 conversation DTOs is this same-origin endpoint. Attachments are stored under the
-`communications` storage scope — see [object storage](storage.md), which is
+`communications` storage scope — see [object storage](/en/admin/object-storage/), which is
 **filesystem-only** in this release and fails closed at each operation when
 `STORAGE_PROVIDER` is unset.
 
