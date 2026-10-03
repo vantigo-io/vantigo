@@ -195,7 +195,7 @@ const (
 )
 
 func newFakeCustomers() *fakeCustomers {
-	oslo := &contracts.CustomerAddressEntry{Line1: "Kundeveien 2", PostalCode: "0150", City: "Oslo", Country: "NO"}
+	oslo := &contracts.CustomerAddressEntry{Line1: "Kundeveien 2", PostalCode: "0150", City: "Oslo", Country: "no"}
 	thirty := int32(30)
 	merged := int32(customerAcme)
 	business := func(id int32, number int64, name string) contracts.CustomerBillingProfile {
@@ -220,12 +220,12 @@ func newFakeCustomers() *fakeCustomers {
 		customerAcme: acme,
 		customerPerson: {
 			ID: customerPerson, CustomerNumber: 10002, Name: "Kari Nordmann", Type: "person", Status: "active",
-			Language: "en", InvoiceAddress: &contracts.CustomerAddressEntry{Line1: "Hjemveien 5", PostalCode: "5003", City: "Bergen", Country: "NO"},
+			Language: "en", InvoiceAddress: &contracts.CustomerAddressEntry{Line1: "Hjemveien 5", PostalCode: "5003", City: "Bergen", Country: "no"},
 		},
 		customerForeign: {
 			ID: customerForeign, CustomerNumber: 10003, Name: "Svenska AB", Type: "business", Status: "active",
 			LegalCountry: "se", LegalID: "556677889901", LegalName: "Svenska Aktiebolaget AB", Language: "en",
-			InvoiceAddress: &contracts.CustomerAddressEntry{Line1: "Storgatan 1", PostalCode: "111 22", City: "Stockholm", Country: "SE"},
+			InvoiceAddress: &contracts.CustomerAddressEntry{Line1: "Storgatan 1", PostalCode: "111 22", City: "Stockholm", Country: "se"},
 		},
 		customerNoTerms:  noTerms,
 		customerDisabled: disabled,

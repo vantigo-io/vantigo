@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 )
@@ -67,7 +68,9 @@ func (h *customerReferenceHolder) RepointCustomer(ctx context.Context, tx pgx.Tx
 
 // customerPersonalData is this module's contracts.CustomerPersonalData: what
 // was invoiced to a private person, handed over, and on anonymisation the
-// drafts erased while the issued documents stay.
+// drafts erased while the issued documents stay — their payments with the
+// notes blanked, their deliveries with the address blanked — and the
+// customer marked erased, so no later send reaches them (D6).
 type customerPersonalData struct {
 	pool *pgxpool.Pool
 	// clock is Deps.Clock, for the erased-customer marker's erased_at
@@ -243,9 +246,26 @@ func decimalOf(n pgtype.Numeric, places int) (string, error) {
 // of delivery and the internal note: the customers export treats
 // staff-written notes as data held about the person. An issued document
 // carries its payments, removed ones with their removal, and its deliveries
-// (payments and delivery design D6).
+// (payments and delivery design D6). Every read is in one REPEATABLE READ,
+// READ ONLY transaction, as the customers module reads its own part of the
+// export: a payment or a send landing midway cannot make the file disagree
+// with itself.
 func (p customerPersonalData) ExportCustomerData(ctx context.Context, customerID int32) (any, error) {
-	q := store.New(p.pool)
+	var section any
+	err := db.WithTx(ctx, p.pool, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
+		var err error
+		section, err = exportCustomerData(ctx, store.New(tx), customerID)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return section, nil
+}
+
+// exportCustomerData is ExportCustomerData's reads and its file, with q bound
+// to the export's transaction.
+func exportCustomerData(ctx context.Context, q *store.Queries, customerID int32) (any, error) {
 	docs, err := q.CustomerDocuments(ctx, customerID)
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read customer %d's documents: %w", customerID, err)

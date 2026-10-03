@@ -75,10 +75,12 @@ func csvDecimal(n pgtype.Numeric, negate bool) (string, error) {
 }
 
 // csvAmount is an exact decimal with the decimal comma at two places, the
-// half away from zero, negated when negate.
+// half away from zero, negated when negate. It rounds first and negates the
+// rounded value, so an amount that rounds to nothing is 0,00, never -0,00.
 func csvAmount(r *big.Rat, negate bool) string {
+	r = round2(r)
 	if negate {
-		r = new(big.Rat).Neg(r)
+		r.Neg(r)
 	}
 	return strings.Replace(decimalText(r, 2), ".", ",", 1)
 }

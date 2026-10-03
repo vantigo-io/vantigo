@@ -505,8 +505,6 @@ func (q *Queries) IssueDocument(ctx context.Context, arg IssueDocumentParams) (I
 
 const listInvoices = `-- name: ListInvoices :many
 SELECT i.id, i.kind, i.status, i.number, i.customer_id, i.credits_invoice_id, i.issue_date, i.delivery_date, i.delivery_from, i.delivery_to, i.delivery_address_line1, i.delivery_address_line2, i.delivery_postal_code, i.delivery_city, i.delivery_country, i.payment_terms_days, i.due_date, i.currency, i.exchange_rate, i.exchange_rate_date, i.your_reference, i.our_reference, i.order_reference, i.note, i.internal_note, i.buyer_customer_number, i.buyer_type, i.buyer_name, i.buyer_organisation_number, i.buyer_foreign_id, i.buyer_address_line1, i.buyer_address_line2, i.buyer_postal_code, i.buyer_city, i.buyer_region, i.buyer_country, i.buyer_peppol_id, i.buyer_gln, i.buyer_language, i.seller_legal_name, i.seller_organisation_number, i.seller_vat_registered, i.seller_in_foretaksregisteret, i.seller_address_line1, i.seller_address_line2, i.seller_postal_code, i.seller_city, i.seller_country, i.seller_bank_account, i.seller_iban, i.seller_bic, i.seller_email, i.seller_footer_text, i.net_total, i.vat_total, i.gross_total, i.vat_total_nok, i.pdf_object_key, i.pdf_sha256, i.issued_at, i.issued_by_user_id, i.created_by_user_id, i.created_at, i.updated_at, i.revision,
-       coalesce(cr.credited, 0)::numeric(14,2) AS credited,
-       coalesce(pd.paid, 0)::numeric(14,2)     AS paid,
        (i.gross_total - coalesce(cr.credited, 0) - coalesce(pd.paid, 0))::numeric(14,2) AS open_amount,
        invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, $1::date)::text AS state
 FROM invoices.invoices i
@@ -548,8 +546,6 @@ type ListInvoicesParams struct {
 
 type ListInvoicesRow struct {
 	InvoicesInvoice InvoicesInvoice
-	Credited        pgtype.Numeric
-	Paid            pgtype.Numeric
 	OpenAmount      pgtype.Numeric
 	State           string
 }
@@ -563,7 +559,8 @@ type ListInvoicesRow struct {
 // gross) and paid (the live payments' sum) from one lateral join each, read
 // once per row and handed to invoices.document_state with today, the Oslo
 // business day the caller passes — never CURRENT_DATE. open_amount is gross
-// less both. The state filter runs the same call; CountInvoices repeats the
+// less both; the two themselves are not selected, since the list answers
+// neither. The state filter runs the same call; CountInvoices repeats the
 // joins and the predicate word for word, so the total counts what the page
 // shows.
 func (q *Queries) ListInvoices(ctx context.Context, arg ListInvoicesParams) ([]ListInvoicesRow, error) {
@@ -653,8 +650,6 @@ func (q *Queries) ListInvoices(ctx context.Context, arg ListInvoicesParams) ([]L
 			&i.InvoicesInvoice.CreatedAt,
 			&i.InvoicesInvoice.UpdatedAt,
 			&i.InvoicesInvoice.Revision,
-			&i.Credited,
-			&i.Paid,
 			&i.OpenAmount,
 			&i.State,
 		); err != nil {

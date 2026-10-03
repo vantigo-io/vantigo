@@ -94,9 +94,11 @@ func (s *server) GetInvoicesExportCsv(ctx context.Context, req gen.GetInvoicesEx
 func invoicesCSV(rows []store.ExportRowsRow) ([]byte, error) {
 	var b bytes.Buffer
 	b.WriteString(csvByteOrderMark)
+	// The header is this module's own fixed words, which no formula guard
+	// is for.
 	header := make([]csvValue, len(exportHeader))
 	for i, name := range exportHeader {
-		header[i] = csvValue{text: name, guard: true}
+		header[i] = csvValue{text: name}
 	}
 	writeCSVRow(&b, header)
 	for _, r := range rows {

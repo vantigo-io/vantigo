@@ -2500,9 +2500,10 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 }
 
 // invoicesPhase1BObjects is what 00035 adds to the invoices schema, as found:
-// its tables, its triggers (table:trigger:function), its two CHECKs and the
-// document_state function with its volatility and return type.
-func invoicesPhase1BObjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool) (tables, triggers, checks, functions []string) {
+// its tables, its triggers (table:trigger:function), its two CHECKs, its
+// functions with their volatility, parallel safety and return type, and its
+// indexes as Postgres prints them (name:definition).
+func invoicesPhase1BObjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool) (tables, triggers, checks, functions, indexes []string) {
 	t.Helper()
 	collect := func(what, sql string) []string {
 		t.Helper()
@@ -2531,12 +2532,23 @@ func invoicesPhase1BObjects(t *testing.T, ctx context.Context, pool *pgxpool.Poo
 		WHERE connamespace = 'invoices'::regnamespace AND conname IN ('ck_payments_amount', 'ck_payments_removal')
 		ORDER BY 1`)
 	functions = collect("functions", `
-		SELECT p.proname || ':' || p.provolatile::text || ':' || pg_catalog.format_type(p.prorettype, NULL)
+		SELECT p.proname || ':' || p.provolatile::text || ':' || p.proparallel::text || ':' || pg_catalog.format_type(p.prorettype, NULL)
 		FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
 		WHERE n.nspname = 'invoices' AND p.proname IN ('document_state', 'refuse_payment_change',
 		    'refuse_payment_on_unissued', 'refuse_delivery_change', 'guard_delivery_insert')
 		ORDER BY 1`)
-	return tables, triggers, checks, functions
+	indexes = collect("indexes", `
+		SELECT indexname || ':' || indexdef FROM pg_indexes
+		WHERE schemaname = 'invoices' AND tablename IN ('payments', 'deliveries') AND indexname LIKE 'ix\_%'
+		ORDER BY 1`)
+	return tables, triggers, checks, functions, indexes
+}
+
+// checkViolationOf reports whether err is a check violation (SQLSTATE 23514)
+// raised by the constraint named constraint.
+func checkViolationOf(err error, constraint string) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23514" && pgErr.ConstraintName == constraint
 }
 
 // refusedWith reports whether err is the invoices triggers' refusal: SQLSTATE
@@ -2573,12 +2585,17 @@ func TestInvoicesPaymentsDelivery_AppliesAndIsIdempotent(t *testing.T) {
 	}
 	wantChecks := []string{"ck_payments_amount", "ck_payments_removal"}
 	wantFunctions := []string{
-		"document_state:i:text", "guard_delivery_insert:v:trigger", "refuse_delivery_change:v:trigger",
-		"refuse_payment_change:v:trigger", "refuse_payment_on_unissued:v:trigger",
+		"document_state:i:s:text", "guard_delivery_insert:v:u:trigger", "refuse_delivery_change:v:u:trigger",
+		"refuse_payment_change:v:u:trigger", "refuse_payment_on_unissued:v:u:trigger",
+	}
+	wantIndexes := []string{
+		"ix_deliveries_invoice:CREATE INDEX ix_deliveries_invoice ON invoices.deliveries USING btree (invoice_id)",
+		"ix_payments_invoice:CREATE INDEX ix_payments_invoice ON invoices.payments USING btree (invoice_id)",
+		"ix_payments_invoice_live:CREATE INDEX ix_payments_invoice_live ON invoices.payments USING btree (invoice_id) WHERE (removed_at IS NULL)",
 	}
 	expectAll := func(when string) {
 		t.Helper()
-		tables, triggers, checks, functions := invoicesPhase1BObjects(t, ctx, pool)
+		tables, triggers, checks, functions, indexes := invoicesPhase1BObjects(t, ctx, pool)
 		if !equalStrings(tables, wantTables) {
 			t.Errorf("%s: tables = %v, want %v", when, tables, wantTables)
 		}
@@ -2590,6 +2607,9 @@ func TestInvoicesPaymentsDelivery_AppliesAndIsIdempotent(t *testing.T) {
 		}
 		if !equalStrings(functions, wantFunctions) {
 			t.Errorf("%s: functions = %v, want %v", when, functions, wantFunctions)
+		}
+		if !equalStrings(indexes, wantIndexes) {
+			t.Errorf("%s: indexes = %v, want %v", when, indexes, wantIndexes)
 		}
 	}
 	expectAll("after up")
@@ -2630,7 +2650,7 @@ func TestInvoicesPaymentsDelivery_AppliesAndIsIdempotent(t *testing.T) {
 			t.Errorf("a payment under %s: %v, want P0001 %q", name, err, paymentNeedsIssued)
 		}
 	}
-	if _, err := pool.Exec(ctx, insertPayment, invoice, 0); !isCheckViolation(err) {
+	if _, err := pool.Exec(ctx, insertPayment, invoice, 0); !checkViolationOf(err, "ck_payments_amount") {
 		t.Errorf("a payment of 0: %v, want a check violation from ck_payments_amount", err)
 	}
 	var payment int64
@@ -2646,13 +2666,13 @@ func TestInvoicesPaymentsDelivery_AppliesAndIsIdempotent(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE invoices.payments SET amount = 200 WHERE id = $1`, payment); !refusedWith(err, paymentImmutable) {
 		t.Errorf("changing a payment's amount: %v, want P0001 %q", err, paymentImmutable)
 	}
-	if _, err := pool.Exec(ctx, `UPDATE invoices.payments SET removed_at = now(), removed_by_user_id = gen_random_uuid(), amount = 200 WHERE id = $1`, payment); !refusedWith(err, paymentImmutable) {
+	if _, err := pool.Exec(ctx, `UPDATE invoices.payments SET removed_at = now(), removed_by_user_id = gen_random_uuid(), removal_reason = 'Feil', amount = 200 WHERE id = $1`, payment); !refusedWith(err, paymentImmutable) {
 		t.Errorf("a removal that also changes the amount: %v, want P0001 %q", err, paymentImmutable)
 	}
-	if _, err := pool.Exec(ctx, `UPDATE invoices.payments SET removed_at = now(), removed_by_user_id = gen_random_uuid() WHERE id = $1`, payment); !isCheckViolation(err) {
+	if _, err := pool.Exec(ctx, `UPDATE invoices.payments SET removed_at = now(), removed_by_user_id = gen_random_uuid() WHERE id = $1`, payment); !checkViolationOf(err, "ck_payments_removal") {
 		t.Errorf("a removal without a reason: %v, want a check violation from ck_payments_removal", err)
 	}
-	if _, err := pool.Exec(ctx, `UPDATE invoices.payments SET removed_at = now(), removed_by_user_id = gen_random_uuid(), removal_reason = '' WHERE id = $1`, payment); !isCheckViolation(err) {
+	if _, err := pool.Exec(ctx, `UPDATE invoices.payments SET removed_at = now(), removed_by_user_id = gen_random_uuid(), removal_reason = '' WHERE id = $1`, payment); !checkViolationOf(err, "ck_payments_removal") {
 		t.Errorf("a removal with an empty reason: %v, want a check violation from ck_payments_removal", err)
 	}
 	if _, err := pool.Exec(ctx, `UPDATE invoices.payments SET removed_at = now(), removed_by_user_id = gen_random_uuid(), removal_reason = 'Registrert to ganger' WHERE id = $1`, payment); err != nil {
@@ -2754,9 +2774,9 @@ func TestInvoicesPaymentsDelivery_AppliesAndIsIdempotent(t *testing.T) {
 
 	// Down drops all of it, document_state included, and leaves 1A's schema.
 	migrateTo(t, url, 34)
-	tables, triggers, checks, functions := invoicesPhase1BObjects(t, ctx, pool)
-	if len(tables) != 0 || len(triggers) != 0 || len(checks) != 0 || len(functions) != 0 {
-		t.Errorf("after down: tables %v, triggers %v, checks %v, functions %v remain, want none", tables, triggers, checks, functions)
+	tables, triggers, checks, functions, indexes := invoicesPhase1BObjects(t, ctx, pool)
+	if len(tables) != 0 || len(triggers) != 0 || len(checks) != 0 || len(functions) != 0 || len(indexes) != 0 {
+		t.Errorf("after down: tables %v, triggers %v, checks %v, functions %v, indexes %v remain, want none", tables, triggers, checks, functions, indexes)
 	}
 	var invoicesLeft int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM invoices.invoices`).Scan(&invoicesLeft); err != nil || invoicesLeft != 3 {

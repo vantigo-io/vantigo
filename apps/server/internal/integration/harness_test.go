@@ -28,7 +28,12 @@ import (
 // would only add a schema nothing reads. The one test that is about what
 // customers answers — its default bill rate pricing time (rates_test.go) —
 // composes the real module instead, and Compose then replaces the fake with
-// customers' own directory, exactly as it does in `cmd/vantigo`.
+// customers' own directory, exactly as it does in `cmd/vantigo`. So do the
+// invoices tests (invoices_test.go), which compose customers and invoices
+// and give the installation what a send needs beyond the database: a real
+// file-system object store over a temporary directory, where the issue
+// stores the PDF the send attaches, and the smtp driver with the SMTP seam
+// (modtest.WithSMTPSend) recording each envelope instead of dialing out.
 //
 // That is the whole point. Each module's own suite hands the other side an
 // imitation; here `Deps.Expenses` is the expenses module's own provider and
@@ -64,6 +69,24 @@ func moduleNamed(t *testing.T, name string) module.Module {
 	}
 	t.Fatalf("integration: no module named %q", name)
 	return module.Module{}
+}
+
+// anonymisationWorker is customers' anonymisation worker as worker mode
+// builds it: module.Workers over the named modules, so every module among
+// them that holds personal data has its slot in the worker's run.
+func anonymisationWorker(t *testing.T, h *modtest.Harness, names ...string) *customers.AnonymisationWorker {
+	t.Helper()
+	mods := make([]module.Module, 0, len(names))
+	for _, name := range names {
+		mods = append(mods, moduleNamed(t, name))
+	}
+	for _, w := range module.Workers(h.Deps(), mods...) {
+		if aw, ok := w.(*customers.AnonymisationWorker); ok {
+			return aw
+		}
+	}
+	t.Fatal("module.Workers built no anonymisation worker")
+	return nil
 }
 
 // newInstallation composes exactly the named modules, in the order given, the

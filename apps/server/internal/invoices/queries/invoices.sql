@@ -66,12 +66,11 @@ DELETE FROM invoices.invoices WHERE id = @id AND status = 'draft';
 -- gross) and paid (the live payments' sum) from one lateral join each, read
 -- once per row and handed to invoices.document_state with today, the Oslo
 -- business day the caller passes — never CURRENT_DATE. open_amount is gross
--- less both. The state filter runs the same call; CountInvoices repeats the
+-- less both; the two themselves are not selected, since the list answers
+-- neither. The state filter runs the same call; CountInvoices repeats the
 -- joins and the predicate word for word, so the total counts what the page
 -- shows.
 SELECT sqlc.embed(i),
-       coalesce(cr.credited, 0)::numeric(14,2) AS credited,
-       coalesce(pd.paid, 0)::numeric(14,2)     AS paid,
        (i.gross_total - coalesce(cr.credited, 0) - coalesce(pd.paid, 0))::numeric(14,2) AS open_amount,
        invoices.document_state(i.kind, i.status, i.gross_total, coalesce(cr.credited, 0), coalesce(pd.paid, 0), i.due_date, @today::date)::text AS state
 FROM invoices.invoices i

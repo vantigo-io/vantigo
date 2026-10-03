@@ -51,7 +51,7 @@ var errNoSuchPayment = errors.New("invoices: no such payment on the invoice")
 // within the document bound, the reference and the note within their columns.
 // It answers the row less what the handler fills in — the invoice, the
 // currency, who and when.
-func parsePayment(req gen.InvoicesPaymentRequest, issueDate, today time.Time) (store.InsertPaymentParams, map[string][]string) {
+func parsePayment(req gen.InvoicesPaymentRequest, issueDate, today time.Time) (store.InsertPaymentParams, map[string][]string, error) {
 	var errs map[string][]string
 	add := func(field, msg string) {
 		if msg != "" {
@@ -61,6 +61,10 @@ func parsePayment(req gen.InvoicesPaymentRequest, issueDate, today time.Time) (s
 	p := store.InsertPaymentParams{Reference: optionalText(req.Reference), Note: optionalText(req.Note)}
 	paidOn := utcDay(req.PaidOn.Time)
 	switch {
+	case req.PaidOn.IsZero():
+		// Absent from the body, it decodes as the zero day, which the floor
+		// below would answer with a message about the issue date.
+		add("paidOn", "A payment needs the day it was received")
 	case paidOn.Before(issueDate):
 		add("paidOn", "A payment is received on or after the invoice's issue date, "+issueDate.Format(time.DateOnly))
 	case paidOn.After(today):
@@ -70,15 +74,17 @@ func parsePayment(req gen.InvoicesPaymentRequest, issueDate, today time.Time) (s
 	amt, msg := amount("An amount", req.Amount, 2, zero, true, maxGrossTotal)
 	add("amount", msg)
 	if amt != nil {
+		// amount() has held it to two decimals within the bound, so this
+		// cannot fail on the caller's input: a failure is the server's.
 		n, err := numericFromRat(amt, 2)
 		if err != nil {
-			add("amount", "An amount is a number")
+			return store.InsertPaymentParams{}, nil, fmt.Errorf("invoices: a payment's amount as numeric: %w", err)
 		}
 		p.Amount = n
 	}
 	add("reference", maxLength("A reference", p.Reference, 100))
 	add("note", maxLength("The note", p.Note, 500))
-	return p, errs
+	return p, errs, nil
 }
 
 // openOf is what is open on an issued invoice — gross less what its issued
@@ -121,7 +127,10 @@ func (s *server) PostInvoicesByIdPayments(ctx context.Context, req gen.PostInvoi
 		return gen.PostInvoicesByIdPayments409ApplicationProblemPlusJSONResponse(conflict(codeInvoiceDraft, cannotRegisterTitle,
 			"A draft is not a sales document: issue it before registering a payment against it.")), nil
 	}
-	payment, errs := parsePayment(*req.Body, inv.IssueDate.Time, businessDay(s.deps.Clock()))
+	payment, errs, err := parsePayment(*req.Body, inv.IssueDate.Time, businessDay(s.deps.Clock()))
+	if err != nil {
+		return nil, err
+	}
 	if errs != nil {
 		return gen.PostInvoicesByIdPayments400ApplicationProblemPlusJSONResponse(invalid(invalidPaymentTitle, errs)), nil
 	}
