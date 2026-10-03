@@ -23,14 +23,14 @@ din:
 
 | App | Områder |
 | --- | --- |
-| Kunder | Kunder, Kontakter, Oppfølginger |
-| Prosjekter | Prosjekter, Mine oppgaver, Økonomi |
-| Timer | Min uke, Godkjenninger, Personer, Innstillinger |
-| Utlegg | Mine utlegg, Godkjenninger, Refusjoner, Innstillinger |
-| Fakturaer | Fakturaer, Journal, Innstillinger |
-| Kommunikasjon | Innboks, Kanaler, Sperrelister |
-| Produkter | Produkter, Kategorier, Avgiftskategorier |
-| Energi | Målepunkter |
+| [Kunder](/nb/user/customers/) | Kunder, Kontakter, Oppfølginger |
+| [Prosjekter](/nb/user/projects/) | Prosjekter, Mine oppgaver, Prosjektøkonomi |
+| [Timer](/nb/user/time/) | Min uke, Godkjenning, Personer, Timeinnstillinger |
+| [Utlegg](/nb/user/expenses/) | Mine utlegg, Godkjenning av utlegg, Refusjoner, Utleggsinnstillinger |
+| [Fakturaer](/nb/user/invoices/) | Fakturaer, Fakturajournal, Fakturainnstillinger |
+| [Kommunikasjon](/nb/user/communications/) | Innboks, Kanaler, Blokkeringer |
+| [Produkter](/nb/user/products/) | Produkter, Kategorier, Avgiftskategorier |
+| [Energi](/nb/user/energy/) | Målepunkter |
 
 ## Søk
 
@@ -46,6 +46,8 @@ språk) og sikkerheten din (passord, tofaktorautentisering, passnøkler).
 Er du eier av arbeidsområdet, fører den samme menyen til **Administrasjon av
 arbeidsområdet**: brukere, invitasjoner, og roller og tilgang. En systemadministrator
 ser i tillegg **Systemadministrasjon**.
+
+Innlogging, invitasjoner, passord, tofaktorautentisering og passnøkler er dekket i [Kom i gang](/nb/user/getting-started/); brukere, invitasjoner og roller i [Administrasjon av arbeidsområdet](/nb/user/workspace-administration/).
 
 ## Språk
 

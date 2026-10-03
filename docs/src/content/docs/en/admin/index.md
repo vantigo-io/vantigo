@@ -15,10 +15,9 @@ application.
 ## Where to start
 
 - **Install.** The quickest route is the ready-made Docker Compose stack: pre-built
-  images, a one-shot migration job and the application on port 8080. Until the
-  installation guide moves here, follow
-  [deploy/compose/README.md](https://github.com/vantigo-io/vantigo/blob/main/deploy/compose/README.md),
-  which also covers reverse proxies, health probes, the database connection budget,
+  images, a one-shot migration job and the application on port 8080. The
+  [installation guide](/en/admin/installation/) takes you from the first start to
+  production: reverse proxies, health probes, the database connection budget,
   background workers and upgrades.
 - **Identity and sign-in.** [Identity, authentication and deployment](/en/admin/authentication/)
   explains local accounts, the environment-configured OIDC provider, email, proxy trust

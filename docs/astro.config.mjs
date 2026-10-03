@@ -76,6 +76,8 @@ export default defineConfig({
           // it; links from nb pages into the reference therefore point at /en/.
           errorOnFallbackPages: false,
           errorOnInconsistentLocale: false,
+          // The installation guide legitimately points at http://localhost:8080.
+          errorOnLocalLinks: false,
         }),
       ],
     }),

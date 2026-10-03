@@ -15,10 +15,9 @@ applikasjonen.
 ## Hvor du begynner
 
 - **Installer.** Raskeste vei er den ferdige Docker Compose-stacken: ferdigbygde images,
-  en engangsjobb for migrering og applikasjonen på port 8080. Inntil
-  installasjonsveiledningen flyttes hit, følg
-  [deploy/compose/README.md](https://github.com/vantigo-io/vantigo/blob/main/deploy/compose/README.md),
-  som også dekker omvendt proxy, helsesjekker, databasens tilkoblingsbudsjett,
+  en engangsjobb for migrering og applikasjonen på port 8080.
+  [Installasjonsveiledningen](/nb/admin/installation/) tar deg fra første oppstart til
+  produksjon: omvendt proxy, helsesjekker, databasens tilkoblingsbudsjett,
   bakgrunnsjobber og oppgradering.
 - **Identitet og innlogging.** [Identitet, autentisering og utrulling](/nb/admin/authentication/)
   forklarer lokale kontoer, OIDC-leverandøren som konfigureres i miljøet, e-post,

@@ -95,7 +95,8 @@ vantigo/
 ├── openapi/                         # The API contract: one OpenAPI file per module
 ├── deploy/compose/                  # Ready-made Docker Compose stack
 ├── scripts/                         # Native artifact, image and smoke-test scripts
-├── tools/                           # The OpenAPI client generator and the i18n checks
+├── tools/                           # The OpenAPI client generator, the i18n checks and the docs coverage check
+├── docs/                            # The documentation site (Starlight, en + nb) and the design specs and plans
 └── assets/                          # Shared branding assets
 ```
 
@@ -629,6 +630,18 @@ Some Go files cite a `.cs` path in a comment (`.../SomeEndpoints.cs:117`). Those
 refer to the pre-cutover .NET tree, which was deleted at the cutover and is retrievable
 from git history. They are kept deliberately: the citation is often the only record of
 *why* a behaviour is shaped the way it is.
+
+## Documentation
+
+The documentation site lives in [`docs/`](docs/README.md) and is published at
+<https://docs.vantigo.io>. A change that alters what Vantigo does — a behaviour, a
+setting, an endpoint, a permission, a screen — lands together with the change to the
+pages that describe it, in both English and Norwegian for the user and administration
+guides. Every page lists the paths it documents in its `sources` frontmatter, and
+`mise run docs:check` (CI runs it on every pull request) fails a change under a covered
+path that touches no page. The rule, the page map and the writing conventions are in
+[AGENTS.md](AGENTS.md) and the site's own
+[documentation guide](docs/src/content/docs/en/contributing/documentation.md).
 
 ## Commit conventions
 
