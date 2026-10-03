@@ -328,7 +328,8 @@ export const allNavSections: readonly NavSection[] = apps.flatMap((app) => app.n
 export const spotlightNavSections: readonly NavSection[] = [
   { items: [{ label: "navigation.dashboard", to: "/dashboard", icon: IconLayoutDashboard }] },
   ...allNavSections,
-  ...accountMenuSections,
+  // External destinations open a new tab, which is not what a Spotlight jump does.
+  ...accountMenuSections.map((section) => ({ ...section, items: section.items.filter((item) => !item.external) })),
 ];
 
 /**

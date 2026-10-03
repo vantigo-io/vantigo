@@ -343,3 +343,46 @@ func TestNew_APIPanicIsASanitisedProblemCorrelatedWithTheLog(t *testing.T) {
 		t.Errorf("log does not carry the panic and trace id %s: %s", p.TraceID, f.logs.String())
 	}
 }
+
+// The documentation site is served under /docs beside the SPA, with the
+// site's own content security policy in place of the application's, and
+// under the base path when one is set — every other security header stays.
+func TestNew_ServesTheDocumentationUnderDocs(t *testing.T) {
+	site := fstest.MapFS{
+		"index.html":    {Data: []byte(`<title>Vantigo documentation</title><a href="/docs/en/">English</a>`)},
+		"en/index.html": {Data: []byte(`<h1>Guide</h1>`)},
+		"404.html":      {Data: []byte(`<p>nothing here</p>`)},
+	}
+	f := newFixture(t, func(_ *config.Config, o *Options) { o.Docs = site })
+
+	rec := f.do(request(http.MethodGet, "https://vantigo.example.com/docs/en/"))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "<h1>Guide</h1>") {
+		t.Fatalf("status %d body %q", rec.Code, rec.Body.String())
+	}
+	if csp := rec.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "'wasm-unsafe-eval'") || strings.Contains(csp, f.index.InlineScriptHash) {
+		t.Errorf("CSP is not the site's own: %q", csp)
+	}
+	if got := rec.Header().Get("X-Frame-Options"); got != "DENY" {
+		t.Errorf("X-Frame-Options = %q", got)
+	}
+	if rec := f.do(request(http.MethodGet, "https://vantigo.example.com/docs")); rec.Code != http.StatusMovedPermanently || rec.Header().Get("Location") != "/docs/" {
+		t.Errorf("/docs: %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+	if rec := f.do(request(http.MethodGet, "https://vantigo.example.com/docs/nope/")); rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), "nothing here") {
+		t.Errorf("unknown page: %d %q", rec.Code, rec.Body.String())
+	}
+	// The SPA still owns everything else, including a path that merely
+	// starts with the same letters.
+	if rec := f.do(request(http.MethodGet, "https://vantigo.example.com/documents")); !strings.Contains(rec.Body.String(), "window.__VANTIGO_APP__") {
+		t.Errorf("/documents is not the SPA: %q", rec.Body.String())
+	}
+
+	based := newFixture(t, func(cfg *config.Config, o *Options) { cfg.BasePath = "/vantigo"; o.Docs = site })
+	rec = based.do(request(http.MethodGet, "https://vantigo.example.com/vantigo/docs/"))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `href="/vantigo/docs/en/"`) {
+		t.Errorf("under the base path: %d %q", rec.Code, rec.Body.String())
+	}
+	if rec := based.do(request(http.MethodGet, "https://vantigo.example.com/vantigo/docs")); rec.Header().Get("Location") != "/vantigo/docs/" {
+		t.Errorf("redirect under the base path: %q", rec.Header().Get("Location"))
+	}
+}

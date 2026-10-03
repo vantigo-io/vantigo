@@ -192,6 +192,19 @@ Dersom en tilpasset frontend trenger en videre policy, sett `CSP_REPORT_ONLY=1` 
 sende `Content-Security-Policy-Report-Only` mens forskjellen avklares. Det slår av
 beskyttelsen, så det er en diagnostisk innstilling, ikke et sted å bli værende.
 
+### Dokumentasjonen under `/docs/`
+
+Den innebygde dokumentasjonssiden (se [Installasjon](/nb/admin/installation/#den-innebygde-dokumentasjonen))
+er et statisk bygg der sidene bærer Starlights inline tema- og navigasjonsskript og
+søket kjører Pagefinds WebAssembly, og ingen av delene tillates av den hash-baserte
+`script-src` ovenfor. Svar under `/docs/` erstatter derfor applikasjonens policy med
+sidens egen: `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'`,
+`style-src 'self' 'unsafe-inline'`, `img-src 'self' data:`, og de samme
+`default-src 'self'`, `frame-ancestors 'none'`, `object-src 'none'` og
+`form-action 'self'`. Sidene er et byggeartefakt uten brukerlevert innhold, så
+inline-skriptene er sidens egne. Navnet på hodet følger `CSP_REPORT_ONLY` som
+applikasjonens. Alle andre hoder i denne delen er uendret på de svarene.
+
 ## API-kontraktdokumentet
 
 Den kjørende tjeneren serverer den sammenslåtte kontrakten for sine **aktiverte**

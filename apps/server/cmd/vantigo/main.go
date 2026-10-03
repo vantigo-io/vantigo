@@ -39,6 +39,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/customers"
 	"github.com/vantigo-io/vantigo/server/internal/db"
+	"github.com/vantigo-io/vantigo/server/internal/docs"
 	"github.com/vantigo-io/vantigo/server/internal/energy"
 	"github.com/vantigo-io/vantigo/server/internal/expenses"
 	"github.com/vantigo-io/vantigo/server/internal/health"
@@ -438,6 +439,7 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 		handler = telemetry.HTTPHandler(server.New(server.Options{
 			Config: cfg,
 			Logger: logger,
+			Docs:   docs.Assets(),
 			Index:  index,
 			Assets: assets,
 			Health: healthHandler,

@@ -13,9 +13,11 @@ skal endre modulen, og den holdes i takt med koden: en endring i en moduls oppf�
 lander sammen med endringen i siden her.
 
 Referansen vedlikeholdes på engelsk, og sidene under viser den engelske teksten. Den
-genererte **API**-delen under den bygges fra OpenAPI-kontraktene i
+genererte **API**-referansen bygges fra OpenAPI-kontraktene i
 [`openapi/`](https://github.com/vantigo-io/vantigo/tree/main/openapi), ett dokument
-per modul, så den kan ikke drive fra det serveren faktisk tilbyr.
+per modul, så den kan ikke drive fra det serveren faktisk tilbyr. Den er en del av den
+offentlige siden på <https://docs.vantigo.io> og utelatt fra kopien en
+Vantigo-installasjon serverer under `/docs/`.
 
 ## Moduler
 

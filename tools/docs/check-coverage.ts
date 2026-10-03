@@ -32,17 +32,7 @@ const locales = ["en", "nb"] as const;
 /** Sections that must exist in every locale; the rest fall back to English. */
 const bilingualSections = ["user", "admin"];
 /** Changes here never need documentation on their own. */
-const ignoredPrefixes = [
-  "docs/",
-  ".github/",
-  ".husky/",
-  "tools/",
-  "scripts/",
-  "orchestration/",
-  ".omc/",
-  "assets/",
-  "node_modules/",
-];
+const ignoredPrefixes = ["docs/", ".github/", ".husky/", "tools/", "scripts/", ".omc/", "assets/", "node_modules/"];
 const ignoredFiles = new Set([
   "bun.lock",
   "package.json",

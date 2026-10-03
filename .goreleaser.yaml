@@ -18,10 +18,11 @@ dist: dist/goreleaser
 
 before:
   hooks:
-    # The SPA must sit in the go:embed directory before the builds run.
-    # Callers restore the placeholder afterwards (scripts/restore-embed-overlay.sh):
-    # GoReleaser OSS has no after hooks.
-    - bash scripts/spa-embed-overlay.sh
+    # The SPA and the documentation must sit in the go:embed directories
+    # before the builds run; the version labels the documentation's banner.
+    # Callers restore the placeholders afterwards
+    # (scripts/restore-embed-overlay.sh): GoReleaser OSS has no after hooks.
+    - bash scripts/spa-embed-overlay.sh {{ .Version }}
 
 builds:
   - id: vantigo

@@ -4,6 +4,8 @@ description: Apps, the sidebar, the dashboard, search and your account.
 sidebar:
   order: 0
   label: Overview
+sources:
+  - apps/host/frontend
 ---
 
 Vantigo gathers the modules a business needs into one application. Which modules you
@@ -43,6 +45,8 @@ screen you know the name of.
 
 The avatar menu at the top right leads to **Settings**, with your profile (name,
 language) and your security (password, multi-factor authentication, passkeys).
+**Help** in the same menu opens this documentation, in your language, as the copy
+built into the Vantigo you are using, so it always describes the version you have.
 
 If you are an owner of the workspace, the same menu leads to **Workspace
 administration**: users, invitations, and roles and access. A system administrator

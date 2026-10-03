@@ -115,6 +115,14 @@ curl -fsS -D "$TMP/asset-headers" -o /dev/null "$base$asset"
 grep -qi '^cache-control: public, max-age=31536000, immutable' "$TMP/asset-headers" || fail "$asset is not cached as immutable"
 pass "hashed asset $asset"
 
+curl -fsS -D "$TMP/docs-headers" -o "$TMP/docs" "$base/docs/en/user/"
+if grep -q 'built without the documentation' "$TMP/docs"; then fail "the image embeds the documentation placeholder"; fi
+grep -q '<title>' "$TMP/docs" || fail "the documentation page has no title"
+grep -qi "^content-security-policy: .*'wasm-unsafe-eval'" "$TMP/docs-headers" || fail "the documentation carries no policy of its own"
+[ "$(status "$base/docs")" = 301 ] || fail "/docs does not redirect to /docs/"
+[ "$(status "$base/docs/en/does-not-exist/")" = 404 ] || fail "an unknown documentation path is not 404"
+pass "embedded documentation under /docs"
+
 [ "$(curl -s -D "$TMP/api-headers" -o /dev/null -w '%{http_code}' "$base/api/v1/does-not-exist")" = 404 ] ||
   fail "an unknown API path is not 404"
 grep -qi '^content-type: application/problem+json' "$TMP/api-headers" || fail "an unknown API path is not a problem document"

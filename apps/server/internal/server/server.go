@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
+	"github.com/vantigo-io/vantigo/server/internal/docs"
 	"github.com/vantigo-io/vantigo/server/internal/httpx"
 	"github.com/vantigo-io/vantigo/server/internal/security"
 	"github.com/vantigo-io/vantigo/server/internal/web"
@@ -21,6 +22,9 @@ type Options struct {
 	Logger *slog.Logger
 	Index  *web.Index
 	Assets fs.FS
+	// Docs is the embedded documentation site served under /docs. Nil serves
+	// the build compiled into this binary (the placeholder in a test build).
+	Docs   fs.FS
 	Health http.Handler
 	// API serves everything under /api/ and receives the full path. Nil
 	// answers every API path with a 404 problem.
@@ -48,8 +52,18 @@ func New(o Options) http.Handler {
 	}))
 	apiHandler := csrf.Handler(api)
 
+	documentation := o.Docs
+	if documentation == nil {
+		documentation = docs.Assets()
+	}
+	docsHandler := docs.Handler(documentation, o.Config.BasePath)
+
 	mux := http.NewServeMux()
 	mux.Handle("/health/", o.Health)
+	// Both patterns: the exact one keeps mux from answering /docs with its own
+	// redirect, which would not carry the base path.
+	mux.Handle(docs.Prefix, docsHandler)
+	mux.Handle(docs.Prefix+"/", docsHandler)
 	mux.Handle("/", web.Handler(o.Assets, o.Index))
 
 	// The API subtree is matched here rather than registered on mux, because

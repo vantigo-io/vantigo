@@ -74,7 +74,7 @@ const renderNavSections = (
   });
 
 const RootLayout = () => {
-  const { t } = useI18n("host");
+  const { t, locale } = useI18n("host");
   const location = useRouterState({ select: (state) => state.location });
   const pathname = location.pathname;
   const matches = useMatches();
@@ -149,6 +149,8 @@ const RootLayout = () => {
   // Sidebar links and the registry use bare path strings, as the nav catalog
   // always has; the router validates search params at runtime.
   const go = (to: string) => void navigate({ to: to as never });
+  // A server-served page beside the SPA, in the reader's language: /docs/nb/.
+  const openExternal = (to: string) => void window.open(appUrl(`${to}/${locale}/`), "_blank", "noopener,noreferrer");
   if (shouldShowMaintenance(systemStatus.data, session.isSystemAdmin)) {
     return <MaintenancePage message={systemStatus.data?.message} />;
   }
@@ -186,7 +188,7 @@ const RootLayout = () => {
                 items: section.items.map((item) => ({
                   label: t(item.label),
                   icon: item.icon,
-                  onSelect: () => go(item.to),
+                  onSelect: () => (item.external ? openExternal(item.to) : go(item.to)),
                 })),
               }))}
               onSignOut={() => logout.mutate()}

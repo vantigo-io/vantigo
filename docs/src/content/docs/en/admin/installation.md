@@ -345,6 +345,22 @@ the matching SPA without a rebuild. Trust exactly the proxy in front of you with
 `TRUSTED_PROXY_HOPS` and `TRUSTED_PROXY_CIDRS`, or the forwarded scheme, host and
 client-address headers are ignored.
 
+## The built-in documentation
+
+Every image carries this documentation, built for exactly the version it ships, and
+serves it at `/docs/` beside the application (`/docs/en/` and `/docs/nb/`, under the
+base path when one is set). It needs no network and no sign-in, and the avatar menu's
+**Help** opens it in the reader's language. The public site at
+<https://docs.vantigo.io> describes the newest development version instead; a line
+under the header of every page says which Vantigo it describes.
+
+The pages are static files inside the binary: no setting enables or disables them,
+and they add a few megabytes to the image. The generated API reference is left out of
+the embedded copy and lives on the public site only. Because the site's own scripts
+run inline and its search runs WebAssembly, responses under `/docs/` carry the site's
+own content security policy instead of the application's; see
+[Transport security and browser hardening](/en/admin/transport-security/#browser-security-headers).
+
 ## Email and observability
 
 Identity invitations and password recovery use the `MAIL_DRIVER` and `SMTP_*`

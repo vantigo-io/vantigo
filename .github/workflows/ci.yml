@@ -174,7 +174,12 @@ jobs:
 
       - name: 🏗 Build the site
         working-directory: docs
-        run: bun run build
+        env:
+          # The banner names the build: main@<sha> on the public site, a
+          # preview label on a pull request.
+          LABEL: ${{ github.event_name == 'push' && 'main' || 'preview' }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: DOCS_VERSION="$LABEL@${SHA:0:7}" bun run build
 
       - name: 📖 Documentation covers the change
         if: github.event_name == 'pull_request'

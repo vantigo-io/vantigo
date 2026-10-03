@@ -6,6 +6,9 @@ sidebar:
 sources:
   - docs
   - tools/docs
+  - apps/server/internal/docs
+  - scripts/spa-embed-overlay.sh
+  - scripts/restore-embed-overlay.sh
 ---
 
 This site is the documentation for Vantigo, built with
@@ -34,6 +37,24 @@ state for the reference and contributing sections.
 mise run docs:dev      # http://localhost:4321 with live reload
 mise run docs:check    # the production build, which fails on a broken link, then the coverage check
 ```
+
+## Two builds of the same site
+
+The site is built twice from the same content:
+
+- **The public site**, docs.vantigo.io, built by CI from `main` with the base path
+  `/`, the generated API reference and the link validator. Its banner says
+  `main@<commit>`.
+- **The embedded copy** inside every Vantigo image, built by
+  `scripts/spa-embed-overlay.sh` with `DOCS_BASE=/docs`, `DOCS_EMBED=1` (no API
+  reference, which is 74 MB of generated pages) and `DOCS_VERSION=<release>`, and
+  compiled into the binary from `apps/server/internal/docs/dist` the same way the
+  SPA is. The server serves it at `/docs/` with the site's own content security
+  policy and, under a base path, rewrites the baked `/docs/` URLs on the way out.
+
+Links in pages are written as site paths without a base (`/en/user/`); a rehype plugin
+in the Astro config prefixes them with the base at build time, so a page never needs
+to know which build it is in.
 
 ## The rule: documentation changes with the code
 

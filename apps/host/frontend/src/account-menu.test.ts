@@ -17,12 +17,12 @@ const visible = (overrides: Parameters<typeof context>[0] = {}) =>
 
 describe("account menu catalog", () => {
   it("shows a plain member only their own account section", () => {
-    expect(visible()).toEqual([{ label: "navigation.accountSection", items: ["/settings"] }]);
+    expect(visible()).toEqual([{ label: "navigation.accountSection", items: ["/settings", "/docs"] }]);
   });
 
   it("adds the workspace section for owners and authorization managers", () => {
     expect(visible({ isOwner: true })).toEqual([
-      { label: "navigation.accountSection", items: ["/settings"] },
+      { label: "navigation.accountSection", items: ["/settings", "/docs"] },
       { label: "navigation.workspaceSection", items: ["/workspace/overview"] },
     ]);
     expect(visible({ canManageAuthorization: true })[1]).toEqual({
