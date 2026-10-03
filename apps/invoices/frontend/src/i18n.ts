@@ -373,7 +373,8 @@ export const invoicesCatalog = {
     "refusal.invoice_issued": "The document is already issued.",
     "refusal.invoice_changed": "The invoice changed; try again.",
     "refusal.invoice_fully_credited": "The invoice is already credited in full.",
-    "refusal.storage_unavailable": "The document store is unavailable, so nothing can be issued or downloaded now.",
+    "refusal.storage_unavailable":
+      "The document store is unavailable, so nothing can be issued, downloaded or sent now.",
     "refusal.invoice_draft": "A draft has no document yet; preview it instead.",
     "refusal.credit_note_not_creditable": "A credit note cannot itself be credited.",
     "refusal.series_locked": "Documents are issued from this series, so its start can no longer change.",
@@ -391,8 +392,9 @@ export const invoicesCatalog = {
     "refusal.customer_anonymised": "The customer has been anonymised and is not contacted again.",
     "refusal.no_invoice_email": "The customer has no invoice e-mail. Enter an address to send to.",
     "refusal.mail_unavailable": "This installation cannot send e-mail: SMTP is not configured.",
-    "refusal.mail_failed": "The mail server did not take the e-mail. Nothing was sent; try again later.",
-    "refusal.rateLimited": "Too many requests in a short time; wait a minute and try again.",
+    "refusal.mail_failed":
+      "The mail server did not confirm the e-mail. Nothing was recorded; it may still have arrived. Check with the customer before sending again.",
+    "refusal.rateLimited": "Too many requests in a short time; wait ten minutes and try again.",
   },
   nb: {
     invoices: "Fakturaer",
@@ -767,7 +769,8 @@ export const invoicesCatalog = {
     "refusal.invoice_issued": "Dokumentet er allerede utstedt.",
     "refusal.invoice_changed": "Fakturaen er endret; prøv igjen.",
     "refusal.invoice_fully_credited": "Fakturaen er allerede kreditert i sin helhet.",
-    "refusal.storage_unavailable": "Dokumentlageret er utilgjengelig, så ingenting kan utstedes eller lastes ned nå.",
+    "refusal.storage_unavailable":
+      "Dokumentlageret er utilgjengelig, så ingenting kan utstedes, lastes ned eller sendes nå.",
     "refusal.invoice_draft": "Et utkast har ikke noe dokument ennå; forhåndsvis det i stedet.",
     "refusal.credit_note_not_creditable": "En kreditnota kan ikke selv krediteres.",
     "refusal.series_locked": "Det er utstedt dokumenter i denne serien, så startnummeret kan ikke lenger endres.",
@@ -785,8 +788,9 @@ export const invoicesCatalog = {
     "refusal.customer_anonymised": "Kunden er anonymisert, og det sendes ikke mer til den.",
     "refusal.no_invoice_email": "Kunden har ingen faktura-e-post. Skriv inn en adresse å sende til.",
     "refusal.mail_unavailable": "Denne installasjonen kan ikke sende e-post: SMTP er ikke satt opp.",
-    "refusal.mail_failed": "E-postserveren tok ikke imot e-posten. Ingenting ble sendt; prøv igjen senere.",
-    "refusal.rateLimited": "For mange forespørsler på kort tid; vent et minutt og prøv igjen.",
+    "refusal.mail_failed":
+      "E-postserveren bekreftet ikke sendingen. Ingenting ble registrert; den kan likevel ha kommet fram. Sjekk med kunden før du sender på nytt.",
+    "refusal.rateLimited": "For mange forespørsler på kort tid; vent ti minutter og prøv igjen.",
   },
 } satisfies CatalogResources;
 

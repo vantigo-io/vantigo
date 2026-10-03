@@ -90,10 +90,19 @@ describe("a refusal's words", () => {
   it("words the rate limiter's rate_limited, whose body is not a problem document", () => {
     const limited = Object.assign(new Error("Too many requests"), { status: 429, code: "rate_limited" });
     expect(refusalMessage(limited, translate("en"))).toBe(
-      "Too many requests in a short time; wait a minute and try again.",
+      "Too many requests in a short time; wait ten minutes and try again.",
     );
     expect(refusalMessage(limited, translate("nb"))).toBe(
-      "For mange forespørsler på kort tid; vent et minutt og prøv igjen.",
+      "For mange forespørsler på kort tid; vent ti minutter og prøv igjen.",
+    );
+  });
+
+  it("words a failed send as one that may still have arrived, in Norwegian too", () => {
+    expect(refusalMessage(conflict("mail_failed"), translate("en"))).toBe(
+      "The mail server did not confirm the e-mail. Nothing was recorded; it may still have arrived. Check with the customer before sending again.",
+    );
+    expect(refusalMessage(conflict("mail_failed"), translate("nb"))).toBe(
+      "E-postserveren bekreftet ikke sendingen. Ingenting ble registrert; den kan likevel ha kommet fram. Sjekk med kunden før du sender på nytt.",
     );
   });
 

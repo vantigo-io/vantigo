@@ -160,7 +160,7 @@ describe("the payments card", () => {
     const reads = readsOf(fetchMock, "/api/v1/invoices/1001");
     pending.answer(jsonResponse(200, partlyPaid()));
     expect(await screen.findByText("Payment removed")).toBeInTheDocument();
-    // Read again after the removal, as after every write (reading 5b).
+    // Read again after the removal, as after every write (design D4).
     await waitFor(() => expect(readsOf(fetchMock, "/api/v1/invoices/1001")).toBeGreaterThan(reads));
   });
 

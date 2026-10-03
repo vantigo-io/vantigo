@@ -377,7 +377,7 @@ describe("refusals", () => {
     await userEvent.click(issue);
     await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Issue" }));
     expect(
-      await screen.findByText("The document store is unavailable, so nothing can be issued or downloaded now."),
+      await screen.findByText("The document store is unavailable, so nothing can be issued, downloaded or sent now."),
     ).toBeInTheDocument();
     expect(screen.queryByText("The server's English.")).not.toBeInTheDocument();
   });
@@ -474,7 +474,7 @@ describe("the PDF", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Download PDF" }));
     expect(await screen.findByText("Could not open the PDF")).toBeInTheDocument();
     expect(
-      screen.getByText("The document store is unavailable, so nothing can be issued or downloaded now."),
+      screen.getByText("The document store is unavailable, so nothing can be issued, downloaded or sent now."),
     ).toBeInTheDocument();
   });
 });

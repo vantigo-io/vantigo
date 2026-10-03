@@ -42,7 +42,7 @@ describe("the Send dialog", () => {
     pending.answer(jsonResponse(200, sentTo("faktura@acme.no")));
     expect(await screen.findByText("Sent to faktura@acme.no")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    // Read again after the send, as after every write (reading 5b).
+    // Read again after the send, as after every write (design D4).
     await waitFor(() => expect(readsOf(fetchMock, "/api/v1/invoices/1001")).toBeGreaterThan(reads));
   });
 
@@ -153,7 +153,11 @@ describe("the Send dialog", () => {
     [409, "no_invoice_email", "The customer has no invoice e-mail. Enter an address to send to."],
     [409, "customer_anonymised", "The customer has been anonymised and is not contacted again."],
     [503, "mail_unavailable", "This installation cannot send e-mail: SMTP is not configured."],
-    [502, "mail_failed", "The mail server did not take the e-mail. Nothing was sent; try again later."],
+    [
+      502,
+      "mail_failed",
+      "The mail server did not confirm the e-mail. Nothing was recorded; it may still have arrived. Check with the customer before sending again.",
+    ],
   ] as const)("says a %i %s in the reader's language", async (status, code, words) => {
     server(() => issued(), { "POST /api/v1/invoices/1001/send": () => refusal(status, code) });
     renderRoute("/invoices/1001");
@@ -178,7 +182,7 @@ describe("the Send dialog", () => {
     const dialog = await openSendDialog();
     await userEvent.click(within(dialog).getByRole("button", { name: "Send" }));
     expect(
-      await screen.findByText("Too many requests in a short time; wait a minute and try again."),
+      await screen.findByText("Too many requests in a short time; wait ten minutes and try again."),
     ).toBeInTheDocument();
     expect(screen.queryByText("Too many requests")).not.toBeInTheDocument();
   });
@@ -235,6 +239,38 @@ describe("the Send dialog", () => {
 
     expect(await screen.findByText("Sent to faktura@acme.no")).toBeInTheDocument();
     expect(requestTo(fetchMock, "POST", "/api/v1/invoices/1001/send")).toEqual({ recipient: "faktura@acme.no" });
+  });
+
+  // An emptied field must not fall back to the profile's address unseen.
+  it("does not send with the recipient emptied while the customer has an address", async () => {
+    const fetchMock = server(() => issued());
+    renderRoute("/invoices/1001");
+
+    const dialog = await openSendDialog();
+    const recipient = within(dialog).getByRole("textbox", { name: "Recipient" });
+    await userEvent.clear(recipient);
+    expect(within(dialog).getByRole("button", { name: "Send" })).toBeDisabled();
+    await userEvent.type(recipient, "   ");
+    expect(within(dialog).getByRole("button", { name: "Send" })).toBeDisabled();
+    expect(requestTo(fetchMock, "POST", "/api/v1/invoices/1001/send")).toBeUndefined();
+    await userEvent.clear(recipient);
+    await userEvent.type(recipient, "faktura@acme.no");
+    expect(within(dialog).getByRole("button", { name: "Send" })).toBeEnabled();
+  });
+
+  // The server answers customerAnonymised in place of the send defaults: the
+  // dialog says why, offers no send, and never says the address could not be read.
+  it("offers no send for an anonymised customer, and says why", async () => {
+    server(() => issued({ sendDefaults: undefined, customerAnonymised: true }));
+    renderRoute("/invoices/1001");
+
+    const dialog = await openSendDialog();
+    expect(
+      within(dialog).getByText("The customer has been anonymised and is not contacted again."),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("textbox", { name: "Recipient" })).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/could not be read/)).not.toBeInTheDocument();
   });
 
   it("is offered for an issued credit note too", async () => {

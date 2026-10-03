@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { customerSearch, jsonResponse, problemResponse, sent } from "../test/api";
 import { stubFetch } from "../test/fetch";
 import { draft, listPage, meta } from "../test/fixtures";
@@ -192,6 +192,38 @@ describe("the invoice list", () => {
         true,
       ),
     );
+  });
+
+  // At a phone's width the six states do not fit a segmented control: they
+  // are a Select, which asks the server the same.
+  it("offers the states as a Select at phone width", async () => {
+    const phone = vi.spyOn(window, "matchMedia").mockImplementation(
+      (query: string) =>
+        ({
+          matches: query === "(max-width: 48em)",
+          media: query,
+          onchange: null,
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        }) as unknown as MediaQueryList,
+    );
+    try {
+      const fetchMock = server();
+      renderRoute("/invoices");
+      await screen.findByText("Kari Nordmann");
+
+      expect(screen.queryByRole("radiogroup", { name: "State" })).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole("combobox", { name: "State" }));
+      await userEvent.click(await screen.findByRole("option", { name: "Overdue" }));
+      await waitFor(() =>
+        expect(fetchMock.actualCalls.some(([url]) => path(url) === "/api/v1/invoices?page=1&state=overdue")).toBe(true),
+      );
+    } finally {
+      phone.mockRestore();
+    }
   });
 
   it("says when the list could not be loaded", async () => {

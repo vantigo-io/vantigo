@@ -1,6 +1,17 @@
-import { Alert, Button, Group, Modal, Pagination, SegmentedControl, Stack, Text, TextInput } from "@mantine/core";
+import {
+  Alert,
+  Button,
+  Group,
+  Modal,
+  Pagination,
+  SegmentedControl,
+  Select,
+  Stack,
+  Text,
+  TextInput,
+} from "@mantine/core";
 import { DateInput } from "@mantine/dates";
-import { useDebouncedValue } from "@mantine/hooks";
+import { useDebouncedValue, useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconPlus } from "@tabler/icons-react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -51,6 +62,12 @@ export const InvoicesPage = ({ canViewCustomers, userDisplayName }: InvoicesPage
   const set = (next: Partial<InvoiceListFilters>) =>
     setFilters((current) => ({ ...current, ...next, page: next.page ?? 1 }));
   const canCreate = Boolean(meta.data?.capabilities.canCreate) && canViewCustomers;
+  // Mantine's sm breakpoint.
+  const phone = useMediaQuery("(max-width: 48em)");
+  const stateOptions = [
+    { value: "all", label: t("allStates") },
+    ...filterStates.map((state) => ({ value: state, label: t(`state.${state}`) })),
+  ];
 
   return (
     <Stack gap="lg">
@@ -96,15 +113,23 @@ export const InvoicesPage = ({ canViewCustomers, userDisplayName }: InvoicesPage
             { value: "credit_note", label: t("kindCreditNote") },
           ]}
         />
-        <SegmentedControl
-          aria-label={t("state")}
-          value={filters.state ?? "all"}
-          onChange={(v) => set({ state: v === "all" ? undefined : v })}
-          data={[
-            { value: "all", label: t("allStates") },
-            ...filterStates.map((state) => ({ value: state, label: t(`state.${state}`) })),
-          ]}
-        />
+        {/* Six options do not fit a phone's width: below sm they are a Select. */}
+        {phone ? (
+          <Select
+            label={t("state")}
+            value={filters.state ?? "all"}
+            onChange={(v) => set({ state: !v || v === "all" ? undefined : v })}
+            allowDeselect={false}
+            data={stateOptions}
+          />
+        ) : (
+          <SegmentedControl
+            aria-label={t("state")}
+            value={filters.state ?? "all"}
+            onChange={(v) => set({ state: v === "all" ? undefined : v })}
+            data={stateOptions}
+          />
+        )}
         {canViewCustomers && (
           <CustomerPicker
             label={t("customerFilter")}
