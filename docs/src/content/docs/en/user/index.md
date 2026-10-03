@@ -24,14 +24,14 @@ yours:
 
 | App | Areas |
 | --- | --- |
-| Customers | Customers, Contacts, Follow-ups |
-| Projects | Projects, My tasks, Economy |
-| Time | My week, Approvals, People, Settings |
-| Expenses | My expenses, Approvals, Reimbursements, Settings |
-| Invoices | Invoices, Journal, Settings |
-| Communications | Inbox, Channels, Suppressions |
-| Products | Products, Categories, Tax categories |
-| Energy | Metering points |
+| [Customers](/en/user/customers/) | Customers, Contacts, Follow-ups |
+| [Projects](/en/user/projects/) | Projects, My tasks, Project economy |
+| [Time](/en/user/time/) | My week, Approvals, People, Time settings |
+| [Expenses](/en/user/expenses/) | My expenses, Expense approvals, Reimbursements, Expense settings |
+| [Invoices](/en/user/invoices/) | Invoices, Invoice journal, Invoice settings |
+| [Communications](/en/user/communications/) | Inbox, Channels, Suppressions |
+| [Products](/en/user/products/) | Products, Categories, Tax categories |
+| [Energy](/en/user/energy/) | Metering points |
 
 ## Search
 
@@ -47,6 +47,8 @@ language) and your security (password, multi-factor authentication, passkeys).
 If you are an owner of the workspace, the same menu leads to **Workspace
 administration**: users, invitations, and roles and access. A system administrator
 additionally sees **System administration**.
+
+Signing in, invitations, passwords, multi-factor authentication and passkeys are covered in [Getting started](/en/user/getting-started/); users, invitations and roles in [Workspace administration](/en/user/workspace-administration/).
 
 ## Language
 
