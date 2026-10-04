@@ -135,8 +135,15 @@ func accessPointSettingsOf(row store.InvoicesAccessPointCredential) (accessPoint
 // meta reports. It writes on the pool, never inside a caller's transaction,
 // so a rolled-back operation still leaves the flag.
 func (s *server) flagUnreadableAccessPointKey(ctx context.Context) {
+	s.flagUnreadableAccessPointKeyOn(ctx, s.deps.Pool)
+}
+
+// flagUnreadableAccessPointKeyOn is flagUnreadableAccessPointKey writing
+// through db: the pool, or the events worker's lease connection — never a
+// transaction.
+func (s *server) flagUnreadableAccessPointKeyOn(ctx context.Context, db store.DBTX) {
 	s.deps.Logger.ErrorContext(ctx, "invoices: the stored access point key cannot be opened; it must be entered again")
-	if err := store.New(s.deps.Pool).MarkAccessPointRejected(ctx, s.deps.Clock()); err != nil {
+	if err := store.New(db).MarkAccessPointRejected(ctx, s.deps.Clock()); err != nil {
 		s.deps.Logger.ErrorContext(ctx, "invoices: flag the access point key as rejected", "error", err.Error())
 	}
 }

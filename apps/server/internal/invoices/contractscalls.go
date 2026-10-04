@@ -118,7 +118,14 @@ func (s *server) lookupReceiver(ctx context.Context, participant string) (peppol
 // reads the row on the pool: it is never called inside withLockedTx, and no
 // call on what it answers may be.
 func (s *server) accessPoint(ctx context.Context) (accesspoint.AccessPoint, error) {
-	row, err := store.New(s.deps.Pool).GetAccessPointCredentials(ctx)
+	return s.accessPointOn(ctx, s.deps.Pool)
+}
+
+// accessPointOn is accessPoint reading the credentials, and flagging an
+// unreadable key, through db: the events worker passes the connection its
+// advisory lease holds, so its cycle never asks the pool for a second one.
+func (s *server) accessPointOn(ctx context.Context, db store.DBTX) (accesspoint.AccessPoint, error) {
+	row, err := store.New(db).GetAccessPointCredentials(ctx)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 		return nil, errNoAccessPoint
@@ -131,7 +138,7 @@ func (s *server) accessPoint(ctx context.Context) (accesspoint.AccessPoint, erro
 	}
 	key, err := s.deps.Secrets.OpenString(accessPointCredentialPurpose, row.SecretCiphertext)
 	if err != nil || key == "" {
-		s.flagUnreadableAccessPointKey(ctx)
+		s.flagUnreadableAccessPointKeyOn(ctx, db)
 		return nil, errAccessPointKeyUnreadable
 	}
 	if row.Provider != providerStorecove {

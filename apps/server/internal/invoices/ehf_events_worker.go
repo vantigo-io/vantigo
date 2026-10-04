@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vantigo-io/vantigo/server/internal/invoices/accesspoint"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
@@ -94,8 +95,12 @@ func (w *EhfEventsWorker) RunCycle(ctx context.Context) (bool, error) {
 	if w.srvErr != nil {
 		return false, w.srvErr
 	}
-	return w.underLease(ctx, func(ctx context.Context) error {
-		q := store.New(w.deps.Pool)
+	return w.underLease(ctx, func(ctx context.Context, conn *pgxpool.Conn) error {
+		// Everything in the cycle runs on the lease's own connection: a
+		// second one from the pool, held while the lease is, would deadlock a
+		// pool as small as the lease workers are many (four at startup on a
+		// four-connection pool).
+		q := store.New(conn)
 		awaiting, err := q.AnyAwaitingEvents(ctx, w.now())
 		if err != nil {
 			return fmt.Errorf("invoices: read whether a transmission awaits an event: %w", err)
@@ -103,11 +108,11 @@ func (w *EhfEventsWorker) RunCycle(ctx context.Context) (bool, error) {
 		if !awaiting {
 			return nil
 		}
-		ap, err := w.srv.accessPoint(ctx)
+		ap, err := w.srv.accessPointOn(ctx, conn)
 		if err != nil {
 			w.logger().ErrorContext(ctx, "invoices: the access point cannot be opened; the event queue is not drained",
 				"worker", ehfEventsWorkerName, "error", err.Error())
-			w.flagRejected(ctx)
+			w.flagRejected(ctx, conn)
 			return nil
 		}
 		for range ehfEventsPerCycle {
@@ -121,12 +126,12 @@ func (w *EhfEventsWorker) RunCycle(ctx context.Context) (bool, error) {
 				if errors.Is(err, accesspoint.ErrUnauthorized) {
 					w.logger().ErrorContext(ctx, "invoices: the access point refused the key; the event queue is not drained",
 						"worker", ehfEventsWorkerName)
-					w.flagRejected(ctx)
+					w.flagRejected(ctx, conn)
 					return nil
 				}
 				return fmt.Errorf("invoices: read the access point's next event: %w", err)
 			}
-			w.clearRejected(ctx)
+			w.clearRejected(ctx, conn)
 			if !ok {
 				return nil
 			}
@@ -209,9 +214,11 @@ func sqlState(err error) string {
 }
 
 // underLease runs action holding the advisory lock on its own connection,
-// the customers re-check worker's shape: the unlock runs on a context
-// stripped of cancellation, and a failed unlock discards the connection.
-func (w *EhfEventsWorker) underLease(ctx context.Context, action func(context.Context) error) (bool, error) {
+// and hands action that connection: the cycle runs on it and asks the pool
+// for nothing else (the customers anonymisation worker's shape). The unlock
+// runs on a context stripped of cancellation, and a failed unlock discards
+// the connection.
+func (w *EhfEventsWorker) underLease(ctx context.Context, action func(context.Context, *pgxpool.Conn) error) (bool, error) {
 	conn, err := w.deps.Pool.Acquire(ctx)
 	if err != nil {
 		return false, fmt.Errorf("invoices: acquire a connection for the EHF events lease: %w", err)
@@ -235,17 +242,17 @@ func (w *EhfEventsWorker) underLease(ctx context.Context, action func(context.Co
 			_ = conn.Conn().Close(release)
 		}
 	}()
-	return true, action(ctx)
+	return true, action(ctx, conn)
 }
 
-func (w *EhfEventsWorker) flagRejected(ctx context.Context) {
-	if err := store.New(w.deps.Pool).MarkAccessPointRejected(ctx, w.now()); err != nil {
+func (w *EhfEventsWorker) flagRejected(ctx context.Context, db store.DBTX) {
+	if err := store.New(db).MarkAccessPointRejected(ctx, w.now()); err != nil {
 		w.logger().ErrorContext(ctx, "invoices: flag the access point key as rejected", "worker", ehfEventsWorkerName, "error", err.Error())
 	}
 }
 
-func (w *EhfEventsWorker) clearRejected(ctx context.Context) {
-	if err := store.New(w.deps.Pool).ClearAccessPointRejected(ctx); err != nil {
+func (w *EhfEventsWorker) clearRejected(ctx context.Context, db store.DBTX) {
+	if err := store.New(db).ClearAccessPointRejected(ctx); err != nil {
 		w.logger().WarnContext(ctx, "invoices: clear the access point key's refusal", "worker", ehfEventsWorkerName, "error", err.Error())
 	}
 }
