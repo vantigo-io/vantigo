@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"flag"
+	"math/big"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -276,6 +277,8 @@ func TestEHF_BuyerParty(t *testing.T) {
 		t.Errorf("foreign CompanyID = %+v, want SE5560360793 without a scheme", c)
 	}
 	expect(t, foreign, "SE", "cac:PostalAddress", "cac:Country", "cbc:IdentificationCode")
+	expect(t, foreign, "Stockholms län", "cac:PostalAddress", "cbc:CountrySubentity")
+	absent(t, party, "cac:PostalAddress", "cbc:CountrySubentity")
 
 	person := render(t, fixture(t, "invoice-person")).First("cac:AccountingCustomerParty", "cac:Party")
 	expect(t, person, "Kari Nordmann", "cac:PartyLegalEntity", "cbc:RegistrationName")
@@ -403,6 +406,106 @@ func TestEHF_TheSquaringRow(t *testing.T) {
 	expect(t, subs[1], "-0.03", "cbc:TaxAmount")
 	expect(t, subs[1], "15.00", "cac:TaxCategory", "cbc:Percent")
 	expect(t, render(t, fixture(t, "credit-note-squaring")), "24.97", "cac:TaxTotal", "cbc:TaxAmount")
+}
+
+// A VAT row with no line at its (category, rate) gets a synthetic zero line
+// after the real ones (D4, reading 20): BR-S-08 requires a line at an S
+// row's rate to exist before its ±1 tolerance applies, so the squaring row
+// alone would be fatal. The line is a zero quantity of C62 at a zero price,
+// named for the rounding in the document's language, numbered after the
+// highest position; it adds nothing to the totals.
+func TestEHF_ASquaringRowGetsAZeroLine(t *testing.T) {
+	t.Parallel()
+	d := fixture(t, "credit-note-squaring")
+	root := render(t, d)
+	lines := root.All("cac:CreditNoteLine")
+	if len(lines) != 2 {
+		t.Fatalf("%d lines, want the real one and a zero line", len(lines))
+	}
+	z := lines[1]
+	expect(t, z, "2", "cbc:ID")
+	if q := z.First("cbc:CreditedQuantity"); q.Text != "0.000" || q.Attr("unitCode") != "C62" {
+		t.Errorf("zero line quantity = %q %q", q.Text, q.Attr("unitCode"))
+	}
+	expect(t, z, "0.00", "cbc:LineExtensionAmount")
+	absent(t, z, "cac:AllowanceCharge")
+	expect(t, z, "Avrunding merverdiavgift 15 %", "cac:Item", "cbc:Name")
+	expect(t, z, "S", "cac:Item", "cac:ClassifiedTaxCategory", "cbc:ID")
+	expect(t, z, "15.00", "cac:Item", "cac:ClassifiedTaxCategory", "cbc:Percent")
+	expect(t, z, "0.0000", "cac:Price", "cbc:PriceAmount")
+
+	// BR-S-08's own expression, for every S row: a line at the row's rate
+	// exists, and the row's taxable amount is the sum of those lines' nets
+	// within ±1.
+	for _, sub := range root.All("cac:TaxTotal", "cac:TaxSubtotal") {
+		cat := sub.First("cac:TaxCategory")
+		if cat.Value("cbc:ID") != "S" {
+			continue
+		}
+		rate, taxable := rat(cat.Value("cbc:Percent")), rat(sub.Value("cbc:TaxableAmount"))
+		sum, found := new(big.Rat), false
+		for _, l := range lines {
+			c := l.First("cac:Item", "cac:ClassifiedTaxCategory")
+			if c.Value("cbc:ID") == "S" && rat(c.Value("cbc:Percent")).Cmp(rate) == 0 {
+				found = true
+				sum.Add(sum, rat(l.Value("cbc:LineExtensionAmount")))
+			}
+		}
+		diff := new(big.Rat).Sub(taxable, sum)
+		if !found || diff.Abs(diff).Cmp(big.NewRat(1, 1)) >= 0 {
+			t.Errorf("BR-S-08 at %s %%: a line exists = %v, taxable %s against lines %s", rate.FloatString(2), found, taxable.FloatString(2), sum.FloatString(2))
+		}
+	}
+	if rules, err := ehf.Invariants(mustRender(t, d), d); err != nil || len(rules) != 0 {
+		t.Errorf("Invariants = %v, %v", rules, err)
+	}
+
+	// Generic over the category, in English, after the highest position; a
+	// row with lines gets none.
+	g := fixture(t, "invoice-foreign-buyer")
+	g.Lines[0].ID = "7"
+	g.VAT = append(g.VAT, vat("E", "0", "0.00", "0.00", "Unntatt"), vat("O", "0", "0.00", "0.00", "Ikke registrert"))
+	lines = render(t, g).All("cac:InvoiceLine")
+	if len(lines) != 3 {
+		t.Fatalf("%d lines, want 3", len(lines))
+	}
+	expect(t, lines[1], "8", "cbc:ID")
+	expect(t, lines[1], "VAT rounding 0 %", "cac:Item", "cbc:Name")
+	expect(t, lines[1], "E", "cac:Item", "cac:ClassifiedTaxCategory", "cbc:ID")
+	expect(t, lines[1], "0.00", "cac:Item", "cac:ClassifiedTaxCategory", "cbc:Percent")
+	expect(t, lines[2], "9", "cbc:ID")
+	expect(t, lines[2], "O", "cac:Item", "cac:ClassifiedTaxCategory", "cbc:ID")
+	absent(t, lines[2], "cac:Item", "cac:ClassifiedTaxCategory", "cbc:Percent")
+	n := fixture(t, "credit-note-squaring")
+	n.VAT[1].Rate = rat("11.11")
+	expect(t, render(t, n).All("cac:CreditNoteLine")[1], "Avrunding merverdiavgift 11,11 %", "cac:Item", "cbc:Name")
+	for name, d := range fixtures(t) {
+		if name == "credit-note-squaring" {
+			continue
+		}
+		root := render(t, d)
+		if got := len(root.All("cac:InvoiceLine")) + len(root.All("cac:CreditNoteLine")); got != len(d.Lines) {
+			t.Errorf("%s: %d lines rendered, %d stored", name, got, len(d.Lines))
+		}
+	}
+}
+
+// Text is escaped, never written raw: a name, an address and a description
+// with XML's special characters read back as they were.
+func TestEHF_EscapesNamesAndAddresses(t *testing.T) {
+	t.Parallel()
+	d := fixture(t, "invoice-person")
+	d.Buyer.Name = `Hansen & Sønn <"AS"> 'x'`
+	d.Buyer.Address.Line1 = "Gate 1 & 2 <bak>"
+	d.Lines[0].Description = `Timer & reise <"fri">`
+	root := render(t, d)
+	party := root.First("cac:AccountingCustomerParty", "cac:Party")
+	expect(t, party, `Hansen & Sønn <"AS"> 'x'`, "cac:PartyLegalEntity", "cbc:RegistrationName")
+	expect(t, party, "Gate 1 & 2 <bak>", "cac:PostalAddress", "cbc:StreetName")
+	expect(t, root, `Timer & reise <"fri">`, "cac:InvoiceLine", "cac:Item", "cbc:Name")
+	if got := precheck(t, mustRender(t, d)); len(got) != 0 {
+		t.Errorf("Precheck = %v", got)
+	}
 }
 
 // The totals: net as the line extension and the tax-exclusive amount, gross

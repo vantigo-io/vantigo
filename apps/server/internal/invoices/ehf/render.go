@@ -4,6 +4,8 @@ import (
 	"encoding/base64"
 	"fmt"
 	"math/big"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -31,16 +33,19 @@ const (
 // The fixed words a document carries, in its language.
 type words struct {
 	due, creditTerms, invoicePDF, creditNotePDF, discount, dateLayout string
+	vatRounding, decimalPoint                                         string
 }
 
 var vocabulary = map[string]words{
 	"nb": {
 		due: "Forfall %s", creditTerms: "Kreditnota – beløpet godskrives",
 		invoicePDF: "Faktura (PDF)", creditNotePDF: "Kreditnota (PDF)", discount: "Rabatt", dateLayout: "02.01.2006",
+		vatRounding: "Avrunding merverdiavgift %s %%", decimalPoint: ",",
 	},
 	"en": {
 		due: "Due %s", creditTerms: "Credit note – the amount is credited",
 		invoicePDF: "Invoice (PDF)", creditNotePDF: "Credit note (PDF)", discount: "Discount", dateLayout: time.DateOnly,
+		vatRounding: "VAT rounding %s %%", decimalPoint: ".",
 	},
 }
 
@@ -248,7 +253,7 @@ func Render(d Document) ([]byte, error) {
 	w.amount("cbc:PayableAmount", d.GrossTotal, cur)
 	w.end("cac:LegalMonetaryTotal")
 
-	for _, l := range d.Lines {
+	for _, l := range append(slices.Clone(d.Lines), zeroLines(d, v)...) {
 		w.start(lineName)
 		w.leaf("cbc:ID", l.ID)
 		w.leaf(quantityName, decimal(l.Quantity, 3), attr("unitCode", UnitCode(l.Unit)))
@@ -275,6 +280,52 @@ func Render(d Document) ([]byte, error) {
 	}
 	w.end(root)
 	return w.bytes()
+}
+
+// zeroLines are the synthetic lines Render adds after the real ones, one
+// for every VAT row with no line at its (category, rate): a final credit
+// note's squaring row (a taxable amount of 0.00 and a small negative VAT)
+// has none, and BR-S-08 — fatal — requires a line at the row's rate to
+// exist before its ±1 tolerance applies (EHF and KID design D4, reading 20).
+// Each is a zero quantity of C62 at a zero price, so it adds nothing to any
+// sum; it is named for the rounding it carries, numbered after the highest
+// position. The Document, the stored truth, is unchanged.
+func zeroLines(d Document, v words) []Line {
+	next := len(d.Lines)
+	for _, l := range d.Lines {
+		if n, err := strconv.Atoi(l.ID); err == nil && n > next {
+			next = n
+		}
+	}
+	var out []Line
+	for _, row := range d.VAT {
+		covered := slices.ContainsFunc(d.Lines, func(l Line) bool {
+			return l.Category == row.Category && sameRate(l.Rate, row.Rate)
+		})
+		if covered {
+			continue
+		}
+		next++
+		rate := strings.TrimRight(strings.TrimRight(decimal(row.Rate, 2), "0"), ".")
+		zero := new(big.Rat)
+		out = append(out, Line{
+			ID: strconv.Itoa(next), Description: fmt.Sprintf(v.vatRounding, strings.Replace(rate, ".", v.decimalPoint, 1)),
+			Quantity: zero, UnitPrice: zero, DiscountPercent: zero, Gross: zero, Allowance: zero, Net: zero,
+			Category: row.Category, Rate: row.Rate,
+		})
+	}
+	return out
+}
+
+// sameRate compares two rates, a nil one as zero.
+func sameRate(a, b *big.Rat) bool {
+	if a == nil {
+		a = new(big.Rat)
+	}
+	if b == nil {
+		b = new(big.Rat)
+	}
+	return a.Cmp(b) == 0
 }
 
 // endpoint splits a participant id "<scheme>:<value>".

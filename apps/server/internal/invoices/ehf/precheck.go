@@ -36,6 +36,8 @@ const (
 	RuleLineTotal           = "BR-CO-10"
 	RuleTaxExclusive        = "BR-CO-13"
 	RuleTaxInclusive        = "BR-CO-15"
+	RuleTaxTotal            = "BR-CO-14"
+	RuleTaxableSum          = "vat_taxable_sum"        // the VAT rows' taxable amounts sum to the net; no single EN 16931 rule says so
 	RuleKID                 = "kid_invalid"            // the KID fails its stored algorithm, or the PaymentID is not it
 	RulePaymentIDWithoutKID = "payment_id_without_kid" // D3: never a PaymentID without a KID
 	RuleAttachment          = "pdf_attachment_missing"
@@ -115,7 +117,8 @@ func organisationNumberValid(n string) bool {
 
 // Invariants is what only the module can break, judged on the rendered
 // bytes against the Document they came from: the totals re-summed (BR-CO-10,
-// BR-CO-13, BR-CO-15); the KID re-verified against its stored algorithm and
+// BR-CO-13, BR-CO-15) and the VAT rows re-summed against them (BR-CO-14,
+// and the taxable amounts against the net); the KID re-verified against its stored algorithm and
 // the PaymentID it and nothing else (D3); the PDF attached, with the
 // Document's bytes when it has them; every unit code one of the table's.
 func Invariants(doc []byte, d Document) ([]Rule, error) {
@@ -173,6 +176,25 @@ func Invariants(doc []byte, d Document) ([]Rule, error) {
 	}
 	if inclusive.Cmp(new(big.Rat).Add(exclusive, tax)) != 0 {
 		bad(RuleTaxInclusive, "the tax-inclusive amount is %s, not %s plus %s", inclusive.FloatString(2), exclusive.FloatString(2), tax.FloatString(2))
+	}
+
+	subtotalTax, subtotalTaxable := new(big.Rat), new(big.Rat)
+	for _, sub := range r.All("cac:TaxTotal", "cac:TaxSubtotal") {
+		v, err := amount(sub, "cbc:TaxAmount")
+		if err != nil {
+			return nil, err
+		}
+		subtotalTax.Add(subtotalTax, v)
+		if v, err = amount(sub, "cbc:TaxableAmount"); err != nil {
+			return nil, err
+		}
+		subtotalTaxable.Add(subtotalTaxable, v)
+	}
+	if subtotalTax.Cmp(tax) != 0 {
+		bad(RuleTaxTotal, "the VAT rows sum to %s, the VAT total says %s", subtotalTax.FloatString(2), tax.FloatString(2))
+	}
+	if subtotalTaxable.Cmp(exclusive) != 0 {
+		bad(RuleTaxableSum, "the VAT rows' taxable amounts sum to %s, the tax-exclusive amount is %s", subtotalTaxable.FloatString(2), exclusive.FloatString(2))
 	}
 
 	paymentID := r.Value("cac:PaymentMeans", "cbc:PaymentID")
