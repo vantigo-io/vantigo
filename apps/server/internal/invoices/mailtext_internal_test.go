@@ -2,6 +2,7 @@ package invoices
 
 import (
 	"math/big"
+	"strings"
 	"testing"
 	"time"
 
@@ -156,6 +157,35 @@ func TestCoverMail_ACreditNoteWithoutItsOriginalIsAnError(t *testing.T) {
 	} {
 		if got, err := coverMail(credit, original, nil); err == nil {
 			t.Errorf("%s: cover mail = %q, want an error", name, got.body)
+		}
+	}
+}
+
+// With a KID the payment paragraph asks for it in place of the invoice
+// number (EHF and KID design D3, reading 7), in full and in part, in each
+// language; a settled invoice still says nothing is due.
+func TestCoverMail_TheKIDSentence(t *testing.T) {
+	t.Parallel()
+	withKid := func(language string) store.InvoicesInvoice {
+		inv := mailDocument(t, kindInvoice, language, 1001, "15045", "NO9386011117947", "DNBANOKKXXX")
+		inv.Kid, inv.KidAlgorithm = ptr("0010017"), ptr("mod10")
+		return inv
+	}
+	for _, c := range []struct {
+		name, language, open, payment string
+	}{
+		{"nb, in full", "nb", "15045", "Beløpet betales til kontonummer 86011117947. Merk betalingen med KID 0010017.\n"},
+		{"nb, partly", "nb", "5045.5", "Utestående beløp er NOK 5\u00a0045,50, som betales til kontonummer 86011117947. Merk betalingen med KID 0010017.\n"},
+		{"nb, settled", "nb", "0", "Fakturaen er gjort opp. Det er ingenting å betale.\n"},
+		{"en, in full", "en", "15045", "Please pay to IBAN NO9386011117947 (BIC DNBANOKKXXX), quoting KID 0010017.\n"},
+		{"en, partly", "en", "5045.5", "The outstanding amount is NOK 5,045.50; please pay it to IBAN NO9386011117947 (BIC DNBANOKKXXX), quoting KID 0010017.\n"},
+	} {
+		got, err := coverMail(withKid(c.language), nil, mustRat(c.open))
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if !strings.Contains(got.body, c.payment) || strings.Contains(got.body, "invoice number") || strings.Contains(got.body, "fakturanummer") {
+			t.Errorf("%s: body\n%s\nwant the payment line %q and no invoice number", c.name, got.body, c.payment)
 		}
 	}
 }

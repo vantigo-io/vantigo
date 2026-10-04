@@ -368,6 +368,8 @@ export const invoicesCatalog = {
     "refusal.category_o_not_allowed": "The seller is VAT-registered, so no line may be outside the VAT act.",
     "refusal.reverse_charge_needs_org_number": "Reverse charge needs the buyer's organisation number.",
     "refusal.vat_codes_ambiguous": "Two lines share a VAT rate but carry different SAF-T codes.",
+    "refusal.kid_length_exceeded":
+      "The next invoice number no longer fits the KID agreement's length. Change the KID agreement in the settings.",
     "refusal.credit_exceeds_line": "Line {{line}} credits more than the original line had left.",
     "refusal.credit_exceeds_invoice": "The credit note is more than the invoice has left to credit.",
     "refusal.invoice_issued": "The document is already issued.",
@@ -764,6 +766,8 @@ export const invoicesCatalog = {
     "refusal.category_o_not_allowed": "Selgeren er mva-registrert, så ingen linje kan være utenfor mva-loven.",
     "refusal.reverse_charge_needs_org_number": "Omvendt avgiftsplikt krever kjøperens organisasjonsnummer.",
     "refusal.vat_codes_ambiguous": "To linjer har samme mva-sats, men ulike SAF-T-koder.",
+    "refusal.kid_length_exceeded":
+      "Neste fakturanummer passer ikke lenger i KID-avtalens lengde. Endre KID-avtalen i innstillingene.",
     "refusal.credit_exceeds_line": "Linje {{line}} krediterer mer enn den opprinnelige linjen hadde igjen.",
     "refusal.credit_exceeds_invoice": "Kreditnotaen er på mer enn fakturaen har igjen å kreditere.",
     "refusal.invoice_issued": "Dokumentet er allerede utstedt.",

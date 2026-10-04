@@ -898,3 +898,68 @@ func TestIssue_ASettingsReplaceThatCommitsFirstSetsTheStartTheIssueUses(t *testi
 		t.Errorf("number = %d, want the start the replace committed, 5000", *inv.Number)
 	}
 }
+
+// withKidAgreement saves the seller with a KID agreement of length and
+// algorithm.
+func withKidAgreement(t *testing.T, h *harness, length int, algorithm string) {
+	t.Helper()
+	var current settingsJSON
+	h.SignIn(t, "invoices:access").Do(http.MethodGet, settingsPath, nil).JSON(&current)
+	body := completeSeller(current.Revision)
+	body["kidLength"], body["kidAlgorithm"] = length, algorithm
+	saveSeller(t, h, body)
+}
+
+// An invoice issued under the KID agreement gets its KID from the allocated
+// number and the algorithm it was computed with (EHF and KID design D3):
+// none before the agreement, the agreement in force at issue for each, never
+// on a credit note; and a number the agreement no longer fits — only after
+// it was shortened, here by SQL — is kid_length_exceeded, the number rolled
+// back with the refusal.
+func TestIssue_AKIDUnderTheAgreement(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	newDraft := func() int64 {
+		return createDraft(t, h, draftBody(customerAcme, line("Konsulenttime", 1, 1000, vat25))).ID
+	}
+
+	before := issued(t, h, newDraft())
+	if before.Kid != nil || before.KidAlgorithm != nil {
+		t.Errorf("issued before the agreement: kid %v algorithm %v, want none", before.Kid, before.KidAlgorithm)
+	}
+
+	withKidAgreement(t, h, 7, "mod10")
+	underMod10 := issued(t, h, newDraft())
+	if underMod10.Kid == nil || *underMod10.Kid != "0000026" || underMod10.KidAlgorithm == nil || *underMod10.KidAlgorithm != "mod10" {
+		t.Errorf("number 2 under 7/mod10: kid %v algorithm %v, want 0000026 and mod10", underMod10.Kid, underMod10.KidAlgorithm)
+	}
+	withKidAgreement(t, h, 5, "mod11")
+	underMod11 := issued(t, h, newDraft())
+	if underMod11.Kid == nil || *underMod11.Kid != "00035" || underMod11.KidAlgorithm == nil || *underMod11.KidAlgorithm != "mod11" {
+		t.Errorf("number 3 under 5/mod11: kid %v algorithm %v, want 00035 and mod11", underMod11.Kid, underMod11.KidAlgorithm)
+	}
+	var read invoiceJSON
+	h.SignIn(t, "invoices:access").Do(http.MethodGet, fmt.Sprintf("%s/%d", invoicesPath, underMod10.ID), nil).JSON(&read)
+	if read.Kid == nil || *read.Kid != "0000026" || *read.KidAlgorithm != "mod10" {
+		t.Errorf("number 2 read after the agreement changed: kid %v algorithm %v, want its own 0000026 and mod10", read.Kid, read.KidAlgorithm)
+	}
+
+	credit := issued(t, h, creditDraft(t, h, underMod10.ID).ID)
+	if credit.Kid != nil || credit.KidAlgorithm != nil {
+		t.Errorf("a credit note: kid %v algorithm %v, want none", credit.Kid, credit.KidAlgorithm)
+	}
+
+	h.Exec(t, `UPDATE invoices.counters SET next_value = 1000`)
+	h.Exec(t, `UPDATE invoices.settings SET kid_length = 4`)
+	draft := newDraft()
+	if p := refusedWith(t, h, draft, "", "kid_length_exceeded"); p.Detail == "" {
+		t.Error("kid_length_exceeded without a detail")
+	}
+	if next := counterNext(t, h); next != 1000 {
+		t.Errorf("after the refusal the counter's next is %d, want 1000: the number rolls back", next)
+	}
+	h.Exec(t, `UPDATE invoices.settings SET kid_length = 5`)
+	if after := issued(t, h, draft); *after.Number != 1000 || *after.Kid != "10006" {
+		t.Errorf("issued under 5/mod11 = number %d kid %v, want 1000 and 10006", *after.Number, after.Kid)
+	}
+}

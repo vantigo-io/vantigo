@@ -68,6 +68,7 @@ type pdfLabels struct {
 	description, quantity, unit, unitPrice, discount, vat, amount                       string
 	vatBasis, vatAmount, vatCategory, net, vatTotal, gross, toPay                       string
 	payment, account, iban, bic, payWithNumber, orgNumber, foreignID, watermark         string
+	kid, payWithKid                                                                     string
 }
 
 var labels = map[string]pdfLabels{
@@ -82,6 +83,7 @@ var labels = map[string]pdfLabels{
 		payment: "Betaling", account: "Kontonummer", iban: "IBAN", bic: "BIC",
 		payWithNumber: "Vennligst oppgi fakturanummer ved betaling", orgNumber: "Org.nr.", foreignID: "VAT/Reg. no.",
 		watermark: "UTKAST — ikke et salgsdokument",
+		kid:       "KID", payWithKid: "Vennligst bruk KID ved betaling",
 	},
 	"en": {
 		invoice: "Invoice", creditNote: "Credit note", number: "Number", issueDate: "Invoice date",
@@ -94,6 +96,7 @@ var labels = map[string]pdfLabels{
 		payment: "Payment", account: "Account number", iban: "IBAN", bic: "BIC",
 		payWithNumber: "Please state the invoice number with your payment", orgNumber: "Org. no.", foreignID: "VAT/Reg. no.",
 		watermark: "UTKAST — ikke et salgsdokument",
+		kid:       "KID", payWithKid: "Please use the KID with your payment",
 	},
 }
 
@@ -127,10 +130,13 @@ type pdfDocument struct {
 	note, footer                           string
 	seller, buyer                          pdfParty
 	bankAccount, iban, bic                 string
-	lines                                  []pdfLine
-	summaries                              []vatSummary
-	totals                                 documentTotals
-	credits                                *struct {
+	// kid is an issued invoice's KID, verified against its algorithm
+	// (pdfDocumentOf); empty without one (EHF and KID design D3).
+	kid       string
+	lines     []pdfLine
+	summaries []vatSummary
+	totals    documentTotals
+	credits   *struct {
 		number    int64
 		issueDate time.Time
 	}
@@ -365,6 +371,9 @@ func buildPDFModel(d pdfDocument) pdfModel {
 	// The payment block, on an invoice only.
 	if d.kind == kindInvoice {
 		m.payment = append(m.payment, [2]string{l.account, d.bankAccount})
+		if d.kid != "" {
+			m.payment = append(m.payment, [2]string{l.kid, d.kid})
+		}
 		if d.iban != "" {
 			m.payment = append(m.payment, [2]string{l.iban, d.iban})
 		}
@@ -375,6 +384,9 @@ func buildPDFModel(d pdfDocument) pdfModel {
 			m.payment = append(m.payment, [2]string{l.dueDate, formatDate(*d.dueDate, lang)})
 		}
 		m.paymentNote = l.payWithNumber
+		if d.kid != "" {
+			m.paymentNote = l.payWithKid
+		}
 	}
 	m.note, m.footer = d.note, d.footer
 	return m

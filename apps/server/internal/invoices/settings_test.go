@@ -2,6 +2,8 @@ package invoices_test
 
 import (
 	"net/http"
+	"os"
+	"regexp"
 	"slices"
 	"testing"
 )
@@ -28,7 +30,11 @@ type settingsJSON struct {
 	FooterText              string   `json:"footerText"`
 	SeriesStart             int64    `json:"seriesStart"`
 	SeriesLocked            bool     `json:"seriesLocked"`
+	PeppolID                *string  `json:"peppolId"`
+	KidLength               *int32   `json:"kidLength"`
+	KidAlgorithm            *string  `json:"kidAlgorithm"`
 	MissingSellerFields     []string `json:"missingSellerFields"`
+	Warnings                []string `json:"warnings"`
 	Revision                int32    `json:"revision"`
 }
 
@@ -53,7 +59,9 @@ func problemOf(t *testing.T, res interface{ JSON(any) }) problemJSON {
 
 // completeSeller is a seller body that passes every rule and is complete: a
 // VAT-registered AS in Oslo with Brønnøysundregistrene's own organisation
-// number and DNB's sample account.
+// number and DNB's sample account. It names no Peppol id, which defaults to
+// 0192:974760673, and no KID agreement — the three required-nullable fields
+// are sent, as null.
 func completeSeller(revision int32) map[string]any {
 	return map[string]any{
 		"legalName": "Kraft-Verket AS", "organisationNumber": "974 760 673",
@@ -61,7 +69,8 @@ func completeSeller(revision int32) map[string]any {
 		"addressLine1": "Storgata 1", "addressLine2": "", "postalCode": "0155", "city": "Oslo", "country": "no",
 		"bankAccount": "8601.11.17947", "iban": "NO93 8601 1117 947", "bic": "dnbanokkxxx",
 		"email": "faktura@kraft-verket.no", "defaultPaymentTermsDays": 14, "defaultCurrency": "NOK",
-		"footerText": "Takk for handelen.", "seriesStart": 1, "revision": revision,
+		"footerText": "Takk for handelen.", "seriesStart": 1,
+		"peppolId": nil, "kidLength": nil, "kidAlgorithm": nil, "revision": revision,
 	}
 }
 
@@ -203,5 +212,180 @@ func TestSettings_TheSeriesStartLocksAtTheFirstIssue(t *testing.T) {
 	body["legalName"] = "Kraft-Verket Norge AS"
 	if saved := saveSeller(t, h, body); !saved.SeriesLocked || saved.LegalName != "Kraft-Verket Norge AS" {
 		t.Errorf("saved = %+v, want the name changed and the series locked", saved)
+	}
+}
+
+// The seller's Peppol id (EHF and KID design D2): null or empty defaults it
+// to 0192 and the organisation number, and to nothing without one; any other
+// is a four-digit scheme, a colon and an identifier, kept as given, and a
+// 0192 id must be the seller's own organisation number.
+func TestSettings_PeppolIdDefaultsAndValidates(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	manager := h.SignIn(t, "invoices:access", "invoices:manage")
+
+	saved := saveSeller(t, h, completeSeller(1))
+	if saved.PeppolID == nil || *saved.PeppolID != "0192:974760673" {
+		t.Fatalf("peppolId = %v, want the default 0192:974760673", saved.PeppolID)
+	}
+	body := completeSeller(saved.Revision)
+	body["peppolId"] = ""
+	body["organisationNumber"] = ""
+	if saved = saveSeller(t, h, body); saved.PeppolID != nil {
+		t.Errorf("an empty id without an organisation number = %q, want null", *saved.PeppolID)
+	}
+	for given, want := range map[string]string{" 0192:974760673 ": "0192:974760673", "9908:974760673": "9908:974760673", "0088:7080000000003": "0088:7080000000003"} {
+		body = completeSeller(saved.Revision)
+		body["peppolId"] = given
+		if saved = saveSeller(t, h, body); saved.PeppolID == nil || *saved.PeppolID != want {
+			t.Errorf("peppolId %q saved as %v, want %q", given, saved.PeppolID, want)
+		}
+	}
+	for _, bad := range []any{"974760673", "192:974760673", "0192:", "0192:923609016", "0192:97476067 3", 42} {
+		body = completeSeller(saved.Revision)
+		body["peppolId"] = bad
+		res := manager.Do(http.MethodPut, settingsPath, body)
+		if res.Status != http.StatusBadRequest || len(problemOf(t, res).Errors["peppolId"]) == 0 {
+			t.Errorf("peppolId %v = %d %s, want 400 on peppolId", bad, res.Status, res.Body)
+		}
+	}
+	// Without an organisation number a 0192 id is nobody's own.
+	body = completeSeller(saved.Revision)
+	body["organisationNumber"], body["peppolId"] = "", "0192:974760673"
+	if res := manager.Do(http.MethodPut, settingsPath, body); res.Status != http.StatusBadRequest {
+		t.Errorf("a 0192 id without an organisation number = %d, want 400", res.Status)
+	}
+}
+
+// The KID agreement (D3): a pair of 4-25 and mod10 or mod11, or nothing; the
+// next number must fit in the length less one — judged against the
+// request's own seriesStart before the first issue and against the counter
+// from then on — and fewer than two digits to spare is the
+// kid_headroom_low warning, on the PUT and on GET. Clearing is allowed.
+func TestSettings_TheKidAgreement(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	manager := h.SignIn(t, "invoices:access", "invoices:manage")
+	revision := int32(1)
+	kid := func(length, algorithm, seriesStart any) map[string]any {
+		body := completeSeller(revision)
+		body["kidLength"], body["kidAlgorithm"], body["seriesStart"] = length, algorithm, seriesStart
+		return body
+	}
+	refused := func(body map[string]any, field string) {
+		t.Helper()
+		res := manager.Do(http.MethodPut, settingsPath, body)
+		if res.Status != http.StatusBadRequest || len(problemOf(t, res).Errors[field]) == 0 {
+			t.Errorf("kidLength %v kidAlgorithm %v seriesStart %v = %d %s, want 400 on %s",
+				body["kidLength"], body["kidAlgorithm"], body["seriesStart"], res.Status, res.Body, field)
+		}
+	}
+	refused(kid(3, "mod10", 1), "kidLength")
+	refused(kid(26, "mod10", 1), "kidLength")
+	refused(kid("ten", "mod10", 1), "kidLength")
+	refused(kid(10, "mod12", 1), "kidAlgorithm")
+	refused(kid(10, nil, 1), "kidAlgorithm")
+	refused(kid(nil, "mod11", 1), "kidLength")
+	// The request's own series start: 1000 needs four digits, a length of 4
+	// leaves three.
+	refused(kid(4, "mod10", 1000), "kidLength")
+
+	saved := saveSeller(t, h, kid(4, "mod10", 1))
+	if saved.KidLength == nil || *saved.KidLength != 4 || saved.KidAlgorithm == nil || *saved.KidAlgorithm != "mod10" || len(saved.Warnings) != 0 {
+		t.Fatalf("saved = length %v algorithm %v warnings %v, want 4, mod10 and no warning", saved.KidLength, saved.KidAlgorithm, saved.Warnings)
+	}
+	revision = saved.Revision
+	saved = saveSeller(t, h, kid(4, "mod11", 100))
+	if !slices.Equal(saved.Warnings, []string{"kid_headroom_low"}) {
+		t.Errorf("100 under a length of 4: warnings %v, want kid_headroom_low", saved.Warnings)
+	}
+	var read settingsJSON
+	h.SignIn(t, "invoices:access").Do(http.MethodGet, settingsPath, nil).JSON(&read)
+	if !slices.Equal(read.Warnings, []string{"kid_headroom_low"}) || read.KidAlgorithm == nil || *read.KidAlgorithm != "mod11" {
+		t.Errorf("GET = algorithm %v warnings %v, want mod11 and kid_headroom_low", read.KidAlgorithm, read.Warnings)
+	}
+
+	// From the first issue on, the counter's next number is judged.
+	revision = saved.Revision
+	h.Exec(t, `INSERT INTO invoices.counters (counter_name, next_value) VALUES ('documents', 100000)`)
+	refused(kid(6, "mod10", 100), "kidLength")
+	saved = saveSeller(t, h, kid(7, "mod10", 100))
+	if !slices.Equal(saved.Warnings, []string{"kid_headroom_low"}) {
+		t.Errorf("100000 under a length of 7: warnings %v, want kid_headroom_low", saved.Warnings)
+	}
+	revision = saved.Revision
+	if saved = saveSeller(t, h, kid(9, "mod10", 100)); len(saved.Warnings) != 0 {
+		t.Errorf("100000 under a length of 9: warnings %v, want none", saved.Warnings)
+	}
+
+	// Clearing the pair is allowed.
+	revision = saved.Revision
+	if saved = saveSeller(t, h, kid(nil, nil, 100)); saved.KidLength != nil || saved.KidAlgorithm != nil || len(saved.Warnings) != 0 {
+		t.Errorf("cleared = length %v algorithm %v warnings %v, want nulls and no warning", saved.KidLength, saved.KidAlgorithm, saved.Warnings)
+	}
+}
+
+// backfillStatement is 00036's backfill of the seller's Peppol id, read from
+// the migration itself.
+var backfillStatement = regexp.MustCompile(`(?s)UPDATE invoices\.settings SET peppol_id = .*?;`)
+
+// An installation that had an organisation number before 00036 has its
+// Peppol id without re-saving (D2): the migration's own backfill, run over
+// a settings row as it stood, answers through GET /settings, and a save of
+// what was read keeps it.
+func TestSettings_PeppolIdIsBackfilled(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	migration, err := os.ReadFile("../db/migrations/00036_invoices_ehf_kid.sql")
+	if err != nil {
+		t.Fatalf("read 00036: %v", err)
+	}
+	backfill := backfillStatement.Find(migration)
+	if backfill == nil {
+		t.Fatal("00036 has no backfill of the seller's Peppol id")
+	}
+	h.Exec(t, `UPDATE invoices.settings SET organisation_number = '974760673', peppol_id = NULL`)
+	h.Exec(t, string(backfill))
+
+	var read settingsJSON
+	h.SignIn(t, "invoices:access").Do(http.MethodGet, settingsPath, nil).JSON(&read)
+	if read.PeppolID == nil || *read.PeppolID != "0192:974760673" {
+		t.Fatalf("GET after the backfill: peppolId %v, want 0192:974760673", read.PeppolID)
+	}
+	body := completeSeller(read.Revision)
+	body["peppolId"] = *read.PeppolID
+	if saved := saveSeller(t, h, body); saved.PeppolID == nil || *saved.PeppolID != "0192:974760673" {
+		t.Errorf("a save of what was read: peppolId %v, want it kept", saved.PeppolID)
+	}
+}
+
+// peppolId, kidLength and kidAlgorithm are required and nullable (reading
+// 16): a body without one of them is a 400 on it and changes nothing — a
+// client that predates them cannot clear the KID agreement by leaving them
+// out — and null is a value: it clears.
+func TestSettings_TheThreeFieldsAreRequiredNullable(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	manager := h.SignIn(t, "invoices:access", "invoices:manage")
+	body := completeSeller(1)
+	body["kidLength"], body["kidAlgorithm"] = 10, "mod10"
+	saved := saveSeller(t, h, body)
+
+	for _, field := range []string{"peppolId", "kidLength", "kidAlgorithm"} {
+		body := completeSeller(saved.Revision)
+		body["kidLength"], body["kidAlgorithm"] = 10, "mod10"
+		delete(body, field)
+		res := manager.Do(http.MethodPut, settingsPath, body)
+		if res.Status != http.StatusBadRequest || len(problemOf(t, res).Errors[field]) == 0 {
+			t.Errorf("a body without %s = %d %s, want 400 on %s", field, res.Status, res.Body, field)
+		}
+	}
+	var read settingsJSON
+	h.SignIn(t, "invoices:access").Do(http.MethodGet, settingsPath, nil).JSON(&read)
+	if read.Revision != saved.Revision || read.KidLength == nil || *read.KidLength != 10 {
+		t.Errorf("after the refusals: revision %d length %v, want %d and 10", read.Revision, read.KidLength, saved.Revision)
+	}
+	if cleared := saveSeller(t, h, completeSeller(saved.Revision)); cleared.KidLength != nil || cleared.KidAlgorithm != nil {
+		t.Errorf("null = length %v algorithm %v, want the agreement cleared", cleared.KidLength, cleared.KidAlgorithm)
 	}
 }

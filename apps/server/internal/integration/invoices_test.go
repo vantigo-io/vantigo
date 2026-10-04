@@ -92,7 +92,8 @@ func invoicesInstallation(t *testing.T) (*modtest.Harness, *modtest.Client, *smt
 		"addressLine1": "Storgata 1", "addressLine2": "", "postalCode": "0155", "city": "Oslo", "country": "no",
 		"bankAccount": "8601.11.17947", "iban": "NO93 8601 1117 947", "bic": "dnbanokkxxx",
 		"email": sellerEmail, "defaultPaymentTermsDays": 14, "defaultCurrency": "NOK",
-		"footerText": "Takk for handelen.", "seriesStart": 1, "revision": 1,
+		"footerText": "Takk for handelen.", "seriesStart": 1,
+		"peppolId": nil, "kidLength": nil, "kidAlgorithm": nil, "revision": 1,
 	}, nil)
 	return h, admin, smtp
 }

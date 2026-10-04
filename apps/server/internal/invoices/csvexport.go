@@ -23,10 +23,11 @@ import (
 // the journal's rule. Every amount is the stored numeric as exact text; the
 // one computed column, Base NOK, is big.Rat arithmetic rounded to øre.
 
-// exportHeader is D5's header row, fixed and English, in its order.
+// exportHeader is D5's header row, fixed and English, in its order. A new
+// column goes at the end: KID is EHF and KID design D3's.
 var exportHeader = []string{
 	"Number", "Kind", "Issue date", "Delivery", "Due", "Customer number", "Buyer", "Buyer org no",
-	"Currency", "SAF-T code", "Rate", "Base", "VAT", "Base NOK", "VAT NOK", "Credits number",
+	"Currency", "SAF-T code", "Rate", "Base", "VAT", "Base NOK", "VAT NOK", "Credits number", "KID",
 }
 
 // tooManyRowsToExport is the cap's 400 (D5): a bare problem asking for a
@@ -159,6 +160,9 @@ func exportCells(r store.ExportRowsRow) ([]csvValue, error) {
 		text(r.SafTCode),
 		plain(rate), plain(base), plain(vat), plain(baseNOK), plain(vatNOK),
 		text(csvInt(r.CreditsNumber)),
+		// The module's own digits and at most a MOD11 '-' at the end, which
+		// no formula guard is for.
+		plain(csvText(r.Kid)),
 	}, nil
 }
 

@@ -72,6 +72,12 @@ func coverMail(inv store.InvoicesInvoice, original *store.InvoicesInvoice, open 
 		}
 		account, iban, bic := str(inv.SellerBankAccount), str(inv.SellerIban), str(inv.SellerBic)
 		settled, full := open.Sign() <= 0, open.Cmp(gross) >= 0
+		// The payment is marked with the KID when the invoice has one (EHF
+		// and KID design D3), and with the invoice number only without.
+		quoteEN, quoteNB := fmt.Sprintf("quoting invoice number %d", number), fmt.Sprintf("Merk betalingen med fakturanummer %d", number)
+		if inv.Kid != nil {
+			quoteEN, quoteNB = "quoting KID "+*inv.Kid, "Merk betalingen med KID "+*inv.Kid
+		}
 		if lang == "en" {
 			subject = fmt.Sprintf("Invoice %d from %s", number, seller)
 			intro = fmt.Sprintf("Please find attached invoice %d from %s for %s, due %s.", number, seller, amount(gross), due)
@@ -88,9 +94,9 @@ func coverMail(inv store.InvoicesInvoice, original *store.InvoicesInvoice, open 
 			case settled:
 				payment = "The invoice has been settled. Nothing is due."
 			case full:
-				payment = fmt.Sprintf("Please pay %s, quoting invoice number %d.", to, number)
+				payment = fmt.Sprintf("Please pay %s, %s.", to, quoteEN)
 			default:
-				payment = fmt.Sprintf("The outstanding amount is %s; please pay it %s, quoting invoice number %d.", amount(open), to, number)
+				payment = fmt.Sprintf("The outstanding amount is %s; please pay it %s, %s.", amount(open), to, quoteEN)
 			}
 		} else {
 			subject = fmt.Sprintf("Faktura %d fra %s", number, seller)
@@ -99,9 +105,9 @@ func coverMail(inv store.InvoicesInvoice, original *store.InvoicesInvoice, open 
 			case settled:
 				payment = "Fakturaen er gjort opp. Det er ingenting å betale."
 			case full:
-				payment = fmt.Sprintf("Beløpet betales til kontonummer %s. Merk betalingen med fakturanummer %d.", account, number)
+				payment = fmt.Sprintf("Beløpet betales til kontonummer %s. %s.", account, quoteNB)
 			default:
-				payment = fmt.Sprintf("Utestående beløp er %s, som betales til kontonummer %s. Merk betalingen med fakturanummer %d.", amount(open), account, number)
+				payment = fmt.Sprintf("Utestående beløp er %s, som betales til kontonummer %s. %s.", amount(open), account, quoteNB)
 			}
 		}
 	}

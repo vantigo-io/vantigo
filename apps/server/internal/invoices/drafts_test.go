@@ -74,6 +74,8 @@ type invoiceJSON struct {
 	Warnings          []string      `json:"warnings"`
 	AllowedIssueDates []string      `json:"allowedIssueDates"`
 	PdfStored         *bool         `json:"pdfStored"`
+	Kid               *string       `json:"kid"`
+	KidAlgorithm      *string       `json:"kidAlgorithm"`
 	Revision          int32         `json:"revision"`
 	Buyer             *struct {
 		CustomerNumber     int64   `json:"customerNumber"`
@@ -571,5 +573,25 @@ func TestDrafts_VatInNOKIsAtTheDraftsRate(t *testing.T) {
 	}
 	if len(inv.VatSummaries) != 1 || inv.VatSummaries[0].VatAmountNok != 287.5 {
 		t.Errorf("summaries = %+v, want one row with 287.50 NOK", inv.VatSummaries)
+	}
+}
+
+// A document carries its KID and the algorithm it was computed with once it
+// is issued under the agreement (EHF and KID design D3, D14), and a draft
+// under the same agreement carries neither: the KID comes from the number,
+// which only the issue allocates.
+func TestDocument_CarriesItsKID(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	withKidAgreement(t, h, 6, "mod11")
+	draft := createDraft(t, h, draftBody(customerAcme, line("Konsulenttime", 1, 1000, vat25)))
+	res := h.SignIn(t, "invoices:access").Do(http.MethodGet, invoicePath(draft.ID), nil)
+	if strings.Contains(string(res.Body), `"kid`) {
+		t.Errorf("a draft = %s, want no kid and no kidAlgorithm", res.Body)
+	}
+	issued(t, h, draft.ID)
+	// 1 under 6/mod11: 00001, 1 × 2 = 2, 11 − 2 = 9.
+	if got := getInvoice(t, h, draft.ID); got.Kid == nil || *got.Kid != "000019" || got.KidAlgorithm == nil || *got.KidAlgorithm != "mod11" {
+		t.Errorf("issued = kid %v algorithm %v, want 000019 and mod11", got.Kid, got.KidAlgorithm)
 	}
 }

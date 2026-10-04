@@ -74,19 +74,26 @@ Billing 3.0 Norway (<https://anskaffelser.dev/postaward/g3/spec/current/billing-
 
 | Table | What it holds |
 | --- | --- |
-| `invoices.settings` | One row: the seller record (legal name, organisation number, VAT registration, Foretaksregisteret, address, bank account, IBAN/BIC, e-mail, footer), the default terms and currency, and `series_start`. |
+| `invoices.settings` | One row: the seller record (legal name, organisation number, VAT registration, Foretaksregisteret, address, bank account, IBAN/BIC, e-mail, footer), the default terms and currency, `series_start`, the seller's Peppol id `peppol_id`, and the KID agreement `kid_length` and `kid_algorithm` (a pair or both NULL, `ck_settings_kid`). |
 | `invoices.counters` | The one counter row, `documents`; it exists exactly when something has been issued. |
 | `invoices.vat_codes` | The tenant's codes: label, name, SAF-T code, UNCL5305 category, exemption reason, active. |
 | `invoices.vat_code_rates` | Each code's rates as dated periods that never overlap (an exclusion constraint). A rate change is a new period, not a new code. |
-| `invoices.invoices` | Drafts and issued documents: kind, status, number, customer, delivery, references, notes, the buyer snapshot and the seller snapshot (written at issue), the totals, and the stored PDF's key and SHA-256. |
+| `invoices.invoices` | Drafts and issued documents: kind, status, number, customer, delivery, references, notes, the buyer snapshot and the seller snapshot (written at issue), the totals, the stored PDF's key and SHA-256, and an invoice's `kid` with the `kid_algorithm` it was computed with (set at issue, both or neither, never on a credit note). |
 | `invoices.lines` | Description, quantity (3 decimals), unit, unit price (4), discount (2), VAT code, the computed gross, allowance and net, the credited line on a credit note, and the VAT snapshot written at issue. |
 | `invoices.vat_summaries` | An issued document's VAT per (category, rate) with its SAF-T code and reason. |
 | `invoices.payments` | Money received against an issued invoice: the day it arrived, the amount and the currency (the invoice's, copied), the bank's or the payer's reference, a note (`''` once the customer is anonymised, and on every registration made after), who registered it and when, and — once removed — when, by whom and why. Never deleted; never changed but by the removal, once, and that blanking. |
 | `invoices.deliveries` | One row per e-mail that handed an issued document over: the recipient (`''` once the customer is anonymised), the subject, the Message-ID, the SHA-256 of the PDF attached, when and by whom. Never deleted; never changed but by that blanking. |
-| `invoices.erased_customers` | The customers this module has anonymised, by id, with when: the marker a send and the delivery and payment triggers read. Never removed. |
+| `invoices.erased_customers` | The customers this module has anonymised, by id, with when: the marker a send and the delivery, payment and transmission triggers read. Never removed. |
+| `invoices.access_point_credentials` | One row (`id = 1`): the access point provider (`storecove`), its settings that are not secret (`settings_json`), the API key sealed by the secrets box, `rejected_at` once the provider refused the key, and `updated_at`. Kept off the settings row every issue reads `FOR SHARE`. |
+| `invoices.transmissions` | One EHF transmission of an issued document: the provider, the idempotency key, the sender's and receiver's Peppol ids, the document type and process, the submitted UBL's object key and SHA-256 and the PDF's SHA-256, the status (`queued`, `submitted`, `delivered`, `failed`, `unconfirmed`, `cancelled`), the provider's reference, the evidence's key and SHA-256, the attempt counters and the next attempt, the crash marker `submit_attempted_at`, the worker's lease, the last error, the receiver lookup it was queued under, the timestamps of each state, and a person's resolution. Never deleted; only its state columns change, a failed or cancelled row not at all, and a delivered row only its lease, cadence and — once — its evidence. A trigger refuses one under a draft (`invoices: a transmission needs an issued document`) or for an anonymised customer (`invoices: the customer is anonymised`); `ux_transmissions_active` allows one queued, submitted, delivered or unconfirmed transmission per document. |
 
 A document's state is not a column: `invoices.document_state(...)` derives it, see
 [Payments and the state of an invoice](#payments-and-the-state-of-an-invoice).
+
+Phase 2's schema (`00036_invoices_ehf_kid.sql`, the
+[design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-03-invoices-ehf-peppol-kid-design.md))
+adds the Peppol id, the KID agreement, the document's KID and the two tables in one
+migration; sending EHF itself is not yet wired to any endpoint.
 
 The seeded codes, each from 2026-01-01: `3` 25 %, `31` 15 %, `32` 11.11 %, `33` 12 %
 (all S), `5` Z, `51` AE, `52` G, `6` **E** (unntatt, mval. kap. 3) and `7` **O** (a seller
@@ -98,6 +105,42 @@ written as, never as a binary float. A line's gross is quantity × unit price ro
 difference — gross less allowance, as EHF expresses a discount. Every rounding is two
 decimals, the half away from zero; there is no øre rounding of the total. A line is at
 most 999 999 999.99, a document 99 999 999 999.99 gross, and at most 500 lines.
+
+## The Peppol id and the KID agreement
+
+Both live on `PUT /settings` (`invoices:manage`), beside the seller record, and are
+**required and nullable** on it: a body without `peppolId`, `kidLength` or
+`kidAlgorithm` is a 400 on that field, so a client that predates them cannot clear them
+by leaving them out; null is a value.
+
+**The seller's Peppol id** is the sender's address on the Peppol network, read when a
+document is sent and never part of the seller snapshot. It is a four-digit scheme, a
+colon and 1-50 letters, digits or hyphens (`0192:974760673`), as the customers module
+validates a buyer's; a `0192` id must be the seller's own organisation number. Null or
+empty defaults it to `0192:` and the organisation number when that is set, and to null
+without one. The migration backfilled it the same way from a valid organisation number,
+so an existing installation is ready without re-saving.
+
+**The KID agreement** is the pair the bank agreed: `kidLength`, 4-25 digits including
+the check digit (the OCR giro's rule), and `kidAlgorithm`, `mod10` or `mod11`; both or
+neither (400 on the missing one). Saving is refused with a 400 on `kidLength` when the
+next number to be issued does not fit in `kidLength − 1` digits — the counter's next
+value, or the request's own `seriesStart` before the first issue — judged under the
+settings row's lock. The response warns `kid_headroom_low` (on `GET /settings` too) when
+fewer than two digits remain to spare, a hundredfold growth. Clearing or changing the
+pair is allowed: every issued invoice keeps the KID and the algorithm it was issued
+with.
+
+**The KID** of an invoice issued under the agreement is its number zero-padded to
+`kidLength − 1` digits, then the check digit: MOD10 is Luhn (weights 2 and 1 from the
+right, each product's digits summed, `(10 − sum mod 10) mod 10`), MOD11 weights 2-7
+repeating from the right, `11 − (sum mod 11)`, 0 for a remainder of 0 and **`-` for a
+remainder of 1**, as the specification prescribes (`12345678` is `123456782` under MOD10
+and `123456785` under MOD11). It is computed after the number is allocated and stored
+with its algorithm in the draft→issued update, frozen with the rest of the document. A
+credit note never gets one, nor an invoice issued before the agreement. Every render
+re-verifies the stored KID against the **stored** algorithm and the number, never the
+agreement in force; one that does not verify is a 500 logged at error.
 
 ## Drafts
 
@@ -149,7 +192,8 @@ The checks, each a 409 that rolls the number back: `seller_incomplete`, `no_line
 invoice the customer gates, `buyer_incomplete`, `vat_code_inactive` and
 `vat_code_not_valid` (with `linePosition`), `vat_not_registered` (a seller outside the
 register issues only O lines), `category_o_not_allowed` (a registered seller issues no O
-line), `reverse_charge_needs_org_number` and `vat_codes_ambiguous`; for a credit note
+line), `reverse_charge_needs_org_number`, `vat_codes_ambiguous` and, under a KID agreement,
+`kid_length_exceeded` (the allocated number no longer fits a shortened agreement); for a credit note
 `credit_exceeds_line` (with `linePosition`) and `credit_exceeds_invoice`. Before the
 transaction: `invoice_issued`, and 503 `storage_unavailable` when no object store is
 configured — an issued number whose PDF could never be stored is not allowed to exist.
@@ -341,6 +385,11 @@ retrying does not mend it. Reproducible bytes are a nice-to-have: catalog sortin
 fixed modification date are set process-wide and the creation date is the issue instant,
 but the bytes may change with a maroto, gofpdf or font upgrade; stored PDFs never do.
 
+**The payment block** of an invoice lists the account, its KID when it has one (the
+"KID" line, verified as above), the IBAN and BIC when set, and the due date; the note
+under it asks for the KID ("Vennligst bruk KID ved betaling" / "Please use the KID with
+your payment") when there is one, and for the invoice number otherwise.
+
 `GET /invoices/{id}/preview.pdf` renders a draft on demand with the watermark
 "UTKAST — ikke et salgsdokument", no number, today's date, the current settings and,
 for an invoice draft, the customer's current profile at today's rates; a credit-note
@@ -490,6 +539,9 @@ re-send never asks for money that is not owed; a credit note has none:
 | above 0, below the gross | `Utestående beløp er {open}, som betales til kontonummer {account}. Merk betalingen med fakturanummer {number}.` | `The outstanding amount is {open}; please pay it {to}, quoting invoice number {number}.` |
 | 0 or below (paid or credited) | `Fakturaen er gjort opp. Det er ingenting å betale.` | `The invoice has been settled. Nothing is due.` |
 
+An invoice with a KID is marked with it instead of its number: `Merk betalingen med KID
+{kid}.` / `quoting KID {kid}.` in the same sentences.
+
 **The IBAN form.** In English `{to}` is `to IBAN {iban} (BIC {bic})` when the snapshot has
 an IBAN — the BIC in brackets only when it has one too — and `to account {account}`
 otherwise: an English-language buyer is usually abroad and cannot pay a domestic
@@ -593,7 +645,7 @@ negative in every amount column, as the journal signs it (it is stored positive)
 The columns, fixed and English, in this order:
 
 ```text
-Number;Kind;Issue date;Delivery;Due;Customer number;Buyer;Buyer org no;Currency;SAF-T code;Rate;Base;VAT;Base NOK;VAT NOK;Credits number
+Number;Kind;Issue date;Delivery;Due;Customer number;Buyer;Buyer org no;Currency;SAF-T code;Rate;Base;VAT;Base NOK;VAT NOK;Credits number;KID
 ```
 
 | Column | Rule |
@@ -614,6 +666,7 @@ Number;Kind;Issue date;Delivery;Due;Customer number;Buyer;Buyer org no;Currency;
 | `Base NOK` | `Base` × the document's exchange rate (1 in this phase), rounded to øre — the one computed column |
 | `VAT NOK` | the VAT row's stored NOK VAT |
 | `Credits number` | on a credit note, the number of the invoice it credits; empty on an invoice |
+| `KID` | an invoice's KID, appended last in phase 2 so the earlier columns keep their places; empty without one and on a credit note. A spreadsheet that reads it as a number strips its leading zeros — import the column as text |
 
 **The byte format** is the expenses payroll file's ([the payroll CSV](/en/reference/expenses/#the-payroll-csv)),
 duplicated into this module as customers duplicated it — depguard keeps modules from
@@ -772,7 +825,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | --- | --- | --- |
 | `GET /meta` | | |
 | `GET /settings` | | |
-| `PUT /settings` | `invoices:manage` | 400 on the field (both mod-11 checks, IBAN mod-97, BIC, "Only NOK in this phase"); 409 `series_locked`, or a stale revision (no code) |
+| `PUT /settings` | `invoices:manage` | 400 on the field (both mod-11 checks, IBAN mod-97, BIC, "Only NOK in this phase", the Peppol id, the KID pair, a next number the KID length does not fit, any of the three required-nullable fields absent); 409 `series_locked`, or a stale revision (no code) |
 | `GET /vat-codes` | | |
 | `POST /vat-codes` | `invoices:manage` | 400 on the field, a duplicate code on `code` |
 | `PUT /vat-codes/{id}` | `invoices:manage` | 404; 400; 409 `vat_code_in_use`, a stale revision |

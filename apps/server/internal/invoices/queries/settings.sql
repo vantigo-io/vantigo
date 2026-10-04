@@ -11,7 +11,8 @@ SELECT * FROM invoices.settings WHERE id = 1;
 SELECT * FROM invoices.settings WHERE id = 1 FOR UPDATE;
 
 -- name: UpdateSettings :one
--- UpdateSettings replaces the seller record and the series start, and moves
+-- UpdateSettings replaces the seller record, the series start, the seller's
+-- Peppol id and the KID agreement (EHF and KID design D2, D3), and moves
 -- the revision on. The caller holds the row (LockSettings) and has checked the
 -- revision and the series lock.
 UPDATE invoices.settings SET
@@ -32,6 +33,9 @@ UPDATE invoices.settings SET
     default_currency = @default_currency,
     footer_text = @footer_text,
     series_start = @series_start,
+    peppol_id = sqlc.narg(peppol_id),
+    kid_length = sqlc.narg(kid_length),
+    kid_algorithm = sqlc.narg(kid_algorithm),
     updated_at = @now::timestamptz,
     revision = revision + 1
 WHERE id = 1

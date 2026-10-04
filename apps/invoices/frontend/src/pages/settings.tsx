@@ -201,6 +201,12 @@ const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }
         defaultCurrency: values.defaultCurrency,
         footerText: values.footerText,
         seriesStart: values.seriesStart,
+        // The Peppol id and the KID agreement have no inputs yet: the form
+        // sends back what it read, so a save never clears them (the server
+        // requires all three, null included).
+        peppolId: values.peppolId,
+        kidLength: values.kidLength,
+        kidAlgorithm: values.kidAlgorithm,
         revision: settings.revision,
       }),
     onSuccess: async (saved) => {

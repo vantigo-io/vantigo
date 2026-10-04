@@ -11,7 +11,7 @@ import (
 )
 
 const getSettings = `-- name: GetSettings :one
-SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision FROM invoices.settings WHERE id = 1
+SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm FROM invoices.settings WHERE id = 1
 `
 
 // GetSettings reads the installation's single settings row, the seller record
@@ -41,12 +41,15 @@ func (q *Queries) GetSettings(ctx context.Context) (InvoicesSetting, error) {
 		&i.SeriesStart,
 		&i.UpdatedAt,
 		&i.Revision,
+		&i.PeppolID,
+		&i.KidLength,
+		&i.KidAlgorithm,
 	)
 	return i, err
 }
 
 const lockSettings = `-- name: LockSettings :one
-SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision FROM invoices.settings WHERE id = 1 FOR UPDATE
+SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm FROM invoices.settings WHERE id = 1 FOR UPDATE
 `
 
 // LockSettings takes the settings row FOR UPDATE: PUT /settings and every rate
@@ -76,12 +79,15 @@ func (q *Queries) LockSettings(ctx context.Context) (InvoicesSetting, error) {
 		&i.SeriesStart,
 		&i.UpdatedAt,
 		&i.Revision,
+		&i.PeppolID,
+		&i.KidLength,
+		&i.KidAlgorithm,
 	)
 	return i, err
 }
 
 const shareSettings = `-- name: ShareSettings :one
-SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision FROM invoices.settings WHERE id = 1 FOR SHARE
+SELECT id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm FROM invoices.settings WHERE id = 1 FOR SHARE
 `
 
 // ShareSettings takes the settings row FOR SHARE: the issue's seller snapshot
@@ -111,6 +117,9 @@ func (q *Queries) ShareSettings(ctx context.Context) (InvoicesSetting, error) {
 		&i.SeriesStart,
 		&i.UpdatedAt,
 		&i.Revision,
+		&i.PeppolID,
+		&i.KidLength,
+		&i.KidAlgorithm,
 	)
 	return i, err
 }
@@ -134,10 +143,13 @@ UPDATE invoices.settings SET
     default_currency = $15,
     footer_text = $16,
     series_start = $17,
-    updated_at = $18::timestamptz,
+    peppol_id = $18,
+    kid_length = $19,
+    kid_algorithm = $20,
+    updated_at = $21::timestamptz,
     revision = revision + 1
 WHERE id = 1
-RETURNING id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision
+RETURNING id, legal_name, organisation_number, vat_registered, in_foretaksregisteret, address_line1, address_line2, postal_code, city, country, bank_account, iban, bic, email, default_payment_terms_days, default_currency, footer_text, series_start, updated_at, revision, peppol_id, kid_length, kid_algorithm
 `
 
 type UpdateSettingsParams struct {
@@ -158,10 +170,14 @@ type UpdateSettingsParams struct {
 	DefaultCurrency         string
 	FooterText              string
 	SeriesStart             int64
+	PeppolID                *string
+	KidLength               *int16
+	KidAlgorithm            *string
 	Now                     time.Time
 }
 
-// UpdateSettings replaces the seller record and the series start, and moves
+// UpdateSettings replaces the seller record, the series start, the seller's
+// Peppol id and the KID agreement (EHF and KID design D2, D3), and moves
 // the revision on. The caller holds the row (LockSettings) and has checked the
 // revision and the series lock.
 func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) (InvoicesSetting, error) {
@@ -183,6 +199,9 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		arg.DefaultCurrency,
 		arg.FooterText,
 		arg.SeriesStart,
+		arg.PeppolID,
+		arg.KidLength,
+		arg.KidAlgorithm,
 		arg.Now,
 	)
 	var i InvoicesSetting
@@ -207,6 +226,9 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		&i.SeriesStart,
 		&i.UpdatedAt,
 		&i.Revision,
+		&i.PeppolID,
+		&i.KidLength,
+		&i.KidAlgorithm,
 	)
 	return i, err
 }

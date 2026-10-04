@@ -142,6 +142,35 @@ describe("the invoice settings", () => {
     });
   });
 
+  it("sends the Peppol id and the KID agreement back as it read them, null included", async () => {
+    const state = world();
+    state.settings = settings({ peppolId: "0192:974760673", kidLength: 7, kidAlgorithm: "mod10" });
+    const fetchMock = server({}, state);
+    renderWithProviders(<SettingsPage />);
+
+    await userEvent.type(await screen.findByRole("textbox", { name: "Postal code" }), "0155");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(sent(fetchMock, "PUT").url).toBe("/api/v1/invoices/settings"));
+    expect(sent(fetchMock, "PUT").body).toMatchObject({
+      peppolId: "0192:974760673",
+      kidLength: 7,
+      kidAlgorithm: "mod10",
+    });
+  });
+
+  it("sends the three nullable fields as null when the settings have none", async () => {
+    const fetchMock = server();
+    renderWithProviders(<SettingsPage />);
+
+    await userEvent.type(await screen.findByRole("textbox", { name: "Postal code" }), "0155");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(sent(fetchMock, "PUT").url).toBe("/api/v1/invoices/settings"));
+    const body = sent(fetchMock, "PUT").body;
+    expect(body).toHaveProperty("peppolId", null);
+    expect(body).toHaveProperty("kidLength", null);
+    expect(body).toHaveProperty("kidAlgorithm", null);
+  });
+
   it.each([
     [true, "Mail is configured (SMTP)"],
     [false, "Mail is not configured (SMTP), so documents cannot be sent by e-mail. Issuing does not need it."],
