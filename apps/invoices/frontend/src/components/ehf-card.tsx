@@ -8,7 +8,7 @@ import { isSessionExpired, saveCsv } from "../api/export";
 import type { InvoiceDocument } from "../api/invoices";
 import { INVOICES_QUERY_KEY } from "../api/request";
 import "../i18n";
-import { refusalMessage } from "../lib/errors";
+import { refusalMessage, refusalWords } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 import { ResolveTransmissionModal } from "../pages/-resolve-transmission-modal";
 import { EhfBadge } from "./ehf-badge";
@@ -27,8 +27,9 @@ export interface EhfCardProps {
  * The E-invoice card (EHF and KID design D10, D15): the state in honest
  * words, the latest transmission's timestamps, the provider's reference and
  * the reason for an issuer, every transmission newest first — Cancel on a
- * queued one (the server refuses it once a submission may have reached the
- * provider), Resolve on an unconfirmed one, and its UBL to download — and
+ * queued one never attempted (no `submitAttemptedAt`; the server still
+ * refuses one a worker claims meanwhile), Resolve on an unconfirmed one, and
+ * its UBL to download — and
  * Send as EHF when the document can be sent, or why it cannot.
  */
 export const EhfCard = ({ document: doc, canIssue, offerSend, onSend }: EhfCardProps) => {
@@ -65,13 +66,18 @@ export const EhfCard = ({ document: doc, canIssue, offerSend, onSend }: EhfCardP
     ["ehfFailedAt", ehf.failedAt],
   ] as const;
   // Why it cannot be sent, for an issuer: the state already says an
-  // ehf_already_sent, and an installation that cannot send EHF points to the
-  // settings rather than to a key the reader may not manage.
+  // ehf_already_sent; an installation that cannot send EHF points to the
+  // settings rather than to a key the reader may not manage; and blockedBy's
+  // ehf_invalid is only ever the K-category line (D8's judgment without a render).
+  const blockedWords = (code: string) =>
+    code === "ehf_unavailable"
+      ? t("ehfUnavailableHint")
+      : code === "ehf_invalid"
+        ? t("ehfRule.vat_category_k_unsupported")
+        : refusalWords(code, t);
   const blocked =
     !ehf.canSend && canIssue && ehf.blockedBy && ehf.blockedBy !== "ehf_already_sent"
-      ? ehf.blockedBy === "ehf_unavailable"
-        ? t("ehfUnavailableHint")
-        : refusalMessage(Object.assign(new Error(ehf.blockedBy), { code: ehf.blockedBy }), t, date)
+      ? blockedWords(ehf.blockedBy)
       : undefined;
   return (
     <Card withBorder data-testid="ehf-card">
@@ -138,7 +144,7 @@ export const EhfCard = ({ document: doc, canIssue, offerSend, onSend }: EhfCardP
                     <Table.Td>{row.receiverParticipant}</Table.Td>
                     <Table.Td>
                       <Group gap={4} justify="flex-end" wrap="nowrap">
-                        {canIssue && row.status === "queued" && (
+                        {canIssue && row.status === "queued" && !row.submitAttemptedAt && (
                           <Button
                             size="xs"
                             variant="subtle"
@@ -158,6 +164,7 @@ export const EhfCard = ({ document: doc, canIssue, offerSend, onSend }: EhfCardP
                           size="xs"
                           variant="subtle"
                           leftSection={<IconDownload size={14} />}
+                          aria-label={t("downloadUblOf", { at: dateTime(row.queuedAt) })}
                           loading={download.isPending && download.variables?.id === row.id}
                           onClick={() => download.mutate(row)}
                         >

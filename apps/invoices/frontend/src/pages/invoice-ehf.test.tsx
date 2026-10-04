@@ -3,7 +3,15 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { jsonResponse, path, refusal } from "../test/api";
 import { pendingResponse, readsOf, requestTo, documentServer as server } from "../test/document-server";
-import { draft, type EhfStatus, ehfDocument, ehfState, issued, partlyPaid } from "../test/fixtures";
+import {
+  attemptedTransmission,
+  draft,
+  type EhfStatus,
+  ehfDocument,
+  ehfState,
+  issued,
+  partlyPaid,
+} from "../test/fixtures";
 import { renderRoute } from "../test/route-tree";
 
 /** A caller who may send as EHF on an installation that can: meta's `canSendEhf`. */
@@ -49,6 +57,25 @@ describe("the issued document's primary action (EHF and KID design D10)", () => 
     expect(ehf).toHaveLength(1);
     expect(card).toContainElement(ehf[0]);
     expect(ehf[0]).not.toHaveAttribute("data-variant", "filled");
+  });
+
+  it("offers no EHF send without canSendEhf, even on a document the server says can go", async () => {
+    // canSend true and the customer prefers EHF, but meta's canSendEhf is false.
+    server(() => ehfDocument("not_sent"));
+    renderRoute("/invoices/1001");
+
+    const card = await ehfCard();
+    expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Send as EHF" })).not.toBeInTheDocument();
+    expect(within(card).queryByRole("button", { name: "Send as EHF" })).not.toBeInTheDocument();
+  });
+
+  it("keeps Download PDF secondary when Send as EHF is the primary action", async () => {
+    server(() => ehfDocument("not_sent"), {}, ehfSender);
+    renderRoute("/invoices/1001");
+
+    await ehfCard();
+    expect(screen.getByRole("button", { name: "Download PDF" })).toHaveAttribute("data-variant", "default");
   });
 
   it("offers no EHF send at all without canSendEhf, and the card says why", async () => {
@@ -251,7 +278,7 @@ describe("the E-invoice card", () => {
     expect(within(card).getByText(/^Submitted Sep 12, 2026/)).toBeInTheDocument();
     expect(within(card).getByText(/^Failed Sep 12, 2026/)).toBeInTheDocument();
     expect(within(card).getByText("Provider reference: 8d4e2f1a-3b5c-4d6e-9f0a-1b2c3d4e5f6a")).toBeInTheDocument();
-    expect(within(card).getByText("Reason: receiver_not_receivable")).toBeInTheDocument();
+    expect(within(card).getByText("Reason: Storecove: the receiver rejected the document")).toBeInTheDocument();
   });
 
   it("lists every transmission, newest first, with its receiver", async () => {
@@ -323,6 +350,15 @@ describe("the E-invoice card", () => {
         "The transmission may already have reached the access point, so it can no longer be cancelled.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("offers no cancel on a queued transmission already attempted", async () => {
+    server(() => ehfDocument("queued", { transmissions: [attemptedTransmission()] }), {}, ehfSender);
+    renderRoute("/invoices/1001");
+
+    const card = await ehfCard();
+    expect(within(card).getByTestId("transmission")).toBeInTheDocument();
+    expect(within(card).queryByRole("button", { name: "Cancel the transmission" })).not.toBeInTheDocument();
   });
 
   it.each(["submitted", "delivered", "failed", "unconfirmed", "cancelled"] as const)(
@@ -398,7 +434,9 @@ describe("the E-invoice card", () => {
     );
     renderRoute("/invoices/1001");
 
-    await userEvent.click(within(await ehfCard()).getByRole("button", { name: "Download EHF (XML)" }));
+    await userEvent.click(
+      within(await ehfCard()).getByRole("button", { name: /^Download the EHF \(XML\) queued Sep 12, 2026/ }),
+    );
     await waitFor(() => expect(clicked).toHaveLength(1));
     expect(fetchMock.actualCalls.some(([url]) => path(url) === "/api/v1/invoices/1001/transmissions/1101/ubl")).toBe(
       true,
@@ -414,7 +452,9 @@ describe("the E-invoice card", () => {
     );
     renderRoute("/invoices/1001");
 
-    await userEvent.click(within(await ehfCard()).getByRole("button", { name: "Download EHF (XML)" }));
+    await userEvent.click(
+      within(await ehfCard()).getByRole("button", { name: /^Download the EHF \(XML\) queued Sep 12, 2026/ }),
+    );
     expect(await screen.findByText("Could not download the EHF")).toBeInTheDocument();
   });
 
@@ -435,6 +475,7 @@ describe("the E-invoice card", () => {
       "buyer_reference_missing",
       "EHF needs the buyer's reference or an order reference, and the document has neither. Credit it and issue it again with one.",
     ],
+    ["ehf_invalid", "A line is in VAT category K (intra-community supply), which is not sent as EHF."],
   ])("says why it cannot be sent: %s", async (blockedBy, words) => {
     server(() => ehfDocument("not_sent", { canSend: false, blockedBy }), {}, ehfSender);
     renderRoute("/invoices/1001");

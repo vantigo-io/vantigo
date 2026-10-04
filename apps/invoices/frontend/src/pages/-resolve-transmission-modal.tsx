@@ -32,7 +32,8 @@ export const ResolveTransmissionModal = ({ document: doc, transmission, onClose 
   const [note, setNote] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const resolve = useMutation({
-    mutationFn: () => resolveTransmission(doc.id, transmission.id, { outcome: outcome ?? "failed", note: note.trim() }),
+    mutationFn: (chosen: TransmissionResolution["outcome"]) =>
+      resolveTransmission(doc.id, transmission.id, { outcome: chosen, note: note.trim() }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY] });
       notifications.show({ color: "green", message: t("transmissionResolved") });
@@ -106,7 +107,9 @@ export const ResolveTransmissionModal = ({ document: doc, transmission, onClose 
           <Button
             disabled={resolve.isPending || outcome === null || note.trim() === ""}
             loading={resolve.isPending}
-            onClick={() => resolve.mutate()}
+            onClick={() => {
+              if (outcome !== null) resolve.mutate(outcome);
+            }}
           >
             {t("resolveTransmission")}
           </Button>

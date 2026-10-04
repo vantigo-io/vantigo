@@ -454,6 +454,12 @@ export const invoicesCatalog = {
     removeAccessPoint: "Remove the credentials",
     accessPointRemoved: "The access point's credentials are removed",
     couldNotRemoveAccessPoint: "Could not remove the credentials",
+    removeAccessPointTitle: "Remove the access point's credentials?",
+    removeAccessPointConfirm:
+      "The stored API key is deleted and cannot be shown again, and nothing can be sent as EHF until a key is saved again.",
+    failedToLoadAccessPoint: "Could not load the access point",
+    accessPointRejectedOn:
+      "The provider refused the stored API key on {{at}}. Documents wait in the queue until a valid key is saved.",
     accessPointRejectedTitle: "The access point refused the key",
     accessPointRejected:
       "The provider refused the stored API key. Documents wait in the queue until a valid key is saved.",
@@ -473,7 +479,6 @@ export const invoicesCatalog = {
     "kidAlgorithm.mod11": "MOD11",
     kidNone: "No KID agreement: invoices carry their number as the payment reference.",
     kidPreview: "Next KID: {{kid}} (invoice {{number}})",
-    kidPreviewUnavailable: "The next invoice number could not be read, so no KID is previewed.",
     kidPairIncomplete: "Choose both the length and the check digit, or neither.",
     kidDoesNotFit:
       "Invoice {{number}}, the next to be issued, does not fit in {{length}} characters with its check digit. Choose a longer KID.",
@@ -544,6 +549,7 @@ export const invoicesCatalog = {
     "fieldInvalid.resolve.outcome": "Delivered or failed.",
     "fieldInvalid.resolve.note": "Say why, in 1 to 500 characters.",
     downloadUbl: "Download EHF (XML)",
+    downloadUblOf: "Download the EHF (XML) queued {{at}}",
     couldNotDownloadUbl: "Could not download the EHF",
     ehfColumn: "EHF",
     ehfUnavailableHint: "This installation cannot send EHF yet: see E-invoicing in the invoice settings.",
@@ -974,9 +980,9 @@ export const invoicesCatalog = {
     peppolIdMissing: "Selgerens Peppol-ID mangler: fyll den inn, eller organisasjonsnummeret den utledes av.",
     ehfIsAvailable: "Sending som EHF er tilgjengelig",
     ehfIsNotAvailable:
-      "Sending som EHF er ikke tilgjengelig. Det krever at driftsansvarlig har slått på e-faktura, at Peppol-oppslag er slått på, aksesspunktets påloggingsdata og selgerens Peppol-ID.",
+      "Sending som EHF er ikke tilgjengelig. Det krever at driftsansvarlig har slått på e-faktura og Peppol-oppslag, og at aksesspunktets påloggingsdata og selgerens Peppol-ID er lagt inn.",
     "field.peppolId": "Peppol-ID",
-    peppolIdHint: "Adressen deres i Peppol-nettverket. Står den tom, er den 0192 og organisasjonsnummeret.",
+    peppolIdHint: "Adressen din i Peppol-nettverket. Står den tom, er den 0192 og organisasjonsnummeret.",
     "fieldInvalid.peppolId":
       "Et firesifret skjema, et kolon og en identifikator, som 0192:974760673; en 0192-ID er selgerens eget organisasjonsnummer.",
     accessPoint: "Aksesspunkt",
@@ -1002,6 +1008,12 @@ export const invoicesCatalog = {
     removeAccessPoint: "Fjern påloggingsdataene",
     accessPointRemoved: "Aksesspunktets påloggingsdata er fjernet",
     couldNotRemoveAccessPoint: "Kunne ikke fjerne påloggingsdataene",
+    removeAccessPointTitle: "Fjerne aksesspunktets påloggingsdata?",
+    removeAccessPointConfirm:
+      "Den lagrede API-nøkkelen slettes og kan ikke vises igjen, og ingenting kan sendes som EHF før en nøkkel er lagret på nytt.",
+    failedToLoadAccessPoint: "Kunne ikke laste aksesspunktet",
+    accessPointRejectedOn:
+      "Leverandøren avviste den lagrede API-nøkkelen {{at}}. Dokumentene venter i køen til en gyldig nøkkel er lagret.",
     accessPointRejectedTitle: "Aksesspunktet avviste nøkkelen",
     accessPointRejected:
       "Leverandøren avviste den lagrede API-nøkkelen. Dokumentene venter i køen til en gyldig nøkkel er lagret.",
@@ -1021,7 +1033,6 @@ export const invoicesCatalog = {
     "kidAlgorithm.mod11": "MOD11",
     kidNone: "Ingen KID-avtale: fakturaene har nummeret sitt som betalingsreferanse.",
     kidPreview: "Neste KID: {{kid}} (faktura {{number}})",
-    kidPreviewUnavailable: "Neste fakturanummer kunne ikke leses, så ingen KID vises.",
     kidPairIncomplete: "Velg både lengde og kontrollsiffer, eller ingen av dem.",
     kidDoesNotFit:
       "Faktura {{number}}, den neste som utstedes, får ikke plass i {{length}} tegn med kontrollsifferet. Velg en lengre KID.",
@@ -1091,6 +1102,7 @@ export const invoicesCatalog = {
     "fieldInvalid.resolve.outcome": "Levert eller feilet.",
     "fieldInvalid.resolve.note": "Si hvorfor, med 1 til 500 tegn.",
     downloadUbl: "Last ned EHF (XML)",
+    downloadUblOf: "Last ned EHF-en (XML) lagt i kø {{at}}",
     couldNotDownloadUbl: "Kunne ikke laste ned EHF-en",
     ehfColumn: "EHF",
     ehfUnavailableHint: "Denne installasjonen kan ikke sende EHF ennå: se E-faktura i fakturainnstillingene.",

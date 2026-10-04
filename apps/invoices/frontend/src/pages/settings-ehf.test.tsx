@@ -6,7 +6,7 @@ import type { InvoicesMeta } from "../api/meta";
 import type { InvoiceSettings } from "../api/settings";
 import { jsonResponse, path, problemResponse, refusal, sent } from "../test/api";
 import { stubFetch } from "../test/fetch";
-import { accessPoint, journal, meta, settings } from "../test/fixtures";
+import { accessPoint, meta, settings } from "../test/fixtures";
 import { renderWithProviders } from "../test/render";
 import { SettingsPage } from "./settings";
 
@@ -23,13 +23,11 @@ const manager = {
 interface World {
   settings: InvoiceSettings;
   meta: Partial<InvoicesMeta>;
-  /** The stored credentials, as PUT answers them; null when none are stored. */
+  /** The stored credentials, as GET and PUT answer them; null when none are stored. */
   accessPoint: AccessPoint | null;
   /** Whether a transmission is queued, submitted or unconfirmed: DELETE is then refused (D7). */
   transmissionsActive: boolean;
   verify: string;
-  /** The counter's last number, which the journal answers; absent before the first issue. */
-  counterLast?: number;
 }
 
 const world = (overrides: Partial<World> = {}): World => ({
@@ -44,9 +42,11 @@ const world = (overrides: Partial<World> = {}): World => ({
 /**
  * The fetch fake for the e-invoicing settings, a small model of the server's
  * rules (D2, D3, D7): the settings saved at their revision, the KID agreement
- * judged against the next number — refused with a 400 on kidLength when it
+ * judged against the next number (`nextNumber` once the series is locked,
+ * the request's start before) — refused with a 400 on kidLength when it
  * does not fit, warned `kid_headroom_low` when fewer than two digits are left —
- * the access point stored without its key ever coming back, its removal
+ * the access point read and stored without its key ever coming back — none
+ * stored reads `{hasCredentials: false}` — its removal
  * refused while a transmission is active, and Verify answering what the world
  * says.
  */
@@ -61,7 +61,7 @@ const server = (state: World = world()) =>
     if (url === "/api/v1/invoices/settings" && method === "PUT") {
       const { revision, ...rest } = body as InvoiceSettings;
       if (revision !== state.settings.revision) return jsonResponse(409, { title: "Conflict", status: 409 });
-      const next = state.settings.seriesLocked ? (state.counterLast ?? 0) + 1 : rest.seriesStart;
+      const next = state.settings.seriesLocked ? state.settings.nextNumber : rest.seriesStart;
       const room = rest.kidLength === null ? 99 : rest.kidLength - 1 - String(next).length;
       if (room < 0) return problemResponse(400, "Invalid settings", { kidLength: ["does not fit"] });
       state.settings = {
@@ -74,8 +74,8 @@ const server = (state: World = world()) =>
     }
     if (url === "/api/v1/invoices/settings") return jsonResponse(200, state.settings);
     if (url === "/api/v1/invoices/vat-codes") return jsonResponse(200, []);
-    if (url.startsWith("/api/v1/invoices/journal?")) {
-      return jsonResponse(200, journal({ counterLast: state.counterLast }));
+    if (url === "/api/v1/invoices/settings/access-point" && method === "GET") {
+      return jsonResponse(200, state.accessPoint ?? { hasCredentials: false });
     }
     if (url === "/api/v1/invoices/settings/access-point" && method === "PUT") {
       if (!body.apiKey && !state.accessPoint) {
@@ -184,12 +184,22 @@ describe("the E-invoicing card", () => {
     expect(within(await eInvoicingCard()).getByText(words)).toBeInTheDocument();
   });
 
-  it("says the provider refused the stored key", async () => {
-    server(world({ meta: { accessPointCredentialsRejected: true } }));
+  it("says the provider refused the stored key, and when", async () => {
+    server(
+      world({
+        accessPoint: accessPoint({ rejectedAt: "2026-09-12T08:15:00Z" }),
+        meta: { accessPointCredentialsRejected: true },
+      }),
+    );
     renderWithProviders(<SettingsPage />);
 
     const card = await eInvoicingCard();
     expect(await within(card).findByText("The access point refused the key")).toBeInTheDocument();
+    expect(
+      within(card).getByText(
+        /^The provider refused the stored API key on Sep 12, 2026.*\. Documents wait in the queue until a valid key is saved\.$/,
+      ),
+    ).toBeInTheDocument();
     expect(within(card).getByText("Key stored")).toBeInTheDocument();
   });
 });
@@ -200,7 +210,7 @@ describe("the access point", () => {
     renderWithProviders(<SettingsPage />);
 
     const card = await eInvoicingCard();
-    expect(within(card).getByRole("textbox", { name: "Provider" })).toHaveValue("Storecove");
+    expect(await within(card).findByRole("textbox", { name: "Provider" })).toHaveValue("Storecove");
     expect(within(card).queryByText("Key stored")).not.toBeInTheDocument();
     await userEvent.type(within(card).getByRole("textbox", { name: "Legal entity id" }), "4711");
     const key = within(card).getByLabelText("API key");
@@ -226,8 +236,11 @@ describe("the access point", () => {
     renderWithProviders(<SettingsPage />);
 
     const card = await eInvoicingCard();
-    expect(within(card).getByText("Key stored")).toBeInTheDocument();
-    await userEvent.type(within(card).getByRole("textbox", { name: "Legal entity id" }), "4712");
+    expect(await within(card).findByText("Key stored")).toBeInTheDocument();
+    const entity = within(card).getByRole("textbox", { name: "Legal entity id" });
+    expect(entity).toHaveValue("4711");
+    await userEvent.clear(entity);
+    await userEvent.type(entity, "4712");
     await userEvent.click(within(card).getByRole("button", { name: "Save access point" }));
     expect(await screen.findByText("The access point is saved")).toBeInTheDocument();
     expect(requestBody(fetchMock, "PUT", "/api/v1/invoices/settings/access-point")).toEqual({
@@ -241,7 +254,7 @@ describe("the access point", () => {
     renderWithProviders(<SettingsPage />);
 
     const card = await eInvoicingCard();
-    await userEvent.type(within(card).getByRole("textbox", { name: "Legal entity id" }), "4711");
+    await userEvent.type(await within(card).findByRole("textbox", { name: "Legal entity id" }), "4711");
     await userEvent.click(within(card).getByRole("button", { name: "Save access point" }));
     expect(
       await within(card).findByText("Enter the key: it is needed the first time, and cannot be blank."),
@@ -260,7 +273,7 @@ describe("the access point", () => {
     renderWithProviders(<SettingsPage />);
 
     const card = await eInvoicingCard();
-    await userEvent.click(within(card).getByRole("button", { name: "Verify" }));
+    await userEvent.click(await within(card).findByRole("button", { name: "Verify" }));
     expect(await within(card).findByText(words)).toBeInTheDocument();
   });
 
@@ -269,7 +282,8 @@ describe("the access point", () => {
     renderWithProviders(<SettingsPage />);
 
     const card = await eInvoicingCard();
-    await userEvent.click(within(card).getByRole("button", { name: "Remove the credentials" }));
+    await removeAndConfirm(card);
+    expect(await within(card).findByText("Could not remove the credentials")).toBeInTheDocument();
     expect(
       await within(card).findByText(
         "A document is still on its way through this access point. Wait until it is delivered or failed before removing or switching the credentials.",
@@ -278,16 +292,66 @@ describe("the access point", () => {
     expect(within(card).getByText("Key stored")).toBeInTheDocument();
   });
 
-  it("removes the credentials", async () => {
+  it("asks before removing the credentials, and removes nothing when the person cancels", async () => {
+    const fetchMock = server(world({ accessPoint: accessPoint(), meta: { ehfAvailable: true } }));
+    renderWithProviders(<SettingsPage />);
+
+    const card = await eInvoicingCard();
+    await userEvent.click(await within(card).findByRole("button", { name: "Remove the credentials" }));
+    const dialog = await screen.findByRole("dialog", { name: "Remove the access point's credentials?" });
+    expect(
+      within(dialog).getByText(
+        "The stored API key is deleted and cannot be shown again, and nothing can be sent as EHF until a key is saved again.",
+      ),
+    ).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(requestBody(fetchMock, "DELETE", "/api/v1/invoices/settings/access-point")).toBeUndefined();
+    expect(within(card).getByText("Key stored")).toBeInTheDocument();
+  });
+
+  it("removes the credentials once confirmed", async () => {
     server(world({ accessPoint: accessPoint(), meta: { ehfAvailable: true } }));
     renderWithProviders(<SettingsPage />);
 
     const card = await eInvoicingCard();
-    await userEvent.click(within(card).getByRole("button", { name: "Remove the credentials" }));
+    await removeAndConfirm(card);
     expect(await screen.findByText("The access point's credentials are removed")).toBeInTheDocument();
+    await waitFor(() => expect(within(card).queryByText("Key stored")).not.toBeInTheDocument());
+  });
+
+  it("draws an empty form with nothing stored: Verify and Remove wait for a key", async () => {
+    server();
+    renderWithProviders(<SettingsPage />);
+
+    const card = await eInvoicingCard();
+    expect(await within(card).findByRole("textbox", { name: "Legal entity id" })).toHaveValue("");
     expect(within(card).queryByText("Key stored")).not.toBeInTheDocument();
+    expect(
+      within(card).getByText("The key from Storecove. It is stored encrypted and never shown again."),
+    ).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Verify" })).toBeDisabled();
+    expect(within(card).getByRole("button", { name: "Remove the credentials" })).toBeDisabled();
+  });
+
+  it("prefills the stored legal entity, and says a key is stored without showing it", async () => {
+    server(world({ accessPoint: accessPoint({ legalEntityId: 9001 }) }));
+    renderWithProviders(<SettingsPage />);
+
+    const card = await eInvoicingCard();
+    expect(await within(card).findByRole("textbox", { name: "Legal entity id" })).toHaveValue("9001");
+    expect(within(card).getByText("Key stored")).toBeInTheDocument();
+    expect(within(card).getByLabelText("API key")).toHaveValue("");
+    expect(within(card).getByRole("button", { name: "Verify" })).toBeEnabled();
   });
 });
+
+/** Clicks Remove on the access point and confirms it in the dialog that asks. */
+const removeAndConfirm = async (card: HTMLElement) => {
+  await userEvent.click(await within(card).findByRole("button", { name: "Remove the credentials" }));
+  const dialog = await screen.findByRole("dialog", { name: "Remove the access point's credentials?" });
+  await userEvent.click(within(dialog).getByRole("button", { name: "Remove the credentials" }));
+};
 
 describe("the KID card", () => {
   it("says there is no agreement until one is chosen", async () => {
@@ -311,8 +375,8 @@ describe("the KID card", () => {
     expect(await within(card).findByText("Next KID: 0010006 (invoice 1000)")).toBeInTheDocument();
   });
 
-  it("previews the next KID from the counter once the series is locked", async () => {
-    server(world({ counterLast: 1002, settings: settings({ kidLength: 7, kidAlgorithm: "mod10" }) }));
+  it("previews the next KID from the server's next number once the series is locked", async () => {
+    server(world({ settings: settings({ nextNumber: 1003, kidLength: 7, kidAlgorithm: "mod10" }) }));
     renderWithProviders(<SettingsPage />);
 
     expect(await within(await kidCard()).findByText("Next KID: 0010033 (invoice 1003)")).toBeInTheDocument();
@@ -348,24 +412,53 @@ describe("the KID card", () => {
     ).toBeInTheDocument();
   });
 
-  it("says the headroom warning the save answers", async () => {
+  it("says the headroom warning the save answered while the agreement is as saved", async () => {
+    server(
+      world({
+        settings: settings({ nextNumber: 1003, kidLength: 6, kidAlgorithm: "mod10", warnings: ["kid_headroom_low"] }),
+      }),
+    );
+    renderWithProviders(<SettingsPage />);
+
+    expect(within(await kidCard()).getByText(headroomWords)).toBeInTheDocument();
+  });
+
+  it("judges the headroom live while the agreement is edited, and the save agrees", async () => {
     server(world({ settings: settings({ seriesLocked: false, seriesStart: 1000 }) }));
     renderWithProviders(<SettingsPage />);
 
     const card = await kidCard();
-    await userEvent.type(within(card).getByRole("textbox", { name: "KID length" }), "6");
+    const length = within(card).getByRole("textbox", { name: "KID length" });
+    await userEvent.type(length, "6");
     await chooseAlgorithm("MOD10 (recommended)");
-    expect(within(card).queryByText(/fewer than two digits/)).not.toBeInTheDocument();
+    expect(await within(card).findByText(headroomWords)).toBeInTheDocument();
+    await userEvent.clear(length);
+    await userEvent.type(length, "7");
+    await waitFor(() => expect(within(card).queryByText(headroomWords)).not.toBeInTheDocument());
+    await userEvent.clear(length);
+    await userEvent.type(length, "6");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(
-      await within(await kidCard()).findByText(
-        "The next invoice number leaves fewer than two digits of room in the KID's length. Ask the bank for a longer KID before the numbers outgrow it.",
-      ),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
+    expect(within(await kidCard()).getByText(headroomWords)).toBeInTheDocument();
+  });
+
+  it("drops the saved warning once the agreement is lengthened", async () => {
+    server(
+      world({
+        settings: settings({ nextNumber: 1003, kidLength: 6, kidAlgorithm: "mod10", warnings: ["kid_headroom_low"] }),
+      }),
+    );
+    renderWithProviders(<SettingsPage />);
+
+    const card = await kidCard();
+    const length = within(card).getByRole("textbox", { name: "KID length" });
+    await userEvent.clear(length);
+    await userEvent.type(length, "9");
+    expect(within(card).queryByText(headroomWords)).not.toBeInTheDocument();
   });
 
   it("warns that issued invoices keep their KIDs when a set agreement changes", async () => {
-    server(world({ counterLast: 1002, settings: settings({ kidLength: 7, kidAlgorithm: "mod10" }) }));
+    server(world({ settings: settings({ nextNumber: 1003, kidLength: 7, kidAlgorithm: "mod10" }) }));
     renderWithProviders(<SettingsPage />);
 
     const card = await kidCard();
@@ -378,6 +471,9 @@ describe("the KID card", () => {
     expect(within(card).getByText(warning)).toBeInTheDocument();
   });
 });
+
+const headroomWords =
+  "The next invoice number leaves fewer than two digits of room in the KID's length. Ask the bank for a longer KID before the numbers outgrow it.";
 
 /** The parsed body of the first request to `url` with `method`. */
 const requestBody = (fetchMock: ReturnType<typeof stubFetch>, method: string, url: string) => {

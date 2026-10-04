@@ -575,6 +575,10 @@ export const transmission = (overrides: Partial<Transmission> = {}): Transmissio
   ...overrides,
 });
 
+/** The same transmission once a worker has stamped its crash marker: attempted, so no longer cancellable. */
+export const attemptedTransmission = (overrides: Partial<Transmission> = {}): Transmission =>
+  transmission({ submitAttemptedAt: "2026-09-12T11:00:04Z", ...overrides });
+
 /** The EHF states an issued document's `ehf` block can be in (EHF and KID design D10). */
 export type EhfStatus = "not_sent" | "queued" | "submitted" | "delivered" | "failed" | "unconfirmed" | "cancelled";
 
@@ -615,10 +619,16 @@ export const ehfState = (status: EhfStatus, overrides: Partial<EhfState> = {}): 
       status,
       queuedAt: "2026-09-12T11:00:00Z",
       failedAt: "2026-09-12T11:00:06Z",
-      reason: "receiver_not_receivable",
+      reason: "Storecove: the receiver rejected the document",
       canSend: true,
       ...profile,
-      transmissions: [transmission({ status, failedAt: "2026-09-12T11:00:06Z", reason: "receiver_not_receivable" })],
+      transmissions: [
+        transmission({
+          status,
+          failedAt: "2026-09-12T11:00:06Z",
+          reason: "Storecove: the receiver rejected the document",
+        }),
+      ],
     },
     unconfirmed: {
       status,
@@ -639,6 +649,6 @@ export const ehfState = (status: EhfStatus, overrides: Partial<EhfState> = {}): 
   return { ...states[status], ...overrides };
 };
 
-/** Invoice 1000, issued, with its `ehf` block in `status`. */
+/** Document 1001 (invoice number 1000), issued, with its `ehf` block in `status`. */
 export const ehfDocument = (status: EhfStatus, ehf: Partial<EhfState> = {}, overrides: Partial<InvoiceDocument> = {}) =>
   issued({ ehf: ehfState(status, ehf), ...overrides });

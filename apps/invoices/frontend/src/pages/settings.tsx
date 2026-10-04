@@ -20,6 +20,7 @@ import {
   Title,
 } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
+import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import {
   IconAlertCircle,
@@ -34,8 +35,13 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
 import { type ChangeEvent, useState } from "react";
-import { type AccessPoint, deleteAccessPoint, putAccessPoint, verifyAccessPoint } from "../api/access-point";
-import { journalQueryOptions } from "../api/journal";
+import {
+  type AccessPoint,
+  accessPointQueryOptions,
+  deleteAccessPoint,
+  putAccessPoint,
+  verifyAccessPoint,
+} from "../api/access-point";
 import { type InvoicesMeta, invoicesMetaQueryOptions } from "../api/meta";
 import { ApiConflictError, ApiValidationError, INVOICES_QUERY_KEY } from "../api/request";
 import { type InvoiceSettings, invoiceSettingsQueryOptions, updateInvoiceSettings } from "../api/settings";
@@ -114,10 +120,6 @@ const Settings = () => {
   // settings changed — the draft editor's rule.
   const [editedFrom, setEditedFrom] = useState<InvoiceSettings | null>(null);
   const shown = editedFrom ?? settings.data;
-  // There is no read of the access point (D7): what the last save or removal
-  // answered here, or nothing known yet — held above the form, which remounts
-  // on every saved revision.
-  const [accessPoint, setAccessPoint] = useState<AccessPoint | null | undefined>(undefined);
   return (
     <>
       {settings.isError && (
@@ -133,8 +135,6 @@ const Settings = () => {
           latestRevision={settings.data.revision}
           dirty={shown === editedFrom}
           onDirtyChange={(dirty) => setEditedFrom((current) => (dirty ? (current ?? shown) : null))}
-          accessPoint={accessPoint}
-          onAccessPointChange={setAccessPoint}
         />
       )}
       <VatCodesSection />
@@ -170,9 +170,6 @@ interface SellerFormProps {
   /** Whether there are unsaved edits; the page holds it, so a refetch does not remount the form under them. */
   dirty: boolean;
   onDirtyChange: (dirty: boolean) => void;
-  /** The access point as its last save answered here; undefined while nothing is known. */
-  accessPoint: AccessPoint | null | undefined;
-  onAccessPointChange: (accessPoint: AccessPoint | null) => void;
 }
 
 /**
@@ -183,16 +180,9 @@ interface SellerFormProps {
  * field has one rule, so its words say what the server checked — and only a
  * refusal no input shows is a notification. A save refused as stale, or a
  * newer revision seen while editing, says the settings changed and offers
- * Reload. The access point beside the Peppol id is saved on its own.
+ * Reload. The access point beside the Peppol id is read and saved on its own.
  */
-const SellerForm = ({
-  settings,
-  latestRevision,
-  dirty,
-  onDirtyChange: setDirty,
-  accessPoint,
-  onAccessPointChange,
-}: SellerFormProps) => {
+const SellerForm = ({ settings, latestRevision, dirty, onDirtyChange: setDirty }: SellerFormProps) => {
   const { t, date } = useInvoiceFormat();
   const queryClient = useQueryClient();
   // The page has read meta before it drew this form; the mail line comes from it.
@@ -392,11 +382,6 @@ const SellerForm = ({
           <Text size="sm" c="dimmed">
             {t("eInvoicingDescription")}
           </Text>
-          {meta.data?.accessPointCredentialsRejected && (
-            <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("accessPointRejectedTitle")}>
-              {t("accessPointRejected")}
-            </Alert>
-          )}
           {/* The seller's Peppol id is e-invoicing's, never issuing's: its own line (D2, D15). */}
           <List spacing={4} size="sm" aria-label={t("eInvoicingReadiness")}>
             <List.Item
@@ -428,10 +413,10 @@ const SellerForm = ({
             error={errors.peppolId}
             onChange={(e) => set("peppolId", e.currentTarget.value)}
           />
-          {meta.data && <AccessPointSection meta={meta.data} stored={accessPoint} onStored={onAccessPointChange} />}
+          {meta.data && <AccessPointSection meta={meta.data} />}
         </Stack>
       </Card>
-      <KidCard settings={settings} values={values} errors={errors} today={meta.data?.today ?? ""} set={set} />
+      <KidCard settings={settings} values={values} errors={errors} set={set} />
       <Group justify="flex-end">
         <Button loading={save.isPending} disabled={!dirty} onClick={() => save.mutate()}>
           {t("save")}
@@ -447,32 +432,35 @@ interface KidCardProps {
   /** The form's values, the agreement being edited among them. */
   values: InvoiceSettings;
   errors: Record<string, string>;
-  /** Today in Oslo, meta's: the journal read for the counter is today's. */
-  today: string;
   set: <K extends keyof InvoiceSettings>(key: K, value: InvoiceSettings[K]) => void;
 }
 
 /**
  * The KID agreement (EHF and KID design D3, D15): the length and the check
  * digit the bank agreed, with their help; the next KID previewed — computed
- * here by the server's own MOD10 and MOD11, from the series start before the
- * first issue and from the counter after it — or, when the next number does
- * not fit, why; the save's `kid_headroom_low`; and, once invoices are issued
- * under an agreement, that changing it leaves their KIDs as they were.
+ * here by the server's own MOD10 and MOD11, from the series start being
+ * edited before the first issue and from the server's next number after it —
+ * or, when the next number does not fit, why; the headroom warning, judged
+ * live while the agreement is edited and as the save answered it otherwise;
+ * and, once invoices are issued under an agreement, that changing it leaves
+ * their KIDs as they were.
  */
-const KidCard = ({ settings, values, errors, today, set }: KidCardProps) => {
+const KidCard = ({ settings, values, errors, set }: KidCardProps) => {
   const { t } = useInvoiceFormat();
   const { kidLength: length, kidAlgorithm: algorithm } = values;
   const agreed = length !== null && algorithm !== null;
-  // The counter is read only when there is an agreement to preview and the
-  // series has started: before that, the next number is the series start.
-  const counter = useQuery({
-    ...journalQueryOptions(today, today, 1),
-    enabled: agreed && settings.seriesLocked && today !== "",
-  });
-  const next = settings.seriesLocked
-    ? counter.data && (counter.data.counterLast ?? settings.seriesStart - 1) + 1
-    : values.seriesStart;
+  // Before the first issue the next number is the start being edited; after
+  // it, the server's.
+  const next = settings.seriesLocked ? settings.nextNumber : values.seriesStart;
+  // The saved warning describes the saved agreement and number; while either
+  // is edited, the headroom is judged here by the server's rule.
+  const edited =
+    length !== settings.kidLength || algorithm !== settings.kidAlgorithm || values.seriesStart !== settings.seriesStart;
+  const warnings = edited
+    ? agreed && kidFits(next, length).headroomLow
+      ? ["kid_headroom_low"]
+      : []
+    : settings.warnings;
   const changed =
     settings.seriesLocked &&
     settings.kidLength !== null &&
@@ -480,9 +468,6 @@ const KidCard = ({ settings, values, errors, today, set }: KidCardProps) => {
   const preview = (() => {
     if (length === null && algorithm === null) return { tone: "dimmed", words: t("kidNone") };
     if (!agreed) return { tone: "yellow", words: t("kidPairIncomplete") };
-    if (next === undefined || next === 0) {
-      return counter.isError ? { tone: "dimmed", words: t("kidPreviewUnavailable") } : undefined;
-    }
     if (!kidFits(next, length).fits) return { tone: "red", words: t("kidDoesNotFit", { number: next, length }) };
     const kid = computeKid(next, length, algorithm);
     return kid ? { tone: "default", words: t("kidPreview", { kid, number: next }) } : undefined;
@@ -526,7 +511,7 @@ const KidCard = ({ settings, values, errors, today, set }: KidCardProps) => {
               {preview.words}
             </Text>
           ))}
-        {settings.warnings.map((warning) => (
+        {warnings.map((warning) => (
           <Alert key={warning} color="yellow" icon={<IconAlertCircle size={16} />} data-settings-warning={warning}>
             {`settingsWarning.${warning}` in invoicesCatalog.en
               ? t(`settingsWarning.${warning}`)
@@ -546,34 +531,57 @@ const KidCard = ({ settings, values, errors, today, set }: KidCardProps) => {
 /** What Verify's answer looks like: the provider took the key, refused it, or could not be asked. */
 const verifyColours: Record<string, string> = { ok: "green", unauthorized: "red", unreachable: "yellow" };
 
-interface AccessPointSectionProps {
-  meta: InvoicesMeta;
-  /** The access point as its last save answered here: null once removed, undefined while nothing is known. */
-  stored: AccessPoint | null | undefined;
-  onStored: (accessPoint: AccessPoint | null) => void;
+/**
+ * The access point (EHF and KID design D7, D15), read from the server: the
+ * form is drawn once the stored credentials are known, its legal entity
+ * prefilled from them.
+ */
+const AccessPointSection = ({ meta }: { meta: InvoicesMeta }) => {
+  const { t, date } = useInvoiceFormat();
+  const stored = useQuery(accessPointQueryOptions());
+  if (stored.isError) {
+    return (
+      <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadAccessPoint")}>
+        {refusalMessage(stored.error, t, date)}
+      </Alert>
+    );
+  }
+  if (!stored.data) return <ContentSkeleton rows={3} rowHeight={36} />;
+  return <AccessPointForm meta={meta} stored={stored.data} />;
+};
+
+/** A refusal said on the sub-card: what was attempted, and why it was refused. */
+interface Refused {
+  title: string;
+  message: string;
 }
 
 /**
- * The access point (EHF and KID design D7, D15): the provider — Storecove,
- * the one there is — the legal entity documents are sent as, and the API key,
- * write-only: typed, saved, and never shown again; a stored one is only said
- * to be stored, and an empty field keeps it. Verify asks the provider with the
- * stored key and says how it went; Remove is refused while a transmission is
- * in flight, in the 409's words. There is no read of the stored credentials:
- * whether a key is stored is what the last answer here said, or meta's
- * `ehfAvailable` or `accessPointCredentialsRejected` — each implies one.
+ * The access point's form: the provider — Storecove, the one there is — the
+ * legal entity documents are sent as, and the API key, write-only: typed,
+ * saved, and never shown again; a stored one is only said to be stored, and
+ * an empty field keeps it. Verify asks the provider with the stored key and
+ * says how it went; Remove asks first — the key cannot be shown again — and
+ * is refused while a transmission is in flight, in the 409's words. Both wait
+ * for a stored key. A key the provider refused is said with the day it was
+ * refused. Every write invalidates `[INVOICES_QUERY_KEY]`, so the stored
+ * credentials and meta are read again.
  */
-const AccessPointSection = ({ meta, stored, onStored }: AccessPointSectionProps) => {
-  const { t, date } = useInvoiceFormat();
+const AccessPointForm = ({ meta, stored }: { meta: InvoicesMeta; stored: AccessPoint }) => {
+  const { t, date, dateTime } = useInvoiceFormat();
   const queryClient = useQueryClient();
-  const [legalEntityId, setLegalEntityId] = useState<number | string>(stored?.legalEntityId ?? "");
+  const [legalEntityId, setLegalEntityId] = useState<number | string>(stored.legalEntityId ?? "");
   const [apiKey, setApiKey] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [verified, setVerified] = useState<string | null>(null);
-  const [refused, setRefused] = useState<string | null>(null);
-  const hasKey =
-    stored === undefined ? meta.ehfAvailable || meta.accessPointCredentialsRejected : (stored?.hasCredentials ?? false);
+  const [refused, setRefused] = useState<Refused | null>(null);
+  const hasKey = stored.hasCredentials;
+  const rejected = stored.rejectedAt !== undefined || (hasKey && meta.accessPointCredentialsRejected);
   const refresh = () => queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY] });
+  const clear = () => {
+    setVerified(null);
+    setRefused(null);
+  };
   const save = useMutation({
     mutationFn: () =>
       putAccessPoint({
@@ -582,12 +590,8 @@ const AccessPointSection = ({ meta, stored, onStored }: AccessPointSectionProps)
         // An empty field keeps the stored key: it is left out, never sent blank.
         ...(apiKey.trim() ? { apiKey } : {}),
       }),
-    onMutate: () => {
-      setVerified(null);
-      setRefused(null);
-    },
-    onSuccess: async (saved) => {
-      onStored(saved);
+    onMutate: clear,
+    onSuccess: async () => {
       setApiKey("");
       setErrors({});
       await refresh();
@@ -607,35 +611,36 @@ const AccessPointSection = ({ meta, stored, onStored }: AccessPointSectionProps)
         }
         return;
       }
-      setRefused(refusalMessage(error, t, date));
+      setRefused({ title: t("couldNotSaveAccessPoint"), message: refusalMessage(error, t, date) });
     },
   });
   const verify = useMutation({
     mutationFn: verifyAccessPoint,
-    onMutate: () => {
-      setVerified(null);
-      setRefused(null);
-    },
+    onMutate: clear,
     onSuccess: async ({ result }) => {
       setVerified(result);
       await refresh();
     },
-    onError: (error) => setRefused(refusalMessage(error, t, date)),
+    onError: (error) => setRefused({ title: t("couldNotVerifyAccessPoint"), message: refusalMessage(error, t, date) }),
   });
   const remove = useMutation({
     mutationFn: deleteAccessPoint,
-    onMutate: () => {
-      setVerified(null);
-      setRefused(null);
-    },
+    onMutate: clear,
     onSuccess: async () => {
-      onStored(null);
       setApiKey("");
       await refresh();
       notifications.show({ color: "green", message: t("accessPointRemoved") });
     },
-    onError: (error) => setRefused(refusalMessage(error, t, date)),
+    onError: (error) => setRefused({ title: t("couldNotRemoveAccessPoint"), message: refusalMessage(error, t, date) }),
   });
+  const confirmRemove = () =>
+    modals.openConfirmModal({
+      title: t("removeAccessPointTitle"),
+      children: <Text size="sm">{t("removeAccessPointConfirm")}</Text>,
+      labels: { confirm: t("removeAccessPoint"), cancel: t("cancel") },
+      confirmProps: { color: "red" },
+      onConfirm: () => remove.mutate(),
+    });
   const busy = save.isPending || verify.isPending || remove.isPending;
   return (
     <Card withBorder data-testid="access-point">
@@ -651,6 +656,13 @@ const AccessPointSection = ({ meta, stored, onStored }: AccessPointSectionProps)
         <Text size="sm" c="dimmed">
           {t("accessPointHint")}
         </Text>
+        {rejected && (
+          <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("accessPointRejectedTitle")}>
+            {stored.rejectedAt
+              ? t("accessPointRejectedOn", { at: dateTime(stored.rejectedAt) })
+              : t("accessPointRejected")}
+          </Alert>
+        )}
         <SimpleGrid cols={{ base: 1, sm: 3 }}>
           <TextInput label={t("accessPointProvider")} readOnly value={t("provider.storecove")} />
           <NumberInput
@@ -694,8 +706,8 @@ const AccessPointSection = ({ meta, stored, onStored }: AccessPointSectionProps)
           </Alert>
         )}
         {refused && (
-          <Alert color="red" icon={<IconAlertCircle size={16} />}>
-            {refused}
+          <Alert color="red" icon={<IconAlertCircle size={16} />} title={refused.title}>
+            {refused.message}
           </Alert>
         )}
         <Group justify="flex-end">
@@ -703,13 +715,18 @@ const AccessPointSection = ({ meta, stored, onStored }: AccessPointSectionProps)
             variant="default"
             color="red"
             leftSection={<IconTrash size={16} />}
-            disabled={busy}
+            disabled={busy || !hasKey}
             loading={remove.isPending}
-            onClick={() => remove.mutate()}
+            onClick={confirmRemove}
           >
             {t("removeAccessPoint")}
           </Button>
-          <Button variant="default" disabled={busy} loading={verify.isPending} onClick={() => verify.mutate()}>
+          <Button
+            variant="default"
+            disabled={busy || !hasKey}
+            loading={verify.isPending}
+            onClick={() => verify.mutate()}
+          >
             {t("verifyAccessPoint")}
           </Button>
           <Button disabled={busy} loading={save.isPending} onClick={() => save.mutate()}>
