@@ -48,6 +48,14 @@ Fyll ut feltene og klikk **Lagre**:
 - **Nummerserien starter på** — nummeret det første dokumentet får. Det låses i det noe
   utstedes, og feltet sier da *Låst: det er utstedt dokumenter fra denne serien*.
 
+Lagring beholder to ting siden ennå ikke har felter for: selgerens **Peppol-ID** —
+adressen EHF-fakturaer sendes fra, fylt ut som `0192:` og organisasjonsnummeret når du
+har et — og **KID-avtalen** med banken, lengden og kontrollsifferet (MOD10 eller MOD11).
+Til de får egne felter, settes de gjennom API-et
+([Peppol-ID og KID-avtalen](/en/reference/invoices/#the-peppol-id-and-the-kid-agreement)).
+Med en KID-avtale får hver faktura som utstedes fra da av en KID, betalingsreferansen
+banken kobler betalingen til; en kreditnota får aldri det.
+
 Lagret en kollega innstillingene mens du redigerte, sier skjemaet **Innstillingene er
 endret** og tilbyr **Last inn på nytt**; de ulagrede endringene dine forkastes, de
 flettes aldri.
@@ -184,6 +192,9 @@ eller `credit-note-1002.pdf` — og er den ene PDF-en som ble laget og lagret ve
 utstedelse, levert nøyaktig som lagret hver gang ([PDF-en](/en/reference/invoices/#the-pdf)).
 Alle med `invoices:access` kan laste den ned.
 
+En faktura med KID viser den i betalingsfeltet, som **KID**, og ber kjøperen betale med
+den i stedet for fakturanummeret.
+
 Kunne lageret ikke nås ved utstedelse, sier siden *PDF-en kunne ikke lagres da dokumentet
 ble utstedt. Den lagres første gang den lastes ned* — en nedlasting eller en sending lagrer den.
 
@@ -256,7 +267,8 @@ gjort opp, at den sier det ikke er noe å betale.
 
 Klikk **Send**. E-posten går med en gang, med den lagrede PDF-en vedlagt og en kort,
 ren tekst — *Faktura 1001 fra <selger>* eller *Invoice 1001 from <selger>* på kjøperens
-språk — som ber om utestående beløp til selgerens konto; svar går til e-posten i
+språk — som ber om utestående beløp til selgerens konto, merket med fakturaens KID når den har
+en og med nummeret ellers; svar går til e-posten i
 innstillingene ([tekstene](/en/reference/invoices/#sending-a-document)). En melding
 bekrefter *Sendt til …*, og kortet **Sendt på e-post** på dokumentet får en rad med
 **Sendt**, **Til** og **Emne**. Kolonnen **Til** vises bare for den som har
@@ -298,7 +310,8 @@ På journalen laster **Eksporter CSV** ned intervallet som vises, som
 `invoices-<fra>-<til>.csv`. Filen har én rad per dokument og mva-sats — en kreditnotas
 beløp negative — med faste engelske kolonner: Number, Kind, Issue date, Delivery, Due,
 Customer number, Buyer, Buyer org no, Currency, SAF-T code, Rate, Base, VAT, Base NOK,
-VAT NOK og Credits number. Den åpnes i et regneark slik norske systemer venter: `;`
+VAT NOK, Credits number og KID — importer KID-kolonnen som tekst, ellers fjerner
+regnearket de innledende nullene. Den åpnes i et regneark slik norske systemer venter: `;`
 mellom cellene, desimalkomma, UTF-8 ([CSV-eksporten](/en/reference/invoices/#the-csv-export)).
 
 Et intervall på mer enn 5000 rader avvises — *Eksporten ville hatt mer enn 5000 rader;

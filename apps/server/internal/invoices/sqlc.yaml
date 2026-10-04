@@ -8,6 +8,7 @@ sql:
     schema:
       - ../db/migrations/00034_invoices_baseline.sql
       - ../db/migrations/00035_invoices_payments_delivery.sql
+      - ../db/migrations/00036_invoices_ehf_kid.sql
     queries: queries
     gen:
       go:

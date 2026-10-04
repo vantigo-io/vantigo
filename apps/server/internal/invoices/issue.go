@@ -14,6 +14,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
+	"github.com/vantigo-io/vantigo/server/internal/invoices/kid"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 )
 
@@ -25,7 +26,8 @@ import (
 // shared, the number allocated, and only then is any rule checked, because the
 // counter row is the one thing that serialises two issues and every check
 // that depends on other documents must run after it. Any refusal rolls the
-// whole transaction back, the number with it. The lock order is always the
+// whole transaction back, the number with it — kid_length_exceeded too,
+// judged once the number is known. The lock order is always the
 // document, then the settings row, then the counter, then — for a credit note
 // — the original; nothing else takes these in another order.
 
@@ -44,6 +46,7 @@ const (
 	codeCategoryONotAllowed     = "category_o_not_allowed"
 	codeReverseChargeNeedsOrgNr = "reverse_charge_needs_org_number"
 	codeVatCodesAmbiguous       = "vat_codes_ambiguous"
+	codeKidLengthExceeded       = "kid_length_exceeded"
 	storageUnavailableTitle     = "Document storage is unavailable"
 	cannotIssueTitle            = "The document cannot be issued"
 )
@@ -349,6 +352,23 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 				"Two lines share a VAT category and rate but carry different SAF-T codes, so one VAT summary row could not name its code.")
 			return errRefused
 		}
+		// An invoice under the KID agreement gets its KID from the number
+		// just allocated (EHF and KID design D3); a number the agreement no
+		// longer fits refuses the issue, and the number rolls back with it.
+		var documentKid, kidAlgorithm *string
+		if locked.Kind == kindInvoice && settings.KidLength != nil && settings.KidAlgorithm != nil {
+			k, err := kid.Compute(number, int(*settings.KidLength), *settings.KidAlgorithm)
+			if errors.Is(err, kid.ErrLengthExceeded) {
+				refusal = cannotIssue(codeKidLengthExceeded, fmt.Sprintf(
+					"Number %d does not fit the KID agreement's %d digits; the agreement was shortened. Change it in the settings.",
+					number, *settings.KidLength))
+				return errRefused
+			}
+			if err != nil {
+				return fmt.Errorf("invoices: document %d's KID: %w", locked.ID, err)
+			}
+			documentKid, kidAlgorithm = &k, settings.KidAlgorithm
+		}
 
 		// 6. The writes: the lines' snapshots, the summaries, and last the
 		// row itself — the trigger refuses line writes under an issued one.
@@ -401,6 +421,7 @@ func (s *server) PostInvoicesByIdIssue(ctx context.Context, req gen.PostInvoices
 			params.DueDate = pgDate(issueDate.AddDate(0, 0, int(*locked.PaymentTermsDays)))
 		}
 		sellerSnapshot(&params, settings)
+		params.Kid, params.KidAlgorithm = documentKid, kidAlgorithm
 		if params.NetTotal, params.VatTotal, params.GrossTotal, params.VatTotalNok, err = numerics(totals); err != nil {
 			return err
 		}

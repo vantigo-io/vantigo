@@ -164,6 +164,10 @@ UPDATE invoices.invoices SET
     vat_total = @vat_total,
     gross_total = @gross_total,
     vat_total_nok = @vat_total_nok,
+    -- An invoice's KID under the agreement in force (EHF and KID design D3),
+    -- NULL without one and on a credit note.
+    kid = sqlc.narg(kid),
+    kid_algorithm = sqlc.narg(kid_algorithm),
     issued_at = @now::timestamptz,
     issued_by_user_id = @issued_by_user_id,
     updated_at = @now::timestamptz,

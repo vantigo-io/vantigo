@@ -193,7 +193,7 @@ export interface paths {
         put?: never;
         /**
          * Issue a draft
-         * @description Issues a draft — an invoice or a credit note — into the next number of the one series (D6). An invoice's billing profile is read first (a credit note reads no directory); then one transaction locks the document, shares the settings row, allocates the number, and only then checks every rule, so any refusal rolls the number back with it. The response is the issued document with its warnings (issued_late). The PDF is stored after the commit; pdfStored false means storing it failed and the next download stores it.
+         * @description Issues a draft — an invoice or a credit note — into the next number of the one series (D6). An invoice's billing profile is read first (a credit note reads no directory); then one transaction locks the document, shares the settings row, allocates the number, and only then checks every rule, so any refusal rolls the number back with it. Under a KID agreement an invoice gets its kid from the allocated number; a number the agreement no longer fits is 409 kid_length_exceeded, rolled back like every refusal. The response is the issued document with its warnings (issued_late). The PDF is stored after the commit; pdfStored false means storing it failed and the next download stores it.
          */
         post: operations["postInvoicesByIdIssue"];
         delete?: never;
@@ -446,7 +446,7 @@ export interface components {
             ratePercent: number;
             safTCode: string;
         };
-        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
+        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
         InvoicesConflictProblem: {
             /** @description On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise. */
             allowedIssueDates?: string[];
@@ -473,7 +473,7 @@ export interface components {
             title?: string | null;
             type?: string | null;
         };
-        /** @description PUT /settings' body, a full replace (D2). Every text field is trimmed; an empty string is "not set". organisationNumber is nine digits with a valid mod-11 check digit; bankAccount eleven digits with a valid mod-11 check digit (spaces and dots are dropped); iban passes mod-97 and bic is 8 or 11 characters, both optional; country is ISO 3166-1 alpha-2; defaultPaymentTermsDays is 0-365; defaultCurrency is NOK and only NOK in this phase; seriesStart is 1 to 9007199254740991 (2^53 − 1) and cannot change once anything is issued (409 series_locked). revision is the one the caller read: a stale one is a 409 naming both. */
+        /** @description PUT /settings' body, a full replace (D2). Every text field is trimmed; an empty string is "not set". organisationNumber is nine digits with a valid mod-11 check digit; bankAccount eleven digits with a valid mod-11 check digit (spaces and dots are dropped); iban passes mod-97 and bic is 8 or 11 characters, both optional; country is ISO 3166-1 alpha-2; defaultPaymentTermsDays is 0-365; defaultCurrency is NOK and only NOK in this phase; seriesStart is 1 to 9007199254740991 (2^53 − 1) and cannot change once anything is issued (409 series_locked). peppolId, kidLength and kidAlgorithm are required and nullable (EHF and KID design D2, D3): a body without them is a 400, so a client that predates them cannot clear them by leaving them out. kidLength and kidAlgorithm are a pair or both null; the next number to be issued — the counter's, or seriesStart before the first issue — must fit in kidLength less one digits, else a 400 on kidLength. revision is the one the caller read: a stale one is a 409 naming both. */
         InvoicesSettingsRequest: {
             addressLine1: string;
             addressLine2?: string;
@@ -488,8 +488,17 @@ export interface components {
             footerText?: string;
             iban?: string;
             inForetaksregisteret: boolean;
+            /** @description mod10 or mod11, the KID check digit the bank agreed (D3); null with kidLength null for no agreement. */
+            kidAlgorithm: string | null;
+            /**
+             * Format: int32
+             * @description The agreed KID length including the check digit, 4-25 (D3); null with kidAlgorithm null for no agreement.
+             */
+            kidLength: number | null;
             legalName: string;
             organisationNumber: string;
+            /** @description The seller's Peppol participant id (D2), a four-digit scheme, a colon and an identifier, such as 0192:974760673; a 0192 id is the seller's own organisation number. Null or empty defaults it to 0192 and the organisation number when that is set. */
+            peppolId: string | null;
             postalCode: string;
             /** Format: int32 */
             revision: number;
@@ -497,7 +506,7 @@ export interface components {
             seriesStart: number;
             vatRegistered: boolean;
         };
-        /** @description The seller record and the series start (D2). A text field that is not set is the empty string. seriesLocked is true once anything is issued; from then on seriesStart cannot change, and every other field still can — issued documents keep their own seller snapshot. */
+        /** @description The seller record and the series start (D2). A text field that is not set is the empty string. seriesLocked is true once anything is issued; from then on seriesStart cannot change, and every other field still can — issued documents keep their own seller snapshot. peppolId is the seller's address on the Peppol network, read when a document is sent, never part of the snapshot; kidLength and kidAlgorithm are the KID agreement, which an issued invoice's kid was computed under. */
         InvoicesSettingsResponse: {
             addressLine1: string;
             addressLine2: string;
@@ -512,10 +521,19 @@ export interface components {
             footerText: string;
             iban: string;
             inForetaksregisteret: boolean;
+            /** @description mod10 or mod11; null without a KID agreement. */
+            kidAlgorithm: string | null;
+            /**
+             * Format: int32
+             * @description The agreed KID length including the check digit; null without a KID agreement.
+             */
+            kidLength: number | null;
             legalName: string;
             /** @description What issuing still needs, as GET /meta names it. */
             missingSellerFields: string[];
             organisationNumber: string;
+            /** @description The seller's Peppol participant id; null when neither set nor derivable from the organisation number. */
+            peppolId: string | null;
             postalCode: string;
             /** Format: int32 */
             revision: number;
@@ -525,6 +543,8 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
             vatRegistered: boolean;
+            /** @description Never refusals. kid_headroom_low — the next number leaves fewer than two digits of the KID agreement's length (a hundredfold growth) before issuing is refused with kid_length_exceeded. */
+            warnings: string[];
         };
         /** @description One VAT code with every rate period it has had (D3). inUse is true once any line, draft or issued, carries the code; from then on its category and SAF-T code cannot change (409 vat_code_in_use). */
         InvoicesVatCode: {
@@ -746,6 +766,10 @@ export interface components {
             issuedAt?: string;
             /** Format: uuid */
             issuedByUserId?: string;
+            /** @description An issued invoice's KID under the seller's bank agreement at issue (EHF and KID design D3) — the number zero-padded to the agreed length less one, then the check digit; a MOD11 check digit may be '-'. Absent without an agreement, on a draft and on a credit note. */
+            kid?: string;
+            /** @description mod10 or mod11, the algorithm kid was computed with. Present exactly when kid is. */
+            kidAlgorithm?: string;
             /** @description invoice or credit_note. */
             kind: string;
             lines: components["schemas"]["InvoicesLine"][];

@@ -46,7 +46,7 @@ type InvoicesBuyer struct {
 	Type string `json:"type"`
 }
 
-// InvoicesConflictProblem ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions.
+// InvoicesConflictProblem ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions.
 type InvoicesConflictProblem struct {
 	// AllowedIssueDates On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise.
 	AllowedIssueDates *[]openapi_types.Date `json:"allowedIssueDates,omitempty"`
@@ -182,6 +182,12 @@ type InvoicesInvoiceResponse struct {
 	IssueDate        *openapi_types.Date      `json:"issueDate,omitempty"`
 	IssuedAt         *time.Time               `json:"issuedAt,omitempty"`
 	IssuedByUserId   *openapi_types.UUID      `json:"issuedByUserId,omitempty"`
+
+	// Kid An issued invoice's KID under the seller's bank agreement at issue (EHF and KID design D3) — the number zero-padded to the agreed length less one, then the check digit; a MOD11 check digit may be '-'. Absent without an agreement, on a draft and on a credit note.
+	Kid *string `json:"kid,omitempty"`
+
+	// KidAlgorithm mod10 or mod11, the algorithm kid was computed with. Present exactly when kid is.
+	KidAlgorithm *string `json:"kidAlgorithm,omitempty"`
 
 	// Kind invoice or credit_note.
 	Kind     string         `json:"kind"`
@@ -441,7 +447,7 @@ type InvoicesSendRequest struct {
 	Recipient *string `json:"recipient,omitempty"`
 }
 
-// InvoicesSettingsRequest PUT /settings' body, a full replace (D2). Every text field is trimmed; an empty string is "not set". organisationNumber is nine digits with a valid mod-11 check digit; bankAccount eleven digits with a valid mod-11 check digit (spaces and dots are dropped); iban passes mod-97 and bic is 8 or 11 characters, both optional; country is ISO 3166-1 alpha-2; defaultPaymentTermsDays is 0-365; defaultCurrency is NOK and only NOK in this phase; seriesStart is 1 to 9007199254740991 (2^53 − 1) and cannot change once anything is issued (409 series_locked). revision is the one the caller read: a stale one is a 409 naming both.
+// InvoicesSettingsRequest PUT /settings' body, a full replace (D2). Every text field is trimmed; an empty string is "not set". organisationNumber is nine digits with a valid mod-11 check digit; bankAccount eleven digits with a valid mod-11 check digit (spaces and dots are dropped); iban passes mod-97 and bic is 8 or 11 characters, both optional; country is ISO 3166-1 alpha-2; defaultPaymentTermsDays is 0-365; defaultCurrency is NOK and only NOK in this phase; seriesStart is 1 to 9007199254740991 (2^53 − 1) and cannot change once anything is issued (409 series_locked). peppolId, kidLength and kidAlgorithm are required and nullable (EHF and KID design D2, D3): a body without them is a 400, so a client that predates them cannot clear them by leaving them out. kidLength and kidAlgorithm are a pair or both null; the next number to be issued — the counter's, or seriesStart before the first issue — must fit in kidLength less one digits, else a 400 on kidLength. revision is the one the caller read: a stale one is a 409 naming both.
 type InvoicesSettingsRequest struct {
 	AddressLine1            string  `json:"addressLine1"`
 	AddressLine2            *string `json:"addressLine2,omitempty"`
@@ -455,15 +461,24 @@ type InvoicesSettingsRequest struct {
 	FooterText              *string `json:"footerText,omitempty"`
 	Iban                    *string `json:"iban,omitempty"`
 	InForetaksregisteret    bool    `json:"inForetaksregisteret"`
-	LegalName               string  `json:"legalName"`
-	OrganisationNumber      string  `json:"organisationNumber"`
-	PostalCode              string  `json:"postalCode"`
-	Revision                int32   `json:"revision"`
-	SeriesStart             int64   `json:"seriesStart"`
-	VatRegistered           bool    `json:"vatRegistered"`
+
+	// KidAlgorithm mod10 or mod11, the KID check digit the bank agreed (D3); null with kidLength null for no agreement.
+	KidAlgorithm json.RawMessage `json:"kidAlgorithm"`
+
+	// KidLength The agreed KID length including the check digit, 4-25 (D3); null with kidAlgorithm null for no agreement.
+	KidLength          json.RawMessage `json:"kidLength"`
+	LegalName          string          `json:"legalName"`
+	OrganisationNumber string          `json:"organisationNumber"`
+
+	// PeppolId The seller's Peppol participant id (D2), a four-digit scheme, a colon and an identifier, such as 0192:974760673; a 0192 id is the seller's own organisation number. Null or empty defaults it to 0192 and the organisation number when that is set.
+	PeppolId      json.RawMessage `json:"peppolId"`
+	PostalCode    string          `json:"postalCode"`
+	Revision      int32           `json:"revision"`
+	SeriesStart   int64           `json:"seriesStart"`
+	VatRegistered bool            `json:"vatRegistered"`
 }
 
-// InvoicesSettingsResponse The seller record and the series start (D2). A text field that is not set is the empty string. seriesLocked is true once anything is issued; from then on seriesStart cannot change, and every other field still can — issued documents keep their own seller snapshot.
+// InvoicesSettingsResponse The seller record and the series start (D2). A text field that is not set is the empty string. seriesLocked is true once anything is issued; from then on seriesStart cannot change, and every other field still can — issued documents keep their own seller snapshot. peppolId is the seller's address on the Peppol network, read when a document is sent, never part of the snapshot; kidLength and kidAlgorithm are the KID agreement, which an issued invoice's kid was computed under.
 type InvoicesSettingsResponse struct {
 	AddressLine1            string `json:"addressLine1"`
 	AddressLine2            string `json:"addressLine2"`
@@ -477,17 +492,29 @@ type InvoicesSettingsResponse struct {
 	FooterText              string `json:"footerText"`
 	Iban                    string `json:"iban"`
 	InForetaksregisteret    bool   `json:"inForetaksregisteret"`
-	LegalName               string `json:"legalName"`
+
+	// KidAlgorithm mod10 or mod11; null without a KID agreement.
+	KidAlgorithm *string `json:"kidAlgorithm"`
+
+	// KidLength The agreed KID length including the check digit; null without a KID agreement.
+	KidLength *int32 `json:"kidLength"`
+	LegalName string `json:"legalName"`
 
 	// MissingSellerFields What issuing still needs, as GET /meta names it.
-	MissingSellerFields []string  `json:"missingSellerFields"`
-	OrganisationNumber  string    `json:"organisationNumber"`
-	PostalCode          string    `json:"postalCode"`
-	Revision            int32     `json:"revision"`
-	SeriesLocked        bool      `json:"seriesLocked"`
-	SeriesStart         int64     `json:"seriesStart"`
-	UpdatedAt           time.Time `json:"updatedAt"`
-	VatRegistered       bool      `json:"vatRegistered"`
+	MissingSellerFields []string `json:"missingSellerFields"`
+	OrganisationNumber  string   `json:"organisationNumber"`
+
+	// PeppolId The seller's Peppol participant id; null when neither set nor derivable from the organisation number.
+	PeppolId      *string   `json:"peppolId"`
+	PostalCode    string    `json:"postalCode"`
+	Revision      int32     `json:"revision"`
+	SeriesLocked  bool      `json:"seriesLocked"`
+	SeriesStart   int64     `json:"seriesStart"`
+	UpdatedAt     time.Time `json:"updatedAt"`
+	VatRegistered bool      `json:"vatRegistered"`
+
+	// Warnings Never refusals. kid_headroom_low — the next number leaves fewer than two digits of the KID agreement's length (a hundredfold growth) before issuing is refused with kid_length_exceeded.
+	Warnings []string `json:"warnings"`
 }
 
 // InvoicesStatsSummaryResponse The dashboard's invoices card over one period, in the envelope every module's /stats/summary shares (payments and delivery design D7). outstanding and overdue are now — the issued invoices with something open, at their open amounts, credit notes excluded, and of those the ones past their due date on today's Oslo date. issued, credited and paid are in the period: the invoices and the credit notes whose issue date, and the live payments whose paid date, falls on an Oslo day from the day of from up to and including the day of the last instant before to. issuedGrossTotalDelta is issuedGrossTotal less the previous period's, the period of the same length just before. All NOK.

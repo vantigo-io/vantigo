@@ -25,7 +25,7 @@ const exportPath = "/api/v1/invoices/export.csv"
 const csvBOM = "\xef\xbb\xbf"
 
 // exportHeader is D5's header row, fixed and English.
-const exportHeader = "Number;Kind;Issue date;Delivery;Due;Customer number;Buyer;Buyer org no;Currency;SAF-T code;Rate;Base;VAT;Base NOK;VAT NOK;Credits number"
+const exportHeader = "Number;Kind;Issue date;Delivery;Due;Customer number;Buyer;Buyer org no;Currency;SAF-T code;Rate;Base;VAT;Base NOK;VAT NOK;Credits number;KID"
 
 // exportCSV GETs the export of query (no leading '?') as an invoices:access
 // holder and fails on anything but 200.
@@ -103,11 +103,11 @@ func TestExportCSV_IsExactlyTheseBytes(t *testing.T) {
 
 	want := csvBOM + strings.Join([]string{
 		exportHeader,
-		"1;invoice;2026-09-12;2026-09-01/2026-09-10;2026-10-12;10001;'=cmd;923609016;NOK;6;0,00;2000,00;0,00;2000,00;0,00;",
-		"1;invoice;2026-09-12;2026-09-01/2026-09-10;2026-10-12;10001;'=cmd;923609016;NOK;3;25,00;12345,50;3086,38;12345,50;3086,38;",
-		`2;invoice;2026-09-12;2026-09-10;2026-09-26;10002;"Nordmann; Kari";;NOK;5;0,00;299,70;0,00;299,70;0,00;`,
-		"3;credit_note;2026-09-12;2026-09-01/2026-09-10;;10001;'=cmd;923609016;NOK;6;0,00;-2000,00;0,00;-2000,00;0,00;1",
-		"3;credit_note;2026-09-12;2026-09-01/2026-09-10;;10001;'=cmd;923609016;NOK;3;25,00;-12345,50;-3086,38;-12345,50;-3086,38;1",
+		"1;invoice;2026-09-12;2026-09-01/2026-09-10;2026-10-12;10001;'=cmd;923609016;NOK;6;0,00;2000,00;0,00;2000,00;0,00;;",
+		"1;invoice;2026-09-12;2026-09-01/2026-09-10;2026-10-12;10001;'=cmd;923609016;NOK;3;25,00;12345,50;3086,38;12345,50;3086,38;;",
+		`2;invoice;2026-09-12;2026-09-10;2026-09-26;10002;"Nordmann; Kari";;NOK;5;0,00;299,70;0,00;299,70;0,00;;`,
+		"3;credit_note;2026-09-12;2026-09-01/2026-09-10;;10001;'=cmd;923609016;NOK;6;0,00;-2000,00;0,00;-2000,00;0,00;1;",
+		"3;credit_note;2026-09-12;2026-09-01/2026-09-10;;10001;'=cmd;923609016;NOK;3;25,00;-12345,50;-3086,38;-12345,50;-3086,38;1;",
 		"",
 	}, "\r\n")
 
@@ -248,5 +248,35 @@ func TestExportCSV_TheDateRules(t *testing.T) {
 	}
 	if res := c.Do(http.MethodGet, exportPath+"?from=2026-09-12&to=2026-09-12", nil); res.Status != http.StatusOK {
 		t.Errorf("one day = %d %s, want 200", res.Status, res.Body)
+	}
+}
+
+// The KID column is the seventeenth and last (EHF and KID design D3, reading
+// 8): an invoice issued under the agreement carries its KID, leading zeros
+// and all, unguarded; one issued before the agreement and a credit note
+// leave it empty.
+func TestExportCSV_TheKIDColumnLast(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	before := issued(t, h, createDraft(t, h, draftBody(customerPerson, line("Bok", 1, 100, vat25))).ID)
+	withKidAgreement(t, h, 7, "mod10")
+	under := issued(t, h, createDraft(t, h, draftBody(customerPerson, line("Bok", 1, 100, vat25))).ID)
+	issued(t, h, creditDraft(t, h, under.ID).ID)
+	if before.Kid != nil || under.Kid == nil || *under.Kid != "0000026" {
+		t.Fatalf("kids = %v and %v, want none and 0000026", before.Kid, under.Kid)
+	}
+
+	header, rows := exportTable(t, exportCSV(t, h, "from=2026-09-01&to=2026-09-30").Body)
+	if len(header) != 17 || header[16] != "KID" {
+		t.Fatalf("header = %v, want KID as the seventeenth column", header)
+	}
+	want := []string{"", "0000026", ""}
+	if len(rows) != len(want) {
+		t.Fatalf("rows = %v, want three", rows)
+	}
+	for i, r := range rows {
+		if len(r) != 17 || r[16] != want[i] {
+			t.Errorf("row %d = %v, want KID %q last", i+1, r, want[i])
+		}
 	}
 }

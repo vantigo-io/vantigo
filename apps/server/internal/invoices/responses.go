@@ -250,7 +250,7 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 		ExchangeRateDate: wireDateOf(inv.ExchangeRateDate),
 		YourReference:    inv.YourReference, OurReference: inv.OurReference, OrderReference: inv.OrderReference,
 		Note: inv.Note, InternalNote: inv.InternalNote, Buyer: buyerResponse(inv), Seller: sellerResponse(inv),
-		IssuedAt: inv.IssuedAt, IssuedByUserId: inv.IssuedByUserID,
+		IssuedAt: inv.IssuedAt, IssuedByUserId: inv.IssuedByUserID, Kid: inv.Kid, KidAlgorithm: inv.KidAlgorithm,
 		CreatedAt: inv.CreatedAt, UpdatedAt: inv.UpdatedAt, Revision: inv.Revision,
 		Lines: make([]gen.InvoicesLine, 0, len(stored)), VatSummaries: []gen.InvoicesVatSummary{}, Warnings: []string{},
 	}

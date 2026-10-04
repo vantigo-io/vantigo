@@ -261,3 +261,50 @@ func TestPDFDocumentOf_CarriesTheCurrency(t *testing.T) {
 		t.Errorf("currency = %q, header %q; want SEK throughout", d.currency, m.lineHeader[6])
 	}
 }
+
+// The payment block's KID line (D3), in each language, and the note asking
+// for it in place of the invoice number; none without a KID. pdfDocumentOf
+// verifies the stored KID against the stored algorithm and the number, and
+// refuses one that does not verify, or a half of the pair.
+func TestPDFModel_TheKIDLine(t *testing.T) {
+	t.Parallel()
+	d := anInvoice()
+	d.kid = "0010009"
+	m := buildPDFModel(d)
+	if want := [][2]string{{"Kontonummer", "86011117947"}, {"KID", "0010009"}, {"IBAN", "NO9386011117947"}, {"BIC", "DNBANOKKXXX"}, {"Forfallsdato", "26.09.2026"}}; !slices.Equal(m.payment, want) ||
+		m.paymentNote != "Vennligst bruk KID ved betaling" {
+		t.Errorf("nb payment = %q %q", m.payment, m.paymentNote)
+	}
+	d.language = "en"
+	if m := buildPDFModel(d); m.payment[1] != [2]string{"KID", "0010009"} || m.paymentNote != "Please use the KID with your payment" {
+		t.Errorf("en payment = %q %q", m.payment, m.paymentNote)
+	}
+	if m := buildPDFModel(anInvoice()); slices.ContainsFunc(m.payment, func(kv [2]string) bool { return kv[0] == "KID" }) {
+		t.Errorf("without a KID the payment block = %q", m.payment)
+	}
+
+	number := int64(1000)
+	row := func(kid, algorithm string) store.InvoicesInvoice {
+		zero, err := numericFromRat(new(big.Rat), 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		inv := store.InvoicesInvoice{Kind: kindInvoice, Status: statusIssued, Number: &number, Currency: "NOK",
+			NetTotal: zero, VatTotal: zero, GrossTotal: zero}
+		if kid != "" {
+			inv.Kid = &kid
+		}
+		if algorithm != "" {
+			inv.KidAlgorithm = &algorithm
+		}
+		return inv
+	}
+	if d, err := pdfDocumentOf(row("0010009", "mod10"), nil, nil, nil); err != nil || d.kid != "0010009" {
+		t.Errorf("a KID that verifies = %q, %v; want it carried", d.kid, err)
+	}
+	for _, c := range [][2]string{{"0010009", "mod11"}, {"0010005", "mod10"}, {"0010009", ""}, {"", "mod10"}} {
+		if _, err := pdfDocumentOf(row(c[0], c[1]), nil, nil, nil); err == nil {
+			t.Errorf("kid %q algorithm %q: no error, want one", c[0], c[1])
+		}
+	}
+}

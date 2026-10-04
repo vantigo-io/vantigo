@@ -319,3 +319,39 @@ func TestPDF_AStoredObjectOverTheCapIsA500(t *testing.T) {
 		}
 	}
 }
+
+// The KID on the stored PDF is the document's own, verified against the
+// algorithm it was computed with, never the agreement in force (EHF and KID
+// design D3): a PDF first rendered after the agreement changed still
+// renders; a KID that does not verify — tampered with past the trigger,
+// which this test disables for the one statement — is a 500 and an error
+// log, never a silent reprint.
+func TestPDF_TheKIDLineAndTheStoredAlgorithm(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	withKidAgreement(t, h, 7, "mod10")
+	h.objects.failPuts(errors.New("offline"))
+	first, second := issuedAcme(t, h), issuedAcme(t, h)
+	if first.Kid == nil || *first.KidAlgorithm != "mod10" {
+		t.Fatalf("issued under 7/mod10 = kid %v, want one", first.Kid)
+	}
+	withKidAgreement(t, h, 5, "mod11")
+	h.objects.failPuts(nil)
+
+	if res := download(t, h, first.ID); res.Status != http.StatusOK {
+		t.Errorf("rendered after the agreement changed = %d %s, want 200", res.Status, res.Body)
+	}
+
+	h.Exec(t, `ALTER TABLE invoices.invoices DISABLE TRIGGER tr_invoices_immutable`)
+	h.Exec(t, `UPDATE invoices.invoices SET kid = '0000019' WHERE id = $1`, second.ID)
+	h.Exec(t, `ALTER TABLE invoices.invoices ENABLE TRIGGER tr_invoices_immutable`)
+	if res := download(t, h, second.ID); res.Status != http.StatusInternalServerError {
+		t.Errorf("a tampered KID = %d %s, want 500", res.Status, res.Body)
+	}
+	if !strings.Contains(h.Logs(), "KID") {
+		t.Error("the KID that did not verify was not logged")
+	}
+	if keys, _, _ := h.objects.stored(); len(keys) != 1 {
+		t.Errorf("stored = %v, want only the first document's PDF", keys)
+	}
+}

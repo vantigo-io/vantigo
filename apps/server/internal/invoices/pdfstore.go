@@ -17,6 +17,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
+	"github.com/vantigo-io/vantigo/server/internal/invoices/kid"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 	"github.com/vantigo-io/vantigo/server/internal/storage"
 )
@@ -34,7 +35,10 @@ const maxStoredPDF = 20 << 20
 const codeInvoiceDraft = "invoice_draft"
 
 // pdfDocumentOf is an issued document as its PDF prints it: its own rows and
-// snapshots, never the settings, the directory or the VAT tables.
+// snapshots, never the settings, the directory or the VAT tables. Its KID is
+// re-verified against the algorithm stored beside it — never the agreement
+// in force (EHF and KID design D3) — and one that does not verify is an
+// error, a 500, never a silent reprint.
 func pdfDocumentOf(inv store.InvoicesInvoice, lines []store.InvoicesLine, sums []store.InvoicesVatSummary, original *store.InvoicesInvoice) (pdfDocument, error) {
 	str := func(s *string) string {
 		if s == nil {
@@ -59,6 +63,12 @@ func pdfDocumentOf(inv store.InvoicesInvoice, lines []store.InvoicesLine, sums [
 			organisationNumber: str(inv.BuyerOrganisationNumber), foreignID: str(inv.BuyerForeignID),
 		},
 		bankAccount: str(inv.SellerBankAccount), iban: str(inv.SellerIban), bic: str(inv.SellerBic),
+	}
+	if inv.Kid != nil || inv.KidAlgorithm != nil {
+		if inv.Kid == nil || inv.KidAlgorithm == nil || inv.Number == nil || !kid.Verify(*inv.Kid, *inv.KidAlgorithm, *inv.Number) {
+			return pdfDocument{}, fmt.Errorf("invoices: document %d's stored KID does not verify against its stored algorithm", inv.ID)
+		}
+		d.kid = *inv.Kid
 	}
 	if inv.IssuedAt != nil {
 		d.created = *inv.IssuedAt

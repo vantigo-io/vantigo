@@ -11,6 +11,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type InvoicesAccessPointCredential struct {
+	ID               int32
+	Provider         string
+	SettingsJson     string
+	SecretCiphertext string
+	RejectedAt       *time.Time
+	UpdatedAt        time.Time
+}
+
 type InvoicesCounter struct {
 	CounterName string
 	NextValue   int64
@@ -98,6 +107,8 @@ type InvoicesInvoice struct {
 	CreatedAt                  time.Time
 	UpdatedAt                  time.Time
 	Revision                   int32
+	Kid                        *string
+	KidAlgorithm               *string
 }
 
 type InvoicesLine struct {
@@ -156,6 +167,45 @@ type InvoicesSetting struct {
 	SeriesStart             int64
 	UpdatedAt               time.Time
 	Revision                int32
+	PeppolID                *string
+	KidLength               *int16
+	KidAlgorithm            *string
+}
+
+type InvoicesTransmission struct {
+	ID                  int64
+	InvoiceID           int64
+	Provider            string
+	IdempotencyKey      uuid.UUID
+	SenderParticipant   string
+	ReceiverParticipant string
+	DocumentType        string
+	ProcessID           string
+	UblObjectKey        string
+	UblSha256           string
+	PdfSha256           string
+	Status              string
+	ProviderRef         *string
+	EvidenceObjectKey   *string
+	EvidenceSha256      *string
+	SubmitAttempts      int32
+	PollAttempts        int32
+	NextAttemptAt       time.Time
+	SubmitAttemptedAt   *time.Time
+	LeaseID             *string
+	LeaseUntil          *time.Time
+	LastError           *string
+	LookupRegistered    bool
+	LookupCanReceive    bool
+	LookupAt            time.Time
+	QueuedAt            time.Time
+	SubmittedAt         *time.Time
+	DeliveredAt         *time.Time
+	FailedAt            *time.Time
+	CancelledAt         *time.Time
+	ResolvedByUserID    *uuid.UUID
+	ResolutionNote      *string
+	CreatedByUserID     uuid.UUID
 }
 
 type InvoicesVatCode struct {

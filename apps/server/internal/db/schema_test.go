@@ -2379,9 +2379,10 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		t.Fatalf("collect tables: %v", err)
 	}
 	// deliveries, erased_customers and payments are 00035's, and
-	// applyUpDownUp ends with every migration applied, so they stand here
-	// beside the seven this one creates.
-	if want := []string{"counters", "deliveries", "erased_customers", "invoices", "lines", "payments", "settings", "vat_code_rates", "vat_codes", "vat_summaries"}; !equalStrings(gotTables, want) {
+	// access_point_credentials and transmissions 00036's; applyUpDownUp ends
+	// with every migration applied, so they stand here beside the seven this
+	// one creates.
+	if want := []string{"access_point_credentials", "counters", "deliveries", "erased_customers", "invoices", "lines", "payments", "settings", "transmissions", "vat_code_rates", "vat_codes", "vat_summaries"}; !equalStrings(gotTables, want) {
 		t.Errorf("tables = %v, want %v", gotTables, want)
 	}
 
@@ -2489,10 +2490,12 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("collect triggers: %v", err)
 	}
-	// The four on deliveries and payments are 00035's, as above.
+	// The four on deliveries and payments are 00035's, the two on
+	// transmissions 00036's, as above.
 	if want := []string{
 		"deliveries:tr_deliveries_immutable", "deliveries:tr_deliveries_parent", "invoices:tr_invoices_immutable",
 		"lines:tr_lines_immutable", "payments:tr_payments_immutable", "payments:tr_payments_parent",
+		"transmissions:tr_transmissions_immutable", "transmissions:tr_transmissions_parent",
 		"vat_summaries:tr_vat_summaries_immutable",
 	}; !equalStrings(gotTriggers, want) {
 		t.Errorf("triggers = %v, want %v", gotTriggers, want)
@@ -2793,6 +2796,362 @@ func TestInvoicesPaymentsDelivery_AppliesAndIsIdempotent(t *testing.T) {
 	expectAll("after up again")
 }
 
+// invoicesEhfKidObjects is what 00036 adds to the invoices schema, as found:
+// its columns on the existing tables (table.column), its tables, its triggers
+// (table:trigger:function), its CHECKs, its functions and its indexes as
+// Postgres prints them (name:definition).
+func invoicesEhfKidObjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool) (columns, tables, triggers, checks, functions, indexes []string) {
+	t.Helper()
+	collect := func(what, sql string) []string {
+		t.Helper()
+		rows, err := pool.Query(ctx, sql)
+		if err != nil {
+			t.Fatalf("query %s: %v", what, err)
+		}
+		got, err := pgx.CollectRows(rows, pgx.RowTo[string])
+		if err != nil {
+			t.Fatalf("collect %s: %v", what, err)
+		}
+		return got
+	}
+	columns = collect("columns", `
+		SELECT table_name || '.' || column_name || ':' || data_type || ':' || coalesce(character_maximum_length::text, '') || ':' || is_nullable
+		FROM information_schema.columns
+		WHERE table_schema = 'invoices'
+		  AND ((table_name = 'settings' AND column_name IN ('peppol_id', 'kid_length', 'kid_algorithm'))
+		    OR (table_name = 'invoices' AND column_name IN ('kid', 'kid_algorithm')))
+		ORDER BY 1`)
+	tables = collect("tables", `
+		SELECT table_name FROM information_schema.tables
+		WHERE table_schema = 'invoices' AND table_name IN ('access_point_credentials', 'transmissions')
+		ORDER BY table_name`)
+	triggers = collect("triggers", `
+		SELECT c.relname || ':' || t.tgname || ':' || p.proname
+		FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+		JOIN pg_proc p ON p.oid = t.tgfoid
+		WHERE n.nspname = 'invoices' AND NOT t.tgisinternal AND c.relname IN ('access_point_credentials', 'transmissions')
+		ORDER BY 1`)
+	checks = collect("checks", `
+		SELECT conname FROM pg_constraint
+		WHERE connamespace = 'invoices'::regnamespace AND contype = 'c'
+		  AND (conname IN ('ck_settings_kid', 'ck_invoices_kid', 'ck_invoices_kid_algorithm', 'ck_invoices_kid_kind')
+		    OR conname LIKE 'ck\_access\_point\_%' OR conname LIKE 'ck\_transmissions\_%')
+		ORDER BY 1`)
+	functions = collect("functions", `
+		SELECT p.proname || ':' || p.provolatile::text || ':' || pg_catalog.format_type(p.prorettype, NULL)
+		FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+		WHERE n.nspname = 'invoices' AND p.proname IN ('guard_transmission_insert', 'refuse_transmission_change')
+		ORDER BY 1`)
+	indexes = collect("indexes", `
+		SELECT indexname || ':' || indexdef FROM pg_indexes
+		WHERE schemaname = 'invoices' AND tablename = 'transmissions' AND (indexname LIKE 'ix\_%' OR indexname LIKE 'ux\_%')
+		ORDER BY 1`)
+	return columns, tables, triggers, checks, functions, indexes
+}
+
+// TestInvoicesEhfKid_AppliesAndIsIdempotent proves
+// 00036_invoices_ehf_kid.sql applies, rolls back and re-applies cleanly, and
+// pins what the EHF and KID design rests on: the seller's Peppol id and the
+// KID agreement on the settings with the pair's CHECK, and the backfill from
+// a valid organisation number (D2, D3); the document's KID and its algorithm,
+// all-or-none and on an invoice only, frozen at issue by 00034's trigger (D3);
+// the credentials' one row (D7); the transmissions table with its two
+// triggers and their messages, the partial unique index that blocks a second
+// send and the due index that keeps a delivered row claimable until its
+// evidence is stored (D9).
+func TestInvoicesEhfKid_AppliesAndIsIdempotent(t *testing.T) {
+	url := testdb.URL(t)
+	applyUpDownUp(t, url, 36) // 00036_invoices_ehf_kid.sql
+
+	ctx := context.Background()
+	pool, err := db.Open(ctx, url)
+	if err != nil {
+		t.Fatalf("open pool: %v", err)
+	}
+	defer pool.Close()
+
+	wantColumns := []string{
+		"invoices.kid:character varying:25:YES", "invoices.kid_algorithm:character varying:5:YES",
+		"settings.kid_algorithm:character varying:5:YES", "settings.kid_length:smallint::YES",
+		"settings.peppol_id:character varying:60:YES",
+	}
+	wantTables := []string{"access_point_credentials", "transmissions"}
+	wantTriggers := []string{
+		"transmissions:tr_transmissions_immutable:refuse_transmission_change",
+		"transmissions:tr_transmissions_parent:guard_transmission_insert",
+	}
+	wantChecks := []string{
+		"ck_access_point_provider", "ck_access_point_single_row",
+		"ck_invoices_kid", "ck_invoices_kid_algorithm", "ck_invoices_kid_kind", "ck_settings_kid",
+		"ck_transmissions_evidence", "ck_transmissions_provider", "ck_transmissions_resolution",
+		"ck_transmissions_stamps", "ck_transmissions_status",
+	}
+	wantFunctions := []string{"guard_transmission_insert:v:trigger", "refuse_transmission_change:v:trigger"}
+	wantIndexes := []string{
+		"ix_transmissions_due:CREATE INDEX ix_transmissions_due ON invoices.transmissions USING btree (status, next_attempt_at) WHERE (((status)::text = ANY ((ARRAY['queued'::character varying, 'submitted'::character varying, 'unconfirmed'::character varying])::text[])) OR (((status)::text = 'delivered'::text) AND (evidence_object_key IS NULL) AND (provider_ref IS NOT NULL)))",
+		"ux_transmissions_active:CREATE UNIQUE INDEX ux_transmissions_active ON invoices.transmissions USING btree (invoice_id) WHERE ((status)::text = ANY ((ARRAY['queued'::character varying, 'submitted'::character varying, 'delivered'::character varying, 'unconfirmed'::character varying])::text[]))",
+	}
+	expectAll := func(when string) {
+		t.Helper()
+		columns, tables, triggers, checks, functions, indexes := invoicesEhfKidObjects(t, ctx, pool)
+		for _, c := range []struct {
+			what      string
+			got, want []string
+		}{
+			{"columns", columns, wantColumns}, {"tables", tables, wantTables}, {"triggers", triggers, wantTriggers},
+			{"checks", checks, wantChecks}, {"functions", functions, wantFunctions}, {"indexes", indexes, wantIndexes},
+		} {
+			if !equalStrings(c.got, c.want) {
+				t.Errorf("%s: %s = %v, want %v", when, c.what, c.got, c.want)
+			}
+		}
+	}
+	expectAll("after up")
+
+	// The KID agreement is a pair or nothing: 4-25 digits, MOD10 or MOD11.
+	for _, bad := range []string{
+		`UPDATE invoices.settings SET kid_length = 3, kid_algorithm = 'mod10'`,
+		`UPDATE invoices.settings SET kid_length = 26, kid_algorithm = 'mod10'`,
+		`UPDATE invoices.settings SET kid_length = 10, kid_algorithm = 'mod12'`,
+		`UPDATE invoices.settings SET kid_length = 10`,
+		`UPDATE invoices.settings SET kid_algorithm = 'mod11'`,
+	} {
+		if _, err := pool.Exec(ctx, bad); !checkViolationOf(err, "ck_settings_kid") {
+			t.Errorf("%s: %v, want a check violation from ck_settings_kid", bad, err)
+		}
+	}
+	for _, good := range []string{
+		`UPDATE invoices.settings SET kid_length = 4, kid_algorithm = 'mod10'`,
+		`UPDATE invoices.settings SET kid_length = 25, kid_algorithm = 'mod11'`,
+		`UPDATE invoices.settings SET kid_length = NULL, kid_algorithm = NULL`,
+	} {
+		if _, err := pool.Exec(ctx, good); err != nil {
+			t.Errorf("%s: %v, want it allowed", good, err)
+		}
+	}
+
+	// One draft and one issued invoice of customer 7, an issued credit note
+	// of it, and an issued invoice of customer 8.
+	const insertIssued = `
+		INSERT INTO invoices.invoices (kind, status, number, customer_id, credits_invoice_id, issue_date, due_date, exchange_rate_date,
+		    seller_legal_name, buyer_name, gross_total, kid, kid_algorithm, issued_at, created_by_user_id, created_at, updated_at)
+		VALUES ($1, 'issued', $2, $3, $4, DATE '2026-09-12', $5, DATE '2026-09-12',
+		    'Selger AS', 'Kunde AS', 1000, $6, $7, now(), gen_random_uuid(), now(), now()) RETURNING id`
+	due := "2026-09-26"
+	var draft, invoice, credit, other int64
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO invoices.invoices (kind, customer_id, created_by_user_id, created_at, updated_at)
+		VALUES ('invoice', 7, gen_random_uuid(), now(), now()) RETURNING id`).Scan(&draft); err != nil {
+		t.Fatalf("seed a draft: %v", err)
+	}
+	if err := pool.QueryRow(ctx, insertIssued, "invoice", 1, 7, nil, due, "00000000018", "mod10").Scan(&invoice); err != nil {
+		t.Fatalf("seed an issued invoice with a KID: %v", err)
+	}
+	if err := pool.QueryRow(ctx, insertIssued, "credit_note", 2, 7, invoice, nil, nil, nil).Scan(&credit); err != nil {
+		t.Fatalf("seed an issued credit note: %v", err)
+	}
+	if err := pool.QueryRow(ctx, insertIssued, "invoice", 3, 8, nil, due, nil, nil).Scan(&other); err != nil {
+		t.Fatalf("seed an issued invoice without a KID: %v", err)
+	}
+
+	// The document's KID and its algorithm are all-or-none, the algorithm one
+	// of the two, and only on an invoice.
+	for _, c := range []struct {
+		kind, kid, algorithm, constraint string
+		number                           int64
+	}{
+		{"invoice", "00000000042", "", "ck_invoices_kid", 10},
+		{"invoice", "", "mod10", "ck_invoices_kid", 11},
+		{"invoice", "00000000042", "mod12", "ck_invoices_kid_algorithm", 12},
+		{"credit_note", "00000000133", "mod10", "ck_invoices_kid_kind", 13},
+	} {
+		var credits any
+		var dueDate any = due
+		if c.kind == "credit_note" {
+			credits, dueDate = invoice, nil
+		}
+		nullable := func(s string) any {
+			if s == "" {
+				return nil
+			}
+			return s
+		}
+		if _, err := pool.Exec(ctx, insertIssued, c.kind, c.number, 7, credits, dueDate, nullable(c.kid), nullable(c.algorithm)); !checkViolationOf(err, c.constraint) {
+			t.Errorf("%s kid %q algorithm %q: %v, want a check violation from %s", c.kind, c.kid, c.algorithm, err, c.constraint)
+		}
+	}
+	// 00034's trigger freezes the KID with the rest of an issued document.
+	if _, err := pool.Exec(ctx, `UPDATE invoices.invoices SET kid = '00000000026' WHERE id = $1`, invoice); !refusedWith(err, "invoices: issued document is immutable") {
+		t.Errorf("changing an issued invoice's KID: %v, want the 1A trigger's refusal", err)
+	}
+
+	const insertTransmission = `
+		INSERT INTO invoices.transmissions (invoice_id, provider, idempotency_key, sender_participant, receiver_participant,
+		    document_type, process_id, ubl_object_key, ubl_sha256, pdf_sha256, next_attempt_at,
+		    lookup_registered, lookup_can_receive, lookup_at, queued_at, created_by_user_id)
+		VALUES ($1, 'storecove', gen_random_uuid(), '0192:974760673', '0192:923609016',
+		    'busdox-docid-qns::urn:oasis:names:specification:ubl:schema:xsd:Invoice-2', 'urn:fdc:peppol.eu:2017:poacc:billing:01:1.0',
+		    'documents/1/1-ubl.xml', repeat('a', 64), repeat('b', 64), now(),
+		    true, true, now(), now(), gen_random_uuid()) RETURNING id`
+	const needsIssued = "invoices: a transmission needs an issued document"
+	const anonymised = "invoices: the customer is anonymised"
+	const neverDeleted = "invoices: a transmission is never deleted"
+	const immutable = "invoices: a transmission is immutable"
+
+	// A transmission is an issued document's, never a draft's.
+	if _, err := pool.Exec(ctx, insertTransmission, draft); !refusedWith(err, needsIssued) {
+		t.Errorf("a transmission of a draft: %v, want P0001 %q", err, needsIssued)
+	}
+	var queued int64
+	if err := pool.QueryRow(ctx, insertTransmission, invoice).Scan(&queued); err != nil {
+		t.Fatalf("a transmission of an issued invoice: %v", err)
+	}
+	// The partial unique index: one active transmission per document.
+	if _, err := pool.Exec(ctx, insertTransmission, invoice); !isUniqueViolation(err) {
+		t.Errorf("a second active transmission: %v, want a unique violation from ux_transmissions_active", err)
+	}
+
+	// Never deleted; identity, the UBL's key and hash frozen; the state
+	// columns, the lookup's included, change on a live row.
+	if _, err := pool.Exec(ctx, `DELETE FROM invoices.transmissions WHERE id = $1`, queued); !refusedWith(err, neverDeleted) {
+		t.Errorf("deleting a transmission: %v, want P0001 %q", err, neverDeleted)
+	}
+	for what, sql := range map[string]string{
+		"changing the UBL's hash":      `UPDATE invoices.transmissions SET ubl_sha256 = repeat('c', 64) WHERE id = $1`,
+		"changing the receiver":        `UPDATE invoices.transmissions SET receiver_participant = '0192:974760673' WHERE id = $1`,
+		"changing the idempotency key": `UPDATE invoices.transmissions SET idempotency_key = gen_random_uuid() WHERE id = $1`,
+	} {
+		if _, err := pool.Exec(ctx, sql, queued); !refusedWith(err, immutable) {
+			t.Errorf("%s: %v, want P0001 %q", what, err, immutable)
+		}
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.transmissions SET lookup_registered = false, lookup_can_receive = false, lookup_at = now(),
+		lease_id = 'w1', lease_until = now(), submit_attempts = 1, next_attempt_at = now(), submit_attempted_at = now() WHERE id = $1`, queued); err != nil {
+		t.Errorf("a claim refreshing the lookup on a queued row: %v, want it allowed", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.transmissions SET status = 'submitted' WHERE id = $1`, queued); !checkViolationOf(err, "ck_transmissions_stamps") {
+		t.Errorf("submitted without submitted_at: %v, want a check violation from ck_transmissions_stamps", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.transmissions SET status = 'sent' WHERE id = $1`, queued); !checkViolationOf(err, "ck_transmissions_status") {
+		t.Errorf("an unknown status: %v, want a check violation from ck_transmissions_status", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.transmissions SET resolution_note = 'Sjekket' WHERE id = $1`, queued); !checkViolationOf(err, "ck_transmissions_resolution") {
+		t.Errorf("a note without who resolved: %v, want a check violation from ck_transmissions_resolution", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.transmissions SET evidence_object_key = 'documents/1/1-receipt.json' WHERE id = $1`, queued); !checkViolationOf(err, "ck_transmissions_evidence") {
+		t.Errorf("an evidence key without its hash: %v, want a check violation from ck_transmissions_evidence", err)
+	}
+
+	// Submitted, then delivered: the delivered row keeps its status and
+	// delivered_at, and takes its lease, the cadence and its evidence once.
+	if _, err := pool.Exec(ctx, `UPDATE invoices.transmissions SET status = 'submitted', submitted_at = now(), provider_ref = 'guid-1',
+		lease_id = NULL, lease_until = NULL WHERE id = $1`, queued); err != nil {
+		t.Fatalf("submitting: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.transmissions SET status = 'delivered', delivered_at = now() WHERE id = $1`, queued); err != nil {
+		t.Fatalf("delivering: %v", err)
+	}
+	for what, sql := range map[string]string{
+		"a delivered row's status":       `UPDATE invoices.transmissions SET status = 'failed', failed_at = now() WHERE id = $1`,
+		"a delivered row's delivered_at": `UPDATE invoices.transmissions SET delivered_at = now() - interval '1 day' WHERE id = $1`,
+		"a delivered row's reference":    `UPDATE invoices.transmissions SET provider_ref = 'guid-2' WHERE id = $1`,
+	} {
+		if _, err := pool.Exec(ctx, sql, queued); !refusedWith(err, immutable) {
+			t.Errorf("%s: %v, want P0001 %q", what, err, immutable)
+		}
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.transmissions SET lease_id = 'w2', lease_until = now(), next_attempt_at = now(),
+		poll_attempts = poll_attempts + 1, last_error = 'evidence 404' WHERE id = $1`, queued); err != nil {
+		t.Errorf("a delivered row's lease and cadence: %v, want it allowed", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.transmissions SET evidence_object_key = 'documents/1/1-1001-receipt.json',
+		evidence_sha256 = repeat('d', 64), lease_id = NULL, lease_until = NULL, last_error = NULL WHERE id = $1`, queued); err != nil {
+		t.Errorf("a delivered row's evidence: %v, want it allowed", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.transmissions SET evidence_object_key = 'documents/1/other.json', evidence_sha256 = repeat('e', 64) WHERE id = $1`, queued); !refusedWith(err, immutable) {
+		t.Errorf("a delivered row's evidence twice: %v, want P0001 %q", err, immutable)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.transmissions SET lease_id = 'w3' WHERE id = $1`, queued); !refusedWith(err, immutable) {
+		t.Errorf("a delivered row with its evidence leased: %v, want P0001 %q", err, immutable)
+	}
+
+	// A failed row changes nothing, and its document may be sent again.
+	var failed int64
+	if err := pool.QueryRow(ctx, insertTransmission, credit).Scan(&failed); err != nil {
+		t.Fatalf("a transmission of an issued credit note: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.transmissions SET status = 'failed', failed_at = now(), last_error = 'refused' WHERE id = $1`, failed); err != nil {
+		t.Fatalf("failing: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE invoices.transmissions SET last_error = 'again' WHERE id = $1`, failed); !refusedWith(err, immutable) {
+		t.Errorf("changing a failed row: %v, want P0001 %q", err, immutable)
+	}
+	if _, err := pool.Exec(ctx, insertTransmission, credit); err != nil {
+		t.Errorf("a new transmission after a failed one: %v, want it allowed", err)
+	}
+
+	// The due index keeps a delivered row without its evidence claimable;
+	// the query planner is not asked, the predicate is: a delivered row with
+	// a reference and no evidence matches it, one with evidence does not.
+	var dueRows int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM invoices.transmissions
+		WHERE status IN ('queued','submitted','unconfirmed') OR (status = 'delivered' AND evidence_object_key IS NULL AND provider_ref IS NOT NULL)`).Scan(&dueRows); err != nil || dueRows != 1 {
+		t.Errorf("%d rows match the due predicate (%v), want the one queued row", dueRows, err)
+	}
+
+	// A transmission is refused once the customer is anonymised, the marker
+	// read after the document's lock.
+	if _, err := pool.Exec(ctx, `INSERT INTO invoices.erased_customers (customer_id, erased_at) VALUES (8, now())`); err != nil {
+		t.Fatalf("mark customer 8 erased: %v", err)
+	}
+	if _, err := pool.Exec(ctx, insertTransmission, other); !refusedWith(err, anonymised) {
+		t.Errorf("a transmission for an anonymised customer: %v, want P0001 %q", err, anonymised)
+	}
+
+	// The credentials are one row, of a provider this module knows.
+	const insertCredentials = `INSERT INTO invoices.access_point_credentials (id, provider, secret_ciphertext, updated_at) VALUES ($1, $2, 'sealed', now())`
+	if _, err := pool.Exec(ctx, insertCredentials, 2, "storecove"); !checkViolationOf(err, "ck_access_point_single_row") {
+		t.Errorf("a second credentials row: %v, want a check violation from ck_access_point_single_row", err)
+	}
+	if _, err := pool.Exec(ctx, insertCredentials, 1, "qvalia"); !checkViolationOf(err, "ck_access_point_provider") {
+		t.Errorf("an unknown provider: %v, want a check violation from ck_access_point_provider", err)
+	}
+	if _, err := pool.Exec(ctx, insertCredentials, 1, "storecove"); err != nil {
+		t.Errorf("the credentials row: %v, want it allowed", err)
+	}
+
+	// Down drops all of it — the rows with the tables, the columns with their
+	// values — and leaves 1B's schema.
+	migrateTo(t, url, 35)
+	columns, tables, triggers, checks, functions, indexes := invoicesEhfKidObjects(t, ctx, pool)
+	if len(columns) != 0 || len(tables) != 0 || len(triggers) != 0 || len(checks) != 0 || len(functions) != 0 || len(indexes) != 0 {
+		t.Errorf("after down: columns %v, tables %v, triggers %v, checks %v, functions %v, indexes %v remain, want none",
+			columns, tables, triggers, checks, functions, indexes)
+	}
+
+	// The backfill: a valid organisation number gives the seller its 0192
+	// Peppol id; anything else leaves it unset.
+	for _, c := range []struct{ organisationNumber, want string }{
+		{"974760673", "0192:974760673"},
+		{"", ""},
+		{"97476067", ""},
+	} {
+		migrateTo(t, url, 35)
+		if _, err := pool.Exec(ctx, `UPDATE invoices.settings SET organisation_number = $1`, c.organisationNumber); err != nil {
+			t.Fatalf("plant the organisation number %q: %v", c.organisationNumber, err)
+		}
+		migrateTo(t, url, 36)
+		var got *string
+		if err := pool.QueryRow(ctx, `SELECT peppol_id FROM invoices.settings WHERE id = 1`).Scan(&got); err != nil {
+			t.Fatalf("read the backfilled Peppol id: %v", err)
+		}
+		if (got == nil) != (c.want == "") || (got != nil && *got != c.want) {
+			t.Errorf("organisation number %q: peppol_id %v, want %q", c.organisationNumber, got, c.want)
+		}
+	}
+	expectAll("after up again")
+}
+
 // TestInvoicesSchema_NamesNoColumnWithAReservedWord pins the rule of D2: no
 // column of the invoices schema is named with a word PostgreSQL reserves —
 // catcode R in pg_get_keywords() (to, from, end, user, order and the rest) or
@@ -2801,7 +3160,7 @@ func TestInvoicesPaymentsDelivery_AppliesAndIsIdempotent(t *testing.T) {
 // quote one, and no generated field is named after a keyword.
 func TestInvoicesSchema_NamesNoColumnWithAReservedWord(t *testing.T) {
 	url := testdb.URL(t)
-	migrateTo(t, url, 35)
+	migrateTo(t, url, 36)
 
 	ctx := context.Background()
 	pool, err := db.Open(ctx, url)

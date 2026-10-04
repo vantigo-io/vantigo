@@ -48,6 +48,14 @@ Fill in the fields and click **Save**:
   moment anything is issued, and the field then reads *Locked: documents are issued
   from this series*.
 
+Saving keeps two things the page has no fields for yet: the seller's **Peppol id** —
+the address EHF invoices are sent from, filled in as `0192:` and the organisation number
+when you have one — and the **KID agreement** with your bank, its length and its check
+digit (MOD10 or MOD11). Until they get their own fields, they are set through the API
+([the Peppol id and the KID agreement](/en/reference/invoices/#the-peppol-id-and-the-kid-agreement)).
+With a KID agreement every invoice issued from then on gets a KID, the payment
+reference the bank matches the payment by; a credit note never does.
+
 If a colleague saved the settings while you were editing, the form says **The settings
 changed** and offers **Reload**; your unsaved edits are dropped, never merged.
 
@@ -184,6 +192,9 @@ or `credit-note-1002.pdf` — and is the one PDF rendered and stored at issue, s
 exactly as stored every time ([the PDF](/en/reference/invoices/#the-pdf)). Anyone with
 `invoices:access` can download it.
 
+An invoice with a KID shows it in the payment block, as **KID**, and asks the buyer to
+pay with it instead of the invoice number.
+
 If the store could not be reached at issue, the page says *The PDF could not be stored
 when the document was issued. It is stored the first time it is downloaded* — the first
 download, or the first send, stores it.
@@ -256,7 +267,8 @@ a settled one, that it says nothing is due.
 
 Click **Send**. The mail goes at once, with the stored PDF attached and a short plain
 text — *Faktura 1001 fra <seller>* or *Invoice 1001 from <seller>* in the buyer's
-language — asking for the open amount to the seller's account; replies go to the e-mail
+language — asking for the open amount to the seller's account, marked with the invoice's KID when
+it has one and with its number otherwise; replies go to the e-mail
 in the settings ([the texts](/en/reference/invoices/#sending-a-document)). A message
 confirms *Sent to …*, and the card **Sent by e-mail** on the document gains a row with
 **Sent**, **To** and **Subject**. The **To** column is shown only to people with
@@ -297,8 +309,9 @@ negative, so the totals are the period's net sales.
 On the journal, **Export CSV** downloads the range shown as `invoices-<from>-<to>.csv`.
 The file has one row per document and VAT rate — a credit note's amounts negative —
 with fixed English columns: Number, Kind, Issue date, Delivery, Due, Customer number,
-Buyer, Buyer org no, Currency, SAF-T code, Rate, Base, VAT, Base NOK, VAT NOK and Credits
-number. It opens in a spreadsheet as Norwegian systems expect: `;` between cells, the
+Buyer, Buyer org no, Currency, SAF-T code, Rate, Base, VAT, Base NOK, VAT NOK, Credits
+number and KID — import the KID column as text, or the spreadsheet drops its leading
+zeros. It opens in a spreadsheet as Norwegian systems expect: `;` between cells, the
 decimal comma, UTF-8 ([the CSV export](/en/reference/invoices/#the-csv-export)).
 
 A range of more than 5000 rows is refused — *The export would hold more than 5000 rows;
