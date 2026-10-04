@@ -92,7 +92,7 @@ describe("the Send dialog", () => {
     [
       "delivery_preference_ehf",
       "red",
-      "This customer expects EHF. An e-mailed PDF does not meet the e-invoicing duty; phase 2 adds EHF.",
+      "This customer prefers EHF, but this document cannot be sent as EHF from here: you or this installation cannot send EHF. An e-mailed PDF does not meet the e-invoicing duty.",
     ],
     [
       "buyer_norwegian_business_required",

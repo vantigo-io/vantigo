@@ -219,6 +219,18 @@ type Config struct {
 	// days). It is deliberately a duration rather than a day count, so an
 	// installation can shorten it to something a test or a pilot can observe.
 	CustomersPeppolRecheckAge time.Duration
+	// CustomersAnonymisationEnabled is the on/off switch for the customers
+	// module's anonymisation worker (CUSTOMERS_ANONYMISATION_ENABLED,
+	// customers GDPR design D4). Default ON, like the registry workers, and for
+	// a stronger reason: the worker does what a person scheduled for a date, and
+	// an installation that says nothing must still keep that promise. A 0 means
+	// the worker is never handed to the runner, and scheduled dates simply wait.
+	CustomersAnonymisationEnabled bool
+	// CustomersAnonymisationPoll is how often that worker runs a cycle
+	// (CUSTOMERS_ANONYMISATION_POLL, default 24 hours): a schedule is a day, so
+	// once a day is on time. Each cycle is at most fifty customers, a constant.
+	CustomersAnonymisationPoll time.Duration
+
 	// InvoicesEhfEnabled is the on/off switch for sending invoices as EHF over
 	// Peppol (INVOICES_EHF_ENABLED, EHF and KID design D1). Default ON, like
 	// PEPPOL_LOOKUP_ENABLED: an installation still needs access-point
@@ -234,18 +246,6 @@ type Config struct {
 	// tenant's: an operator points it at the sandbox or a mock host, and an
 	// invoices:manage holder cannot aim the client anywhere.
 	InvoicesStorecoveBaseURL string
-
-	// CustomersAnonymisationEnabled is the on/off switch for the customers
-	// module's anonymisation worker (CUSTOMERS_ANONYMISATION_ENABLED,
-	// customers GDPR design D4). Default ON, like the registry workers, and for
-	// a stronger reason: the worker does what a person scheduled for a date, and
-	// an installation that says nothing must still keep that promise. A 0 means
-	// the worker is never handed to the runner, and scheduled dates simply wait.
-	CustomersAnonymisationEnabled bool
-	// CustomersAnonymisationPoll is how often that worker runs a cycle
-	// (CUSTOMERS_ANONYMISATION_POLL, default 24 hours): a schedule is a day, so
-	// once a day is on time. Each cycle is at most fifty customers, a constant.
-	CustomersAnonymisationPoll time.Duration
 
 	// StorageProvider selects the internal/storage backend: "" (unset,
 	// STORAGE_PROVIDER) or "fs". When unset, internal/storage.New still
@@ -413,7 +413,7 @@ func Load(env map[string]string) (*Config, error) {
 	c.Modules = modules(&p, env)
 	c.WorkersInProcess = workersInProcess(&p, env)
 
-	c.BrregBaseURL = brregBaseURL(&p, env)
+	c.BrregBaseURL = httpBaseURL(&p, env, "BRREG_BASE_URL", defaultBrregBaseURL)
 	c.BrregTimeout = duration(&p, env, "BRREG_TIMEOUT", 15*time.Second)
 
 	peppolLookup(&p, env, c)
@@ -508,20 +508,21 @@ func basePath(p *problems, env map[string]string) string {
 // Enhetsregisteret API origin (customers inventory §5).
 const defaultBrregBaseURL = "https://data.brreg.no"
 
-// brregBaseURL validates BRREG_BASE_URL as appOrigin validates APP_URL: an
-// absolute http or https URL. Unlike APP_URL it may carry a path (a test
-// harness's httptest-free fake still needs only an origin, but nothing
-// requires one), and any trailing slash is trimmed so the client's fixed
-// path never ends up with a doubled one.
-func brregBaseURL(p *problems, env map[string]string) string {
-	v := env["BRREG_BASE_URL"]
+// httpBaseURL validates an outside service's base URL (BRREG_BASE_URL,
+// INVOICES_STORECOVE_BASE_URL) as appOrigin validates APP_URL: an absolute
+// http or https URL. Unlike APP_URL it may carry a path, and any trailing
+// slash is trimmed so the client's fixed paths never end up with a doubled
+// one. Unset, or invalid (reported), it is def, trimmed the same way.
+func httpBaseURL(p *problems, env map[string]string, key, def string) string {
+	def = strings.TrimSuffix(def, "/")
+	v := env[key]
 	if v == "" {
-		return defaultBrregBaseURL
+		return def
 	}
 	u, err := url.Parse(v)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
-		p.add("BRREG_BASE_URL", "must be an absolute http or https URL")
-		return defaultBrregBaseURL
+		p.add(key, "must be an absolute http or https URL")
+		return def
 	}
 	return strings.TrimSuffix(v, "/")
 }
@@ -561,7 +562,7 @@ func plausibleHostname(v string) bool {
 // (PEPPOL_LOOKUP_ENABLED, PEPPOL_SML_ZONE, PEPPOL_DNS_SERVER, PEPPOL_TIMEOUT
 // — can-this-customer-receive-EHF design D3, D5): the on/off switch, the SML
 // zone a lookup hashes a participant identifier into, an optional resolver
-// override, and the per-lookup timeout. Mirrors brregBaseURL/BrregTimeout's
+// override, and the per-lookup timeout. Mirrors httpBaseURL/BrregTimeout's
 // own shape: every problem reported, defaults substituted so Load can keep
 // validating the rest of the environment.
 func peppolLookup(p *problems, env map[string]string, c *Config) {
@@ -624,22 +625,12 @@ func customersAnonymisation(p *problems, env map[string]string, c *Config) {
 const defaultStorecoveBaseURL = "https://api.storecove.com/api/v2/"
 
 // invoicesEhf loads the Invoices e-invoicing settings (EHF and KID design D1):
-// the switch, on by default, and the Storecove base URL, validated as
-// brregBaseURL validates BRREG_BASE_URL — an absolute http or https URL, any
+// the switch, on by default, and the Storecove base URL, validated by
+// httpBaseURL as BRREG_BASE_URL is — an absolute http or https URL, any
 // trailing slash trimmed so the adapter's fixed paths never double one.
 func invoicesEhf(p *problems, env map[string]string, c *Config) {
 	c.InvoicesEhfEnabled = boolean(p, env, "INVOICES_EHF_ENABLED", true)
-	c.InvoicesStorecoveBaseURL = strings.TrimSuffix(defaultStorecoveBaseURL, "/")
-	v := env["INVOICES_STORECOVE_BASE_URL"]
-	if v == "" {
-		return
-	}
-	u, err := url.Parse(v)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
-		p.add("INVOICES_STORECOVE_BASE_URL", "must be an absolute http or https URL")
-		return
-	}
-	c.InvoicesStorecoveBaseURL = strings.TrimSuffix(v, "/")
+	c.InvoicesStorecoveBaseURL = httpBaseURL(p, env, "INVOICES_STORECOVE_BASE_URL", defaultStorecoveBaseURL)
 }
 
 // isNumericPort reports whether port is all ASCII digits, at least one:
