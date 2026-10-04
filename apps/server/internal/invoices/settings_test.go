@@ -48,6 +48,12 @@ type problemJSON struct {
 	MergedInto        *int32              `json:"mergedInto"`
 	LinePosition      *int32              `json:"linePosition"`
 	AllowedIssueDates []string            `json:"allowedIssueDates"`
+	PeppolRegistered  *bool               `json:"peppolRegistered"`
+	PeppolCanReceive  *bool               `json:"peppolCanReceive"`
+	Rules             []struct {
+		ID      string `json:"id"`
+		Message string `json:"message"`
+	} `json:"rules"`
 }
 
 func problemOf(t *testing.T, res interface{ JSON(any) }) problemJSON {

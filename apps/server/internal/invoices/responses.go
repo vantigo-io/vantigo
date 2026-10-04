@@ -23,7 +23,8 @@ import (
 // paid, open, a refund due — and its payments; every issued document its
 // deliveries (payments and delivery design D4).
 
-// The warnings a document carries (D4, D6, D8). They are never refusals.
+// The warnings a document carries (D4, D6, D8; and ehf_buyer_reference_missing,
+// sendehf.go). They are never refusals.
 const (
 	warningCustomerCurrencyDiffers = "customer_currency_differs"
 	warningIssuedLate              = "issued_late"
@@ -336,6 +337,14 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 			deliveries = append(deliveries, delivery)
 		}
 		resp.Deliveries = &deliveries
+		// Every issued document answers its EHF state (EHF and KID design
+		// D10), read from its own rows and the installation's — never the
+		// network.
+		ehfState, err := s.ehfState(ctx, q, inv, stored, canIssue)
+		if err != nil {
+			return gen.InvoicesInvoiceResponse{}, err
+		}
+		resp.Ehf = &ehfState
 		// § 5-2-2 is about when the document was issued, not the date it
 		// carries: one issued on the 14th dated the last of the previous
 		// month (§ 5-1-3) is judged on the 14th.
@@ -399,6 +408,12 @@ func (s *server) renderInvoice(ctx context.Context, q *store.Queries, inv store.
 	resp.GrossTotal, resp.VatTotalNok = floatFromRat(totals.gross, 2), floatFromRat(totals.vatNOK, 2)
 	if profile != nil && profile.Currency != "" && profile.Currency != inv.Currency {
 		resp.Warnings = append(resp.Warnings, warningCustomerCurrencyDiffers)
+	}
+	// A draft headed for EHF with neither reference is told now: neither
+	// changes after the issue, and the send would refuse it (EHF and KID
+	// design D8).
+	if ehfHeaded(inv, profile) && !hasBuyerReference(inv) {
+		resp.Warnings = append(resp.Warnings, warningEhfBuyerReferenceMissing)
 	}
 	// A credit note keeps its original's delivery and is issued after it by
 	// nature: issued_late would always hold and say nothing (D8).

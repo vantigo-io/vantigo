@@ -290,6 +290,25 @@ before sending again.* A row under **Sent by e-mail** means the mail server acce
 mail, not that it arrived: a bounce goes to the installation's sender address and is not
 recorded here. Sending the same document again is allowed and logged again.
 
+## Sending as EHF
+
+The app gets its **Send as EHF** button in a later release; until then the server's API
+carries it, for people with `invoices:issue` on an installation that can send as EHF.
+Sending as EHF checks the issued document, makes its EHF — the e-invoice, with the PDF
+inside — asks the Peppol network whether the customer accepts it, and puts it in a queue
+the server works through; the document then shows whether it is queued, submitted,
+delivered, failed or awaiting confirmation. It is refused when the document was issued
+to a customer without a Peppol id, when it has neither the customer's reference nor an
+order reference, when it is already on its way or delivered, when its EHF breaks a
+Peppol rule, when the customer is not on the Peppol network or does not take this kind
+of document there, or when the network cannot be asked. A transmission still waiting in
+the queue can be cancelled, and one the provider never confirmed is resolved by a person
+after checking with the provider. Because the references cannot change after issuing, a
+draft for a customer who is invoiced by EHF warns while it has neither — *This customer
+is invoiced by EHF, which needs your customer's reference or an order reference* — so
+add one before you issue
+([the rules](/en/reference/invoices/#sending-as-ehf)).
+
 ## Checking the journal
 
 **Invoice journal** in the sidebar is the proof the bookkeeping regulation asks for:

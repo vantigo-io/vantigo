@@ -23,6 +23,7 @@ type listJSON struct {
 		GrossTotal   float64  `json:"grossTotal"`
 		State        string   `json:"state"`
 		OpenAmount   *float64 `json:"openAmount"`
+		EhfStatus    *string  `json:"ehfStatus"`
 	} `json:"data"`
 	Pagination struct {
 		Page        int32 `json:"page"`

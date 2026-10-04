@@ -14,6 +14,14 @@ SELECT * FROM invoices.access_point_credentials WHERE id = 1;
 -- the old one; a DELETE judges the transmissions in flight under it.
 SELECT * FROM invoices.access_point_credentials WHERE id = 1 FOR UPDATE;
 
+-- name: LockAccessPointCredentialsForShare :one
+-- LockAccessPointCredentialsForShare reads the one credentials row FOR SHARE:
+-- a send as EHF holds it from the check that credentials exist to its
+-- transmission's commit, so a DELETE — which locks it FOR UPDATE and then
+-- counts the transmissions in flight — either waits and sees the new row, or
+-- commits first and the send finds no row. Two sends share it.
+SELECT * FROM invoices.access_point_credentials WHERE id = 1 FOR SHARE;
+
 -- name: UpsertAccessPointCredentials :one
 -- UpsertAccessPointCredentials writes the provider, its non-secret settings
 -- and the sealed key, and clears rejected_at: a new PUT is a new key, or the

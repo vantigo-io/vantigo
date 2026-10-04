@@ -77,13 +77,20 @@ var beforeDeliveryWrite func(ctx context.Context, invoiceID int64)
 // buyer_norwegian_business_required from it. The server judges the date on
 // today, the Oslo business day of its own clock — the browser has neither.
 // profile is the customer's current billing profile, nil when the directory
-// knows none.
-func sendWarnings(inv store.InvoicesInvoice, profile *contracts.CustomerBillingProfile, today time.Time) []string {
+// knows none. canSendEhf is whether the caller can send as EHF on this
+// installation (meta's capability): then a customer expecting EHF is told
+// ehf_preferred — send it as EHF instead — in place of
+// delivery_preference_ehf (EHF and KID design D10, reading 14).
+func sendWarnings(inv store.InvoicesInvoice, profile *contracts.CustomerBillingProfile, today time.Time, canSendEhf bool) []string {
 	warnings := []string{}
 	if profile != nil {
 		switch profile.InvoiceDelivery {
 		case "ehf":
-			warnings = append(warnings, warningDeliveryPreferenceEHF)
+			if canSendEhf {
+				warnings = append(warnings, warningEhfPreferred)
+			} else {
+				warnings = append(warnings, warningDeliveryPreferenceEHF)
+			}
 		case "efaktura", "paper":
 			warnings = append(warnings, warningDeliveryPreferenceOther)
 		}
@@ -121,8 +128,26 @@ func validRecipient(s string) (string, bool) {
 // The directory read is best effort: a directory that fails leaves
 // sendDefaults out and says so at warn, never failing a read of bookkeeping
 // material.
-func (s *server) withSendDefaults(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, profile *contracts.CustomerBillingProfile, canIssue bool, resp *gen.InvoicesInvoiceResponse) error {
-	if inv.Status != statusIssued || !s.mailAvailable() || !canIssue {
+//
+// With ehfPreference — GET /invoices/{id} — the same read also sets the ehf
+// block's preference and buyerPeppolId (EHF and KID design D10, reading 15),
+// on an installation that can send as EHF as well as on one that can mail:
+// an EHF-only installation has no SMTP.
+func (s *server) withSendDefaults(ctx context.Context, q *store.Queries, inv store.InvoicesInvoice, profile *contracts.CustomerBillingProfile, canIssue, ehfPreference bool, resp *gen.InvoicesInvoiceResponse) error {
+	if inv.Status != statusIssued || !canIssue {
+		return nil
+	}
+	settings, err := q.GetSettings(ctx)
+	if err != nil {
+		return fmt.Errorf("invoices: read the settings: %w", err)
+	}
+	canSendEhf, _, err := s.ehfAvailable(ctx, q, settings)
+	if err != nil {
+		return err
+	}
+	mail := s.mailAvailable()
+	ehfPreference = ehfPreference && resp.Ehf != nil
+	if !mail && (!ehfPreference || !canSendEhf) {
 		return nil
 	}
 	erased, err := q.CustomerErased(ctx, inv.CustomerID)
@@ -130,7 +155,9 @@ func (s *server) withSendDefaults(ctx context.Context, q *store.Queries, inv sto
 		return fmt.Errorf("invoices: read whether customer %d was erased: %w", inv.CustomerID, err)
 	}
 	if erased {
-		resp.CustomerAnonymised = ptr(true)
+		if mail {
+			resp.CustomerAnonymised = ptr(true)
+		}
 		return nil
 	}
 	if profile == nil {
@@ -141,8 +168,19 @@ func (s *server) withSendDefaults(ctx context.Context, q *store.Queries, inv sto
 			return nil
 		}
 	}
+	if ehfPreference && profile != nil {
+		if profile.InvoiceDelivery != "" {
+			resp.Ehf.Preference = ptr(profile.InvoiceDelivery)
+		}
+		if profile.PeppolID != "" {
+			resp.Ehf.BuyerPeppolId = ptr(profile.PeppolID)
+		}
+	}
+	if !mail {
+		return nil
+	}
 	today := businessDay(s.deps.Clock())
-	defaults := gen.InvoicesSendDefaults{Warnings: sendWarnings(inv, profile, today)}
+	defaults := gen.InvoicesSendDefaults{Warnings: sendWarnings(inv, profile, today, canSendEhf)}
 	if profile != nil && profile.InvoiceEmail != "" {
 		defaults.Recipient = ptr(profile.InvoiceEmail)
 	}
@@ -306,7 +344,7 @@ func (s *server) PostInvoicesByIdSend(ctx context.Context, req gen.PostInvoicesB
 	if err != nil {
 		return nil, err
 	}
-	if err := s.withSendDefaults(renderCtx, q, inv, profile, canIssue, &resp); err != nil {
+	if err := s.withSendDefaults(renderCtx, q, inv, profile, canIssue, false, &resp); err != nil {
 		return nil, err
 	}
 	return gen.PostInvoicesByIdSend200JSONResponse(resp), nil

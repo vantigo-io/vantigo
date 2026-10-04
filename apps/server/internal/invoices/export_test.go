@@ -95,3 +95,23 @@ func SetBeforeDeliveryWrite(hook func(ctx context.Context, invoiceID int64)) fun
 	beforeDeliveryWrite = hook
 	return func() { beforeDeliveryWrite = nil }
 }
+
+// SetBeforeTransmissionInsert installs a hook a send as EHF calls inside its
+// transaction right before it inserts the transmission — after the document's
+// lock, the credentials' FOR SHARE and the judgment under them — and answers
+// the function that removes it. A race test holds one send there while it
+// starts another, or a DELETE of the credentials. A test using it does not run
+// in parallel: the hook is the package's.
+func SetBeforeTransmissionInsert(hook func(ctx context.Context, invoiceID int64)) func() {
+	beforeTransmissionInsert = hook
+	return func() { beforeTransmissionInsert = nil }
+}
+
+// SetSendEhfWithoutLock makes a send as EHF read the document inside its
+// transaction without locking it, so a race test can show the partial unique
+// index refusing a second transmission on its own, and answers the function
+// that restores the lock. A test using it does not run in parallel.
+func SetSendEhfWithoutLock() func() {
+	sendEhfWithoutLock = true
+	return func() { sendEhfWithoutLock = false }
+}

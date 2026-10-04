@@ -366,6 +366,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/{id}/send-ehf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send an issued document as EHF
+         * @description Queues an issued document's EHF for the Peppol network (EHF and KID design D8), in this order: 503 ehf_unavailable when the installation cannot send as EHF — INVOICES_EHF_ENABLED off, the Peppol lookup disabled, no access-point credentials, or no seller Peppol id — judged before anything is read; 404; 409 invoice_draft; 409 customer_anonymised; 409 no_peppol_id when the buyer snapshot has no Peppol id, or one that is not <scheme>:<value>; 409 buyer_reference_missing when neither yourReference nor orderReference is set; 409 ehf_already_sent when a transmission is queued, submitted, delivered or unconfirmed; the stored PDF (503 storage_unavailable, 500 a stored object gone or altered), the UBL rendered from the document's own rows with the PDF embedded and pre-checked (409 ehf_invalid with rules); the receiver re-checked on the Peppol network outside any lock (409 peppol_not_receivable with peppolRegistered and peppolCanReceive when it is not registered or does not accept this document type; 502 peppol_lookup_failed when the network could not answer); the UBL stored once by its hash (503 storage_unavailable) — or, after an unconfirmed transmission a person resolved as failed, the bytes that transmission carried; then, under the document's lock, the anonymisation, the credentials and ehf_already_sent judged again and the transmission queued. The access point is not called here: a worker submits it. Rate limited to 60 per client per 10 minutes. The response is the document with its ehf state, without sendDefaults.
+         */
+        post: operations["postInvoicesByIdSendEhf"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/transmissions/{transmissionId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a queued EHF transmission
+         * @description Cancels a queued EHF transmission that was never attempted (EHF and KID design D9): queued, its crash marker unset, and not leased by a worker at this moment. Anything else is 409 transmission_not_cancellable — once a submission may have reached the provider, only the outcome decides. The response is the document.
+         */
+        post: operations["postInvoicesByIdTransmissionsByTransmissionIdCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/transmissions/{transmissionId}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve an unconfirmed EHF transmission
+         * @description A person's verdict on an unconfirmed EHF transmission after checking with the provider (EHF and KID design D9): delivered closes it, failed allows a new send — which carries the same UBL, since those bytes may have reached the receiver. The outcome, who and the note are recorded. Only an unconfirmed transmission is resolved; anything else is 409 transmission_not_resolvable. The response is the document.
+         */
+        post: operations["postInvoicesByIdTransmissionsByTransmissionIdResolve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/transmissions/{transmissionId}/ubl": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download an EHF transmission's UBL
+         * @description The UBL an EHF transmission carries (EHF and KID design D10), as stored when it was queued and verified against its SHA-256. A stored object that is gone or altered is a 500, never rendered again.
+         */
+        get: operations["getInvoicesByIdTransmissionsByTransmissionIdUbl"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/journal": {
         parameters: {
             query?: never;
@@ -496,7 +576,7 @@ export interface components {
             ratePercent: number;
             safTCode: string;
         };
-        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503), storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
+        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
         InvoicesConflictProblem: {
             /** @description On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise. */
             allowedIssueDates?: string[];
@@ -518,10 +598,73 @@ export interface components {
              * @description On payment_exceeds_open, the invoice's open amount the payment exceeded (gross − credited − paid). Absent otherwise.
              */
             openAmount?: number;
+            /** @description On peppol_not_receivable, whether the receiver accepts this document's type (an invoice or a credit note) on the Peppol network at the send's re-check. Absent otherwise. */
+            peppolCanReceive?: boolean;
+            /** @description On peppol_not_receivable, whether the receiver is registered on the Peppol network at all at the send's re-check. Absent otherwise. */
+            peppolRegistered?: boolean;
+            /** @description On ehf_invalid, every pre-check rule the document's EHF failed. Absent otherwise. */
+            rules?: components["schemas"]["InvoicesEhfRule"][];
             /** Format: int32 */
             status?: number | null;
             title?: string | null;
             type?: string | null;
+        };
+        /** @description One pre-check rule a document's EHF failed (EHF and KID design D11) — id is the official Peppol BIS Billing 3.0 or EN 16931 rule id where there is one (PEPPOL-EN16931-R003, NO-R-001, …), else the module's own name for it (vat_category_k_unsupported); message says it in English. */
+        InvoicesEhfRule: {
+            id: string;
+            message: string;
+        };
+        /** @description An issued document's EHF state (EHF and KID design D10); absent on a draft. status is the latest transmission's — queued, submitted, delivered, failed, unconfirmed or cancelled — or not_sent, and the four timestamps are the latest transmission's. providerRef and reason (the last error, with e-mail addresses and Peppol identifiers taken out, at most 500 characters) are answered only to a caller with invoices:issue. canSend is what POST /invoices/{id}/send-ehf would answer without the network and without a render, and blockedBy names the first refusal when it would refuse: ehf_unavailable, customer_anonymised, no_peppol_id, buyer_reference_missing, ehf_already_sent, or ehf_invalid for a line in VAT category K. preference (the billing profile's invoice delivery) and buyerPeppolId (the customer's current Peppol id) are answered only by GET /invoices/{id}, only to a caller with invoices:issue, whether or not the installation can send e-mail, and are absent when the directory could not be read. transmissions is every transmission of the document, the newest first. */
+        InvoicesEhfState: {
+            blockedBy?: string;
+            buyerPeppolId?: string;
+            canSend: boolean;
+            /** Format: date-time */
+            deliveredAt?: string;
+            /** Format: date-time */
+            failedAt?: string;
+            preference?: string;
+            providerRef?: string;
+            /** Format: date-time */
+            queuedAt?: string;
+            reason?: string;
+            status: string;
+            /** Format: date-time */
+            submittedAt?: string;
+            transmissions: components["schemas"]["InvoicesTransmission"][];
+        };
+        /** @description One EHF transmission of an issued document (EHF and KID design D9): its identity, its state and when it reached each, the receiver it was addressed to, the SHA-256 of the UBL it carries, the resolution of an unconfirmed one — resolvedByUserId absent when the provider's evidence resolved it — and ublUrl, where the stored UBL is downloaded. providerRef and reason are answered only to a caller with invoices:issue. */
+        InvoicesTransmission: {
+            /** Format: date-time */
+            cancelledAt?: string;
+            /** Format: date-time */
+            deliveredAt?: string;
+            /** Format: date-time */
+            failedAt?: string;
+            /** Format: int64 */
+            id: number;
+            /** Format: uuid */
+            idempotencyKey: string;
+            provider: string;
+            providerRef?: string;
+            /** Format: date-time */
+            queuedAt: string;
+            reason?: string;
+            receiverParticipant: string;
+            resolutionNote?: string;
+            /** Format: uuid */
+            resolvedByUserId?: string;
+            status: string;
+            /** Format: date-time */
+            submittedAt?: string;
+            ublSha256: string;
+            ublUrl: string;
+        };
+        /** @description POST /invoices/{id}/transmissions/{transmissionId}/resolve's body (EHF and KID design D9): a person's verdict on an unconfirmed transmission after checking with the provider — delivered or failed — and a note saying why, 1 to 500 characters once trimmed. */
+        InvoicesTransmissionResolution: {
+            note: string;
+            /** @enum {string} */
+            outcome: "delivered" | "failed";
         };
         /** @description PUT /settings' body, a full replace (D2). Every text field is trimmed; an empty string is "not set". organisationNumber is nine digits with a valid mod-11 check digit; bankAccount eleven digits with a valid mod-11 check digit (spaces and dots are dropped); iban passes mod-97 and bic is 8 or 11 characters, both optional; country is ISO 3166-1 alpha-2; defaultPaymentTermsDays is 0-365; defaultCurrency is NOK and only NOK in this phase; seriesStart is 1 to 9007199254740991 (2^53 − 1) and cannot change once anything is issued (409 series_locked). peppolId, kidLength and kidAlgorithm are required and nullable (EHF and KID design D2, D3): a body without them is a 400, so a client that predates them cannot clear them by leaving them out. kidLength and kidAlgorithm are a pair or both null; the next number to be issued — the counter's, or seriesStart before the first issue — must fit in kidLength less one digits, else a 400 on kidLength. revision is the one the caller read: a stale one is a 409 naming both. */
         InvoicesSettingsRequest: {
@@ -750,6 +893,8 @@ export interface components {
             customerName?: string;
             /** Format: date */
             dueDate?: string;
+            /** @description On an issued document, its latest EHF transmission's status — queued, submitted, delivered, failed, unconfirmed or cancelled — or not_sent (EHF and KID design D10). Absent on a draft. */
+            ehfStatus?: string;
             /** Format: double */
             grossTotal: number;
             /** Format: int64 */
@@ -794,7 +939,7 @@ export interface components {
             revision?: number;
             yourReference?: string;
         };
-        /** @description One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line. An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. Every issued document carries deliveries (D4); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. */
+        /** @description One document (D4): every column in camelCase, its lines and its VAT summaries. On a draft the VAT summaries and totals are computed afresh — an invoice draft's with the rates in force today, which the issue resolves again for the issue date; a credit-note draft's at its original lines' snapshot rates, with each line's and the invoice's remainder squared as its issue will — and allowedIssueDates lists the dates it may be issued with today. warnings are never refusals: customer_currency_differs, issued_late (never on a credit note, which keeps its original's delivery), vat_code_not_valid (a line's code has no rate period covering today; the issue would refuse it), credit_exceeds_invoice, credit_exceeds_line, ehf_buyer_reference_missing (EHF and KID design D8: a draft whose customer's billing profile prefers EHF or whose customer has a Peppol id, with neither yourReference nor orderReference set — Peppol needs one, and neither can change after the issue). An invoice carries creditedAmount (its issued credit notes' gross), uncreditedAmount and creditNotes; a credit note carries credits. Every document carries state (D3); an issued invoice also carries paidAmount, openAmount, payments and — only when openAmount is below zero — refundDue, none of which a draft or a credit note carries. Every issued document carries deliveries (D4) and its EHF state, ehf (EHF and KID design D10); sendDefaults is answered only by GET /invoices/{id} and the send, for a caller who may send — and in its place customerAnonymised when the customer is anonymised. */
         InvoicesInvoiceResponse: {
             allowedIssueDates?: string[];
             buyer?: components["schemas"]["InvoicesBuyer"];
@@ -821,6 +966,7 @@ export interface components {
             deliveryTo?: string;
             /** Format: date */
             dueDate?: string;
+            ehf?: components["schemas"]["InvoicesEhfState"];
             /** Format: double */
             exchangeRate: number;
             /** Format: date */
@@ -973,7 +1119,7 @@ export interface components {
             paidOn: string;
             reference?: string;
         };
-        /** @description What the Send dialog opens with (D4), on an issued document's GET and on the send's own response only, and only for a caller who may send (invoices:issue on an installation whose mail driver is smtp); never for a customer this module has anonymised, whom a send is refused. recipient is the customer's current invoice e-mail, absent when it has none; preference is the billing profile's invoice delivery (email, ehf, efaktura or paper), absent when unset. warnings are the send's, never refusals: delivery_preference_ehf (the customer expects EHF; an e-mailed PDF does not meet the e-invoicing duty), delivery_preference_other (the customer prefers efaktura or paper), buyer_norwegian_business (the buyer snapshot has a Norwegian organisation number and today, the Oslo business day of the server's clock, is before 2027-01-01: from that day a Norwegian business must receive an e-invoice), buyer_norwegian_business_required (the same buyer from 2027-01-01, when an e-mailed PDF no longer meets the duty). The server judges the date, never the browser. Absent when the directory could not be read. */
+        /** @description What the Send dialog opens with (D4), on an issued document's GET and on the send's own response only, and only for a caller who may send (invoices:issue on an installation whose mail driver is smtp); never for a customer this module has anonymised, whom a send is refused. recipient is the customer's current invoice e-mail, absent when it has none; preference is the billing profile's invoice delivery (email, ehf, efaktura or paper), absent when unset. warnings are the send's, never refusals: delivery_preference_ehf (the customer expects EHF; an e-mailed PDF does not meet the e-invoicing duty), ehf_preferred (in place of delivery_preference_ehf when the caller can send as EHF on this installation — canSendEhf: send it as EHF instead; EHF and KID design D10), delivery_preference_other (the customer prefers efaktura or paper), buyer_norwegian_business (the buyer snapshot has a Norwegian organisation number and today, the Oslo business day of the server's clock, is before 2027-01-01: from that day a Norwegian business must receive an e-invoice), buyer_norwegian_business_required (the same buyer from 2027-01-01, when an e-mailed PDF no longer meets the duty). The server judges the date, never the browser. Absent when the directory could not be read. */
         InvoicesSendDefaults: {
             preference?: string;
             recipient?: string;
@@ -2564,6 +2710,292 @@ export interface operations {
                 };
             };
             /** @description Service Unavailable — mail_unavailable, the installation cannot send mail; or storage_unavailable, the object store is not configured or could not be reached. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesByIdSendEhf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the document, its transmission queued in ehf. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesInvoiceResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — invoice_draft, customer_anonymised, no_peppol_id, buyer_reference_missing, ehf_already_sent, ehf_invalid (with rules) or peppol_not_receivable (with peppolRegistered and peppolCanReceive). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error — the stored PDF or a reused UBL is gone or altered, the render or its invariants failed, or the database failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Bad Gateway — peppol_lookup_failed, the Peppol network could not say whether the receiver accepts the document; nothing is queued. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Service Unavailable — ehf_unavailable, the installation cannot send as EHF; or storage_unavailable, the object store is not configured or could not be reached. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesByIdTransmissionsByTransmissionIdCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                transmissionId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the document, the transmission cancelled. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesInvoiceResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id, or the transmission is not that document's. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — transmission_not_cancellable. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesByIdTransmissionsByTransmissionIdResolve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                transmissionId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesTransmissionResolution"];
+            };
+        };
+        responses: {
+            /** @description OK — the document, the transmission resolved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesInvoiceResponse"];
+                };
+            };
+            /** @description Bad Request — outcome is not delivered or failed, or the note is empty or over 500 characters. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id, or the transmission is not that document's. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — transmission_not_resolvable. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    getInvoicesByIdTransmissionsByTransmissionIdUbl: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                transmissionId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the UBL, with a Content-Disposition naming it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/xml": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no document has that id, or the transmission is not that document's. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Internal Server Error — the stored UBL is gone, or its bytes no longer match the hash. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Service Unavailable — storage_unavailable, the object store is not configured or could not be read. */
             503: {
                 headers: {
                     [name: string]: unknown;

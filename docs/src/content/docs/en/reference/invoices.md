@@ -212,7 +212,12 @@ totalled at its original lines' rates, in its response and its preview alike. Wa
 never refuse: `customer_currency_differs`, `issued_late` (never on a credit note, which
 keeps its original's delivery and is late by nature), `vat_code_not_valid`,
 `credit_exceeds_invoice`, `credit_exceeds_line` — a credit draft over both caps carries
-both.
+both — and `ehf_buyer_reference_missing`: a draft headed for EHF — its customer's
+billing profile prefers `ehf` or carries a Peppol id, or, on a credit-note draft, the
+buyer snapshot it copied has one — with neither `yourReference` nor `orderReference`.
+Peppol needs one of the two (`PEPPOL-EN16931-R003`), and neither changes after the
+issue, so the send as EHF would refuse the document with `buyer_reference_missing` and
+only a credit note would mend it ([Sending as EHF](#sending-as-ehf)).
 
 In the app's editor, the totals shown while a draft is being worked on are computed in
 the browser by this same rule and are an estimate; the figures the server actually
@@ -713,14 +718,15 @@ otherwise: an English-language buyer is usually abroad and cannot pay a domestic
 account. The Norwegian text always names the account. A seller without a bank account
 cannot have issued (`seller_incomplete`), so the account is always there.
 
-**The four warnings** are never refusals: a send is never refused for one. They are on
+**The warnings** are never refusals: a send is never refused for one. They are on
 `sendDefaults.warnings` and on the send's own response, and the server judges each
 against today in Oslo from its own clock — never the browser, which has neither, and a
 code is what a test with a fixed clock can pin.
 
 | Warning | When |
 | --- | --- |
-| `delivery_preference_ehf` | the customer's current billing profile says `ehf`: the customer expects EHF, and an e-mailed PDF does not meet the e-invoicing duty |
+| `delivery_preference_ehf` | the customer's current billing profile says `ehf`: the customer expects EHF, and an e-mailed PDF does not meet the e-invoicing duty — when the caller cannot send as EHF here |
+| `ehf_preferred` | the same preference, **in place of** `delivery_preference_ehf`, when the caller can send as EHF on this installation (`capabilities.canSendEhf`): send it as EHF instead ([Sending as EHF](#sending-as-ehf)) |
 | `delivery_preference_other` | the profile says `efaktura` or `paper` |
 | `buyer_norwegian_business` | the buyer snapshot has an organisation number and today is before 2027-01-01: from that day a Norwegian business must receive an e-invoice, and this is a PDF |
 | `buyer_norwegian_business_required` | the same buyer from **2027-01-01**, when an e-mailed PDF no longer meets the B2B duty |
@@ -772,6 +778,118 @@ is the trigger's because only a statement run after the lock wait sees an erase 
 committed during it — the inserting statement's own snapshot was taken before. The
 trigger reads the document's current customer, so a merge in between is covered too. A
 delivery whose recipient is `''` is one whose customer was anonymised.
+
+## Sending as EHF
+
+`POST /invoices/{id}/send-ehf` queues an issued document's EHF — the UBL of
+[The EHF document](#the-ehf-document), the stored PDF embedded — for the Peppol network.
+It needs `invoices:issue` and takes no body. It does **not** call the access point: it
+judges, renders, re-checks the receiver, stores the UBL and writes one row in
+`invoices.transmissions` as `queued`, and the `invoices-ehf` worker submits what is
+queued. In order:
+
+1. **503 `ehf_unavailable`** when the installation cannot send as EHF —
+   `INVOICES_EHF_ENABLED` off, the Peppol lookup disabled, no access-point credentials
+   stored, or no seller Peppol id — judged before anything is read, as meta's
+   `ehfAvailable` is.
+2. 404; 409 `invoice_draft` on a draft; 409 `customer_anonymised` when this module has
+   anonymised the document's customer.
+3. **409 `no_peppol_id`** when the buyer snapshot has no Peppol id, or one that is not
+   `<scheme>:<value>` — the snapshot is the document's, so one issued before the customer
+   got a Peppol id is credited and issued again, or e-mailed.
+4. **409 `buyer_reference_missing`** when neither `yourReference` nor `orderReference` is
+   set (`PEPPOL-EN16931-R003`); drafts warn of it early (`ehf_buyer_reference_missing`,
+   [Drafts](#drafts)).
+5. **409 `ehf_already_sent`** while a transmission of the document is `queued`,
+   `submitted`, `delivered` or `unconfirmed` — read without a lock for a quick answer, and
+   judged again in step 9.
+6. **The render.** The stored PDF, through the download's own path (503
+   `storage_unavailable`; 500 for a stored object gone or altered), the UBL rendered from
+   the document's rows, the seller's current Peppol id and those PDF bytes, and
+   [the pre-check](#the-pre-check) on the bytes: a failed rule is **409 `ehf_invalid`**
+   with `rules` — each `{id, message}`, the official rule id where there is one. A broken
+   invariant is a 500 and an error log. Cheap and local, before the network.
+7. **The re-check.** The receiver — the snapshot's Peppol id — is looked up on the Peppol
+   network now, outside any lock, never read from the customers module's stored answer:
+   not registered, or registered without this document's type (an invoice or a credit
+   note), is **409 `peppol_not_receivable`** with `peppolRegistered` and
+   `peppolCanReceive`; a network that cannot answer is **502 `peppol_lookup_failed`**,
+   logged by its kind (`timeout`, `network`, …) and never with the identifier.
+8. **The UBL stored once** by its SHA-256 under `documents/<id>/<number>-<sha256>.xml` in
+   the `invoices` scope (`application/xml`), outside any lock — `Exists` before `Put`, so
+   a send after a cancel that renders the same bytes stores nothing again; 503
+   `storage_unavailable`. **The reuse rule:** when the document's latest transmission is
+   `failed` with `resolved_by_user_id` set — it was `unconfirmed`, and a person resolved
+   it as failed — its bytes may have reached the receiver, so the new transmission
+   carries the same object, hash, PDF hash and sender, read back and verified against its
+   hash (a 500 when it is gone or altered). After any other `failed`, or a `cancelled`,
+   the send renders fresh, so a corrected seller id or a mapping fixed in a later release
+   is not locked out.
+9. **One transaction**: the document `FOR UPDATE` — two sends serialise on it; the
+   anonymisation judged again (an erasure that committed meanwhile has, by then); the
+   access-point credentials row `FOR SHARE` — a `DELETE` of them locks it `FOR UPDATE`
+   and counts what is in flight, so it either waits and is refused
+   `transmissions_active`, or commits first and the send finds no row (503
+   `ehf_unavailable`); `ehf_already_sent` judged again; then the row: `queued`, a fresh
+   idempotency key, the sender (the settings' Peppol id) and the receiver, the document
+   type and process, the UBL's key and hash, the PDF's hash, the lookup it was queued
+   under, queued and due now, and who sent it. **The floor** is `ux_transmissions_active`
+   — one live transmission per document — whose violation is `ehf_already_sent` too; the
+   insert trigger's own refusal of an anonymised customer, an erasure committing after
+   the judgment, is `customer_anonymised` — never a 500.
+10. The answer is the document with its `ehf` block, without `sendDefaults`.
+
+It is rate limited apart from the e-mail send: 60 per client per 10 minutes under the
+policy `invoices-send-ehf`, counted as `invoices-send` is.
+
+**Cancel.** `POST /{id}/transmissions/{transmissionId}/cancel` (`invoices:issue`, no body)
+cancels a transmission only while it is `queued`, **never attempted** — the worker
+stamps `submit_attempted_at` immediately before it calls the provider — and not leased
+by a worker at that moment; anything else is **409 `transmission_not_cancellable`**: once
+the provider may hold the document, only its outcome decides. A transmission named under
+another document is a 404. A cancelled transmission lets the document be sent again.
+
+**Resolve.** `POST /{id}/transmissions/{transmissionId}/resolve` (`invoices:issue`) takes
+`{outcome, note}` — `outcome` `delivered` or `failed` (anything else a 400; the query
+also refuses any other outcome on its own), `note` 1 to 500 characters once trimmed —
+and resolves only an `unconfirmed` transmission, recording the outcome, who and the
+note; anything else is **409 `transmission_not_resolvable`**. `delivered` closes it with
+its delivery time; `failed` lets the document be sent again, with the same bytes (the
+reuse rule).
+
+**The UBL.** `GET /{id}/transmissions/{transmissionId}/ubl` (`invoices:access`) answers
+the stored UBL as `application/xml`, named `faktura-<number>-<transmission>.xml` (the
+PDF's name in the document's language), never cached — read whole and verified against
+the transmission's `ubl_sha256`. A stored object gone or altered is a 500 and an error
+log, never a render; a store that cannot be read is 503 `storage_unavailable`.
+
+**The `ehf` block.** Every issued document answers `ehf` (a draft has none):
+`{status, queuedAt?, submittedAt?, deliveredAt?, failedAt?, providerRef?, reason?,
+canSend, blockedBy?, preference?, buyerPeppolId?, transmissions}`. `status` and the four
+timestamps are the latest transmission's, or `not_sent`. `transmissions` is every one,
+the newest first — `{id, status, provider, idempotencyKey, receiverParticipant,
+ublSha256, queuedAt, submittedAt?, deliveredAt?, failedAt?, cancelledAt?, providerRef?,
+reason?, resolvedByUserId?, resolutionNote?, ublUrl}`, `resolvedByUserId` absent when the
+provider's evidence resolved it. **`providerRef` and `reason` are answered only to a
+caller with `invoices:issue`**; `reason` is `last_error` with every e-mail address
+replaced by `<e-mail>` and every `NNNN:` participant identifier by `<participant>`, cut
+to 500 characters on a character boundary — never the provider's words to a reader.
+**`canSend`** is what the send would answer without the network and without a render,
+and **`blockedBy`** names the first refusal: `ehf_unavailable`, `customer_anonymised`,
+`no_peppol_id`, `buyer_reference_missing`, `ehf_already_sent`, or `ehf_invalid` for a
+line in VAT category K — the one pre-check rule the lines alone decide; every other
+`ehf_invalid` is found at the send. **`preference`** (the billing profile's invoice
+delivery) and **`buyerPeppolId`** (the customer's current Peppol id) are answered by
+`GET /{id}` only, to a caller with `invoices:issue`, from the same best-effort directory
+read as `sendDefaults` — on an installation that can send as EHF as well as on one that
+can mail, since an EHF-only installation has no SMTP — and are absent when the directory
+could not be read. The list answers `ehfStatus` on each issued document: its latest
+transmission's status, or `not_sent`, the page's in one query.
+
+**Channel precedence** is the app's: the receiver's acceptance is known only at the
+send's re-check. The e-mail dialog's `ehf_preferred` (in place of
+`delivery_preference_ehf` when the caller can send as EHF) says so; neither channel is
+refused for the other.
 
 ## The journal
 
@@ -959,7 +1077,7 @@ No built-in role holds any of these; Owner has the wildcard.
 | --- | --- | --- |
 | `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, the journal, the CSV export and the stats. |
 | `invoices:create` | no | Create, edit and delete drafts; preview a draft. |
-| `invoices:issue` | yes | Issue a draft; create a credit-note draft; send an issued document by e-mail, and see where each send went. |
+| `invoices:issue` | yes | Issue a draft; create a credit-note draft; send an issued document by e-mail, and see where each send went; send it as EHF, cancel a transmission never attempted and resolve an unconfirmed one. |
 | `invoices:manage` | yes | The seller record, the series start, VAT codes and their rates, and the access point's credentials. |
 | `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason. |
 
@@ -974,8 +1092,8 @@ that can send — `MAIL_DRIVER=smtp` and the `SMTP_*` configuration
 `mailAvailable`, `capabilities.canSend` — `invoices:issue` and `mailAvailable` — and
 `capabilities.canRegisterPayments`, so no client re-derives either rule.
 
-**Sending as EHF will be under `invoices:issue` too**, and needs an installation that
-can: `GET /meta` answers `ehfAvailable` — `INVOICES_EHF_ENABLED` on, the Peppol lookup
+**Sending as EHF is under `invoices:issue` too** ([Sending as EHF](#sending-as-ehf)),
+and needs an installation that can: `GET /meta` answers `ehfAvailable` — `INVOICES_EHF_ENABLED` on, the Peppol lookup
 enabled (`PEPPOL_LOOKUP_ENABLED`; a send that cannot re-check its receiver does not
 send), an access-point credentials row stored and the seller's Peppol id set, all four
 ([configuration](/en/admin/authentication/#transport-storage-and-modules)) —
@@ -1021,6 +1139,10 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `POST /{id}/payments` | `invoices:payments` | 400 a body that does not decode; 404; 409 `credit_note_no_payments`, `invoice_draft`; 400 on the field; 409 `invoice_settled`, `payment_exceeds_open` (with `openAmount`) |
 | `POST /{id}/payments/{paymentId}/remove` | `invoices:payments` | 400 on `reason`; 404 the document, or a payment not its own; 409 `payment_removed` |
 | `POST /{id}/send` | `invoices:issue` | 429 `rate_limited`; 503 `mail_unavailable`; 404; 409 `invoice_draft`, `customer_anonymised`; 400 on `recipient`; 409 `no_invoice_email`; 503 `storage_unavailable`; 500 a directory that fails, a missing or altered stored object, a render that fails, or a sent mail whose row could not be written; 502 `mail_failed` |
+| `POST /{id}/send-ehf` | `invoices:issue` | 429 `rate_limited`; 503 `ehf_unavailable`; 404; 409 `invoice_draft`, `customer_anonymised`, `no_peppol_id`, `buyer_reference_missing`, `ehf_already_sent`; 503 `storage_unavailable`; 500 a missing or altered stored PDF or reused UBL, a render that fails or breaks an invariant; 409 `ehf_invalid` (with `rules`); 409 `peppol_not_receivable` (with `peppolRegistered`, `peppolCanReceive`); 502 `peppol_lookup_failed` |
+| `POST /{id}/transmissions/{transmissionId}/cancel` | `invoices:issue` | 404 the document, or a transmission not its own; 409 `transmission_not_cancellable` |
+| `POST /{id}/transmissions/{transmissionId}/resolve` | `invoices:issue` | 400 on `outcome` (not `delivered` or `failed`) or `note` (empty, over 500); 404 the document, or a transmission not its own; 409 `transmission_not_resolvable` |
+| `GET /{id}/transmissions/{transmissionId}/ubl` | | 404 the document, or a transmission not its own; 500 a missing or altered stored UBL; 503 `storage_unavailable` |
 | `GET /journal` | | 400 `from` or `to` missing or not a calendar date, `from` after `to`, paging |
 | `GET /export.csv` | | 400 `from` or `to` missing or not a calendar date, `from` after `to`, more than 5000 rows |
 | `GET /stats/summary` | | 400 `from` after `to` |
