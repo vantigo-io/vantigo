@@ -53,9 +53,9 @@ Two operator settings, in `config.go` by its conventions and in the configuratio
 reference: `INVOICES_EHF_ENABLED` (default **on**; `0` turns the feature off: the send
 answers 503 `ehf_unavailable`, the worker does not start, the settings card says why) and
 `INVOICES_STORECOVE_BASE_URL` (default `https://api.storecove.com/api/v2/`, validated
-`https` only like `BRREG_BASE_URL`; an operator points it at the sandbox or a mock host
-— it is the operator's, never the tenant's, so a `invoices:manage` holder cannot aim the
-client anywhere). The Peppol lookup's own switch `PEPPOL_LOOKUP_ENABLED` is the customers
+http or https, like `BRREG_BASE_URL` (the test server is loopback); an operator points it
+at the sandbox or a mock host — it is the operator's, never the tenant's, so a
+`invoices:manage` holder cannot aim the client anywhere). The Peppol lookup's own switch `PEPPOL_LOOKUP_ENABLED` is the customers
 module's; **off, EHF is off too** — a send that cannot re-check does not send.
 
 `GET /invoices/meta` grows `ehfAvailable` (the switch on, the lookup enabled,
@@ -173,9 +173,10 @@ the module does not hold: a document with a K line is refused at send with 409
 taxable amount of 0.00 with a small negative VAT) is carried as stored: BR-CO-17 and
 BR-S-09 test `abs(…) ± 1`, a one-krone tolerance, and the walked example passes
 (research §2.5). **But BR-S-08 (fatal) requires a line at the row's rate to exist**
-before its tolerance applies, and a final note's squaring row usually has none (amended
-after the Task 4 review, from the 1.3.16 Schematron source). So the writer adds, for
-every VAT row with no line at its (category, rate) — generic over the category — a
+before its tolerance applies, and a final note's squaring row never has one —
+`credits.go` appends the 0.00-taxable row only when no row, hence no line, exists at that
+rate (amended after the Task 4 review, from the 1.3.16 Schematron source). So the writer
+adds, for every VAT row with no line at its (category, rate) — generic over the category — a
 **synthetic zero line** after the real ones: `cbc:ID` the highest position plus one
 (then two, …), a quantity of `0.000` `C62`, a line amount of `0.00`, the name
 "Avrunding merverdiavgift <rate> %" / "VAT rounding <rate> %" by the document's
@@ -509,7 +510,8 @@ only at the send's re-check, so the UI decides by what it has — when `canSendE
 the profile's preference (`sendDefaults.preference`) is `ehf`, or the buyer has a Peppol
 id and the preference is unset, **the issued document's primary action is "Send as
 EHF"** and e-mail is secondary; the e-mail dialog then warns `ehf_preferred` (emitted
-by the server in place of `delivery_preference_ehf` when `canSendEhf`) and, for a
+by the server in place of `delivery_preference_ehf` when `canSendEhf` and the
+document's `ehf.blockedBy` is empty) and, for a
 Norwegian business from 2027-01-01, `buyer_norwegian_business_required` as 1B does.
 Each dialog warns when the other channel already carried the document (`deliveries[]`
 non-empty, or an EHF transmission active or delivered). Neither is refused for the
@@ -603,6 +605,10 @@ unit-code table wider than D5's.
   `rules[]`), `kid_length_exceeded`, `transmissions_active`,
   `transmission_not_cancellable`, `transmission_not_resolvable`.
 - Warnings: `ehf_buyer_reference_missing`, `ehf_preferred`, `kid_headroom_low`.
+- Amended by plan reading 19: `getInvoicesSettingsAccessPoint` (200
+  `{hasCredentials:false}` without a row; `provider`/`legalEntityId` optional), `nextNumber`
+  on the settings response, `submitAttemptedAt` on a transmission for issuers — eight new
+  operations in all.
 
 ### D15 — The frontend
 
@@ -613,8 +619,10 @@ unit-code table wider than D5's.
   **KID** card — length and algorithm with the help text, the next KID previewed, the
   headroom warning and the change warning.
 - **Invoice page, issued document**: the primary action by D10; "Send as EHF" opens a
-  dialog that names the receiver id and says the network will be asked whether it
-  accepts this kind of document, shows the 1B warnings and the cross-channel note; on 200
+  dialog that names the receiver id and the document, explains that the network will be
+  asked whether it accepts this kind of document, and adds the cross-channel note when the
+  document was already e-mailed — not the 1B warnings (they are about e-mail) nor the
+  credentials-rejected notice (that sits on the settings' access-point sub-card); on 200
   "Queued for sending as EHF". An **E-invoice card** with the state in honest words (Not
   sent / Queued / Submitted / Delivered to the receiver's access point / Failed /
   Unconfirmed – needs a check with the provider / Cancelled), timestamps, the provider
@@ -657,8 +665,9 @@ Per `AGENTS.md`'s page map:
   `admin/object-storage.md` (en + nb): the `.xml` and receipt keys;
   `reference/customers.md`: the anonymisation list gains `invoices.transmissions`.
 - `ROADMAP.md`: phase 2 done, phase 3 next.
-- The new admin page's `sources`: `apps/server/internal/invoices/accesspoint`,
-  `apps/server/internal/invoices/ehf`, `tools/ehf`.
+- The new admin page's `sources`: `apps/server/internal/invoices/accesspoint` and
+  `apps/server/internal/invoices/ehf` (`tools/ehf` is covered by
+  `contributing/e-invoice-validation.md`).
 
 ## Readings on the record
 
