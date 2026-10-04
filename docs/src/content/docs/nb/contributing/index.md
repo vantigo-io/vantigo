@@ -20,3 +20,6 @@ Sidene her dekker reglene en endring holdes til, og vedlikeholdes på engelsk:
 - [Dokumentasjon](/en/contributing/documentation/) — hvordan denne siden er organisert,
   hvordan du kjører den, og regelen om at en endring i oppførsel lander sammen med
   endringen i dokumentasjonen.
+- [E-fakturavalidering](/en/contributing/e-invoice-validation/) — EHF-oraklet: de
+  offisielle XSD- og Schematron-artefaktene over fakturamodulens fasitdokumenter,
+  hvordan du kjører det, og hvordan du oppgraderer artefaktene.

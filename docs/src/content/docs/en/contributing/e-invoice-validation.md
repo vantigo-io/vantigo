@@ -53,7 +53,7 @@ mise run ehf:validate
 
 The JDK is in `mise.toml` for the oracle alone; nothing else in the repository needs
 Java. The first run downloads about 70 MB of artefacts into `tools/ehf/.cache`, which
-git ignores, and compiles the Peppol Schematron; later runs take a couple of seconds.
+git ignores, and compiles the Peppol Schematron; later runs take about ten seconds.
 The output has one line per document, each rule's text beneath it, and a summary line
 at the end.
 
@@ -98,7 +98,10 @@ becomes mandatory about three months later. Adopt one by bumping its pin:
 
 1. In `tools/ehf/artefacts.lock`, change the artefact's file name and URL, then write
    the new file's SHA-256. Check it against the publisher's hash where one exists:
-   GitHub's on a release asset, Maven Central's `.sha1`.
+   GitHub's on a release asset, Maven Central's `.sha1`. The file name must keep its
+   prefix (`Saxon-HE-`, `xmlresolver-`, `schxslt-`, `en16931-ubl-`,
+   `peppol-bis-invoice-3-`, `UBL-`): the script finds each artefact by it. The Peppol
+   rules are pinned as the raw `PEPPOL-EN16931-UBL.sch` at the new tag's commit.
 2. Run `mise run ehf:validate`. The lock's new hash names a new work directory, so the
    artefacts are unpacked and the Schematron compiled again.
 3. Act on every change in the output. If a golden now fails, change the writer, or add

@@ -6,9 +6,9 @@
 #
 # 1. Fetch each artefact artefacts.lock names into tools/ehf/.cache and verify
 #    its SHA-256; a mismatch stops the run.
-# 2. Once per lock (the work directory is keyed on the lock's hash): unpack the
-#    XSD, the CEN XSLT and the Peppol Schematron, and compile the Schematron to
-#    XSLT with SchXslt through Saxon.
+# 2. Once per lock and script (the work directory is keyed on both hashes):
+#    unpack the XSD and the CEN XSLT, and compile the Peppol Schematron to XSLT
+#    with SchXslt through Saxon.
 # 3. Validate.java runs the XSD and both XSLTs over each file and judges the SVRL.
 set -euo pipefail
 
@@ -20,6 +20,13 @@ testdata="$root/apps/server/internal/invoices/ehf/testdata"
 
 if ! command -v java >/dev/null 2>&1; then
   echo "error: no java on the PATH; run this as 'mise run ehf:validate'" >&2
+  exit 1
+fi
+# Validate.java runs as a single source file and uses records and switch
+# expressions: Java 21, as mise.toml pins.
+java_major="$(java -XshowSettings:properties -version 2>&1 | awk '$1 == "java.specification.version" { print $3 }')"
+if [ -z "$java_major" ] || [ "${java_major%%.*}" -lt 21 ]; then
+  echo "error: the EHF oracle needs Java 21 or newer, but 'java' on the PATH is ${java_major:-unknown}; run this as 'mise run ehf:validate'" >&2
   exit 1
 fi
 
@@ -43,6 +50,7 @@ artefact() {
 }
 
 mkdir -p "$cache"
+trap 'rm -f "$cache"/*.part' EXIT
 while read -r name sum url; do
   case "$name" in '' | '#'*) continue ;; esac
   file="$cache/$name"
@@ -50,7 +58,7 @@ while read -r name sum url; do
     continue
   fi
   echo "fetching $name"
-  curl -fsSL --retry 3 -o "$file.part" "$url"
+  curl -fsSL --proto '=https' --proto-redir '=https' --retry 3 -o "$file.part" "$url"
   got="$(sha256 "$file.part")"
   if [ "$got" != "$sum" ]; then
     rm -f "$file.part"
@@ -68,18 +76,20 @@ cen="$(artefact en16931-ubl-)"
 peppol="$(artefact peppol-bis-invoice-3-)"
 ubl="$(artefact UBL-)"
 
-key="$(sha256 "$lock" | cut -c1-16)"
+# A change to the lock or to this script (how the artefacts are unpacked and
+# compiled) makes a fresh work directory.
+key="$(sha256 "$lock" | cut -c1-16)-$(sha256 "${BASH_SOURCE[0]}" | cut -c1-16)"
 work="$cache/work-$key"
 if [ ! -f "$work/.ready" ]; then
-  echo "unpacking the artefacts and compiling the Peppol Schematron (once per artefacts.lock)"
+  echo "unpacking the artefacts and compiling the Peppol Schematron (once per artefacts.lock and validate.sh)"
   find "$cache" -maxdepth 1 -name 'work-*' -exec rm -rf {} +
   mkdir -p "$work"
   unzip -qo "$ubl" 'xsd/*' -d "$work/ubl"
   unzip -qjo "$cen" 'xslt/EN16931-UBL-validation.xslt' -d "$work/cen"
-  unzip -qjo "$peppol" '*/rules/sch/PEPPOL-EN16931-UBL.sch' -d "$work/peppol"
+  mkdir -p "$work/peppol"
   unzip -qo "$schxslt" 'xslt/2.0/*' -d "$work/schxslt"
   java -cp "$classpath" net.sf.saxon.Transform \
-    -s:"$work/peppol/PEPPOL-EN16931-UBL.sch" \
+    -s:"$peppol" \
     -xsl:"$work/schxslt/xslt/2.0/pipeline-for-svrl.xsl" \
     -o:"$work/peppol/PEPPOL-EN16931-UBL.xsl"
   touch "$work/.ready"

@@ -309,7 +309,7 @@ jobs:
           # stop covering a .yaml-suffixed workflow the day someone adds one,
           # and would do it silently.
           actionlint
-          shellcheck scripts/*.sh
+          shellcheck scripts/*.sh tools/ehf/*.sh
 
       - name: 🔍 golangci-lint
         working-directory: apps/server
@@ -398,7 +398,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: tools/ehf/.cache
-          key: ehf-artefacts-${{ hashFiles('tools/ehf/artefacts.lock') }}
+          key: ehf-artefacts-${{ hashFiles('tools/ehf/artefacts.lock', 'tools/ehf/validate.sh') }}
 
       - name: 🧾 Run the EHF oracle
         # The script, not `mise run ehf:validate`: mise run would install
