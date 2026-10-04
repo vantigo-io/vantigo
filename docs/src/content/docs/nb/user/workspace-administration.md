@@ -173,9 +173,9 @@ tillatelse låser opp i en app, er listet på appens referanseside, for eksempel
 [Customers](/en/reference/customers/), [Projects](/en/reference/projects/),
 [Time](/en/reference/time/), [Expenses](/en/reference/expenses/) og
 [Invoices](/en/reference/invoices/). Beskrivelsene i katalogen sier det navnet ikke
-sier: Fakturaers **Utstede fakturaer** sender også et dokument på e-post eller som EHF
-og avbryter eller avklarer EHF-sendingene, og **Administrere fakturering** omfatter
-også Peppol-ID-en, KID-avtalen og aksesspunktet for e-faktura. **Administrer
+sier: I Fakturaer sender **Utstede fakturaer** også et dokument på e-post eller som
+EHF og avbryter eller avklarer EHF-sendingene, og **Administrere fakturering**
+omfatter også Peppol-ID-en, KID-avtalen og aksesspunktet for e-faktura. **Administrer
 identitet** (`identity:manage`) er identitetsmodulens egen, eneste tillatelse.
 
 ### Tildelinger

@@ -92,13 +92,16 @@ Under **Access point** the card shows what is stored:
   replaces it. Leave the field empty to keep the stored key.
 
 Click **Save access point**; the message says *The access point is saved*. **Verify**
-and **Remove the credentials** are offered once a key is stored. Click **Verify**:
+and **Remove the credentials** stay greyed out until a key is stored. Click **Verify**:
 Vantigo asks Storecove with the stored key and answers one of three ways —
 
 - *The access point accepted the key.* You are done.
 - *The access point refused the key. Check it and save it again.*
 - *The access point could not be reached, or the key does not reach this legal entity.
   Check the legal entity id, or try again later.*
+
+If Vantigo cannot read the stored key at all — the installation's secret was changed —
+Verify says e-invoicing is unavailable instead: enter the key again and save it.
 
 **Remove the credentials** asks first — **Remove the access point's credentials?** —
 because the stored key is deleted and cannot be shown again, and nothing can be sent as
@@ -110,8 +113,9 @@ credentials.* Replacing the key with a new one is never refused.
 If Storecove refuses the stored key while documents are being sent, the **Access point**
 part of the card shows a red **The access point refused the key**, with the date it
 happened when that is known: *The provider refused the stored API key. Documents wait in
-the queue until a valid key is saved.* Save the right key soon — the
-alert goes as soon as you do, and the waiting documents go out — because a document still
+the queue until a valid key is saved.* Save the right key soon — the alert goes as soon
+as you do, and each waiting document goes out when it is next due, within the hour —
+because a document still
 queued 48 hours after it was sent is taken out of the queue as **Failed** (or
 **Unconfirmed**, when Storecove may have it) and needs a person
 ([the states](#following-it-on-the-e-invoice-card)).
@@ -152,10 +156,11 @@ for one.
 
 Changing or clearing the agreement later is allowed. Once documents are issued, the card
 reminds you: *Issued invoices keep the KIDs computed under the agreement they were issued
-with. Ask the bank to keep the old length valid until they are paid.* If the agreement
-is shortened so far that the next number no longer fits, issuing is refused — *The next
+with. Ask the bank to keep the old length valid until they are paid.* A length the
+next number does not fit in is never saved (the red warning above). Issuing stops only
+when the invoice numbers outgrow a length that fitted when it was saved — *The next
 invoice number no longer fits the KID agreement's length. Change the KID agreement in
-the settings.*
+the settings.* The yellow headroom warning is there so that never comes as a surprise.
 
 ### VAT codes
 
@@ -444,8 +449,10 @@ A send can be refused; the dialog then says *Could not send as EHF* and why:
   not accept this kind of document* — some receivers take invoices but not credit
   notes.
 - *The Peppol network could not be asked whether the receiver accepts EHF. Try again.*
-- *E-invoicing is unavailable* — switched off, or the access point's credentials are
-  missing or can no longer be read; an administrator enters the key again.
+- That e-invoicing is unavailable on this installation: the operator's switch or the
+  Peppol lookup is off, or the access point's credentials or the seller's Peppol id are
+  missing or can no longer be read. Someone with `invoices:manage` looks at
+  **E-invoicing** in the settings.
 - *The document store is unavailable*, *The customer has been anonymised and is not
   contacted again*, or more than 60 sends as EHF in ten minutes from one place.
 
@@ -489,7 +496,7 @@ finally answers.
 
 **Download EHF (XML)** on each row downloads the EHF exactly as Vantigo stored it when
 it was queued, named like the PDF with the transmission's number added —
-`invoice-1001-7.xml` or `faktura-1001-7.xml` — to anyone with `invoices:access`. The
+`invoice-1001-1001.xml` or `faktura-1001-1001.xml` — to anyone with `invoices:access`. The
 access point rebuilds the EHF it delivers from this file; the copy it actually delivered
 is kept with its receipt in the installation's document store.
 
@@ -567,7 +574,7 @@ two customers are merged, their documents follow the surviving customer but keep
 buyer printed on them. When a person is anonymised in Customers, their drafts are
 deleted, the recipient of every send is blanked — the **To** column then reads
 *(anonymised)* — the notes on their payments are emptied, and an EHF still waiting in
-the queue, never handed to the access point, is cancelled; the issued documents, with the
+the queue that Vantigo never tried to hand to the access point is cancelled; the issued documents, with the
 buyer they name, stay. No document is sent to an anonymised customer again, though a
 credit note can still be issued, naming the buyer the original named.
 

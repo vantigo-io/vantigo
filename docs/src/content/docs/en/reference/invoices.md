@@ -14,15 +14,20 @@ no gaps. Phase 1A built that
 [research](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/research/2026-09-26-invoices-module.md)); phase 1B
 ([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-02-invoices-payments-delivery-design.md)) added
 payments and the derived state of an invoice, sending a document by e-mail, the
-accountant's CSV export and the dashboard's stats. Vantigo stays a sub-ledger: there is
+accountant's CSV export and the dashboard's stats; phase 2
+([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-10-03-invoices-ehf-peppol-kid-design.md))
+added the e-invoice — an issued document sent as EHF over the Peppol network through an
+access point, followed by two workers to its outcome — and the KID under the seller's
+bank agreement. Vantigo stays a sub-ledger: there is
 no general ledger and nothing is posted — a payment here is a registration, not a
 posting, and nothing is matched to a bank file.
 
-> **Phases 1A and 1B do not meet the e-invoicing duties.** Invoicing the public sector
-> has required EHF since 2019 (FOR-2019-04-01-444), and invoicing Norwegian businesses
-> requires an e-invoice from **2027-01-01** (Lov 19. juni 2026 nr. 39). These phases
-> issue PDFs, which a person hands over or the module e-mails — a PDF by e-mail is not
-> an e-invoice; EHF over Peppol is phase 2. See [What comes next](#what-comes-next).
+> **The e-invoicing duties.** Invoicing the public sector has required EHF since 2019
+> (FOR-2019-04-01-444), and invoicing Norwegian businesses requires an e-invoice from
+> **2027-01-01** (Lov 19. juni 2026 nr. 39). A PDF by e-mail is not an e-invoice; a
+> document sent as EHF is ([Sending as EHF](#sending-as-ehf)), on an installation set up
+> for it ([E-invoicing](/en/admin/e-invoicing/)). The e-mail send warns where the duty
+> applies and EHF is the channel the customer expects.
 
 ## The law in one page
 
@@ -179,8 +184,10 @@ legal entity the key does not reach. Without credentials it is a 409 `ehf_unavai
 time the provider refuses the key and when the stored key cannot be opened — `APP_SECRET`
 changed, or the row was altered — which is also logged at error and answered 503
 `ehf_unavailable` wherever the key must be opened (the verify, a PUT that keeps the
-key). It is cleared by a successful verify, by a new PUT, and — once the workers land —
-by any call the provider accepts.
+key). It is cleared by a successful verify, by a new PUT, and by any call of the
+[workers](#workers) the provider accepts — a submission, a 422, an evidence probe, a read
+of the event queue. Neither a PUT nor a verify moves a transmission: a row the refused
+key held back waits out its hour.
 
 **The Storecove adapter** (`accesspoint/storecove.go`) speaks Storecove's API v2 at
 `INVOICES_STORECOVE_BASE_URL`, the operator's setting — so it dials unguarded, as the
@@ -241,8 +248,10 @@ and the object store is used after it; neither is ever called under a lock. The 
 order is always document → settings → counter → original, and nothing takes them in
 another order: `PUT /settings` takes only the settings row, the rate operations the
 settings row and then the VAT code, `PUT /vat-codes/{id}` only the code, a payment's
-registration or removal only its invoice, and a send's delivery row only its document,
-`FOR SHARE`; no issue locks a code. The merge holder locks the documents it re-points
+registration or removal only its invoice, a send's delivery row only its document,
+`FOR SHARE`, and the send as EHF its document `FOR UPDATE` and then the access-point
+credentials row `FOR SHARE`, which `PUT` and `DELETE /settings/access-point` lock `FOR
+UPDATE` alone; the EHF workers lock no document; no issue locks a code. The merge holder locks the documents it re-points
 **newest first** before it writes them: a credit note's issue holds the credit note and
 then locks its older original, and an UPDATE alone could lock the original first, a
 deadlock. This is the module's one lock invariant, and every multi-row lock inside it
@@ -913,10 +922,10 @@ runner — and both run with `PEPPOL_LOOKUP_ENABLED` off too: what is already su
 still completes, the 48-hour age cap still reaches a `queued` row (it makes no call),
 and short of it a `queued` row is left alone, unleased, said in one log line when the
 number left changes or an hour after it last was. Each builds the access-point adapter
-from the credentials row on every claim or drain. Without a credentials row the claim
-or drain waits, logged at error; a key that cannot be opened, or settings that do not
-decode, also sets `rejected_at`, which meta reports as
-`accessPointCredentialsRejected`. Every time they judge is the module clock's; no
+from the credentials row on every claim or drain. When it cannot — no credentials row,
+a key that cannot be opened, settings that do not decode — it logs at error and sets
+`rejected_at`, which meta reports as `accessPointCredentialsRejected`; the claimed row
+waits an hour, uncounted, and the drain waits for its next cycle. Every time they judge is the module clock's; no
 document is locked and no call is made inside a transaction.
 
 **`invoices-ehf`** polls every 5 seconds. It claims one due row at a time by a
@@ -933,8 +942,8 @@ always redacted as `reason` is. What a claim does depends on the row:
   row was queued under is more than 24 hours old, the receiver is looked up again (a
   lookup, not a provider call) and the `lookup_*` columns refreshed; a receiver no longer
   registered or no longer taking the document type ends the row `failed` with
-  `receiver_not_receivable`, the marker untouched. A lookup that fails waits on the
-  backoff. Then the adapter, the stored UBL read — bounded as a provider call is — and
+  `receiver_not_receivable`, the marker untouched. A lookup that fails counts an attempt
+  and waits on the backoff, as a store that cannot be read does. Then the adapter, the stored UBL read — bounded as a provider call is — and
   checked against `ubl_sha256` (gone or altered: an error log and an hour's wait — never
   a new render). A claim with less of its lease left than the call may take (30 seconds)
   stops there: the row is due again at once, unmarked and uncounted. Then **the crash
@@ -990,7 +999,9 @@ reference (which it then takes), and only while the row is `queued`, `submitted`
 `unconfirmed`. `succeeded` makes it `delivered` at the worker's clock (Storecove's
 events carry no time); `failed` and `no_action_taken` make it `failed` with the
 provider's reason, redacted; any other state changes nothing. An `unconfirmed` row so
-resolved carries the note "Resolved by the provider's event." and no user. An event that
+resolved — delivered or failed, the machine's verdict either way — carries the note
+"Resolved by the provider's event." and no user; resolved as failed, it does not make
+the reuse rule hold the next send to its bytes, which only a person's verdict does. An event that
 matches no row in flight — a duplicate, a row the probe already delivered, a failed row,
 a submission not of this installation — is logged by its guid. **Every event read is
 acknowledged**, so **an installation must have its provider account to itself**: another
@@ -1209,7 +1220,7 @@ No built-in role holds any of these; Owner has the wildcard.
 
 | Key | Sensitive | What it allows |
 | --- | --- | --- |
-| `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, the journal, the CSV export and the stats. |
+| `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats. |
 | `invoices:create` | no | Create, edit and delete drafts; preview a draft. |
 | `invoices:issue` | yes | Issue a draft; create a credit-note draft; send an issued document by e-mail, and see where each send went; send it as EHF, cancel a transmission never attempted and resolve an unconfirmed one. |
 | `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, VAT codes and their rates, and the access point's credentials. |
@@ -1274,7 +1285,7 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `POST /{id}/payments` | `invoices:payments` | 400 a body that does not decode; 404; 409 `credit_note_no_payments`, `invoice_draft`; 400 on the field; 409 `invoice_settled`, `payment_exceeds_open` (with `openAmount`) |
 | `POST /{id}/payments/{paymentId}/remove` | `invoices:payments` | 400 on `reason`; 404 the document, or a payment not its own; 409 `payment_removed` |
 | `POST /{id}/send` | `invoices:issue` | 429 `rate_limited`; 503 `mail_unavailable`; 404; 409 `invoice_draft`, `customer_anonymised`; 400 on `recipient`; 409 `no_invoice_email`; 503 `storage_unavailable`; 500 a directory that fails, a missing or altered stored object, a render that fails, or a sent mail whose row could not be written; 502 `mail_failed` |
-| `POST /{id}/send-ehf` | `invoices:issue` | 429 `rate_limited`; 503 `ehf_unavailable`; 404; 409 `invoice_draft`, `customer_anonymised`, `no_peppol_id`, `buyer_reference_missing`, `ehf_already_sent`; 503 `storage_unavailable`; 500 a missing or altered stored PDF, a render that fails or breaks an invariant; 409 `ehf_invalid` (with `rules`); 409 `peppol_not_receivable` (with `peppolRegistered`, `peppolCanReceive`); 502 `peppol_lookup_failed`; 500 a missing or altered reused UBL; 503 `storage_unavailable`; then under the lock 409 `customer_anonymised`, 503 `ehf_unavailable` when the credentials vanished, 409 `ehf_already_sent` |
+| `POST /{id}/send-ehf` | `invoices:issue` | 429 `rate_limited`; 503 `ehf_unavailable`; 404; 409 `invoice_draft`, `customer_anonymised`, `no_peppol_id`, `buyer_reference_missing`, `ehf_already_sent`; 503 `storage_unavailable`; 500 a missing or altered stored PDF, a render that fails or breaks an invariant; 409 `ehf_invalid` (with `rules`); 502 `peppol_lookup_failed`; 409 `peppol_not_receivable` (with `peppolRegistered`, `peppolCanReceive`); 500 a missing or altered reused UBL; 503 `storage_unavailable`; then under the lock 409 `customer_anonymised`, 503 `ehf_unavailable` when the credentials vanished, 409 `ehf_already_sent` |
 | `POST /{id}/transmissions/{transmissionId}/cancel` | `invoices:issue` | 404 the document, or a transmission not its own; 409 `transmission_not_cancellable` |
 | `POST /{id}/transmissions/{transmissionId}/resolve` | `invoices:issue` | 400 on `outcome` (not `delivered` or `failed`) or `note` (empty, over 500); 404 the document, or a transmission not its own; 409 `transmission_not_resolvable` |
 | `GET /{id}/transmissions/{transmissionId}/ubl` | | 404 the document, or a transmission not its own; 500 a missing or altered stored UBL; 503 `storage_unavailable` |
@@ -1284,13 +1295,26 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 
 ## What comes next
 
-- **2** (next): EHF over Peppol and KID — what makes B2G and, from 2027, B2B invoicing
-  lawful, and what the send's warnings point at.
-- **3**: hours, expenses and milestones turned into lines, with a write-back contract.
-- **4**: payment files matched on KID, reminders and late interest — and overpayment,
-  customer credit balances and refunds as a flow, which 1B refuses or only shows as a
-  figure.
+- **3** (next): hours, expenses and milestones turned into lines, with a write-back
+  contract.
+- **4**: payment files matched on KID — every invoice issued under an agreement carries
+  one — reminders and late interest, and overpayment, customer credit balances and
+  refunds as a flow, which 1B refuses or only shows as a figure.
 - **5**: energy consumption billing.
+
+Open in phase 2: whether the PDF embedded in the submitted UBL survives Storecove's
+regeneration is unproven until the tagged sandbox test (`go test -tags storecove
+./internal/invoices/accesspoint/`) has run against Storecove with a sandbox key; and the
+Peppol artefacts are pinned at `v3.0.20`, with 3.0.21 adopted — a pin bump, the goldens
+re-validated — the day OpenPEPPOL tags it.
+
+Left out of phase 2 on purpose: receiving e-invoices (2030; another module), the Peppol
+Invoice Response and status beyond the four states, Storecove's push webhooks, a second
+provider, running as one's own access point, eFaktura and AvtaleGiro, several KID
+lengths on one agreement and a KID per customer, a unit-code column or picker, foreign
+currency in the EHF, VAT category K, Schematron at runtime, resending a `delivered`
+document, sending a draft, bulk sending, the document-level allowance and the corrected
+invoice (type 384).
 
 Left out of 1B on purpose: editing a payment (remove it and register it again), a
 payment in another currency than the document's, a payment against a credit note, one

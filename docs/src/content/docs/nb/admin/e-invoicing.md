@@ -80,7 +80,7 @@ kontoer gjennom en salgskontakt, ikke et registreringsskjema, og priser dem ette
 hendelseskø, som Vantigo tømmer og kvitterer for hendelse for hendelse — hver hendelse
 den leser, sin egen eller ikke, siden den ikke kan la en ligge først i køen. Et annet
 system som leser den samme kontoen, eller en annen Vantigo-installasjon, ville mistet
-hendelsene sine til denne, og denne til det. Gi produksjon, staging og hver
+hendelsene sine til denne, og denne til det. Gi produksjon, test- og akseptansemiljøet og hver
 testinstallasjon en egen konto.
 
 ## 2. Lagre påloggingsdataene
@@ -120,6 +120,7 @@ Vantigo leser den juridiske enheten fra Storecove med den lagrede nøkkelen og s
 | *Aksesspunktet godtok nøkkelen.* (`ok`) | Nøkkelen virker for den juridiske enheten; et flagg om avvist nøkkel fjernes. |
 | *Aksesspunktet avviste nøkkelen.* (`unauthorized`) | Storecove svarte 401 eller 403: en feil, tilbakekalt eller utløpt nøkkel. Flagget settes. |
 | *Aksesspunktet kunne ikke nås, eller nøkkelen gir ikke tilgang til denne juridiske enheten.* (`unreachable`) | Nettverket, et tidsavbrudd, en serverfeil hos Storecove, eller en ID for en juridisk enhet nøkkelen ikke dekker. |
+| E-faktura er utilgjengelig (503 `ehf_unavailable`) | Vantigo kan ikke lese den lagrede nøkkelen — `APP_SECRET` er endret, eller raden er endret. Flagget settes og en feil logges; legg inn nøkkelen på nytt. Uten lagrede påloggingsdata svarer Kontroller 409 `ehf_unavailable`. |
 
 Sjekk så at kortets **Hva e-faktura trenger** sier *Sending som EHF er tilgjengelig*. Den
 første virkelige sendingen er det endelige beviset: send én faktura til en kunde som
@@ -131,8 +132,8 @@ To bakgrunnsjobber bærer et sendt dokument; de kjører der denne installasjonen
 bakgrunnsjobber, og bare mens `INVOICES_EHF_ENABLED` er på. Med Peppol-oppslaget slått av
 følger de fortsatt opp det som allerede er overlevert, men overleverer ikke noe nytt.
 
-- **`invoices-ehf`** tar hvert femte sekund én sending som står for tur, med en lease på
-  60 sekunder, så to replikaer aldri håndterer den samme, og gjør **ett kall til
+- **`invoices-ehf`** tar hvert femte sekund én sending som står for tur og holder en lås
+  på den i 60 sekunder, så to replikaer aldri håndterer den samme, og gjør **ett kall til
   Storecove per runde**, begrenset til 30 sekunder.
   - Et dokument **i kø**: er mottakeren sist slått opp for mer enn 24 timer siden, kjøres
     oppslaget på nytt (en mottaker som har forlatt nettverket, gir sendingen feilet med
@@ -150,12 +151,16 @@ følger de fortsatt opp det som allerede er overlevert, men overleverer ikke noe
     (nedenfor).
   - Et **ubekreftet** dokument med en referanse fra Storecove: etterspørres én gang i
     døgnet i tretti dager, og merkes levert om Storecove til slutt har en kvittering;
-    etter det venter det på en person.
-- **`invoices-ehf-events`** kjører hvert 30. sekund, under en advisory lock i PostgreSQL
-  så bare én replika tømmer køen om gangen: mens en sending venter på et utfall, leser
-  den Storecoves hendelseskø til den er tom, merker hvert dokument levert (Storecoves
-  `succeeded`: mottakeraksesspunktets kvittering) eller feilet (`failed`,
-  `no_action_taken`), og kvitterer for hver hendelse.
+    etter det venter det på en person. Uten referanse venter det på en person med en
+    gang.
+- **`invoices-ehf-events`** kjører hvert 30. sekund, under en rådgivende lås (advisory
+  lock, `pg_try_advisory_lock`) i PostgreSQL, så bare én replika tømmer køen om gangen:
+  mens en sending er overlevert eller ubekreftet, eller står i kø etter at en
+  overlevering er forsøkt, leser den Storecoves hendelseskø til den er tom — høyst 500
+  hendelser per runde — merker hvert dokument levert (Storecoves `succeeded`:
+  mottakeraksesspunktets kvittering) eller feilet (`failed`, `no_action_taken`), også et
+  ubekreftet, og kvitterer for hver hendelse. En hendelse databasen avviser helt,
+  logges som feil og kvitteres likevel, så den ikke kan holde igjen køen bak seg.
 
 **Levert** betyr at mottakerens aksesspunkt har kvittert for meldingen — ikke noe
 sterkere: ikke at kundens system har godtatt fakturaen, eller at noen har lest den.
@@ -170,7 +175,9 @@ etter å ha sjekket med Storecove — kortet viser **Leverandørens referanse**,
 ID for overleveringen, til den som har `invoices:issue`, så den kan slås opp. Som den som
 har Storecove-kontoen, må du regne med å bli spurt. Avklares den som feilet, har neste
 sending nøyaktig den samme EHF-en, så et dokument som likevel kom fram, i verste fall
-mottas to ganger, aldri som to forskjellige dokumenter.
+mottas to ganger, aldri som to forskjellige dokumenter. Kommer Storecoves kvittering
+eller hendelse først, avklarer Vantigo sendingen selv, med en merknad om at
+leverandøren gjorde det.
 
 **Feilet** betyr at dokumentet ikke ble levert: Storecove avviste det (årsaken, med
 Storecoves ord, vises til den som har `invoices:issue`), mottakeren forlot nettverket,
@@ -182,8 +189,9 @@ e-post.
 - **Flagget om avvist nøkkel.** Innstillingskortet viser *Aksesspunktet avviste
   nøkkelen*, `GET /api/v1/invoices/meta` svarer `accessPointCredentialsRejected: true`,
   og loggen har en feil. Nøkkelen er tilbakekalt eller feilskrevet, eller `APP_SECRET` er
-  endret. Lagre en gyldig nøkkel og klikk **Kontroller**; dokumenter i kø går ut i neste
-  runde.
+  endret. Lagre en gyldig nøkkel og klikk **Kontroller**. Lagringen fremskynder ikke
+  køen: hvert dokument den avviste nøkkelen holdt igjen, går ut neste gang det står for
+  tur, innen en time.
 - **Oppslaget.** En sending avvist med 502 `peppol_lookup_failed` betyr at
   Peppol-registeret ikke kunne spørres: sjekk utgående DNS og HTTPS, og
   `PEPPOL_DNS_SERVER`. `peppol_not_receivable` er ingen feil: mottakeren er ikke
@@ -237,9 +245,10 @@ Legg inn paret på kortet **KID** i **Fakturainnstillinger**
 utstedes fra da av, har en KID på PDF-en, i e-posten og i EHF-en; tidligere fakturaer har
 ingen. **Endres avtalen** senere, gjelder det bare nye fakturaer: åpne fakturaer beholder
 KID-ene de ble utstedt med, så be banken holde den gamle lengden gyldig til de er betalt
-— det er det de ekstra lengdene er til for. Gjøres den så kort at neste nummer ikke
-lenger får plass, stopper utstedelsen (409 `kid_length_exceeded`) til den gjøres lengre
-igjen.
+— det er det de ekstra lengdene er til for. En lengde neste nummer ikke får plass i,
+avvises når den lagres (400 på `kidLength`); utstedelsen stopper (409
+`kid_length_exceeded`) bare når numrene vokser forbi en lengde som passet da den ble
+lagret, til avtalen gjøres lengre.
 
 ## Test mot Storecoves sandkasse
 

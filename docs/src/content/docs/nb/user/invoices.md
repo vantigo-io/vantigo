@@ -93,13 +93,17 @@ Under **Aksesspunkt** viser kortet det som er lagret:
   skriver inn, erstatter den. La feltet stå tomt for å beholde den lagrede.
 
 Klikk **Lagre aksesspunkt**; meldingen sier *Aksesspunktet er lagret*. **Kontroller** og
-**Fjern påloggingsdataene** tilbys når en nøkkel er lagret. Klikk **Kontroller**: Vantigo
-spør Storecove med den lagrede nøkkelen og svarer på én av tre måter —
+**Fjern påloggingsdataene** er grået ut til en nøkkel er lagret. Klikk **Kontroller**:
+Vantigo spør Storecove med den lagrede nøkkelen og svarer på én av tre måter —
 
 - *Aksesspunktet godtok nøkkelen.* Da er du ferdig.
 - *Aksesspunktet avviste nøkkelen. Kontroller den og lagre den på nytt.*
 - *Aksesspunktet kunne ikke nås, eller nøkkelen gir ikke tilgang til denne juridiske
   enheten. Kontroller ID-en for den juridiske enheten, eller prøv igjen senere.*
+
+Kan ikke Vantigo lese den lagrede nøkkelen i det hele tatt — installasjonens hemmelighet
+er byttet — sier Kontroller i stedet at e-faktura er utilgjengelig: legg inn nøkkelen på
+nytt og lagre den.
 
 **Fjern påloggingsdataene** spør først — **Fjerne aksesspunktets påloggingsdata?** — fordi
 den lagrede nøkkelen slettes og ikke kan vises igjen, og ingenting kan sendes som EHF før
@@ -111,8 +115,9 @@ legitimasjonen.* Å bytte til en ny nøkkel avvises aldri.
 Avviser Storecove den lagrede nøkkelen mens dokumenter sendes, viser **Aksesspunkt**-delen
 av kortet et rødt **Aksesspunktet avviste nøkkelen**, med datoen det skjedde når den er
 kjent: *Leverandøren avviste den lagrede API-nøkkelen. Dokumentene venter i køen til en
-gyldig nøkkel er lagret.* Lagre riktig nøkkel snart —
-varselet forsvinner straks du gjør det, og dokumentene som venter, går ut — for et
+gyldig nøkkel er lagret.* Lagre riktig nøkkel snart — varselet forsvinner straks du gjør
+det, og hvert dokument som venter, går ut neste gang det står for tur, innen en time — for
+et
 dokument som fortsatt står i kø 48 timer etter at det ble sendt, tas ut av køen som
 **Feilet** (eller **Ubekreftet**, når Storecove kan ha det) og må følges opp av en person
 ([tilstandene](#følg-sendingen-på-kortet-e-faktura-ehf)).
@@ -153,10 +158,12 @@ KID.
 
 Avtalen kan endres eller fjernes senere. Når det er utstedt dokumenter, minner kortet
 deg på: *Utstedte fakturaer beholder KID-ene som ble beregnet under avtalen de ble
-utstedt med. Be banken holde den gamle lengden gyldig til de er betalt.* Gjøres avtalen
-så kort at neste nummer ikke lenger får plass, avvises utstedelsen — *Neste
+utstedt med. Be banken holde den gamle lengden gyldig til de er betalt.* En lengde neste
+nummer ikke får plass i, lagres aldri (den røde advarselen over). Utstedelsen stopper
+bare når fakturanumrene vokser forbi en lengde som passet da den ble lagret — *Neste
 fakturanummer passer ikke lenger i KID-avtalens lengde. Endre KID-avtalen i
-innstillingene.*
+innstillingene.* Den gule advarselen om reserve er der for at det aldri skal komme
+overraskende.
 
 ### Mva-koder
 
@@ -442,8 +449,10 @@ En sending kan avvises; dialogen sier da *Kunne ikke sende som EHF* og hvorfor:
   Peppol-nettverket*, eller *Mottakeren er registrert i Peppol-nettverket, men tar ikke
   imot denne typen dokument* — noen mottakere tar imot fakturaer, men ikke kreditnotaer.
 - *Peppol-nettverket kunne ikke svare på om mottakeren tar imot EHF. Prøv igjen.*
-- *E-faktura er utilgjengelig* — slått av, eller påloggingsdataene til aksesspunktet
-  mangler eller kan ikke lenger leses; en administrator legger inn nøkkelen på nytt.
+- At e-faktura ikke er tilgjengelig på denne installasjonen: driftsansvarliges bryter
+  eller Peppol-oppslaget er slått av, eller påloggingsdataene til aksesspunktet eller
+  selgerens Peppol-ID mangler eller kan ikke lenger leses. Den som har `invoices:manage`,
+  ser på **E-faktura** i innstillingene.
 - *Dokumentlageret er utilgjengelig*, *Kunden er anonymisert, og det sendes ikke mer til
   den*, eller mer enn 60 sendinger som EHF på ti minutter fra ett sted.
 
@@ -485,8 +494,8 @@ sending én gang i døgnet i tretti dager, og avklarer den på egen hånd om lev
 til slutt svarer.
 
 **Last ned EHF (XML)** på hver rad laster ned EHF-en nøyaktig slik Vantigo lagret den da
-den ble lagt i kø, navngitt som PDF-en med sendingens nummer lagt til — `faktura-1001-7.xml`
-eller `invoice-1001-7.xml` — for alle med `invoices:access`. Aksesspunktet bygger EHF-en
+den ble lagt i kø, navngitt som PDF-en med sendingens nummer lagt til — `faktura-1001-1001.xml`
+eller `invoice-1001-1001.xml` — for alle med `invoices:access`. Aksesspunktet bygger EHF-en
 det leverer, på nytt ut fra denne filen; kopien det faktisk leverte, oppbevares sammen
 med kvitteringen i installasjonens dokumentlager.
 
@@ -564,8 +573,8 @@ en del av oppbevaringen
 sammen, følger dokumentene den gjenværende kunden, men beholder kjøperen som står på
 dem. Anonymiseres en person i Kunder, slettes utkastene deres, mottakeren på hver sending
 blankes — kolonnen **Til** viser da *(anonymisert)* — merknadene på betalingene deres
-tømmes, og en EHF som fortsatt venter i køen og aldri er overlevert aksesspunktet,
-avbrytes; de utstedte dokumentene, med kjøperen de navngir, blir stående. Ingen dokumenter
+tømmes, og en EHF som fortsatt venter i køen, og som Vantigo aldri har prøvd å
+overlevere til aksesspunktet, avbrytes; de utstedte dokumentene, med kjøperen de navngir, blir stående. Ingen dokumenter
 sendes til en anonymisert kunde igjen, men en kreditnota kan fortsatt utstedes, med
 kjøperen originalen navnga.
 
