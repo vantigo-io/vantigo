@@ -136,6 +136,8 @@ export const invoicesCatalog = {
       "A line credits more than the original line had left; it cannot be issued as it stands.",
     "warning.vat_code_not_valid":
       "A line's VAT code has no rate today, so it counts at 0 %; it cannot be issued as it stands.",
+    "warning.ehf_buyer_reference_missing":
+      "This customer is invoiced by EHF, which needs your customer's reference or an order reference. Add one before issuing: neither can change afterwards.",
     preview: "Preview",
     issue: "Issue",
     saveBeforePreview: "Save the changes before previewing.",
@@ -325,6 +327,8 @@ export const invoicesCatalog = {
     "sendWarning.buyer_norwegian_business":
       "From 1 January 2027 Norwegian businesses must receive an e-invoice; this is a PDF.",
     "sendWarning.delivery_preference_other": "This customer prefers {{preference}}; this sends a PDF by e-mail.",
+    "sendWarning.ehf_preferred":
+      "This customer expects EHF, and this document can be sent as EHF. An e-mailed PDF does not meet the e-invoicing duty.",
     "sendWarningTitle.delivery_preference_ehf": "The customer expects EHF",
     "sendWarningTitle.buyer_norwegian_business_required": "An e-invoice is required",
     "preference.email": "e-mail",
@@ -400,6 +404,20 @@ export const invoicesCatalog = {
     "refusal.mail_unavailable": "This installation cannot send e-mail: SMTP is not configured.",
     "refusal.mail_failed":
       "The mail server did not confirm the e-mail. Nothing was recorded; it may still have arrived. Check with the customer before sending again.",
+    "refusal.no_peppol_id":
+      "The document was issued to a buyer without a Peppol id, so it cannot be sent as EHF. Send it by e-mail, or credit it and issue it again once the customer has one.",
+    "refusal.buyer_reference_missing":
+      "EHF needs the buyer's reference or an order reference, and the document has neither. Credit it and issue it again with one.",
+    "refusal.ehf_already_sent":
+      "The document is already on its way as EHF, or delivered. Cancel or resolve that transmission first.",
+    "refusal.peppol_not_receivable":
+      "The receiver does not accept this document as EHF on the Peppol network. Send it by e-mail instead.",
+    "refusal.peppol_lookup_failed":
+      "The Peppol network could not be asked whether the receiver accepts EHF. Try again.",
+    "refusal.ehf_invalid": "The document's EHF breaks a Peppol rule, so it cannot be sent as EHF.",
+    "refusal.transmission_not_cancellable":
+      "The transmission may already have reached the access point, so it can no longer be cancelled.",
+    "refusal.transmission_not_resolvable": "Only a transmission awaiting confirmation can be resolved.",
     "refusal.rateLimited": "Too many requests in a short time; wait ten minutes and try again.",
   },
   nb: {
@@ -540,6 +558,8 @@ export const invoicesCatalog = {
       "En linje krediterer mer enn den opprinnelige linjen hadde igjen; den kan ikke utstedes slik den er.",
     "warning.vat_code_not_valid":
       "En linjes mva-kode har ingen sats i dag, så den teller som 0 %; den kan ikke utstedes slik den er.",
+    "warning.ehf_buyer_reference_missing":
+      "Denne kunden faktureres med EHF, som krever kundens referanse eller en ordrereferanse. Legg inn en før du utsteder: ingen av dem kan endres etterpå.",
     preview: "Forhåndsvis",
     issue: "Utsted",
     saveBeforePreview: "Lagre endringene før du forhåndsviser.",
@@ -728,6 +748,8 @@ export const invoicesCatalog = {
     "sendWarning.buyer_norwegian_business":
       "Fra 1. januar 2027 skal norske virksomheter motta elektronisk faktura; dette er en PDF.",
     "sendWarning.delivery_preference_other": "Denne kunden foretrekker {{preference}}; dette sender en PDF på e-post.",
+    "sendWarning.ehf_preferred":
+      "Denne kunden forventer EHF, og dokumentet kan sendes som EHF. En PDF på e-post oppfyller ikke plikten til e-faktura.",
     "sendWarningTitle.delivery_preference_ehf": "Kunden forventer EHF",
     "sendWarningTitle.buyer_norwegian_business_required": "Elektronisk faktura er påkrevd",
     "preference.email": "e-post",
@@ -802,6 +824,19 @@ export const invoicesCatalog = {
     "refusal.mail_unavailable": "Denne installasjonen kan ikke sende e-post: SMTP er ikke satt opp.",
     "refusal.mail_failed":
       "E-postserveren bekreftet ikke sendingen. Ingenting ble registrert; den kan likevel ha kommet fram. Sjekk med kunden før du sender på nytt.",
+    "refusal.no_peppol_id":
+      "Dokumentet ble utstedt til en kjøper uten Peppol-ID, så det kan ikke sendes som EHF. Send det på e-post, eller krediter det og utsted det på nytt når kunden har en.",
+    "refusal.buyer_reference_missing":
+      "EHF krever kjøperens referanse eller en ordrereferanse, og dokumentet har ingen av dem. Krediter det og utsted det på nytt med en.",
+    "refusal.ehf_already_sent":
+      "Dokumentet er allerede underveis som EHF, eller levert. Avbryt eller avklar den sendingen først.",
+    "refusal.peppol_not_receivable":
+      "Mottakeren tar ikke imot dette dokumentet som EHF i Peppol-nettverket. Send det på e-post i stedet.",
+    "refusal.peppol_lookup_failed": "Peppol-nettverket kunne ikke svare på om mottakeren tar imot EHF. Prøv igjen.",
+    "refusal.ehf_invalid": "EHF-en til dokumentet bryter en Peppol-regel, så det kan ikke sendes som EHF.",
+    "refusal.transmission_not_cancellable":
+      "Sendingen kan allerede ha nådd aksesspunktet, så den kan ikke lenger avbrytes.",
+    "refusal.transmission_not_resolvable": "Bare en sending som venter på bekreftelse kan avklares.",
     "refusal.rateLimited": "For mange forespørsler på kort tid; vent ti minutter og prøv igjen.",
   },
 } satisfies CatalogResources;

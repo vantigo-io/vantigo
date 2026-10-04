@@ -244,7 +244,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/expenses/rates/{id}` (putExpensesRatesById)
 - `PUT /api/v1/expenses/settings` (putExpensesSettings)
 
-## invoices (26 uncovered)
+## invoices (30 uncovered)
 
 - `DELETE /api/v1/invoices/settings/access-point` (deleteInvoicesSettingsAccessPoint)
 - `DELETE /api/v1/invoices/vat-codes/{id}/rates/{rateId}` (deleteInvoicesVatCodesByIdRatesByRateId)
@@ -257,6 +257,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `GET /api/v1/invoices/vat-codes` (getInvoicesVatCodes)
 - `GET /api/v1/invoices/{id}/pdf` (getInvoicesByIdPdf)
 - `GET /api/v1/invoices/{id}/preview.pdf` (getInvoicesByIdPreviewPdf)
+- `GET /api/v1/invoices/{id}/transmissions/{transmissionId}/ubl` (getInvoicesByIdTransmissionsByTransmissionIdUbl)
 - `GET /api/v1/invoices/{id}` (getInvoicesById)
 - `GET /api/v1/invoices` (getInvoices)
 - `POST /api/v1/invoices/settings/access-point/verify` (postInvoicesSettingsAccessPointVerify)
@@ -266,11 +267,14 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `POST /api/v1/invoices/{id}/issue` (postInvoicesByIdIssue)
 - `POST /api/v1/invoices/{id}/payments/{paymentId}/remove` (postInvoicesByIdPaymentsByPaymentIdRemove)
 - `POST /api/v1/invoices/{id}/payments` (postInvoicesByIdPayments)
+- `POST /api/v1/invoices/{id}/send-ehf` (postInvoicesByIdSendEhf)
 - `POST /api/v1/invoices/{id}/send` (postInvoicesByIdSend)
+- `POST /api/v1/invoices/{id}/transmissions/{transmissionId}/cancel` (postInvoicesByIdTransmissionsByTransmissionIdCancel)
+- `POST /api/v1/invoices/{id}/transmissions/{transmissionId}/resolve` (postInvoicesByIdTransmissionsByTransmissionIdResolve)
 - `POST /api/v1/invoices` (postInvoices)
 - `PUT /api/v1/invoices/settings/access-point` (putInvoicesSettingsAccessPoint)
 - `PUT /api/v1/invoices/settings` (putInvoicesSettings)
 - `PUT /api/v1/invoices/vat-codes/{id}` (putInvoicesVatCodesById)
 - `PUT /api/v1/invoices/{id}` (putInvoicesById)
 
-Total: 244 of 379 operations have no recorded exchange.
+Total: 248 of 383 operations have no recorded exchange.

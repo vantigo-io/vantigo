@@ -65,9 +65,12 @@ var permissions = []contracts.Permission{
 // it per client address before access is checked. A send takes an arbitrary
 // recipient, which makes the endpoint an authenticated relay through the
 // installation's SMTP server: 60 sends per client per 10 minutes (payments
-// and delivery design D4).
+// and delivery design D4). A send as EHF renders, looks up the receiver on
+// the Peppol network and stores a UBL each time: the same 60 per 10 minutes
+// under a policy of its own (EHF and KID design D8).
 var limits = map[string]ratelimit.Policy{
-	"postInvoicesByIdSend": {Name: "invoices-send", Limit: 60, Window: 10 * time.Minute},
+	"postInvoicesByIdSend":    {Name: "invoices-send", Limit: 60, Window: 10 * time.Minute},
+	"postInvoicesByIdSendEhf": {Name: "invoices-send-ehf", Limit: 60, Window: 10 * time.Minute},
 }
 
 // Module is invoices as a platform module: its contract mounted under

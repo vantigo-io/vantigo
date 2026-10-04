@@ -290,6 +290,24 @@ rad under **Sendt på e-post** betyr at e-postserveren tok imot e-posten, ikke a
 fram: en retur går til installasjonens avsenderadresse og registreres ikke her. Samme
 dokument kan sendes på nytt, og loggføres da på nytt.
 
+## Sende som EHF
+
+Appen får knappen **Send som EHF** i en senere versjon; fram til da finnes den i
+serverens API, for den som har `invoices:issue` på en installasjon som kan sende som
+EHF. Sending som EHF kontrollerer det utstedte dokumentet, lager EHF-en — e-fakturaen,
+med PDF-en inni — spør Peppol-nettverket om kunden tar imot den, og legger den i en kø
+serveren arbeider seg gjennom; dokumentet viser deretter om den står i kø, er sendt inn,
+levert, feilet eller venter på bekreftelse. Sendingen avvises når dokumentet ble utstedt
+til en kunde uten Peppol-ID, når det verken har kundens referanse eller en
+ordrereferanse, når det allerede er underveis eller levert, når EHF-en bryter en
+Peppol-regel, når kunden ikke er i Peppol-nettverket eller ikke tar imot denne typen
+dokument der, eller når nettverket ikke kan spørres. En sending som fortsatt venter i
+køen kan avbrytes, og en som leverandøren aldri bekreftet, avklares av en person etter å
+ha sjekket med leverandøren. Fordi referansene ikke kan endres etter utstedelse, varsler
+et utkast for en kunde som faktureres med EHF så lenge det mangler begge — *Denne kunden
+faktureres med EHF, som krever kundens referanse eller en ordrereferanse* — så legg inn
+en før du utsteder ([reglene](/en/reference/invoices/#sending-as-ehf)).
+
 ## Kontrollere journalen
 
 **Fakturajournal** i sidemenyen er beviset bokføringsforskriften krever: hvert utstedte

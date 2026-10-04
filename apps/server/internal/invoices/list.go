@@ -16,7 +16,8 @@ import (
 // This file is GET /invoices (D4): every module list's page/pageSize
 // convention, drafts first and then by number descending. There is no keyset
 // cursor: number is NULL on every draft. Each item carries its derived state
-// and, on an issued invoice, its open amount, both from the query (D3).
+// and, on an issued invoice, its open amount, both from the query (D3); an
+// issued document its latest EHF status.
 
 // The paging bounds every module's list uses; listMaxPage keeps page ×
 // pageSize inside the int32 offset.
@@ -133,6 +134,18 @@ func (s *server) GetInvoices(ctx context.Context, req gen.GetInvoicesRequestObje
 	for _, e := range entries {
 		names[e.ID] = e.Name
 	}
+	// Each issued document's latest EHF status, the page's in one query
+	// (EHF and KID design D10).
+	var issuedIDs []int64
+	for _, r := range rows {
+		if r.InvoicesInvoice.Status == statusIssued {
+			issuedIDs = append(issuedIDs, r.InvoicesInvoice.ID)
+		}
+	}
+	ehf, err := ehfStatuses(ctx, q, issuedIDs)
+	if err != nil {
+		return nil, err
+	}
 
 	data := make([]gen.InvoicesInvoiceListItem, 0, len(rows))
 	for _, row := range rows {
@@ -159,6 +172,9 @@ func (s *server) GetInvoices(ctx context.Context, req gen.GetInvoicesRequestObje
 			if name, ok := names[r.CustomerID]; ok {
 				item.CustomerName = &name
 			}
+		}
+		if status, ok := ehf[r.ID]; ok {
+			item.EhfStatus = &status
 		}
 		data = append(data, item)
 	}

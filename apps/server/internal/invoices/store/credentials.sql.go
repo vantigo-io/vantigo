@@ -82,6 +82,29 @@ func (q *Queries) LockAccessPointCredentials(ctx context.Context) (InvoicesAcces
 	return i, err
 }
 
+const lockAccessPointCredentialsForShare = `-- name: LockAccessPointCredentialsForShare :one
+SELECT id, provider, settings_json, secret_ciphertext, rejected_at, updated_at FROM invoices.access_point_credentials WHERE id = 1 FOR SHARE
+`
+
+// LockAccessPointCredentialsForShare reads the one credentials row FOR SHARE:
+// a send as EHF holds it from the check that credentials exist to its
+// transmission's commit, so a DELETE — which locks it FOR UPDATE and then
+// counts the transmissions in flight — either waits and sees the new row, or
+// commits first and the send finds no row. Two sends share it.
+func (q *Queries) LockAccessPointCredentialsForShare(ctx context.Context) (InvoicesAccessPointCredential, error) {
+	row := q.db.QueryRow(ctx, lockAccessPointCredentialsForShare)
+	var i InvoicesAccessPointCredential
+	err := row.Scan(
+		&i.ID,
+		&i.Provider,
+		&i.SettingsJson,
+		&i.SecretCiphertext,
+		&i.RejectedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const markAccessPointRejected = `-- name: MarkAccessPointRejected :exec
 UPDATE invoices.access_point_credentials SET rejected_at = $1::timestamptz
 WHERE id = 1 AND rejected_at IS NULL

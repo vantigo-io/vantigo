@@ -145,6 +145,7 @@ export const issued = (overrides: Partial<InvoiceDocument> = {}): InvoiceDocumen
     payments: [],
     deliveries: [],
     sendDefaults: { recipient: "faktura@acme.no", warnings: ["buyer_norwegian_business"] },
+    ehf: { status: "not_sent", canSend: false, blockedBy: "ehf_unavailable", transmissions: [] },
     revision: 4,
     ...overrides,
   };
@@ -279,6 +280,33 @@ export const partlyPaid = (overrides: Partial<InvoiceDocument> = {}): InvoiceDoc
     },
   ],
   sendDefaults: { recipient: "faktura@acme.no", preference: "email", warnings: ["buyer_norwegian_business"] },
+  // Sent as EHF once too: delivered, so another send is blocked.
+  ehf: {
+    status: "delivered",
+    queuedAt: "2026-09-01T09:10:00Z",
+    submittedAt: "2026-09-01T09:10:05Z",
+    deliveredAt: "2026-09-01T09:12:00Z",
+    providerRef: "6c1f0b52-9d3e-4f0a-8a1b-2f7c3e4d5a6b",
+    canSend: false,
+    blockedBy: "ehf_already_sent",
+    preference: "email",
+    buyerPeppolId: "0192:923609016",
+    transmissions: [
+      {
+        id: 1001,
+        status: "delivered",
+        provider: "storecove",
+        idempotencyKey: "3f2a9c1e-7b4d-4e8f-9a0b-1c2d3e4f5a6b",
+        receiverParticipant: "0192:923609016",
+        ublSha256: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        queuedAt: "2026-09-01T09:10:00Z",
+        submittedAt: "2026-09-01T09:10:05Z",
+        deliveredAt: "2026-09-01T09:12:00Z",
+        providerRef: "6c1f0b52-9d3e-4f0a-8a1b-2f7c3e4d5a6b",
+        ublUrl: "/api/v1/invoices/1001/transmissions/1001/ubl",
+      },
+    ],
+  },
   createdAt: "2026-08-31T10:00:00Z",
   updatedAt: "2026-09-01T09:00:00Z",
   revision: 4,
@@ -340,6 +368,7 @@ export const listPage = (overrides: Partial<InvoiceList["pagination"]> = {}): In
       currency: "NOK",
       grossTotal: 41.66,
       creditsInvoiceId: 1001,
+      ehfStatus: "not_sent",
     },
     {
       id: 1001,
@@ -354,6 +383,7 @@ export const listPage = (overrides: Partial<InvoiceList["pagination"]> = {}): In
       currency: "NOK",
       grossTotal: 124.99,
       openAmount: 124.99,
+      ehfStatus: "delivered",
     },
   ],
   pagination: {
