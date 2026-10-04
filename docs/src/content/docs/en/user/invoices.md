@@ -58,7 +58,10 @@ reference the bank matches the payment by; a credit note never does.
 Sending as EHF is not in the app yet; the server already answers whether this
 installation could — the operator's EHF switch and the Peppol lookup on, the access
 point's credentials stored and the Peppol id set
-([the switches](/en/reference/invoices/#permissions)).
+([the switches](/en/reference/invoices/#permissions)). The access point — the provider
+that carries an EHF invoice onto the network — is configured by an administrator through
+the API for now; its screen comes later
+([the access point's credentials](/en/reference/invoices/#the-access-points-credentials)).
 
 If a colleague saved the settings while you were editing, the form says **The settings
 changed** and offers **Reload**; your unsaved edits are dropped, never merged.

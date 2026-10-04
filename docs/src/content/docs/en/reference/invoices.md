@@ -142,6 +142,57 @@ credit note never gets one, nor an invoice issued before the agreement. Every re
 re-verifies the stored KID against the **stored** algorithm and the number, never the
 agreement in force; one that does not verify is a 500 logged at error.
 
+## The access point's credentials
+
+A document travels onto the Peppol network through an access point, a provider Vantigo
+hands it to; Storecove is the one provider so far. Its credentials are one row of their
+own, `invoices.access_point_credentials`, off the settings row every issue reads `FOR
+SHARE`: the provider, its settings that are not secret (`settings_json`, Storecove's
+`legalEntityId` — the legal entity documents are sent as) and the API key, sealed by the
+secrets box under the purpose `invoices/access-point-credential`. The key is never
+answered, logged or sent anywhere but to the provider, as `Authorization: Bearer`.
+
+`PUT /settings/access-point` (`invoices:manage`) takes `{provider, legalEntityId,
+apiKey?}`: `provider` is `storecove`, `legalEntityId` a positive integer, and `apiKey`
+the key, trimmed — an omitted or null key keeps the stored one, which the PUT opens and
+seals again from the row it read `FOR UPDATE` in its own transaction, so a concurrent
+PUT's new key is never written back to the old one. The first PUT must carry a key, and
+a blank one is a 400. The answer is `{provider, legalEntityId, hasCredentials,
+rejectedAt?}`, never the key. A PUT clears `rejectedAt`. `DELETE` removes the row (204,
+also when there is none), and a switch to another provider would replace it: both are
+refused with 409 `transmissions_active` while any transmission is `queued`, `submitted`
+or `unconfirmed`, because the provider still holds what those need. A new key or legal
+entity for the same provider is not refused — a refused key must be replaceable while
+documents wait for it. `POST /settings/access-point/verify` makes the provider's
+cheapest authenticated read with the stored key (Storecove: `GET legal_entities/{id}`)
+and answers `{result}`: `ok`, which clears `rejectedAt`; `unauthorized`, a 401 or 403,
+which sets it; or `unreachable` for anything else — the network, a timeout, a 5xx, a
+legal entity the key does not reach. Without credentials it is a 409 `ehf_unavailable`.
+
+`rejected_at`, which meta reports as `accessPointCredentialsRejected`, is set the first
+time the provider refuses the key and when the stored key cannot be opened — `APP_SECRET`
+changed, or the row was altered — which is also logged at error and answered 503
+`ehf_unavailable` wherever the key must be opened (the verify, a PUT that keeps the
+key). It is cleared by a new PUT and by the next call the provider accepts.
+
+**The Storecove adapter** (`accesspoint/storecove.go`) speaks Storecove's API v2 at
+`INVOICES_STORECOVE_BASE_URL`, the operator's setting — so it dials unguarded, as the
+Brreg lookup does — never follows a redirect, never retries (the worker retries under
+the idempotency key, one call per claim), and bounds each call, every request in it,
+by 30 seconds. A submission is `POST document_submissions` with the legal entity, the
+transmission's idempotency key as `idempotencyGuid`, the receiver under Storecove's own
+scheme (`0192` is `NO:ORG`; any other scheme is refused before any call) and the UBL
+base64-encoded for Storecove to parse; Storecove regenerates the UBL it transmits.
+Status is Storecove's pull queue (`GET webhook_instances/`, one event or 204; `DELETE
+webhook_instances/{guid}` acknowledges): `succeeded` is delivered — the receiving access
+point's AS4 receipt, nothing stronger — `failed` and `no_action_taken` are failed, and
+every other state is still submitted. The evidence (`GET
+document_submissions/{guid}/evidence/sending`, 404 until it succeeded) lists the
+delivered documents at expiring URLs, which are fetched at once, over https only, without
+the key, at most 20 MiB each. A 422 is Storecove's refusal of the document **or** of a
+key it has already seen — the same answer — 401 and 403 are the key, a 429 carries its
+`Retry-After`, and a transport failure or a 5xx leaves the outcome unknown.
+
 ## Drafts
 
 A draft is created for a customer id; its buyer is read through
@@ -907,7 +958,7 @@ No built-in role holds any of these; Owner has the wildcard.
 | `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, the journal, the CSV export and the stats. |
 | `invoices:create` | no | Create, edit and delete drafts; preview a draft. |
 | `invoices:issue` | yes | Issue a draft; create a credit-note draft; send an issued document by e-mail, and see where each send went. |
-| `invoices:manage` | yes | The seller record, the series start, VAT codes and their rates. |
+| `invoices:manage` | yes | The seller record, the series start, VAT codes and their rates, and the access point's credentials. |
 | `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason. |
 
 `invoices:payments` is sensitive because a registration changes what the company says it
@@ -948,6 +999,9 @@ All under `/api/v1/invoices`, every one behind `invoices:access`. The access rul
 | `GET /meta` | | |
 | `GET /settings` | | |
 | `PUT /settings` | `invoices:manage` | 400 on the field (both mod-11 checks, IBAN mod-97, BIC, "Only NOK in this phase", the Peppol id, the KID pair, a next number the KID length does not fit, any of the three required-nullable fields absent); 409 `series_locked`, or a stale revision (no code) |
+| `PUT /settings/access-point` | `invoices:manage` | 400 on `provider`, `legalEntityId` or `apiKey` (blank, too long, or omitted while none is stored); 409 `transmissions_active` on a provider switch; 503 `ehf_unavailable`, a kept key that cannot be opened |
+| `DELETE /settings/access-point` | `invoices:manage` | 409 `transmissions_active` |
+| `POST /settings/access-point/verify` | `invoices:manage` | 409 `ehf_unavailable`, no credentials; 503 `ehf_unavailable`, a stored key that cannot be opened |
 | `GET /vat-codes` | | |
 | `POST /vat-codes` | `invoices:manage` | 400 on the field, a duplicate code on `code` |
 | `PUT /vat-codes/{id}` | `invoices:manage` | 404; 400; 409 `vat_code_in_use`, a stale revision |

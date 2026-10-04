@@ -3,17 +3,23 @@ package invoices
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/invoices/accesspoint"
+	"github.com/vantigo-io/vantigo/server/internal/invoices/store"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/peppol"
 )
 
 // This file is the whole of this module's reach outside its own schema: the
 // customer directory (deps.Directory), the object store (server.objects), the
-// SMTP seam (deps.SMTPSend) and the Peppol network (server.peppolLookup).
+// SMTP seam (deps.SMTPSend), the Peppol network (server.peppolLookup) and the
+// access point (accessPoint).
 // Every call is made through one of the thin accessors below and through
 // nowhere else, so "what does Invoices ask of its neighbours, and when" has one
 // place to read the answer and one place to check it from.
@@ -101,4 +107,69 @@ func (s *server) lookupReceiver(ctx context.Context, participant string) (peppol
 		s.deps.Logger.WarnContext(ctx, "invoices: peppol lookup failed", "errorKind", peppolErrorKind(err))
 	}
 	return res, err
+}
+
+// accessPoint is the provider the stored credentials name, its key opened
+// (EHF and KID design D7), dialling Config.InvoicesStorecoveBaseURL through
+// Deps.HTTPTransport. Every call on it is reported as AccessPoint.<Method>.
+// It answers errNoAccessPoint without a credentials row, and
+// errAccessPointKeyUnreadable for a key the secrets box cannot open — which
+// it logs at error and flags as rejected, for every caller alike (D9). It
+// reads the row on the pool: it is never called inside withLockedTx, and no
+// call on what it answers may be.
+func (s *server) accessPoint(ctx context.Context) (accesspoint.AccessPoint, error) {
+	row, err := store.New(s.deps.Pool).GetAccessPointCredentials(ctx)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return nil, errNoAccessPoint
+	case err != nil:
+		return nil, fmt.Errorf("invoices: read the access point credentials: %w", err)
+	}
+	settings, err := accessPointSettingsOf(row)
+	if err != nil {
+		return nil, err
+	}
+	key, err := s.deps.Secrets.OpenString(accessPointCredentialPurpose, row.SecretCiphertext)
+	if err != nil || key == "" {
+		s.flagUnreadableAccessPointKey(ctx)
+		return nil, errAccessPointKeyUnreadable
+	}
+	if row.Provider != providerStorecove {
+		return nil, fmt.Errorf("invoices: unknown access point provider %q", row.Provider)
+	}
+	baseURL := ""
+	if s.deps.Config != nil {
+		baseURL = s.deps.Config.InvoicesStorecoveBaseURL
+	}
+	return notedAccessPoint{accesspoint.NewStorecove(baseURL, key, int(settings.LegalEntityID), s.deps.HTTPTransport)}, nil
+}
+
+// notedAccessPoint reports every call on an access point before making it.
+type notedAccessPoint struct {
+	ap accesspoint.AccessPoint
+}
+
+func (n notedAccessPoint) Submit(ctx context.Context, sub accesspoint.Submission) (accesspoint.SubmissionRef, error) {
+	noteContractCall(ctx, "AccessPoint.Submit")
+	return n.ap.Submit(ctx, sub)
+}
+
+func (n notedAccessPoint) NextEvent(ctx context.Context) (accesspoint.Event, bool, error) {
+	noteContractCall(ctx, "AccessPoint.NextEvent")
+	return n.ap.NextEvent(ctx)
+}
+
+func (n notedAccessPoint) AckEvent(ctx context.Context, eventID string) error {
+	noteContractCall(ctx, "AccessPoint.AckEvent")
+	return n.ap.AckEvent(ctx, eventID)
+}
+
+func (n notedAccessPoint) Evidence(ctx context.Context, ref accesspoint.SubmissionRef) (accesspoint.Evidence, error) {
+	noteContractCall(ctx, "AccessPoint.Evidence")
+	return n.ap.Evidence(ctx, ref)
+}
+
+func (n notedAccessPoint) Verify(ctx context.Context) error {
+	noteContractCall(ctx, "AccessPoint.Verify")
+	return n.ap.Verify(ctx)
 }

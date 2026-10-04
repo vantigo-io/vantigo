@@ -3,6 +3,7 @@ import type { InvoiceJournal } from "../api/journal";
 import type { InvoicesMeta } from "../api/meta";
 import type { InvoiceSettings } from "../api/settings";
 import type { VatCode } from "../api/vat-codes";
+import type { components } from "../api-schema";
 
 /**
  * GET /meta as the server sends it — a wire literal: a complete seller, mail
@@ -449,6 +450,16 @@ export const settings = (overrides: Partial<InvoiceSettings> = {}): InvoiceSetti
   warnings: [],
   revision: 5,
   updatedAt: "2026-09-12T10:00:00Z",
+  ...overrides,
+});
+
+type AccessPointResponse = components["schemas"]["InvoicesAccessPointResponse"];
+
+/** PUT /settings/access-point's answer: Storecove credentials stored, never the key. */
+export const accessPoint = (overrides: Partial<AccessPointResponse> = {}): AccessPointResponse => ({
+  provider: "storecove",
+  legalEntityId: 4711,
+  hasCredentials: true,
   ...overrides,
 });
 

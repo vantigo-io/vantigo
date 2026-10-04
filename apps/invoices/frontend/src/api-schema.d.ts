@@ -46,6 +46,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/settings/access-point": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Store the access-point credentials
+         * @description Stores the access point's provider, its legal entity and its API key (EHF and KID design D7), in their own row, the key sealed by the secrets box under invoices/access-point-credential. An omitted key keeps the stored one, opened and sealed again in the same transaction. The answer never carries the key. A PUT clears rejectedAt. Switching to another provider is refused with 409 transmissions_active while any transmission is queued, submitted or unconfirmed; changing the key or the legal entity is not, so a refused key can be replaced while documents wait for it.
+         */
+        put: operations["putInvoicesSettingsAccessPoint"];
+        post?: never;
+        /**
+         * Remove the access-point credentials
+         * @description Removes the access-point credentials (EHF and KID design D7); EHF is unavailable until new ones are stored. Refused with 409 transmissions_active while any transmission is queued, submitted or unconfirmed — the provider still holds what it needs to finish them. Removing what is not there is a 204 too.
+         */
+        delete: operations["deleteInvoicesSettingsAccessPoint"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/settings/access-point/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify the access-point credentials
+         * @description Asks the provider to answer one authenticated read with the stored credentials (EHF and KID design D7) and says how it went. ok clears rejectedAt; unauthorized sets it.
+         */
+        post: operations["postInvoicesSettingsAccessPointVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/vat-codes": {
         parameters: {
             query?: never;
@@ -452,7 +496,7 @@ export interface components {
             ratePercent: number;
             safTCode: string;
         };
-        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
+        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503), storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
         InvoicesConflictProblem: {
             /** @description On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise. */
             allowedIssueDates?: string[];
@@ -551,6 +595,26 @@ export interface components {
             vatRegistered: boolean;
             /** @description Never refusals. kid_headroom_low — the next number leaves fewer than two digits of the KID agreement's length (a hundredfold growth) before issuing is refused with kid_length_exceeded. */
             warnings: string[];
+        };
+        /** @description PUT /settings/access-point's body (EHF and KID design D7). provider is storecove, the one provider so far; legalEntityId is the Storecove legal entity documents are sent as, a positive integer; apiKey is the provider's API key — omitted or null keeps the stored one, which is required the first time, and an empty or blank one is a 400. The key is sealed by the secrets box and never answered. */
+        InvoicesAccessPointRequest: {
+            apiKey?: string | null;
+            /** Format: int64 */
+            legalEntityId: number;
+            provider: string;
+        };
+        /** @description The stored access-point credentials as a client may see them — never the key. hasCredentials is whether a key is stored; rejectedAt is when the provider first refused it (a 401 or 403, or a stored key the server could not open), absent while it has not, cleared by a new PUT and by the next call the provider accepts. */
+        InvoicesAccessPointResponse: {
+            hasCredentials: boolean;
+            /** Format: int64 */
+            legalEntityId: number;
+            provider: string;
+            /** Format: date-time */
+            rejectedAt?: string;
+        };
+        /** @description What the provider answered the cheapest authenticated read (Storecove: the legal entity). result is ok (the key reaches the legal entity), unauthorized (the provider refused the key — 401 or 403 — which also flags it as rejected) or unreachable (anything else: the network, a timeout, a 5xx, a legal entity the key does not reach). */
+        InvoicesAccessPointVerifyResponse: {
+            result: string;
         };
         /** @description One VAT code with every rate period it has had (D3). inUse is true once any line, draft or issued, carries the code; from then on its category and SAF-T code cannot change (409 vat_code_in_use). */
         InvoicesVatCode: {
@@ -1250,6 +1314,176 @@ export interface operations {
             };
             /** @description Conflict — series_locked, or a stale revision (no code; the detail names both revisions). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    putInvoicesSettingsAccessPoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesAccessPointRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesAccessPointResponse"];
+                };
+            };
+            /** @description Bad Request — provider, legalEntityId or apiKey did not pass; the errors name it. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — transmissions_active, on a provider switch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Service Unavailable — ehf_unavailable, the key was omitted and the stored one cannot be opened (APP_SECRET changed, or the row was altered); the credentials are flagged as rejected. Send the key again. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    deleteInvoicesSettingsAccessPoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content — the credentials are gone. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — transmissions_active. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesSettingsAccessPointVerify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesAccessPointVerifyResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — ehf_unavailable, no credentials are stored. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Service Unavailable — ehf_unavailable, the stored key cannot be opened; the credentials are flagged as rejected. Store the key again. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

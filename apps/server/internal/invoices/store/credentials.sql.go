@@ -60,6 +60,28 @@ func (q *Queries) GetAccessPointCredentials(ctx context.Context) (InvoicesAccess
 	return i, err
 }
 
+const lockAccessPointCredentials = `-- name: LockAccessPointCredentials :one
+SELECT id, provider, settings_json, secret_ciphertext, rejected_at, updated_at FROM invoices.access_point_credentials WHERE id = 1 FOR UPDATE
+`
+
+// LockAccessPointCredentials reads the one credentials row FOR UPDATE: a PUT
+// that keeps the stored key opens and seals it again from this read, inside
+// its transaction, so a concurrent PUT's new key is never overwritten with
+// the old one; a DELETE judges the transmissions in flight under it.
+func (q *Queries) LockAccessPointCredentials(ctx context.Context) (InvoicesAccessPointCredential, error) {
+	row := q.db.QueryRow(ctx, lockAccessPointCredentials)
+	var i InvoicesAccessPointCredential
+	err := row.Scan(
+		&i.ID,
+		&i.Provider,
+		&i.SettingsJson,
+		&i.SecretCiphertext,
+		&i.RejectedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const markAccessPointRejected = `-- name: MarkAccessPointRejected :exec
 UPDATE invoices.access_point_credentials SET rejected_at = $1::timestamptz
 WHERE id = 1 AND rejected_at IS NULL
