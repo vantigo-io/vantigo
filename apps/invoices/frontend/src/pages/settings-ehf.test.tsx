@@ -334,6 +334,24 @@ describe("the access point", () => {
     expect(within(card).getByRole("button", { name: "Remove the credentials" })).toBeDisabled();
   });
 
+  it("says the access point could not be loaded, in words", async () => {
+    stubFetch((input: RequestInfo | URL) => {
+      const url = path(input);
+      if (url === "/api/v1/invoices/meta") return jsonResponse(200, meta({ capabilities: manager }));
+      if (url === "/api/v1/invoices/settings") return jsonResponse(200, settings());
+      if (url === "/api/v1/invoices/vat-codes") return jsonResponse(200, []);
+      if (url === "/api/v1/invoices/settings/access-point") {
+        return jsonResponse(500, { title: "Internal Server Error", status: 500 });
+      }
+      return new Response(null, { status: 404 });
+    });
+    renderWithProviders(<SettingsPage />);
+
+    const card = await eInvoicingCard();
+    expect(await within(card).findByText("Could not load the access point")).toBeInTheDocument();
+    expect(within(card).queryByRole("button", { name: "Save access point" })).not.toBeInTheDocument();
+  });
+
   it("prefills the stored legal entity, and says a key is stored without showing it", async () => {
     server(world({ accessPoint: accessPoint({ legalEntityId: 9001 }) }));
     renderWithProviders(<SettingsPage />);
