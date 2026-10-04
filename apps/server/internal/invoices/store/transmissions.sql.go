@@ -45,12 +45,16 @@ func (q *Queries) ActiveTransmissionsCount(ctx context.Context) (int64, error) {
 const anyAwaitingEvents = `-- name: AnyAwaitingEvents :one
 SELECT EXISTS (
     SELECT 1 FROM invoices.transmissions
-    WHERE status IN ('submitted', 'unconfirmed') OR (status = 'queued' AND submit_attempted_at IS NOT NULL)
+    WHERE status = 'submitted'
+       OR (status = 'unconfirmed' AND next_attempt_at <> 'infinity'::timestamptz)
+       OR (status = 'queued' AND submit_attempted_at IS NOT NULL)
 ) AS awaiting
 `
 
 // AnyAwaitingEvents is whether the events worker has anything to drain for:
-// a submitted or unconfirmed row, or a queued one whose marker is set.
+// a submitted row, an unconfirmed one still probed, or a queued one whose
+// marker is set. An unconfirmed row parked at 'infinity' waits for a person,
+// not an event: the provider retries its events for days, not forever.
 func (q *Queries) AnyAwaitingEvents(ctx context.Context) (bool, error) {
 	row := q.db.QueryRow(ctx, anyAwaitingEvents)
 	var awaiting bool
