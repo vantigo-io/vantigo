@@ -33,7 +33,9 @@ import (
 // never be taken back, the second decides what every document says the
 // company is, and the third changes what the company says it is owed, a wrong
 // registration corrected only by a removal that stays on record (payments and
-// delivery design D1). Sending is under invoices:issue.
+// delivery design D1). Sending, by e-mail or as EHF, is under invoices:issue;
+// the seller's Peppol id, the KID agreement and the access point's
+// credentials are under invoices:manage (EHF and KID design D1).
 var permissions = []contracts.Permission{
 	{
 		Key: "invoices:access", Display: "Use Invoices",
@@ -47,12 +49,12 @@ var permissions = []contracts.Permission{
 	},
 	{
 		Key: "invoices:issue", Display: "Issue invoices",
-		Description: "Issue a draft into a numbered document that can never be changed, create credit notes, and send an issued document by e-mail.",
+		Description: "Issue a draft into a numbered document that can never be changed, create credit notes, send an issued document by e-mail or as EHF, and cancel or resolve its EHF transmissions.",
 		Category:    "Invoices", Sensitive: true, Delegable: true,
 	},
 	{
 		Key: "invoices:manage", Display: "Manage invoicing",
-		Description: "Change the seller record, the number series start, and the VAT codes and their rates.",
+		Description: "Change the seller record and its Peppol id, the number series start, the KID agreement, the e-invoicing access point's credentials, and the VAT codes and their rates.",
 		Category:    "Invoices", Sensitive: true, Delegable: true,
 	},
 	{

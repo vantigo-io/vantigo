@@ -161,12 +161,15 @@ Pick at least one permission and choose **Save role**. **Edit** on a custom role
 opens the same dialog; the delete button asks **Delete custom role?** — "Assignments
 using this role may change." — because everyone who held it loses what it granted.
 
-Permissions are additive: a person holds the union of their roles' permissions.
-What each permission unlocks in an app is listed in that app's reference page, for
-example [Customers](/en/reference/customers/), [Projects](/en/reference/projects/),
+Permissions are additive: a person holds the union of their roles' permissions. What
+each permission unlocks in an app is listed in that app's reference page, for example
+[Customers](/en/reference/customers/), [Projects](/en/reference/projects/),
 [Time](/en/reference/time/), [Expenses](/en/reference/expenses/) and
-[Invoices](/en/reference/invoices/). **Manage identity** (`identity:manage`) is the
-one permission of the identity module itself.
+[Invoices](/en/reference/invoices/). The descriptions in the catalog say what a title
+does not: Invoices' **Issue invoices** also sends a document by e-mail or as EHF and
+cancels or resolves its EHF transmissions, and **Manage invoicing** also holds the
+Peppol id, the KID agreement and the e-invoicing access point. **Manage identity**
+(`identity:manage`) is the one permission of the identity module itself.
 
 ### Assignments
 

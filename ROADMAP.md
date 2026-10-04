@@ -784,19 +784,32 @@ integration test.
 *Unblocks:* receivables tracked in Vantigo, and everything below. Phases 1A and 1B do not
 meet the B2G duty (EHF since 2019) nor the B2B duty from 2027-01-01 — that is phase 2.
 
-### Phase 2 — EHF over Peppol, and KID (next)
+### Phase 2 — EHF over Peppol, and KID (done)
 
-UBL 2.1 Invoice and CreditNote per Peppol BIS Billing 3.0 with the Norwegian rules,
-validated before sending; an access-point port with one provider adapter, credentials
-in `secrets`; the receiver's capability re-checked against ELMA at send (the customers
-lookup already exists); delivery status and receipts; the PDF embedded; KID generated
-under the tenant's bank agreement and carried in the payment id. Channel precedence:
-EHF when the receiver accepts the document type, otherwise the billing profile's
-preference.
+Delivered on `feat/invoices-ehf-peppol-kid`
+([design](docs/superpowers/specs/2026-10-03-invoices-ehf-peppol-kid-design.md),
+[`docs/src/content/docs/en/reference/invoices.md`](docs/src/content/docs/en/reference/invoices.md),
+[`docs/src/content/docs/en/admin/e-invoicing.md`](docs/src/content/docs/en/admin/e-invoicing.md)):
+a deterministic UBL 2.1 Invoice and CreditNote per Peppol BIS Billing 3.0 with the
+Norwegian rules, rendered from the issued snapshot with the stored PDF embedded, checked
+by a Go pre-check at send and by the official XSD and Schematron artefacts in CI; the
+seller's Peppol id on the settings; a KID under the seller's bank agreement (MOD10 or
+MOD11), computed at issue and stored with its algorithm, on the PDF, in the e-mail and
+as the EHF's payment id — and no payment id without one; an access-point port with a
+Storecove adapter, its key sealed in its own table; a send that re-checks the receiver
+against the Peppol network and queues a transmission under the document's lock; two
+workers — one submitting once per claim under an idempotency key and probing the
+provider's evidence, one draining Storecove's event queue — with the receipt and the
+delivered copy stored as the record, and an outcome the machine cannot know left
+`unconfirmed` for a person to resolve; cancel, resolve and the EHF download; channel
+precedence in the app (EHF first when the customer prefers it or has a Peppol id, e-mail
+second, neither refused for the other); and the transmissions in the customer slots'
+export and erase.
 
-*Unblocks:* B2G invoicing (mandatory since 2019) and the B2B duty from 2027-01-01.
+*Unblocks:* B2G invoicing (mandatory since 2019) and the B2B duty from 2027-01-01; the KID
+on every invoice is what phase 4's payment imports match on.
 
-### Phase 3 — Work becomes invoices
+### Phase 3 — Work becomes invoices (next)
 
 An "uninvoiced work" view per customer and project (approved hours, re-billable
 expenses and supplier invoices, ready milestones) and a wizard that turns it into lines

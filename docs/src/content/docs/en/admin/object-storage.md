@@ -98,7 +98,13 @@ physical key is `expenses/receipts/<entryId>/<uuid>`. Invoices uses the scope
 `documents/<id>/<number>-<sha256>.pdf`, so its physical key is
 `invoices/documents/<id>/<number>-<sha256>.pdf` — stored once after the issue
 commits and never deleted or overwritten, since an issued document is bookkeeping
-material ([Invoices](/en/reference/invoices/#the-pdf)). A scoped store refuses a
+material ([Invoices](/en/reference/invoices/#the-pdf)). Sending a document as EHF adds
+three more beside it, kept the same way: the EHF as submitted,
+`documents/<id>/<number>-<sha256>.xml` (`application/xml`), stored once by its hash when
+the document is sent; and, once the access point confirms delivery, its receipt
+`documents/<id>/<number>-<transmission>-receipt.json` and the copy it delivered
+`documents/<id>/<number>-<transmission>-delivered.xml`
+([E-invoicing](/en/admin/e-invoicing/#the-objects-written)). A scoped store refuses a
 relative key that equals its scope or already begins with `{scope}/`: callers pass
 relative keys only and must never construct the prefix themselves.
 

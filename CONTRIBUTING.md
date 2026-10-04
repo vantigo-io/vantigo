@@ -579,6 +579,18 @@ receive an EHF invoice:
 - `PEPPOL_TIMEOUT` (default `10s`) — the budget for one lookup end to end, the
   NAPTR query and the SMP request together.
 
+Two more configure Invoices' sending as EHF, which re-checks the receiver through the
+same lookup and so needs `PEPPOL_LOOKUP_ENABLED=1` too
+([`docs/src/content/docs/en/admin/e-invoicing.md`](docs/src/content/docs/en/admin/e-invoicing.md)):
+
+- `INVOICES_EHF_ENABLED` (default `1`) — `0` answers a send 503 `ehf_unavailable`
+  and starts none of the `invoices-ehf` workers.
+- `INVOICES_STORECOVE_BASE_URL` (default `https://api.storecove.com/api/v2/`) —
+  the Storecove API the access-point adapter calls, an absolute http or https URL
+  with any trailing slash trimmed. Invoices' tests point it at the `httptest`
+  Storecove in `accesspoint/storecovetest`; nothing in the default test run reaches
+  Storecove.
+
 Each module's tests work like identity's: every HTTP exchange runs through a
 contract-validating client, so a response that does not match the module's YAML
 fails the test that produced it, and the package gates on operation coverage —

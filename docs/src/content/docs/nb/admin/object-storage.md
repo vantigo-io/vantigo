@@ -100,7 +100,13 @@ fysiske nøkkel er `expenses/receipts/<entryId>/<uuid>`. Fakturaer bruker omfang
 `documents/<id>/<number>-<sha256>.pdf`, så dens fysiske nøkkel er
 `invoices/documents/<id>/<number>-<sha256>.pdf` — lagret én gang etter at utstedelsen
 er bekreftet, og aldri slettet eller overskrevet, siden et utstedt dokument er
-regnskapsmateriale ([Fakturaer](/en/reference/invoices/#the-pdf)). Et avgrenset lager
+regnskapsmateriale ([Fakturaer](/en/reference/invoices/#the-pdf)). Å sende et dokument
+som EHF legger til tre til ved siden av, som oppbevares på samme måte: EHF-en slik den
+ble overlevert, `documents/<id>/<number>-<sha256>.xml` (`application/xml`), lagret én
+gang etter hashen når dokumentet sendes; og, når aksesspunktet bekrefter leveringen,
+kvitteringen `documents/<id>/<number>-<transmission>-receipt.json` og kopien det leverte
+`documents/<id>/<number>-<transmission>-delivered.xml`
+([E-faktura](/nb/admin/e-invoicing/#objektene-som-skrives)). Et avgrenset lager
 avviser en relativ nøkkel som er lik omfanget sitt eller allerede begynner med
 `{scope}/`: kallere sender bare relative nøkler og må aldri bygge prefikset selv.
 

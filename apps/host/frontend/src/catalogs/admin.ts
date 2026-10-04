@@ -615,10 +615,10 @@ const en = {
   "admin.permission.invoicesCreateDescription": "Create, edit and delete invoice drafts, and preview a draft as PDF.",
   "admin.permission.invoicesIssue": "Issue invoices",
   "admin.permission.invoicesIssueDescription":
-    "Issue a draft into a numbered document that can never be changed, create credit notes, and send an issued document by e-mail.",
+    "Issue a draft into a numbered document that can never be changed, create credit notes, send an issued document by e-mail or as EHF, and cancel or resolve its EHF transmissions.",
   "admin.permission.invoicesManage": "Manage invoicing",
   "admin.permission.invoicesManageDescription":
-    "Change the seller record, the number series start, and the VAT codes and their rates.",
+    "Change the seller record and its Peppol id, the number series start, the KID agreement, the e-invoicing access point's credentials, and the VAT codes and their rates.",
   "admin.permission.invoicesPayments": "Register payments",
   "admin.permission.invoicesPaymentsDescription":
     "Register payments against issued invoices, and remove a registration with a reason.",
@@ -979,10 +979,10 @@ const nb: { [Key in keyof typeof en]: string } = {
     "Lage, endre og slette fakturautkast, og forhåndsvise et utkast som PDF.",
   "admin.permission.invoicesIssue": "Utstede fakturaer",
   "admin.permission.invoicesIssueDescription":
-    "Utstede et utkast som et nummerert dokument som aldri kan endres, lage kreditnotaer, og sende et utstedt dokument på e-post.",
+    "Utstede et utkast som et nummerert dokument som aldri kan endres, lage kreditnotaer, sende et utstedt dokument på e-post eller som EHF, og avbryte eller avklare EHF-sendingene.",
   "admin.permission.invoicesManage": "Administrere fakturering",
   "admin.permission.invoicesManageDescription":
-    "Endre selgeropplysningene, startnummeret for nummerserien, og mva-kodene og satsene deres.",
+    "Endre selgeropplysningene og Peppol-ID-en, startnummeret for nummerserien, KID-avtalen, påloggingsdataene til aksesspunktet for e-faktura, og mva-kodene og satsene deres.",
   "admin.permission.invoicesPayments": "Registrere betalinger",
   "admin.permission.invoicesPaymentsDescription":
     "Registrere betalinger mot utstedte fakturaer, og fjerne en registrering med en begrunnelse.",
