@@ -173,7 +173,8 @@ legal entity the key does not reach. Without credentials it is a 409 `ehf_unavai
 time the provider refuses the key and when the stored key cannot be opened — `APP_SECRET`
 changed, or the row was altered — which is also logged at error and answered 503
 `ehf_unavailable` wherever the key must be opened (the verify, a PUT that keeps the
-key). It is cleared by a new PUT and by the next call the provider accepts.
+key). It is cleared by a successful verify, by a new PUT, and — once the workers land —
+by any call the provider accepts.
 
 **The Storecove adapter** (`accesspoint/storecove.go`) speaks Storecove's API v2 at
 `INVOICES_STORECOVE_BASE_URL`, the operator's setting — so it dials unguarded, as the
@@ -189,9 +190,10 @@ point's AS4 receipt, nothing stronger — `failed` and `no_action_taken` are fai
 every other state is still submitted. The evidence (`GET
 document_submissions/{guid}/evidence/sending`, 404 until it succeeded) lists the
 delivered documents at expiring URLs, which are fetched at once, over https only, without
-the key, at most 20 MiB each. A 422 is Storecove's refusal of the document **or** of a
+the key, at most 20 MiB each; a failed download's error never names its URL, whose query
+is the signature that grants it. A 422 is Storecove's refusal of the document **or** of a
 key it has already seen — the same answer — 401 and 403 are the key, a 429 carries its
-`Retry-After`, and a transport failure or a 5xx leaves the outcome unknown.
+`Retry-After` (seconds, or a date judged by the module's clock), and a transport failure or a 5xx leaves the outcome unknown.
 
 ## Drafts
 

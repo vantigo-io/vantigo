@@ -25,6 +25,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -38,6 +39,10 @@ const (
 	// RetryAfterSeconds is the Retry-After the Throttled mode answers.
 	RetryAfterSeconds = 17
 )
+
+// RetryAfterDate is the Retry-After the ThrottledUntilDate mode answers, as
+// an HTTP date: a test judges it against a fixed clock.
+var RetryAfterDate = time.Date(2026, time.September, 12, 10, 0, 0, 0, time.UTC)
 
 // basePath is the path Storecove's API lives under; URL includes it, as the
 // production base URL does.
@@ -58,6 +63,8 @@ const (
 	Unprocessable Mode = "422"
 	// Throttled answers 429 with Retry-After: RetryAfterSeconds.
 	Throttled Mode = "429"
+	// ThrottledUntilDate answers 429 with Retry-After: RetryAfterDate.
+	ThrottledUntilDate Mode = "429-date"
 	// ThrottledWithoutRetryAfter answers 429 with no Retry-After.
 	ThrottledWithoutRetryAfter Mode = "429-bare"
 	// ServerError answers 503.
@@ -328,6 +335,9 @@ func (s *Server) failed(w http.ResponseWriter, r *http.Request, mode Mode) bool 
 		writeJSON(w, http.StatusUnprocessableEntity, []ErrorModel{Rejection})
 	case Throttled:
 		w.Header().Set("Retry-After", strconv.Itoa(RetryAfterSeconds))
+		w.WriteHeader(http.StatusTooManyRequests)
+	case ThrottledUntilDate:
+		w.Header().Set("Retry-After", RetryAfterDate.Format(http.TimeFormat))
 		w.WriteHeader(http.StatusTooManyRequests)
 	case ThrottledWithoutRetryAfter:
 		w.WriteHeader(http.StatusTooManyRequests)

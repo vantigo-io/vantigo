@@ -19,7 +19,7 @@ import (
 
 // adapter is the Storecove adapter pointed at sc with its own credentials.
 func adapter(sc *storecovetest.Server) accesspoint.AccessPoint {
-	return accesspoint.NewStorecove(sc.URL(), storecovetest.APIKey, storecovetest.LegalEntityID, sc.Transport())
+	return accesspoint.NewStorecove(sc.URL(), storecovetest.APIKey, storecovetest.LegalEntityID, sc.Transport(), nil)
 }
 
 const invoiceUBL = `<?xml version="1.0" encoding="UTF-8"?><Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"/>`
@@ -174,7 +174,7 @@ func TestStorecove_ErrorClasses(t *testing.T) {
 	t.Run("a wrong key is 401", func(t *testing.T) {
 		t.Parallel()
 		sc := storecovetest.New(t)
-		ap := accesspoint.NewStorecove(sc.URL(), "not-the-key", storecovetest.LegalEntityID, sc.Transport())
+		ap := accesspoint.NewStorecove(sc.URL(), "not-the-key", storecovetest.LegalEntityID, sc.Transport(), nil)
 		if err := ap.Verify(context.Background()); !errors.Is(err, accesspoint.ErrUnauthorized) {
 			t.Fatalf("Verify = %v, want ErrUnauthorized", err)
 		}
@@ -188,6 +188,23 @@ func TestStorecove_ErrorClasses(t *testing.T) {
 		var throttled *accesspoint.ErrThrottled
 		if !errors.As(err, &throttled) || throttled.RetryAfter != storecovetest.RetryAfterSeconds*time.Second {
 			t.Fatalf("err = %v, want ErrThrottled after %ds", err, storecovetest.RetryAfterSeconds)
+		}
+	})
+
+	t.Run("429 with a Retry-After date, judged by the given clock", func(t *testing.T) {
+		t.Parallel()
+		sc := storecovetest.New(t)
+		sc.Fail(storecovetest.ThrottledUntilDate)
+		now := storecovetest.RetryAfterDate.Add(-90 * time.Second)
+		ap := accesspoint.NewStorecove(sc.URL(), storecovetest.APIKey, storecovetest.LegalEntityID, sc.Transport(), func() time.Time { return now })
+		_, err := ap.Submit(context.Background(), submission())
+		var throttled *accesspoint.ErrThrottled
+		if !errors.As(err, &throttled) || throttled.RetryAfter != 90*time.Second {
+			t.Fatalf("err = %v, want ErrThrottled after 90s by the given clock", err)
+		}
+		now = storecovetest.RetryAfterDate.Add(time.Second)
+		if _, err := ap.Submit(context.Background(), submission()); !errors.As(err, &throttled) || throttled.RetryAfter != 0 {
+			t.Fatalf("a date already past = %v, want ErrThrottled with no retry-after", err)
 		}
 	})
 
@@ -400,6 +417,31 @@ func TestStorecove_EvidenceFetchesTheDocuments(t *testing.T) {
 		}
 	})
 
+	t.Run("a failed fetch keeps the presigned URL out of its error", func(t *testing.T) {
+		t.Parallel()
+		sc := storecovetest.New(t)
+		// Nothing listens on port 1: the fetch fails in the transport, whose
+		// *url.Error names the URL it was asked for.
+		sc.Evidence("sub-1", storecovetest.Document{URL: "https://127.0.0.1:1/presigned/delivered.xml?X-Amz-Signature=s3cr3t-signature"})
+		_, err := adapter(sc).Evidence(ctx, "sub-1")
+		assertPlain(t, err)
+		for _, leak := range []string{"127.0.0.1", "presigned", "delivered.xml", "X-Amz-Signature", "s3cr3t-signature"} {
+			if strings.Contains(err.Error(), leak) {
+				t.Errorf("err = %q, carries %q from the presigned URL", err, leak)
+			}
+		}
+	})
+
+	t.Run("an unreachable API keeps its URL out of the error", func(t *testing.T) {
+		t.Parallel()
+		ap := accesspoint.NewStorecove("https://127.0.0.1:1/api/v2", storecovetest.APIKey, storecovetest.LegalEntityID, nil, nil)
+		_, err := ap.Evidence(ctx, "sub-secret-guid")
+		assertPlain(t, err)
+		if strings.Contains(err.Error(), "/api/v2") || strings.Contains(err.Error(), "sub-secret-guid") {
+			t.Errorf("err = %q, carries the request's URL", err)
+		}
+	})
+
 	t.Run("no document", func(t *testing.T) {
 		t.Parallel()
 		sc := storecovetest.New(t)
@@ -438,7 +480,7 @@ func TestStorecove_Verify(t *testing.T) {
 	if err := adapter(sc).Verify(context.Background()); err != nil {
 		t.Fatalf("Verify = %v, want nil", err)
 	}
-	other := accesspoint.NewStorecove(sc.URL(), storecovetest.APIKey, storecovetest.LegalEntityID+1, sc.Transport())
+	other := accesspoint.NewStorecove(sc.URL(), storecovetest.APIKey, storecovetest.LegalEntityID+1, sc.Transport(), nil)
 	if err := other.Verify(context.Background()); err == nil {
 		t.Error("Verify of another legal entity = nil, want an error")
 	}

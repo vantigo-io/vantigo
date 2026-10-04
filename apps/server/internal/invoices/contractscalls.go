@@ -141,7 +141,7 @@ func (s *server) accessPoint(ctx context.Context) (accesspoint.AccessPoint, erro
 	if s.deps.Config != nil {
 		baseURL = s.deps.Config.InvoicesStorecoveBaseURL
 	}
-	return notedAccessPoint{accesspoint.NewStorecove(baseURL, key, int(settings.LegalEntityID), s.deps.HTTPTransport)}, nil
+	return notedAccessPoint{accesspoint.NewStorecove(baseURL, key, int(settings.LegalEntityID), s.deps.HTTPTransport, s.deps.Clock)}, nil
 }
 
 // notedAccessPoint reports every call on an access point before making it.

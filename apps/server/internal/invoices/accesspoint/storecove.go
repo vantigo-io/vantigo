@@ -48,17 +48,23 @@ type storecove struct {
 	legalEntityID int
 	client        *http.Client
 	timeout       time.Duration
+	now           func() time.Time
 }
 
 // NewStorecove is the adapter for one Storecove API key and the legal entity
-// it sends as. baseURL has no trailing slash (config trims it).
-func NewStorecove(baseURL, apiKey string, legalEntityID int, transport http.RoundTripper) AccessPoint {
-	return newStorecove(baseURL, apiKey, legalEntityID, transport, callTimeout)
+// it sends as. baseURL has no trailing slash (config trims it). now is the
+// clock a Retry-After date is judged against — the module's, so a test's fixed
+// clock holds here too; nil is the wall clock.
+func NewStorecove(baseURL, apiKey string, legalEntityID int, transport http.RoundTripper, now func() time.Time) AccessPoint {
+	return newStorecove(baseURL, apiKey, legalEntityID, transport, now, callTimeout)
 }
 
-func newStorecove(baseURL, apiKey string, legalEntityID int, transport http.RoundTripper, timeout time.Duration) AccessPoint {
+func newStorecove(baseURL, apiKey string, legalEntityID int, transport http.RoundTripper, now func() time.Time, timeout time.Duration) AccessPoint {
 	if transport == nil {
 		transport = http.DefaultTransport
+	}
+	if now == nil {
+		now = time.Now
 	}
 	return &storecove{
 		baseURL:       strings.TrimSuffix(baseURL, "/"),
@@ -68,6 +74,7 @@ func newStorecove(baseURL, apiKey string, legalEntityID int, transport http.Roun
 		// API key to a host no operator named.
 		client:  &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 		timeout: timeout,
+		now:     now,
 	}
 }
 
@@ -119,7 +126,7 @@ func (c *storecove) Submit(ctx context.Context, s Submission) (SubmissionRef, er
 	if err != nil {
 		return "", err
 	}
-	if err := classify(http.MethodPost, "document_submissions", status, answer); err != nil {
+	if err := c.classify(http.MethodPost, "document_submissions", status, answer); err != nil {
 		return "", err
 	}
 	var result struct {
@@ -157,7 +164,7 @@ func (c *storecove) NextEvent(ctx context.Context) (Event, bool, error) {
 	if status == http.StatusNoContent {
 		return Event{}, false, nil
 	}
-	if err := classify(http.MethodGet, path, status, answer); err != nil {
+	if err := c.classify(http.MethodGet, path, status, answer); err != nil {
 		return Event{}, false, err
 	}
 	var instance struct {
@@ -205,7 +212,7 @@ func (c *storecove) AckEvent(ctx context.Context, eventID string) error {
 	if err != nil {
 		return err
 	}
-	return classify(http.MethodDelete, "webhook_instances/{guid}", status, answer)
+	return c.classify(http.MethodDelete, "webhook_instances/{guid}", status, answer)
 }
 
 // evidenceBody is the part of DocumentSubmissionEvidence the port reads.
@@ -239,7 +246,7 @@ func (c *storecove) Evidence(ctx context.Context, ref SubmissionRef) (Evidence, 
 	if status == http.StatusNotFound {
 		return Evidence{}, ErrNotYetAvailable
 	}
-	if err := classify(http.MethodGet, "document_submissions/{guid}/evidence/sending", status, answer); err != nil {
+	if err := c.classify(http.MethodGet, "document_submissions/{guid}/evidence/sending", status, answer); err != nil {
 		return Evidence{}, err
 	}
 	var body evidenceBody
@@ -275,15 +282,17 @@ func (c *storecove) Evidence(ctx context.Context, ref SubmissionRef) (Evidence, 
 	return ev, nil
 }
 
-// fetchDocument downloads one presigned document URL.
+// fetchDocument downloads one presigned document URL. Its errors never carry
+// the URL: its query is the signature that grants the download, and an error
+// goes into last_error and the logs.
 func (c *storecove) fetchDocument(ctx context.Context, raw string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
 	if err != nil {
-		return nil, err
+		return nil, errors.New("the URL does not parse")
 	}
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, transportFailure(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
@@ -302,7 +311,7 @@ func (c *storecove) Verify(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return classify(http.MethodGet, "legal_entities/{id}", status, answer)
+	return c.classify(http.MethodGet, "legal_entities/{id}", status, answer)
 }
 
 // answer is a response as read: its body and its Retry-After.
@@ -329,7 +338,7 @@ func (c *storecove) call(ctx context.Context, method, path string, body []byte) 
 	}
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return 0, answer{}, fmt.Errorf("accesspoint: storecove %s: %w", method, err)
+		return 0, answer{}, fmt.Errorf("accesspoint: storecove %s %s: %w", method, operationOf(path), withoutURL(err))
 	}
 	defer func() { _ = resp.Body.Close() }()
 	read, err := readLimited(resp.Body)
@@ -337,6 +346,35 @@ func (c *storecove) call(ctx context.Context, method, path string, body []byte) 
 		return 0, answer{}, fmt.Errorf("accesspoint: read storecove's answer: %w", err)
 	}
 	return resp.StatusCode, answer{body: read, retryAfter: resp.Header.Get("Retry-After")}, nil
+}
+
+// withoutURL is err less the *url.Error around it, which names the URL the
+// request went to.
+func withoutURL(err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		return ue.Err
+	}
+	return err
+}
+
+// transportFailure is a document download's transport error reduced to its
+// kind. Unlike the API's base URL, which is the operator's, a document URL's
+// host and path are the provider's storage, and a dial, DNS or TLS error
+// names them below the *url.Error too.
+func transportFailure(err error) error {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
+		return withoutURL(err)
+	default:
+		return errors.New("the download failed in transport")
+	}
+}
+
+// operationOf names a request path without the ids in it.
+func operationOf(path string) string {
+	head, _, _ := strings.Cut(path, "/")
+	return head
 }
 
 // readLimited reads r whole, refusing more than maxDocumentBytes.
@@ -354,7 +392,7 @@ func readLimited(r io.Reader) ([]byte, error) {
 // classify is a status as the port's error classes: nil for a 2xx. The
 // operation names the call in a plain error; Storecove's body never goes
 // into one — only a 422's messages are carried, for the worker to redact.
-func classify(method, operation string, status int, a answer) error {
+func (c *storecove) classify(method, operation string, status int, a answer) error {
 	switch {
 	case status >= 200 && status < 300:
 		return nil
@@ -363,7 +401,7 @@ func classify(method, operation string, status int, a answer) error {
 	case status == http.StatusUnprocessableEntity:
 		return &ErrUnprocessable{Messages: messagesOf(a.body)}
 	case status == http.StatusTooManyRequests:
-		return &ErrThrottled{RetryAfter: retryAfter(a.retryAfter)}
+		return &ErrThrottled{RetryAfter: retryAfter(a.retryAfter, c.now())}
 	default:
 		return fmt.Errorf("accesspoint: storecove %s %s answered %d", method, operation, status)
 	}
@@ -392,9 +430,9 @@ func messagesOf(body []byte) []string {
 	return messages
 }
 
-// retryAfter reads a Retry-After header, seconds or an HTTP date; zero when
-// it is absent or unreadable.
-func retryAfter(v string) time.Duration {
+// retryAfter reads a Retry-After header, seconds or an HTTP date judged
+// against now; zero when it is absent, unreadable or already past.
+func retryAfter(v string, now time.Time) time.Duration {
 	if v == "" {
 		return 0
 	}
@@ -402,7 +440,7 @@ func retryAfter(v string) time.Duration {
 		return time.Duration(seconds) * time.Second
 	}
 	if at, err := http.ParseTime(v); err == nil {
-		if d := time.Until(at); d > 0 {
+		if d := at.Sub(now); d > 0 {
 			return d
 		}
 	}
